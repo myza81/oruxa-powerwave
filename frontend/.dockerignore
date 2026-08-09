@@ -1,0 +1,31 @@
+# Build context: ./frontend
+#
+# The image needs (see Dockerfile):
+#   index.html
+#   config.js
+#   docker-entrypoint.d/
+# None of those are excluded below. Note in particular that config.js must
+# remain available: it is the checked-in default that the entrypoint rewrites
+# from API_BASE_URL at container start.
+
+# Secrets must never enter an image. The **/ prefix matters: .dockerignore
+# patterns are matched against the whole relative path, so a bare ".env" would
+# only exclude one at the context root.
+**/.env
+**/.env.*
+
+# Node tooling, should any be introduced later
+**/node_modules/
+**/npm-debug.log*
+**/yarn-error.log*
+**/.npm/
+**/.cache/
+
+# Editor / OS artefacts
+**/.vscode/
+**/.idea/
+**/.DS_Store
+**/Thumbs.db
+**/*.swp
+**/*.tmp
+**/*.log

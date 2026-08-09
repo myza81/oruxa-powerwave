@@ -1,0 +1,34 @@
+# Development overlay.
+#
+# Used both for local Docker on macOS/Linux and for the VPS DEV environment.
+# Keeps the portable named volume from the base file.
+#
+#   docker compose -f compose.yaml -f compose.dev.yaml up -d
+
+services:
+  frontend:
+    container_name: powerwave-frontend-dev
+
+  backend:
+    container_name: powerwave-backend-dev
+
+    environment:
+      ENVIRONMENT: development
+      CORS_ORIGINS: >-
+        ${CORS_ORIGINS:-http://localhost:8101,http://127.0.0.1:8101}
+
+    # Source is mounted read-only and the server reloads, so backend edits are
+    # visible without a rebuild. Only the source is mounted: site-packages stay
+    # as built in the image.
+    volumes:
+      - ./backend/app:/app/app:ro
+
+    command:
+      - uvicorn
+      - app.main:create_app
+      - --factory
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --reload

@@ -1,0 +1,39 @@
+# Production overlay.
+#
+# This is the only file that may carry host-specific detail. Every value is
+# supplied by the environment so the file itself stays provider-neutral.
+#
+#   docker compose -f compose.yaml -f compose.prod.yaml up -d
+#
+# Required in .env on the production host:
+#   POWERWAVE_DATA_PATH, POWERWAVE_UID, POWERWAVE_GID,
+#   CORS_ORIGINS, API_BASE_URL
+
+services:
+  frontend:
+    container_name: powerwave-frontend
+
+    environment:
+      # The entrypoint uses this to refuse the development fallback.
+      ENVIRONMENT: production
+      API_BASE_URL: ${API_BASE_URL:?API_BASE_URL must be set}
+
+  backend:
+    container_name: powerwave-backend
+
+    environment:
+      ENVIRONMENT: production
+
+    user: "${POWERWAVE_UID:?POWERWAVE_UID must be set}:${POWERWAVE_GID:?POWERWAVE_GID must be set}"
+
+    volumes:
+      # Overrides the base named volume: Compose merges service volumes by
+      # container path, so /data becomes this host directory.
+      - ${POWERWAVE_DATA_PATH:?POWERWAVE_DATA_PATH must be set}:/data
+
+    networks:
+      - oruxa-backend
+
+networks:
+  oruxa-backend:
+    external: true

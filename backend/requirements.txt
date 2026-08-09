@@ -1,3 +1,9 @@
-fastapi
-uvicorn[standard]
-psycopg[binary]
+# Runtime dependencies. Pinned exactly so every developer machine, CI run and
+# deployment resolves an identical dependency set.
+fastapi==0.141.1
+uvicorn[standard]==0.52.1
+
+# PostgreSQL driver. Powerwave's architecture includes PostgreSQL; schemas and
+# migrations are out of scope for Milestone 1, but the dependency is pinned now
+# so the runtime image does not change when the database is introduced.
+psycopg[binary]==3.3.4

@@ -1,0 +1,47 @@
+# Build context: ./backend
+#
+# The runtime image needs exactly two things (see Dockerfile):
+#   requirements.txt
+#   app/
+# Everything below is excluded so it can neither bloat the context nor end up
+# in a layer.
+
+# Python bytecode and caches.
+# The **/ prefix matters: .dockerignore patterns are matched against the whole
+# relative path, so a bare "__pycache__/" would only exclude a top-level one and
+# would miss app/__pycache__/ — the one that actually exists.
+**/__pycache__/
+**/*.py[cod]
+**/*.pyo
+**/*.pyd
+
+# Virtual environments
+**/.venv/
+**/venv/
+**/env/
+
+# Test and tooling caches
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.coverage
+**/htmlcov/
+
+# Tests and dev-only dependencies are not part of the production image.
+# CI runs pytest directly on the runner, not inside this build.
+tests/
+pytest.ini
+requirements-dev.txt
+
+# Secrets must never enter an image.
+**/.env
+**/.env.*
+
+# Editor / OS artefacts
+**/.vscode/
+**/.idea/
+**/.DS_Store
+**/Thumbs.db
+**/*.swp
+**/*.tmp
+**/*.log

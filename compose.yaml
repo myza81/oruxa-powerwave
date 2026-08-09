@@ -1,3 +1,12 @@
+# Portable Powerwave base configuration.
+#
+# This file must run unchanged on Windows, macOS and Linux. It therefore
+# contains no host paths, no UID/GID assumptions and no external networks.
+# Environment-specific concerns live in compose.dev.yaml / compose.prod.yaml.
+#
+#   DEV:  docker compose -f compose.yaml -f compose.dev.yaml up -d
+#   PROD: docker compose -f compose.yaml -f compose.prod.yaml up -d
+
 services:
   frontend:
     image: powerwave-frontend:${APP_VERSION:-local}
@@ -5,33 +14,55 @@ services:
     build:
       context: ./frontend
 
-    container_name: powerwave-frontend
     restart: unless-stopped
 
+    environment:
+      API_BASE_URL: ${API_BASE_URL:-http://127.0.0.1:${POWERWAVE_BACKEND_PORT:-8100}}
+
     ports:
-      - "127.0.0.1:8101:80"
+      - "${POWERWAVE_BIND_ADDRESS:-127.0.0.1}:${POWERWAVE_FRONTEND_PORT:-8101}:80"
+
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
   backend:
     image: powerwave-backend:${APP_VERSION:-local}
+
     build:
       context: ./backend
 
-    container_name: powerwave-backend
     restart: unless-stopped
 
-    user: "1000:1000"
-
     env_file:
-      - .env
+      - path: .env
+        required: false
+
+    environment:
+      STORAGE_TYPE: ${STORAGE_TYPE:-local}
+      STORAGE_PATH: ${STORAGE_PATH:-/data}
 
     ports:
-      - "127.0.0.1:8100:8000"
+      - "${POWERWAVE_BIND_ADDRESS:-127.0.0.1}:${POWERWAVE_BACKEND_PORT:-8100}:8000"
 
     volumes:
-      - /srv/oruxa/data/powerwave:/data
+      # A named volume is the portable default; PROD substitutes a host path.
+      - powerwave-data:/data
 
-    networks:
-      - oruxa-backend
+    healthcheck:
+      # Uses the interpreter already in the image so the runtime needs no curl.
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/health")
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
-networks:
-  oruxa-backend:
-    external: true
+volumes:
+  powerwave-data:

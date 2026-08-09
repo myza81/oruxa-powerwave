@@ -1,0 +1,23 @@
+# Line-ending policy for the Windows / macOS / Linux development model.
+#
+# Without this file, how a text file is stored depends on each developer's
+# core.autocrlf setting. That is not something the repository should leave to
+# chance when the same files are edited on Windows and executed on Linux.
+
+# Normalise text files to LF in the repository. Working-tree endings stay
+# native, so this changes storage only — not how files look on Windows.
+* text=auto
+
+# Shell scripts must be LF in the working tree too, on every platform. A CRLF
+# shebang fails on Linux with "bad interpreter: /bin/sh^M", which would break
+# scripts/deploy.sh on the VPS and the frontend entrypoint inside its container.
+*.sh text eol=lf
+
+# Binary formats Git must never convert.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary

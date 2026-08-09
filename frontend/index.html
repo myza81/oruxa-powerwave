@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Powerwave</title>
+    <script src="config.js"></script>
 </head>
 <body>
     <h1>Powerwave</h1>
@@ -13,14 +14,16 @@
     <pre id="result"></pre>
 
     <script>
+        function apiBaseUrl() {
+            const config = window.POWERWAVE_CONFIG || {};
+            return (config.apiBaseUrl || "http://127.0.0.1:8000").replace(/\/$/, "");
+        }
+
         async function checkApi() {
             const result = document.getElementById("result");
 
             try {
-                const response = await fetch(
-                    "https://api.powerwave.oruxa.uk/health"
-                );
-
+                const response = await fetch(apiBaseUrl() + "/health");
                 const data = await response.json();
 
                 result.textContent = JSON.stringify(data, null, 2);

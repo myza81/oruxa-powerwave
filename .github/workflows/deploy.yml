@@ -1,13 +1,52 @@
 name: Deploy Powerwave
 
+# Deployment is manual by design. Merging to main does not reach any
+# environment; a person chooses the target and the commit.
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Environment to deploy
+        required: true
+        type: choice
+        default: dev
+        options:
+          - dev
+          - prod
+
+# One deployment per environment at a time. Queued rather than cancelled: a
+# half-applied deployment is worse than a slow one.
+concurrency:
+  group: powerwave-deploy-${{ inputs.target }}
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  test:
+    name: Backend tests
     runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Install dependencies
+        working-directory: backend
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        working-directory: backend
+        run: pytest
+
+  deploy:
+    name: Deploy to ${{ inputs.target }}
+    needs: test
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target }}
 
     steps:
       - name: Configure SSH
@@ -25,14 +64,15 @@ jobs:
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_APP_PATH: ${{ vars.VPS_APP_PATH || '/srv/oruxa/apps/powerwave' }}
           APP_VERSION: ${{ github.sha }}
+          TARGET: ${{ inputs.target }}
         run: |
           ssh \
             -i ~/.ssh/id_ed25519 \
             -o IdentitiesOnly=yes \
             "${VPS_USER}@${VPS_HOST}" \
-            "cd /srv/oruxa/apps/powerwave && \
+            "cd ${VPS_APP_PATH} && \
              git fetch origin && \
-             git checkout main && \
-             git reset --hard ${APP_VERSION} && \
-             APP_VERSION=${APP_VERSION} ./scripts/deploy.sh"
+             git checkout --detach ${APP_VERSION} && \
+             APP_VERSION=${APP_VERSION} TARGET=${TARGET} ./scripts/deploy.sh"

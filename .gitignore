@@ -22,3 +22,9 @@ venv/
 # Temporary files
 *.tmp
 *.swp
+
+# Local development storage root (see README)
+.local-data/
+
+# Test / tooling caches
+.pytest_cache/

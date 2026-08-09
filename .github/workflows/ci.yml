@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Backend tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # Matches backend/Dockerfile.
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Install dependencies
+        working-directory: backend
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        working-directory: backend
+        run: pytest
+
+  compose-config:
+    name: Validate Compose overlays
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate DEV overlay
+        run: docker compose -f compose.yaml -f compose.dev.yaml config --quiet
+
+      - name: Validate PROD overlay
+        # The PROD overlay declares required variables; supply placeholders so
+        # this validates the file's shape rather than the host's configuration.
+        env:
+          POWERWAVE_DATA_PATH: /tmp/powerwave
+          POWERWAVE_UID: "1000"
+          POWERWAVE_GID: "1000"
+        run: docker compose -f compose.yaml -f compose.prod.yaml config --quiet
