@@ -46,8 +46,12 @@ jobs:
       - name: Validate PROD overlay
         # The PROD overlay declares required variables; supply placeholders so
         # this validates the file's shape rather than the host's configuration.
+        # These are CI-only rendering values. They are deliberately not real:
+        # .invalid is reserved by RFC 2606 and can never resolve, so this can
+        # never be mistaken for an application default or a production endpoint.
         env:
           POWERWAVE_DATA_PATH: /tmp/powerwave
           POWERWAVE_UID: "1000"
           POWERWAVE_GID: "1000"
+          API_BASE_URL: https://example.invalid
         run: docker compose -f compose.yaml -f compose.prod.yaml config --quiet
