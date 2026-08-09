@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Powerwave</title>
+</head>
+<body>
+    <h1>Powerwave</h1>
+    <p>Frontend is running.</p>
+
+    <button onclick="checkApi()">Check Backend API</button>
+
+    <pre id="result"></pre>
+
+    <script>
+        async function checkApi() {
+            const result = document.getElementById("result");
+
+            try {
+                const response = await fetch(
+                    "https://api.powerwave.oruxa.uk/health"
+                );
+
+                const data = await response.json();
+
+                result.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                result.textContent = "API request failed: " + error;
+            }
+        }
+    </script>
+</body>
+</html>
