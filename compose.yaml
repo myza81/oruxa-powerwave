@@ -1,26 +1,29 @@
 # Portable Powerwave base configuration.
 #
 # This file must run unchanged on Windows, macOS and Linux. It therefore
-# contains no host paths, no UID/GID assumptions and no external networks.
-# Environment-specific concerns live in compose.dev.yaml / compose.prod.yaml.
+# contains no host paths, no host ports, no UID/GID assumptions, no external
+# networks and no project identity. Everything environment-specific lives in
+# compose.dev.yaml / compose.prod.yaml, which also carry the Compose project
+# name that keeps DEV and PROD isolated on a shared host.
 #
 #   DEV:  docker compose -f compose.yaml -f compose.dev.yaml up -d
 #   PROD: docker compose -f compose.yaml -f compose.prod.yaml up -d
+#
+# Container names are deliberately not set: Compose derives them from the
+# project name, so both environments can run side by side.
 
 services:
   frontend:
-    image: powerwave-frontend:${APP_VERSION:-local}
+    # Tags are target-qualified. The project name isolates containers, networks
+    # and volumes; without TARGET here the image tag would stay a shared mutable
+    # resource that DEV and PROD could overwrite for each other. deploy.sh
+    # exports TARGET, so this always resolves to dev-* or prod-*.
+    image: powerwave-frontend:${TARGET:-local}-${APP_VERSION:-local}
 
     build:
       context: ./frontend
 
     restart: unless-stopped
-
-    environment:
-      API_BASE_URL: ${API_BASE_URL:-http://127.0.0.1:${POWERWAVE_BACKEND_PORT:-8100}}
-
-    ports:
-      - "${POWERWAVE_BIND_ADDRESS:-127.0.0.1}:${POWERWAVE_FRONTEND_PORT:-8101}:80"
 
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
@@ -30,7 +33,7 @@ services:
       start_period: 5s
 
   backend:
-    image: powerwave-backend:${APP_VERSION:-local}
+    image: powerwave-backend:${TARGET:-local}-${APP_VERSION:-local}
 
     build:
       context: ./backend
@@ -45,11 +48,10 @@ services:
       STORAGE_TYPE: ${STORAGE_TYPE:-local}
       STORAGE_PATH: ${STORAGE_PATH:-/data}
 
-    ports:
-      - "${POWERWAVE_BIND_ADDRESS:-127.0.0.1}:${POWERWAVE_BACKEND_PORT:-8100}:8000"
-
     volumes:
-      # A named volume is the portable default; PROD substitutes a host path.
+      # A named volume is the portable default. Compose scopes it to the
+      # project, so DEV and PROD get separate volumes from the same definition.
+      # Each overlay may substitute a host path.
       - powerwave-data:/data
 
     healthcheck:

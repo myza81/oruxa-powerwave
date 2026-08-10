@@ -114,8 +114,9 @@ TARGET=dev ./scripts/deploy.sh
 
 Or trigger the **Deploy Powerwave** workflow with target `dev`.
 
-The DEV overlay mounts `backend/app` read-only and runs uvicorn with `--reload`,
-and keeps the portable named volume for storage.
+The DEV overlay mounts `backend/app` read-only and runs uvicorn with `--reload`.
+Storage defaults to a project-scoped named volume, so local Docker needs no host
+directory; a DEV host points `POWERWAVE_DATA_PATH` at its own path.
 
 ### 4. VPS PROD
 
@@ -149,11 +150,49 @@ rather than a `KeyError`.
 
 | File | Role |
 |------|------|
-| [compose.yaml](compose.yaml) | Portable base. No host paths, no UID/GID, no external networks. Runs anywhere. |
-| [compose.dev.yaml](compose.dev.yaml) | Development: reload, named volume, permissive CORS. Used locally *and* on VPS DEV. |
-| [compose.prod.yaml](compose.prod.yaml) | Production: host bind mount, UID/GID, external `oruxa-backend` network. |
+| [compose.yaml](compose.yaml) | Portable base. No host paths, no host ports, no UID/GID, no external networks, no project name. Runs anywhere. |
+| [compose.dev.yaml](compose.dev.yaml) | Development: project name, DEV ports, reload, permissive CORS. Used locally *and* on VPS DEV. |
+| [compose.prod.yaml](compose.prod.yaml) | Production: project name, PROD ports, host bind mount, UID/GID, external `oruxa-backend` network. |
 
 Always pass the base plus exactly one overlay.
+
+## DEV and PROD coexistence
+
+Both environments can run on one VPS at the same time. Isolation comes from the
+Compose **project name**, never from hard-coded container names — Compose derives
+container, network and volume identities from the project, so nothing collides.
+
+| | VPS PROD | VPS DEV |
+|---|---|---|
+| Compose project | `powerwave-prod` | `powerwave-dev` |
+| Image tags | `powerwave-*:prod-<version>` | `powerwave-*:dev-<version>` |
+| Backend port | `127.0.0.1:8100` | `127.0.0.1:8200` |
+| Frontend port | `127.0.0.1:8101` | `127.0.0.1:8201` |
+| Storage | `/srv/oruxa/data/powerwave` | `/srv/oruxa/data/powerwave-dev` |
+| Data path required? | Yes — deployment fails without it | No — falls back to a named volume |
+
+`TARGET` selects the overlay and the project name together:
+
+```bash
+TARGET=dev  ./scripts/deploy.sh   # -p powerwave-dev  -f compose.yaml -f compose.dev.yaml
+TARGET=prod ./scripts/deploy.sh   # -p powerwave-prod -f compose.yaml -f compose.prod.yaml
+```
+
+Every port defaults to the right value for its environment, so neither
+environment needs configuring to avoid the other. Storage is the one place where
+DEV must be told explicitly what to use: leave `POWERWAVE_DATA_PATH` unset and
+DEV writes to its own named volume, never to production data.
+
+Because the only difference is configuration, either environment can move to a
+different VPS later by changing ports, paths, DNS and credentials — not
+application code. No container name, host path or provider assumption is baked
+into the application.
+
+### Databases
+
+PostgreSQL is shared infrastructure and deliberately **not** part of this Compose
+stack. It is never published publicly, and each application owns its own logical
+database. DEV database separation is handled outside this repository.
 
 ## Storage
 

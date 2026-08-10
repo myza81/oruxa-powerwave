@@ -1,26 +1,42 @@
 # Development overlay.
 #
-# Used both for local Docker on macOS/Linux and for the VPS DEV environment.
-# Keeps the portable named volume from the base file.
+# Runs on local Docker (macOS/Linux), on the VPS DEV environment, and on any
+# future DEV host. Ports and storage default to DEV values so a bare
 #
 #   docker compose -f compose.yaml -f compose.dev.yaml up -d
+#
+# is safe next to a running PROD stack: the project name isolates container,
+# network and volume identities, and the ports do not overlap PROD's.
+
+name: powerwave-dev
 
 services:
   frontend:
-    container_name: powerwave-frontend-dev
+    environment:
+      ENVIRONMENT: development
+      API_BASE_URL: ${API_BASE_URL:-http://127.0.0.1:${BACKEND_PORT:-8200}}
+
+    ports:
+      - "${POWERWAVE_BIND_ADDRESS:-127.0.0.1}:${FRONTEND_PORT:-8201}:80"
 
   backend:
-    container_name: powerwave-backend-dev
-
     environment:
       ENVIRONMENT: development
       CORS_ORIGINS: >-
-        ${CORS_ORIGINS:-http://localhost:8101,http://127.0.0.1:8101}
+        ${CORS_ORIGINS:-http://localhost:${FRONTEND_PORT:-8201},http://127.0.0.1:${FRONTEND_PORT:-8201}}
 
-    # Source is mounted read-only and the server reloads, so backend edits are
-    # visible without a rebuild. Only the source is mounted: site-packages stay
-    # as built in the image.
+    ports:
+      - "${POWERWAVE_BIND_ADDRESS:-127.0.0.1}:${BACKEND_PORT:-8200}:8000"
+
     volumes:
+      # Defaults to the project-scoped named volume, so local Docker needs no
+      # host directory. A DEV host sets POWERWAVE_DATA_PATH to its own path
+      # (on the VPS: /srv/oruxa/data/powerwave-dev) — never PROD's.
+      - ${POWERWAVE_DATA_PATH:-powerwave-data}:/data
+
+      # Source is mounted read-only and the server reloads, so backend edits are
+      # visible without a rebuild. Only the source is mounted: site-packages stay
+      # as built in the image.
       - ./backend/app:/app/app:ro
 
     command:

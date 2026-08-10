@@ -8,23 +8,30 @@
 # Required in .env on the production host:
 #   POWERWAVE_DATA_PATH, POWERWAVE_UID, POWERWAVE_GID,
 #   CORS_ORIGINS, API_BASE_URL
+#
+# Ports default to the values production already serves, so an existing host
+# needs no .env change to keep its current behaviour.
+
+name: powerwave-prod
 
 services:
   frontend:
-    container_name: powerwave-frontend
-
     environment:
       # The entrypoint uses this to refuse the development fallback.
       ENVIRONMENT: production
       API_BASE_URL: ${API_BASE_URL:?API_BASE_URL must be set}
 
-  backend:
-    container_name: powerwave-backend
+    ports:
+      - "${POWERWAVE_BIND_ADDRESS:-127.0.0.1}:${FRONTEND_PORT:-8101}:80"
 
+  backend:
     environment:
       ENVIRONMENT: production
 
     user: "${POWERWAVE_UID:?POWERWAVE_UID must be set}:${POWERWAVE_GID:?POWERWAVE_GID must be set}"
+
+    ports:
+      - "${POWERWAVE_BIND_ADDRESS:-127.0.0.1}:${BACKEND_PORT:-8100}:8000"
 
     volumes:
       # Overrides the base named volume: Compose merges service volumes by

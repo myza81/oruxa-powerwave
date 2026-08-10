@@ -41,7 +41,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Validate DEV overlay
-        run: docker compose -f compose.yaml -f compose.dev.yaml config --quiet
+        env:
+          TARGET: dev
+        run: >-
+          docker compose -p powerwave-dev
+          -f compose.yaml -f compose.dev.yaml config --quiet
 
       - name: Validate PROD overlay
         # The PROD overlay declares required variables; supply placeholders so
@@ -50,8 +54,61 @@ jobs:
         # .invalid is reserved by RFC 2606 and can never resolve, so this can
         # never be mistaken for an application default or a production endpoint.
         env:
+          TARGET: prod
           POWERWAVE_DATA_PATH: /tmp/powerwave
           POWERWAVE_UID: "1000"
           POWERWAVE_GID: "1000"
           API_BASE_URL: https://example.invalid
-        run: docker compose -f compose.yaml -f compose.prod.yaml config --quiet
+        run: >-
+          docker compose -p powerwave-prod
+          -f compose.yaml -f compose.prod.yaml config --quiet
+
+      - name: Verify DEV and PROD render as isolated projects
+        # Guards the coexistence property itself: distinct project names and
+        # non-overlapping host ports, rendered by Compose rather than asserted
+        # against the source text.
+        env:
+          POWERWAVE_DATA_PATH: /tmp/powerwave
+          POWERWAVE_UID: "1000"
+          POWERWAVE_GID: "1000"
+          API_BASE_URL: https://example.invalid
+        run: |
+          set -euo pipefail
+
+          dev=$(TARGET=dev docker compose -f compose.yaml -f compose.dev.yaml config)
+          prod=$(TARGET=prod docker compose -f compose.yaml -f compose.prod.yaml config)
+
+          echo "$dev"  | grep -q '^name: powerwave-dev$'
+          echo "$prod" | grep -q '^name: powerwave-prod$'
+
+          # Image tags must be target-qualified, or DEV and PROD would share a
+          # mutable tag on a host running both.
+          echo "$dev"  | grep -q 'image: powerwave-backend:dev-'
+          echo "$dev"  | grep -q 'image: powerwave-frontend:dev-'
+          echo "$prod" | grep -q 'image: powerwave-backend:prod-'
+          echo "$prod" | grep -q 'image: powerwave-frontend:prod-'
+
+          if echo "$dev" | grep -qE 'image: powerwave-(backend|frontend):prod-'; then
+            echo "DEV referenced a PROD image tag" >&2; exit 1
+          fi
+          if echo "$prod" | grep -qE 'image: powerwave-(backend|frontend):dev-'; then
+            echo "PROD referenced a DEV image tag" >&2; exit 1
+          fi
+
+          echo "$dev"  | grep -qE 'published: "?8200"?'
+          echo "$dev"  | grep -qE 'published: "?8201"?'
+          echo "$prod" | grep -qE 'published: "?8100"?'
+          echo "$prod" | grep -qE 'published: "?8101"?'
+
+          if echo "$dev" | grep -qE 'published: "?810[01]"?'; then
+            echo "DEV published a PROD port" >&2; exit 1
+          fi
+          if echo "$prod" | grep -qE 'published: "?820[01]"?'; then
+            echo "PROD published a DEV port" >&2; exit 1
+          fi
+
+          if echo "$dev$prod" | grep -q 'container_name:'; then
+            echo "container_name must not be set" >&2; exit 1
+          fi
+
+          echo "DEV and PROD render as isolated projects."
