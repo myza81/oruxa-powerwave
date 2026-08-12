@@ -60,11 +60,20 @@ jobs:
           printf '%s\n' "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
+      - name: Validate deployment configuration
+        env:
+          VPS_APP_PATH: ${{ vars.VPS_APP_PATH }}
+        run: |
+          if [ -z "$VPS_APP_PATH" ]; then
+            echo "ERROR: VPS_APP_PATH is not configured for environment '${{ inputs.target }}'."
+            exit 1
+          fi
+
       - name: Deploy to VPS
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_APP_PATH: ${{ vars.VPS_APP_PATH || '/srv/oruxa/apps/powerwave' }}
+          VPS_APP_PATH: ${{ vars.VPS_APP_PATH }}
           APP_VERSION: ${{ github.sha }}
           TARGET: ${{ inputs.target }}
         run: |
