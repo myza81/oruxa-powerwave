@@ -121,15 +121,26 @@ database schema, no authentication, no domain/engineering features.
 
 ## Current approved focus
 
-`[FACT]` Both the discovery audit and the Phase 0 migration design are
-complete (2026-08-14) — see [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md)
-and [MIGRATION_PLAN.md](MIGRATION_PLAN.md). **No implementation work is
-approved yet.** The project is now waiting on owner review of
-[MIGRATION_PLAN.md](MIGRATION_PLAN.md)'s "Decision status summary" — most
-of the Phase 0 design is marked ready for direct approval
-(`[DECISION MODE: ANALYSIS]`), a small number of items are flagged for
-future comparison or hands-on UAT (not blocking Phase 1 approval), and
-several are explicitly deferred to later phases.
+`[FACT]` Discovery, Phase 0 design, and a governance-cleanup pass are all
+complete (2026-08-14) — see [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md),
+[MIGRATION_PLAN.md](MIGRATION_PLAN.md), and [DECISIONS.md](DECISIONS.md).
+
+`[DECISION]` **Phase 1 scope is approved: COMTRADE-only.** The owner has
+explicitly approved (see DEC-006 through DEC-014 in
+[DECISIONS.md](DECISIONS.md)): reusing Qt-free `powerwave` engineering
+logic, backend authority over engineering data, the frontend's
+presentation-only role, original-file immutability, full-resolution
+calculation integrity, incremental vertical-slice migration,
+workspace/source-scoped state (never process-global), JSON metadata
+sidecars as an early-slice implementation mechanism (**not** the long-term
+persistence architecture, which stays `[OPEN]`), and — the key scope
+decision — that **Phase 1 supports COMTRADE only**, with CSV/Excel and
+Import-Wizard-grade timestamp handling deferred in full to Phase 1.5
+(planned, not yet implemented).
+
+**Production implementation has still not started.** Phase 1's *scope*
+being approved is not the same as authorization to begin coding — see
+"Next approved activity" below.
 
 ## Known blockers
 
@@ -142,28 +153,41 @@ several are explicitly deferred to later phases.
   `origin/main`'s local tracking ref stays stale until SSH is actually fixed
   or a plain `git fetch origin` succeeds. This is now a known, repeatable
   workaround, not an open blocker to future work.
-- `[OPEN]` Nine open questions from the discovery audit have each been given
-  a decision-mode classification and a recommendation-for-now in
-  [MIGRATION_PLAN.md — Review of the nine discovery open questions](MIGRATION_PLAN.md#review-of-the-nine-discovery-open-questions)
-  — none require resolution before Phase 1 can be approved; most are
-  explicitly deferred to later phases (4, 6, 7, 8, 9) or already have a
-  working recommendation baked into the Phase 0 design (e.g. #4, #2).
+- `[OPEN]` The COMTRADE `.cfg`/`.dat` browser pairing interaction (auto-pair
+  by filename stem vs. two explicit named upload slots vs. another pattern)
+  is explicitly **not decided** and is recommended for hands-on UAT before
+  being finalized — see
+  [MIGRATION_PLAN.md — Candidate Decisions Requiring Future UAT, UAT-1](MIGRATION_PLAN.md#candidate-decisions-requiring-future-uat).
+  This does not block starting Phase 1 implementation (the backend transport
+  mechanism is separately approved-for-review); it only means the exact
+  frontend upload interaction may need revisiting once real usage is
+  observed.
+- `[OPEN]` The long-term persistence architecture (database vs.
+  manifest-file vs. extended sidecars vs. a combination) remains
+  undecided — DEC-013 approves JSON sidecars only as an early-slice
+  mechanism, not as the answer to this question. Deferred to Phase 8.
+- `[OPEN]` Remaining discovery open questions (engineering-improvement
+  findings — COMTRADE discontinuity detection, raw timestamp traceability,
+  timing-mode enforcement, duplicate CSV/Excel classifiers, calculated-signal
+  grammar, frequency/ROCOF computation, the suggestions feature) are
+  unchanged by Phase 1's approval — see
+  [MIGRATION_PLAN.md — Review of the nine discovery open questions](MIGRATION_PLAN.md#review-of-the-nine-discovery-open-questions).
+  None require resolution before Phase 1.
 - `[OPEN]` A small licensing/size check on copying sample fixture files from
   `powerwave`'s `samples/` directory into `oruxa_powerwave`'s own test
-  fixtures (for migration parity tests) is noted in
-  [MIGRATION_PLAN.md § Testing strategy](MIGRATION_PLAN.md) as worth
-  resolving before Phase 1 implementation starts — not blocking Phase 0
-  design approval itself.
+  fixtures (for migration parity tests) is worth resolving before Phase 1
+  implementation starts — not blocking scope approval itself.
 
 ## Next approved activity
 
-`[FACT]` None yet approved beyond discovery and design. The natural next
-step is for the project owner to review
-[MIGRATION_PLAN.md](MIGRATION_PLAN.md)'s Phase 0 design and "Decision
-status summary," approve (or redirect) the items marked ready for approval,
-and then explicitly authorize the first implementation task — scoped
-exactly per [MIGRATION_PLAN.md — Exact first implementation scope](MIGRATION_PLAN.md#exact-first-implementation-scope).
-`[PROPOSAL]` (not yet approved): COMTRADE-first upload → parse → normalize
-→ channel-list API, with CSV/Excel inclusion in Phase 1 itself left as an
-explicit choice for the owner (full detail and rationale in
-[MIGRATION_PLAN.md § 16](MIGRATION_PLAN.md)).
+`[DECISION]` Phase 1 scope (COMTRADE-only) is approved — see above and
+[DECISIONS.md — DEC-014](DECISIONS.md#dec-014--phase-1-is-comtrade-only-csvexcel-and-import-wizard-grade-timestamp-handling-are-deferred-to-phase-15).
+`[FACT]` Production implementation has not yet been authorized to begin.
+The next step is to **prepare and then execute the Phase 1 COMTRADE-only
+implementation task**, scoped exactly per
+[MIGRATION_PLAN.md — Exact first implementation scope](MIGRATION_PLAN.md#exact-first-implementation-scope) —
+domain model, COMTRADE-only provider port, storage-backed service layer,
+the four v1 API endpoints, and a minimal frontend upload/channel-list view,
+with the COMTRADE pairing UX left open per UAT-1 above. CSV/Excel remain
+explicitly out of scope for this next task; Phase 1.5 is planned but not
+scheduled.

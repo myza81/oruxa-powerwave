@@ -154,12 +154,37 @@ be built on top of these invariants, not around them.
 
 ---
 
+## Provenance correction — DEC-006 through DEC-011 (2026-08-14)
+
+DEC-006 through DEC-011 were originally entered during the Phase 0 design
+task, citing "framing given directly by the project owner for the Phase 0
+task" as their source. On review during a subsequent governance-cleanup
+task, that framing was found to be **conditional/instructional phrasing**
+("treat the following as established project direction *unless* current
+project-memory documentation records otherwise") rather than a crisp,
+unconditional owner approval — recording them as `Status: Approved` at that
+point was premature per this project's own rule that an agent's
+recommendation does not become a `[DECISION]` automatically.
+
+The substance of all six was subsequently reviewed and **explicitly
+approved by the project owner on 2026-08-14** (the same governance-cleanup
+task). The six entries below are therefore **retained** (their content was
+correct) with their `Date`/`Source` fields corrected to reflect when
+genuine approval actually happened, rather than backdating it to the
+original Phase 0 task. This note stays here as the visible correction —
+see [README.md — Conflict-resolution rules](README.md#conflict-resolution-rules)
+for why this is corrected in place rather than silently rewritten.
+
+---
+
 ## DEC-006 — Prefer reuse of proven Qt-independent `powerwave` engineering logic
 
-Date: recorded 2026-08-14 (stated as established project direction at the
-start of the Phase 0 migration design task)
+Date: recorded 2026-08-14; corrected 2026-08-14 (see provenance-correction
+note above) — approval confirmed during governance cleanup, not the earlier
+Phase 0 task
 Status: Approved
-Source: framing given directly by the project owner for the Phase 0 task.
+Source: explicit project-owner approval during the governance-cleanup task
+(2026-08-14); originally proposed during the Phase 0 migration design task.
 
 Decision:
 `oruxa_powerwave` should prefer reuse of proven, Qt-independent `powerwave`
@@ -186,9 +211,11 @@ coupling, an identified architectural risk, or a deliberate product change).
 
 ## DEC-007 — Backend authority over engineering data and calculations
 
-Date: recorded 2026-08-14
+Date: recorded 2026-08-14; corrected 2026-08-14 — see provenance-correction
+note above DEC-006
 Status: Approved
-Source: framing given directly by the project owner for the Phase 0 task.
+Source: explicit project-owner approval during the governance-cleanup task
+(2026-08-14); originally proposed during the Phase 0 migration design task.
 
 Decision:
 The Python backend remains authoritative for: file parsing, original source
@@ -210,9 +237,11 @@ implementation convenience — see DEC-008.
 
 ## DEC-008 — Frontend role is presentation, interaction, and visualisation
 
-Date: recorded 2026-08-14
+Date: recorded 2026-08-14; corrected 2026-08-14 — see provenance-correction
+note above DEC-006
 Status: Approved
-Source: framing given directly by the project owner for the Phase 0 task.
+Source: explicit project-owner approval during the governance-cleanup task
+(2026-08-14); originally proposed during the Phase 0 migration design task.
 
 Decision:
 The frontend's role is presentation, interaction, visualisation, workspace
@@ -235,9 +264,11 @@ logic requires an explicit, separately-justified exception, not a default.
 
 ## DEC-009 — Original uploaded engineering files remain immutable
 
-Date: recorded 2026-08-14
+Date: recorded 2026-08-14; corrected 2026-08-14 — see provenance-correction
+note above DEC-006
 Status: Approved
-Source: framing given directly by the project owner for the Phase 0 task;
+Source: explicit project-owner approval during the governance-cleanup task
+(2026-08-14); originally proposed during the Phase 0 migration design task;
 consistent with the pre-existing storage invariant already recorded in
 DEC-005.
 
@@ -264,9 +295,11 @@ in-place-edit or re-upload-over-existing-source path.
 
 ## DEC-010 — Engineering calculations operate on full-resolution backend data
 
-Date: recorded 2026-08-14
+Date: recorded 2026-08-14; corrected 2026-08-14 — see provenance-correction
+note above DEC-006
 Status: Approved
-Source: framing given directly by the project owner for the Phase 0 task.
+Source: explicit project-owner approval during the governance-cleanup task
+(2026-08-14); originally proposed during the Phase 0 migration design task.
 
 Decision:
 Authoritative engineering calculations must operate on full-resolution
@@ -291,9 +324,11 @@ interleaved with them.
 
 ## DEC-011 — Migration proceeds in small vertical slices
 
-Date: recorded 2026-08-14
+Date: recorded 2026-08-14; corrected 2026-08-14 — see provenance-correction
+note above DEC-006
 Status: Approved
-Source: framing given directly by the project owner for the Phase 0 task.
+Source: explicit project-owner approval during the governance-cleanup task
+(2026-08-14); originally proposed during the Phase 0 migration design task.
 
 Decision:
 Migration proceeds in small vertical slices. `oruxa_powerwave` should not
@@ -311,6 +346,117 @@ Not documented in source.
 Impact:
 See [MIGRATION_PLAN.md](MIGRATION_PLAN.md) for the current phase sequencing
 and the exact scope of the first approved-candidate slice.
+
+---
+
+## DEC-012 — Phase 1 state is scoped by workspace/source identity, never process-global
+
+Date: 2026-08-14
+Status: Approved
+Source: explicit project-owner approval during the governance-cleanup task
+(2026-08-14).
+
+Decision:
+Phase 1 backend state must be scoped using concepts equivalent to
+`workspace_id` and `source_id` — never held as process-global session/source
+state. The exact long-term authentication/tenant model remains deferred
+(see DEC-013's companion `[OPEN]` pattern and
+[MIGRATION_PLAN.md § 20](MIGRATION_PLAN.md)).
+
+Reason:
+[POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md) found `powerwave`'s own
+session model has no concurrency control and no user/tenant concept
+anywhere — ranked as a Critical multi-user risk. Scoping state now, even
+without building authentication yet, avoids a future architectural rework
+of the kind `powerwave` itself was forced into for source identity (see
+[POWERWAVE_DISCOVERY.md — Session and State Management](POWERWAVE_DISCOVERY.md#session-and-state-management)).
+
+Alternatives considered:
+See [MIGRATION_PLAN.md § 4 — Workspace/session ownership](MIGRATION_PLAN.md)
+for the compared options (request-scoped-only, in-memory process-global,
+storage-backed, database-backed).
+
+Impact:
+No Phase 1 (or later) implementation may introduce an unscoped
+process-global dict/cache/singleton for source or session data.
+
+---
+
+## DEC-013 — Lightweight JSON metadata sidecars are acceptable for the early migration slice
+
+Date: 2026-08-14
+Status: Approved
+Source: explicit project-owner approval during the governance-cleanup task
+(2026-08-14).
+
+Decision:
+For the first migration slice, small JSON metadata sidecars stored through
+the existing `StorageBackend` are an acceptable mechanism for
+workspace/source metadata.
+
+`[OPEN]` The long-term persistence architecture remains **undecided and
+deferred** — this decision approves an implementation mechanism for the
+early slice only, not the long-term persistence model. A later phase may
+choose PostgreSQL, a manifest-style file format, the sidecar mechanism
+extended, some combination, or something else entirely; no commitment is
+made here beyond Phase 1/1.5's immediate needs. See discovery Open Question
+#5 and [MIGRATION_PLAN.md § 14](MIGRATION_PLAN.md).
+
+Reason:
+Avoids introducing a database before Milestone 1 scope calls for one
+([AGENTS.md](../../AGENTS.md)), while still avoiding unscoped in-memory
+state (see DEC-012). `StorageBackend` already exists, is already tested,
+and already provides exactly the categories this need requires.
+
+Alternatives considered:
+See [MIGRATION_PLAN.md § 4](MIGRATION_PLAN.md) for the full options
+comparison (in-memory-only, storage-backed sidecars, database-backed).
+
+Impact:
+Do not treat the sidecar mechanism as a precedent that forecloses a
+database-backed redesign at Phase 8 — the two are independent decisions.
+
+---
+
+## DEC-014 — Phase 1 is COMTRADE-only; CSV/Excel and Import-Wizard-grade timestamp handling are deferred to Phase 1.5
+
+Date: 2026-08-14
+Status: Approved
+Source: explicit project-owner approval during the governance-cleanup task
+(2026-08-14).
+
+Decision:
+The first Phase 1 vertical slice supports **COMTRADE only**
+(`.cfg`+`.dat` → upload → immutable storage → the existing/reused COMTRADE
+provider → `DisturbanceRecord`/backend source model → versioned API →
+channel metadata → web channel-list display). General CSV/Excel import is
+explicitly **not** included in Phase 1. CSV/Excel support, together with
+Import-Wizard-grade timestamp detection/repair, is planned for **Phase
+1.5** — not yet implemented.
+
+Reason:
+[POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md) found that `powerwave`'s
+direct CSV/Excel providers bypass the richer timestamp
+classification/repair behaviour that only the Import Wizard backend
+provides — a temporary, simplified CSV/Excel path in Phase 1 would either
+under-serve real files (silently) or require re-deriving part of the
+Wizard's complexity ahead of schedule. COMTRADE alone already exercises
+every architectural question Phase 0 needs answered (provider selection,
+multi-file upload, storage boundary, metadata API) without that
+complication. CSV/Excel are not being dropped — only sequenced after
+COMTRADE proves the architecture.
+
+Alternatives considered:
+See [MIGRATION_PLAN.md § 16](MIGRATION_PLAN.md) for the originally-compared
+options (COMTRADE-only vs. COMTRADE + best-effort direct-provider CSV/Excel
+with explicit `ambiguous_timestamp` handling).
+
+Impact:
+The Phase 1 implementation task's scope excludes all CSV/Excel code paths
+(direct providers and Import Wizard alike) — see
+[MIGRATION_PLAN.md — Exact first implementation scope](MIGRATION_PLAN.md#exact-first-implementation-scope).
+A temporary/simplified CSV/Excel workflow must not be introduced into
+Phase 1 without a separate, explicit approval.
 
 ---
 

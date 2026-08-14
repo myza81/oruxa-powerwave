@@ -13,8 +13,11 @@ throughout unless a subsection is explicitly marked otherwise**. Nothing in
 this document authorizes implementation on its own; see
 [DECISIONS.md](DECISIONS.md) for what the owner has actually approved.
 
-Status: **Phase 0 design complete**, 2026-08-14. Not yet approved for
-implementation.
+Status: **Phase 0 design complete; governance cleanup complete; Phase 1
+(COMTRADE-only) approved** — 2026-08-14. See DEC-012 through DEC-014 in
+[DECISIONS.md](DECISIONS.md). **Implementation has not yet started** — Phase
+1's approved *scope* is not the same as authorization to begin coding; see
+[HANDOFF.md](HANDOFF.md) for the actual next step.
 
 ## Governing principle
 
@@ -45,6 +48,21 @@ backend data, and future display decimation must never silently affect
 those calculations; migration proceeds in small vertical slices, not a
 single recreation of the whole desktop app.
 
+## Approved Phase 1 scope and state-scoping principles
+
+`[DECISION]` Recorded 2026-08-14 during governance cleanup — see
+[DECISIONS.md — DEC-012](DECISIONS.md#dec-012--phase-1-state-is-scoped-by-workspacesource-identity-never-process-global)
+through
+[DEC-014](DECISIONS.md#dec-014--phase-1-is-comtrade-only-csvexcel-and-import-wizard-grade-timestamp-handling-are-deferred-to-phase-15).
+Summarized: Phase 1 backend state must be scoped by `workspace_id`/`source_id`,
+never process-global (DEC-012); small JSON metadata sidecars via the
+existing `StorageBackend` are an acceptable *implementation mechanism* for
+the early slice's metadata — this is **not** approval of the long-term
+persistence architecture, which remains explicitly open (DEC-013); and
+**Phase 1 supports COMTRADE only** — general CSV/Excel import, including
+any temporary simplified subset, is deferred in full to Phase 1.5, planned
+but not yet implemented or approved (DEC-014).
+
 ## How unresolved issues are handled — decision-mode framework
 
 Not every open question needs an immediate `[DECISION]`. See
@@ -64,10 +82,17 @@ treat it as informational, not as an implicit decision.
 | Phase | Status |
 |---|---|
 | Discovery | Complete — [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md) |
-| **Phase 0 — backend/domain foundation design** | **Design complete (this document), pending owner approval** |
-| Phase 1 — upload + parsing + source/channel discovery | Not started — scope defined below, awaiting approval |
-| Phase 1.5 — Import-Wizard-grade CSV/Excel timestamp handling | Not started — scope defined below |
+| Phase 0 — backend/domain foundation design | Design complete (this document) |
+| **Phase 1 — COMTRADE-only upload + parsing + source/channel discovery** | **`[DECISION]` Approved — see [DECISIONS.md — DEC-014](DECISIONS.md#dec-014--phase-1-is-comtrade-only-csvexcel-and-import-wizard-grade-timestamp-handling-are-deferred-to-phase-15). Implementation not yet started.** |
+| Phase 1.5 — CSV/Excel + Import-Wizard-grade timestamp handling | **Planned / not yet implemented.** Scope defined below (§16); not yet approved for implementation — do not begin without a separate, explicit go-ahead. |
 | Phases 2–9 | Not started — see [POWERWAVE_DISCOVERY.md — Proposed Migration Phases](POWERWAVE_DISCOVERY.md#proposed-migration-phases) for the original high-level sequencing; Phase 0/1/1.5 below supersede that section's Phase-0/1 framing with concrete detail |
+
+**Important scope correction (2026-08-14 governance cleanup)**: Phase 1 is
+**COMTRADE only**. An earlier draft of this document left CSV/Excel
+inclusion in Phase 1 as an open owner choice (§16 below originally
+presented two options); the owner has since decided explicitly —
+COMTRADE-only for Phase 1, with CSV/Excel deferred to Phase 1.5. §16 below
+has been updated accordingly; see DEC-014 for the recorded decision.
 
 ---
 
@@ -750,45 +775,53 @@ be unsafe:
 
 ### 16. Import Wizard handling — Phase 1 vs Phase 1.5
 
-`[DECISION MODE: ANALYSIS]` — the discovery evidence is sufficient for a
-clear recommendation.
+`[DECISION]` **Settled — see [DECISIONS.md — DEC-014](DECISIONS.md#dec-014--phase-1-is-comtrade-only-csvexcel-and-import-wizard-grade-timestamp-handling-are-deferred-to-phase-15).**
+This section originally presented Phase 1's CSV/Excel inclusion as an open
+`[DECISION MODE: ANALYSIS]` choice between two options; the owner has since
+decided explicitly. Kept here (rather than deleted) so the reasoning behind
+the choice stays visible — the original comparison is preserved below for
+context.
 
-**Recommendation**: Phase 1 ships with **COMTRADE support complete**, using
-the direct `ComtradeProvider` (Category A, no timestamp ambiguity concern —
-COMTRADE's timestamps either parse or the provider raises, per discovery).
-**CSV/Excel support in Phase 1 is minimal-or-deferred**, specifically:
-Phase 1 either (a) excludes CSV/Excel entirely and proves the architecture
-with COMTRADE alone, or (b) includes CSV/Excel via the **direct**
-`CsvProvider`/`ExcelProvider` (Category B) *only* for files whose timestamps
-are unambiguous enough for best-effort auto-parsing to succeed, explicitly
-returning `ambiguous_timestamp`/`parse_error` (never a silent guess) for
-anything the direct provider can't confidently resolve. The full
-Import-Wizard-grade timestamp detection/repair experience is **Phase 1.5**,
-not Phase 1.
+**Decided**: Phase 1 ships with **COMTRADE support only**, using the direct
+`ComtradeProvider` (Category A, no timestamp ambiguity concern — COMTRADE's
+timestamps either parse or the provider raises, per discovery). **General
+CSV/Excel import is explicitly excluded from Phase 1** — not a temporary
+best-effort subset, not the direct providers, not the Import Wizard. CSV/Excel
+support, together with Import-Wizard-grade timestamp detection/repair, is
+**Phase 1.5** — planned, scope defined below, not yet implemented and not
+yet approved for implementation.
 
 **Why**: pulling the full Import Wizard (27 files, a multi-page interactive
 UX) into the very first slice would violate the "prove the architecture
 without unnecessary complexity" goal that motivated choosing this slice in
 the first place (see [POWERWAVE_DISCOVERY.md — Recommended First
 Implementation Slice](POWERWAVE_DISCOVERY.md#recommended-first-implementation-slice)).
-COMTRADE alone already exercises every architectural question Phase 0 needs
-to answer (provider selection, multi-file upload, storage boundary,
-metadata API) without also requiring a decision about how to represent an
-interactive, multi-step, potentially-blocking timestamp-repair workflow in
-a stateless request/response API — that's a real design problem (does the
-API return a "needs input" state and a follow-up endpoint? per-request
-override parameters? something else?) that deserves its own dedicated
-design pass, not an afterthought bolted onto Phase 1.
+`powerwave`'s direct CSV/Excel providers bypass the richer timestamp
+classification/repair behaviour that only the Import Wizard backend
+provides (per [POWERWAVE_DISCOVERY.md — File Import Pipeline](POWERWAVE_DISCOVERY.md#file-import-pipeline));
+shipping a temporary, simplified CSV/Excel path in Phase 1 would either
+silently under-serve real files or require re-deriving part of the
+Wizard's complexity ahead of schedule. COMTRADE alone already exercises
+every architectural question Phase 0 needs answered (provider selection,
+multi-file upload, storage boundary, metadata API) without also requiring a
+decision about how to represent an interactive, multi-step,
+potentially-blocking timestamp-repair workflow in a stateless
+request/response API — that design problem (does the API return a "needs
+input" state and a follow-up endpoint? per-request override parameters?
+something else?) is deliberately left for Phase 1.5's own dedicated design
+pass, not solved ahead of schedule here. **CSV/Excel are not being
+dropped** — only sequenced after COMTRADE proves the architecture.
 
-**If Phase 1 does include CSV/Excel** (option (b) above): unresolved
-timestamp ambiguity should produce an explicit `needs_input`
-`ImportResult.status` with a structured `ambiguous_timestamp` message —
-**never** a silent best-guess that could misrepresent engineering time.
-This is the "return an import-needs-user-input state" option from the task
-brief's own menu, chosen over "reject unresolved imports" (too harsh — the
-file did parse, just with a specific unresolved decision) or "provide
-minimum metadata only" (misleading — it would imply confidence the system
-doesn't have).
+**When Phase 1.5 is designed**, the "needs input" approach originally
+sketched here remains a reasonable starting point: unresolved timestamp
+ambiguity should produce an explicit `needs_input` `ImportResult.status`
+with a structured `ambiguous_timestamp` message — never a silent best-guess
+that could misrepresent engineering time — over either "reject unresolved
+imports" (too harsh — the file did parse, just with a specific unresolved
+decision) or "provide minimum metadata only" (misleading — it would imply
+confidence the system doesn't have). This is **not** approved Phase 1.5
+design, only a carried-forward starting point for whoever designs that
+phase.
 
 ### 17. Frontend first-slice design
 
@@ -1083,6 +1116,9 @@ as part of this task** — proposal only, per the task brief.
 
 ## Exact first implementation scope
 
+`[DECISION]` Scope below is COMTRADE-only per
+[DECISIONS.md — DEC-014](DECISIONS.md#dec-014--phase-1-is-comtrade-only-csvexcel-and-import-wizard-grade-timestamp-handling-are-deferred-to-phase-15).
+
 ### Included
 
 - Backend `domain/` package: `DisturbanceRecord`, `AnalogChannel`,
@@ -1090,9 +1126,8 @@ as part of this task** — proposal only, per the task brief.
   `TimingInformation`, `DisturbanceInformation` — ported, with JSON
   serialization added.
 - Backend `providers/` package: `BaseProvider`/`ProviderManager`/`ProviderRegistry`
-  and `ComtradeProvider` — ported. `CsvProvider`/`ExcelProvider` ported for
-  completeness/testing; exposed via the API only if the Phase 1 CSV/Excel
-  inclusion decision (§16) is made affirmatively.
+  and `ComtradeProvider` — ported. (`CsvProvider`/`ExcelProvider` are
+  explicitly **not** part of Phase 1 — see Excluded below.)
 - Backend `services/import_service.py`: upload staging, provider selection,
   parse orchestration, storage commit, metadata-sidecar read/write,
   source-id minting.
@@ -1100,25 +1135,35 @@ as part of this task** — proposal only, per the task brief.
 - Backend `schemas/source.py`: `SourceSummary`, `ChannelSummary` (analog +
   digital variants), `TimebaseSummary`, `ImportResult`, `ErrorResponse`.
 - Frontend: single-page upload + source list + channel-list view, per §17.
+  COMTRADE `.cfg`/`.dat` upload uses whichever pairing interaction ships
+  first while UAT-1 (§ Candidate Decisions Requiring Future UAT) remains
+  open — see the note there; the choice is not blocking Phase 1 approval.
 - Tests: unit (providers, services, schemas), API (all error cases in §18),
-  migration parity tests for COMTRADE (and CSV/Excel if included).
+  migration parity tests for COMTRADE.
 - Documentation: this design (already written), plus whatever the
   implementation task itself needs to update per its own findings.
 
 ### Excluded
 
+- **CSV/Excel import of any kind** — direct providers, Import Wizard, and
+  any temporary/simplified subset. Deferred to Phase 1.5 in full — see §16
+  and DEC-014. Do not introduce a partial CSV/Excel path into Phase 1
+  without a separate, explicit approval.
 - Waveform plotting/charting of any kind.
 - Synchronization / multi-source alignment / any UI for it.
+- Measurements.
 - Calculated signals.
-- Full session/workspace persistence beyond the minimal metadata sidecar
-  (§14).
-- Authentication / multi-user isolation.
-- Advanced analysis (RMS/harmonics/phasors/events/fault/protection/etc.).
+- Advanced analysis/analytics (RMS/harmonics/phasors/events/fault/protection/etc.).
 - The full interactive Import Wizard UX (Phase 1.5, not Phase 1 — see §16).
+- Full session/workspace persistence architecture beyond the minimal
+  metadata sidecar (§14) — the long-term persistence model remains `[OPEN]`
+  per DEC-013's companion note.
+- Authentication / multi-user login.
 - Any background-job/async-processing infrastructure (§5's cancellation
   note).
 - Content-hash-based duplicate detection (§5).
 - Workspace lifecycle management (create/list/rename/delete/expire).
+- Chart/viewport rendering optimisation (decimation strategy etc. — Phase 2).
 
 ### Acceptance criteria
 
@@ -1147,15 +1192,19 @@ as part of this task** — proposal only, per the task brief.
 
 ```text
 backend/app/domain/                new (7 files, per §3)
-backend/app/providers/             new (5 files, per §3; import_wizard/ only if Phase 1.5 is bundled)
+backend/app/providers/             new — base.py + comtrade.py only for Phase 1.
+                                    csv_provider.py/excel_provider.py/import_wizard/
+                                    are Phase 1.5 scope, NOT part of this
+                                    implementation task (per DEC-014)
 backend/app/services/              new (import_service.py)
 backend/app/schemas/               new (source.py)
 backend/app/api/v1/                new (sources.py)
 backend/app/main.py                modified (mount the new v1 router)
 backend/requirements.txt           modified (python-multipart for FastAPI file uploads;
-                                    numpy/pandas/openpyxl for the ported providers — none
-                                    of these are currently backend dependencies, per the
-                                    current oruxa_powerwave state)
+                                    numpy/pandas for the ported COMTRADE provider —
+                                    neither is currently a backend dependency, per the
+                                    current oruxa_powerwave state. openpyxl is NOT
+                                    needed for Phase 1 — it's a Phase 1.5 dependency)
 backend/tests/                     new test modules mirroring the above, plus
                                     backend/tests/fixtures/ (sample files, pending the
                                     licensing/size check noted in §18)
@@ -1175,7 +1224,8 @@ docs/project-memory/CURRENT_STATE.md, MIGRATION_PLAN.md, HANDOFF.md
 
 ```text
 1. Establish domain contracts (backend/app/domain/) with serialization + tests
-2. Port the provider layer (base + COMTRADE first; CSV/Excel per the §16 decision)
+2. Port the provider layer — base + COMTRADE only (per DEC-014; CSV/Excel is
+   Phase 1.5, a separate future task)
 3. Add storage integration to the service layer (staging/commit/rollback)
 4. Service layer: import_service.py orchestration + source-id minting +
    metadata-sidecar read/write
@@ -1230,35 +1280,63 @@ The first slice is deliberately low-risk and reversible:
 
 ## Decision status summary
 
-For the owner's convenience — nothing here is auto-approved by virtue of
-appearing in this list.
+Updated 2026-08-14 after a governance-cleanup pass — this section now
+distinguishes what the owner has **actually approved** (recorded in
+[DECISIONS.md](DECISIONS.md)) from what is still only a reviewable
+recommendation. Nothing in the "recommendation" tier below is approved
+merely by appearing in this document.
 
-**Ready for owner approval** (`[DECISION MODE: ANALYSIS]`, recommendation
-given, no further comparison/testing needed to decide):
+**Approved** (`[DECISION]`, recorded in [DECISIONS.md](DECISIONS.md)):
+- Prefer reuse of Qt-independent `powerwave` engineering logic — DEC-006.
+- Backend authority over parsing/timestamps/calculations/synchronization/analysis — DEC-007.
+- Frontend limited to presentation/interaction/visualisation/workspace controls/selections — DEC-008.
+- Original uploaded files remain immutable — DEC-009.
+- Engineering calculations operate on full-resolution backend data, decimation stays separate — DEC-010.
+- Migration proceeds in small vertical slices — DEC-011.
+- Phase 1 state is scoped by `workspace_id`/`source_id`, never process-global — DEC-012.
+- Lightweight JSON metadata sidecars are acceptable for the early migration
+  slice's metadata persistence **(implementation mechanism only — see the
+  `[OPEN]` companion note in DEC-013; this is not approval of the long-term
+  persistence architecture)** — DEC-013.
+- **Phase 1 is COMTRADE-only.** CSV/Excel and Import-Wizard-grade timestamp
+  handling are deferred in full to Phase 1.5 (planned, not yet implemented,
+  not yet approved for implementation) — DEC-014.
+
+**Ready for owner approval but not yet recorded as `[DECISION]`**
+(`[DECISION MODE: ANALYSIS]`, recommendation given, no further
+comparison/testing needed to decide — these are implementation *details*
+within the already-approved Phase 1 scope above, not yet individually
+ratified):
 - Provider/domain reuse classifications (§1) and target module map (§3).
-- Workspace/session ownership approach — Option C using existing
-  `StorageBackend` (§4).
 - File upload/storage flow and request lifecycle (§5, §6).
 - API contract shape (§7) and response-size discipline (§8).
 - Error model and taxonomy (§9).
-- COMTRADE upload *transport* mechanism — single multipart request (§10).
+- COMTRADE upload *transport* mechanism — single multipart request (§10) —
+  **note: this is the backend transport mechanism only, distinct from the
+  frontend pairing UX below, which remains UAT.**
 - Source identity scheme (§11).
 - Record-aliasing avoidance approach — no cross-request caching (§12).
 - Full-resolution data ownership — the stored original file (§13).
-- Phase 1 vs. 1.5 scope split, and not porting `RuleManager`/YAML into
-  Phase 1.5 (§15, §16).
 - Testing strategy and numerical-equivalence definition (§18, §19).
 - Exact first implementation scope, acceptance criteria, implementation
   order, and rollback strategy.
 
 **Needs comparison** (`[DECISION MODE: COMPARISON]`):
 - Discovery Open Question #5 (persistence model) — deferred to Phase 8,
-  not needed now.
+  not needed now. **The long-term persistence architecture remains
+  explicitly `[OPEN]`** — DEC-013's JSON-sidecar approval does not resolve
+  this.
 - Discovery Open Question #6 (calculated-signal grammar expansion) —
   deferred to Phase 6.
 
-**Recommended for UAT** (`[DECISION MODE: UAT]`):
-- UAT-1: COMTRADE `.cfg`/`.dat` pairing interaction pattern.
+**Recommended for UAT** (`[DECISION MODE: UAT]` — explicitly **not**
+decided):
+- **UAT-1: COMTRADE `.cfg`/`.dat` pairing interaction pattern — remains
+  open.** The backend accepts the required pair together (§10's transport
+  mechanism, reviewable above); the *browser-side* interaction (auto-pair
+  by filename stem vs. two explicit named slots vs. another pattern
+  discovered during implementation) is not decided and should be settled
+  by hands-on testing, not by this document.
 - UAT-2: error message wording/specificity.
 - UAT-3 (far future): calculated-signal grammar expansion, carried forward
   from discovery Open Question #6.
@@ -1268,8 +1346,12 @@ phase):
 - Duplicate-upload/content-hash deduplication (§5).
 - Workspace lifecycle management (§4).
 - Background job/cancellation infrastructure for large files (§5).
-- Discovery Open Questions #1 (timing-mode enforcement — Phase 4), #3 (raw
-  timestamp traceability — mitigated by write-once storage, revisit only if
-  requested), #7 (frequency/ROCOF computation — Phase 7), #8 (suggestions
-  feature — no committed timeline), #9 (authentication timing — Phase 9,
+- Engineering-improvement findings — kept separate from migration scope,
+  status unchanged by Phase 1 approval: COMTRADE discontinuity/gap
+  detection, raw timestamp traceability, timing-mode enforcement in the
+  general offset API, duplicate CSV/Excel classifiers, calculated-signal
+  grammar expansion, frequency/ROCOF computation, the suggestions feature —
+  discovery Open Questions #1 (Phase 4), #2, #3 (mitigated by write-once
+  storage, revisit only if requested), #4, #6 (Phase 6), #7 (Phase 7), #8
+  (no committed timeline), #9 (authentication timing — Phase 9,
   architecture already prepared for it per §20/§21).
