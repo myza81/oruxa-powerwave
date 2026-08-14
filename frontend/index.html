@@ -269,6 +269,113 @@
             display: flex;
             justify-content: space-between;
         }
+
+        /* Channel search */
+        .search-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        input[type="search"] {
+            flex: 1;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 8px 10px;
+            font-size: 0.85rem;
+            color: var(--text);
+        }
+        input[type="search"]:focus {
+            outline: none;
+            border-color: var(--accent-dim);
+        }
+        #channelSearchCount {
+            white-space: nowrap;
+            color: var(--text-dim);
+            font-size: 0.78rem;
+        }
+
+        /* Collapsible channel groups (native <details>/<summary> --
+           no custom JS needed for expand/collapse itself). */
+        details.channel-group {
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+        details.channel-group[hidden] { display: none; }
+        details.channel-group summary,
+        details.channel-subgroup summary {
+            list-style: none;
+            cursor: pointer;
+            padding: 10px 14px;
+            font-weight: 600;
+            font-size: 0.88rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            user-select: none;
+        }
+        details.channel-group summary { background: rgba(255,255,255,0.02); }
+        summary::-webkit-details-marker { display: none; }
+        summary::marker { content: ""; }
+        .chevron {
+            display: inline-block;
+            transition: transform 0.15s ease;
+            color: var(--text-dim);
+            font-size: 0.75rem;
+        }
+        details[open] > summary .chevron { transform: rotate(90deg); }
+        .count-badge {
+            font-weight: 500;
+            color: var(--text-dim);
+            font-size: 0.78rem;
+        }
+        .group-body { padding: 4px 14px 12px; }
+        details.channel-subgroup {
+            border-top: 1px solid var(--panel-border);
+        }
+        details.channel-subgroup:first-child { border-top: none; }
+        details.channel-subgroup summary {
+            padding: 8px 0;
+            font-size: 0.82rem;
+        }
+        details.channel-subgroup .group-body { padding: 0 0 10px; }
+        tr[hidden] { display: none; }
+
+        /* Remove-confirmation dialog -- one small, simple dialog; the only
+           modal in the app. */
+        .confirm-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(4, 7, 14, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            padding: 16px;
+        }
+        .confirm-overlay[hidden] { display: none; }
+        .confirm-box {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 20px;
+            max-width: 380px;
+            width: 100%;
+        }
+        .confirm-box p { margin: 0 0 12px; font-size: 0.9rem; }
+        .confirm-box .hint { margin-bottom: 16px; }
+        .confirm-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        button.danger-solid {
+            background: var(--error);
+            color: #fff;
+        }
     </style>
 </head>
 <body>
@@ -321,6 +428,18 @@
         <span>Workspace: <code id="workspaceIdLabel"></code></span>
         <button class="secondary" id="newWorkspaceButton" type="button">Start new workspace</button>
     </footer>
+
+    <div class="confirm-overlay" id="confirmOverlay" hidden>
+        <div class="confirm-box" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle">
+            <p id="confirmTitle">Remove &ldquo;<span id="confirmSourceName"></span>&rdquo; from this workspace?</p>
+            <p class="hint">This source is temporary and will no longer be available in the current
+                workspace. The original file on your computer is not affected.</p>
+            <div class="confirm-actions">
+                <button type="button" class="secondary" id="confirmCancelBtn">Cancel</button>
+                <button type="button" class="danger-solid" id="confirmRemoveBtn">Remove</button>
+            </div>
+        </div>
+    </div>
 
     <script>
         // ------------------------------------------------------------------
@@ -387,6 +506,13 @@
         // Upload
         // ------------------------------------------------------------------
         let selectedSourceId = null;
+
+        // Tracks which source the current success/import banner describes,
+        // so removing that specific source clears it -- but removing a
+        // *different* source (once multiple sources are supported) does
+        // not incorrectly clear a still-valid message. See
+        // docs/project-memory/MIGRATION_PLAN.md's Phase 1 refinement record.
+        let lastImportedSourceId = null;
 
         function setUploadStatus(kind, html) {
             const el = document.getElementById("uploadStatus");
@@ -459,6 +585,7 @@
 
                 setUploadStatus("ok", "Imported “" + body.station_name + "” — " +
                     body.analog_channel_count + " analog / " + body.digital_channel_count + " digital channels.");
+                lastImportedSourceId = body.source_id;
                 document.getElementById("uploadForm").reset();
                 await refreshSourceList();
                 selectSource(body.source_id);
@@ -506,9 +633,9 @@
                 removeBtn.className = "danger";
                 removeBtn.type = "button";
                 removeBtn.textContent = "Remove";
-                removeBtn.addEventListener("click", async (event) => {
+                removeBtn.addEventListener("click", (event) => {
                     event.stopPropagation();
-                    await removeSource(source.source_id);
+                    requestRemoveSource(source.source_id, source.station_name || "(unnamed)");
                 });
 
                 li.appendChild(info);
@@ -522,7 +649,44 @@
             }
         }
 
-        async function removeSource(sourceId) {
+        // ------------------------------------------------------------------
+        // Remove confirmation (the app's one and only modal -- section 19's
+        // "avoid modal-heavy interaction" guidance is about not overusing
+        // dialogs generally, not about having zero; this is the one
+        // destructive action in the whole app).
+        // ------------------------------------------------------------------
+        let pendingRemoveSourceId = null;
+
+        function requestRemoveSource(sourceId, sourceName) {
+            pendingRemoveSourceId = sourceId;
+            document.getElementById("confirmSourceName").textContent = sourceName;
+            document.getElementById("confirmOverlay").hidden = false;
+            document.getElementById("confirmRemoveBtn").focus();
+        }
+
+        function closeRemoveConfirm() {
+            pendingRemoveSourceId = null;
+            document.getElementById("confirmOverlay").hidden = true;
+        }
+
+        document.getElementById("confirmCancelBtn").addEventListener("click", closeRemoveConfirm);
+        document.getElementById("confirmOverlay").addEventListener("click", (event) => {
+            if (event.target.id === "confirmOverlay") closeRemoveConfirm(); // click on backdrop
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape" && !document.getElementById("confirmOverlay").hidden) {
+                closeRemoveConfirm();
+            }
+        });
+
+        document.getElementById("confirmRemoveBtn").addEventListener("click", async () => {
+            const sourceId = pendingRemoveSourceId;
+            if (!sourceId) return;
+            closeRemoveConfirm();
+            await performRemoveSource(sourceId);
+        });
+
+        async function performRemoveSource(sourceId) {
             await fetch(
                 apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
                 "/sources/" + encodeURIComponent(sourceId),
@@ -531,6 +695,12 @@
             if (selectedSourceId === sourceId) {
                 selectedSourceId = null;
                 renderChannels(null);
+            }
+            // Stale-banner fix: only clear the success/import message if it
+            // actually describes the source just removed.
+            if (lastImportedSourceId === sourceId) {
+                clearUploadStatus();
+                lastImportedSourceId = null;
             }
             await refreshSourceList();
         }
@@ -560,6 +730,15 @@
             }
         }
 
+        // Display order for analog sub-groups. Mirrors
+        // backend/app/domain/channel_classification.py's KNOWN_CATEGORIES
+        // order -- presentation ordering only, never a second copy of the
+        // classification RULES themselves, which stay backend-only. Any
+        // engineering_type value this list doesn't know about still
+        // renders (appended at the end), so a future backend category
+        // never silently disappears from the UI.
+        const ANALOG_GROUP_ORDER = ["Voltage", "Current", "Power", "Frequency", "ROCOF", "Undefined"];
+
         function renderChannels(data) {
             const panel = document.getElementById("channelsPanel");
             if (!data) {
@@ -587,20 +766,18 @@
             if (timebase.trigger_time) html += statCard("Trigger time", timebase.trigger_time.replace("T", " "));
             html += '</div>';
 
-            html += renderChannelTable("Analog Channels", data.analog_channels, [
-                ["Name", (c) => c.name],
-                ["Unit", (c) => c.unit],
-                ["Phase", (c) => c.phase || "—"],
-                ["Scale", (c) => c.scale],
-                ["Offset", (c) => c.offset],
-            ]);
+            html += '<div class="search-row">' +
+                '<input type="search" id="channelSearch" placeholder="Search channels&hellip;" aria-label="Search channels">' +
+                '<span id="channelSearchCount"></span></div>';
 
-            html += renderChannelTable("Digital Channels", data.digital_channels, [
-                ["Name", (c) => c.name],
-                ["Normal state", (c) => c.normal_state],
-            ]);
+            html += '<div id="channelGroups">';
+            html += renderAnalogGroup(data.analog_channels);
+            html += renderDigitalGroup(data.digital_channels);
+            html += '</div>';
+            html += '<p class="empty-state" id="channelSearchEmpty" hidden>No channels match your search.</p>';
 
             panel.innerHTML = html;
+            setupChannelSearch(data.analog_channels, data.digital_channels);
         }
 
         function statCard(label, value) {
@@ -608,20 +785,145 @@
                 '<div class="value">' + escapeHtml(String(value)) + '</div></div>';
         }
 
-        function renderChannelTable(title, channels, columns) {
-            if (!channels || channels.length === 0) {
-                return '<p class="empty-state">No ' + title.toLowerCase() + '.</p>';
+        // Analog Channels: collapsible top-level section (open by default --
+        // it's the section owners review first, per UAT), sub-grouped by
+        // engineering_type (already computed backend-side, never re-derived
+        // here). Scale/Offset deliberately excluded from this primary
+        // table per UAT feedback -- they remain in the API response
+        // (data.analog_channels still carries them) for any future
+        // channel-detail view, just not rendered here.
+        function renderAnalogGroup(channels) {
+            const total = channels.length;
+            let body;
+            if (total === 0) {
+                body = '<p class="empty-state">No analog channels.</p>';
+            } else {
+                const byType = new Map();
+                for (const ch of channels) {
+                    const type = ch.engineering_type || "Undefined";
+                    if (!byType.has(type)) byType.set(type, []);
+                    byType.get(type).push(ch);
+                }
+                const orderedTypes = ANALOG_GROUP_ORDER.filter((t) => byType.has(t))
+                    .concat([...byType.keys()].filter((t) => !ANALOG_GROUP_ORDER.includes(t)));
+
+                body = '<div class="subgroup-list">';
+                for (const type of orderedTypes) {
+                    const group = byType.get(type);
+                    body += '<details class="channel-subgroup" open data-subgroup="' + escapeHtml(type) + '">';
+                    body += '<summary><span class="chevron">&#9656;</span>' + escapeHtml(type) +
+                        ' <span class="count-badge">(' + group.length + ')</span></summary>';
+                    body += '<div class="group-body">' + renderChannelTable(group, [
+                        ["Name", (c) => c.name],
+                        ["Unit", (c) => c.unit],
+                        ["Phase", (c) => c.phase || "—"],
+                    ]) + '</div>';
+                    body += '</details>';
+                }
+                body += '</div>';
             }
-            let html = '<table class="channels"><caption>' + title + ' (' + channels.length + ')</caption><thead><tr>';
+
+            return '<details class="channel-group" open data-group="analog">' +
+                '<summary><span class="chevron">&#9656;</span>Analog Channels ' +
+                '<span class="count-badge">(' + total + ')</span></summary>' +
+                '<div class="group-body">' + body + '</div></details>';
+        }
+
+        // Digital Channels: collapsed by default -- this is the section that
+        // was overwhelming to scroll through in UAT (e.g. 282 channels).
+        // No sub-classification is introduced here (out of scope for this
+        // refinement -- see docs/project-memory/MIGRATION_PLAN.md).
+        function renderDigitalGroup(channels) {
+            const total = channels.length;
+            const body = total === 0
+                ? '<p class="empty-state">No digital channels.</p>'
+                : renderChannelTable(channels, [
+                    ["Name", (c) => c.name],
+                    ["Normal state", (c) => c.normal_state],
+                ]);
+
+            return '<details class="channel-group" data-group="digital">' +
+                '<summary><span class="chevron">&#9656;</span>Digital Channels ' +
+                '<span class="count-badge">(' + total + ')</span></summary>' +
+                '<div class="group-body">' + body + '</div></details>';
+        }
+
+        function renderChannelTable(channels, columns) {
+            let html = '<table class="channels"><thead><tr>';
             for (const [label] of columns) html += '<th>' + escapeHtml(label) + '</th>';
             html += '</tr></thead><tbody>';
             for (const channel of channels) {
-                html += '<tr>';
+                const searchText = [channel.name, channel.unit, channel.phase]
+                    .filter(Boolean).join(" ").toLowerCase();
+                html += '<tr data-search="' + escapeHtml(searchText) + '">';
                 for (const [, accessor] of columns) html += '<td>' + escapeHtml(String(accessor(channel))) + '</td>';
                 html += '</tr>';
             }
             html += '</tbody></table>';
             return html;
+        }
+
+        // ------------------------------------------------------------------
+        // Channel search -- pure client-side filtering over the channel
+        // list already fetched for the selected source (no additional
+        // network requests per keystroke, per section 5/20's performance
+        // requirements). Rows are indexed once per render; each keystroke
+        // only toggles `hidden`/`open` on already-built DOM nodes, it never
+        // rebuilds the channel HTML.
+        // ------------------------------------------------------------------
+        function setupChannelSearch(analogChannels, digitalChannels) {
+            const input = document.getElementById("channelSearch");
+            const countEl = document.getElementById("channelSearchCount");
+            const emptyEl = document.getElementById("channelSearchEmpty");
+            const totalCount = analogChannels.length + digitalChannels.length;
+
+            // Cache row/group DOM refs once -- avoids re-querying the DOM on
+            // every keystroke.
+            const rows = Array.from(document.querySelectorAll("#channelGroups tr[data-search]"));
+            const subgroups = Array.from(document.querySelectorAll("#channelGroups details.channel-subgroup"));
+            const groups = Array.from(document.querySelectorAll("#channelGroups details.channel-group"));
+
+            function applyFilter(query) {
+                const q = query.trim().toLowerCase();
+                let visibleCount = 0;
+
+                if (!q) {
+                    // Cleared search: restore default state rather than
+                    // whatever arbitrary state the user's own toggling left
+                    // groups in -- simple, predictable behaviour.
+                    for (const row of rows) row.hidden = false;
+                    for (const sub of subgroups) sub.open = true;
+                    for (const group of groups) group.open = group.dataset.group === "analog";
+                    countEl.textContent = "";
+                    emptyEl.hidden = true;
+                    return;
+                }
+
+                for (const row of rows) {
+                    const match = row.dataset.search.includes(q);
+                    row.hidden = !match;
+                    if (match) visibleCount++;
+                }
+
+                // A sub-group/group with at least one visible row is forced
+                // open so matches are never hidden inside a collapsed
+                // section; groups with zero matches collapse out of the way
+                // (but their existence/count elsewhere is unaffected).
+                for (const sub of subgroups) {
+                    const hasMatch = sub.querySelectorAll('tr[data-search]:not([hidden])').length > 0;
+                    sub.hidden = !hasMatch;
+                    if (hasMatch) sub.open = true;
+                }
+                for (const group of groups) {
+                    const hasMatch = group.querySelectorAll('tr[data-search]:not([hidden])').length > 0;
+                    if (hasMatch) group.open = true;
+                }
+
+                countEl.textContent = visibleCount + " of " + totalCount + " channels";
+                emptyEl.hidden = visibleCount !== 0;
+            }
+
+            input.addEventListener("input", () => applyFilter(input.value));
         }
 
         function escapeHtml(value) {

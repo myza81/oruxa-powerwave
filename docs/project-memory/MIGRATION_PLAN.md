@@ -13,11 +13,11 @@ throughout unless a subsection is explicitly marked otherwise**. Nothing in
 this document authorizes implementation on its own; see
 [DECISIONS.md](DECISIONS.md) for what the owner has actually approved.
 
-Status: **Phase 0 design complete; governance cleanup complete; Phase 1
-(COMTRADE-only) approved** — 2026-08-14. See DEC-012 through DEC-014 in
-[DECISIONS.md](DECISIONS.md). **Implementation has not yet started** — Phase
-1's approved *scope* is not the same as authorization to begin coding; see
-[HANDOFF.md](HANDOFF.md) for the actual next step.
+Status: **Phase 0 designed, Phase 1 (COMTRADE-only) implemented, deployed to
+DEV, UAT'd by the owner, and refined per that UAT** — 2026-08-14. See
+DEC-012 through DEC-017 in [DECISIONS.md](DECISIONS.md) and "Phase 1 — UAT
+Refinement Record" below. Phase 1.5 and later phases remain **not**
+authorized; see [HANDOFF.md](HANDOFF.md) for the actual next step.
 
 ## Governing principle
 
@@ -83,7 +83,7 @@ treat it as informational, not as an implicit decision.
 |---|---|
 | Discovery | Complete — [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md) |
 | Phase 0 — backend/domain foundation design | Design complete (this document) |
-| **Phase 1 — COMTRADE-only upload + parsing + source/channel discovery** | **Implemented (2026-08-14) — see "Phase 1 — Implementation Record" below. Pending owner UAT/acceptance before being considered done; see the UAT checklist in [HANDOFF.md](HANDOFF.md).** |
+| **Phase 1 — COMTRADE-only upload + parsing + source/channel discovery** | **Implemented, deployed to DEV, UAT'd, and refined per UAT (2026-08-14)** — see "Phase 1 — Implementation Record" and "Phase 1 — UAT Refinement Record" below. |
 | Phase 1.5 — CSV/Excel + Import-Wizard-grade timestamp handling | **Planned / not yet implemented.** Scope defined below (§16); not yet approved for implementation — do not begin without a separate, explicit go-ahead. |
 | Phases 2–9 | Not started — see [POWERWAVE_DISCOVERY.md — Proposed Migration Phases](POWERWAVE_DISCOVERY.md#proposed-migration-phases) for the original high-level sequencing; Phase 0/1/1.5 below supersede that section's Phase-0/1 framing with concrete detail |
 
@@ -269,6 +269,144 @@ source identity early if low-cost, per this phase's instructions, but was
 not added to Phase 1's `SourceMetadata` since Phase 1 has no consumer for
 it yet and speculative fields without a consumer are exactly the kind of
 premature complexity this project's governance discourages.
+
+---
+
+## Phase 1 — UAT Refinement Record (2026-08-14)
+
+`[FACT]` The owner completed hands-on UAT of the deployed Phase 1 build at
+`https://dev.powerwave.oruxa.uk` and requested a narrow set of UI
+refinements — not a redesign. See
+[HANDOFF.md](HANDOFF.md) for the owner-facing before/after summary; this
+section records the technical detail.
+
+### Approved and retained unchanged
+
+Per direct UAT feedback, none of the following were touched: the two-slot
+`.cfg`/`.dat` upload workflow (now formally decided, not just retained —
+DEC-017), the loading/parsing indicator, the 100 MB guidance wording, the
+source-metadata-before-channels review step, and the overall simple/
+single-page UI direction (no navigation, no side menus, no multi-page
+flow added).
+
+### Channel organization
+
+The channel-browsing problem UAT surfaced — hundreds of channels in one
+long scroll (UAT example: 80 analog, 282 digital) — was addressed with:
+
+- **Collapsible top-level groups**, implemented with native `<details>`/
+  `<summary>` elements (zero custom JS needed for the expand/collapse
+  mechanic itself, keyboard-operable and accessible for free). Analog
+  defaults **open** (smaller, reviewed first); Digital defaults
+  **collapsed** (the section that was actually overwhelming in UAT).
+  Counts are always shown, open or closed.
+- **Analog sub-grouping by engineering type** — `Voltage`/`Current`/
+  `Power`/`Frequency`/`ROCOF`/`Undefined`, computed **once, backend-side**
+  (`backend/app/domain/channel_classification.py`), never re-derived in
+  the frontend. See "Analog classification architecture" below for why
+  backend, and the classification rules themselves.
+- **Scale/Offset removed from the primary analog table** (UAT: "little
+  useful meaning" for browsing) — the primary table now shows Name/Unit/
+  Phase only. Both fields are unchanged in the domain model
+  (`AnalogChannelSummary`) and the API response (`AnalogChannelOut`) — see
+  `backend/app/schemas/source.py`'s docstring — nothing was deleted, only
+  hidden from this one table. A future channel-detail view can surface
+  them without any backend change.
+
+### Analog classification architecture
+
+Lives in `backend/app/domain/channel_classification.py` — one function,
+`classify_analog_channel(parameter_type, unit)`, used by
+`import_service.py` at import time and exposed as a new
+`engineering_type` field on `AnalogChannelSummary`/`AnalogChannelOut`.
+Chosen to live backend-side (not as frontend string matching) because it's
+reusable domain knowledge, not a display trick — the same classification
+will matter for future channel filtering, waveform channel selection,
+calculated signals, and analysis tooling (Phase 1.5+), and this way there
+is exactly one implementation to keep correct.
+
+Three-tier rule, most to least reliable, **never guessing**:
+
+1. `AnalogChannel.parameter_type` (powerwave's own `ParameterType` enum
+   values — `voltage`, `current`, `mw`, `mvar`, `frequency`, `rocof`,
+   `unknown`; sourced from `powerwave/app/import_wizard/column_mapping.py`,
+   not invented). Currently **dormant** for Phase 1 — COMTRADE never sets
+   this field — but real, tested code, ready for Phase 1.5's CSV/Excel
+   providers, which do set it.
+2. Unit semantics — the one signal every COMTRADE analog channel actually
+   has. Recognizes `V`/`A`/`Hz`/`W`/`VAR`/`VA` (real, reactive, and
+   apparent power all grouped under one `Power` category for this
+   refinement), tolerant of a metric prefix and case, nothing looser.
+3. Channel naming patterns — **deliberately not implemented**. No naming
+   convention was judged sufficiently deterministic (the project's own
+   bar): e.g. a channel literally named "VA" is genuinely ambiguous
+   between "voltage, phase A" and the unit "VA" (apparent power) — exactly
+   the kind of vague string match the task that requested this classifier
+   said not to guess through.
+
+Anything that doesn't confidently resolve through tiers 1-2 is
+`Undefined` — a real, visible category (not "Anonymous" — the channel's
+*name* is always known; only its engineering *type* is not confidently
+classified).
+
+Tested in `backend/tests/test_channel_classification.py`: every
+recognized unit (with case/prefix variants), every recognized
+`parameter_type` value, parameter_type-over-unit priority, and — the
+governance the task specifically called out — that an ambiguous/unknown
+channel is never silently forced into a real category.
+
+### Channel search
+
+Client-side only, over the channel list already fetched for the selected
+source — no additional network request per keystroke (or at all). Row
+search text (name + unit + phase, lowercased) is computed once at render
+time and cached on each row's `data-search` attribute; each keystroke only
+toggles `hidden`/`open` on already-built DOM nodes, it never rebuilds the
+channel HTML — chosen specifically to stay responsive at the 282-channel
+scale UAT exercised without introducing any framework or virtualization
+library. A group/sub-group containing at least one match auto-opens
+(so a match is never hidden inside a collapsed section); clearing the
+search restores the default expansion state (Analog open, Digital
+collapsed) rather than whatever arbitrary state the user's own toggling
+left things in.
+
+### Remove confirmation and the stale-banner fix
+
+Clicking "Remove" now opens one small confirmation dialog (the app's only
+modal) with the exact wording pattern requested; Cancel closes it with
+**no** DELETE request issued; Remove issues the DELETE, clears the
+selected-source detail panel, and — the reported bug — clears the
+success/import banner **only when it was describing the source just
+removed** (tracked via a `lastImportedSourceId` variable set on successful
+import), not unconditionally. This is deliberately forward-compatible with
+a future multi-source workspace: removing source B must never clear a
+still-valid banner about source A.
+
+### Verification method
+
+No new frontend test framework was introduced (none existed before this
+task, and the task explicitly permitted documenting manual/scripted
+verification instead). Verification performed this session:
+
+- A one-off Node script (not committed) loaded the actual shipped
+  `frontend/index.html` `<script>` content into a real DOM via `jsdom` —
+  not a reimplementation — and exercised: grouping/counts/default
+  expansion/column removal against an 80-analog/282-digital synthetic
+  dataset matching UAT's own numbers; search filtering (case-insensitive,
+  cross-analog/digital, auto-expand-on-match, empty state, clear-restores-
+  default); the full remove-confirmation flow including that Cancel issues
+  zero DELETE calls; and the stale-banner fix including the
+  removing-a-different-source non-interference case. All passed.
+- A live local backend (`uvicorn`) was exercised via `curl`: valid upload
+  now returns `engineering_type` per channel; all previously-passing
+  guardrails (missing companion file → 422, wrong extension → 400
+  `unsupported_file_type`, oversized upload — covered by the existing
+  automated test) were spot-checked unchanged.
+- Full backend suite re-run: 215 passed (168 Phase 1 + 6 new classification-
+  adjacent + new API assertions), including the unmodified COMTRADE parity
+  tests — no parser/provider code was touched this pass, only new
+  read-only classification logic layered on top of already-parsed channel
+  metadata.
 
 ---
 
@@ -1226,7 +1364,12 @@ For each: why analysis alone is insufficient, what to test, when, what the
 user should compare, and what decision it feeds. **No prototypes are built
 as part of this task** — proposal only, per the task brief.
 
-### UAT-1: COMTRADE `.cfg`/`.dat` pairing UX
+### UAT-1: COMTRADE `.cfg`/`.dat` pairing UX — `[DECISION]` RESOLVED 2026-08-14
+
+**Resolved by owner UAT — see [DECISIONS.md — DEC-017](DECISIONS.md#dec-017--comtrade-two-slot-cfgdat-upload-is-the-approved-interaction-resolves-uat-1).**
+Option B (two explicit named slots, already shipped) is approved as the
+COMTRADE upload interaction, not a placeholder. Kept below, unmodified, for
+the historical reasoning — this is no longer an open UAT item.
 
 - **Why analysis alone is insufficient**: whether an engineer finds
   drag-and-drop auto-pairing-by-stem intuitive, or prefers two explicit
@@ -1477,6 +1620,14 @@ merely by appearing in this document.
 - **Phase 1 is COMTRADE-only.** CSV/Excel and Import-Wizard-grade timestamp
   handling are deferred in full to Phase 1.5 (planned, not yet implemented,
   not yet approved for implementation) — DEC-014.
+- Uploaded event-record files are never persistently retained anywhere
+  (ephemeral-only handling) — DEC-015.
+- Upload size ceiling is configuration (`MAX_EVENT_UPLOAD_SIZE_MB`), ~100 MB
+  the current MVP assumption, not a hard-coded limit — DEC-016.
+- **COMTRADE two-slot `.cfg`/`.dat` upload is the approved interaction**,
+  resolved by owner UAT of the deployed Phase 1 build — DEC-017. (This
+  resolves UAT-1 below; kept in the UAT list only for its historical
+  reasoning, not as an open item.)
 
 **Ready for owner approval but not yet recorded as `[DECISION]`**
 (`[DECISION MODE: ANALYSIS]`, recommendation given, no further
@@ -1487,9 +1638,8 @@ ratified):
 - File upload/storage flow and request lifecycle (§5, §6).
 - API contract shape (§7) and response-size discipline (§8).
 - Error model and taxonomy (§9).
-- COMTRADE upload *transport* mechanism — single multipart request (§10) —
-  **note: this is the backend transport mechanism only, distinct from the
-  frontend pairing UX below, which remains UAT.**
+- COMTRADE upload transport mechanism — single multipart request (§10) —
+  now fully approved together with the frontend pairing UX itself (DEC-017).
 - Source identity scheme (§11).
 - Record-aliasing avoidance approach — no cross-request caching (§12).
 - Full-resolution data ownership — the stored original file (§13).
@@ -1507,12 +1657,7 @@ ratified):
 
 **Recommended for UAT** (`[DECISION MODE: UAT]` — explicitly **not**
 decided):
-- **UAT-1: COMTRADE `.cfg`/`.dat` pairing interaction pattern — remains
-  open.** The backend accepts the required pair together (§10's transport
-  mechanism, reviewable above); the *browser-side* interaction (auto-pair
-  by filename stem vs. two explicit named slots vs. another pattern
-  discovered during implementation) is not decided and should be settled
-  by hands-on testing, not by this document.
+- ~~UAT-1: COMTRADE pairing interaction~~ — **resolved**, see DEC-017 above.
 - UAT-2: error message wording/specificity.
 - UAT-3 (far future): calculated-signal grammar expansion, carried forward
   from discovery Open Question #6.

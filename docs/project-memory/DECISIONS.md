@@ -540,6 +540,41 @@ for the exact enforcement mechanism and its known limits.
 
 ---
 
+## DEC-017 — COMTRADE two-slot CFG/DAT upload is the approved interaction (resolves UAT-1)
+
+Date: 2026-08-14
+Status: Approved
+Source: owner UAT of the deployed Phase 1 implementation at
+`https://dev.powerwave.oruxa.uk`.
+
+Decision:
+The current two-explicit-field upload workflow (a `.cfg` file input and a
+`.dat` file input, submitted together) is approved as the COMTRADE upload
+interaction — not a temporary placeholder. Auto-pairing, folder scanning, a
+single combined file picker, drag/drop redesign, and automatic local
+filesystem lookup are explicitly **not** to replace it.
+
+Reason:
+Owner UAT found the current workflow simple, understandable, and
+comfortable; browser limitations around automatic local file-pairing were
+discussed directly, and the owner is comfortable with the current
+two-field design given those constraints.
+
+Alternatives considered:
+[MIGRATION_PLAN.md § 10](MIGRATION_PLAN.md) originally compared this
+(Option B) against single-selection auto-pairing by filename stem
+(Option A) and left the choice open for UAT (UAT-1, in "Candidate
+Decisions Requiring Future UAT"). UAT has now resolved it in favor of the
+already-implemented Option B.
+
+Impact:
+UAT-1 is resolved, not merely deferred — no further UI work on COMTRADE
+pairing interaction is in scope unless the owner explicitly reopens it.
+The backend API is unaffected either way (both options were always a
+single multipart POST with `cfg_file`/`dat_file` parts).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

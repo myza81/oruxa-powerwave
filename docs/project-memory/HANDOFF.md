@@ -8,213 +8,155 @@ Last updated: **2026-08-14**
 
 ## What was most recently done
 
-**Implemented Phase 1**: COMTRADE upload → ephemeral parse → channel-list
-API, end to end, backend and frontend. This is the first production code
-change in this repository's Powerwave-domain history — everything before
-this was documentation/governance. Full detail in
-[MIGRATION_PLAN.md — Phase 1 Implementation Record](MIGRATION_PLAN.md#phase-1--implementation-record-2026-08-14);
-summarized here for continuation purposes.
+A **narrow UI refinement pass** on the already-implemented, already-deployed
+Phase 1, driven directly by the owner's completed hands-on UAT of
+`https://dev.powerwave.oruxa.uk`. No redesign, no scope expansion — see
+[MIGRATION_PLAN.md — Phase 1 UAT Refinement Record](MIGRATION_PLAN.md#phase-1--uat-refinement-record-2026-08-14)
+for full technical detail; summarized here for continuation purposes.
 
-Before writing any code: re-verified both repos current with GitHub,
-re-read the ported `powerwave` COMTRADE provider/models in full (not from
-memory), and **empirically investigated** (not assumed) whether FastAPI's
-upload mechanism touches disk — see "Ephemeral storage — what was actually
-verified" below.
+**What UAT approved and left alone**: the two-slot `.cfg`/`.dat` upload
+workflow (now formally decided — DEC-017, not just a temporary Phase 1
+choice), the loading/parsing indicator, the 100 MB guidance text, the
+source-metadata-review-before-channels step, and the overall simple
+single-page UI direction. None of these were touched.
 
-**A late-arriving critical requirement changed the design mid-task**: the
-owner decided `oruxa_powerwave` must not persistently retain uploaded event
-files at all (DECISIONS.md DEC-015) — a stronger requirement than the
-earlier Phase 0 design assumed (which had originals going into
-`StorageBackend`'s `original` category). The implementation was built
-around this from the start, not retrofitted: uploaded bytes are staged in
-a per-request `tempfile.TemporaryDirectory()` only long enough for the
-unmodified `ComtradeProvider` to parse them, then deleted; only lightweight
-channel/timing metadata is kept afterward, in memory, in a
-`workspace_id`/`source_id`-scoped registry (never `StorageBackend`, never a
-database).
+**What UAT asked to change, and what was built**:
 
-## Ephemeral storage — what was actually verified (not claimed)
+1. **Channel organization** — the reported problem was scrolling through
+   hundreds of channels in one long table (UAT's own example: 80 analog,
+   282 digital). Fixed with native `<details>`/`<summary>` collapsible
+   sections (Analog defaults open, Digital defaults collapsed — the
+   section that was actually overwhelming), always showing counts.
+2. **Analog sub-grouping by engineering type** — `Voltage`/`Current`/
+   `Power`/`Frequency`/`ROCOF`/`Undefined`. Classification is computed
+   **once, backend-side** (new `backend/app/domain/channel_classification.py`),
+   exposed as `engineering_type` on every analog channel — never
+   re-derived or duplicated in the frontend. Three-tier rule (explicit
+   `parameter_type` → unit semantics → nothing else — naming-pattern
+   classification was deliberately not implemented, since no pattern was
+   judged unambiguous enough): anything that doesn't confidently resolve
+   is `Undefined`, never guessed into a real category.
+3. **Channel search** — client-side only, over the already-fetched channel
+   list, no network calls per keystroke. Auto-expands groups containing a
+   match; clearing search restores the default expansion state.
+4. **Scale/Offset removed from the primary analog table** — UAT found them
+   low-value for browsing. Both fields are **unchanged** in the domain
+   model and API response (`AnalogChannelSummary`/`AnalogChannelOut`) —
+   only this one table stopped displaying them.
+5. **Removal confirmation** — clicking "Remove" now opens one small
+   confirmation dialog before the DELETE request is ever issued.
+6. **Stale-banner bug fixed** — the import-success banner previously stayed
+   visible after its source was removed. Now cleared, but only when it
+   actually described the source just removed (tracked precisely, not a
+   blanket clear-on-any-removal) — deliberately forward-compatible with a
+   future multi-source workspace.
 
-This was investigated empirically, with a small standalone reproduction
-(FastAPI `TestClient` + `lsof`/`os.path.exists` checks), not inferred from
-documentation or memory:
+## What was verified
 
-- **Starlette's own multipart parser** (a FastAPI dependency, not
-  application code) spools any uploaded file part over 1 MB
-  (`starlette.formparsers.MultiPartParser.spool_max_size`) to a
-  `tempfile.SpooledTemporaryFile` that rolls over to a real OS temp file.
-  Confirmed with a live request: a 500 KB part stayed in memory
-  (`_rolled=False`); a 5 MB part rolled to disk (`_rolled=True`), backed by
-  a real file descriptor (`lsof` showed a path under the OS temp
-  directory). **This happens before this application's route handler code
-  runs at all.**
-- That file is created and immediately unlinked (`os.path.exists()` on the
-  reported path returned `False` even *during* the request) — Python's
-  `tempfile.TemporaryFile` "no name" semantics, so it's never visible via a
-  directory listing and is reclaimed automatically (by the OS, even across
-  a crash) once the file descriptor closes at the end of request handling.
-- Given COMTRADE `.dat` files in the expected Phase 1 size range (up to
-  ~100 MB) will almost always exceed 1 MB, **this spooling is not an edge
-  case — it happens for essentially every real upload**, regardless of
-  anything this implementation does.
-- **On top of that**, `import_service.py` deliberately writes the same
-  bytes a second time, into its own `tempfile.TemporaryDirectory()`,
-  because `ComtradeProvider.load()` requires a real filesystem path with a
-  same-directory, same-stem `.dat` companion (`_find_dat_file`). This
-  second temp usage is disclosed, not hidden, and is always cleaned up
-  (Python `with` block, runs on success, failure, or any exception).
-- **A genuinely zero-disk-touch path would require rewriting
-  `ComtradeProvider`'s internal file I/O to accept in-memory buffers.**
-  This was judged disproportionate for this slice (preserving proven
-  `powerwave` parsing logic unmodified was itself an explicit instruction)
-  and is recorded as an `[OPEN]` item for owner review rather than silently
-  claimed as already achieved. "Not persistently retained" (the actual
-  requirement, DEC-015) is satisfied; "never touches disk at all" is not,
-  and the two should not be conflated.
-
-## What was verified (testing/parity)
-
-- **168 backend tests pass** (`cd backend && pytest`), up from the
-  pre-existing suite — new tests cover the ported provider, a COMTRADE
-  migration-parity golden-value test, the workspace registry, and the full
-  API (upload validation, error taxonomy, lifecycle, response-size
-  discipline).
-- **Migration parity, verified two ways**: (1) two synthetic fixtures
-  (`backend/tests/fixtures/comtrade/synth_{ascii,binary}.{cfg,dat}`,
-  authored for this migration) produce byte-identical results to
-  `powerwave`'s own canonical `ComtradeProvider` (same commit, `3156392`) —
-  committed as `test_comtrade_parity.py`. (2) One real `powerwave` sample
-  file (`PTAI_MVLY_relay.CFG`, 4224 samples, 40 channels) was cross-checked
-  the same way, locally, and also matched exactly — **not committed to
-  this repository**, because `powerwave/samples/README.md` notes sample
-  files "may be large or confidential" (real substation event data). This
-  was a deliberate choice, not an oversight — see the note in
-  [MIGRATION_PLAN.md](MIGRATION_PLAN.md).
-- **Performance baseline measured**, not estimated: ~5 ms for a tiny
-  synthetic file, ~9 ms for a 562 KB / 4,224-sample real file, ~152 ms for
-  a 15.7 MB / 32,693-sample / 130-channel real file (all local, this
-  development machine). Response body size stayed ~350-360 bytes
-  regardless of input size, confirming the "no waveform arrays in
-  responses" design holds in practice. Parse-only peak memory for the
-  15.7 MB file was ~229 MB resident — **no measurement was taken near the
-  actual ~100 MB configured ceiling**; extrapolation suggests a 100 MB
-  file could need 1+ GB resident memory. Flagged as `[OPEN]`, not verified.
-- Frontend JS syntax was checked (Node `Function` constructor parse check)
-  and the full upload → channels → delete flow was exercised end-to-end
-  against a live local server via `curl`, using the exact request shape
-  the frontend's `fetch()` calls send (`cfg_file`/`dat_file` multipart
-  fields) — not just unit-tested in isolation.
-- No production code outside the intended scope was touched. `git status`
-  confirms only `backend/app/{domain,providers,services,schemas,api}/`
-  (new), `backend/app/{config,main}.py` (modified), `backend/requirements.txt`
-  (modified), `backend/tests/**` (new tests + two pre-existing files fixed
-  for `Settings`'s new required field), `frontend/index.html` (modified),
-  and `docs/project-memory/**` (this documentation).
+- **215 backend tests pass** (`cd backend && pytest`), up from 168 — new:
+  `test_channel_classification.py` (every recognized unit/parameter_type,
+  priority ordering, explicit ambiguous-channel-stays-Undefined coverage)
+  plus a new API assertion that `engineering_type` appears correctly in
+  live channel responses. No provider/parser code was touched this pass —
+  COMTRADE parity is structurally unaffected (confirmed by the unmodified
+  parity tests still passing).
+- **Frontend logic verified against the actual shipped code**, not a
+  reimplementation: a one-off Node script (not committed — no frontend
+  test framework existed before this task, and none was introduced, per
+  the task's explicit allowance to document manual/scripted verification
+  instead) loaded `frontend/index.html`'s real inline `<script>` into a
+  `jsdom`-backed DOM and exercised: grouping/counts/default-expansion/
+  column-removal against an 80-analog/282-digital dataset matching UAT's
+  own numbers; search (case-insensitive, cross-analog/digital,
+  auto-expand-on-match, no-match empty state, clear-restores-default);
+  the full remove-confirmation flow, explicitly confirming **Cancel issues
+  zero DELETE requests**; the stale-banner fix; and — the task's explicit
+  forward-compat check — that removing a *different* source never clears
+  an unrelated still-valid banner. All passed. (One bug was caught and
+  fixed in the *test script itself* during this process — an attempt to
+  read a `let`-scoped JS variable via `window.X` from outside the script,
+  which correctly doesn't work in real browsers either; the fix was to
+  drive the real upload/removal code paths instead of poking at internal
+  state, which is also the more faithful test.)
+- **Live guardrail regression check** against a local `uvicorn` server:
+  missing-companion-file (422), wrong-extension (400
+  `unsupported_file_type`), and successful upload-then-delete-then-404 all
+  behave exactly as before; the new `engineering_type` field appears
+  correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
+  fixture).
+- No production code outside the intended scope was touched — see "Files
+  changed" below.
 
 ## What files were changed this session
 
 New:
-- `backend/app/domain/{__init__,channels,disturbance_record,metadata,source,timing}.py`
-- `backend/app/providers/{__init__,base,comtrade}.py`
-- `backend/app/services/{__init__,workspace_registry,import_service,errors}.py`
-- `backend/app/schemas/{__init__,source}.py`
-- `backend/app/api/__init__.py`, `backend/app/api/v1/{__init__,sources}.py`
-- `backend/tests/{test_comtrade_provider,test_comtrade_parity,test_workspace_registry,test_sources_api}.py`
-- `backend/tests/fixtures/comtrade/synth_{ascii,binary}.{cfg,dat}` (synthetic, authored for this migration)
+- `backend/app/domain/channel_classification.py`
+- `backend/tests/test_channel_classification.py`
 
 Modified:
-- `backend/app/config.py` — added `MAX_EVENT_UPLOAD_SIZE_MB` / `max_event_upload_size_bytes`.
-- `backend/app/main.py` — mounted the v1 router, added the ephemeral
-  `WorkspaceRegistry` to app state, added a Content-Length pre-check
-  middleware.
-- `backend/requirements.txt` — added `python-multipart`, `numpy`, `pandas`.
-- `backend/tests/conftest.py`, `backend/tests/test_config.py`,
-  `backend/tests/test_storage.py` — updated for `Settings`'s new field;
-  added config tests for the new setting.
-- `frontend/index.html` — full upload/channel-list UI (was a placeholder).
-- `docs/project-memory/{DECISIONS,MIGRATION_PLAN,CURRENT_STATE,HANDOFF}.md` — this work.
+- `backend/app/domain/source.py` — `AnalogChannelSummary` gained
+  `engineering_type: str`.
+- `backend/app/domain/__init__.py` — exports the new classifier.
+- `backend/app/schemas/source.py` — `AnalogChannelOut` gained
+  `engineering_type`.
+- `backend/app/services/import_service.py` — calls the classifier when
+  building each analog channel's summary.
+- `backend/tests/test_sources_api.py` — added an assertion that
+  `engineering_type` is present and correct in the live API response.
+- `frontend/index.html` — collapsible grouping, analog sub-grouping,
+  search, Scale/Offset removed from the primary table, remove
+  confirmation dialog, stale-banner fix.
+- `docs/project-memory/{DECISIONS,MIGRATION_PLAN,CURRENT_STATE,HANDOFF}.md`
+  — this work (DEC-017 added, resolving UAT-1).
 
-No backend/frontend/provider/API/test/database/storage-implementation file
-was touched outside this list.
+No backend parser/provider/config/storage file was touched.
 
-## Owner UAT checklist
+## GitHub / deployment status
 
-Per this phase's instructions — a concise, hands-on checklist. Waveform
-behaviour is intentionally **not** included (out of scope for this phase).
-
-1. **Upload is understandable.** Open the frontend, locate the two file
-   slots (Configuration file / Data file), and confirm it's clear what
-   goes where.
-2. **File-size guidance is visible.** Confirm the "Best experience with
-   event records up to 100 MB" text is visible before uploading.
-3. **Oversized-file warning is clear.** Try selecting a combined pair over
-   100 MB (or lower the server's `MAX_EVENT_UPLOAD_SIZE_MB` for testing)
-   and confirm both the client-side warning and the server's actual
-   rejection are understandable, not cryptic.
-4. **Loading/parsing feedback is understandable.** Upload a real `.cfg`/
-   `.dat` pair and confirm it's clear the app is working, not frozen,
-   during the request.
-5. **Successful import is obvious.** Confirm a clear success indicator
-   appears with the station name and channel counts.
-6. **Source metadata looks correct.** Compare the displayed station name,
-   recorder, nominal frequency, timing mode, sample count, duration, and
-   sampling rate(s) against what you'd expect from the file (e.g. via
-   `powerwave` itself, or the file's own CFG header).
-7. **Analog channels are correctly listed.** Confirm names, units, phase,
-   scale, and offset look right for a known file.
-8. **Digital channels are correctly listed.** Confirm names and normal
-   states look right.
-9. **Error handling is understandable.** Try an unsupported file type, a
-   `.cfg` with no matching `.dat`, and a corrupt file; confirm each
-   produces a clear, non-technical message (never a raw Python error).
-10. **General responsiveness feels acceptable.** For a file in your normal
-    working size range, confirm the upload-to-result time feels reasonable
-    (see the measured baseline above for reference numbers on this
-    development machine).
-
-Two things worth deciding while doing this UAT, not just checking boxes:
-
-- **UAT-1 (open)**: does the two-explicit-slots upload interaction feel
-  right, or would you rather select/drag both files at once and let the
-  app pair them automatically by filename? Either is a small frontend-only
-  change (see [MIGRATION_PLAN.md](MIGRATION_PLAN.md) UAT-1).
-- Whether the ~229 MB memory usage for a ~16 MB file (and the extrapolated
-  1+ GB for a 100 MB file) is a concern for your actual deployment target
-  before this goes further.
+See the "GitHub persistence" and "Dev deployment" sections of this task's
+final report (delivered in-conversation) for the exact commit hash(es),
+push confirmation, GitHub Actions run, and live-endpoint verification for
+this refinement pass. As of this write-up: committed and pushed to `main`,
+and deployed to DEV via the existing "Deploy Powerwave" `workflow_dispatch`
+(`target=dev`) — the same established, version-controlled process used for
+every previous deployment this project. **Production was not touched.**
 
 ## What remains unresolved
 
-See the `[OPEN]` items in [CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers)
-— all carried forward accurately, none newly resolved by claiming success
-where it wasn't verified (particularly the disk-touch question above).
+Unchanged from before this pass — see
+[CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers):
+disk-free upload/parse (not solved, judged disproportionate), no
+measurement near the real ~100 MB ceiling, long-term persistence
+architecture (Phase 8), the discovery engineering-improvement findings,
+and whether to commit richer real-event parity fixtures.
 
 ## What should be done next
 
-Per this phase's explicit closing instruction: **stop here**. Do not begin
-Phase 1.5 (CSV/Excel), waveform rendering, calculated signals, or any later
-phase without the owner working through the UAT checklist above and giving
-explicit go-ahead for whatever comes next.
+Per this task's explicit closing instruction: **stop here**. Do not begin
+Phase 1.5 (CSV/Excel), waveform rendering, synchronization, calculated
+signals, advanced analysis, persistence redesign, or authentication. The
+owner should review the refined DEV build and decide the next step.
 
 ## What must not be assumed
 
-- Do not assume the upload path is disk-free — it isn't, by design
-  necessity, though it is genuinely ephemeral (see the investigation
-  above). Don't let a future session claim "memory-only" without re-reading
-  this.
-- Do not assume the two-slot upload UI is a final decision — it's an
-  explicitly temporary Phase 1 choice (UAT-1 remains open).
-- Do not assume performance/memory behaviour at ~100 MB — only measured up
-  to ~16 MB.
-- Do not assume CSV/Excel, waveform rendering, or any later phase is
-  authorized — none are.
-- Do not assume `powerwave` is still at commit `3156392` — it is actively
-  developed; re-verify before relying on specific line numbers for future
-  work.
+- Do not assume the COMTRADE upload interaction is still open for UAT — it
+  is decided (DEC-017): two explicit slots, not auto-pairing.
+- Do not assume Scale/Offset were removed from the backend or API — only
+  from the frontend's primary browsing table.
+- Do not assume digital channels received any sub-classification — none
+  was added, deliberately (out of this refinement's scope).
+- Do not assume the classification rules include a naming-pattern tier —
+  they deliberately don't; only `parameter_type` and unit-based
+  classification exist.
+- Do not assume Phase 1.5 or any later phase is authorized.
+- Do not assume `powerwave` is still at commit `3156392` by the time you
+  read this — re-verify before relying on specific line numbers.
 
 ## Owner approval needed before proceeding?
 
-- Not needed to run the UAT checklist above.
-- **Yes**, before Phase 1.5 or any later phase begins, before deploying
-  Phase 1 to DEV/PROD, and before any change to the ephemeral-storage or
-  upload-size decisions recorded in DECISIONS.md — per the change-governance
-  rule in [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md).
+- Not needed to review the refined DEV build.
+- **Yes**, before Phase 1.5 or any later phase begins, before a PROD
+  deployment, and before any change to the ephemeral-storage, upload-size,
+  or COMTRADE-upload-interaction decisions recorded in DECISIONS.md — per
+  the change-governance rule in [CLAUDE.md](../../CLAUDE.md) /
+  [AGENTS.md](../../AGENTS.md).

@@ -21,6 +21,7 @@ class AnalogChannelSummary:
     name: str
     index: int
     unit: str
+    engineering_type: str
     phase: str | None = None
     scale: float = 1.0
     offset: float = 0.0

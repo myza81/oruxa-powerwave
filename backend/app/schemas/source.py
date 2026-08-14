@@ -18,11 +18,21 @@ from app.domain.source import SourceMetadata
 
 
 class AnalogChannelOut(BaseModel):
+    """Full analog channel record, including engineering fields (scale/offset)
+    that the Phase 1 frontend's primary browsing table deliberately does not
+    display (UAT feedback: little browsing value) but which stay in the API
+    and domain model -- see
+    docs/project-memory/MIGRATION_PLAN.md's Phase 1 refinement record.
+    `engineering_type` is computed once, backend-side (app.domain.channel_classification),
+    never re-derived client-side.
+    """
+
     model_config = ConfigDict(from_attributes=True)
 
     name: str
     index: int
     unit: str
+    engineering_type: str
     phase: str | None = None
     scale: float
     offset: float

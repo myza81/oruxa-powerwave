@@ -31,6 +31,7 @@ from pathlib import Path
 
 from fastapi import UploadFile
 
+from app.domain.channel_classification import classify_analog_channel
 from app.domain.disturbance_record import DisturbanceRecord
 from app.domain.source import (
     AnalogChannelSummary,
@@ -192,6 +193,9 @@ def _build_source_metadata(
             name=ch.name,
             index=ch.index,
             unit=ch.unit,
+            engineering_type=classify_analog_channel(
+                parameter_type=ch.parameter_type, unit=ch.unit
+            ),
             phase=ch.phase,
             scale=ch.scale,
             offset=ch.offset,

@@ -178,6 +178,22 @@ class TestReadEndpoints:
         response_text = resp.text
         assert "waveform_data" not in response_text
 
+    def test_analog_channels_carry_a_backend_computed_engineering_type(
+        self, client, comtrade_fixtures_dir
+    ):
+        cfg = _read(comtrade_fixtures_dir / "synth_ascii.cfg")
+        dat = _read(comtrade_fixtures_dir / "synth_ascii.dat")
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/sources", files=_files(cfg, dat)
+        ).json()["source_id"]
+
+        body = client.get(f"/api/v1/workspaces/ws-1/sources/{source_id}/channels").json()
+
+        types_by_name = {c["name"]: c["engineering_type"] for c in body["analog_channels"]}
+        # synth_ascii.cfg: VA/VB are unit "V" (Voltage), IA is unit "A" (Current) --
+        # see tests/fixtures/comtrade/synth_ascii.cfg.
+        assert types_by_name == {"VA": "Voltage", "VB": "Voltage", "IA": "Current"}
+
     def test_get_unknown_source_is_404(self, client):
         resp = client.get("/api/v1/workspaces/ws-1/sources/does-not-exist/channels")
 
