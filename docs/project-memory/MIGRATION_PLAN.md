@@ -83,7 +83,7 @@ treat it as informational, not as an implicit decision.
 |---|---|
 | Discovery | Complete — [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md) |
 | Phase 0 — backend/domain foundation design | Design complete (this document) |
-| **Phase 1 — COMTRADE-only upload + parsing + source/channel discovery** | **`[DECISION]` Approved — see [DECISIONS.md — DEC-014](DECISIONS.md#dec-014--phase-1-is-comtrade-only-csvexcel-and-import-wizard-grade-timestamp-handling-are-deferred-to-phase-15). Implementation not yet started.** |
+| **Phase 1 — COMTRADE-only upload + parsing + source/channel discovery** | **Implemented (2026-08-14) — see "Phase 1 — Implementation Record" below. Pending owner UAT/acceptance before being considered done; see the UAT checklist in [HANDOFF.md](HANDOFF.md).** |
 | Phase 1.5 — CSV/Excel + Import-Wizard-grade timestamp handling | **Planned / not yet implemented.** Scope defined below (§16); not yet approved for implementation — do not begin without a separate, explicit go-ahead. |
 | Phases 2–9 | Not started — see [POWERWAVE_DISCOVERY.md — Proposed Migration Phases](POWERWAVE_DISCOVERY.md#proposed-migration-phases) for the original high-level sequencing; Phase 0/1/1.5 below supersede that section's Phase-0/1 framing with concrete detail |
 
@@ -93,6 +93,182 @@ inclusion in Phase 1 as an open owner choice (§16 below originally
 presented two options); the owner has since decided explicitly —
 COMTRADE-only for Phase 1, with CSV/Excel deferred to Phase 1.5. §16 below
 has been updated accordingly; see DEC-014 for the recorded decision.
+
+---
+
+## Phase 1 — Implementation Record (2026-08-14)
+
+`[FACT]` What was actually built, and how it differs from the Phase 0
+design below (kept for its still-accurate reuse mapping and design
+reasoning — this section records where implementation deviated and why).
+Full detail in this phase's final report; summarized here for project
+memory.
+
+### Critical design change vs. the original Phase 0 design: no persistent storage
+
+Before implementation began, the owner decided
+[DEC-015](DECISIONS.md#dec-015--uploaded-event-record-files-are-not-persistently-retained):
+`oruxa_powerwave` must not persistently retain uploaded event files
+anywhere (not `StorageBackend`, not a database, not a long-term directory).
+This supersedes the original Phase 0 design's assumption (§5, §13 below)
+that uploaded originals would be written through `StorageBackend`'s
+write-once `original` category. The implemented design instead:
+
+- Stages uploaded bytes in an ephemeral, per-request
+  `tempfile.TemporaryDirectory()` (`backend/app/services/import_service.py`),
+  deleted before the request returns, whether parsing succeeded or failed.
+  This exists only so the unmodified `ComtradeProvider` (which requires a
+  real filesystem path with a same-directory, same-stem `.dat` companion)
+  can be reused without rewriting its parsing logic.
+- Keeps only lightweight per-source metadata (channel names/units/counts/
+  timing — never sample arrays) afterward, in a plain in-memory registry
+  (`backend/app/services/workspace_registry.py`), keyed by
+  `(workspace_id, source_id)`, for the life of the process. This replaces
+  the Phase 0 design's proposed JSON-metadata-sidecar-via-`StorageBackend`
+  mechanism (§4, §14 below) — DEC-013's approval of that mechanism is now
+  moot for Phase 1 specifically (superseded by the simpler in-memory
+  approach), though DEC-013's own text already flagged it as an early-slice
+  mechanism only, not the long-term persistence architecture.
+- `StorageBackend` itself was not modified and remains available for other
+  future uses; it is simply not called anywhere in the Phase 1 upload path.
+
+**Important nuance, investigated and reported in full in this phase's final
+report**: "not persistently retained" is not the same as "never touches
+disk." Starlette's own multipart parser (a dependency of FastAPI, not
+application code) spools any uploaded file part over roughly 1 MB to an
+OS-managed, anonymous (unlinked, never directory-listed) temporary file
+*before* this application's code runs at all — confirmed empirically, not
+assumed. Combined with this service's own temporary-directory staging
+(needed for the reason above), a realistic COMTRADE upload touches the OS
+temp filesystem twice, transiently, both times automatically cleaned up
+(the first by the OS/Python's `tempfile` machinery when the file descriptor
+closes, the second by an explicit `with tempfile.TemporaryDirectory()`
+block). Achieving zero disk I/O at all would require rewriting
+`ComtradeProvider`'s file-based I/O to accept in-memory buffers, which was
+judged disproportionate for this slice (see DECISIONS.md DEC-006's reuse
+principle) and is flagged as an `[OPEN]` item rather than silently claimed
+as already satisfied.
+
+### What was reused vs. adapted (confirms/refines the Sec 1 mapping below)
+
+- `backend/app/domain/{disturbance_record,channels,metadata,timing}.py` —
+  ported near-verbatim from `powerwave`'s `app/models/` at commit `3156392`.
+- `backend/app/providers/{base,comtrade}.py` — ported near-verbatim from
+  `powerwave`'s `app/providers/{base,comtrade}/`; only import paths changed.
+  The parsing algorithm, scaling, timestamp handling, and error behaviour
+  are byte-for-byte the same logic.
+- **New, oruxa_powerwave-specific** (no `powerwave` equivalent, since
+  `powerwave` has no web/API layer at all): `backend/app/domain/source.py`
+  (lightweight metadata types), `backend/app/services/{workspace_registry,
+  import_service,errors}.py`, `backend/app/schemas/source.py`,
+  `backend/app/api/v1/sources.py`.
+- **Not built this phase** (Phase 1.5+): `CsvProvider`, `ExcelProvider`,
+  the Import Wizard backend — excluded per DEC-014.
+
+### Migration parity — verified, not assumed
+
+Cross-checked the ported `ComtradeProvider` against `powerwave`'s canonical
+`ComtradeProvider` (same commit, `3156392`) two ways:
+
+1. Two synthetic fixtures (`backend/tests/fixtures/comtrade/synth_{ascii,binary}.{cfg,dat}`,
+   authored for this migration, not derived from any real event) — exact
+   match on every field checked (station name, channel names/units/scale/
+   offset, sample count, duration, start/trigger time, sampling info, and
+   full analog/digital array values), committed as
+   `backend/tests/test_comtrade_parity.py`.
+2. One real `powerwave` sample file
+   (`powerwave/samples/comtrade/PTAI_MVLY_relay.CFG`, 4224 samples, 8 analog
+   + 32 digital channels) — exact match on station name, channel counts,
+   sample count, timing, sampling info, and SHA-256 hashes of five sample
+   arrays. **Not committed to this repository or copied into test
+   fixtures** — `powerwave/samples/README.md` notes sample files "may be
+   large or confidential" (real substation event data); this comparison was
+   run locally only, for verification, and is recorded here for
+   traceability rather than as a redistributable artifact. `[OPEN]`: if a
+   richer, larger, real-event parity fixture set is wanted for ongoing
+   regression coverage, that requires an explicit decision about what may
+   be committed — not resolved here.
+
+### Performance baseline (measured, not estimated)
+
+Measured against three inputs, from tiny to real-world-sized (again using
+the same non-committed `powerwave` sample files locally, plus the committed
+synthetic fixture):
+
+| Input | Combined size | Samples × channels | End-to-end upload+parse | Response body |
+|---|---|---|---|---|
+| Synthetic fixture (committed) | ~1.4 KB | 40 × 5 | ~5 ms | 360 bytes |
+| Real sample (local only) | ~562 KB | 4,224 × 40 | ~9 ms | 363 bytes |
+| Real sample (local only) | ~15.7 MB | 32,693 × 130 | ~152 ms | 352 bytes |
+
+Parse-only (no HTTP) peak memory for the 15.7 MB / 32,693-sample /
+130-channel file: ~229 MB resident, ~209 MB peak footprint (macOS
+`/usr/bin/time -l`, this development machine — not a production
+measurement). Response size stays flat (~350-360 bytes) regardless of input
+size, confirming the response-size discipline design (§8 below) holds in
+practice, not just in principle. `[OPEN]`: no measurement was taken at the
+~100 MB ceiling itself (no fixture of that size was available); the ~229 MB
+memory-for-~16MB-input ratio suggests a 100 MB file could use on the order
+of 1+ GB resident memory during parsing (COMTRADE's structured-array
+parsing and DataFrame assembly both materialize full-size intermediate
+arrays) — worth a real measurement at or near the configured ceiling before
+raising `MAX_EVENT_UPLOAD_SIZE_MB` in any real deployment.
+
+### Frontend
+
+Extended the existing static `frontend/index.html` (no framework
+introduced — that remains an open, undecided question, noted in the
+original Phase 0 design and still not resolved here) with: two explicit
+upload slots (`.cfg` / `.dat` — Option B from §16 below, chosen as "the
+simplest bounded UI necessary to prove the upload path" per this phase's
+own instructions), client-side size guidance and a pre-check (not
+authoritative), busy/success/error states with user-safe error messages
+mapped from the backend's structured error codes, a per-browser workspace
+identity (`crypto.randomUUID()` in `localStorage`, with a "start new
+workspace" reset action), a source list with per-source removal, and a
+channel-detail view (timebase summary + full analog/digital channel
+tables, no waveform data).
+
+### COMTRADE upload interaction — still `[UAT]`, not decided
+
+Per this phase's instructions, Option B (two explicit named upload slots)
+was implemented as the concrete Phase 1 UI because it was the simplest to
+build and validate correctly — **this is a temporary Phase 1 choice, not a
+decision**. UAT-1 (unchanged from the Phase 0 design, § "Candidate
+Decisions Requiring Future UAT" below) remains open: whether Option A
+(single multi-file selection, auto-paired by filename stem) is actually
+better for real usage is a hands-on question this implementation
+deliberately did not resolve. The backend API is agnostic to which option
+the frontend uses (both are one multipart POST with `cfg_file`/`dat_file`
+parts), so switching later requires no backend change.
+
+### Future architectural requirement recorded (not implemented): portable analysis artifacts
+
+`[PROPOSAL]`, per explicit instruction to record but not design this now:
+calculated channels and other valuable analysis artifacts (once they exist,
+from a future phase) must eventually be exportable so a user can save their
+work locally and re-import it in a future session — the server should not
+need to retain them permanently, consistent with DEC-015's ephemeral
+principle extended to derived work, not just original uploads. The intended
+shape: source analog channels → calculation → calculated channel → active
+workspace memory → optional export to the user's machine; when the
+workspace ends, server-side calculated arrays are released, but already-
+exported work is not lost. A future versioned portable artifact format
+(potentially containing format version, calculated-channel name/expression/
+operation tree, source-channel references, source file hashes for
+verification against a re-uploaded original, units, timebase, sampling
+metadata, and optionally the derived values themselves) is a real future
+requirement, not designed here — no format, extension, or "save result vs.
+save recipe" choice is decided. This belongs with Phase 6 (calculated
+signals) and should very likely be a `[DECISION MODE: UAT]` or `[DECISION
+MODE: COMPARISON]` question once there's a concrete calculated-signal
+feature to attach it to, not resolved by inspection alone. Source-hash
+verification (SHA-256, so a saved artifact can confirm a re-uploaded file
+is the exact original it was computed against) is worth designing into
+source identity early if low-cost, per this phase's instructions, but was
+not added to Phase 1's `SourceMetadata` since Phase 1 has no consumer for
+it yet and speculative fields without a consumer are exactly the kind of
+premature complexity this project's governance discourages.
 
 ---
 

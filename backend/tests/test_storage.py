@@ -174,6 +174,7 @@ class TestGetStorage:
             storage_path=settings.storage_path,
             cors_origins=settings.cors_origins,
             database_url=None,
+            max_event_upload_size_mb=settings.max_event_upload_size_mb,
         )
 
         with pytest.raises(StorageError):

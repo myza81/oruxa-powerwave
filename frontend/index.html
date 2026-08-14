@@ -1,36 +1,642 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Powerwave</title>
     <script src="config.js"></script>
+    <style>
+        :root {
+            --bg: #0f1420;
+            --panel: #161d2e;
+            --panel-border: #2a3348;
+            --text: #e7ecf5;
+            --text-dim: #8b96ad;
+            --accent: #4f8dfd;
+            --accent-dim: #2c4a80;
+            --ok: #3ecf8e;
+            --warn: #f5a623;
+            --error: #f2545b;
+            --radius: 8px;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.45;
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--panel-border);
+        }
+
+        header h1 {
+            font-size: 1.25rem;
+            margin: 0;
+            font-weight: 600;
+        }
+
+        .status-line {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+        }
+
+        .dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+            background: var(--text-dim);
+        }
+        .dot.ok { background: var(--ok); }
+        .dot.error { background: var(--error); }
+
+        main {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 24px;
+            display: grid;
+            grid-template-columns: minmax(320px, 380px) 1fr;
+            gap: 24px;
+        }
+
+        @media (max-width: 800px) {
+            main { grid-template-columns: 1fr; }
+        }
+
+        section.panel {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 18px;
+        }
+
+        section.panel h2 {
+            font-size: 0.95rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-dim);
+            margin: 0 0 14px;
+        }
+
+        .field { margin-bottom: 14px; }
+
+        label {
+            display: block;
+            font-size: 0.85rem;
+            margin-bottom: 6px;
+            color: var(--text-dim);
+        }
+
+        input[type="file"] {
+            width: 100%;
+            font-size: 0.85rem;
+            color: var(--text);
+        }
+
+        .hint {
+            font-size: 0.78rem;
+            color: var(--text-dim);
+            margin-top: 6px;
+        }
+
+        .hint.warn { color: var(--warn); }
+
+        button {
+            appearance: none;
+            border: none;
+            border-radius: var(--radius);
+            padding: 10px 16px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            background: var(--accent);
+            color: #fff;
+        }
+
+        button:disabled {
+            background: var(--accent-dim);
+            cursor: not-allowed;
+        }
+
+        button.secondary {
+            background: transparent;
+            border: 1px solid var(--panel-border);
+            color: var(--text-dim);
+            font-weight: 500;
+            padding: 6px 12px;
+            font-size: 0.8rem;
+        }
+
+        button.danger {
+            background: transparent;
+            border: 1px solid var(--error);
+            color: var(--error);
+            font-weight: 500;
+            padding: 4px 10px;
+            font-size: 0.78rem;
+        }
+
+        .upload-status {
+            margin-top: 14px;
+            font-size: 0.85rem;
+            display: none;
+            border-radius: var(--radius);
+            padding: 10px 12px;
+        }
+        .upload-status.visible { display: block; }
+        .upload-status.busy { background: rgba(79, 141, 253, 0.12); color: var(--accent); }
+        .upload-status.ok { background: rgba(62, 207, 142, 0.12); color: var(--ok); }
+        .upload-status.error { background: rgba(242, 84, 91, 0.12); color: var(--error); }
+
+        .spinner {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid rgba(79, 141, 253, 0.3);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            margin-right: 8px;
+            vertical-align: -1px;
+            animation: spin 0.7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        ul.source-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        ul.source-list li {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 10px 8px;
+            border-radius: var(--radius);
+            cursor: pointer;
+            border: 1px solid transparent;
+        }
+        ul.source-list li:hover { background: rgba(255,255,255,0.03); }
+        ul.source-list li.selected {
+            border-color: var(--accent-dim);
+            background: rgba(79, 141, 253, 0.08);
+        }
+
+        .source-list .source-name {
+            font-size: 0.88rem;
+            font-weight: 600;
+        }
+        .source-list .source-sub {
+            font-size: 0.76rem;
+            color: var(--text-dim);
+        }
+
+        .empty-state {
+            color: var(--text-dim);
+            font-size: 0.85rem;
+            padding: 20px 4px;
+            text-align: center;
+        }
+
+        .detail-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 18px;
+        }
+
+        .detail-header h3 { margin: 0 0 4px; font-size: 1.05rem; }
+        .detail-header .meta { font-size: 0.8rem; color: var(--text-dim); }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .stat {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 10px 12px;
+        }
+        .stat .label { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; }
+        .stat .value { font-size: 0.95rem; font-weight: 600; margin-top: 2px; }
+
+        table.channels {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            margin-bottom: 20px;
+        }
+        table.channels caption {
+            text-align: left;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            padding-bottom: 8px;
+        }
+        table.channels th, table.channels td {
+            text-align: left;
+            padding: 6px 10px;
+            border-bottom: 1px solid var(--panel-border);
+        }
+        table.channels th { color: var(--text-dim); font-weight: 500; font-size: 0.75rem; }
+
+        footer {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 12px 24px 24px;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            display: flex;
+            justify-content: space-between;
+        }
+    </style>
 </head>
 <body>
-    <h1>Powerwave</h1>
-    <p>Frontend is running.</p>
+    <header>
+        <h1>Powerwave</h1>
+        <div class="status-line">
+            <span id="apiStatus"><span class="dot" id="apiDot"></span><span id="apiStatusText">Checking backend&hellip;</span></span>
+        </div>
+    </header>
 
-    <button onclick="checkApi()">Check Backend API</button>
+    <main>
+        <div>
+            <section class="panel" aria-labelledby="upload-heading">
+                <h2 id="upload-heading">Import COMTRADE Event</h2>
 
-    <pre id="result"></pre>
+                <form id="uploadForm">
+                    <div class="field">
+                        <label for="cfgInput">Configuration file (.cfg)</label>
+                        <input type="file" id="cfgInput" accept=".cfg,.CFG,.comtrade" required>
+                    </div>
+                    <div class="field">
+                        <label for="datInput">Data file (.dat)</label>
+                        <input type="file" id="datInput" accept=".dat,.DAT" required>
+                    </div>
+
+                    <p class="hint" id="sizeHint">Best experience with event records up to 100 MB (combined .cfg + .dat).</p>
+
+                    <button type="submit" id="uploadButton">Upload &amp; Parse</button>
+                </form>
+
+                <div class="upload-status" id="uploadStatus" role="status" aria-live="polite"></div>
+            </section>
+
+            <section class="panel" style="margin-top: 20px;" aria-labelledby="sources-heading">
+                <h2 id="sources-heading">Sources in this Workspace</h2>
+                <ul class="source-list" id="sourceList"></ul>
+                <p class="empty-state" id="sourceListEmpty">No sources imported yet.</p>
+            </section>
+        </div>
+
+        <section class="panel" aria-labelledby="channels-heading">
+            <h2 id="channels-heading">Channels</h2>
+            <div id="channelsPanel">
+                <p class="empty-state">Upload a COMTRADE event, or select one from the list, to see its channels here.</p>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <span>Workspace: <code id="workspaceIdLabel"></code></span>
+        <button class="secondary" id="newWorkspaceButton" type="button">Start new workspace</button>
+    </footer>
 
     <script>
+        // ------------------------------------------------------------------
+        // Configuration
+        // ------------------------------------------------------------------
         function apiBaseUrl() {
             const config = window.POWERWAVE_CONFIG || {};
             return (config.apiBaseUrl || "http://127.0.0.1:8000").replace(/\/$/, "");
         }
 
-        async function checkApi() {
-            const result = document.getElementById("result");
+        // Mirrors the backend's default MAX_EVENT_UPLOAD_SIZE_MB
+        // (backend/app/config.py). This is a client-side courtesy check
+        // only -- the backend enforces its own configured limit
+        // authoritatively regardless of what this constant says. If a
+        // deployment overrides MAX_EVENT_UPLOAD_SIZE_MB, this guidance text
+        // becomes approximate until updated to match (a known Phase 1
+        // simplification -- see docs/project-memory/MIGRATION_PLAN.md).
+        const CLIENT_SIZE_GUIDANCE_MB = 100;
 
+        // ------------------------------------------------------------------
+        // Workspace identity (client-generated, scoped per browser --
+        // see docs/project-memory/MIGRATION_PLAN.md Sec 4/DECISIONS.md
+        // DEC-012: state is scoped by workspace_id/source_id, never
+        // process-global on the backend; the frontend's part of that is
+        // simply not reusing one hard-coded id for every visitor).
+        // ------------------------------------------------------------------
+        const WORKSPACE_STORAGE_KEY = "powerwave.workspaceId";
+
+        function currentWorkspaceId() {
+            let id = localStorage.getItem(WORKSPACE_STORAGE_KEY);
+            if (!id) {
+                id = crypto.randomUUID();
+                localStorage.setItem(WORKSPACE_STORAGE_KEY, id);
+            }
+            return id;
+        }
+
+        function startNewWorkspace() {
+            localStorage.setItem(WORKSPACE_STORAGE_KEY, crypto.randomUUID());
+            selectedSourceId = null;
+            renderChannels(null);
+            refreshSourceList();
+            document.getElementById("workspaceIdLabel").textContent = currentWorkspaceId();
+        }
+
+        // ------------------------------------------------------------------
+        // Backend connectivity indicator
+        // ------------------------------------------------------------------
+        async function checkApiHealth() {
+            const dot = document.getElementById("apiDot");
+            const text = document.getElementById("apiStatusText");
             try {
                 const response = await fetch(apiBaseUrl() + "/health");
-                const data = await response.json();
-
-                result.textContent = JSON.stringify(data, null, 2);
+                if (!response.ok) throw new Error("unhealthy");
+                dot.className = "dot ok";
+                text.textContent = "Backend connected";
             } catch (error) {
-                result.textContent = "API request failed: " + error;
+                dot.className = "dot error";
+                text.textContent = "Backend unreachable";
             }
         }
+
+        // ------------------------------------------------------------------
+        // Upload
+        // ------------------------------------------------------------------
+        let selectedSourceId = null;
+
+        function setUploadStatus(kind, html) {
+            const el = document.getElementById("uploadStatus");
+            el.className = "upload-status visible " + kind;
+            el.innerHTML = html;
+        }
+
+        function clearUploadStatus() {
+            const el = document.getElementById("uploadStatus");
+            el.className = "upload-status";
+            el.innerHTML = "";
+        }
+
+        function friendlyErrorMessage(code, message) {
+            const knownMessages = {
+                unsupported_file_type: "That doesn't look like a COMTRADE .cfg/.dat file. Check the file extensions and try again.",
+                invalid_file: "One of the files is empty or unreadable.",
+                missing_companion_file: "The .cfg and .dat files don't appear to belong together.",
+                parse_error: "The COMTRADE record couldn't be parsed. " + (message || ""),
+                unsupported_comtrade_variant: "This COMTRADE variant (e.g. BINARY32) isn't supported yet.",
+                upload_too_large: message || ("This event is larger than the current " + CLIENT_SIZE_GUIDANCE_MB + " MB limit."),
+                invalid_workspace: "Something went wrong identifying your workspace. Try starting a new one.",
+                source_not_found: "That source is no longer available in this workspace.",
+                internal_error: "Something went wrong on our end. Please try again.",
+            };
+            return knownMessages[code] || (message || "Import failed.");
+        }
+
+        document.getElementById("uploadForm").addEventListener("submit", async (event) => {
+            event.preventDefault();
+
+            const cfgFile = document.getElementById("cfgInput").files[0];
+            const datFile = document.getElementById("datInput").files[0];
+            if (!cfgFile || !datFile) return;
+
+            // Immediate client-side feedback -- NOT the authoritative check
+            // (the backend enforces its own configured limit regardless of
+            // this estimate; see docs/project-memory/MIGRATION_PLAN.md's
+            // Phase 1 update on upload-size enforcement).
+            const combinedMb = (cfgFile.size + datFile.size) / (1024 * 1024);
+            if (combinedMb > CLIENT_SIZE_GUIDANCE_MB) {
+                setUploadStatus(
+                    "error",
+                    "This event is about " + combinedMb.toFixed(1) + " MB, which is over the " +
+                    CLIENT_SIZE_GUIDANCE_MB + " MB guidance. You can still try -- the server will " +
+                    "confirm whether it fits the currently configured limit."
+                );
+            }
+
+            const button = document.getElementById("uploadButton");
+            button.disabled = true;
+            setUploadStatus("busy", '<span class="spinner"></span>Uploading and parsing&hellip;');
+
+            const formData = new FormData();
+            formData.append("cfg_file", cfgFile, cfgFile.name);
+            formData.append("dat_file", datFile, datFile.name);
+
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/sources",
+                    { method: "POST", body: formData }
+                );
+                const body = await response.json().catch(() => null);
+
+                if (!response.ok) {
+                    const detail = (body && body.detail) || {};
+                    setUploadStatus("error", friendlyErrorMessage(detail.code, detail.message));
+                    return;
+                }
+
+                setUploadStatus("ok", "Imported “" + body.station_name + "” — " +
+                    body.analog_channel_count + " analog / " + body.digital_channel_count + " digital channels.");
+                document.getElementById("uploadForm").reset();
+                await refreshSourceList();
+                selectSource(body.source_id);
+            } catch (error) {
+                setUploadStatus("error", "Could not reach the backend. Check your connection and try again.");
+            } finally {
+                button.disabled = false;
+            }
+        });
+
+        // ------------------------------------------------------------------
+        // Source list
+        // ------------------------------------------------------------------
+        async function refreshSourceList() {
+            const listEl = document.getElementById("sourceList");
+            const emptyEl = document.getElementById("sourceListEmpty");
+
+            let sources = [];
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/sources"
+                );
+                if (response.ok) sources = await response.json();
+            } catch (error) {
+                // Leave the list as-is; the connectivity indicator already
+                // communicates backend reachability.
+            }
+
+            listEl.innerHTML = "";
+            emptyEl.style.display = sources.length === 0 ? "block" : "none";
+
+            for (const source of sources) {
+                const li = document.createElement("li");
+                li.className = source.source_id === selectedSourceId ? "selected" : "";
+                li.setAttribute("role", "button");
+                li.setAttribute("tabindex", "0");
+
+                const info = document.createElement("div");
+                info.innerHTML =
+                    '<div class="source-name">' + escapeHtml(source.station_name || "(unnamed)") + '</div>' +
+                    '<div class="source-sub">' + source.analog_channel_count + ' analog &middot; ' +
+                    source.digital_channel_count + ' digital</div>';
+
+                const removeBtn = document.createElement("button");
+                removeBtn.className = "danger";
+                removeBtn.type = "button";
+                removeBtn.textContent = "Remove";
+                removeBtn.addEventListener("click", async (event) => {
+                    event.stopPropagation();
+                    await removeSource(source.source_id);
+                });
+
+                li.appendChild(info);
+                li.appendChild(removeBtn);
+                li.addEventListener("click", () => selectSource(source.source_id));
+                li.addEventListener("keydown", (event) => {
+                    if (event.key === "Enter" || event.key === " ") selectSource(source.source_id);
+                });
+
+                listEl.appendChild(li);
+            }
+        }
+
+        async function removeSource(sourceId) {
+            await fetch(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                "/sources/" + encodeURIComponent(sourceId),
+                { method: "DELETE" }
+            );
+            if (selectedSourceId === sourceId) {
+                selectedSourceId = null;
+                renderChannels(null);
+            }
+            await refreshSourceList();
+        }
+
+        // ------------------------------------------------------------------
+        // Channel detail
+        // ------------------------------------------------------------------
+        async function selectSource(sourceId) {
+            selectedSourceId = sourceId;
+            await refreshSourceList();
+
+            const panel = document.getElementById("channelsPanel");
+            panel.innerHTML = '<p class="empty-state"><span class="spinner"></span>Loading channels&hellip;</p>';
+
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                    "/sources/" + encodeURIComponent(sourceId) + "/channels"
+                );
+                if (!response.ok) {
+                    panel.innerHTML = '<p class="empty-state">Could not load this source’s channels.</p>';
+                    return;
+                }
+                renderChannels(await response.json());
+            } catch (error) {
+                panel.innerHTML = '<p class="empty-state">Could not reach the backend.</p>';
+            }
+        }
+
+        function renderChannels(data) {
+            const panel = document.getElementById("channelsPanel");
+            if (!data) {
+                panel.innerHTML = '<p class="empty-state">Upload a COMTRADE event, or select one from the list, to see its channels here.</p>';
+                return;
+            }
+
+            const source = data.source;
+            const timebase = data.timebase;
+
+            let html = "";
+            html += '<div class="detail-header"><div>';
+            html += '<h3>' + escapeHtml(source.station_name) + '</h3>';
+            html += '<div class="meta">' + escapeHtml(source.original_filenames.join(" + ")) + '</div>';
+            html += '</div></div>';
+
+            html += '<div class="stat-grid">';
+            html += statCard("Recorder", source.recorder_name || "—");
+            html += statCard("Nominal frequency", source.nominal_frequency + " Hz");
+            html += statCard("Timing mode", timebase.timing_reference);
+            html += statCard("Samples", timebase.sample_count.toLocaleString());
+            html += statCard("Duration", timebase.duration_seconds.toFixed(4) + " s");
+            html += statCard("Sampling rate(s)", timebase.sampling_rates.map((r) => r + " Hz").join(", "));
+            if (timebase.start_time) html += statCard("Start time", timebase.start_time.replace("T", " "));
+            if (timebase.trigger_time) html += statCard("Trigger time", timebase.trigger_time.replace("T", " "));
+            html += '</div>';
+
+            html += renderChannelTable("Analog Channels", data.analog_channels, [
+                ["Name", (c) => c.name],
+                ["Unit", (c) => c.unit],
+                ["Phase", (c) => c.phase || "—"],
+                ["Scale", (c) => c.scale],
+                ["Offset", (c) => c.offset],
+            ]);
+
+            html += renderChannelTable("Digital Channels", data.digital_channels, [
+                ["Name", (c) => c.name],
+                ["Normal state", (c) => c.normal_state],
+            ]);
+
+            panel.innerHTML = html;
+        }
+
+        function statCard(label, value) {
+            return '<div class="stat"><div class="label">' + escapeHtml(label) + '</div>' +
+                '<div class="value">' + escapeHtml(String(value)) + '</div></div>';
+        }
+
+        function renderChannelTable(title, channels, columns) {
+            if (!channels || channels.length === 0) {
+                return '<p class="empty-state">No ' + title.toLowerCase() + '.</p>';
+            }
+            let html = '<table class="channels"><caption>' + title + ' (' + channels.length + ')</caption><thead><tr>';
+            for (const [label] of columns) html += '<th>' + escapeHtml(label) + '</th>';
+            html += '</tr></thead><tbody>';
+            for (const channel of channels) {
+                html += '<tr>';
+                for (const [, accessor] of columns) html += '<td>' + escapeHtml(String(accessor(channel))) + '</td>';
+                html += '</tr>';
+            }
+            html += '</tbody></table>';
+            return html;
+        }
+
+        function escapeHtml(value) {
+            const div = document.createElement("div");
+            div.textContent = value;
+            return div.innerHTML;
+        }
+
+        // ------------------------------------------------------------------
+        // Init
+        // ------------------------------------------------------------------
+        document.getElementById("workspaceIdLabel").textContent = currentWorkspaceId();
+        document.getElementById("newWorkspaceButton").addEventListener("click", startNewWorkspace);
+        checkApiHealth();
+        refreshSourceList();
     </script>
 </body>
 </html>

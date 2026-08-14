@@ -1,6 +1,11 @@
 import pytest
 
-from app.config import DEFAULT_CORS_ORIGINS, ConfigurationError, load_settings
+from app.config import (
+    DEFAULT_CORS_ORIGINS,
+    DEFAULT_MAX_EVENT_UPLOAD_SIZE_MB,
+    ConfigurationError,
+    load_settings,
+)
 
 BASE_ENV = {"STORAGE_PATH": "/data"}
 
@@ -13,6 +18,7 @@ def test_defaults_are_development():
     assert settings.cors_origins == DEFAULT_CORS_ORIGINS
     assert settings.database_url is None
     assert not settings.is_production
+    assert settings.max_event_upload_size_mb == DEFAULT_MAX_EVENT_UPLOAD_SIZE_MB
 
 
 def test_settings_are_frozen():
@@ -68,3 +74,20 @@ def test_environment_is_normalised():
                               "CORS_ORIGINS": "https://powerwave.oruxa.uk"})
 
     assert settings.environment == "production"
+
+
+def test_max_event_upload_size_mb_is_configurable():
+    settings = load_settings({**BASE_ENV, "MAX_EVENT_UPLOAD_SIZE_MB": "250"})
+
+    assert settings.max_event_upload_size_mb == 250
+    assert settings.max_event_upload_size_bytes == 250 * 1024 * 1024
+
+
+def test_max_event_upload_size_mb_rejects_non_integer():
+    with pytest.raises(ConfigurationError, match="MAX_EVENT_UPLOAD_SIZE_MB"):
+        load_settings({**BASE_ENV, "MAX_EVENT_UPLOAD_SIZE_MB": "not-a-number"})
+
+
+def test_max_event_upload_size_mb_rejects_non_positive():
+    with pytest.raises(ConfigurationError, match="MAX_EVENT_UPLOAD_SIZE_MB"):
+        load_settings({**BASE_ENV, "MAX_EVENT_UPLOAD_SIZE_MB": "0"})

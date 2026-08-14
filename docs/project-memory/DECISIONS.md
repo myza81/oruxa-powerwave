@@ -287,9 +287,16 @@ Alternatives considered:
 Not documented in source.
 
 Impact:
-Any file-import feature must write originals through the existing
-write-once `original` storage category (see DEC-005) and never provide an
-in-place-edit or re-upload-over-existing-source path.
+Any file-import feature must never mutate an accepted original in place or
+provide a re-upload-over-existing-source path. **Superseded in part by
+DEC-015** (2026-08-14): this entry's original Impact text said originals
+must be written through `StorageBackend`'s write-once `original` category —
+the owner has since decided Phase 1 does not persist event files through
+`StorageBackend` (or anywhere) at all. Immutability here now means "never
+mutated while it exists," not "must be written to persistent storage." If a
+later phase does introduce persistent storage for event files, DEC-005's
+write-once category is still the right mechanism and this decision's intent
+still applies to it.
 
 ---
 
@@ -457,6 +464,79 @@ The Phase 1 implementation task's scope excludes all CSV/Excel code paths
 [MIGRATION_PLAN.md — Exact first implementation scope](MIGRATION_PLAN.md#exact-first-implementation-scope).
 A temporary/simplified CSV/Excel workflow must not be introduced into
 Phase 1 without a separate, explicit approval.
+
+---
+
+## DEC-015 — Uploaded event-record files are not persistently retained
+
+Date: 2026-08-14
+Status: Approved
+Source: explicit project-owner direction at the start of the Phase 1
+implementation task (2026-08-14).
+
+Decision:
+`oruxa_powerwave` does not operate as an event-record storage platform.
+Uploaded `.cfg`/`.dat` (and, when Phase 1.5 lands, CSV/Excel) files are not
+written to VPS persistent application storage, a database blob, object
+storage, or any long-term filesystem directory. The target lifecycle is
+upload → active server session/workspace → engineering analysis → session
+ends → server-side event-record data released. This **narrows DEC-009's
+original Impact statement** (which assumed originals would be written
+through `StorageBackend`'s write-once `original` category) — see the note
+added to DEC-009 above.
+
+Reason:
+Explicit product direction: `oruxa_powerwave` is an engineering analysis
+platform, not a cloud repository for event records. The user remains the
+long-term owner of original event records.
+
+Alternatives considered:
+Not documented in source beyond this framing.
+
+Impact:
+The Phase 1 implementation stages uploaded bytes only in an ephemeral,
+per-request `tempfile.TemporaryDirectory()` (deleted before the request
+returns) so the existing `ComtradeProvider` can be reused unmodified — see
+this phase's final report / [HANDOFF.md](HANDOFF.md) for the full
+investigation of what Starlette itself does with multipart uploads before
+either the application or this temp directory is involved. Only lightweight
+per-source metadata (channel names/units/counts/timing — never sample
+arrays) is kept afterward, in-memory, scoped by `workspace_id`/`source_id`
+(see DEC-012), for the life of the process. `StorageBackend` remains
+available in the codebase for other future uses (per
+[MIGRATION_PLAN.md](MIGRATION_PLAN.md)) but is not used for event files in
+Phase 1.
+
+---
+
+## DEC-016 — Upload size ceiling is configurable, not hard-coded, with ~100 MB as the current MVP assumption
+
+Date: 2026-08-14
+Status: Approved
+Source: explicit project-owner direction at the start of the Phase 1
+implementation task (2026-08-14).
+
+Decision:
+Typical COMTRADE event records are assumed to be below approximately 100 MB
+for the current MVP. This is an operating assumption, not a permanent
+technical limit, and is implemented as configuration
+(`MAX_EVENT_UPLOAD_SIZE_MB`, default 100), not hard-coded business logic.
+
+Reason:
+Keeps the ceiling adjustable per deployment without a code change, while
+giving the backend an explicit, enforceable limit and the frontend a
+concrete number to communicate to the user.
+
+Alternatives considered:
+Not documented in source beyond this framing.
+
+Impact:
+`backend/app/config.py` reads `MAX_EVENT_UPLOAD_SIZE_MB` from the
+environment; `backend/app/services/import_service.py` enforces it
+authoritatively (based on bytes actually read, not trusted client-supplied
+size metadata); `backend/app/main.py` adds a fast Content-Length pre-check;
+the frontend displays matching guidance text. See this phase's final report
+for the exact enforcement mechanism and its known limits.
 
 ---
 

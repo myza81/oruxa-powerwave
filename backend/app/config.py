@@ -12,6 +12,11 @@ from typing import Mapping
 
 DEFAULT_CORS_ORIGINS = ("http://localhost:8101", "http://127.0.0.1:8101")
 
+# MVP operating assumption, not a permanent technical limit -- see
+# docs/project-memory/MIGRATION_PLAN.md's Phase 1 update. Deployment-specific
+# values belong in configuration, not hard-coded business logic.
+DEFAULT_MAX_EVENT_UPLOAD_SIZE_MB = 100
+
 
 class ConfigurationError(RuntimeError):
     """Raised when the environment does not describe a usable configuration."""
@@ -24,10 +29,15 @@ class Settings:
     storage_path: str
     cors_origins: tuple[str, ...]
     database_url: str | None
+    max_event_upload_size_mb: int
 
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @property
+    def max_event_upload_size_bytes(self) -> int:
+        return self.max_event_upload_size_mb * 1024 * 1024
 
 
 def _split_origins(raw: str) -> tuple[str, ...]:
@@ -66,10 +76,24 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
 
     database_url = env.get("DATABASE_URL", "").strip() or None
 
+    raw_max_upload = env.get("MAX_EVENT_UPLOAD_SIZE_MB", "").strip()
+    if raw_max_upload:
+        try:
+            max_event_upload_size_mb = int(raw_max_upload)
+        except ValueError as exc:
+            raise ConfigurationError(
+                f"MAX_EVENT_UPLOAD_SIZE_MB must be an integer, got {raw_max_upload!r}"
+            ) from exc
+        if max_event_upload_size_mb <= 0:
+            raise ConfigurationError("MAX_EVENT_UPLOAD_SIZE_MB must be a positive integer")
+    else:
+        max_event_upload_size_mb = DEFAULT_MAX_EVENT_UPLOAD_SIZE_MB
+
     return Settings(
         environment=environment,
         storage_type=storage_type,
         storage_path=storage_path,
         cors_origins=cors_origins,
         database_url=database_url,
+        max_event_upload_size_mb=max_event_upload_size_mb,
     )
