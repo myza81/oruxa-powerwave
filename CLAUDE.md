@@ -3,6 +3,38 @@
 Read [AGENTS.md](AGENTS.md). It holds the working rules for this repository and
 applies in full here.
 
+## Project memory — mandatory before any task
+
+**GitHub is the canonical source of truth for this project — not a local
+clone, and not agent conversation memory.** Local repositories on Windows or
+macOS are working copies only.
+
+Before responding to or acting on any task concerning `oruxa_powerwave`:
+
+1. Locate the current repository.
+2. Check `git status`, the current branch, and `git remote -v`.
+3. Run `git fetch origin` (read-only) and determine whether the local branch
+   is current with `origin`. If there are uncommitted local changes, do
+   **not** automatically reset, stash, discard, clean, force-checkout, or
+   rebase to "catch up" — preserve them and report the condition instead.
+4. Read [docs/project-memory/README.md](docs/project-memory/README.md).
+5. Read every document that `README.md` marks as mandatory reading.
+6. Read the relevant architecture/design documentation it points to.
+7. Inspect current code, Git state, configuration, or tests where required.
+8. Only then analyse, recommend, or implement.
+
+If a task requires inspecting or comparing against the existing desktop
+`powerwave` application, additionally follow the `powerwave`-specific startup
+rule in [docs/project-memory/README.md](docs/project-memory/README.md) —
+`powerwave` and `oruxa_powerwave` are two distinct GitHub repositories; never
+conflate them or treat one as a remote for the other.
+
+This applies even when the requested task looks simple. Chat/session memory
+and local-only notes are not the authoritative project record — GitHub,
+carrying the documents in `docs/project-memory/` alongside the code itself,
+is. This keeps work consistent across machines (Windows laptop, Mac mini) and
+across agents (Claude, Codex) that share no memory of each other's sessions.
+
 ## Authoritative architecture reference
 
 **Read [docs/architecture/oruxa-architecture.md](docs/architecture/oruxa-architecture.md)
