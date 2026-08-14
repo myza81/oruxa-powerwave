@@ -35,6 +35,12 @@ carrying the documents in `docs/project-memory/` alongside the code itself,
 is. This keeps work consistent across machines (Windows laptop, Mac mini) and
 across agents (Claude, Codex) that share no memory of each other's sessions.
 
+Not every unresolved question needs an immediate decision — see
+[Decision modes](docs/project-memory/README.md#decision-modes) for how to
+classify an open issue as ready for analysis-based approval, needing
+side-by-side comparison, needing hands-on UAT, or simply deferred until a
+later phase.
+
 ## Authoritative architecture reference
 
 **Read [docs/architecture/oruxa-architecture.md](docs/architecture/oruxa-architecture.md)

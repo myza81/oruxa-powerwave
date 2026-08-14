@@ -144,11 +144,92 @@ Every claim in these documents should be identifiable as one of:
   decided.
 - **`[OPEN]`** — an unresolved question or item that needs investigation or
   an owner decision before work can proceed.
+- **`[UAT]`** — a candidate behaviour or option that is deliberately under
+  hands-on evaluation. A `[UAT]` prototype or finding is **not**
+  automatically production architecture — see
+  [Decision modes](#decision-modes) below.
 
 These labels do not need to prefix every sentence — use them where their
 absence could cause a future reader to mistake a proposal for an approved
 direction, or a discovery finding for a design requirement (see
 [Discovery vs. design](#discovery-vs-design) below).
+
+## Decision modes
+
+Not every `[OPEN]` item needs to become a `[DECISION]` immediately. Some
+questions have enough evidence for a confident recommendation; others
+genuinely need multiple options laid out side by side; others can't be
+judged from analysis or code reading at all and need a hands-on
+prototype or trial; and some simply aren't needed yet for the phase of
+work currently underway. Classify unresolved issues by **decision mode**
+rather than treating every open question as equally urgent:
+
+- **`[DECISION MODE: ANALYSIS]`** — enough technical evidence already
+  exists for a recommendation and owner approval. No further comparison or
+  prototyping is needed; the owner can approve or reject the recommendation
+  as written.
+- **`[DECISION MODE: COMPARISON]`** — multiple viable options exist and
+  should be presented side by side (tradeoffs, evidence for each) before
+  the owner chooses, but a hands-on prototype isn't required to make that
+  choice.
+- **`[DECISION MODE: UAT]`** — the difference between options is difficult
+  or unreliable to judge from words or code alone (this is common for
+  interaction/UX-shaped questions: waveform interaction, zoom/pan, cursor
+  behaviour, synchronized cursors, multi-source workflow, source-loading
+  sequence, synchronization UX, timestamp-repair UX, manual-offset
+  workflow, chart density/readability, panel layout, measurement workflow,
+  session/workspace behaviour, import-wizard workflow, or how an
+  engineering interpretation is presented to a user — examples, not an
+  exhaustive list). A bounded prototype or hands-on test is recommended
+  before a final decision.
+- **`[DECISION MODE: DEFER]`** — the decision is not needed for the current
+  phase of work. Don't force an answer just because the question exists;
+  record it and move on.
+
+Use professional judgement, not reflexive caution: ordinary internal
+engineering choices (module placement, conventional API versioning,
+dependency direction, basic configuration externalization, type
+definitions, standard repository/test structure) do **not** need UAT or
+even a formal comparison unless there's a genuine product or
+engineering-behaviour consequence — those are normally `[DECISION MODE:
+ANALYSIS]` at most, decided and moved past quickly.
+
+### Proposing a UAT
+
+When a question is genuinely `[DECISION MODE: UAT]`, the proposal (not the
+prototype itself, unless separately instructed to build it) should define:
+
+1. the specific question being tested;
+2. the viable options;
+3. why analysis alone can't reliably judge between them;
+4. the smallest useful prototype or test that would answer the question;
+5. what the user should observe/do during the trial;
+6. the acceptance/comparison criteria that will settle it;
+7. how the prototype will be kept isolated from production code;
+8. an explicit note against tightly coupling later production architecture
+   to the experimental option chosen for the trial;
+9. where UAT findings get recorded once the trial happens;
+10. that the trial's outcome still needs an explicit owner decision before
+    it's promoted to `[DECISION]` — a UAT result is evidence, not
+    self-approving.
+
+**A temporary UAT prototype must never become permanent by inertia.** The
+intended flow is always:
+
+```text
+prototype → UAT → findings → owner decision → production design
+```
+
+not:
+
+```text
+temporary prototype → other features quietly depend on it → it's now
+permanent, without anyone deciding that on purpose
+```
+
+If a prototype is ever built, it must be clearly labeled experimental, kept
+isolated, and paired with an explicit plan for either promoting it to
+production design (after an owner decision) or removing it.
 
 ## Source-of-truth hierarchy
 

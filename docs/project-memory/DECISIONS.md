@@ -154,6 +154,166 @@ be built on top of these invariants, not around them.
 
 ---
 
+## DEC-006 — Prefer reuse of proven Qt-independent `powerwave` engineering logic
+
+Date: recorded 2026-08-14 (stated as established project direction at the
+start of the Phase 0 migration design task)
+Status: Approved
+Source: framing given directly by the project owner for the Phase 0 task.
+
+Decision:
+`oruxa_powerwave` should prefer reuse of proven, Qt-independent `powerwave`
+engineering/domain logic where appropriate, rather than rewriting mature
+logic unnecessarily.
+
+Reason:
+`powerwave`'s domain/engineering core (parsers, timestamp handling, the
+alignment engine, calculated signals, analytics) is already Qt-free,
+substantially isolated, and validated by a large existing test suite — per
+[POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md), rewriting it would
+discard real, working engineering value.
+
+Alternatives considered:
+Not documented in source beyond this framing.
+
+Impact:
+Migration planning (see [MIGRATION_PLAN.md](MIGRATION_PLAN.md)) should
+default to porting/adapting existing `powerwave` modules and only
+reimplement where discovery specifically identifies a reason to (desktop
+coupling, an identified architectural risk, or a deliberate product change).
+
+---
+
+## DEC-007 — Backend authority over engineering data and calculations
+
+Date: recorded 2026-08-14
+Status: Approved
+Source: framing given directly by the project owner for the Phase 0 task.
+
+Decision:
+The Python backend remains authoritative for: file parsing, original source
+data, timestamp/timebase interpretation, engineering calculations,
+synchronization, signal processing, and analysis.
+
+Reason:
+Keeps engineering correctness centralized in one well-tested, Python-native
+layer rather than duplicated or reimplemented across client and server.
+
+Alternatives considered:
+Not documented in source.
+
+Impact:
+No engineering/domain logic should be pushed into the frontend merely for
+implementation convenience — see DEC-008.
+
+---
+
+## DEC-008 — Frontend role is presentation, interaction, and visualisation
+
+Date: recorded 2026-08-14
+Status: Approved
+Source: framing given directly by the project owner for the Phase 0 task.
+
+Decision:
+The frontend's role is presentation, interaction, visualisation, workspace
+controls, and user selections. Mature engineering logic must not be moved
+into JavaScript merely for convenience.
+
+Reason:
+Mirrors `powerwave`'s own (mostly successful) separation between Qt-free
+engineering logic and its Qt UI layer — see
+[POWERWAVE_DISCOVERY.md — GUI / Domain Logic Separation](POWERWAVE_DISCOVERY.md#gui--domain-logic-separation).
+
+Alternatives considered:
+Not documented in source.
+
+Impact:
+Frontend-side reimplementation of any parsing/calculation/synchronization
+logic requires an explicit, separately-justified exception, not a default.
+
+---
+
+## DEC-009 — Original uploaded engineering files remain immutable
+
+Date: recorded 2026-08-14
+Status: Approved
+Source: framing given directly by the project owner for the Phase 0 task;
+consistent with the pre-existing storage invariant already recorded in
+DEC-005.
+
+Decision:
+Original uploaded engineering files must remain immutable once accepted.
+
+Reason:
+Preserves traceability back to the as-received source and matches (and
+strengthens beyond) `powerwave`'s own weaker guarantee — see
+[POWERWAVE_DISCOVERY.md — Original Source Immutability](POWERWAVE_DISCOVERY.md#original-source-immutability),
+which found `powerwave` never mutates originals in place but also does not
+retain them for later re-audit the way `oruxa_powerwave`'s existing
+write-once `original` storage category already can.
+
+Alternatives considered:
+Not documented in source.
+
+Impact:
+Any file-import feature must write originals through the existing
+write-once `original` storage category (see DEC-005) and never provide an
+in-place-edit or re-upload-over-existing-source path.
+
+---
+
+## DEC-010 — Engineering calculations operate on full-resolution backend data
+
+Date: recorded 2026-08-14
+Status: Approved
+Source: framing given directly by the project owner for the Phase 0 task.
+
+Decision:
+Authoritative engineering calculations must operate on full-resolution
+backend data. Future display downsampling/decimation must not silently
+affect engineering calculations.
+
+Reason:
+Matches `powerwave`'s own architectural intent (analytics and calculated
+signals already read full-resolution `DisturbanceRecord` data, independent
+of what's currently decimated for on-screen display) — see
+[POWERWAVE_DISCOVERY.md — Full-Resolution Engineering Data Principle](POWERWAVE_DISCOVERY.md#full-resolution-engineering-data-principle).
+
+Alternatives considered:
+Not documented in source.
+
+Impact:
+Any future viewport/decimation feature must be implemented as a separate
+concern from calculation/analysis/synchronization code paths, not
+interleaved with them.
+
+---
+
+## DEC-011 — Migration proceeds in small vertical slices
+
+Date: recorded 2026-08-14
+Status: Approved
+Source: framing given directly by the project owner for the Phase 0 task.
+
+Decision:
+Migration proceeds in small vertical slices. `oruxa_powerwave` should not
+attempt to recreate the complete desktop application in one implementation
+task.
+
+Reason:
+Keeps each implementation step reviewable, testable, and reversible —
+consistent with DEC-001's "migrate and evolve, don't blindly rewrite"
+principle.
+
+Alternatives considered:
+Not documented in source.
+
+Impact:
+See [MIGRATION_PLAN.md](MIGRATION_PLAN.md) for the current phase sequencing
+and the exact scope of the first approved-candidate slice.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

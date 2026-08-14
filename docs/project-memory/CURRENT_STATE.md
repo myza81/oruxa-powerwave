@@ -15,9 +15,12 @@ authentication, object storage, and Powerwave engineering/domain features."*
 This repository currently contains infrastructure and deployment foundation
 only. No Powerwave engineering/domain functionality (COMTRADE/CSV/Excel
 parsing, waveform models, calculated signals, synchronization, analytics) has
-been introduced yet. The `powerwave` → `oruxa_powerwave` discovery audit is
-now complete (see below) and did not change this — discovery is analysis
-only, no implementation has started.
+been introduced yet. Both the `powerwave` → `oruxa_powerwave` discovery audit
+and the Phase 0 migration design (target architecture, reuse map, API
+contract, first-slice scope) are now complete — see below — but neither
+changes this: discovery and design are analysis/planning only, no
+implementation has started, and no code outside `docs/project-memory/**` and
+this session's two governance files has been touched.
 
 ## Completed foundation work
 
@@ -66,6 +69,9 @@ only, no implementation has started.
     2026-08-14.
   - [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md) — full technical
     discovery of `powerwave` at commit `3156392`, completed 2026-08-14.
+  - [MIGRATION_PLAN.md](MIGRATION_PLAN.md) — Phase 0 target architecture
+    design (domain model, module map, API contract, error model, reuse
+    mapping, first-slice scope), completed 2026-08-14.
 
 ## Current architecture status
 
@@ -115,12 +121,15 @@ database schema, no authentication, no domain/engineering features.
 
 ## Current approved focus
 
-`[FACT]` The `powerwave` → `oruxa_powerwave` discovery audit is complete
-(2026-08-14) — see [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md). No
-implementation work is approved yet. The project is now waiting on owner
-review of that document's `[OPEN]` questions and `[PROPOSAL]` migration
-phases before any design decisions get recorded in
-[DECISIONS.md](DECISIONS.md) or any implementation begins.
+`[FACT]` Both the discovery audit and the Phase 0 migration design are
+complete (2026-08-14) — see [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md)
+and [MIGRATION_PLAN.md](MIGRATION_PLAN.md). **No implementation work is
+approved yet.** The project is now waiting on owner review of
+[MIGRATION_PLAN.md](MIGRATION_PLAN.md)'s "Decision status summary" — most
+of the Phase 0 design is marked ready for direct approval
+(`[DECISION MODE: ANALYSIS]`), a small number of items are flagged for
+future comparison or hands-on UAT (not blocking Phase 1 approval), and
+several are explicitly deferred to later phases.
 
 ## Known blockers
 
@@ -133,22 +142,28 @@ phases before any design decisions get recorded in
   `origin/main`'s local tracking ref stays stale until SSH is actually fixed
   or a plain `git fetch origin` succeeds. This is now a known, repeatable
   workaround, not an open blocker to future work.
-- `[OPEN]` Nine open questions from the discovery audit need owner decisions
-  before related implementation phases can be approved — see "Open
-  Questions" in [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md) for the
-  full list (spans timing-mode enforcement, COMTRADE discontinuity
-  detection, raw-value traceability, classification-system unification,
-  session persistence format, calculated-signal expression scope,
-  frequency/ROCOF computation scope, the suggestions feature, and
-  authentication/multi-user timing).
+- `[OPEN]` Nine open questions from the discovery audit have each been given
+  a decision-mode classification and a recommendation-for-now in
+  [MIGRATION_PLAN.md — Review of the nine discovery open questions](MIGRATION_PLAN.md#review-of-the-nine-discovery-open-questions)
+  — none require resolution before Phase 1 can be approved; most are
+  explicitly deferred to later phases (4, 6, 7, 8, 9) or already have a
+  working recommendation baked into the Phase 0 design (e.g. #4, #2).
+- `[OPEN]` A small licensing/size check on copying sample fixture files from
+  `powerwave`'s `samples/` directory into `oruxa_powerwave`'s own test
+  fixtures (for migration parity tests) is noted in
+  [MIGRATION_PLAN.md § Testing strategy](MIGRATION_PLAN.md) as worth
+  resolving before Phase 1 implementation starts — not blocking Phase 0
+  design approval itself.
 
 ## Next approved activity
 
-`[FACT]` None yet approved beyond discovery. The natural next step —
-per [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md)'s own closing
-recommendation — is for the project owner to review that document's open
-questions and proposed phases, record any approved decisions in
-[DECISIONS.md](DECISIONS.md), and only then approve a first implementation
-slice. `[PROPOSAL]` (not yet approved): the discovery document recommends
-upload → parse → normalize → channel-list API as the first vertical slice,
-deliberately stopping short of waveform rendering.
+`[FACT]` None yet approved beyond discovery and design. The natural next
+step is for the project owner to review
+[MIGRATION_PLAN.md](MIGRATION_PLAN.md)'s Phase 0 design and "Decision
+status summary," approve (or redirect) the items marked ready for approval,
+and then explicitly authorize the first implementation task — scoped
+exactly per [MIGRATION_PLAN.md — Exact first implementation scope](MIGRATION_PLAN.md#exact-first-implementation-scope).
+`[PROPOSAL]` (not yet approved): COMTRADE-first upload → parse → normalize
+→ channel-list API, with CSV/Excel inclusion in Phase 1 itself left as an
+explicit choice for the owner (full detail and rationale in
+[MIGRATION_PLAN.md § 16](MIGRATION_PLAN.md)).
