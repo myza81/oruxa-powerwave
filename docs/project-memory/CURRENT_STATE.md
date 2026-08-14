@@ -130,12 +130,14 @@ individual chat/session memory. This document set is that framework.
   instructions for this framework, discovery findings are populated in a
   dedicated follow-up pass, not during framework setup. `[OPEN]` Resume/retry
   is blocked until spend limit headroom is available.
-- `[FACT]` The sandboxed environment this framework was built in cannot reach
-  `origin` for `oruxa_powerwave` over SSH (`git fetch origin` failed with
-  `Permission denied (publickey)` on 2026-08-14). This means the commit that
-  created this framework could not be verified as pushed from this session —
-  see [HANDOFF.md](HANDOFF.md) for the exact state left behind and what needs
-  to happen on a machine with working GitHub SSH access.
+- `[FACT]` The `origin` remote's configured SSH URL for `oruxa_powerwave`
+  (`git@github.com:myza81/oruxa-powerwave.git`) is not authenticated in these
+  sandboxed sessions (`Permission denied (publickey)`, confirmed twice on
+  2026-08-14). A follow-up session worked around this by pushing to the
+  explicit HTTPS URL instead (without changing `origin`'s config) — see
+  [HANDOFF.md](HANDOFF.md) for the exact method and the caveat that
+  `origin/main`'s local tracking ref stays stale until SSH is actually fixed
+  or a plain `git fetch origin` succeeds.
 
 ## Next approved activity
 

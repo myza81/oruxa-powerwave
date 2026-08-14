@@ -6,19 +6,28 @@ history already provides the detailed historical trail.
 
 Last updated: **2026-08-14**
 
-## ⚠ Push still needed
+## ✓ Push resolved (2026-08-14, follow-up session)
 
-This framework was **committed locally** (`992a020`, on `main`, in
-`/Volumes/externalDrive/code-gym/oruxa-powerwave`) but **could not be pushed
-to GitHub** from the session that created it — `git push origin main` failed
-with `Permission denied (publickey)`; this sandbox has no working SSH key for
-`git@github.com:myza81/oruxa-powerwave.git`. Until someone pushes this commit
-from a machine with working GitHub access, **this framework exists on one
-machine only** and the whole point of it (cross-machine, cross-agent shared
-memory) is not yet realized. First thing to do on any machine with GitHub
-access: `git fetch origin && git log origin/main -1` — if it doesn't show
-`992a020` (or a later commit that includes it), pull/push to reconcile before
-anything else.
+The `origin` remote's configured SSH URL (`git@github.com:myza81/oruxa-powerwave.git`)
+is still not authenticated in these sandboxed sessions (`Permission denied
+(publickey)`, confirmed again on retry). However, a credential helper made
+**HTTPS write access work** without touching `origin`'s config: pushing
+directly to the explicit URL `https://github.com/myza81/oruxa-powerwave.git`
+(as a one-off push target, not by running `git remote set-url`) succeeded as
+a normal fast-forward push, `7f57c16..b04d7ab`. This was independently
+verified by fetching `main` from that same HTTPS URL into `FETCH_HEAD` (not
+by trusting the local `origin/main` tracking ref, which stays stale since
+`git fetch origin` over SSH still fails) — GitHub's actual `main` branch
+contains `b04d7ab` and all six `docs/project-memory/` files plus the updated
+`CLAUDE.md`/`AGENTS.md`.
+
+**Caveat for the next session**: the local `origin/main` remote-tracking ref
+will read stale (`7f57c16`) until a `git fetch` actually succeeds — don't
+trust `git status -sb`/`origin/main` alone to judge sync state on a machine
+with the same SSH problem. Prefer `git ls-remote` or `git fetch <https-url>`
+against the explicit HTTPS URL to check real GitHub state, same as done here.
+If a future machine has a working SSH key instead, `git fetch origin` will
+work normally and this caveat won't apply there.
 
 ## What was most recently done
 
