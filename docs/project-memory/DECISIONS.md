@@ -575,6 +575,66 @@ single multipart POST with `cfg_file`/`dat_file` parts).
 
 ---
 
+## DEC-018 — `Start new workspace` is a distinct whole-workspace lifecycle operation, not a Remove alias
+
+Date: 2026-08-14
+Status: Approved
+Source: explicit project-owner direction, following a focused investigation
+into `Remove` vs. `Start new workspace` requested earlier the same day.
+
+Decision:
+`Start new workspace` is **retained** in the UI (not removed or hidden) and
+is corrected to be a real, backend-enforced whole-workspace reset — never a
+client-only relabelling of `Remove`. The two actions now have, and must
+keep, clearly distinct semantics:
+
+```
+Remove              = remove ONE source from the current workspace
+Start new workspace = end/release the ENTIRE current workspace's
+                       server-side resources, then begin under a
+                       fresh workspace identity
+```
+
+`Start new workspace` calls a new whole-workspace backend endpoint
+(`DELETE /api/v1/workspaces/{workspace_id}`, see
+[MIGRATION_PLAN.md — Phase 1 Workspace-Reset Record](MIGRATION_PLAN.md#phase-1--workspace-reset-record-2026-08-14))
+and only rotates the client-side `workspace_id` after that call succeeds. A
+confirmation is shown when the current workspace is non-empty; an already-
+empty workspace resets without one.
+
+Reason:
+The prior implementation only generated a new client-side UUID and never
+called the backend at all — old sources stayed resident in
+`WorkspaceRegistry` (in-memory, no TTL) and remained reachable via the old
+`workspace_id`, contradicting DEC-015's target lifecycle ("session ends →
+server-side event-record data released"). The investigation ([HANDOFF.md](HANDOFF.md))
+found this was a genuine resource-lifecycle defect, not merely a cosmetic
+one (it also left the stale "Imported ..." success banner visible). The
+owner decided the button's implied semantics (a fresh start, distinct from
+removing one source) are worth keeping and implementing correctly, rather
+than removing the affordance (Option A) or deferring it (Option C) from
+that investigation's options list.
+
+Alternatives considered:
+See the investigation's "Options" section (Option A — remove the button;
+Option C — hide/defer until multi-source workspace features exist) — both
+rejected in favor of Option B, making the existing button correct.
+
+Impact:
+- `WorkspaceRegistry.remove_workspace(workspace_id)` releases every source
+  a workspace owns in one call; this is the lifecycle hook any future
+  workspace-owned resource (synchronization state, calculated channels,
+  measurements, ...) should also plug into, rather than each resource type
+  growing its own ad hoc cleanup path.
+- This decision does **not** claim abandoned-session cleanup is solved.
+  Closing a browser tab, losing network, or otherwise never clicking
+  `Start new workspace` still leaves that workspace's sources resident in
+  memory until the process restarts — no TTL/expiry mechanism was added.
+  This remains a separate `[OPEN]` item — see
+  [CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

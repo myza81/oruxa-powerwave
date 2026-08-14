@@ -113,6 +113,7 @@
         }
 
         .hint.warn { color: var(--warn); }
+        .hint.error { color: var(--error); }
 
         button {
             appearance: none;
@@ -268,7 +269,16 @@
             color: var(--text-dim);
             display: flex;
             justify-content: space-between;
+            align-items: flex-start;
         }
+
+        .footer-actions {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 6px;
+        }
+        .footer-actions .hint { margin: 0; max-width: 260px; text-align: right; }
 
         /* Channel search */
         .search-row {
@@ -426,7 +436,10 @@
 
     <footer>
         <span>Workspace: <code id="workspaceIdLabel"></code></span>
-        <button class="secondary" id="newWorkspaceButton" type="button">Start new workspace</button>
+        <div class="footer-actions">
+            <button class="secondary" id="newWorkspaceButton" type="button">Start new workspace</button>
+            <p class="hint error" id="workspaceResetError" hidden role="alert"></p>
+        </div>
     </footer>
 
     <div class="confirm-overlay" id="confirmOverlay" hidden>
@@ -437,6 +450,23 @@
             <div class="confirm-actions">
                 <button type="button" class="secondary" id="confirmCancelBtn">Cancel</button>
                 <button type="button" class="danger-solid" id="confirmRemoveBtn">Remove</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Distinct from #confirmOverlay above: this confirms the whole-workspace
+         reset ("Start new workspace"), not a single source's removal -- see
+         docs/project-memory/DECISIONS.md DEC-018. Kept as a separate overlay
+         rather than a parameterized shared one so each dialog's wording stays
+         simple and cannot drift between the two very different blast radii. -->
+    <div class="confirm-overlay" id="newWorkspaceConfirmOverlay" hidden>
+        <div class="confirm-box" role="alertdialog" aria-modal="true" aria-labelledby="newWorkspaceConfirmTitle">
+            <p id="newWorkspaceConfirmTitle">Start a new workspace?</p>
+            <p class="hint">All event records currently loaded in this workspace will be removed
+                from Powerwave. Your original files on your computer will not be affected.</p>
+            <div class="confirm-actions">
+                <button type="button" class="secondary" id="newWorkspaceConfirmCancelBtn">Cancel</button>
+                <button type="button" class="danger-solid" id="newWorkspaceConfirmStartBtn">Start new workspace</button>
             </div>
         </div>
     </div>
@@ -477,12 +507,87 @@
             return id;
         }
 
+        // "Start new workspace" is a distinct, whole-workspace lifecycle
+        // operation from "Remove" (which only ever deletes one source) --
+        // see docs/project-memory/DECISIONS.md DEC-018. It must actually
+        // release the *backend's* copy of every source in the current
+        // workspace, not just abandon the client-side id: rotating the
+        // localStorage id first and asking the backend to clean up second
+        // would leave orphaned server-side state if the cleanup call ever
+        // failed. So the order is fixed: confirm (if there's anything to
+        // lose) -> DELETE the *old* workspace_id on the backend -> only on
+        // confirmed success, mint a new id and clear local UI state. If the
+        // DELETE fails, the old workspace_id, its visible source list, and
+        // its banner are all left exactly as they were, plus a visible error.
         function startNewWorkspace() {
+            const hasSources = document.getElementById("sourceList").children.length > 0;
+            if (hasSources) {
+                requestNewWorkspaceConfirm();
+            } else {
+                // Nothing would be discarded -- skip the confirmation, but
+                // still go through the same DELETE-then-rotate path (a
+                // harmless no-op call against an empty/unused workspace_id)
+                // so there is exactly one code path for the actual reset.
+                resetToNewWorkspace();
+            }
+        }
+
+        function requestNewWorkspaceConfirm() {
+            hideWorkspaceResetError();
+            document.getElementById("newWorkspaceConfirmOverlay").hidden = false;
+            document.getElementById("newWorkspaceConfirmStartBtn").focus();
+        }
+
+        function closeNewWorkspaceConfirm() {
+            document.getElementById("newWorkspaceConfirmOverlay").hidden = true;
+        }
+
+        function showWorkspaceResetError(message) {
+            const el = document.getElementById("workspaceResetError");
+            el.textContent = message;
+            el.hidden = false;
+        }
+
+        function hideWorkspaceResetError() {
+            const el = document.getElementById("workspaceResetError");
+            el.hidden = true;
+            el.textContent = "";
+        }
+
+        async function resetToNewWorkspace() {
+            const oldWorkspaceId = currentWorkspaceId();
+            const button = document.getElementById("newWorkspaceButton");
+            hideWorkspaceResetError();
+            button.disabled = true;
+
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(oldWorkspaceId),
+                    { method: "DELETE" }
+                );
+                if (!response.ok) {
+                    showWorkspaceResetError("Could not clear the current workspace. Please try again.");
+                    return;
+                }
+            } catch (error) {
+                showWorkspaceResetError("Could not reach the backend. Check your connection and try again.");
+                return;
+            } finally {
+                button.disabled = false;
+            }
+
+            // Only now -- backend cleanup confirmed -- rotate identity and
+            // clear workspace-scoped UI state. Deliberately does NOT touch
+            // any non-workspace-scoped presentation state (there is none in
+            // Phase 1; if one is ever added, it belongs outside this
+            // function per docs/project-memory/DECISIONS.md DEC-018).
             localStorage.setItem(WORKSPACE_STORAGE_KEY, crypto.randomUUID());
             selectedSourceId = null;
+            lastImportedSourceId = null;
+            clearUploadStatus();
             renderChannels(null);
-            refreshSourceList();
             document.getElementById("workspaceIdLabel").textContent = currentWorkspaceId();
+            await refreshSourceList();
         }
 
         // ------------------------------------------------------------------
@@ -673,10 +778,14 @@
         document.getElementById("confirmOverlay").addEventListener("click", (event) => {
             if (event.target.id === "confirmOverlay") closeRemoveConfirm(); // click on backdrop
         });
+        document.getElementById("newWorkspaceConfirmCancelBtn").addEventListener("click", closeNewWorkspaceConfirm);
+        document.getElementById("newWorkspaceConfirmOverlay").addEventListener("click", (event) => {
+            if (event.target.id === "newWorkspaceConfirmOverlay") closeNewWorkspaceConfirm(); // backdrop
+        });
         document.addEventListener("keydown", (event) => {
-            if (event.key === "Escape" && !document.getElementById("confirmOverlay").hidden) {
-                closeRemoveConfirm();
-            }
+            if (event.key !== "Escape") return;
+            if (!document.getElementById("confirmOverlay").hidden) closeRemoveConfirm();
+            if (!document.getElementById("newWorkspaceConfirmOverlay").hidden) closeNewWorkspaceConfirm();
         });
 
         document.getElementById("confirmRemoveBtn").addEventListener("click", async () => {
@@ -684,6 +793,11 @@
             if (!sourceId) return;
             closeRemoveConfirm();
             await performRemoveSource(sourceId);
+        });
+
+        document.getElementById("newWorkspaceConfirmStartBtn").addEventListener("click", async () => {
+            closeNewWorkspaceConfirm();
+            await resetToNewWorkspace();
         });
 
         async function performRemoveSource(sourceId) {

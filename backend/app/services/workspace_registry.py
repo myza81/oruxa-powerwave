@@ -18,8 +18,11 @@ existing app.state.storage pattern.
 Known Phase 1 limitations, explicitly out of scope per
 docs/project-memory/MIGRATION_PLAN.md Sec 28 ("workspace lifecycle
 management" is deferred):
-  - No automatic expiry/TTL -- entries live until explicitly DELETEd or the
-    process restarts.
+  - No automatic expiry/TTL for an *abandoned* workspace (browser tab closed,
+    network lost, no reset ever clicked) -- those entries live until the
+    process restarts. Explicit cleanup, via either a single source's DELETE
+    or the whole workspace's DELETE, is immediate and does not wait for a
+    restart -- see DEC-018 (docs/project-memory/DECISIONS.md).
   - Single-process only -- does not survive a multi-worker deployment
     (each worker would have its own registry). Acceptable for the Phase 1
     MVP; revisit if/when this ships behind more than one worker process.
@@ -59,6 +62,31 @@ class WorkspaceRegistry:
         """Release a source's metadata. Returns True if it existed."""
         with self._lock:
             return self._sources.pop((workspace_id, source_id), None) is not None
+
+    def remove_workspace(self, workspace_id: str) -> int:
+        """Release every source owned by ``workspace_id``.
+
+        This is the backend counterpart of the frontend's "Start new
+        workspace" action (DEC-018) -- a distinct, whole-workspace operation
+        from ``remove()``'s single-source scope. Deleting the dict entries
+        drops the only references this process holds to those
+        ``SourceMetadata`` objects (which themselves hold no sample/waveform
+        arrays -- see DEC-015), making them eligible for normal Python
+        garbage collection; no separate "release" step is needed beyond
+        that. Safe and idempotent for a workspace with no sources (an
+        already-empty or entirely unknown ``workspace_id``): there is
+        nothing to raise an error about, since a workspace is never
+        explicitly "created" server-side in the first place (see
+        app.api.v1.sources) -- it is just a key that may or may not have
+        entries under it. Returns the number of sources actually removed,
+        for logging/testing, not for any success/failure branching by the
+        caller.
+        """
+        with self._lock:
+            keys = [key for key in self._sources if key[0] == workspace_id]
+            for key in keys:
+                del self._sources[key]
+            return len(keys)
 
     def count(self) -> int:
         with self._lock:

@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
 from app.api.v1.sources import router as sources_v1_router
+from app.api.v1.workspaces import router as workspaces_v1_router
 from app.config import Settings, load_settings
 from app.services.workspace_registry import WorkspaceRegistry
 from app.storage import StorageBackend, get_storage
@@ -92,6 +93,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await call_next(request)
 
     app.include_router(sources_v1_router)
+    app.include_router(workspaces_v1_router)
 
     @app.get("/health")
     def health():
@@ -105,7 +107,7 @@ def get_storage_backend(request: Request) -> StorageBackend:
     return request.app.state.storage
 
 
-# Note: app.api.v1.sources defines its own get_workspace_registry(request)
-# dependency (same request.app.state.workspace_registry pattern as above)
-# rather than importing it from here, to avoid a circular import (this
-# module imports the sources router).
+# Note: app.api.v1.sources and app.api.v1.workspaces each define their own
+# get_workspace_registry(request) dependency (same request.app.state.
+# workspace_registry pattern as above) rather than importing it from here,
+# to avoid a circular import (this module imports both routers).

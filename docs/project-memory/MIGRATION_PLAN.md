@@ -410,6 +410,121 @@ verification instead). Verification performed this session:
 
 ---
 
+## Phase 1 — Workspace-Reset Record (2026-08-14)
+
+A focused closure fix, following a same-day investigation into whether
+`Remove` and `Start new workspace` were genuinely distinct. The owner
+decided to **keep** `Start new workspace` and make it a real
+whole-workspace lifecycle operation — see DEC-018
+([DECISIONS.md](DECISIONS.md)) for the approved decision itself; this
+section is the implementation record.
+
+### What was wrong
+
+`Start new workspace` previously only generated a new client-side UUID: no
+backend call was made, so every source in the old workspace stayed
+resident in `WorkspaceRegistry` (in-memory, no TTL — see
+`backend/app/services/workspace_registry.py`) and remained reachable via
+the old `workspace_id`. The stale "Imported ..." success banner also
+survived the reset, since nothing cleared it on this path (the equivalent
+fix for `Remove` shipped in the prior UAT refinement pass never touched
+`startNewWorkspace()`).
+
+### Backend: a whole-workspace lifecycle boundary
+
+- `WorkspaceRegistry.remove_workspace(workspace_id)`
+  (`backend/app/services/workspace_registry.py`) — finds every
+  `(workspace_id, source_id)` entry for the given workspace, deletes those
+  dict keys (dropping the process's only references to those
+  `SourceMetadata` objects, which hold no waveform/sample arrays per
+  DEC-015 — nothing further is needed for them to become eligible for
+  garbage collection), and returns the count removed. Safe and idempotent
+  for an unknown or already-empty `workspace_id` — a workspace is never
+  explicitly "created" server-side, so there is no "not found" case to
+  reject.
+- `DELETE /api/v1/workspaces/{workspace_id}` (new file
+  `backend/app/api/v1/workspaces.py`, separate router from
+  `app/api/v1/sources.py`'s per-source endpoints) — thin wrapper over
+  `remove_workspace()`. Returns `204 No Content` on success, including for
+  an unknown/empty workspace (idempotent-DELETE semantics); `400` with
+  `{"detail": {"code": "invalid_workspace", ...}}` for a blank id, matching
+  the existing error-shape convention from `app/api/v1/sources.py`.
+- Deliberately **not** built: any hook for calculated channels,
+  synchronization state, measurements, or waveform/layout state — none of
+  those exist yet. The endpoint and registry method are structured so a
+  future workspace-owned resource has one lifecycle call to plug into, but
+  nothing was added speculatively for resources that don't exist (per this
+  task's explicit "future-proof but do not overengineer" instruction).
+
+### Frontend: correct ordering, confirmation, and failure handling
+
+`frontend/index.html`'s `startNewWorkspace()` was split into:
+
+1. `startNewWorkspace()` — the button's click handler. If the workspace
+   currently has at least one visible source, shows a new, separate
+   confirmation dialog (`#newWorkspaceConfirmOverlay`, distinct from the
+   existing per-source `#confirmOverlay` so the two dialogs' wording can
+   never drift into each other's blast radius). If the workspace is
+   already empty, skips the dialog and calls the reset directly — no data
+   would be discarded either way, and this keeps exactly one reset code
+   path rather than a separate "empty" branch.
+2. `resetToNewWorkspace()` — the actual reset, in the required order:
+   `DELETE /api/v1/workspaces/{oldWorkspaceId}` is awaited **first**; only
+   on a successful response does it mint a new `workspace_id`
+   (`crypto.randomUUID()`), clear `selectedSourceId`/`lastImportedSourceId`,
+   clear the upload-success banner, reset the channel panel to its empty
+   state, and refresh the (now-empty) source list. If the DELETE fails —
+   non-2xx response or a network error — none of that clearing happens:
+   the old `workspace_id` stays in `localStorage`, the source list and
+   banner are left exactly as they were, and a visible error message
+   appears next to the button (`#workspaceResetError`) so the user can
+   retry rather than the UI silently pretending a reset occurred.
+
+Confirmation wording (adapted to the app's own on-screen name, "Powerwave" —
+the header/title never say "Oruxa Powerwave"):
+
+> **Start a new workspace?**
+> All event records currently loaded in this workspace will be removed
+> from Powerwave. Your original files on your computer will not be
+> affected.
+> `[Cancel]` `[Start new workspace]`
+
+`Remove`'s own confirmation dialog, wording, and DELETE call are untouched.
+
+### Verification method
+
+No new frontend test framework was introduced (consistent with the
+project's established approach — see the prior UAT refinement pass).
+Verification performed this session:
+
+- A one-off `jsdom` script (not committed) loaded the actual shipped
+  `frontend/index.html` inline `<script>` into a real DOM and drove the
+  **real** upload code path (a mocked-`fetch` form submission, not direct
+  variable manipulation — the prior pass's own script had to be corrected
+  for exactly this reason, since top-level `let`/`const` in a classic
+  script are not reachable via `window.*` from outside, matching real
+  browser behaviour). 36 checks across 7 scenarios, all passing:
+  non-empty-workspace confirmation shown before any DELETE; Cancel issues
+  zero DELETE calls and preserves the old workspace id/source list/banner;
+  Confirm issues exactly one workspace-level DELETE against the *old* id,
+  then mints a new id, empties the source list and channel panel, and
+  clears the banner; a failed DELETE preserves the old workspace id,
+  source list, and banner while showing a visible error; an empty
+  workspace skips the confirmation but still resets; `Remove` still issues
+  only a source-level DELETE (never the workspace-level one) and its
+  banner/Cancel/other-source-preserved behaviour is unchanged; removing a
+  source that isn't the one the banner describes still leaves that banner
+  alone.
+- Full backend suite: **227 passed** (215 before this pass + 12 new:
+  4 `WorkspaceRegistry.remove_workspace()` unit tests, 7
+  `DELETE /api/v1/workspaces/{id}` API tests including multi-source and
+  cross-workspace-isolation cases, 1 `Remove`-regression test confirming a
+  single-source delete leaves sibling sources in the same workspace
+  intact). No COMTRADE parser/provider/classification code was touched
+  this pass.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

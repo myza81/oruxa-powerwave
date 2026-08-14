@@ -98,3 +98,48 @@ def test_count_reflects_current_entries():
 
     registry.remove("ws-1", "src-1")
     assert registry.count() == 1
+
+
+def test_remove_workspace_releases_every_source_it_owns():
+    registry = WorkspaceRegistry()
+    registry.add(_source("ws-1", "src-1"))
+    registry.add(_source("ws-1", "src-2"))
+    registry.add(_source("ws-1", "src-3"))
+
+    removed_count = registry.remove_workspace("ws-1")
+
+    assert removed_count == 3
+    assert registry.list_for_workspace("ws-1") == []
+    assert registry.get("ws-1", "src-1") is None
+    assert registry.get("ws-1", "src-2") is None
+    assert registry.get("ws-1", "src-3") is None
+    assert registry.count() == 0
+
+
+def test_remove_workspace_leaves_other_workspaces_untouched():
+    registry = WorkspaceRegistry()
+    registry.add(_source("ws-1", "src-1"))
+    registry.add(_source("ws-2", "src-1"))
+    registry.add(_source("ws-2", "src-2"))
+
+    registry.remove_workspace("ws-1")
+
+    assert registry.list_for_workspace("ws-1") == []
+    assert {s.source_id for s in registry.list_for_workspace("ws-2")} == {"src-1", "src-2"}
+    assert registry.count() == 2
+
+
+def test_remove_workspace_unknown_is_a_safe_no_op():
+    registry = WorkspaceRegistry()
+    registry.add(_source("ws-2", "src-1"))
+
+    removed_count = registry.remove_workspace("does-not-exist")
+
+    assert removed_count == 0
+    assert registry.count() == 1
+
+
+def test_remove_workspace_already_empty_is_a_safe_no_op():
+    registry = WorkspaceRegistry()
+
+    assert registry.remove_workspace("ws-1") == 0

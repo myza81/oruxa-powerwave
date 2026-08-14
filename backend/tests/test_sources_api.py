@@ -239,6 +239,30 @@ class TestLifecycle:
 
         assert resp.status_code == 404
 
+    def test_delete_one_source_leaves_other_sources_in_the_same_workspace_intact(
+        self, client, comtrade_fixtures_dir
+    ):
+        # Regression guard for the new whole-workspace DELETE endpoint
+        # (app/api/v1/workspaces.py, DEC-018): single-source "Remove" must
+        # keep behaving as a narrowly-scoped operation, not accidentally
+        # widen to affect siblings in the same workspace.
+        cfg = _read(comtrade_fixtures_dir / "synth_ascii.cfg")
+        dat = _read(comtrade_fixtures_dir / "synth_ascii.dat")
+        source_id_1 = client.post(
+            "/api/v1/workspaces/ws-1/sources", files=_files(cfg, dat)
+        ).json()["source_id"]
+        source_id_2 = client.post(
+            "/api/v1/workspaces/ws-1/sources", files=_files(cfg, dat)
+        ).json()["source_id"]
+
+        delete_resp = client.delete(f"/api/v1/workspaces/ws-1/sources/{source_id_1}")
+
+        assert delete_resp.status_code == 204
+        assert client.get(f"/api/v1/workspaces/ws-1/sources/{source_id_1}").status_code == 404
+        assert client.get(f"/api/v1/workspaces/ws-1/sources/{source_id_2}").status_code == 200
+        remaining_ids = {s["source_id"] for s in client.get("/api/v1/workspaces/ws-1/sources").json()}
+        assert remaining_ids == {source_id_2}
+
     def test_upload_failure_leaves_nothing_in_the_registry(self, client, comtrade_fixtures_dir):
         dat = _read(comtrade_fixtures_dir / "synth_ascii.dat")
 

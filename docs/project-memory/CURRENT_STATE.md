@@ -14,13 +14,15 @@ authentication, object storage, and Powerwave engineering/domain features."*
 
 `[FACT]` **This has changed for the domain-features part**: Phase 1 —
 COMTRADE upload, parsing, and channel discovery — is implemented, deployed
-to the DEV environment, has completed a full owner UAT pass, and has been
+to the DEV environment, has completed a full owner UAT pass, has been
 refined per that UAT's feedback (channel grouping/search, removal
-confirmation, a stale-banner fix). This is the first actual Powerwave
-engineering/domain functionality in this repository. Authentication, a
-database, and object storage remain out of scope, matching Milestone 1. No
-CSV/Excel, waveform rendering, synchronization, calculated signals, or
-advanced analytics exist yet (Phase 1.5 onward).
+confirmation, a stale-banner fix), and has had `Start new workspace`
+corrected into a real, backend-enforced whole-workspace reset (DEC-018).
+This is the first actual Powerwave engineering/domain functionality in
+this repository. Authentication, a database, and object storage remain out
+of scope, matching Milestone 1. No CSV/Excel, waveform rendering,
+synchronization, calculated signals, or advanced analytics exist yet
+(Phase 1.5 onward).
 
 ## Completed foundation work
 
@@ -31,7 +33,10 @@ advanced analytics exist yet (Phase 1.5 onward).
   - `/health`, and a versioned COMTRADE source/channel API:
     `POST/GET /api/v1/workspaces/{workspace_id}/sources`,
     `GET/DELETE /api/v1/workspaces/{workspace_id}/sources/{source_id}`,
-    `GET .../sources/{source_id}/channels`.
+    `GET .../sources/{source_id}/channels`, plus a whole-workspace
+    lifecycle endpoint added this pass: `DELETE /api/v1/workspaces/{workspace_id}`
+    (`app/api/v1/workspaces.py`) — releases every source the workspace
+    owns in one call; idempotent for an unknown/already-empty workspace.
   - `domain/` — `DisturbanceRecord`/`AnalogChannel`/`DigitalChannel`/
     `RecordingMetadata`/`SamplingInformation`/`TimingInformation` ported
     near-verbatim from `powerwave` (commit `3156392`); `SourceMetadata`/
@@ -45,10 +50,12 @@ advanced analytics exist yet (Phase 1.5 onward).
     ported near-verbatim from `powerwave`. CSV/Excel providers are Phase
     1.5 scope, not present yet (see DECISIONS.md DEC-014).
   - `services/` — `WorkspaceRegistry` (in-memory, ephemeral, keyed by
-    `workspace_id`/`source_id` — see DEC-012) and `import_service.py`
-    (upload validation, size-limit enforcement, ephemeral parse via a
-    per-request `tempfile.TemporaryDirectory()`, metadata extraction
-    including engineering-type classification).
+    `workspace_id`/`source_id` — see DEC-012), now also with a
+    `remove_workspace(workspace_id)` method (added this pass, DEC-018) that
+    releases every source a workspace owns in one call, and
+    `import_service.py` (upload validation, size-limit enforcement,
+    ephemeral parse via a per-request `tempfile.TemporaryDirectory()`,
+    metadata extraction including engineering-type classification).
   - `schemas/` — Pydantic response DTOs (`SourceSummaryOut`,
     `SourceChannelsOut`, etc.) — never include waveform/sample arrays.
     `AnalogChannelOut` still carries `scale`/`offset` (API/domain
@@ -63,14 +70,18 @@ advanced analytics exist yet (Phase 1.5 onward).
   - Dependencies: `fastapi`, `uvicorn`, `python-multipart`, `numpy`/`pandas`
     (pinned to match `powerwave`'s own versions), `psycopg[binary]` (still
     unused, pinned for later).
-  - Tests: **215 passing** (`backend/tests/`) — the original foundation
+  - Tests: **227 passing** (`backend/tests/`) — the original foundation
     suite, COMTRADE provider/parity tests (verified against `powerwave`'s
-    canonical provider), workspace-registry tests, full API tests, and
-    `test_channel_classification.py` (added this pass — every recognized
-    unit/parameter_type, priority ordering, and explicit
-    never-guess-when-ambiguous coverage). Synthetic COMTRADE fixtures live
-    in `backend/tests/fixtures/comtrade/` — authored for this migration,
-    not derived from any real/confidential event data.
+    canonical provider), workspace-registry tests (including
+    `remove_workspace()` coverage added this pass), full API tests
+    (including the new `test_workspaces_api.py` for the whole-workspace
+    DELETE endpoint, and a `Remove`-regression test confirming sibling
+    sources in the same workspace survive a single-source delete), and
+    `test_channel_classification.py` (every recognized unit/parameter_type,
+    priority ordering, and explicit never-guess-when-ambiguous coverage).
+    Synthetic COMTRADE fixtures live in `backend/tests/fixtures/comtrade/`
+    — authored for this migration, not derived from any real/confidential
+    event data.
 - **Frontend** (`frontend/index.html`): a single-page upload/channel-browse
   UI. Per completed UAT: the two-slot `.cfg`/`.dat` upload, loading
   indicator, 100 MB guidance, and source-metadata-review step are
@@ -82,9 +93,14 @@ advanced analytics exist yet (Phase 1.5 onward).
   no network calls, auto-expands groups containing a match); Scale/Offset
   removed from the primary analog table; a confirmation dialog before
   source removal; and a fix so the import-success banner clears only when
-  it actually described the just-removed source. Still no framework, no
-  build step, no routing — that remains an open, undecided question for a
-  later phase.
+  it actually described the just-removed source. Added this pass:
+  `Start new workspace` now calls the backend's whole-workspace DELETE
+  endpoint (with its own confirmation dialog, shown only when the
+  workspace is non-empty) and only rotates the client-side `workspace_id`
+  after that call succeeds; a failed cleanup leaves the old workspace,
+  its source list, and its banner untouched and shows a visible error
+  instead. Still no framework, no build step, no routing — that remains an
+  open, undecided question for a later phase.
 - **Docker/Compose**: unchanged — `compose.yaml` +
   `compose.dev.yaml`/`compose.prod.yaml`, DEV/PROD isolation verified in CI.
 - **CI/CD**: unchanged (`.github/workflows/{ci,deploy}.yml`) — used as-is
@@ -154,11 +170,16 @@ signal features yet.
 ## Current approved focus
 
 `[FACT]` Phase 1 (COMTRADE-only) is implemented, deployed to DEV, UAT'd,
-and refined per that UAT — see
-[MIGRATION_PLAN.md — Phase 1 Implementation Record](MIGRATION_PLAN.md#phase-1--implementation-record-2026-08-14)
+refined per that UAT, and has had its whole-workspace reset lifecycle
+corrected — see
+[MIGRATION_PLAN.md — Phase 1 Implementation Record](MIGRATION_PLAN.md#phase-1--implementation-record-2026-08-14),
+[Phase 1 — UAT Refinement Record](MIGRATION_PLAN.md#phase-1--uat-refinement-record-2026-08-14),
 and
-[Phase 1 — UAT Refinement Record](MIGRATION_PLAN.md#phase-1--uat-refinement-record-2026-08-14).
-`[DECISION]` Recorded this pass: the two-slot COMTRADE upload interaction is
+[Phase 1 — Workspace-Reset Record](MIGRATION_PLAN.md#phase-1--workspace-reset-record-2026-08-14).
+`[DECISION]` Recorded this pass: `Start new workspace` is retained as a
+distinct whole-workspace lifecycle operation, separate from `Remove`'s
+single-source scope, and is now backend-enforced rather than client-only
+(DEC-018). Recorded previously: the two-slot COMTRADE upload interaction is
 formally approved, not a placeholder (DEC-017, resolves UAT-1). No new
 architectural decisions were needed for the grouping/search/confirmation
 refinements themselves — implementation detail, not decided direction (per
@@ -189,6 +210,14 @@ governance, not written to DECISIONS.md).
 - `[OPEN]` Whether to commit a larger/richer set of real-event parity
   fixtures for stronger ongoing regression coverage — unchanged, still not
   resolved.
+- `[OPEN]` **New this pass**: explicit `Start new workspace` cleanup is now
+  correct (DEC-018), but an *abandoned* workspace — browser tab closed,
+  network lost, or the user simply never clicks `Remove`/`Start new
+  workspace` — still has no automatic expiry/TTL. `WorkspaceRegistry`
+  entries in that case live in memory until the backend process restarts.
+  Deliberately not solved this pass (explicit reset was the scoped
+  problem, not every abandoned-session scenario) — see
+  [MIGRATION_PLAN.md — Phase 1 Workspace-Reset Record](MIGRATION_PLAN.md#phase-1--workspace-reset-record-2026-08-14).
 
 ## Next approved activity
 

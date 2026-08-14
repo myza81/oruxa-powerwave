@@ -8,11 +8,33 @@ Last updated: **2026-08-14**
 
 ## What was most recently done
 
-A **narrow UI refinement pass** on the already-implemented, already-deployed
+A **focused Phase 1 closure fix**: correcting `Start new workspace` into a
+real, backend-enforced whole-workspace reset. This followed a same-day
+investigation (requested separately, before this fix) into whether
+`Remove` and `Start new workspace` were genuinely different — the
+investigation found `Start new workspace` was a no-op pretending to be a
+reset (client-only UUID rotation, no backend call, old sources leaked in
+memory, stale banner). The owner decided to **keep** the button and make it
+correct, rather than remove or hide it. See
+[MIGRATION_PLAN.md — Phase 1 Workspace-Reset Record](MIGRATION_PLAN.md#phase-1--workspace-reset-record-2026-08-14)
+and [DECISIONS.md — DEC-018](DECISIONS.md#dec-018--start-new-workspace-is-a-distinct-whole-workspace-lifecycle-operation-not-a-remove-alias)
+for full detail; summarized here for continuation purposes.
+
+**What was built**: a new whole-workspace backend endpoint
+(`DELETE /api/v1/workspaces/{workspace_id}`, new file
+`backend/app/api/v1/workspaces.py`) backed by a new
+`WorkspaceRegistry.remove_workspace(workspace_id)` method; and a corrected
+frontend flow where `Start new workspace` shows its own confirmation
+(only when the workspace is non-empty), calls that DELETE against the
+*old* workspace id, and only rotates the client-side id — clearing the
+source list, channel panel, and stale banner — after the backend call
+succeeds. A failed cleanup leaves everything as it was, with a visible
+error instead of a silent fake reset.
+
+**Prior work this document also covers** (unchanged by this pass): a
+narrow UI refinement pass on the already-implemented, already-deployed
 Phase 1, driven directly by the owner's completed hands-on UAT of
-`https://dev.powerwave.oruxa.uk`. No redesign, no scope expansion — see
-[MIGRATION_PLAN.md — Phase 1 UAT Refinement Record](MIGRATION_PLAN.md#phase-1--uat-refinement-record-2026-08-14)
-for full technical detail; summarized here for continuation purposes.
+`https://dev.powerwave.oruxa.uk`.
 
 **What UAT approved and left alone**: the two-slot `.cfg`/`.dat` upload
 workflow (now formally decided — DEC-017, not just a temporary Phase 1
@@ -51,13 +73,43 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified
+## What was verified (this pass — workspace-reset fix)
 
-- **215 backend tests pass** (`cd backend && pytest`), up from 168 — new:
+- **227 backend tests pass** (`cd backend && pytest`), up from 215 — new:
+  `test_workspaces_api.py` (single- and multi-source whole-workspace
+  DELETE, cross-workspace isolation, empty/unknown-workspace idempotency,
+  blank-id rejection, delete-then-reupload-into-the-same-id), 4 new
+  `WorkspaceRegistry.remove_workspace()` unit tests in
+  `test_workspace_registry.py`, and one `Remove`-regression test in
+  `test_sources_api.py` confirming a single-source delete leaves sibling
+  sources in the same workspace intact. No COMTRADE parser/provider/
+  classification code was touched this pass.
+- **Frontend logic verified against the actual shipped code**, not a
+  reimplementation: a one-off `jsdom` script (not committed, same
+  established approach as the prior UAT refinement pass) drove the *real*
+  upload code path (mocked-`fetch` form submission — not direct variable
+  poking, since top-level `let`/`const` in a classic script are not
+  reachable via `window.*`, matching real browsers) and exercised 36
+  checks across 7 scenarios: confirmation shown only for a non-empty
+  workspace and only before any DELETE; Cancel issues zero DELETE calls
+  and preserves the old workspace id/source list/banner; Confirm issues
+  exactly one workspace-level DELETE against the *old* id, then mints a
+  new id and clears source list/channel panel/banner; a failed DELETE
+  preserves everything and shows a visible error; an empty workspace
+  skips confirmation but still resets; `Remove` still issues only a
+  source-level DELETE and its Cancel/banner/other-source-preserved
+  behaviour is unchanged; removing an unrelated source still leaves a
+  still-valid banner alone. All 36 passed.
+- No production code outside the intended scope was touched — see "Files
+  changed" below.
+
+## What was verified (prior pass — UAT refinement)
+
+- **215 backend tests pass**, up from 168 — new:
   `test_channel_classification.py` (every recognized unit/parameter_type,
   priority ordering, explicit ambiguous-channel-stays-Undefined coverage)
   plus a new API assertion that `engineering_type` appears correctly in
-  live channel responses. No provider/parser code was touched this pass —
+  live channel responses. No provider/parser code was touched that pass —
   COMTRADE parity is structurally unaffected (confirmed by the unmodified
   parity tests still passing).
 - **Frontend logic verified against the actual shipped code**, not a
@@ -84,10 +136,34 @@ single-page UI direction. None of these were touched.
   behave exactly as before; the new `engineering_type` field appears
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
-- No production code outside the intended scope was touched — see "Files
-  changed" below.
 
-## What files were changed this session
+## What files were changed this session (workspace-reset fix)
+
+New:
+- `backend/app/api/v1/workspaces.py` — `DELETE /api/v1/workspaces/{workspace_id}`.
+- `backend/tests/test_workspaces_api.py` — whole-workspace DELETE API tests.
+
+Modified:
+- `backend/app/services/workspace_registry.py` — added
+  `remove_workspace(workspace_id)`.
+- `backend/app/main.py` — mounts the new `workspaces_v1_router`.
+- `backend/tests/test_workspace_registry.py` — added `remove_workspace()`
+  unit tests.
+- `backend/tests/test_sources_api.py` — added the `Remove`-regression test
+  (sibling sources in the same workspace survive a single-source delete).
+- `frontend/index.html` — `startNewWorkspace()` split into a confirmation
+  gate (`requestNewWorkspaceConfirm`) and the actual ordered reset
+  (`resetToNewWorkspace`: DELETE old workspace → only on success, rotate
+  id and clear UI state); new confirmation dialog
+  (`#newWorkspaceConfirmOverlay`) separate from `Remove`'s; new error
+  element (`#workspaceResetError`) for cleanup failures.
+- `docs/project-memory/{DECISIONS,MIGRATION_PLAN,CURRENT_STATE,HANDOFF}.md`
+  — this work (DEC-018 added).
+
+No COMTRADE parser/provider/classification/config/storage file was
+touched.
+
+## Files changed in the prior session (UAT refinement pass)
 
 New:
 - `backend/app/domain/channel_classification.py`
@@ -96,55 +172,64 @@ New:
 Modified:
 - `backend/app/domain/source.py` — `AnalogChannelSummary` gained
   `engineering_type: str`.
-- `backend/app/domain/__init__.py` — exports the new classifier.
+- `backend/app/domain/__init__.py` — exports the classifier.
 - `backend/app/schemas/source.py` — `AnalogChannelOut` gained
   `engineering_type`.
 - `backend/app/services/import_service.py` — calls the classifier when
   building each analog channel's summary.
-- `backend/tests/test_sources_api.py` — added an assertion that
-  `engineering_type` is present and correct in the live API response.
 - `frontend/index.html` — collapsible grouping, analog sub-grouping,
   search, Scale/Offset removed from the primary table, remove
-  confirmation dialog, stale-banner fix.
-- `docs/project-memory/{DECISIONS,MIGRATION_PLAN,CURRENT_STATE,HANDOFF}.md`
-  — this work (DEC-017 added, resolving UAT-1).
-
-No backend parser/provider/config/storage file was touched.
+  confirmation dialog, stale-banner fix (for `Remove` only, at the time).
 
 ## GitHub / deployment status
 
 See the "GitHub persistence" and "Dev deployment" sections of this task's
 final report (delivered in-conversation) for the exact commit hash(es),
 push confirmation, GitHub Actions run, and live-endpoint verification for
-this refinement pass. As of this write-up: committed and pushed to `main`,
-and deployed to DEV via the existing "Deploy Powerwave" `workflow_dispatch`
-(`target=dev`) — the same established, version-controlled process used for
-every previous deployment this project. **Production was not touched.**
+the workspace-reset fix. As of this write-up: committed and pushed to
+`main`, and deployed to DEV via the existing "Deploy Powerwave"
+`workflow_dispatch` (`target=dev`) — the same established, version-
+controlled process used for every previous deployment this project.
+**Production was not touched.**
 
 ## What remains unresolved
 
-Unchanged from before this pass — see
-[CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers):
-disk-free upload/parse (not solved, judged disproportionate), no
-measurement near the real ~100 MB ceiling, long-term persistence
-architecture (Phase 8), the discovery engineering-improvement findings,
-and whether to commit richer real-event parity fixtures.
+- `[OPEN]` **New this pass**: abandoned-workspace cleanup (browser tab
+  closed, network lost, or the user never clicks `Remove`/`Start new
+  workspace` at all) still has no automatic expiry/TTL —
+  `WorkspaceRegistry` entries in that case live until the backend process
+  restarts. Explicit `Start new workspace` cleanup (DEC-018) is correct
+  now; this is a different, deliberately out-of-scope problem — see
+  [MIGRATION_PLAN.md — Phase 1 Workspace-Reset Record](MIGRATION_PLAN.md#phase-1--workspace-reset-record-2026-08-14).
+- Otherwise unchanged from before this pass — see
+  [CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers):
+  disk-free upload/parse (not solved, judged disproportionate), no
+  measurement near the real ~100 MB ceiling, long-term persistence
+  architecture (Phase 8), the discovery engineering-improvement findings,
+  and whether to commit richer real-event parity fixtures.
 
 ## What should be done next
 
 Per this task's explicit closing instruction: **stop here**. Do not begin
 Phase 1.5 (CSV/Excel), waveform rendering, synchronization, calculated
 signals, advanced analysis, persistence redesign, or authentication. The
-owner should review the refined DEV build and decide the next step.
+owner should review the corrected DEV build and decide the next step.
 
 ## What must not be assumed
 
+- Do not assume `Start new workspace` is a client-only UUID rotation — it
+  is now a real, backend-enforced whole-workspace reset (DEC-018): it
+  calls `DELETE /api/v1/workspaces/{workspace_id}` and only rotates the
+  local id after that call succeeds.
+- Do not assume abandoned-session cleanup (tab closed without clicking
+  anything) is solved — it is explicitly not; only the *explicit*
+  `Start new workspace` action triggers cleanup. No TTL/expiry exists.
 - Do not assume the COMTRADE upload interaction is still open for UAT — it
   is decided (DEC-017): two explicit slots, not auto-pairing.
 - Do not assume Scale/Offset were removed from the backend or API — only
   from the frontend's primary browsing table.
 - Do not assume digital channels received any sub-classification — none
-  was added, deliberately (out of this refinement's scope).
+  was added, deliberately (out of the prior refinement's scope).
 - Do not assume the classification rules include a naming-pattern tier —
   they deliberately don't; only `parameter_type` and unit-based
   classification exist.
@@ -154,9 +239,9 @@ owner should review the refined DEV build and decide the next step.
 
 ## Owner approval needed before proceeding?
 
-- Not needed to review the refined DEV build.
+- Not needed to review the corrected DEV build.
 - **Yes**, before Phase 1.5 or any later phase begins, before a PROD
   deployment, and before any change to the ephemeral-storage, upload-size,
-  or COMTRADE-upload-interaction decisions recorded in DECISIONS.md — per
-  the change-governance rule in [CLAUDE.md](../../CLAUDE.md) /
-  [AGENTS.md](../../AGENTS.md).
+  COMTRADE-upload-interaction, or workspace-lifecycle decisions recorded
+  in DECISIONS.md — per the change-governance rule in
+  [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md).
