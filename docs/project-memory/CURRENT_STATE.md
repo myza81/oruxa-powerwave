@@ -24,6 +24,19 @@ of scope, matching Milestone 1. No CSV/Excel, waveform rendering,
 synchronization, calculated signals, or advanced analytics exist yet
 (Phase 1.5 onward).
 
+`[FACT]`, owner-stated at the start of the Phase 2 discovery/design task
+(2026-08-14): **Phase 1 is complete and has passed final owner UAT.** No
+further Phase 1 work is expected. Phase 2 (basic web waveform workspace)
+is now in its **discovery/design stage only** — see
+[MIGRATION_PLAN.md — Phase 2 Waveform Workspace Discovery and
+Design](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14).
+**No Phase 2 code exists yet** — no waveform API, no chart library
+dependency, no backend full-resolution-array retention, no frontend
+waveform rendering. Everything in that design section is a `[PROPOSAL]`
+or an item explicitly awaiting `[DECISION MODE: ANALYSIS/COMPARISON/UAT]`
+resolution — none of it is approved architecture, and none of it should be
+treated as authorization to begin implementation.
+
 ## Completed foundation work
 
 `[FACT]`, verified against the repository on 2026-08-14:
@@ -165,7 +178,9 @@ DEV/PROD deployment isolation, a working single-page frontend with
 collapsible/searchable channel grouping and a removal confirmation, this
 documentation set. No frontend framework, no database schema, no
 authentication, no CSV/Excel/waveform-rendering/synchronization/calculated-
-signal features yet.
+signal features yet. A Phase 2 waveform-workspace **design proposal**
+exists (see [MIGRATION_PLAN.md](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14))
+but nothing from it has been implemented.
 
 ## Current approved focus
 
@@ -221,11 +236,19 @@ governance, not written to DECISIONS.md).
 
 ## Next approved activity
 
-`[FACT]` Per this refinement pass's own closing instruction: **stop after
-UAT-refinement deployment and verification**. Phase 1.5 (CSV/Excel),
-waveform rendering, calculated signals, synchronization, authentication,
-and any other later-phase functionality remain explicitly **not**
-authorized. The next step is for the project owner to review the refined
-DEV build and decide what comes next (further Phase 1 polish, Phase 1.5,
-deployment of the current build to PROD, or something else) — none of
-those are pre-approved by this document.
+`[FACT]` Phase 1 is complete and has passed final owner UAT (see above).
+Phase 2 waveform-workspace **discovery and design** has been completed
+this pass — see
+[MIGRATION_PLAN.md — Phase 2 Waveform Workspace Discovery and
+Design](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14) —
+but per that task's own closing instruction, **no Phase 2 implementation
+is authorized yet**: not the waveform API, not a chart library dependency,
+not backend full-resolution-array retention, not any frontend rendering.
+The next step is for the project owner to review the Phase 2 design
+proposal — including the `[DECISION MODE: COMPARISON]` items (data-delivery
+architecture, abandoned-session TTL approach) and `[DECISION MODE: UAT]`
+items (plotting library, channel-selection interaction, panel-layout
+extras) — and decide what to approve before Phase 2A implementation
+begins. Phase 1.5 (CSV/Excel), synchronization, calculated signals,
+authentication, and any other later-phase functionality remain explicitly
+**not** authorized either.

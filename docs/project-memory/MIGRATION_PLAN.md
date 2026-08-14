@@ -525,6 +525,1400 @@ Verification performed this session:
 
 ---
 
+## Phase 2 — Waveform Workspace Discovery and Design (2026-08-14)
+
+`[PROPOSAL]` throughout except where explicitly marked `[FACT]` (verified
+`powerwave` code evidence) or `[DECISION]` (none newly recorded by this
+pass — see the closing note). This section is discovery and design only;
+**no waveform code, chart library dependency, or backend memory-model
+change was implemented this pass**. Phase 1 is complete: implemented,
+deployed to DEV, UAT'd, refined per that UAT, had its workspace-reset
+lifecycle corrected (DEC-018), and — per the project owner, opening this
+Phase 2 task — **has now passed final owner UAT**. `[FACT]`, owner-stated:
+Phase 1 final UAT passed; no further Phase 1 work is expected before
+Phase 2 begins.
+
+### 1. Goal and core principle
+
+Design (not build) the first useful web waveform workspace for an
+already-imported COMTRADE source: select channel(s) → backend provides
+appropriate waveform data → interactive zoom/pan. Scope is deliberately
+narrow — basic single-source visualization only. Synchronization,
+calculated signals, CSV/Excel, measurements beyond the essential, advanced
+analytics, persistence, and authentication are explicitly **out of scope**
+for Phase 2 and must not be designed into this slice's data model by
+implication.
+
+**Core principle, carried from [POWERWAVE_DISCOVERY.md — Full-Resolution
+Engineering Data Principle](POWERWAVE_DISCOVERY.md#full-resolution-engineering-data-principle)
+and restated for Phase 2**: the backend's retained sample data is the
+*only* authoritative engineering data. Whatever the browser receives and
+renders is a **display representation** derived from that authority, never
+the other way around. No future engineering calculation (measurements,
+calculated signals, analytics — Phases 5-7) may be designed to depend on
+decimated/display data; they must always read the same full-resolution
+source the display representation was derived from. This mirrors a
+principle `powerwave` itself already mostly honors (see §2 below) — Phase
+2 must not regress it while crossing a network boundary for the first
+time.
+
+---
+
+### 2. Existing `powerwave` waveform architecture — verified findings
+
+Re-verified this session directly against `powerwave` HEAD `3156392`
+(unchanged since the original discovery audit — confirmed via
+`git log -1`), via live import/call-graph tracing, not documentation. Where
+this corrects or sharpens
+[POWERWAVE_DISCOVERY.md — Waveform Rendering](POWERWAVE_DISCOVERY.md#waveform-rendering),
+the correction is noted.
+
+**Stack**: PyQtGraph 0.14.0 is the sole plotting library
+(`requirements.txt`); no `matplotlib` import exists anywhere in `app/`.
+`PyOpenGL==3.1.10` is declared and wired (`app/main.py`:
+`pg.setConfigOptions(useOpenGL=_USE_OPENGL, ...)`), but **off by default**,
+opt-in only via `POWERWAVE_USE_OPENGL` env var — contradicting
+`docs/VIEWPORT_RENDERING_POLICY.md`'s claim that it is "REQUIRED." Another
+documented-vs-actual mismatch, consistent with the discovery audit's
+general finding that `powerwave`'s plotting docs describe aspirational or
+superseded behavior in several places.
+
+**Live runtime path** (confirmed via `main_window.py` → `SessionCanvasController`
+→ `SessionCanvasWidget`, with zero real imports of the alternatives):
+`SessionCanvasWidget` (`app/visualization/widgets/session_canvas.py`) +
+`SessionCanvasController` (`app/ui/session/session_canvas_controller.py`).
+Three other plotting abstractions exist in the repository but are **dead
+code**, reachable only from their own test suites (confirmed by grepping
+every import site, not just their existence):
+
+| Dead abstraction | Reachable from live app? |
+|---|---|
+| `FlexiblePlotCanvas` | No — only its own tests + dead `VisualizationManager` |
+| `VisualizationManager` | No — only tests, never imported by `main_window.py` |
+| `DigitalEventTimeline` | No — only dead `VisualizationManager` + tests |
+| `FastWaveformWidget` | Doesn't exist as a class at all — a superseded name (renamed to `FlexiblePlotCanvas` per `directives/`), survives only in prose |
+| `BaseOverlay`/`CurveStore`/`OverlayRegistry` (`app/visualization/overlays/`) | Classes are *loaded* (a transitive import side-effect of an unrelated `overlay_colors` utility import) but never *instantiated* by live code — behaviorally dead |
+| `channel_grouper.py` (second panel classifier) | Only imported by the dead `VisualizationManager`; the live classifier is a *different*, independently-maintained function (below) |
+
+**Migration implication, reaffirmed**: any Phase 2 design work that
+consulted `powerwave`'s own `docs/VIEWPORT_RENDERING_POLICY.md`,
+`docs/ARCHITECTURE.md`, or similar for "the" plotting architecture would be
+designing around code that does not run. Every behavioral claim below is
+sourced from the live call graph, not those documents.
+
+**Panel/channel routing**: `_infer_panel_for_channel()`
+(`app/sessions/event_session.py:145`) — a **module-level function**, not a
+method of `EventAnalysisSession` (a minor correction to the original
+discovery note, which implied it was a method) — routes by priority:
+explicit `parameter_type` → engineering unit → channel-name keyword match,
+into default panels `voltage, current, power, frequency, digital, other`.
+This is functionally the direct ancestor of `oruxa_powerwave`'s own
+already-shipped `backend/app/domain/channel_classification.py` (Phase 1),
+which deliberately narrowed the approach to two tiers (dropping the
+name-keyword tier as too ambiguous — see DEC-... n/a, just implementation
+choice) and renders as `Undefined` rather than guessing. **Recommendation
+carried into §9**: Phase 2's waveform panel routing should reuse the
+already-shipped `engineering_type` field rather than re-deriving
+classification a third time (a fourth, if `channel_grouper.py`'s
+independent duplicate is also counted).
+
+**Decimation — the most consequential finding for Phase 2's engineering
+safety design**: `build_aligned_data()`
+(`app/sessions/event_session.py:822`, signature
+`build_aligned_data(source_id, channel_name, t_start, t_end, max_points=4000)`)
+clips each channel's raw arrays to `[t_start, t_end]`, and — only if the
+clipped length exceeds `max_points` — calls
+`decimate_for_display()` (`app/visualization/rendering/downsampling.py:6-47`):
+
+```python
+stride = max(1, (len(t_clip) + max_points - 1) // max_points)
+return t_clip[::stride], d_clip[::stride]
+```
+
+This is **plain nth-point stride sampling — not a min/max envelope, not
+peak-preserving in any form**. Every `stride`-th sample survives; everything
+between is discarded outright, with no aggregation. **A transient spike or
+protection-relevant excursion narrower than `stride` samples can be
+silently invisible in the decimated view**, with nothing in the pipeline
+to flag that it happened. `PlotDataItem.setDownsampling(auto=True,
+method="peak")` (PyQtGraph's own C++-side downsampling) is applied on top,
+but only to primary/left-axis curves (voltage), never right-axis curves
+(current/power/frequency) — and it can only operate on whatever already
+survived the Python-side stride cut; it cannot recover data already
+dropped in step one.
+
+`t_start`/`t_end` come from `_session_window(session)` — the **entire
+offset-shifted session domain**, not the live pan/zoom viewport — at every
+one of the 6 production call sites in `session_canvas_controller.py`, all
+called with no `max_points` override. **`powerwave` does not re-decimate on
+zoom in its live code path** (a documented-vs-actual gap: its own
+`VIEWPORT_RENDERING_POLICY.md` §4.4 mandates viewport-triggered
+re-decimation; the live code has no `sigXRangeChanged` connection to any
+decimation call — the only such connection drives an unrelated navigator
+strip). Zooming in PyQtGraph after the initial `build_aligned_data()` call
+is local browser-side... local *desktop*-side pan/zoom over whatever ≤4000
+points were already delivered — it does not fetch a fresh, higher-resolution
+slice for the new range. **No viewport-slice cache exists anywhere** — every
+repaint recomputes from raw arrays fresh, at desktop repaint rates
+(acceptable single-process/single-user) not web request rates (would be
+expensive at scale).
+
+**Digital channel transitions are at real risk from this same pipeline
+ordering**: `update_digital_curve()` receives the **already-strided**
+output of `build_aligned_data()` and only then calls `extract_transitions()`
+(`app/visualization/rendering/digital_transforms.py`). `extract_transitions()`
+is lossless *relative to the input it's given*, but that input has already
+had non-kept-stride samples discarded upstream — **a breaker-status pulse
+or trip signal narrower than `stride` raw samples can be dropped before
+transition-extraction ever sees it.** This is a genuine, previously
+uncited engineering-integrity risk in the current desktop app, not merely
+a migration concern — recorded here as evidence, not as something Phase 2
+needs to fix in `powerwave` itself (out of scope; `powerwave` is read-only
+reference), but as a design principle to *not* repeat.
+
+**Cursor behavior — three-way fragmented, confirmed current** (not just
+historically true): (1) a dead `FlexiblePlotCanvas._cursor` that
+`SynchronizationManager._extract_cursor()` still checks first; (2) a live
+`_hover_cursor` crosshair, actually synced through `SynchronizationManager`;
+(3) live `_cursor_a`/`_cursor_b` measurement cursors, synced by hand-rolled
+signal wiring in `SessionCanvasController` that bypasses
+`SynchronizationManager` entirely. No single owner. **Behavior worth
+preserving**: two-cursor value/delta/RMS measurement is a real, useful
+engineering feature (Phase 5, out of scope for Phase 2). **Implementation
+not worth reusing**: any of the three cursor-ownership mechanisms above —
+cursor/interaction state is presentation state and belongs entirely
+client-side in a fresh, single-owned design, designed once correctly
+rather than ported three times.
+
+**Initial viewport**: `viewport_policy.py::select_initial_viewport()` is
+**conditionally** trigger-relative — it returns `None` (full session window
+used instead) whenever fewer than 2 active sources exist, no source has a
+real (non-synthetic) trigger anchor, or the trigger-focused window would
+already cover ≥50% of the full domain. **Practical implication directly
+relevant to Phase 2's single-source scope: for a single COMTRADE source,
+the initial viewport `powerwave` itself would show is always the full
+record**, not a trigger-relative window — trigger-focusing only activates
+with ≥2 active sources (Phase 3+ territory). This meaningfully simplifies
+Phase 2's initial-load design (§16): show the whole record's duration on
+first load, no trigger-relative logic needed yet.
+
+**Full-resolution preservation — confirmed genuinely true, not aspirational**:
+`waveform_data` is never mutated (verified: `apply_time_offset` returns a
+new array; clipping uses boolean-mask indexing producing new arrays;
+`decimate_for_display` uses fancy-index slicing producing new arrays).
+Calculated Signals and all of `app/analytics/*` read `DisturbanceRecord`
+directly, never the decimated display arrays. **This is the one piece of
+`powerwave`'s architecture Phase 2 should most directly emulate the
+*intent* of** (not the implementation) — see §1's core principle.
+
+**Behavior worth preserving vs. desktop implementation not to reuse** —
+systematic summary:
+
+| Behavior worth preserving | Desktop implementation (do not reuse) | Web-native target |
+|---|---|---|
+| Multiple analog traces share one time axis, grouped by engineering type | `_infer_panel_for_channel()` + PyQtGraph multi-ViewBox per-panel wiring | Reuse Phase 1's already-shipped `engineering_type`; web-native panel/legend components |
+| Full-resolution data always authoritative, decimation only for display | `EventAnalysisSession` holding `DisturbanceRecord` in a Qt-event-loop-owned object; recompute-per-repaint | Backend-owned, viewport-aware decimation endpoint (§10), full-resolution array retained separately from the display response |
+| Curve reuse rather than recreate on data update | `PlotDataItem.setData()` | Equivalent update-in-place pattern in whatever web library is chosen (§7) |
+| Digital channels rendered as clear hi/lo step segments | `digital_transforms.py`'s pure-NumPy segment builder (algorithm is fine; the *pipeline ordering* around it is not — see above) | Reusable *algorithm* reference; must run decimation-safe for transitions (§14) |
+| Two-cursor measurement (value/delta/RMS) | Three independent, unsynchronized cursor mechanisms | Single client-owned cursor state (Phase 5, not Phase 2) |
+| Initial view starts sensible (whole record for a single source) | `viewport_policy.py`'s conditional logic | For Phase 2 (always single-source): simply show full record duration; revisit trigger-focusing in Phase 3+ |
+| GPU-accelerated rendering available for large datasets | PyQtGraph + optional PyOpenGL (off by default) | Canvas/WebGL-capable web library evaluated on its own merits (§7) |
+
+---
+
+### 3. Decimation analysis — is `powerwave`'s algorithm suitable for backend reuse?
+
+**No — not as-is**, for two independent reasons, both evidenced above:
+
+1. **Not viewport-aware.** It decimates against the entire session window
+   regardless of what's actually visible, then relies on client-side
+   pan/zoom over the already-truncated result. A 1:1 port to a web API
+   would mean the *first* request for any zoom level re-decimates the
+   *entire* record rather than the requested range — wasteful, and for a
+   long recording, could under-serve a narrow zoomed-in request (the
+   opposite of what zooming should reveal — see §12/§19).
+2. **Not peak-preserving.** Plain `[::stride]` nth-point sampling can
+   silently drop a transient spike or narrow digital pulse. This is
+   acceptable for a general-purpose dashboard chart; it is **not**
+   acceptable for power-system disturbance analysis, where the entire
+   point of the tool is surfacing exactly this kind of transient.
+
+**How many points are typically rendered**: `max_points=4000` is the
+default and is never overridden at any of the 6 live call sites — so
+`powerwave` itself already treats "a few thousand points is enough for
+useful visual density" as an established, working assumption. This number
+is a reasonable **starting reference** for Phase 2's own point-budget
+default (§10), even though the *algorithm* used to reach it should not be
+reused.
+
+**Does zooming eventually reveal full-resolution detail?** No, not in the
+live desktop path — zoom is purely a local re-view of the same ≤4000
+points already fetched for the full session window; there is no re-fetch
+at higher resolution for a narrower range. **This is precisely the
+behavior Phase 2 must do differently** (§12/§19): a web architecture that
+inherited this as-is would leave engineers unable to actually inspect fine
+detail by zooming, which defeats a core purpose of disturbance analysis
+software.
+
+---
+
+### 4. Web waveform data-delivery architecture options
+
+`[DECISION MODE: COMPARISON]` — the tradeoffs below are grounded in
+verified `powerwave` behavior and known web/browser constraints; genuine
+alternatives exist and the choice affects nearly everything downstream
+(API shape, caching, backend memory model), so it deserves owner
+visibility before Phase 2A is scoped in detail. It does **not** need a
+hands-on prototype to compare (unlike the plotting-library choice, §7) —
+the tradeoffs are analyzable from data volume and network/browser
+constraints alone.
+
+**Option A — send complete full-resolution arrays once.**
+Backend sends every sample for every selected channel in one response; all
+zoom/pan happens entirely client-side against data already in memory.
+- Latency: one request, but its size scales with the *entire* record —
+  first paint could be slow for anything beyond a small file.
+- Payload size: for a single analog channel at even a modest COMTRADE
+  sample rate (e.g. 4-20 kHz) over a multi-second record, this is already
+  tens of thousands of samples; for multiple channels, multiplies linearly.
+  Uncompressed JSON floats are the worst case here (§5).
+  Approaching the current 100 MB upload ceiling's *parsed* equivalent
+  (unmeasured — see the open item in §22), this could mean single-digit
+  millions of samples per channel in the worst case.
+- Browser RAM: everything held at once; scales linearly with channels ×
+  samples selected. Acceptable for one or a few channels of a modest
+  record; risky for many channels or a very long/high-rate record.
+- Interaction speed after load: excellent — no network round-trip for
+  pan/zoom once loaded.
+- Suitability for a typical (<100 MB) COMTRADE file with a *small* number
+  of selected channels: good — this is realistically fine for Phase 2's
+  smallest slice (§32/§40: one or a few channels).
+- Multi-channel/multi-source scaling: poor — does not scale gracefully to
+  "select many channels" or (Phase 3+) "multiple sources," since payload
+  and RAM grow with every additional selection, unbounded by what's
+  actually being looked at.
+
+**Option B — viewport/range requests.**
+Browser requests `(source, channel(s), time range, point budget)`; backend
+extracts and decimates freshly for exactly that request; browser renders
+the response.
+- First-load speed: fast — the initial response is bounded by the point
+  budget, not the record size.
+- Network traffic: scales with interaction (each pan/zoom = a request),
+  not with record size — the opposite tradeoff from Option A.
+- Backend computation: real, recurring cost per request — extraction +
+  decimation must be fast and cheap enough not to make panning feel
+  laggy; this is where a fast, viewport-aware decimation implementation
+  (§3) matters most.
+- Zoom/pan responsiveness: depends entirely on request latency; a
+  well-implemented range-extraction endpoint over an already-parsed,
+  already-in-memory array (§23) should be sub-100ms for typical requests,
+  but this needs to be measured (§29), not assumed.
+- Caching: viable and valuable (§23) — a repeated or overlapping range
+  request is common during normal zoom/pan exploration.
+- Complexity: higher than Option A — requires a real API contract for
+  range/point-budget semantics (§10), and requires the backend to retain
+  full-resolution arrays across requests (§13/§14), which Phase 1
+  currently does not do.
+
+**Option C — multi-resolution/pyramid representation.**
+Precompute multiple decimation levels ahead of time (e.g. mipmap-style),
+serve the appropriate level per zoom depth.
+- Useful for very large, frequently-re-viewed datasets with a stable
+  access pattern (e.g. long-term historian/SCADA time series browsed
+  repeatedly over days).
+- **Premature for Phase 2**: a single COMTRADE disturbance record is
+  typically seconds to tens of seconds long — not the kind of "huge,
+  long-lived, repeatedly-browsed" dataset pyramiding is built for.
+  Precomputing levels for a record that may only be viewed once, in one
+  ephemeral session (per DEC-015 — no persistent storage), is speculative
+  complexity without a demonstrated need. Revisit only if Option B's
+  on-demand decimation proves too slow under real measurement (§29).
+
+**Option D — hybrid: lightweight overview + range requests for zoomed
+detail (+ optional local caching of recently-fetched ranges).**
+Initial load fetches a decimated overview (Option B's mechanism, applied
+once at full-record range and a modest point budget); subsequent zoom/pan
+issues further range requests at the new viewport; the browser may cache
+recently-fetched ranges to avoid re-fetching an unchanged view.
+- Combines Option A's fast/simple initial paint characteristics (a single,
+  bounded request) with Option B's scalability (interaction cost scales
+  with what's being looked at, not the whole record).
+- This is, in effect, "Option B applied consistently from first load
+  onward" — there is no meaningfully separate "overview" request type
+  needed if the *initial* waveform request is simply Option B's endpoint
+  called once with the full-record range and a sensible default point
+  budget (see §10, §16). Framing it as "hybrid" mainly signals: don't
+  design a *different* mechanism for first load vs. subsequent zoom — one
+  endpoint, used the same way both times.
+
+**Recommendation** (offered for owner comparison, not pre-decided):
+**Option B/D** (they collapse to essentially the same design, per the note
+above) is the strongest fit for Phase 2's actual data shape — single
+COMTRADE source, ephemeral per-workspace lifetime, potentially many
+channels of which only a few are selected at once, and the explicit
+requirement (§19) that zooming must reveal genuinely higher-resolution
+detail. Option A remains reasonable as a possible *optimization* for the
+narrowest case (one small channel, already-small record) but should not be
+the general-purpose mechanism. Option C is not justified yet.
+
+---
+
+### 5. Transfer format — JSON vs. binary
+
+`[DECISION MODE: ANALYSIS]` — enough evidence exists from data volume and
+standard web-serialization characteristics to recommend a specific
+approach without a hands-on trial; this is a throughput/engineering
+question, not a UX one.
+
+| Format | Complexity | Serialize/deserialize cost | Browser support | FastAPI support | Portability/inspectability | Verdict |
+|---|---|---|---|---|---|---|
+| JSON arrays of floats | Lowest — native everywhere | Non-trivial for large arrays: JSON float encoding/decoding is markedly slower and larger (each float becomes ~15-20 ASCII bytes, e.g. `-123.456789,`) than a packed binary representation | Universal | Native (`response_model`, `JSONResponse`) | Excellent — human-readable, trivially debuggable in devtools/curl | Fine for Phase 1-scale metadata payloads (already in use); **not** the right choice for thousands-of-points-per-channel waveform payloads at scale |
+| Raw compact binary (e.g. a small custom header + packed `float32`/`float64` arrays, served as `application/octet-stream`) | Low-moderate — FastAPI/Starlette serve raw bytes trivially (`Response(content=bytes, media_type=...)`); browser reads via `ArrayBuffer`/`Float64Array`/`Float32Array`, both standard | Lowest of any option — no parsing step beyond a typed-array view over the raw bytes | Universal (`TypedArray`/`ArrayBuffer` are baseline Web APIs) | Straightforward — no special library needed | Good — a small fixed header (channel count, point count, dtype) documented once makes it easy to inspect with a short script; less casually readable than JSON in devtools, but not opaque | **Recommended** for the actual sample-value payload once volume matters |
+| Arrow / Parquet-style columnar | Moderate-high — needs a library on both sides (`pyarrow` backend, `apache-arrow`/similar frontend) | Good for very large, wide, columnar data; overkill for "a handful of channels' worth of floats + a shared or per-channel time array" | Requires a JS Arrow library (added frontend dependency) | Requires `pyarrow` backend dependency | Good tooling, but a heavier, less-inspectable stack than a documented raw-binary format for this data shape | Not justified for Phase 2's scope — revisit only if a genuinely columnar, wide, multi-source dataset shape emerges later |
+| Compressed JSON (e.g. gzip over the existing JSON) | Very low (transport-level, often already automatic via `GZipMiddleware`/reverse-proxy) | Reduces transfer size, does not reduce parse cost — JSON parsing is still the bottleneck, not bytes-over-the-wire, for point-heavy payloads | Universal (`Content-Encoding: gzip` is standard) | Trivial (`GZipMiddleware`) | Same inspectability as JSON once decompressed | Worth keeping as a transport-layer optimization *regardless* of which payload format is chosen — orthogonal, not a replacement for the format decision |
+
+**Recommendation**: **JSON for everything except the actual sample-value
+arrays** (metadata, channel lists, error bodies — all continue exactly as
+Phase 1 already does it), and **a small, simple, well-documented binary
+response for waveform sample data** once payloads exceed a point count
+where JSON's parse/size overhead becomes measurable (this should be
+confirmed by the benchmark plan, §29, not assumed outright — for a very
+small Phase 2A slice at ≤4000 points, plain JSON may honestly be
+indistinguishable in practice, and starting with JSON for the *first*
+implementation slice, then switching only if the benchmark shows a real
+cost, is a defensible, lower-complexity path for a solo developer — see
+§40). Do not introduce Arrow or another exotic format without a measured
+justification.
+
+---
+
+### 6. Frontend/backend boundary — confirmed, with one addition
+
+The boundary proposed in
+[POWERWAVE_DISCOVERY.md — Proposed Frontend/Backend Boundary](POWERWAVE_DISCOVERY.md#proposed-frontend--backend-boundary)
+and already implicitly followed by Phase 1 (backend: parsing, channel
+classification, structured metadata; frontend: rendering, interaction,
+selection) holds for Phase 2 and needs no revision:
+
+```text
+Backend:
+- authoritative full-resolution arrays (new for Phase 2 — see §13/§14)
+- source/timebase (already shipped, Phase 1)
+- range extraction + display decimation (new, viewport-aware — see §3/§10)
+- engineering-safe waveform preparation (peak-preserving, see §21)
+
+Frontend:
+- render (chosen plotting library, §7)
+- zoom/pan interaction, requesting the new visible range
+- legends, panel layout, visual state (§9/§17)
+- channel selection UX (§8)
+```
+
+**One addition the evidence surfaces**: cursor/measurement state (§2's
+"three-way fragmented" finding) confirms this boundary cleanly extends to
+future cursor/measurement work (Phase 5) — `measurement_engine.py`-style
+computation takes cursor positions as plain parameters and owns no cursor
+state itself, so "cursor state is presentation state, lives entirely
+client-side" is not a new boundary decision Phase 2 needs to make, just a
+confirmation that the general principle already holds for that
+not-yet-built feature too.
+
+---
+
+### 7. Plotting-library candidates
+
+`[DECISION MODE: UAT]` — per the project-memory framework's own guidance,
+chart density/readability/interaction responsiveness is exactly the kind
+of question that's unreliable to settle from documentation alone. Three
+realistic candidates, evaluated on the stated criteria:
+
+| Library | Rendering model | Large time-series performance | Zoom/pan | Multi-panel sync | Digital/step signals | Bundle size | License | Complexity for a solo dev | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| **uPlot** | Canvas 2D, purpose-built for time series | Excellent — widely benchmarked as one of the fastest canvas time-series renderers available; handles tens of thousands of points smoothly | Built-in, fast | Manual but straightforward (shared-cursor/shared-range plugins exist) | Native step-line support, well-suited to digital signals | Very small (~45 KB) | MIT | Low-moderate — minimal API surface, but less "batteries included" than a full charting framework (legends/panels are more manual) | Best fit if raw performance and small footprint matter most; least "framework-y" |
+| **Plotly.js (with `scattergl`)** | WebGL (via `scattergl` trace type) or SVG/Canvas fallback | Good with `scattergl` for large point counts; SVG mode degrades much sooner | Built-in, including range-slider/range-selector patterns | Native via `plotly.js`'s subplot/shared-axis support | Supported via step-shape line traces | Large (hundreds of KB, more with full bundle) | MIT (core library) | Low to start (very batteries-included: legends, hover, export all built in), but the bundle size and general-purpose-chart surface area is more than Phase 2 strictly needs | Fastest to a polished-looking first result; heaviest dependency |
+| **ECharts** | Canvas 2D (SVG optional), WebGL via extension | Good — has explicit large-dataset features (progressive rendering, `dataZoom`) | Built-in `dataZoom` component, well suited to exactly this use case | Native via `dataZoom` + `axisPointer` group linking | Supported via step line type | Large (similar order to Plotly) | Apache 2.0 | Low-moderate — very complete, but a bigger API surface to learn than uPlot | Strong middle ground; `dataZoom` in particular maps closely onto Phase 2's range-request model |
+
+All three: actively maintained, permissively licensed, capable of handling
+decimated/range-based data (none require raw full-resolution data
+client-side), and viable as a foundation for later custom engineering
+overlays (annotations, cursor readouts, calculated-channel traces) — none
+of the three rules out later needs. **Not chosen based on popularity
+alone** — bundle size and raw time-series throughput were weighted highest
+given the stated performance-first requirement (§5 of the task, "Waveform
+performance must be designed deliberately from the beginning").
+
+**Recommended bounded prototype** (not to be built without explicit
+instruction — described here so the shape is ready when authorized):
+
+```text
+Same synthetic COMTRADE fixture (already exists: backend/tests/fixtures/comtrade/synth_ascii)
+Same channel count (a small multi-channel selection, e.g. 3 analog + 2 digital)
+Same interaction requirements (zoom, pan, reset view, legend, cursor readout)
+        ↓
+Prototype A: uPlot
+Prototype B: ECharts
+        ↓
+Owner evaluates: zoom/pan feel, readability at typical panel size,
+responsiveness on a representative (not toy) point count, visual clarity
+of digital step signals alongside analog traces
+        ↓
+Decision recorded in DECISIONS.md
+```
+
+Plotly.js is not included in the bounded prototype recommendation — its
+bundle size is hard to justify for Phase 2's scope given the other two
+already cover the required criteria; it remains a documented fallback if
+both prototypes disappoint on ease-of-polish. Two prototypes, not three,
+keeps the bounded trial genuinely bounded.
+
+---
+
+### 8. Basic Phase 2 scope and channel-selection UX
+
+**Smallest useful Phase 2 feature set**: select one or more analog
+channels → waveform display → time axis (elapsed seconds, per §11) →
+engineering-unit Y axis → zoom → pan → reset view → channel legend →
+source identity (station name, already shown in Phase 1's metadata step) →
+responsive rendering. **Digital channels are recommended for a small
+Phase 2.x refinement, not the very first slice** — reason: digital
+step-signal rendering interacts with the decimation-ordering risk
+identified in §2/§14 in a way analog channels don't, and folding that
+design question into the very first proof-of-concept adds risk to proving
+the core architecture (range requests, backend array retention, chosen
+library) without a clear benefit — the first slice's job is to prove the
+*pipeline*, not the *full channel-type coverage*.
+
+**Channel-selection UX** — `[DECISION MODE: UAT]` (interaction-shaped,
+per the framework's own guidance). Phase 1 already ships source metadata
+review with Analog/Digital grouping, engineering-type subgroups, and
+search — the question is how a channel moves from that browser into the
+waveform workspace. Candidates:
+
+- **Checkbox selection + "Open waveform workspace" button** — matches the
+  existing browse-then-commit pattern Phase 1 already established (review
+  metadata, *then* act), likely the most consistent extension of an
+  already-UAT'd interaction model.
+- **"Add to waveform" per-channel button** (like the existing per-source
+  "Remove" button pattern) — channel-by-channel, immediate.
+- **Click-to-toggle channel row** — fewer controls, but less discoverable
+  as a multi-select action than a checkbox.
+- Drag/drop is **not recommended** for consideration — no evidence this
+  serves Phase 2's engineering-focused, keyboard/mouse-basic audience
+  better than a checkbox, and it adds real implementation complexity
+  (desktop-style interaction the task explicitly warns against
+  reproducing).
+
+Recommend the bounded UAT compare checkbox-selection-plus-button against
+per-channel-add-button using the same Phase 1 metadata screen, asking
+which feels faster/clearer for selecting 1 vs. several channels.
+
+---
+
+### 9. Panel model
+
+**Minimum Phase 2 panel model**: one panel per engineering type actually
+selected (Voltage, Current, Power, Frequency — reusing Phase 1's
+already-shipped `engineering_type` classification, per §2's recommendation
+— never re-derived), stacked vertically, sharing one X (time) axis. This
+directly mirrors `powerwave`'s own default-panel behavior (§2) without
+porting any of its implementation, and requires no new classification
+logic to build.
+
+**Left open for UAT**, since none of these can be confidently settled from
+analysis alone and none block the smallest first slice: whether users
+should be able to create custom panels (vs. automatic-only), whether
+several related channels should ever share one panel by user choice (vs.
+one-type-per-panel always), and whether Y axes should ever be
+independent per curve within a shared-type panel (vs. always shared within
+a panel, per §10). Phase 2's first slice can reasonably hard-code
+"automatic grouping by engineering type, one panel per type, shared X
+axis" and defer all of the above.
+
+---
+
+### 10. Analog scaling (Y axis)
+
+Compare with `powerwave`: **not directly evidenced in the sections
+audited this session** — PyQtGraph's own autoscale-to-visible-data is the
+observed default behavior in the general codebase pattern (no explicit
+fixed-range or per-record-range logic was found for the default view in
+the files inspected). **Recommendation, `[DECISION MODE: ANALYSIS]`**:
+autoscale to the *currently visible* (viewport) data, per channel, unless
+multiple channels share a panel and a unit — in which case share one Y
+axis scaled to the visible data of all curves in that panel (this avoids
+a charting-library default silently becoming the engineering decision, per
+the task's own instruction — an explicit choice: shared-scale-per-panel,
+not per-curve, when units match). Autoscale-to-entire-record is not
+recommended as the default, since it would defeat the purpose of zooming
+into a transient (a small excursion could remain visually flat against a
+Y range sized for the whole record) — this is the Y-axis analog of the
+X-axis full-resolution-on-zoom principle in §12.
+
+---
+
+### 11. Time-axis handling
+
+Phase 1's already-shipped `TimebaseOut` (`timing_reference`, `start_time`,
+`trigger_time`, `sample_count`, `duration_seconds`, `sampling_rates`,
+`samples_per_rate`) is the authoritative source for Phase 2's time axis —
+no new backend timing model is needed. For single-source COMTRADE
+specifically, `timing_reference` is always `"absolute"` by provider
+construction (verified in the earlier discovery pass, §"Timestamp and
+Sample-Rate Handling," unchanged). Phase 2 should display **elapsed time
+from record start** (seconds) as the primary X-axis label — matching
+`powerwave`'s own default behavior and the simplest, most universally
+correct representation for a single record — with the absolute `start_time`
+and `trigger_time` (if present) shown as context (e.g. in the panel header
+or a hover tooltip), not as the axis's primary unit. Trigger-relative
+axis framing is not needed for Phase 2 (§2's `viewport_policy.py` finding:
+`powerwave` itself doesn't trigger-focus single-source views either).
+Full-record duration is simply `duration_seconds` from the existing API;
+current viewport is new client-side state (§17), not yet backend-known
+until a range request is made.
+
+---
+
+### 12. Full-resolution zoom behavior — the core engineering requirement
+
+> As the user zooms into a smaller time interval, the display should
+> reveal appropriately higher-resolution detail rather than remaining
+> permanently coarse.
+
+Under **Option A** (send everything once): trivially satisfied, since the
+full-resolution data is already client-side — zooming just re-renders a
+subset of already-complete data. (This is Option A's one genuine
+architectural advantage, and part of why it remains reasonable for a
+*small*, bounded selection — §4.)
+
+Under **Option B/D** (range requests, recommended): satisfied *by design*
+— each zoom issues a new request for the new, narrower time range with the
+same point budget, so the same point budget now represents proportionally
+finer time resolution. This is the direct fix for the gap found in
+`powerwave` itself (§3): the backend endpoint must decimate against the
+**requested range**, never the full session window, which is the one
+specific behavior of `build_aligned_data()` this design deliberately does
+not port.
+
+Under **Option C** (pyramid): satisfied by design, if built — but not
+justified yet (§4).
+
+**This principle should be treated as a hard engineering requirement for
+whichever architecture is chosen**, not an optimization — it is what makes
+the tool usable for its actual purpose.
+
+---
+
+### 13. Peak preservation
+
+`powerwave`'s own decimator (§3) is confirmed **not** suitable — plain
+stride sampling. For Phase 2's backend decimation, three real candidates:
+
+- **Min/max envelope per pixel-bucket** — for each output "bucket" (one
+  bucket per horizontal pixel or per point-budget slot), emit both the
+  minimum and maximum sample value in that bucket (typically as two
+  points, or a filled min-max band). Simple to implement, computationally
+  cheap (`numpy`-vectorizable), and **guarantees no excursion is ever
+  invisible** — a spike that touches the bucket's max or min is always
+  represented, even if its exact index isn't. This is the standard
+  approach for oscilloscope-style/disturbance-analysis tooling
+  specifically because it cannot silently hide an extremum.
+- **LTTB (Largest Triangle Three Buckets)** — a well-known, widely
+  implemented algorithm that selects a representative point per bucket by
+  maximizing the visual triangle area formed with neighboring buckets,
+  producing a smoother, more visually faithful downsampled curve than
+  naive stride sampling, while still being fast. Preserves *visual shape*
+  well; does **not** guarantee capturing the single extreme min or max
+  value in every bucket the way a min/max envelope does — a narrow, sharp
+  spike could still be represented by a nearby-but-not-exact point rather
+  than dropped, but the *exact peak value* is not guaranteed preserved
+  numerically.
+- **Pixel-bucket min/max, same as the first option, explicitly framed as
+  the general "pixel-bucket" technique** — equivalent to the first
+  bullet; listed separately in the task prompt but the same recommendation
+  applies.
+
+**Recommendation, `[DECISION MODE: ANALYSIS]`**: **min/max envelope
+per bucket** for the analog waveform decimation endpoint. This is a
+correctness/engineering-integrity decision, not a UX preference — for
+protection/disturbance-event visibility, guaranteeing that a transient's
+extremum is always represented outweighs LTTB's smoother visual shape.
+LTTB could be offered later as an optional display-smoothing mode if
+readability feedback during UAT calls for it, but should not be the
+*only* or *default* mechanism given the stated priority on engineering
+correctness over general dashboard aesthetics. General dashboard-chart
+decimation defaults (as ship with most charting libraries, typically
+naive stride or nearest-point sampling — the same category of algorithm
+`powerwave`'s own decimator uses) are **not** suitable for this domain and
+should not be relied upon as a library default without deliberately
+choosing min/max envelope logic server-side.
+
+---
+
+### 14. Digital-signal preservation
+
+If/when digital channels are added (Phase 2.x, per §8): the ordering risk
+found in `powerwave` (§2/§3 — decimate-then-extract-transitions, which can
+drop a narrow pulse before transition-extraction ever runs) must be
+inverted for Phase 2.x: **extract transitions first, from the full-resolution
+array, then decimate the resulting transition list (not the raw sample
+array) for display** — a transition list is already far smaller than the
+raw waveform (typically a handful to a few dozen transitions per channel
+per record, versus thousands of raw samples), so it may not need
+decimation at all in the typical case, and if it ever does, decimating a
+transition list can preserve every transition's existence (just its exact
+sub-pixel position) rather than being able to silently drop one entirely.
+Digital channels' step-rendering also benefits from a genuinely different
+wire representation than analog (a compact transitions-list: `[(time,
+new_state), ...]`) rather than forcing digital data through the same
+raw-sample-array endpoint shape as analog — this should be reflected in
+the API design (§17) once Phase 2.x is scoped, not assumed to share
+analog's exact request/response shape.
+
+---
+
+### 15. Browser memory model — estimate
+
+Using representative Phase 2 scenarios rather than the full-file
+extremes: a single analog channel decimated to a ~4000-point budget (§3's
+observed reference number) is negligible browser memory regardless of the
+source record's true sample count — a handful of `Float64Array`s at
+thousands of elements each is kilobytes, not megabytes, per selected
+channel/panel. **The risk scenario is Option A (§4) applied broadly**: if
+a user selects many channels (the task's example: up to ~100 analog
+channels) and the architecture sends full-resolution arrays for all of
+them, browser memory scales directly with (channels × raw sample count) —
+this is exactly the scenario Option B/D avoids by design, since payload
+size there scales with (channels selected × point budget), not raw sample
+count. **File size does not map directly to parsed/browser size** — do not
+extrapolate a "100 MB file → X MB browser memory" figure without measuring
+the actual parsed channel/sample-count shape (this is a real gap: Phase
+1's own known blockers list already notes no measurement was taken near
+the real ~100 MB upload ceiling — see [CURRENT_STATE.md — Known
+blockers](CURRENT_STATE.md#known-blockers) — Phase 2's benchmark plan
+(§29) should close this gap using a real high-channel-count fixture, not
+a guess).
+
+---
+
+### 16. Backend memory model — the major architecture question
+
+`[DECISION MODE: ANALYSIS]` (technical, not a UAT question — see §31).
+
+**The problem, precisely**: Phase 1's `import_service.py` builds a full
+`DisturbanceRecord` (including its full-resolution `waveform_data`
+DataFrame) during upload, extracts lightweight `SourceMetadata` from it,
+and **discards the record** — the `DisturbanceRecord` and its DataFrame go
+out of scope at the end of `import_comtrade_source()`
+(`backend/app/services/import_service.py`), by explicit design (module
+docstring: *"Only lightweight SourceMetadata ... is kept afterward ...
+never the DisturbanceRecord or its waveform_data DataFrame"*). Phase 2
+range requests need access to the actual sample arrays, which no longer
+exist anywhere after the upload request completes.
+
+**What must change**: the active workspace must retain the parsed
+`DisturbanceRecord` (or equivalently, its `waveform_data`) for the life of
+the source, not just its lightweight summary — **without**:
+- **Re-parsing the COMTRADE file per waveform request** — the file itself
+  is never persistently stored (DEC-015 stays true; nothing here changes
+  that), but the *already-parsed, in-memory* record must survive past the
+  upload request so a later range request can slice it directly.
+- **Persistent event-file storage** — this is about retaining an
+  already-parsed in-memory object for the life of the ephemeral
+  workspace/process, not writing anything to disk/database/object
+  storage. DEC-015 governs the *file*; it says nothing about retaining
+  parsed in-memory arrays, and should not be read as prohibiting that.
+- **Unnecessary copies** — `waveform_data` is already held by reference,
+  never copied, inside `DisturbanceRecord` (confirmed both in
+  `oruxa_powerwave`'s ported domain model and in `powerwave`'s own
+  original). A range-extraction implementation must slice/view rather
+  than copy-then-slice wherever practical (NumPy/pandas slicing is
+  typically a view, not a copy, when done carefully — this should be
+  verified for whatever specific extraction code Phase 2A actually
+  writes, not assumed).
+- **Process-global cross-workspace coupling** — the retained record must
+  stay scoped by `(workspace_id, source_id)`, exactly like
+  `SourceMetadata` already is (DEC-012), never a bare global.
+
+**Concrete architecture direction**: extend `WorkspaceRegistry`'s stored
+value from `SourceMetadata`-only to something that also carries (or can
+retrieve) the full `DisturbanceRecord` for that `(workspace_id,
+source_id)` — e.g. a wrapper/session object holding both the existing
+lightweight summary (already serialized for the channel-browse API, keep
+using it there unchanged) and a reference to the parsed record (new,
+consumed only by the waveform range-extraction endpoint). This is
+additive to Phase 1's model, not a redesign of it — the existing
+`SourceSummaryOut`/`SourceChannelsOut` API surface and its tests are
+unaffected.
+
+**RAM cost, honestly stated**: this is a real, direct increase in
+per-source backend memory versus Phase 1's metadata-only model — the
+full-resolution arrays that used to be discarded after upload will now
+live for the source's lifetime. This is the necessary and unavoidable
+cost of Phase 2's stated goal (serving range requests without re-parsing);
+it should be sized against real measurements (§15/§29's benchmark plan),
+not assumed acceptable by default, and is the direct reason §18's TTL
+question becomes materially more urgent for Phase 2 than it was for
+Phase 1.
+
+---
+
+### 17. Revisit Phase 1 source lifecycle
+
+**Source object structure**: extend, don't replace — a new wrapper (name
+TBD at implementation time, e.g. an "active source" or "loaded source"
+concept) holding the existing `SourceMetadata` plus the retained
+`DisturbanceRecord`, keyed identically to today
+(`workspace_id`/`source_id`). The existing `WorkspaceRegistry.add/get/
+list_for_workspace/remove/remove_workspace` methods (all shipped, tested,
+DEC-012/DEC-018-governed) need their *stored value type* widened, not
+their *keying/ownership model* redesigned — `remove()` and
+`remove_workspace()` (both already correct — see the Phase 1
+Workspace-Reset Record above) already do exactly the right thing
+structurally: dropping the dict entry drops the only reference to
+whatever object is stored there, whether that's today's lightweight
+`SourceMetadata` or tomorrow's metadata-plus-record wrapper. **No change
+to workspace reset or source-remove *behavior* is anticipated** — both
+already correctly release every reference they own; they simply start
+owning a larger object.
+
+**Ownership**: unchanged — per-workspace, per-source, exactly as DEC-012
+already establishes.
+
+**Cleanup**: unchanged mechanism (`remove()`/`remove_workspace()`), larger
+consequence (releasing a full-resolution record instead of a lightweight
+summary) — which is exactly why §18's TTL question needs re-weighting now.
+
+**Multiple-source future readiness**: nothing about this extension
+forecloses Phase 3's multi-source work — the registry already supports
+multiple sources per workspace today (verified by Phase 1's own
+multi-source workspace-reset tests); Phase 2 doesn't need to design
+anything additional for that scenario, since it was already built into
+the registry's shape from Phase 1.
+
+**Conclusion**: **extend the existing model, don't complement it with a
+separate parallel structure.** A second, separate "waveform-serving"
+registry alongside `WorkspaceRegistry` would duplicate the
+workspace/source keying, lifecycle, and cleanup logic already correctly
+built and tested — a clear violation of the project's own "don't
+introduce abstractions beyond what the task requires" principle.
+
+---
+
+### 18. Abandoned-session TTL — reassessed for Phase 2
+
+`[DECISION MODE: COMPARISON]` — **this becomes materially more important
+than it was for Phase 1**, though whether it's an outright *blocker* is a
+judgment call the owner should make with the tradeoffs below in view, not
+one this analysis can fully settle alone (hence comparison, not pure
+analysis).
+
+**Why it matters more now**: Phase 1's abandoned-workspace cost was
+bounded — lightweight metadata only (channel names/units/counts/timing,
+no sample arrays). Phase 2's abandoned-workspace cost is **the full
+retained `DisturbanceRecord`**, potentially per source, per abandoned
+workspace, accumulating indefinitely with zero automatic release (per the
+existing, still-true `[OPEN]` item in
+[CURRENT_STATE.md](CURRENT_STATE.md#known-blockers)) until the backend
+process restarts. Every additional abandoned tab/browser session is now a
+real, potentially large chunk of resident memory, not a few KB of
+metadata.
+
+**Options compared**:
+
+| Option | Mechanism | Pros | Cons |
+|---|---|---|---|
+| Fixed inactivity TTL | Track last-access time per source/workspace; a periodic sweep evicts entries idle beyond a threshold | Simple, predictable, bounded worst-case memory | Picking the right threshold is itself a judgment call (too short: surprises an engineer mid-analysis who stepped away; too long: doesn't bound memory tightly) |
+| Periodic cleanup (sweep) | Same as above, framed as the *mechanism* rather than the policy — a background task run on an interval | Same as above; this is really the same option, described from the implementation angle | Same as above |
+| Explicit heartbeat | Frontend periodically pings "I'm still here" for its active workspace; absence of heartbeats beyond a threshold triggers cleanup | More accurate signal of genuine abandonment than a fixed TTL (an actively-used-but-idle-on-the-waveform tab still heartbeats) | More moving parts (a new endpoint, a client-side timer); a network blip could cause premature cleanup unless designed with tolerance |
+| `sendBeacon` cleanup on tab close | Browser's `navigator.sendBeacon()` fires a best-effort request as the tab closes, triggering explicit cleanup | Catches the common "closed the tab" case cleanly and promptly, complementing (not replacing) a TTL for the cases it can't catch (crash, network loss, force-quit) | Not reliable alone — `sendBeacon` is not guaranteed to fire/arrive in every browser-close scenario, so it cannot be the *only* mechanism |
+| Combination (TTL + `sendBeacon`) | `sendBeacon` handles the common graceful-close case promptly; TTL is the backstop for everything else | Best coverage of realistic abandonment scenarios without over-engineering | More to build than any single mechanism alone |
+| Defer, with hard memory limits instead | Don't build any expiry mechanism yet; instead cap total registry memory/source count and reject new uploads (or evict oldest) once a ceiling is hit | Least new mechanism to build; converts "unbounded leak" into "bounded but potentially confusing rejection behavior" | Doesn't solve the underlying problem, just bounds its blast radius; a busy shared DEV/demo environment could hit the ceiling and start rejecting legitimate new uploads while genuinely abandoned old ones sit untouched |
+
+**Recommendation for owner comparison, not pre-decided**: the
+**combination (TTL + `sendBeacon`)** gives the best realistic coverage for
+the least complexity beyond a single mechanism, and directly addresses
+the specific new risk Phase 2 introduces (large retained arrays, not just
+metadata). **Defer-with-hard-limits** is a legitimate, meaningfully
+simpler fallback if the owner judges Phase 2A/2B's actual DEV-environment
+usage pattern (a handful of active sessions, not concurrent public
+traffic) doesn't yet justify building real expiry — but this should be an
+explicit, informed choice given the memory-growth consequence is now
+materially different from Phase 1, not an unexamined carry-forward of
+Phase 1's "not needed yet" conclusion.
+
+**Is this a hard Phase 2 blocker?** Not for **Phase 2A's own
+implementation and testing** (a controlled environment, small number of
+manually-driven sessions) — but it should be resolved (one of the options
+above, explicitly chosen) **before Phase 2 work is considered
+UAT-ready on a shared DEV environment for any extended period**, since
+that's exactly the condition under which unbounded retained-array growth
+would first become a real, observable problem rather than a theoretical
+one.
+
+---
+
+### 19. Session concurrency
+
+Minimum concurrency controls needed for Phase 2, evidenced by the
+scenarios in the task prompt:
+
+- **Same browser, multiple tabs, same `workspace_id`** (since
+  `workspace_id` is stored in `localStorage`, shared across tabs of the
+  same origin): both tabs already correctly share one workspace's sources
+  today (Phase 1) — this extends unchanged to waveform requests, since
+  reads (`GET` range requests) against a shared in-memory record are
+  naturally safe without new locking, the same way Phase 1's existing
+  `GET` endpoints already are.
+- **Two browsers, different `workspace_id`s**: already fully isolated by
+  the existing `(workspace_id, source_id)` keying (DEC-012) — nothing new
+  needed.
+- **Multiple simultaneous requests against one workspace**: Phase 1's
+  `WorkspaceRegistry` already uses a `threading.Lock` for
+  add/get/list/remove/remove_workspace — range-extraction reads should
+  follow the same pattern (acquire briefly to *retrieve* the record
+  reference, then release the lock before doing the actual — potentially
+  slower — decimation work against that reference, so a slow decimation
+  computation never holds the registry lock and blocks unrelated
+  requests).
+- **A workspace deleted during a waveform request**: the existing
+  `remove()`/`remove_workspace()` already drop the registry entry
+  atomically under the lock; an in-flight range request that already
+  retrieved its record reference *before* the delete can safely finish
+  serving from that reference (Python's GC won't collect an object still
+  referenced by a local variable in an in-progress request handler, even
+  after the registry's own reference is dropped) — a request that hasn't
+  yet retrieved the reference when the delete happens should get the
+  existing `source_not_found` 404, exactly like Phase 1's existing
+  get-after-delete behavior for metadata.
+
+**No new authentication/session-identity work is needed for Phase 2** —
+this analysis only concerns concurrent access to shared in-memory
+structures, not per-user isolation (Phase 9, explicitly out of scope,
+per DEC-... n/a — already established Milestone 1 scoping).
+
+---
+
+### 20. API proposal
+
+`[DECISION MODE: ANALYSIS]` for the shape below (versioning, resource
+naming, and general request/response conventions are ordinary internal
+engineering choices, following the same pattern Phase 1 already
+established) — **not** a UAT question.
+
+```text
+GET /api/v1/workspaces/{workspace_id}/sources/{source_id}/waveform
+```
+
+**Request parameters** (query string, matching FastAPI/Phase 1 convention):
+- `channels` — one or more channel names (repeated query param, e.g.
+  `channels=VA&channels=VB`), required. Mirrors how a specific, bounded
+  request is always more scalable than "give me everything" (§4).
+- `start_time` / `end_time` — seconds, elapsed from record start (§11),
+  optional; default to the full record duration when omitted (this is
+  exactly the "initial load" case, §16 — no separate overview endpoint
+  needed, per §4's Option D note).
+- `max_points` — optional, defaults to a sensible constant (recommend
+  starting from `powerwave`'s own proven-in-practice `4000`, §3, subject
+  to revision once the benchmark plan, §29, has real numbers).
+
+**Response** (Phase 2A's first implementation, per §5's recommendation —
+start with JSON, revisit binary only if measured necessary):
+```json
+{
+  "source_id": "...",
+  "start_time": 0.0,
+  "end_time": 1.284,
+  "channels": [
+    {
+      "name": "VA",
+      "unit": "V",
+      "point_count": 3982,
+      "time": [0.0, 0.00032, ...],
+      "values": [1.02, 1.05, ...]
+    }
+  ]
+}
+```
+A shared `time` array per channel (not one shared array for all
+channels) deliberately preserves §28's "avoid hidden resampling"
+principle — each channel keeps its own native sample positions, exactly
+matching both `powerwave`'s behavior and Phase 1's existing per-channel
+timing model; nothing forces channels onto a common grid even if they
+happen to already share one.
+
+**Error cases**, matching Phase 1's existing `{"detail": {"code",
+"message"}}` shape:
+- `source_not_found` (404) — same as Phase 1's existing sources endpoints.
+- `channel_not_found` (400/404 — exact code TBD at implementation, but
+  the pattern is established) — requested channel name doesn't exist on
+  this source.
+- `invalid_time_range` (400) — `start_time`/`end_time` out of bounds or
+  inverted.
+- `invalid_workspace` (400) — same blank-id validation Phase 1 already has.
+- A request-too-large / point-budget-exceeded case is structurally
+  prevented by `max_points` being a server-enforced ceiling, not a
+  client-trusted value — mirrors the existing upload-size enforcement
+  pattern (client value is a courtesy, server value is authoritative).
+
+**Time-range semantics**: half-open-friendly, inclusive of samples whose
+time falls within `[start_time, end_time]`, exactly matching the clipping
+logic already proven correct in `build_aligned_data()`'s approach (the
+*range-clipping* logic, not its *decimation* algorithm — §3's distinction).
+
+**Channel identity**: by name, consistent with how Phase 1's existing
+`GET .../channels` response already identifies channels — no new
+identity scheme needed.
+
+This is not implementation — the exact error-code strings, response field
+names, and default `max_points` value should be finalized during Phase 2A
+itself, informed by the benchmark plan (§29).
+
+---
+
+### 21. Avoid hidden resampling
+
+Directly addressed by §20's response shape (a `time` array per channel,
+not one shared array) and reaffirmed here as an explicit principle: Phase
+2 must **not** resample multiple selected channels from the same source
+onto a common time grid, even when they happen to share an identical
+native timebase today (COMTRADE's typical case) — doing so silently would
+establish an assumption ("channels share a grid") that Phase 3's
+multi-source work (genuinely different sample rates across sources) would
+then have to either awkwardly preserve or visibly break. Keeping every
+channel's own native time array from day one costs nothing now and avoids
+a future breaking change.
+
+---
+
+### 22. Caching strategy
+
+`[DECISION MODE: ANALYSIS]` — recommend the minimum that gives clear
+benefit, per the task's own instruction against premature complexity:
+
+- **Cache the parsed source arrays**: not really a "cache" so much as the
+  core of §16's proposal itself — the retained `DisturbanceRecord` *is*
+  this, already recommended, not an additional layer.
+- **Cache decimated ranges**: **not recommended for Phase 2A.** Adds real
+  complexity (cache key design around channel-set + range + point-budget,
+  invalidation on source removal) for a benefit that should be measured,
+  not assumed — if range-extraction-plus-decimation against an
+  already-in-memory array proves fast (§29's benchmark plan should
+  confirm or deny this), a per-request cache buys little. Revisit only if
+  benchmarking shows decimation itself (not network/serialization) is the
+  bottleneck.
+- **Cache a full overview representation**: effectively already covered
+  by §20's "omit start/end_time defaults to full record" behavior — no
+  separate precomputed/cached overview object is needed unless repeated
+  full-record requests are measured to be a real cost, which is unlikely
+  given the retained array is already in memory.
+- **Cache per-channel recent viewport data**: same reasoning as decimated
+  ranges above — defer until measured necessary.
+
+**Recommendation**: build nothing beyond §16's retained-array proposal for
+Phase 2A. This keeps the implementation maintainable for a solo developer
+(an explicit stated priority) and matches the project's established
+pattern of not building speculative infrastructure ahead of a
+demonstrated need.
+
+---
+
+### 23. Initial-load UX
+
+Preserves the owner's confirmed Phase 1 preference (DEC-017's underlying
+UAT finding: simple, understandable, comfortable workflow; metadata
+review before deeper interaction) — this flow does not skip or shortcut
+that review step:
+
+```text
+Upload COMTRADE (existing Phase 1 flow, unchanged)
+        ↓
+Review source metadata / channel list (existing Phase 1 flow, unchanged
+  — collapsible Analog/Digital groups, engineering-type subgroups, search)
+        ↓
+Select channel(s) for the waveform workspace (new, §8)
+        ↓
+"Open waveform workspace" (new)
+        ↓
+Initial waveform request: GET .../waveform?channels=...  (no start/end_time
+  → full record, per §20's default; point budget per the established
+  reference constant)
+        ↓
+Waveform renders — zoom/pan available immediately
+```
+
+Nothing about Phase 2 changes the existing upload/metadata screen; it is
+purely additive, entered only once the user has already reviewed metadata
+and explicitly chosen to proceed — exactly preserving the successful
+Phase 1 UX rather than jumping straight to a waveform on upload.
+
+---
+
+### 24. Loading states
+
+- **First waveform load**: a loading indicator matching Phase 1's existing
+  spinner pattern (already used for both upload-parsing and
+  channel-list-loading) — no new visual language needed, reuse what's
+  already UAT'd.
+- **Additional channel load** (adding a channel to an already-open
+  workspace, if Phase 2B supports it): should not block the
+  already-rendered panels — an incremental, per-request loading indicator
+  scoped to the new channel/panel only, not a full-page block.
+- **Zoom-range fetch**: should feel interactive, not "loading" in the
+  traditional sense — a brief, subtle in-panel indicator (not a full
+  spinner takeover) if the request takes long enough to be noticeable;
+  the performance target (§27) is for this to rarely be needed at all.
+  Optimistic local pan (moving the already-rendered points before the
+  fresh higher-resolution data arrives) is **not recommended** as a
+  default — it risks showing engineering data that doesn't yet reflect
+  the true resolution for the new range, which conflicts with §12's core
+  correctness requirement; a brief, honest loading state is safer than an
+  optimistic one that could visually mislead mid-transition.
+- **Failure**: a clear, source-specific error message, following Phase
+  1's established `friendlyErrorMessage()` pattern (map structured error
+  codes to plain-language text) rather than a generic failure banner.
+- **No data**: a channel with zero samples in the requested range (e.g. a
+  very narrow zoom past the record's actual extent) should render an
+  explicit "no data in this range" state, not an empty/blank panel that
+  could be mistaken for a loading or broken state.
+- **Very large range**: bounded structurally by `max_points` (§20) — a
+  "large range" request is never actually large on the wire, since the
+  server always caps the response to the point budget regardless of how
+  wide the requested time range is; no special UX case is needed beyond
+  the general loading indicator.
+
+---
+
+### 25. Error handling
+
+Matches §20's error cases, presented per Phase 1's existing pattern
+(`friendlyErrorMessage()`-style code-to-message mapping, never a raw
+traceback):
+
+| Error | User-facing handling |
+|---|---|
+| Source removed (mid-session, e.g. via `Remove` in another tab) | "This source is no longer available in this workspace." — exact wording already exists in Phase 1's `friendlyErrorMessage()` for `source_not_found`, reusable verbatim |
+| Workspace reset/expired | Same `source_not_found`-style handling; if the *workspace* itself was reset, the waveform view should recognize this and return the user to the empty-workspace state rather than showing a persistent error for a source that will never come back |
+| Invalid channel | "This channel isn't part of this source." — new, mirrors the existing pattern |
+| Invalid time range | "That time range isn't valid for this recording." — new |
+| Request too large / server memory limit | Structurally prevented by server-enforced `max_points` (§20) — if it somehow still occurs (e.g. a future very-high-channel-count multi-select), fall back to the existing `internal_error`/generic-failure pattern rather than a new bespoke message, since this should be rare-to-never by design |
+| Waveform preparation failure (unexpected parse/extraction error) | Generic "Something went wrong preparing this waveform. Please try again." — matches Phase 1's existing `internal_error` pattern; full detail logged server-side only, never returned to the client (established Phase 1 principle, unchanged) |
+
+---
+
+### 26. Performance targets
+
+Practical, not arbitrary — proposed for measurement during Phase 2A
+implementation/UAT, not invented as strict numbers today:
+
+- **Initial visible waveform** should appear quickly (target: comparable
+  to Phase 1's already-observed channel-list load feel — no hard
+  millisecond figure invented here; measure and compare against that
+  existing, already-UAT'd-as-"responsive" baseline) for a representative
+  COMTRADE file (the existing synthetic fixtures, plus a larger
+  non-confidential sample if one becomes available, §29).
+- **Zoom/pan should feel interactive** — the working definition: a
+  user's zoom/pan action should not feel like it's "waiting for a page
+  load"; this is necessarily a UAT judgment (§7's plotting-library
+  prototype is exactly where this gets tested), not a number this
+  analysis can set alone.
+- **Payload should scale with viewport/point budget, not full file
+  size** — this is a structural/architectural guarantee of the
+  recommended design (§4/§20), not a soft target — it should hold by
+  construction, and the benchmark plan (§29) should confirm it does.
+- **Browser should remain responsive with a representative number of
+  traces** — "representative" should be defined from real Phase 1 UAT
+  data: the owner's own example record had 103 analog / 362 digital
+  channels; Phase 2's benchmark should include a realistic *selected*
+  subset (a handful of channels open at once, not all 103+362
+  simultaneously, since nothing in Phase 2's UX proposes opening every
+  channel into the waveform workspace at once).
+
+**What should be measured during implementation/UAT**: time-to-first-render
+for the initial waveform request; time-to-render for a zoom/pan-triggered
+range request; payload size per request at a few representative
+zoom depths; browser memory after opening a representative number of
+panels/channels; backend memory added per retained source (§16's honest
+cost); and the actual behavior of the chosen decimation algorithm (§13)
+against a fixture with a known, deliberately-placed transient, to confirm
+it's never silently dropped (this is also an engineering-correctness
+test, §27, not just a performance one).
+
+---
+
+### 27. Engineering correctness tests
+
+Design (not implement) test coverage for Phase 2A, extending Phase 1's
+established pattern of exact-value parity testing:
+
+- **Waveform values at known indices/times**: a range request for a known
+  time window against the existing synthetic COMTRADE fixtures
+  (`synth_ascii`/`synth_binary`) should return exactly the expected
+  sample values at the expected times — direct extension of the existing
+  parity-testing discipline (`test_comtrade_parity.py`) into the new
+  range-extraction code path.
+- **Range extraction correctness**: requesting `[start_time, end_time]`
+  should return only samples within that window (boundary-inclusive per
+  §20), verified against hand-computed expected indices for the synthetic
+  fixture.
+- **First/last sample**: a full-record request (no `start_time`/
+  `end_time`) should include the record's true first and last sample —
+  an easy off-by-one to introduce in a range-clipping implementation,
+  worth a dedicated test.
+- **Trigger-relative timing**: not applicable to Phase 2A's elapsed-time
+  axis (§11) — defer this test category until/if trigger-relative display
+  is actually built (not currently in Phase 2's scope).
+- **Min/max preservation**: a fixture with a deliberately-placed,
+  narrow (sub-bucket-width) synthetic spike, decimated at a point budget
+  that would collapse it under naive stride sampling — the chosen
+  min/max-envelope algorithm (§13) must still surface that spike's true
+  extreme value in the decimated output. This is the single most
+  important new test category Phase 2A introduces, directly testing the
+  core engineering-safety finding of this whole design pass (§3/§13).
+- **Decimation behavior generally**: point count in the response never
+  exceeds the requested/default `max_points`; a request whose raw sample
+  count is already under the budget returns full resolution unchanged
+  (no decimation artifacts introduced when none are needed).
+- **Zoomed-detail recovery**: a narrower time-range request at the same
+  point budget should return measurably finer time resolution (smaller
+  average inter-sample spacing in the response) than a full-record
+  request — a direct, automatable test of §12's core principle.
+- **Channel ordering**: response channel order matches the request's
+  `channels` parameter order (or another explicit, documented rule) —
+  simple but easy to get accidentally wrong.
+- **Units**: response reflects the same `unit` already established by
+  Phase 1's channel metadata — no unit conversion/mismatch introduced by
+  the waveform endpoint.
+- **Source cleanup during/after waveform use**: extending Phase 1's
+  existing removal/reset test pattern — after `Remove` or `Start new
+  workspace`, a subsequent waveform request for the now-gone source
+  returns `source_not_found`, exactly like the existing metadata
+  endpoints already correctly do; and (per §16/§17) the retained record's
+  memory is actually released, not merely inaccessible (a
+  reference-counting-style test, matching the rigor already applied to
+  Phase 1's `remove_workspace()` — see `test_workspace_registry.py`'s
+  existing pattern).
+
+Reuse `powerwave`'s existing fixtures where authorized: the already-committed
+synthetic fixtures are sufficient for the above; the one previously-used
+real, uncommitted sample (`PTAI_MVLY_relay.CFG`, used for Phase 1's parity
+testing, per the confidentiality note already established) could extend
+coverage to a higher-channel-count scenario if still available locally,
+but this is optional, not required, for Phase 2A's design to proceed.
+
+---
+
+### 28. Performance benchmark plan
+
+Scenarios, using fixtures already available or easily added without new
+confidentiality concerns:
+
+- **Small synthetic COMTRADE** (existing `synth_ascii`/`synth_binary`,
+  40 samples, 3 analog + 2 digital) — establishes a correctness/speed
+  floor; not meaningful for performance conclusions alone given its tiny
+  size, but useful as the fast-running default in CI-style checks.
+- **Medium, higher-sample-count synthetic fixture** (new — a synthetic
+  fixture authored specifically for this benchmark, at a realistic
+  COMTRADE sample rate/duration, e.g. a few thousand to tens of thousands
+  of samples per channel, generated the same way Phase 1's existing
+  synthetic fixtures were, to avoid any confidentiality concern).
+- **High-channel-count fixture** — matching the owner's own Phase 1 UAT
+  example shape (103 analog / 362 digital) as closely as a synthetic
+  fixture reasonably can, to benchmark the "many channels exist on the
+  source, only a few are selected for waveform display" scenario
+  specifically (§8's scope), not "all channels rendered at once" (not a
+  Phase 2 use case).
+- **A larger file approaching the currently-supported 100 MB guidance**
+  — only if a safe, non-confidential fixture can be produced (synthetic
+  generation, scaled up) — this directly closes the existing `[OPEN]` gap
+  noted in [CURRENT_STATE.md](CURRENT_STATE.md#known-blockers) about no
+  measurement having been taken near the real upload ceiling; worth doing
+  as part of Phase 2A specifically because Phase 2A is the point at which
+  that ceiling starts to matter for retained backend memory (§16), not
+  just upload-time memory.
+
+**What to measure**, per scenario: backend parse-and-retain memory
+(confirming/replacing §15's estimate with real numbers); range-extraction
+latency; decimation latency (isolated from extraction, to know which step
+dominates); serialization time and resulting payload size (confirming or
+revising §5's "start with JSON" recommendation); browser render time for
+the initial waveform and for a representative zoom/pan sequence; and
+browser memory after a representative multi-channel selection is open.
+
+---
+
+### 29. Candidate Phase 2 UAT Decisions
+
+Collected from throughout this document, for owner visibility as a single
+list:
+
+- **Plotting library** (§7) — uPlot vs. ECharts, bounded two-prototype
+  trial recommended; Plotly.js as a documented fallback, not part of the
+  bounded trial.
+- **Channel-selection/add interaction** (§8) — checkbox-plus-button vs.
+  per-channel add-button, tested against the existing Phase 1 metadata
+  screen.
+- **Panel layout beyond the Phase 2A minimum** (§9) — custom panels,
+  multi-channel-per-panel by user choice, independent-Y-axis-per-curve —
+  all deferred, worth a UAT pass once Phase 2A's automatic-grouping
+  minimum is in front of the owner and a real opinion can form from
+  actual use rather than abstract description.
+- **Zoom behavior feel** (§26) — whether the chosen architecture's actual
+  zoom/pan responsiveness feels interactive enough in practice; inherently
+  a hands-on judgment, not decidable from this document alone.
+- **Autoscale behavior** (§10) — the recommended shared-scale-per-panel
+  default is offered as `[DECISION MODE: ANALYSIS]`, but if the owner's
+  first hands-on impression during the plotting-library prototype (§7)
+  suggests otherwise, it's cheap to fold into that same trial rather than
+  treating it as fully separate.
+- **Legend layout/placement** — not analyzed in depth in this pass (out
+  of the highest-priority findings); a natural, low-cost addition to
+  whichever plotting-library prototype is run, rather than a
+  separate trial.
+- **Analog grouping presentation on the waveform page itself** (as
+  distinct from the already-decided Phase 1 metadata-screen grouping) —
+  whether panel headers/legends should visually echo the same
+  Voltage/Current/Power/Frequency grouping language, worth confirming
+  feels consistent once a real prototype exists.
+
+---
+
+### 30. Decisions that should be technical, not UAT
+
+Explicitly not burdening the owner with these — all are ordinary
+engineering choices with enough evidence for a confident recommendation:
+
+- **API versioning and resource naming** (§20) — follows the exact
+  pattern Phase 1 already established (`/api/v1/workspaces/{id}/sources/{id}/...`);
+  no new precedent being set.
+- **Source ownership / registry keying** (§17) — extends, doesn't change,
+  the already-approved `(workspace_id, source_id)` model (DEC-012).
+- **Full-resolution backend authority** (§1/§16) — a restatement of a
+  principle already implicit in Phase 1's architecture and in
+  `powerwave`'s own (mostly honored) design; not a new product question.
+- **Lifecycle cleanup mechanics** (§17) — extending the already-correct,
+  already-tested `remove()`/`remove_workspace()` pattern; only the *TTL
+  policy choice* (§18) rises to owner-visible comparison, not the
+  underlying cleanup mechanism itself.
+- **Memory safety / concurrency locking pattern** (§19) — a direct,
+  low-risk extension of Phase 1's existing `threading.Lock` pattern.
+- **Binary-vs-JSON transfer format** (§5) — recommended to start with
+  JSON and revisit only if benchmarking (§28) shows a real cost; this is
+  a measured-engineering decision, not a product preference.
+- **Peak-preservation algorithm choice** (§13) — min/max envelope,
+  recommended on engineering-correctness grounds (protection/disturbance
+  visibility), not a matter of taste.
+
+---
+
+### 31. Recommended Phase 2 implementation slices
+
+`[PROPOSAL]`, sequenced by risk and dependency, following the same
+approach the original discovery audit used for the overall migration
+phases:
+
+```text
+Phase 2A — Retain full-resolution active source + waveform range API
+  Backend only: extend WorkspaceRegistry's stored value (§16/§17),
+  add GET .../waveform (§20) with viewport-aware, min/max-envelope
+  decimation (§3/§13). No frontend chart yet — verified via API
+  tests only (JSON response, inspectable directly), matching Phase
+  1's own backend-first sequencing discipline.
+
+Phase 2B — Single-channel web waveform prototype
+  Frontend: the chosen (or provisionally chosen, pending §7's UAT)
+  plotting library renders one selected analog channel using Phase
+  2A's API. Proves the full pipeline end-to-end for the narrowest
+  possible case. This is the natural point to actually run the
+  bounded plotting-library prototype (§7), since it needs a real
+  API to render against anyway.
+
+Phase 2C — Multi-channel / panel interaction
+  Multiple channels, automatic panel grouping by engineering_type
+  (§9), shared X axis, legend, channel-selection UX (§8) wired to
+  the real workspace metadata screen.
+
+Phase 2D — Digital traces / refinements
+  Digital channel support (§14's transitions-first approach), any
+  UAT findings from 2B/2C folded in (autoscale, legend placement,
+  etc.), TTL mechanism (§18) if the owner has by then decided it's
+  needed before broader UAT exposure.
+```
+
+This sequencing deliberately proves the riskiest new architecture
+(backend array retention + range API, §16 — genuinely new work with no
+existing precedent in either codebase) before spending effort on the
+plotting-library choice (§7 — real work, but lower architectural risk,
+and benefits from having a real API to prototype against rather than
+mocked data).
+
+---
+
+### 32. Recommended first implementation slice — exact scope
+
+```text
+An existing, already-uploaded COMTRADE source (Phase 1, unchanged)
+        ↓
+Backend retains its full-resolution analog waveform data for the
+  life of the workspace (§16/§17 — WorkspaceRegistry extension)
+        ↓
+New endpoint: GET .../sources/{source_id}/waveform?channels=X
+  (§20) — one analog channel, full record range (no start/end_time
+  yet), min/max-envelope decimation (§13) capped at a default
+  max_points
+        ↓
+Verified via backend API tests only (§27's correctness tests) —
+  no frontend chart rendering yet
+```
+
+**Why this slice, not a larger one**: it isolates and proves the single
+riskiest, least-precedented piece of Phase 2 — backend retention of
+full-resolution arrays plus a correct, viewport-aware, peak-preserving
+decimation endpoint — without simultaneously deciding the plotting
+library (§7, genuinely needs its own UAT), the channel-selection UX (§8,
+also UAT-shaped), or the panel model (§9, partly UAT-shaped). This
+mirrors exactly the reasoning the original discovery audit used for
+Phase 1's own first slice: prove the hardest new architectural question
+first, in isolation, before layering UX decisions on top of it.
+
+**Exact scope exclusions for this first slice**:
+- Multi-source synchronization — not touched (Phase 3+).
+- Calculated signals — not touched (Phase 6+).
+- Measurements/cursors — not touched at all, not even minimally (Phase 5).
+- CSV/Excel — not touched (Phase 1.5, separately scoped, still not
+  started).
+- Advanced analysis — not touched (Phase 7).
+- Project persistence — not touched (Phase 8; DEC-015's ephemeral
+  principle is unaffected either way).
+- Authentication — not touched (Phase 9, Milestone 1 exclusion).
+- **Digital signals — explicitly excluded from this first slice** (§8/§14
+  — the transitions-first design needs its own care and shouldn't
+  complicate proving the core array-retention/range-API architecture).
+- Multi-channel selection — the first slice is deliberately **one**
+  channel; Phase 2C, not this slice, adds multiple.
+- Frontend chart rendering — this slice stops at a verified API; Phase 2B
+  is where a browser first renders anything.
+- Zoom/pan UI — depends on Phase 2B's chart existing at all; this slice
+  proves the *API* supports arbitrary range requests (tested directly,
+  not through a UI), not a rendered interactive zoom experience yet.
+
+---
+
+### Closing note on decisions
+
+**No entry was added to DECISIONS.md by this pass.** Every architectural
+direction above — the data-delivery architecture (§4), transfer format
+(§5), plotting library (§7), decimation algorithm (§13), backend memory
+model (§16), and TTL approach (§18) — remains a `[PROPOSAL]` or an item
+under one of the three decision modes (`ANALYSIS`/`COMPARISON`/`UAT`),
+per this task's explicit instruction not to silently approve any of them.
+The one already-true fact recorded elsewhere this pass (Phase 1's final
+UAT having passed) is a completion state, not a new architectural
+decision, and is recorded in [CURRENT_STATE.md](CURRENT_STATE.md) rather
+than here.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping
