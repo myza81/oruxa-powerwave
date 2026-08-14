@@ -6,123 +6,141 @@ history already provides the detailed historical trail.
 
 Last updated: **2026-08-14**
 
-## ✓ Push resolved (2026-08-14, follow-up session)
-
-The `origin` remote's configured SSH URL (`git@github.com:myza81/oruxa-powerwave.git`)
-is still not authenticated in these sandboxed sessions (`Permission denied
-(publickey)`, confirmed again on retry). However, a credential helper made
-**HTTPS write access work** without touching `origin`'s config: pushing
-directly to the explicit URL `https://github.com/myza81/oruxa-powerwave.git`
-(as a one-off push target, not by running `git remote set-url`) succeeded as
-a normal fast-forward push, `7f57c16..b04d7ab`. This was independently
-verified by fetching `main` from that same HTTPS URL into `FETCH_HEAD` (not
-by trusting the local `origin/main` tracking ref, which stays stale since
-`git fetch origin` over SSH still fails) — GitHub's actual `main` branch
-contains `b04d7ab` and all six `docs/project-memory/` files plus the updated
-`CLAUDE.md`/`AGENTS.md`.
-
-**Caveat for the next session**: the local `origin/main` remote-tracking ref
-will read stale (`7f57c16`) until a `git fetch` actually succeeds — don't
-trust `git status -sb`/`origin/main` alone to judge sync state on a machine
-with the same SSH problem. Prefer `git ls-remote` or `git fetch <https-url>`
-against the explicit HTTPS URL to check real GitHub state, same as done here.
-If a future machine has a working SSH key instead, `git fetch origin` will
-work normally and this caveat won't apply there.
-
 ## What was most recently done
 
-Created the shared living project-memory framework in
-`docs/project-memory/`: this file, [README.md](README.md),
-[CURRENT_STATE.md](CURRENT_STATE.md),
-[POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md) (skeleton only),
-[MIGRATION_PLAN.md](MIGRATION_PLAN.md) (high level only), and
-[DECISIONS.md](DECISIONS.md) (seeded with rules already established in
-existing repo documentation). Also updated [CLAUDE.md](../../CLAUDE.md) and
-[AGENTS.md](../../AGENTS.md) to require reading this framework's
-`README.md` before acting on any `oruxa_powerwave` task.
+Completed the full `powerwave` → `oruxa_powerwave` discovery audit and
+wrote it into [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md) (replacing
+the earlier skeleton). This covered: existing `powerwave` architecture,
+`oruxa_powerwave`'s current (still domain-empty) architecture, the file
+import pipeline, the internal data model, session/state management,
+synchronization (including a mid-audit re-verification after `powerwave`'s
+`main` advanced two commits), timestamp/sample-rate handling, calculated
+signals, waveform rendering, measurements/analytics, large-dataset
+behaviour, background processing, test coverage, GUI/domain separation, a
+reuse-candidate classification (A/B/C), a proposed frontend/backend
+boundary, multi-user risks, engineering-integrity risks, architectural
+risks, a migration comparison matrix, proposed migration phases, a
+recommended first implementation slice, nine open questions, and a closing
+recommendation. Everything design/sequencing-oriented is marked
+`[PROPOSAL]`; nothing was written into [DECISIONS.md](DECISIONS.md).
+
+Before that, in the same session: resolved the Git/GitHub sync issues left
+open from the project-memory-setup task (see below) and fast-forwarded the
+local `powerwave` clone from `a5c7289` to `3156392`.
 
 ## What was verified
 
-- Existing repository documentation was read before writing anything new:
-  [CLAUDE.md](../../CLAUDE.md), [AGENTS.md](../../AGENTS.md),
-  [docs/architecture/oruxa-architecture.md](../architecture/oruxa-architecture.md),
-  [docs/development/development-workflow.md](../development/development-workflow.md).
-  No competing/duplicate documentation was found for what this framework
-  provides, so nothing existing was replaced.
-- Current `oruxa_powerwave` backend/frontend/CI/deploy state was inspected
-  directly (not assumed) and is reflected in
-  [CURRENT_STATE.md](CURRENT_STATE.md).
-- No production application code was changed in this task — only
-  documentation (`docs/project-memory/**`) and governance files
-  (`CLAUDE.md`, `AGENTS.md`).
+- Both repositories' Git/GitHub state was checked and reconciled before any
+  discovery work began (see "Git/GitHub sync" below).
+- `powerwave` was re-confirmed at `3156392` before each investigation agent
+  started; agents were instructed to stop and report a discrepancy rather
+  than proceed if the repo wasn't at that commit.
+- A prior investigation pass (from earlier in this session, before the
+  project-memory-setup task) had covered five subsystems at the older
+  commit `a5c7289`. Two of those — session state and synchronization — were
+  directly affected by commit `3156392`'s changes (new
+  `absolute_alignment.py`, `alignment_summary.py`, `viewport_policy.py`,
+  and manifest-persistence changes). Rather than trusting the older
+  findings, a dedicated re-verification pass checked ten specific prior
+  claims one by one against the current code — three turned out to be now
+  inaccurate, two now incomplete, five still accurate. The other three
+  unaffected subsystems (calculated signals, analytics catalog, and most of
+  visualization rendering) were confirmed via `git diff --stat` to be
+  genuinely untouched by the new commits before being carried forward
+  as-is.
+- `oruxa_powerwave`'s own current state (backend/frontend/deploy) was
+  re-confirmed unchanged since an earlier direct inspection, via `git log`
+  on the relevant paths, before being written into the discovery document.
+- No production application code was changed — only documentation
+  (`docs/project-memory/**`).
 
-## What files were changed
+## Git/GitHub sync (resolved this session, method now established)
 
-Created:
-- `docs/project-memory/README.md`
-- `docs/project-memory/CURRENT_STATE.md`
-- `docs/project-memory/POWERWAVE_DISCOVERY.md`
-- `docs/project-memory/MIGRATION_PLAN.md`
-- `docs/project-memory/DECISIONS.md`
-- `docs/project-memory/HANDOFF.md` (this file)
+Both repositories are synced with GitHub and were reconfirmed independently
+(not by trusting locally-cached refs) before discovery began:
+
+- **`oruxa_powerwave`**: `origin`'s configured SSH URL
+  (`git@github.com:myza81/oruxa-powerwave.git`) is still not authenticated
+  in these sandboxed sessions (`Permission denied (publickey)`, confirmed
+  repeatedly). The established, repeatable workaround: push to the
+  **explicit HTTPS URL** (`https://github.com/myza81/oruxa-powerwave.git`)
+  as a one-off push target — this does **not** modify `origin`'s config
+  (never run `git remote set-url`) and a credential helper handles auth
+  silently. Verify success by fetching from that same explicit HTTPS URL
+  into `FETCH_HEAD` and comparing SHAs — **do not trust the local
+  `origin/main` tracking ref**, which stays stale (reads whatever it was at
+  the last successful `git fetch origin`) since SSH fetch still fails here.
+- **`powerwave`**: `origin` is HTTPS already
+  (`https://github.com/myza81/powerwave.git`) and authenticates fine for
+  both fetch and (when needed) fast-forward pull. It was 2 commits behind
+  `origin/main` at the start of this task; fast-forwarded cleanly
+  (`git pull --ff-only`) to `3156392`. The one pre-existing untracked
+  0-byte file (`Make`) was left untouched throughout.
+
+If a future machine has a working SSH key for `oruxa_powerwave`, plain
+`git fetch origin`/`git push origin main` will work normally and the
+HTTPS-workaround caveats above won't apply there — but until then, use the
+explicit-HTTPS-URL method, not `git remote set-url` (which would be an
+unnecessary git-config change).
+
+## What files were changed this session
+
+Created/rewritten:
+- `docs/project-memory/POWERWAVE_DISCOVERY.md` — full discovery findings
+  (was a skeleton).
 
 Modified:
-- `CLAUDE.md` — added mandatory project-memory startup reading rule.
-- `AGENTS.md` — added the equivalent rule, aligned wording.
+- `docs/project-memory/CURRENT_STATE.md` — reflects discovery completion,
+  updated repository-identity/sync notes, updated blockers/next-activity.
+- `docs/project-memory/HANDOFF.md` — this file.
+
+(Earlier in the session, before this task: created the whole
+`docs/project-memory/` framework and modified `CLAUDE.md`/`AGENTS.md` — see
+Git history for that commit if needed; not repeated here per this
+document's own "don't become a diary" rule.)
 
 ## What remains unresolved
 
-- `[OPEN]` **The `powerwave` → `oruxa_powerwave` discovery audit itself is
-  not complete and is not yet reflected in
-  [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md).** A first discovery pass
-  was started earlier in the same session that built this framework (before
-  this framework-setup task was requested): five of seven planned subsystem
-  investigations completed with detailed, citation-backed findings (data
-  model & session state, synchronization architecture, calculated signals,
-  waveform visualization/rendering, analytics/measurement catalog), but two
-  (file import pipeline; background processing, tests, and timestamp/timebase
-  handling) **failed partway through because the account hit its monthly
-  spend limit.** None of that work — completed or failed — has been written
-  into this repository's documentation yet, by design: the task that created
-  this framework explicitly said not to populate detailed `powerwave`
-  findings during framework setup.
-- `[OPEN]` Whether to resume the two failed investigations, redo the whole
-  discovery pass fresh (recommended, so the final `POWERWAVE_DISCOVERY.md` is
-  self-consistent and doesn't mix an old partial pass with a new one), or
-  proceed with only the five completed areas plus a smaller follow-up for the
-  remaining two, is a decision for whoever runs the next discovery session —
-  it depends on available spend-limit headroom at that time.
+- `[OPEN]` Nine open questions from the discovery audit need owner
+  decisions — see "Open Questions" in
+  [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md) for the full list with
+  context. None have been decided; none should be assumed resolved one way
+  or the other.
+- `[OPEN]` No migration phase, frontend/backend boundary, or first
+  implementation slice is approved. All of it is `[PROPOSAL]` in
+  [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md), pending owner review.
 
 ## What should be done next
 
-Per the instructions that created this framework: run the detailed
-`powerwave` → `oruxa_powerwave` discovery audit and populate
-[POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md), one verified section at a
-time, following the finding format already documented there. This was
-deliberately **not** started as part of the framework-setup work.
+Per [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md)'s own closing
+recommendation: the project owner should review the document (especially
+the Open Questions and Proposed Migration Phases sections), record any
+approved direction in [DECISIONS.md](DECISIONS.md), and only then approve a
+first implementation slice. No implementation should start before that.
 
 ## What must not be assumed
 
-- Do not assume [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md) is complete
-  or even started — it is a skeleton only.
-- Do not assume the five subsystem investigations mentioned above under
-  "What remains unresolved" are captured anywhere in this repository — they
-  exist only as prior in-session agent output and have not been transcribed,
-  verified against the finding format, or committed. Treat that prior work as
-  a possible starting point to re-derive from, not as an existing citable
-  record.
-- Do not assume any phase of [MIGRATION_PLAN.md](MIGRATION_PLAN.md) is
-  approved — no phases have been proposed yet, on purpose.
+- Do not assume any `[PROPOSAL]` in
+  [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md) (migration phases,
+  frontend/backend boundary, first slice) is approved — none of it has been
+  transferred into [DECISIONS.md](DECISIONS.md).
+- Do not assume `powerwave` is still at `3156392` by the time you read
+  this — it is actively developed (it advanced twice during this very
+  session). Re-verify against current `HEAD` before relying on specific
+  line numbers or claims from the discovery document for anything beyond
+  general architectural understanding; the document says this about itself
+  too.
 - Do not assume `oruxa_powerwave` must reproduce any specific `powerwave`
   behaviour — see [DECISIONS.md — DEC-001](DECISIONS.md#dec-001--migrate-and-evolve-powerwave-do-not-copy-paste-or-blindly-rewrite-it).
+- Do not trust a locally-cached `origin/main` ref for `oruxa_powerwave` as
+  proof of sync state on a machine with the same SSH problem — see the
+  Git/GitHub sync section above.
 
 ## Owner approval needed before proceeding?
 
-- Not for continuing the discovery audit itself (already the agreed next
-  step).
-- **Yes**, for any implementation work, any architecture/design decision
-  beyond what's already recorded in [DECISIONS.md](DECISIONS.md), and for any
-  change to existing behaviour that appears incorrect or suboptimal — per the
-  change-governance rule in [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md)
-  (Issue, Evidence, Proposed solution, Benefits, Risks, Expected impact,
-  then wait for approval).
+- Not needed to *read* or *discuss* the discovery findings.
+- **Yes**, before recording any `[DECISION]` in
+  [DECISIONS.md](DECISIONS.md), before approving any migration phase, and
+  before any implementation work begins — per the change-governance rule in
+  [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md) and per the
+  discovery document's own closing recommendation.

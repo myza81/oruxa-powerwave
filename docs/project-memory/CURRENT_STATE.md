@@ -15,7 +15,9 @@ authentication, object storage, and Powerwave engineering/domain features."*
 This repository currently contains infrastructure and deployment foundation
 only. No Powerwave engineering/domain functionality (COMTRADE/CSV/Excel
 parsing, waveform models, calculated signals, synchronization, analytics) has
-been introduced yet.
+been introduced yet. The `powerwave` → `oruxa_powerwave` discovery audit is
+now complete (see below) and did not change this — discovery is analysis
+only, no implementation has started.
 
 ## Completed foundation work
 
@@ -62,6 +64,8 @@ been introduced yet.
     — branch/PR/CI/DEV/PROD workflow reference.
   - This project-memory framework (`docs/project-memory/`), created
     2026-08-14.
+  - [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md) — full technical
+    discovery of `powerwave` at commit `3156392`, completed 2026-08-14.
 
 ## Current architecture status
 
@@ -82,9 +86,9 @@ yet — those exist only in the reference `powerwave` desktop application.
   (SSH), branch `main`.
 - `powerwave` (reference desktop app, macOS clone at
   `/Volumes/externalDrive/code-gym/powerwave/`): `https://github.com/myza81/powerwave.git`
-  (HTTPS), branch `main`. Local clone was **2 commits behind `origin/main`**
-  at verification time (`a5c7289..3156392`), with one pre-existing untracked
-  0-byte file (`Make`) — neither was touched.
+  (HTTPS), branch `main`. Fast-forwarded to `3156392` (from `a5c7289`) on
+  2026-08-14 and reconfirmed current with `origin/main` at that commit; one
+  pre-existing untracked 0-byte file (`Make`) remains, still untouched.
 
 These are two distinct GitHub repositories. See
 [README.md — Repository identity](README.md#repository-identity--do-not-confuse-the-two-projects)
@@ -111,39 +115,40 @@ database schema, no authentication, no domain/engineering features.
 
 ## Current approved focus
 
-`[FACT]` Establishing the shared living project-memory framework
-(`docs/project-memory/`) so Claude and Codex, working from either the Windows
-laptop or the Mac mini, share the same project knowledge without depending on
-individual chat/session memory. This document set is that framework.
+`[FACT]` The `powerwave` → `oruxa_powerwave` discovery audit is complete
+(2026-08-14) — see [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md). No
+implementation work is approved yet. The project is now waiting on owner
+review of that document's `[OPEN]` questions and `[PROPOSAL]` migration
+phases before any design decisions get recorded in
+[DECISIONS.md](DECISIONS.md) or any implementation begins.
 
 ## Known blockers
 
-- `[FACT]` The account running the `powerwave` → `oruxa_powerwave` discovery
-  work hit its **monthly spend limit** during the first discovery pass
-  (2026-08-14), causing two of seven planned subsystem investigations (file
-  import pipeline; background processing/tests/timestamp handling) to fail
-  partway through. Five of seven subsystem investigations (data model &
-  session state, synchronization, calculated signals, visualization
-  rendering, analytics/measurement catalog) completed with substantial,
-  citation-backed findings, but those findings have **not yet** been written
-  into [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md) — per the setup
-  instructions for this framework, discovery findings are populated in a
-  dedicated follow-up pass, not during framework setup. `[OPEN]` Resume/retry
-  is blocked until spend limit headroom is available.
 - `[FACT]` The `origin` remote's configured SSH URL for `oruxa_powerwave`
   (`git@github.com:myza81/oruxa-powerwave.git`) is not authenticated in these
-  sandboxed sessions (`Permission denied (publickey)`, confirmed twice on
-  2026-08-14). A follow-up session worked around this by pushing to the
+  sandboxed sessions (`Permission denied (publickey)`, confirmed multiple
+  times on 2026-08-14). The established workaround is pushing to the
   explicit HTTPS URL instead (without changing `origin`'s config) — see
   [HANDOFF.md](HANDOFF.md) for the exact method and the caveat that
   `origin/main`'s local tracking ref stays stale until SSH is actually fixed
-  or a plain `git fetch origin` succeeds.
+  or a plain `git fetch origin` succeeds. This is now a known, repeatable
+  workaround, not an open blocker to future work.
+- `[OPEN]` Nine open questions from the discovery audit need owner decisions
+  before related implementation phases can be approved — see "Open
+  Questions" in [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md) for the
+  full list (spans timing-mode enforcement, COMTRADE discontinuity
+  detection, raw-value traceability, classification-system unification,
+  session persistence format, calculated-signal expression scope,
+  frequency/ROCOF computation scope, the suggestions feature, and
+  authentication/multi-user timing).
 
 ## Next approved activity
 
-`[FACT]` Per the instructions that created this framework: *"Run the
-detailed `powerwave` → `oruxa_powerwave` discovery audit and populate
-POWERWAVE_DISCOVERY.md."* This was explicitly deferred to a separate,
-subsequent task and has not been started as part of this framework-setup
-work (see the blocker above regarding partially-completed prior discovery
-work that is not yet reflected in this repository's documentation).
+`[FACT]` None yet approved beyond discovery. The natural next step —
+per [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md)'s own closing
+recommendation — is for the project owner to review that document's open
+questions and proposed phases, record any approved decisions in
+[DECISIONS.md](DECISIONS.md), and only then approve a first implementation
+slice. `[PROPOSAL]` (not yet approved): the discovery document recommends
+upload → parse → normalize → channel-list API as the first vertical slice,
+deliberately stopping short of waveform rendering.
