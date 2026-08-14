@@ -6,6 +6,20 @@ history already provides the detailed historical trail.
 
 Last updated: **2026-08-14**
 
+## ⚠ Push still needed
+
+This framework was **committed locally** (`992a020`, on `main`, in
+`/Volumes/externalDrive/code-gym/oruxa-powerwave`) but **could not be pushed
+to GitHub** from the session that created it — `git push origin main` failed
+with `Permission denied (publickey)`; this sandbox has no working SSH key for
+`git@github.com:myza81/oruxa-powerwave.git`. Until someone pushes this commit
+from a machine with working GitHub access, **this framework exists on one
+machine only** and the whole point of it (cross-machine, cross-agent shared
+memory) is not yet realized. First thing to do on any machine with GitHub
+access: `git fetch origin && git log origin/main -1` — if it doesn't show
+`992a020` (or a later commit that includes it), pull/push to reconcile before
+anything else.
+
 ## What was most recently done
 
 Created the shared living project-memory framework in
