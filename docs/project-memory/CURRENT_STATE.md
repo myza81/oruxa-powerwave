@@ -349,6 +349,37 @@ accessibility limitation — `role="separator"` + `aria-label` only, not
 `tabindex="0"`/`role="slider"`). **Digital-channel rendering, lane
 drag/reorder, and drag-to-group all remain explicitly not started.**
 
+`[FACT]` **Phase 2C-C2's own manual UAT passed functionally** (100–600px
+bounds accepted as-is), but the owner **observed a bearable, low-priority
+live-resize lag** ("the waveform does not visually follow the panel
+resize immediately... a delay of perhaps a few hundred milliseconds").
+An investigation (**Phase 2C-C2A**, no code-change assumption going in)
+identified the cause and applied one small, low-risk refinement — see
+[MIGRATION_PLAN.md — Phase 2C-C2A Investigation Record](MIGRATION_PLAN.md#phase-2c-c2a--panel-resize-responsiveness-investigation-2026-08-15)
+and the "Update" note appended to
+[DEC-028](DECISIONS.md#dec-028--adjustable-waveform-panel-heights-added-to-all-three-layout-modes-phase-2c-c2)
+(no new decision entry). **Bottleneck identified by code-path tracing**:
+the cheap DOM height write and the expensive `Plotly.Plots.resize()`
+call were bundled inside the same synchronous `requestAnimationFrame`
+callback, so the browser could not paint the panel's new box size until
+Plotly's own redraw finished, every frame during a drag — confirmed
+structurally via jsdom instrumentation with a simulated-cost Plotly mock
+(no real browser was available or installed for this one-off
+diagnostic; real paint-timing/tactile evidence remains for owner UAT).
+**Refinement applied**: the cheap write (`wwSetPanelHeightImmediate`) now
+runs on every raw `pointermove`, decoupled from the still-rAF-coalesced
+`Plotly.Plots.resize()` call (`wwResizePanelPlot`) — the box now
+visually tracks the pointer immediately while Plotly's redraw catches up
+a frame behind, still coalesced to at most once per frame (Plotly call
+counts unchanged, confirmed by test). The 100–600px bounds, independent
+per-panel sizing, the panel-height state model, and all Grouped/
+Separate/Custom/synchronization/theme/crosshair behavior are all
+unchanged — confirmed **zero waveform refetches** and **zero
+synchronization regression**, both by test. No backend file changed
+(278 tests unmodified and passing); 9 new + 23 + 30 + 17 + 16 + 20 + 16
++ 19 + 4 re-verified existing frontend `jsdom` checks passing (154 total
+this pass).
+
 ## Completed foundation work
 
 `[FACT]`, verified against the repository on 2026-08-15:
@@ -494,9 +525,9 @@ drag/reorder, and drag-to-group all remain explicitly not started.**
   2C-B2 — Unified Analog Canvas Layout Implementation Record", "Phase
   2C-B3 — Right-Side Compact Lane Labels Implementation Record", "Phase
   2C-B3A — Overlay Right-Side Lane Labels Implementation Record", "Phase
-  2C-C1 — Custom Analog Channel Groups Implementation Record", and "Phase
-  2C-C2 — Adjustable Waveform Panel Heights Implementation Record"
-  sections).
+  2C-C1 — Custom Analog Channel Groups Implementation Record", "Phase
+  2C-C2 — Adjustable Waveform Panel Heights Implementation Record", and
+  "Phase 2C-C2A — Panel Resize Responsiveness Investigation" sections).
 
 ## Current architecture status
 
@@ -924,11 +955,22 @@ round-tripping back to the same mode without any cross-mode mapping.
 direct lane dragging remain explicitly not started and not authorized** —
 the owner's own choice to defer them in favor of Custom Groups and then
 panel resize, along with Proportional Y scaling, mixed-unit handling,
-digital channels, and shared crosshair. The next step is for the project
-owner to review Phase 2C-C2 via live DEV UAT and either request
-refinements, authorize the drag/reorder work directly, or move on to
-digital channels (the owner's own stated next area after this
-refinement). Separately, resolving the
+digital channels, and shared crosshair. Phase 2C-C2's own manual UAT
+passed functionally (100–600px accepted as-is), with one bearable,
+low-priority observation — a slight live-resize lag — and the owner's
+preference for a fix only if low-cost/low-risk led to a focused
+investigation, **now complete (Phase 2C-C2A)**: see
+[MIGRATION_PLAN.md — Phase 2C-C2A Investigation Record](MIGRATION_PLAN.md#phase-2c-c2a--panel-resize-responsiveness-investigation-2026-08-15).
+A small refinement was found justified and applied — decoupling the
+cheap DOM height write (now immediate, every pointermove) from the
+still-coalesced, comparatively expensive `Plotly.Plots.resize()` call —
+with zero change to the 100–600px bounds, the state model, or any
+Grouped/Separate/Custom/synchronization behavior (all reconfirmed by
+test). The next step is for the project owner to review both Phase
+2C-C2 and this responsiveness refinement via live DEV UAT and either
+request further refinement, authorize the drag/reorder work directly,
+or move on to digital channels (the owner's own stated next area).
+Separately, resolving the
 abandoned-session TTL question (`[DECISION MODE: COMPARISON]`, reassessed
 but not resolved by Phase 2C-A/B1 — neither changes the backend memory-
 retention shape) and the ~100 MB real-file memory validation remain

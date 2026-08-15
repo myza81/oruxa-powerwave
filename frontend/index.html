@@ -2137,27 +2137,58 @@
             wwWirePanelRelayout(panel);
         }
 
-        // Phase 2C-C2: applies a new height to ONE panel only -- other
-        // panels are never touched (section 5: independent per-panel
-        // sizing, no automatic resizing of siblings). Persists into
-        // ww.panelHeights immediately (not just on drag-end) so a live
-        // in-progress drag is already the authoritative state, matching
-        // this task's own "responsive live resizing" requirement.
-        // Plotly.Plots.resize() is the supported, minimal Plotly API for
-        // "the container size changed, redraw to fit it" -- it does NOT
-        // touch trace data, the X/time range, or the Y range, so viewport/
-        // zoom state survives untouched (section 7/9). Guarded by
-        // panel.plotlyReady so a resize that lands after the panel (or the
-        // whole workspace) was torn down mid-drag safely no-ops instead of
-        // erroring against a purged chart element.
-        function wwSetPanelHeight(panel, height) {
+        // Phase 2C-C2A investigation finding: the browser cannot paint a
+        // new container height until the CURRENT synchronous unit of work
+        // returns control -- so bundling the (cheap) DOM height write and
+        // the (comparatively expensive) Plotly.Plots.resize() call inside
+        // the same rAF callback made the visible box wait on Plotly's own
+        // redraw every frame, even though the write itself is instant.
+        // Confirmed structurally (jsdom instrumentation with a simulated
+        // slow Plotly.Plots.resize): the DOM write was never observable
+        // until Plotly's call had already finished. Splitting the two
+        // apart -- cheap write applied on every pointermove, expensive
+        // Plotly call still coalesced to at most once per animation frame
+        // -- lets the box visually track the pointer immediately while the
+        // waveform itself catches up a frame behind, the same "container
+        // leads, content catches up" pattern this phase's own instructions
+        // named as the preferred approach where safely achievable.
+        //
+        // wwSetPanelHeightImmediate: the CHEAP half -- clamp, store,
+        // write the inline style. No Plotly call. Safe and correct to run
+        // on every raw pointermove; a bare style write does not force
+        // synchronous layout on its own (only reading a layout-dependent
+        // property like getBoundingClientRect() would).
+        function wwSetPanelHeightImmediate(panel, height) {
             const clamped = wwClampPanelHeight(height);
             panel.height = clamped;
             panel.chartEl.style.height = clamped + "px";
             ww.panelHeights.set(panel.groupKey, clamped);
+            return clamped;
+        }
+
+        // wwResizePanelPlot: the EXPENSIVE half, applies to ONE panel only
+        // (section 8 -- dragging one panel never resizes any other panel's
+        // Plotly instance). Plotly.Plots.resize() is the supported,
+        // minimal Plotly API for "the container size changed, redraw to
+        // fit it" -- it does NOT touch trace data, the X/time range, or
+        // the Y range, so viewport/zoom state survives untouched (section
+        // 7/9 of the original Phase 2C-C2 task). Guarded by
+        // panel.plotlyReady so a resize that lands after the panel (or the
+        // whole workspace) was torn down mid-drag safely no-ops instead of
+        // erroring against a purged chart element.
+        function wwResizePanelPlot(panel) {
             if (panel.plotlyReady && window.Plotly && Plotly.Plots && typeof Plotly.Plots.resize === "function") {
                 Plotly.Plots.resize(panel.chartEl);
             }
+        }
+
+        // wwSetPanelHeight: both halves together, atomically -- used only
+        // where an immediate, guaranteed-in-sync-with-Plotly result is
+        // required (the final write on pointerup, below).
+        function wwSetPanelHeight(panel, height) {
+            const clamped = wwSetPanelHeightImmediate(panel, height);
+            wwResizePanelPlot(panel);
+            return clamped;
         }
 
         // Phase 2C-C2: the vertical resize-handle drag. Uses Pointer
@@ -2168,33 +2199,31 @@
         // to leak; move/up handlers are added on pointerdown and removed
         // on pointerup/pointercancel, every time.
         //
-        // Performance (section 18): raw pointermove events can fire far
-        // more often than the display can usefully redraw. Each move only
-        // records the latest pending height and schedules (at most) one
-        // requestAnimationFrame callback; if several pointermoves land
-        // inside the same frame, only the last one's height is ever
-        // applied, coalescing the (comparatively expensive)
-        // Plotly.Plots.resize() call to at most once per frame.
+        // Performance (section 18, refined in Phase 2C-C2A): raw
+        // pointermove events can fire far more often than the display can
+        // usefully redraw. Each move applies the cheap height write
+        // IMMEDIATELY (so the box always tracks the pointer at native
+        // paint rate) and separately schedules (at most one)
+        // requestAnimationFrame callback that performs only the expensive
+        // Plotly.Plots.resize() call -- if several pointermoves land
+        // inside the same frame, Plotly is still only asked to redraw
+        // once for that frame, exactly as before.
         function wwWireResizeHandle(panel) {
             const handle = panel.resizeHandleEl;
             if (!handle) return;
             let dragStartY = 0;
             let dragStartHeight = 0;
             let rafId = null;
-            let pendingHeight = null;
 
-            function flush() {
+            function flushPlotlyResize() {
                 rafId = null;
-                if (pendingHeight === null) return;
-                const height = pendingHeight;
-                pendingHeight = null;
-                wwSetPanelHeight(panel, height);
+                wwResizePanelPlot(panel);
             }
 
             function onPointerMove(event) {
                 const delta = event.clientY - dragStartY;
-                pendingHeight = dragStartHeight + delta;
-                if (rafId === null) rafId = requestAnimationFrame(flush);
+                wwSetPanelHeightImmediate(panel, dragStartHeight + delta);
+                if (rafId === null) rafId = requestAnimationFrame(flushPlotlyResize);
             }
 
             function endDrag(event) {
@@ -2210,9 +2239,9 @@
                     rafId = null;
                 }
                 // Authoritative final write -- guarantees the committed
-                // height exactly matches where the pointer actually ended,
-                // regardless of whether the last scheduled frame had
-                // already run.
+                // height AND the Plotly-rendered content exactly match
+                // where the pointer actually ended, regardless of whether
+                // the last scheduled frame had already run.
                 const delta = event.clientY - dragStartY;
                 wwSetPanelHeight(panel, dragStartHeight + delta);
             }

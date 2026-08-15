@@ -5700,6 +5700,268 @@ task's own §21.
 
 ---
 
+## Phase 2C-C2A — Panel Resize Responsiveness Investigation (2026-08-15)
+
+`[FACT]` throughout. An investigation-first task into a specific
+owner-observed performance characteristic of Phase 2C-C2 (adjustable
+panel heights), resulting in one small, low-risk refinement. **Digital
+channels, lane reorder, drag-to-group, and every other Phase 2C-C2
+scope exclusion remain untouched by this pass.**
+
+### Owner UAT baseline (Phase 2C-C2)
+
+The owner's manual UAT of Phase 2C-C2 **passed functionally**: resize
+works correctly in Grouped, Separate, and Custom modes; the resize
+handle feels natural enough; the 100px minimum and 600px maximum are
+both accepted as-is (**unchanged by this pass**). The owner separately
+**observed** that during live dragging, the waveform does not visually
+follow the panel resize immediately — a delay of perhaps a few hundred
+milliseconds, judged bearable, with a preference for better
+responsiveness only if the fix is low-cost and low-risk.
+
+### Investigation — current resize path
+
+Traced exactly, by direct code reading (`wwWireResizeHandle`/
+`wwSetPanelHeight` as shipped in Phase 2C-C2): every `pointermove`
+computed a pending height and scheduled (at most one) `requestAnimation
+Frame` callback; that callback's ONLY job was `wwSetPanelHeight()`, which
+performed BOTH the cheap DOM step (clamp, store, `panel.chartEl.style.
+height = ...px`) AND the expensive step (`Plotly.Plots.resize(panel.
+chartEl)`) as two synchronous statements inside the same function call.
+
+### Bottleneck
+
+**The two steps being bundled inside one synchronous rAF callback is the
+bottleneck** — not `requestAnimationFrame` scheduling itself (a
+near-zero-cost browser primitive), not excessive Plotly call counts (already
+correctly coalesced to at most once per frame), and not any redundant
+legend/axis/layout work (confirmed by code inspection: `wwSetPanelHeight`
+calls nothing beyond the clamp/store/style-write and
+`Plotly.Plots.resize()` — no `wwRenderLegend`, `wwBuildLayout`, or
+`wwUpdateBottomLaneAxis` call anywhere in the resize path). A browser
+cannot paint a DOM change until the current synchronous unit of JavaScript
+returns control to it. Because the cheap height write and the expensive
+Plotly redraw were both inside the SAME synchronous callback, the
+browser's paint of the panel's new box size was gated on Plotly's own
+(potentially tens-of-milliseconds) redraw finishing first, every single
+animation frame during a drag — exactly the "wait for Plotly before the
+box visually follows" pattern this task's own §7 asked to check for, and
+exactly what produces the observed lag.
+
+**Investigation questions A–I, answered directly**:
+- A (pointer → state/height calc): trivial, O(1) arithmetic, not a
+  contributor.
+- B (state → CSS height write): a bare `style.height` write; does not by
+  itself force synchronous layout (only reading a layout-dependent
+  property like `getBoundingClientRect()` would) — not a contributor on
+  its own.
+- C (CSS write → layout/reflow): the write itself is lazy/batched by the
+  browser; the actual forced-layout cost is triggered by Plotly's own
+  internal work when it reads the container's computed size, not by our
+  write.
+- D/E (`Plotly.Plots.resize()` execution / SVG/WebGL redraw): the
+  confirmed bottleneck — real cost, inherent to redrawing a chart's axes/
+  traces at a new size, and outside this codebase's control.
+- F (rAF scheduling cost): negligible; not a contributor.
+- G (unnecessary resize of other panels): **not present** — confirmed by
+  code inspection, `wwSetPanelHeight`/`wwResizePanelPlot` only ever
+  operate on the single `panel` argument passed to them; there is no loop
+  over `ww.panels` anywhere in the resize path.
+- H (expensive axis/legend/layout work triggered per frame): none beyond
+  what `Plotly.Plots.resize()` itself inherently does (recomputing axis
+  tick layout for the new size is part of "resize," not an avoidable
+  extra cost stacked on top).
+- I (cost vs. panel count — 2 Grouped / 6 Separate / 3 Custom): **cost is
+  independent of total panel count**, confirmed structurally — each
+  panel's resize handle is wired with its own closured state
+  (`wwWireResizeHandle(panel)`), and a drag on one panel's handle only
+  ever calls `wwResizePanelPlot`/`wwSetPanelHeightImmediate` on that same
+  panel object, regardless of how many other panels exist.
+
+### Measurements
+
+**This sandbox has no real browser** (no Chromium/Chrome-CLI binary, and
+installing Playwright/Puppeteer was judged disproportionate for a
+one-off diagnostic — a new heavy dependency footprint for a single
+investigation). Real frame-paint timing, actual `Plotly.Plots.resize()`
+millisecond cost on real chart data, and genuine tactile "does it feel
+smoother" evidence **cannot** be produced here and remain for owner
+manual UAT, exactly as this task's own §11/§16 anticipates.
+
+What **was** measured, precisely, with jsdom + a simulated-cost Plotly
+mock (`resize_lag_measure.mjs`, scratch instrumentation, not committed):
+using a synchronous "busy-wait" mock standing in for `Plotly.Plots.
+resize()`'s real cost (tested at 0ms, 20ms, and 50ms simulated cost) and
+an external poller observing exactly when `panel.chartEl.style.height`
+became externally observable relative to the mock's own start/end
+timestamps (`performance.now()`), across a simulated 5-move drag
+gesture:
+
+- **Before this pass's fix**: every observed DOM height-write timestamp
+  was numerically identical (within measurement noise) to that same
+  cycle's Plotly-resize-**end** timestamp — e.g. write at 22.3ms vs.
+  Plotly end at 22.3ms; write at 45.1ms vs. Plotly end at 45.0ms. The
+  height change was never externally observable until Plotly's
+  (simulated) work had already finished.
+- **After this pass's fix**: the same measurement showed the height
+  write becoming observable measurably *before* the corresponding
+  Plotly resize call even *started* (e.g. write at 23.7ms vs. Plotly
+  start at 24.9ms), consistently across all three simulated cost levels,
+  with the gap holding steady (~1.2–1.3ms, the minimal JS-scheduling
+  overhead between the pointermove handler and the next macrotask) — a
+  structural proof that the DOM change is decoupled from Plotly's work,
+  not proof of a specific real-world millisecond improvement.
+- Plotly resize call counts were identical before/after (6 calls for a
+  5-move-plus-pointerup drag in the measurement script) — confirming the
+  fix does not increase how often the expensive operation runs.
+- Network requests: **zero**, before and after, confirmed by the existing
+  and new test suites (see Tests below) — resizing remains
+  presentation-only.
+
+### Options evaluated
+
+- **Option A** (immediate container height, decoupled/coalesced Plotly
+  call): this is what was implemented — see Decision below.
+- **Option B** (rAF only for the expensive Plotly call, cheap state/DOM
+  immediate): functionally the same mechanism as Option A for this
+  codebase's specific structure; implemented.
+- **Option C** (continuous height + controlled-cadence Plotly + one final
+  resize on pointerup): considered and rejected as unnecessary
+  additional complexity — Option A/B's simple "immediate write, rAF-
+  coalesced Plotly call, authoritative final write on pointerup" already
+  achieves the same practical effect (Plotly redraws at most once per
+  frame during the drag, plus one guaranteed-correct final call) without
+  introducing a separate cadence/timer concept.
+- **Option D** (a more appropriate Plotly resize/relayout API): none
+  found — `Plotly.Plots.resize()` is already the correct, minimal,
+  official API for "container size changed, redraw to fit it"; no
+  Plotly-internal manipulation was considered or used.
+
+### Decision
+
+**A. LOW-COST REFINEMENT JUSTIFIED.** Checked against every bullet of
+this task's own §6 cost/benefit rule: the change is small and
+understandable (splitting one function into an immediate cheap half and
+a coalesced expensive half, ~15 lines net); no custom rendering engine;
+no brittle Plotly internals (still only the same official
+`Plotly.Plots.resize()` call, same call sites conceptually); no
+synchronization regression (the shared-viewport/zoom/pan mechanism is
+untouched — resizing was and remains a fully disjoint code path); no
+waveform refetch (confirmed zero, before and after); no additional state
+complexity of consequence (one existing function split into two, no new
+state field); and a likely meaningful improvement to perceived
+responsiveness, since removing an expensive synchronous call from the
+browser's per-frame paint-blocking path is a well-established technique
+for exactly this class of problem — confirmed structurally here (not
+merely asserted) via the decoupling measurement above.
+
+### Implementation
+
+`wwSetPanelHeight(panel, height)` (the original, doing both the cheap
+write and the expensive Plotly call together) was split into:
+
+- **`wwSetPanelHeightImmediate(panel, height)`** — clamp, store
+  `panel.height`, write `panel.chartEl.style.height`, update
+  `ww.panelHeights`. No Plotly call. Now invoked on **every** raw
+  `pointermove`, not gated behind `requestAnimationFrame` at all (safe:
+  a bare style write does not itself force synchronous layout).
+- **`wwResizePanelPlot(panel)`** — the `Plotly.Plots.resize()` call only,
+  with the same `panel.plotlyReady` guard as before. Still invoked from
+  inside the `requestAnimationFrame` callback, still coalesced to at
+  most once per animation frame regardless of how many raw pointermoves
+  land inside that frame — **identical coalescing behavior to Phase
+  2C-C2**, confirmed by test (Plotly call counts unchanged).
+- **`wwSetPanelHeight(panel, height)`** — retained as the combination of
+  both, used only for the authoritative final write on `pointerup`/
+  `pointercancel` (unchanged from Phase 2C-C2: guarantees the committed
+  height and the Plotly-rendered content exactly match where the pointer
+  ended, regardless of whether the last scheduled frame had already run).
+
+`wwWireResizeHandle()`'s `onPointerMove` now calls
+`wwSetPanelHeightImmediate()` directly (every move) and separately
+schedules `wwResizePanelPlot()` via `requestAnimationFrame` (still at
+most once per frame) — replacing the old `pendingHeight` variable/
+`flush()` pattern, which no longer needs to track a pending height value
+at all since the DOM write already happened synchronously; the scheduled
+callback's only remaining job is "resize Plotly once."
+
+**Preserved exactly, unchanged**: the 100px minimum / 600px maximum
+clamping (still applied inside `wwClampPanelHeight`, called from the same
+place); independent per-panel sizing (still one closured handler per
+panel, still only ever touches its own panel); Grouped/Separate/Custom
+mode behavior; the panel-height state model (`ww.panelHeights`, keyed by
+`groupKey`); zoom/pan synchronization, shared viewport, Reset Time View,
+Autoscale Y, theme behavior, crosshair, overlay labels, and Custom
+Groups behavior — none of these functions were touched at all. The
+waveform API and point-budget logic are untouched; no backend file was
+modified.
+
+### Zero-refetch verification
+
+Confirmed by test, before and after: a full resize drag (single-panel
+and multi-move variants) issues **zero** `/waveform` requests. This was
+true before this pass and remains true after — resizing (in both its
+old and new internal structure) never calls any of the fetch-issuing
+functions (`wwFetchChannelRange`/`wwLoadChannelRange`/
+`wwApplyAndFetchViewport`).
+
+### Synchronization regression
+
+**None.** The shared-viewport broadcast mechanism (`wwWirePanelRelayout`,
+`wwBroadcastViewportDebounced`, `panel.suppressNext`) is a completely
+separate code path from the resize handle's own pointer-event wiring;
+neither `wwSetPanelHeightImmediate` nor `wwResizePanelPlot` reads or
+writes `ww.viewport` or any panel's `suppressNext` flag. Verified
+directly by the full existing Phase 2C-C2 suite (which includes explicit
+"zoom/pan after resizing still synchronizes correctly" checks),
+re-run unmodified against the patched code and still passing in full.
+
+### Tests
+
+- **Backend: 278 tests, unmodified, all passing** — zero backend files
+  touched; no backend change was needed or made.
+- **Frontend, new: 9 scripted `jsdom` checks, all passing**
+  (`phase2cc2a_check.mjs`, a new one-off script, same established
+  pattern) — covering this task's own §10 list specific to what changed:
+  the DOM height write is now observable synchronously on every raw
+  `pointermove` (not gated behind a tick/rAF wait); `Plotly.Plots.resize`
+  remains coalesced (far fewer calls than raw pointermoves, not 1:1);
+  the final Plotly resize call is always against the exact final
+  committed height; `pointercancel` performs exactly one final resize
+  and leaves no stale/late rAF-driven resize call; a subsequent drag
+  after a cancelled one still works correctly; the 100px minimum and
+  600px maximum are both still enforced, applied synchronously on the
+  move itself; only the dragged panel is ever resized; and a full drag
+  still causes zero waveform fetches.
+- **Frontend, existing: the full Phase 2C-C2 (23), Phase 2C-C1 (30),
+  Phase 2C-B3A (17), Phase 2C-B3 (16), Phase 2C-B2 (20), Phase 2C-B1
+  (16), Phase 2C-A (19), and Phase 1 (4) suites were all re-run
+  unmodified against this pass's code and all still pass in full** —
+  145 existing checks, zero regressions. 154 total frontend checks this
+  pass.
+
+### Files changed
+
+Modified only: `frontend/index.html`. No new files, no `backend/` file,
+no CI/deployment workflow file, no other frontend file.
+
+### Honest limitation
+
+This sandboxed session has no real browser, and none was installed for
+this investigation (judged disproportionate — a new heavy dependency for
+a single diagnostic). The decoupling mechanism is proven structurally
+(jsdom instrumentation with a simulated-cost Plotly mock, at multiple
+simulated cost levels), which is strong evidence the fix addresses the
+correct mechanism, but the actual felt improvement — whether the drag
+now genuinely feels smoother, whether there is any visible momentary
+divergence between the box's edge and the waveform's own rendered edge
+during a fast drag, and whether that reads as acceptable "catch-up" or
+as a distracting flicker — was **not** and **cannot** be confirmed here.
+This remains explicitly for the owner's own manual UAT, per this task's
+own §11.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

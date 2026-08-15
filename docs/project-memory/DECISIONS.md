@@ -1685,6 +1685,35 @@ Impact:
   and backend layout persistence remain explicitly not started and not
   authorized by this decision.**
 
+**Update (2026-08-15, Phase 2C-C2A, same day)**: the owner's manual UAT
+of this decision's own implementation passed functionally (100–600px
+bounds accepted as-is, unchanged), but observed a bearable, low-priority
+live-resize lag. An investigation (code-path tracing plus jsdom
+instrumentation with a simulated-cost Plotly mock, at multiple simulated
+cost levels — no real browser was available or installed for this
+one-off diagnostic) identified the cause: the cheap DOM height write and
+the expensive `Plotly.Plots.resize()` call were bundled inside the same
+synchronous `requestAnimationFrame` callback, so the browser could not
+paint the panel's new size until Plotly's own redraw had finished, every
+frame during a drag. A small, low-risk refinement was judged justified
+against this decision's own established cost/benefit bar and
+implemented: the cheap write (`wwSetPanelHeightImmediate`) now runs on
+every raw `pointermove`, decoupled from the still-rAF-coalesced
+`Plotly.Plots.resize()` call (`wwResizePanelPlot`) — confirmed
+structurally to decouple the two (the height change becomes externally
+observable before the corresponding Plotly call even starts, instead of
+being indistinguishable from its finish time). Plotly call counts,
+zero-refetch behavior, the 100–600px bounds, per-panel independence, and
+all Grouped/Separate/Custom/synchronization/theme/crosshair behavior are
+all unchanged and reconfirmed by test. This is a refinement of the same
+resize-performance concern this decision already covers, not a new
+architectural direction — no new decision entry was added, per
+governance. See
+[MIGRATION_PLAN.md — Phase 2C-C2A Investigation Record](MIGRATION_PLAN.md#phase-2c-c2a--panel-resize-responsiveness-investigation-2026-08-15).
+Real-browser tactile confirmation of the improvement remains for owner
+manual UAT — the jsdom evidence proves the mechanism was fixed, not the
+felt result.
+
 ---
 
 ## How to add a decision

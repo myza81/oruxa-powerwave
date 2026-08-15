@@ -8,6 +8,91 @@ Last updated: **2026-08-15**
 
 ## What was most recently done
 
+**Phase 2C-C2A — Panel Resize Responsiveness Investigation.** The
+owner's manual UAT of Phase 2C-C2 (adjustable panel heights) **passed
+functionally** — resize works correctly in Grouped/Separate/Custom, the
+handle feels natural enough, and the 100px minimum / 600px maximum are
+both accepted as-is (**unchanged by this pass**). The owner separately
+**observed** that during live dragging, the waveform does not visually
+follow the panel resize immediately — a delay of perhaps a few hundred
+milliseconds, judged bearable, with a preference for better
+responsiveness only if low-cost/low-risk. This task was explicitly
+**investigate first, do not assume an optimization is needed**. Full
+detail:
+[MIGRATION_PLAN.md — Phase 2C-C2A Investigation Record](MIGRATION_PLAN.md#phase-2c-c2a--panel-resize-responsiveness-investigation-2026-08-15),
+[DECISIONS.md — DEC-028 Update note](DECISIONS.md#dec-028--adjustable-waveform-panel-heights-added-to-all-three-layout-modes-phase-2c-c2)
+(no new decision entry — a refinement of the same resize-performance
+concern DEC-028 already covers, per governance).
+
+**Bottleneck identified, by direct code-path tracing**: Phase 2C-C2's
+`wwSetPanelHeight()` performed the cheap DOM height write AND the
+expensive `Plotly.Plots.resize()` call as two synchronous statements
+inside the SAME `requestAnimationFrame` callback. A browser cannot paint
+a DOM change until the current synchronous unit of JS returns control —
+so the panel's new box size was gated on Plotly's own redraw finishing
+first, every frame during a drag. Confirmed **structurally** (this
+sandbox has no real browser; installing Playwright/Puppeteer for a
+one-off diagnostic was judged disproportionate) via jsdom instrumentation
+with a simulated-cost Plotly mock (tested at 0ms/20ms/50ms simulated
+cost): before the fix, every observed DOM height-write timestamp was
+numerically identical to that cycle's Plotly-resize-*end* timestamp —
+the height change was never externally observable until Plotly's
+(simulated) work had already finished.
+
+**Investigation questions A–I** (this task's own list) were answered
+directly by code inspection: rAF scheduling itself is not a contributor
+(near-zero-cost browser primitive); no redundant legend/axis/layout work
+is triggered beyond what `Plotly.Plots.resize()` itself inherently does;
+**dragging one panel already only ever resized that one panel** (no loop
+over `ww.panels` anywhere in the resize path — confirmed, not a bug);
+and per-frame cost is structurally independent of total panel count
+(each panel's resize handle has its own closured state).
+
+**Decision: A. LOW-COST REFINEMENT JUSTIFIED**, checked against every
+bullet of DEC-028's own cost/benefit rule (small/understandable change;
+no custom rendering engine; no brittle Plotly internals; no
+synchronization regression; no waveform refetch; no added state
+complexity of consequence; likely meaningful improvement, confirmed
+structurally not just asserted).
+
+**What was built**: `wwSetPanelHeight()` split into
+`wwSetPanelHeightImmediate()` (clamp/store/write the CSS height only —
+now called on **every** raw `pointermove`, not gated behind rAF at all,
+since a bare style write doesn't itself force synchronous layout) and
+`wwResizePanelPlot()` (the `Plotly.Plots.resize()` call only — still
+invoked from inside `requestAnimationFrame`, still coalesced to at most
+once per frame regardless of raw pointermove frequency, **identical
+coalescing behavior to before**, confirmed by test that Plotly call
+counts are unchanged). `wwSetPanelHeight()` itself is retained as the
+combination of both, used only for the authoritative final write on
+`pointerup`/`pointercancel` (unchanged contract from Phase 2C-C2). Verified
+by re-running the same jsdom measurement after the fix: the DOM height
+write now becomes observable measurably *before* the corresponding
+Plotly resize call even starts, at every simulated cost level tested.
+
+**Preserved exactly, unchanged, reconfirmed by test**: 100px minimum /
+600px maximum clamping; independent per-panel sizing; Grouped/Separate/
+Custom mode behavior; the panel-height state model (`ww.panelHeights`,
+keyed by `groupKey`); zoom/pan synchronization; shared viewport; Reset
+Time View; Autoscale Y; theme behavior; crosshair; overlay labels;
+Custom Groups behavior; the waveform API. **Zero waveform refetches**
+during resizing, before and after this change.
+
+**Backend**: zero files changed — no backend change was needed or made.
+
+**Tests**: 278 backend (unmodified) + 9 new frontend `jsdom` checks
+(`phase2cc2a_check.mjs`) + the full existing Phase 2C-C2 (23), Phase
+2C-C1 (30), Phase 2C-B3A (17), Phase 2C-B3 (16), Phase 2C-B2 (20), Phase
+2C-B1 (16), Phase 2C-A (19), and Phase 1 (4) suites all re-run
+unmodified and still passing (154 total this pass, no regressions).
+**Real-browser tactile confirmation of the improvement — whether the
+drag genuinely feels smoother, and whether any momentary divergence
+between the box's edge and the waveform's own rendered edge is visible
+during a fast drag — was NOT and cannot be confirmed in this sandboxed
+session; this remains explicitly for the owner's own manual UAT.**
+
+## What was done in the prior session (Phase 2C-C2 — Adjustable Waveform Panel Heights)
+
 **Phase 2C-C2 — Adjustable Waveform Panel Heights.** The owner completed
 manual UAT of Phase 2C-C1 Custom Groups: **PASSED** — "the workflow is
 smooth and easy to understand." Before moving on to digital channels, the
@@ -918,7 +1003,49 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified (this pass — Phase 2C-C2 adjustable waveform panel heights)
+## What was verified (this pass — Phase 2C-C2A panel resize responsiveness)
+
+- `oruxa_powerwave` git state: local `main` confirmed identical to
+  `origin/main` at commit `7b2d433` (independent `git fetch` via the
+  established HTTPS-URL workaround), working tree clean, before this
+  pass began.
+- **Backend regression: 278 tests, unmodified, all still pass** (fresh
+  venv run) — zero backend files in the diff (`git diff --stat -- backend/`
+  empty; diff scoped to `frontend/index.html` only).
+- **Investigation instrumentation (scratch, not committed)**: a jsdom
+  script (`resize_lag_measure.mjs`) with a simulated-cost
+  `Plotly.Plots.resize` mock (busy-wait, tested at 0ms/20ms/50ms), run
+  BEFORE the code change to confirm the bottleneck (DOM height-write
+  timestamps identical to Plotly-resize-end timestamps) and AFTER to
+  confirm the fix (DOM height-write timestamps measurably earlier than
+  the corresponding Plotly-resize-start timestamps), at every simulated
+  cost level.
+- **Frontend, new: 9 scripted `jsdom` checks, all passing**
+  (`phase2cc2a_check.mjs`) — the DOM height write is now observable
+  synchronously on every raw `pointermove` (not gated behind a tick/rAF
+  wait); `Plotly.Plots.resize` remains coalesced (far fewer calls than
+  raw pointermoves); the final Plotly resize call is always against the
+  exact final committed height; `pointercancel` performs exactly one
+  final resize and leaves no stale/late resize call; a subsequent drag
+  after a cancelled one still works; the 100px minimum and 600px maximum
+  are both still enforced synchronously; only the dragged panel is ever
+  resized; a full drag still causes zero waveform fetches.
+- **Frontend, existing: the full Phase 2C-C2 (23), Phase 2C-C1 (30),
+  Phase 2C-B3A (17), Phase 2C-B3 (16), Phase 2C-B2 (20), Phase 2C-B1
+  (16), Phase 2C-A (19), and Phase 1 (4) suites were all re-run
+  unmodified against this pass's code and all still pass in full** — 145
+  existing checks, zero regressions (154 total this pass).
+- `node --check` on `frontend/index.html`'s inline `<script>` block —
+  syntactically valid.
+- No real-browser/visual or tactile confirmation of the actual felt
+  improvement was performed in this sandboxed session (no headless
+  browser available; installing one — Playwright/Puppeteer — was judged
+  disproportionate for a single diagnostic) — see "Live DEV verification"
+  in this task's final report for what was checked instead, and its own
+  explicit statement about what's honestly unverified. Final tactile
+  judgment remains the owner's own manual UAT.
+
+## What was verified (prior pass — Phase 2C-C2 adjustable waveform panel heights)
 
 - `oruxa_powerwave` git state: local `main` confirmed identical to
   `origin/main` at commit `91bb0fc` (independent `git fetch` via the
@@ -1496,7 +1623,24 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 2C-C2 adjustable waveform panel heights)
+## What files were changed this session (Phase 2C-C2A panel resize responsiveness)
+
+Modified only: `frontend/index.html` (`wwSetPanelHeight()` split into
+`wwSetPanelHeightImmediate()` — the cheap DOM-only write, now called on
+every raw `pointermove` — and `wwResizePanelPlot()` — the
+`Plotly.Plots.resize()` call only, still `requestAnimationFrame`-
+coalesced; `wwSetPanelHeight()` itself retained as their combination,
+used only for the authoritative final write on `pointerup`/
+`pointercancel`; `wwWireResizeHandle()`'s `onPointerMove`/`flush` updated
+accordingly (the old `pendingHeight` variable is gone — the DOM write no
+longer needs to wait for a scheduled frame); module header comments
+updated), `docs/project-memory/{DECISIONS,MIGRATION_PLAN,CURRENT_STATE,
+HANDOFF}.md` (an "Update" note appended to DEC-028, no new decision
+entry; this work). No new files. **No `frontend/waveform-prototype.html`/
+`theme.css`/`theme.js` change, no `backend/` file, no CI/deployment
+workflow file was touched.**
+
+## What files were changed in the prior session (Phase 2C-C2 adjustable waveform panel heights)
 
 Modified only: `frontend/index.html` (`WW_MIN_PANEL_HEIGHT`/
 `WW_MAX_PANEL_HEIGHT`/`WW_DEFAULT_PANEL_HEIGHT` constants; a
@@ -1799,73 +1943,78 @@ Modified:
 See "GitHub persistence" and "DEV deployment" in this task's final report
 (delivered in-conversation) for the exact commit hash, push confirmation,
 independent-fetch verification, GitHub Actions run, and live-endpoint
-checks for this Phase 2C-C2 pass. **Production was not touched.**
+checks for this Phase 2C-C2A pass. **Production was not touched.**
 
 ## What remains unresolved
 
 - `[OPEN]`, **direct vertical drag/reorder of panels and drag-to-overlay/
   group by direct lane dragging are still fully unimplemented and
   undecided** — `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`,
-  not `[DECISION]`. This pass (Phase 2C-C2, DEC-028) added adjustable
-  panel heights, but the owner's own explicit choice across both this
-  pass and the prior one was to defer drag/reorder in favor of Custom
-  Groups and then panel resize — it remains the owner's stated *possible*
-  next direction, not started, not abandoned.
+  not `[DECISION]`. Neither this pass (Phase 2C-C2A, a performance
+  refinement of already-shipped panel resize) nor the prior one touched
+  this — it remains the owner's stated *possible* next direction, not
+  started, not abandoned.
 - `[OPEN]`, unchanged: Proportional Y scaling, mixed-unit panel handling,
   digital-channel display, shared crosshair — every one of these remains
-  `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`. **Panel resize
-  is no longer on this list — it is now implemented (Phase 2C-C2).**
+  `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`.
 - `[OPEN]` **Unchanged, still real**: abandoned-workspace cleanup still
   has no automatic expiry/TTL. `[DECISION MODE: COMPARISON]` — none of
   Phase 2C-A, Phase 2C-B1, Phase 2C-B2, Phase 2C-B3, Phase 2C-B3A, Phase
-  2C-C1, or Phase 2C-C2 changes the backend memory-retention shape (still
-  per-*source*, DEC-019, unaffected by how many panels/channels, which
-  layout mode, which grouping, or which panel heights a UI displays
-  against it), but a real, now-more-flexible multi-channel workspace
-  (Custom groups, adjustable heights) is plausibly a richer, longer-lived
-  thing to explore than Phase 2B's single-channel preview was, which
-  raises (not resolves) the same urgency already flagged for Phase
-  2A/2B/2C-A/2C-B1/2C-B2/2C-B3/2C-B3A/2C-C1. See
+  2C-C1, Phase 2C-C2, or Phase 2C-C2A changes the backend memory-
+  retention shape (still per-*source*, DEC-019), which raises (not
+  resolves) the same urgency already flagged for every prior Phase 2C
+  pass. See
   [MIGRATION_PLAN.md's Phase 2C §30](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15)
   and DEC-019's Impact section.
 - `[OPEN]`, unchanged: digital waveform handling (still not built,
-  explicitly the owner's own stated next area after this pass); the
-  ~100 MB real-file memory ceiling (still not directly measured); and
-  everything else already listed in
+  explicitly the owner's own stated next area); the ~100 MB real-file
+  memory ceiling (still not directly measured); and everything else
+  already listed in
   [CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers).
-- `[OPEN]`, new this pass: **keyboard resizing of panel heights was not
-  implemented** — documented honestly (§19 of this task's own
-  instructions permitted deferring it "unless trivial"; it was judged
-  non-trivial). A future slice could add `tabindex="0"` +
-  `role="slider"` + arrow-key handling without restructuring anything
-  built this pass.
+- `[OPEN]`, unchanged from Phase 2C-C2: keyboard resizing of panel
+  heights was not implemented (documented accessibility limitation,
+  untouched by this investigation pass).
 - **Carried over from Phase 2C-A's own manual UAT, deliberately not
   addressed this pass**: a small amount of interaction latency, judged
   currently bearable; and vertical (Y-axis) zoom being less intuitive
   than the rest of the toolbar — both explicitly flagged for a **later**
   UX refinement pass, not this one.
-- **Unchanged from Phase 2C-A/B1/B2/B3/B3A/C1**: real-browser rendering
-  responsiveness and actual tactile/visual quality (whether the resize
-  drag genuinely feels direct/discoverable/subtle to a human hand) were
-  not confirmed in this sandboxed, no-real-browser session — see this
-  task's final report for the API/structural-level DEV evidence gathered
-  instead. Final tactile/visual judgment remains the owner's own manual
-  UAT.
+- **New this pass — explicitly unverifiable in this sandbox**: whether
+  the resize-responsiveness refinement genuinely *feels* smoother to a
+  human hand, and whether any momentary divergence between the box's
+  edge and the waveform's own rendered edge is visible/distracting during
+  a fast drag. The decoupling mechanism was proven structurally (jsdom
+  instrumentation with a simulated-cost Plotly mock); the felt result was
+  not and cannot be confirmed here. This is the primary thing the next
+  owner UAT should specifically compare against the pre-Phase-2C-C2A
+  build.
+- **Unchanged from Phase 2C-A/B1/B2/B3/B3A/C1/C2**: real-browser
+  rendering responsiveness and actual tactile/visual quality generally
+  were not confirmed in this sandboxed, no-real-browser session — see
+  this task's final report for the structural/code-level evidence
+  gathered instead.
 
 ## What should be done next
 
-The next step is for the **project owner** to review Phase 2C-C2 via live
-DEV UAT (this task's own checklist) and choose a direction — none is
-assumed here: (a) confirm panel resizing works and feels right, or
-request refinements (handle feel, height bounds, keyboard support); (b)
-authorize the drag/reorder/overlay/split work directly (still the
-owner's own possible next direction, deliberately set aside across this
-pass and the prior one, not abandoned); or (c) move on to digital
-channels, the owner's own explicitly stated next area once panel resizing
-was requested ("before digital channels..."). Do **not** begin any
-drag/reorder/overlay or digital-channel implementation without an
-explicit signal — this task's own closing instruction was to stop after
-panel resizing. Separately, resolving the abandoned-session TTL question
+The next step is for the **project owner** to review Phase 2C-C2A via
+live DEV UAT (this task's own checklist) and confirm whether the resize
+drag now feels noticeably smoother than before, with no visible
+waveform distortion/flicker during the drag — this is a targeted,
+narrow-scope UAT (compare the SAME resize interaction already
+functionally accepted, just checking whether it now feels better), not a
+re-review of Phase 2C-C2's own already-accepted functionality/bounds. If
+the owner confirms improvement: no further action needed on this specific
+item. If the owner still finds it laggy, or finds the new decoupled
+behavior introduces any visible box/waveform divergence during fast
+drags, report back for a further look — do **not** assume either
+outcome. Separately, the owner may still choose to: (a) authorize the
+drag/reorder/overlay/split work directly (still the owner's own possible
+next direction, deliberately set aside across three passes now, not
+abandoned); or (b) move on to digital channels (the owner's own
+explicitly stated next area). Do **not** begin any drag/reorder/overlay
+or digital-channel implementation without an explicit signal — this
+task's own closing instruction was to stop after the responsiveness
+investigation. Separately, resolving the abandoned-session TTL question
 and the ~100 MB real-file memory validation remain recommended before
 broader/prolonged shared-DEV UAT, unchanged conclusion from every prior
 Phase 2 pass.
@@ -1909,6 +2058,20 @@ Phase 2 pass.
 - **Do not assume panel resizing supports keyboard input** — it does not
   this slice (documented accessibility limitation, DEC-028); the handle
   is `tabindex="-1"` and pointer/touch-drag only.
+- **Do not assume the Phase 2C-C2A responsiveness refinement changed the
+  100–600px height bounds, the panel-height state model, Plotly call
+  COUNTS, or any Grouped/Separate/Custom/synchronization behavior** — it
+  did not; only the ORDER/coupling of the existing DOM-write and
+  Plotly-resize steps changed (the DOM write moved off the rAF gate; the
+  Plotly call is still coalesced to at most once per frame, same as
+  before). Confirmed by test that Plotly resize call counts are
+  unchanged.
+- **Do not claim the resize drag now "feels smoother" as a confirmed
+  fact** — the decoupling mechanism was proven structurally via jsdom
+  instrumentation with a simulated-cost Plotly mock, not via real
+  browser paint timing or tactile testing (neither is available in this
+  sandbox, and no browser-automation tool was installed to attempt it).
+  This remains explicitly for owner manual UAT.
 - **Do not assume the unified-canvas refinement changed the panel/layout
   data model or the Y-axis behavior** — it did not; `ww.panels` (displayed
   channels + panel membership + panel order) is byte-for-byte the same
@@ -1986,9 +2149,12 @@ Phase 2 pass.
 ## Owner approval needed before proceeding?
 
 - Not needed to review or use Phase 2C-A, Phase 2C-B1, Phase 2C-B2, Phase
-  2C-B3, Phase 2C-B3A, Phase 2C-C1, or Phase 2C-C2 themselves — already
-  implemented, deployed to DEV, and live-verified per this exact task's
-  own authorization.
+  2C-B3, Phase 2C-B3A, Phase 2C-C1, Phase 2C-C2, or Phase 2C-C2A
+  themselves — already implemented, deployed to DEV, and live-verified
+  per this exact task's own authorization. **Recommended, though**: a
+  quick owner UAT specifically comparing resize-drag feel before/after
+  Phase 2C-C2A, since the felt improvement could not be confirmed in
+  this sandbox.
 - **Yes**, before any drag/reorder/overlay/split work begins (still the
   owner's own possible next direction, deliberately set aside across
   this pass and the prior one in favor of Custom Groups and panel
