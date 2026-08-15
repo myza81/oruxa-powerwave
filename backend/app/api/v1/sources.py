@@ -1,8 +1,14 @@
-"""Phase 1 COMTRADE source/channel API.
+"""Phase 1/2A COMTRADE source/channel/waveform API.
 
 Domain-oriented, versioned, and deliberately small -- see
 docs/project-memory/MIGRATION_PLAN.md Sec 7 (API contract) and Sec 8
-(response-size discipline: no waveform arrays are ever returned).
+(response-size discipline). The source/channel endpoints (upload, list,
+get, delete, channels) never return waveform arrays, exactly as Phase 1
+established. The Phase 2A addition, GET .../waveform, is the one
+deliberate exception -- and even there, the response is always bounded
+(full-resolution only when the requested range's raw sample count is
+already <= the request's point_budget; a peak-preserving display
+representation otherwise) -- see app.services.waveform_service.
 
 Upload interaction note (docs/project-memory/MIGRATION_PLAN.md Sec 16,
 this phase's UAT candidate list): this endpoint takes two explicit named
@@ -17,13 +23,15 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 
 from app.config import Settings
-from app.domain.source import SourceMetadata
+from app.domain.source import ActiveSource
 from app.schemas.source import ErrorOut, SourceChannelsOut, SourceSummaryOut
+from app.schemas.waveform import WaveformRangeOut
 from app.services.errors import ImportServiceError
 from app.services.import_service import import_comtrade_source
+from app.services.waveform_service import DEFAULT_POINT_BUDGET, extract_waveform_range
 from app.services.workspace_registry import WorkspaceRegistry
 
 logger = logging.getLogger(__name__)
@@ -39,6 +47,9 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "upload_too_large": status.HTTP_413_CONTENT_TOO_LARGE,
     "invalid_workspace": status.HTTP_400_BAD_REQUEST,
     "source_not_found": status.HTTP_404_NOT_FOUND,
+    "channel_not_found": status.HTTP_404_NOT_FOUND,
+    "channel_not_analog": status.HTTP_400_BAD_REQUEST,
+    "invalid_time_range": status.HTTP_400_BAD_REQUEST,
     "internal_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
@@ -110,12 +121,12 @@ def list_sources(
 ) -> list[SourceSummaryOut]:
     workspace_id = _validate_workspace_id(workspace_id)
     sources = registry.list_for_workspace(workspace_id)
-    return [SourceSummaryOut.from_domain(s) for s in sources]
+    return [SourceSummaryOut.from_domain(s.metadata) for s in sources]
 
 
-def _get_or_404(registry: WorkspaceRegistry, workspace_id: str, source_id: str) -> SourceMetadata:
-    source = registry.get(workspace_id, source_id)
-    if source is None:
+def _get_or_404(registry: WorkspaceRegistry, workspace_id: str, source_id: str) -> ActiveSource:
+    active = registry.get(workspace_id, source_id)
+    if active is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=ErrorOut(
@@ -123,7 +134,7 @@ def _get_or_404(registry: WorkspaceRegistry, workspace_id: str, source_id: str) 
                 message=f"No source '{source_id}' in workspace '{workspace_id}'.",
             ).model_dump(),
         )
-    return source
+    return active
 
 
 @router.get("/{source_id}", response_model=SourceSummaryOut)
@@ -133,8 +144,8 @@ def get_source(
     registry: WorkspaceRegistry = Depends(get_workspace_registry),
 ) -> SourceSummaryOut:
     workspace_id = _validate_workspace_id(workspace_id)
-    source = _get_or_404(registry, workspace_id, source_id)
-    return SourceSummaryOut.from_domain(source)
+    active = _get_or_404(registry, workspace_id, source_id)
+    return SourceSummaryOut.from_domain(active.metadata)
 
 
 @router.get("/{source_id}/channels", response_model=SourceChannelsOut)
@@ -144,8 +155,59 @@ def get_source_channels(
     registry: WorkspaceRegistry = Depends(get_workspace_registry),
 ) -> SourceChannelsOut:
     workspace_id = _validate_workspace_id(workspace_id)
-    source = _get_or_404(registry, workspace_id, source_id)
-    return SourceChannelsOut.from_domain(source)
+    active = _get_or_404(registry, workspace_id, source_id)
+    return SourceChannelsOut.from_domain(active.metadata)
+
+
+@router.get("/{source_id}/waveform", response_model=WaveformRangeOut)
+def get_source_waveform(
+    workspace_id: str,
+    source_id: str,
+    channel_name: str = Query(..., description="Analog channel name, as returned by GET .../channels."),
+    start_time: float | None = Query(
+        None, description="Elapsed seconds on the source's native time axis. Omit for the record start."
+    ),
+    end_time: float | None = Query(
+        None, description="Elapsed seconds on the source's native time axis. Omit for the record end."
+    ),
+    point_budget: int = Query(
+        DEFAULT_POINT_BUDGET,
+        gt=0,
+        description=(
+            "Display-response budget, not an engineering-resolution setting. "
+            "If the requested range has <= point_budget raw samples, the full-resolution "
+            "range is returned unchanged; otherwise a peak-preserving min/max envelope is "
+            "returned instead -- see app.domain.waveform_reduction."
+        ),
+    ),
+    registry: WorkspaceRegistry = Depends(get_workspace_registry),
+) -> WaveformRangeOut:
+    """Phase 2A waveform range endpoint -- see docs/project-memory/MIGRATION_PLAN.md's
+    Phase 2A implementation record for the full API contract and its rationale.
+
+    Analog channels only in Phase 2A (digital waveform delivery is
+    deliberately deferred -- see app.services.errors.ChannelNotAnalogError).
+    """
+    workspace_id = _validate_workspace_id(workspace_id)
+    active = _get_or_404(registry, workspace_id, source_id)
+    try:
+        result = extract_waveform_range(
+            active,
+            channel_name=channel_name,
+            start_time=start_time,
+            end_time=end_time,
+            point_budget=point_budget,
+        )
+    except ImportServiceError as exc:
+        logger.info(
+            "Waveform range request rejected (%s) for workspace %s source %s: %s",
+            exc.code,
+            workspace_id,
+            source_id,
+            exc.message,
+        )
+        raise _http_error(exc) from exc
+    return WaveformRangeOut.from_result(result)
 
 
 @router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT)

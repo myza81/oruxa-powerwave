@@ -4,9 +4,53 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-08-14**
+Last updated: **2026-08-15**
 
 ## What was most recently done
+
+**Phase 2A — Waveform Data Foundation** (backend only). Following the
+Phase 2 discovery/design pass (summarized below), the owner authorized
+implementing exactly the first recommended vertical slice: retain each
+imported source's full-resolution `DisturbanceRecord` in the active
+workspace, and add one bounded waveform range endpoint for a single analog
+channel. **No chart library, no frontend rendering, no digital-channel
+waveform delivery, no Phase 2B/2C/2D work** — see
+[MIGRATION_PLAN.md — Phase 2A Implementation Record](MIGRATION_PLAN.md#phase-2a--waveform-data-foundation-implementation-record-2026-08-15)
+and [DECISIONS.md — DEC-019](DECISIONS.md#dec-019--phase-2a-retains-the-full-resolution-disturbancerecord-in-the-active-workspace)
+for full detail; summarized here for continuation purposes.
+
+**What was built**: `ActiveSource` (`app/domain/source.py`) pairs the
+existing lightweight `SourceMetadata` with the authoritative
+`DisturbanceRecord`; `WorkspaceRegistry` now stores `ActiveSource`
+(keying/locking/cleanup methods unchanged — `remove()`/`remove_workspace()`
+already correctly release whatever's stored per `(workspace_id,
+source_id)`); `app/domain/waveform_reduction.py` implements a
+peak-preserving min/max envelope (equal-count buckets, chronological
+output, guaranteed true first/last sample, deterministic, never mutates
+its input) — deliberately **not** `powerwave`'s own plain-stride
+decimator; `app/services/waveform_service.py` does exact time-range
+extraction (boundary-inclusive, `searchsorted`-based) then applies that
+reduction only when the range exceeds the request's `point_budget`;
+`GET /api/v1/workspaces/{workspace_id}/sources/{source_id}/waveform`
+(added to the existing `app/api/v1/sources.py` router) exposes it as JSON.
+
+**What was verified**: 278 backend tests pass (227 unchanged + 51 new),
+including the mandatory synthetic-spike regression test (proves plain
+stride sampling misses a narrow transient that the new algorithm
+preserves), zoom-fidelity tests (narrower requests reveal genuinely finer
+data, and a sufficiently narrow range returns true full-resolution
+samples again), and lifecycle tests including a weakref-based proof that
+`Remove`/whole-workspace-DELETE actually release the retained record's
+memory, not just make it API-inaccessible. Measured (not assumed)
+performance/memory across four synthetic scenarios up to 2,000,000
+samples: range extraction is sub-millisecond at every scale tested;
+reduction to a 4000-point budget stays under 8 ms even at 2M samples;
+JSON payload for a reduced response stays ~110-120 KB regardless of
+record size, versus 61 MB if full resolution were returned for one
+channel at the largest scale tested — directly confirming why the
+range-request architecture was recommended.
+
+## What was done in the prior session (Phase 2 discovery/design)
 
 **Phase 2 waveform-workspace discovery and design** — the project owner
 confirmed Phase 1 has passed its final UAT and is complete, then requested
@@ -119,7 +163,33 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified (this pass — Phase 2 design)
+## What was verified (this pass — Phase 2A implementation)
+
+- `oruxa_powerwave` git state: local `main` confirmed identical to
+  `origin/main` (independent `git fetch`), working tree clean, before and
+  after this pass.
+- All 227 previously-passing backend tests still pass **unmodified in
+  behaviour** — only `tests/test_workspace_registry.py`'s fixture helper
+  needed a mechanical update (build `ActiveSource` instead of a bare
+  `SourceMetadata`); every assertion it made before still holds.
+  `tests/test_comtrade_parity.py`/`test_comtrade_provider.py` (parser
+  correctness) were touched by nothing this pass and still pass.
+- **278 total backend tests pass** — see "What was most recently done"
+  above for the breakdown; re-verified from a clean venv
+  (`pip install -r requirements-dev.txt && pytest`).
+- Performance/memory measured via a one-off, uncommitted benchmark script
+  against synthetic (non-confidential) data at four scales up to 2M
+  samples — see the Phase 2A Implementation Record's tables. Not measured:
+  an actual ~100 MB real COMTRADE file through the real parser (still
+  `[OPEN]`, now partially informed by a precisely measured
+  file-to-parsed-memory expansion ratio instead of a pure guess).
+- Manually confirmed (via `app.openapi()`'s paths, not raw `app.routes` —
+  FastAPI's internal route representation makes the latter show an opaque
+  wrapper object, a known quirk from Phase 1's own final report) that all
+  6 endpoints register correctly, including the new
+  `GET .../sources/{source_id}/waveform`.
+
+## What was verified (prior pass — Phase 2 design)
 
 - `oruxa_powerwave` git state: local `main` confirmed identical to
   `origin/main` (independent `git fetch`), working tree clean, before and
@@ -212,7 +282,45 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 2 design)
+## What files were changed this session (Phase 2A implementation)
+
+New: `backend/app/domain/waveform_reduction.py`,
+`backend/app/services/waveform_service.py`,
+`backend/app/schemas/waveform.py`,
+`backend/tests/test_waveform_reduction.py`,
+`backend/tests/test_waveform_service.py`,
+`backend/tests/test_waveform_api.py`.
+
+Modified: `backend/app/domain/source.py` (new `ActiveSource`),
+`backend/app/domain/__init__.py`,
+`backend/app/domain/disturbance_record.py` (docstring correction — see
+below),
+`backend/app/services/workspace_registry.py` (stored-value type widened
+from `SourceMetadata` to `ActiveSource`; keying/locking/cleanup logic
+itself unchanged; docstrings corrected),
+`backend/app/services/import_service.py` (builds/stores `ActiveSource`
+instead of discarding the parsed record; docstring corrected),
+`backend/app/services/errors.py` (3 new error classes, shared base class
+docstring broadened),
+`backend/app/api/v1/sources.py` (new waveform endpoint; existing
+endpoints' internals updated to unwrap `.metadata` — their
+request/response contracts are unchanged),
+`backend/tests/test_workspace_registry.py` (fixture helper builds
+`ActiveSource`),
+`docs/project-memory/{DECISIONS,MIGRATION_PLAN,CURRENT_STATE,HANDOFF}.md`
+(this work — DEC-019 added).
+
+**Stale-docstring corrections, not silent rewrites** (per the project's
+own conflict-resolution rule): `app/domain/disturbance_record.py` and
+`app/services/import_service.py`'s module docstrings both used to state
+the `DisturbanceRecord` is discarded after upload — both now explain the
+Phase 2A change and point to DEC-019, rather than leaving the old,
+now-false claim in place uncorrected.
+
+No `backend/app/providers/*`, `backend/app/main.py`, `frontend/*`, or CI/
+deployment file was touched.
+
+## What files were changed in the prior session (Phase 2 design)
 
 Modified (documentation only — no application code):
 - `docs/project-memory/MIGRATION_PLAN.md` — new "Phase 2 — Waveform
@@ -285,77 +393,86 @@ Modified:
 
 ## GitHub / deployment status
 
-**This pass: documentation only, no deployment.** See "GitHub persistence"
-in this task's final report (delivered in-conversation) for the exact
-commit hash, push confirmation, and independent-fetch verification. No
-GitHub Actions deployment was triggered — there is no application code
-change to deploy. The DEV/PROD environments are unchanged from the
-workspace-reset fix's deployment (prior session): DEV running commit
-`39ed240`; PROD still the pre-Phase-1 placeholder.
-
-For the prior session's actual deployment record (commit, GitHub Actions
-run, live-endpoint verification): committed and pushed to `main`, deployed
-to DEV via the existing "Deploy Powerwave" `workflow_dispatch`
-(`target=dev`). **Production was not touched.**
+See "GitHub persistence" (and "DEV deployment," if applicable) in this
+task's final report (delivered in-conversation) for the exact commit
+hash, push confirmation, and independent-fetch verification for the
+Phase 2A implementation. **Whether this pass was deployed to DEV depends
+on what the final report states** — Phase 2A has no user-facing chart
+yet, so deployment was optional (backend-only verification is sufficient
+to prove the slice); check the final report's own "DEV deployment"
+section rather than assuming either way. **Production was not touched**
+regardless.
 
 ## What remains unresolved
 
-- `[OPEN]` **Reassessed this pass, not newly created**: abandoned-workspace
-  cleanup (browser tab closed, network lost, or the user never clicks
-  `Remove`/`Start new workspace` at all) still has no automatic
-  expiry/TTL. This was already an `[OPEN]` item after the workspace-reset
-  fix; this pass's Phase 2 design work concluded it becomes **materially
-  more important** once full-resolution waveform arrays (not just
-  lightweight metadata) are retained per source — see
-  [MIGRATION_PLAN.md §18](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14),
-  `[DECISION MODE: COMPARISON]`, not resolved by this pass.
-- `[OPEN]`, new this pass, by design (not an oversight): every Phase 2
-  architectural question — data-delivery approach, transfer format,
-  plotting library, decimation algorithm, backend memory-retention model
-  — is deliberately left as a `[PROPOSAL]` or explicit decision-mode item,
-  per this task's own instruction not to silently approve any of them. See
-  [MIGRATION_PLAN.md §29/§30](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14)
-  for the full UAT-vs-technical decision split.
-- Otherwise unchanged from before this pass — see
+- `[OPEN]` **Materially more urgent now, still not resolved**:
+  abandoned-workspace cleanup (browser tab closed, network lost, or the
+  user never clicks `Remove`/`Start new workspace`) still has no automatic
+  expiry/TTL. Phase 2A's own memory measurements (up to 176 MB retained
+  per source in the largest synthetic scenario tested) make this a real,
+  not theoretical, concern for any prolonged or shared-DEV waveform UAT.
+  `[DECISION MODE: COMPARISON]` — see
+  [MIGRATION_PLAN.md §18](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14)
+  and DEC-019's Impact section. Deliberately not solved this pass (Phase
+  2A's scope was explicit-reset correctness, not TTL).
+- `[OPEN]`, unchanged, by design: plotting library, channel-selection/add
+  interaction, panel layout, drag/reorder panel UX, and digital waveform
+  handling remain `[UAT]`/`[PROPOSAL]` — Phase 2A deliberately did not
+  touch any of them. See
+  [MIGRATION_PLAN.md §29/§30/§37](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14).
+- `[OPEN]`, partially informed this pass: the ~100 MB real-file memory
+  ceiling still hasn't been measured against an actual near-100 MB
+  COMTRADE file — Phase 2A's benchmark used synthetic data at comparable
+  sample counts and established a precise parsed-memory expansion ratio
+  (4x for analog, 8x for digital) that narrows the estimate, but doesn't
+  replace a direct measurement.
+- Otherwise unchanged — see
   [CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers):
-  disk-free upload/parse (not solved, judged disproportionate), no
-  measurement near the real ~100 MB ceiling, long-term persistence
-  architecture (Phase 8), the discovery engineering-improvement findings,
-  and whether to commit richer real-event parity fixtures.
+  disk-free upload/parse (not solved, judged disproportionate), long-term
+  persistence architecture (Phase 8), the discovery engineering-improvement
+  findings, and whether to commit richer real-event parity fixtures.
 
 ## What should be done next
 
-Per this task's explicit closing instruction: **stop after the
-discovery/design stage**. Do not begin Phase 2 implementation (no waveform
-API, no chart library dependency, no backend array-retention change, no
-frontend rendering) without explicit owner approval. Do not begin Phase
-1.5, synchronization, calculated signals, advanced analysis, persistence
-redesign, or authentication. The owner should review the Phase 2 design
-proposal in [MIGRATION_PLAN.md](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14)
-— particularly the `[DECISION MODE: COMPARISON]` items (data-delivery
-architecture, TTL approach) and `[DECISION MODE: UAT]` items (plotting
-library, channel-selection interaction) — and decide what to approve
-before Phase 2A begins.
+Per this task's explicit closing instruction: **stop after Phase 2A**. Do
+not begin Phase 2B (chart library, frontend rendering, channel-selection
+UX, panel model) without explicit owner approval. Do not begin Phase 1.5,
+synchronization, calculated signals, digital waveform delivery, advanced
+analysis, persistence redesign, or authentication. The owner should
+review Phase 2A (the new endpoint, its 51 new tests, and its measured
+memory/performance numbers in the Phase 2A Implementation Record) and
+decide: proceed to Phase 2B; resolve the TTL question first
+(`[DECISION MODE: COMPARISON]`); and/or schedule the bounded
+plotting-library UAT prototype (`[DECISION MODE: UAT]`) described in the
+Phase 2 design section.
 
 ## What must not be assumed
 
-- **Do not assume any Phase 2 architecture decision has been made** — the
-  data-delivery approach, transfer format, plotting library, decimation
-  algorithm, and backend memory model are all `[PROPOSAL]`s awaiting
-  owner review, not approved direction. `DECISIONS.md` was deliberately
-  not touched this pass.
-- Do not assume `powerwave`'s own decimation algorithm (`build_aligned_data()`
-  + `decimate_for_display()`) is suitable for reuse — it's confirmed plain
-  nth-point stride sampling, not peak-preserving; the Phase 2 design
-  explicitly recommends a different (min/max-envelope) algorithm instead.
+- **Do not assume Phase 2B (or any later Phase 2 slice) is authorized** —
+  only Phase 2A (backend waveform data foundation) has been approved and
+  built (DEC-019). Chart library, frontend rendering, channel-selection
+  UX, and panel model remain unbuilt `[PROPOSAL]`/`[UAT]` items.
+- Do not assume the retained `DisturbanceRecord` is decimated/reduced
+  before being stored — it is not; `ActiveSource.record` is always the
+  exact, unmodified, full-resolution parse output. Only a *response* to a
+  range request may be reduced, and only when requested range's raw
+  sample count exceeds the request's `point_budget`.
+- Do not assume `powerwave`'s own decimation algorithm
+  (`build_aligned_data()` + `decimate_for_display()`) was reused — it
+  wasn't; it's confirmed plain nth-point stride sampling, not
+  peak-preserving, and `app/domain/waveform_reduction.py` implements a
+  different (min/max-envelope) algorithm instead.
+- Do not assume the waveform endpoint serves digital channels — it
+  explicitly rejects a digital channel name with `channel_not_analog`;
+  digital waveform delivery is deferred, by design, not an oversight.
 - Do not assume `Start new workspace` is a client-only UUID rotation — it
   is a real, backend-enforced whole-workspace reset (DEC-018): it calls
   `DELETE /api/v1/workspaces/{workspace_id}` and only rotates the local id
-  after that call succeeds.
+  after that call succeeds, and (since Phase 2A) that DELETE now also
+  releases each source's retained full-resolution record.
 - Do not assume abandoned-session cleanup (tab closed without clicking
-  anything) is solved — it is explicitly not; only the *explicit*
-  `Start new workspace` action triggers cleanup. No TTL/expiry exists yet
-  (see "What remains unresolved" above for why this now matters more).
+  anything) is solved — it is explicitly not, and matters more now (see
+  "What remains unresolved" above).
 - Do not assume the COMTRADE upload interaction is still open for UAT — it
   is decided (DEC-017): two explicit slots, not auto-pairing.
 - Do not assume Scale/Offset were removed from the backend or API — only
@@ -365,20 +482,22 @@ before Phase 2A begins.
 - Do not assume the classification rules include a naming-pattern tier —
   they deliberately don't; only `parameter_type` and unit-based
   classification exist.
-- Do not assume Phase 1.5 or any Phase 2 implementation is authorized.
+- Do not assume Phase 1.5, Phase 2B, or any later phase is authorized.
 - Do not assume `powerwave` is still at commit `3156392` by the time you
   read this — re-verify before relying on specific line numbers (it was
-  re-confirmed unchanged as of this pass, 2026-08-14).
+  re-confirmed unchanged as of this pass, 2026-08-15).
 
 ## Owner approval needed before proceeding?
 
-- Not needed to review the Phase 2 design proposal itself (it's just
-  documentation).
-- **Yes**, before any Phase 2 implementation begins (Phase 2A's backend
-  array-retention change most of all — a real, ongoing memory-cost
-  increase, not a free change), before Phase 1.5 or any later phase
-  begins, before a PROD deployment, and before any change to the
-  ephemeral-storage, upload-size, COMTRADE-upload-interaction, or
-  workspace-lifecycle decisions recorded in DECISIONS.md — per the
-  change-governance rule in [CLAUDE.md](../../CLAUDE.md) /
-  [AGENTS.md](../../AGENTS.md).
+- Not needed to review Phase 2A itself (it's already implemented and
+  merged, per explicit owner authorization for this exact slice).
+- **Yes**, before Phase 2B or any later Phase 2 slice begins, before
+  Phase 1.5 or any later phase begins, before a PROD deployment, and
+  before any change to the ephemeral-storage, upload-size,
+  COMTRADE-upload-interaction, workspace-lifecycle, or waveform-data
+  (DEC-019) decisions recorded in DECISIONS.md — per the change-governance
+  rule in [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md).
+- **Recommended before extended/shared-DEV waveform use specifically**
+  (not a hard gate on Phase 2A's own implementation and testing, which
+  used a controlled environment): a decision on the abandoned-session TTL
+  question, given Phase 2A's measured memory-growth consequence.

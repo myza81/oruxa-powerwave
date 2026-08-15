@@ -17,10 +17,16 @@ Phase 1 update. Nothing here persists an uploaded file:
      algorithm was intentionally not rewritten to accept in-memory buffers
      -- see docs/project-memory/MIGRATION_PLAN.md Sec 9/15.
   3. The temporary directory is always removed (context manager, runs even
-     on exception) before this function returns.
-  4. Only lightweight SourceMetadata (channel names/units/counts/timing) is
-     kept afterward, in the caller-supplied WorkspaceRegistry -- never the
-     DisturbanceRecord or its waveform_data DataFrame.
+     on exception) before this function returns -- the *file* is never
+     retained (DEC-015, unaffected by point 4 below).
+  4. Phase 2A update (DEC-019): the parsed `DisturbanceRecord` -- full
+     resolution, including its `waveform_data` DataFrame -- is now kept
+     alongside the lightweight `SourceMetadata`, paired as an
+     `ActiveSource`, in the caller-supplied WorkspaceRegistry. This
+     supersedes Phase 1's original design here ("never the
+     DisturbanceRecord"); see app.domain.source.ActiveSource's docstring
+     for why and app.services.waveform_service for the only consumer of
+     the retained record.
 """
 
 from __future__ import annotations
@@ -34,6 +40,7 @@ from fastapi import UploadFile
 from app.domain.channel_classification import classify_analog_channel
 from app.domain.disturbance_record import DisturbanceRecord
 from app.domain.source import (
+    ActiveSource,
     AnalogChannelSummary,
     DigitalChannelSummary,
     SourceMetadata,
@@ -154,7 +161,11 @@ async def import_comtrade_source(
         source_id=source_id,
         original_filenames=(cfg_filename, dat_filename),
     )
-    registry.add(metadata)
+    # record is retained by reference (never copied here) alongside the
+    # lightweight metadata -- see ActiveSource's docstring and DEC-019.
+    # record.waveform_data is never mutated anywhere in this module or
+    # downstream (app.services.waveform_service).
+    registry.add(ActiveSource(metadata=metadata, record=record))
     return metadata
 
 

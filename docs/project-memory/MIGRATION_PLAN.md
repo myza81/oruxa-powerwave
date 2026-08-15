@@ -1919,6 +1919,341 @@ than here.
 
 ---
 
+## Phase 2A — Waveform Data Foundation Implementation Record (2026-08-15)
+
+Implements the backend foundation the Phase 2 design section above
+recommended as the first vertical slice (§32). **Backend only — no chart
+library, no frontend waveform rendering, no Phase 2B/2C/2D work.** See
+DEC-019 ([DECISIONS.md](DECISIONS.md)) for the approved decision this
+implements; this section is the implementation record.
+
+### Architecture implemented
+
+```text
+ActiveSource (app/domain/source.py)
+    metadata: SourceMetadata   -- unchanged Phase 1 shape/behaviour
+    record:   DisturbanceRecord -- authoritative, full-resolution,
+                                    retained for the source's lifetime
+        |
+WorkspaceRegistry (app/services/workspace_registry.py)
+    stores ActiveSource per (workspace_id, source_id) -- same keying,
+    locking, and remove()/remove_workspace() cleanup as Phase 1;
+    only the stored value type widened
+        |
+extract_waveform_range() (app/services/waveform_service.py)
+    exact-range extraction (always, from the authoritative record)
+        -> full_resolution response, if range fits point_budget
+        -> build_min_max_envelope() (app/domain/waveform_reduction.py)
+           display representation, otherwise
+        |
+GET .../sources/{source_id}/waveform (app/api/v1/sources.py)
+    -> WaveformRangeOut (app/schemas/waveform.py), JSON
+```
+
+`import_service.py` now builds `ActiveSource(metadata=metadata,
+record=record)` and stores it via `registry.add(...)`, instead of
+discarding `record` after building `metadata` — the one behavioural
+change to the upload path; its response contract (`SourceSummaryOut`) is
+unchanged. `app/api/v1/sources.py`'s existing endpoints (`list`, `get`,
+`channels`, `delete`) were updated only to unwrap `.metadata` from the
+now-`ActiveSource`-typed registry value — their request/response
+contracts and behaviour are unchanged, confirmed by all 227
+previously-passing tests still passing unmodified.
+
+### Authoritative data fidelity
+
+**Confirmed unchanged and never mutated.** `record.waveform_data` is the
+exact `DisturbanceRecord` `ComtradeProvider().load()` produced — no copy,
+no in-place modification, anywhere in the new code. Verified directly:
+`tests/test_waveform_service.py::TestNoMutationOfAuthoritativeData`
+extracts a range and then asserts the source DataFrame's values are
+byte-for-byte unchanged; `app/domain/waveform_reduction.py`'s own tests
+(`TestNoMutation`) separately confirm the reduction function never writes
+into or returns a view of its input arrays. `app/providers/comtrade.py`
+and `app/providers/base.py` were **not touched** — the existing COMTRADE
+parity tests (`tests/test_comtrade_parity.py`) pass unmodified.
+
+### Waveform API
+
+```text
+GET /api/v1/workspaces/{workspace_id}/sources/{source_id}/waveform
+    ?channel_name=<analog channel name, required>
+    &start_time=<float, optional>
+    &end_time=<float, optional>
+    &point_budget=<int > 0, optional, default 4000>
+```
+
+**Channel identity**: `channel_name` — the same stable `name` field
+already used as the identity for every analog channel in Phase 1's
+`GET .../channels` response; never a display/table position. A digital
+channel name is rejected with `channel_not_analog` (400); an unknown name
+with `channel_not_found` (404).
+
+**Time semantics**: `start_time`/`end_time` are elapsed seconds on the
+source's own native time axis — the exact same values as
+`waveform_data["time"]` and the already-shipped `TimebaseOut`
+(COMTRADE's `timing_reference` is always `"absolute"` by provider
+construction; this endpoint does not introduce a second, trigger-relative
+axis). Boundary-inclusive at both ends. Omitting a bound defaults it to
+the record's own true start/end — omitting both returns the entire
+record. `start_time > end_time` is rejected as `invalid_time_range`
+(400). A range fully before or after the record is **not** an error —
+defined, tested behaviour: an empty response
+(`original_sample_count: 0`, `time: []`, `values: []`).
+
+**Point-budget semantics**: a *display-response budget*, not an
+engineering-resolution setting. If the resolved range's raw sample count
+is `<= point_budget`, the exact full-resolution range is returned
+unchanged (`representation: "full_resolution"`). Otherwise a
+peak-preserving min/max envelope is returned instead
+(`representation: "min_max_envelope"`) — the returned point count is
+close to, but not contractually equal to, `point_budget` (documented in
+both the schema and the reduction function's own docstring, per the
+task's explicit instruction not to advertise an exact cap the algorithm
+intentionally exceeds).
+
+**Response** (JSON, `app/schemas/waveform.py`):
+```json
+{
+  "source_id": "...",
+  "channel_name": "VA",
+  "unit": "V",
+  "start_time": 0.0,
+  "end_time": 1.284,
+  "original_sample_count": 5001,
+  "returned_point_count": 3982,
+  "representation": "min_max_envelope",
+  "time": [...],
+  "values": [...]
+}
+```
+
+**Errors** (same `{"detail": {"code", "message"}}` shape as every other
+Phase 1 endpoint): `source_not_found`/`invalid_workspace` (existing,
+reused unchanged), `channel_not_found` (404), `channel_not_analog` (400),
+`invalid_time_range` (400); a malformed/non-positive `point_budget` or a
+missing `channel_name` is rejected by FastAPI's own query validation
+(422), consistent with the existing multipart-upload validation pattern.
+
+### Display preparation
+
+`app/domain/waveform_reduction.py::build_min_max_envelope()` — explicitly
+**not** called "decimation" anywhere in code, tests, or this document
+(per the task's own terminology instruction): splits the resolved range
+into `max(1, point_budget // 2)` **equal-count** buckets (not equal-time
+— this needs no uniform-sample-spacing assumption, so it works
+identically for single- or multi-rate COMTRADE sections without special
+casing); within each non-empty bucket keeps both the minimum and maximum
+sample (collapsed to one point if they coincide), emitted in
+chronological order; then guarantees the *true* first and last sample of
+the requested range are always present, even if neither is its own
+bucket's extremum, so an analyst always sees exactly where the visible
+range begins and ends. Deterministic (same input + budget always produce
+identical output — verified by `TestDeterminism`); never mutates or
+aliases its input arrays (verified by `TestNoMutation`).
+
+**Full-resolution is returned, not reduced, whenever the resolved range's
+raw sample count already fits the point budget** — this is a hard
+decision boundary in `extract_waveform_range()`, not a heuristic, so a
+sufficiently narrow request is *never* passed through the reduction
+function at all.
+
+### Spike regression — the mandatory test
+
+`tests/test_waveform_reduction.py::TestSyntheticSpikeRegression`:
+2000 ordinary samples (~1.0 V) with a single-sample 100 V transient
+spike, reduced to a 100-point budget (stride-20 equivalent). First,
+`test_naive_stride_sampling_demonstrably_can_miss_the_spike` proves the
+risk is real by running the exact algorithm `powerwave`'s own
+`decimate_for_display()` uses (`values[::stride]`) against the same
+fixture and confirming the spike value never appears in its output.
+Second, `test_min_max_envelope_preserves_the_spike` confirms this
+project's algorithm returns the spike's true value, correctly paired with
+its true sample time (not a fabricated position). A third test confirms
+the same for a narrow *negative* spike. **Result: naive stride sampling
+misses the spike (as predicted); `build_min_max_envelope` preserves it,
+every run (17/17 `test_waveform_reduction.py` tests passing).**
+
+### Zoom/detail behaviour
+
+`tests/test_waveform_service.py::TestZoomFidelity`, against a 100,000-
+sample synthetic source: a full-record request at a fixed point budget
+returns a reduced envelope with a coarser average inter-sample spacing
+than a narrower request (a 0.1s window of the same record, same budget) —
+directly testing that narrowing the request increases real time
+resolution, not just re-displaying the same coarse data. A sufficiently
+narrow sub-range (400 samples at the same 500-point budget) crosses the
+full-resolution boundary and returns `representation: "full_resolution"`
+with `original_sample_count == returned_point_count`, confirming the API
+never permanently locks a caller to whatever coarseness an earlier wide
+view happened to produce — each request is independently resolved
+against the authoritative record.
+
+### Lifecycle integration
+
+No second waveform-memory registry was introduced — `ActiveSource` is
+stored in the same `WorkspaceRegistry`, cleaned up by the same
+`remove()`/`remove_workspace()` methods Phase 1's workspace-reset pass
+already built and tested (DEC-018), unmodified.
+
+- **Source `Remove`**: `tests/test_waveform_api.py::TestLifecycleCleanupReleasesWaveformData::test_remove_source_makes_its_waveform_unavailable`
+  — waveform request succeeds before, `DELETE .../sources/{id}` (204),
+  waveform request afterward returns 404 `source_not_found`.
+- **Whole-workspace cleanup**: `test_whole_workspace_delete_releases_every_sources_waveform_data`
+  — 3 sources uploaded into one workspace, each confirmed to serve
+  waveform data, `DELETE /api/v1/workspaces/{id}` (204), every source's
+  waveform request afterward returns 404.
+- **Actual reference release, not just API inaccessibility**:
+  `test_reference_count_drops_after_source_removal` weak-references the
+  retained `waveform_data` DataFrame directly (not the `DisturbanceRecord`
+  itself, which is a `slots=True` dataclass and doesn't support weakrefs),
+  removes the source, forces a GC pass, and asserts the weakref resolves
+  to `None` — the authoritative array is provably collected, not merely
+  unreachable through the API.
+- **Remaining abandoned-session issue, unchanged and explicitly not
+  claimed solved**: a browser tab closed without clicking `Remove`/`Start
+  new workspace` still leaves that workspace's `ActiveSource` entries
+  (now including full-resolution arrays, not just metadata) resident
+  until process restart. See DEC-019's Impact section and
+  [CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers).
+
+### Concurrency
+
+No new locking infrastructure was added. `WorkspaceRegistry.get()`
+returns a plain reference under its existing `threading.Lock`, released
+immediately after the dict lookup — any real work against the returned
+`ActiveSource` (range extraction, reduction) happens *after* the lock is
+released, exactly like the existing pattern, so a slow waveform
+computation can never block unrelated requests. A concurrent
+`remove()`/`remove_workspace()` racing an in-flight `GET .../waveform`
+is safe by ordinary Python reference semantics: a request that already
+retrieved its `ActiveSource` reference before the delete safely finishes
+serving from that reference (the dict entry being dropped doesn't affect
+an already-held reference); a request that hasn't retrieved it yet
+correctly gets `source_not_found`. `record.waveform_data` is never
+mutated by any reader, so concurrent `GET .../waveform` requests against
+the same source need no additional synchronization beyond this.
+
+### Memory model — measured, not assumed
+
+Measured via a one-off benchmark script (not committed — synthetic data
+only, no real/confidential fixtures) across four scenarios:
+
+| Scenario | Samples | Channels (analog/digital) | DataFrame memory (`.memory_usage(deep=True)`) |
+|---|---|---|---|
+| Small (existing fixture scale) | 40 | 3 / 2 | ~3 KB |
+| Medium (10s @ 4kHz, realistic COMTRADE) | 40,000 | 8 / 16 | 3.52 MB |
+| High-channel-count (owner's Phase 1 UAT scale) | 20,000 | 103 / 362 | 23.88 MB |
+| Large (approaching 100 MB-file-scale sample counts) | 2,000,000 | 8 / 16 | 176.00 MB |
+
+**`.to_numpy()` on a channel column returned a zero-copy view (`arr.base
+is not None`) in every scenario tested** — confirmed empirically, not
+assumed (pandas does not guarantee this in general; this is what was
+observed for this DataFrame construction pattern). Range extraction
+(`time[lo:hi]` / `values[lo:hi]`) is ordinary NumPy slicing, always a
+view, never a copy. `build_min_max_envelope()`'s output arrays are the
+only newly-allocated (copied) arrays in the request path, by design — see
+its own docstring.
+
+**File-size-to-memory ratio, precisely accounted for (analog channels)**:
+COMTRADE binary stores analog samples as 2-byte integers on disk;
+`ComtradeProvider` converts them to 8-byte `float64` during scaling
+(`_apply_analog_scaling`) — a **4x expansion**, confirmed exactly by the
+2,000,000-sample scenario's arithmetic (8 analog channels × 2,000,000
+samples × 8 bytes = 128 MB, matching the measured total precisely once
+the `time` column and digital channels' int8 storage are accounted for).
+Digital channels are far cheaper per sample (1-byte `int8` vs. 8-byte
+`float64` for analog) — an **8x expansion** from their packed-bit
+on-disk representation. **This is a real, measured data point for the
+"file size doesn't map directly to parsed memory" question flagged as
+`[OPEN]` in [CURRENT_STATE.md](CURRENT_STATE.md)** — it is not, however,
+a direct measurement against an actual 100 MB COMTRADE file (only
+synthetic data at comparable sample counts), so that specific item
+remains only partially closed, not fully resolved — see "Remaining
+`[OPEN]`" below.
+
+### Performance — measured, not assumed
+
+Same benchmark script, same four scenarios (all on ordinary development
+hardware, single run — indicative, not a rigorous statistical benchmark):
+
+| Scenario | Full-range extraction (no reduction) | Full-range extraction + reduction to 4000-pt budget | Narrow-range (1% of record) extraction | JSON serialize (reduced response) | Payload size (reduced) | Payload size if full-resolution returned (1 channel) |
+|---|---|---|---|---|---|---|
+| Small | 0.034 ms | 0.023 ms | 0.020 ms | 0.030 ms | 1.4 KB | <1 KB |
+| Medium | 0.027 ms | 3.72 ms | 0.025 ms | 1.63 ms | 113.7 KB | 1.15 MB |
+| High-channel-count | 0.029 ms | 3.56 ms | 0.023 ms | 1.62 ms | 114.1 KB | 0.58 MB |
+| Large (2M samples) | 0.030 ms | 7.58 ms | 3.72 ms | 1.68 ms | 119.8 KB | **61.04 MB** |
+
+**Reading these numbers**: exact-range extraction itself is effectively
+free at every scale tested (`searchsorted` on a sorted array plus a NumPy
+slice — sub-millisecond even at 2,000,000 samples). The measurable cost is
+entirely in the reduction step (the Python-level loop over ~2,000
+buckets, each doing a small vectorized `argmin`/`argmax`) — still under
+8 ms even at the largest scale tested. JSON serialization of the bounded
+(~4,000-point) response is consistently ~1.6-1.7 ms regardless of the
+source record's total size, and payload size stays in the 110-120 KB
+range regardless of record size, **exactly the structural guarantee the
+Phase 2 design's range-request architecture was chosen for** (§4/§26 of
+the design section) — contrast the last column: a full-resolution
+response for just *one* channel of the 2,000,000-sample scenario would be
+61 MB, which is precisely the payload-size risk the bounded, budget-based
+endpoint avoids by construction.
+
+### Tests
+
+**278 backend tests pass** (227 before this pass + 51 new), zero
+regressions:
+- `tests/test_waveform_reduction.py` (17) — the min/max envelope
+  algorithm in isolation: the mandatory spike regression (3 tests),
+  chronological ordering and true time/value association (2), first/last
+  sample handling (2), determinism (1), no-mutation/no-aliasing (2),
+  budget-is-not-an-exact-cap (1), small-input edge cases (3), input
+  validation (3).
+- `tests/test_waveform_service.py` (17) — range extraction against
+  precisely known synthetic sources: full-record requests (2), exact-range
+  extraction including boundary-inclusive and before/after-record cases
+  (6), invalid time range (1), channel identity resolution including
+  digital-channel rejection (3), point-budget boundary (2), zoom-fidelity
+  (2), no-mutation-of-authoritative-data (1).
+- `tests/test_waveform_api.py` (17) — full end-to-end HTTP flow against
+  the real COMTRADE fixture: valid requests including exact value/time
+  comparison against the provider's own direct output (3), every error
+  case from the task's required list (8), point-budget boundary at the
+  API layer (2), and the lifecycle-cleanup regressions (3, including the
+  weakref reference-release test).
+- `tests/test_workspace_registry.py` — updated (not net-new) to build
+  `ActiveSource` fixtures instead of bare `SourceMetadata`; all existing
+  assertions preserved, none weakened.
+- **Zero changes to `tests/test_comtrade_parity.py`,
+  `tests/test_comtrade_provider.py`, `tests/test_channel_classification.py`,
+  or any parser/provider code** — confirmed passing unmodified.
+
+### Files changed
+
+New: `backend/app/domain/waveform_reduction.py`,
+`backend/app/services/waveform_service.py`,
+`backend/app/schemas/waveform.py`,
+`backend/tests/test_waveform_reduction.py`,
+`backend/tests/test_waveform_service.py`,
+`backend/tests/test_waveform_api.py`.
+
+Modified: `backend/app/domain/source.py` (new `ActiveSource`),
+`backend/app/domain/__init__.py`,
+`backend/app/domain/disturbance_record.py` (docstring correction),
+`backend/app/services/workspace_registry.py` (stored-value type widened;
+docstrings corrected),
+`backend/app/services/import_service.py` (builds/stores `ActiveSource`;
+docstring corrected),
+`backend/app/services/errors.py` (new error classes),
+`backend/app/api/v1/sources.py` (new waveform endpoint; existing
+endpoints updated to unwrap `.metadata`),
+`backend/tests/test_workspace_registry.py` (fixture helper updated).
+
+No `backend/app/providers/*`, `backend/app/main.py`, `frontend/*`, or CI/
+deployment file was touched.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

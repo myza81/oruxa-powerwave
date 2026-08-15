@@ -507,6 +507,16 @@ available in the codebase for other future uses (per
 [MIGRATION_PLAN.md](MIGRATION_PLAN.md)) but is not used for event files in
 Phase 1.
 
+**Update (Phase 2A, 2026-08-15) — see
+[DEC-019](#dec-019--phase-2a-retains-the-full-resolution-disturbancerecord-in-the-active-workspace):**
+the "only lightweight per-source metadata ... never sample arrays"
+sentence above no longer holds — Phase 2A deliberately retains the
+full-resolution `DisturbanceRecord` too, so waveform range requests don't
+have to re-parse the file. This decision (never persistently retain the
+uploaded *file*) is otherwise **fully intact and unaffected**: DEC-019 is
+about an already-parsed in-memory object, not the file, and nothing about
+Phase 2A writes anything to disk/DB/object storage.
+
 ---
 
 ## DEC-016 — Upload size ceiling is configurable, not hard-coded, with ~100 MB as the current MVP assumption
@@ -632,6 +642,98 @@ Impact:
   memory until the process restarts — no TTL/expiry mechanism was added.
   This remains a separate `[OPEN]` item — see
   [CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers).
+
+---
+
+## DEC-019 — Phase 2A retains the full-resolution `DisturbanceRecord` in the active workspace
+
+Date: 2026-08-15
+Status: Approved
+Source: explicit project-owner direction opening the Phase 2A implementation
+task (2026-08-15), following the Phase 2 discovery/design pass's own
+`[DECISION MODE: ANALYSIS]` recommendation on this point (not itself
+self-approving — see [README.md — Decision modes](README.md#decision-modes)
+— but adopted here by explicit instruction).
+
+Decision:
+The active workspace now retains each imported source's full-resolution,
+authoritative `DisturbanceRecord` (including its `waveform_data`
+DataFrame) for the life of that source — not just the lightweight
+`SourceMetadata` Phase 1 originally kept. The two are paired as one
+`ActiveSource` object (`app/domain/source.py`) and stored together in
+`WorkspaceRegistry`, keyed exactly as before by `(workspace_id,
+source_id)` (DEC-012, unchanged). This full-resolution data:
+
+- remains authoritative and backend-owned — never replaced, permanently
+  downsampled, or mutated in place;
+- is delivered to callers only through bounded time-range requests (`GET
+  .../sources/{source_id}/waveform`), never as a full-record transfer by
+  default;
+- when a requested range exceeds the caller's `point_budget`, is reduced
+  to a peak-preserving min/max envelope for that response only — the
+  reduced data is a *display representation*, never itself treated as
+  authoritative, and is never written back over or used in place of the
+  full-resolution source (see `app/services/waveform_service.py`'s module
+  docstring and `app/domain/waveform_reduction.py`'s terminology note:
+  never "decimated," always "display representation");
+- starts JSON-first for the waveform response wire format — no
+  Arrow/Protobuf/custom binary transport was introduced this phase (see
+  Impact below for when to revisit).
+
+Reason:
+Phase 1's `import_service.py` discarded the parsed `DisturbanceRecord`
+after extracting metadata, so no code path existed to answer "what are
+this channel's actual sample values in this time range" without
+re-parsing the COMTRADE file from scratch on every request. The Phase 2
+discovery/design pass ([MIGRATION_PLAN.md — Phase 2 Waveform Workspace
+Discovery and Design](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14))
+identified this as the one genuinely new backend architecture question
+Phase 2 requires, and — separately — confirmed by re-verifying
+`powerwave`'s own live decimation code
+(`build_aligned_data()`/`decimate_for_display()`) that plain nth-point
+stride sampling can silently drop a transient spike or a narrow digital
+pulse; that algorithm was explicitly rejected as a migration candidate
+in favor of a peak-preserving min/max envelope, implemented fresh for
+this project (`app/domain/waveform_reduction.py`).
+
+Alternatives considered:
+See [MIGRATION_PLAN.md's Phase 2 design §4](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14)
+for the compared data-delivery architectures (send-everything-once vs.
+range requests vs. multi-resolution pyramid vs. hybrid) — range requests
+(Option B/D) were recommended there and are what this decision
+implements. See the same section's §13 for the compared display-reduction
+algorithms (min/max envelope vs. LTTB vs. plain stride) — min/max envelope
+was recommended on engineering-correctness grounds (guaranteed extrema
+visibility) and is what `app/domain/waveform_reduction.py` implements.
+
+Impact:
+- `WorkspaceRegistry`'s stored value type widened from `SourceMetadata` to
+  `ActiveSource`; its keying, locking, and cleanup methods
+  (`add`/`get`/`list_for_workspace`/`remove`/`remove_workspace`) did not
+  need to change — `remove()`/`remove_workspace()` already correctly drop
+  the process's only reference to whatever is stored per
+  `(workspace_id, source_id)`, now including the retained record. Verified
+  by dedicated tests (`tests/test_waveform_api.py`'s
+  `TestLifecycleCleanupReleasesWaveformData`, including a weakref-based
+  reference-release check, not just "the API returns 404 afterward").
+- **Real, ongoing backend memory cost, not a free change**: retaining
+  full-resolution arrays per source means abandoned-workspace memory
+  growth (the existing `[OPEN]` TTL item — see
+  [CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers))
+  is now a materially larger concern than it was for Phase 1's
+  metadata-only model. This decision does **not** resolve that TTL
+  question — it remains open, reassessed as more urgent, per the Phase 2
+  design pass's own conclusion.
+- The JSON-first transport choice should be revisited (not automatically
+  kept forever) if a future phase's measurements show it's a real
+  bottleneck at larger scale — this decision approves it as the Phase 2A
+  starting point, not a permanent commitment to JSON regardless of future
+  evidence.
+- Digital waveform delivery, drag/reorder panel layout, plotting-library
+  selection, and TTL/expiry policy remain explicitly **not** decided by
+  this entry — see the `[OPEN]`/`[UAT]` items recorded in
+  [CURRENT_STATE.md](CURRENT_STATE.md) and
+  [MIGRATION_PLAN.md](MIGRATION_PLAN.md)'s Phase 2A implementation record.
 
 ---
 

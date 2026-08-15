@@ -5,12 +5,22 @@ Ported near-verbatim from powerwave's app/models/disturbance_record.py
 providers and consumed by downstream systems (analytics, visualization,
 synchronization -- none of which exist in oruxa_powerwave yet).
 
-waveform_data is stored by reference -- never copied on construction. In
-oruxa_powerwave Phase 1, a DisturbanceRecord is never cached or shared
-across requests (see app.services.import_service): it is built, its
-lightweight metadata is extracted into a schema, and the record itself
-(including its DataFrame) is discarded at the end of that request. See
-docs/project-memory/MIGRATION_PLAN.md Sec 12 (record aliasing risk).
+waveform_data is stored by reference -- never copied on construction, and
+never mutated in place anywhere in this codebase.
+
+Correction (Phase 2A, DEC-019 -- see docs/project-memory/DECISIONS.md):
+Phase 1's original note here said a DisturbanceRecord is "never cached or
+shared across requests ... discarded at the end of that request." That is
+no longer true by design: app.services.import_service now retains the
+record (via app.domain.source.ActiveSource) in the active workspace's
+WorkspaceRegistry entry, so later waveform range requests
+(app.services.waveform_service) can read it without re-parsing the
+COMTRADE file. It is still never mutated, never persisted to disk/DB/object
+storage (DEC-015 is unaffected -- that decision is about the *uploaded
+file*, not an already-parsed in-memory object), and is released exactly
+when its owning source/workspace is removed (see
+app.services.workspace_registry). See
+docs/project-memory/MIGRATION_PLAN.md's Phase 2A implementation record.
 """
 
 from __future__ import annotations

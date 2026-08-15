@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-14**.
+Last meaningful update: **2026-08-15**.
 
 ## Development phase
 
@@ -26,28 +26,36 @@ synchronization, calculated signals, or advanced analytics exist yet
 
 `[FACT]`, owner-stated at the start of the Phase 2 discovery/design task
 (2026-08-14): **Phase 1 is complete and has passed final owner UAT.** No
-further Phase 1 work is expected. Phase 2 (basic web waveform workspace)
-is now in its **discovery/design stage only** — see
-[MIGRATION_PLAN.md — Phase 2 Waveform Workspace Discovery and
-Design](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14).
-**No Phase 2 code exists yet** — no waveform API, no chart library
-dependency, no backend full-resolution-array retention, no frontend
-waveform rendering. Everything in that design section is a `[PROPOSAL]`
-or an item explicitly awaiting `[DECISION MODE: ANALYSIS/COMPARISON/UAT]`
-resolution — none of it is approved architecture, and none of it should be
-treated as authorization to begin implementation.
+further Phase 1 work is expected. Phase 2 discovery/design was completed
+that day — see [MIGRATION_PLAN.md — Phase 2 Waveform Workspace Discovery
+and Design](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14) —
+and **Phase 2A (backend waveform data foundation) is now implemented**
+(2026-08-15) — see
+[MIGRATION_PLAN.md — Phase 2A Implementation Record](MIGRATION_PLAN.md#phase-2a--waveform-data-foundation-implementation-record-2026-08-15)
+and DEC-019 ([DECISIONS.md](DECISIONS.md)). Phase 2A is **backend only**:
+the active workspace now retains each source's full-resolution
+`DisturbanceRecord` (not just lightweight metadata), and a new
+`GET .../sources/{source_id}/waveform` endpoint serves bounded,
+peak-preserving (never naively decimated) waveform ranges for one analog
+channel at a time. **No chart library, no frontend waveform rendering,
+digital-channel waveform delivery, panel/layout UX, or Phase 2B/2C/2D
+work exists yet** — those remain `[PROPOSAL]`/`[UAT]`/`[OPEN]`, per the
+Phase 2 design section, and Phase 2A does not authorize starting them.
 
 ## Completed foundation work
 
-`[FACT]`, verified against the repository on 2026-08-14:
+`[FACT]`, verified against the repository on 2026-08-15:
 
 - **Backend** (`backend/app/`): a FastAPI application (`main.py`) built via
   `create_app()` factory, with:
-  - `/health`, and a versioned COMTRADE source/channel API:
+  - `/health`, and a versioned COMTRADE source/channel/waveform API:
     `POST/GET /api/v1/workspaces/{workspace_id}/sources`,
     `GET/DELETE /api/v1/workspaces/{workspace_id}/sources/{source_id}`,
-    `GET .../sources/{source_id}/channels`, plus a whole-workspace
-    lifecycle endpoint added this pass: `DELETE /api/v1/workspaces/{workspace_id}`
+    `GET .../sources/{source_id}/channels`,
+    `GET .../sources/{source_id}/waveform` (**new, Phase 2A** — bounded
+    time-range analog waveform data for one channel, peak-preserving
+    display reduction when needed — see DEC-019), and a whole-workspace
+    lifecycle endpoint: `DELETE /api/v1/workspaces/{workspace_id}`
     (`app/api/v1/workspaces.py`) — releases every source the workspace
     owns in one call; idempotent for an unknown/already-empty workspace.
   - `domain/` — `DisturbanceRecord`/`AnalogChannel`/`DigitalChannel`/
@@ -56,45 +64,61 @@ treated as authorization to begin implementation.
     `AnalogChannelSummary`/`DigitalChannelSummary` for the lightweight
     metadata the API returns; `channel_classification.py` — the
     backend-owned, three-tier analog engineering-type classifier
-    (`Voltage`/`Current`/`Power`/`Frequency`/`ROCOF`/`Undefined`) added
-    during the UAT refinement pass, exposed as `engineering_type` on every
-    analog channel.
+    (`Voltage`/`Current`/`Power`/`Frequency`/`ROCOF`/`Undefined`); `ActiveSource`
+    (**new, Phase 2A**) — pairs `SourceMetadata` with the authoritative,
+    full-resolution `DisturbanceRecord`, now retained for the source's
+    lifetime (see DEC-019); `waveform_reduction.py`
+    (**new, Phase 2A**) — the peak-preserving min/max envelope display-reduction
+    algorithm, deliberately not `powerwave`'s own plain stride-sampling
+    decimator (see the Phase 2 design section's §3/§13 findings).
   - `providers/` — `BaseProvider`/`ProviderManager` and `ComtradeProvider`
-    ported near-verbatim from `powerwave`. CSV/Excel providers are Phase
-    1.5 scope, not present yet (see DECISIONS.md DEC-014).
+    ported near-verbatim from `powerwave`, **untouched by Phase 2A**.
+    CSV/Excel providers are Phase 1.5 scope, not present yet (see
+    DECISIONS.md DEC-014).
   - `services/` — `WorkspaceRegistry` (in-memory, ephemeral, keyed by
-    `workspace_id`/`source_id` — see DEC-012), now also with a
-    `remove_workspace(workspace_id)` method (added this pass, DEC-018) that
-    releases every source a workspace owns in one call, and
-    `import_service.py` (upload validation, size-limit enforcement,
+    `workspace_id`/`source_id` — see DEC-012), storing `ActiveSource` since
+    Phase 2A (was `SourceMetadata`-only; keying/locking/cleanup methods
+    unchanged), with `remove_workspace(workspace_id)` (DEC-018) releasing
+    every source (including its retained record) a workspace owns in one
+    call; `import_service.py` (upload validation, size-limit enforcement,
     ephemeral parse via a per-request `tempfile.TemporaryDirectory()`,
-    metadata extraction including engineering-type classification).
+    metadata extraction including engineering-type classification, and —
+    Phase 2A — retaining the parsed record via `ActiveSource`);
+    `waveform_service.py` (**new, Phase 2A**) — exact time-range
+    extraction from the authoritative record, then display reduction only
+    when the range exceeds the requested point budget.
   - `schemas/` — Pydantic response DTOs (`SourceSummaryOut`,
     `SourceChannelsOut`, etc.) — never include waveform/sample arrays.
     `AnalogChannelOut` still carries `scale`/`offset` (API/domain
     unchanged); the frontend's primary table just stopped displaying them.
+    `waveform.py` (**new, Phase 2A**) — `WaveformRangeOut`, the one
+    deliberate exception to "never include waveform arrays," always
+    bounded (full-resolution only when already small enough; a display
+    representation otherwise).
   - CORS middleware and a Content-Length pre-check middleware (fast-path
     upload-size rejection) configured from `Settings`.
   - Storage abstraction (`storage.py`, unchanged) — **not used for event
     files** — see DEC-015: uploaded `.cfg`/`.dat` files are never
-    persistently retained anywhere.
+    persistently retained anywhere. (Unaffected by Phase 2A's *in-memory*
+    record retention — see DEC-019's note on DEC-015.)
   - Configuration (`config.py`): `MAX_EVENT_UPLOAD_SIZE_MB` (default 100 —
     an MVP operating assumption, not a hard limit; see DEC-016).
   - Dependencies: `fastapi`, `uvicorn`, `python-multipart`, `numpy`/`pandas`
     (pinned to match `powerwave`'s own versions), `psycopg[binary]` (still
-    unused, pinned for later).
-  - Tests: **227 passing** (`backend/tests/`) — the original foundation
-    suite, COMTRADE provider/parity tests (verified against `powerwave`'s
-    canonical provider), workspace-registry tests (including
-    `remove_workspace()` coverage added this pass), full API tests
-    (including the new `test_workspaces_api.py` for the whole-workspace
-    DELETE endpoint, and a `Remove`-regression test confirming sibling
-    sources in the same workspace survive a single-source delete), and
-    `test_channel_classification.py` (every recognized unit/parameter_type,
-    priority ordering, and explicit never-guess-when-ambiguous coverage).
-    Synthetic COMTRADE fixtures live in `backend/tests/fixtures/comtrade/`
-    — authored for this migration, not derived from any real/confidential
-    event data.
+    unused, pinned for later). **No new dependency was added for Phase 2A**
+    (no charting/binary-serialization/Arrow library — JSON-first, per
+    DEC-019).
+  - Tests: **278 passing** (`backend/tests/`) — up from 227: 51 new
+    (`test_waveform_reduction.py` 17, `test_waveform_service.py` 17,
+    `test_waveform_api.py` 17, including the mandatory synthetic-spike
+    regression test and a weakref-based lifecycle-cleanup test), plus the
+    original foundation suite, COMTRADE provider/parity tests (verified
+    against `powerwave`'s canonical provider, **unchanged this pass**),
+    workspace-registry tests (updated to build `ActiveSource` fixtures,
+    no assertions weakened), full API tests, and
+    `test_channel_classification.py`. Synthetic COMTRADE fixtures live in
+    `backend/tests/fixtures/comtrade/` — authored for this migration, not
+    derived from any real/confidential event data.
 - **Frontend** (`frontend/index.html`): a single-page upload/channel-browse
   UI. Per completed UAT: the two-slot `.cfg`/`.dat` upload, loading
   indicator, 100 MB guidance, and source-metadata-review step are
@@ -123,7 +147,9 @@ treated as authorization to begin implementation.
   [docs/development/development-workflow.md](../development/development-workflow.md),
   this project-memory framework, [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md),
   and [MIGRATION_PLAN.md](MIGRATION_PLAN.md) (Phase 0 design, "Phase 1 —
-  Implementation Record", and "Phase 1 — UAT Refinement Record" sections).
+  Implementation Record", "Phase 1 — UAT Refinement Record", "Phase 1 —
+  Workspace-Reset Record", "Phase 2 — Waveform Workspace Discovery and
+  Design", and "Phase 2A — Implementation Record" sections).
 
 ## Current architecture status
 
@@ -134,9 +160,14 @@ configuration-driven infrastructure, GitHub as the single source of truth.
 **Domain architecture now exists for COMTRADE only**: a ported data
 contract, a ported provider, a backend-owned channel-classification module,
 and an ephemeral-by-design service/API layer with no persistent storage of
-event files (DEC-015) and no process-global mutable state (DEC-012).
-CSV/Excel, synchronization, calculated signals, and analytics remain
-reference-only in `powerwave`, not yet ported.
+event *files* (DEC-015) and no process-global mutable state (DEC-012).
+Since Phase 2A (DEC-019), the active workspace's in-memory model
+additionally retains each source's full-resolution parsed record
+(`ActiveSource`) — an approved, deliberate exception to Phase 1's
+metadata-only retention, not a relaxation of DEC-015 (which governs the
+uploaded *file*, untouched). CSV/Excel, synchronization, calculated
+signals, and analytics remain reference-only in `powerwave`, not yet
+ported.
 
 ## Repository identity
 
@@ -172,15 +203,19 @@ for the full rule against confusing them.
 ## Major currently available components
 
 `[FACT]`: FastAPI backend with a working, UAT'd COMTRADE upload → parse →
-classify → channel-browse API (ephemeral, no persistent storage of event
-files), storage abstraction (unused by this feature), CI/CD pipeline,
-DEV/PROD deployment isolation, a working single-page frontend with
+classify → channel-browse API (no persistent storage of event *files*),
+plus (Phase 2A) a bounded, peak-preserving waveform range API serving one
+analog channel at a time from a retained full-resolution record, storage
+abstraction (unused by the event-file path), CI/CD pipeline, DEV/PROD
+deployment isolation, a working single-page frontend with
 collapsible/searchable channel grouping and a removal confirmation, this
 documentation set. No frontend framework, no database schema, no
-authentication, no CSV/Excel/waveform-rendering/synchronization/calculated-
-signal features yet. A Phase 2 waveform-workspace **design proposal**
-exists (see [MIGRATION_PLAN.md](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14))
-but nothing from it has been implemented.
+authentication, no CSV/Excel/frontend-waveform-rendering/digital-waveform/
+synchronization/calculated-signal features yet. A Phase 2 waveform-workspace
+**design proposal** exists (see [MIGRATION_PLAN.md](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14))
+of which only the backend foundation slice (Phase 2A) has been implemented
+so far — chart library, channel-selection UX, panel model, and Phase
+2B/2C/2D remain unbuilt proposals/UAT candidates.
 
 ## Current approved focus
 
@@ -191,14 +226,22 @@ corrected — see
 [Phase 1 — UAT Refinement Record](MIGRATION_PLAN.md#phase-1--uat-refinement-record-2026-08-14),
 and
 [Phase 1 — Workspace-Reset Record](MIGRATION_PLAN.md#phase-1--workspace-reset-record-2026-08-14).
-`[DECISION]` Recorded this pass: `Start new workspace` is retained as a
-distinct whole-workspace lifecycle operation, separate from `Remove`'s
-single-source scope, and is now backend-enforced rather than client-only
-(DEC-018). Recorded previously: the two-slot COMTRADE upload interaction is
-formally approved, not a placeholder (DEC-017, resolves UAT-1). No new
+Phase 2A (backend waveform data foundation) is implemented — see
+[MIGRATION_PLAN.md — Phase 2A Implementation Record](MIGRATION_PLAN.md#phase-2a--waveform-data-foundation-implementation-record-2026-08-15).
+`[DECISION]` Recorded this pass: DEC-019 — the active workspace retains
+each source's full-resolution `DisturbanceRecord`, delivered only via
+bounded time-range requests with peak-preserving (never naive-stride)
+display reduction when needed; JSON-first transport for Phase 2A.
+Recorded previously: `Start new workspace` is a distinct whole-workspace
+lifecycle operation, backend-enforced (DEC-018); the two-slot COMTRADE
+upload interaction is formally approved (DEC-017, resolves UAT-1). No new
 architectural decisions were needed for the grouping/search/confirmation
 refinements themselves — implementation detail, not decided direction (per
-governance, not written to DECISIONS.md).
+governance, not written to DECISIONS.md). **Not decided by any of the
+above**: chart library, channel-selection/add interaction, panel layout,
+drag/reorder panel UX, digital waveform handling, and abandoned-session
+TTL policy — all remain `[UAT]`/`[COMPARISON]`/`[OPEN]`, per the Phase 2
+design section and DEC-019's own Impact notes.
 
 ## Known blockers
 
@@ -210,9 +253,21 @@ governance, not written to DECISIONS.md).
   remains unimplemented — judged disproportionate per the "don't rewrite
   proven engineering logic" principle. Unchanged this pass; full
   investigation in [HANDOFF.md](HANDOFF.md) / [MIGRATION_PLAN.md](MIGRATION_PLAN.md).
-- `[OPEN]` No measurement was taken near the ~100 MB configured ceiling
-  itself (only up to ~16 MB); extrapolated memory usage suggests a 100 MB
-  file could use 1+ GB resident memory during parsing. Unchanged this pass.
+- `[OPEN]` **Partially informed this pass, still not fully closed**: no
+  measurement was taken against an actual ~100 MB COMTRADE file itself
+  (only up to ~16 MB, and Phase 2A's own benchmarking used synthetic data
+  at comparable sample counts, not a real 100 MB file). Phase 2A did
+  establish a precise, measured ratio for *parsed* memory scaling at the
+  DataFrame level: COMTRADE binary analog samples (2-byte integers on
+  disk) become 8-byte `float64` once parsed — a measured 4x expansion;
+  digital channels (packed bits on disk) become 1-byte `int8` per
+  channel — an 8x expansion. See
+  [MIGRATION_PLAN.md — Phase 2A Implementation Record](MIGRATION_PLAN.md#phase-2a--waveform-data-foundation-implementation-record-2026-08-15)'s
+  memory-model measurements. Extrapolating from these ratios, a 100 MB
+  file could still plausibly use several hundred MB to 1+ GB of resident
+  memory during/after parsing, but this remains an estimate, not a direct
+  measurement — closing it fully would need an actual near-100-MB fixture
+  run through the real parser.
 - `[OPEN]` The long-term persistence architecture (for whatever eventually
   needs to survive a session — not event files, permanently ephemeral per
   DEC-015) remains undecided. Deferred to Phase 8.
@@ -225,30 +280,39 @@ governance, not written to DECISIONS.md).
 - `[OPEN]` Whether to commit a larger/richer set of real-event parity
   fixtures for stronger ongoing regression coverage — unchanged, still not
   resolved.
-- `[OPEN]` **New this pass**: explicit `Start new workspace` cleanup is now
-  correct (DEC-018), but an *abandoned* workspace — browser tab closed,
-  network lost, or the user simply never clicks `Remove`/`Start new
-  workspace` — still has no automatic expiry/TTL. `WorkspaceRegistry`
+- `[OPEN]` **Elevated in severity this pass**: explicit `Start new
+  workspace`/`Remove` cleanup is correct (DEC-018), but an *abandoned*
+  workspace — browser tab closed, network lost, or the user simply never
+  clicks either — still has no automatic expiry/TTL. `WorkspaceRegistry`
   entries in that case live in memory until the backend process restarts.
-  Deliberately not solved this pass (explicit reset was the scoped
-  problem, not every abandoned-session scenario) — see
-  [MIGRATION_PLAN.md — Phase 1 Workspace-Reset Record](MIGRATION_PLAN.md#phase-1--workspace-reset-record-2026-08-14).
+  Since Phase 2A (DEC-019), those entries now include full-resolution
+  waveform arrays, not just lightweight metadata — measured at up to
+  176 MB per source for a 2,000,000-sample/24-channel synthetic scenario
+  (see the Phase 2A Implementation Record's memory-model table) — so
+  abandoned sessions now have a materially larger memory consequence than
+  in Phase 1. Deliberately still not solved (Phase 2A's task scope was
+  explicit-reset correctness and API-level verification, not TTL) — see
+  [MIGRATION_PLAN.md — Phase 2A Implementation Record](MIGRATION_PLAN.md#phase-2a--waveform-data-foundation-implementation-record-2026-08-15)
+  and DEC-019's Impact section. Should be resolved (a specific policy
+  chosen from the Phase 2 design's compared options) before any prolonged
+  or shared-DEV waveform UAT — see "Next approved activity" below.
 
 ## Next approved activity
 
-`[FACT]` Phase 1 is complete and has passed final owner UAT (see above).
-Phase 2 waveform-workspace **discovery and design** has been completed
-this pass — see
-[MIGRATION_PLAN.md — Phase 2 Waveform Workspace Discovery and
-Design](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14) —
-but per that task's own closing instruction, **no Phase 2 implementation
-is authorized yet**: not the waveform API, not a chart library dependency,
-not backend full-resolution-array retention, not any frontend rendering.
-The next step is for the project owner to review the Phase 2 design
-proposal — including the `[DECISION MODE: COMPARISON]` items (data-delivery
-architecture, abandoned-session TTL approach) and `[DECISION MODE: UAT]`
-items (plotting library, channel-selection interaction, panel-layout
-extras) — and decide what to approve before Phase 2A implementation
-begins. Phase 1.5 (CSV/Excel), synchronization, calculated signals,
-authentication, and any other later-phase functionality remain explicitly
-**not** authorized either.
+`[FACT]` Phase 1 is complete and has passed final owner UAT. Phase 2
+waveform-workspace discovery/design is complete, and **Phase 2A (backend
+waveform data foundation) is now implemented** — see
+[MIGRATION_PLAN.md — Phase 2A Implementation Record](MIGRATION_PLAN.md#phase-2a--waveform-data-foundation-implementation-record-2026-08-15).
+Per that task's own closing instruction, **Phase 2B is explicitly not
+authorized yet**: no chart library dependency, no frontend waveform
+rendering, no channel-selection UX, no panel model. The next step is for
+the project owner to review Phase 2A (the new API, its tests, and its
+measured memory/performance numbers) and decide: whether to proceed to
+Phase 2B; how to resolve the now-more-urgent abandoned-session TTL
+question (`[DECISION MODE: COMPARISON]`, per the Phase 2 design section
+and DEC-019) before any prolonged/shared-DEV waveform UAT; and which
+`[DECISION MODE: UAT]` items (plotting library, channel-selection
+interaction, panel-layout extras) to schedule bounded prototypes for.
+Phase 1.5 (CSV/Excel), synchronization, calculated signals, digital
+waveform delivery, authentication, and any other later-phase
+functionality remain explicitly **not** authorized.

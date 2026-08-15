@@ -4,11 +4,17 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.domain.source import SourceMetadata
+import numpy as np
+import pandas as pd
+
+from app.domain.disturbance_record import DisturbanceRecord
+from app.domain.metadata import RecordingMetadata
+from app.domain.source import ActiveSource, SourceMetadata
+from app.domain.timing import SamplingInformation, TimingInformation
 from app.services.workspace_registry import WorkspaceRegistry
 
 
-def _source(workspace_id: str, source_id: str) -> SourceMetadata:
+def _metadata(workspace_id: str, source_id: str) -> SourceMetadata:
     return SourceMetadata(
         source_id=source_id,
         workspace_id=workspace_id,
@@ -26,6 +32,36 @@ def _source(workspace_id: str, source_id: str) -> SourceMetadata:
         sampling_rates=(1000.0,),
         samples_per_rate=(10,),
     )
+
+
+def _record() -> DisturbanceRecord:
+    """A minimal but structurally valid DisturbanceRecord for registry tests.
+
+    These tests only exercise WorkspaceRegistry's own keying/ownership/
+    cleanup logic -- the record's actual contents are irrelevant to that,
+    so this is deliberately the smallest valid record, not a realistic one
+    (see tests/test_waveform_service.py / test_waveform_api.py for tests
+    that exercise real waveform data).
+    """
+    now = datetime.now(timezone.utc)
+    return DisturbanceRecord(
+        metadata=RecordingMetadata(
+            station_name="STATION",
+            recorder_name="DEV",
+            source_file="a.cfg",
+            provider_type="COMTRADE",
+            nominal_frequency=50.0,
+        ),
+        waveform_data=pd.DataFrame({"time": np.array([0.0, 0.001]), "VA": np.array([1.0, 2.0])}),
+        analog_channels=[],
+        digital_channels=[],
+        sampling_info=SamplingInformation(sampling_rates=[1000.0], samples_per_rate=[2]),
+        timing_info=TimingInformation(start_time=now, trigger_time=now),
+    )
+
+
+def _source(workspace_id: str, source_id: str) -> ActiveSource:
+    return ActiveSource(metadata=_metadata(workspace_id, source_id), record=_record())
 
 
 def test_add_and_get_round_trip():
@@ -49,8 +85,8 @@ def test_workspaces_are_isolated_from_each_other():
     registry.add(_source("ws-2", "src-1"))  # same source_id, different workspace
 
     # Same source_id but different workspace_id must not collide.
-    assert registry.get("ws-1", "src-1").workspace_id == "ws-1"
-    assert registry.get("ws-2", "src-1").workspace_id == "ws-2"
+    assert registry.get("ws-1", "src-1").metadata.workspace_id == "ws-1"
+    assert registry.get("ws-2", "src-1").metadata.workspace_id == "ws-2"
     assert registry.get("ws-1", "src-1") is not registry.get("ws-2", "src-1")
 
 
@@ -62,7 +98,7 @@ def test_list_for_workspace_only_returns_that_workspaces_sources():
 
     listed = registry.list_for_workspace("ws-1")
 
-    assert {s.source_id for s in listed} == {"src-1", "src-2"}
+    assert {s.metadata.source_id for s in listed} == {"src-1", "src-2"}
 
 
 def test_list_for_unknown_workspace_returns_empty():
@@ -125,7 +161,7 @@ def test_remove_workspace_leaves_other_workspaces_untouched():
     registry.remove_workspace("ws-1")
 
     assert registry.list_for_workspace("ws-1") == []
-    assert {s.source_id for s in registry.list_for_workspace("ws-2")} == {"src-1", "src-2"}
+    assert {s.metadata.source_id for s in registry.list_for_workspace("ws-2")} == {"src-1", "src-2"}
     assert registry.count() == 2
 
 

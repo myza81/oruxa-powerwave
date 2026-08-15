@@ -9,12 +9,20 @@ from app.domain.channel_classification import classify_analog_channel
 from app.domain.channels import AnalogChannel, DigitalChannel
 from app.domain.disturbance_record import DisturbanceRecord
 from app.domain.metadata import RecordingMetadata
-from app.domain.source import AnalogChannelSummary, DigitalChannelSummary, SourceMetadata
+from app.domain.source import (
+    ActiveSource,
+    AnalogChannelSummary,
+    DigitalChannelSummary,
+    SourceMetadata,
+)
 from app.domain.timing import DisturbanceInformation, SamplingInformation, TimingInformation
+from app.domain.waveform_reduction import build_min_max_envelope
 
 __all__ = [
+    "ActiveSource",
     "AnalogChannel",
     "AnalogChannelSummary",
+    "build_min_max_envelope",
     "classify_analog_channel",
     "DigitalChannel",
     "DigitalChannelSummary",

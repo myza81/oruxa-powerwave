@@ -1,4 +1,10 @@
-"""Structured import errors.
+"""Structured service errors.
+
+Originally "import errors" only (Phase 1); Phase 2A extends the same
+taxonomy/base class to app.services.waveform_service's errors too, rather
+than inventing a parallel hierarchy -- both are ImportServiceError
+subclasses so app.api.v1.sources's single `_http_error()` mapping and
+`_STATUS_BY_ERROR_CODE` table keep working unchanged for both.
 
 Maps to the error taxonomy in docs/project-memory/MIGRATION_PLAN.md Sec 9,
 extended with `upload_too_large` (not anticipated in the original Phase 0
@@ -57,3 +63,26 @@ class InvalidWorkspaceError(ImportServiceError):
 
 class SourceNotFoundError(ImportServiceError):
     code = "source_not_found"
+
+
+class ChannelNotFoundError(ImportServiceError):
+    """Requested channel name does not exist on this source (Phase 2A)."""
+
+    code = "channel_not_found"
+
+
+class ChannelNotAnalogError(ImportServiceError):
+    """Requested channel exists but is digital, not analog (Phase 2A).
+
+    The waveform endpoint only serves analog channels in Phase 2A -- see
+    docs/project-memory/MIGRATION_PLAN.md's Phase 2 design, "No digital
+    waveform implementation" (deliberately deferred, not an oversight).
+    """
+
+    code = "channel_not_analog"
+
+
+class InvalidTimeRangeError(ImportServiceError):
+    """start_time/end_time are malformed (e.g. start_time > end_time)."""
+
+    code = "invalid_time_range"
