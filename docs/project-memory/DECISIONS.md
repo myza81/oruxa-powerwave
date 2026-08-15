@@ -923,6 +923,100 @@ Impact:
 
 ---
 
+## DEC-022 — Plotly.js selected as waveform rendering foundation; Phase 2B renderer UAT closed
+
+Date: 2026-08-15
+Status: Approved
+Source: explicit project-owner direction, following the owner's completed
+hands-on UAT of the Phase 2B renderer prototype (uPlot vs. Plotly.js,
+commit `ad6d9d2`, refined for crosshair/lag at commit `8483c8a`).
+
+Decision:
+**Plotly.js is selected as the waveform rendering foundation for
+`oruxa_powerwave`.** This is the final Phase 2B renderer outcome — no
+longer `[UAT — pending]`. uPlot was evaluated as a genuine, fairly-tested
+comparison candidate and is **not** selected for the forward
+implementation; its adapter, vendored assets, and the renderer-switch UI
+have been removed from `frontend/waveform-prototype.html` this pass (see
+Impact below).
+
+Owner UAT findings, recorded verbatim for the record:
+
+- **Plotly**: better waveform clarity; good pan; useful built-in
+  navigation/control capabilities (zoom, zoom in, zoom out, autoscale,
+  reset axes, PNG export); moving hover X/Y values; overall better
+  engineering interaction feel; responsiveness judged acceptable.
+- **uPlot**: useful/lightweight; very good free-moving crosshair feel;
+  but overall less preferred than Plotly for the intended future
+  workspace.
+
+**Crosshair responsiveness was explicitly NOT pursued further.** The
+owner noted Plotly's sample-snapped crosshair can feel slightly less
+responsive than uPlot's free-moving cursor, then explicitly clarified
+this gap is *"not important enough to justify additional implementation
+complexity or development time."* No custom mouse-following overlay, no
+recreation of uPlot's two-layer cursor mechanics, and no custom hover
+engine were built. Plotly's native, sample-snapped hover behaviour is
+kept as-is functionally — only its **visual styling** was refined (thin,
+dashed, reduced-opacity spike lines, closer to uPlot's visual subtlety
+without its cursor mechanics).
+
+**This decision does not weaken or reinterpret DEC-021.** Plotly being
+selected as the rendering *engine* is a separate question from how
+navigation is *architected* — DEC-021's workspace-level, centralized-
+toolbar requirement remains fully authoritative. Plotly's native
+per-channel modebar, kept for this single-channel page, is explicitly
+documented (in code and in the page's own UI text) as **temporary** —
+Phase 2C must design one centralized Powerwave toolbar shared across
+every displayed channel, never one native modebar per channel/subplot.
+
+Reason:
+The owner's own hands-on comparison, using identical backend data and an
+identical interaction contract for both candidates (per Phase 2B's
+fair-comparison design), found Plotly's overall engineering interaction
+feel, built-in control richness, and waveform clarity stronger than
+uPlot's for the intended future workspace — outweighing uPlot's
+crosshair-feel advantage, which the owner judged as not decisive enough
+to justify the added complexity of trying to replicate it on top of
+Plotly.
+
+Alternatives considered:
+Keeping both candidates indefinitely (rejected — the comparison had a
+clear owner-stated outcome, and carrying two renderers forward serves no
+purpose once one is chosen); building a custom crosshair overlay to close
+the responsiveness gap (rejected — explicitly, by the owner, as not worth
+the complexity); waiting for Phase 2C to decide the renderer (rejected —
+the owner UAT is already conclusive, and Phase 2C's own design work
+benefits from a settled rendering foundation rather than an open
+question).
+
+Impact:
+- `frontend/waveform-prototype.html`: `UPlotAdapter`, the `ADAPTERS` map,
+  `switchRenderer()`, and the renderer-tab UI (`tabUplot`/`tabPlotly`
+  buttons, `.renderer-tab` CSS) are removed. The remaining `PlotlyRenderer`
+  object is initialized once, directly, in `init()`. "Renderer comparison
+  prototype" / "Phase 2B UAT" wording is removed from the visible page;
+  replaced with "Single-channel waveform preview — not the final Phase 2C
+  workspace," retaining a clear early-phase indication without
+  comparison-specific language.
+- `frontend/vendor/uplot/` (the vendored uPlot bundle and its `LICENSE`)
+  is deleted. `frontend/vendor/plotly/` remains, now the only vendored
+  library. `frontend/vendor/README.md` updated accordingly, with a short
+  "History" note (not a deletion of the fact that uPlot was evaluated).
+- Crosshair styling refined: `spikedash: "dash"` (was `"solid"`),
+  `spikecolor` changed to a reduced-opacity value (was a fully-opaque
+  `--text-dim`), `spikethickness` unchanged at `1` (already the thinnest
+  practical value). `spikesnap: "data"` unchanged — sample-snapping is
+  preserved exactly.
+- Phase 2A backend: **untouched** — no route, schema, service, or domain
+  file in `backend/app/` was modified for this decision; all existing
+  backend tests remain unmodified and passing.
+- **Phase 2B is now complete.** Phase 2C (centralized toolbar, panel
+  model, drag/reorder, multi-channel display) remains explicitly **not**
+  started and not authorized by this decision.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

@@ -8,6 +8,38 @@ Last updated: **2026-08-15**
 
 ## What was most recently done
 
+**Phase 2B — Renderer Closure.** The owner's final UAT decision:
+**Plotly.js is selected as the waveform rendering foundation** (DEC-022,
+[DECISIONS.md](DECISIONS.md)) — Plotly's better waveform clarity, richer
+built-in navigation, and overall stronger engineering interaction feel
+won out over uPlot's own strength (a very good free-moving crosshair
+feel). **This is Phase 2B's final outcome — no longer `[UAT]`.** Full
+detail:
+[MIGRATION_PLAN.md — Phase 2B Renderer Closure Record](MIGRATION_PLAN.md#phase-2b--renderer-closure-record-2026-08-15).
+
+**What changed**: the crosshair was restyled — `spikedash: "dash"` (was
+solid) and a reduced-opacity `spikecolor` (was fully opaque) — a lighter,
+subtler guide line closer to uPlot's visual character, **without**
+recreating uPlot's cursor mechanics. The owner explicitly declined to
+pursue crosshair-responsiveness parity with uPlot ("not important enough
+to justify additional implementation complexity or development time") —
+no custom mouse-following overlay was built; Plotly's native, sample-
+snapped hover behaviour is otherwise unchanged. `UPlotAdapter`, the
+renderer-switch UI (tabs), and `frontend/vendor/uplot/` were all removed
+— confirmed via repository-wide search, no live `uplot` reference remains
+outside historical documentation. The page itself was simplified: no more
+"renderer comparison"/"Phase 2B UAT" wording, just a plain "Single-channel
+waveform preview — not the final Phase 2C workspace" label. **DEC-021
+(workspace-level, centralized-toolbar navigation) is unchanged and
+unweakened** — Plotly's native per-channel modebar, kept for this
+single-channel page, is now documented directly in the page's own visible
+text as temporary, ahead of Phase 2C's required centralized toolbar.
+
+**No Phase 2A backend change** (zero backend files touched, 278 tests
+unmodified and passing). **No Phase 2C work.**
+
+## What was done in the prior session (Phase 2B Plotly refinement)
+
 **Phase 2B — Plotly Refinement & Workspace-Level Navigation.** Follows
 the owner's hands-on UAT of the Phase 2B renderer prototype (commit
 `ad6d9d2`): **Plotly is currently preferred** (better clarity, richer
@@ -297,7 +329,33 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified (this pass — Phase 2B Plotly refinement)
+## What was verified (this pass — Phase 2B renderer closure)
+
+- `oruxa_powerwave` git state: local `main` confirmed identical to
+  `origin/main` (independent `git fetch`), working tree clean, before and
+  after this pass.
+- **Backend regression: 278 tests, unmodified, all still pass** — zero
+  backend files in the diff (`git diff --stat -- backend/` empty).
+- **Frontend: 31 scripted `jsdom` checks, all passing** — 3 new
+  static-markup checks confirming no renderer-selector UI, no
+  "renderer comparison"/"Phase 2B UAT" wording, and no uPlot code
+  references remain anywhere in the shipped file; the rest cover
+  Plotly-only initialization, the restyled crosshair configuration
+  (dashed/thin/reduced-opacity/still-sample-snapped/both-axes), zoom,
+  the native-autoscale-refetch fix, Reset Time View, both stale-request
+  protection layers, and safe-failure error handling.
+- **Repository-wide search**: `grep -ril "uplot"` (excluding `.git` and
+  `docs/`, which intentionally retains historical record) returns only
+  `frontend/waveform-prototype.html` (two historical/rationale comments,
+  zero code references) and `frontend/vendor/README.md` (its own
+  intentional "History" note). `find -iname "*uplot*"` confirms zero
+  files with that name remain anywhere in the tree.
+- No real-browser/visual verification was performed in this sandboxed
+  session (no headless browser available) — see "Live DEV verification"
+  in this task's final report for what was checked via `curl`/static-asset
+  inspection instead.
+
+## What was verified (prior pass — Phase 2B Plotly refinement)
 
 - `oruxa_powerwave` git state: local `main` confirmed identical to
   `origin/main` (independent `git fetch`), working tree clean, before and
@@ -470,7 +528,21 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 2B Plotly refinement)
+## What files were changed this session (Phase 2B renderer closure)
+
+Modified: `frontend/waveform-prototype.html` (uPlot removal, crosshair
+restyle, page-text simplification), `frontend/Dockerfile` (comment
+accuracy only), `frontend/vendor/README.md` (uPlot entry removed, History
+section added), `docs/project-memory/{DECISIONS,MIGRATION_PLAN,CURRENT_STATE,HANDOFF}.md`
+(DEC-022 added; this work).
+
+Deleted: `frontend/vendor/uplot/uPlot.iife.min.js`,
+`frontend/vendor/uplot/uPlot.min.css`, `frontend/vendor/uplot/LICENSE`.
+
+No new files, no `frontend/index.html` change, no `backend/` file, and no
+CI/deployment workflow file touched.
+
+## What files were changed in the prior session (Phase 2B Plotly refinement)
 
 Modified only: `frontend/waveform-prototype.html` (Plotly native
 spike/crosshair config; relayout-handler autorange fix; debounce 200ms →
@@ -618,74 +690,68 @@ Modified:
 See "GitHub persistence" and "DEV deployment" in this task's final report
 (delivered in-conversation) for the exact commit hash, push confirmation,
 independent-fetch verification, GitHub Actions run, and live-endpoint
-checks for this refinement pass. **Production was not touched.**
+checks for this closure pass. **Production was not touched.**
 
 ## What remains unresolved
 
-- `[UAT]`, the whole point of this pass and the one before it: **Plotly is
-  currently preferred but the renderer choice is NOT closed** —
-  `[UAT — Plotly preferred pending final refinement confirmation]`. The
-  owner's final side-by-side pass (refined Plotly crosshair vs. uPlot's
-  own crosshair) is the next step, not something this pass could decide
-  on its own.
 - `[OPEN]` **Unchanged, still real**: abandoned-workspace cleanup still
   has no automatic expiry/TTL. `[DECISION MODE: COMPARISON]` — see
   [MIGRATION_PLAN.md §18](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14)
   and DEC-019's Impact section. The temporary DEV-only operational
-  stopgap from the prior pass still applies; this pass did not touch TTL.
-- `[UAT]`/`[OPEN]`, unchanged: zoom/pan interaction feel, autoscale
-  behaviour, and every Phase 2C question (the centralized-toolbar
-  *principle* is now decided — DEC-021 — but its actual design, plus
-  draggable/reorderable panels, custom panel grouping, and independent Y
-  axes, are not); digital waveform handling (deliberately deferred); the
+  stopgap from the Phase 2A pass still applies; this pass did not touch
+  TTL.
+- `[OPEN]`, Phase 2C in full: the centralized-toolbar *principle* is
+  decided (DEC-021), but its actual design is not — nor is
+  channel-selection/add interaction, panel layout, drag/reorder,
+  independent Y axes, or multi-channel display. All of Phase 2C remains
+  genuinely unscoped, not just unimplemented.
+- `[OPEN]`, unchanged: digital waveform handling (deliberately deferred —
+  the waveform endpoint rejects digital channel names by design); the
   ~100 MB real-file memory ceiling (still not directly measured); and
   everything else already listed in
   [CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers).
-- `[OPEN]`, new observation this pass, not fully closed: whether Plotly's
-  native modebar interactions still feel laggy after the debounce
-  reduction and the autorange-refetch fix is a real-browser question this
-  sandboxed session could not conclusively answer (no headless browser
-  available) — the owner's final UAT is where this actually gets settled.
+- **Resolved this pass, recorded for completeness**: the plotting-library
+  choice — previously `[UAT — Plotly preferred pending final refinement
+  confirmation]` — is now closed. DEC-022: Plotly.js selected, uPlot
+  removed. This is no longer an open item.
 
 ## What should be done next
 
-Per this task's explicit closing instruction: **stop after the refined
-prototype is live and verified**. Do not begin Phase 2C, digital
-channels, cursors/measurements, calculated signals, synchronization, or
-CSV/Excel without explicit owner approval, and do not remove uPlot or
-record a renderer winner in `DECISIONS.md` without a separate, later,
-explicit cleanup task once the owner actually confirms Plotly. The next
-step is for the **owner to run the final comparison**: refined Plotly
-crosshair vs. uPlot's crosshair, one more time, on DEV — then either
-confirm Plotly, ask for one more small refinement, or reopen the
-comparison entirely. All three are valid, honestly-reportable outcomes.
+Per this task's explicit closing instruction: **stop after the closure is
+live and verified**. Do not begin Phase 2C, digital channels, cursors/
+measurements, calculated signals, synchronization, or CSV/Excel without
+explicit owner approval. The next step is for the project owner (or a
+future session) to scope Phase 2C's actual design — the centralized
+Powerwave toolbar's concrete UX, channel-selection interaction, and panel
+layout — informed by DEC-021's already-approved principle, and separately
+to decide the abandoned-session TTL question before any further
+prolonged/shared-DEV waveform UAT.
 
 ## What must not be assumed
 
-- **Do not assume Plotly has been chosen as the final renderer** — it is
-  currently preferred by the owner's own UAT, but the choice remains
-  open pending one final confirmation pass. `DECISIONS.md` does not name
-  a winner.
-- **Do not assume uPlot has been or should be removed** — it is
-  unmodified and fully functional, deliberately retained for the final
-  comparison. Removing it is explicitly a *later*, separate cleanup task,
-  gated on the owner actually confirming Plotly first.
+- **Do not assume Plotly is still "pending" or "preferred but open"** —
+  it is the final, owner-selected renderer (DEC-022). uPlot is not a
+  fallback or a still-available alternative; it has been removed from the
+  codebase.
+- **Do not assume uPlot can be quickly re-added if reconsidered** — its
+  adapter code, vendored assets, and tests were deleted this pass;
+  recovering it means going back through Git history to the commit that
+  removed it, not flipping a flag.
 - **Do not assume DEC-021 (workspace-level navigation) authorizes any
-  Phase 2C implementation** — it is a design *principle* recorded ahead
-  of Phase 2C specifically so that phase's architecture doesn't
-  accidentally violate it; it does not itself approve panels, drag/
-  reorder, a centralized toolbar's actual design, or any other Phase 2C
-  feature.
-- Do not assume the Plotly crosshair fix changed any trace/line-rendering
-  behaviour — it is purely a hover-interaction (axis spike-line) config;
-  linear rendering, zoom-reveals-finer-data, and all Phase 2A backend
-  behaviour are unchanged and reverified.
-- Do not assume the native Plotly Autoscale/Reset-axes buttons were
-  broken by design — they were a genuine, previously-uncaught bug (silently
-  ignored autorange relayout events), now fixed; see the Phase 2B
-  refinement record for the exact mechanism.
-- Do not assume TTL is solved — unchanged from the prior pass, still
-  explicitly open.
+  Phase 2C implementation** — it is a design *principle*, not a scoped
+  design; it does not itself approve panels, drag/reorder, a centralized
+  toolbar's actual UX, or any other Phase 2C feature.
+- Do not assume Plotly's native per-channel modebar (kept for this
+  single-channel page) is the intended final multi-channel UX — it is
+  explicitly documented, in the page's own visible text, as temporary.
+- Do not assume the crosshair restyle changed any trace/line-rendering or
+  hover-mechanism behaviour — it is purely visual (`spikedash`/
+  `spikecolor`); sample-snapping, linear rendering, and
+  zoom-reveals-finer-data are all unchanged and reverified.
+- Do not assume a custom crosshair/hover engine was built to close the
+  uPlot-vs-Plotly responsiveness gap — the owner explicitly declined
+  that; only Plotly's native spike-line *styling* was changed.
+- Do not assume TTL is solved — unchanged, still explicitly open.
 - Do not assume the retained `DisturbanceRecord` (Phase 2A, DEC-019) or
   the waveform API's behavior changed this pass — zero backend files were
   touched; all 278 backend tests are unmodified and still pass.
@@ -700,17 +766,16 @@ comparison entirely. All three are valid, honestly-reportable outcomes.
 
 ## Owner approval needed before proceeding?
 
-- Not needed to review or run the refined Phase 2B prototype itself
-  (it's already implemented, deployed to DEV, and live-verified, per
-  explicit owner authorization for this exact slice).
+- Not needed to review or run the closed-out Phase 2B page itself (it's
+  already implemented, deployed to DEV, and live-verified, per explicit
+  owner authorization for this exact slice — including the renderer
+  decision itself, per the owner's own UAT).
 - **Yes**, before Phase 2C or any later Phase 2 slice begins, before
-  uPlot is removed, before a renderer winner is recorded in
-  `DECISIONS.md`, before Phase 1.5 or any later phase begins, before a
-  PROD deployment, and before any change to the ephemeral-storage,
-  upload-size, COMTRADE-upload-interaction, workspace-lifecycle, or
-  waveform-data decisions recorded in `DECISIONS.md`. Per the
-  change-governance rule in [CLAUDE.md](../../CLAUDE.md) /
-  [AGENTS.md](../../AGENTS.md).
+  Phase 1.5 or any later phase begins, before a PROD deployment, and
+  before any change to the ephemeral-storage, upload-size,
+  COMTRADE-upload-interaction, workspace-lifecycle, or waveform-data
+  decisions recorded in `DECISIONS.md`. Per the change-governance rule in
+  [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md).
 - **Recommended before any further prolonged/shared-DEV waveform UAT**:
   a real decision on the abandoned-session TTL question, rather than
   continuing to rely on the manual DEV stopgap.

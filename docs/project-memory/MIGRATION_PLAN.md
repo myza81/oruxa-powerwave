@@ -2706,6 +2706,162 @@ no CI/deployment workflow file was touched.
 
 ---
 
+## Phase 2B — Renderer Closure Record (2026-08-15)
+
+Closes Phase 2B following the owner's final UAT decision. **Plotly.js is
+the selected waveform renderer** (DEC-022, [DECISIONS.md](DECISIONS.md)).
+uPlot's adapter, vendored assets, and the renderer-switch UI have been
+removed. DEC-021 (workspace-level, centralized-toolbar navigation)
+remains fully authoritative and unchanged. **Phase 2C has not started.**
+
+### Final renderer decision
+
+> Plotly.js is selected as the waveform rendering foundation for
+> `oruxa_powerwave`.
+
+Recorded verbatim, per the owner's final UAT: Plotly's better waveform
+clarity, good pan, rich built-in navigation controls (zoom/zoom in/zoom
+out/autoscale/reset axes/PNG export), moving hover X/Y values, and
+overall better engineering interaction feel outweighed uPlot's own
+strength — a very good free-moving crosshair feel. This closes the `[UAT
+— Plotly preferred pending final refinement confirmation]` status
+recorded in the prior refinement pass; it is no longer pending.
+
+### Crosshair refinement
+
+Plotly's native axis spike-lines (already in place from the prior
+refinement pass) were **restyled**, not re-engineered:
+
+| Property | Before | After |
+|---|---|---|
+| `spikedash` | `"solid"` | `"dash"` |
+| `spikecolor` | `#8b96ad` (fully opaque) | `rgba(139, 150, 173, 0.55)` (55% opacity — the same base color, lighter) |
+| `spikethickness` | `1` | `1` (unchanged — already the thinnest practical pixel width) |
+| `spikesnap` | `"data"` | `"data"` (unchanged — still snaps to real recorded samples, never interpolated) |
+| `spikemode` | `"across"` | `"across"` (unchanged — both vertical and horizontal guide lines preserved) |
+
+Net effect: the crosshair now reads as a subtle dashed guide rather than
+a solid, heavier line — assisting waveform reading without visually
+competing with the trace itself, per the owner's stated visual intent.
+Both vertical (time) and horizontal (value) guide lines are still shown;
+no permanent/fixed labels were added; the moving hover X/Y value label
+(`hovertemplate`, unchanged) is preserved.
+
+### Responsiveness — explicitly not pursued
+
+The owner separately clarified that Plotly's sample-snapped crosshair
+feeling slightly less immediate than uPlot's free-moving cursor is *"not
+important enough to justify additional implementation complexity or
+development time."* Accordingly, this pass built **no** custom
+mouse-following overlay, **no** recreation of uPlot's two-layer cursor
+mechanics, and **no** custom hover engine. Plotly's native, sample-snapped
+hover behaviour is unchanged functionally — only its visual styling
+(table above) was refined. This is a deliberate scope boundary, not an
+oversight.
+
+### uPlot cleanup
+
+Removed, confirmed via repository-wide search (`grep -ril "uplot"`,
+excluding `docs/` which retains historical record intentionally):
+
+- `frontend/vendor/uplot/` — the entire directory (`uPlot.iife.min.js`,
+  `uPlot.min.css`, `LICENSE`).
+- `UPlotAdapter`, the `ADAPTERS` map, `switchRenderer()`, and both
+  renderer-tab buttons (`#tabUplot`/`#tabPlotly`) and their `.renderer-tab`
+  CSS from `frontend/waveform-prototype.html`.
+- The `<link rel="stylesheet" href="vendor/uplot/uPlot.min.css">` and
+  `<script src="vendor/uplot/uPlot.iife.min.js"></script>` tags.
+- All uPlot-specific test assertions from the frontend scripted-test
+  suite (replaced with Plotly-only equivalents plus explicit
+  "no uPlot reference remains" checks — see Tests below).
+
+**Confirmed remaining only as historical record** (not stale, not dead
+code): `frontend/vendor/README.md`'s new "History" section (states uPlot
+was evaluated and removed, points to this record for the comparison
+detail) and this document's own Phase 2B records above. Per the task's
+own "do not rewrite unrelated history" instruction, none of the prior
+Phase 2B UAT/refinement records above this section were altered.
+
+`frontend/Dockerfile` and `frontend/.dockerignore` needed no structural
+change — both already referenced `vendor/` as a whole directory, not
+per-library, so removing `vendor/uplot/` requires no build-pipeline edit.
+Their comments were updated for accuracy (singular "Plotly.js bundle"
+instead of plural "plotting libraries").
+
+### Plotly waveform behavior — confirmed unchanged
+
+- **Zoom**: native box-zoom drag still triggers a debounced (120ms),
+  stale-protected range request via the `plotly_relayout` handler.
+- **Pan**: native Plotly pan mode (modebar) still triggers the same
+  relayout → range-request path.
+- **Autoscale / Reset axes**: still correctly re-fetch the full record
+  (the fix from the prior refinement pass — treating the native
+  `xaxis.autorange` relayout the same as Reset Time View — is unchanged).
+- **Reset Time View**: still X-range-only, distinct from Y-autoscale,
+  per DEC-021's terminology requirement.
+- **Hover**: crosshair (restyled) plus moving X/Y value label, both
+  unchanged in mechanism.
+- **Range requests**: same endpoint, same query parameters, same fixed
+  `POINT_BUDGET` (4000) — unchanged.
+- **Fidelity**: linear rendering (`line.shape: "linear"`, never
+  `"spline"`) unchanged; zoom still reveals genuinely finer real backend
+  data (Phase 2A's `extract_waveform_range` behaviour, untouched); Phase
+  2A backend has zero diff this pass, all 278 existing tests unmodified
+  and passing.
+
+### Centralized navigation requirement — reconfirmed
+
+DEC-021 is unchanged and remains the authoritative future requirement:
+one shared X/time viewport across every displayed channel, a centralized
+Powerwave toolbar (not per-channel native modebars), and "Reset Time
+View"/"Autoscale Y" kept as distinct concepts. This pass's interaction
+hint text, now visible directly on the page, states explicitly that the
+current native Plotly modebar is **temporary** and that Phase 2C will
+introduce the centralized toolbar — making the requirement visible to
+anyone using the page, not just recorded in code comments and
+project-memory.
+
+### Detego benchmark note
+
+Per [PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md)'s standing framework:
+**Plotly was selected because of the owner's own hands-on UAT, not
+because Detego's public marketing copy happens to mention using
+Plotly.js** (that observation was noted factually during the earlier
+renderer-comparison pass and explicitly flagged then as not a reason to
+favor Plotly — DEC-020). This decision record does not imply otherwise;
+the UAT findings above are the entire stated reason.
+
+### Tests
+
+- **Backend: 278 tests, unmodified, all passing** — zero backend files
+  touched.
+- **Frontend: 31 scripted `jsdom` checks, all passing** — covers: three
+  static-markup checks confirming no renderer-selector UI, no
+  "renderer comparison"/"Phase 2B UAT" wording, and no uPlot code
+  references (script tags, CSS link, constructor calls, adapter object,
+  `ADAPTERS` map, `switchRenderer`) remain anywhere in the shipped file;
+  Plotly-only initialization; the restyled crosshair configuration
+  (dashed, thin, reduced-opacity, still sample-snapped, both axes);
+  zoom-triggers-narrower-request; the native-autoscale-triggers-refetch
+  fix (still correct); Reset Time View; both layers of stale-request
+  protection; and safe-failure error handling (covering the
+  source-removed/workspace-reset scenarios).
+
+### Files changed
+
+Modified: `frontend/waveform-prototype.html` (uPlot removal, crosshair
+restyle, page-text simplification), `frontend/Dockerfile` (comment
+accuracy), `frontend/vendor/README.md` (uPlot entry removed, History
+section added), `docs/project-memory/{DECISIONS,MIGRATION_PLAN,CURRENT_STATE,HANDOFF}.md`.
+
+Deleted: `frontend/vendor/uplot/uPlot.iife.min.js`,
+`frontend/vendor/uplot/uPlot.min.css`, `frontend/vendor/uplot/LICENSE`.
+
+No `frontend/index.html`, no `backend/` file, and no CI/deployment
+workflow file was touched.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

@@ -76,6 +76,23 @@ accidentally build per-channel navigation controls. **uPlot was
 deliberately retained, unmodified, fully functional** for a final
 side-by-side comparison. No Phase 2A backend change, no Phase 2C work.
 
+`[FACT]` **Phase 2B is now complete — the owner's final UAT selected
+Plotly.js as the waveform renderer** (2026-08-15) — see
+[MIGRATION_PLAN.md — Phase 2B Renderer Closure Record](MIGRATION_PLAN.md#phase-2b--renderer-closure-record-2026-08-15).
+`[DECISION]` **DEC-022**: Plotly.js is the waveform rendering foundation;
+uPlot was evaluated and is not selected. uPlot's adapter, vendored
+assets (`frontend/vendor/uplot/`), and the renderer-switch UI have been
+**removed**. The Plotly crosshair was restyled (dashed, thin, reduced-
+opacity) to feel visually subtler, closer to uPlot's own visual character
+— but crosshair *responsiveness* parity with uPlot was explicitly **not**
+pursued (owner judged it not worth the added complexity); Plotly's native
+sample-snapped hover behaviour is otherwise unchanged. **DEC-021 remains
+fully authoritative and unweakened** — Plotly's native per-channel
+modebar, kept for this single-channel page, is explicitly documented (in
+the page's own visible text, not just code comments) as temporary, ahead
+of Phase 2C's required centralized toolbar. No Phase 2A backend change
+(278 tests unmodified, all passing). **Phase 2C has not started.**
+
 ## Completed foundation work
 
 `[FACT]`, verified against the repository on 2026-08-15:
@@ -170,23 +187,25 @@ side-by-side comparison. No Phase 2A backend change, no Phase 2C work.
   workspace is non-empty) and only rotates the client-side `workspace_id`
   after that call succeeds; a failed cleanup leaves the old workspace,
   its source list, and its banner untouched and shows a visible error
-  instead. **Added this pass (Phase 2B)**: `frontend/waveform-prototype.html`
-  — an isolated renderer-UAT prototype (not part of the main channel-browse
-  screen) with uPlot and Plotly.js adapters behind a shared contract,
-  driven entirely by the existing Phase 2A waveform API; one new
-  "Waveform (UAT)" link per analog channel row is the only change to
-  `index.html` itself. `frontend/vendor/{uplot,plotly}/` holds the
-  vendored (no-build-step, static, MIT-licensed) library bundles this
-  prototype uses. **Refined this pass**: Plotly's layout now enables
-  native axis spike-lines (`showspikes`/`spikesnap: "data"`/`spikemode:
-  "across"`) for a hover crosshair; the relayout handler now correctly
-  triggers a full-record re-fetch on Plotly's native Autoscale/Reset-axes
-  buttons (previously silently ignored — a real bug found investigating
-  the owner's reported lag); the viewport debounce was shortened from
-  200ms to 120ms; "Reset View" was relabelled "Reset Time View" throughout
-  to keep it terminologically distinct from "Autoscale Y" (DEC-021). uPlot
-  is unmodified. Still no framework, no build step, no routing for the
-  main app — that remains an open, undecided question for a later phase.
+  instead. `frontend/waveform-prototype.html` — an isolated single-channel
+  waveform preview (not part of the main channel-browse screen), driven
+  entirely by the existing Phase 2A waveform API; one "Waveform (UAT)"
+  link per analog channel row in `index.html` is the only integration
+  point. **Started as a Phase 2B side-by-side uPlot/Plotly comparison,
+  now closed**: following the owner's UAT (DEC-022), **Plotly.js is the
+  selected and only renderer** — uPlot's adapter, its vendored assets, and
+  the renderer-switch UI were removed; `frontend/vendor/plotly/` is now
+  the only vendored library. Plotly's native axis spike-lines
+  (`showspikes`/`spikesnap: "data"`/`spikemode: "across"`) provide the
+  hover crosshair, restyled this pass to `spikedash: "dash"` and a
+  reduced-opacity `spikecolor` for a lighter, less visually dominant
+  guide line; sample-snapping and both vertical/horizontal lines are
+  unchanged. The relayout handler correctly triggers a full-record
+  re-fetch on Plotly's native Autoscale/Reset-axes buttons; the viewport
+  debounce is 120ms; "Reset Time View" stays terminologically distinct
+  from "Autoscale Y" (DEC-021, unweakened). Still no framework, no build
+  step, no routing for the main app — that remains an open, undecided
+  question for a later phase.
 - **Docker/Compose**: unchanged — `compose.yaml` +
   `compose.dev.yaml`/`compose.prod.yaml`, DEV/PROD isolation verified in CI.
 - **CI/CD**: unchanged (`.github/workflows/{ci,deploy}.yml`) — used as-is
@@ -201,8 +220,9 @@ side-by-side comparison. No Phase 2A backend change, no Phase 2C work.
   Implementation Record", "Phase 1 — UAT Refinement Record", "Phase 1 —
   Workspace-Reset Record", "Phase 2 — Waveform Workspace Discovery and
   Design", "Phase 2A — Implementation Record", "Phase 2B — Renderer
-  UAT Prototype Implementation Record", and "Phase 2B — Plotly
-  Refinement & Workspace-Level Navigation Record" sections).
+  UAT Prototype Implementation Record", "Phase 2B — Plotly
+  Refinement & Workspace-Level Navigation Record", and "Phase 2B —
+  Renderer Closure Record" sections).
 
 ## Current architecture status
 
@@ -282,13 +302,13 @@ corrected — see
 [Phase 1 — UAT Refinement Record](MIGRATION_PLAN.md#phase-1--uat-refinement-record-2026-08-14),
 and
 [Phase 1 — Workspace-Reset Record](MIGRATION_PLAN.md#phase-1--workspace-reset-record-2026-08-14).
-Phase 2A (backend waveform data foundation), Phase 2B (renderer UAT
-prototype), and a Phase 2B Plotly-refinement pass are all implemented —
-see
+Phase 2A (backend waveform data foundation) and Phase 2B (renderer UAT,
+refinement, and closure) are all implemented — see
 [MIGRATION_PLAN.md — Phase 2A](MIGRATION_PLAN.md#phase-2a--waveform-data-foundation-implementation-record-2026-08-15),
 [Phase 2B Implementation](MIGRATION_PLAN.md#phase-2b--renderer-uat-prototype-implementation-record-2026-08-15),
+[Phase 2B Refinement](MIGRATION_PLAN.md#phase-2b--plotly-refinement--workspace-level-navigation-record-2026-08-15),
 and
-[Phase 2B Refinement Records](MIGRATION_PLAN.md#phase-2b--plotly-refinement--workspace-level-navigation-record-2026-08-15).
+[Phase 2B Closure Records](MIGRATION_PLAN.md#phase-2b--renderer-closure-record-2026-08-15).
 `[DECISION]` Recorded earlier: DEC-019 — the active workspace retains
 each source's full-resolution `DisturbanceRecord`, delivered only via
 bounded time-range requests with peak-preserving (never naive-stride)
@@ -303,12 +323,14 @@ governance, not written to DECISIONS.md). `[DECISION]` Recorded
 shared X/time viewport across every displayed channel, never
 channel-level); a centralized Powerwave toolbar (not per-channel native
 modebars) is the required future architecture; "Reset Time View" and
-"Autoscale Y" are distinct operations, never collapsed. **Not decided by
-any of the above**: which chart library wins (Plotly is `[UAT — preferred
-pending final refinement confirmation]`, not closed), channel-selection/
-add interaction, panel layout, drag/reorder panel UX, digital waveform
-handling, and abandoned-session TTL policy — all remain
-`[UAT]`/`[COMPARISON]`/`[OPEN]`.
+"Autoscale Y" are distinct operations, never collapsed. `[DECISION]`
+Recorded 2026-08-15: **DEC-022** — **Plotly.js is selected as the
+waveform rendering foundation**; uPlot was evaluated and is not used
+going forward (removed from the codebase). This closes the plotting-
+library `[UAT]` — it is no longer open. **Not decided by any of the
+above**: channel-selection/add interaction, panel layout, drag/reorder
+panel UX, digital waveform handling, and abandoned-session TTL policy —
+all remain `[UAT]`/`[COMPARISON]`/`[OPEN]`.
 
 `[DECISION]` Recorded 2026-08-15: DEC-020 — `detego.app` is adopted as an
 official product/UI-UX/waveform-workspace/dashboard/workflow **benchmark**
@@ -406,26 +428,23 @@ captured). Phase 1 and Phase 2A content were not touched.
 
 `[FACT]` Phase 1 is complete and has passed final owner UAT. Phase 2
 waveform-workspace discovery/design is complete. **Phase 2A (backend
-waveform data foundation), Phase 2B (renderer UAT prototype), and a
-Phase 2B Plotly-refinement pass are all now implemented** — see
+waveform data foundation) and Phase 2B (renderer UAT, refinement, and now
+closure) are all complete** — see
 [MIGRATION_PLAN.md — Phase 2A](MIGRATION_PLAN.md#phase-2a--waveform-data-foundation-implementation-record-2026-08-15),
 [Phase 2B Implementation](MIGRATION_PLAN.md#phase-2b--renderer-uat-prototype-implementation-record-2026-08-15),
+[Phase 2B Refinement](MIGRATION_PLAN.md#phase-2b--plotly-refinement--workspace-level-navigation-record-2026-08-15),
 and
-[Phase 2B Refinement Records](MIGRATION_PLAN.md#phase-2b--plotly-refinement--workspace-level-navigation-record-2026-08-15).
-Per this refinement pass's own closing instruction, **Phase 2C
-(draggable/flexible panel workspace) is explicitly not authorized yet**,
-and **no plotting library has been chosen** — Plotly is `[UAT — preferred
-pending final refinement confirmation]`, still `[DECISION MODE: UAT]`,
-for the owner to close out hands-on. The next step is for the project
-owner to run the **final** UAT pass specifically: compare the refined
-Plotly crosshair against uPlot's own crosshair one more time on DEV, and
-either confirm Plotly, ask for one more small refinement, or reopen the
-comparison — after which (only if confirmed) a later, separate cleanup
-task would record the winner in `DECISIONS.md` and remove the losing
-candidate. Also still pending: resolving the abandoned-session TTL
-question (`[DECISION MODE: COMPARISON]`) before any further prolonged/
-shared-DEV waveform UAT; and scheduling Phase 2C's own panel/interaction
-UAT questions once the renderer is settled.
+[Phase 2B Closure Records](MIGRATION_PLAN.md#phase-2b--renderer-closure-record-2026-08-15).
+**Plotly.js is the selected waveform renderer (DEC-022)** — no longer
+`[UAT]`. Per this closure task's own explicit instruction, **Phase 2C
+(centralized toolbar, panel model, drag/reorder, multi-channel display)
+is explicitly not started and not authorized**. The next step is for the
+project owner (or a future session) to scope Phase 2C's actual design:
+the centralized Powerwave toolbar's concrete UX (DEC-021 sets the
+principle, not the design), channel-selection/add interaction, panel
+layout, and — separately — resolving the abandoned-session TTL question
+(`[DECISION MODE: COMPARISON]`) before any further prolonged/shared-DEV
+waveform UAT.
 Phase 1.5 (CSV/Excel), synchronization, calculated signals, digital
 waveform delivery, authentication, and any other later-phase
 functionality remain explicitly **not** authorized.

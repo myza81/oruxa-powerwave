@@ -3,14 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Waveform Prototype — Powerwave</title>
+    <title>Waveform Preview — Powerwave</title>
     <script src="config.js"></script>
-    <link rel="stylesheet" href="vendor/uplot/uPlot.min.css">
     <style>
         /* Same palette as index.html, deliberately kept in sync so this
-           reads as part of the same application, not a separate tool --
-           see docs/project-memory/MIGRATION_PLAN.md's Phase 2B record,
-           "keep it polished and simple, not a developer test harness." */
+           reads as part of the same application, not a separate tool. */
         :root {
             --bg: #0f1420;
             --panel: #161d2e;
@@ -120,17 +117,6 @@
             color: var(--text-dim);
             font-weight: 500;
         }
-        button.renderer-tab {
-            background: transparent;
-            border: 1px solid var(--panel-border);
-            color: var(--text-dim);
-            font-weight: 600;
-        }
-        button.renderer-tab.active {
-            background: rgba(79, 141, 253, 0.12);
-            border-color: var(--accent-dim);
-            color: var(--accent);
-        }
 
         .toolbar-spacer { flex: 1; }
 
@@ -229,8 +215,8 @@
 </head>
 <body>
     <header>
-        <h1>Waveform Prototype<span class="proto-badge">Phase 2B UAT</span></h1>
-        <div class="subtitle">Renderer comparison prototype — not the final waveform workspace.
+        <h1>Waveform Preview<span class="proto-badge">Phase 2 — Early</span></h1>
+        <div class="subtitle">Single-channel waveform preview — not the final Phase 2C workspace.
             <a class="back-link" href="index.html">&larr; Back to sources</a></div>
     </header>
 
@@ -243,14 +229,15 @@
 
         <section class="panel" id="chartPanel" hidden>
             <div class="toolbar">
-                <span style="font-size:0.78rem;color:var(--text-dim);">Renderer:</span>
-                <button type="button" class="renderer-tab" id="tabUplot">uPlot</button>
-                <button type="button" class="renderer-tab" id="tabPlotly">Plotly</button>
                 <div class="toolbar-spacer"></div>
                 <button type="button" class="secondary" id="resetViewBtn">Reset Time View</button>
             </div>
 
-            <p class="interaction-hint" id="interactionHint"></p>
+            <p class="interaction-hint" id="interactionHint">Drag on the chart to zoom, or use the chart's
+                built-in controls (top-right) to pan, zoom in/out, or autoscale. Hover for a crosshair with
+                the sample's X/Y value. &ldquo;Reset Time View&rdquo; always returns to the full record.
+                These built-in chart controls are temporary — Phase 2C will introduce one centralized
+                Powerwave toolbar shared across every displayed channel (see DEC-021).</p>
 
             <div class="chart-wrap">
                 <div id="chartContainer"></div>
@@ -264,7 +251,7 @@
             <details class="debug-panel" id="debugPanel">
                 <summary>Debug / performance (DEV only)</summary>
                 <table class="debug-table">
-                    <tr><td>Renderer</td><td id="dbgRenderer">—</td></tr>
+                    <tr><td>Renderer</td><td id="dbgRenderer">Plotly.js</td></tr>
                     <tr><td>Representation</td><td id="dbgRepresentation">—</td></tr>
                     <tr><td>Visible range</td><td id="dbgRange">—</td></tr>
                     <tr><td>Original samples in range</td><td id="dbgOriginalCount">—</td></tr>
@@ -278,27 +265,33 @@
         </section>
     </main>
 
-    <script src="vendor/uplot/uPlot.iife.min.js"></script>
     <script src="vendor/plotly/plotly-cartesian.min.js"></script>
     <script>
         // ==================================================================
-        // Phase 2B renderer UAT prototype.
+        // Phase 2 single-channel waveform preview.
         //
-        // Purpose: let the owner hands-on compare plotting libraries against
-        // the SAME Phase 2A backend waveform data and the SAME interaction
-        // contract -- see docs/project-memory/MIGRATION_PLAN.md's Phase 2B
-        // record and docs/project-memory/PRODUCT_REFERENCES.md (Detego
-        // Benchmark Principle). This file is deliberately isolated from
-        // index.html and from the Phase 2A backend API itself -- the API is
-        // chart-library-independent (see WaveformRenderer adapter contract
-        // below), and everything library-specific lives in this one file so
-        // a losing candidate (and frontend/vendor/<name>/) can be deleted
-        // cleanly without touching anything else.
+        // History: this page began as a Phase 2B side-by-side renderer
+        // comparison (uPlot vs. Plotly.js) driven by the same Phase 2A
+        // backend waveform data. Following the owner's hands-on UAT,
+        // **Plotly.js was selected** as the waveform rendering foundation
+        // (DEC-022, docs/project-memory/DECISIONS.md) and uPlot's adapter,
+        // its vendored assets, and the renderer-switch UI were removed --
+        // see docs/project-memory/MIGRATION_PLAN.md's Phase 2B closure
+        // record for the full comparison history and rationale.
+        //
+        // This remains a deliberately minimal, isolated preview, not the
+        // final workspace -- the backend API is chart-library-independent
+        // (see the render-function contract below), and this file is kept
+        // separate from index.html so it stays easy to evolve or replace
+        // without touching the main channel browser.
         //
         // Explicitly NOT in scope here (see project-memory for why):
         // digital channels, cursors/measurements, calculated signals,
-        // synchronization, draggable/reorderable panels. This is a
-        // single-channel renderer test, not the future workspace.
+        // synchronization, multi-channel display, and the centralized
+        // Powerwave toolbar (DEC-021) -- Plotly's native per-chart modebar
+        // is used for now, temporarily, as the only channel this page ever
+        // shows is one, and it must NOT be read as a precedent for one
+        // modebar per channel in the future multi-channel workspace.
         // ==================================================================
 
         // ------------------------------------------------------------------
@@ -320,12 +313,10 @@
             stationName: params.get("station_name") || "",
         };
 
-        // Fixed for the whole prototype session -- identical for every
-        // renderer and every request, per the fair-comparison requirement
-        // (docs/project-memory/MIGRATION_PLAN.md's Phase 2B record §7).
-        // Matches the backend's own default (app.services.waveform_service.
-        // DEFAULT_POINT_BUDGET) so this prototype exercises the same budget
-        // a production frontend would get without passing one explicitly.
+        // Matches the backend's own default
+        // (app.services.waveform_service.DEFAULT_POINT_BUDGET), so this
+        // preview exercises the same budget a production frontend would
+        // get without passing one explicitly.
         const POINT_BUDGET = 4000;
 
         function escapeHtml(value) {
@@ -336,8 +327,7 @@
 
         // ------------------------------------------------------------------
         // Waveform data client: exact-range requests against the Phase 2A
-        // API, with stale-request protection (task's "critical" requirement
-        // -- docs/project-memory/MIGRATION_PLAN.md's Phase 2B record §14).
+        // API, with stale-request protection.
         //
         // Two independent layers of protection, deliberately both, not
         // either/or:
@@ -398,7 +388,7 @@
             const known = {
                 source_not_found: "This source is no longer available in this workspace — it may have been removed, or the workspace was reset.",
                 channel_not_found: "This channel is no longer available on this source.",
-                channel_not_analog: "This channel is digital — the waveform prototype only supports analog channels in Phase 2B.",
+                channel_not_analog: "This channel is digital — this preview only supports analog channels.",
                 invalid_time_range: "That time range wasn't valid. Use Reset Time View to recover.",
                 invalid_workspace: "Something went wrong identifying your workspace.",
                 internal_error: "Something went wrong on our end. Please try again.",
@@ -407,107 +397,18 @@
         }
 
         // ------------------------------------------------------------------
-        // WaveformRenderer adapter contract (shared by every candidate):
-        //
-        //   init(container, payload, callbacks) -> instance
+        // Renderer: Plotly.js only (DEC-022). Kept as a small, self-
+        // contained object -- init/update/setViewport -- purely because
+        // that shape reads clearly, not because another candidate is
+        // expected; the backend API remains chart-library-independent
+        // regardless.
+        //   init(container, payload, callbacks) -> handle
         //     payload:   { time: number[], values: number[], unit, channelName, stationName }
-        //     callbacks: { onViewportChange(startTime, endTime) }
-        //     returns an opaque instance handle passed back into update/
-        //     setViewport/destroy -- the coordinator never inspects it.
-        //   update(instance, payload) -- replace displayed data (same shape
-        //     as init's payload); called on every successful range response,
-        //     including a renderer switch reusing already-fetched data.
-        //   setViewport(instance, startTime, endTime) -- force the visible
-        //     X range without necessarily changing the data (used by Reset
-        //     View once the full-record data has already been fetched).
-        //   destroy(instance) -- full teardown: remove DOM, listeners, any
-        //     resize observers. Must leave zero trace so switching renderers
-        //     repeatedly never accumulates duplicate canvases/handlers.
-        //
-        // The backend API knows nothing about any of this -- adapters are
-        // the only place a specific charting library is referenced.
+        //     callbacks: { onViewportChange(startTime, endTime), onAutoscaleRequested() }
+        //   update(handle, payload) -- replace displayed data
+        //   setViewport(handle, startTime, endTime) -- force the visible X range
         // ------------------------------------------------------------------
-
-        const UPlotAdapter = {
-            init(container, payload, callbacks) {
-                const resizeHandler = () => {
-                    if (instance) instance.setSize({ width: container.clientWidth, height: container.clientHeight });
-                };
-
-                const opts = {
-                    width: container.clientWidth,
-                    height: container.clientHeight,
-                    title: "",
-                    cursor: {
-                        drag: { x: true, y: false, uni: 30 }, // horizontal drag-to-zoom only
-                        // Crosshair note (Phase 2B UAT follow-up): uPlot
-                        // shows a vertical+horizontal crosshair by default
-                        // whenever `cursor` isn't disabled -- this was
-                        // already active and is exactly what the owner's
-                        // UAT called out as a uPlot strength; nothing new
-                        // was added here for uPlot, only for Plotly (see
-                        // PlotlyAdapter's `showspikes` config below), so the
-                        // final comparison is genuinely apples-to-apples.
-                    },
-                    scales: { x: { time: false } }, // seconds, not epoch ms -- see time-axis note below
-                    series: [
-                        {},
-                        {
-                            label: payload.channelName + (payload.unit ? " (" + payload.unit + ")" : ""),
-                            stroke: "#4f8dfd",
-                            width: 1.5,
-                            points: { show: false },
-                            // No spline/smoothing: uPlot's default line path
-                            // draws straight segments directly between real
-                            // sample points (paths.linear, the built-in
-                            // default) -- this is the ordinary engineering
-                            // waveform connection the task requires, not an
-                            // opt-in; nothing here enables curve smoothing.
-                        },
-                    ],
-                    axes: [
-                        { label: "Time (s)", stroke: "#8b96ad", grid: { stroke: "#2a3348" } },
-                        { label: payload.unit || "", stroke: "#8b96ad", grid: { stroke: "#2a3348" } },
-                    ],
-                    hooks: {
-                        setSelect: [
-                            (u) => {
-                                if (u.select.width < 4) return; // ignore accidental micro-drags
-                                const startTime = u.posToVal(u.select.left, "x");
-                                const endTime = u.posToVal(u.select.left + u.select.width, "x");
-                                u.setSelect({ width: 0, height: 0 }, false); // clear selection box
-                                callbacks.onViewportChange(startTime, endTime);
-                            },
-                        ],
-                    },
-                };
-
-                const instance = new uPlot(opts, [payload.time, payload.values], container);
-                window.addEventListener("resize", resizeHandler);
-                return { uplot: instance, resizeHandler };
-            },
-
-            update(handle, payload) {
-                handle.uplot.setData([payload.time, payload.values]);
-            },
-
-            // Reset Time View: X-scale only (see PlotlyAdapter's matching
-            // comment) -- uPlot auto-scales Y to whatever data is set via
-            // setData independently, which already keeps Y-autoscale a
-            // separate concern from this X-only reset.
-            setViewport(handle, startTime, endTime) {
-                handle.uplot.setScale("x", { min: startTime, max: endTime });
-            },
-
-            destroy(handle) {
-                window.removeEventListener("resize", handle.resizeHandler);
-                handle.uplot.destroy();
-            },
-
-            interactionHint: "Drag horizontally on the chart to zoom into a time range. Hover for uPlot's built-in crosshair. Use “Reset Time View” to return to the full record. (uPlot has no built-in pan gesture in this prototype — zoom in, then Reset Time View and zoom a different range.)",
-        };
-
-        const PlotlyAdapter = {
+        const PlotlyRenderer = {
             init(container, payload, callbacks) {
                 const trace = {
                     x: payload.time,
@@ -526,32 +427,32 @@
                     plot_bgcolor: "#161d2e",
                     font: { color: "#e7ecf5", size: 11 },
                     margin: { l: 55, r: 20, t: 10, b: 40 },
-                    // Crosshair refinement (Phase 2B UAT follow-up): Plotly's
-                    // own native axis "spike lines" are used directly rather
-                    // than a custom-built crosshair -- this is exactly the
-                    // built-in capability the task asked to prefer first,
-                    // and it fully covers the requirement (vertical + a
-                    // horizontal guide line on hover, no permanent labels).
-                    // spikesnap: "data" (not "cursor") deliberately snaps
-                    // the crosshair to the nearest REAL recorded sample,
-                    // never an interpolated in-between position -- keeping
-                    // it consistent with "no interpolation that visually
-                    // changes the waveform signature." If the owner finds
-                    // both lines together too busy during final UAT, the
-                    // documented fallback is to set only
-                    // `yaxis.showspikes: false` (vertical/time guide only,
-                    // matching uPlot's own crosshair more closely) -- see
-                    // docs/project-memory/MIGRATION_PLAN.md's Phase 2B
-                    // refinement record.
+                    // Crosshair styling (final refinement, post-UAT): native
+                    // Plotly axis spike-lines, deliberately styled thin,
+                    // dashed, and low-opacity so the guide lines assist
+                    // reading the waveform without visually competing with
+                    // it -- closer to the visual subtlety the owner liked
+                    // in uPlot's crosshair, without recreating uPlot's
+                    // cursor mechanics (no custom mouse-following overlay
+                    // was built; that responsiveness gap was explicitly
+                    // judged by the owner as not worth the added
+                    // complexity -- see DEC-022). `spikethickness: 1` is
+                    // already the thinnest practical pixel width; the
+                    // "lighter" requirement is carried by `spikedash:
+                    // "dash"` and the reduced-alpha `spikecolor` instead.
+                    // `spikesnap: "data"` is unchanged from the prior
+                    // refinement -- the crosshair still snaps to the
+                    // nearest REAL recorded sample, never an interpolated
+                    // in-between position.
                     xaxis: {
                         title: "Time (s)", gridcolor: "#2a3348", zeroline: false,
                         showspikes: true, spikemode: "across", spikesnap: "data",
-                        spikethickness: 1, spikedash: "solid", spikecolor: "#8b96ad",
+                        spikethickness: 1, spikedash: "dash", spikecolor: "rgba(139, 150, 173, 0.55)",
                     },
                     yaxis: {
                         title: payload.unit || "", gridcolor: "#2a3348", zeroline: false,
                         showspikes: true, spikemode: "across", spikesnap: "data",
-                        spikethickness: 1, spikedash: "solid", spikecolor: "#8b96ad",
+                        spikethickness: 1, spikedash: "dash", spikecolor: "rgba(139, 150, 173, 0.55)",
                     },
                     hovermode: "closest",
                     dragmode: "zoom",
@@ -574,26 +475,17 @@
                         callbacks.onViewportChange(x0, x1);
                         return;
                     }
-                    // Toolbar-lag investigation finding (Phase 2B refinement
-                    // -- see docs/project-memory/MIGRATION_PLAN.md): Plotly's
-                    // native "Autoscale"/"Reset axes" modebar buttons do NOT
-                    // fire an explicit xaxis.range[0]/[1] relayout -- they
-                    // fire `{"xaxis.autorange": true, "yaxis.autorange":
-                    // true}` instead, which this handler previously ignored
-                    // entirely. That meant clicking them only re-scaled the
-                    // axes to fit whatever data was ALREADY loaded (e.g. a
-                    // prior zoom's reduced range) without ever re-fetching
-                    // the true full record -- a real correctness gap, not
-                    // the lag itself, found while investigating the lag
-                    // report. Fixed here by treating that case as "the user
-                    // wants the full record back," same as our own Reset
-                    // Time View button. Note this is an honest
-                    // simplification, not a clean fix: Plotly's single
-                    // native Autoscale button conflates X-range-reset and
-                    // Y-autoscale into one action, which is exactly the kind
-                    // of coupling the future centralized Powerwave toolbar
-                    // (owner-approved requirement, DEC-021) must NOT
-                    // reproduce -- those need to stay two separate controls.
+                    // Plotly's native "Autoscale"/"Reset axes" modebar
+                    // buttons fire an `xaxis.autorange: true` relayout (no
+                    // explicit range) rather than xaxis.range[0]/[1] --
+                    // treated the same as our own Reset Time View, so those
+                    // buttons genuinely re-fetch the full record instead of
+                    // only re-scaling whatever was already loaded. Note:
+                    // Plotly's single native Autoscale button conflates
+                    // X-range-reset and Y-autoscale into one action, which
+                    // is exactly the coupling the future centralized
+                    // Powerwave toolbar (DEC-021) must NOT reproduce --
+                    // those stay two separate controls there.
                     if (eventData["xaxis.autorange"] === true) {
                         callbacks.onAutoscaleRequested();
                     }
@@ -617,37 +509,23 @@
 
             // Reset Time View: X-range only, deliberately -- never touches
             // yaxis.range, so it stays a distinct operation from "Autoscale
-            // Y" (task's own required terminology split, section 11). Y is
-            // left to Plotly's own default per-trace auto-ranging on data
-            // change, which is not the same code path as this function.
+            // Y" (DEC-021's required terminology split). Y is left to
+            // Plotly's own default per-trace auto-ranging on data change,
+            // which is not the same code path as this function.
             setViewport(handle, startTime, endTime) {
                 handle.suppressFlag();
                 Plotly.relayout(handle.container, { "xaxis.range": [startTime, endTime] });
             },
-
-            destroy(handle) {
-                handle.container.removeAllListeners("plotly_relayout");
-                Plotly.purge(handle.container);
-            },
-
-            interactionHint: "Drag on the chart to box-zoom into a time range, or use the modebar (top-right) to pan/zoom-in/zoom-out/autoscale. Hover over the waveform for a crosshair with the X/Y value. “Reset Time View” always returns to the full record.",
         };
 
-        const ADAPTERS = { uplot: UPlotAdapter, plotly: PlotlyAdapter };
-
         // ------------------------------------------------------------------
-        // Coordinator: owns current renderer, current data, the debounced
-        // viewport-change -> range-request pipeline, loading/error state,
-        // and the debug panel. This is the only place that knows about both
-        // "which library is active" and "what data is currently shown" --
-        // adapters know neither the API nor each other.
+        // Coordinator: owns current data, the debounced viewport-change ->
+        // range-request pipeline, loading/error state, and the debug panel.
         // ------------------------------------------------------------------
-        let currentRendererName = null;
         let currentHandle = null;
         let currentPayload = null; // last successfully rendered {time, values, unit, channelName, representation, startTime, endTime, originalSampleCount}
         let recordBounds = null; // {start, end} of the full record, learned from the first (unbounded) request
         let viewportDebounceTimer = null;
-        let libraryLoadNoted = false;
 
         function setLoading(isLoading) {
             document.getElementById("chartLoading").hidden = !isLoading;
@@ -663,8 +541,7 @@
             document.getElementById("errorBanner").hidden = true;
         }
 
-        function updateDebugPanel(rendererName, result, payload) {
-            document.getElementById("dbgRenderer").textContent = rendererName;
+        function updateDebugPanel(result, payload) {
             document.getElementById("dbgRepresentation").textContent = payload.representation;
             document.getElementById("dbgRange").textContent =
                 payload.startTime.toFixed(6) + "s – " + payload.endTime.toFixed(6) + "s";
@@ -719,31 +596,29 @@
 
             const renderT0 = performance.now();
             if (currentHandle) {
-                ADAPTERS[currentRendererName].update(currentHandle, payload);
+                PlotlyRenderer.update(currentHandle, payload);
             }
             const renderMs = performance.now() - renderT0;
 
-            updateDebugPanel(currentRendererName, result, payload);
+            updateDebugPanel(result, payload);
             document.getElementById("dbgRenderMs").textContent = renderMs.toFixed(1) + " ms";
         }
 
         // Takes a single (startTime, endTime) viewport and requests it --
         // deliberately not shaped around "this channel's own private
-        // viewport." Phase 2B has exactly one channel, so this function's
-        // caller and callee both happen to be single-channel today, but
-        // nothing in this function's own signature or behaviour assumes
-        // that. The owner-approved workspace-level navigation principle
-        // (DEC-021: one shared time viewport drives every displayed
-        // channel) means Phase 2C's extension point is exactly here -- a
-        // future version fans the same (startTime, endTime) out to every
-        // displayed channel's own fetch, rather than this function (or
-        // anything upstream of it) being restructured. Not implemented now
-        // (multi-channel fetching is explicitly out of this pass's scope)
-        // -- this comment exists so that fact doesn't get lost.
+        // viewport." This page shows exactly one channel, so this
+        // function's caller and callee both happen to be single-channel
+        // today, but nothing in this function's own signature or
+        // behaviour assumes that. DEC-021 (one shared time viewport drives
+        // every displayed channel) means Phase 2C's extension point is
+        // exactly here -- a future version fans the same (startTime,
+        // endTime) out to every displayed channel's own fetch, rather than
+        // this function (or anything upstream of it) being restructured.
+        // Not implemented now -- multi-channel fetching remains out of
+        // scope -- this comment exists so that fact doesn't get lost.
         function requestViewportRangeDebounced(startTime, endTime) {
             // Clamp to the source's own bounds -- panning/zooming must never
-            // silently request outside the record (docs/project-memory/
-            // MIGRATION_PLAN.md's Phase 2B record §20).
+            // silently request outside the record.
             if (recordBounds) {
                 startTime = Math.max(startTime, recordBounds.start);
                 endTime = Math.min(endTime, recordBounds.end);
@@ -751,15 +626,11 @@
             if (startTime >= endTime) return;
 
             clearTimeout(viewportDebounceTimer);
-            // 120ms (reduced from 200ms during the toolbar-lag
-            // investigation -- see docs/project-memory/MIGRATION_PLAN.md's
-            // Phase 2B refinement record): still long enough that a drag
-            // gesture's intermediate frames never each trigger their own
-            // request, short enough to shave visible latency off a
-            // discrete modebar click (zoom in/out, autoscale), which --
-            // unlike a drag -- has no intermediate frames to coalesce in
-            // the first place, so the debounce was pure added wait time for
-            // that interaction specifically.
+            // 120ms: long enough that a drag gesture's intermediate frames
+            // never each trigger their own request, short enough to avoid
+            // adding perceptible wait to a single discrete modebar click
+            // (zoom in/out, autoscale), which has no intermediate frames to
+            // coalesce in the first place.
             viewportDebounceTimer = setTimeout(() => {
                 loadRangeImmediate(startTime, endTime);
             }, 120);
@@ -767,52 +638,21 @@
 
         // "Reset Time View": restores the full-record X/time range. This is
         // a DIFFERENT operation from "Autoscale Y" (vertical magnitude
-        // scaling) -- task's own required terminology, section 11 -- and
-        // this function only ever touches the X range (both adapters'
-        // setViewport() implementations are X-only by construction, see
-        // their own comments). Also reused as the handler for Plotly's
-        // native Autoscale/Reset-axes modebar buttons (see PlotlyAdapter's
-        // relayoutHandler) -- an honest simplification documented there,
-        // not a claim that those two concepts are cleanly separated by
-        // Plotly's own UI today.
+        // scaling) -- DEC-021's required terminology -- and this function
+        // only ever touches the X range (PlotlyRenderer.setViewport() is
+        // X-only by construction, see its own comment). Also reused as the
+        // handler for Plotly's native Autoscale/Reset-axes modebar buttons
+        // (see PlotlyRenderer's relayoutHandler) -- an honest
+        // simplification documented there, not a claim that those two
+        // concepts are cleanly separated by Plotly's own native UI today.
         async function resetView() {
             if (!recordBounds) return;
             await loadRangeImmediate(recordBounds.start, recordBounds.end);
             if (currentHandle) {
-                ADAPTERS[currentRendererName].setViewport(currentHandle, recordBounds.start, recordBounds.end);
+                PlotlyRenderer.setViewport(currentHandle, recordBounds.start, recordBounds.end);
             }
         }
 
-        function switchRenderer(name) {
-            if (name === currentRendererName) return;
-            const container = document.getElementById("chartContainer");
-
-            if (currentHandle) {
-                ADAPTERS[currentRendererName].destroy(currentHandle);
-                currentHandle = null;
-            }
-            container.innerHTML = ""; // belt-and-suspenders against any adapter that doesn't fully clean up
-
-            currentRendererName = name;
-            document.getElementById("tabUplot").classList.toggle("active", name === "uplot");
-            document.getElementById("tabPlotly").classList.toggle("active", name === "plotly");
-            document.getElementById("interactionHint").textContent = ADAPTERS[name].interactionHint;
-
-            if (currentPayload) {
-                // Renderer switch reuses the already-fetched data -- no new
-                // backend request, per the task's own explicit requirement
-                // ("switching renderer does not change requested waveform
-                // data").
-                const callbacks = {
-                    onViewportChange: requestViewportRangeDebounced,
-                    onAutoscaleRequested: resetView,
-                };
-                currentHandle = ADAPTERS[name].init(container, currentPayload, callbacks);
-            }
-        }
-
-        document.getElementById("tabUplot").addEventListener("click", () => switchRenderer("uplot"));
-        document.getElementById("tabPlotly").addEventListener("click", () => switchRenderer("plotly"));
         document.getElementById("resetViewBtn").addEventListener("click", resetView);
 
         // ------------------------------------------------------------------
@@ -842,10 +682,6 @@
             setLoading(true);
             const libLoadStart = performance.now();
 
-            currentRendererName = "uplot";
-            document.getElementById("tabUplot").classList.add("active");
-            document.getElementById("interactionHint").textContent = UPlotAdapter.interactionHint;
-
             // Initial load: no start/end -> entire available record (see
             // app.services.waveform_service's documented default), bounded
             // display representation from the backend, never the full
@@ -853,9 +689,9 @@
             await loadRangeImmediate(null, null);
 
             if (currentPayload) {
-                currentHandle = ADAPTERS.uplot.init(container, currentPayload, callbacks);
+                currentHandle = PlotlyRenderer.init(container, currentPayload, callbacks);
                 document.getElementById("dbgLibLoad").textContent =
-                    (performance.now() - libLoadStart).toFixed(1) + " ms (uPlot init, includes first data load)";
+                    (performance.now() - libLoadStart).toFixed(1) + " ms (Plotly init, includes first data load)";
             }
         }
 
