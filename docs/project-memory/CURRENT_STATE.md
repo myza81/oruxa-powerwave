@@ -314,6 +314,41 @@ pass). **Direct vertical lane drag/reorder and drag-to-overlay/group by
 direct lane dragging remain explicitly not started — deliberately set
 aside in favor of Custom Groups this pass, not abandoned.**
 
+`[FACT]` **Phase 2C-C1 Custom Groups manual UAT passed** — "the workflow
+is smooth and easy to understand." Before digital channels, the owner
+requested one more analog-workspace refinement, **now implemented
+(Phase 2C-C2)**: every waveform panel/lane is independently resizable by
+dragging, in all three layout modes — see
+[MIGRATION_PLAN.md — Phase 2C-C2 Implementation Record](MIGRATION_PLAN.md#phase-2c-c2--adjustable-waveform-panel-heights-implementation-record-2026-08-15)
+and [DEC-028](DECISIONS.md#dec-028--adjustable-waveform-panel-heights-added-to-all-three-layout-modes-phase-2c-c2).
+Detego's vertical panel-resize interaction is the named UX benchmark
+(placement/feel only — no branding/colors/icons copied). A thin
+theme-token-styled handle at each panel's bottom edge, dragged via native
+Pointer Events + Pointer Capture, resizes continuously (rAF-coalesced) via
+`Plotly.Plots.resize()` only — presentation-only, **zero waveform
+refetches, no viewport/Y-range reset, verified directly**. Height is
+explicit state (`ww.panelHeights`, keyed by the same `groupKey` panel
+derivation already uses — no new identity concept), clamped to
+**100–600px** (documented reasoning: 100px keeps a usable plot area above
+`wwBuildLayout()`'s own 44px fixed margins; 600px prevents pathological
+growth); defaults match each mode's pre-existing height (Grouped/Custom
+260px, Separate 140px). A panel's remembered height survives round-
+tripping to the SAME mode and back (e.g. Separate→Grouped→Separate
+restores VA's own height) without any cross-mode height mapping;
+different modes' keys never collide. Session-only (no backend/database
+persistence); a whole-workspace reset clears remembered heights, while
+individual channel/panel removal deliberately does not (same policy as
+Phase 2C-C1's `ww.customGroups`). Separate mode's unified canvas, overlay
+label, and bottom-only shared X-axis are all fully preserved under
+arbitrary resizing (verified directly); Custom group membership and the
+group-editing workflow itself are untouched. No backend file changed
+(278 tests unmodified and passing); 23 new + 30 + 17 + 16 + 20 + 16 + 19
++ 4 re-verified existing frontend `jsdom` checks passing (145 total this
+pass). **Keyboard resizing was not implemented this slice** (documented
+accessibility limitation — `role="separator"` + `aria-label` only, not
+`tabindex="0"`/`role="slider"`). **Digital-channel rendering, lane
+drag/reorder, and drag-to-group all remain explicitly not started.**
+
 ## Completed foundation work
 
 `[FACT]`, verified against the repository on 2026-08-15:
@@ -458,8 +493,9 @@ aside in favor of Custom Groups this pass, not abandoned.**
   Grouped / Separate Analog Waveform Layout Implementation Record", "Phase
   2C-B2 — Unified Analog Canvas Layout Implementation Record", "Phase
   2C-B3 — Right-Side Compact Lane Labels Implementation Record", "Phase
-  2C-B3A — Overlay Right-Side Lane Labels Implementation Record", and
-  "Phase 2C-C1 — Custom Analog Channel Groups Implementation Record"
+  2C-B3A — Overlay Right-Side Lane Labels Implementation Record", "Phase
+  2C-C1 — Custom Analog Channel Groups Implementation Record", and "Phase
+  2C-C2 — Adjustable Waveform Panel Heights Implementation Record"
   sections).
 
 ## Current architecture status
@@ -550,13 +586,20 @@ Groups" workflow used as the explicit layout/workflow benchmark, no
 branding/styling copied. Any channel left unassigned automatically
 becomes its own single-channel panel (the documented rule — Apply is
 never blocked on complete assignment); the last-applied custom grouping
-persists across mode switches within the current workspace/session. No
-frontend framework, no database schema, no authentication, no CSV/Excel/
-digital-waveform/cursors-measurements/calculated-signal/synchronization
-features yet; **direct drag/reorder of panels, drag-to-overlay/group by
-direct lane dragging, and panel resize all remain not yet built** (the
-owner's own choice to pursue Custom Groups first, not an oversight). A
-Phase 2 waveform-workspace **design
+persists across mode switches within the current workspace/session.
+**(Phase 2C-C2, DEC-028)** Every waveform panel/lane, in all three layout
+modes, is independently resizable by dragging a bottom-edge handle
+(Detego's own vertical panel-resize interaction named as the UX
+benchmark, no branding/styling copied) — clamped 100–600px, presentation-
+only (zero waveform refetches, no viewport/Y-range reset), height kept as
+explicit state keyed by the same panel-derivation identity so a panel's
+height survives round-tripping back to the same mode without any
+cross-mode mapping. No frontend framework, no database schema, no
+authentication, no CSV/Excel/digital-waveform/cursors-measurements/
+calculated-signal/synchronization features yet; **direct drag/reorder of
+panels and drag-to-overlay/group by direct lane dragging remain not yet
+built** (the owner's own choice to pursue Custom Groups and then panel
+resize first, not an oversight). A Phase 2 waveform-workspace **design
 proposal** exists (see [MIGRATION_PLAN.md](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14)),
 and the Phase 2C flexible multi-channel workspace **design proposal**
 (see [MIGRATION_PLAN.md — Phase 2C](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15))
@@ -569,12 +612,14 @@ DEC-025), and Custom — Detego's own third grouping mode, at the time
 explicitly deferred — now also implemented (Phase 2C-C1, DEC-027). The
 backend foundation (Phase 2A), the renderer choice (Phase 2B, DEC-022),
 and all three multi-channel layout slices (Phase 2C-A/DEC-024, Phase
-2C-B1/DEC-025, Phase 2C-C1/DEC-027) are all implemented/decided. Direct
-drag/reorder of panels, drag-to-overlay/group by direct lane dragging,
-panel resize, Proportional Y scaling, mixed-unit handling, and
+2C-B1/DEC-025, Phase 2C-C1/DEC-027) are all implemented/decided, and
+adjustable panel heights (Phase 2C-C2/DEC-028) are now implemented across
+all three. Direct drag/reorder of panels, drag-to-overlay/group by direct
+lane dragging, Proportional Y scaling, mixed-unit handling, and
 digital-channel display remain unbuilt/undecided design-proposal items
 (`[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`) — the owner's
-own choice, this pass, to pursue Custom Groups ahead of drag/reorder.
+own choice, across these passes, to pursue Custom Groups and panel resize
+ahead of drag/reorder.
 
 ## Current approved focus
 
@@ -861,12 +906,29 @@ documented, chosen rule); the last-applied custom grouping persists
 across mode switches within the session. **Direct vertical drag/reorder
 of panels and drag-to-overlay/group by direct lane dragging remain
 explicitly not started and not authorized** — the owner's own choice to
-defer them in favor of Custom Groups this pass, along with panel resize,
-Proportional Y scaling, mixed-unit handling, digital channels, and shared
-crosshair. The next step is for the project owner to review Phase 2C-C1
-via live DEV UAT and either request refinements to Custom Groups,
-authorize the drag/reorder work directly, or defer further Phase 2C
-work. Separately, resolving the
+defer them in favor of Custom Groups this pass, along with Proportional
+Y scaling, mixed-unit handling, digital channels, and shared crosshair.
+Phase 2C-C1's own manual UAT passed ("the Custom Groups workflow is
+smooth and easy to understand"), and the owner's next requested
+refinement, before digital channels — every waveform panel/lane
+independently resizable by dragging — is now also implemented: **Phase
+2C-C2 (DEC-028)** — see
+[MIGRATION_PLAN.md — Phase 2C-C2 Implementation Record](MIGRATION_PLAN.md#phase-2c-c2--adjustable-waveform-panel-heights-implementation-record-2026-08-15).
+Applies uniformly to Grouped/Separate/Custom, via a theme-token-styled
+bottom-edge handle (Detego's own vertical panel-resize interaction named
+as the UX benchmark), clamped 100–600px, presentation-only (zero
+waveform refetches, verified directly), with height kept as explicit
+state keyed by the same panel-derivation groupKey so it survives
+round-tripping back to the same mode without any cross-mode mapping.
+**Direct vertical drag/reorder of panels and drag-to-overlay/group by
+direct lane dragging remain explicitly not started and not authorized** —
+the owner's own choice to defer them in favor of Custom Groups and then
+panel resize, along with Proportional Y scaling, mixed-unit handling,
+digital channels, and shared crosshair. The next step is for the project
+owner to review Phase 2C-C2 via live DEV UAT and either request
+refinements, authorize the drag/reorder work directly, or move on to
+digital channels (the owner's own stated next area after this
+refinement). Separately, resolving the
 abandoned-session TTL question (`[DECISION MODE: COMPARISON]`, reassessed
 but not resolved by Phase 2C-A/B1 — neither changes the backend memory-
 retention shape) and the ~100 MB real-file memory validation remain

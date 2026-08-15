@@ -1569,6 +1569,124 @@ Impact:
 
 ---
 
+## DEC-028 — Adjustable waveform panel heights added to all three layout modes (Phase 2C-C2)
+
+Date: 2026-08-15
+Status: Approved
+Source: explicit project-owner instructions opening the Phase 2C-C2 task
+(2026-08-15), following the owner's own manual UAT of Phase 2C-C1 Custom
+Groups (**passed** — "the Custom Groups workflow is smooth and easy to
+understand"), naming Detego's vertical panel-resize interaction as the
+explicit UX benchmark for this specific feature.
+
+Decision:
+
+Every waveform panel/lane, in all three layout modes (Grouped, Separate,
+Custom), can be independently resized vertically by dragging a handle at
+its bottom edge. This applies uniformly — the same handle mechanism,
+height-clamping rule, and state model work identically regardless of
+which layout mode is active, and regardless of how many channels a given
+panel holds.
+
+Confirmed as part of this same decision:
+
+- **Height constraints** (this task's own §6 required a chosen,
+  documented, tested minimum, with an optional maximum): minimum **100px**
+  (chosen after inspecting `wwBuildLayout()`'s own fixed 44px top+bottom
+  margin overhead and Separate mode's existing 140px default — a floor
+  much lower would leave an unusable strip); maximum **600px** (a
+  deliberate, generous, non-mandatory bound purely to prevent pathological
+  single-panel dimensions, per this task's own guidance for the
+  no-maximum case). Defaults match each mode's own pre-existing fixed CSS
+  height (Grouped/Custom 260px, Separate 140px) so a new panel's first
+  paint is unchanged from before this phase.
+- **Height state model** (this task's own §13 required resolving "how
+  should height behave when switching modes" cleanly): panel height is
+  explicit application state (`ww.panelHeights`, keyed by the SAME
+  `groupKey` the existing panel-derivation architecture already computes
+  — no new "stable panel identity" concept was invented). A panel's
+  remembered height survives round-tripping away from and back to the
+  SAME layout mode (e.g. Separate → Grouped → Separate restores VA's own
+  Separate height); different modes' groupKeys never collide (a Separate
+  VA lane's height never leaks onto the Grouped Voltage panel); a
+  brand-new groupKey always receives its mode's sensible default — no
+  cross-mode height mapping was built.
+- **Resizing is presentation-only**: `Plotly.Plots.resize()` is the only
+  Plotly API ever called for a height change — no data refetch, no
+  X/time viewport reset, no Y-range reset, no relayout-loop interaction.
+  Verified directly, not just asserted.
+- **Workspace/session-only persistence**: `ww.panelHeights` lives in
+  memory for the current browser tab only, reset by a whole-workspace
+  clear; no backend/database persistence was added. Individual channel/
+  panel removal deliberately does not scrub a height entry — the same
+  policy Phase 2C-C1 (DEC-027) already established for `ww.customGroups`,
+  for the same reason (a channel re-added later naturally regains its old
+  height).
+- Detego's placement/feel (subtle discoverable handle, direct drag, clear
+  vertical-resize cursor) was used as the interaction reference only — no
+  Detego branding, colors, icons, or implementation were copied; the
+  handle's own styling uses existing Oruxa theme tokens exclusively.
+
+Reason:
+
+The owner's own instructions opening this task are the explicit act of
+requesting this feature next (ahead of digital channels), naming Detego
+as the specific UX benchmark, and this task's own §6/§13 required
+concrete, documented, tested choices (height bounds; cross-mode height
+behavior) rather than leaving them open. Per this project's own
+governance, resolving named required choices with an owner-directed
+feature request is a decision worth recording, not merely an
+implementation detail.
+
+Alternatives considered:
+
+Reading the rendered DOM height as the source of truth instead of
+explicit JS state (rejected — this task's own §13 explicitly required
+NOT treating rendered DOM height as the only source of truth, and DOM
+height cannot survive a full `wwRebuildLayout()` teardown/recreate cycle
+across a mode switch, which explicit state can); building a
+cross-mode height-mapping system (e.g. deriving a Grouped panel's height
+from the average of its member channels' Separate heights) (rejected —
+this task's own §13 explicitly discouraged "complicated cross-mode
+height mapping," and per-groupKey state already produces the desired
+behavior with no mapping logic at all); adding `localStorage`
+persistence for panel heights (rejected for this slice — not required,
+judged unnecessary first-slice scope per this task's own
+"do not overengineer" guidance; can be reconsidered later); relying
+solely on Plotly's `responsive: true` auto-resize (ResizeObserver-driven)
+instead of an explicit `Plotly.Plots.resize()` call (rejected as the sole
+mechanism — an explicit, directly-triggered, testable call is more
+predictable across browsers/Plotly versions than depending entirely on
+internal auto-detection timing, though `responsive: true` itself remains
+enabled as a redundant safety net, unchanged from every prior phase).
+
+Impact:
+
+- `frontend/index.html`: `WW_MIN_PANEL_HEIGHT`/`WW_MAX_PANEL_HEIGHT`/
+  `WW_DEFAULT_PANEL_HEIGHT` constants; a `ww.panelHeights` Map plus
+  `wwDefaultHeightForCurrentMode()`/`wwHeightForGroupKey()`/
+  `wwClampPanelHeight()` helpers; `panel.height` added to the panel
+  object; `wwSetPanelHeight()` and `wwWireResizeHandle()` (Pointer Events
+  + Pointer Capture + `requestAnimationFrame` coalescing); a
+  `.ww-resize-handle` element added to every panel's DOM
+  (`wwCreatePanelDom()`) with its own CSS (theme-token-driven, unscoped
+  to any one layout mode); `wwClearWorkspace()` extended to reset
+  `ww.panelHeights`.
+- No backend file changed; the Phase 2A waveform endpoint's contract and
+  every prior phase's request/response shape are unchanged. No layout
+  persistence beyond the current browser tab was added, matching the
+  project's existing ephemeral-by-design principle (DEC-015).
+- DEC-021 (shared workspace-level viewport), DEC-024–DEC-027 (panel
+  architecture, Grouped/Separate/Custom modes, unified-canvas visual
+  treatment) are all reaffirmed unweakened — resizing is a presentation-
+  only layer on top of all of them, verified to interact with none of
+  their mechanisms.
+- **Digital-channel rendering, lane drag/reorder, drag-to-overlay/group,
+  and backend layout persistence remain explicitly not started and not
+  authorized by this decision.**
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

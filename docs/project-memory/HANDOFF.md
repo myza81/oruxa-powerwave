@@ -8,6 +8,97 @@ Last updated: **2026-08-15**
 
 ## What was most recently done
 
+**Phase 2C-C2 — Adjustable Waveform Panel Heights.** The owner completed
+manual UAT of Phase 2C-C1 Custom Groups: **PASSED** — "the workflow is
+smooth and easy to understand." Before moving on to digital channels, the
+owner requested one more analog-workspace refinement: every waveform
+panel/lane independently resizable by dragging, across all three layout
+modes (Grouped/Separate/Custom), with **Detego's vertical panel-resize
+interaction named as the explicit UX benchmark** (placement/feel only —
+no branding/colors/icons copied). Full detail:
+[MIGRATION_PLAN.md — Phase 2C-C2 Implementation Record](MIGRATION_PLAN.md#phase-2c-c2--adjustable-waveform-panel-heights-implementation-record-2026-08-15),
+[DECISIONS.md — DEC-028](DECISIONS.md#dec-028--adjustable-waveform-panel-heights-added-to-all-three-layout-modes-phase-2c-c2).
+
+**What was built**: a thin `.ww-resize-handle` (8px hit area, small
+centered theme-token-styled grip, `cursor: ns-resize`) added to every
+panel's DOM in `wwCreatePanelDom()`, sitting entirely below the chart
+(zero overlap into the plotting area, so it never intercepts hover/
+crosshair). Dragging uses native **Pointer Events + Pointer Capture**
+(`setPointerCapture` on `pointerdown`, so the drag keeps working even if
+the pointer leaves the handle's narrow bounds) with move/up listeners
+added on `pointerdown` and always removed on `pointerup`/`pointercancel`
+— no `document`-level listeners, nothing that can leak. Resizing is live
+during the drag (not deferred to mouse-up), coalesced through
+`requestAnimationFrame` so at most one `Plotly.Plots.resize()` call
+happens per animation frame regardless of raw pointer-event frequency.
+
+**Height constraints (documented, tested)**: minimum **100px** (keeps a
+usable plot area above `wwBuildLayout()`'s own fixed 44px top+bottom
+margins — a floor much lower would produce the "unusable strip" this
+task explicitly warned against); maximum **600px** (generous, not a hard
+requirement, purely to prevent pathological single-panel growth);
+defaults match each mode's own pre-existing height (Grouped/Custom
+260px, Separate 140px) so a brand-new panel's first paint is unchanged
+from before this phase.
+
+**Height state model (documented, tested)**: explicit application state
+(`ww.panelHeights`, a `Map<groupKey, heightPx>`), never read from the
+rendered DOM as the source of truth — reusing the SAME `groupKey` panel
+derivation already computes (Phase 2C-B1's own architecture), not a new
+identity concept. This single mechanism, with zero per-mode
+special-casing, produces exactly the requested behavior: different
+modes' keys never collide (a Separate VA lane's height never leaks onto
+the Grouped Voltage panel); the SAME mode's key persists across a round
+trip (Separate→Grouped→Separate restores VA's own Separate height); a
+brand-new key always gets its mode's sensible default — no cross-mode
+height-mapping logic was built, per this task's own explicit
+instruction not to invent one.
+
+**Presentation-only, verified directly**: `Plotly.Plots.resize()` is the
+only Plotly API ever called for a height change — no data refetch, no
+viewport reset, no Y-range reset. Fetch-call counts before/after a full
+multi-move resize drag, in every mode, are identical. Synchronization
+(DEC-021) is untouched — resizing never reads/writes `ww.viewport` or any
+panel's `suppressNext` flag; zoom/pan after resizing still broadcasts
+correctly to every panel. Separate mode's unified canvas, overlay label
+(still a correctly-positioned child of its own lane regardless of that
+lane's height), and bottom-only shared X-axis (still exactly the true
+last panel, regardless of resizing) are all fully preserved — verified
+directly, not just asserted. Custom group membership and the group-
+editing workflow itself are completely untouched.
+
+**Persistence**: `ww.panelHeights` is session/workspace-only (no
+backend/database persistence, matching DEC-015's ephemeral-by-design
+principle); a whole-workspace reset clears it; individual channel/panel
+removal deliberately does not (same policy Phase 2C-C1 already
+established for `ww.customGroups`, same reasoning).
+
+**Accessibility limitation, documented honestly**: keyboard resizing was
+**not** implemented this slice (`tabindex="-1"`, `role="separator"` +
+`aria-label` only) — this task's own instructions marked it desirable
+long-term but not required "unless trivial," and a correct keyboard-
+resize interaction (likely `role="slider"` with `aria-valuenow`/min/max)
+was judged non-trivial, out of proportion to this slice's pointer-drag
+requirement.
+
+**Backend**: zero files changed — no backend change was needed
+(frontend/state-only, per this task's own preference).
+
+**Tests**: 278 backend (unmodified) + 23 new frontend `jsdom` checks
+(using jsdom's real `PointerEvent` constructor plus a
+`requestAnimationFrame`/`cancelAnimationFrame` polyfill jsdom itself
+lacks) + the full existing Phase 2C-C1 (30), Phase 2C-B3A (17), Phase
+2C-B3 (16), Phase 2C-B2 (20), Phase 2C-B1 (16), Phase 2C-A (19), and
+Phase 1 (4) suites all re-run unmodified and still passing (145 total
+this pass, no regressions). **Digital-channel rendering, lane drag/
+reorder, and drag-to-group all remain explicitly not started.**
+Real-browser tactile/visual confirmation of the drag interaction itself
+was not possible in this sandboxed, no-real-browser session — see this
+task's own final report for the closest available substitute evidence;
+final judgment remains the owner's own manual UAT.
+
+## What was done in the prior session (Phase 2C-C1 — Custom Analog Channel Groups)
+
 **Phase 2C-C1 — Custom Analog Channel Groups.** The owner chose to
 **skip vertical lane drag/reorder for now** — previously flagged as the
 owner's likely next direction since Phase 2C-A — and instead requested
@@ -827,7 +918,52 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified (this pass — Phase 2C-C1 custom analog channel groups)
+## What was verified (this pass — Phase 2C-C2 adjustable waveform panel heights)
+
+- `oruxa_powerwave` git state: local `main` confirmed identical to
+  `origin/main` at commit `91bb0fc` (independent `git fetch` via the
+  established HTTPS-URL workaround), working tree clean, before this
+  pass began.
+- **Backend regression: 278 tests, unmodified, all still pass** (fresh
+  venv run) — zero backend files in the diff (`git diff --stat -- backend/`
+  empty; diff scoped to `frontend/index.html` only).
+- **Frontend, new: 23 scripted `jsdom` checks, all passing** — a resize
+  handle exists on every panel in Grouped/Separate/Custom; dragging a
+  Grouped panel's handle resizes only that panel (an unrelated panel's
+  height is byte-for-byte unchanged); `Plotly.Plots.resize` is called
+  during the drag; resizing issues zero waveform fetches; extreme drags
+  clamp correctly at both the 100px minimum and the 600px maximum;
+  zoom/Reset-Time-View synchronization still work correctly after
+  resizing; Separate lanes resize independently while the overlay label
+  stays a correctly-positioned child of its own lane and the true bottom
+  lane still (and only it) shows the shared X axis; a Custom group panel
+  resizes independently with membership unchanged; height state
+  round-trips correctly across Custom→Grouped→Custom and
+  Separate→Grouped→Separate, including confirming different modes'
+  height keys never collide; Grouped/Separate/Custom keep working; theme
+  switching remains correct at custom heights without a refetch;
+  removing then re-adding a channel restores its remembered height
+  (deliberately not scrubbed); Clear workspace resets remembered heights
+  entirely; waveform query-parameter whitelist unchanged.
+- **Frontend, existing: the full Phase 2C-C1 (30), Phase 2C-B3A (17),
+  Phase 2C-B3 (16), Phase 2C-B2 (20), Phase 2C-B1 (16), Phase 2C-A (19),
+  and Phase 1 (4) suites were all re-run unmodified against this pass's
+  code and all still pass in full** — 122 existing checks, zero
+  regressions (145 total this pass).
+- `node --check` on `frontend/index.html`'s inline `<script>` block —
+  syntactically valid.
+- `grep` cross-check: every `getElementById(...)` call resolves to an
+  `id=` that actually exists; no duplicate IDs.
+- No real-browser/visual or tactile confirmation of the drag interaction
+  itself was performed in this sandboxed session (no headless browser
+  available; jsdom implements neither element-level Pointer Capture nor
+  `requestAnimationFrame` natively, both worked around in the test
+  harness) — see "Live DEV verification" in this task's final report for
+  what was checked instead (API-level evidence only), and its own
+  explicit statement about what's honestly unverified. Final tactile/
+  visual judgment remains the owner's own manual UAT.
+
+## What was verified (prior pass — Phase 2C-C1 custom analog channel groups)
 
 - `oruxa_powerwave` git state: local `main` confirmed identical to
   `origin/main` at commit `ae8ccfd` (independent `git fetch` via the
@@ -1360,7 +1496,24 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 2C-C1 custom analog channel groups)
+## What files were changed this session (Phase 2C-C2 adjustable waveform panel heights)
+
+Modified only: `frontend/index.html` (`WW_MIN_PANEL_HEIGHT`/
+`WW_MAX_PANEL_HEIGHT`/`WW_DEFAULT_PANEL_HEIGHT` constants; a
+`ww.panelHeights` Map; `wwDefaultHeightForCurrentMode()`/
+`wwHeightForGroupKey()`/`wwClampPanelHeight()` helpers; `panel.height`
+added to the panel object (`wwCreatePanelObject`); `wwSetPanelHeight()`
+and `wwWireResizeHandle()` (Pointer Events + Pointer Capture +
+`requestAnimationFrame` coalescing); a `.ww-resize-handle` element added
+to every panel's DOM (`wwCreatePanelDom`) with its own theme-token CSS,
+unscoped to any one layout mode; `wwClearWorkspace()` extended to reset
+`ww.panelHeights`; the module header comment updated), `docs/project-
+memory/{DECISIONS,MIGRATION_PLAN,CURRENT_STATE,HANDOFF}.md` (DEC-028
+added; this work). No new files. **No `frontend/waveform-prototype.html`/
+`theme.css`/`theme.js` change, no `backend/` file, no CI/deployment
+workflow file was touched.**
+
+## What files were changed in the prior session (Phase 2C-C1 custom analog channel groups)
 
 Modified only: `frontend/index.html` (a `ww.customGroups`/
 `ww.customGroupSeq` state pair; a `wwCustomGroupFor()` helper; a "custom"
@@ -1646,77 +1799,90 @@ Modified:
 See "GitHub persistence" and "DEV deployment" in this task's final report
 (delivered in-conversation) for the exact commit hash, push confirmation,
 independent-fetch verification, GitHub Actions run, and live-endpoint
-checks for this Phase 2C-C1 pass. **Production was not touched.**
+checks for this Phase 2C-C2 pass. **Production was not touched.**
 
 ## What remains unresolved
 
 - `[OPEN]`, **direct vertical drag/reorder of panels and drag-to-overlay/
   group by direct lane dragging are still fully unimplemented and
   undecided** — `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`,
-  not `[DECISION]`. This pass (Phase 2C-C1, DEC-027) resolved the
-  previously-open Custom-grouping question, but the owner's own explicit
-  choice this pass was to skip drag/reorder in favor of Custom Groups —
-  it remains the owner's stated *possible* next direction, not started,
-  not abandoned.
+  not `[DECISION]`. This pass (Phase 2C-C2, DEC-028) added adjustable
+  panel heights, but the owner's own explicit choice across both this
+  pass and the prior one was to defer drag/reorder in favor of Custom
+  Groups and then panel resize — it remains the owner's stated *possible*
+  next direction, not started, not abandoned.
 - `[OPEN]`, unchanged: Proportional Y scaling, mixed-unit panel handling,
-  digital-channel display, shared crosshair, panel resize — every one of
-  these remains `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`.
+  digital-channel display, shared crosshair — every one of these remains
+  `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`. **Panel resize
+  is no longer on this list — it is now implemented (Phase 2C-C2).**
 - `[OPEN]` **Unchanged, still real**: abandoned-workspace cleanup still
   has no automatic expiry/TTL. `[DECISION MODE: COMPARISON]` — none of
-  Phase 2C-A, Phase 2C-B1, Phase 2C-B2, Phase 2C-B3, Phase 2C-B3A, or
-  Phase 2C-C1 changes the backend memory-retention shape (still
+  Phase 2C-A, Phase 2C-B1, Phase 2C-B2, Phase 2C-B3, Phase 2C-B3A, Phase
+  2C-C1, or Phase 2C-C2 changes the backend memory-retention shape (still
   per-*source*, DEC-019, unaffected by how many panels/channels, which
-  layout mode, or which grouping a UI displays against it), but a real,
-  now-more-flexible multi-channel workspace (now including user-defined
-  Custom groups) is plausibly a richer, longer-lived thing to explore
-  than Phase 2B's single-channel preview was, which raises (not
-  resolves) the same urgency already flagged for Phase
-  2A/2B/2C-A/2C-B1/2C-B2/2C-B3/2C-B3A. See
+  layout mode, which grouping, or which panel heights a UI displays
+  against it), but a real, now-more-flexible multi-channel workspace
+  (Custom groups, adjustable heights) is plausibly a richer, longer-lived
+  thing to explore than Phase 2B's single-channel preview was, which
+  raises (not resolves) the same urgency already flagged for Phase
+  2A/2B/2C-A/2C-B1/2C-B2/2C-B3/2C-B3A/2C-C1. See
   [MIGRATION_PLAN.md's Phase 2C §30](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15)
   and DEC-019's Impact section.
-- `[OPEN]`, unchanged: digital waveform handling (still not built); the
+- `[OPEN]`, unchanged: digital waveform handling (still not built,
+  explicitly the owner's own stated next area after this pass); the
   ~100 MB real-file memory ceiling (still not directly measured); and
   everything else already listed in
   [CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers).
+- `[OPEN]`, new this pass: **keyboard resizing of panel heights was not
+  implemented** — documented honestly (§19 of this task's own
+  instructions permitted deferring it "unless trivial"; it was judged
+  non-trivial). A future slice could add `tabindex="0"` +
+  `role="slider"` + arrow-key handling without restructuring anything
+  built this pass.
 - **Carried over from Phase 2C-A's own manual UAT, deliberately not
   addressed this pass**: a small amount of interaction latency, judged
   currently bearable; and vertical (Y-axis) zoom being less intuitive
   than the rest of the toolbar — both explicitly flagged for a **later**
   UX refinement pass, not this one.
-- **Unchanged from Phase 2C-A/B1/B2/B3/B3A**: real-browser rendering
-  responsiveness and actual visual/workflow appearance (whether the
-  group editor modal genuinely feels clear and engineering-focused) were
-  not visually confirmed in this sandboxed, no-real-browser session — see
-  this task's final report for the API/structural-level DEV evidence
-  gathered instead. Final appearance/workflow judgment remains the
-  owner's own manual UAT.
+- **Unchanged from Phase 2C-A/B1/B2/B3/B3A/C1**: real-browser rendering
+  responsiveness and actual tactile/visual quality (whether the resize
+  drag genuinely feels direct/discoverable/subtle to a human hand) were
+  not confirmed in this sandboxed, no-real-browser session — see this
+  task's final report for the API/structural-level DEV evidence gathered
+  instead. Final tactile/visual judgment remains the owner's own manual
+  UAT.
 
 ## What should be done next
 
-The next step is for the **project owner** to review Phase 2C-C1 via live
+The next step is for the **project owner** to review Phase 2C-C2 via live
 DEV UAT (this task's own checklist) and choose a direction — none is
-assumed here: (a) confirm Custom Groups works as intended, or request
-refinements to the group editor's UX; (b) authorize the drag/reorder/
-overlay/split work directly (still the owner's own possible next
-direction — vertical lane drag, reorder, drop-to-overlay/group,
-drag-out-to-separate — deliberately set aside this pass, not abandoned);
-or (c) address the Phase 2C-A UAT findings (interaction latency,
-vertical-zoom discoverability) before further layout work. Do **not**
-begin any drag/reorder/overlay implementation without an explicit signal
-— this task's own closing instruction was to stop after Custom Groups.
-Separately, resolving the abandoned-session TTL question and the ~100 MB
-real-file memory validation remain recommended before broader/prolonged
-shared-DEV UAT, unchanged conclusion from every prior Phase 2 pass.
+assumed here: (a) confirm panel resizing works and feels right, or
+request refinements (handle feel, height bounds, keyboard support); (b)
+authorize the drag/reorder/overlay/split work directly (still the
+owner's own possible next direction, deliberately set aside across this
+pass and the prior one, not abandoned); or (c) move on to digital
+channels, the owner's own explicitly stated next area once panel resizing
+was requested ("before digital channels..."). Do **not** begin any
+drag/reorder/overlay or digital-channel implementation without an
+explicit signal — this task's own closing instruction was to stop after
+panel resizing. Separately, resolving the abandoned-session TTL question
+and the ~100 MB real-file memory validation remain recommended before
+broader/prolonged shared-DEV UAT, unchanged conclusion from every prior
+Phase 2 pass.
 
 ## What must not be assumed
 
 - **Do not assume drag/reorder/overlay/split has started** — it has not;
-  no direct vertical lane dragging, no reorder, no drop-to-overlay/group
-  by direct lane dragging, no drag-out-to-separate, no panel resize exist
-  anywhere in the repository. **Custom layout mode DOES now exist**
+  no direct vertical lane dragging (to reorder panels), no reorder, no
+  drop-to-overlay/group by direct lane dragging, no drag-out-to-separate
+  exist anywhere in the repository. **Custom layout mode DOES now exist**
   (Phase 2C-C1, DEC-027) — do not confuse it with drag/reorder; Custom
   Groups are assigned via a modal dialog with dropdowns and buttons, not
-  by dragging lanes.
+  by dragging lanes. **Panel HEIGHT resize DOES now exist** (Phase
+  2C-C2, DEC-028) — do not confuse this with lane drag/reorder either;
+  the resize handle only ever changes a panel's vertical size, never its
+  position/order relative to other panels, and there is still no way to
+  reorder or drag one lane onto another.
 - **Do not assume Custom mode's channel-to-group assignment uses
   drag-and-drop** — it deliberately does not (this task's own §6 allowed
   skipping it "unless genuinely simple"); moving a channel between groups
@@ -1731,6 +1897,18 @@ shared-DEV UAT, unchanged conclusion from every prior Phase 2 pass.
   frontend-only, in-memory, ephemeral session state (matching DEC-015's
   existing ephemeral-by-design principle), reset only by a whole-
   workspace clear ("Clear workspace"/"Start new workspace").
+- **Do not assume panel resizing ever triggers a waveform refetch, resets
+  the shared X/time viewport, or resets a panel's Y range** — verified by
+  test that it does none of these; `Plotly.Plots.resize()` is the only
+  Plotly API a height change ever calls.
+- **Do not assume panel heights are persisted to the backend or survive a
+  page reload** — they are not; `ww.panelHeights` is frontend-only,
+  in-memory, ephemeral session state (matching DEC-015), reset only by a
+  whole-workspace clear. Removing an individual channel/panel does NOT
+  clear its remembered height (same policy as `ww.customGroups`).
+- **Do not assume panel resizing supports keyboard input** — it does not
+  this slice (documented accessibility limitation, DEC-028); the handle
+  is `tabindex="-1"` and pointer/touch-drag only.
 - **Do not assume the unified-canvas refinement changed the panel/layout
   data model or the Y-axis behavior** — it did not; `ww.panels` (displayed
   channels + panel membership + panel order) is byte-for-byte the same
@@ -1808,13 +1986,15 @@ shared-DEV UAT, unchanged conclusion from every prior Phase 2 pass.
 ## Owner approval needed before proceeding?
 
 - Not needed to review or use Phase 2C-A, Phase 2C-B1, Phase 2C-B2, Phase
-  2C-B3, Phase 2C-B3A, or Phase 2C-C1 themselves — already implemented,
-  deployed to DEV, and live-verified per this exact task's own
-  authorization.
+  2C-B3, Phase 2C-B3A, Phase 2C-C1, or Phase 2C-C2 themselves — already
+  implemented, deployed to DEV, and live-verified per this exact task's
+  own authorization.
 - **Yes**, before any drag/reorder/overlay/split work begins (still the
-  owner's own possible next direction, deliberately set aside this pass
-  in favor of Custom Groups, but still not yet explicitly authorized to
-  *implement*), before panel resize, before Phase
+  owner's own possible next direction, deliberately set aside across
+  this pass and the prior one in favor of Custom Groups and panel
+  resize, but still not yet explicitly authorized to *implement*),
+  before digital channels (the owner's own next stated area, not yet
+  begun), before Phase
   1.5 or any later phase begins, before a PROD deployment, before any
   further crosshair or theming work beyond what's already described in
   project-memory, and before any change to the ephemeral-storage,

@@ -5436,6 +5436,270 @@ task's own §14.
 
 ---
 
+## Phase 2C-C2 — Adjustable Waveform Panel Heights Implementation Record (2026-08-15)
+
+`[FACT]` throughout except where explicitly marked `[DECISION]` (DEC-028).
+Adds independent vertical resizing to every waveform panel/lane, in all
+three analog layout modes. **Digital-channel rendering, lane drag/
+reorder, drag-to-group, and backend layout persistence remain explicitly
+not started.**
+
+### Owner direction (recorded here, this pass)
+
+The owner completed manual UAT of Phase 2C-C1 (Custom Groups):
+**PASSED** — "the Custom Groups workflow is smooth and easy to
+understand." Before moving on to digital channels, the owner requested
+one more analog-workspace refinement: every waveform panel/lane should be
+vertically resizable by dragging, across all three layout modes
+(Grouped/Separate/Custom), with **Detego's vertical panel-resize
+interaction named as the explicit UX benchmark** — placement/feel only,
+per the Detego Benchmark Principle (DEC-020); no Detego branding, colors,
+icons, or implementation copied.
+
+### Resize interaction
+
+A thin horizontal handle sits at the bottom of every panel's chart, in
+every layout mode (the CSS rule is deliberately unscoped to any one
+mode's container class). The handle's hit area is 8px tall and spans the
+panel's full content width — comfortable to acquire without needing a
+large visible bar — while the visible affordance is a small centered
+32px pill using existing theme tokens (`--panel-border` at rest,
+`--accent` and a wider 48px on hover/active-drag). `cursor: ns-resize`
+signals vertical resizing. The handle sits entirely **below** the chart
+area with zero overlap into the plotting region, so it never intercepts
+Plotly hover/crosshair outside its own small strip (this task's own
+§4 requirement).
+
+Dragging is implemented with native **Pointer Events** and **Pointer
+Capture** (`setPointerCapture` on `pointerdown`) — once captured, the
+same handle element keeps receiving `pointermove`/`pointerup` even if the
+pointer strays outside the handle's narrow bounds mid-drag (this task's
+own §17 requirement), and no `document`-level listeners are ever
+attached — move/up handlers are added on `pointerdown` and always removed
+on `pointerup`/`pointercancel`, so there is nothing that can leak.
+Resizing is **continuous, not deferred to mouse-up** — every `pointermove`
+updates the panel's height live — but raw pointer events are coalesced
+through `requestAnimationFrame` (at most one applied height + one
+`Plotly.Plots.resize()` call per animation frame, regardless of how many
+raw events fire in that frame) to keep the drag responsive without
+issuing excessive expensive Plotly operations (§18).
+
+### Height constraints `[DECISION]` (part of DEC-028)
+
+- **Minimum: 100px.** `wwBuildLayout()`'s own fixed top/bottom margins
+  (`t: 10, b: 34`) already consume 44px of any panel regardless of its
+  height, so a floor much below 100px would leave little to no visible
+  plot area — exactly the "unusable strip" this task's own §6 warns
+  against. 100px leaves roughly 56px of genuine plotting area at the
+  floor, still small but usable, and sits inside the task's own suggested
+  ~80–100px range after inspecting the existing lane design (Separate
+  mode's own pre-existing default is 140px; a much smaller floor than
+  100 would feel disproportionate against that baseline).
+- **Maximum: 600px.** Not a hard product requirement — a deliberate,
+  generous upper bound (~2.3× the largest existing default, Grouped's
+  260px) chosen purely to prevent a pathological single-panel height from
+  breaking page layout, per this task's own §6 ("prevent pathological
+  dimensions or obvious browser/UI breakage" when no maximum is
+  mandated).
+- **Defaults, per layout mode**: Grouped 260px, Custom 260px, Separate
+  140px — exactly each mode's own pre-existing fixed CSS height before
+  this phase, so a brand-new panel's first paint is visually unchanged
+  from before Phase 2C-C2; only an explicitly-dragged panel ever departs
+  from its mode's default.
+
+### Grouped mode
+
+A Grouped panel (e.g. Voltage: VA/VB/VC) is resized as one visual unit —
+dragging its handle changes the height available to the whole panel
+(and therefore every trace inside it), never resizing individual traces
+independently, exactly as this task's own §10 requires. No code
+distinguishes "how many traces are in this panel" when resizing — the
+height applies to `panel.chartEl` itself, which is what Plotly renders
+every trace of that panel into.
+
+### Separate mode
+
+Each of the (up to six, tested) lanes resizes independently. **The
+unified analog canvas is fully preserved**: the shared outer frame,
+subtle hairline lane dividers, and — critically — the overlay right-side
+label are all untouched by this phase; the label remains an absolutely-
+positioned child of its own lane regardless of that lane's height
+(verified directly, not just asserted, since the label's CSS position
+is `top`/`right`-anchored to its own `.ww-panel`, not the chart's pixel
+dimensions). **The true current bottom lane is still the only lane
+showing the shared X/time axis after arbitrary resizing** — resizing
+never changes panel order or count, so `wwUpdateBottomLaneAxis()`'s own
+"last panel in `ww.panels`' order" logic (unchanged from Phase 2C-B2)
+continues to identify the correct lane regardless of any lane's height,
+verified directly.
+
+### Custom mode
+
+Each Custom group's panel resizes independently, exactly like a Grouped
+panel (a Custom panel can hold multiple channels, the same shape as
+Grouped — see DEC-026's already-established reasoning for why Custom
+never uses Separate's single-channel overlay/unified treatment).
+**Resizing never touches group membership** — verified directly: a
+2-channel custom group's panel still lists exactly its own 2 channels
+after being dragged to a different height. The Custom Groups editing
+workflow itself (Edit Channel Groups modal, Apply/Cancel, the
+group-assignment rule) is completely untouched by this phase, per this
+task's own explicit "do NOT alter the group-editing workflow" instruction.
+
+### State behavior across mode switches `[DECISION]` (part of DEC-028)
+
+Panel height is explicit application state (`ww.panelHeights`, a
+`Map<groupKey, heightPx>`), never read from the rendered DOM as the
+source of truth (`panel.height`, a plain JS property, is what every
+resize operation reads/writes; the DOM's inline `style.height` is only
+ever a reflection of it, applied by `wwSetPanelHeight()`). The key is the
+**same `groupKey` `wwPanelGroupKeyFor()` already computes** for panel
+derivation itself (Phase 2C-B1's own architecture) — no new "stable
+panel identity" concept was invented, per this task's own §13 guidance
+to use the identity that already exists.
+
+This single, mode-agnostic mechanism produces exactly the documented,
+desired behavior with zero per-mode special-casing:
+
+- A Grouped "Voltage" panel's height, a Separate "`src::VA`" lane's
+  height, and a Custom "`custom:cg1`" group's height never collide —
+  different key namespaces (verified: Separate → Grouped → Separate does
+  **not** carry VA's Separate height onto the Grouped Voltage panel).
+- Separate → Grouped → Separate **does** restore VA's own previously-
+  dragged Separate height, because `"src::VA"` is the identical key both
+  times — verified directly.
+- Custom → Grouped → Custom similarly restores a custom group's own
+  dragged height, because a Custom group's `id` (and therefore its
+  `groupKey`) is itself already session-stable state (`ww.customGroups`,
+  Phase 2C-C1) — verified directly.
+- A brand-new panel (a groupKey never seen before) always receives its
+  mode's sensible default height — no complicated cross-mode height
+  mapping was built, matching this task's own explicit "do not invent
+  complicated cross-mode height mapping" instruction.
+
+### Workspace/session persistence
+
+Panel heights persist only in memory for the current browser
+tab/workspace (`ww.panelHeights`), matching this task's own explicit "do
+NOT add database/backend persistence" instruction and the project's
+existing ephemeral-by-design principle (DEC-015). No `localStorage`/
+`sessionStorage` persistence was added either — judged unnecessary
+first-slice scope per this task's own "do not overengineer" guidance;
+this can be revisited later if the owner finds losing custom heights on
+a full page reload undesirable.
+
+Removing an individual channel/panel **deliberately does not** scrub its
+entry out of `ww.panelHeights` — the exact same policy, and the exact
+same reasoning, Phase 2C-C1 already established for `ww.customGroups`
+(a channel/group re-added later within the same session naturally
+regains its old height, a harmless, arguably pleasant side effect of not
+over-engineering cleanup that was never required). A **whole-workspace
+reset** ("Clear workspace"/"Start new workspace") **does** clear
+`ww.panelHeights` entirely, alongside the already-existing reset of
+`ww.customGroups`/`ww.viewport`/`ww.recordBounds` — verified directly.
+
+### Plotly behavior
+
+Resizing calls **`Plotly.Plots.resize(panel.chartEl)`** exclusively — the
+supported, minimal, documented Plotly API for "the container's size
+changed, redraw to fit it." It does not touch trace data, the X/time
+range, or the Y range, so switching a panel's height never resets the
+zoomed viewport and never issues a waveform refetch. **Verified directly
+by test, not merely asserted**: fetch-call counts before and after a full
+resize drag sequence (multiple pointer moves, both directions, across
+Grouped/Separate/Custom) are identical. No `Plotly.newPlot`/`Plotly.react`
+call is ever made for a resize — the existing plot instance is reused in
+place.
+
+### Synchronization
+
+DEC-021 is fully preserved. Resizing never touches `ww.viewport`, never
+calls `wwBroadcastViewportDebounced`/`wwApplyAndFetchViewport`, and never
+sets/clears any panel's `suppressNext` flag — a completely disjoint code
+path from the shared-viewport mechanism. Verified directly, after
+resizing panels to arbitrary/mixed heights in every mode: zooming any one
+panel still broadcasts to every other panel with exactly the expected
+number of relayout calls (no runaway loop) and exactly one waveform
+refetch per displayed **channel** (not per panel — unchanged policy);
+Reset Time View still restores the full record range on every panel.
+
+### Tests
+
+- **Backend: 278 tests, unmodified, all passing** — zero backend files
+  touched; no backend change was needed (frontend/state-only, matching
+  this task's own preference).
+- **Frontend, new: 23 scripted `jsdom` checks, all passing** (a new
+  one-off script, same established pattern, using jsdom's real
+  `PointerEvent` constructor plus a `requestAnimationFrame`/
+  `cancelAnimationFrame` polyfill jsdom itself doesn't provide) —
+  covering this task's own §20 list: a resize handle exists on every
+  panel in Grouped/Separate/Custom; a Grouped panel resizes and an
+  unrelated Grouped panel is untouched; minimum (100px) and maximum
+  (600px) clamping both enforced under extreme drags; `Plotly.Plots.resize`
+  is called during a drag; resizing issues zero waveform fetches;
+  zoom/Reset-Time-View synchronization still works correctly after
+  resizing; Separate lanes resize independently while the overlay label
+  stays a correctly-positioned child of its own lane and the true bottom
+  lane still (and only it) shows the shared X axis; a Custom group panel
+  resizes independently with membership unchanged; height state
+  round-trips correctly across Custom→Grouped→Custom and
+  Separate→Grouped→Separate (including cross-mode non-collision);
+  Grouped/Separate/Custom keep working; theme switching remains correct
+  at custom heights without a refetch; removing then re-adding a channel
+  restores its remembered height (not scrubbed); Clear workspace resets
+  remembered heights entirely; and the waveform query-parameter whitelist
+  is unchanged.
+- **Frontend, existing: the full Phase 2C-C1 (30), Phase 2C-B3A (17),
+  Phase 2C-B3 (16), Phase 2C-B2 (20), Phase 2C-B1 (16), Phase 2C-A (19),
+  and Phase 1 (4) suites were all re-run unmodified against this pass's
+  code and all still pass in full** — 122 existing checks, zero
+  regressions. 145 total frontend checks this pass.
+
+### Performance
+
+Structural evidence only (this sandboxed session has no real browser):
+the rAF-coalescing mechanism guarantees at most one `Plotly.Plots.resize()`
+call per animation frame per actively-dragged panel, regardless of raw
+pointermove event frequency — verified by test that a multi-move drag
+sequence still produces the correct final state without runaway resize
+calls. Exercised structurally at 2 Grouped panels, 6 Separate lanes, and
+a mixed Custom-group layout, per this task's own §18 guidance; no
+per-scenario slowdown was observed in the (non-visual) jsdom checks, and
+no additional dependency was added for the resize mechanism (native
+Pointer Events + `requestAnimationFrame` only).
+
+### Accessibility
+
+The handle has `role="separator"`, `aria-orientation="horizontal"`, and a
+descriptive `aria-label` ("Resize *panel name* panel height"). **Honest
+limitation, documented per this task's own §19**: keyboard resizing was
+**not** implemented this slice (`tabindex="-1"`, not in the tab order) —
+this task's own instructions explicitly mark keyboard support as
+desirable long-term but not required now "unless trivial," and it was
+judged non-trivial to do correctly (a real keyboard-resize interaction
+needs its own value/step semantics, likely `role="slider"` with
+`aria-valuenow`/`min`/`max`, which is a meaningfully larger scope than
+this slice's pointer-drag-only requirement). A future slice can add it
+without restructuring anything built here.
+
+### Files changed
+
+Modified only: `frontend/index.html`. No new files, no `backend/` file,
+no CI/deployment workflow file, no other frontend file.
+
+### Honest limitation
+
+This sandboxed session has no real browser. Whether the drag interaction
+itself feels direct/discoverable/subtle to a human hand on a real
+pointing device — the actual tactile UX goal of this task — was **not**
+confirmed here; only structural/behavioral evidence (jsdom DOM/state
+assertions using synthetic PointerEvents, since jsdom implements neither
+element-level Pointer Capture nor `requestAnimationFrame` natively) was
+verified. Final tactile/visual UAT remains the owner's own, per this
+task's own §21.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

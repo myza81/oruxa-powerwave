@@ -643,6 +643,41 @@
         }
         .ww-error[hidden] { display: none; }
 
+        /* ---- Phase 2C-C2: adjustable panel height ----
+           A thin horizontal grip at the bottom of every panel/lane, in all
+           three layout modes (Grouped/Separate/Custom -- this rule is
+           deliberately unscoped, not "#wwPanels.ww-panels-unified only").
+           Detego's own vertical panel-resize interaction is the UX
+           benchmark for placement/feel (subtle, discoverable, direct drag)
+           -- no Detego styling/branding copied; colors are existing Oruxa
+           theme tokens. The 8px hit area sits entirely BELOW the chart
+           (zero overlap with the plotting area), so it never intercepts
+           Plotly hover/crosshair -- only the small centered grip mark is
+           visible by default, widening and accenting on hover/active drag. */
+        .ww-resize-handle {
+            height: 8px;
+            cursor: ns-resize;
+            touch-action: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        .ww-resize-handle::after {
+            content: "";
+            width: 32px;
+            height: 3px;
+            border-radius: 2px;
+            background: var(--panel-border);
+            transition: background-color 0.12s ease, width 0.12s ease;
+        }
+        .ww-resize-handle:hover::after,
+        .ww-resize-handle.ww-resize-active::after {
+            background: var(--accent);
+            width: 48px;
+        }
+
         /* ---- Phase 2C-B2: unified analog canvas (Separate mode only) ----
            Grouped mode is untouched (still the individual-card look above).
            #wwPanels only gains this class while ww.layoutMode === "separate"
@@ -1680,6 +1715,25 @@
         // width -- see the Phase 2C design record's own reasoning).
         const WW_POINT_BUDGET = 4000;
 
+        // Phase 2C-C2: panel height constraints. Minimum keeps a resized
+        // panel usable -- wwBuildLayout()'s own fixed top+bottom margins
+        // (t:10, b:34) already consume 44px regardless of panel height, so
+        // a floor much below 100px would leave little to no visible plot
+        // area, exactly the "unusable strip" this task's own section 6
+        // warns against. Maximum is a generous, deliberately-chosen upper
+        // bound (not a hard product requirement) purely to prevent a
+        // pathological single-panel height from breaking the page layout;
+        // there is no engineering reason to allow unbounded growth here.
+        const WW_MIN_PANEL_HEIGHT = 100;
+        const WW_MAX_PANEL_HEIGHT = 600;
+        // Sensible default height per layout mode -- matches each mode's
+        // own existing pre-Phase-2C-C2 fixed CSS height (Grouped/Custom's
+        // card layout was 260px; Separate/unified's compact lane was
+        // 140px) so a brand-new panel's first paint is unchanged from
+        // before this phase; only an explicitly-dragged panel ever
+        // deviates from its mode's default.
+        const WW_DEFAULT_PANEL_HEIGHT = { grouped: 260, separate: 140, custom: 260 };
+
         const ww = {
             panels: [],            // ordered array of panel objects
             displayed: new Map(),  // "sourceId::channelName" -> {panel, channel}
@@ -1717,7 +1771,36 @@
             // comment for why that's safe.
             customGroups: [],
             customGroupSeq: 0,
+            // Phase 2C-C2: explicit application state for panel heights --
+            // keyed by the SAME groupKey wwPanelGroupKeyFor() already
+            // computes (per section 13: use stable panel identity, don't
+            // invent a new one). This is why a single, mode-agnostic
+            // mechanism already gives the exact documented behavior: a
+            // Grouped "Voltage" panel's height, a Separate "src::VA"
+            // lane's height, and a Custom "custom:cg1" group's height
+            // never collide (different key namespaces), while switching
+            // Separate -> Grouped -> Separate restores VA's own
+            // previously-dragged height with zero extra code, because
+            // "src::VA" is the same key both times. Reset only by
+            // wwClearWorkspace() -- individual channel/panel removal
+            // deliberately leaves stale entries alone, same policy and
+            // same reasoning as ww.customGroups (a channel re-added later
+            // naturally regains its old height).
+            panelHeights: new Map(),
         };
+
+        function wwDefaultHeightForCurrentMode() {
+            return WW_DEFAULT_PANEL_HEIGHT[ww.layoutMode] || WW_DEFAULT_PANEL_HEIGHT.grouped;
+        }
+
+        function wwHeightForGroupKey(groupKey) {
+            const stored = ww.panelHeights.get(groupKey);
+            return stored !== undefined ? stored : wwDefaultHeightForCurrentMode();
+        }
+
+        function wwClampPanelHeight(height) {
+            return Math.max(WW_MIN_PANEL_HEIGHT, Math.min(WW_MAX_PANEL_HEIGHT, height));
+        }
 
         function wwChannelKey(sourceId, channelName) {
             return sourceId + "::" + channelName;
@@ -1930,8 +2013,15 @@
                 legendEl: null,
                 loadingEl: null,
                 errorEl: null,
+                resizeHandleEl: null,
                 suppressNext: false,
                 plotlyReady: false,
+                // Phase 2C-C2: explicit height state (section 13) -- NOT
+                // read from the DOM. Resolved once here (the panel's
+                // remembered height for this groupKey, or this mode's
+                // default) and kept in sync with ww.panelHeights by
+                // wwSetPanelHeight() on every resize.
+                height: wwHeightForGroupKey(groupKey),
             };
         }
 
@@ -1946,7 +2036,9 @@
                     '<div class="ww-chart"></div>' +
                     '<div class="ww-chart-loading" hidden><span class="spinner"></span>Loading&hellip;</div>' +
                 '</div>' +
-                '<div class="ww-error" hidden role="alert"></div>';
+                '<div class="ww-error" hidden role="alert"></div>' +
+                '<div class="ww-resize-handle" role="separator" aria-orientation="horizontal" ' +
+                    'aria-label="Resize ' + escapeHtml(panel.label) + ' panel height" tabindex="-1"></div>';
 
             document.getElementById("wwPanels").appendChild(container);
             panel.containerEl = container;
@@ -1954,6 +2046,10 @@
             panel.chartEl = container.querySelector(".ww-chart");
             panel.loadingEl = container.querySelector(".ww-chart-loading");
             panel.errorEl = container.querySelector(".ww-error");
+            panel.resizeHandleEl = container.querySelector(".ww-resize-handle");
+
+            panel.chartEl.style.height = panel.height + "px";
+            wwWireResizeHandle(panel);
         }
 
         // Compact identity per section 11: panel/group name (header),
@@ -2039,6 +2135,99 @@
             Plotly.newPlot(panel.chartEl, traces, layout, config);
             panel.plotlyReady = true;
             wwWirePanelRelayout(panel);
+        }
+
+        // Phase 2C-C2: applies a new height to ONE panel only -- other
+        // panels are never touched (section 5: independent per-panel
+        // sizing, no automatic resizing of siblings). Persists into
+        // ww.panelHeights immediately (not just on drag-end) so a live
+        // in-progress drag is already the authoritative state, matching
+        // this task's own "responsive live resizing" requirement.
+        // Plotly.Plots.resize() is the supported, minimal Plotly API for
+        // "the container size changed, redraw to fit it" -- it does NOT
+        // touch trace data, the X/time range, or the Y range, so viewport/
+        // zoom state survives untouched (section 7/9). Guarded by
+        // panel.plotlyReady so a resize that lands after the panel (or the
+        // whole workspace) was torn down mid-drag safely no-ops instead of
+        // erroring against a purged chart element.
+        function wwSetPanelHeight(panel, height) {
+            const clamped = wwClampPanelHeight(height);
+            panel.height = clamped;
+            panel.chartEl.style.height = clamped + "px";
+            ww.panelHeights.set(panel.groupKey, clamped);
+            if (panel.plotlyReady && window.Plotly && Plotly.Plots && typeof Plotly.Plots.resize === "function") {
+                Plotly.Plots.resize(panel.chartEl);
+            }
+        }
+
+        // Phase 2C-C2: the vertical resize-handle drag. Uses Pointer
+        // Capture (section 17) so the SAME handle element keeps receiving
+        // pointermove/pointerup once captured, even if the pointer strays
+        // outside the handle's own narrow hit area mid-drag -- no
+        // document-level listeners are ever attached, so there is nothing
+        // to leak; move/up handlers are added on pointerdown and removed
+        // on pointerup/pointercancel, every time.
+        //
+        // Performance (section 18): raw pointermove events can fire far
+        // more often than the display can usefully redraw. Each move only
+        // records the latest pending height and schedules (at most) one
+        // requestAnimationFrame callback; if several pointermoves land
+        // inside the same frame, only the last one's height is ever
+        // applied, coalescing the (comparatively expensive)
+        // Plotly.Plots.resize() call to at most once per frame.
+        function wwWireResizeHandle(panel) {
+            const handle = panel.resizeHandleEl;
+            if (!handle) return;
+            let dragStartY = 0;
+            let dragStartHeight = 0;
+            let rafId = null;
+            let pendingHeight = null;
+
+            function flush() {
+                rafId = null;
+                if (pendingHeight === null) return;
+                const height = pendingHeight;
+                pendingHeight = null;
+                wwSetPanelHeight(panel, height);
+            }
+
+            function onPointerMove(event) {
+                const delta = event.clientY - dragStartY;
+                pendingHeight = dragStartHeight + delta;
+                if (rafId === null) rafId = requestAnimationFrame(flush);
+            }
+
+            function endDrag(event) {
+                handle.removeEventListener("pointermove", onPointerMove);
+                handle.removeEventListener("pointerup", endDrag);
+                handle.removeEventListener("pointercancel", endDrag);
+                handle.classList.remove("ww-resize-active");
+                if (handle.hasPointerCapture && handle.hasPointerCapture(event.pointerId)) {
+                    handle.releasePointerCapture(event.pointerId);
+                }
+                if (rafId !== null) {
+                    cancelAnimationFrame(rafId);
+                    rafId = null;
+                }
+                // Authoritative final write -- guarantees the committed
+                // height exactly matches where the pointer actually ended,
+                // regardless of whether the last scheduled frame had
+                // already run.
+                const delta = event.clientY - dragStartY;
+                wwSetPanelHeight(panel, dragStartHeight + delta);
+            }
+
+            handle.addEventListener("pointerdown", (event) => {
+                if (event.button !== undefined && event.button !== 0) return; // primary pointer only
+                dragStartY = event.clientY;
+                dragStartHeight = panel.height;
+                handle.classList.add("ww-resize-active");
+                if (handle.setPointerCapture) handle.setPointerCapture(event.pointerId);
+                handle.addEventListener("pointermove", onPointerMove);
+                handle.addEventListener("pointerup", endDrag);
+                handle.addEventListener("pointercancel", endDrag);
+                event.preventDefault();
+            });
         }
 
         // A channel added to an ALREADY-DISPLAYED panel -- native
@@ -2326,6 +2515,12 @@
             // gone.
             ww.customGroups = [];
             ww.customGroupSeq = 0;
+            // Phase 2C-C2: same policy as ww.customGroups directly above --
+            // a whole-workspace reset is the one place remembered panel
+            // heights are cleared; individual channel/panel removal
+            // deliberately leaves ww.panelHeights alone (see its own
+            // comment on the ww state object for why that's safe/desired).
+            ww.panelHeights = new Map();
             wwUpdateEmptyState();
         }
 
