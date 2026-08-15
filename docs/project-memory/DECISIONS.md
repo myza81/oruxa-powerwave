@@ -1460,6 +1460,115 @@ Grouped mode's own presentation remain unchanged.
 
 ---
 
+## DEC-027 — Custom Analog Channel Groups added as a third layout mode; drag/reorder deferred (Phase 2C-C1)
+
+Date: 2026-08-15
+Status: Approved
+Source: explicit project-owner instructions opening the Phase 2C-C1 task
+(2026-08-15) — the owner's own direct choice to skip vertical lane
+drag/reorder for now (previously flagged, in every Phase 2C-B record
+since Phase 2C-A, as the owner's stated *next* direction) and implement
+Custom Groups instead, with Detego's "Edit Channel Groups" workflow named
+explicitly as the reference.
+
+Decision:
+
+The Phase 2C design record's own previously-open question — Custom
+grouping, Detego's own third grouping mode, explicitly deferred at both
+Phase 2C-A (DEC-024) and Phase 2C-B1 (DEC-025) — is resolved for this
+slice: the waveform workspace supports a third user-selectable layout
+mode, **Custom**, alongside Grouped and Separate. In Custom mode, the
+user manually decides which displayed analog channels share a waveform
+panel via a new **Edit Channel Groups** dialog (create groups, assign/
+unassign channels, Apply/Cancel). Direct vertical lane drag/reorder and
+drag-to-overlay/group by direct lane dragging are explicitly **not**
+built in this slice — the owner's own choice to pursue Custom Groups
+first.
+
+Confirmed as part of this same decision:
+
+- **Group assignment rule** (this task's own §7 required a choice
+  between two options, documented and reported honestly): any displayed
+  analog channel not placed into a user-defined group automatically
+  becomes its own single-channel panel. There is no "unplaced, no panel"
+  state, and Apply is never blocked on complete assignment.
+- Switching layout mode (Grouped/Separate/Custom, any direction) **never**
+  changes which channels are displayed and **never** issues a new
+  waveform request — reusing exactly the same `wwRebuildLayout()`
+  mechanism Phase 2C-B1 (DEC-025) already built, which needed **zero
+  changes** to support the new mode.
+- Switching layout mode **preserves the current shared X/time viewport**
+  exactly, including across opening/Applying the group editor — verified
+  directly, not just asserted.
+- **The last-applied Custom grouping persists for the remainder of the
+  current workspace/session**: switching away from Custom and back
+  restores it, rather than resetting to an all-solo layout. Reset only by
+  a whole-workspace operation ("Clear workspace"/"Start new workspace"),
+  matching how the shared viewport and record bounds are already reset
+  there.
+- No drag-and-drop was built inside the group editor (moving a channel
+  between two groups is two explicit actions — unassign, then assign via
+  a dropdown — not one direct drag); this is a deliberate first-slice
+  scope choice, not an oversight, and is separate from and unrelated to
+  the deferred direct-lane-drag/reorder feature.
+
+Reason:
+
+The owner's own instructions opening this task are the explicit act of
+choosing Custom Groups over drag/reorder as the next Phase 2C
+enhancement, and directly resolving §7's group-assignment-rule choice
+(one of two named options) with a chosen rule to document. Per this
+project's own governance, a genuine owner selection among previously-
+documented options — and an explicit sequencing choice among two
+concretely proposed next directions — is a decision worth recording, not
+merely an implementation detail.
+
+Alternatives considered:
+
+Requiring every displayed channel to be explicitly placed into a group
+before Apply is allowed (rejected — this task's own §7 offered it as the
+alternative option; rejected as unnecessary first-slice friction with no
+compensating benefit, since an unassigned channel isn't wrong, only not
+yet grouped with anything); building direct drag-and-drop of channels
+between groups inside the editor (rejected for this slice — this task's
+own §6 explicitly permits skipping it "unless genuinely simple," and the
+two-step unassign/reassign mechanic was judged simpler and lower-risk to
+ship correctly); resetting Custom grouping to all-solo every time the
+mode is switched away and back (rejected — this task's own §9 explicitly
+prefers persistence "if simple and safe," and it was both).
+
+Impact:
+
+- `frontend/index.html`: a `ww.customGroups`/`ww.customGroupSeq` state
+  pair; a `wwCustomGroupFor()` lookup helper; a "custom" branch added to
+  `wwPanelGroupKeyFor`/`wwPanelLabelFor` (the only change needed to
+  `wwRebuildLayout()`'s own derivation logic — the function itself was
+  not touched); a third `layoutModeCustomBtn` toolbar button; a new
+  `editChannelGroupsBtn` control and its own modal (`groupEditorOverlay`)
+  with its own working-copy editing state (`groupEditorState`), never
+  writing to `ww.customGroups` until Apply.
+- No backend file changed; the Phase 2A waveform endpoint's contract and
+  every prior phase's request/response shape are unchanged. No backend
+  persistence was added — Custom grouping is workspace-session,
+  in-memory, frontend-only state, matching this task's own §11/§16
+  preference and the project's existing ephemeral-by-design principle
+  (DEC-015).
+- DEC-021 (shared workspace-level viewport), DEC-024 (one-Plotly-
+  instance-per-panel, viewport-aware Autoscale Y, central toolbar),
+  DEC-025 (Grouped/Separate, panel-derivation architecture), and DEC-026
+  (Separate mode's unified-canvas visual treatment) are all reaffirmed
+  unweakened — Custom mode obeys all of them identically, and
+  deliberately does NOT adopt DEC-026's unified/overlay treatment (a
+  Custom panel can hold multiple channels, the same shape as Grouped, not
+  Separate's single-channel-lane shape).
+- **Direct vertical drag/reorder of lanes and drag-to-overlay/group by
+  direct lane dragging remain explicitly not started and not authorized
+  by this decision** — they are the owner's own previously-stated next
+  direction, deliberately set aside in favor of Custom Groups this pass,
+  not abandoned.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

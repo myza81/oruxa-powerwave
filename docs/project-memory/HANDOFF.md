@@ -8,6 +8,99 @@ Last updated: **2026-08-15**
 
 ## What was most recently done
 
+**Phase 2C-C1 — Custom Analog Channel Groups.** The owner chose to
+**skip vertical lane drag/reorder for now** — previously flagged as the
+owner's likely next direction since Phase 2C-A — and instead requested
+**Custom Groups**: manual, user-controlled decisions about which
+displayed analog channels share a waveform panel, with **Detego's own
+"Edit Channel Groups" workflow named as the explicit benchmark** (a
+workflow/layout reference only — no Detego branding/colors/icons
+copied). Full detail:
+[MIGRATION_PLAN.md — Phase 2C-C1 Implementation Record](MIGRATION_PLAN.md#phase-2c-c1--custom-analog-channel-groups-implementation-record-2026-08-15),
+[DECISIONS.md — DEC-027](DECISIONS.md#dec-027--custom-analog-channel-groups-added-as-a-third-layout-mode-dragreorder-deferred-phase-2c-c1).
+
+**What was built**: a third toolbar layout-mode button, `[ Grouped ]
+[ Separate ] [ Custom ]`. Selecting Custom with no custom grouping
+defined yet shows one panel per channel (the auto-solo fallback, see
+below) so the mode is never empty/broken on first entry. A new **Edit
+Channel Groups** button (visible only in Custom mode) opens a modal
+(reusing the app's existing `.confirm-overlay` backdrop pattern, Oruxa
+theme tokens throughout): an **Unassigned channels** list (each a chip
+with an "Add to group…" `<select>`) and a **Groups** section (`+ Add
+group`, each group a card with an editable name, a delete button, and a
+chip list of its assigned channels with per-chip remove). Apply commits
+the working copy and rebuilds the workspace under Custom mode; Cancel /
+the × close button / Escape / backdrop-click all discard the working
+copy with zero side effects (editing happens in an in-memory
+`groupEditorState`, never touching the real `ww.customGroups` until
+Apply). No drag-and-drop inside the modal — moving a channel between
+groups is two explicit steps (unassign, then assign via the dropdown), a
+deliberate, honestly-reported first-slice simplification.
+
+**Group assignment rule (documented, per this task's own required
+choice)**: any displayed channel not placed in a group automatically
+becomes its own single-channel panel — there is no "unplaced" error
+state, and Apply is never blocked on complete assignment.
+
+**Rendering**: each custom group becomes a panel via the exact same
+`wwCreatePanelObject`/`wwCreatePanelDom`/`wwBuildLayout`/`wwInitPanelPlot`
+machinery every other mode already uses — **zero changes needed there**.
+The only new logic is a "custom" branch in `wwPanelGroupKeyFor`/
+`wwPanelLabelFor` (looks up which `ww.customGroups` entry claims a
+channel, or falls back to a uniquely-prefixed solo key) plus a new
+`wwCustomGroupFor()` helper; `wwRebuildLayout()` itself needed **no
+changes at all**, exactly the payoff of the panel-derivation architecture
+Phase 2C-B1 (DEC-025) built for this purpose. Custom panels use Grouped's
+card styling, not Separate's unified/overlay treatment (a Custom panel
+can hold multiple channels, the same shape as Grouped).
+
+**Viewport preservation and grouping persistence, both verified
+directly**: zooming, then opening/Applying the group editor, leaves the
+resulting panels at the exact same X/time range (zero special-case code
+— `wwRebuildLayout()` already reads the current `ww.viewport` and never
+touches it). The last-applied custom grouping persists across
+Grouped/Separate/Custom mode switches within the session — switching
+back to Custom restores it rather than resetting to all-solo — and is
+only cleared by a whole-workspace reset ("Clear workspace"/"Start new
+workspace"), matching how the viewport/record bounds are already reset
+there.
+
+**Backend**: zero files changed — no backend change was needed (Custom
+grouping is frontend-only, in-memory, ephemeral session state, per this
+task's own preference and the project's existing ephemeral-by-design
+principle, DEC-015).
+
+**Tests**: 278 backend (unmodified) + 30 new frontend `jsdom` checks + the
+full existing Phase 2C-B3A (17), Phase 2C-B3 (16), Phase 2C-B2 (20),
+Phase 2C-B1 (16), Phase 2C-A (19), and Phase 1 (4) suites all re-run
+unmodified and still passing (122 total this pass, no regressions).
+**Direct vertical lane drag/reorder and drag-to-overlay/group by direct
+lane dragging were explicitly not started — deliberately deferred by the
+owner's own choice this pass, not abandoned.**
+
+**Also note**: between Phase 2C-B3A and this pass, the owner made two
+small direct manual tweaks to the Phase 2C-B3A overlay tag (committed
+separately as `d902dc5`, "style: tune overlay lane label position and
+background"): `top: 50%` → `top: 25%` (a higher vertical position within
+the lane) and `.ww-legend-item`'s `background` changed from the
+`--surface-tint` theme token to a fixed `rgb(255 255 255 / 80%)`. The
+fixed background is **not theme-reactive** — it will look the same
+(translucent white) in Dark theme as in Light, which was flagged to the
+owner at the time but implemented as explicitly requested. If Dark-theme
+tag readability is ever raised in a future UAT, this is why. This
+pass's own test suite (`phase2cb3a_check.mjs`) was updated to assert the
+overlay mechanism generically (percentage-based `top` + `translateY`)
+rather than the exact tuned value, so future manual tweaks like this one
+don't spuriously fail the regression suite.
+
+Real-browser visual/
+workflow confirmation of the group editor modal was not possible in this
+sandboxed, no-real-browser session — see this task's own final report for
+the closest available substitute evidence; final judgment remains the
+owner's own manual UAT.
+
+## What was done in the prior session (Phase 2C-B3A — Overlay Right-Side Lane Labels)
+
 **Phase 2C-B3A — Overlay Right-Side Lane Labels (correction).** The Phase
 2C-B3 right-side-column label was **not** the owner's intended layout —
 the owner clarified explicitly: the label must be **overlaid on the
@@ -734,7 +827,59 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified (this pass — Phase 2C-B3A overlay right-side lane labels)
+## What was verified (this pass — Phase 2C-C1 custom analog channel groups)
+
+- `oruxa_powerwave` git state: local `main` confirmed identical to
+  `origin/main` at commit `ae8ccfd` (independent `git fetch` via the
+  established HTTPS-URL workaround) before this pass began. **Two
+  uncommitted local changes were found in the working tree** (the direct
+  manual overlay-tag tweaks described above) — preserved (not discarded,
+  per the project's own git-safety rule) and committed separately as
+  `d902dc5` before this pass's own implementation work began.
+- **Backend regression: 278 tests, unmodified, all still pass** (fresh
+  venv run) — zero backend files in the diff (`git diff --stat -- backend/`
+  empty; diff scoped to `frontend/index.html` only).
+- **Frontend, new: 30 scripted `jsdom` checks, all passing** — the Custom
+  toolbar button and Edit Channel Groups control appear correctly;
+  switching to Custom with no groups yet produces one panel per channel
+  (auto-solo); the modal opens/closes (including Cancel, then reopening
+  cleanly); groups can be created (Group 1/2/3); channels can be assigned
+  via the Unassigned select and removed back to Unassigned; an empty
+  group can be deleted; Apply renders the exact example grouping from
+  this task's own manual-verification checklist (Group 1 = VA/VB/VC,
+  Group 2 = IA/IB, IC auto-solo); a pre-Apply zoomed viewport survives
+  Apply exactly; zoom-broadcast synchronization, Reset Time View,
+  Autoscale Y, and no-per-panel-modebar all work in Custom mode;
+  switching Custom→Separate→Custom preserves displayed channels AND
+  restores the last-applied grouping; Grouped mode groups by
+  engineering_type with zero regression; theme switching still works in
+  Custom mode; Clear workspace resets both the display and the
+  remembered custom grouping (verified behaviorally); waveform
+  query-parameter whitelist unchanged.
+- **Frontend, corrected in place: 1 of Phase 2C-B3A's own CSS-source
+  assertions**, which had hardcoded the exact `top: 50%` value later
+  manually tuned to `25%`, was relaxed to assert the overlay MECHANISM
+  (percentage-based `top` + `translateY(-50%)`) rather than the specific
+  tunable percentage — the rest of that suite needed no change.
+- **Frontend, existing: the full Phase 2C-B3 (16), Phase 2C-B2 (20),
+  Phase 2C-B1 (16), Phase 2C-A (19), and Phase 1 (4) suites were all
+  re-run unmodified against this pass's code and all still pass in
+  full** — 92 existing checks (75 unmodified + 17 corrected-B3A), zero
+  regressions (122 total this pass).
+- `node --check` on `frontend/index.html`'s inline `<script>` block —
+  syntactically valid.
+- `grep` cross-check: every `getElementById(...)` call resolves to an
+  `id=` that actually exists; no duplicate IDs (one regex false-positive
+  from a JS template string containing `data-group-id="..."` was
+  investigated and ruled out with a stricter check).
+- No real-browser/visual or hands-on-workflow verification of the group
+  editor modal was performed in this sandboxed session (no headless
+  browser available) — see "Live DEV verification" in this task's final
+  report for what was checked instead (API-level evidence only), and its
+  own explicit statement about what's honestly unverified. Final
+  workflow/appearance judgment remains the owner's own manual UAT.
+
+## What was verified (prior pass — Phase 2C-B3A overlay right-side lane labels)
 
 - `oruxa_powerwave` git state: local `main` confirmed identical to
   `origin/main` at commit `ef89cc7` (independent `git fetch` via the
@@ -1215,7 +1360,31 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 2C-B3A overlay right-side lane labels)
+## What files were changed this session (Phase 2C-C1 custom analog channel groups)
+
+Modified only: `frontend/index.html` (a `ww.customGroups`/
+`ww.customGroupSeq` state pair; a `wwCustomGroupFor()` helper; a "custom"
+branch added to `wwPanelGroupKeyFor`/`wwPanelLabelFor`; a third
+`layoutModeCustomBtn` toolbar button; a new `editChannelGroupsBtn`
+control and `wwUpdateEditGroupsButtonVisibility()`; the group editor
+modal's HTML/CSS (`groupEditorOverlay`, `.group-editor-box`, `.group-
+card`, `.chip-list`, `.group-chip`, etc.); `groupEditorState` and
+`wwOpenGroupEditor`/`wwCloseGroupEditor`/`wwRenderGroupEditor`/
+`wwGroupEditorAddGroup`/`wwGroupEditorRemoveGroup`/
+`wwGroupEditorAssignChannel`/`wwGroupEditorUnassignChannel`/
+`wwGroupEditorRenameGroup`/`wwApplyGroupEditor`; `wwClearWorkspace()`
+extended to reset `ww.customGroups`; `wwSetLayoutMode()` extended to
+accept "custom"; the module header comment updated), `docs/project-
+memory/{DECISIONS,MIGRATION_PLAN,CURRENT_STATE,HANDOFF}.md` (DEC-027
+added; this work). Also committed separately this session (before this
+task's own work began, preserving pre-existing uncommitted changes found
+in the working tree per the project's git-safety rule): `d902dc5`,
+two small direct manual CSS tweaks to the Phase 2C-B3A overlay tag (see
+"Also note" above). No new files. **No
+`frontend/waveform-prototype.html`/`theme.css`/`theme.js` change, no
+`backend/` file, no CI/deployment workflow file was touched.**
+
+## What files were changed in the prior session (Phase 2C-B3A overlay right-side lane labels)
 
 Modified only: `frontend/index.html` (removed the `#wwPanels.ww-panels-
 unified .ww-panel` grid-template-columns split; `.ww-panel` is now
@@ -1477,74 +1646,91 @@ Modified:
 See "GitHub persistence" and "DEV deployment" in this task's final report
 (delivered in-conversation) for the exact commit hash, push confirmation,
 independent-fetch verification, GitHub Actions run, and live-endpoint
-checks for this Phase 2C-B3A pass. **Production was not touched.**
+checks for this Phase 2C-C1 pass. **Production was not touched.**
 
 ## What remains unresolved
 
-- `[OPEN]`, **the remainder of the Phase 2C design proposal is still
-  fully unimplemented and undecided**: direct vertical drag/reorder of
-  panels, drag-to-overlay/group, drag-out-to-separate, Custom layout
-  mode, panel resize, Proportional Y scaling, mixed-unit panel handling,
-  digital-channel display, shared crosshair — every one of these remains
-  `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`, not
-  `[DECISION]`. This pass (Phase 2C-B3A) was a corrective VISUAL
-  refinement of the same Separate-mode lane label (a further update to
-  DEC-026, not a new decision) — it did **not** touch any of the
-  drag/reorder/overlay items above, which remain the owner's own stated
-  *next* direction, not started.
+- `[OPEN]`, **direct vertical drag/reorder of panels and drag-to-overlay/
+  group by direct lane dragging are still fully unimplemented and
+  undecided** — `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`,
+  not `[DECISION]`. This pass (Phase 2C-C1, DEC-027) resolved the
+  previously-open Custom-grouping question, but the owner's own explicit
+  choice this pass was to skip drag/reorder in favor of Custom Groups —
+  it remains the owner's stated *possible* next direction, not started,
+  not abandoned.
+- `[OPEN]`, unchanged: Proportional Y scaling, mixed-unit panel handling,
+  digital-channel display, shared crosshair, panel resize — every one of
+  these remains `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`.
 - `[OPEN]` **Unchanged, still real**: abandoned-workspace cleanup still
   has no automatic expiry/TTL. `[DECISION MODE: COMPARISON]` — none of
-  Phase 2C-A, Phase 2C-B1, Phase 2C-B2, Phase 2C-B3, or Phase 2C-B3A
-  changes the backend memory-retention shape (still per-*source*,
-  DEC-019, unaffected by how many panels/channels, which layout mode, or
-  which visual presentation a UI displays against it), but a real,
-  now-more-flexible multi-channel workspace is plausibly a richer,
-  longer-lived thing to explore than Phase 2B's single-channel preview
-  was, which raises (not resolves) the same urgency already flagged for
-  Phase 2A/2B/2C-A/2C-B1/2C-B2/2C-B3. See
+  Phase 2C-A, Phase 2C-B1, Phase 2C-B2, Phase 2C-B3, Phase 2C-B3A, or
+  Phase 2C-C1 changes the backend memory-retention shape (still
+  per-*source*, DEC-019, unaffected by how many panels/channels, which
+  layout mode, or which grouping a UI displays against it), but a real,
+  now-more-flexible multi-channel workspace (now including user-defined
+  Custom groups) is plausibly a richer, longer-lived thing to explore
+  than Phase 2B's single-channel preview was, which raises (not
+  resolves) the same urgency already flagged for Phase
+  2A/2B/2C-A/2C-B1/2C-B2/2C-B3/2C-B3A. See
   [MIGRATION_PLAN.md's Phase 2C §30](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15)
   and DEC-019's Impact section.
-- `[OPEN]`, unchanged: digital waveform handling (no digital rendering or
-  digital-section container was built this pass either — see this task's
-  own final report); the ~100 MB real-file memory ceiling (still not
-  directly measured); and everything else already listed in
+- `[OPEN]`, unchanged: digital waveform handling (still not built); the
+  ~100 MB real-file memory ceiling (still not directly measured); and
+  everything else already listed in
   [CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers).
 - **Carried over from Phase 2C-A's own manual UAT, deliberately not
   addressed this pass**: a small amount of interaction latency, judged
   currently bearable; and vertical (Y-axis) zoom being less intuitive
   than the rest of the toolbar — both explicitly flagged for a **later**
   UX refinement pass, not this one.
-- **Unchanged from Phase 2C-A/B1/B2/B3**: real-browser rendering
-  responsiveness and actual visual appearance (whether the overlay
-  genuinely reads as a Detego-style floating label rather than a side
-  panel) were not visually confirmed in this sandboxed, no-real-browser
-  session — see this task's final report for the API/structural-level
-  DEV evidence gathered instead. Final appearance judgment remains the
+- **Unchanged from Phase 2C-A/B1/B2/B3/B3A**: real-browser rendering
+  responsiveness and actual visual/workflow appearance (whether the
+  group editor modal genuinely feels clear and engineering-focused) were
+  not visually confirmed in this sandboxed, no-real-browser session — see
+  this task's final report for the API/structural-level DEV evidence
+  gathered instead. Final appearance/workflow judgment remains the
   owner's own manual UAT.
 
 ## What should be done next
 
-The next step is for the **project owner** to review Phase 2C-B3A via
-live DEV UAT (this task's own checklist) and choose a direction — none is
-assumed here: (a) confirm the overlay label now matches what was
-intended, or request further visual refinement; (b) authorize the
-drag/reorder/overlay/split work directly (the owner's own explicitly
-stated next direction — vertical lane drag, reorder, drop-to-overlay/
-group, drag-out-to-separate); or (c) address the Phase 2C-A UAT findings
-(interaction latency, vertical-zoom discoverability) before further layout
-work. Do **not** begin any drag/reorder/overlay implementation without an
-explicit signal — this task's own closing instruction was to stop after
-the overlay label correction. Separately, resolving the abandoned-session
-TTL question and the ~100 MB real-file memory validation remain
-recommended before broader/prolonged shared-DEV UAT, unchanged conclusion
-from every prior Phase 2 pass.
+The next step is for the **project owner** to review Phase 2C-C1 via live
+DEV UAT (this task's own checklist) and choose a direction — none is
+assumed here: (a) confirm Custom Groups works as intended, or request
+refinements to the group editor's UX; (b) authorize the drag/reorder/
+overlay/split work directly (still the owner's own possible next
+direction — vertical lane drag, reorder, drop-to-overlay/group,
+drag-out-to-separate — deliberately set aside this pass, not abandoned);
+or (c) address the Phase 2C-A UAT findings (interaction latency,
+vertical-zoom discoverability) before further layout work. Do **not**
+begin any drag/reorder/overlay implementation without an explicit signal
+— this task's own closing instruction was to stop after Custom Groups.
+Separately, resolving the abandoned-session TTL question and the ~100 MB
+real-file memory validation remain recommended before broader/prolonged
+shared-DEV UAT, unchanged conclusion from every prior Phase 2 pass.
 
 ## What must not be assumed
 
 - **Do not assume drag/reorder/overlay/split has started** — it has not;
-  no direct vertical lane dragging, no reorder, no drop-to-overlay/group,
-  no drag-out-to-separate, no Custom layout mode, no panel resize exist
-  anywhere in the repository.
+  no direct vertical lane dragging, no reorder, no drop-to-overlay/group
+  by direct lane dragging, no drag-out-to-separate, no panel resize exist
+  anywhere in the repository. **Custom layout mode DOES now exist**
+  (Phase 2C-C1, DEC-027) — do not confuse it with drag/reorder; Custom
+  Groups are assigned via a modal dialog with dropdowns and buttons, not
+  by dragging lanes.
+- **Do not assume Custom mode's channel-to-group assignment uses
+  drag-and-drop** — it deliberately does not (this task's own §6 allowed
+  skipping it "unless genuinely simple"); moving a channel between groups
+  is two explicit actions (remove from its current group via a chip's ×,
+  then assign via an Unassigned-channel `<select>` dropdown).
+- **Do not assume every displayed channel must be placed in a custom
+  group before Apply works** — it does not; any unassigned channel
+  automatically becomes its own single-channel panel (the documented,
+  chosen rule, DEC-027). There is no validation error state to satisfy.
+- **Do not assume Custom grouping is persisted to the backend or survives
+  a page reload/new session** — it is not; `ww.customGroups` is
+  frontend-only, in-memory, ephemeral session state (matching DEC-015's
+  existing ephemeral-by-design principle), reset only by a whole-
+  workspace clear ("Clear workspace"/"Start new workspace").
 - **Do not assume the unified-canvas refinement changed the panel/layout
   data model or the Y-axis behavior** — it did not; `ww.panels` (displayed
   channels + panel membership + panel order) is byte-for-byte the same
@@ -1622,11 +1808,13 @@ from every prior Phase 2 pass.
 ## Owner approval needed before proceeding?
 
 - Not needed to review or use Phase 2C-A, Phase 2C-B1, Phase 2C-B2, Phase
-  2C-B3, or Phase 2C-B3A themselves — already implemented, deployed to
-  DEV, and live-verified per this exact task's own authorization.
-- **Yes**, before any drag/reorder/overlay/split work begins (the owner's
-  own stated next direction, but still not yet explicitly authorized to
-  *implement*), before Custom layout mode or panel resize, before Phase
+  2C-B3, Phase 2C-B3A, or Phase 2C-C1 themselves — already implemented,
+  deployed to DEV, and live-verified per this exact task's own
+  authorization.
+- **Yes**, before any drag/reorder/overlay/split work begins (still the
+  owner's own possible next direction, deliberately set aside this pass
+  in favor of Custom Groups, but still not yet explicitly authorized to
+  *implement*), before panel resize, before Phase
   1.5 or any later phase begins, before a PROD deployment, before any
   further crosshair or theming work beyond what's already described in
   project-memory, and before any change to the ephemeral-storage,

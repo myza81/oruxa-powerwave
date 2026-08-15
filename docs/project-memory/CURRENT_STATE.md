@@ -283,6 +283,37 @@ drag/reorder, drag-to-overlay/group, drag-out-to-separate,
 digital-channel rendering, and lane resize all remain explicitly not
 started.**
 
+`[FACT]` **The owner chose to skip vertical lane drag/reorder for now and
+requested Custom Analog Channel Groups instead — now implemented (Phase
+2C-C1)** — see
+[MIGRATION_PLAN.md — Phase 2C-C1 Implementation Record](MIGRATION_PLAN.md#phase-2c-c1--custom-analog-channel-groups-implementation-record-2026-08-15)
+and [DEC-027](DECISIONS.md#dec-027--custom-analog-channel-groups-added-as-a-third-layout-mode-dragreorder-deferred-phase-2c-c1).
+**`[ Grouped ] [ Separate ] [ Custom ]`** — a third layout mode, resolving
+the Phase 2C design record's own previously-deferred "Custom grouping"
+question (Detego's third grouping mode). Detego's own "Edit Channel
+Groups" workflow is the explicit reference (workflow/layout only — no
+Detego branding/colors/icons copied). A new **Edit Channel Groups**
+dialog (visible only in Custom mode) lets the user create groups and
+assign/unassign displayed channels into them (no drag-and-drop; a
+two-step unassign-then-assign mechanic instead), with Apply/Cancel.
+**Chosen group-assignment rule**: any channel not placed in a group
+automatically becomes its own single-channel panel — Apply is never
+blocked on complete assignment. Rendering reuses the exact same panel
+machinery every other mode already uses (`wwRebuildLayout()` itself
+needed zero changes); Custom panels visually resemble Grouped's card
+layout, not Separate's unified/overlay treatment, since a Custom panel
+can hold multiple channels. Switching modes preserves the displayed
+channel set and the current shared X/time viewport exactly (verified
+directly, including across Apply); the last-applied custom grouping
+persists across mode switches within the session and is only reset by a
+whole-workspace clear. No backend change — Custom grouping is frontend-
+only, in-memory, ephemeral session state. No backend file changed (278
+tests unmodified and passing); 30 new + 17 + 16 + 20 + 16 + 19 + 4
+re-verified existing frontend `jsdom` checks passing (122 total this
+pass). **Direct vertical lane drag/reorder and drag-to-overlay/group by
+direct lane dragging remain explicitly not started — deliberately set
+aside in favor of Custom Groups this pass, not abandoned.**
+
 ## Completed foundation work
 
 `[FACT]`, verified against the repository on 2026-08-15:
@@ -426,8 +457,9 @@ started.**
   Multi-Channel Waveform Display Implementation Record", "Phase 2C-B1 —
   Grouped / Separate Analog Waveform Layout Implementation Record", "Phase
   2C-B2 — Unified Analog Canvas Layout Implementation Record", "Phase
-  2C-B3 — Right-Side Compact Lane Labels Implementation Record", and
-  "Phase 2C-B3A — Overlay Right-Side Lane Labels Implementation Record"
+  2C-B3 — Right-Side Compact Lane Labels Implementation Record", "Phase
+  2C-B3A — Overlay Right-Side Lane Labels Implementation Record", and
+  "Phase 2C-C1 — Custom Analog Channel Groups Implementation Record"
   sections).
 
 ## Current architecture status
@@ -510,12 +542,21 @@ centered (Detego's own separate-waveform label placement used as the
 explicit layout benchmark for this treatment) — not a dedicated right-side
 layout column (Phase 2C-B3's own approach, since superseded). The
 waveform chart fills the full lane width; Oruxa theme tokens are
-unchanged. No frontend framework, no database schema, no authentication,
-no CSV/Excel/digital-
-waveform/cursors-measurements/calculated-signal/synchronization features
-yet; **direct drag/reorder of panels, drag-to-overlay/group, drag-out-to-
-separate, Custom layout mode, and panel resize all remain not yet
-built**. A Phase 2 waveform-workspace **design
+unchanged. **(Phase 2C-C1, DEC-027)** A third layout mode, **Custom**,
+lets the user manually decide which displayed analog channels share a
+waveform panel via a new Edit Channel Groups dialog (create groups,
+assign/unassign channels, Apply/Cancel) — Detego's own "Edit Channel
+Groups" workflow used as the explicit layout/workflow benchmark, no
+branding/styling copied. Any channel left unassigned automatically
+becomes its own single-channel panel (the documented rule — Apply is
+never blocked on complete assignment); the last-applied custom grouping
+persists across mode switches within the current workspace/session. No
+frontend framework, no database schema, no authentication, no CSV/Excel/
+digital-waveform/cursors-measurements/calculated-signal/synchronization
+features yet; **direct drag/reorder of panels, drag-to-overlay/group by
+direct lane dragging, and panel resize all remain not yet built** (the
+owner's own choice to pursue Custom Groups first, not an oversight). A
+Phase 2 waveform-workspace **design
 proposal** exists (see [MIGRATION_PLAN.md](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14)),
 and the Phase 2C flexible multi-channel workspace **design proposal**
 (see [MIGRATION_PLAN.md — Phase 2C](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15))
@@ -523,15 +564,17 @@ has now had its core architecture (panel model, channel-add workflow,
 shared viewport, minimal toolbar, viewport-aware Autoscale Y) implemented
 as Phase 2C-A (DEC-024), and its own previously-open grouping-mode
 question (§9, "whether several related channels should ever share one
-panel by user choice") resolved and implemented as Phase 2C-B1's
-Grouped/Separate toggle (DEC-025) — the backend foundation (Phase 2A),
-the renderer choice (Phase 2B, DEC-022), and both multi-channel slices
-(Phase 2C-A/DEC-024, Phase 2C-B1/DEC-025) are all implemented/decided.
-Direct drag/reorder of panels, drag-to-overlay/group, drag-out-to-
-separate, Custom layout mode, panel resize, Proportional Y scaling,
-mixed-unit handling, and digital-channel display remain unbuilt/undecided
-design-proposal items (`[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/
-`[NEEDS UAT]`) — no further Phase 2C work has started.
+panel by user choice") fully resolved: Grouped/Separate (Phase 2C-B1,
+DEC-025), and Custom — Detego's own third grouping mode, at the time
+explicitly deferred — now also implemented (Phase 2C-C1, DEC-027). The
+backend foundation (Phase 2A), the renderer choice (Phase 2B, DEC-022),
+and all three multi-channel layout slices (Phase 2C-A/DEC-024, Phase
+2C-B1/DEC-025, Phase 2C-C1/DEC-027) are all implemented/decided. Direct
+drag/reorder of panels, drag-to-overlay/group by direct lane dragging,
+panel resize, Proportional Y scaling, mixed-unit handling, and
+digital-channel display remain unbuilt/undecided design-proposal items
+(`[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`) — the owner's
+own choice, this pass, to pursue Custom Groups ahead of drag/reorder.
 
 ## Current approved focus
 
@@ -804,15 +847,26 @@ placement, and this correction is now also implemented: **Phase 2C-B3A**
 The dedicated grid column was removed; the same label DOM is now
 absolutely positioned over the chart area (right-pinned, vertically
 centered, `z-index` above the chart) instead of occupying its own layout
-space — the chart fills the full lane width. **The owner's explicitly
-stated next direction — direct vertical drag/reorder of panels,
-drag-to-overlay/group, and drag-out-to-separate — remains explicitly not
-started and not authorized**, along with Custom layout mode, panel
-resize, Proportional Y scaling, mixed-unit handling, digital channels,
-and shared crosshair. The next step is for the project owner to review
-Phase 2C-B3A via live DEV UAT and either request further refinements,
-authorize the drag/reorder work directly (the owner's own stated next
-direction), or defer further Phase 2C work. Separately, resolving the
+space — the chart fills the full lane width. Rather than authorizing the
+drag/reorder work that had been flagged as the owner's likely next
+direction since Phase 2C-A, **the owner instead chose to skip it for now
+and requested Custom Analog Channel Groups** — now implemented: **Phase
+2C-C1 (DEC-027), a third layout mode** — see
+[MIGRATION_PLAN.md — Phase 2C-C1 Implementation Record](MIGRATION_PLAN.md#phase-2c-c1--custom-analog-channel-groups-implementation-record-2026-08-15).
+`[ Grouped ] [ Separate ] [ Custom ]`, with a new Edit Channel Groups
+dialog (Detego's own workflow named as the explicit benchmark) letting
+the user manually decide channel-to-panel membership; any unassigned
+channel automatically becomes its own single-channel panel (the
+documented, chosen rule); the last-applied custom grouping persists
+across mode switches within the session. **Direct vertical drag/reorder
+of panels and drag-to-overlay/group by direct lane dragging remain
+explicitly not started and not authorized** — the owner's own choice to
+defer them in favor of Custom Groups this pass, along with panel resize,
+Proportional Y scaling, mixed-unit handling, digital channels, and shared
+crosshair. The next step is for the project owner to review Phase 2C-C1
+via live DEV UAT and either request refinements to Custom Groups,
+authorize the drag/reorder work directly, or defer further Phase 2C
+work. Separately, resolving the
 abandoned-session TTL question (`[DECISION MODE: COMPARISON]`, reassessed
 but not resolved by Phase 2C-A/B1 — neither changes the backend memory-
 retention shape) and the ~100 MB real-file memory validation remain

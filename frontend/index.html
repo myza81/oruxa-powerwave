@@ -392,6 +392,132 @@
             color: #fff;
         }
 
+        /* ---- Phase 2C-C1: Custom Groups editor modal ----
+           Reuses the existing .confirm-overlay backdrop (position: fixed,
+           inset: 0, var(--overlay-backdrop)) -- only the inner box differs
+           (wider, scrollable, more structured content than a plain
+           confirm dialog). Detego's "Edit Channel Groups" workflow is the
+           layout/workflow benchmark; styling is entirely Oruxa tokens. */
+        .group-editor-box {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 20px;
+            max-width: 560px;
+            width: 100%;
+            max-height: 85vh;
+            overflow-y: auto;
+        }
+        .group-editor-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+        .group-editor-header h3 { margin: 0; font-size: 1rem; }
+        .group-editor-close {
+            appearance: none;
+            border: none;
+            background: transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 1.1rem;
+            padding: 2px 6px;
+            line-height: 1;
+        }
+        .group-editor-close:hover { color: var(--error); }
+        .group-editor-section { margin: 16px 0; }
+        .group-editor-section h4 {
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            color: var(--text-dim);
+            margin: 0 0 8px;
+        }
+        .chip-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .group-chip {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            background: var(--surface-tint);
+            border: 1px solid var(--panel-border);
+            border-radius: 999px;
+            padding: 4px 8px 4px 10px;
+        }
+        .group-chip-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+        .group-chip-remove {
+            appearance: none;
+            border: none;
+            background: transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 0.9rem;
+            padding: 0 2px;
+            line-height: 1;
+        }
+        .group-chip-remove:hover { color: var(--error); }
+        .group-assign-select {
+            background: transparent;
+            border: none;
+            color: var(--accent);
+            font-size: 0.76rem;
+            cursor: pointer;
+            padding: 0;
+        }
+        .group-card {
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 10px 12px;
+            margin-bottom: 10px;
+            background: var(--hover-tint);
+        }
+        .group-card-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .group-name-input {
+            flex: 1;
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 6px 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+        .group-name-input:focus { outline: none; border-color: var(--accent-dim); }
+        .group-remove-btn {
+            appearance: none;
+            border: none;
+            background: transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 1rem;
+            padding: 2px 6px;
+            line-height: 1;
+        }
+        .group-remove-btn:hover { color: var(--error); }
+        .group-editor-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 18px;
+        }
+
         /* ---- Phase 2C-A: multi-channel selection ---- */
         .selection-row {
             display: flex;
@@ -665,14 +791,20 @@
             <button class="secondary" type="button" id="wwResetViewBtn">Reset Time View</button>
             <button class="secondary" type="button" id="wwAutoscaleBtn">Autoscale Y</button>
             <div class="toolbar-spacer"></div>
-            <!-- Phase 2C-B1: layout mode -- Grouped (by engineering type,
-                 the existing default) vs. Separate (one panel per channel).
-                 Does not change which channels are displayed, only how
-                 they're arranged -- see wwSetLayoutMode()/wwRebuildLayout(). -->
+            <!-- Phase 2C-B1/C1: layout mode -- Grouped (by engineering type,
+                 the existing default), Separate (one panel per channel), or
+                 Custom (user-defined grouping, Phase 2C-C1). Does not change
+                 which channels are displayed, only how they're arranged --
+                 see wwSetLayoutMode()/wwRebuildLayout(). -->
             <div class="theme-toggle" id="layoutModeToggle" role="group" aria-label="Waveform layout">
                 <button type="button" id="layoutModeGroupedBtn" aria-pressed="true">Grouped</button>
                 <button type="button" id="layoutModeSeparateBtn" aria-pressed="false">Separate</button>
+                <button type="button" id="layoutModeCustomBtn" aria-pressed="false">Custom</button>
             </div>
+            <!-- Phase 2C-C1: only relevant in Custom mode -- see
+                 wwUpdateEditGroupsButtonVisibility(). Starts hidden;
+                 Custom is never the default layout mode. -->
+            <button class="secondary" type="button" id="editChannelGroupsBtn" hidden>Edit Channel Groups</button>
         </div>
 
         <p class="empty-state" id="wwEmptyState">Select analog channels and click &ldquo;Add selected&rdquo; to display waveforms.</p>
@@ -713,6 +845,40 @@
             <div class="confirm-actions">
                 <button type="button" class="secondary" id="newWorkspaceConfirmCancelBtn">Cancel</button>
                 <button type="button" class="danger-solid" id="newWorkspaceConfirmStartBtn">Start new workspace</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Phase 2C-C1: Custom Groups editor. Detego's "Edit Channel Groups"
+         workflow is the layout/workflow benchmark for this dialog (no
+         Detego branding/colors/icons copied -- Oruxa theme tokens
+         throughout). Editing happens in an in-memory working copy
+         (groupEditorState); ww.customGroups itself is only written on
+         Apply, so Cancel/close/Escape/backdrop-click all discard changes
+         cleanly by construction. -->
+    <div class="confirm-overlay" id="groupEditorOverlay" hidden>
+        <div class="group-editor-box" role="dialog" aria-modal="true" aria-labelledby="groupEditorTitle">
+            <div class="group-editor-header">
+                <h3 id="groupEditorTitle">Edit Channel Groups</h3>
+                <button type="button" class="group-editor-close" id="groupEditorCloseBtn" aria-label="Close">&times;</button>
+            </div>
+            <p class="hint">Decide which displayed analog channels share a waveform panel. Any
+                channel not placed in a group becomes its own single-channel panel.</p>
+
+            <div class="group-editor-section">
+                <h4>Unassigned channels</h4>
+                <div id="groupEditorUnassigned" class="chip-list"></div>
+            </div>
+
+            <div class="group-editor-section">
+                <h4>Groups</h4>
+                <div id="groupEditorGroups"></div>
+                <button type="button" class="secondary" id="addGroupBtn">+ Add group</button>
+            </div>
+
+            <div class="group-editor-footer">
+                <button type="button" class="secondary" id="groupEditorCancelBtn">Cancel</button>
+                <button type="button" id="groupEditorApplyBtn">Apply</button>
             </div>
         </div>
     </div>
@@ -1537,24 +1703,64 @@
             // cleared/reset the workspace mid-flight, which would
             // otherwise try to draw into already-detached DOM.
             epoch: 0,
+            // Phase 2C-C1: the last-applied Custom grouping, kept even
+            // while a DIFFERENT layout mode is active -- switching back to
+            // "custom" restores it (section 9's own "prefer yes, if simple
+            // and safe" guidance). Each entry: {id, label, channelKeys:
+            // ["sourceId::channelName", ...]}. A channel not present in
+            // ANY entry here is not an error -- it automatically becomes
+            // its own single-channel panel (the documented, chosen rule
+            // for unassigned channels; see wwPanelGroupKeyFor()). Reset
+            // only by wwClearWorkspace() (a whole-workspace operation);
+            // individual channel/source removal deliberately does NOT
+            // scrub stale keys out of here -- see wwClearWorkspace()'s own
+            // comment for why that's safe.
+            customGroups: [],
+            customGroupSeq: 0,
         };
 
         function wwChannelKey(sourceId, channelName) {
             return sourceId + "::" + channelName;
         }
 
-        // Phase 2C-B1: the panel a channel belongs to is derived from the
+        // Phase 2C-C1: looks up which of ww.customGroups (if any) currently
+        // claims this channel. Returns null for an unassigned channel --
+        // callers apply the documented auto-solo rule themselves (see
+        // wwPanelGroupKeyFor/wwPanelLabelFor below), this function only
+        // answers "is it claimed, and by what."
+        function wwCustomGroupFor(channel) {
+            const key = wwChannelKey(channel.sourceId, channel.channelName);
+            for (const group of ww.customGroups) {
+                if (group.channelKeys.indexOf(key) !== -1) return group;
+            }
+            return null;
+        }
+
+        // Phase 2C-B1/C1: the panel a channel belongs to is derived from the
         // current layout mode, not a fixed property of the channel --
         // "grouped" keys by engineering_type (multiple channels can share
         // a panel); "separate" keys by the channel's own identity (always
-        // its own panel, one-to-one). Accepts either a full channel entry
-        // or the lighter {sourceId, channelName, engineeringType} shape
-        // used before a channel has been fetched yet (both carry the same
-        // three fields this needs).
+        // its own panel, one-to-one); "custom" keys by the user-defined
+        // group that currently claims it (ww.customGroups). Accepts either
+        // a full channel entry or the lighter {sourceId, channelName,
+        // engineeringType} shape used before a channel has been fetched
+        // yet (both carry the same fields this needs).
+        //
+        // Chosen rule for unassigned channels in Custom mode (documented,
+        // section 7): every displayed analog channel is EITHER in exactly
+        // one user-defined group OR automatically becomes its own
+        // single-channel panel -- there is no third "unplaced, no panel"
+        // state and Apply is never blocked waiting for full assignment.
+        // The "custom-solo:" prefix keeps an unassigned channel's own key
+        // distinct from any real custom group's "custom:" id, so the two
+        // can never collide.
         function wwPanelGroupKeyFor(channel) {
-            return ww.layoutMode === "separate"
-                ? wwChannelKey(channel.sourceId, channel.channelName)
-                : (channel.engineeringType || "Undefined");
+            if (ww.layoutMode === "separate") return wwChannelKey(channel.sourceId, channel.channelName);
+            if (ww.layoutMode === "custom") {
+                const group = wwCustomGroupFor(channel);
+                return group ? ("custom:" + group.id) : ("custom-solo:" + wwChannelKey(channel.sourceId, channel.channelName));
+            }
+            return channel.engineeringType || "Undefined";
         }
 
         // Display label only -- distinct from the group key above (two
@@ -1563,9 +1769,12 @@
         // group key already guards that, this is purely what the panel
         // header shows).
         function wwPanelLabelFor(channel) {
-            return ww.layoutMode === "separate"
-                ? channel.channelName
-                : (channel.engineeringType || "Undefined");
+            if (ww.layoutMode === "separate") return channel.channelName;
+            if (ww.layoutMode === "custom") {
+                const group = wwCustomGroupFor(channel);
+                return group ? group.label : channel.channelName;
+            }
+            return channel.engineeringType || "Undefined";
         }
 
         function wwNextColor() {
@@ -2109,23 +2318,44 @@
             ww.displayed.clear();
             ww.viewport = null;
             ww.recordBounds = null;
+            // Phase 2C-C1: a whole-workspace reset is the one place
+            // ww.customGroups IS cleared (unlike removing a single channel
+            // or source, which deliberately leaves it alone -- see the
+            // field's own comment) -- there is nothing left for a stale
+            // custom grouping to usefully refer to once every channel is
+            // gone.
+            ww.customGroups = [];
+            ww.customGroupSeq = 0;
             wwUpdateEmptyState();
         }
 
-        // Phase 2C-B1: switches between "Grouped" (by engineering_type)
-        // and "Separate" (one panel per channel) layout modes. The set of
-        // displayed channels is completely unaffected -- only how they're
-        // arranged into panels changes.
+        // Phase 2C-C1: shows/hides "Edit Channel Groups" -- only relevant
+        // while Custom is the active layout mode (parallels how the whole
+        // toolbar itself is hidden when nothing is displayed).
+        function wwUpdateEditGroupsButtonVisibility() {
+            document.getElementById("editChannelGroupsBtn").hidden = ww.layoutMode !== "custom";
+        }
+
+        // Phase 2C-B1/C1: switches between "Grouped" (by engineering_type),
+        // "Separate" (one panel per channel), and "Custom" (user-defined
+        // grouping via the Edit Channel Groups dialog) layout modes. The
+        // set of displayed channels is completely unaffected -- only how
+        // they're arranged into panels changes.
         function wwSetLayoutMode(mode) {
-            if (mode !== "grouped" && mode !== "separate") return;
+            if (mode !== "grouped" && mode !== "separate" && mode !== "custom") return;
             if (mode === ww.layoutMode) return;
             ww.layoutMode = mode;
             document.getElementById("layoutModeGroupedBtn").setAttribute("aria-pressed", String(mode === "grouped"));
             document.getElementById("layoutModeSeparateBtn").setAttribute("aria-pressed", String(mode === "separate"));
+            document.getElementById("layoutModeCustomBtn").setAttribute("aria-pressed", String(mode === "custom"));
             // Phase 2C-B2 (section 6): #wwPanels only gets the unified-canvas
-            // styling while Separate is active -- Grouped keeps the
-            // existing individual-card look, untouched.
+            // styling while Separate is active -- Grouped and Custom both
+            // keep the existing individual-card look (Custom's panels can
+            // hold multiple channels, just like Grouped's -- the unified
+            // single-channel-lane treatment doesn't fit that shape; see
+            // section 8's own "Custom may visually resemble Grouped" note).
             document.getElementById("wwPanels").classList.toggle("ww-panels-unified", mode === "separate");
+            wwUpdateEditGroupsButtonVisibility();
             wwRebuildLayout();
         }
 
@@ -2208,6 +2438,216 @@
         }
 
         // ------------------------------------------------------------------
+        // Phase 2C-C1: Custom Groups editor
+        //
+        // Detego's "Edit Channel Groups" dialog is the workflow/layout
+        // benchmark for this modal (DEC-020) -- create groups, assign
+        // displayed channels into them, Apply -- but nothing here is
+        // copied from Detego's own styling/branding; Oruxa theme tokens
+        // throughout (see the modal's own CSS).
+        //
+        // groupEditorState is a WORKING COPY, entirely separate from
+        // ww.customGroups, while the modal is open: { groups: [{id,
+        // label, channelKeys}], groupSeq }. Every editing action
+        // (add/remove group, assign/unassign a channel, rename) mutates
+        // ONLY this working copy and re-renders the modal; ww.customGroups
+        // is untouched until wwApplyGroupEditor() commits it. This is why
+        // Cancel / the (x) close button / Escape / backdrop-click can all
+        // just discard groupEditorState with zero extra bookkeeping --
+        // there is nothing to "undo," the real state was never touched.
+        let groupEditorState = null;
+
+        // Opens the editor, seeding the working copy from ww.customGroups
+        // filtered to only channels CURRENTLY displayed -- a channel
+        // removed since the groups were last edited silently drops out of
+        // its old group; a channel added since then starts Unassigned
+        // (falls under the same auto-solo rule as any other unassigned
+        // channel once Applied). Groups from ww.customGroups that have
+        // no channels left after filtering are still shown (empty) so the
+        // user can see what happened and delete or repopulate them
+        // explicitly, rather than having them silently vanish.
+        function wwOpenGroupEditor() {
+            const displayedKeys = new Set(ww.displayed.keys());
+            groupEditorState = {
+                groups: ww.customGroups.map((group) => ({
+                    id: group.id,
+                    label: group.label,
+                    channelKeys: group.channelKeys.filter((key) => displayedKeys.has(key)),
+                })),
+                groupSeq: ww.customGroupSeq,
+            };
+            wwRenderGroupEditor();
+            document.getElementById("groupEditorOverlay").hidden = false;
+        }
+
+        // Cancel / close / Escape / backdrop-click all funnel here --
+        // discards the working copy without touching ww.customGroups.
+        function wwCloseGroupEditor() {
+            groupEditorState = null;
+            document.getElementById("groupEditorOverlay").hidden = true;
+        }
+
+        // Rebuilds the modal's Unassigned list and Group cards from
+        // groupEditorState. Called after any STRUCTURAL change (add/remove
+        // group, assign/unassign a channel) -- deliberately NOT called on
+        // every keystroke of a group-name edit (wwGroupEditorRenameGroup),
+        // since re-rendering the whole list would steal focus out of the
+        // input mid-type; a renamed group's label in the Unassigned
+        // dropdown catches up on the next structural change or the next
+        // time the modal is opened, a small, honest, first-slice tradeoff.
+        function wwRenderGroupEditor() {
+            if (!groupEditorState) return;
+
+            const assignedKeys = new Set();
+            for (const group of groupEditorState.groups) {
+                for (const key of group.channelKeys) assignedKeys.add(key);
+            }
+
+            const unassignedEl = document.getElementById("groupEditorUnassigned");
+            const groupOptionsHtml = groupEditorState.groups
+                .map((g) => '<option value="' + escapeHtml(g.id) + '">' + escapeHtml(g.label) + '</option>')
+                .join("");
+            let unassignedHtml = "";
+            for (const [key, entry] of ww.displayed) {
+                if (assignedKeys.has(key)) continue;
+                const channel = entry.channel;
+                unassignedHtml += '<span class="group-chip">' +
+                    '<span class="group-chip-dot" style="background:' + channel.color + '"></span>' +
+                    escapeHtml(channel.channelName) + (channel.unit ? " (" + escapeHtml(channel.unit) + ")" : "") +
+                    '<select class="group-assign-select" data-channel-key="' + escapeHtml(key) + '">' +
+                    '<option value="">Add to group&hellip;</option>' + groupOptionsHtml +
+                    '</select>' +
+                    '</span>';
+            }
+            unassignedEl.innerHTML = unassignedHtml ||
+                '<p class="hint">Every displayed channel is assigned to a group.</p>';
+            unassignedEl.querySelectorAll(".group-assign-select").forEach((select) => {
+                select.addEventListener("change", () => {
+                    if (select.value) wwGroupEditorAssignChannel(select.dataset.channelKey, select.value);
+                });
+            });
+
+            const groupsEl = document.getElementById("groupEditorGroups");
+            let groupsHtml = "";
+            for (const group of groupEditorState.groups) {
+                groupsHtml += '<div class="group-card" data-group-id="' + escapeHtml(group.id) + '">' +
+                    '<div class="group-card-header">' +
+                    '<input type="text" class="group-name-input" data-group-id="' + escapeHtml(group.id) +
+                    '" value="' + escapeHtml(group.label) + '" aria-label="Group name">' +
+                    '<button type="button" class="group-remove-btn" data-group-id="' + escapeHtml(group.id) +
+                    '" title="Delete group" aria-label="Delete ' + escapeHtml(group.label) + '">&times;</button>' +
+                    '</div><div class="chip-list">';
+                if (group.channelKeys.length === 0) {
+                    groupsHtml += '<p class="hint">No channels assigned yet.</p>';
+                } else {
+                    for (const key of group.channelKeys) {
+                        const entry = ww.displayed.get(key);
+                        if (!entry) continue;
+                        const channel = entry.channel;
+                        groupsHtml += '<span class="group-chip">' +
+                            '<span class="group-chip-dot" style="background:' + channel.color + '"></span>' +
+                            escapeHtml(channel.channelName) + (channel.unit ? " (" + escapeHtml(channel.unit) + ")" : "") +
+                            '<button type="button" class="group-chip-remove" data-channel-key="' + escapeHtml(key) +
+                            '" title="Remove from group" aria-label="Remove ' + escapeHtml(channel.channelName) +
+                            ' from group">&times;</button></span>';
+                    }
+                }
+                groupsHtml += "</div></div>";
+            }
+            groupsEl.innerHTML = groupsHtml;
+            groupsEl.querySelectorAll(".group-name-input").forEach((input) => {
+                input.addEventListener("input", () => wwGroupEditorRenameGroup(input.dataset.groupId, input.value));
+            });
+            groupsEl.querySelectorAll(".group-remove-btn").forEach((btn) => {
+                btn.addEventListener("click", () => wwGroupEditorRemoveGroup(btn.dataset.groupId));
+            });
+            groupsEl.querySelectorAll(".group-chip-remove").forEach((btn) => {
+                btn.addEventListener("click", () => wwGroupEditorUnassignChannel(btn.dataset.channelKey));
+            });
+        }
+
+        function wwGroupEditorAddGroup() {
+            if (!groupEditorState) return;
+            groupEditorState.groupSeq += 1;
+            groupEditorState.groups.push({
+                id: "cg" + groupEditorState.groupSeq,
+                label: "Group " + groupEditorState.groupSeq,
+                channelKeys: [],
+            });
+            wwRenderGroupEditor();
+        }
+
+        // Deleting a group does not "delete" its channels -- they simply
+        // have no group claiming them anymore, so the next render shows
+        // them back in Unassigned (per the same auto-solo rule).
+        function wwGroupEditorRemoveGroup(groupId) {
+            if (!groupEditorState) return;
+            groupEditorState.groups = groupEditorState.groups.filter((g) => g.id !== groupId);
+            wwRenderGroupEditor();
+        }
+
+        // A channel belongs to at most one group at a time -- always
+        // removed from wherever it currently is before being added to the
+        // target, so moving a channel is "unassign, then assign" (two
+        // explicit clicks), not a direct drag between groups. Deliberately
+        // the simplest correct mechanic for this first slice (section 6:
+        // "do NOT require drag-and-drop unless genuinely simple").
+        function wwGroupEditorAssignChannel(channelKey, groupId) {
+            if (!groupEditorState) return;
+            for (const group of groupEditorState.groups) {
+                const idx = group.channelKeys.indexOf(channelKey);
+                if (idx !== -1) group.channelKeys.splice(idx, 1);
+            }
+            const target = groupEditorState.groups.find((g) => g.id === groupId);
+            if (target) target.channelKeys.push(channelKey);
+            wwRenderGroupEditor();
+        }
+
+        function wwGroupEditorUnassignChannel(channelKey) {
+            if (!groupEditorState) return;
+            for (const group of groupEditorState.groups) {
+                const idx = group.channelKeys.indexOf(channelKey);
+                if (idx !== -1) group.channelKeys.splice(idx, 1);
+            }
+            wwRenderGroupEditor();
+        }
+
+        function wwGroupEditorRenameGroup(groupId, label) {
+            if (!groupEditorState) return;
+            const group = groupEditorState.groups.find((g) => g.id === groupId);
+            if (group) group.label = label;
+        }
+
+        // Commits groupEditorState into ww.customGroups (dropping any
+        // group the user created but never populated -- an empty group
+        // would never match a channel anyway) and switches to/stays on
+        // Custom mode. Deliberately does NOT go through wwSetLayoutMode()
+        // -- that function no-ops when the mode is unchanged, but Apply
+        // must always rebuild (the grouping itself changed even when the
+        // mode was already "custom", the overwhelmingly common case since
+        // Edit Channel Groups is only reachable while already in Custom
+        // mode). wwRebuildLayout() itself never touches ww.viewport, so
+        // the current shared X/time range survives Apply unchanged --
+        // same guarantee every prior layout-mode switch already relies on
+        // (section 10).
+        function wwApplyGroupEditor() {
+            if (!groupEditorState) return;
+            ww.customGroups = groupEditorState.groups
+                .filter((g) => g.channelKeys.length > 0)
+                .map((g) => ({ id: g.id, label: (g.label || "").trim() || "Group", channelKeys: g.channelKeys.slice() }));
+            ww.customGroupSeq = groupEditorState.groupSeq;
+            wwCloseGroupEditor();
+
+            ww.layoutMode = "custom";
+            document.getElementById("layoutModeGroupedBtn").setAttribute("aria-pressed", "false");
+            document.getElementById("layoutModeSeparateBtn").setAttribute("aria-pressed", "false");
+            document.getElementById("layoutModeCustomBtn").setAttribute("aria-pressed", "true");
+            document.getElementById("wwPanels").classList.remove("ww-panels-unified");
+            wwUpdateEditGroupsButtonVisibility();
+            wwRebuildLayout();
+        }
+
+        // ------------------------------------------------------------------
         // Init
         // ------------------------------------------------------------------
         document.getElementById("workspaceIdLabel").textContent = currentWorkspaceId();
@@ -2222,9 +2662,24 @@
         document.getElementById("clearWorkspaceBtn").addEventListener("click", wwClearWorkspace);
         document.addEventListener("powerwave:theme-change", wwApplyTheme);
 
-        // Phase 2C-B1: Grouped/Separate layout mode.
+        // Phase 2C-B1/C1: Grouped/Separate/Custom layout mode.
         document.getElementById("layoutModeGroupedBtn").addEventListener("click", () => wwSetLayoutMode("grouped"));
         document.getElementById("layoutModeSeparateBtn").addEventListener("click", () => wwSetLayoutMode("separate"));
+        document.getElementById("layoutModeCustomBtn").addEventListener("click", () => wwSetLayoutMode("custom"));
+
+        // Phase 2C-C1: Custom Groups editor.
+        document.getElementById("editChannelGroupsBtn").addEventListener("click", wwOpenGroupEditor);
+        document.getElementById("addGroupBtn").addEventListener("click", wwGroupEditorAddGroup);
+        document.getElementById("groupEditorApplyBtn").addEventListener("click", wwApplyGroupEditor);
+        document.getElementById("groupEditorCancelBtn").addEventListener("click", wwCloseGroupEditor);
+        document.getElementById("groupEditorCloseBtn").addEventListener("click", wwCloseGroupEditor);
+        document.getElementById("groupEditorOverlay").addEventListener("click", (event) => {
+            if (event.target.id === "groupEditorOverlay") wwCloseGroupEditor(); // click on backdrop
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            if (!document.getElementById("groupEditorOverlay").hidden) wwCloseGroupEditor();
+        });
 
         checkApiHealth();
         refreshSourceList();

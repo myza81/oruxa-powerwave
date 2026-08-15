@@ -5238,6 +5238,204 @@ owner's own manual UAT, per this task's own §13.
 
 ---
 
+## Phase 2C-C1 — Custom Analog Channel Groups Implementation Record (2026-08-15)
+
+`[FACT]` throughout except where explicitly marked `[DECISION]` (DEC-027).
+Adds the third and final grouping mode the Phase 2C design record's own
+§9/§3 left open ("Custom" — Detego's own third grouping mode — was
+explicitly deferred at both Phase 2C-A and Phase 2C-B1). **Direct
+vertical drag/reorder, drag-to-overlay/group by direct lane dragging,
+digital-channel rendering, lane resize, and backend persistence remain
+explicitly not started.**
+
+### Owner direction (recorded here, this pass)
+
+The owner explicitly chose to **skip vertical lane drag/reorder for now**
+— the previously-stated "owner's own next direction" from every prior
+Phase 2C-B record — and instead requested **Custom Groups**: manual,
+user-controlled decisions about which displayed analog channels share a
+waveform panel, with Detego's own "Edit Channel Groups" workflow as the
+explicit reference (a workflow/layout benchmark only, per the Detego
+Benchmark Principle, DEC-020 — no Detego branding/colors/icons copied).
+
+### Layout modes
+
+`[ Grouped ] [ Separate ] [ Custom ]` — a third button added to the
+existing toolbar toggle. Grouped and Separate are byte-for-byte unchanged
+from Phase 2C-A/B1/B2/B3A. Custom is new: the user decides channel
+membership directly, via a new **Edit Channel Groups** dialog (visible
+only while Custom is the active mode — parallels how the whole toolbar
+itself is hidden when nothing is displayed).
+
+### Custom group workflow
+
+1. Displayed analog channels exist (any mode).
+2. User clicks **Custom** — with no custom grouping defined yet, this
+   renders one panel per channel (the documented auto-solo rule, see
+   below) so Custom is never an empty or broken state on first entry.
+3. User clicks **Edit Channel Groups**, opening a modal (Oruxa styling
+   throughout — `.confirm-overlay` backdrop reused from the app's existing
+   one-and-only prior modal pattern, no Detego palette/typography/icons).
+4. The modal shows an **Unassigned channels** list (compact chips, each
+   with a `<select>` "Add to group…" control) and a **Groups** section
+   (`+ Add group` button; each group is a card with an editable name
+   input, a delete-group button, and a chip list of its assigned
+   channels, each removable with a small ×).
+5. **Apply** commits the working copy into the workspace and switches to/
+   stays on Custom mode; **Cancel** (or the × close button, Escape, or a
+   backdrop click) discards all changes to the working copy, leaving
+   whatever grouping was already active completely untouched.
+
+Editing happens entirely in an in-memory working copy
+(`groupEditorState`), never touching the real `ww.customGroups` until
+Apply — this is why Cancel/close/Escape/backdrop-click all correctly
+"preserve previous grouping" with zero extra bookkeeping: there is
+nothing to undo, since the real state was never written to.
+
+**No drag-and-drop was implemented inside the modal** (per this task's
+own §6, "do NOT require drag-and-drop unless genuinely simple") — moving
+a channel between two existing groups is a two-step action (remove it
+from its current group, which returns it to Unassigned, then assign it
+via the `<select>`) rather than one direct drag. This is a deliberate,
+honestly-reported first-slice tradeoff, not an oversight.
+
+### Group assignment rule `[DECISION]` (part of DEC-027)
+
+Per this task's own §7, one of two options had to be chosen and
+documented. **Chosen: any unassigned channel automatically becomes its
+own single-channel panel** — there is no third "unplaced, no panel" state,
+and Apply is never blocked waiting for full assignment. Reasoning: this
+keeps the first entry into Custom mode immediately usable (every
+displayed channel is visible in *some* panel from the moment Custom is
+selected, before the user has edited anything), matches the same
+principle Separate mode already established (every channel always gets a
+panel), and avoids validation-error UX entirely. The alternative
+(require every channel to be explicitly placed before Apply) was
+considered and rejected as unnecessary first-slice friction with no
+compensating benefit — an unassigned channel isn't wrong, it's simply not
+grouped with anything yet.
+
+### Rendering behavior
+
+Each custom group becomes one waveform panel via the same
+`wwCreatePanelObject`/`wwCreatePanelDom`/`wwBuildLayout`/`wwInitPanelPlot`
+machinery every other layout mode already uses — **zero changes were
+needed to any of those functions**, since a Custom-mode panel is
+structurally identical to a Grouped-mode panel (one or more channel
+traces, one shared Y axis... independent per panel, one legend row
+listing every member channel). The only new logic is in
+`wwPanelGroupKeyFor`/`wwPanelLabelFor` (a "custom" branch: look up which
+`ww.customGroups` entry currently claims the channel, or fall back to a
+uniquely-prefixed solo key) and a new `wwCustomGroupFor()` lookup helper.
+`wwRebuildLayout()` itself — already proven by Phase 2C-B1/B2/B3A to
+correctly re-derive panels from a flat channel list under whichever mode
+is active — needed **no changes at all** to support Custom mode; this is
+exactly the payoff of that architecture decision. `#wwPanels` never gains
+the Separate-only `ww-panels-unified` class in Custom mode (per this
+task's own §8, "Custom may visually resemble Grouped mode in panel
+structure" — confirmed and implemented exactly that way, since a
+multi-channel panel doesn't fit the single-channel-lane overlay
+treatment Phase 2C-B2/B3A built specifically for Separate).
+
+### Viewport preservation
+
+Verified directly (not just asserted): zooming to a specific window,
+then opening Edit Channel Groups and clicking Apply, produces the new
+panels with `layout.xaxis.range` already set to that exact same window.
+No special-case code was needed — `wwApplyGroupEditor()` calls the same
+`wwRebuildLayout()` every other mode switch already relies on, which
+reads the current `ww.viewport` for each new panel's initial X range and
+never touches `ww.viewport` itself.
+
+### Custom grouping persistence within the session
+
+Per this task's own §9 ("prefer yes, if simple and safe"): **switching
+away from Custom and back restores the last-applied custom grouping**,
+verified directly (zoom → Apply a 3-group layout → switch to Separate →
+switch back to Custom → the same 3 groups reappear, not a fresh
+all-solo layout). `ww.customGroups` is workspace-session state,
+independent of which mode is currently active — it is only reset by a
+whole-workspace operation (`wwClearWorkspace()`, i.e. "Clear workspace" /
+"Start new workspace"), matching how `ww.viewport`/`ww.recordBounds` are
+already reset there. Individual channel/source removal deliberately does
+**not** scrub stale channel keys out of `ww.customGroups` — a channel
+re-added later (same source, same channel name, same session) naturally
+rejoins its old group with zero extra code, a harmless and arguably
+pleasant side effect of not over-engineering cleanup that was never
+required.
+
+### Existing modes preserved
+
+Grouped and Separate are unchanged — verified via the full existing Phase
+2C-A (19 checks), Phase 2C-B1 (16 checks), Phase 2C-B2 (20 checks), Phase
+2C-B3 (16 checks, 2 already-corrected-in-place assertions from the prior
+pass), and Phase 2C-B3A (17 checks) suites, all re-run unmodified against
+this pass's code and all still passing. Switching between all three modes
+(Grouped/Separate/Custom, in any order) preserves the displayed channel
+set, verified directly.
+
+### Functionality preserved
+
+No change to: the waveform API contract (`channel_name`/`start_time`/
+`end_time`/`point_budget`, confirmed by test), point-budget behavior
+(`WW_POINT_BUDGET = 4000`, untouched), the shared X/time viewport
+mechanism (DEC-021), relayout loop-prevention (`suppressNext`), Reset
+Time View, Autoscale Y, theme switching (DEC-023), crosshair styling
+(DEC-022/023, untouched), or source/workspace lifecycle (DEC-018).
+Verified directly: zooming one panel in Custom mode broadcasts to every
+resulting panel with no relayout loop and one refetch per *channel*
+(same policy as every prior mode — panel count doesn't change the
+per-channel request policy); Reset Time View and Autoscale Y both work
+across custom groups; no per-panel native Plotly modebar; theme switching
+re-colors every custom-group panel without a waveform refetch.
+
+### Tests
+
+- **Backend: 278 tests, unmodified, all passing** — zero backend files
+  touched; no backend change was needed for this slice (frontend/state-
+  only, per this task's own §11 preference).
+- **Frontend, new: 30 scripted `jsdom` checks, all passing** (a new
+  one-off script, same established pattern) — covering this task's own
+  §13 list: the Custom button and Edit Channel Groups control appear
+  correctly; switching to Custom with no groups yet produces one panel
+  per channel (auto-solo); the modal opens/closes (Cancel, reopen);
+  groups can be created (Group 1/2/3); channels can be assigned via the
+  Unassigned select and removed from a group back to Unassigned; an empty
+  group can be deleted; Apply renders the exact example grouping from
+  this task's own §14 (Group 1 = VA/VB/VC, Group 2 = IA/IB, IC
+  auto-solo); the pre-Apply zoomed viewport survives Apply exactly;
+  zoom/pan-equivalent synchronization, Reset Time View, Autoscale Y, and
+  no-per-panel-modebar all work in Custom mode; switching Custom→
+  Separate→Custom preserves displayed channels AND restores the
+  last-applied grouping; Grouped mode still groups by engineering_type
+  with zero regression; theme switching still works in Custom mode; Clear
+  workspace resets both the display and the remembered custom grouping
+  (verified behaviorally, by re-adding the same channel keys and
+  confirming they come back auto-solo rather than pre-grouped); and the
+  waveform query-parameter whitelist is unchanged.
+- **Frontend, existing: the full Phase 2C-B3A (17), Phase 2C-B3 (16),
+  Phase 2C-B2 (20), Phase 2C-B1 (16), Phase 2C-A (19), and Phase 1 (4)
+  suites were all re-run unmodified against this pass's code and all
+  still pass in full** — 92 existing checks, zero regressions. 122 total
+  frontend checks this pass.
+
+### Files changed
+
+Modified only: `frontend/index.html`. No new files, no `backend/` file,
+no CI/deployment workflow file, no other frontend file.
+
+### Honest limitation
+
+This sandboxed session has no real browser. Whether the group editor
+modal's workflow genuinely feels clear/engineering-focused, and whether
+the resulting Custom-mode panels read correctly to a human eye, was
+**not** visually confirmed here; only structural/behavioral evidence
+(jsdom DOM assertions, API-level live-DEV checks) was verified. Final
+appearance/workflow judgment remains the owner's own manual UAT, per this
+task's own §14.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping
