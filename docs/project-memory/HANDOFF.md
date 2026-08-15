@@ -8,6 +8,55 @@ Last updated: **2026-08-15**
 
 ## What was most recently done
 
+**Phase 2C-A — Synchronized Multi-Channel Waveform Display.** The first
+real multi-channel waveform workspace, implemented directly in
+`frontend/index.html` (not an isolated page). Full detail:
+[MIGRATION_PLAN.md — Phase 2C-A Implementation Record](MIGRATION_PLAN.md#phase-2c--synchronized-multi-channel-waveform-display-implementation-record-2026-08-15),
+[DECISIONS.md — DEC-024](DECISIONS.md#dec-024--phase-2c-a-multi-channel-waveform-workspace-architecture-confirmed-and-implemented).
+
+**What was built**: a checkbox per analog channel row (search/grouping
+unchanged) + "Add N selected" → newly-added channels group, on *initial*
+placement only, by the existing `engineering_type` (never re-derived) →
+each engineering-type group becomes its own panel, **one independent
+Plotly instance per panel** (never a single figure with fixed subplots) →
+every panel shares **one Oruxa-owned X/time viewport** (DEC-021, now
+actually implemented) — zoom or pan on any one panel debounces (120ms)
+then broadcasts the exact same range to every other panel and refetches
+every displayed channel for it, using a per-panel `suppressNext` flag to
+prevent the broadcast's own programmatic relayout from re-triggering
+itself (verified with a test double that faithfully re-fires Plotly's
+relayout event, not just structurally present in the code) → a single
+central toolbar (Zoom, Pan, Reset Time View, Autoscale Y — exactly 4
+controls, nothing else) is the only navigation surface; every native
+per-panel Plotly modebar is disabled. Autoscale Y is viewport-aware Fit
+only (Plotly's native `yaxis.autorange` against data that's already
+scoped to the current viewport by construction) — Proportional/
+shared-unit scaling was not built. A channel can be removed from a panel
+(the panel disappears once empty) without touching its imported source;
+"Clear workspace," per-source removal, and "Start new workspace" all
+correctly clear the relevant part of the display. Theme switching
+re-colors every panel via `Plotly.relayout` only, still never refetching
+waveform data; the crosshair (DEC-022/DEC-023) is unchanged, applied
+per-panel — cross-panel crosshair sync was explicitly not built.
+
+**Backend**: zero files changed. The existing Phase 2A single-channel
+waveform endpoint is reused as-is — N displayed channels means N
+requests, each with its own independent abort-controller/sequence-number
+stale-response guard (generalizing Phase 2B's proven single-channel
+pattern, not a new mechanism); no batching endpoint was built (explicitly
+evidence-gated, deferred).
+
+**Tests**: 278 backend (unmodified, unchanged) + 19 new frontend `jsdom`
+checks (selection/Add/grouping/panels/shared-viewport/loop-prevention/
+toolbar/removal/theme/a 12-channel structural scale check) + 4 existing
+Phase 1 regression checks re-run and still passing (two of that older
+script's own assertions were tightened, not weakened, to account for the
+new checkbox column). **Phase 2C-B (drag/reorder between panels, panel
+resize, Proportional Y scaling, mixed-unit handling, digital channels,
+shared crosshair) was explicitly not started.**
+
+## What was done in the prior session (Crosshair Visual UAT Follow-up)
+
 **Crosshair Visual UAT Follow-up** (a very small, config-only refinement —
 **not** Phase 2C work). Theme UAT (prior pass) passed with no changes
 requested; the owner's only remaining feedback was that the Plotly
@@ -465,7 +514,55 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified (this pass — crosshair visual UAT follow-up)
+## What was verified (this pass — Phase 2C-A synchronized multi-channel waveform display)
+
+- `oruxa_powerwave` git state: local `main` confirmed identical to
+  `origin/main` at commit `51ac404` (independent `git fetch` via the
+  established HTTPS-URL workaround), working tree clean, before this pass
+  began.
+- **Backend regression: 278 tests, unmodified, all still pass** (fresh
+  venv run) — zero backend files in the diff (`git diff --stat -- backend/`
+  empty).
+- **Frontend, new: 19 scripted `jsdom` checks, all passing** — channel
+  selection/Add-selected/Clear-selection; initial engineering-type
+  grouping into the correct panel/trace counts; one `Plotly.newPlot` per
+  panel with `displayModeBar: false`; shared-viewport broadcast on both
+  zoom and pan, verified against a Plotly test double that faithfully
+  re-fires `plotly_relayout` on a programmatic `relayout()` call so
+  loop-prevention (`suppressNext`) is actually exercised, not just
+  structurally present; Zoom/Pan toolbar buttons (dragmode only, never
+  refetches); Reset Time View (refetches, restores full record on every
+  panel); Autoscale Y (native `yaxis.autorange`, never refetches); theme
+  switch (re-colors every panel, never refetches); removing one channel
+  vs. removing a panel's last channel; source removal clearing only that
+  source's displayed channels; "Start new workspace" clearing everything;
+  a 12-channel/4-panel structural scale check (exactly 12 requests, a
+  12-channel zoom refetches exactly 12 times, not a multiplied/runaway
+  amount).
+- **Frontend, existing (Phase 1 regression): 4 scripted `jsdom` checks,
+  re-run and still passing** (`frontend_logic_check.mjs`) — two of its
+  own assertions were tightened (not weakened) to correctly account for
+  the new leading checkbox column (`td:not(.select-col)` instead of a
+  bare first-`<td>` assumption; filtering empty headers before comparing
+  labeled ones) — confirms search/grouping/counts/remove-confirmation/
+  banner-isolation all still behave exactly as before.
+- `node --check` on `frontend/index.html`'s inline `<script>` block —
+  syntactically valid.
+- `grep` cross-check: every `getElementById(...)` call resolves to an
+  `id=` that actually exists in the file (including IDs that only exist
+  inside dynamically-rendered `innerHTML`, wired via functions called
+  after that HTML is set); no duplicate function/element-id declarations.
+- **Structural-only performance check (section 15)**: verified via the
+  jsdom suite at 3, 6, and 12 displayed channels that request count
+  scales exactly linearly and never duplicates/runs away. This sandboxed
+  session has no real browser, so actual paint/scroll responsiveness at
+  these counts was **not** visually confirmed here — live DEV round-trip
+  API timing was measured instead as the closest available evidence; see
+  this task's final report for the exact numbers, and its own explicit
+  statement that no claim is made about 50/100 simultaneous channels
+  (not built for, requested, or tested).
+
+## What was verified (prior pass — crosshair visual UAT follow-up)
 
 - `oruxa_powerwave` git state: local `main` confirmed identical to
   `origin/main` at commit `adc9439` (independent `git fetch` via the
@@ -739,7 +836,18 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (crosshair visual UAT follow-up)
+## What files were changed this session (Phase 2C-A synchronized multi-channel waveform display)
+
+Modified only: `frontend/index.html` (checkbox selection + Add/Clear
+selected controls on the existing analog channel table; a new full-width
+"Waveform Workspace" section: central toolbar, panel container, empty
+state; the whole `ww*`-prefixed panel/viewport/toolbar/removal/theme JS
+module), `docs/project-memory/{DECISIONS,MIGRATION_PLAN,CURRENT_STATE,
+HANDOFF}.md` (DEC-024 added; this work). No new files. **No
+`frontend/waveform-prototype.html` change, no `backend/` file, no
+CI/deployment workflow file was touched.**
+
+## What files were changed in the prior session (crosshair visual UAT follow-up)
 
 Modified only: `frontend/theme.css` (`--spike-color` values in both
 themes), `frontend/waveform-prototype.html` (`spikethickness`/`spikedash`
@@ -939,134 +1047,121 @@ Modified:
 See "GitHub persistence" and "DEV deployment" in this task's final report
 (delivered in-conversation) for the exact commit hash, push confirmation,
 independent-fetch verification, GitHub Actions run, and live-endpoint
-checks for this crosshair-visual-UAT-follow-up pass. **Production was not
-touched.**
+checks for this Phase 2C-A pass. **Production was not touched.**
 
 ## What remains unresolved
 
-- `[OPEN]`, **unchanged from the prior pass**: Phase 2C has a full design
-  proposal (panel model, grouping, drag/reorder, one-Plotly-instance-per-
-  panel architecture, multi-channel backend strategy, Y-scaling, mixed-unit
-  handling, legend/identity, workspace state shape, implementation
-  slicing) but remains fully unimplemented and undecided — every
-  substantive choice is `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/
-  `[NEEDS UAT]`, not `[DECISION]`. This theme/crosshair pass did **not**
-  touch or advance Phase 2C in any way.
+- `[OPEN]`, **Phase 2C-B (the remainder of the Phase 2C design proposal)
+  is still fully unimplemented and undecided**: drag/reorder between
+  panels, panel resize, Proportional Y scaling, mixed-unit panel
+  handling, digital-channel display, shared crosshair — every one of
+  these remains `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`,
+  not `[DECISION]`. This pass (Phase 2C-A) implemented and confirmed the
+  panel architecture, channel-add workflow, shared viewport, minimal
+  toolbar, and viewport-aware Autoscale Y (DEC-024) — it did **not**
+  touch any of the Phase 2C-B items above.
 - `[OPEN]` **Unchanged, still real**: abandoned-workspace cleanup still
-  has no automatic expiry/TTL. `[DECISION MODE: COMPARISON]` — untouched by
-  this pass (a pure frontend/UX styling change, not a backend/lifecycle
-  one); see [MIGRATION_PLAN.md's Phase 2C §30](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15)
+  has no automatic expiry/TTL. `[DECISION MODE: COMPARISON]` — Phase 2C-A's
+  own design does not change the backend memory-retention shape (still
+  per-*source*, DEC-019, unaffected by how many panels/channels a UI
+  displays against it), but a real multi-channel workspace is plausibly a
+  richer, longer-lived thing to explore than Phase 2B's single-channel
+  preview was, which raises (not resolves) the same urgency already
+  flagged for Phase 2A/2B. See
+  [MIGRATION_PLAN.md's Phase 2C §30](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15)
   and DEC-019's Impact section.
 - `[OPEN]`, unchanged: digital waveform handling; the ~100 MB real-file
   memory ceiling (still not directly measured); and everything else
   already listed in
   [CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers).
-- **Not a new open item, but worth restating**: the `spikethickness: 0.35`
-  and `spikedash: "3px,2px"` crosshair claims (DEC-023's Update note) rest
-  on SVG's well-established fractional-stroke-width support and Plotly's
-  documented custom-dash-length syntax respectively, not a pixel-level
-  screenshot comparison in this sandboxed session — the owner's own live
-  DEV visual check is where this actually gets confirmed.
-- **Native-limitation finding from this pass, not itself a blocker**:
-  Plotly's built-in named `"dash"` style has no stable, documented
-  internal pixel definition — a future refinement request for an even
-  shorter/longer dash should expect the same "closest clean native
-  custom-length value" approach, not an exact mathematical scaling of the
-  named style.
+- **New from this pass, not itself a blocker**: real-browser rendering
+  responsiveness at higher displayed-channel counts (beyond the
+  structural 3/6/12 request-count check this pass performed) was not
+  visually confirmed in this sandboxed, no-real-browser session — see
+  this task's final report for the live DEV API-timing evidence gathered
+  instead, and its explicit statement that no claim is made about 50/100
+  simultaneous channels.
 
 ## What should be done next
 
-Per this pass's own scope, there is nothing further to do here beyond the
-owner's live DEV review of the refined crosshair (this task's own "Live
-DEV verification" checklist). No further crosshair or theming work — a
-settings-page redesign, additional theme modes, per-user server-side
-preference storage, or any further visual tweak beyond what's described
-here — is authorized without a separate, explicit request. **Phase 2C's
-own next step is unchanged from the prior passes** (not touched or
-advanced by this crosshair-only pass):
-(a) approve the `[DECISION MODE: ANALYSIS]` items outright (listed in the
-design's §35 — e.g. shared-viewport-state ownership, the one-Plotly-
-instance-per-panel architecture, chart-API isolation) without needing
-further comparison; (b) request a UAT pass on the interaction-shaped
-questions (§34 — channel-add feel, drag interaction feel, Fit/Proportional
-Y-scaling, toolbar layout); or (c) directly authorize the recommended first
-implementation slice (§29: checkbox channel-add + synchronized multi-panel
-display + a minimal two-button toolbar, still zero backend change). Do
-**not** begin any Phase 2C implementation without one of these explicit
-signals — this design pass's own closing instruction was to stop at the
-proposal. Separately, resolving the abandoned-session TTL question and the
-~100 MB real-file memory validation remain recommended before broader/
-prolonged shared-DEV UAT, unchanged from the prior pass's own conclusion.
+The next step is for the **project owner** to review Phase 2C-A via live
+DEV UAT (this task's own checklist) and choose a direction for Phase
+2C-B — none is assumed here: (a) authorize drag/reorder between panels
+first (the design record's own recommended next slice, and the single
+capability the design's own §10 flagged as the clearest opportunity to
+exceed both `powerwave` and Detego at once); (b) request refinements to
+Phase 2C-A itself before moving on (e.g. panel height, legend density,
+toolbar layout — the design's own §34 candidate list); or (c) defer
+further Phase 2C work entirely for now. Do **not** begin any Phase 2C-B
+work (drag/reorder, panel resize, Proportional Y scaling, mixed-unit
+handling, digital channels, shared crosshair) without one of these
+explicit signals — this task's own closing instruction was to stop after
+Phase 2C-A. Separately, resolving the abandoned-session TTL question and
+the ~100 MB real-file memory validation remain recommended before
+broader/prolonged shared-DEV UAT, unchanged conclusion from every prior
+Phase 2 pass.
 
 ## What must not be assumed
 
-- **Do not assume this pass is Phase 2C work** — it is a very small,
-  config-only crosshair visual refinement; nothing in it advances,
-  decides, or authorizes any part of the Phase 2C design proposal, which
-  remains exactly as it was left (`[PROPOSAL]`/`[ANALYSIS]`/
-  `[COMPARISON]`/`[NEEDS UAT]`, not `[DECISION]`).
-- **Do not assume Phase 2C implementation has started** — it has not; no
-  multi-channel API, no panel-model code, no drag/drop, no digital signals,
-  no cursors exist anywhere in the repository.
-- **Do not assume the crosshair is still at 0.5px/`"dash"`** — this pass
-  refined it further to `0.35px`/`"3px,2px"` in both themes; the prior
-  pass's values are superseded.
-- **Do not assume `"3px,2px"` is a mathematically exact half of Plotly's
-  named `"dash"` style** — it isn't; Plotly's internal pixel definition
-  for that named style is not stable, documented public API, so this
-  value is the closest clean native approximation, stated honestly as
-  such (see DEC-023's Update note).
-- **Do not assume Dark is still the default** — Light is the default
-  whenever no preference is stored (DEC-023); Dark is preserved and fully
-  functional, but only via explicit user selection.
-- **Do not assume the light palette was derived from or matches Detego's
-  visual identity** — it is an original Oruxa palette; Detego was
-  consulted only as a UI/UX workflow benchmark (DEC-020), never for
-  colors.
-- **Do not assume a custom crosshair/cursor engine was built** — the
-  crosshair remains Plotly's native, sample-snapped spike-line mechanism;
-  only its `spikethickness`/`spikedash`/`spikecolor` styling and
-  theme-reactivity changed. No Plotly-generated SVG was manually
-  manipulated.
-- **Do not assume grid-line styling changed** — the owner explicitly
-  found grid contrast acceptable; `gridcolor` was deliberately left
-  untouched by this pass.
+- **Do not assume Phase 2C-B has started** — it has not; no drag/reorder
+  between panels, no panel resize, no Proportional Y scaling, no
+  mixed-unit panel handling, no digital-channel display, no shared
+  crosshair exist anywhere in the repository.
+- **Do not assume channels are permanently locked to their panel** —
+  initial `engineering_type` grouping is placement only; the panel/
+  channel object model has no concept that would prevent a future move
+  operation, it simply hasn't been built as a user-facing interaction
+  yet (that is exactly what Phase 2C-B is for).
+- **Do not assume a multi-channel batching endpoint exists** — it does
+  not; N displayed channels still means N independent existing
+  single-channel requests. Batching remains evidence-gated future work,
+  not built.
+- **Do not assume crosshair behavior changed for the multi-panel case** —
+  each panel's crosshair (DEC-022/DEC-023, `spikethickness: 0.35`,
+  `spikedash: "3px,2px"`, sample-snapped) is independent; hovering one
+  panel does not show a guide line on any other panel.
+- **Do not assume "Clear workspace" or channel removal touches an
+  imported source** — both are purely display-state operations; the
+  source (and its backend-retained record) is untouched either way.
 - Do not assume theme switching ever triggers a waveform data refetch — it
   doesn't, by design and by test (see "What was verified" above);
-  `Plotly.relayout`/`Plotly.restyle` only.
+  `Plotly.relayout` only, applied to every panel now, not just one chart.
 - **Do not assume Plotly is still "pending" or "preferred but open"** —
   it is the final, owner-selected renderer (DEC-022, unaffected by this
   pass). uPlot remains removed.
-- **Do not assume DEC-021 (workspace-level navigation) is affected by
-  this pass** — this was a color/theme change on the existing
-  single-channel preview page, not a navigation-architecture change.
+- **Do not assume DEC-021 (workspace-level navigation) is a new
+  requirement invented this pass** — it was already approved (Phase 2B);
+  this pass is the first time it was actually *built*, not the first time
+  it was decided.
 - Do not assume TTL or the ~100 MB validation is solved — both remain
-  explicitly open, untouched by this pass.
+  explicitly open; Phase 2C-A's own design does not change the backend
+  memory-retention shape (see "What remains unresolved" above).
 - Do not assume the retained `DisturbanceRecord` (Phase 2A, DEC-019) or the
   waveform API's behavior changed this pass — zero backend files were
-  touched; the existing single-channel endpoint is unchanged.
-- Do not assume `Start new workspace`/`Remove` behavior changed — both are
-  unchanged from DEC-018.
+  touched; the existing single-channel endpoint's contract is unchanged.
+- Do not assume `Start new workspace`/`Remove` behavior changed for
+  SOURCES — both are unchanged from DEC-018; what's new is that both now
+  *additionally* clean up the waveform workspace display (see this
+  pass's own implementation record).
 - Do not assume the COMTRADE upload interaction is still open for UAT — it
   is decided (DEC-017): two explicit slots, not auto-pairing.
-- Do not assume Phase 1.5, Phase 2C implementation, or any later phase is
-  authorized.
+- Do not assume Phase 1.5, Phase 2C-B, or any later phase is authorized.
 - Do not assume `powerwave` is still at commit `3156392` by the time you
-  read this — this pass did not re-verify `powerwave` (no `powerwave`
-  investigation was needed for a pure frontend styling task); the last
-  confirmed commit was `3156392`, from the prior (Phase 2C) pass.
+  read this — this pass did not re-verify `powerwave` (no fresh
+  `powerwave` investigation was needed for this implementation task); the
+  last confirmed commit was `3156392`, from the Phase 2C design pass.
 
 ## Owner approval needed before proceeding?
 
-- Not needed to review or use the Light/Dark theme or the further-refined
-  crosshair themselves — already implemented, deployed to DEV, and
-  live-verified per this exact task's own authorization.
-- **Yes**, before any Phase 2C implementation slice begins, before Phase
-  1.5 or any later phase begins, before a PROD deployment, before any
-  further crosshair or theming work beyond what's described here (e.g. a
-  settings page, more theme modes, per-user server-side storage, any
-  further visual iteration on the crosshair), and before any change to
-  the ephemeral-storage, upload-size,
+- Not needed to review or use Phase 2C-A itself — already implemented,
+  deployed to DEV, and live-verified per this exact task's own
+  authorization.
+- **Yes**, before any Phase 2C-B work begins (drag/reorder between
+  panels, panel resize, Proportional Y scaling, mixed-unit handling,
+  digital channels, shared crosshair), before Phase 1.5 or any later
+  phase begins, before a PROD deployment, before any further crosshair or
+  theming work beyond what's already described in project-memory, and
+  before any change to the ephemeral-storage, upload-size,
   COMTRADE-upload-interaction, workspace-lifecycle, or waveform-data
   decisions recorded in `DECISIONS.md`. Per the change-governance rule in
   [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md).

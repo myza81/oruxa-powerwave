@@ -148,6 +148,35 @@ manipulation. No backend file changed; 278 backend tests unmodified and
 passing; 19 frontend `jsdom` checks updated in place and passing.
 **Phase 2C remains not started.**
 
+`[FACT]` **Phase 2C-A — the first real synchronized multi-channel
+waveform display — is now implemented** (2026-08-15) — see
+[MIGRATION_PLAN.md — Phase 2C-A Implementation Record](MIGRATION_PLAN.md#phase-2c--synchronized-multi-channel-waveform-display-implementation-record-2026-08-15)
+and [DEC-024](DECISIONS.md#dec-024--phase-2c-a-multi-channel-waveform-workspace-architecture-confirmed-and-implemented).
+Built directly into `frontend/index.html` (not an isolated page): analog
+channel checkboxes + "Add N selected" → panels grouped, on initial
+placement only, by the already-computed `engineering_type` → one
+independent Plotly instance per panel (never a single figure with fixed
+subplots) → one shared, Oruxa-owned X/time viewport driving every panel
+(DEC-021, now actually implemented, not just specified) → a single
+central 4-button toolbar (Zoom, Pan, Reset Time View, Autoscale Y) with
+every native per-panel Plotly modebar disabled. Autoscale Y is
+viewport-aware Fit only; Proportional/shared-unit scaling remains
+deferred. The existing Phase 2A single-channel waveform endpoint is
+reused unmodified — N displayed channels means N existing requests, no
+new batching endpoint. A channel can be removed from display (its source
+import is untouched); "Clear workspace," source removal, and "Start new
+workspace" all correctly clear the relevant part of the waveform display.
+Theme switching re-colors every panel without refetching waveform data;
+the crosshair (DEC-022/DEC-023) is unchanged, applied per-panel, with
+cross-panel crosshair sync explicitly out of scope. No backend file
+changed (278 tests unmodified and passing); 19 new + 4 re-verified
+existing frontend `jsdom` checks passing (23 total this pass), including
+a loop-prevention test against a Plotly test double that faithfully
+re-fires relayout events, and a 12-channel/4-panel structural scale
+check. **Phase 2C-B (drag/reorder between panels, panel resize,
+Proportional Y scaling, mixed-unit handling, digital channels, shared
+crosshair) remains explicitly not started.**
+
 ## Completed foundation work
 
 `[FACT]`, verified against the repository on 2026-08-15:
@@ -286,8 +315,9 @@ passing; 19 frontend `jsdom` checks updated in place and passing.
   UAT Prototype Implementation Record", "Phase 2B — Plotly
   Refinement & Workspace-Level Navigation Record", "Phase 2B —
   Renderer Closure Record", "Phase 2C — Flexible Multi-Channel
-  Waveform Workspace: Discovery and Design", and "Light/Dark Theme &
-  Crosshair Refinement Record" sections).
+  Waveform Workspace: Discovery and Design", "Light/Dark Theme &
+  Crosshair Refinement Record", and "Phase 2C-A — Synchronized
+  Multi-Channel Waveform Display Implementation Record" sections).
 
 ## Current architecture status
 
@@ -348,22 +378,29 @@ abstraction (unused by the event-file path), CI/CD pipeline, DEV/PROD
 deployment isolation, a working single-page frontend with
 collapsible/searchable channel grouping and a removal confirmation, plus
 (Phase 2B) an isolated renderer-UAT prototype page comparing uPlot and
-Plotly.js against that same waveform API, and (DEC-023) a shared Light/
+Plotly.js against that same waveform API, (DEC-023) a shared Light/
 Dark appearance system applied across the whole frontend including the
-Plotly chart, this documentation set. No
+Plotly chart, and (Phase 2C-A, DEC-024) a real synchronized multi-channel
+waveform workspace — checkbox channel selection, initial engineering-type
+panel grouping, one Plotly instance per panel sharing one workspace-level
+X/time viewport, and a central Zoom/Pan/Reset-Time-View/Autoscale-Y
+toolbar — built into the main app itself, this documentation set. No
 frontend framework, no database schema, no authentication, no CSV/Excel/
-digital-waveform/cursors-measurements/calculated-signal/synchronization/
-draggable-panel features yet. A Phase 2 waveform-workspace **design
+digital-waveform/cursors-measurements/calculated-signal/synchronization
+features yet; **drag/reorder-between-panels and panel resize remain
+Phase 2C-B, not yet built**. A Phase 2 waveform-workspace **design
 proposal** exists (see [MIGRATION_PLAN.md](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14)),
-now joined by a full Phase 2C flexible multi-channel workspace **design
-proposal** (see [MIGRATION_PLAN.md — Phase 2C](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15)) —
-of which the backend foundation (Phase 2A) and the renderer choice
-(Phase 2B, DEC-022) have been implemented/decided so far. The
-channel-selection UX, panel/grouping model, drag/reorder model, Y-scaling
-model, and centralized toolbar all now have a specific, evidence-based
-design proposal on record, but remain unbuilt and undecided
-(`[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`) — Phase 2C/2D
-implementation has not started.
+and the Phase 2C flexible multi-channel workspace **design proposal**
+(see [MIGRATION_PLAN.md — Phase 2C](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15))
+has now had its core architecture (panel model, channel-add workflow,
+shared viewport, minimal toolbar, viewport-aware Autoscale Y) implemented
+as Phase 2C-A (DEC-024) — the backend foundation (Phase 2A), the
+renderer choice (Phase 2B, DEC-022), and this first multi-channel slice
+(Phase 2C-A, DEC-024) are all implemented/decided. Drag/reorder between
+panels, panel resize, Proportional Y scaling, mixed-unit handling, and
+digital-channel display remain unbuilt/undecided design-proposal items
+(`[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`) — Phase 2C-B has
+not started.
 
 ## Current approved focus
 
@@ -446,6 +483,23 @@ Plotly crosshair was further refined (`spikethickness` 1→0.5,
 `spikecolor` alpha 0.55→0.42); no custom crosshair/cursor engine was
 built. This is a general-app UX refinement, **not** Phase 2C — see
 [MIGRATION_PLAN.md — Light/Dark Theme & Crosshair Refinement Record](MIGRATION_PLAN.md#lightdark-theme--crosshair-refinement-record-2026-08-15).
+
+`[DECISION]` Recorded 2026-08-15: **DEC-024** — Phase 2C-A's multi-channel
+waveform workspace architecture is confirmed and implemented: one
+independent Plotly instance per panel (never a single figure with fixed
+subplots); checkbox + "Add N selected" as the approved channel-add
+workflow; initial-only `engineering_type` panel grouping (never a
+permanent lock); one shared, Oruxa-owned X/time viewport driving every
+panel (DEC-021, now actually built); a single central 4-button toolbar
+(Zoom/Pan/Reset Time View/Autoscale Y) with every native per-panel
+modebar disabled; Autoscale Y as viewport-aware Fit only; the existing
+Phase 2A single-channel endpoint reused unmodified (N channels = N
+requests, no batching). This confirms/selects specific options the Phase
+2C design pass had left as `[PROPOSAL]`/`[ANALYSIS]`/`[NEEDS UAT]` — see
+[MIGRATION_PLAN.md — Phase 2C-A Implementation Record](MIGRATION_PLAN.md#phase-2c--synchronized-multi-channel-waveform-display-implementation-record-2026-08-15).
+**Phase 2C-B (drag/reorder between panels, panel resize, Proportional Y
+scaling, mixed-unit handling, digital channels, shared crosshair) remains
+not started and not authorized by this decision.**
 
 `[DECISION]` Recorded 2026-08-15: DEC-020 — `detego.app` is adopted as an
 official product/UI-UX/waveform-workspace/dashboard/workflow **benchmark**
@@ -551,36 +605,33 @@ closure) are all complete** — see
 and
 [Phase 2B Closure Records](MIGRATION_PLAN.md#phase-2b--renderer-closure-record-2026-08-15).
 **Plotly.js is the selected waveform renderer (DEC-022)** — no longer
-`[UAT]`. **Phase 2C discovery/design (flexible multi-channel waveform
-workspace) is also now complete** — see
-[MIGRATION_PLAN.md — Phase 2C](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15).
-Per that design task's own explicit instruction, **Phase 2C
-implementation (multi-channel API, panel model code, drag/reorder,
-central toolbar, digital signals, cursors) is explicitly not started and
-not authorized by this design pass** — every substantive choice in the
-design remains `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`/
-`[DEFER]`, not a `[DECISION]`. The next step is for the project owner (or
-a future session) to review the design proposal and either approve
-specific recommendations (several are `[DECISION MODE: ANALYSIS]` and
-could be approved without further comparison — see the design's §35
-"Technical decisions ready for analysis"), request a UAT pass on the
-interaction-shaped questions (§34's candidate list — channel-add feel,
-drag interaction feel, Fit/Proportional Y-scaling, toolbar layout), or
-authorize the recommended first implementation slice (§29 of the design:
-checkbox channel-add + synchronized multi-panel display + a minimal
-two-button toolbar, still zero backend change). Separately, resolving the
-abandoned-session TTL question (`[DECISION MODE: COMPARISON]`, reassessed
-but not resolved by the Phase 2C design pass) and the ~100 MB real-file
-memory validation remain recommended before any further
-prolonged/shared-DEV waveform UAT.
+`[UAT]`. Phase 2C discovery/design (flexible multi-channel waveform
+workspace) — see
+[MIGRATION_PLAN.md — Phase 2C](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15)
+— produced a full design proposal, and **its recommended first
+implementation slice is now built: Phase 2C-A (DEC-024)** — see
+[MIGRATION_PLAN.md — Phase 2C-A Implementation Record](MIGRATION_PLAN.md#phase-2c--synchronized-multi-channel-waveform-display-implementation-record-2026-08-15).
+Checkbox channel-add, initial engineering-type panel grouping, one
+independent Plotly instance per panel, one shared X/time viewport across
+every panel, and a central 4-button toolbar (Zoom/Pan/Reset Time
+View/Autoscale Y, viewport-aware Fit only) are all implemented, directly
+in `frontend/index.html`. **Phase 2C-B (drag/reorder between panels,
+panel resize, Proportional Y scaling, mixed-unit handling, digital
+channels, shared crosshair) remains explicitly not started and not
+authorized.** The next step is for the project owner to review Phase
+2C-A via live DEV UAT and either request refinements, authorize a
+specific Phase 2C-B slice (drag/reorder is the most-requested remaining
+piece per the design record's own sequencing), or defer further Phase 2C
+work. Separately, resolving the abandoned-session TTL question
+(`[DECISION MODE: COMPARISON]`, reassessed but not resolved by Phase
+2C-A — its own design doesn't change the backend memory-retention shape)
+and the ~100 MB real-file memory validation remain recommended before
+any further prolonged/shared-DEV waveform UAT.
 **Separately, a small general-application UX refinement — Light/Dark
 theme support (DEC-023) and a further Plotly crosshair refinement — has
 been implemented** (2026-08-15), see
 [MIGRATION_PLAN.md — Light/Dark Theme & Crosshair Refinement Record](MIGRATION_PLAN.md#lightdark-theme--crosshair-refinement-record-2026-08-15).
-This is not Phase 2C work and does not change the Phase 2C authorization
-status above. The next step, per this pass's own closing instruction, is
-for the owner to review the theme/crosshair result via live DEV UAT — no
-further theming work is authorized beyond what's described there
+No further theming work is authorized beyond what's described there
 (e.g. no settings-page redesign, no additional theme modes) without a
 separate request.
 Phase 1.5 (CSV/Excel), synchronization, calculated signals, digital

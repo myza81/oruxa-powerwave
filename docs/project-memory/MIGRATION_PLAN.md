@@ -4299,6 +4299,248 @@ crosshair-styling concern DEC-023 already covers, not a new decision.
 
 ---
 
+## Phase 2C-A — Synchronized Multi-Channel Waveform Display Implementation Record (2026-08-15)
+
+`[FACT]` throughout except where explicitly marked `[DECISION]` (DEC-024).
+This is a small, deliberately scoped first Phase 2C implementation slice —
+matches the recommended first slice from the Phase 2C discovery/design
+pass's own §29, though re-derived/re-confirmed directly against this
+task's own specification rather than assumed unchanged. **Phase 2C-B
+(drag/reorder between panels, panel resize, Proportional Y scaling,
+mixed-unit handling, digital channels, shared crosshair) is explicitly
+not started.**
+
+### Scope
+
+Built directly into `frontend/index.html` (not a new isolated page) — the
+existing Phase 1 channel browser (search/grouping unchanged) gains
+checkbox selection; a new "Waveform Workspace" section below the existing
+upload/browse layout renders synchronized, multi-panel Plotly charts.
+`frontend/waveform-prototype.html` (Phase 2B's single-channel isolated
+preview) is untouched and remains available.
+
+### Channel selection
+
+A checkbox is added as the first column of the analog channel table only
+(digital channels are unaffected — no checkbox, no selection). Selection
+state (`selectedChannels`, a `Map` keyed by `"sourceId::channelName"`)
+lives in JS, not the DOM, so it survives the channel table being rebuilt
+when the user switches which source they're browsing (existing
+`selectSource()`/`renderChannels()` behaviour, unchanged). A
+"selection-row" above the channel groups shows `"Add N selected"`
+(disabled at N=0) and `"Clear selection"` (also disabled at N=0), wired
+fresh on every render via `setupSelectionControls()` — the same
+re-wire-after-innerHTML-replace pattern the existing channel search
+already used. Clicking "Add N selected" hands the current selection to
+`wwAddSelectedChannels()` and clears the selection immediately.
+
+### Initial grouping
+
+`wwAddSelectedChannels()` groups newly-added channels by the
+already-backend-computed `engineering_type` (never re-derived
+client-side) — an existing panel whose label matches receives the new
+channel via `Plotly.addTraces()`; no matching panel creates a new one.
+**This is placement only** — the panel object model has no concept of a
+channel being permanently bound to its panel; a future Phase 2C-B move
+operation would simply be `Plotly.deleteTraces()` on the source panel +
+`Plotly.addTraces()` on the target panel + updating `panel.channels`,
+using mechanisms this slice already exercises for add/remove.
+
+### Panel architecture
+
+One independent Plotly instance per panel (`wwInitPanelPlot()` /
+`Plotly.newPlot`), never a single figure with fixed subplots — confirms
+the Phase 2C design's own §16 recommendation (DEC-024). A panel may hold
+one or more channel traces (added via `Plotly.addTraces`, removed via
+`Plotly.deleteTraces`, always looked up by current array position —
+`panel.channels.indexOf(channel)` — rather than a cached index, avoiding
+stale-index bugs after a removal shifts the remaining traces). Every
+panel's own native Plotly modebar is disabled
+(`config.displayModeBar: false`) — the central toolbar (below) is the
+only navigation surface. Each panel keeps its own independent Y axis;
+crosshair/hover behaviour (DEC-022/DEC-023, unchanged: dashed, thin,
+theme-driven, sample-snapped) is also independent per panel — **crosshair
+synchronization across panels is explicitly not part of this slice**.
+
+### Shared X/time viewport (DEC-021)
+
+Every panel's Plotly instance is wired with the same relayout-handling
+pattern Phase 2B already proved for one channel (`wwWirePanelRelayout()`),
+now fanned out to N panels: an explicit range change (`xaxis.range[0]`/
+`[1]`, from either drag-zoom or pan) is debounced (120ms, unchanged from
+Phase 2B) and then broadcast to **every** panel via
+`wwApplyAndFetchViewport()`, which relayouts every panel to the exact
+same clamped range and refetches every displayed channel for it.
+
+**Loop prevention**: each panel object carries its own `suppressNext`
+flag, set immediately before the broadcast's own `Plotly.relayout()` call
+on that panel and consumed (checked-and-cleared) first thing inside that
+panel's own relayout handler — a broadcast-driven relayout can never
+re-trigger another broadcast. This was verified with a test double that
+faithfully simulates Plotly's real behaviour (a programmatic
+`Plotly.relayout()` call does re-fire `plotly_relayout` listeners — that
+is the entire reason this guard exists) rather than a mock that would
+silently make the loop-prevention question untestable; see Tests below.
+
+A native double-click-to-reset gesture (`xaxis.autorange: true` — still
+reachable on the plot area itself even with the modebar hidden) is
+treated the same as clicking "Reset Time View" (X-range broadcast only,
+matching the honest limitation already documented in Phase 2B: Plotly's
+own double-click conflates X-reset and Y-autorange for that one panel;
+the other panels only receive the X-range broadcast, not a Y reset).
+
+### Central toolbar
+
+Four controls, matching this task's exact specification, no more:
+
+- **Zoom** / **Pan** — a two-button segmented pair (reusing the existing
+  `.theme-toggle` visual pattern) setting `dragmode` on every panel via
+  `Plotly.relayout`. A pure layout-level change — never touches
+  `xaxis.range`, so it cannot trigger the viewport broadcast.
+- **Reset Time View** — restores the full-record range (learned once,
+  `ww.recordBounds`) on every panel and refetches every channel for it.
+- **Autoscale Y** — `Plotly.relayout(panel, {"yaxis.autorange": true})`
+  on every panel.
+
+No cursor, A/B cursor, annotation, export, or grouping control was added
+— explicitly out of scope per this task.
+
+### Autoscale Y — viewport-aware Fit, confirmed
+
+Every panel's currently-loaded trace data already covers exactly the
+current shared viewport, by construction — each channel is re-fetched
+per range change (§ above), never held as a full-record array
+client-side once zoomed. Plotly's own native `yaxis.autorange`
+therefore recomputes the Y range from data that is already
+viewport-scoped — no custom Y-range math was written, no whole-record
+fallback exists. Proportional/shared-unit scaling remains explicitly
+deferred (not implemented).
+
+### Backend / API
+
+**No backend file was changed.** The existing Phase 2A single-channel
+`GET .../sources/{source_id}/waveform` endpoint is reused, called once
+per displayed channel (`wwFetchChannelRange()`), each with its own
+independent `AbortController` + monotonic sequence number — the same
+stale-request-protection pattern Phase 2B already proved for one channel,
+now generalized to N channels each guarding their own fetch lifecycle
+independently, not a new shared mechanism. Every channel uses the same
+`start_time`/`end_time` (the shared viewport) and the same
+`point_budget` (`WW_POINT_BUDGET = 4000`, matching the backend's existing
+`DEFAULT_POINT_BUDGET` and Phase 2A/2B's own established policy) — no new
+point-budget formula was invented; panel/channel count does not by
+itself reduce the per-channel budget, since every panel shares the same
+horizontal pixel width regardless of how many other panels exist (already
+reasoned through in the Phase 2C design record's §18). Zooming inward
+continues to reveal genuinely finer real detail — this is unchanged Phase
+2A behaviour (`extract_waveform_range`'s own range-then-reduce logic),
+not something this frontend-only slice could alter even if it wanted to.
+
+### Removing displayed channels / clearing the workspace
+
+A small "×" per channel in each panel's compact legend row
+(`wwRemoveChannelByKey`/`wwRemoveChannel`) removes exactly that trace
+(`Plotly.deleteTraces`) and, if it was the panel's last channel, removes
+the whole panel (`Plotly.purge` + DOM removal). **Never removes the
+imported source itself** — this is purely display state. A "Clear
+workspace" button (in the section header, deliberately kept separate from
+the 4-button central toolbar so that toolbar stays exactly as specified)
+removes every panel at once. Both `performRemoveSource()` (existing
+per-source removal) and `resetToNewWorkspace()` (existing whole-workspace
+reset, DEC-018) now also clean up the waveform workspace:
+`wwRemoveChannelsForSource(sourceId)` removes only that source's
+displayed channels (a different displayed source's channels, if any,
+are left alone); `wwClearWorkspace()` removes everything unconditionally.
+An `ww.epoch` counter, incremented by `wwClearWorkspace()`, guards against
+an in-flight "Add selected" batch resolving after the user cleared/reset
+the workspace mid-flight and trying to draw into now-detached DOM — a
+small, cheap guard modeled on the same stale-response-protection idea
+already used per-request (sequence numbers), applied here at the
+whole-workspace level.
+
+### Labels
+
+Compact, matching this task's own "do not create large legends" limit: a
+panel header shows only the engineering-type label (e.g. "Voltage"); a
+small pill-style legend row below it shows each channel's color dot, name,
+and unit (e.g. "VA (V)") plus its own remove control. Full detail (exact
+time/value) stays in the existing native Plotly hover tooltip, not
+repeated in the legend. No metadata card, no source name/phase repeated
+per panel (that detail remains in the existing Phase 1 sidebar).
+
+### Theme / crosshair (DEC-022/DEC-023, preserved)
+
+Every panel is included in the existing `powerwave:theme-change` handling
+(`wwApplyTheme()`): on a Light/Dark switch, every panel's chart chrome
+(backgrounds, font, grid, spike colors) is re-applied via
+`Plotly.relayout` only — **verified by test that this never triggers a
+new waveform fetch**, extending Phase 2B's own already-proven behaviour
+from one chart to N. Trace line colors are **not** theme-reactive (unlike
+Phase 2B's single-channel page) — they are per-channel identity colors
+(a small fixed palette, cycled in the order channels are added), which
+stay the same across a theme switch by design, since a channel's color is
+its own identity, not a semantic theme color. Light remains the default
+theme; the crosshair remains `spikethickness: 0.35`, `spikedash:
+"3px,2px"`, sample-snapped, theme-driven contrast — unchanged from the
+prior pass, applied identically to every panel now instead of one chart.
+
+### Tests
+
+- **Backend: 278 tests, unmodified, all passing** — zero backend files
+  touched.
+- **Frontend, new: 19 scripted `jsdom` checks, all passing** (a new
+  one-off script, same established pattern) — channel selection/Add/Clear;
+  initial engineering-type grouping into the correct panel count; one
+  `Plotly.newPlot` per panel with the correct trace count; no per-panel
+  modebar; shared-viewport broadcast on zoom AND pan, verified against a
+  Plotly test double that faithfully re-fires `plotly_relayout` on a
+  programmatic `relayout()` call (so loop-prevention is actually
+  exercised, not just structurally present); Zoom/Pan toolbar buttons
+  (dragmode only, never refetches); Reset Time View (refetches, restores
+  full record on every panel); Autoscale Y (native `yaxis.autorange`,
+  never refetches); theme switch (re-colors every panel, never refetches);
+  removing one channel (panel survives); removing every channel (panel
+  removed, `Plotly.purge` called); source removal clears only that
+  source's displayed channels; "Start new workspace" clears everything;
+  a 12-channel/4-panel structural scale check (exactly 12 requests, no
+  duplication, a 12-channel zoom refetches exactly 12 times, not a
+  multiplied or runaway amount).
+- **Frontend, existing (Phase 1 regression): 4 scripted `jsdom` checks,
+  re-run and still passing** (`frontend_logic_check.mjs`, from the
+  original Phase 1 UAT-refinement pass) — grouping/counts/expansion/
+  columns, search filtering (analog + digital, cross-group auto-expand),
+  remove confirmation + stale-banner fix, unrelated-removal banner
+  isolation. Two of this script's own assertions were updated in place
+  (not weakened) to account for the new, intentional leading checkbox
+  column — an empty `<th>`/`<td class="select-col">` that a purely
+  positional "first cell" assertion would otherwise misread; the updated
+  assertions are strictly more precise (`td:not(.select-col)`,
+  filtering empty headers before comparing labeled ones), not looser.
+
+### Performance (section 15)
+
+Structurally verified via the jsdom suite above at 3, 6, and 12 displayed
+channels: request count scales exactly linearly (N channels → N initial
+requests, N channels → N refetch requests per shared-viewport change),
+never duplicated, never a multiplied/runaway amount even at 12 channels
+across 4 panels. This is a structural/request-count guarantee, not a
+browser-rendering-smoothness measurement — this sandboxed session has no
+real browser, so actual paint/scroll/interaction responsiveness at these
+channel counts was **not** visually confirmed here; live DEV round-trip
+API timing (payload size, latency) was measured instead as the closest
+available evidence — see this task's own final report for the exact
+numbers. **Per this task's own explicit instruction, no claim is made
+about 50/100 simultaneous visible channels** — that scenario was not
+built for, requested, or tested.
+
+### Files changed
+
+Modified only: `frontend/index.html`. No new files, no `backend/` file,
+no CI/deployment workflow file, no `frontend/waveform-prototype.html`
+change.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

@@ -391,6 +391,130 @@
             background: var(--error);
             color: #fff;
         }
+
+        /* ---- Phase 2C-A: multi-channel selection ---- */
+        .selection-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        input[type="checkbox"].channel-select-cb { cursor: pointer; }
+        td.select-col { width: 24px; }
+
+        /* ---- Phase 2C-A: waveform workspace ---- */
+        section.workspace-section {
+            max-width: 1100px;
+            margin: 0 auto 24px;
+            padding: 0 24px;
+        }
+        .ww-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        .ww-header h2 {
+            font-size: 0.95rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-dim);
+            margin: 0;
+        }
+        .ww-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .ww-toolbar[hidden] { display: none; }
+        .ww-panel {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 14px;
+            margin-bottom: 16px;
+        }
+        .ww-panel-header {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .ww-panel-label {
+            font-size: 0.85rem;
+            font-weight: 700;
+        }
+        .ww-panel-unit {
+            font-size: 0.74rem;
+            color: var(--text-dim);
+        }
+        .ww-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .ww-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.76rem;
+            color: var(--text-dim);
+            background: var(--surface-tint);
+            border-radius: 999px;
+            padding: 3px 6px 3px 8px;
+        }
+        .ww-legend-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+        .ww-legend-remove {
+            appearance: none;
+            border: none;
+            background: transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 0.9rem;
+            padding: 0 2px;
+            line-height: 1;
+        }
+        .ww-legend-remove:hover { color: var(--error); }
+        .ww-chart-wrap {
+            position: relative;
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            background: var(--waveform-surface);
+        }
+        .ww-chart { width: 100%; height: 260px; }
+        .ww-chart-loading {
+            position: absolute;
+            top: 8px;
+            right: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.74rem;
+            color: var(--accent);
+            background: var(--chart-overlay-bg);
+            padding: 4px 8px;
+            border-radius: 999px;
+        }
+        .ww-chart-loading[hidden] { display: none; }
+        .ww-error {
+            margin-top: 8px;
+            font-size: 0.8rem;
+            border-radius: var(--radius);
+            padding: 8px 10px;
+            background: var(--error-wash);
+            color: var(--error);
+        }
+        .ww-error[hidden] { display: none; }
     </style>
 </head>
 <body>
@@ -440,6 +564,34 @@
         </section>
     </main>
 
+    <!-- Phase 2C-A: synchronized multi-channel waveform workspace. Built
+         directly into the main app (not an isolated page like Phase 2B's
+         waveform-prototype.html) -- this is now real functionality, not a
+         UAT prototype. See docs/project-memory/MIGRATION_PLAN.md's
+         Phase 2C-A record and DEC-021 (workspace-level navigation). -->
+    <section class="workspace-section" aria-labelledby="workspace-heading">
+        <div class="ww-header">
+            <h2 id="workspace-heading">Waveform Workspace</h2>
+            <button class="secondary" type="button" id="clearWorkspaceBtn" hidden>Clear workspace</button>
+        </div>
+
+        <!-- Central Powerwave toolbar (DEC-021): controls every displayed
+             panel at once. Native per-panel Plotly modebars are disabled
+             (see wwInitPanelPlot) -- this is the only navigation surface. -->
+        <div class="ww-toolbar" id="wwToolbar" hidden>
+            <div class="theme-toggle" id="dragModeToggle" role="group" aria-label="Drag mode">
+                <button type="button" id="dragModeZoomBtn" aria-pressed="true">Zoom</button>
+                <button type="button" id="dragModePanBtn" aria-pressed="false">Pan</button>
+            </div>
+            <button class="secondary" type="button" id="wwResetViewBtn">Reset Time View</button>
+            <button class="secondary" type="button" id="wwAutoscaleBtn">Autoscale Y</button>
+        </div>
+
+        <p class="empty-state" id="wwEmptyState">Select analog channels and click &ldquo;Add selected&rdquo; to display waveforms.</p>
+
+        <div id="wwPanels"></div>
+    </section>
+
     <footer>
         <span>Workspace: <code id="workspaceIdLabel"></code></span>
         <div class="footer-actions">
@@ -477,6 +629,7 @@
         </div>
     </div>
 
+    <script src="vendor/plotly/plotly-cartesian.min.js"></script>
     <script>
         // ------------------------------------------------------------------
         // Configuration
@@ -583,15 +736,17 @@
             }
 
             // Only now -- backend cleanup confirmed -- rotate identity and
-            // clear workspace-scoped UI state. Deliberately does NOT touch
-            // any non-workspace-scoped presentation state (there is none in
-            // Phase 1; if one is ever added, it belongs outside this
-            // function per docs/project-memory/DECISIONS.md DEC-018).
+            // clear workspace-scoped UI state, including (Phase 2C-A) the
+            // waveform workspace -- every displayed channel belongs to a
+            // source in the workspace that was just released server-side,
+            // so nothing in it remains valid. See
+            // docs/project-memory/DECISIONS.md DEC-018.
             localStorage.setItem(WORKSPACE_STORAGE_KEY, crypto.randomUUID());
             selectedSourceId = null;
             lastImportedSourceId = null;
             clearUploadStatus();
             renderChannels(null);
+            wwClearWorkspace();
             document.getElementById("workspaceIdLabel").textContent = currentWorkspaceId();
             await refreshSourceList();
         }
@@ -822,6 +977,13 @@
                 clearUploadStatus();
                 lastImportedSourceId = null;
             }
+            // Phase 2C-A: this source's own copy is now gone server-side --
+            // any displayed channel belonging to it is no longer valid.
+            // Removing a single SOURCE removes only ITS channels from the
+            // waveform workspace (other displayed channels, if any belong
+            // to a different source, are left alone) -- this never removes
+            // the source itself a second time, only the display of it.
+            wwRemoveChannelsForSource(sourceId);
             await refreshSourceList();
         }
 
@@ -890,6 +1052,15 @@
                 '<input type="search" id="channelSearch" placeholder="Search channels&hellip;" aria-label="Search channels">' +
                 '<span id="channelSearchCount"></span></div>';
 
+            // Phase 2C-A: multi-channel selection, analog only. See
+            // setupSelectionControls() -- re-wired every render since this
+            // whole panel is rebuilt via innerHTML, same pattern already
+            // used for setupChannelSearch below.
+            html += '<div class="selection-row">' +
+                '<button type="button" id="addSelectedBtn" disabled>Add 0 selected</button>' +
+                '<button type="button" class="secondary" id="clearSelectionBtn" disabled>Clear selection</button>' +
+                '</div>';
+
             html += '<div id="channelGroups">';
             html += renderAnalogGroup(data.analog_channels, source);
             html += renderDigitalGroup(data.digital_channels);
@@ -898,6 +1069,7 @@
 
             panel.innerHTML = html;
             setupChannelSearch(data.analog_channels, data.digital_channels);
+            setupSelectionControls(source);
         }
 
         function statCard(label, value) {
@@ -937,7 +1109,7 @@
                         ["Name", (c) => c.name],
                         ["Unit", (c) => c.unit],
                         ["Phase", (c) => c.phase || "—"],
-                    ], (c) => waveformPrototypeLinkHtml(source, c)) + '</div>';
+                    ], (c) => waveformPrototypeLinkHtml(source, c), (c) => channelCheckboxHtml(source, c)) + '</div>';
                     body += '</details>';
                 }
                 body += '</div>';
@@ -968,8 +1140,9 @@
                 '<div class="group-body">' + body + '</div></details>';
         }
 
-        function renderChannelTable(channels, columns, actionColumn) {
+        function renderChannelTable(channels, columns, actionColumn, checkboxColumn) {
             let html = '<table class="channels"><thead><tr>';
+            if (checkboxColumn) html += '<th></th>';
             for (const [label] of columns) html += '<th>' + escapeHtml(label) + '</th>';
             if (actionColumn) html += '<th></th>';
             html += '</tr></thead><tbody>';
@@ -977,6 +1150,7 @@
                 const searchText = [channel.name, channel.unit, channel.phase]
                     .filter(Boolean).join(" ").toLowerCase();
                 html += '<tr data-search="' + escapeHtml(searchText) + '">';
+                if (checkboxColumn) html += '<td class="select-col">' + checkboxColumn(channel) + '</td>';
                 for (const [, accessor] of columns) html += '<td>' + escapeHtml(String(accessor(channel))) + '</td>';
                 if (actionColumn) html += '<td>' + actionColumn(channel) + '</td>';
                 html += '</tr>';
@@ -1006,6 +1180,91 @@
             }).toString();
             return '<a class="waveform-proto-link" href="' + escapeHtml(url) +
                 '" target="_blank" rel="noopener">Waveform (UAT)</a>';
+        }
+
+        // ------------------------------------------------------------------
+        // Phase 2C-A: multi-channel selection -- analog channels only,
+        // reusing the existing collapsible/searchable browser above
+        // unchanged (checkboxes live inside the same rows). Selection
+        // state (`selectedChannels`) is a plain Map keyed by
+        // "sourceId::channelName", independent of which source's channel
+        // table happens to be rendered right now -- switching the selected
+        // source rebuilds this table (innerHTML replace, see selectSource)
+        // but a channel checked earlier stays checked (and counted) if the
+        // user browses back to it, since the Map (not the DOM) is the
+        // source of truth. See wwAddSelectedChannels() for how this
+        // becomes displayed waveform panels.
+        // ------------------------------------------------------------------
+        const selectedChannels = new Map();
+
+        function channelSelectionKey(sourceId, channelName) {
+            return sourceId + "::" + channelName;
+        }
+
+        function channelCheckboxHtml(source, channel) {
+            const key = channelSelectionKey(source.source_id, channel.name);
+            const checked = selectedChannels.has(key) ? " checked" : "";
+            return '<input type="checkbox" class="channel-select-cb"' + checked +
+                ' data-source-id="' + escapeHtml(source.source_id) + '"' +
+                ' data-source-name="' + escapeHtml(source.station_name || "") + '"' +
+                ' data-channel-name="' + escapeHtml(channel.name) + '"' +
+                ' data-unit="' + escapeHtml(channel.unit || "") + '"' +
+                ' data-engineering-type="' + escapeHtml(channel.engineering_type || "Undefined") + '"' +
+                ' aria-label="Select ' + escapeHtml(channel.name) + '">';
+        }
+
+        // Wired fresh after every renderChannels() call (the whole panel is
+        // rebuilt via innerHTML, same reason setupChannelSearch is re-wired
+        // each time too) -- delegated single `change` listener on
+        // #channelGroups rather than one listener per checkbox.
+        function setupSelectionControls() {
+            const addBtn = document.getElementById("addSelectedBtn");
+            const clearBtn = document.getElementById("clearSelectionBtn");
+            const groupsEl = document.getElementById("channelGroups");
+
+            function syncButtons() {
+                const count = selectedChannels.size;
+                addBtn.textContent = "Add " + count + " selected";
+                addBtn.disabled = count === 0;
+                clearBtn.disabled = count === 0;
+            }
+
+            groupsEl.addEventListener("change", (event) => {
+                const cb = event.target;
+                if (!cb.classList || !cb.classList.contains("channel-select-cb")) return;
+                const key = channelSelectionKey(cb.dataset.sourceId, cb.dataset.channelName);
+                if (cb.checked) {
+                    selectedChannels.set(key, {
+                        sourceId: cb.dataset.sourceId,
+                        sourceName: cb.dataset.sourceName,
+                        channelName: cb.dataset.channelName,
+                        unit: cb.dataset.unit,
+                        engineeringType: cb.dataset.engineeringType || "Undefined",
+                    });
+                } else {
+                    selectedChannels.delete(key);
+                }
+                syncButtons();
+            });
+
+            addBtn.addEventListener("click", () => {
+                if (selectedChannels.size === 0) return;
+                wwAddSelectedChannels(Array.from(selectedChannels.values()));
+                selectedChannels.clear();
+                // Uncheck any checkboxes currently rendered for the
+                // just-added channels (same table, since Add is only ever
+                // clicked while viewing a channel list).
+                for (const cb of groupsEl.querySelectorAll(".channel-select-cb:checked")) cb.checked = false;
+                syncButtons();
+            });
+
+            clearBtn.addEventListener("click", () => {
+                selectedChannels.clear();
+                for (const cb of groupsEl.querySelectorAll(".channel-select-cb:checked")) cb.checked = false;
+                syncButtons();
+            });
+
+            syncButtons();
         }
 
         // ------------------------------------------------------------------
@@ -1077,12 +1336,635 @@
             return div.innerHTML;
         }
 
+        // ==================================================================
+        // Phase 2C-A: Synchronized Multi-Channel Waveform Workspace
+        //
+        // Architecture (see docs/project-memory/MIGRATION_PLAN.md's Phase 2C
+        // design record, and this phase's own implementation record):
+        //   - one independent Plotly instance PER PANEL (never one giant
+        //     figure with fixed subplots) -- a panel may hold one or more
+        //     channel traces;
+        //   - panels are grouped, on INITIAL add only, by the channel's
+        //     already backend-computed `engineering_type` (never
+        //     re-derived here) -- this is placement, not a permanent lock;
+        //     Phase 2C-B is where the user gets to rearrange it;
+        //   - every panel shares ONE Oruxa-owned X/time viewport (DEC-021)
+        //     -- no panel is ever allowed to drift to its own independent
+        //     time range. Native per-panel Plotly modebars are disabled
+        //     entirely; the only navigation surface is the central toolbar
+        //     below (Zoom/Pan/Reset Time View/Autoscale Y);
+        //   - each panel keeps its OWN Y axis (never forced to match
+        //     another panel's scale) -- "Autoscale Y" is viewport-aware
+        //     Fit only (see wwAutoscaleY's own comment), not
+        //     Proportional/shared-unit scaling (explicitly deferred);
+        //   - crosshair synchronization across panels is explicitly NOT
+        //     part of this slice -- each panel's hover/spike behaviour
+        //     stays independent, exactly as Phase 2B already built it
+        //     (DEC-022/DEC-023, unchanged);
+        //   - the existing Phase 2A single-channel waveform endpoint is
+        //     reused unmodified for every displayed channel (N requests
+        //     for N channels, same start_time/end_time/point_budget for
+        //     all of them) -- no backend change, no batching endpoint.
+        //     Batching remains an evidence-gated future option, not
+        //     built here (see this phase's own Performance section).
+        // ==================================================================
+
+        // Deterministic per-channel identity colors, assigned in the order
+        // channels are added -- NOT theme-reactive (unlike chart chrome,
+        // see wwApplyTheme): a channel's color is its own identity, not a
+        // semantic theme color, so it does not change on Light/Dark switch.
+        const CHANNEL_TRACE_COLORS = ["#3568d4", "#d23c44", "#1f9d63", "#b8720a", "#7a5cc0", "#0891a8"];
+
+        // Matches the backend's own default
+        // (app.services.waveform_service.DEFAULT_POINT_BUDGET) -- the same
+        // policy Phase 2A/2B already established, reused per channel
+        // regardless of how many channels/panels are currently displayed
+        // (panel count does not by itself demand a smaller per-channel
+        // budget, since every panel shares the same horizontal pixel
+        // width -- see the Phase 2C design record's own reasoning).
+        const WW_POINT_BUDGET = 4000;
+
+        const ww = {
+            panels: [],            // ordered array of panel objects
+            displayed: new Map(),  // "sourceId::channelName" -> {panel, channel}
+            viewport: null,        // {start, end} shared X range, or null before the first channel ever loads
+            recordBounds: null,    // {start, end} of the full record, learned once from the first unbounded fetch
+            dragMode: "zoom",
+            colorIndex: 0,
+            panelSeq: 0,
+            viewportDebounceTimer: null,
+            // Incremented by wwClearWorkspace() -- guards against an
+            // in-flight "Add selected" fetch resolving after the user
+            // cleared/reset the workspace mid-flight, which would
+            // otherwise try to draw into already-detached DOM.
+            epoch: 0,
+        };
+
+        function wwChannelKey(sourceId, channelName) {
+            return sourceId + "::" + channelName;
+        }
+
+        function wwNextColor() {
+            const color = CHANNEL_TRACE_COLORS[ww.colorIndex % CHANNEL_TRACE_COLORS.length];
+            ww.colorIndex += 1;
+            return color;
+        }
+
+        // Same technique as waveform-prototype.html's own themeColors() --
+        // read live from the shared appearance tokens (theme.css) rather
+        // than hard-coding per-theme values here.
+        function wwThemeColors() {
+            const styles = getComputedStyle(document.documentElement);
+            const read = (name) => styles.getPropertyValue(name).trim();
+            return {
+                surface: read("--waveform-surface"),
+                text: read("--text"),
+                grid: read("--panel-border"),
+                spike: read("--spike-color"),
+            };
+        }
+
+        // ------------------------------------------------------------------
+        // Per-channel waveform fetch -- exact-range requests against the
+        // existing Phase 2A API (unmodified), one independent
+        // AbortController + sequence number PER CHANNEL (the same
+        // stale-request-protection pattern Phase 2B already proved for one
+        // channel, generalized here to N channels each guarding their own
+        // fetch lifecycle independently).
+        // ------------------------------------------------------------------
+        async function wwFetchChannelRange(channelEntry, startTime, endTime) {
+            if (channelEntry.abortController) channelEntry.abortController.abort();
+            const controller = new AbortController();
+            channelEntry.abortController = controller;
+            const seq = (channelEntry.requestSeq || 0) + 1;
+            channelEntry.requestSeq = seq;
+
+            const url = new URL(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                "/sources/" + encodeURIComponent(channelEntry.sourceId) + "/waveform"
+            );
+            url.searchParams.set("channel_name", channelEntry.channelName);
+            if (startTime !== null && startTime !== undefined) url.searchParams.set("start_time", startTime);
+            if (endTime !== null && endTime !== undefined) url.searchParams.set("end_time", endTime);
+            url.searchParams.set("point_budget", String(WW_POINT_BUDGET));
+
+            const response = await fetch(url.toString(), { signal: controller.signal });
+            if (seq !== channelEntry.requestSeq) return { superseded: true };
+
+            const bodyText = await response.text();
+            if (seq !== channelEntry.requestSeq) return { superseded: true };
+
+            let body = null;
+            try { body = JSON.parse(bodyText); } catch (error) { /* handled by !response.ok / null body below */ }
+
+            if (!response.ok) {
+                const detail = (body && body.detail) || {};
+                return { superseded: false, error: detail };
+            }
+            return { superseded: false, body };
+        }
+
+        function wwFriendlyError(code, message) {
+            const known = {
+                source_not_found: "This source is no longer available in this workspace.",
+                channel_not_found: "This channel is no longer available on this source.",
+                channel_not_analog: "This channel is digital and can't be displayed here.",
+                invalid_time_range: "That time range wasn't valid. Use Reset Time View to recover.",
+                invalid_workspace: "Something went wrong identifying your workspace.",
+                internal_error: "Something went wrong on our end. Please try again.",
+            };
+            return known[code] || (message || "Could not load waveform data.");
+        }
+
+        function wwSetLoading(panel, isLoading) {
+            if (panel.loadingEl) panel.loadingEl.hidden = !isLoading;
+        }
+        function wwShowError(panel, message) {
+            if (!panel.errorEl) return;
+            panel.errorEl.textContent = message;
+            panel.errorEl.hidden = false;
+        }
+        function wwClearError(panel) {
+            if (panel.errorEl) panel.errorEl.hidden = true;
+        }
+
+        // Loads (or re-loads, on a viewport change) one channel's data.
+        // `opts.isInitialLoad` distinguishes "this trace doesn't exist in
+        // Plotly yet" (the caller will addTraces/newPlot afterward) from
+        // "this trace already exists, update it in place via restyle."
+        async function wwLoadChannelRange(panel, channelEntry, startTime, endTime, opts) {
+            opts = opts || {};
+            wwSetLoading(panel, true);
+            wwClearError(panel);
+
+            let result;
+            try {
+                result = await wwFetchChannelRange(channelEntry, startTime, endTime);
+            } catch (error) {
+                if (error.name === "AbortError") return;
+                wwSetLoading(panel, false);
+                wwShowError(panel, "Could not reach the backend. Check your connection and try again.");
+                return;
+            }
+            if (result.superseded) return;
+
+            wwSetLoading(panel, false);
+
+            if (result.error) {
+                wwShowError(panel, wwFriendlyError(result.error.code, result.error.message));
+                return;
+            }
+            if (!result.body) {
+                wwShowError(panel, "Could not reach the backend. Check your connection and try again.");
+                return;
+            }
+
+            const body = result.body;
+            if (ww.recordBounds === null && startTime === null && endTime === null) {
+                // First-ever unbounded request across the whole workspace --
+                // its start/end ARE the record's true bounds (matches
+                // app.services.waveform_service's documented default: no
+                // start/end_time returns the entire record).
+                ww.recordBounds = { start: body.start_time, end: body.end_time };
+                ww.viewport = { start: body.start_time, end: body.end_time };
+            }
+
+            channelEntry.time = body.time;
+            channelEntry.values = body.values;
+            channelEntry.representation = body.representation;
+            channelEntry.originalSampleCount = body.original_sample_count;
+
+            if (!opts.isInitialLoad) {
+                const idx = panel.channels.indexOf(channelEntry);
+                if (idx !== -1 && panel.plotlyReady) {
+                    Plotly.restyle(panel.chartEl, { x: [body.time], y: [body.values] }, [idx]);
+                }
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // Panel DOM + Plotly lifecycle
+        // ------------------------------------------------------------------
+        function wwCreatePanelObject(label) {
+            ww.panelSeq += 1;
+            return {
+                id: "ww-panel-" + ww.panelSeq,
+                label,
+                channels: [],
+                containerEl: null,
+                chartEl: null,
+                legendEl: null,
+                loadingEl: null,
+                errorEl: null,
+                suppressNext: false,
+                plotlyReady: false,
+            };
+        }
+
+        function wwCreatePanelDom(panel) {
+            const container = document.createElement("div");
+            container.className = "ww-panel";
+            container.dataset.panelId = panel.id;
+            container.innerHTML =
+                '<div class="ww-panel-header"><span class="ww-panel-label">' + escapeHtml(panel.label) + '</span></div>' +
+                '<div class="ww-legend"></div>' +
+                '<div class="ww-chart-wrap">' +
+                    '<div class="ww-chart"></div>' +
+                    '<div class="ww-chart-loading" hidden><span class="spinner"></span>Loading&hellip;</div>' +
+                '</div>' +
+                '<div class="ww-error" hidden role="alert"></div>';
+
+            document.getElementById("wwPanels").appendChild(container);
+            panel.containerEl = container;
+            panel.legendEl = container.querySelector(".ww-legend");
+            panel.chartEl = container.querySelector(".ww-chart");
+            panel.loadingEl = container.querySelector(".ww-chart-loading");
+            panel.errorEl = container.querySelector(".ww-error");
+        }
+
+        // Compact identity per section 11: panel/group name (header),
+        // channel name + unit (legend row) -- full detail (exact value)
+        // stays in the existing native Plotly hover tooltip, not repeated
+        // here. Kept deliberately small -- no large legend/metadata card.
+        function wwRenderLegend(panel) {
+            let html = "";
+            for (const channel of panel.channels) {
+                html += '<span class="ww-legend-item">' +
+                    '<span class="ww-legend-dot" style="background:' + channel.color + '"></span>' +
+                    escapeHtml(channel.channelName) + (channel.unit ? " (" + escapeHtml(channel.unit) + ")" : "") +
+                    '<button type="button" class="ww-legend-remove" data-source-id="' + escapeHtml(channel.sourceId) +
+                    '" data-channel-name="' + escapeHtml(channel.channelName) + '" title="Remove from display" ' +
+                    'aria-label="Remove ' + escapeHtml(channel.channelName) + ' from display">&times;</button>' +
+                    '</span>';
+            }
+            panel.legendEl.innerHTML = html;
+            panel.legendEl.querySelectorAll(".ww-legend-remove").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    wwRemoveChannelByKey(wwChannelKey(btn.dataset.sourceId, btn.dataset.channelName));
+                });
+            });
+        }
+
+        function wwBuildTrace(channel) {
+            return {
+                x: channel.time || [],
+                y: channel.values || [],
+                type: "scattergl",
+                mode: "lines",
+                // shape: "linear" (Plotly's own default), explicitly NOT
+                // "spline" -- no curve smoothing between real samples,
+                // unchanged from Phase 2B.
+                line: { shape: "linear", width: 1.5, color: channel.color },
+                name: channel.channelName,
+                hovertemplate: "%{x:.6f}s: %{y}" + (channel.unit ? " " + channel.unit : "") +
+                    "<extra>" + escapeHtml(channel.channelName) + "</extra>",
+            };
+        }
+
+        function wwBuildLayout(panel, colors) {
+            const unit = panel.channels.length ? panel.channels[0].unit : "";
+            const xrange = ww.viewport ? [ww.viewport.start, ww.viewport.end] : undefined;
+            // Crosshair config identical to waveform-prototype.html's own
+            // (DEC-022/DEC-023, unchanged): thin, dashed, theme-driven,
+            // sample-snapped. Each panel's spikes are independent --
+            // cross-panel crosshair sync is explicitly not part of this
+            // slice (section 12).
+            return {
+                paper_bgcolor: colors.surface,
+                plot_bgcolor: colors.surface,
+                font: { color: colors.text, size: 11 },
+                margin: { l: 55, r: 20, t: 10, b: 34 },
+                xaxis: {
+                    title: "Time (s)", gridcolor: colors.grid, zeroline: false, range: xrange,
+                    showspikes: true, spikemode: "across", spikesnap: "data",
+                    spikethickness: 0.35, spikedash: "3px,2px", spikecolor: colors.spike,
+                },
+                yaxis: {
+                    title: unit || "", gridcolor: colors.grid, zeroline: false,
+                    showspikes: true, spikemode: "across", spikesnap: "data",
+                    spikethickness: 0.35, spikedash: "3px,2px", spikecolor: colors.spike,
+                },
+                hovermode: "closest",
+                dragmode: ww.dragMode,
+                showlegend: false,
+            };
+        }
+
+        // First-time render for a brand-new panel -- all of its (already
+        // fetched) channels become traces in one Plotly.newPlot call.
+        // config.displayModeBar is explicitly false (section 7): the
+        // central Powerwave toolbar below is the only navigation surface,
+        // never a native per-panel modebar.
+        function wwInitPanelPlot(panel) {
+            const colors = wwThemeColors();
+            const traces = panel.channels.map(wwBuildTrace);
+            const layout = wwBuildLayout(panel, colors);
+            const config = { responsive: true, displayModeBar: false };
+
+            Plotly.newPlot(panel.chartEl, traces, layout, config);
+            panel.plotlyReady = true;
+            wwWirePanelRelayout(panel);
+        }
+
+        // A channel added to an ALREADY-DISPLAYED panel -- native
+        // Plotly.addTraces, no full re-render of the panel's existing
+        // traces.
+        function wwAddTraceToPanel(panel, channelEntry) {
+            Plotly.addTraces(panel.chartEl, wwBuildTrace(channelEntry));
+        }
+
+        // Shared X/time viewport (DEC-021, mandatory): every panel's own
+        // Plotly instance gets this same relayout listener. An explicit
+        // range change (drag-zoom or pan, in either dragMode) broadcasts
+        // to every other panel; a native double-click-to-reset
+        // (`xaxis.autorange: true`, still reachable even with the modebar
+        // hidden -- it's a plot-area gesture, not a modebar button) is
+        // treated the same as clicking "Reset Time View".
+        //
+        // Loop prevention: `panel.suppressNext`, set immediately before
+        // wwApplyAndFetchViewport() programmatically relayouts EVERY panel
+        // (including whichever one the user actually dragged) -- each
+        // panel's own handler checks and clears its own flag first, before
+        // even reading eventData, so a broadcast-driven relayout never
+        // re-triggers another broadcast.
+        function wwWirePanelRelayout(panel) {
+            panel.chartEl.on("plotly_relayout", (eventData) => {
+                if (panel.suppressNext) { panel.suppressNext = false; return; }
+                const x0 = eventData["xaxis.range[0]"];
+                const x1 = eventData["xaxis.range[1]"];
+                if (x0 !== undefined && x1 !== undefined) {
+                    wwBroadcastViewportDebounced(x0, x1);
+                    return;
+                }
+                if (eventData["xaxis.autorange"] === true) {
+                    wwResetTimeView();
+                }
+            });
+        }
+
+        function wwBroadcastViewportDebounced(startTime, endTime) {
+            if (ww.recordBounds) {
+                startTime = Math.max(startTime, ww.recordBounds.start);
+                endTime = Math.min(endTime, ww.recordBounds.end);
+            }
+            if (startTime >= endTime) return;
+
+            clearTimeout(ww.viewportDebounceTimer);
+            // 120ms -- same debounce window Phase 2B already established
+            // (long enough to coalesce a drag gesture's intermediate
+            // frames, short enough not to add perceptible wait to a
+            // discrete click).
+            ww.viewportDebounceTimer = setTimeout(() => {
+                wwApplyAndFetchViewport(startTime, endTime);
+            }, 120);
+        }
+
+        async function wwApplyAndFetchViewport(startTime, endTime) {
+            ww.viewport = { start: startTime, end: endTime };
+            for (const panel of ww.panels) {
+                panel.suppressNext = true;
+                Plotly.relayout(panel.chartEl, { "xaxis.range": [startTime, endTime] });
+            }
+            await wwRefetchAllChannels(startTime, endTime);
+        }
+
+        async function wwRefetchAllChannels(startTime, endTime) {
+            const jobs = [];
+            for (const panel of ww.panels) {
+                for (const channel of panel.channels) {
+                    jobs.push(wwLoadChannelRange(panel, channel, startTime, endTime, { isInitialLoad: false }));
+                }
+            }
+            await Promise.all(jobs);
+        }
+
+        // "Reset Time View": restores the full-record X/time range for
+        // EVERY panel -- a distinct operation from "Autoscale Y" (DEC-021's
+        // required terminology, unchanged from Phase 2B).
+        async function wwResetTimeView() {
+            if (!ww.recordBounds) return;
+            clearTimeout(ww.viewportDebounceTimer);
+            await wwApplyAndFetchViewport(ww.recordBounds.start, ww.recordBounds.end);
+        }
+
+        // "Autoscale Y": viewport-aware Fit only (section 8) -- every
+        // panel's currently-loaded trace data already covers exactly the
+        // current shared viewport (each channel is re-fetched per range
+        // change, never held as a full-record array client-side), so
+        // Plotly's own native `yaxis.autorange` recomputes the Y range
+        // from exactly that already-viewport-scoped data -- no custom
+        // Y-range math, no whole-record fallback. Proportional/shared-unit
+        // scaling across panels is explicitly not implemented yet.
+        function wwAutoscaleY() {
+            for (const panel of ww.panels) {
+                Plotly.relayout(panel.chartEl, { "yaxis.autorange": true });
+            }
+        }
+
+        // Zoom/Pan toolbar buttons -- set every panel's dragmode together;
+        // a plain layout-level relayout, never touches xaxis.range, so it
+        // cannot trigger the viewport-broadcast path above.
+        function wwSetDragMode(mode) {
+            ww.dragMode = mode;
+            for (const panel of ww.panels) {
+                Plotly.relayout(panel.chartEl, { dragmode: mode });
+            }
+            document.getElementById("dragModeZoomBtn").setAttribute("aria-pressed", String(mode === "zoom"));
+            document.getElementById("dragModePanBtn").setAttribute("aria-pressed", String(mode === "pan"));
+        }
+
+        // ------------------------------------------------------------------
+        // Add / remove channels
+        // ------------------------------------------------------------------
+
+        // channelMetas: [{sourceId, sourceName, channelName, unit, engineeringType}]
+        // Grouping is INITIAL PLACEMENT ONLY (section 4) -- an existing
+        // panel whose label already matches an added channel's
+        // engineering_type receives it via Plotly.addTraces; there is no
+        // architecture here that locks a channel to its panel permanently
+        // (Phase 2C-B is where the user gets to move it).
+        async function wwAddSelectedChannels(channelMetas) {
+            const epochAtStart = ww.epoch;
+            const newlyCreatedPanels = [];
+            const jobs = [];
+
+            for (const meta of channelMetas) {
+                const key = wwChannelKey(meta.sourceId, meta.channelName);
+                if (ww.displayed.has(key)) continue; // already displayed -- skip silently
+
+                let panel = ww.panels.find((p) => p.label === meta.engineeringType);
+                let isNewPanel = false;
+                if (!panel) {
+                    panel = wwCreatePanelObject(meta.engineeringType);
+                    ww.panels.push(panel);
+                    newlyCreatedPanels.push(panel);
+                    isNewPanel = true;
+                }
+
+                const channelEntry = {
+                    sourceId: meta.sourceId,
+                    sourceName: meta.sourceName,
+                    channelName: meta.channelName,
+                    unit: meta.unit,
+                    color: wwNextColor(),
+                    time: [],
+                    values: [],
+                    abortController: null,
+                    requestSeq: 0,
+                };
+                panel.channels.push(channelEntry);
+                ww.displayed.set(key, { panel, channel: channelEntry });
+                jobs.push({ panel, channelEntry, isNewPanel });
+            }
+
+            if (jobs.length === 0) return;
+
+            for (const panel of newlyCreatedPanels) wwCreatePanelDom(panel);
+            wwUpdateEmptyState();
+            for (const { panel } of jobs) wwSetLoading(panel, true);
+
+            // Newly-added channels join at the ALREADY-ESTABLISHED shared
+            // viewport (if one exists) -- they must not silently show a
+            // different time range than every other displayed channel.
+            // Only the very first channel the workspace ever displays gets
+            // an unbounded request (its response establishes recordBounds
+            // and the initial viewport, exactly like Phase 2B).
+            const isFirstEverLoad = ww.recordBounds === null;
+            const fetchStart = isFirstEverLoad ? null : ww.viewport.start;
+            const fetchEnd = isFirstEverLoad ? null : ww.viewport.end;
+
+            await Promise.all(jobs.map(({ panel, channelEntry }) =>
+                wwLoadChannelRange(panel, channelEntry, fetchStart, fetchEnd, { isInitialLoad: true })
+            ));
+
+            // The workspace may have been cleared/reset while those fetches
+            // were in flight -- if so, this batch's DOM no longer exists;
+            // do not draw into it.
+            if (epochAtStart !== ww.epoch) return;
+
+            for (const panel of newlyCreatedPanels) wwInitPanelPlot(panel);
+            for (const { panel, channelEntry, isNewPanel } of jobs) {
+                if (!isNewPanel) wwAddTraceToPanel(panel, channelEntry);
+            }
+
+            const touchedPanels = new Set(jobs.map((job) => job.panel));
+            for (const panel of touchedPanels) wwRenderLegend(panel);
+        }
+
+        function wwRemoveChannelByKey(key) {
+            const entry = ww.displayed.get(key);
+            if (!entry) return;
+            wwRemoveChannel(entry.panel, entry.channel);
+        }
+
+        // Removes one channel from the DISPLAY only (section 14) -- never
+        // touches the imported source itself. If this was the panel's last
+        // channel, the whole (now-empty) panel is removed too.
+        function wwRemoveChannel(panel, channel) {
+            const idx = panel.channels.indexOf(channel);
+            if (idx === -1) return;
+            if (channel.abortController) channel.abortController.abort();
+            if (panel.plotlyReady) Plotly.deleteTraces(panel.chartEl, idx);
+            panel.channels.splice(idx, 1);
+            ww.displayed.delete(wwChannelKey(channel.sourceId, channel.channelName));
+
+            if (panel.channels.length === 0) {
+                wwRemovePanelDom(panel);
+                ww.panels = ww.panels.filter((p) => p !== panel);
+            } else {
+                wwRenderLegend(panel);
+            }
+            wwUpdateEmptyState();
+        }
+
+        function wwRemovePanelDom(panel) {
+            if (panel.plotlyReady && panel.chartEl) {
+                Plotly.purge(panel.chartEl);
+            }
+            panel.plotlyReady = false;
+            if (panel.containerEl && panel.containerEl.parentNode) {
+                panel.containerEl.parentNode.removeChild(panel.containerEl);
+            }
+        }
+
+        // Hook for source removal (performRemoveSource) -- removes only
+        // the channels belonging to that specific source_id, leaving any
+        // other displayed source's channels untouched. Never called for
+        // "Start new workspace," which clears everything via
+        // wwClearWorkspace() instead.
+        function wwRemoveChannelsForSource(sourceId) {
+            const toRemove = [];
+            for (const panel of ww.panels) {
+                for (const channel of panel.channels) {
+                    if (channel.sourceId === sourceId) toRemove.push({ panel, channel });
+                }
+            }
+            for (const { panel, channel } of toRemove) wwRemoveChannel(panel, channel);
+        }
+
+        // "Clear workspace" button and "Start new workspace" hook (section
+        // 14/16) -- removes every displayed panel/channel. Does not touch
+        // any imported source; purely display-state.
+        function wwClearWorkspace() {
+            clearTimeout(ww.viewportDebounceTimer);
+            ww.epoch += 1; // invalidate any in-flight "Add selected" batch
+            for (const panel of ww.panels) {
+                if (panel.plotlyReady && panel.chartEl) Plotly.purge(panel.chartEl);
+            }
+            document.getElementById("wwPanels").innerHTML = "";
+            ww.panels = [];
+            ww.displayed.clear();
+            ww.viewport = null;
+            ww.recordBounds = null;
+            wwUpdateEmptyState();
+        }
+
+        function wwUpdateEmptyState() {
+            const empty = ww.panels.length === 0;
+            document.getElementById("wwEmptyState").hidden = !empty;
+            document.getElementById("wwToolbar").hidden = empty;
+            document.getElementById("clearWorkspaceBtn").hidden = empty;
+        }
+
+        // Theme switch (section 12): re-colors chart chrome (backgrounds,
+        // font, grid, spike lines) on every panel via Plotly.relayout only
+        // -- never Plotly.newPlot/react, never a waveform refetch. Trace
+        // line colors are channel-identity colors (CHANNEL_TRACE_COLORS),
+        // not theme-semantic ones, so they are deliberately left unchanged
+        // here (unlike Phase 2B's single-channel page, which used the
+        // theme's own --accent for its one trace).
+        function wwApplyTheme() {
+            if (ww.panels.length === 0) return;
+            const colors = wwThemeColors();
+            for (const panel of ww.panels) {
+                if (!panel.plotlyReady) continue;
+                Plotly.relayout(panel.chartEl, {
+                    paper_bgcolor: colors.surface,
+                    plot_bgcolor: colors.surface,
+                    "font.color": colors.text,
+                    "xaxis.gridcolor": colors.grid,
+                    "yaxis.gridcolor": colors.grid,
+                    "xaxis.spikecolor": colors.spike,
+                    "yaxis.spikecolor": colors.spike,
+                });
+            }
+        }
+
         // ------------------------------------------------------------------
         // Init
         // ------------------------------------------------------------------
         document.getElementById("workspaceIdLabel").textContent = currentWorkspaceId();
         document.getElementById("newWorkspaceButton").addEventListener("click", startNewWorkspace);
         window.PowerwaveTheme.mountThemeToggle(document.getElementById("themeToggle"));
+
+        // Phase 2C-A: central Powerwave toolbar + theme integration.
+        document.getElementById("dragModeZoomBtn").addEventListener("click", () => wwSetDragMode("zoom"));
+        document.getElementById("dragModePanBtn").addEventListener("click", () => wwSetDragMode("pan"));
+        document.getElementById("wwResetViewBtn").addEventListener("click", wwResetTimeView);
+        document.getElementById("wwAutoscaleBtn").addEventListener("click", wwAutoscaleY);
+        document.getElementById("clearWorkspaceBtn").addEventListener("click", wwClearWorkspace);
+        document.addEventListener("powerwave:theme-change", wwApplyTheme);
+
         checkApiHealth();
         refreshSourceList();
     </script>

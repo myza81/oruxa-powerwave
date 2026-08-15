@@ -1165,6 +1165,96 @@ remains not started.
 
 ---
 
+## DEC-024 — Phase 2C-A multi-channel waveform workspace architecture confirmed and implemented
+
+Date: 2026-08-15
+Status: Approved
+Source: explicit project-owner implementation instructions opening the
+Phase 2C-A task (2026-08-15), directly confirming/selecting specific
+architectural options that the Phase 2C discovery/design pass
+(`docs/project-memory/MIGRATION_PLAN.md`'s Phase 2C record) had only
+recorded as `[PROPOSAL]`/`[ANALYSIS]`/`[NEEDS UAT]`, not yet decided.
+
+Decision:
+
+The first real multi-channel waveform workspace (Phase 2C-A) is
+implemented directly in `frontend/index.html` (not a separate isolated
+page, unlike Phase 2B's `waveform-prototype.html`), confirming the
+following specific architectural choices as approved, not merely
+proposed:
+
+- **One independent Plotly instance per panel** (never one giant figure
+  with fixed subplots) — confirms the Phase 2C design's own §16
+  recommendation. A panel may hold one or more channel traces; each panel
+  keeps its own Y axis.
+- **Checkbox selection + "Add N selected"** is the approved channel-add
+  workflow (analog channels only) — confirms the Phase 2C design's §5
+  recommendation over drag-to-add or a per-channel add button.
+- **Initial grouping by existing `engineering_type`** (never re-derived
+  client-side) is the approved default panel placement — confirmed as
+  **placement only, never a permanent lock**: nothing in this
+  implementation prevents a future Phase 2C-B from letting the user move
+  a channel to a different panel.
+- **One shared, Oruxa-owned X/time viewport drives every displayed
+  panel** (DEC-021, reaffirmed and now actually built, not just
+  specified) — zoom/pan on any one panel broadcasts to every other panel;
+  no panel may independently drift to its own time range.
+- **A single central Powerwave toolbar** — Zoom, Pan, Reset Time View,
+  Autoscale Y — is the only navigation surface; every per-panel native
+  Plotly modebar is disabled (`displayModeBar: false`).
+- **Autoscale Y is viewport-aware Fit only** for this slice — confirms
+  the Phase 2C design's §19 recommendation; Proportional/shared-unit
+  scaling remains explicitly deferred.
+- **The existing Phase 2A single-channel waveform endpoint is reused
+  unmodified** — N displayed channels means N existing requests (same
+  `start_time`/`end_time`/`point_budget` for all), not a new
+  multi-channel batching endpoint. Batching remains evidence-gated future
+  work (Phase 2C design's §17), not built here.
+- **Crosshair synchronization across panels is explicitly not part of
+  this slice** — each panel's native Plotly hover/spike behaviour
+  (DEC-022/DEC-023, unchanged) stays independent.
+
+Reason:
+
+The Phase 2C discovery/design pass deliberately left every one of these
+as a `[PROPOSAL]`/`[ANALYSIS]`/`[NEEDS UAT]` item, per its own explicit
+instruction not to self-approve architecture. This task's own
+specification is the owner directly selecting among those documented
+options (one-Plotly-instance-per-panel over a single-figure-with-subplots
+architecture; checkbox+button over drag-to-add; viewport-aware Fit over
+Proportional-first) rather than an agent's own recommendation — per this
+project's own governance ("an agent's own recommendation is a
+`[PROPOSAL]`, never a decision"), that distinction is exactly what makes
+this a real, recordable decision rather than an implementation detail.
+
+Alternatives considered:
+
+See `docs/project-memory/MIGRATION_PLAN.md`'s Phase 2C design record for
+the full comparison tables already produced for each of these questions
+(§16 one-figure-with-subplots vs. one-instance-per-panel; §5
+channel-add-workflow options; §19 Y-scaling modes; §17 backend request
+strategy) — this decision selects the already-analyzed winning option in
+each case, it does not re-derive the comparison.
+
+Impact:
+
+- `frontend/index.html`: multi-channel checkbox selection on the existing
+  analog channel table (search/grouping unchanged), a new "Waveform
+  Workspace" section (stacked panels, central toolbar, empty state), and
+  the full panel/viewport/toolbar/removal/theme JS module described in
+  this task's own implementation record
+  (`docs/project-memory/MIGRATION_PLAN.md`).
+- No backend file changed; the Phase 2A waveform endpoint's contract is
+  unchanged.
+- `frontend/waveform-prototype.html` (Phase 2B's isolated single-channel
+  preview) is untouched and remains available — this decision does not
+  retire it.
+- **Phase 2C-B (drag/reorder channels between panels, panel resize,
+  Proportional Y scaling, mixed-unit panel handling) remains explicitly
+  not started and not authorized by this decision.**
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or
