@@ -81,6 +81,11 @@ For major features, ask: *"What does Detego do here, what does existing
 powerwave do, and what would make oruxa_powerwave better for the
 engineer?"*
 
+This project's own architecture ([docs/architecture/oruxa-architecture.md](docs/architecture/oruxa-architecture.md))
+stays authoritative regardless of Detego's technical choices, and any
+Detego-inspired UI must be an independent Oruxa implementation — never
+reverse-engineered or copied from Detego's own code/assets.
+
 Do not reproduce PRODUCT_REFERENCES.md's contents here — read it at the
 source.
 

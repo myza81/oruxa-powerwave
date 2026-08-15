@@ -260,6 +260,18 @@ performed — this decision establishes the reference relationship and its
 limits, not a feature comparison. Documentation-only; no production code
 changed.
 
+`[FACT]` Recorded 2026-08-15 (same day, third pass): [PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md)
+was expanded with a four-way feature-design method (`powerwave` /
+Detego / owner requirements / proposed superior Oruxa approach),
+worked examples (waveform workspace, multi-source synchronization,
+calculated signals), an explicit "owner-specific capabilities may exceed
+Detego" list, and explicit "architecture stays Oruxa-owned" /
+"independent implementation, not reverse engineering" sections. This is
+elaboration and documentation of the already-approved DEC-020, not a new
+decision — no new `DECISIONS.md` entry was added for this pass, per
+governance (only add a decision entry for something not already
+captured). Phase 1 and Phase 2A content were not touched.
+
 ## Known blockers
 
 - `[FACT]` The `origin` remote's configured SSH URL for `oruxa_powerwave`

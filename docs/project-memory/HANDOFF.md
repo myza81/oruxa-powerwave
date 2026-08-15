@@ -8,8 +8,8 @@ Last updated: **2026-08-15**
 
 ## What was most recently done
 
-**Documentation-only, two passes same day**: established `detego.app` as
-an official product/UI-UX/waveform-workspace/dashboard/workflow
+**Documentation-only, three passes same day**: established `detego.app`
+as an official product/UI-UX/waveform-workspace/dashboard/workflow
 **benchmark** (explicitly not a ceiling or a spec to copy blindly) for
 feature design, per direct owner instruction — new
 [PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md), DEC-020 in
@@ -25,7 +25,18 @@ specifics the first pass's paraphrase hadn't captured: "learn from
 Detego's public behaviour, implement an independent Oruxa design," and
 the standing question for major features — *"What does Detego do here,
 what does existing powerwave do, and what would make oruxa_powerwave
-better for the engineer?"* **No production code changed in either pass.**
+better for the engineer?"* A **third pass**, same day, expanded
+[PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md) with the four-way
+feature-design method (`powerwave` / Detego / owner requirements /
+proposed superior Oruxa approach), three worked examples (waveform
+workspace, multi-source synchronization, calculated signals), an explicit
+"owner-specific capabilities may exceed Detego" list (not exhaustive —
+Detego is not the product boundary), and explicit
+"architecture-stays-Oruxa-owned" / "independent implementation, not
+reverse engineering" sections — plus one added sentence each in
+`CLAUDE.md`/`AGENTS.md` covering those last two points concisely. Still
+the same DEC-020; no new `DECISIONS.md` entry was needed. **No production
+code changed in any of the three passes.**
 
 **Provenance note, worth preserving**: an earlier version of this same
 request arrived mid-turn, structured as a system-reminder-wrapped message

@@ -46,46 +46,99 @@ document is explanatory scaffolding around it, not a replacement for it.
 > "What does Detego do here, what does existing powerwave do, and what
 > would make oruxa_powerwave better for the engineer?"
 
-## The three references, in order of authority
+## Reference hierarchy
 
-### 1. Existing `powerwave` — proven engineering behaviour / reusable engineering logic
+```text
+1. existing powerwave
+   = proven engineering behaviour, reusable engineering logic,
+     and existing workflow reference
+
+2. detego.app
+   = official benchmark for product quality, UI/UX, waveform
+     workspace, dashboard composition, layout, interaction design,
+     process flow, and engineering-analysis workflow
+
+3. owner requirements / approved decisions / UAT
+   = FINAL authority for oruxa_powerwave
+```
+
+### 1. Existing `powerwave` — proven engineering behaviour, reusable engineering logic, and existing workflow reference
 
 The existing desktop application. Read-only reference; see
 [README.md's `powerwave`-specific startup rule](README.md#powerwave-specific-startup-rule)
 before inspecting or comparing against it, and record findings in
 [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md), not here.
 
-Authoritative for **engineering correctness and domain behaviour worth
-preserving** — parsing, timestamp handling, alignment math, analytics,
-calculated signals, and (per the Phase 2 waveform design work) which
-display-fidelity properties (e.g. peak preservation) actually matter for
-disturbance analysis. **Not** authoritative for UI/UX, desktop-specific
-presentation, or interaction design — see
+**Detego does not replace `powerwave` as the engineering reference.**
+`powerwave` remains the authority for:
+
+- verified engineering behaviour;
+- parser/provider logic;
+- signal calculations;
+- timing semantics;
+- source handling;
+- multi-source concepts;
+- existing calculations (analytics, alignment, calculated signals);
+- reusable Qt-free domain logic.
+
+**Not** authoritative for UI/UX, desktop-specific presentation, or
+interaction design — see
 [MIGRATION_PLAN.md's Phase 2 design section, §8](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14)
 for the "behaviour worth preserving vs. desktop implementation not to
 reuse" distinction this already established.
 
+**Where `powerwave` behaviour is technically weak or flawed, improve it
+rather than copy it.** The intended philosophy: *reference existing
+behaviour → identify weakness → improve it.* This is already demonstrated
+in this codebase, not just a stated intention: `powerwave`'s own
+desktop waveform-display reduction is plain nth-point stride sampling,
+which can hide a narrow transient peak entirely. Phase 2A deliberately
+did **not** port that algorithm — it retains full-resolution authoritative
+data and uses a peak-preserving min/max envelope for display instead (see
+[MIGRATION_PLAN.md's Phase 2A Implementation Record](MIGRATION_PLAN.md#phase-2a--waveform-data-foundation-implementation-record-2026-08-15)
+and DEC-019). Every future comparison against `powerwave` should apply the
+same pattern: preserve what's proven, improve what's weak, don't
+reproduce a flaw just because it's the existing behaviour.
+
 ### 2. `detego.app` — official product, UI/UX, waveform-workspace, dashboard, and workflow benchmark
 
-`detego.app` is an **official product, UI/UX, waveform-workspace,
-dashboard, and workflow benchmark** for `oruxa_powerwave` — a source of
-product quality, workflow, and interaction ideas, to be consulted
+`detego.app` is an **official benchmark for product quality, UI/UX,
+waveform workspace, dashboard composition, layout, interaction design,
+process flow, and engineering-analysis workflow** — to be consulted
 **routinely** during Phase 2B/2C waveform and workspace design in
 particular, and for other significant feature-design decisions generally.
 
-**Detego is a benchmark, not a ceiling.** `oruxa_powerwave` should aim to
-become **more capable and more useful to engineers than Detego** where
-justified. **If Detego lacks a capability required by the owner, do not
-omit or weaken that capability merely to stay consistent with Detego** —
-engineering requirements and owner direction decide scope, not parity
-with Detego.
+**Detego is a benchmark, not a ceiling.** It is explicitly **not**:
 
-Detego's own implementation **is not a specification to copy blindly**.
-**If Detego's workflow is good, learn from the public behaviour and
-implement an independent Oruxa design** — consult it for how it organizes
-a waveform workspace, presents a dashboard, or sequences a workflow, never
-as something `oruxa_powerwave` must match feature-for-feature or
-pixel-for-pixel.
+- a specification to copy exactly;
+- an architectural authority;
+- a feature ceiling;
+- a reason to reject functionality Detego does not have;
+- a replacement for existing `powerwave` engineering logic;
+- a substitute for owner requirements.
+
+The goal is **not** "make `oruxa_powerwave` identical to Detego." The goal
+is: study what Detego does well, combine that with existing `powerwave`'s
+engineering strengths and the owner's specific requirements, and build an
+**independent** `oruxa_powerwave` that can become more capable and more
+useful to engineers than Detego. **If Detego lacks a capability required
+by the owner, do not omit or weaken that capability merely to stay
+consistent with Detego** — engineering requirements and owner direction
+decide scope, not parity with Detego.
+
+Useful Detego ideas may include (as inspiration, not obligation):
+
+- clean and simple engineering UI;
+- strong dashboard/layout composition;
+- smooth workflow progression;
+- waveform workspace organization;
+- draggable/reorderable interaction concepts;
+- flexible signal grouping;
+- zoom/pan interaction quality;
+- cursor UX;
+- analog/digital/computed signal organization;
+- analysis-view integration;
+- overall perceived responsiveness and polish.
 
 `[OPEN]` No specific technical audit of `detego.app`'s actual features,
 architecture, or UI has been performed as part of this project-memory
@@ -107,21 +160,133 @@ feature-design question should be classified and resolved. Neither
 `powerwave` nor Detego can override an explicit owner decision; both are
 inputs to a recommendation, never a substitute for owner approval.
 
-## How to use this during feature design
+## Owner-specific capabilities may exceed Detego
+
+`oruxa_powerwave`'s eventual requirements may include capabilities Detego
+does not have, or does differently. Detego is **not the boundary of the
+product**. Examples that may apply (this list is deliberately not
+exhaustive — do not assume it is complete, and do not treat an idea's
+absence from this list as a reason to reject it):
+
+- richer multi-source disturbance comparison;
+- COMTRADE + CSV + Excel in one engineering workspace;
+- source-native sampling-rate preservation;
+- exact/nearest timestamp alignment;
+- transparent synchronization;
+- calculated channels across files;
+- reusable engineering calculations;
+- user-arrangeable waveform layouts;
+- specialized grid/protection analysis;
+- future functions introduced by the owner.
+
+## Architecture remains Oruxa-owned
+
+Detego implementing something with a particular technical architecture is
+**not** evidence that `oruxa_powerwave` should use the same architecture.
+[docs/architecture/oruxa-architecture.md](../architecture/oruxa-architecture.md)
+remains authoritative for `oruxa_powerwave`'s own technical principles —
+read at the source, not summarised here — including (not an exhaustive
+restatement, just the categories most likely to tempt a Detego-shaped
+shortcut):
+
+- frontend/backend separation;
+- backend engineering authority (full-resolution data stays backend-owned
+  — see DEC-019);
+- portability;
+- configuration-driven infrastructure;
+- ephemeral event handling (DEC-015);
+- API boundaries;
+- source immutability;
+- provider independence;
+- no hidden assumptions.
+
+Detego's UI may inspire `oruxa_powerwave` even when the two applications'
+backend architectures are, and remain, different.
+
+## Independent implementation, not reverse engineering
+
+Do not reverse-engineer or copy Detego's proprietary implementation. Use
+only:
+
+- publicly observable behaviour;
+- public documentation;
+- legitimate feature references;
+- independent engineering implementation.
+
+The resulting `oruxa_powerwave` UI should be an **Oruxa design**, informed
+by what Detego does well, never a pixel-for-pixel clone or a
+reverse-engineered copy of Detego's actual code/assets.
+
+## Feature-design method
 
 For a significant feature-design question (not an ordinary internal
 engineering choice — see
 [README.md's guidance on decision modes](README.md#decision-modes) for
-that distinction), ask the question the Detego Benchmark Principle
-itself specifies:
+that distinction), compare across **four** points, the fourth being the
+actual design output the first three inform:
 
-> "What does Detego do here, what does existing powerwave do, and what
-> would make oruxa_powerwave better for the engineer?"
+```text
+Powerwave                    : what proven engineering behaviour or
+                                workflow already exists here, and is
+                                any of it technically weak enough to
+                                improve rather than preserve?
+Detego                       : what does the benchmark do well here,
+                                as inspiration -- not obligation?
+Owner requirements            : what has the owner actually asked for,
+                                or what does approved DECISIONS.md /
+                                UAT evidence already say?
+Proposed superior Oruxa      : given the above three, what independent
+approach                       oruxa_powerwave design would be more
+                                capable/useful for the engineer than
+                                simply matching either reference?
+```
 
-Present findings from all three references where relevant, using the
-existing `[FACT]`/`[DECISION]`/`[PROPOSAL]`/`[OPEN]`/`[UAT]` labels — a
-Detego comparison is evidence for a `[PROPOSAL]`, never itself a
+This is the same question the Detego Benchmark Principle itself poses —
+*"What does Detego do here, what does existing powerwave do, and what
+would make oruxa_powerwave better for the engineer?"* — expressed as an
+explicit four-column comparison so a design write-up captures all four
+answers, not just the first three. Present findings using the existing
+`[FACT]`/`[DECISION]`/`[PROPOSAL]`/`[OPEN]`/`[UAT]` labels — a Detego (or
+`powerwave`) comparison is evidence for a `[PROPOSAL]`, never itself a
 `[DECISION]`.
+
+## Examples
+
+These are illustrative applications of the method above, not decisions —
+none of the following approves a specific Phase 2B/2C design; each would
+still need its own `[PROPOSAL]`/`[DECISION MODE: ...]` treatment when
+actually designed.
+
+**Waveform workspace** (Phase 2B/2C):
+- study Detego's UX for panel/workspace organization, zoom/pan feel, and
+  signal grouping;
+- inspect `powerwave`'s engineering behaviour for what actually needs
+  preserving (multi-rate timing, per-channel native time arrays, cursor
+  measurement semantics);
+- preserve Oruxa's already-decided full-resolution fidelity principle
+  (DEC-019) regardless of what either reference does for display;
+- design an independent, potentially superior workspace — informed by
+  both, dictated by neither.
+
+**Multi-source synchronization** (Phase 3+, not yet scoped):
+- Detego may offer useful workflow inspiration for how synchronized
+  sources are presented;
+- do not automatically adopt a resampling approach just because Detego
+  (or `powerwave`) might use one — see
+  [MIGRATION_PLAN.md's Phase 2 design §21/§28](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14)'s
+  "avoid hidden resampling" principle, which already governs this;
+- preserve Oruxa's own source-integrity and timing requirements over
+  either reference's convenience.
+
+**Calculated signals** (Phase 6, not yet scoped):
+- use any good Detego UX ideas for how a calculated signal is defined/
+  displayed;
+- preserve/extend `powerwave`'s existing expression-engine engineering
+  capability (see
+  [POWERWAVE_DISCOVERY.md — Reuse Candidates](POWERWAVE_DISCOVERY.md#reuse-candidates));
+- owner requirements may call for capability beyond what either reference
+  provides (e.g. an expanded expression grammar — already flagged as an
+  open discovery question).
 
 ## Repository/access note
 
