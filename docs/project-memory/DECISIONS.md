@@ -1827,6 +1827,133 @@ Impact:
 
 ---
 
+## DEC-030 — Sticky shared waveform time-axis ruler, implemented as a lightweight trace-less Plotly instance (Phase 2C-C4)
+
+Date: 2026-08-15
+Status: Approved
+Source: explicit project-owner instructions opening the Phase 2C-C4 task
+(2026-08-15), following the owner's own manual UAT of Phase 2C-C3
+(**passed** — Absolute Time correct, Elapsed Time correct, mode
+switching preserves the physical window), identifying that with many
+displayed channels the shared time-axis labels were only visible at the
+very bottom of the panel stack.
+
+Decision:
+
+ONE Oruxa-owned, workspace-level sticky time-axis strip/ruler now stays
+visible near the bottom of the viewport while vertically scrolling
+through the waveform workspace, in all three layout modes. It is a
+**presentation layer only** over the existing authoritative shared
+viewport (DEC-021) and time-mode state (Phase 2C-C3, DEC-029) — it
+never becomes an independent synchronization authority, never holds its
+own viewport/mode state, and is **display-only** this slice (not
+draggable/zoomable/pannable/selectable, no crosshair).
+
+Confirmed as part of this same decision:
+
+- **Implementation: a lightweight, trace-less Plotly instance**, not a
+  hand-rolled SVG/canvas ruler. This task's own §25 explicitly invited
+  evaluating this tradeoff. Chosen because: Plotly is already a page
+  dependency (zero new weight); it lets the ruler call the EXACT same
+  `wwTimeAxisTickFormat()` function every waveform panel already uses,
+  guaranteeing identical tick selection/formatting/rollover handling by
+  construction, with zero risk of a second, independently-drifting
+  time-formatting implementation — the single thing this task's own
+  instructions were most emphatic about avoiding. The empty (`[]`)
+  traces array means it never fetches, holds, or renders channel data —
+  it is not "another waveform chart."
+- **Sticky mechanism: CSS `position: sticky; bottom: 0`**, not `fixed`
+  and not a scroll-event listener. The ruler is a normal-flow sibling of
+  `#wwPanels` inside `.workspace-section` (its containing block) — this
+  is what makes it remain pinned to the viewport bottom only while part
+  of the workspace is still below the viewport, and scroll away
+  naturally once the whole workspace has been scrolled past, satisfying
+  the explicit "must not permanently float over unrelated content"
+  requirement using ordinary browser layout. Confirmed by test that
+  dispatching scroll events causes zero JavaScript work (zero Plotly
+  calls, zero waveform fetches).
+- **Alignment**: a new shared constant, `WW_PANEL_MARGIN = { l: 55,
+  r: 20 }`, is now the single source of truth for both `wwBuildLayout()`
+  (every waveform panel) and the ruler's own margin — replacing what was
+  previously a literal inlined only in `wwBuildLayout()`. Combined with
+  matching CSS horizontal padding (14px, confirmed identical to
+  `.ww-panel`'s own across every layout mode), this keeps tick positions
+  pixel-aligned with every panel's plot area without any runtime
+  measurement of Plotly's own rendered layout.
+- **No new synchronization loop**: the ruler-update function
+  (`wwSyncStickyRuler()`) is called only from the places that already
+  mutate `ww.viewport`/`ww.timeMode` (the single viewport-mutation
+  function every zoom/pan/Reset Time View funnels through, plus
+  `wwSetTimeMode`) and the displayed-channel-count/theme-switch call
+  sites — it never registers its own Plotly event listener, confirmed
+  by test.
+- **Separate mode's per-lane axis chrome changed**: every lane now
+  suppresses its own tick labels/title (previously only the non-bottom
+  lanes did, with the bottom lane keeping the one visible shared axis).
+  The sticky ruler makes that lone remaining bottom-lane axis redundant.
+  Judged low-risk: a single boolean-scope change in an already-existing,
+  already-tested function.
+- **Grouped/Custom panels' own per-panel axis labels are deliberately
+  left UNCHANGED this slice** — every panel still shows its own full
+  x-axis, which now visibly duplicates the sticky ruler whenever both
+  are on screen simultaneously. This is a documented, known, INTENTIONAL
+  gap, not an oversight: unlike Separate's uniform "one lane per
+  channel" structure, Grouped/Custom has no single "bottom panel"
+  concept, and panel count/order varies with channel grouping — treated
+  as a materially larger restructuring than this task's own scope
+  justified, per this task's own explicit permission to leave it
+  documented for a later cleanup pass rather than force a fix now.
+
+Reason:
+
+The owner's own instructions opening this task are the explicit act of
+requesting this feature next, with several requirements stated
+emphatically enough (architecture must not create a second sync
+authority; alignment is "critical"; must reuse Phase 2C-C3's own
+formatting logic rather than build a second implementation) that they
+constitute real architectural commitments worth recording, not merely
+implementation detail — consistent with this project's own governance
+for owner-directed feature decisions (DEC-024–DEC-029 precedent).
+
+Alternatives considered:
+
+A hand-rolled SVG/canvas axis with an independent "nice tick value"
+algorithm (rejected — would need to reimplement Plotly's own tick-
+selection logic to stay visually consistent with every panel, a second,
+independently-drifting implementation of exactly what this task's own
+instructions were most explicit about avoiding); `position: fixed`
+instead of `position: sticky` (rejected — this task's own §4 explicitly
+asked to avoid a globally fixed element "unless there is a strong
+reason," and `position: sticky` achieves the same visible-while-
+scrolling effect with the desired "releases once you scroll past the
+workspace" behavior for free, via ordinary browser layout); a raw
+`scroll` event listener repositioning the ruler manually (rejected —
+this task's own §27 explicitly discouraged this when CSS sticky alone
+can do the job, and it would add exactly the JavaScript-during-scroll
+cost this task asked to avoid); making the sticky ruler itself
+interactive (draggable/zoomable) in this slice (rejected — explicitly
+out of scope per this task's own §11/§31, reserved for a future slice if
+ever pursued); suppressing Grouped/Custom's own per-panel axis labels in
+this same pass (rejected — judged a materially larger, riskier
+restructuring than this task's own scope justified, per the explicit
+"keep them temporarily and report the duplication" permission in §16).
+
+Impact:
+
+- `frontend/index.html`: `.ww-sticky-ruler`/`.ww-sticky-ruler-context`/
+  `.ww-sticky-ruler-chart` CSS; `#wwStickyRuler`/`#wwStickyRulerContext`/
+  `#wwStickyRulerChart` markup (sibling of `#wwPanels`); new
+  `WW_PANEL_MARGIN` shared constant (also now used by `wwBuildLayout()`);
+  `ww.rulerReady` state; new `wwSyncStickyRuler()`;
+  `wwUpdateTimeModeContext()` extended to also drive the ruler's own
+  context label; `wwApplyTimeAxisChrome()` changed (Separate mode
+  suppresses every lane's own ticks/title now, not just the non-bottom
+  ones); `wwApplyTheme()` extended to re-color the ruler. No backend
+  file changed. See
+  [MIGRATION_PLAN.md — Phase 2C-C4 Record](MIGRATION_PLAN.md#phase-2c-c4--sticky-shared-waveform-time-axis-2026-08-15).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

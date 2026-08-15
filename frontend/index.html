@@ -755,6 +755,49 @@
             background: transparent;
         }
         #wwPanels.ww-panels-unified .ww-chart { height: 140px; }
+
+        /* ---- Phase 2C-C4: sticky shared time-axis ruler ----
+           ONE Oruxa-owned shared time-axis strip, driven entirely by the
+           existing workspace-level viewport (DEC-021) and time-mode state
+           (Phase 2C-C3, DEC-029) -- never an independent authority (this
+           phase's own section 9). `position: sticky`, not `fixed`: its
+           containing block is `.workspace-section` itself (an ordinary
+           in-flow block, never scroll-clipped), so it stays pinned to the
+           viewport bottom only WHILE some part of the workspace is still
+           below the viewport, and scrolls away naturally once the whole
+           workspace has been scrolled past -- "does not permanently float
+           over unrelated content" (section 4), achieved with ordinary
+           browser layout, no scroll listener. Horizontal padding (14px)
+           deliberately matches `.ww-panel`'s own horizontal padding
+           exactly -- see `wwSyncStickyRuler()`'s own comment for why this,
+           together with the SAME Plotly `margin.l`/`margin.r` as
+           `wwBuildLayout` (`WW_PANEL_MARGIN`), is what keeps tick
+           positions pixel-aligned with every panel's plotting area
+           (section 12/13), regardless of layout mode. */
+        .ww-sticky-ruler {
+            position: sticky;
+            bottom: 0;
+            z-index: 4;
+            background: var(--panel);
+            border-top: 1px solid var(--panel-border);
+            padding: 2px 14px 0;
+            /* Display-only (section 11) -- never intercepts clicks/hover
+               meant for whatever panel is currently scrolled underneath
+               it while stuck. */
+            pointer-events: none;
+        }
+        .ww-sticky-ruler[hidden] { display: none; }
+        .ww-sticky-ruler-context {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            /* Matches WW_PANEL_MARGIN.l so the date label lines up with
+               where the ticks themselves start, not the ruler's outer
+               edge (section 15: "place cleanly within/adjacent," not
+               centered on the whole strip). */
+            padding-left: 55px;
+        }
+        .ww-sticky-ruler-context[hidden] { display: none; }
+        .ww-sticky-ruler-chart { width: 100%; height: 46px; }
     </style>
 </head>
 <body>
@@ -855,6 +898,16 @@
         <p class="empty-state" id="wwEmptyState">Select analog channels and click &ldquo;Add selected&rdquo; to display waveforms.</p>
 
         <div id="wwPanels"></div>
+
+        <!-- Phase 2C-C4: sticky shared time-axis ruler -- ONE workspace-
+             level strip, not per-panel/per-layout-mode (section 3/5). A
+             presentation layer only, over the authoritative
+             ww.viewport/ww.timeMode state -- see wwSyncStickyRuler().
+             Hidden whenever nothing is displayed (section 17). -->
+        <div class="ww-sticky-ruler" id="wwStickyRuler" hidden>
+            <div class="ww-sticky-ruler-context" id="wwStickyRulerContext" hidden></div>
+            <div class="ww-sticky-ruler-chart" id="wwStickyRulerChart"></div>
+        </div>
     </section>
 
     <footer>
@@ -1771,6 +1824,17 @@
         //   sample_index -- raw sample number, no time unit at all.
         const WW_TIME_MODES = ["absolute", "elapsed"];
 
+        // Phase 2C-C4: the SAME left/right Plotly margin used by every
+        // waveform panel (wwBuildLayout) AND the sticky shared ruler
+        // (wwSyncStickyRuler) -- a single shared constant so the two can
+        // never independently drift out of pixel alignment (section 12,
+        // called out as critical). Deliberately fixed pixels, not a
+        // percentage/automargin -- Plotly renders the plot area at
+        // EXACTLY these offsets from the container edge regardless of
+        // container width, which is what makes static alignment reliable
+        // without reading Plotly's own rendered layout at runtime.
+        const WW_PANEL_MARGIN = { l: 55, r: 20 };
+
         const ww = {
             panels: [],            // ordered array of panel objects
             displayed: new Map(),  // "sourceId::channelName" -> {panel, channel}
@@ -1834,6 +1898,14 @@
             // whole-workspace clear the same way the Grouped/Separate/
             // Custom and Zoom/Pan choices already do.
             timeMode: "absolute",
+            // Phase 2C-C4: whether the sticky ruler's own (trace-less)
+            // Plotly instance has been created yet -- parallels
+            // panel.plotlyReady, guarding wwSyncStickyRuler() between its
+            // one-time Plotly.newPlot and every subsequent Plotly.relayout.
+            // Not reset by wwClearWorkspace() -- the ruler element itself
+            // is never torn down/recreated, only hidden and re-shown (see
+            // wwSyncStickyRuler()'s own comment).
+            rulerReady: false,
         };
 
         // ==================================================================
@@ -2371,7 +2443,7 @@
                 paper_bgcolor: colors.surface,
                 plot_bgcolor: colors.surface,
                 font: { color: colors.text, size: 11 },
-                margin: { l: 55, r: 20, t: 10, b: 34 },
+                margin: { l: WW_PANEL_MARGIN.l, r: WW_PANEL_MARGIN.r, t: 10, b: 34 },
                 xaxis: Object.assign({
                     // Phase 2C-C3: "date" for Absolute mode (native Plotly
                     // date axis -- adaptive tick spacing/formatting comes
@@ -2601,6 +2673,12 @@
                 panel.suppressNext = true;
                 Plotly.relayout(panel.chartEl, { "xaxis.range": [wwElapsedToPlotlyX(startTime), wwElapsedToPlotlyX(endTime)] });
             }
+            // Phase 2C-C4 (section 9/10): this one function is the sole
+            // place ww.viewport ever changes (zoom, pan, AND Reset Time
+            // View all funnel through it) -- so this is the single call
+            // site needed to keep the sticky ruler's own range in sync,
+            // without adding a second synchronization loop.
+            wwSyncStickyRuler();
             await wwRefetchAllChannels(startTime, endTime);
         }
 
@@ -2640,31 +2718,41 @@
         // Zoom/Pan toolbar buttons -- set every panel's dragmode together;
         // a plain layout-level relayout, never touches xaxis.range, so it
         // cannot trigger the viewport-broadcast path above.
-        // Phase 2C-B2 (section 8): in Separate/unified mode only the
-        // bottom-most lane (last in ww.panels' order) shows X-axis tick
-        // labels/title -- every other lane suppresses them, so the stacked
-        // lanes read as sharing ONE time axis instead of repeating it N
-        // times. Grouped/Custom mode is untouched: every panel keeps its
-        // own full X axis exactly as Phase 2C-A/B1/C1 shipped it (this
-        // function no-ops for it, leaving wwBuildLayout's own mode-aware
-        // title in place -- see wwSetTimeMode, which updates EXISTING
-        // Grouped/Custom panels' titles directly since this function can't).
+        // Phase 2C-B2 (section 8): in Separate/unified mode, every lane's
+        // own X-axis tick labels/title are suppressed -- the stacked lanes
+        // read as sharing ONE time axis instead of repeating it N times.
+        // Grouped/Custom mode is untouched: every panel keeps its own full
+        // X axis exactly as Phase 2C-A/B1/C1 shipped it (this function
+        // no-ops for it, leaving wwBuildLayout's own mode-aware title in
+        // place -- see wwSetTimeMode, which updates EXISTING Grouped/
+        // Custom panels' titles directly since this function can't).
         // Phase 2C-C3: renamed from wwUpdateBottomLaneAxis; the title text
         // is now mode-aware (wwTimeAxisTitle()) instead of the hardcoded
-        // "Time (s)" -- Absolute keeps titles empty (the shared date-context
-        // label above the panels already carries that context, section 12).
+        // "Time (s)".
+        // Phase 2C-C4 (section 16): previously only the bottom-most lane
+        // kept its own tick labels/title, as the one visible shared axis.
+        // Now that the sticky ruler (wwSyncStickyRuler) is the workspace's
+        // PRIMARY, ALWAYS-visible shared time reference whenever any panel
+        // exists, that lone remaining bottom-lane axis is redundant --
+        // every Separate lane now suppresses its own ticks/title
+        // unconditionally, not just the non-bottom ones. Grouped/Custom
+        // panels are DELIBERATELY left unchanged this slice (every panel
+        // still shows its own full axis) -- suppressing those too would be
+        // a larger restructuring (no single "bottom panel" concept exists
+        // there, and panel count/order varies with channel grouping) with
+        // more risk of an edge case than this phase's own scope justifies;
+        // see the Phase 2C-C4 implementation record for this documented,
+        // deliberate duplication left for a future cleanup pass.
         // A pure chrome relayout (showticklabels/title only) -- never
         // touches xaxis.range, so it cannot trigger the viewport-broadcast
         // loop-prevention path in wwWirePanelRelayout.
         function wwApplyTimeAxisChrome() {
             if (ww.layoutMode !== "separate") return;
-            const title = wwTimeAxisTitle();
-            ww.panels.forEach((panel, idx) => {
+            ww.panels.forEach((panel) => {
                 if (!panel.plotlyReady) return;
-                const isBottom = idx === ww.panels.length - 1;
                 Plotly.relayout(panel.chartEl, {
-                    "xaxis.showticklabels": isBottom,
-                    "xaxis.title": isBottom ? title : "",
+                    "xaxis.showticklabels": false,
+                    "xaxis.title": "",
                 });
             });
         }
@@ -2769,6 +2857,11 @@
             for (const panel of touchedPanels) wwRenderLegend(panel);
             wwApplyTimeAxisChrome();
             wwUpdateTimeModeControlAvailability();
+            // Phase 2C-C4 (section 17): shows the sticky ruler on the
+            // transition from an empty workspace to a displayed one (or
+            // just keeps it in sync if it was already visible) -- ww.panels
+            // and ww.viewport are both already final at this point.
+            wwSyncStickyRuler();
         }
 
         function wwRemoveChannelByKey(key) {
@@ -2797,6 +2890,10 @@
             wwUpdateEmptyState();
             wwApplyTimeAxisChrome();
             wwUpdateTimeModeControlAvailability();
+            // Phase 2C-C4 (section 17): hides the ruler if that was the
+            // last displayed channel; otherwise a cheap no-op resync
+            // (ww.viewport is unchanged by a channel removal).
+            wwSyncStickyRuler();
         }
 
         function wwRemovePanelDom(panel) {
@@ -2854,6 +2951,102 @@
             ww.panelHeights = new Map();
             wwUpdateEmptyState();
             wwUpdateTimeModeControlAvailability();
+            // Phase 2C-C4 (section 17/30): "starting a new workspace: ruler
+            // resets/clears" -- ww.panels is now empty, so this hides it.
+            // The ruler's own Plotly instance (if it exists) is
+            // deliberately NOT purged/torn down here -- it never holds any
+            // trace data (always an empty [] traces array), so there is
+            // nothing to reset beyond visibility; the next
+            // wwSyncStickyRuler() call (when channels are next added) fully
+            // overwrites its range/type/tickformat regardless.
+            wwSyncStickyRuler();
+        }
+
+        // Phase 2C-C4: ONE Oruxa-owned shared time-axis strip for the
+        // whole workspace (section 3) -- a lightweight, trace-less Plotly
+        // instance whose ONLY job is rendering the shared x-axis, never a
+        // second waveform chart and never an independent viewport
+        // authority (section 9/25). Reusing an actual Plotly axis here --
+        // rather than hand-rolling a parallel SVG/canvas tick-generation
+        // algorithm -- was a deliberate tradeoff: Plotly is already a page
+        // dependency (zero new weight), and it guarantees the ruler's
+        // ticks are chosen/formatted by the EXACT SAME engine as every
+        // panel (wwTimeAxisTickFormat(), unmodified), so there is no risk
+        // of a second, independently-drifting time-formatting
+        // implementation (section 14) -- the one thing this phase's own
+        // instructions were most emphatic about avoiding.
+        //
+        // Alignment (section 12, critical): `.ww-sticky-ruler`'s CSS
+        // horizontal padding (14px) matches `.ww-panel`'s own exactly, and
+        // the margin passed to Plotly.newPlot below reuses the SAME
+        // WW_PANEL_MARGIN.l/r wwBuildLayout() already uses -- both the
+        // ruler and every waveform panel are direct children of the same
+        // `.workspace-section` box, so this is sufficient for the ruler's
+        // plot area to start/end at the exact same pixel offset as every
+        // panel's own plot area, in Grouped, Separate, and Custom alike
+        // (`.ww-panel`'s horizontal padding is 14px in every layout mode
+        // -- confirmed by inspection, not assumed). Responsive width
+        // (section 13) comes for free from the SAME `responsive: true`
+        // mechanism every panel already relies on -- no extra resize
+        // listener needed.
+        //
+        // Called from every place that already changes ww.viewport or
+        // ww.timeMode (wwApplyAndFetchViewport, wwSetTimeMode) or the
+        // displayed-channel set (wwAddSelectedChannels, wwRemoveChannel,
+        // wwClearWorkspace) -- it never listens for anything itself
+        // (`staticPlot: true`, no `.on("plotly_relayout", ...)` wired),
+        // so it cannot become a second synchronization authority or loop
+        // (section 9).
+        function wwSyncStickyRuler() {
+            const wrapEl = document.getElementById("wwStickyRuler");
+            const chartEl = document.getElementById("wwStickyRulerChart");
+            if (!wrapEl || !chartEl) return;
+
+            const hasChannels = ww.panels.length > 0;
+            wrapEl.hidden = !hasChannels;
+            if (!hasChannels) return; // section 17: no unnecessary ruler when empty
+
+            const tickFormat = wwTimeAxisTickFormat();
+            const xrange = ww.viewport
+                ? [wwElapsedToPlotlyX(ww.viewport.start), wwElapsedToPlotlyX(ww.viewport.end)]
+                : undefined;
+
+            if (!ww.rulerReady) {
+                const colors = wwThemeColors();
+                Plotly.newPlot(chartEl, [], {
+                    margin: { l: WW_PANEL_MARGIN.l, r: WW_PANEL_MARGIN.r, t: 4, b: 24 },
+                    paper_bgcolor: "transparent",
+                    plot_bgcolor: "transparent",
+                    font: { color: colors.text, size: 10 },
+                    xaxis: Object.assign({
+                        type: ww.timeMode === "absolute" ? "date" : undefined,
+                        range: xrange,
+                        gridcolor: colors.grid, zeroline: false, showgrid: false,
+                        ticks: "outside", tickcolor: colors.grid, ticklen: 4,
+                    }, tickFormat),
+                    // No Y data ever -- this instance exists purely to
+                    // render the shared X axis (section 3/25).
+                    yaxis: { visible: false, fixedrange: true, range: [0, 1] },
+                    hovermode: false,
+                    showlegend: false,
+                }, {
+                    // Section 11: display-only this slice -- not
+                    // draggable/zoomable/pannable/selectable.
+                    // Section 24: no crosshair -- staticPlot disables all
+                    // hover/spike behavior on this instance entirely.
+                    staticPlot: true,
+                    responsive: true,
+                    displayModeBar: false,
+                });
+                ww.rulerReady = true;
+            } else {
+                Plotly.relayout(chartEl, {
+                    "xaxis.type": ww.timeMode === "absolute" ? "date" : "linear",
+                    "xaxis.range": xrange,
+                    "xaxis.tickformatstops": tickFormat.tickformatstops,
+                });
+            }
+            wwUpdateTimeModeContext();
         }
 
         // Phase 2C-C3: the shared "<date> · Record time" label (section
@@ -2861,18 +3054,26 @@
         // context on every tick/panel. Hidden entirely outside Absolute
         // mode or when no displayed channel has a trustworthy recording-
         // start timestamp.
+        // Phase 2C-C4 (section 15): also drives the equivalent label
+        // placed alongside the sticky ruler -- same computed text, same
+        // hidden/shown rule, written to a second DOM target so the date
+        // context stays visible even once the toolbar's own copy has
+        // scrolled out of view. Not a second implementation -- one
+        // computation, two destinations.
         function wwUpdateTimeModeContext() {
             const el = document.getElementById("wwTimeModeContext");
-            if (!el) return;
+            const rulerEl = document.getElementById("wwStickyRulerContext");
             const originMs = ww.timeMode === "absolute" ? wwWorkspaceRecordingStartMs() : null;
             if (originMs === null) {
-                el.hidden = true;
+                if (el) el.hidden = true;
+                if (rulerEl) rulerEl.hidden = true;
                 return;
             }
             const d = new Date(originMs);
             const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-            el.textContent = d.getUTCDate() + " " + months[d.getUTCMonth()] + " " + d.getUTCFullYear() + " · Record time";
-            el.hidden = false;
+            const text = d.getUTCDate() + " " + months[d.getUTCMonth()] + " " + d.getUTCFullYear() + " · Record time";
+            if (el) { el.textContent = text; el.hidden = false; }
+            if (rulerEl) { rulerEl.textContent = text; rulerEl.hidden = false; }
         }
 
         // Phase 2C-C3 (section 24): enables/disables each time-mode
@@ -2953,6 +3154,12 @@
                 });
             }
             wwApplyTimeAxisChrome();
+            // Phase 2C-C4 (section 6): the sticky ruler must update
+            // immediately on a mode switch too, same as every panel above
+            // -- calls the same wwTimeAxisTickFormat()/wwElapsedToPlotlyX()
+            // functions used just above, so the ruler is guaranteed to
+            // agree with what every panel now shows.
+            wwSyncStickyRuler();
         }
 
         // Phase 2C-C1: shows/hides "Edit Channel Groups" -- only relevant
@@ -3060,6 +3267,20 @@
                     "xaxis.spikecolor": colors.spike,
                     "yaxis.spikecolor": colors.spike,
                 });
+            }
+            // Phase 2C-C4 (section 23): the sticky ruler re-colors its
+            // font/tick color the same way -- paper/plot background stay
+            // "transparent" (its own CSS background, not Plotly's, already
+            // carries the theme -- see .ww-sticky-ruler), so only the text
+            // color needs updating here.
+            if (ww.rulerReady) {
+                const rulerChartEl = document.getElementById("wwStickyRulerChart");
+                if (rulerChartEl) {
+                    Plotly.relayout(rulerChartEl, {
+                        "font.color": colors.text,
+                        "xaxis.tickcolor": colors.grid,
+                    });
+                }
             }
         }
 

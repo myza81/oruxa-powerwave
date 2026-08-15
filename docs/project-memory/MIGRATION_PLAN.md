@@ -6118,6 +6118,175 @@ remains the owner's own, per this task's own §29.
 
 ---
 
+## Phase 2C-C4 — Sticky Shared Waveform Time Axis (2026-08-15)
+
+`[FACT]` throughout. **Owner UAT confirmed Phase 2C-C3 passed** (Absolute
+Time correct, Elapsed Time correct, mode switching preserves the
+physical window) before this task began. The next owner-identified
+usability problem: with many displayed channels, the shared time-axis
+labels were only visible at the very bottom of the panel stack — an
+engineer working on a channel near the top of a long, scrolled workspace
+had no visible time reference at all. This phase adds ONE Oruxa-owned
+sticky time-axis strip/ruler, driven entirely by the existing
+workspace-level physical viewport (DEC-021) and time-mode state (Phase
+2C-C3, DEC-029) — display-only this slice, never an independent
+authority.
+
+### Architecture: a lightweight, trace-less Plotly instance
+
+Rather than hand-rolling a parallel SVG/canvas tick-generation
+algorithm, the ruler is implemented as a second, very small Plotly
+chart (`wwSyncStickyRuler()`) with an **empty traces array** — it never
+renders waveform data, only an x-axis. This was a deliberate build-vs-
+hand-roll tradeoff (this task's own §25 explicitly invited evaluating
+it): Plotly is already a page dependency (zero new weight, no new
+dependency), and reusing it guarantees the ruler's ticks are generated
+and formatted by the **exact same engine** as every waveform panel —
+`wwTimeAxisTickFormat()` (Phase 2C-C3, unmodified) is called verbatim,
+so there is no risk of a second, independently-drifting time-formatting
+implementation, which this task's own instructions were most emphatic
+about avoiding. The alternative (a hand-rolled SVG ruler with its own
+"nice tick value" algorithm) would have needed to reimplement Plotly's
+own tick-selection logic to stay visually consistent — strictly more
+code and more long-term drift risk for the same result.
+
+### Alignment (section 12, called out as critical)
+
+A new shared constant, `WW_PANEL_MARGIN = { l: 55, r: 20 }`, replaces
+the literal margin numbers previously inlined only in `wwBuildLayout()`
+— now used by BOTH `wwBuildLayout()` (every waveform panel) and
+`wwSyncStickyRuler()` (the ruler), so the two can never independently
+drift out of pixel alignment. This is sufficient by construction: Plotly
+renders its plot area at these EXACT pixel offsets from the container
+edge regardless of container width (not a percentage/automargin), and
+`.ww-sticky-ruler`'s own CSS horizontal padding (14px) was set to match
+`.ww-panel`'s own horizontal padding exactly — confirmed by inspection
+to be 14px in every layout mode (Grouped/Custom's `padding: 14px` and
+Separate/unified's `padding: 2px 14px` agree on the horizontal value).
+Both the ruler and every panel are direct children of the same
+`.workspace-section` box, so matching padding + matching Plotly margin
+is sufficient for pixel-aligned tick positions in Grouped, Separate, and
+Custom alike, with no runtime measurement of Plotly's own rendered
+layout needed. Responsive width comes for free from the same
+`responsive: true` mechanism every panel already relies on.
+
+### Sticky behavior: CSS `position: sticky`, not `fixed`
+
+`.ww-sticky-ruler` is `position: sticky; bottom: 0`, a normal-flow
+sibling of `#wwPanels` inside `.workspace-section` (not nested inside
+it, and not a page-level fixed overlay). Its containing block is
+`.workspace-section` itself, an ordinary in-flow block with no
+`overflow` clipping — this is what makes it stick to the viewport
+bottom only while some part of the workspace is still below the
+viewport, and scroll away naturally once the whole workspace has been
+scrolled past, satisfying this task's own explicit requirement that it
+must not "permanently float over unrelated application content." No
+scroll listener of any kind was added — this is ordinary browser layout,
+confirmed to add zero JavaScript work during scroll (section 27),
+verified directly in the new test suite by dispatching synthetic scroll
+events and asserting zero Plotly calls and zero waveform fetches result.
+
+### Time modes and synchronization — no new authority
+
+`wwSyncStickyRuler()` is called from exactly the same places that
+already mutate `ww.viewport`/`ww.timeMode` — `wwApplyAndFetchViewport()`
+(the single function zoom, pan, AND Reset Time View all funnel through)
+and `wwSetTimeMode()` — plus the displayed-channel-count transitions
+(`wwAddSelectedChannels`, `wwRemoveChannel`, `wwClearWorkspace`) and
+theme switching (`wwApplyTheme`). The ruler never listens for its own
+events (`staticPlot: true`, no `.on("plotly_relayout", ...)` wired), so
+it cannot become a second synchronization loop — confirmed directly by
+test that its Plotly mock never receives a listener registration.
+
+### Existing panel axis labels (section 16)
+
+**Separate mode**: previously only the bottom-most lane kept its own
+tick labels/title as the one visible shared axis (Phase 2C-B2/C3). Now
+that the sticky ruler is unconditionally visible whenever any panel
+exists, that lone remaining bottom-lane axis was redundant —
+`wwApplyTimeAxisChrome()` now suppresses ticks/title on **every**
+Separate lane, not just the non-bottom ones. This was judged low-risk:
+a single boolean change in an already-existing, already-tested function,
+easily reversible.
+
+**Grouped/Custom mode**: every panel's own full x-axis is
+**deliberately left unchanged** this slice — every panel still shows
+its own ticks/title, which now duplicates the sticky ruler whenever both
+are visible on screen simultaneously. Suppressing this too would be a
+materially larger, riskier change: unlike Separate's clean "N lanes, one
+per channel" structure, Grouped/Custom has no single "bottom panel"
+concept, and panel count/order varies with channel grouping in ways that
+would need more careful design to avoid an edge case (e.g. a
+single-panel Grouped view, or a Custom group count that changes
+mid-session). Per this task's own explicit permission ("if suppressing
+panel labels creates risk or major restructuring: keep them temporarily
+and report the duplication"), this is left as a known, documented
+duplication for a future cleanup pass, not fixed here.
+
+### Tests
+
+- **Frontend, new**: `phase2cc4_check.mjs` (scratch, not committed) —
+  24/24 passing. Covers: ruler hidden with no waveforms, ruler visible
+  once displayed, sticky CSS/container structure, ruler derives its
+  range from `ww.viewport` (not an independent state), margin/alignment
+  consistency between the ruler and a real panel, Absolute and Elapsed
+  rendering, mode-switch updates the ruler with zero new waveform
+  fetches, zoom/pan/Reset Time View all update the ruler via the
+  existing single broadcast path, the ruler never registers its own
+  Plotly event listener, Grouped/Separate/Custom all work (with
+  Separate's all-lanes-suppressed chrome verified explicitly), panel
+  resize causes zero ruler-related Plotly calls, theme switching
+  re-colors the ruler without a refetch, removing all channels hides the
+  ruler, re-adding channels reuses the existing Plotly instance rather
+  than recreating it, Clear workspace hides the ruler, and dispatching
+  synthetic scroll events causes zero waveform fetches and zero new
+  Plotly calls.
+- **Frontend, existing, re-run unmodified**: `frontend_logic_check.mjs`
+  and `theme_crosshair_check.mjs` pass in full (19+0 non-Plotly-count
+  checks). Across the full Phase 2C-A through 2C-C3 suites (184 checks
+  total in this group), **9 new failures appear, all explained by the
+  two deliberate architecture changes above** — not regressions: (1) 7
+  failures assert an EXACT Plotly `newPlot`/`relayout` call count "one
+  per panel," which the ruler's own extra (single) Plotly call now makes
+  off-by-one (`phase2ca_check.mjs` ×1, `phase2cb1_check.mjs` ×1, and the
+  `phase2cc3_check.mjs` ordering assumption that "the last `newPlot`
+  call is a panel" ×1, plus this same ruler-added-call pattern recurring
+  where each script separately asserts a `newPlot`/`relayout` total); (2)
+  the remaining failures (`phase2cb2_check.mjs` ×2, `phase2cb3_check.mjs`
+  ×1, `phase2cb3a_check.mjs` ×1, `phase2cc2_check.mjs` ×1,
+  `phase2cc3_check.mjs` ×1) all assert the OLD "only the bottom lane
+  shows ticks" Separate-mode behavior, directly superseded by this
+  phase's own §16 change. `phase2ca_check.mjs` additionally still carries
+  its 2 pre-existing Phase 2C-C3 divergences (raw-elapsed-number
+  `xaxis.range` assumption, already documented in that phase's own
+  record) — unrelated to this phase, unchanged. These are frozen,
+  one-off, not-committed verification scripts from prior phases (see
+  each script's own header comment) — per this project's own established
+  precedent (Phase 2C-C3's own identical treatment of its Absolute-
+  default divergence), they were not modified; their assumptions are
+  simply superseded by this phase's own architecture, and the NEW
+  `phase2cc4_check.mjs` suite explicitly covers what changed.
+- **Backend**: zero diff, 278/278 passing in a fresh venv.
+
+### Files changed
+
+Modified only: `frontend/index.html`. No backend file, no CI/deployment
+workflow file.
+
+### Honest limitation
+
+This sandboxed session has no real browser. Whether the ruler visually
+reads as "sticky" and unobtrusive during real scrolling, whether its
+tick positions genuinely line up with waveform data to the human eye at
+various zoom levels, and whether it ever visually covers waveform
+content/controls in a way that structural jsdom assertions cannot detect
+are **not** confirmed here — only structural/behavioral evidence (jsdom
+DOM/state assertions; CSS source inspection for `position: sticky`) was
+verified. Final visual/tactile UAT remains the owner's own, per this
+task's own §29.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

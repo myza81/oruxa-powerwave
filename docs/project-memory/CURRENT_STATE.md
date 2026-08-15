@@ -415,6 +415,45 @@ default, not a regression). Verified against a real synthetic COMTRADE
 record (including a deliberate midnight/date-rollover case) imported
 through the actual FastAPI app.
 
+`[FACT]` **Phase 2C-C3's owner UAT passed**: Absolute Time correct,
+Elapsed Time correct, mode switching preserves the physical waveform
+window. The next owner-identified usability problem was that with many
+displayed channels, the shared time-axis labels were only visible at
+the very bottom of the panel stack — solved by **Phase 2C-C4 — Sticky
+Shared Waveform Time Axis** — see
+[MIGRATION_PLAN.md — Phase 2C-C4 Record](MIGRATION_PLAN.md#phase-2c-c4--sticky-shared-waveform-time-axis-2026-08-15).
+ONE workspace-level, Oruxa-owned sticky ruler now stays visible near the
+bottom of the viewport while scrolling through the waveform stack —
+implemented as a second, lightweight, trace-less Plotly instance
+(`wwSyncStickyRuler()`) rather than a hand-rolled SVG axis, deliberately
+reusing Phase 2C-C3's own `wwTimeAxisTickFormat()` unmodified so there
+is no second, independently-drifting time-formatting implementation.
+Alignment with every waveform panel's own plot area is guaranteed by a
+new shared constant, `WW_PANEL_MARGIN`, used by both `wwBuildLayout()`
+and the ruler. Pure CSS `position: sticky` (not `fixed`, no scroll
+listener) — it remains visible only while some part of the workspace is
+still below the viewport, and scrolls away naturally once the whole
+workspace has been scrolled past. Driven entirely by the existing
+`ww.viewport`/`ww.timeMode` state (DEC-021, DEC-029) at the same call
+sites that already mutate them (zoom, pan, Reset Time View, mode switch,
+channel add/remove, workspace clear, theme switch) — confirmed **zero
+new synchronization loop** and **zero waveform refetches**, including
+during scrolling itself. Works across Grouped/Separate/Custom.
+**Superseding note**: Separate mode's per-lane axis chrome, described
+above as "bottom-lane-only," is now suppressed on **every** lane — the
+sticky ruler is the primary shared reference, making that lone
+remaining bottom-lane axis redundant. Grouped/Custom panels'
+own per-panel axis labels are **deliberately left unchanged** this
+slice (still shown on every panel, now duplicating the ruler when both
+are visible) — a documented, known duplication left for a future
+cleanup pass rather than a larger, riskier restructuring. No backend
+file changed (278 tests unmodified and passing); 24 new frontend
+`jsdom` checks passing, plus the existing suites re-verified with 9 new
+failures, all explained by the two changes above (an off-by-one Plotly
+call count from the ruler's own extra instance, and the superseded
+bottom-lane-only assumption) — not regressions, documented in the
+Phase 2C-C4 implementation record.
+
 ## Completed foundation work
 
 `[FACT]`, verified against the repository on 2026-08-15:
@@ -1020,12 +1059,29 @@ real COMTRADE metadata: sample 0 = `start_time`, independent of
 genuinely require it. Any future multi-source display work will need to
 resolve the documented (not fixed) limitation that Absolute-mode labels
 currently use only the first-displayed channel's recording-start origin
-if channels from different sources were ever combined. The next step is
-for the project owner to review Phase 2C-C3 via live DEV UAT — comparing
-the displayed Absolute Time against the imported record's own CFG
-metadata, and confirming mode-switching while zoomed preserves the
-window exactly — and either request refinement or move on to digital
-channels (the owner's own stated next area).
+if channels from different sources were ever combined. **Phase 2C-C3's owner UAT passed** — Absolute Time correct, Elapsed
+Time correct, mode switching preserves the physical window. The next
+owner-identified usability problem (many displayed channels making the
+bottom-only shared time axis invisible while scrolling) is now also
+solved: **Phase 2C-C4, a sticky shared waveform time-axis ruler** — see
+[MIGRATION_PLAN.md — Phase 2C-C4 Record](MIGRATION_PLAN.md#phase-2c-c4--sticky-shared-waveform-time-axis-2026-08-15).
+ONE workspace-level ruler (a lightweight, trace-less second Plotly
+instance, reusing Phase 2C-C3's own tick-formatting logic verbatim) now
+stays visible near the bottom of the viewport via CSS `position: sticky`
+while scrolling through any layout mode, driven entirely by the same
+`ww.viewport`/`ww.timeMode` state — confirmed zero new synchronization
+loop, zero waveform refetches (including during scrolling itself), and
+pixel-aligned tick positions with every panel via a new shared
+`WW_PANEL_MARGIN` constant. Separate mode's per-lane axis chrome now
+suppresses ticks on every lane (not just the bottom one, now redundant
+with the ruler); Grouped/Custom panels' own per-panel axis labels are
+deliberately left unchanged this slice — a documented, known
+duplication left for a future cleanup pass. The next step is for the
+project owner to review Phase 2C-C4 via live DEV UAT — scrolling through
+enough Separate lanes to require it, confirming the ruler stays visible
+and aligned, zooming/panning/switching time mode/resizing lanes, and
+testing Light/Dark — and either request refinement or move on to
+digital channels (the owner's own stated next area).
 Separately, resolving the
 abandoned-session TTL question (`[DECISION MODE: COMPARISON]`, reassessed
 but not resolved by Phase 2C-A/B1 — neither changes the backend memory-

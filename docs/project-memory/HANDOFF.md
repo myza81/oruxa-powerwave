@@ -8,6 +8,89 @@ Last updated: **2026-08-15**
 
 ## What was most recently done
 
+**Phase 2C-C4 — Sticky Shared Waveform Time Axis.** **Owner UAT
+confirmed Phase 2C-C3 passed** (Absolute Time correct, Elapsed Time
+correct, mode switching preserves the physical window) before this task
+began. The next owner-identified usability problem: with many displayed
+channels, the shared time-axis labels were only visible at the very
+bottom of the panel stack — an engineer working on a channel near the
+top of a long, scrolled workspace had no visible time reference. Full
+detail:
+[MIGRATION_PLAN.md — Phase 2C-C4 Record](MIGRATION_PLAN.md#phase-2c-c4--sticky-shared-waveform-time-axis-2026-08-15).
+
+**Architecture**: ONE Oruxa-owned shared time-axis strip
+(`wwSyncStickyRuler()`), driven entirely by the existing workspace-level
+`ww.viewport`/`ww.timeMode` state (DEC-021, DEC-029) — never an
+independent authority. Implemented as a second, lightweight,
+**trace-less** Plotly instance (empty `[]` traces array — axis only,
+never a second waveform chart) rather than a hand-rolled SVG/canvas
+ruler: this reuses Phase 2C-C3's own `wwTimeAxisTickFormat()` verbatim,
+so the ruler's ticks are chosen/formatted by the exact same engine as
+every panel, with zero risk of a second, independently-drifting
+time-formatting implementation — the one thing this task's own
+instructions were most emphatic about avoiding. Plotly was already a
+page dependency, so this adds zero new weight.
+
+**Alignment (called out as critical)**: a new shared constant,
+`WW_PANEL_MARGIN = { l: 55, r: 20 }`, replaces the margin numbers
+previously inlined only in `wwBuildLayout()` — now used by both
+`wwBuildLayout()` and the ruler, so the two cannot independently drift
+out of pixel alignment. Combined with the ruler's CSS horizontal padding
+matching `.ww-panel`'s own exactly (14px, confirmed identical across
+Grouped/Separate/Custom), this keeps tick positions pixel-aligned with
+every panel's plot area with no runtime measurement needed.
+
+**Sticky behavior**: pure CSS `position: sticky; bottom: 0` — not
+`fixed`, no scroll listener. The ruler is a normal-flow sibling of
+`#wwPanels` inside `.workspace-section` (its containing block), which is
+what makes it stay pinned to the viewport bottom only while part of the
+workspace is still below the viewport, and scroll away naturally once
+the whole workspace has been scrolled past — satisfying the explicit
+"must not permanently float over unrelated content" requirement using
+ordinary browser layout. Confirmed by test: dispatching synthetic scroll
+events causes zero Plotly calls and zero waveform fetches.
+
+**No new synchronization loop**: `wwSyncStickyRuler()` is called from
+exactly the places that already mutate `ww.viewport`/`ww.timeMode`
+(`wwApplyAndFetchViewport` — the single function zoom/pan/Reset Time
+View all funnel through — and `wwSetTimeMode`), plus displayed-channel-
+count and theme-switch call sites. It never registers its own Plotly
+event listener (`staticPlot: true`, no `.on(...)` wired), confirmed by
+test, so it cannot become a second authority or loop.
+
+**Existing panel axis labels (section 16)**: Separate mode's per-lane
+axis chrome (`wwApplyTimeAxisChrome()`) now suppresses ticks/title on
+**every** lane, not just the non-bottom ones — the sticky ruler makes
+that lone remaining bottom-lane axis redundant. Grouped/Custom panels'
+own per-panel axis labels are **deliberately left unchanged** this
+slice (a materially larger, riskier restructuring given neither mode
+has a single "bottom panel" concept) — documented as a known,
+intentional duplication for a future cleanup pass, not fixed here.
+
+**Verification**: 24 new frontend `jsdom` checks (`phase2cc4_check.mjs`)
++ the full existing suites re-run unmodified. `frontend_logic_check.mjs`
+and `theme_crosshair_check.mjs` pass in full. Across the Phase 2C-A
+through 2C-C3 suites, **9 new failures appear, all explained by this
+phase's two deliberate changes** — not regressions: (1) several scripts
+assert an exact Plotly `newPlot`/`relayout` call count "one per panel,"
+now off-by-one because of the ruler's own extra (single) Plotly
+instance; (2) several scripts assert the now-superseded "only the
+bottom lane shows ticks" Separate-mode behavior. These are frozen,
+one-off, not-committed verification scripts from prior phases — per
+this project's own established precedent (Phase 2C-C3's identical
+treatment of its own Absolute-default divergence), they were not
+modified; `phase2cc4_check.mjs` explicitly covers what changed. Backend:
+zero diff, 278/278 passing in a fresh venv.
+
+**Backend**: zero files changed. **Real-browser visual confirmation —
+whether the ruler genuinely reads as "sticky" and unobtrusive while
+scrolling, whether tick positions visibly line up with waveform data at
+various real zoom levels, whether it ever visually covers content — was
+NOT and cannot be confirmed in this sandboxed session; this remains
+explicitly for the owner's own manual UAT.**
+
+## What was done in the prior session (Phase 2C-C3 — COMTRADE Time-Axis Modes)
+
 **Phase 2C-C3 — COMTRADE Time-Axis Modes.** Adds two selectable,
 workspace-level time-axis representations for COMTRADE waveforms:
 **Absolute Time** (real recording timestamp per sample, the new
@@ -1091,7 +1174,56 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified (this pass — Phase 2C-C3 COMTRADE time-axis modes)
+## What was verified (this pass — Phase 2C-C4 sticky shared waveform time axis)
+
+- `oruxa_powerwave` git state confirmed against `origin/main` (read-only
+  `git fetch`), working tree clean before this pass began.
+- **Backend regression: 278 tests, unmodified, all still pass** (fresh
+  venv run) — zero backend files in the diff (`git diff --stat --
+  backend/` empty; diff scoped to `frontend/index.html` plus
+  project-memory docs).
+- **Frontend, new: 24 scripted `jsdom` checks, all passing**
+  (`phase2cc4_check.mjs`) — ruler hidden with no waveforms, ruler visible
+  once displayed, sticky CSS/container structure, ruler derives its
+  range from `ww.viewport` (not an independent state), margin/alignment
+  consistency between the ruler and a real panel (same `WW_PANEL_MARGIN`
+  values), Absolute and Elapsed rendering, mode-switch updates the ruler
+  with zero new waveform fetches, zoom/pan/Reset Time View all update
+  the ruler via the existing single broadcast path, the ruler never
+  registers its own Plotly event listener, Grouped/Separate/Custom all
+  work (Separate's all-lanes-suppressed chrome verified explicitly),
+  panel resize causes zero ruler-related Plotly calls, theme switching
+  re-colors the ruler without a refetch, removing all channels hides the
+  ruler, re-adding channels reuses the existing Plotly instance rather
+  than recreating it, Clear workspace hides the ruler, and dispatching
+  synthetic scroll events causes zero waveform fetches and zero new
+  Plotly calls.
+- **Frontend, existing: `frontend_logic_check.mjs`, `theme_crosshair_
+  check.mjs`, and the full Phase 2C-A through 2C-C3 suites were all
+  re-run unmodified against this pass's code.** `frontend_logic_check.mjs`
+  and `theme_crosshair_check.mjs` pass in full. **9 new failures appear
+  across the rest, all explained by this phase's own two deliberate
+  architecture changes** (not regressions): the ruler's own extra Plotly
+  `newPlot`/`relayout` call makes several scripts' exact "one per panel"
+  call-count assertions off-by-one, and several scripts assert the
+  now-superseded "only the bottom Separate lane shows ticks" behavior
+  (section 16's own suppression change). These are frozen, one-off,
+  not-committed verification scripts from prior phases — per this
+  project's established precedent (Phase 2C-C3's identical treatment of
+  its own Absolute-default divergence), not modified; `phase2cc4_check.mjs`
+  explicitly covers what changed. `phase2ca_check.mjs` additionally still
+  carries its 2 pre-existing Phase 2C-C3 divergences, unrelated to this
+  phase.
+- `node --check` on `frontend/index.html`'s inline `<script>` block, and
+  a `getElementById`/`id=` cross-reference check (no dangling
+  references, no duplicate IDs) — both clean.
+- No real-browser/visual confirmation (ruler "sticky" feel while
+  scrolling, real tick-to-waveform alignment at various zoom levels, any
+  visual content coverage) was performed in this sandboxed session — see
+  the final report's explicit statement about what's honestly
+  unverified. Final visual judgment remains the owner's own manual UAT.
+
+## What was verified (prior pass — Phase 2C-C3 COMTRADE time-axis modes)
 
 - `oruxa_powerwave` git state confirmed against `origin/main` (read-only
   `git fetch`), working tree clean before this pass began.
@@ -1762,7 +1894,26 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 2C-C3 COMTRADE time-axis modes)
+## What files were changed this session (Phase 2C-C4 sticky shared waveform time axis)
+
+Modified only: `frontend/index.html` (`.ww-sticky-ruler`/
+`.ww-sticky-ruler-context`/`.ww-sticky-ruler-chart` CSS; `#wwStickyRuler`/
+`#wwStickyRulerContext`/`#wwStickyRulerChart` markup as a sibling of
+`#wwPanels`; new `WW_PANEL_MARGIN` shared constant, also wired into
+`wwBuildLayout()`'s own margin (replacing its previous inline literal);
+`ww.rulerReady` state; new `wwSyncStickyRuler()`;
+`wwUpdateTimeModeContext()` extended to also drive
+`#wwStickyRulerContext`; `wwApplyTimeAxisChrome()` changed to suppress
+ticks/title on every Separate lane, not just the non-bottom ones;
+`wwSyncStickyRuler()` called from `wwApplyAndFetchViewport`,
+`wwSetTimeMode`, `wwAddSelectedChannels`, `wwRemoveChannel`,
+`wwClearWorkspace`; `wwApplyTheme()` extended to re-color the ruler),
+`docs/project-memory/{MIGRATION_PLAN,CURRENT_STATE,HANDOFF}.md` (this
+work). No new files. **No `backend/` file, no
+`frontend/waveform-prototype.html`/`theme.css`/`theme.js` change, no CI/
+deployment workflow file was touched.**
+
+## What files were changed in the prior session (Phase 2C-C3 COMTRADE time-axis modes)
 
 Modified only: `frontend/index.html` (toolbar HTML for the Absolute/
 Elapsed toggle + date-context label; `channelCheckboxHtml`/
@@ -2103,7 +2254,7 @@ Modified:
 See "GitHub persistence" and "DEV deployment" in this task's final report
 (delivered in-conversation) for the exact commit hash, push confirmation,
 independent-fetch verification, GitHub Actions run, and live-endpoint
-checks for this Phase 2C-C3 pass. **Production was not touched.**
+checks for this Phase 2C-C4 pass. **Production was not touched.**
 
 ## What remains unresolved
 
@@ -2156,23 +2307,29 @@ checks for this Phase 2C-C3 pass. **Production was not touched.**
 
 ## What should be done next
 
-The next step is for the **project owner** to review Phase 2C-C3 via
-live DEV UAT (this task's own 22-step checklist): confirm Absolute Time
-is the default and shows a sensible real timestamp; compare the
-displayed Absolute Time against the imported record's own CFG metadata
-(start time, not trigger time); switch to Elapsed and back in both
-directions, including while zoomed, and confirm the same physical
-window stays visible; confirm this works identically in Grouped,
-Separate, and Custom layout modes, with Separate's bottom-lane-only
-axis behaving correctly; confirm Reset Time View, Autoscale Y, panel
-resize, and Light/Dark theme are all unaffected. If the owner confirms
-correctness: no further action needed on this item. If the displayed
-Absolute Time does not match the record's own metadata, or the viewport
-shifts on a mode switch, report back — do **not** assume either outcome.
+The next step is for the **project owner** to review Phase 2C-C4 via
+live DEV UAT (this task's own 17-step checklist, Separate mode as the
+primary scenario): create enough Separate lanes to require vertical
+scrolling; confirm the sticky ruler remains visible while scrolling
+toward the top and through middle lanes; confirm its tick positions
+visually line up with the waveform data underneath at various zoom
+levels; zoom and pan and confirm the ruler updates; switch Absolute ↔
+Elapsed and confirm the ruler changes without changing the physical
+window; resize several lanes and confirm the ruler stays aligned; test
+Light/Dark; then also confirm Grouped and Custom modes; and confirm the
+ruler never covers waveform content/controls (in particular the lowest
+visible panel's resize handle) and that reaching the end of the
+workspace feels natural. Also flag whether the now-documented Grouped/
+Custom per-panel axis-label duplication (section 16) is actually
+bothersome enough in practice to warrant a follow-up cleanup pass, or
+acceptable as-is. If the owner confirms correctness: no further action
+needed on this item. If tick alignment is visibly off, or the ruler
+obscures content, report back — do **not** assume either outcome.
 Separately, the owner may choose to: (a) authorize the
 drag/reorder/overlay/split work directly (still the owner's own possible
-next direction, deliberately set aside across four passes now, not
-abandoned); or (b) move on to digital channels (the owner's own
+next direction, deliberately set aside across five passes now, not
+abandoned); (b) request the Grouped/Custom axis-duplication cleanup
+flagged above; or (c) move on to digital channels (the owner's own
 explicitly stated next area, and this task's own explicit instruction:
 do **not** begin digital-channel work without a separate signal).
 Separately, resolving the abandoned-session TTL question and the
@@ -2182,6 +2339,36 @@ pass.
 
 ## What must not be assumed
 
+- **Do not assume the sticky ruler is interactive** — it deliberately is
+  not this slice (`staticPlot: true`, `pointer-events: none` on its CSS
+  wrapper): not draggable, not zoomable, not pannable, not selectable,
+  no crosshair. Waveform panels remain the only interaction surfaces;
+  the ruler is display-only, per this task's own §11/§24.
+- **Do not assume the ruler holds its own viewport or time-mode state**
+  — it does not; `wwSyncStickyRuler()` reads `ww.viewport`/`ww.timeMode`
+  fresh every time it is called and never stores an independent copy.
+  There is no scenario where the ruler and the panels can show different
+  ranges/modes simultaneously by construction.
+- **Do not assume the ruler is a second waveform chart** — it carries an
+  empty (`[]`) traces array always; it never fetches, holds, or displays
+  channel data. Its only content is the shared x-axis.
+- **Do not assume Grouped/Custom panels' own per-panel x-axis labels
+  were suppressed by this phase** — they were **not**; only Separate
+  mode's per-lane labels changed (now suppressed on every lane, not just
+  the non-bottom ones). Grouped/Custom panels still show their own
+  ticks/title on every panel, which now visibly duplicates the sticky
+  ruler — a documented, deliberate, NOT-yet-fixed gap (section 16), left
+  for a future cleanup pass rather than a larger restructuring this
+  phase's own scope didn't justify.
+- **Do not assume the ruler uses a scroll event listener** — it does
+  not; its visibility/positioning is pure CSS `position: sticky`,
+  confirmed by test to cause zero JavaScript work (zero Plotly calls,
+  zero waveform fetches) when scroll events fire.
+- **Do not assume the ruler is `position: fixed`** — it is
+  `position: sticky`, constrained to `.workspace-section`'s own box; it
+  does not float over the footer or any content below the waveform
+  workspace, and stops being sticky once the whole workspace has
+  scrolled past.
 - **Do not assume the Absolute-mode timestamp is derived from the
   trigger time, the browser's clock, the upload time, or a guessed
   timezone** — it is derived exclusively from the backend's own
@@ -2335,27 +2522,32 @@ pass.
 ## Owner approval needed before proceeding?
 
 - Not needed to review or use Phase 2C-A, Phase 2C-B1, Phase 2C-B2, Phase
-  2C-B3, Phase 2C-B3A, Phase 2C-C1, Phase 2C-C2, Phase 2C-C2A, or Phase
-  2C-C3 themselves — already implemented, deployed to DEV, and
-  live-verified per this exact task's own authorization. **Recommended,
-  though**: an owner UAT specifically comparing the displayed Absolute
-  Time against the imported record's own CFG metadata, and confirming
-  mode-switching while zoomed preserves the window exactly, since real
-  visual/browser confirmation could not be performed in this sandbox.
+  2C-B3, Phase 2C-B3A, Phase 2C-C1, Phase 2C-C2, Phase 2C-C2A, Phase
+  2C-C3, or Phase 2C-C4 themselves — already implemented, deployed to
+  DEV, and live-verified per this exact task's own authorization.
+  **Recommended, though**: an owner UAT specifically scrolling through
+  enough Separate lanes to require it, confirming the sticky ruler stays
+  visible and its ticks visually align with waveform data, and
+  confirming zoom/pan/mode-switch/resize/theme all keep it correctly
+  updated — since real visual/browser confirmation could not be
+  performed in this sandbox.
 - **Yes**, before any drag/reorder/overlay/split work begins (still the
   owner's own possible next direction, deliberately set aside across
-  four passes now in favor of Custom Groups, panel resize, and
-  time-axis modes, but still not yet explicitly authorized to
-  *implement*), before digital channels (the owner's own next stated
+  five passes now in favor of Custom Groups, panel resize, time-axis
+  modes, and the sticky ruler, but still not yet explicitly authorized
+  to *implement*), before digital channels (the owner's own next stated
   area, not yet begun — and this task's own explicit closing
   instruction was to stop here, not begin it), before Synthetic Elapsed
-  Time, Sample Index, or any CSV/Excel timing mode, before Phase 1.5 or
-  any later phase begins, before a PROD deployment, before any further
-  crosshair or theming work beyond what's already described in
-  project-memory, and before any change to the ephemeral-storage,
-  upload-size, COMTRADE-upload-interaction, workspace-lifecycle, or
-  waveform-data decisions recorded in `DECISIONS.md`. Per the change-
-  governance rule in [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md).
+  Time, Sample Index, or any CSV/Excel timing mode, before the
+  Grouped/Custom per-panel axis-label duplication (section 16) is
+  cleaned up, before interactive ruler zoom/pan/selection or a shared
+  crosshair on the ruler, before Phase 1.5 or any later phase begins,
+  before a PROD deployment, before any further crosshair or theming
+  work beyond what's already described in project-memory, and before
+  any change to the ephemeral-storage, upload-size,
+  COMTRADE-upload-interaction, workspace-lifecycle, or waveform-data
+  decisions recorded in `DECISIONS.md`. Per the change-governance rule
+  in [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md).
 - **Recommended before any further prolonged/shared-DEV waveform UAT**: a
   real decision on the abandoned-session TTL question, and ideally the
   ~100 MB real-file memory validation, rather than continuing to rely on
