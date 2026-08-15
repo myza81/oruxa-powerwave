@@ -51,23 +51,35 @@ That document is authoritative for Oruxa and Powerwave infrastructure
 decisions. Do not reproduce its contents here — read it at the source, and ask
 rather than inferring architecture from the code where it is silent.
 
-## Product/engineering reference framework
+## Product/engineering reference framework — the Detego Benchmark Principle
 
 **Read [docs/project-memory/PRODUCT_REFERENCES.md](docs/project-memory/PRODUCT_REFERENCES.md)
 before making a major feature-design decision** (Phase 2B/2C waveform-workspace
-design in particular).
+design in particular). That document quotes the owner-supplied "Detego
+Benchmark Principle" verbatim (DEC-020) — summarized here, not duplicated.
 
-For major feature design, use three references, in this order of authority:
+`detego.app` is an official product, UI/UX, waveform-workspace, dashboard,
+and workflow benchmark for `oruxa_powerwave`. **It is NOT the target
+ceiling and NOT a specification to copy blindly.**
 
-1. **`powerwave`** — proven engineering behaviour and reusable logic.
-2. **`detego.app`** — a UI/UX, workflow, dashboard, and product benchmark.
-   It is a benchmark, not a ceiling: do not withhold a feature merely
-   because Detego lacks it, and do not treat its implementation as an
-   architecture requirement or copy it blindly (DEC-020).
-3. **Owner requirements, approved decisions, and UAT findings** — final
-   authority. `oruxa_powerwave` should aim to be more capable and more
-   useful than Detego wherever the owner's engineering requirements
-   justify it.
+Required hierarchy, in order of authority, for major feature design:
+
+1. **Existing `powerwave`** — proven engineering behaviour / reusable
+   engineering logic.
+2. **`detego.app`** — benchmark for product quality, workflow, UI/UX and
+   interaction ideas.
+3. **Owner requirements / approved decisions / UAT** — final authority.
+
+The design goal is for `oruxa_powerwave` to become more capable and more
+useful to engineers than Detego where justified. **If Detego lacks a
+capability required by the owner, do not omit or weaken that capability
+merely to stay consistent with Detego.** If Detego's workflow is good,
+learn from the public behaviour and implement an independent Oruxa
+design.
+
+For major features, ask: *"What does Detego do here, what does existing
+powerwave do, and what would make oruxa_powerwave better for the
+engineer?"*
 
 Do not reproduce PRODUCT_REFERENCES.md's contents here — read it at the
 source.

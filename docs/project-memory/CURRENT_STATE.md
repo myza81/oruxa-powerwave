@@ -245,18 +245,20 @@ drag/reorder panel UX, digital waveform handling, and abandoned-session
 TTL policy — all remain `[UAT]`/`[COMPARISON]`/`[OPEN]`, per the Phase 2
 design section and DEC-019's own Impact notes.
 
-`[DECISION]` Recorded 2026-08-15: DEC-020 — `detego.app` is adopted as a
-UI/UX/workflow/dashboard/product **benchmark** (not a ceiling) for feature
-design, especially Phase 2B/2C waveform-workspace work — see
-[PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md) for the full three-way
-comparison framework (`powerwave` = engineering behaviour,
+`[DECISION]` Recorded 2026-08-15: DEC-020 — `detego.app` is adopted as an
+official product/UI-UX/waveform-workspace/dashboard/workflow **benchmark**
+(not a ceiling, not a spec to copy blindly) for feature design, especially
+Phase 2B/2C waveform-workspace work. [PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md)
+now quotes the owner-supplied canonical "Detego Benchmark Principle"
+verbatim (three-way hierarchy: `powerwave` = engineering behaviour,
 `detego.app` = UI/UX benchmark, owner requirements/DECISIONS/UAT = final
-authority). `oruxa_powerwave` should aim to exceed Detego where the
-owner's engineering requirements justify it; a feature Detego lacks is
-never on its own a reason to withhold it. No technical audit of
-`detego.app` has been performed — this decision establishes the reference
-relationship and its limits, not a feature comparison. Documentation-only;
-no production code changed.
+authority). `oruxa_powerwave` should aim to become more capable and
+useful to engineers than Detego where justified; if Detego lacks a
+capability the owner requires, do not omit or weaken it just to stay
+consistent with Detego. No technical audit of `detego.app` has been
+performed — this decision establishes the reference relationship and its
+limits, not a feature comparison. Documentation-only; no production code
+changed.
 
 ## Known blockers
 

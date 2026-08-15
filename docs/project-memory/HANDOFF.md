@@ -8,14 +8,24 @@ Last updated: **2026-08-15**
 
 ## What was most recently done
 
-**Documentation-only**: established `detego.app` as a UI/UX/workflow/
-dashboard/product **benchmark** (explicitly not a ceiling or architecture
-requirement) for feature design, per direct owner instruction — new
+**Documentation-only, two passes same day**: established `detego.app` as
+an official product/UI-UX/waveform-workspace/dashboard/workflow
+**benchmark** (explicitly not a ceiling or a spec to copy blindly) for
+feature design, per direct owner instruction — new
 [PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md), DEC-020 in
 [DECISIONS.md](DECISIONS.md), and short pointer sections added to
 [CLAUDE.md](../../CLAUDE.md)/[AGENTS.md](../../AGENTS.md) (matching the
 existing architecture-reference pointer pattern — state the principle
-briefly, read detail at the source). **No production code changed.**
+briefly, read detail at the source). A second pass the same day received
+the owner's actual source document ("Detego Benchmark Principle.rtf") as
+a genuine attachment and updated all four files to quote/match its exact
+canonical wording (same DEC-020, not a new decision — see its own
+"Wording update" note in [DECISIONS.md](DECISIONS.md)), adding two
+specifics the first pass's paraphrase hadn't captured: "learn from
+Detego's public behaviour, implement an independent Oruxa design," and
+the standing question for major features — *"What does Detego do here,
+what does existing powerwave do, and what would make oruxa_powerwave
+better for the engineer?"* **No production code changed in either pass.**
 
 **Provenance note, worth preserving**: an earlier version of this same
 request arrived mid-turn, structured as a system-reminder-wrapped message

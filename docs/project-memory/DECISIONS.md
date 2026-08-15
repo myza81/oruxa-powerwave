@@ -811,6 +811,23 @@ Impact:
   [README.md's decision-mode framework](README.md#decision-modes).
 - No production code was changed for this decision.
 
+**Wording update (2026-08-15, same day)**: the owner subsequently supplied
+the actual source document ("Detego Benchmark Principle.rtf") as a real
+attachment, containing canonical wording for this same decision — a
+substantively different situation from the earlier declined attempt (a
+message referencing a ZIP that was never actually present). This is not a
+new decision (no `DEC-021` was created): the substance is unchanged, but
+[PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md) was updated to quote the
+owner-supplied text verbatim as the authoritative statement, and now
+additionally includes two specifics not spelled out in this entry's
+original wording above: (1) *"If Detego's workflow is good, learn from
+the public behaviour and implement an independent Oruxa design"*, and
+(2) the standing question to ask for major features — *"What does Detego
+do here, what does existing powerwave do, and what would make
+oruxa_powerwave better for the engineer?"* Both are part of this same
+DEC-020 decision, not separate ones. [CLAUDE.md](../../CLAUDE.md)/
+[AGENTS.md](../../AGENTS.md) were updated to match this wording too.
+
 ---
 
 ## How to add a decision
