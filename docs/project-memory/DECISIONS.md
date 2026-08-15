@@ -830,6 +830,99 @@ DEC-020 decision, not separate ones. [CLAUDE.md](../../CLAUDE.md)/
 
 ---
 
+## DEC-021 — Waveform navigation is workspace-level, not channel-level
+
+Date: 2026-08-15
+Status: Approved
+Source: explicit project-owner direction, given directly in conversation
+while requesting a focused Phase 2B Plotly-refinement pass, following the
+owner's own hands-on UAT of the Phase 2B renderer prototype.
+
+Decision:
+Future multi-channel waveform navigation in `oruxa_powerwave` is
+**workspace-level (shared across every displayed analog channel), never
+independently controlled per channel**:
+
+- all displayed analog channels share one common visible X/time range;
+- zooming the waveform workspace zooms every displayed channel together;
+- panning moves every displayed channel together;
+- zoom in/out acts on the whole waveform workspace, not one trace;
+- "Reset Time View" restores the whole workspace's time range;
+- cursor/time navigation (Phase 5+) will be shared across displayed
+  channels, not owned separately by each one;
+- channels may keep **independent Y scales** — only the X/time axis is
+  required to be shared.
+
+Conceptually:
+
+```text
+Central Waveform Toolbar
+        |
+shared time viewport
+        |
+VA, VB, VC, IA, IB, IC, Frequency, ...  (all follow the same X/time window)
+```
+
+A directly related, equally approved requirement: **the final multi-channel
+workspace must not rely on a separate Plotly (or any library's) modebar
+per channel/subplot.** A single, centralized Powerwave waveform toolbar
+must expose the shared controls (zoom, pan, zoom in/out, Reset Time View,
+Autoscale Y, cursor mode, and later A/B cursors, time-reference controls,
+and export) — never one native per-channel toolbar repeated per trace.
+
+This decision also fixes the terminology, to be used consistently in code
+and docs going forward: **"Reset Time View"** (restore the full-record
+X/time range) and **"Autoscale Y"** (adjust vertical magnitude scaling)
+are two different operations and must never be collapsed into one control
+or one concept.
+
+Reason:
+Confirmed directly by the owner's own Phase 2B UAT: reviewing Plotly's
+native per-chart modebar (zoom/pan/autoscale/reset, all scoped to that one
+chart) made concrete what a future multi-channel workspace must NOT
+become — N independent per-channel toolbars each controlling their own,
+potentially divergent, time window, which would make cross-channel
+disturbance correlation (the entire point of a multi-channel engineering
+view) actively harder, not easier. Locking in the shared-viewport
+principle now, while Phase 2B still only has one channel, prevents Phase
+2C's architecture from accidentally building per-channel navigation
+controls that would later need to be torn out.
+
+Alternatives considered:
+Per-channel independent X navigation (effectively N unrelated single-
+channel charts) was the default a naive multi-channel extension of Phase
+2B's current one-channel-per-page model would produce if this principle
+weren't recorded now — considered and explicitly rejected. A hybrid
+(shared-by-default, but individually overridable per channel) was not
+raised by the owner and is not adopted here; if wanted later, it would be
+a new, separate decision, not an interpretation of this one.
+
+Impact:
+- Phase 2B's own request-coordinator function
+  (`requestViewportRangeDebounced` in `frontend/waveform-prototype.html`)
+  was **not restructured** this pass (multi-channel fetching remains
+  explicitly out of scope) but is documented in place as the intended
+  Phase 2C extension point: a future version fans one shared
+  `(startTime, endTime)` viewport out to every displayed channel's own
+  fetch, rather than each channel owning an independent viewport.
+- Phase 2C's future panel/layout design must keep **channel-specific**
+  controls (show/hide, reorder, move between panels/groups, color, panel
+  height, Y-axis scale, remove from display) and **workspace-level**
+  controls (everything listed in the Decision above) architecturally
+  distinct — flexible vertical layout (per-channel) must coexist with
+  synchronized horizontal time navigation (workspace-level), not be
+  conflated with it.
+- Does not itself approve any specific Phase 2C panel/toolbar design,
+  digital-channel handling, or cursor implementation — those remain
+  separate, still-`[OPEN]`/`[UAT]` decisions.
+- No production backend change — this is a frontend/UX architecture
+  principle only; the Phase 2A waveform API's per-request shape
+  (`channel_name`, `start_time`, `end_time`, `point_budget`) already
+  supports being called once per displayed channel with the same range,
+  so no API change is anticipated to honor this decision later either.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

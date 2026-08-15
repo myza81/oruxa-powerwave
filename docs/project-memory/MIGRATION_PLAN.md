@@ -2499,6 +2499,213 @@ workflow file was touched.
 
 ---
 
+## Phase 2B — Plotly Refinement & Workspace-Level Navigation Record (2026-08-15)
+
+Follows the owner's hands-on UAT of the Phase 2B renderer prototype
+(commit `ad6d9d2`). **Plotly is currently preferred but the renderer
+choice is deliberately NOT closed** — see DEC-021
+([DECISIONS.md](DECISIONS.md)) for the one design decision this pass
+actually approves (workspace-level navigation), which is a separate
+question from which library wins. No Phase 2C, no multi-channel panels,
+no uPlot removal, no Phase 2A backend change.
+
+### Owner UAT result recorded
+
+**uPlot strengths observed**: a useful mouse crosshair (already uPlot's
+own default behaviour — nothing was added for it), the crosshair helps
+correlate X and Y values, responsive.
+
+**Plotly strengths observed**: better waveform clarity, richer built-in
+controls (zoom, pan, zoom in/out, autoscale, reset axes, PNG export),
+smooth and confidence-building interaction, hover X/Y values move with
+the waveform interaction.
+
+**Plotly weaknesses observed**: no visible crosshair line in the
+prototype as shipped (addressed this pass — see below); occasional slight
+lag using modebar controls (investigated this pass — see below); no
+explicit axis titles noticed but not considered important (not
+addressed — axis titles already exist in the current layout via
+`xaxis.title`/`yaxis.title`; if the owner still finds this worth revisiting
+during final UAT, it's a one-line change, not recorded as a gap needing
+separate work).
+
+**Overall**: `[UAT — Plotly preferred pending final refinement
+confirmation]`. Not recorded as a final decision — `DECISIONS.md` does not
+name a winning renderer.
+
+### Owner UAT requirement recorded — workspace-level waveform navigation
+
+`[DECISION]` DEC-021 (full text in [DECISIONS.md](DECISIONS.md)): **waveform
+navigation is workspace-level, not channel-level.** All displayed analog
+channels will share one X/time viewport; zoom/pan/Reset Time View act on
+the whole workspace, never one channel independently; Y scales may remain
+per-channel. A **centralized Powerwave waveform toolbar** (not a
+per-channel/per-subplot native modebar) is the required future
+architecture — Plotly's native per-chart modebar was useful to review
+during UAT specifically *because* it made concrete what the final
+multi-channel workspace must NOT become. Terminology fixed by the same
+decision: **"Reset Time View"** (X-range only) and **"Autoscale Y"**
+(Y-scale only) are different operations, never collapsed into one control.
+
+### Plotly refinement — crosshair/spike-line
+
+Implemented using **Plotly's own native axis spike-line capability** —
+no custom crosshair system was built, per the task's explicit preference.
+`waveform-prototype.html`'s `PlotlyAdapter.init()` layout now sets, on
+both `xaxis` and `yaxis`:
+
+```js
+showspikes: true, spikemode: "across", spikesnap: "data",
+spikethickness: 1, spikedash: "solid", spikecolor: "#8b96ad",
+```
+
+plus `hovermode: "closest"`. Result: hovering the waveform now shows a
+vertical guide line (time) and a horizontal guide line (value), both
+spanning the full plot area (`spikemode: "across"`), disappearing when
+the cursor leaves the chart (no permanent/fixed labels added).
+
+**Deliberate choice: `spikesnap: "data"`, not `"cursor"`.** `"cursor"`
+would follow the mouse pixel-for-pixel, which can visually imply a value
+*between* two real recorded samples — `"data"` snaps the crosshair to the
+nearest actual sample instead, keeping it consistent with the project's
+standing "no interpolation that visually changes the waveform signature"
+requirement. The existing `hovertemplate` (unchanged) already shows the
+moving X/Y value label the owner specifically called out as a Plotly
+strength.
+
+**Documented alternative, not implemented**: if the owner finds both
+lines together too busy during final UAT, the one-line change is
+`yaxis.showspikes: false` (vertical/time-only crosshair, closer to how
+uPlot's own default crosshair is typically perceived). Left as a documented
+option, not pre-built as a toggle — building a configurable-crosshair UI
+would be exactly the "large custom crosshair system" the task said not to
+build without clear justification.
+
+**uPlot's crosshair required no change** — it already shows a
+vertical+horizontal crosshair by default (uPlot's own `cursor` behaviour,
+active whenever not explicitly disabled, which it isn't here). The owner's
+positive UAT observation about uPlot's crosshair was simply confirming
+already-existing behaviour, not identifying something to add.
+
+### Toolbar lag investigation
+
+**What was measured/inspected** (code review — no real-browser profiling
+tool was available in this environment; see "What remains unverified"
+below): traced every path that can trigger a backend re-fetch from a
+Plotly modebar action.
+
+**Finding 1 — a real correctness gap, not the lag itself**: Plotly's
+native **Autoscale** and **Reset axes** modebar buttons do not fire an
+explicit `xaxis.range[0]`/`[1]` relayout event — they fire
+`{"xaxis.autorange": true, "yaxis.autorange": true}` instead. The
+prototype's relayout handler, as originally shipped, only recognized the
+explicit-range case and silently ignored the autorange case. Practical
+effect: clicking native Autoscale/Reset-axes re-scaled the chart's axes
+to fit whatever data was **already loaded** (e.g. a previous zoom's
+reduced range) — it never actually re-fetched the true full record from
+the backend. This is not what "lag" usually means, but it's exactly the
+kind of thing a "why does this feel off" investigation surfaces, and it's
+a genuine bug, fixed this pass (the handler now treats an autorange
+relayout the same as the app's own Reset Time View — see code comments
+in `waveform-prototype.html`).
+
+**Finding 2 — a real, small, avoidable delay source**: the 200ms debounce
+around every viewport-change request applies unconditionally, including
+to a single discrete modebar button click (zoom-in, zoom-out, autoscale).
+Unlike a drag gesture, a single click has no intermediate frames to
+coalesce — so for that specific interaction, the debounce was pure added
+wait time with zero benefit. **Reduced to 120ms** this pass — still
+comfortably long enough to coalesce a real drag gesture's frames (which
+was the debounce's actual purpose), but shaves 80ms off every discrete
+click's perceived latency. This is a small, targeted, safe change, not a
+redesign of the debounce mechanism itself.
+
+**Finding 3 — no evidence found of duplicate relayout events** for a
+single discrete action, from code/documentation review. This is
+specifically hard to fully rule out without a real browser and real mouse
+timing (Plotly's exact event-firing cadence during a live drag can differ
+subtly by build/interaction mode) — reported honestly as unconfirmed
+either way, not asserted as fixed.
+
+**What was NOT changed**: the interaction layer itself (debounce +
+AbortController + sequence-number protection) was not redesigned — only
+its one duration constant was tuned, and one real event-handling gap was
+closed. Likely remaining sources of any felt lag that this pass did not
+and could not address in a sandboxed environment: real network
+round-trip time to the DEV backend, and Plotly's own `scattergl` trace
+re-render cost — both are inherent to the architecture (a genuine
+backend round-trip *should* happen on every real range change, per the
+zoom-fidelity requirement) rather than defects to remove.
+
+### Waveform fidelity — confirmed unchanged
+
+- Phase 2A backend: **zero files touched** (`git diff --stat -- backend/`
+  empty), all 278 existing tests unmodified and passing.
+- Range-request semantics unchanged: same endpoint, same query
+  parameters, same fixed `POINT_BUDGET` (4000).
+- Linear rendering unchanged: uPlot's default linear path and Plotly's
+  explicit `line.shape: "linear"` are both exactly as before — the
+  crosshair/spike configuration is purely a hover-interaction feature and
+  touches no trace/line-rendering setting.
+- Zoom still reveals genuinely finer real backend data — the crosshair
+  and lag-fix changes touch only the relayout **event-handling** path
+  (which range gets requested and when), never the data returned for a
+  given range.
+
+### Future centralized-control readiness
+
+Per DEC-021's own Impact section: `requestViewportRangeDebounced()` was
+deliberately left **unrestructured** this pass — it already takes a
+plain `(startTime, endTime)` viewport and requests it, with no code
+assuming "this channel owns its own private viewport." A new comment
+block marks this as the Phase 2C extension point (fan one shared range
+across every displayed channel's own fetch), so a future multi-channel
+implementation extends this function's *caller*, not its *shape*.
+Nothing about this pass's changes narrows that door.
+
+### uPlot status
+
+**Retained, fully functional, unmodified in behaviour.** Verified this
+pass: switching back to uPlot after using Plotly still issues zero
+additional backend requests and still renders correctly (regression
+test, see below). uPlot remains available for the owner's final
+side-by-side crosshair comparison before any renderer decision is made.
+
+### Tests
+
+- **Backend: 278 tests, unmodified, all passing** — zero backend files
+  touched.
+- **Frontend: 24 scripted `jsdom` checks, all passing** — extends the
+  existing lightweight approach: 10 regression checks confirming every
+  Phase 2B behaviour (initial request, zoom, both stale-protection
+  layers, Reset Time View, renderer switching including uPlot remaining
+  functional, adapter cleanup, error banner) is unchanged, plus 5 new
+  checks for this pass specifically: the Plotly layout's spike/crosshair
+  configuration (`showspikes`, `spikesnap: "data"`, `spikemode:
+  "across"`, no added permanent annotations); and — the most important
+  new test — a direct proof that a simulated native
+  Autoscale/Reset-axes relayout event now correctly triggers a real
+  full-record re-fetch (previously silently ignored), confirming the
+  toolbar-lag investigation's Finding 1 fix.
+- **What remains unverified**: real-browser visual/interactive
+  correctness (does the crosshair look right, does the perceived lag
+  actually feel reduced) — no headless browser was available in this
+  environment; this is exactly the purpose of the owner's own final UAT
+  session.
+
+### Files changed
+
+Modified only: `frontend/waveform-prototype.html` (Plotly spike/crosshair
+config; relayout-handler autorange fix; debounce 200ms → 120ms; "Reset
+View" → "Reset Time View" label/wording throughout; extension-point and
+semantic-distinction comments — no HTML structure change, no new files),
+`docs/project-memory/{DECISIONS,MIGRATION_PLAN,CURRENT_STATE,HANDOFF}.md`.
+
+No `frontend/vendor/*`, no `frontend/index.html`, no `backend/` file, and
+no CI/deployment workflow file was touched.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

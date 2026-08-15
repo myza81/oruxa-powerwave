@@ -247,7 +247,7 @@
                 <button type="button" class="renderer-tab" id="tabUplot">uPlot</button>
                 <button type="button" class="renderer-tab" id="tabPlotly">Plotly</button>
                 <div class="toolbar-spacer"></div>
-                <button type="button" class="secondary" id="resetViewBtn">Reset View</button>
+                <button type="button" class="secondary" id="resetViewBtn">Reset Time View</button>
             </div>
 
             <p class="interaction-hint" id="interactionHint"></p>
@@ -399,7 +399,7 @@
                 source_not_found: "This source is no longer available in this workspace — it may have been removed, or the workspace was reset.",
                 channel_not_found: "This channel is no longer available on this source.",
                 channel_not_analog: "This channel is digital — the waveform prototype only supports analog channels in Phase 2B.",
-                invalid_time_range: "That time range wasn't valid. Use Reset View to recover.",
+                invalid_time_range: "That time range wasn't valid. Use Reset Time View to recover.",
                 invalid_workspace: "Something went wrong identifying your workspace.",
                 internal_error: "Something went wrong on our end. Please try again.",
             };
@@ -440,6 +440,14 @@
                     title: "",
                     cursor: {
                         drag: { x: true, y: false, uni: 30 }, // horizontal drag-to-zoom only
+                        // Crosshair note (Phase 2B UAT follow-up): uPlot
+                        // shows a vertical+horizontal crosshair by default
+                        // whenever `cursor` isn't disabled -- this was
+                        // already active and is exactly what the owner's
+                        // UAT called out as a uPlot strength; nothing new
+                        // was added here for uPlot, only for Plotly (see
+                        // PlotlyAdapter's `showspikes` config below), so the
+                        // final comparison is genuinely apples-to-apples.
                     },
                     scales: { x: { time: false } }, // seconds, not epoch ms -- see time-axis note below
                     series: [
@@ -483,6 +491,10 @@
                 handle.uplot.setData([payload.time, payload.values]);
             },
 
+            // Reset Time View: X-scale only (see PlotlyAdapter's matching
+            // comment) -- uPlot auto-scales Y to whatever data is set via
+            // setData independently, which already keeps Y-autoscale a
+            // separate concern from this X-only reset.
             setViewport(handle, startTime, endTime) {
                 handle.uplot.setScale("x", { min: startTime, max: endTime });
             },
@@ -492,7 +504,7 @@
                 handle.uplot.destroy();
             },
 
-            interactionHint: "Drag horizontally on the chart to zoom into a time range. Use “Reset View” to return to the full record. (uPlot has no built-in pan gesture in this prototype — zoom in, then Reset View and zoom a different range.)",
+            interactionHint: "Drag horizontally on the chart to zoom into a time range. Hover for uPlot's built-in crosshair. Use “Reset Time View” to return to the full record. (uPlot has no built-in pan gesture in this prototype — zoom in, then Reset Time View and zoom a different range.)",
         };
 
         const PlotlyAdapter = {
@@ -514,8 +526,34 @@
                     plot_bgcolor: "#161d2e",
                     font: { color: "#e7ecf5", size: 11 },
                     margin: { l: 55, r: 20, t: 10, b: 40 },
-                    xaxis: { title: "Time (s)", gridcolor: "#2a3348", zeroline: false },
-                    yaxis: { title: payload.unit || "", gridcolor: "#2a3348", zeroline: false },
+                    // Crosshair refinement (Phase 2B UAT follow-up): Plotly's
+                    // own native axis "spike lines" are used directly rather
+                    // than a custom-built crosshair -- this is exactly the
+                    // built-in capability the task asked to prefer first,
+                    // and it fully covers the requirement (vertical + a
+                    // horizontal guide line on hover, no permanent labels).
+                    // spikesnap: "data" (not "cursor") deliberately snaps
+                    // the crosshair to the nearest REAL recorded sample,
+                    // never an interpolated in-between position -- keeping
+                    // it consistent with "no interpolation that visually
+                    // changes the waveform signature." If the owner finds
+                    // both lines together too busy during final UAT, the
+                    // documented fallback is to set only
+                    // `yaxis.showspikes: false` (vertical/time guide only,
+                    // matching uPlot's own crosshair more closely) -- see
+                    // docs/project-memory/MIGRATION_PLAN.md's Phase 2B
+                    // refinement record.
+                    xaxis: {
+                        title: "Time (s)", gridcolor: "#2a3348", zeroline: false,
+                        showspikes: true, spikemode: "across", spikesnap: "data",
+                        spikethickness: 1, spikedash: "solid", spikecolor: "#8b96ad",
+                    },
+                    yaxis: {
+                        title: payload.unit || "", gridcolor: "#2a3348", zeroline: false,
+                        showspikes: true, spikemode: "across", spikesnap: "data",
+                        spikethickness: 1, spikedash: "solid", spikecolor: "#8b96ad",
+                    },
+                    hovermode: "closest",
                     dragmode: "zoom",
                     showlegend: false,
                 };
@@ -532,8 +570,33 @@
                     if (suppressNextRelayout) { suppressNextRelayout = false; return; }
                     const x0 = eventData["xaxis.range[0]"];
                     const x1 = eventData["xaxis.range[1]"];
-                    if (x0 === undefined || x1 === undefined) return; // e.g. autosize-only relayout, not a range change
-                    callbacks.onViewportChange(x0, x1);
+                    if (x0 !== undefined && x1 !== undefined) {
+                        callbacks.onViewportChange(x0, x1);
+                        return;
+                    }
+                    // Toolbar-lag investigation finding (Phase 2B refinement
+                    // -- see docs/project-memory/MIGRATION_PLAN.md): Plotly's
+                    // native "Autoscale"/"Reset axes" modebar buttons do NOT
+                    // fire an explicit xaxis.range[0]/[1] relayout -- they
+                    // fire `{"xaxis.autorange": true, "yaxis.autorange":
+                    // true}` instead, which this handler previously ignored
+                    // entirely. That meant clicking them only re-scaled the
+                    // axes to fit whatever data was ALREADY loaded (e.g. a
+                    // prior zoom's reduced range) without ever re-fetching
+                    // the true full record -- a real correctness gap, not
+                    // the lag itself, found while investigating the lag
+                    // report. Fixed here by treating that case as "the user
+                    // wants the full record back," same as our own Reset
+                    // Time View button. Note this is an honest
+                    // simplification, not a clean fix: Plotly's single
+                    // native Autoscale button conflates X-range-reset and
+                    // Y-autoscale into one action, which is exactly the kind
+                    // of coupling the future centralized Powerwave toolbar
+                    // (owner-approved requirement, DEC-021) must NOT
+                    // reproduce -- those need to stay two separate controls.
+                    if (eventData["xaxis.autorange"] === true) {
+                        callbacks.onAutoscaleRequested();
+                    }
                 };
                 container.on("plotly_relayout", relayoutHandler);
 
@@ -552,6 +615,11 @@
                 }], handle.container.layout);
             },
 
+            // Reset Time View: X-range only, deliberately -- never touches
+            // yaxis.range, so it stays a distinct operation from "Autoscale
+            // Y" (task's own required terminology split, section 11). Y is
+            // left to Plotly's own default per-trace auto-ranging on data
+            // change, which is not the same code path as this function.
             setViewport(handle, startTime, endTime) {
                 handle.suppressFlag();
                 Plotly.relayout(handle.container, { "xaxis.range": [startTime, endTime] });
@@ -562,7 +630,7 @@
                 Plotly.purge(handle.container);
             },
 
-            interactionHint: "Drag on the chart to box-zoom into a time range. Use the modebar (top-right of the chart) to switch to pan mode, or double-click to autoscale. “Reset View” always returns to the full record.",
+            interactionHint: "Drag on the chart to box-zoom into a time range, or use the modebar (top-right) to pan/zoom-in/zoom-out/autoscale. Hover over the waveform for a crosshair with the X/Y value. “Reset Time View” always returns to the full record.",
         };
 
         const ADAPTERS = { uplot: UPlotAdapter, plotly: PlotlyAdapter };
@@ -659,6 +727,19 @@
             document.getElementById("dbgRenderMs").textContent = renderMs.toFixed(1) + " ms";
         }
 
+        // Takes a single (startTime, endTime) viewport and requests it --
+        // deliberately not shaped around "this channel's own private
+        // viewport." Phase 2B has exactly one channel, so this function's
+        // caller and callee both happen to be single-channel today, but
+        // nothing in this function's own signature or behaviour assumes
+        // that. The owner-approved workspace-level navigation principle
+        // (DEC-021: one shared time viewport drives every displayed
+        // channel) means Phase 2C's extension point is exactly here -- a
+        // future version fans the same (startTime, endTime) out to every
+        // displayed channel's own fetch, rather than this function (or
+        // anything upstream of it) being restructured. Not implemented now
+        // (multi-channel fetching is explicitly out of this pass's scope)
+        // -- this comment exists so that fact doesn't get lost.
         function requestViewportRangeDebounced(startTime, endTime) {
             // Clamp to the source's own bounds -- panning/zooming must never
             // silently request outside the record (docs/project-memory/
@@ -670,16 +751,30 @@
             if (startTime >= endTime) return;
 
             clearTimeout(viewportDebounceTimer);
-            // 200ms: long enough that a drag gesture's intermediate frames
-            // never each trigger their own request (avoiding both a request
-            // storm and visible network lag mid-drag), short enough that
-            // the finer data still feels like a direct response to the
-            // zoom/pan action once the user's pointer settles.
+            // 120ms (reduced from 200ms during the toolbar-lag
+            // investigation -- see docs/project-memory/MIGRATION_PLAN.md's
+            // Phase 2B refinement record): still long enough that a drag
+            // gesture's intermediate frames never each trigger their own
+            // request, short enough to shave visible latency off a
+            // discrete modebar click (zoom in/out, autoscale), which --
+            // unlike a drag -- has no intermediate frames to coalesce in
+            // the first place, so the debounce was pure added wait time for
+            // that interaction specifically.
             viewportDebounceTimer = setTimeout(() => {
                 loadRangeImmediate(startTime, endTime);
-            }, 200);
+            }, 120);
         }
 
+        // "Reset Time View": restores the full-record X/time range. This is
+        // a DIFFERENT operation from "Autoscale Y" (vertical magnitude
+        // scaling) -- task's own required terminology, section 11 -- and
+        // this function only ever touches the X range (both adapters'
+        // setViewport() implementations are X-only by construction, see
+        // their own comments). Also reused as the handler for Plotly's
+        // native Autoscale/Reset-axes modebar buttons (see PlotlyAdapter's
+        // relayoutHandler) -- an honest simplification documented there,
+        // not a claim that those two concepts are cleanly separated by
+        // Plotly's own UI today.
         async function resetView() {
             if (!recordBounds) return;
             await loadRangeImmediate(recordBounds.start, recordBounds.end);
@@ -708,7 +803,10 @@
                 // backend request, per the task's own explicit requirement
                 // ("switching renderer does not change requested waveform
                 // data").
-                const callbacks = { onViewportChange: requestViewportRangeDebounced };
+                const callbacks = {
+                    onViewportChange: requestViewportRangeDebounced,
+                    onAutoscaleRequested: resetView,
+                };
                 currentHandle = ADAPTERS[name].init(container, currentPayload, callbacks);
             }
         }
@@ -736,7 +834,10 @@
             document.getElementById("chartPanel").hidden = false;
 
             const container = document.getElementById("chartContainer");
-            const callbacks = { onViewportChange: requestViewportRangeDebounced };
+            const callbacks = {
+                onViewportChange: requestViewportRangeDebounced,
+                onAutoscaleRequested: resetView,
+            };
 
             setLoading(true);
             const libLoadStart = performance.now();
