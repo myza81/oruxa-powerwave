@@ -5093,6 +5093,151 @@ judgment remains the owner's own manual UAT, per this task's own §13.
 
 ---
 
+## Phase 2C-B3A — Overlay Right-Side Lane Labels Implementation Record (2026-08-15)
+
+`[FACT]` throughout. A corrective, deliberately-scoped **visual refinement
+of Phase 2C-B3's label placement mechanism only** — no panel/data model
+change, no synchronization change, no backend change, no change to the
+unified analog canvas container introduced by Phase 2C-B2. **Direct
+vertical drag/reorder, drag-to-overlay/group, drag-out-to-separate,
+digital-channel rendering, and lane resize are explicitly not started.**
+
+### Owner clarification (recorded here, this pass)
+
+The Phase 2C-B3 right-side label pass was **not** the owner's intended
+layout, even though it moved the label to the correct side. The owner
+clarified explicitly:
+
+- the label must be **overlaid ON the waveform lane itself**, not placed
+  in a dedicated right-side layout column;
+- it should follow **Detego's own separate-waveform label style as
+  closely as practical** — for this specific placement treatment, Detego
+  is the explicit layout benchmark, not just loose inspiration (a
+  narrower, more literal application of the Detego Benchmark Principle,
+  DEC-020, than earlier Phase 2C-B2/B3 passes used it for).
+
+### Overlay label correction
+
+The dedicated `108px`/`136px` fixed-width grid column Phase 2C-B3
+introduced was removed entirely. `.ww-panel` (the lane element) is no
+longer `display: grid` with two columns — it is a plain block with
+`position: relative`, and `.ww-chart-wrap` fills its full width (the
+chart area is no longer split). `.ww-legend` (the existing label element,
+unchanged DOM/markup — dot + `.ww-legend-label` span + remove button) is
+now `position: absolute`, pinned `right: 14px`, vertically centered
+(`top: 50%; transform: translateY(-50%)`), with an explicit `z-index: 2`
+so it visually floats on top of the chart rather than reserving its own
+layout space next to it. `pointer-events: none` on the wrapper (re-enabled
+on the pill itself via `pointer-events: auto`) keeps the small amount of
+empty space around the compact tag from blocking chart hover/crosshair
+interaction underneath it.
+
+### Detego alignment
+
+For this specific Separate-mode label placement, Detego's own compact
+overlay-tag style (floating near the right edge of the waveform trace
+itself, not in a side panel) was used as the direct layout benchmark, per
+the owner's own explicit instruction (§4 of this task). What was
+followed: the **placement** (overlaid on the trace, right-aligned,
+roughly vertically centered) and the **compactness** (small pill, low
+visual weight relative to the waveform). What was **not** copied: Detego's
+color palette, typography, toolbar, branding, or icons — the tag's
+background/border/text still use the same Oruxa theme tokens already
+established (`--surface-tint`, `--panel-border`, `--text-dim`), unchanged
+from Phase 2C-B3, and no Detego asset or code was inspected to build this
+(per DEC-020's "independent implementation, not reverse engineering"
+principle, unchanged).
+
+### Interaction behavior — remove control preserved cleanly
+
+No tradeoff was needed: the same remove (×) control that fit cleanly
+inside the right-side-column tag in Phase 2C-B3 fits identically inside
+the overlay tag now, since only the tag's *position* changed, not its
+internal layout (dot + label + button, unchanged flex row).
+
+### Separate mode — unified analog canvas preserved
+
+Phase 2C-B2's outer canvas (`#wwPanels.ww-panels-unified`'s shared
+background/border, hairline lane dividers, compact lane height) and
+`wwUpdateBottomLaneAxis()`'s bottom-lane-only shared time axis are
+**completely unchanged**. Verified via the full existing Phase 2C-B2 suite
+(20 checks), re-run unmodified, all still passing. The lane's own Y axis
+remains fully independent per lane — untouched by this pass, as it was
+never part of the label-placement CSS.
+
+### Grouped mode — no regression
+
+Grouped mode's own CSS is untouched (the unscoped `.ww-panel-header`/
+`.ww-legend`/`.ww-legend-item` rules, used only when `ww-panels-unified`
+is absent, were not touched at all this pass); `#wwPanels` never gains
+`ww-panels-unified` while `ww.layoutMode === "grouped"`. Verified via the
+full existing Phase 2C-A (19 checks) and Phase 2C-B1 (16 checks) suites,
+re-run unmodified, all still passing.
+
+### Functionality preserved
+
+No change to: the waveform API contract (`channel_name`/`start_time`/
+`end_time`/`point_budget`, confirmed by test), point-budget behavior
+(`WW_POINT_BUDGET = 4000`, untouched), zoom/pan synchronization (DEC-021),
+relayout loop-prevention (`suppressNext`), Reset Time View, Autoscale Y,
+theme switching behavior (DEC-023), crosshair styling (`spikethickness:
+0.35`, `spikedash: "3px,2px"`), or source/workspace lifecycle (DEC-018).
+Verified directly: zoom/pan still broadcast to all 6 lanes with exactly 6
+relayout calls (no loop) and 6 refetches; Reset Time View and Autoscale Y
+still work across all 6 lanes; no per-lane modebar; theme switching still
+re-colors every lane without a waveform refetch; switching
+Separate→Grouped→Separate still preserves the exact zoomed viewport and
+all 6 displayed channels.
+
+### Tests
+
+- **Backend: 278 tests, unmodified, all passing** — zero backend files
+  touched.
+- **Frontend, new: 17 scripted `jsdom` checks, all passing** (a new
+  one-off script, same established pattern) — covering this task's own
+  §12 list: CSS-source checks confirming the label uses absolute
+  positioning against a relatively-positioned lane (not a grid column),
+  is pinned near the right edge and vertically centered, and sits above
+  the chart via z-index; the lane's chart area is no longer split into two
+  columns; the overlay label's DOM parent is the lane element itself (a
+  sibling of the chart-wrap within the same lane, not a separate layout
+  block); displayed-channel identity is correct; Separate mode still
+  shows exactly one lane per channel with the unified-canvas class intact;
+  only the bottom lane still shows the shared X axis; Grouped mode still
+  groups correctly and never applies the unified/overlay CSS; zoom/pan/
+  Reset Time View/Autoscale Y/no-modebar/theme-switching all still work;
+  Grouped↔Separate still preserves viewport and displayed channels;
+  removal via the overlay tag's remove button still removes the whole
+  lane; the waveform query-parameter whitelist is unchanged.
+- **Frontend, updated in place: 2 of Phase 2C-B3's own CSS-source
+  assertions** (which specifically tested the now-removed grid-column
+  mechanism) were corrected to assert the new overlay mechanism instead —
+  the remaining 14 of its 16 checks needed no change and continued to pass
+  unmodified throughout, confirming this pass is a placement-mechanism
+  correction, not a functional regression. **Frontend, existing: the full
+  Phase 2C-B2 (20), Phase 2C-B1 (16), Phase 2C-A (19), and Phase 1 (4)
+  suites were all re-run unmodified against this pass's code and all
+  still pass in full** — 59 existing checks, zero regressions. 92 total
+  frontend checks this pass (17 new + 16 corrected-B3 + 59 unmodified
+  regression).
+
+### Files changed
+
+Modified only: `frontend/index.html`. No new files, no `backend/` file,
+no CI/deployment workflow file, no other frontend file.
+
+### Honest limitation
+
+This sandboxed session has no real browser. Whether the overlay tag
+genuinely reads as a Detego-style floating label rather than a dedicated
+side panel to a human eye — the actual visual goal of this task — was
+**not** visually confirmed here; only structural/CSS-source evidence
+(absolute positioning, z-index stacking, right/top offsets, single-lane
+DOM parentage) was verified. Final visual-appearance judgment remains the
+owner's own manual UAT, per this task's own §13.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

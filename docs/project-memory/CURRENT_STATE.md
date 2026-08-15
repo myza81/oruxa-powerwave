@@ -258,6 +258,31 @@ re-verified existing frontend `jsdom` checks passing (75 total this pass).
 digital-channel rendering, and lane resize all remain explicitly not
 started.**
 
+`[FACT]` **The Phase 2C-B3 right-side-column label was still not the
+owner's intended layout** — see the further "Update" note appended to
+[DEC-026](DECISIONS.md#dec-026--separate-modes-visual-presentation-is-a-unified-analog-canvas-phase-2c-b2)
+(no new decision entry). The owner clarified the label must be **overlaid
+on the waveform lane itself**, not placed in a dedicated right-side
+layout column, and should follow **Detego's own separate-waveform label
+style as closely as practical** for this specific placement — Detego
+treated as the explicit layout benchmark here, not just loose
+inspiration. **This correction is now implemented (Phase 2C-B3A)** — see
+[MIGRATION_PLAN.md — Phase 2C-B3A Implementation Record](MIGRATION_PLAN.md#phase-2c-b3a--overlay-right-side-lane-labels-implementation-record-2026-08-15).
+The dedicated fixed-width grid column was removed; the same label DOM
+(dot + channel name + unit + remove button) is now absolutely positioned
+over the chart area — pinned near the right edge, vertically centered, a
+`z-index` above the chart so it floats over the waveform rather than
+occupying its own layout space. The waveform column fills the full lane
+width. Oruxa theme tokens, the remove control, and Grouped mode's own
+presentation remain unchanged. No panel/data model change, no
+synchronization change, no backend change. No backend file changed (278
+tests unmodified and passing); 17 new + 16 (2 checks corrected in place
+for the new overlay mechanism) + 20 + 19 + 4 re-verified existing
+frontend `jsdom` checks passing (92 total this pass). **Direct
+drag/reorder, drag-to-overlay/group, drag-out-to-separate,
+digital-channel rendering, and lane resize all remain explicitly not
+started.**
+
 ## Completed foundation work
 
 `[FACT]`, verified against the repository on 2026-08-15:
@@ -400,8 +425,10 @@ started.**
   Crosshair Refinement Record", "Phase 2C-A — Synchronized
   Multi-Channel Waveform Display Implementation Record", "Phase 2C-B1 —
   Grouped / Separate Analog Waveform Layout Implementation Record", "Phase
-  2C-B2 — Unified Analog Canvas Layout Implementation Record", and "Phase
-  2C-B3 — Right-Side Compact Lane Labels Implementation Record" sections).
+  2C-B2 — Unified Analog Canvas Layout Implementation Record", "Phase
+  2C-B3 — Right-Side Compact Lane Labels Implementation Record", and
+  "Phase 2C-B3A — Overlay Right-Side Lane Labels Implementation Record"
+  sections).
 
 ## Current architecture status
 
@@ -476,11 +503,15 @@ Separate mode now visually presents as one unified analog canvas (shared
 outer frame, borderless/hairline-divided lanes, a maximum-width chart
 column per lane, only the bottom lane shows the shared time axis) — each
 lane still keeps its own independent Y axis; Grouped mode's own visual
-presentation is unchanged. **(Phase 2C-B3)** The Separate-mode lane label
-now sits as a small compact pill/tag on the RIGHT side of each lane
-(moved from the left, restyled as a subtle tag using existing Oruxa theme
-tokens) — the waveform column still keeps maximum width. No frontend
-framework, no database schema, no authentication, no CSV/Excel/digital-
+presentation is unchanged. **(Phase 2C-B3A, correcting Phase 2C-B3)** The
+Separate-mode lane label is now a small compact pill/tag **overlaid
+directly on the waveform lane itself** near its right edge, vertically
+centered (Detego's own separate-waveform label placement used as the
+explicit layout benchmark for this treatment) — not a dedicated right-side
+layout column (Phase 2C-B3's own approach, since superseded). The
+waveform chart fills the full lane width; Oruxa theme tokens are
+unchanged. No frontend framework, no database schema, no authentication,
+no CSV/Excel/digital-
 waveform/cursors-measurements/calculated-signal/synchronization features
 yet; **direct drag/reorder of panels, drag-to-overlay/group, drag-out-to-
 separate, Custom layout mode, and panel resize all remain not yet
@@ -763,15 +794,25 @@ right-side compact label tag for Separate mode** — see
 The existing legend chip (dot + channel name + unit + remove button) moved
 from the lane's left edge to its right edge and is now styled as a small
 pill using existing Oruxa theme tokens; the waveform column still keeps
-maximum width. **The owner's explicitly stated next direction — direct
-vertical drag/reorder of panels, drag-to-overlay/group, and drag-out-to-
-separate — remains explicitly not started and not authorized**, along
-with Custom layout mode, panel resize, Proportional Y scaling, mixed-unit
-handling, digital channels, and shared crosshair. The next step is for the
-project owner to review Phase 2C-B3 via live DEV UAT and either request
-further refinements, authorize the drag/reorder work directly (the
-owner's own stated next direction), or defer further Phase 2C work.
-Separately, resolving the
+maximum width. **This right-side-column placement was still not the
+owner's intended layout** — the owner clarified the label must be
+overlaid on the waveform lane itself, following Detego's own
+separate-waveform label style as closely as practical for this specific
+placement, and this correction is now also implemented: **Phase 2C-B3A**
+— see
+[MIGRATION_PLAN.md — Phase 2C-B3A Implementation Record](MIGRATION_PLAN.md#phase-2c-b3a--overlay-right-side-lane-labels-implementation-record-2026-08-15).
+The dedicated grid column was removed; the same label DOM is now
+absolutely positioned over the chart area (right-pinned, vertically
+centered, `z-index` above the chart) instead of occupying its own layout
+space — the chart fills the full lane width. **The owner's explicitly
+stated next direction — direct vertical drag/reorder of panels,
+drag-to-overlay/group, and drag-out-to-separate — remains explicitly not
+started and not authorized**, along with Custom layout mode, panel
+resize, Proportional Y scaling, mixed-unit handling, digital channels,
+and shared crosshair. The next step is for the project owner to review
+Phase 2C-B3A via live DEV UAT and either request further refinements,
+authorize the drag/reorder work directly (the owner's own stated next
+direction), or defer further Phase 2C work. Separately, resolving the
 abandoned-session TTL question (`[DECISION MODE: COMPARISON]`, reassessed
 but not resolved by Phase 2C-A/B1 — neither changes the backend memory-
 retention shape) and the ~100 MB real-file memory validation remain

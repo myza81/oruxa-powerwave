@@ -1441,6 +1441,23 @@ governance (only add an entry for something not already captured). See
 The waveform column still keeps maximum available width; each lane still
 keeps its own independent Y axis; Grouped mode is still untouched.
 
+**Update (2026-08-15, Phase 2C-B3A, same day, correction)**: the owner
+clarified the Phase 2C-B3 right-side-column placement was still not the
+intended layout — the label must be **overlaid on the waveform lane
+itself**, not placed in a dedicated right-side layout column, and should
+follow **Detego's own separate-waveform label style as closely as
+practical** for this specific placement (Detego treated as the explicit
+layout benchmark here, not just loose inspiration). The dedicated
+fixed-width grid column was removed; the label (same DOM/markup) is now
+absolutely positioned over the chart area (pinned near the right edge,
+vertically centered, `z-index` above the chart) instead of occupying its
+own layout space. Still a refinement of the same visual-presentation
+concern this decision already covers, not a new architectural direction —
+no new decision entry was added, per governance. See
+[MIGRATION_PLAN.md — Phase 2C-B3A Implementation Record](MIGRATION_PLAN.md#phase-2c-b3a--overlay-right-side-lane-labels-implementation-record-2026-08-15).
+Oruxa theme tokens (background/border/text), the remove control, and
+Grouped mode's own presentation remain unchanged.
+
 ---
 
 ## How to add a decision

@@ -8,6 +8,61 @@ Last updated: **2026-08-15**
 
 ## What was most recently done
 
+**Phase 2C-B3A — Overlay Right-Side Lane Labels (correction).** The Phase
+2C-B3 right-side-column label was **not** the owner's intended layout —
+the owner clarified explicitly: the label must be **overlaid on the
+waveform lane itself**, not placed in a dedicated right-side layout
+column, and should follow **Detego's own separate-waveform label style as
+closely as practical** for this specific placement (Detego treated as the
+explicit layout benchmark here, not just loose inspiration — a narrower
+application of the Detego Benchmark Principle than earlier passes used).
+Full detail:
+[MIGRATION_PLAN.md — Phase 2C-B3A Implementation Record](MIGRATION_PLAN.md#phase-2c-b3a--overlay-right-side-lane-labels-implementation-record-2026-08-15),
+[DECISIONS.md — DEC-026 further Update note](DECISIONS.md#dec-026--separate-modes-visual-presentation-is-a-unified-analog-canvas-phase-2c-b2)
+(no new decision entry — a further refinement of the same visual-
+presentation concern DEC-026 already covers, per governance).
+
+**What was built**: the dedicated `108px`/`136px` fixed-width grid column
+Phase 2C-B3 introduced was removed entirely. `.ww-panel` (the lane) is no
+longer split into two grid columns — it's a plain block with `position:
+relative`, and `.ww-chart-wrap` fills its full width. `.ww-legend` (the
+same DOM — dot + `.ww-legend-label` span + remove button, unchanged) is
+now `position: absolute`, pinned `right: 14px`, vertically centered
+(`top: 50%; transform: translateY(-50%)`), with `z-index: 2` so it floats
+on top of the chart instead of reserving its own layout space next to it.
+`pointer-events: none` on the wrapper (re-enabled on the pill via
+`pointer-events: auto`) keeps empty space around the compact tag from
+blocking chart hover/crosshair underneath it. No tradeoff was needed for
+the remove control — it fits identically inside the overlay tag as it did
+inside the column tag, since only the tag's position changed.
+
+**No architecture change**: Phase 2C-B2's unified-canvas container, lane
+dividers, compact lane height, and `wwUpdateBottomLaneAxis()`'s
+bottom-lane-only shared time axis are completely unchanged; Grouped
+mode's own CSS was not touched at all. No change to the shared-viewport
+synchronization mechanism, relayout loop-prevention, theme behavior,
+crosshair styling, point-budget, or source/workspace lifecycle — verified
+directly.
+
+**Backend**: zero files changed — same endpoint, same query parameters,
+confirmed by test.
+
+**Tests**: 278 backend (unmodified) + 17 new frontend `jsdom` checks + 2
+of Phase 2C-B3's own CSS-source assertions corrected in place (they
+specifically tested the now-removed grid-column mechanism; the other 14
+needed no change) + the full existing Phase 2C-B2 (20), Phase 2C-B1 (16),
+Phase 2C-A (19), and Phase 1 (4) suites all re-run unmodified and still
+passing (92 total this pass, no functional regressions). **Direct
+drag/reorder of panels, drag-to-overlay/group, drag-out-to-separate,
+digital-channel rendering, and lane resize were all explicitly not
+started.** Real-browser visual confirmation that the overlay genuinely
+reads as a Detego-style floating label rather than a side panel was not
+possible in this sandboxed, no-real-browser session — see this task's own
+final report for the closest available substitute evidence; final
+appearance judgment remains the owner's own manual UAT.
+
+## What was done in the prior session (Phase 2C-B3 — Right-Side Compact Lane Labels)
+
 **Phase 2C-B3 — Right-Side Compact Lane Labels.** Following manual owner
 UAT of Phase 2C-B2 (**passed** — "Separate view now feels much better,
 unified analog canvas direction is accepted"), the owner's next requested
@@ -679,7 +734,52 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified (this pass — Phase 2C-B3 right-side compact lane labels)
+## What was verified (this pass — Phase 2C-B3A overlay right-side lane labels)
+
+- `oruxa_powerwave` git state: local `main` confirmed identical to
+  `origin/main` at commit `ef89cc7` (independent `git fetch` via the
+  established HTTPS-URL workaround), working tree clean, before this pass
+  began.
+- **Backend regression: 278 tests, unmodified, all still pass** (fresh
+  venv run) — zero backend files in the diff (`git diff --stat -- backend/`
+  empty; diff scoped to `frontend/index.html` only).
+- **Frontend, new: 17 scripted `jsdom` checks, all passing** — CSS-source
+  checks confirming the label uses absolute positioning against a
+  relatively-positioned lane (not a grid column), is pinned near the right
+  edge and vertically centered, and sits above the chart via z-index; the
+  lane's chart area is no longer split into two columns; the overlay
+  label's DOM parent is the lane element itself (a sibling of the
+  chart-wrap within the same lane, not a separate layout block);
+  displayed-channel identity is correct; Separate mode still shows exactly
+  one lane per channel with the unified-canvas class intact; only the
+  bottom lane still shows the shared X axis; Grouped mode still groups
+  correctly and never applies the unified/overlay CSS; zoom/pan/Reset Time
+  View/Autoscale Y/no-modebar/theme-switching all still work;
+  Grouped↔Separate still preserves viewport and displayed channels;
+  removal via the overlay tag's remove button still removes the whole
+  lane; waveform query-parameter whitelist unchanged.
+- **Frontend, corrected in place: 2 of Phase 2C-B3's own CSS-source
+  assertions**, which specifically tested the now-removed grid-column
+  mechanism, were updated to assert the new overlay mechanism instead —
+  the remaining 14 of its 16 checks needed no change and passed
+  unmodified.
+- **Frontend, existing: the full Phase 2C-B2 (20), Phase 2C-B1 (16), Phase
+  2C-A (19), and Phase 1 (4) suites were all re-run unmodified against
+  this pass's code and all still pass in full** — 59 existing checks,
+  zero regressions (92 total this pass).
+- `node --check` on `frontend/index.html`'s inline `<script>` block —
+  syntactically valid.
+- `grep` cross-check: every `getElementById(...)` call resolves to an
+  `id=` that actually exists; no duplicate IDs.
+- No real-browser/visual verification of whether the overlay genuinely
+  reads as a Detego-style floating label rather than a side panel was
+  performed in this sandboxed session (no headless browser available) —
+  see "Live DEV verification" in this task's final report for what was
+  checked instead (API-level evidence only), and its own explicit
+  statement about what's honestly unverified. Final visual-appearance
+  judgment remains the owner's own manual UAT.
+
+## What was verified (prior pass — Phase 2C-B3 right-side compact lane labels)
 
 - `oruxa_powerwave` git state: local `main` confirmed identical to
   `origin/main` at commit `9fcc2d8` (independent `git fetch` via the
@@ -1115,7 +1215,21 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 2C-B3 right-side compact lane labels)
+## What files were changed this session (Phase 2C-B3A overlay right-side lane labels)
+
+Modified only: `frontend/index.html` (removed the `#wwPanels.ww-panels-
+unified .ww-panel` grid-template-columns split; `.ww-panel` is now
+`position: relative` in unified mode; `.ww-legend` is now `position:
+absolute` — pinned `right: 14px`, `top: 50%`/`transform: translateY(-50%)`,
+`z-index: 2`, `pointer-events: none` (re-enabled on `.ww-legend-item` via
+`pointer-events: auto`); `.ww-chart-wrap` no longer has a `grid-column`;
+the module header comment updated), `docs/project-memory/{DECISIONS,
+MIGRATION_PLAN,CURRENT_STATE,HANDOFF}.md` (a further "Update" note
+appended to DEC-026, no new decision entry; this work). No new files. **No
+`frontend/waveform-prototype.html`/`theme.css`/`theme.js` change, no
+`backend/` file, no CI/deployment workflow file was touched.**
+
+## What files were changed in the prior session (Phase 2C-B3 right-side compact lane labels)
 
 Modified only: `frontend/index.html` (grid-column order swapped in the
 `#wwPanels.ww-panels-unified .ww-panel` CSS so the chart is column 1 and
@@ -1363,7 +1477,7 @@ Modified:
 See "GitHub persistence" and "DEV deployment" in this task's final report
 (delivered in-conversation) for the exact commit hash, push confirmation,
 independent-fetch verification, GitHub Actions run, and live-endpoint
-checks for this Phase 2C-B3 pass. **Production was not touched.**
+checks for this Phase 2C-B3A pass. **Production was not touched.**
 
 ## What remains unresolved
 
@@ -1373,21 +1487,21 @@ checks for this Phase 2C-B3 pass. **Production was not touched.**
   mode, panel resize, Proportional Y scaling, mixed-unit panel handling,
   digital-channel display, shared crosshair — every one of these remains
   `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`, not
-  `[DECISION]`. This pass (Phase 2C-B3) was a VISUAL refinement of the
-  existing Separate-mode lane label only (an update to DEC-026, not a new
-  decision) — it did **not** touch any of the drag/reorder/overlay items
-  above, which remain the owner's own stated *next* direction, not
-  started.
+  `[DECISION]`. This pass (Phase 2C-B3A) was a corrective VISUAL
+  refinement of the same Separate-mode lane label (a further update to
+  DEC-026, not a new decision) — it did **not** touch any of the
+  drag/reorder/overlay items above, which remain the owner's own stated
+  *next* direction, not started.
 - `[OPEN]` **Unchanged, still real**: abandoned-workspace cleanup still
-  has no automatic expiry/TTL. `[DECISION MODE: COMPARISON]` — neither
-  Phase 2C-A, Phase 2C-B1, Phase 2C-B2, nor Phase 2C-B3 changes the
-  backend memory-retention shape (still per-*source*, DEC-019, unaffected
-  by how many panels/channels, which layout mode, or which visual
-  presentation a UI displays against it), but a real, now-more-flexible
-  multi-channel workspace is plausibly a richer, longer-lived thing to
-  explore than Phase 2B's single-channel preview was, which raises (not
-  resolves) the same urgency already flagged for Phase
-  2A/2B/2C-A/2C-B1/2C-B2. See
+  has no automatic expiry/TTL. `[DECISION MODE: COMPARISON]` — none of
+  Phase 2C-A, Phase 2C-B1, Phase 2C-B2, Phase 2C-B3, or Phase 2C-B3A
+  changes the backend memory-retention shape (still per-*source*,
+  DEC-019, unaffected by how many panels/channels, which layout mode, or
+  which visual presentation a UI displays against it), but a real,
+  now-more-flexible multi-channel workspace is plausibly a richer,
+  longer-lived thing to explore than Phase 2B's single-channel preview
+  was, which raises (not resolves) the same urgency already flagged for
+  Phase 2A/2B/2C-A/2C-B1/2C-B2/2C-B3. See
   [MIGRATION_PLAN.md's Phase 2C §30](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15)
   and DEC-019's Impact section.
 - `[OPEN]`, unchanged: digital waveform handling (no digital rendering or
@@ -1400,29 +1514,30 @@ checks for this Phase 2C-B3 pass. **Production was not touched.**
   currently bearable; and vertical (Y-axis) zoom being less intuitive
   than the rest of the toolbar — both explicitly flagged for a **later**
   UX refinement pass, not this one.
-- **Unchanged from Phase 2C-A/B1/B2**: real-browser rendering
-  responsiveness and actual visual appearance (whether the tag genuinely
-  reads as compact/readable/low-clutter) were not visually confirmed in
-  this sandboxed, no-real-browser session — see this task's final report
-  for the API/structural-level DEV evidence gathered instead. Final
-  appearance judgment remains the owner's own manual UAT.
+- **Unchanged from Phase 2C-A/B1/B2/B3**: real-browser rendering
+  responsiveness and actual visual appearance (whether the overlay
+  genuinely reads as a Detego-style floating label rather than a side
+  panel) were not visually confirmed in this sandboxed, no-real-browser
+  session — see this task's final report for the API/structural-level
+  DEV evidence gathered instead. Final appearance judgment remains the
+  owner's own manual UAT.
 
 ## What should be done next
 
-The next step is for the **project owner** to review Phase 2C-B3 via live
-DEV UAT (this task's own checklist) and choose a direction — none is
-assumed here: (a) confirm the right-side compact label now matches what
-was intended, or request further visual refinement; (b) authorize the
+The next step is for the **project owner** to review Phase 2C-B3A via
+live DEV UAT (this task's own checklist) and choose a direction — none is
+assumed here: (a) confirm the overlay label now matches what was
+intended, or request further visual refinement; (b) authorize the
 drag/reorder/overlay/split work directly (the owner's own explicitly
 stated next direction — vertical lane drag, reorder, drop-to-overlay/
 group, drag-out-to-separate); or (c) address the Phase 2C-A UAT findings
 (interaction latency, vertical-zoom discoverability) before further layout
 work. Do **not** begin any drag/reorder/overlay implementation without an
 explicit signal — this task's own closing instruction was to stop after
-the right-side label refinement. Separately, resolving the
-abandoned-session TTL question and the ~100 MB real-file memory
-validation remain recommended before broader/prolonged shared-DEV UAT,
-unchanged conclusion from every prior Phase 2 pass.
+the overlay label correction. Separately, resolving the abandoned-session
+TTL question and the ~100 MB real-file memory validation remain
+recommended before broader/prolonged shared-DEV UAT, unchanged conclusion
+from every prior Phase 2 pass.
 
 ## What must not be assumed
 
@@ -1437,11 +1552,18 @@ unchanged conclusion from every prior Phase 2 pass.
   completely independent Y axis; **no channel was ever merged onto
   another channel's Y axis** — this was an explicit, deliberate
   distinction in the task's own instructions, not an incidental detail.
+- **Do not confuse this pass's "overlay label" with the future
+  "drag-to-overlay" interaction** — they are unrelated concepts that
+  happen to share the word "overlay." This pass only changed the label's
+  *visual position* (a static CSS overlay on the chart, no dragging, no
+  interaction beyond the pre-existing remove button). Drag-to-overlay/
+  group (dragging one channel's lane onto another to merge them) remains
+  entirely unbuilt — do not read this pass as any part of that feature.
 - **Do not assume digital channels or a digital-section container exist**
   — neither was built this pass; no digital content, fake or real, exists
   anywhere in the repository.
-- **Do not assume the right-side label move changed anything besides the
-  tag's position/styling** — it did not; the same `.ww-legend`/
+- **Do not assume the overlay label correction changed anything besides
+  the tag's position/styling** — it did not; the same `.ww-legend`/
   `.ww-legend-item` DOM (now with one added `.ww-legend-label` wrapping
   span), the same remove control, the same color dot, the same panel/data
   model, and the same unified-canvas container from Phase 2C-B2 are all
@@ -1499,9 +1621,9 @@ unchanged conclusion from every prior Phase 2 pass.
 
 ## Owner approval needed before proceeding?
 
-- Not needed to review or use Phase 2C-A, Phase 2C-B1, Phase 2C-B2, or
-  Phase 2C-B3 themselves — already implemented, deployed to DEV, and
-  live-verified per this exact task's own authorization.
+- Not needed to review or use Phase 2C-A, Phase 2C-B1, Phase 2C-B2, Phase
+  2C-B3, or Phase 2C-B3A themselves — already implemented, deployed to
+  DEV, and live-verified per this exact task's own authorization.
 - **Yes**, before any drag/reorder/overlay/split work begins (the owner's
   own stated next direction, but still not yet explicitly authorized to
   *implement*), before Custom layout mode or panel resize, before Phase

@@ -531,17 +531,19 @@
             border-radius: var(--radius);
             overflow: hidden;
         }
-        /* Phase 2C-B3: the label column moved from the left to the RIGHT
-           (owner-requested, Detego layout used only as a placement/
-           compactness reference -- no Detego colors/typography/icons
-           copied). Chart is grid-column 1 (maximum width, unchanged
-           priority); the label tag is grid-column 2, pinned to the right
-           edge of the lane via justify-self: end. */
+        /* Phase 2C-B3A: correction -- the label is no longer a dedicated
+           right-side layout column (that was still not the intended
+           layout per owner clarification). It is now OVERLAID directly on
+           top of the waveform lane, floating near the right edge,
+           vertically centered -- following Detego's own separate-waveform
+           label placement as the explicit layout benchmark for this
+           specific treatment (Oruxa colors/tokens/implementation only; no
+           Detego branding/typography/icons copied). The chart area is no
+           longer split into two grid columns -- it fills the full lane
+           width, and the label floats on top of it via absolute
+           positioning against the now-relatively-positioned `.ww-panel`. */
         #wwPanels.ww-panels-unified .ww-panel {
-            display: grid;
-            grid-template-columns: 1fr 136px;
-            align-items: center;
-            column-gap: 10px;
+            position: relative;
             padding: 2px 14px;
             margin-bottom: 0;
             border: none;
@@ -553,22 +555,32 @@
         /* Panel label is redundant with the (single-channel) legend chip in
            this mode -- the legend chip is the one compact lane label. */
         #wwPanels.ww-panels-unified .ww-panel-header { display: none; }
+        /* Overlay positioning: floats over the chart, not a layout column.
+           pointer-events: none on the wrapper (it shrink-wraps to the pill
+           and shouldn't block hover/crosshair on empty space around it);
+           re-enabled on the pill itself so its remove button stays
+           clickable. */
         #wwPanels.ww-panels-unified .ww-legend {
-            grid-column: 2;
-            grid-row: 1;
+            position: absolute;
+            top: 50%;
+            right: 14px;
+            transform: translateY(-50%);
             margin-bottom: 0;
             flex-wrap: nowrap;
-            justify-self: end;
+            z-index: 2;
+            pointer-events: none;
         }
-        /* Compact right-side tag: subtle pill, readable but secondary to
-           the waveform -- not a card header. */
+        /* Compact overlay tag: subtle pill, readable but secondary to the
+           waveform -- not a card header, not a side panel. */
         #wwPanels.ww-panels-unified .ww-legend-item {
+            pointer-events: auto;
             background: var(--surface-tint);
             border: 1px solid var(--panel-border);
             border-radius: 999px;
             padding: 2px 4px 2px 8px;
             font-size: 0.72rem;
-            max-width: 130px;
+            max-width: 150px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
         }
         #wwPanels.ww-panels-unified .ww-legend-label {
             overflow: hidden;
@@ -577,14 +589,11 @@
             min-width: 0;
         }
         #wwPanels.ww-panels-unified .ww-chart-wrap {
-            grid-column: 1;
-            grid-row: 1;
             border: none;
             border-radius: 0;
             background: transparent;
         }
         #wwPanels.ww-panels-unified .ww-chart { height: 140px; }
-        #wwPanels.ww-panels-unified .ww-error { grid-column: 1 / -1; }
     </style>
 </head>
 <body>
@@ -1469,14 +1478,25 @@
         //     the stack visually reads as one shared time axis. Grouped
         //     mode's own panel styling and per-panel X axis are untouched.
         //   - Phase 2C-B3: another VISUAL-only refinement -- the label
-        //     column moved from the left to the RIGHT (owner-requested,
-        //     Detego used only as a placement/compactness reference, never
-        //     copied) and is now a small pill-style tag instead of plain
-        //     text. Same DOM (`.ww-legend`/`.ww-legend-item`, now with a
-        //     `.ww-legend-label` span for ellipsis truncation), just
-        //     re-ordered via CSS grid-column + restyled. No JS behavior
-        //     change beyond that one wrapping span; the existing remove
-        //     control is unchanged and still works inside the tag.
+        //     moved from the left to the RIGHT and became a small
+        //     pill-style tag instead of plain text (adding the
+        //     `.ww-legend-label` span used ever since for ellipsis
+        //     truncation). Originally placed in a dedicated right-side
+        //     grid column -- **superseded by Phase 2C-B3A below**, which
+        //     is the current behavior.
+        //   - Phase 2C-B3A: correction, same day -- the owner clarified a
+        //     dedicated right-side column was still not the intended
+        //     layout. The label tag is now OVERLAID directly on the
+        //     waveform lane (absolutely positioned against a now-relative
+        //     `.ww-panel`, floating near the right edge, vertically
+        //     centered) instead of occupying its own grid column --
+        //     following Detego's own separate-waveform label placement as
+        //     the explicit layout benchmark for this specific treatment
+        //     (Oruxa tokens/implementation only, no Detego branding/
+        //     typography/icons copied). No DOM/JS change beyond CSS
+        //     positioning; the same `.ww-legend`/`.ww-legend-item`/
+        //     `.ww-legend-label` markup and the same remove control are
+        //     reused unchanged.
         // ==================================================================
 
         // Deterministic per-channel identity colors, assigned in the order
