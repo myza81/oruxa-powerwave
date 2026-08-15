@@ -448,30 +448,41 @@
                     font: { color: colors.text, size: 11 },
                     margin: { l: 55, r: 20, t: 10, b: 40 },
                     // Crosshair styling: native Plotly axis spike-lines,
-                    // deliberately styled thin, dashed, and low-opacity so
-                    // the guide lines assist reading the waveform without
-                    // visually competing with it -- closer to uPlot's
-                    // visual subtlety, without recreating uPlot's cursor
-                    // mechanics (no custom mouse-following overlay was
-                    // built -- see DEC-022/DEC-023).
+                    // deliberately styled thin, dashed, and (now) modestly
+                    // higher-contrast so the guide lines read clearly
+                    // without visually competing with the waveform trace
+                    // -- no custom mouse-following overlay, no recreated
+                    // cursor mechanics (see DEC-022/DEC-023).
                     //
-                    // Thinner-crosshair refinement (DEC-023): Plotly's own
-                    // spike lines are drawn as ordinary SVG stroke paths
-                    // (even for a `scattergl` trace -- the spike overlay
-                    // itself is not part of the WebGL trace layer), and
-                    // SVG `stroke-width` reliably supports fractional
-                    // values below 1 across every current browser -- this
-                    // isn't a hack, it's standard SVG rendering. So
-                    // `spikethickness: 1` was NOT actually Plotly's
-                    // practical minimum; `0.5` is used here as a genuine,
-                    // natively-supported thinner value, combined with a
-                    // further-reduced spikecolor alpha (0.42, down from
-                    // 0.55) for compounding subtlety -- both levers per
-                    // the owner's "closer to uPlot's visual weight"
-                    // direction. Caveat, stated honestly: pixel-level
-                    // visual confirmation was not performed in this
-                    // sandboxed, no-real-browser session -- see this
-                    // task's live DEV verification step.
+                    // Second thinness pass (this pass, following theme
+                    // UAT): the owner found the prior 0.5px/rgba(...,0.42)
+                    // crosshair still too coarse and too faint in BOTH
+                    // themes. `spikethickness` reduced 0.5 -> 0.35 (still a
+                    // genuine, natively-supported fractional SVG
+                    // stroke-width, same reasoning as the previous pass).
+                    // `spikedash` changed from the named `"dash"` style to
+                    // a custom native Plotly dash-length string,
+                    // `"3px,2px"` -- Plotly's own `dash` attribute
+                    // documents this exact "px,px,..." syntax as a first-
+                    // class supported value alongside the named styles
+                    // (solid/dot/dash/longdash/dashdot/longdashdot), so
+                    // this is native configuration, not a workaround.
+                    // Honest limitation: Plotly's built-in named "dash"
+                    // style's exact internal pixel definition isn't stable,
+                    // documented public API to reverse-engineer and halve
+                    // precisely, so this custom value was chosen as a
+                    // clearly shorter, still-reads-as-dashes (not dots)
+                    // approximation, not a mathematically exact half --
+                    // per this task's own explicit allowance for that
+                    // outcome. Colors (`colors.spike`) were also
+                    // strengthened this pass -- see theme.css's
+                    // `--spike-color` tokens for the exact before/after
+                    // values and reasoning; grid styling
+                    // (`colors.grid`/`gridcolor`) is deliberately untouched,
+                    // the owner already finds it acceptable. Pixel-level
+                    // visual confirmation of both changes was not performed
+                    // in this sandboxed, no-real-browser session -- see
+                    // this task's live DEV verification step.
                     // `spikesnap: "data"` is unchanged -- the crosshair
                     // still snaps to the nearest REAL recorded sample,
                     // never an interpolated in-between position. Colors
@@ -482,12 +493,12 @@
                     xaxis: {
                         title: "Time (s)", gridcolor: colors.grid, zeroline: false,
                         showspikes: true, spikemode: "across", spikesnap: "data",
-                        spikethickness: 0.5, spikedash: "dash", spikecolor: colors.spike,
+                        spikethickness: 0.35, spikedash: "3px,2px", spikecolor: colors.spike,
                     },
                     yaxis: {
                         title: payload.unit || "", gridcolor: colors.grid, zeroline: false,
                         showspikes: true, spikemode: "across", spikesnap: "data",
-                        spikethickness: 0.5, spikedash: "dash", spikecolor: colors.spike,
+                        spikethickness: 0.35, spikedash: "3px,2px", spikecolor: colors.spike,
                     },
                     hovermode: "closest",
                     dragmode: "zoom",

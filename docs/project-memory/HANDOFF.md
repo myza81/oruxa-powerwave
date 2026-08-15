@@ -8,6 +8,45 @@ Last updated: **2026-08-15**
 
 ## What was most recently done
 
+**Crosshair Visual UAT Follow-up** (a very small, config-only refinement —
+**not** Phase 2C work). Theme UAT (prior pass) passed with no changes
+requested; the owner's only remaining feedback was that the Plotly
+crosshair was still too coarse (dash segments too long) and too faint (in
+**both** themes). Full detail:
+[MIGRATION_PLAN.md's follow-up subsection](MIGRATION_PLAN.md#follow-up-crosshair-visual-uat-refinement-2026-08-15-same-day),
+an "Update" note appended to
+[DEC-023](DECISIONS.md#dec-023--application-supports-light-and-dark-appearance-light-is-the-preferreddefault-direction)
+(no new decision entry — same crosshair-styling concern DEC-023 already
+covers).
+
+**What changed**: `spikethickness` `0.5` → `0.35` (both axes) — the same
+SVG-fractional-stroke-width reasoning as the prior pass. `spikedash`
+changed from the named `"dash"` style to a custom native Plotly
+dash-length string, `"3px,2px"` — Plotly's own `dash` attribute documents
+this `"px,px,..."` syntax as first-class native configuration, so this is
+not a workaround. **Native limitation found and stated honestly**:
+Plotly's built-in `"dash"` style has no stable, documented internal pixel
+definition to reverse-engineer and produce a mathematically exact "half
+length" from — a deliberately shorter native value was chosen instead, as
+the closest clean native option. `--spike-color` (theme.css) was
+strengthened in both themes for stronger contrast, stopping short of full
+opacity: Light `rgba(92, 101, 121, 0.42)` → `rgba(60, 68, 87, 0.6)`
+(darkened toward `--text`, higher alpha); Dark
+`rgba(139, 150, 173, 0.42)` → `rgba(168, 178, 199, 0.6)` (brightened
+toward `--text`, higher alpha). Grid-line styling was deliberately left
+untouched — the owner already finds it acceptable.
+
+**Unchanged**: `spikesnap: "data"`, both vertical/horizontal spike lines,
+moving hover X/Y values, theme-switch-without-refetch behavior, DEC-021/
+DEC-022, the waveform API, zoom/pan/Reset Time View/Autoscale Y,
+source/workspace lifecycle. No custom crosshair/cursor overlay was built;
+no Plotly-generated SVG was manually manipulated. No backend file was
+touched (278 tests unmodified and passing); the existing 19-check
+`jsdom` test script was updated in place for the new values (not a new
+test file). **No Phase 2C work.**
+
+## What was done in the prior session (Light/Dark Theme & Crosshair Refinement)
+
 **Light/Dark Theme & Crosshair Refinement** (a small, general-application
 UX task — **not** Phase 2C work). Full detail:
 [MIGRATION_PLAN.md — Light/Dark Theme & Crosshair Refinement Record](MIGRATION_PLAN.md#lightdark-theme--crosshair-refinement-record-2026-08-15),
@@ -426,7 +465,33 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified (this pass — Light/Dark theme & crosshair refinement)
+## What was verified (this pass — crosshair visual UAT follow-up)
+
+- `oruxa_powerwave` git state: local `main` confirmed identical to
+  `origin/main` at commit `adc9439` (independent `git fetch` via the
+  established HTTPS-URL workaround), working tree clean, before this pass
+  began.
+- **Backend regression: 278 tests, unmodified, all still pass** (fresh
+  venv run) — zero backend files in the diff (`git diff --stat -- backend/`
+  empty).
+- **Frontend: the same 19-check scripted `jsdom` test, updated in place
+  and re-passing** for the new values — `spikethickness: 0.35`,
+  `spikedash: "3px,2px"`, Light `--spike-color: rgba(60,68,87,0.6)`, Dark
+  `--spike-color: rgba(168,178,199,0.6)`, `spikesnap: "data"` unchanged,
+  both axes' spikes enabled, theme switch still triggers **zero**
+  additional `fetch` calls, Reset Time View regression check still green.
+- `node --check` on `frontend/waveform-prototype.html`'s inline
+  `<script>` block — syntactically valid.
+- Manual `grep` confirmed the new `spikethickness`/`spikedash` values are
+  only present in the intended two places (xaxis/yaxis) and no stale
+  `0.5`/`"dash"` values remain in the live config (only historical
+  comment text, left as accurate history, not live code).
+- No real-browser/visual verification was performed in this sandboxed
+  session (no headless browser available) — see "Live DEV verification"
+  in this task's final report, and the honest limitation note on the
+  dash-length/thickness claims (DECISIONS.md's DEC-023 Update note).
+
+## What was verified (prior pass — Light/Dark theme & crosshair refinement)
 
 - `oruxa_powerwave` git state: local `main` confirmed identical to
   `origin/main` at commit `2349972` (independent `git fetch` via the
@@ -674,7 +739,17 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Light/Dark theme & crosshair refinement)
+## What files were changed this session (crosshair visual UAT follow-up)
+
+Modified only: `frontend/theme.css` (`--spike-color` values in both
+themes), `frontend/waveform-prototype.html` (`spikethickness`/`spikedash`
+values + updated code comments — no other logic touched),
+`docs/project-memory/{DECISIONS,MIGRATION_PLAN,CURRENT_STATE,HANDOFF}.md`
+(an "Update" note appended to DEC-023, not a new decision; this work). No
+new files. **No `frontend/index.html` change, no `backend/` file, no
+CI/deployment workflow file was touched.**
+
+## What files were changed in the prior session (Light/Dark theme & crosshair refinement)
 
 New: `frontend/theme.css`, `frontend/theme.js`.
 
@@ -864,7 +939,8 @@ Modified:
 See "GitHub persistence" and "DEV deployment" in this task's final report
 (delivered in-conversation) for the exact commit hash, push confirmation,
 independent-fetch verification, GitHub Actions run, and live-endpoint
-checks for this theme/crosshair pass. **Production was not touched.**
+checks for this crosshair-visual-UAT-follow-up pass. **Production was not
+touched.**
 
 ## What remains unresolved
 
@@ -885,22 +961,29 @@ checks for this theme/crosshair pass. **Production was not touched.**
   memory ceiling (still not directly measured); and everything else
   already listed in
   [CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers).
-- **Not a new open item, but worth restating**: the `spikethickness: 0.5`
-  crosshair-thinness claim (DEC-023) rests on SVG's well-established
-  fractional-stroke-width support, not a pixel-level screenshot comparison
-  in this sandboxed session — the owner's own live DEV visual check is
-  where this actually gets confirmed.
+- **Not a new open item, but worth restating**: the `spikethickness: 0.35`
+  and `spikedash: "3px,2px"` crosshair claims (DEC-023's Update note) rest
+  on SVG's well-established fractional-stroke-width support and Plotly's
+  documented custom-dash-length syntax respectively, not a pixel-level
+  screenshot comparison in this sandboxed session — the owner's own live
+  DEV visual check is where this actually gets confirmed.
+- **Native-limitation finding from this pass, not itself a blocker**:
+  Plotly's built-in named `"dash"` style has no stable, documented
+  internal pixel definition — a future refinement request for an even
+  shorter/longer dash should expect the same "closest clean native
+  custom-length value" approach, not an exact mathematical scaling of the
+  named style.
 
 ## What should be done next
 
 Per this pass's own scope, there is nothing further to do here beyond the
-owner's live DEV review of the theme and crosshair result (this task's own
-"Live DEV verification" checklist). No further theming work — a settings-
-page redesign, additional theme modes, per-user server-side preference
-storage, or anything beyond the simple selector implemented — is
-authorized without a separate, explicit request. **Phase 2C's own next
-step is unchanged from the prior pass** (not touched or advanced by this
-theme/crosshair-only pass):
+owner's live DEV review of the refined crosshair (this task's own "Live
+DEV verification" checklist). No further crosshair or theming work — a
+settings-page redesign, additional theme modes, per-user server-side
+preference storage, or any further visual tweak beyond what's described
+here — is authorized without a separate, explicit request. **Phase 2C's
+own next step is unchanged from the prior passes** (not touched or
+advanced by this crosshair-only pass):
 (a) approve the `[DECISION MODE: ANALYSIS]` items outright (listed in the
 design's §35 — e.g. shared-viewport-state ownership, the one-Plotly-
 instance-per-panel architecture, chart-API isolation) without needing
@@ -917,26 +1000,37 @@ prolonged shared-DEV UAT, unchanged from the prior pass's own conclusion.
 
 ## What must not be assumed
 
-- **Do not assume this pass is Phase 2C work** — it is a small, general-
-  application UX refinement (Light/Dark theme, crosshair thinness);
-  nothing in it advances, decides, or authorizes any part of the Phase 2C
-  design proposal, which remains exactly as the prior pass left it
-  (`[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`, not
-  `[DECISION]`).
+- **Do not assume this pass is Phase 2C work** — it is a very small,
+  config-only crosshair visual refinement; nothing in it advances,
+  decides, or authorizes any part of the Phase 2C design proposal, which
+  remains exactly as it was left (`[PROPOSAL]`/`[ANALYSIS]`/
+  `[COMPARISON]`/`[NEEDS UAT]`, not `[DECISION]`).
 - **Do not assume Phase 2C implementation has started** — it has not; no
   multi-channel API, no panel-model code, no drag/drop, no digital signals,
   no cursors exist anywhere in the repository.
-- **Do not assume Dark is still the default** — Light is now the default
+- **Do not assume the crosshair is still at 0.5px/`"dash"`** — this pass
+  refined it further to `0.35px`/`"3px,2px"` in both themes; the prior
+  pass's values are superseded.
+- **Do not assume `"3px,2px"` is a mathematically exact half of Plotly's
+  named `"dash"` style** — it isn't; Plotly's internal pixel definition
+  for that named style is not stable, documented public API, so this
+  value is the closest clean native approximation, stated honestly as
+  such (see DEC-023's Update note).
+- **Do not assume Dark is still the default** — Light is the default
   whenever no preference is stored (DEC-023); Dark is preserved and fully
   functional, but only via explicit user selection.
 - **Do not assume the light palette was derived from or matches Detego's
   visual identity** — it is an original Oruxa palette; Detego was
   consulted only as a UI/UX workflow benchmark (DEC-020), never for
-  colors, per the owner's explicit instruction for this task.
+  colors.
 - **Do not assume a custom crosshair/cursor engine was built** — the
   crosshair remains Plotly's native, sample-snapped spike-line mechanism;
-  only its `spikethickness`/`spikecolor` styling and theme-reactivity
-  changed.
+  only its `spikethickness`/`spikedash`/`spikecolor` styling and
+  theme-reactivity changed. No Plotly-generated SVG was manually
+  manipulated.
+- **Do not assume grid-line styling changed** — the owner explicitly
+  found grid contrast acceptable; `gridcolor` was deliberately left
+  untouched by this pass.
 - Do not assume theme switching ever triggers a waveform data refetch — it
   doesn't, by design and by test (see "What was verified" above);
   `Plotly.relayout`/`Plotly.restyle` only.
@@ -964,14 +1058,15 @@ prolonged shared-DEV UAT, unchanged from the prior pass's own conclusion.
 
 ## Owner approval needed before proceeding?
 
-- Not needed to review or use the Light/Dark theme or the refined
+- Not needed to review or use the Light/Dark theme or the further-refined
   crosshair themselves — already implemented, deployed to DEV, and
   live-verified per this exact task's own authorization.
 - **Yes**, before any Phase 2C implementation slice begins, before Phase
   1.5 or any later phase begins, before a PROD deployment, before any
-  further theming work beyond the simple selector implemented here (e.g.
-  a settings page, more theme modes, per-user server-side storage), and
-  before any change to the ephemeral-storage, upload-size,
+  further crosshair or theming work beyond what's described here (e.g. a
+  settings page, more theme modes, per-user server-side storage, any
+  further visual iteration on the crosshair), and before any change to
+  the ephemeral-storage, upload-size,
   COMTRADE-upload-interaction, workspace-lifecycle, or waveform-data
   decisions recorded in `DECISIONS.md`. Per the change-governance rule in
   [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md).

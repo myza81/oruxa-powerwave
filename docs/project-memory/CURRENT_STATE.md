@@ -125,6 +125,29 @@ style and sample-snapping (`spikesnap: "data"`) are unchanged; no custom
 crosshair/cursor engine was built. No backend file changed; 278 backend
 tests unmodified and passing. **Phase 2C remains not started.**
 
+`[FACT]` **Theme UAT passed; a small crosshair visual UAT follow-up is now
+implemented** (2026-08-15, same day) — see
+[MIGRATION_PLAN.md's follow-up subsection](MIGRATION_PLAN.md#follow-up-crosshair-visual-uat-refinement-2026-08-15-same-day)
+and the "Update" note appended to
+[DEC-023](DECISIONS.md#dec-023--application-supports-light-and-dark-appearance-light-is-the-preferreddefault-direction)
+(no new decision entry — a refinement of the same crosshair-styling
+concern DEC-023 already covers). `spikethickness` reduced again, `0.5` →
+`0.35`; `spikedash` changed from the named `"dash"` style to a custom
+native Plotly dash-length string, `"3px,2px"` (Plotly's own `dash`
+attribute documents this `"px,px,..."` syntax as first-class native
+configuration). **Native limitation, documented honestly**: Plotly's
+built-in `"dash"` style has no stable, documented internal pixel
+definition to reverse-engineer and halve exactly, so a deliberately
+shorter native value was chosen instead — the closest clean native
+option, not a mathematically exact half. `--spike-color` strengthened in
+both themes for stronger contrast, stopping short of full opacity: Light
+`rgba(60, 68, 87, 0.6)` (was `rgba(92, 101, 121, 0.42)`); Dark
+`rgba(168, 178, 199, 0.6)` (was `rgba(139, 150, 173, 0.42)`). Grid
+styling untouched. No custom crosshair/cursor overlay; no manual SVG
+manipulation. No backend file changed; 278 backend tests unmodified and
+passing; 19 frontend `jsdom` checks updated in place and passing.
+**Phase 2C remains not started.**
+
 ## Completed foundation work
 
 `[FACT]`, verified against the repository on 2026-08-15:

@@ -51,8 +51,13 @@
     --chart-overlay-bg: rgba(255, 255, 255, 0.92);
 
     /* Plotly spike-line (crosshair) color -- theme-sensitive; read at
-       runtime via getComputedStyle, see waveform-prototype.html. */
-    --spike-color: rgba(92, 101, 121, 0.42);
+       runtime via getComputedStyle, see waveform-prototype.html. Owner UAT
+       (this pass) found the prior rgba(92,101,121,0.42) too faint against
+       the light waveform surface -- darkened toward --text and raised
+       alpha modestly (0.42 -> 0.6) for stronger contrast, deliberately
+       stopping short of full opacity so it stays visually secondary to
+       the waveform trace itself. */
+    --spike-color: rgba(60, 68, 87, 0.6);
 
     --radius: 8px;
 }
@@ -82,7 +87,11 @@
     --overlay-backdrop: rgba(4, 7, 14, 0.6);
     --chart-overlay-bg: rgba(15, 20, 32, 0.85);
 
-    --spike-color: rgba(139, 150, 173, 0.42);
+    /* Same UAT finding as Light's --spike-color above, brightened toward
+       --text instead of darkened (0.42 -> 0.6 alpha), for the same reason:
+       modestly stronger contrast against the dark waveform surface,
+       stopping short of full opacity. */
+    --spike-color: rgba(168, 178, 199, 0.6);
 }
 
 /* Appearance selector -- a small, deliberately simple segmented control,

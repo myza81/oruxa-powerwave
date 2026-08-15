@@ -4245,6 +4245,58 @@ Modified: `frontend/index.html`, `frontend/waveform-prototype.html`,
 New: `frontend/theme.css`, `frontend/theme.js`. No `backend/` file, no
 CI/deployment workflow file touched.
 
+### Follow-up: crosshair visual UAT refinement (2026-08-15, same day)
+
+`[FACT]`. Theme UAT (above) passed with no changes requested. The owner's
+only remaining feedback was that the Plotly crosshair was still too
+coarse (dash segments too long) and too faint (in **both** themes). A
+small, config-only follow-up refinement — no new `DECISIONS.md` entry, an
+"Update" note was appended to DEC-023 instead, since this is the same
+crosshair-styling concern DEC-023 already covers, not a new decision.
+
+- **Thickness**: `spikethickness` `0.5` → `0.35` — the same reasoning as
+  the prior pass (Plotly's spike-line overlay renders as an ordinary SVG
+  stroke path, and SVG `stroke-width` reliably supports fractional values
+  across current browsers).
+- **Dash pattern**: `spikedash` changed from the named `"dash"` style to
+  a custom native Plotly dash-length string, `"3px,2px"`. Plotly's own
+  `dash` attribute documents the `"px,px,..."` custom-length syntax as a
+  first-class supported value alongside the named styles
+  (solid/dot/dash/longdash/dashdot/longdashdot) — this is native
+  configuration, not manually-generated SVG or a workaround.
+  **Native-limitation finding**: Plotly's built-in named `"dash"` style's
+  exact internal pixel definition is not stable, documented public API,
+  so it cannot be reliably reverse-engineered and halved to produce a
+  mathematically exact "half length." A custom dash-length string was
+  used instead — a deliberately shorter, still-reads-as-dashes-not-dots
+  value — as the closest clean native option, per this task's own
+  explicit allowance for that outcome when an exact match isn't possible.
+- **Contrast**: `--spike-color` strengthened in both themes (theme.css),
+  stopping short of full opacity to keep the crosshair visually secondary
+  to the waveform trace: Light `rgba(92, 101, 121, 0.42)` →
+  `rgba(60, 68, 87, 0.6)` (darkened toward `--text`, higher alpha); Dark
+  `rgba(139, 150, 173, 0.42)` → `rgba(168, 178, 199, 0.6)` (brightened
+  toward `--text`, higher alpha). Grid-line styling (`gridcolor`) was
+  deliberately left untouched — the owner already finds it acceptable.
+- **Unchanged**: `spikesnap: "data"`, `spikemode: "across"`,
+  `showspikes: true` on both axes, `hovermode: "closest"`, moving hover
+  X/Y values, theme-switch-without-refetch behavior (`Plotly.relayout`/
+  `Plotly.restyle` only), DEC-021/DEC-022, waveform API, zoom/pan/Reset
+  Time View/Autoscale Y, source/workspace lifecycle. No custom crosshair
+  or cursor overlay was built. No backend file was touched.
+- **Honest limitation, restated**: pixel-level visual confirmation of
+  both the thickness and dash-length changes was not performed in this
+  sandboxed, no-real-browser session — the live DEV verification step is
+  where the owner can confirm the result directly.
+- Tests: 19 scripted `jsdom` checks (the same script from the theme pass,
+  updated in place for the new thickness/dash/color values — not a new
+  test file), all passing; 278 backend tests, unmodified, all passing.
+- Files changed: `frontend/theme.css` (`--spike-color` in both themes),
+  `frontend/waveform-prototype.html` (`spikethickness`/`spikedash`
+  values + updated comments), `docs/project-memory/{DECISIONS,
+  MIGRATION_PLAN,CURRENT_STATE,HANDOFF}.md`. No `backend/` file, no
+  `frontend/index.html` change, no CI/deployment workflow file touched.
+
 ---
 
 ## Phase 0 — Target Architecture Design

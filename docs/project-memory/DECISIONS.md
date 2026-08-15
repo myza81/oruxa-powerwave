@@ -1137,6 +1137,32 @@ Impact:
 - No backend file was touched; all existing backend tests are unmodified
   and passing.
 
+**Update (2026-08-15, same day) — crosshair visual UAT follow-up**: theme
+UAT passed; the owner's only remaining feedback was that the crosshair was
+still too coarse and too faint in **both** themes. This is a refinement of
+the same crosshair styling covered above, not a new decision:
+`spikethickness` reduced again, `0.5` → `0.35` (still a genuine, natively-
+supported fractional SVG stroke-width, same reasoning as before);
+`spikedash` changed from the named `"dash"` style to a custom native
+Plotly dash-length string, `"3px,2px"` — Plotly's own `dash` attribute
+documents this exact `"px,px,..."` syntax as a first-class supported value
+alongside the named styles, so this remains native configuration, not a
+workaround. **Honest limitation, again stated directly**: Plotly's
+built-in named `"dash"` style's exact internal pixel definition is not
+stable, documented public API to reverse-engineer and halve precisely, so
+an explicit shorter native value was chosen instead of a mathematically
+exact half — the closest clean native option, per this follow-up task's
+own explicit allowance for that outcome. `--spike-color` was also
+strengthened in both themes for stronger contrast, stopping short of full
+opacity: Light `rgba(92, 101, 121, 0.42)` → `rgba(60, 68, 87, 0.6)`
+(darkened toward `--text`, higher alpha); Dark `rgba(139, 150, 173, 0.42)`
+→ `rgba(168, 178, 199, 0.6)` (brightened toward `--text`, higher alpha).
+Grid styling (`gridcolor`) was deliberately left untouched — the owner
+already finds it acceptable. No custom crosshair/cursor overlay was built;
+no Plotly-generated SVG was manually manipulated. No backend file was
+touched; all 278 backend tests remain unmodified and passing. Phase 2C
+remains not started.
+
 ---
 
 ## How to add a decision
