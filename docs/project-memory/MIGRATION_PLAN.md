@@ -2862,6 +2862,1207 @@ workflow file was touched.
 
 ---
 
+## Phase 2C — Flexible Multi-Channel Waveform Workspace: Discovery and Design (2026-08-15)
+
+`[PROPOSAL]` throughout except where explicitly marked `[FACT]` (verified code
+evidence) or `[DECISION]` (none newly recorded by this pass — all of Phase 2C's
+UX/architecture questions remain open, per this task's explicit instruction).
+**This section is discovery and design only — no Phase 2C code, no multi-channel
+API, no drag/drop, no digital signals, no cursors were implemented this pass.**
+Phase 2B is complete (DEC-022: Plotly.js selected). Phase 2C has **not** started.
+
+### 1. Goal and core principle
+
+Design (not build) the first flexible multi-channel waveform workspace: select
+several analog channels → display together on one synchronized time axis →
+rearrange freely (vertical layout) while staying synchronized (horizontal time).
+Owner's own framing, carried verbatim as the organizing principle for this whole
+section:
+
+```text
+VERTICAL:                          HORIZONTAL:
+flexible                           shared
+user-arrangeable                   synchronized
+reorderable                        common X/time viewport
+groupable
+```
+
+This is a direct, natural extension of **DEC-021** (already approved,
+2026-08-15): waveform navigation is workspace-level, never channel-level; a
+centralized toolbar, never one native modebar per channel. Phase 2C's entire
+job is to design the *vertical* half of the model DEC-021 didn't need to
+specify yet, without ever weakening the *horizontal* half it already settled.
+
+---
+
+### 2. Existing `powerwave` findings — multi-channel/panel behavior
+
+Re-verified this session directly against `powerwave` HEAD `3156392`
+(unchanged — confirmed via `git -C powerwave log -1`, same commit the Phase 2
+discovery/design pass already used), via live import/call-graph tracing, not
+documentation.
+
+`[FACT]`, live-code evidence, with file:line references:
+
+- **Panel/subplot model**: no hard cap on channels per panel — any number of
+  channels can be assigned to one `SessionPanel`/`SessionCanvasWidget` (one
+  `pg.PlotItem`) via `panel.channel_refs`
+  (`app/sessions/event_session.py:707-718`). Multiple channels sharing a
+  panel share one `ViewBox`, grouped by unit (see Y-axis finding below).
+- **`powerwave` already has live channel↔panel drag-and-drop** — a genuinely
+  new finding this pass, not previously recorded. A channel's legend row
+  (`app/ui/session/legend_widget.py:257-289`) can be dragged and dropped onto
+  another panel's header (`app/visualization/widgets/session_canvas.py:163-181`),
+  wired through to `session.set_channel_panel(...)`
+  (`session_canvas_controller.py:563-575`). A sidebar combo box per channel
+  row offers the same move, plus a `"+ New panel…"` sentinel
+  (`app/ui/session/channel_tree_widget.py:186-233`). A right-click panel menu
+  additionally offers **"Merge with →" / "Split by source" / "Split by
+  type"** (`session_canvas.py:653-703`, `session_canvas_controller.py:581-654`)
+  — all confirmed **live** (wired in `main_window.py`).
+- **No panel reordering exists anywhere** — confirmed by both grep and
+  direct inspection: `session.list_panels()` returns plain dict-insertion
+  order (`event_session.py:707`), `add_panel()` always appends
+  (`event_session.py:710`); there is no `move_panel_up`/reorder-panels API
+  in the entire repository. **No within-panel channel reordering** either —
+  legend rows render in the order channels were assigned, no drag-reorder or
+  up/down control. This is the single biggest gap between `powerwave`'s own
+  proven UX and the owner's explicit Phase 2C requirement ("owner explicitly
+  wants waveform channels not fixed in one location") — `powerwave` solved
+  "move a channel to a different panel" years ago, but never solved
+  "reorder the panels themselves."
+- **A real, previously-unflagged dead-code bug**: the legend's own
+  right-click **"Move to panel…" menu item is wired on the UI side but its
+  signal (`move_to_panel_requested`) is connected nowhere** — confirmed by
+  grepping every connection site in `session_canvas_controller.py`'s
+  `_wire_canvas` (`lines 1729-1780`, which wires six sibling signals but not
+  this one). Clicking it is a silent no-op. Worth citing as evidence for why
+  a fresh, correctly-wired Oruxa implementation is preferable to porting this
+  particular mechanism as-is.
+- **Panel resizing**: live, via a standard Qt `QSplitter` drag handle
+  (`session_canvas_controller.py:246`, default behavior, not custom-built).
+  **Confirmed weakness, not worth reusing**: `rebuild_layout()` constructs a
+  **brand-new** `QSplitter` on every structural change — including an
+  ordinary channel-panel move — so any manually-dragged panel height is
+  silently discarded and reset to a fixed heuristic (`_resize_digital_panels()`,
+  `session_canvas_controller.py:951-984`: digital panels
+  `min(n_rows*30+65, 220)`px, analog panels a flat `250`px) every time. The
+  method's own docstring implicitly concedes this ("the user can still drag
+  splitter handles freely **after** this initial sizing").
+- **Y-axis behavior — a significant, previously-unrecorded finding**:
+  autoscale is **always on**, computed from **all of a `ViewBox`'s curve
+  data across the full session window** (`SessionCanvasWidget._refresh_y_ranges()`,
+  `session_canvas.py:810-836` — matches the earlier finding that `powerwave`
+  doesn't re-decimate/re-view on zoom either), **not** viewport-aware. More
+  importantly: **shared-scale-by-engineering-unit is a live, always-on,
+  non-toggleable structural mechanism** — `axis_group_for_signal()`
+  (`app/visualization/axis_management.py:91-131`) groups same-unit channels
+  onto one shared `ViewBox`/axis at both live call sites
+  (`session_canvas_controller.py:891`, `session_canvas.py:803`), hardcoded to
+  `AxisDisplayMode.SHARED`. The alternative `DEDICATED` (one axis per
+  channel) mode exists in the same function but is **only reachable from
+  confirmed-dead code** (`visualization_manager.py`, `flexible_plot_canvas.py`).
+  In other words: `powerwave` already behaves like Detego's "Proportional"
+  mode **permanently, with no "Fit" equivalent ever exposed to the user** —
+  the reverse of what §19 below initially proposes as Oruxa's own default.
+  This tension is addressed directly in §19.
+- **Legend / channel identity**: a real, always-visible per-panel legend
+  strip (`ChannelLegendWidget`, `app/ui/session/legend_widget.py:379-673`,
+  a scrollable list of rows below each panel — colour swatch, display name,
+  source badge, unit), not hover-only. A separate hover-crosshair readout
+  also exists, additively.
+- **Trace show/hide without closing the session**: multiple live mechanisms
+  (sidebar checkbox, legend right-click "Hide," Ctrl-click batch hide) all
+  correctly leave the session/panel intact — worth preserving the *concept*
+  (§21).
+- **Digital/analog panel separation — a real, unguarded gap**: default
+  routing puts digital channels in their own panel, but **nothing in the
+  code prevents a user from dragging a digital channel into an analog panel**
+  (or vice versa) via the same live drag mechanism above. When that happens,
+  `update_digital_curve()` draws the digital hi/lo segments onto the
+  **same** `ViewBox` used for left-axis analog curves
+  (`session_canvas.py:1000-1057`), and the digital row-offset values
+  participate in the same shared-autoscale computation as real analog
+  physical values — the digital-only special-casing (fixed `-0.5..n-0.5`
+  Y-range, autorange disabled) only activates when *every* channel in the
+  panel is digital (`session_canvas_controller.py:912-933`); a mixed panel
+  silently produces a broken, uninterpretable shared scale. This is direct,
+  concrete evidence supporting §25's recommendation to keep digital and
+  analog structurally separate in Oruxa's own panel model, not just a
+  cautious default.
+
+**Behavior worth preserving vs. desktop implementation not to reuse**,
+specific to Phase 2C's own concerns (extending the equivalent table from the
+original Phase 2 discovery/design pass, not repeating it):
+
+| Behavior worth preserving | Desktop implementation (do not reuse) | Oruxa web-native target |
+|---|---|---|
+| Channels can be moved between panels via direct manipulation | Qt `QDrag`/MIME-type drag, a sidebar combo box, and a separate merge/split context menu — three overlapping mechanisms for one concept | One HTML5 drag mechanism (§10/§11), not three redundant ones |
+| Panels can be resized by the user | `QSplitter` native handles, but sizes silently discarded on every structural rebuild (a confirmed bug) | Persist explicit panel heights in Oruxa's own state model (§27) across every re-render, not just until the next structural change |
+| Same-unit channels can share one Y scale for direct comparison | Always-on, non-toggleable — no "independent/Fit" mode ever reachable live | Offer both, viewport-aware Fit as the default (§19) — an explicit, deliberate improvement over `powerwave`'s own stale, full-session-window autoscale |
+| A visible, per-panel legend for channel identity | Custom `QScrollArea`+`_LegendRow` widget stack | Reuse Phase 1's already-shipped sidebar instead of building a second, duplicate legend widget (§21) |
+| Digital and analog channels are routed to separate panels by default | No structural guard against mixing them — a real, confirmed rendering bug when a user does | Keep digital and analog as structurally distinct panel *types* in Oruxa's own model (§25), not just a soft default |
+
+---
+
+### 3. Detego benchmark findings
+
+Gathered from Detego's own public marketing page (`detego.app`) and its public
+documentation page (`detego.app/docs/guide/waveform-viewer`) — publicly
+observable behavior only, per this task's instruction; no proprietary code or
+assets were inspected or reverse-engineered.
+
+`[FACT]`, from Detego's public docs, classified per this task's §6 scheme:
+
+- **Channel list sidebar** — three collapsible sections (Analog/Digital/
+  Computed), per-section count badge, per-channel visibility toggle, bulk
+  show/hide-all. **[USEFUL BENCHMARK]** — closely matches Phase 1's
+  already-shipped collapsible Analog/Digital grouping; extending it with
+  visibility toggles (rather than building a separate legend) is a natural fit.
+- **Grouping modes**: *Separate subplots* (no overlay), *Group by type*
+  (auto-detects voltage/current and overlays related channels, e.g. Ia/Ib/Ic),
+  *Custom groups* (a dedicated editor dialog; saved per-recording). **[USEFUL
+  BENCHMARK]** for the three-mode concept itself; **[ORUXA SHOULD DO BETTER]**
+  for the *mechanism* — a modal "custom groups editor" duplicates what direct
+  drag-and-drop already gives Oruxa for free once panels are draggable (see
+  §13) — a second, separate grouping UI would be redundant complexity Detego
+  needs (no drag/reorder is documented) but Oruxa does not.
+- **Panel resize**: per-channel drag dividers, plus toolbar-level
+  increase/decrease/reset-height buttons; a draggable analog/digital split
+  divider. **[USEFUL BENCHMARK]** for the toolbar-level global controls
+  (simple to build first); the per-panel divider is a reasonable **[NEEDS
+  UAT]** refinement once the coarser global control is validated.
+- **Y-axis scaling**: exactly two modes, "Fit" (each channel scaled to its own
+  space) and "Proportional" (same-unit channels share one scale). **[USEFUL
+  BENCHMARK]** — directly reusable naming and concept; see §22.
+- **Toolbar**: five groups separated by dividers — Navigation (zoom/pan/reset),
+  Measurement (A/B cursors, hover mode), Channel display (height, Y-scale),
+  Export (report/COMTRADE export), Annotate. **[USEFUL BENCHMARK]** for the
+  *grouping-by-concern* structure; **[NOT NEEDED]** for Phase 2C specifically —
+  Measurement/Export/Annotate are Phase 5+/out of scope here (§28 of this doc).
+- **Cursors**: single hover cursor (click to place, sidebar shows readouts at
+  that time) plus dual A/B measurement cursors with Δt and a t₀
+  time-reference re-basing feature. Both snap to the nearest recorded sample,
+  never interpolate. **[USEFUL BENCHMARK]**, explicitly **[NOT NEEDED]** for
+  Phase 2C's own scope (cursors are Phase 5) — but the sample-snapping
+  principle already matches Oruxa's existing Plotly `spikesnap: "data"`
+  configuration (DEC-022), so no future rework is implied.
+- **Legend**: no separate legend panel is documented — channel identity comes
+  from the sidebar's phase-colored dots plus a group-hover tooltip showing
+  every visible channel's value at that time. **[USEFUL BENCHMARK]** — directly
+  informs §23's recommendation to avoid building a second, separate legend UI.
+- **Drag-and-drop channel/panel reordering**: **not documented anywhere** in
+  Detego's own public guide. **[ORUXA SHOULD DO BETTER]** — this is exactly
+  the capability the owner has explicitly asked for (§13) that Detego itself
+  does not appear to offer; per DEC-020/PRODUCT_REFERENCES.md's own explicit
+  rule ("if Detego lacks a capability required by the owner, do not omit or
+  weaken it merely to stay consistent with Detego"), this is not a reason to
+  skip it — it is a specific, named opportunity for Oruxa to exceed the
+  benchmark.
+- **Rendering library**: Detego's own marketing copy states its charts are
+  "driven by interactive Plotly.js" — `[FACT]`, noted for completeness only.
+  **This is explicitly not evidence for, or repetition of, DEC-022** — Plotly
+  was selected in Phase 2B purely from the owner's own hands-on UAT
+  (DEC-022's Reason section), before this Detego docs page was even
+  consulted for Phase 2C. Recorded here only so a future reader doesn't
+  mistake the coincidence for a justification neither decision actually used.
+
+`[OPEN]` No further Detego audit (its actual client-side code, exact visual
+styling, or authenticated-app-only behavior) was performed — this reflects
+only what its own public marketing/docs pages state, per governance.
+
+---
+
+### 4. Proposed Oruxa workspace model — core interaction model
+
+```text
+                    Central Powerwave Toolbar
+              (Reset Time View · Autoscale Y · Add channels · Reset Layout)
+                              |
+                    one shared X/time viewport   <- DEC-021, unchanged
+                              |
+        +---------------------------------------------+
+        |  Panel: Voltage        [drag grip] [–] [x]   |   <- reorderable,
+        |    VA  VB  VC  (own Y axis)                  |      resizable,
+        +---------------------------------------------+      collapsible
+        |  Panel: Current        [drag grip] [–] [x]   |
+        |    IA  IB  IC  (own Y axis)                  |
+        +---------------------------------------------+
+        |  Panel: Frequency      [drag grip] [–] [x]   |
+        |    F   (own Y axis)                          |
+        +---------------------------------------------+
+```
+
+A **panel** (§10) is the unit of vertical flexibility: it owns its own Y axis
+and its own set of traces, but never its own X axis or its own native
+modebar — those stay workspace-level (DEC-021). Automatic grouping (by
+`engineering_type`, already backend-computed, never re-derived — Phase 1)
+produces a sensible *default* panel layout the moment channels are added, but
+every panel is then freely reorderable, and every channel is freely
+movable between panels, via drag — **the automatic placement is a starting
+point, never a constraint** (a direct requirement from §9 of the task).
+
+---
+
+### 5. Channel-add workflow — comparison and recommendation
+
+`[DECISION MODE: ANALYSIS]` — leaning strongly on evidence already gathered
+during the original Phase 2 discovery/design pass (§8 there), which reached
+the same conclusion independently: this doesn't need a fresh UAT before a
+confident recommendation, though the *feel* of the final implementation is
+worth a quick sanity check once built (folded into the first slice's own
+dev-verification, not a separate formal trial).
+
+| Option | Discoverability | Speed selecting many | Clutter | Fits future drag/drop | Verdict |
+|---|---|---|---|---|---|
+| A. Checkbox + "Add to workspace" button | High — checkboxes are a familiar, self-explanatory affordance | Fast — select N, click once | Low — one button, appears only once ≥1 selected | Yes — selected rows can later also support drag as an *additional*, not exclusive, path | **Recommended** |
+| B. Direct click (click a row = added) | Low — no visible "selected" state before commit; easy to misclick | Slow for many — one added source-of-truth per click, no batching | Low | Poor — no natural drag handle | Rejected |
+| C. Per-channel "Add" button (mirrors existing "Remove" pattern) | High | Slow for many — N separate clicks, no batch | Higher — a button per row, always visible | Fine, orthogonal | Reasonable fallback, not first choice |
+| D. Drag channel row into workspace | Low without prior exposure; discoverable only after first use | Slow for many (one drag per channel) unless combined with multi-select-then-drag (added complexity) | Low | N/A — this *is* the drag mechanism | Rejected as the *primary* mechanism (see reasoning) |
+| E. Multi-select + add | Same as A, described from the multi-select angle | Same as A | Same as A | Same as A | Same recommendation as A — A already *is* this option |
+
+**Recommendation**: **Option A** — a checkbox per channel row (added to Phase
+1's already-shipped, already-UAT'd collapsible/searchable channel table) plus
+one "Add N selected to workspace" button that appears once ≥1 channel is
+checked. This directly extends an interaction model the owner has already
+approved (DEC-017's underlying UAT: simple, understandable, comfortable) and
+requires no new interaction language to learn. Drag-to-add (Option D) is
+**not recommended** as the primary channel-add path — the same reasoning the
+original Phase 2 discovery pass already gave (no evidence it serves this
+engineering-focused, keyboard/mouse-basic audience better, and it adds real
+implementation complexity for what checkbox-select already does simply) still
+holds and is reaffirmed here. Drag *within* the workspace (reordering panels,
+moving channels between panels) is a completely different, and much more
+valuable, use of drag — see §13 — and should not be conflated with "getting a
+channel into the workspace in the first place."
+
+---
+
+### 6. Initial default layout — comparison and recommendation
+
+`[DECISION MODE: ANALYSIS]`:
+
+| Option | Behavior | Assessment |
+|---|---|---|
+| A. One channel per panel | Every selected channel gets its own panel | Simplest to reason about, but defeats the entire point of grouped-phase comparison (VA/VB/VC) that engineers actually want by default |
+| B. Auto-group by engineering type | Voltage together, Current together, etc. — already Phase 1's backend-computed `engineering_type` | **Recommended** — matches `powerwave`'s own default-panel intent (§2), matches Detego's own "Group by type" default, requires zero new classification logic |
+| C. Auto-group by source/phase family | Group by detected phase (A/B/C) across engineering types | More sophisticated, but riskier — would require inferring phase *relationships* across types, a stronger claim than the existing conservative classifier makes; not justified for a first slice |
+| D. All selected channels in one plot | Single panel, everything overlaid | Rejected outright — mixes incompatible units by default (V and A superimposed) with no engineering justification |
+| E. Smart heuristic (beyond type) | E.g. combine B + C + naming similarity | Speculative complexity beyond what evidence supports; `_infer_panel_for_channel()`'s own third tier (name-keyword matching) was already deliberately *dropped* when Phase 1's classifier was built, favoring `Undefined` over a guess — repeating that mistake here would contradict an already-established project convention |
+| F. Ask the user every time | A modal/dialog on every add | Rejected — adds friction to the single most common action (adding channels) for a decision the automatic default already gets right most of the time |
+
+**Recommendation**: **Option B**, exactly as already recorded in the original
+Phase 2 discovery/design pass (§9) — one panel per `engineering_type` actually
+selected, stacked vertically. The critical addition Phase 2C's design makes
+explicit: **this placement is provisional, never load-bearing** — §13's drag
+model lets the user immediately move any channel to any panel, so a
+misclassified or unwanted grouping costs one drag, not a dead end. This
+directly satisfies the task's own explicit requirement (§9): *"initial
+automatic placement must never permanently constrain the user."* Uncertain
+classifications land in the existing `Undefined` panel (same conservative
+principle already established for the channel classifier itself — never guess).
+
+---
+
+### 7. Panel concept — assessment
+
+**Panel = one visual waveform region, with one shared X/time axis (inherited
+from the workspace-level viewport, DEC-021), containing one or more traces,
+with its own independent Y axis.**
+
+This is the right abstraction — confirmed by evidence from all three
+reference points:
+
+- **`powerwave`**: `_infer_panel_for_channel()` already routes multiple
+  channels into one shared panel by default (voltage, current, power,
+  frequency, digital, other) — the same "one region, several traces, shared
+  X" shape, just without a user-facing reorder mechanism (§2).
+- **Detego**: "Group by type... overlays related ones" is the identical
+  concept under a different name.
+- **DEC-021**: already establishes the shared-X/independent-Y split at the
+  *workspace* level; a panel is simply the *unit* that owns one of those
+  independent Y axes.
+
+Do not overgeneralize the panel abstraction beyond what's needed now: a panel
+holds **analog channels only** for Phase 2C's own scope (§28 — digital is a
+future panel *type*, not a Phase 2C concern); mixed units within one panel is
+addressed directly, not left implicit (§23).
+
+---
+
+### 8. One channel per panel vs. grouped channels — recommendation
+
+`[DECISION MODE: ANALYSIS]`, resolved by the same evidence as §6:
+
+| | One-per-panel | Grouped (auto by type) |
+|---|---|---|
+| Scale clarity | Best — no shared-axis compromise | Good when units match; needs care when they don't (§23) |
+| Vertical space | Poor at scale — 12 channels = 12 panels = a very long page | Good — a handful of panels for the same 12 channels |
+| Phase comparison (VA/VB/VC) | Requires manual cross-panel visual alignment | Native — same Y axis, same panel, directly comparable |
+| Compactness | Poor | Good |
+
+**Recommendation**: **grouped-by-type as the default (§6), with one-channel
+panels available on demand via drag** (dragging a channel out of a group
+panel into empty space creates its own single-channel panel — §13's "split"
+behavior). This gives every engineer both modes without forcing a
+project-wide choice: compact-by-default for the common phase-comparison case,
+one-per-panel available in one drag whenever a specific channel needs
+undivided attention.
+
+---
+
+### 9. Grouping behavior — modes
+
+Adopting Detego's three-mode *concept* (§3), with an Oruxa-specific mechanism
+for the third mode:
+
+- **Separate** — every channel gets its own panel (§6 Option A), available as
+  an explicit workspace-level toggle for a user who wants maximum clarity
+  over compactness.
+- **Automatic** — group by `engineering_type` (§6 Option B, the default).
+- **Custom** — **not** a separate modal editor (Detego's own mechanism,
+  **[ORUXA SHOULD DO BETTER]** per §3) — Oruxa's "custom" state is simply
+  *whatever the user has manually rearranged via drag* (§13). No dedicated
+  "custom groups" UI needs to be built at all; dragging *is* the custom-group
+  editor, which is both simpler to build and more directly manipulable than a
+  separate dialog.
+
+Automatic grouping rules, explicitly conservative (matching the owner's
+already-established preference — see the existing `channel_classification.py`
+`Undefined`-over-guessing principle, carried over verbatim into this design):
+group by **`engineering_type` only**. Do **not** silently infer phase-family
+or source relationships beyond what the already-shipped classifier states.
+An ungroupable/`Undefined` channel gets its own panel (or an "Undefined"
+panel if more than one exists) rather than a guessed placement.
+
+---
+
+### 10. Drag/reorder design
+
+`[FACT]` directly informs this section: `powerwave` already has a live,
+proven channel-to-panel drag mechanism (§2) — but **no panel-reordering
+mechanism at all**, confirmed absent by both grep and direct inspection.
+Detego's own public docs (§3) document neither. **This makes panel
+reordering itself the single clearest opportunity for Oruxa to exceed both
+references at once**, not merely match one of them — `powerwave` proves
+channel-to-panel movement is a real, validated engineering need (its users
+have had this for years), while panel-level reordering has apparently never
+been built in either reference product.
+
+Assessing the task's own six candidate behaviors:
+
+| # | Behavior | First-slice? | Reasoning |
+|---|---|---|---|
+| 1 | Reorder whole panels | **Yes** | Cheapest, safest — pure DOM/array reordering, no cross-panel state migration; proves the drag mechanism itself in isolation |
+| 2 | Reorder channels within a panel | Defer | Low value until multi-trace-per-panel legend ordering is an actual, observed complaint |
+| 3 | Move a channel from one panel to another | **Yes, same slice as split/create** | This *is* the "vertical flexibility" the owner explicitly asked for — the single most important drag behavior in this whole list |
+| 4 | Create a new panel by dragging into empty space | **Yes, same slice as #3** | Natural counterpart of #3 — moving a channel "out" has to go *somewhere*; empty space is the simplest valid target |
+| 5 | Merge panels | Defer | Lower-priority edge case; achievable manually today by dragging every channel from one panel into another one at a time |
+| 6 | Split a channel into its own panel | Covered by #3+#4 together | Dragging a channel out of a multi-channel panel onto empty space already produces exactly this outcome — no separate mechanism needed |
+
+**Recommendation**: implement **#1 (reorder panels)** and **#3+#4 (move/split
+channels)** together as Phase 2C's drag slice (§28 — 2C-B); defer #2 and #5,
+which are refinements achievable indirectly (or not yet requested) rather
+than blocking capabilities.
+
+---
+
+### 11. Drag interaction safety
+
+Direct manipulation must never fight the chart's own zoom/pan drag gesture
+(Plotly's `dragmode: "zoom"`, already in use — DEC-022). Design:
+
+- **Drag handle only, never the chart canvas** — a small, explicit grip icon
+  (⋮⋮) on each panel's header and on each channel's legend-row entry (§23) is
+  the only draggable surface. The waveform trace area itself remains 100%
+  reserved for Plotly's own zoom/pan/hover, exactly as today.
+- **Drop indicators** — a visible insertion line (between panels) or a
+  highlighted target-panel border (when dropping a channel onto an existing
+  panel) during drag, so the outcome is always visible before release, never
+  a surprise after the fact.
+- **Reversibility over confirmation dialogs** — a misplaced drag is
+  trivially undone by dragging it back (state is just an ordered array —
+  moving something back is symmetric with moving it away); no modal
+  confirmation is needed for every drag (that would violate this design's own
+  "smooth, not overloaded" principle, §26), but see §31 for the one
+  workspace-level safety net (**Reset Layout**).
+- **Accidental-movement prevention** — a small drag-start threshold (a few
+  pixels of movement before a drag is recognized as a drag rather than a
+  click) is a standard, low-cost safeguard against a slightly-off click being
+  misread as a reorder attempt.
+
+---
+
+### 12. Panel resizing
+
+- **First slice**: **global height controls only** — toolbar-level
+  "Decrease/Increase/Reset heights" (directly reusing Detego's own observed
+  pattern, §3 — a genuinely useful, low-cost benchmark idea), applied to
+  every panel at once. Simple to build, no per-panel state to persist yet.
+- **`[DECISION MODE: NEEDS UAT]` refinement, not first slice**: per-panel
+  drag dividers (Detego also has this, as a finer-grained option layered on
+  top of its global controls, not a replacement for them; `powerwave` also
+  has this, via its native `QSplitter` handles, §2) — worth adding once
+  the coarser global control is in front of the owner and a real opinion can
+  form about whether individual panels actually need independent heights in
+  practice.
+- **A specific pitfall to avoid, directly evidenced by `powerwave`'s own
+  confirmed bug (§2)**: whatever panel-height mechanism ships must persist
+  explicit heights in Oruxa's own state model (§27) across every re-render —
+  `powerwave`'s `QSplitter` resize is a live, working *interaction*, but its
+  *result* is silently discarded on the next structural rebuild (a new
+  `QSplitter` is constructed from scratch on every channel-panel move).
+  Oruxa's array-based state model (§27) should store `height` per panel
+  entry explicitly, so a reorder/move elsewhere in the workspace never
+  resets a size the user deliberately set.
+- Scope: **global** control ships first; **per-panel** is a later, evidence-
+  gated addition; nothing here is deferred to "never."
+
+---
+
+### 13. Centralized waveform toolbar — recommended Phase 2C minimum
+
+Per the task's own explicit instruction not to pack every future control into
+Phase 2C, and DEC-021's already-approved requirement that this toolbar (not
+per-panel modebars) is the *only* place these controls live:
+
+**Recommended Phase 2C minimum**:
+
+```text
+[ Reset Time View ]  [ Autoscale Y ]     [ + Add channels ]  [ Reset Layout ]
+        Navigation         Y/display          Workspace
+```
+
+- **Reset Time View** — restores the full-record X range across every panel
+  at once (DEC-021, unchanged terminology).
+- **Autoscale Y** — recomputes each panel's Y range from its own currently
+  visible data (§22); kept as its own, separate button from Reset Time View,
+  per DEC-021's explicit requirement never to collapse the two.
+- **Add channels** — opens/returns focus to the channel browser (§5); the
+  workspace-level equivalent of what today is a per-channel link.
+- **Reset Layout** — discards manual panel/channel rearrangement and
+  recomputes the automatic grouping fresh (§9's Automatic mode) — the
+  reversibility safety net referenced in §11/§31.
+
+Zoom/Pan/Zoom In/Zoom Out are **not** separate toolbar buttons in this
+minimum — they're already native drag/scroll interactions on the chart
+canvas itself (unchanged from Phase 2B), consistent with keeping the toolbar
+itself minimal (§26). Layout/grouping-mode picker (Separate/Automatic), a
+finer channel-height control, and Y-scale-mode toggle (§22) are explicitly
+**deferred to a later Phase 2C slice** (§28's 2C-D), once the core
+interaction model above is validated. Export, cursor, A/B cursor, t0, and
+annotation controls are explicitly **out of scope** for Phase 2C entirely
+(Phase 5+).
+
+---
+
+### 14. Plotly native modebar transition — recommendation
+
+`[DECISION MODE: ANALYSIS]` — evidence-grounded, directly reusing an
+already-shipped, already-tested Phase 2B mechanism rather than inventing a
+new one:
+
+Assessing the task's own options:
+
+- **A. One hidden/shared Plotly control chart + custom toolbar** — rejected;
+  an extra, purely-synthetic Plotly instance with no visible data adds
+  complexity for no benefit once Option B (below) already solves the same
+  problem directly.
+- **B. Call Plotly APIs directly from the Powerwave toolbar** —
+  **recommended** (full reasoning in §17/18 below).
+- **C. Retain one modebar on an overall parent plot** — rejected; this is
+  exactly the "one figure with subplots" architecture (§18's Option A), and
+  inherits its drag/reorder/resize costs (below) without a compensating
+  benefit specific to the modebar question.
+- **D. Another approach** — none identified with a clear advantage over B.
+
+**Recommendation**: **Option B**. Every panel's own Plotly instance has its
+native modebar explicitly disabled (`config.displayModeBar: false` — a
+one-line change from Phase 2B's current `modeBarButtonsToRemove` approach),
+and the centralized Powerwave toolbar's buttons call the exact same Plotly
+API functions (`Plotly.relayout`, already used by today's `setViewport`)
+against **every currently-displayed panel's Plotly instance**, not just one.
+This is a direct, mechanical extension of code that already exists, is
+already tested, and is already proven correct in Phase 2B — not a new
+mechanism.
+
+---
+
+### 15. Shared X/time synchronization — architecture
+
+This is the single most consequential Phase 2C architecture question. Full
+comparison in §16.
+
+---
+
+### 16. One Plotly figure vs. multiple coordinated figures
+
+`[DECISION MODE: ANALYSIS]` — this is a technical architecture question with
+enough evidence (from Plotly's own documented API surface and Phase 2B's
+already-proven, already-tested code) for a confident recommendation; it does
+not need a hands-on UAT to resolve, unlike the *visual/interaction feel*
+questions elsewhere in this document.
+
+**Option A — one Plotly figure, several stacked subplots** (via
+`layout.grid` / manually assigned `xaxis`/`yaxis` pairs with `matches: "x"`
+for the shared axis):
+
+- Shared X: free, native (`matches: "x"` propagates zoom/pan across subplots
+  automatically).
+- Independent Y: also native (each subplot keeps its own `yaxis`).
+- Reorder a panel: **not a native Plotly primitive** — moving a subplot to a
+  new vertical position means recomputing every subplot's `yaxis.domain`
+  fraction and re-assigning every trace's axis references, then a full
+  `Plotly.react` — effectively hand-building the same reorder logic Option B
+  needs anyway, just against a harder API surface (domain-fraction math
+  instead of DOM order).
+- Move a channel between panels: same problem — no native "move this trace
+  to a different subplot" operation; requires deleting and re-adding traces
+  with new axis assignments while also touching the domain math above.
+- Resize a panel: same domain-fraction recomputation across *every* subplot
+  on every resize (they all share the available vertical space).
+- Cost: one WebGL/canvas context total; marginally lower baseline memory.
+
+**Option B — one independent Plotly figure (instance) per panel, each its own
+`<div>`, coordinated by a thin Oruxa-owned shared-viewport layer**:
+
+- Shared X: **not native**, but already built and tested — Phase 2B's
+  `setViewport()`/`suppressNextRelayout` pattern already broadcasts one
+  `(startTime, endTime)` to a Plotly instance without re-triggering its own
+  relayout handler; extending this from "one instance" to "every displayed
+  panel's instance" is a loop around already-proven code, not new
+  architecture.
+- Independent Y: trivial — separate figures have separate `yaxis` by
+  construction, no domain math at all.
+- Reorder a panel: **trivial** — panels are plain DOM nodes; reordering is a
+  DOM operation (native browser drag-and-drop or a small reorder library),
+  with zero interaction with any chart's internal state.
+- Move a channel between panels: **native Plotly API** —
+  `Plotly.deleteTraces(sourceFigure, index)` +
+  `Plotly.addTraces(targetFigure, trace)`, both well-documented, no
+  domain/axis-fraction math involved.
+- Resize a panel: resize its container `<div>`, call the built-in
+  `Plotly.Plots.resize(container)` — cheap, native, per-panel only (no other
+  panel is touched).
+- Cost: N WebGL/canvas contexts (one per visible panel). For the realistic
+  panel counts this design targets (a handful of panels, §32's "6-12
+  visible traces" target), this is a well-established, unremarkable browser
+  workload — not a documented Plotly.js concern at this scale.
+
+**Recommendation**: **Option B.** Every one of Phase 2C's *hardest* stated
+requirements — reorder panels, move channels between panels, create/split
+panels, resize panels — is a native, well-documented Plotly API operation
+under Option B and a hand-built, domain-fraction-math problem under Option A.
+Option A's only genuine advantage (native shared-X) is **already achieved**
+under Option B by extending Phase 2B's own proven broadcast mechanism, so
+Option A buys nothing Phase 2C doesn't already have another good way to get,
+while costing significantly more implementation complexity on exactly the
+features the owner cares about most. This recommendation should be spot-
+checked for interaction feel during the first implementation slice's own
+development (does synchronized relayout broadcast across N instances feel
+smooth?) — not gated behind a separate formal UAT, since the underlying
+mechanism is already proven, only its *fan-out* is new.
+
+---
+
+### 17. Multi-channel backend request strategy
+
+`[DECISION MODE: ANALYSIS]`:
+
+`[FACT]` — verified directly against `backend/app/api/v1/sources.py` and
+`backend/app/services/waveform_service.py` this session: the current Phase 2A
+endpoint (`GET .../sources/{source_id}/waveform`) takes exactly **one**
+`channel_name` per request; there is no multi-channel request shape today.
+
+Assessing the task's own options, given DEC-021's guarantee that every
+displayed channel always shares the identical `(start_time, end_time,
+point_budget)`:
+
+- **A. One HTTP request per channel** (today's shape, fanned out N times
+  client-side) — works with **zero backend change**; Phase 2B's coordinator
+  pattern already proves the per-request mechanics. Cost: N connections, N
+  JSON envelopes (repeated `source_id`, error-shape boilerplate, etc.) for
+  every single viewport change, growing linearly with displayed-channel
+  count.
+- **B. A bounded multi-channel waveform endpoint** — one request carrying a
+  repeated `channel_name` parameter (matching the original Phase 2 design's
+  own §20 sketch, which already anticipated this before Phase 2A's first
+  slice deliberately narrowed to one channel), same `start_time`/`end_time`/
+  `point_budget` applied to all, returning a list of per-channel results.
+  Backend cost: **none new** — the route handler simply calls the existing,
+  already-tested `extract_waveform_range()` once per requested channel
+  server-side and packs the results into one response list; no change to the
+  extraction/reduction logic itself.
+- **C. Batch requests per panel** — rejected as an unnecessary middle tier:
+  since every panel already shares the *same* workspace-level range (DEC-021),
+  batching at the panel level buys nothing over batching at the
+  whole-workspace level (Option B), which is simpler.
+- **D. A request coordinator with concurrency limits** — a valid *client-side*
+  pattern regardless of A vs. B, but doesn't answer *how the backend serves
+  multiple channels*; if B is adopted, there's no fan-out left to limit
+  (one request = one response for the whole viewport).
+- **E. Another approach** — none identified with a clear advantage.
+
+**Recommendation**: **Option B**, added as its own small, additive backend
+slice (§28 — optional 2C-C) once real multi-panel usage (from the first
+frontend slice, built against Option A with zero backend change) shows the
+N-separate-requests overhead is actually felt — not a hard prerequisite for
+Phase 2C's *first* slice. The existing single-channel endpoint remains
+unchanged and continues to serve `waveform-prototype.html`'s single-channel
+preview page unaffected.
+
+---
+
+### 18. Point-budget semantics with many panels
+
+Every panel shares the same horizontal container width (they're stacked
+vertically, not side-by-side), so **panel *count* does not, by itself,
+demand a smaller point budget per channel** — each panel's X axis still
+spans the same pixel width regardless of how many other panels exist above
+or below it. The actual lever on total payload is **per-channel payload
+size**, which the existing `point_budget` mechanism (already fixed at a
+sensible default, §Phase 2A's `DEFAULT_POINT_BUDGET = 4000`) already bounds
+correctly, independent of channel count.
+
+**Recommendation**: keep `point_budget` tied to a bound derived from the
+shared panel's rendered pixel width (already an established target — "payorad
+should scale with pixel width, not full record size," carried forward from
+the original Phase 2 design's §26/this task's own §44) — **not** divided
+further by however many channels or panels happen to be open. A dozen
+channels at the existing ~4000-point ceiling each is a few hundred KB total
+JSON, comfortably within the performance targets already established; this
+should be confirmed, not assumed, by the existing open benchmark action item
+(§Phase 2 design's §28) once real multi-channel payloads exist to measure —
+Phase 2C's design does not need to pre-solve this by inventing a new formula
+today.
+
+---
+
+### 19. Shared X but independent Y — Y-axis scaling model
+
+`[DECISION MODE: ANALYSIS]` for the first-slice default (already reasoned in
+the original Phase 2 discovery pass, §10, reaffirmed here), `[DECISION MODE:
+NEEDS UAT]` for the Fit/Proportional toggle:
+
+| Option | First-slice default? | Reasoning |
+|---|---|---|
+| A. Per-panel autoscale to the panel's *entire* record | No | Defeats the purpose of zooming — a small excursion could stay visually flat against a Y range sized for the whole record |
+| B. Per-panel autoscale to the *currently visible* (viewport) data | **Yes** | Matches the already-recorded ANALYSIS-mode recommendation; keeps zoom meaningful for both X and Y together |
+| C. Whole-record autoscale | No | Same problem as A |
+| D. Same-unit proportional/shared scaling (Detego's "Proportional") | Later, as a toggle | Genuinely useful for direct magnitude comparison across same-unit channels (e.g. comparing VA/VB/VC peak values) but its value is best judged once real multi-channel panels exist to react to — `[NEEDS UAT]` |
+| E. Manually locked scale | Defer | No evidence of need yet; an edge case worth revisiting only if UAT surfaces a real request for it |
+
+**A real tension surfaced by the `powerwave` investigation (§2), addressed
+directly rather than glossed over**: `powerwave`'s own live behavior is the
+*reverse* of this recommendation — its shared-scale-by-unit grouping
+(Detego's "Proportional" concept) is **always on**, with no per-channel/
+"Fit" mode ever reachable from live code, and its autoscale is computed from
+the **entire session window**, not the live viewport. This recommendation
+deliberately departs from `powerwave`'s own default, for a stated reason
+consistent with DEC-020's "improve what's weak" principle (already applied
+once this same way for decimation, DEC-019): `powerwave`'s always-shared,
+never-viewport-aware Y behavior means a zoomed-in transient can still sit
+against a Y range sized for the whole record's other channels — the exact
+same "defeats the purpose of zooming" problem already identified and fixed
+for the X axis (§Phase 2 design's §12). Shipping viewport-aware **Fit** as
+Oruxa's own default is a specific, evidenced improvement over the existing
+desktop app, not an arbitrary choice — while still offering **Proportional**
+(matching both Detego's naming and `powerwave`'s own always-on default) as a
+toggle once real feedback justifies it.
+
+**Recommendation**: ship **B ("Fit," Detego's own naming is a reasonable,
+reusable label, computed viewport-aware — an explicit improvement over
+`powerwave`'s own stale, full-session-window autoscale) as the only mode in
+the first slice**; add a **Fit ↔ Proportional** toggle (Detego's exact
+two-mode naming, directly reusable; matches `powerwave`'s own always-on
+behavior when set to Proportional) as a later, evidence-gated refinement
+(§28 — 2C-D) once real multi-channel comparison feedback exists to judge it
+by.
+
+---
+
+### 20. Mixed-unit grouping
+
+The task's own worked example — "a current channel dragged into a voltage
+panel" — makes the answer concrete, not abstract:
+
+- **Automatic grouping never mixes units** (§9) — this stays a safe,
+  conservative default.
+- **Manual placement (drag) allows it** — this is a direct requirement of
+  the owner's own stated flexibility goal (§9 of the task prompt gives this
+  exact scenario). Prohibiting it outright would contradict the explicit
+  worked example the owner supplied.
+- **Readability is handled automatically, not left to the user**: when a
+  second distinct unit appears in one panel (via drag), a second Y axis
+  (Plotly's native `yaxis2`, right-side) is created automatically for it —
+  the two traces get visually distinct scales without the user configuring
+  anything. A subtle, dismissible panel-header note ("Mixed units — separate
+  scales") keeps this visible without demanding a confirmation click on every
+  drag (consistent with §11's "reversibility over confirmation dialogs"
+  principle).
+- **Cap at two distinct units per panel** — beyond that, a third/fourth axis
+  starts crowding the panel edge with diminishing readability; recommend a
+  soft nudge (an inline suggestion to split into another panel) rather than
+  a hard block, keeping the flexibility principle intact while still steering
+  toward readable defaults.
+
+**Recommendation**: **allow, with automatic secondary-Y-axis creation**,
+never a prohibition — this is `[DECISION MODE: ANALYSIS]`, directly resolved
+by the owner's own worked example plus Plotly's native secondary-axis
+support (no new mechanism needed).
+
+---
+
+### 21. Legend / channel identity
+
+Directly informed by Detego's own observed minimalism (§3: "no separate
+legend panel is documented... sidebar phase-colored dots plus tooltip"):
+
+- **Full metadata (unit, phase, source) stays in the existing Phase 1
+  sidebar** — already built, already searchable/collapsible/grouped, and now
+  additionally reflects which channels are currently added to the workspace
+  (a checked/highlighted state, extending §5's checkbox mechanism rather than
+  building a second "what's displayed" list).
+- **Panel header**: the grouping label only (e.g. "Voltage," or a
+  user-renamed custom label once panels can be freely composed) — compact,
+  never oversized (§26).
+- **Per-trace legend row**: a colored dot + channel name only, directly under
+  or beside the panel header — enough to distinguish VA from VB from VC at a
+  glance, without repeating unit/phase/source already shown in the sidebar.
+- **Hover tooltip**: full detail (name, exact time, exact value, unit) —
+  already implemented via Plotly's `hovertemplate` (DEC-022, unchanged).
+
+**Recommendation**: this three-tier split (sidebar = full metadata, panel
+header/legend-row = compact identity, hover = full instantaneous detail)
+avoids ever building a second, separate, competing legend UI — directly
+matching Detego's own observed approach and reusing Phase 1's already-shipped
+sidebar rather than duplicating it.
+
+---
+
+### 22. Colors
+
+`[DECISION MODE: ANALYSIS]`, with one small `[DECISION MODE: COMPARISON]`
+detail deferred to actual implementation time:
+
+**Recommendation**: automatic, deterministic per-channel color assignment
+(the same channel always renders in the same color within one workspace
+session, regardless of panel membership or reorder), with **phase-aware
+coloring applied automatically whenever a channel's `phase` metadata is known**
+(Phase 1's already-shipped `phase` field on the analog channel model) —
+falling back to a plain deterministic color cycle when phase is null/
+`Undefined`. This is closer to an industry-standard convention (Detego's own
+IEC/ANSI phase-color scheme, §3) than a stylistic preference, so it's treated
+as `[ANALYSIS]`, not `[UAT]`. **The exact hex values / which convention (IEC
+60446 vs. ANSI/IEEE)** is a small, low-risk detail worth a quick
+`[COMPARISON]` at actual implementation time, not resolved here. User-editable
+color is explicitly **deferred** — no evidence of need yet, not requested by
+the owner.
+
+---
+
+### 23. Shared crosshair design — concept only
+
+Not implemented this pass; concept only, to keep future compatibility clean
+(§24):
+
+- **Vertical time guide**: shared across every visible panel — hovering any
+  one panel broadcasts the hovered time to every other panel's own Plotly
+  instance (the same broadcast mechanism §16/§18 already builds for the
+  shared X viewport, reused for a "current hover time" instead of "current
+  visible range").
+- **Value readout**: each panel shows its own trace's value(s) at that shared
+  time (matches both Detego's own single-cursor sidebar readout and Oruxa's
+  already-existing `spikesnap: "data"` sample-snapped hover, DEC-022,
+  unchanged).
+- **Horizontal guide**: stays **local** to the panel actually being hovered —
+  broadcasting a horizontal (Y-value) guide line across panels with unrelated
+  units/scales would be meaningless.
+
+`[DECISION MODE: NEEDS UAT]` for the exact interaction feel once built; the
+*architecture* above (reuse the same shared-viewport broadcast mechanism for
+hover-time as for visible-range) is `[DECISION MODE: ANALYSIS]` and should be
+treated as settled now, precisely so a future implementation doesn't invent a
+second, parallel synchronization mechanism.
+
+---
+
+### 24. Future A/B cursors — architectural compatibility (not implemented)
+
+Confirming, not building: the shared-viewport coordinator object recommended
+throughout this section (owning "current shared X range" today, and "current
+shared hover time" per §23 later) is generic enough that named A/B cursor
+times (Phase 5+) are simply two more named instances of the same underlying
+concept — a `cursorA: time | null`, `cursorB: time | null` pair alongside the
+existing shared range/hover-time state, broadcast the same way. Nothing in
+this section's panel/toolbar/synchronization design forecloses that; no
+architecture needs to change later to accommodate it.
+
+---
+
+### 25. Digital waveform compatibility (not implemented)
+
+`[DECISION MODE: DEFER]` — matching digital rendering's own existing deferred
+status (Phase 2.x/2D, per the original Phase 2 discovery pass §14). Comparing
+the task's own candidate designs:
+
+- **Separate digital section, collapsible, below the analog panels** —
+  **recommended direction** (not decided/implemented) — matches both
+  `powerwave`'s own default panel list (which already includes a distinct
+  "digital" panel, §2) and Detego's own sidebar (a distinct "Digital"
+  section). The existing "panel = shared X + own Y + one or more traces"
+  abstraction (§7) already accommodates this without modification — a digital
+  panel simply holds step-rendered traces instead of continuous-line ones,
+  with a boolean hi/lo range instead of an engineering-unit Y axis.
+- **Mixed into individual analog panels** — not recommended; a boolean
+  signal has no meaningful shared Y scale with an engineering-unit trace.
+  **This is not a hypothetical concern** — the `powerwave` investigation
+  (§2) found a confirmed, unguarded live-code gap where exactly this mixing
+  is reachable (drag a digital channel into an analog panel) and produces a
+  broken, uninterpretable shared autoscale, because the digital-only
+  special-casing only activates when *every* channel in a panel is digital.
+  Oruxa's own panel model should structurally prevent this outcome (e.g. a
+  panel's declared trace-type governs what can be dropped into it) rather
+  than leaving it silently reachable the way `powerwave` currently does.
+- **Attached to analog groups** (e.g. a trip signal shown alongside the
+  voltage panel it relates to) — an interesting future refinement, not
+  decided now; nothing in the panel abstraction blocks it later (a panel
+  *could* hold a digital-only trace type if a future UAT wants that).
+
+No implementation, no API design commitment — this subsection exists only to
+confirm Phase 2C's own panel model doesn't quietly foreclose a good digital
+design later.
+
+---
+
+### 26. Source identity and multi-source future compatibility
+
+Every panel's internal trace state should carry `source_id` alongside
+`channel_name` (§27's state model) — trivial to include now, and directly
+protects against Phase 3's multi-source future without redesigning the panel
+model later, per this task's own explicit instruction. The backend API is
+already scoped by `source_id` per request (Phase 1/2A, unchanged), so no API
+change is implied by this. No hidden resampling or forced common-time-grid
+assumption is introduced anywhere in this design (directly reaffirming the
+already-established principle, MIGRATION_PLAN's Phase 2 design §21) — each
+channel keeps its own native `time` array exactly as today.
+
+---
+
+### 27. Workspace state model
+
+Lightweight, no new framework (the project's own established architecture
+principle, `docs/architecture/oruxa-architecture.md` / AGENTS.md — "no
+build step, no framework," reaffirmed for the frontend specifically):
+
+```js
+{
+  panels: [
+    {
+      id,                     // stable client-generated id, survives reorder
+      label,                  // "Voltage" (auto) or user-renamed (custom)
+      channels: [
+        { sourceId, channelName, unit, phase, color }
+      ],
+      height,                 // shared default unless overridden (§12)
+      yScaleMode: "fit",      // "fit" | "proportional" (§19)
+    },
+    // ... order in this array IS the display order (drag-reorder = array
+    // reorder, §13)
+  ],
+  sharedViewport: { startTime, endTime },  // drives every panel's X, DEC-021
+  layoutMode: "automatic",    // "separate" | "automatic" | "custom" (§9;
+                               // "custom" is simply "the user has dragged
+                               // something," not a distinct stored mode)
+  hoveredTime: null,          // future shared-crosshair anchor (§23), unused
+                               // by Phase 2C's own first slices
+}
+```
+
+No Redux, no global store library — this is a plain object owned by one
+coordinator module (the direct, multi-panel-aware descendant of Phase 2B's
+already-existing single-channel coordinator functions), matching the existing
+`waveform-prototype.html`'s own established pattern of plain functions over a
+shared `let` state, just widened from one channel to N panels.
+
+---
+
+### 28. Recommended Phase 2C implementation slices
+
+`[PROPOSAL]`, sequenced by risk/dependency — **not** the exact 2C-A..2C-E
+draft order the task itself offered as an example; re-derived from this
+section's own evidence:
+
+```text
+2C-A — Channel-add UX + synchronized multi-panel display + minimal toolbar
+  Checkbox-select channels from the existing Phase 1 browser (§5) -> "Add N
+  selected" -> automatic engineering_type grouping into stacked panels
+  (§6/§9), one independent Plotly instance per panel (§16's Option B),
+  native per-instance modebars disabled, a minimal centralized toolbar
+  (§13: Reset Time View + Autoscale Y only) driving every panel's Plotly
+  instance via the extended broadcast mechanism (§16). Still N separate
+  single-channel backend requests (§17 Option A) -- no backend change.
+  NO drag/reorder, NO panel resize UI, NO grouping-mode picker, NO digital,
+  NO cursors.
+
+2C-B -- Drag/reorder + move-channel-between-panels + create/split panels
+  The "vertical flexibility" layer itself (S10/S11): reorder whole panels,
+  move a channel to another panel, create a panel by dropping into empty
+  space. Depends on 2C-A's static multi-panel view already being proven
+  and ideally UAT'd once.
+
+2C-C (optional, evidence-gated) -- Backend multi-channel batching endpoint
+  Only if 2C-A/2C-B's real usage shows the N-separate-requests pattern is
+  an actually-felt cost (S17 Option B) -- additive, backend-only, doesn't
+  block or require rework of 2C-A/2C-B's frontend.
+
+2C-D -- Refinements
+  Y-scale mode toggle (Fit <-> Proportional, S19), panel resize (global
+  first, per-panel divider as a further NEEDS-UAT refinement, S12),
+  layout-mode picker (Separate/Automatic, S9). Polish, once the core
+  interaction model from 2C-A/2C-B is validated by real use.
+
+(Beyond Phase 2C -- confirmed architecturally compatible, not scheduled)
+  Shared crosshair broadcast (S23), digital panels (S25), A/B cursors
+  (S24) -- Phase 2D+/Phase 5, per DEC-021's own already-established
+  scope boundary.
+```
+
+**Why this sequencing**: 2C-A proves the riskiest new *architecture*
+(N-synchronized-Plotly-instances, extending Phase 2B's already-tested
+broadcast pattern) together with just enough UX (checkbox-add, minimal
+toolbar) to be a coherent, demonstrable slice on its own — deliberately
+*not* shipping a multi-panel view with zero shared controls, which would be a
+worse intermediate state than doing both together. 2C-B is then a genuinely
+separate, more novel UI-interaction slice (real drag-and-drop), correctly
+kept apart from 2C-A's architecture-proving concern. 2C-C is explicitly
+optional and evidence-gated, matching this project's established
+"don't build speculative infrastructure ahead of a demonstrated need"
+principle. 2C-D is deliberately last — pure refinement, safest to defer.
+
+---
+
+### 29. Recommended first Phase 2C implementation slice — exact scope
+
+```text
+An existing, already-uploaded COMTRADE source (Phase 1, unchanged)
+        |
+Checkbox-select several analog channels from the existing channel
+  browser (S5) -> "Add N selected to workspace"
+        |
+Automatic engineering_type grouping (S6/S9) into stacked panels --
+  one independent Plotly instance per panel (S16), native per-instance
+  modebar disabled
+        |
+Minimal centralized toolbar: Reset Time View + Autoscale Y only (S13),
+  driving every panel via the extended Phase 2B broadcast mechanism
+        |
+Still N separate single-channel GET .../waveform requests (S17 Option A)
+  -- zero backend change
+```
+
+**Exact scope exclusions for this slice** (mirroring the discipline the
+original Phase 2A/2B slices already used):
+
+- Drag/reorder/move/split — S28's 2C-B, not this slice.
+- Panel resize UI — S28's 2C-D, not this slice.
+- Layout-mode picker (Separate/Custom) — Automatic only for this slice.
+- Y-scale mode toggle (Fit/Proportional) — Fit only for this slice.
+- Backend multi-channel batching — S28's optional 2C-C, not this slice.
+- Digital channels, cursors/measurements, calculated signals,
+  synchronization across sources, shared crosshair broadcast, CSV/Excel,
+  TTL implementation — none touched, all explicitly out of scope per this
+  task's own S45/S17.
+
+**Why this slice, not a larger one**: it proves the two genuinely new,
+highest-risk pieces of Phase 2C -- multi-panel synchronized rendering (S16)
+and a real, checkbox-driven multi-channel selection flow (S5) -- without
+simultaneously building the drag-interaction layer (S28's 2C-B, itself
+substantial, separately novel UI work) or any backend change. This mirrors
+exactly the reasoning the original Phase 2 discovery/design pass used for
+sequencing 2A before 2B: prove the riskiest new architecture first, in as
+small a slice as still produces something coherently demonstrable, before
+layering the next genuinely new capability on top.
+
+---
+
+### 30. TTL / abandoned-session issue — reassessed for Phase 2C
+
+`[DECISION MODE: COMPARISON]` — unchanged decision mode from Phase 2A's own
+assessment; reassessed, not re-litigated, for Phase 2C's specific addition.
+
+`[FACT]`: Phase 2C's own design does **not** change the backend
+memory-retention shape at all — the full-resolution `DisturbanceRecord` is
+already retained per *source* (DEC-019), regardless of how many channels are
+ever queried against it or how many panels a user happens to display. Adding
+more panels to an already-open source costs backend memory only in the sense
+that more distinct range-request payloads get computed and returned (bounded,
+transient, per-request — not retained), never in the sense of retaining more
+per-source memory.
+
+**What Phase 2C does change**: the *likelihood* and *typical duration* of
+real UAT/exploration sessions — a flexible, multi-channel, drag-arrangeable
+workspace is a materially richer thing to explore than Phase 2B's
+single-channel preview, so sessions are plausibly longer and more numerous
+once Phase 2C actually ships, which raises the *probability* of an abandoned
+session accumulating (unchanged per-source cost, more sources/sessions likely
+open at once).
+
+**Is this a hard blocker for Phase 2C's own design or first implementation
+slice?** No — same reasoning already established for Phase 2A/2B (a
+controlled, small number of manually-driven sessions). It should be resolved
+(one of the already-compared options from the Phase 2 design's §18 — TTL,
+`sendBeacon`, hard limits, or the recommended combination) **before Phase 2C
+reaches broader or longer-duration shared-DEV UAT**, for the same reason as
+before, now modestly more urgent given the plausibly longer sessions a real
+multi-panel workspace invites. This reassessment does not escalate TTL to a
+design blocker; it reaffirms the existing urgency assessment is still
+accurate and has not been resolved by anything in this pass.
+
+---
+
+### 31. ~100 MB real-file memory validation — reassessed for Phase 2C
+
+Same reasoning as §30: Phase 2C's design does not change the per-source
+backend memory shape (only Phase 2A's already-existing retention does), so
+this remains an **independent, parallel action item**, not a Phase 2C design
+blocker. **Recommendation**: worth doing before Phase 2C reaches broader/
+prolonged shared-DEV UAT (same timing rationale as TTL, §30) — more sessions
+opened for longer, more exploratory multi-panel use raises the chance of
+actually discovering a real large-file memory cliff during a live UAT rather
+than in a controlled benchmark — but it does not block Phase 2C's own design
+or first implementation slice.
+
+---
+
+### 32. Performance design targets
+
+Practical, extending the already-established Phase 2 design targets (§26
+there) rather than inventing new hard numbers:
+
+- **Zoom/pan should remain interactive** across every displayed panel at
+  once, not just the panel being directly dragged (a direct consequence of
+  the shared-viewport-broadcast architecture, §16).
+- **Shared-viewport updates must not trigger a request storm**: the
+  broadcast mechanism triggers one *debounce cycle* per viewport change,
+  which then fans out to N per-channel requests (or, once §17's optional
+  batching endpoint exists, one request) — never N independently-debounced,
+  staggered timers.
+- **Payload scales with pixel width, not full record size or channel
+  count** (§18) — an architectural guarantee, confirmed by construction, not
+  a soft aspiration.
+- **6–12 visible analog traces should remain comfortable** — matches this
+  task's own suggested figure and the existing Phase 2 design's "a handful
+  of channels open at once" framing.
+- **Larger channel sets rely on hide/collapse rather than rendering
+  everything at once** — no scenario in this design proposes opening
+  50-100+ channels simultaneously; search/filter (Phase 1, already shipped)
+  and per-panel collapse (a natural, low-cost future refinement — collapsing
+  a panel's chart should also stop it from receiving viewport-range fetches
+  while collapsed) are the intended mechanisms for large channel counts, not
+  raw on-screen density.
+
+---
+
+### Closing note on decisions
+
+**No entry was added to `DECISIONS.md` by this pass.** Every architectural
+direction above — the panel model (§7), grouping modes (§9), drag/reorder
+scope (§10), the one-Plotly-instance-per-panel architecture (§16), the
+multi-channel backend strategy (§17), Y-axis scaling (§19), mixed-unit
+handling (§20), and the implementation slicing (§28/§29) — remains a
+`[PROPOSAL]` or an item under one of the four decision modes (`ANALYSIS`/
+`COMPARISON`/`NEEDS UAT`/`DEFER`), per this task's explicit instruction not
+to silently approve any of them or begin implementation. `DEC-021` and
+`DEC-022` (already approved) are reaffirmed, unweakened, and unchanged
+throughout — this pass builds on them, not around them.
+
+---
+
+### 33. Detego vs. `powerwave` vs. proposed Oruxa direction
+
+| Behavior | Detego benchmark | Existing `powerwave` | Owner requirement | Proposed Oruxa direction |
+|---|---|---|---|---|
+| Channel browser | Sidebar: Analog/Digital/Computed sections, count badges, visibility toggles | Sidebar channel tree with per-channel visibility checkboxes | (none stated beyond general flexibility) | Extend Phase 1's already-shipped, already-UAT'd collapsible/searchable browser with checkboxes + "Add N selected" (§5) — reuse, don't rebuild |
+| Grouping | Separate / Group-by-type / Custom (modal editor) | Auto-routes by `_infer_panel_for_channel()`; manual move via drag+combo+merge/split menu | "Groupable," "flexible vertically," never permanently constrained | Auto-group by `engineering_type` (§6/§9) as default; "custom" = drag state, no separate editor dialog (**exceeds Detego** — one less UI to learn) |
+| Panel arrangement | Not documented (no reorder found) | Channel↔panel move is live (drag/combo/menu); **panel reorder does not exist** | Owner explicitly wants panels "not fixed in one location" | Both channel↔panel move **and** panel reorder (§10) — **exceeds both references at once**, the clearest opportunity in this whole design |
+| Zoom/pan | Zoom (drag), Pan, Reset | Zoom/pan is local PyQtGraph re-view over a once-decimated array; no viewport re-fetch | DEC-021: workspace-level, shared across every channel | Shared X viewport broadcast across all panels (§15/§16), each zoom/pan re-fetches genuinely finer detail (already true since Phase 2A, DEC-019) — improves on `powerwave`'s own non-re-fetching zoom |
+| Toolbar | 5 grouped sections (Nav/Measurement/Display/Export/Annotate), one shared toolbar | No single toolbar — controls are distributed across sidebar/legend/context-menus/splitters | DEC-021: centralized, never one modebar per channel | Minimal centralized toolbar (§13): Reset Time View, Autoscale Y, Add channels, Reset Layout — grows later per §28, never one native modebar per panel |
+| Crosshair | Single hover cursor (click-placed) + A/B measurement cursors, sample-snapped | Three-way fragmented cursor ownership (confirmed, unresolved in `powerwave` itself) | Native, sample-snapped (already shipped, DEC-022) | Extend the already-proven single-owner Plotly spike-line mechanism to a shared, broadcast hover time across panels (§23) — avoids reproducing `powerwave`'s own fragmentation |
+| Y scaling | Two explicit modes: Fit / Proportional | One mode only, always-on, non-toggleable shared-by-unit, non-viewport-aware | (none stated beyond general readability) | Viewport-aware Fit as default (**improves on `powerwave`'s stale full-record autoscale**), Proportional as a later toggle (matches Detego's naming; matches `powerwave`'s own default when toggled) — §19 |
+| Panel resize | Per-panel drag divider + global height presets | Native `QSplitter` drag, but **sizes silently discarded on every rebuild** (confirmed bug) | (none stated) | Global height controls first (§12), explicit persisted per-panel height in Oruxa's own state model (§27) — avoids `powerwave`'s own confirmed data-loss bug |
+| Multi-source readiness | Not documented | Native — session model already supports multiple sources with independent native sample rates | "Do not build assumptions that later prevent" multi-source | Every panel's trace state already carries `source_id` (§26); no shared-time-grid assumption anywhere (unchanged Phase 2 principle) |
+
+---
+
+### 34. Candidate Phase 2C UAT decisions
+
+Following the same lightweight per-candidate format the original Phase 2
+discovery pass used (§29 there) — alternatives, why UAT matters, smallest
+useful prototype:
+
+- **Channel-add workflow feel** (§5) — checkbox+button is the ANALYSIS-mode
+  recommendation; worth a quick sanity check once the first slice exists
+  (does selecting e.g. 8 channels feel fast/clear?), not a separate formal
+  trial. Smallest test: the first slice itself, used hands-on.
+- **Drag interaction feel** (§10/§11) — whether the grip-handle-only drag,
+  drop indicators, and reversibility-over-confirmation approach genuinely
+  feels safe and predictable (not accidentally destructive) is inherently a
+  hands-on judgment. Smallest prototype: 2C-B itself, the first time it's
+  built.
+- **Fit vs. Proportional Y-scaling** (§19) — whether Proportional mode is
+  actually wanted, and how often, can only be judged once real multi-channel
+  panels exist to react to. Smallest prototype: a toggle added to an
+  already-working 2C-A/2C-B workspace, not a standalone trial.
+- **Panel/global height defaults** (§12) — whether the default panel height
+  is comfortable for 3-6 stacked panels on a typical screen. Smallest test:
+  visual review of the first slice's default layout.
+- **Legend/label density** (§21) — whether the compact panel-header +
+  colored-dot-and-name legend row carries enough identity without the
+  sidebar open, or whether it needs slightly more (e.g. unit inline). Smallest
+  test: the first slice's own panel headers, reviewed hands-on.
+- **Centralized toolbar layout** (§13) — button order/grouping/labels, once
+  more than the first slice's two buttons exist (§28's 2C-D). Smallest test:
+  a quick placement review once the Y-scale toggle/layout-mode picker are
+  actually added.
+- **Shared crosshair behavior** (§23) — explicitly deferred past Phase 2C
+  entirely; not a near-term UAT candidate, listed here only for completeness
+  per the task's own suggested list.
+
+---
+
+### 35. Technical decisions ready for analysis (no UAT needed)
+
+Explicitly not burdening the owner with these — each has enough evidence
+above for a confident recommendation, consistent with this project's own
+"ordinary engineering choices don't need UAT" guidance
+([README.md](README.md#decision-modes)):
+
+- **Shared X/time state ownership** (§15/§16) — one Oruxa-owned coordinator
+  object, not per-panel state, not a third-party state library.
+- **Chart API isolation** (§16) — one independent Plotly instance per panel,
+  native per-instance modebar disabled, centralized toolbar calls Plotly
+  APIs directly (§14/§16).
+- **Request cancellation** — unchanged from Phase 2B's already-proven
+  `AbortController` + sequence-number pattern (§17), extended per-panel, not
+  redesigned.
+- **Waveform data authority** — unchanged; full-resolution backend data
+  stays authoritative (DEC-019), display reduction stays presentation-only
+  regardless of how many panels request it (§Phase 2A, unaffected by this
+  design).
+- **Source identity** (§26) — every panel's trace state carries `source_id`,
+  not just `channel_name`; no API change implied.
+- **Lifecycle cleanup** — unchanged mechanism (`remove()`/`remove_workspace()`,
+  DEC-018); Phase 2C introduces no new resource type needing its own cleanup
+  path (a panel is pure frontend presentation state, never registered
+  backend-side).
+- **Point-budget-vs-panel-count reasoning** (§18) — panel count doesn't by
+  itself demand a smaller per-channel budget, since panels share one
+  container width; the existing `DEFAULT_POINT_BUDGET` mechanism already
+  bounds per-channel payload correctly.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

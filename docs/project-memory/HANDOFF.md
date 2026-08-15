@@ -8,6 +8,54 @@ Last updated: **2026-08-15**
 
 ## What was most recently done
 
+**Phase 2C — Flexible Multi-Channel Waveform Workspace: Discovery and
+Design.** Design/discovery only — **nothing implemented, nothing decided**.
+Full detail:
+[MIGRATION_PLAN.md — Phase 2C](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15).
+
+**What was done**: re-verified `powerwave`'s live multi-channel/panel code
+directly (via a spawned Explore subagent, same commit `3156392`), consulted
+Detego's own public marketing/docs pages (`detego.app`,
+`detego.app/docs/guide/waveform-viewer`) for publicly observable
+waveform-viewer behavior per DEC-020's benchmark framework, and produced a
+full design proposal covering: the panel abstraction (one shared X inherited
+from DEC-021, independent Y per panel); an `engineering_type` auto-grouping
+default that never permanently constrains channel placement; a channel-add
+workflow recommendation (checkbox + "Add N selected," matching Phase 1's
+established interaction pattern); a drag/reorder model (reorder panels, move
+channels between panels, create/split panels via drag — explicitly **not**
+one-per-panel channel reordering or panel-merging in the first slice); a
+recommended **one independent Plotly instance per panel** architecture
+(extending Phase 2B's already-proven `suppressNextRelayout`/sequence-number
+broadcast mechanism to N panels, rather than fighting Plotly's native
+multi-subplot domain-fraction math); a Fit-vs-Proportional Y-scaling model
+(Fit — viewport-aware — as the default, an explicit improvement over
+`powerwave`'s own stale full-session-window autoscale; Proportional as a
+later toggle); mixed-unit-panel handling (allowed via drag, with an
+automatic secondary Y axis); a legend/identity model reusing Phase 1's
+existing sidebar rather than building a second one; a lightweight
+plain-object workspace state model (no Redux/framework); a recommended
+implementation slicing (2C-A through 2C-D, plus an optional
+backend-batching slice); and a reassessment of the TTL and ~100 MB
+real-file-memory open items (neither escalates to a Phase 2C blocker).
+
+**A genuinely new finding, not previously recorded**: `powerwave` already
+has live channel-to-panel drag-and-drop (legend row → panel header, plus a
+sidebar combo box and a merge/split context menu) — but **no panel-
+reordering mechanism exists anywhere in its codebase**. Detego's own public
+docs don't document panel-reordering either. This is flagged as the single
+clearest opportunity for Oruxa to exceed both references at once, not
+merely match one of them.
+
+**Nothing here is a `[DECISION]`** — every substantive design choice remains
+`[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`/`[DEFER]`, per this
+task's own explicit instruction. DEC-021 and DEC-022 are reaffirmed,
+unweakened, throughout. **No code was written this pass** — no multi-channel
+API, no panel model, no drag/drop, no digital signals, no cursors. Commit
+was **docs-only**.
+
+## What was done in the prior session (Phase 2B Renderer Closure)
+
 **Phase 2B — Renderer Closure.** The owner's final UAT decision:
 **Plotly.js is selected as the waveform rendering foundation** (DEC-022,
 [DECISIONS.md](DECISIONS.md)) — Plotly's better waveform clarity, richer
@@ -329,7 +377,28 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified (this pass — Phase 2B renderer closure)
+## What was verified (this pass — Phase 2C discovery/design)
+
+- `oruxa_powerwave` git state: local `main` confirmed identical to
+  `origin/main` at commit `704df11` (independent `git fetch` via the
+  established HTTPS-URL workaround — the configured SSH `origin` remote is
+  not authenticated in this sandbox), working tree clean, before this pass
+  began.
+- **`powerwave` git state**: confirmed via a spawned Explore subagent —
+  `/Volumes/externalDrive/code-gym/powerwave`, remote
+  `https://github.com/myza81/powerwave.git`, commit `3156392` (same commit
+  every prior investigation this project has used — no drift).
+- **Detego**: only publicly available marketing/docs pages
+  (`detego.app`, `detego.app/docs/guide/waveform-viewer`) were fetched via
+  `WebFetch`/`WebSearch` — no authenticated app, no proprietary code/assets
+  were accessed or inspected, per this task's own instruction and the
+  standing `PRODUCT_REFERENCES.md` governance.
+- **This is a documentation-only pass** — no backend or frontend code was
+  touched; nothing to run a test suite against. `git diff --stat` after all
+  edits shows only the four project-memory markdown files.
+- `git diff --check` — no whitespace errors.
+
+## What was verified (prior pass — Phase 2B renderer closure)
 
 - `oruxa_powerwave` git state: local `main` confirmed identical to
   `origin/main` (independent `git fetch`), working tree clean, before and
@@ -528,7 +597,21 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 2B renderer closure)
+## What files were changed this session (Phase 2C discovery/design)
+
+Modified only: `docs/project-memory/MIGRATION_PLAN.md` (new "Phase 2C —
+Flexible Multi-Channel Waveform Workspace: Discovery and Design" section,
+inserted between the Phase 2B Renderer Closure Record and the Phase 0
+section), `docs/project-memory/CURRENT_STATE.md` (Development-phase
+paragraph, Current-approved-focus paragraph, Next-approved-activity
+paragraph, Documentation bullet, Major-currently-available-components
+bullet), `docs/project-memory/HANDOFF.md` (this document). **No entry was
+added to `DECISIONS.md`** — nothing in this pass rose to an approved
+`[DECISION]`, per the task's own explicit instruction. **No `backend/` file,
+no `frontend/` file, no CI/deployment workflow file was touched** — this was
+a documentation-only, design/discovery pass.
+
+## What files were changed in the prior session (Phase 2B renderer closure)
 
 Modified: `frontend/waveform-prototype.html` (uPlot removal, crosshair
 restyle, page-text simplification), `frontend/Dockerfile` (comment
@@ -687,95 +770,132 @@ Modified:
 
 ## GitHub / deployment status
 
-See "GitHub persistence" and "DEV deployment" in this task's final report
-(delivered in-conversation) for the exact commit hash, push confirmation,
-independent-fetch verification, GitHub Actions run, and live-endpoint
-checks for this closure pass. **Production was not touched.**
+**This pass (Phase 2C discovery/design) is documentation-only — see the
+final report delivered in-conversation for the exact commit hash and push
+confirmation.** There is nothing to deploy: no backend/frontend file
+changed, so no DEV/PROD deployment step applies to this pass at all.
+**Production and DEV were not touched.**
 
 ## What remains unresolved
 
+- `[OPEN]`, **Phase 2C now has a full design proposal, but is still fully
+  unimplemented and undecided**: the panel model, grouping/auto-placement
+  rules, drag/reorder model, one-Plotly-instance-per-panel architecture,
+  multi-channel backend request strategy, Y-scaling model (Fit/
+  Proportional), mixed-unit handling, legend/identity model, workspace
+  state shape, and implementation slicing are all recorded as `[PROPOSAL]`/
+  `[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]` in
+  [MIGRATION_PLAN.md — Phase 2C](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15) —
+  **none of it is a `[DECISION]`**. The centralized-toolbar *principle*
+  remains decided (DEC-021); its concrete design is now proposed, not yet
+  approved.
 - `[OPEN]` **Unchanged, still real**: abandoned-workspace cleanup still
-  has no automatic expiry/TTL. `[DECISION MODE: COMPARISON]` — see
-  [MIGRATION_PLAN.md §18](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14)
-  and DEC-019's Impact section. The temporary DEV-only operational
-  stopgap from the Phase 2A pass still applies; this pass did not touch
-  TTL.
-- `[OPEN]`, Phase 2C in full: the centralized-toolbar *principle* is
-  decided (DEC-021), but its actual design is not — nor is
-  channel-selection/add interaction, panel layout, drag/reorder,
-  independent Y axes, or multi-channel display. All of Phase 2C remains
-  genuinely unscoped, not just unimplemented.
+  has no automatic expiry/TTL. `[DECISION MODE: COMPARISON]` — reassessed
+  (not resolved) by this pass; see
+  [MIGRATION_PLAN.md's Phase 2C §30](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15)
+  and DEC-019's Impact section. Phase 2C's own design does not change the
+  backend memory-retention shape (still per-*source*, DEC-019, unaffected
+  by however many panels/channels a UI ever displays against it) but does
+  plausibly make real UAT sessions longer/more numerous once built — this
+  pass concluded TTL is not a Phase 2C design/first-slice blocker, but
+  remains recommended before broader/prolonged shared-DEV UAT.
 - `[OPEN]`, unchanged: digital waveform handling (deliberately deferred —
-  the waveform endpoint rejects digital channel names by design); the
-  ~100 MB real-file memory ceiling (still not directly measured); and
+  the waveform endpoint rejects digital channel names by design; Phase 2C's
+  own design confirms a digital-panel-type would fit the same panel
+  abstraction later without rework, but builds nothing); the ~100 MB
+  real-file memory ceiling (still not directly measured; same
+  not-a-blocker-but-recommended-before-broader-UAT reasoning as TTL); and
   everything else already listed in
   [CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers).
-- **Resolved this pass, recorded for completeness**: the plotting-library
-  choice — previously `[UAT — Plotly preferred pending final refinement
-  confirmation]` — is now closed. DEC-022: Plotly.js selected, uPlot
-  removed. This is no longer an open item.
+- **A genuinely new open finding from this pass**: `powerwave`'s own legend
+  context-menu has a **dead "Move to panel…" item** — wired on the UI side
+  but its signal is connected nowhere in the live codebase (a real,
+  previously-unflagged bug in the reference application, not something
+  `oruxa_powerwave` needs to fix, but worth knowing if `powerwave` is ever
+  consulted again for this specific interaction). Also: `powerwave`'s
+  `QSplitter` panel-resize state is silently discarded on every structural
+  rebuild (including an ordinary channel-panel move) — a confirmed weakness
+  Oruxa's own design (§27's persisted-height state model) is built to avoid,
+  not repeat.
 
 ## What should be done next
 
-Per this task's explicit closing instruction: **stop after the closure is
-live and verified**. Do not begin Phase 2C, digital channels, cursors/
-measurements, calculated signals, synchronization, or CSV/Excel without
-explicit owner approval. The next step is for the project owner (or a
-future session) to scope Phase 2C's actual design — the centralized
-Powerwave toolbar's concrete UX, channel-selection interaction, and panel
-layout — informed by DEC-021's already-approved principle, and separately
-to decide the abandoned-session TTL question before any further
-prolonged/shared-DEV waveform UAT.
+The next step is for the **project owner** to review the Phase 2C design
+proposal and choose one of several valid paths — none is assumed here:
+(a) approve the `[DECISION MODE: ANALYSIS]` items outright (listed in the
+design's §35 — e.g. shared-viewport-state ownership, the one-Plotly-
+instance-per-panel architecture, chart-API isolation) without needing
+further comparison; (b) request a UAT pass on the interaction-shaped
+questions (§34 — channel-add feel, drag interaction feel, Fit/Proportional
+Y-scaling, toolbar layout); or (c) directly authorize the recommended first
+implementation slice (§29: checkbox channel-add + synchronized multi-panel
+display + a minimal two-button toolbar, still zero backend change). Do
+**not** begin any Phase 2C implementation without one of these explicit
+signals — this design pass's own closing instruction was to stop at the
+proposal. Separately, resolving the abandoned-session TTL question and the
+~100 MB real-file memory validation remain recommended before broader/
+prolonged shared-DEV UAT, unchanged from the prior pass's own conclusion.
 
 ## What must not be assumed
 
+- **Do not assume any part of the Phase 2C design proposal is approved** —
+  every substantive choice in it (panel model, grouping, drag/reorder, the
+  one-instance-per-panel architecture, Y-scaling, toolbar contents,
+  implementation slicing) is `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/
+  `[NEEDS UAT]`, not `[DECISION]`. Do not start implementing any of it as
+  if it were already authorized.
+- **Do not assume Phase 2C implementation has started** — it has not; no
+  multi-channel API, no panel-model code, no drag/drop, no digital signals,
+  no cursors exist anywhere in the repository as of this pass.
 - **Do not assume Plotly is still "pending" or "preferred but open"** —
-  it is the final, owner-selected renderer (DEC-022). uPlot is not a
-  fallback or a still-available alternative; it has been removed from the
-  codebase.
-- **Do not assume uPlot can be quickly re-added if reconsidered** — its
-  adapter code, vendored assets, and tests were deleted this pass;
-  recovering it means going back through Git history to the commit that
-  removed it, not flipping a flag.
-- **Do not assume DEC-021 (workspace-level navigation) authorizes any
-  Phase 2C implementation** — it is a design *principle*, not a scoped
-  design; it does not itself approve panels, drag/reorder, a centralized
-  toolbar's actual UX, or any other Phase 2C feature.
-- Do not assume Plotly's native per-channel modebar (kept for this
-  single-channel page) is the intended final multi-channel UX — it is
-  explicitly documented, in the page's own visible text, as temporary.
-- Do not assume the crosshair restyle changed any trace/line-rendering or
-  hover-mechanism behaviour — it is purely visual (`spikedash`/
-  `spikecolor`); sample-snapping, linear rendering, and
-  zoom-reveals-finer-data are all unchanged and reverified.
-- Do not assume a custom crosshair/hover engine was built to close the
-  uPlot-vs-Plotly responsiveness gap — the owner explicitly declined
-  that; only Plotly's native spike-line *styling* was changed.
-- Do not assume TTL is solved — unchanged, still explicitly open.
-- Do not assume the retained `DisturbanceRecord` (Phase 2A, DEC-019) or
-  the waveform API's behavior changed this pass — zero backend files were
-  touched; all 278 backend tests are unmodified and still pass.
-- Do not assume `Start new workspace`/`Remove` behavior changed — both
-  are unchanged from DEC-018.
+  it is the final, owner-selected renderer (DEC-022, unchanged, unaffected
+  by this pass). uPlot remains removed; nothing in this pass reconsiders it.
+- **Do not assume DEC-021 (workspace-level navigation) is superseded or
+  reinterpreted by the Phase 2C design proposal** — the proposal builds on
+  DEC-021, explicitly reaffirming it unweakened throughout; it does not
+  replace or loosen it.
+- Do not assume the recommended one-Plotly-instance-per-panel architecture
+  (§16 of the design) is the only technically valid option — it's the
+  evidence-based *recommendation*, reasoned from Plotly's own documented API
+  surface and Phase 2B's already-proven broadcast mechanism; a future
+  implementer should still sanity-check the interaction feel once built,
+  per the design's own note.
+- Do not assume the `powerwave`/Detego findings recorded in this pass are a
+  complete audit of either product — `powerwave`'s investigation was scoped
+  to the 8 specific questions this task asked (panel/reorder/resize/Y-axis/
+  legend/show-hide/digital-relationship/explicit-weaknesses); Detego's
+  findings are limited to what its own public marketing/docs pages state,
+  not an audit of its actual authenticated application.
+- Do not assume TTL or the ~100 MB validation is solved — both remain
+  explicitly open, reassessed but not resolved by this pass.
+- Do not assume the retained `DisturbanceRecord` (Phase 2A, DEC-019) or the
+  waveform API's behavior changed this pass — zero backend files were
+  touched; the existing single-channel endpoint is unchanged.
+- Do not assume `Start new workspace`/`Remove` behavior changed — both are
+  unchanged from DEC-018.
 - Do not assume the COMTRADE upload interaction is still open for UAT — it
   is decided (DEC-017): two explicit slots, not auto-pairing.
-- Do not assume Phase 1.5, Phase 2C, or any later phase is authorized.
+- Do not assume Phase 1.5, Phase 2C implementation, or any later phase is
+  authorized.
 - Do not assume `powerwave` is still at commit `3156392` by the time you
   read this — re-verify before relying on specific line numbers (it was
   re-confirmed unchanged as of this pass, 2026-08-15).
 
 ## Owner approval needed before proceeding?
 
-- Not needed to review or run the closed-out Phase 2B page itself (it's
-  already implemented, deployed to DEV, and live-verified, per explicit
-  owner authorization for this exact slice — including the renderer
-  decision itself, per the owner's own UAT).
-- **Yes**, before Phase 2C or any later Phase 2 slice begins, before
-  Phase 1.5 or any later phase begins, before a PROD deployment, and
-  before any change to the ephemeral-storage, upload-size,
-  COMTRADE-upload-interaction, workspace-lifecycle, or waveform-data
-  decisions recorded in `DECISIONS.md`. Per the change-governance rule in
+- Not needed to read/discuss the Phase 2C design proposal itself — it's
+  already written up and committed for review, per this exact task's own
+  authorization.
+- **Yes**, before any Phase 2C implementation slice begins (including the
+  recommended first slice, §29 of the design) — see "What should be done
+  next" above for the specific approval paths available. Also required
+  before Phase 1.5 or any later phase begins, before a PROD deployment
+  (moot this pass — nothing was deployed), and before any change to the
+  ephemeral-storage, upload-size, COMTRADE-upload-interaction,
+  workspace-lifecycle, or waveform-data decisions recorded in
+  `DECISIONS.md`. Per the change-governance rule in
   [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md).
-- **Recommended before any further prolonged/shared-DEV waveform UAT**:
-  a real decision on the abandoned-session TTL question, rather than
-  continuing to rely on the manual DEV stopgap.
+- **Recommended before any further prolonged/shared-DEV waveform UAT**: a
+  real decision on the abandoned-session TTL question, and ideally the
+  ~100 MB real-file memory validation, rather than continuing to rely on
+  the manual DEV stopgap.
