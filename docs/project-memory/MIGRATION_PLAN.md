@@ -4541,6 +4541,202 @@ change.
 
 ---
 
+## Phase 2C-B1 — Grouped / Separate Analog Waveform Layout Implementation Record (2026-08-15)
+
+`[FACT]` throughout except where explicitly marked `[DECISION]` (DEC-025).
+A small, deliberately scoped slice — matches this task's own explicit
+"keep the scope intentionally small" instruction. **Direct vertical
+drag/reorder of lanes, drag-to-overlay/group, drag-out-to-separate, and
+Custom layout mode are explicitly not started.**
+
+### Phase 2C-A manual UAT result (recorded here, this pass)
+
+Before this slice began, the owner manually UAT'd the completed Phase
+2C-A implementation and confirmed it **passed** for: shared waveform
+synchronization, horizontal zoom, Reset Time View, pan synchronization,
+Voltage/Current grouping, and Autoscale Y. Two findings noted for later,
+**deliberately not addressed in this slice**:
+
+- A small amount of interaction latency was noticed but judged currently
+  bearable — not a blocker, no performance work was requested or done
+  this pass.
+- Vertical zoom (Y-axis zoom/drag interaction) is less intuitive than the
+  rest of the toolbar — explicitly flagged for a **later** UX refinement
+  pass, not this one.
+
+The next requested enhancement, and this slice's entire scope, was
+waveform layout flexibility — specifically Grouped vs. Separate panel
+arrangement.
+
+### Layout selector
+
+A small two-button segmented control — **Grouped** / **Separate** —
+added to the existing central toolbar (reusing the same `.theme-toggle`
+visual pattern already used for the Zoom/Pan pair), visible whenever the
+toolbar itself is visible (i.e. whenever at least one channel is
+displayed). Grouped is the default, matching Phase 2C-A's existing
+behaviour exactly. **Custom** mode (Detego's own third grouping mode, per
+the Phase 2C design record's Detego findings) was deliberately not built.
+
+### Grouped mode — confirmed unchanged
+
+Verified via the full existing Phase 2C-A test suite (19 checks) re-run
+unmodified against this pass's code, all still passing: adding channels
+still groups them by the backend-computed `engineering_type` into shared
+panels, still only an initial placement (never a permanent lock), zoom/
+pan/reset/autoscale/theme/removal all still behave exactly as Phase 2C-A
+shipped them.
+
+### Separate mode — one channel per lane
+
+Each displayed analog channel gets its own panel/lane (one Plotly
+instance, one trace, its own Y axis) — verified structurally: 6 displayed
+channels produce exactly 6 Separate panels. Panel label is the channel
+name (e.g. "VA"); the existing compact legend row (channel name + unit +
+remove control, unchanged from Phase 2C-A) still appears beneath it, so
+name and unit are both visible without an oversized header or card.
+
+### Architecture — displayed channels / panels / membership / order (not `engineering_type`-derived)
+
+Per this task's own explicit forward-compatibility requirement (§13),
+the underlying model was generalized rather than hard-coded for two
+modes:
+
+- `ww.panels` is still exactly what Phase 2C-A already had — an ordered
+  array of `{id, label, channels: [...]}` objects. This already *is* the
+  "panels + channel membership + panel order" shape the task asks for;
+  nothing about it needed to change.
+- What's new: `wwPanelGroupKeyFor(channel)` / `wwPanelLabelFor(channel)`
+  — two small functions that derive a panel's identity/label from the
+  *current* `ww.layoutMode` (`engineering_type` for Grouped, the
+  channel's own unique key for Separate) rather than Phase 2C-A's
+  previous hard-coded `p.label === meta.engineeringType` lookup. Channels
+  themselves gained one new retained field, `engineeringType` (present on
+  every channel entry since the moment it's added, not re-fetched later),
+  so a later regroup never needs to re-derive or re-request metadata.
+- `wwRebuildLayout()` — the actual mode-switch mechanism: snapshots the
+  flat list of currently displayed channels from `ww.displayed` (already
+  the authoritative "what's on screen" map, unchanged from Phase 2C-A),
+  tears down every current panel's Plotly instance, and re-derives
+  `ww.panels` from that flat list under the (now current) layout mode,
+  before creating fresh Plotly instances for the result.
+
+This means a future direct-manipulation feature (drag a lane vertically,
+reorder, drop one channel's lane onto another to overlay/group them, drag
+a channel back out to separate it again) is architecturally just another
+way of producing the same `{panels, channel membership, panel order}`
+shape `wwRebuildLayout()` already produces algorithmically — not a
+redesign of the data model. This slice does not build any of those
+interactions, but was written so they don't require restructuring what's
+here.
+
+### Shared X/time synchronization (DEC-021) — reused, not reimplemented
+
+Both layout modes use the exact same relayout-wiring mechanism Phase
+2C-A already proved (`wwWirePanelRelayout`, the debounced 120ms
+broadcast, the per-panel `suppressNext` loop-prevention flag) — nothing
+about the synchronization mechanism itself changed; it simply now runs
+against however many panels the current layout mode happens to produce
+(2 in Grouped for a 6-channel Voltage/Current selection, 6 in Separate
+for the same selection). Verified directly: zooming any one Separate lane
+broadcasts to all 6 lanes with exactly 6 relayout calls (not a runaway
+loop, using the same faithful Plotly-relayout-refires-event test double
+Phase 2C-A's own suite already established); panning a different lane
+does the same; Reset Time View and Autoscale Y both correctly operate
+across all 6 lanes.
+
+### Viewport preservation across layout switches
+
+**Verified, not merely asserted**: after zooming to a specific window in
+Separate mode, switching to Grouped rebuilds the 2 grouped panels with
+`layout.xaxis.range` already set to that exact same window — because
+`wwBuildLayout()` (unchanged from Phase 2C-A) already reads the *current*
+`ww.viewport` for a new panel's initial X range, and `wwRebuildLayout()`
+never touches `ww.viewport` itself. No special-case code was needed for
+this requirement — it falls out directly from `ww.viewport` already being
+workspace-level state, independent of any individual panel, since Phase
+2C-A. Switching back to Separate again preserves the same window a second
+time, and all 6 channels remain displayed throughout every switch in
+either direction.
+
+### Data / API behaviour — zero refetches on layout switch
+
+**No waveform request is issued by a layout-mode switch, in either
+direction.** Verified directly: the fetch-call count before and after
+`wwSetLayoutMode()`/`wwRebuildLayout()` is identical. Each channel's
+already-fetched `.time`/`.values` (from whatever the last successful
+fetch was, at the current viewport) is reused as-is when its new panel is
+built via `Plotly.newPlot`. No backend file was touched; the Phase 2A
+waveform endpoint's query parameters are unchanged (`channel_name`,
+`start_time`, `end_time`, `point_budget` — confirmed by test, no other
+parameter is ever sent); no batching endpoint was added.
+
+### Removal behaviour in both modes
+
+No changes were needed to `wwRemoveChannel()` itself — it was already
+layout-mode-agnostic from Phase 2C-A (look up the channel's current
+position in its panel's `channels` array, delete that trace, remove the
+whole panel if it's now empty). Because a Separate-mode panel always has
+exactly one channel by construction, removing that channel always empties
+(and therefore removes) its panel — exactly the required "its lane
+disappears" behaviour, achieved with zero special-casing. Grouped-mode
+removal is unchanged: only the trace is removed unless the panel becomes
+empty. Removing a channel never touches its imported source (unchanged
+principle, DEC-018/Phase 2C-A).
+
+### Theme / crosshair — unchanged
+
+No crosshair styling was touched (`spikethickness: 0.35`,
+`spikedash: "3px,2px"`, current Light/Dark contrast, sample-snapped,
+unchanged from DEC-022/DEC-023). Theme switching re-colors every visible
+panel via `Plotly.relayout` only, regardless of layout mode, still never
+refetching waveform data — verified directly against a 5-lane Separate
+workspace (after one channel had been removed) as well as the original
+2-panel Grouped case.
+
+### Tests
+
+- **Backend: 278 tests, unmodified, all passing** — zero backend files
+  touched.
+- **Frontend, new: 16 scripted `jsdom` checks, all passing** (a new
+  one-off script, same established pattern) — Grouped-mode baseline;
+  switching to Separate produces exactly 6 panels with correct labels, no
+  per-panel modebar, zero new waveform fetches, old panels purged; shared
+  zoom/pan synchronization and loop-prevention in Separate mode; Reset
+  Time View and Autoscale Y in Separate mode; viewport preservation across
+  Separate→Grouped→Separate (asserted via the actual `layout.xaxis.range`
+  Plotly was called with, not just visual inspection); channel removal in
+  Separate mode removes the whole lane; theme switching in Separate mode;
+  and a direct check that every waveform request's query parameters are
+  still exactly the existing four (`channel_name`/`start_time`/
+  `end_time`/`point_budget`) — confirming no backend API shape changed.
+- **Frontend, existing: the full Phase 2C-A suite (19 checks) and the
+  Phase 1 regression suite (4 checks) were both re-run unmodified against
+  this pass's code and both still pass in full** — no regression in
+  either the Phase 2C-A synchronized-workspace behaviour or the original
+  Phase 1 channel-browser behaviour.
+
+### Performance
+
+Structural evidence only (this sandboxed session has no real browser):
+switching layout mode issues zero network requests (confirmed by test) —
+the operation is pure DOM/Plotly reconstruction from already-in-memory
+data, so its cost is bounded by however expensive `Plotly.newPlot` is for
+the resulting panel count, not by any new fetch latency. At 6 Separate
+panels this remains the same channel count already performance-checked
+in the Phase 2C-A implementation record (parallel-fetch wall time ~150ms
+at 6 channels on live DEV) — this slice adds no new fetches on top of
+that baseline for a mode switch specifically. Real browser rendering
+responsiveness for the rebuild itself was not visually measured here;
+see this task's own live DEV verification for hands-on observation.
+
+### Files changed
+
+Modified only: `frontend/index.html`. No new files, no `backend/` file,
+no CI/deployment workflow file, no other frontend file.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

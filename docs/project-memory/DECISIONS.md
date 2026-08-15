@@ -1255,6 +1255,91 @@ Impact:
 
 ---
 
+## DEC-025 — Grouped/Separate analog waveform layout modes confirmed and implemented (Phase 2C-B1)
+
+Date: 2026-08-15
+Status: Approved
+Source: explicit project-owner instructions opening the Phase 2C-B1 task
+(2026-08-15), following manual UAT of Phase 2C-A that passed for shared
+synchronization, zoom/pan, Reset Time View, Voltage/Current grouping, and
+Autoscale Y.
+
+Decision:
+
+The Phase 2C design record's own previously-open question — "whether
+several related channels should ever share one panel by user choice (vs.
+one-type-per-panel always)" (§9, `[NEEDS UAT]`) — is resolved for this
+slice: the waveform workspace supports two user-selectable layout modes,
+**Grouped** (the existing Phase 2C-A default — panels formed by
+`engineering_type`) and **Separate** (one panel/lane per displayed analog
+channel), switchable via a simple toolbar control. **Custom** grouping
+(matching Detego's own third mode, per the Phase 2C design record's §3
+Detego findings) is explicitly **not** built in this slice.
+
+Confirmed as part of this same decision:
+
+- Switching layout mode **never** changes which channels are displayed,
+  and **never** issues a new waveform request — already-fetched channel
+  data is reused as-is when panels are rebuilt for the new mode.
+- Switching layout mode **preserves the current shared X/time viewport**
+  exactly — a zoomed-in view survives a Grouped ↔ Separate switch
+  unchanged, in either direction.
+- The underlying data model represents displayed channels, panels,
+  channel-membership-within-panels, and panel order directly — layout
+  mode is only which *algorithm* currently derives panels from that flat
+  channel list, not a property stored permanently on a channel. This is a
+  deliberate architectural choice so that a future direct
+  vertical-drag/reorder/overlay/split interaction (the owner's own stated
+  next direction) is a different way of arriving at the same shape, not a
+  redesign of it.
+
+Reason:
+
+The owner's own Phase 2C-A UAT explicitly requested "waveform layout
+flexibility" as the next enhancement, and this task's own specification
+(§3/§4/§13) is the owner directly selecting Grouped+Separate (not
+Custom yet) as the resolved answer to the Phase 2C design record's
+previously-open grouping-mode question, with an explicit architectural
+constraint (§13) for how it must be built so it doesn't block the
+specific future interaction already planned (drag lanes vertically,
+reorder, drop-to-overlay/group, drag back out to separate). Per this
+project's own governance, a genuine owner selection among previously-
+documented options is a decision worth recording, not merely an
+implementation detail.
+
+Alternatives considered:
+
+Deriving panels permanently from `engineering_type` with layout mode
+implemented as a second, parallel data structure (rejected — would
+require reconciling two sources of truth every time a channel is added/
+removed, and would not naturally support the stated future drag/reorder
+direction); building Custom grouping now alongside Grouped/Separate
+(rejected — explicitly out of scope per this task's own instruction,
+§4/§18); refetching waveform data on every layout switch for simplicity
+(rejected — unnecessary given the data hasn't changed, and directly
+contrary to this task's own §11 instruction to avoid it).
+
+Impact:
+
+- `frontend/index.html`: a `ww.layoutMode` state field, a
+  `wwPanelGroupKeyFor`/`wwPanelLabelFor` pair of helpers (layout-mode-
+  aware panel identity, replacing the Phase 2C-A hardcoded
+  `engineering_type`-only lookup), a `wwRebuildLayout()` function (tears
+  down and recreates every panel's Plotly instance from already-fetched
+  channel data, never refetching, never resetting `ww.viewport`), and a
+  small Grouped/Separate toolbar control.
+- No backend file changed; the Phase 2A waveform endpoint's contract and
+  Phase 2C-A's request/response shape are unchanged.
+- DEC-021 (shared workspace-level viewport) and DEC-024 (one-Plotly-
+  instance-per-panel, viewport-aware Autoscale Y, central toolbar) are
+  reaffirmed unweakened — both layout modes obey them identically.
+- **Direct vertical drag/reorder of lanes, drag-to-overlay/group, and
+  drag-out-to-separate remain explicitly not started and not authorized
+  by this decision** — they are the owner's stated *next* direction, not
+  built here.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

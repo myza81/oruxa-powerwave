@@ -177,6 +177,35 @@ check. **Phase 2C-B (drag/reorder between panels, panel resize,
 Proportional Y scaling, mixed-unit handling, digital channels, shared
 crosshair) remains explicitly not started.**
 
+`[FACT]` **Phase 2C-A manual UAT passed** (2026-08-15) — shared waveform
+synchronization, horizontal zoom, Reset Time View, pan synchronization,
+Voltage/Current grouping, and Autoscale Y all confirmed working. Two
+findings noted, deliberately not addressed yet: a small amount of
+interaction latency, currently bearable; and vertical (Y-axis) zoom is
+less intuitive than the rest of the toolbar, flagged for a **later** UX
+refinement pass. **Following that UAT, Phase 2C-B1 — Grouped/Separate
+analog waveform layout — is now implemented** — see
+[MIGRATION_PLAN.md — Phase 2C-B1 Implementation Record](MIGRATION_PLAN.md#phase-2c-b1--grouped--separate-analog-waveform-layout-implementation-record-2026-08-15)
+and [DEC-025](DECISIONS.md#dec-025--groupedseparate-analog-waveform-layout-modes-confirmed-and-implemented-phase-2c-b1).
+A small Grouped/Separate toggle on the existing central toolbar: Grouped
+(the Phase 2C-A default, `engineering_type`-based) is unchanged; Separate
+gives every displayed analog channel its own panel/lane. Switching modes
+never changes which channels are displayed, never issues a new waveform
+request (already-fetched data is reused), and preserves the current
+shared X/time viewport exactly — verified directly, not just asserted.
+The underlying model (`ww.panels`: displayed channels + panel membership
++ panel order) was already shaped this way since Phase 2C-A; what's new
+is `wwPanelGroupKeyFor`/`wwPanelLabelFor` (layout-mode-aware panel
+identity) and `wwRebuildLayout()` (re-derives panels from the flat
+channel list under the current mode) — deliberately built so a future
+direct vertical-drag/reorder/overlay/split interaction (the owner's
+stated next direction) doesn't require restructuring this. No backend
+file changed (278 tests unmodified and passing); 16 new + 19 + 4
+re-verified existing frontend `jsdom` checks passing (39 total this
+pass). **Direct drag/reorder, drag-to-overlay/group, drag-out-to-
+separate, Custom layout mode, and panel resize all remain explicitly not
+started.**
+
 ## Completed foundation work
 
 `[FACT]`, verified against the repository on 2026-08-15:
@@ -316,8 +345,10 @@ crosshair) remains explicitly not started.**
   Refinement & Workspace-Level Navigation Record", "Phase 2B —
   Renderer Closure Record", "Phase 2C — Flexible Multi-Channel
   Waveform Workspace: Discovery and Design", "Light/Dark Theme &
-  Crosshair Refinement Record", and "Phase 2C-A — Synchronized
-  Multi-Channel Waveform Display Implementation Record" sections).
+  Crosshair Refinement Record", "Phase 2C-A — Synchronized
+  Multi-Channel Waveform Display Implementation Record", and
+  "Phase 2C-B1 — Grouped / Separate Analog Waveform Layout
+  Implementation Record" sections).
 
 ## Current architecture status
 
@@ -380,27 +411,35 @@ collapsible/searchable channel grouping and a removal confirmation, plus
 (Phase 2B) an isolated renderer-UAT prototype page comparing uPlot and
 Plotly.js against that same waveform API, (DEC-023) a shared Light/
 Dark appearance system applied across the whole frontend including the
-Plotly chart, and (Phase 2C-A, DEC-024) a real synchronized multi-channel
-waveform workspace — checkbox channel selection, initial engineering-type
-panel grouping, one Plotly instance per panel sharing one workspace-level
-X/time viewport, and a central Zoom/Pan/Reset-Time-View/Autoscale-Y
-toolbar — built into the main app itself, this documentation set. No
-frontend framework, no database schema, no authentication, no CSV/Excel/
-digital-waveform/cursors-measurements/calculated-signal/synchronization
-features yet; **drag/reorder-between-panels and panel resize remain
-Phase 2C-B, not yet built**. A Phase 2 waveform-workspace **design
+Plotly chart, and (Phase 2C-A/B1, DEC-024/DEC-025) a real synchronized
+multi-channel waveform workspace — checkbox channel selection, initial
+engineering-type panel grouping, one Plotly instance per panel sharing
+one workspace-level X/time viewport, a central Zoom/Pan/Reset-Time-
+View/Autoscale-Y toolbar, and a Grouped/Separate layout toggle (Separate
+= one panel per displayed channel, switchable without losing the
+displayed channel set or the current zoomed viewport) — built into the
+main app itself, this documentation set. No frontend framework, no
+database schema, no authentication, no CSV/Excel/digital-waveform/
+cursors-measurements/calculated-signal/synchronization features yet;
+**direct drag/reorder of panels, drag-to-overlay/group, drag-out-to-
+separate, Custom layout mode, and panel resize all remain not yet
+built**. A Phase 2 waveform-workspace **design
 proposal** exists (see [MIGRATION_PLAN.md](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14)),
 and the Phase 2C flexible multi-channel workspace **design proposal**
 (see [MIGRATION_PLAN.md — Phase 2C](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15))
 has now had its core architecture (panel model, channel-add workflow,
 shared viewport, minimal toolbar, viewport-aware Autoscale Y) implemented
-as Phase 2C-A (DEC-024) — the backend foundation (Phase 2A), the
-renderer choice (Phase 2B, DEC-022), and this first multi-channel slice
-(Phase 2C-A, DEC-024) are all implemented/decided. Drag/reorder between
-panels, panel resize, Proportional Y scaling, mixed-unit handling, and
-digital-channel display remain unbuilt/undecided design-proposal items
-(`[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`) — Phase 2C-B has
-not started.
+as Phase 2C-A (DEC-024), and its own previously-open grouping-mode
+question (§9, "whether several related channels should ever share one
+panel by user choice") resolved and implemented as Phase 2C-B1's
+Grouped/Separate toggle (DEC-025) — the backend foundation (Phase 2A),
+the renderer choice (Phase 2B, DEC-022), and both multi-channel slices
+(Phase 2C-A/DEC-024, Phase 2C-B1/DEC-025) are all implemented/decided.
+Direct drag/reorder of panels, drag-to-overlay/group, drag-out-to-
+separate, Custom layout mode, panel resize, Proportional Y scaling,
+mixed-unit handling, and digital-channel display remain unbuilt/undecided
+design-proposal items (`[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/
+`[NEEDS UAT]`) — no further Phase 2C work has started.
 
 ## Current approved focus
 
@@ -500,6 +539,24 @@ requests, no batching). This confirms/selects specific options the Phase
 **Phase 2C-B (drag/reorder between panels, panel resize, Proportional Y
 scaling, mixed-unit handling, digital channels, shared crosshair) remains
 not started and not authorized by this decision.**
+
+`[DECISION]` Recorded 2026-08-15: **DEC-025** — Grouped/Separate analog
+waveform layout modes are confirmed and implemented (Phase 2C-B1),
+resolving the Phase 2C design record's own previously-open "should
+several channels ever share one panel by user choice" question: Grouped
+(existing `engineering_type` default) and Separate (one panel per
+channel) are both available via a small toolbar toggle; **Custom** mode
+is explicitly not built. Switching modes never changes which channels are
+displayed, never issues a new waveform request, and preserves the current
+shared X/time viewport exactly — verified by test. The panel data model
+(displayed channels + panels + channel membership + panel order) was
+kept general specifically so a future direct vertical-drag/reorder/
+overlay/split interaction (the owner's stated next direction) doesn't
+require restructuring it — see
+[MIGRATION_PLAN.md — Phase 2C-B1 Implementation Record](MIGRATION_PLAN.md#phase-2c-b1--grouped--separate-analog-waveform-layout-implementation-record-2026-08-15).
+**Direct drag/reorder, drag-to-overlay/group, drag-out-to-separate, and
+Custom layout mode remain not started and not authorized by this
+decision.**
 
 `[DECISION]` Recorded 2026-08-15: DEC-020 — `detego.app` is adopted as an
 official product/UI-UX/waveform-workspace/dashboard/workflow **benchmark**
@@ -615,18 +672,28 @@ Checkbox channel-add, initial engineering-type panel grouping, one
 independent Plotly instance per panel, one shared X/time viewport across
 every panel, and a central 4-button toolbar (Zoom/Pan/Reset Time
 View/Autoscale Y, viewport-aware Fit only) are all implemented, directly
-in `frontend/index.html`. **Phase 2C-B (drag/reorder between panels,
-panel resize, Proportional Y scaling, mixed-unit handling, digital
-channels, shared crosshair) remains explicitly not started and not
-authorized.** The next step is for the project owner to review Phase
-2C-A via live DEV UAT and either request refinements, authorize a
-specific Phase 2C-B slice (drag/reorder is the most-requested remaining
-piece per the design record's own sequencing), or defer further Phase 2C
-work. Separately, resolving the abandoned-session TTL question
-(`[DECISION MODE: COMPARISON]`, reassessed but not resolved by Phase
-2C-A — its own design doesn't change the backend memory-retention shape)
-and the ~100 MB real-file memory validation remain recommended before
-any further prolonged/shared-DEV waveform UAT.
+in `frontend/index.html`. **Phase 2C-A passed its own manual owner UAT**
+(synchronization, zoom, pan, Reset Time View, grouping, Autoscale Y all
+confirmed working; minor bearable latency and a vertical-zoom-
+discoverability note both deliberately deferred), and the owner's
+requested next enhancement — waveform layout flexibility — is now also
+implemented: **Phase 2C-B1 (DEC-025), a Grouped/Separate layout toggle**
+— see
+[MIGRATION_PLAN.md — Phase 2C-B1 Implementation Record](MIGRATION_PLAN.md#phase-2c-b1--grouped--separate-analog-waveform-layout-implementation-record-2026-08-15).
+Switching layout mode preserves the displayed channel set and the
+current shared viewport, and never issues a new waveform request. **The
+owner's explicitly stated next direction — direct vertical drag/reorder
+of panels, drag-to-overlay/group, and drag-out-to-separate — remains
+explicitly not started and not authorized**, along with Custom layout
+mode, panel resize, Proportional Y scaling, mixed-unit handling, digital
+channels, and shared crosshair. The next step is for the project owner to
+review Phase 2C-B1 via live DEV UAT and either request refinements,
+authorize the drag/reorder work directly (the owner's own stated next
+direction), or defer further Phase 2C work. Separately, resolving the
+abandoned-session TTL question (`[DECISION MODE: COMPARISON]`, reassessed
+but not resolved by Phase 2C-A/B1 — neither changes the backend memory-
+retention shape) and the ~100 MB real-file memory validation remain
+recommended before any further prolonged/shared-DEV waveform UAT.
 **Separately, a small general-application UX refinement — Light/Dark
 theme support (DEC-023) and a further Plotly crosshair refinement — has
 been implemented** (2026-08-15), see

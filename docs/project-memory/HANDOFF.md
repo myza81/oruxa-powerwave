@@ -8,6 +8,55 @@ Last updated: **2026-08-15**
 
 ## What was most recently done
 
+**Phase 2C-B1 — Grouped / Separate Analog Waveform Layout.** Following
+manual owner UAT of Phase 2C-A (**passed** for shared synchronization,
+horizontal zoom, Reset Time View, pan synchronization, Voltage/Current
+grouping, and Autoscale Y — a small bearable interaction latency and a
+vertical-zoom-discoverability note were both raised but deliberately left
+for a later pass), the owner's requested next enhancement was waveform
+layout flexibility. Full detail:
+[MIGRATION_PLAN.md — Phase 2C-B1 Implementation Record](MIGRATION_PLAN.md#phase-2c-b1--grouped--separate-analog-waveform-layout-implementation-record-2026-08-15),
+[DECISIONS.md — DEC-025](DECISIONS.md#dec-025--groupedseparate-analog-waveform-layout-modes-confirmed-and-implemented-phase-2c-b1).
+
+**What was built**: a small **Grouped / Separate** toggle added to the
+existing central toolbar. Grouped is unchanged from Phase 2C-A
+(`engineering_type`-based). Separate gives every displayed analog channel
+its own panel/lane (one Plotly instance, one trace, its own Y axis) — 6
+displayed channels produce exactly 6 lanes, verified directly. Switching
+modes **never** changes which channels are displayed, **never** issues a
+new waveform request (each channel's already-fetched data is reused as-is
+when its panel is rebuilt), and **preserves the current shared X/time
+viewport exactly** in either direction — verified by test: zoom to a
+window in Separate mode, switch to Grouped, the rebuilt panels open at
+that exact same window, and the same holds switching back. The underlying
+model — `ww.panels` as an ordered `{label, channels, ...}` array — was
+already shaped correctly since Phase 2C-A; what's new is
+`wwPanelGroupKeyFor`/`wwPanelLabelFor` (layout-mode-aware panel identity)
+and `wwRebuildLayout()` (re-derives panels from the flat displayed-channel
+list under the current mode). This was deliberately built so a future
+direct vertical-drag/reorder/overlay/split interaction — the owner's own
+stated next direction — is architecturally just another way of producing
+the same panels/membership/order shape, not a redesign of it. Removal
+behaviour needed **zero code changes**: a Separate-mode panel always has
+exactly one channel by construction, so removing it always empties (and
+therefore removes) the panel automatically. Theme switching, the shared-
+viewport broadcast mechanism, loop-prevention, and the crosshair
+(DEC-022/DEC-023, untouched) all work identically in both layout modes,
+reusing Phase 2C-A's existing mechanisms unchanged.
+
+**Backend**: zero files changed — same endpoint, same query parameters
+(`channel_name`/`start_time`/`end_time`/`point_budget`), confirmed by
+test that switching layout mode issues no new request at all.
+
+**Tests**: 278 backend (unmodified) + 16 new frontend `jsdom` checks +
+the full existing Phase 2C-A suite (19 checks) and Phase 1 regression
+suite (4 checks) both re-run unmodified and still passing (39 total this
+pass, no regressions). **Direct drag/reorder of panels, drag-to-
+overlay/group, drag-out-to-separate, Custom layout mode, and panel resize
+were all explicitly not started.**
+
+## What was done in the prior session (Phase 2C-A — Synchronized Multi-Channel Waveform Display)
+
 **Phase 2C-A — Synchronized Multi-Channel Waveform Display.** The first
 real multi-channel waveform workspace, implemented directly in
 `frontend/index.html` (not an isolated page). Full detail:
@@ -514,7 +563,44 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified (this pass — Phase 2C-A synchronized multi-channel waveform display)
+## What was verified (this pass — Phase 2C-B1 Grouped / Separate layout)
+
+- `oruxa_powerwave` git state: local `main` confirmed identical to
+  `origin/main` at commit `3f637ba` (independent `git fetch` via the
+  established HTTPS-URL workaround), working tree clean, before this pass
+  began.
+- **Backend regression: 278 tests, unmodified, all still pass** (fresh
+  venv run) — zero backend files in the diff (`git diff --stat -- backend/`
+  empty).
+- **Frontend, new: 16 scripted `jsdom` checks, all passing** — Grouped
+  baseline unchanged; switching to Separate produces exactly 6 panels
+  (one per displayed channel) with correct labels, no per-panel modebar,
+  zero new waveform fetches, old panels purged; shared zoom/pan
+  synchronization and loop-prevention verified in Separate mode using the
+  same faithful Plotly-relayout-refire test double established for Phase
+  2C-A; Reset Time View and Autoscale Y in Separate mode; **viewport
+  preservation verified directly** by asserting the actual
+  `layout.xaxis.range` Plotly was called with after a Separate→Grouped
+  and a Grouped→Separate switch, both following a real zoom; channel
+  removal in Separate mode removes the whole lane; theme switching in
+  Separate mode; and a direct check that every waveform request's query
+  parameters are still exactly the pre-existing four
+  (`channel_name`/`start_time`/`end_time`/`point_budget`) — confirming no
+  backend API shape changed.
+- **Frontend, existing: the full Phase 2C-A suite (19 checks) and the
+  Phase 1 regression suite (4 checks) were both re-run unmodified against
+  this pass's code and both still pass in full** — no regression.
+- `node --check` on `frontend/index.html`'s inline `<script>` block —
+  syntactically valid.
+- `grep` cross-check: every `getElementById(...)` call (including the two
+  new layout-toggle buttons) resolves to an `id=` that actually exists.
+- No real-browser/visual verification of rendering smoothness was
+  performed in this sandboxed session (no headless browser available) —
+  see "Live DEV verification" in this task's final report for what was
+  checked instead, and its own explicit statement about what's honestly
+  unverified.
+
+## What was verified (prior pass — Phase 2C-A synchronized multi-channel waveform display)
 
 - `oruxa_powerwave` git state: local `main` confirmed identical to
   `origin/main` at commit `51ac404` (independent `git fetch` via the
@@ -836,7 +922,18 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 2C-A synchronized multi-channel waveform display)
+## What files were changed this session (Phase 2C-B1 Grouped / Separate layout)
+
+Modified only: `frontend/index.html` (a `ww.layoutMode` state field;
+`wwPanelGroupKeyFor`/`wwPanelLabelFor` helpers; `wwRebuildLayout()`;
+`wwSetLayoutMode()`; a small Grouped/Separate toolbar toggle;
+`channelEntry.engineeringType` retained on add; the module header comment
+updated), `docs/project-memory/{DECISIONS,MIGRATION_PLAN,CURRENT_STATE,
+HANDOFF}.md` (DEC-025 added; this work). No new files. **No
+`frontend/waveform-prototype.html`/`theme.css`/`theme.js` change, no
+`backend/` file, no CI/deployment workflow file was touched.**
+
+## What files were changed in the prior session (Phase 2C-A synchronized multi-channel waveform display)
 
 Modified only: `frontend/index.html` (checkbox selection + Add/Clear
 selected controls on the existing analog channel table; a new full-width
@@ -1047,105 +1144,113 @@ Modified:
 See "GitHub persistence" and "DEV deployment" in this task's final report
 (delivered in-conversation) for the exact commit hash, push confirmation,
 independent-fetch verification, GitHub Actions run, and live-endpoint
-checks for this Phase 2C-A pass. **Production was not touched.**
+checks for this Phase 2C-B1 pass. **Production was not touched.**
 
 ## What remains unresolved
 
-- `[OPEN]`, **Phase 2C-B (the remainder of the Phase 2C design proposal)
-  is still fully unimplemented and undecided**: drag/reorder between
-  panels, panel resize, Proportional Y scaling, mixed-unit panel
-  handling, digital-channel display, shared crosshair — every one of
-  these remains `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`,
-  not `[DECISION]`. This pass (Phase 2C-A) implemented and confirmed the
-  panel architecture, channel-add workflow, shared viewport, minimal
-  toolbar, and viewport-aware Autoscale Y (DEC-024) — it did **not**
-  touch any of the Phase 2C-B items above.
+- `[OPEN]`, **the remainder of the Phase 2C design proposal is still
+  fully unimplemented and undecided**: direct vertical drag/reorder of
+  panels, drag-to-overlay/group, drag-out-to-separate, Custom layout
+  mode, panel resize, Proportional Y scaling, mixed-unit panel handling,
+  digital-channel display, shared crosshair — every one of these remains
+  `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`, not
+  `[DECISION]`. This pass (Phase 2C-B1) implemented and confirmed
+  Grouped/Separate layout switching (DEC-025) — it did **not** touch any
+  of the drag/reorder/overlay items above, which remain the owner's own
+  stated *next* direction, not started.
 - `[OPEN]` **Unchanged, still real**: abandoned-workspace cleanup still
-  has no automatic expiry/TTL. `[DECISION MODE: COMPARISON]` — Phase 2C-A's
-  own design does not change the backend memory-retention shape (still
-  per-*source*, DEC-019, unaffected by how many panels/channels a UI
-  displays against it), but a real multi-channel workspace is plausibly a
-  richer, longer-lived thing to explore than Phase 2B's single-channel
-  preview was, which raises (not resolves) the same urgency already
-  flagged for Phase 2A/2B. See
+  has no automatic expiry/TTL. `[DECISION MODE: COMPARISON]` — neither
+  Phase 2C-A nor Phase 2C-B1 changes the backend memory-retention shape
+  (still per-*source*, DEC-019, unaffected by how many panels/channels or
+  which layout mode a UI displays against it), but a real, now-more-
+  flexible multi-channel workspace is plausibly a richer, longer-lived
+  thing to explore than Phase 2B's single-channel preview was, which
+  raises (not resolves) the same urgency already flagged for Phase
+  2A/2B/2C-A. See
   [MIGRATION_PLAN.md's Phase 2C §30](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15)
   and DEC-019's Impact section.
 - `[OPEN]`, unchanged: digital waveform handling; the ~100 MB real-file
   memory ceiling (still not directly measured); and everything else
   already listed in
   [CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers).
-- **New from this pass, not itself a blocker**: real-browser rendering
-  responsiveness at higher displayed-channel counts (beyond the
-  structural 3/6/12 request-count check this pass performed) was not
-  visually confirmed in this sandboxed, no-real-browser session — see
-  this task's final report for the live DEV API-timing evidence gathered
-  instead, and its explicit statement that no claim is made about 50/100
-  simultaneous channels.
+- **Carried over from Phase 2C-A's own manual UAT, deliberately not
+  addressed this pass**: a small amount of interaction latency, judged
+  currently bearable; and vertical (Y-axis) zoom being less intuitive
+  than the rest of the toolbar — both explicitly flagged for a **later**
+  UX refinement pass, not this one.
+- **Unchanged from Phase 2C-A**: real-browser rendering responsiveness at
+  higher displayed-channel counts was not visually confirmed in this
+  sandboxed, no-real-browser session — see this task's final report for
+  the live DEV evidence gathered instead.
 
 ## What should be done next
 
-The next step is for the **project owner** to review Phase 2C-A via live
-DEV UAT (this task's own checklist) and choose a direction for Phase
-2C-B — none is assumed here: (a) authorize drag/reorder between panels
-first (the design record's own recommended next slice, and the single
-capability the design's own §10 flagged as the clearest opportunity to
-exceed both `powerwave` and Detego at once); (b) request refinements to
-Phase 2C-A itself before moving on (e.g. panel height, legend density,
-toolbar layout — the design's own §34 candidate list); or (c) defer
-further Phase 2C work entirely for now. Do **not** begin any Phase 2C-B
-work (drag/reorder, panel resize, Proportional Y scaling, mixed-unit
-handling, digital channels, shared crosshair) without one of these
-explicit signals — this task's own closing instruction was to stop after
-Phase 2C-A. Separately, resolving the abandoned-session TTL question and
-the ~100 MB real-file memory validation remain recommended before
-broader/prolonged shared-DEV UAT, unchanged conclusion from every prior
-Phase 2 pass.
+The next step is for the **project owner** to review Phase 2C-B1 via live
+DEV UAT (this task's own checklist) and choose a direction — none is
+assumed here: (a) authorize the drag/reorder/overlay/split work directly
+(the owner's own explicitly stated next direction, §13 of this task's own
+instructions — vertical lane drag, reorder, drop-to-overlay/group,
+drag-out-to-separate); (b) request refinements to Grouped/Separate itself
+first (e.g. Custom mode, panel height); or (c) address the Phase 2C-A UAT
+findings (interaction latency, vertical-zoom discoverability) before
+further layout work. Do **not** begin any drag/reorder/overlay
+implementation without an explicit signal — this task's own closing
+instruction was to stop after Grouped/Separate. Separately, resolving the
+abandoned-session TTL question and the ~100 MB real-file memory
+validation remain recommended before broader/prolonged shared-DEV UAT,
+unchanged conclusion from every prior Phase 2 pass.
 
 ## What must not be assumed
 
-- **Do not assume Phase 2C-B has started** — it has not; no drag/reorder
-  between panels, no panel resize, no Proportional Y scaling, no
-  mixed-unit panel handling, no digital-channel display, no shared
-  crosshair exist anywhere in the repository.
-- **Do not assume channels are permanently locked to their panel** —
-  initial `engineering_type` grouping is placement only; the panel/
-  channel object model has no concept that would prevent a future move
-  operation, it simply hasn't been built as a user-facing interaction
-  yet (that is exactly what Phase 2C-B is for).
+- **Do not assume drag/reorder/overlay/split has started** — it has not;
+  no direct vertical lane dragging, no reorder, no drop-to-overlay/group,
+  no drag-out-to-separate, no Custom layout mode, no panel resize exist
+  anywhere in the repository.
+- **Do not assume Separate is the default** — Grouped is, unchanged from
+  Phase 2C-A; Separate is opt-in via the new toolbar toggle.
+- **Do not assume channels are permanently locked to their panel in
+  either layout mode** — panel membership is always re-derivable from the
+  flat displayed-channel list (`wwRebuildLayout()`); this is exactly the
+  property that made Grouped/Separate switching straightforward and is
+  the same property a future drag/reorder feature will rely on.
+- **Do not assume switching layout mode refetches waveform data or
+  resets the viewport** — verified by test that it does neither; already-
+  fetched channel data and the current shared X/time range are both
+  reused as-is.
 - **Do not assume a multi-channel batching endpoint exists** — it does
   not; N displayed channels still means N independent existing
-  single-channel requests. Batching remains evidence-gated future work,
-  not built.
-- **Do not assume crosshair behavior changed for the multi-panel case** —
-  each panel's crosshair (DEC-022/DEC-023, `spikethickness: 0.35`,
-  `spikedash: "3px,2px"`, sample-snapped) is independent; hovering one
-  panel does not show a guide line on any other panel.
+  single-channel requests, regardless of layout mode. Batching remains
+  evidence-gated future work, not built.
+- **Do not assume crosshair behavior changed** — each panel's crosshair
+  (DEC-022/DEC-023, `spikethickness: 0.35`, `spikedash: "3px,2px"`,
+  sample-snapped) is independent in both layout modes; hovering one panel
+  does not show a guide line on any other panel.
 - **Do not assume "Clear workspace" or channel removal touches an
   imported source** — both are purely display-state operations; the
-  source (and its backend-retained record) is untouched either way.
+  source (and its backend-retained record) is untouched either way, in
+  either layout mode.
 - Do not assume theme switching ever triggers a waveform data refetch — it
-  doesn't, by design and by test (see "What was verified" above);
-  `Plotly.relayout` only, applied to every panel now, not just one chart.
+  doesn't, by design and by test; `Plotly.relayout` only, applied to
+  every panel regardless of layout mode.
 - **Do not assume Plotly is still "pending" or "preferred but open"** —
   it is the final, owner-selected renderer (DEC-022, unaffected by this
   pass). uPlot remains removed.
-- **Do not assume DEC-021 (workspace-level navigation) is a new
-  requirement invented this pass** — it was already approved (Phase 2B);
-  this pass is the first time it was actually *built*, not the first time
-  it was decided.
+- **Do not assume DEC-021 (workspace-level navigation) is weakened by
+  Separate mode having more panels** — the shared viewport is still
+  mandatory and still enforced identically regardless of panel count.
 - Do not assume TTL or the ~100 MB validation is solved — both remain
-  explicitly open; Phase 2C-A's own design does not change the backend
+  explicitly open; neither Phase 2C-A nor Phase 2C-B1 changes the backend
   memory-retention shape (see "What remains unresolved" above).
 - Do not assume the retained `DisturbanceRecord` (Phase 2A, DEC-019) or the
   waveform API's behavior changed this pass — zero backend files were
   touched; the existing single-channel endpoint's contract is unchanged.
 - Do not assume `Start new workspace`/`Remove` behavior changed for
-  SOURCES — both are unchanged from DEC-018; what's new is that both now
-  *additionally* clean up the waveform workspace display (see this
-  pass's own implementation record).
+  SOURCES — both are unchanged from DEC-018; both already clean up the
+  waveform workspace display, unaffected by which layout mode is active.
 - Do not assume the COMTRADE upload interaction is still open for UAT — it
   is decided (DEC-017): two explicit slots, not auto-pairing.
-- Do not assume Phase 1.5, Phase 2C-B, or any later phase is authorized.
+- Do not assume Phase 1.5, drag/reorder work, or any later phase is
+  authorized.
 - Do not assume `powerwave` is still at commit `3156392` by the time you
   read this — this pass did not re-verify `powerwave` (no fresh
   `powerwave` investigation was needed for this implementation task); the
@@ -1153,18 +1258,18 @@ Phase 2 pass.
 
 ## Owner approval needed before proceeding?
 
-- Not needed to review or use Phase 2C-A itself — already implemented,
-  deployed to DEV, and live-verified per this exact task's own
-  authorization.
-- **Yes**, before any Phase 2C-B work begins (drag/reorder between
-  panels, panel resize, Proportional Y scaling, mixed-unit handling,
-  digital channels, shared crosshair), before Phase 1.5 or any later
-  phase begins, before a PROD deployment, before any further crosshair or
-  theming work beyond what's already described in project-memory, and
-  before any change to the ephemeral-storage, upload-size,
-  COMTRADE-upload-interaction, workspace-lifecycle, or waveform-data
-  decisions recorded in `DECISIONS.md`. Per the change-governance rule in
-  [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md).
+- Not needed to review or use Phase 2C-A or Phase 2C-B1 themselves —
+  already implemented, deployed to DEV, and live-verified per this exact
+  task's own authorization.
+- **Yes**, before any drag/reorder/overlay/split work begins (the owner's
+  own stated next direction, but still not yet explicitly authorized to
+  *implement*), before Custom layout mode or panel resize, before Phase
+  1.5 or any later phase begins, before a PROD deployment, before any
+  further crosshair or theming work beyond what's already described in
+  project-memory, and before any change to the ephemeral-storage,
+  upload-size, COMTRADE-upload-interaction, workspace-lifecycle, or
+  waveform-data decisions recorded in `DECISIONS.md`. Per the change-
+  governance rule in [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md).
 - **Recommended before any further prolonged/shared-DEV waveform UAT**: a
   real decision on the abandoned-session TTL question, and ideally the
   ~100 MB real-file memory validation, rather than continuing to rely on

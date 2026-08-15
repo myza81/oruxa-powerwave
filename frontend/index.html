@@ -430,6 +430,7 @@
             flex-wrap: wrap;
         }
         .ww-toolbar[hidden] { display: none; }
+        .toolbar-spacer { flex: 1; }
         .ww-panel {
             background: var(--panel);
             border: 1px solid var(--panel-border);
@@ -585,6 +586,15 @@
             </div>
             <button class="secondary" type="button" id="wwResetViewBtn">Reset Time View</button>
             <button class="secondary" type="button" id="wwAutoscaleBtn">Autoscale Y</button>
+            <div class="toolbar-spacer"></div>
+            <!-- Phase 2C-B1: layout mode -- Grouped (by engineering type,
+                 the existing default) vs. Separate (one panel per channel).
+                 Does not change which channels are displayed, only how
+                 they're arranged -- see wwSetLayoutMode()/wwRebuildLayout(). -->
+            <div class="theme-toggle" id="layoutModeToggle" role="group" aria-label="Waveform layout">
+                <button type="button" id="layoutModeGroupedBtn" aria-pressed="true">Grouped</button>
+                <button type="button" id="layoutModeSeparateBtn" aria-pressed="false">Separate</button>
+            </div>
         </div>
 
         <p class="empty-state" id="wwEmptyState">Select analog channels and click &ldquo;Add selected&rdquo; to display waveforms.</p>
@@ -1337,22 +1347,31 @@
         }
 
         // ==================================================================
-        // Phase 2C-A: Synchronized Multi-Channel Waveform Workspace
+        // Phase 2C-A/B1: Synchronized Multi-Channel Waveform Workspace
         //
         // Architecture (see docs/project-memory/MIGRATION_PLAN.md's Phase 2C
-        // design record, and this phase's own implementation record):
+        // design record, and this phase's own implementation records):
         //   - one independent Plotly instance PER PANEL (never one giant
         //     figure with fixed subplots) -- a panel may hold one or more
         //     channel traces;
-        //   - panels are grouped, on INITIAL add only, by the channel's
-        //     already backend-computed `engineering_type` (never
-        //     re-derived here) -- this is placement, not a permanent lock;
-        //     Phase 2C-B is where the user gets to rearrange it;
+        //   - panels are DERIVED from the flat set of displayed channels by
+        //     the current `ww.layoutMode` (Phase 2C-B1): "grouped" (by the
+        //     channel's already backend-computed `engineering_type`, never
+        //     re-derived here -- Phase 2C-A's original and still-default
+        //     mode) or "separate" (one panel per channel). Switching modes
+        //     (wwSetLayoutMode/wwRebuildLayout) never changes WHICH
+        //     channels are displayed or the shared viewport, only how
+        //     they're grouped into panels -- this is placement, not a
+        //     permanent lock; a future drag/reorder/overlay phase is a
+        //     different, user-driven way to reach the same {panels,
+        //     channel membership, panel order} shape this already produces
+        //     algorithmically;
         //   - every panel shares ONE Oruxa-owned X/time viewport (DEC-021)
         //     -- no panel is ever allowed to drift to its own independent
-        //     time range. Native per-panel Plotly modebars are disabled
-        //     entirely; the only navigation surface is the central toolbar
-        //     below (Zoom/Pan/Reset Time View/Autoscale Y);
+        //     time range, in EITHER layout mode. Native per-panel Plotly
+        //     modebars are disabled entirely; the only navigation surface
+        //     is the central toolbar below (Zoom/Pan/Reset Time
+        //     View/Autoscale Y);
         //   - each panel keeps its OWN Y axis (never forced to match
         //     another panel's scale) -- "Autoscale Y" is viewport-aware
         //     Fit only (see wwAutoscaleY's own comment), not
@@ -1367,6 +1386,9 @@
         //     all of them) -- no backend change, no batching endpoint.
         //     Batching remains an evidence-gated future option, not
         //     built here (see this phase's own Performance section).
+        //     Switching layout mode itself never issues a new waveform
+        //     request -- each channel's already-fetched data is reused
+        //     as-is when its panel is rebuilt (see wwRebuildLayout).
         // ==================================================================
 
         // Deterministic per-channel identity colors, assigned in the order
@@ -1390,6 +1412,15 @@
             viewport: null,        // {start, end} shared X range, or null before the first channel ever loads
             recordBounds: null,    // {start, end} of the full record, learned once from the first unbounded fetch
             dragMode: "zoom",
+            // Phase 2C-B1: which algorithm currently derives ww.panels from
+            // the flat set of displayed channels -- "grouped" (by
+            // engineering_type, Phase 2C-A's original and still-default
+            // behaviour) or "separate" (one panel per channel). This is
+            // deliberately just a derivation switch, not a property stored
+            // on channels themselves -- see wwRebuildLayout()'s own comment
+            // for why, and this phase's own architecture note about not
+            // blocking future drag/reorder.
+            layoutMode: "grouped",
             colorIndex: 0,
             panelSeq: 0,
             viewportDebounceTimer: null,
@@ -1402,6 +1433,31 @@
 
         function wwChannelKey(sourceId, channelName) {
             return sourceId + "::" + channelName;
+        }
+
+        // Phase 2C-B1: the panel a channel belongs to is derived from the
+        // current layout mode, not a fixed property of the channel --
+        // "grouped" keys by engineering_type (multiple channels can share
+        // a panel); "separate" keys by the channel's own identity (always
+        // its own panel, one-to-one). Accepts either a full channel entry
+        // or the lighter {sourceId, channelName, engineeringType} shape
+        // used before a channel has been fetched yet (both carry the same
+        // three fields this needs).
+        function wwPanelGroupKeyFor(channel) {
+            return ww.layoutMode === "separate"
+                ? wwChannelKey(channel.sourceId, channel.channelName)
+                : (channel.engineeringType || "Undefined");
+        }
+
+        // Display label only -- distinct from the group key above (two
+        // different channels in Separate mode must never collide on label
+        // alone, e.g. same channel name from two different sources; the
+        // group key already guards that, this is purely what the panel
+        // header shows).
+        function wwPanelLabelFor(channel) {
+            return ww.layoutMode === "separate"
+                ? channel.channelName
+                : (channel.engineeringType || "Undefined");
         }
 
         function wwNextColor() {
@@ -1545,11 +1601,12 @@
         // ------------------------------------------------------------------
         // Panel DOM + Plotly lifecycle
         // ------------------------------------------------------------------
-        function wwCreatePanelObject(label) {
+        function wwCreatePanelObject(label, groupKey) {
             ww.panelSeq += 1;
             return {
                 id: "ww-panel-" + ww.panelSeq,
                 label,
+                groupKey, // see wwPanelGroupKeyFor() -- how this panel is found/matched, distinct from its display label
                 channels: [],
                 containerEl: null,
                 chartEl: null,
@@ -1778,11 +1835,12 @@
         // ------------------------------------------------------------------
 
         // channelMetas: [{sourceId, sourceName, channelName, unit, engineeringType}]
-        // Grouping is INITIAL PLACEMENT ONLY (section 4) -- an existing
-        // panel whose label already matches an added channel's
-        // engineering_type receives it via Plotly.addTraces; there is no
-        // architecture here that locks a channel to its panel permanently
-        // (Phase 2C-B is where the user gets to move it).
+        // Grouping is INITIAL PLACEMENT ONLY (section 4/6) -- an existing
+        // panel matching the CURRENT layout mode's group key (see
+        // wwPanelGroupKeyFor) receives the channel via Plotly.addTraces;
+        // there is no architecture here that locks a channel to its panel
+        // permanently (a future drag/reorder phase is where the user gets
+        // to move it directly).
         async function wwAddSelectedChannels(channelMetas) {
             const epochAtStart = ww.epoch;
             const newlyCreatedPanels = [];
@@ -1792,10 +1850,11 @@
                 const key = wwChannelKey(meta.sourceId, meta.channelName);
                 if (ww.displayed.has(key)) continue; // already displayed -- skip silently
 
-                let panel = ww.panels.find((p) => p.label === meta.engineeringType);
+                const groupKey = wwPanelGroupKeyFor(meta);
+                let panel = ww.panels.find((p) => p.groupKey === groupKey);
                 let isNewPanel = false;
                 if (!panel) {
-                    panel = wwCreatePanelObject(meta.engineeringType);
+                    panel = wwCreatePanelObject(wwPanelLabelFor(meta), groupKey);
                     ww.panels.push(panel);
                     newlyCreatedPanels.push(panel);
                     isNewPanel = true;
@@ -1806,6 +1865,7 @@
                     sourceName: meta.sourceName,
                     channelName: meta.channelName,
                     unit: meta.unit,
+                    engineeringType: meta.engineeringType, // retained so a later layout-mode switch can regroup without re-fetching metadata
                     color: wwNextColor(),
                     time: [],
                     values: [],
@@ -1919,6 +1979,65 @@
             wwUpdateEmptyState();
         }
 
+        // Phase 2C-B1: switches between "Grouped" (by engineering_type)
+        // and "Separate" (one panel per channel) layout modes. The set of
+        // displayed channels is completely unaffected -- only how they're
+        // arranged into panels changes.
+        function wwSetLayoutMode(mode) {
+            if (mode !== "grouped" && mode !== "separate") return;
+            if (mode === ww.layoutMode) return;
+            ww.layoutMode = mode;
+            document.getElementById("layoutModeGroupedBtn").setAttribute("aria-pressed", String(mode === "grouped"));
+            document.getElementById("layoutModeSeparateBtn").setAttribute("aria-pressed", String(mode === "separate"));
+            wwRebuildLayout();
+        }
+
+        // Re-derives ww.panels from the flat set of currently displayed
+        // channels under the CURRENT ww.layoutMode, tearing down and
+        // recreating every panel's Plotly instance -- but reusing each
+        // channel's already-fetched .time/.values data (section 11: no
+        // waveform fetch happens here, the underlying data hasn't changed,
+        // only which panel displays it) and the CURRENT ww.viewport
+        // (section 10: wwBuildLayout() already reads ww.viewport for the
+        // initial xaxis.range, and this function never touches ww.viewport
+        // itself, so a zoomed-in view survives a layout switch unchanged).
+        //
+        // Architecture note (section 13): this function is exactly why
+        // panels are modeled as {label, groupKey, channels: [...]} derived
+        // FROM a flat channel list, rather than channels carrying a
+        // permanent "my panel" property -- a future drag/reorder/overlay
+        // feature is just a different (manual, user-driven) way to arrive
+        // at the same {panels, channel membership, panel order} shape this
+        // function already produces algorithmically, not a redesign of it.
+        function wwRebuildLayout() {
+            const allChannels = Array.from(ww.displayed.values()).map((entry) => entry.channel);
+            if (allChannels.length === 0) return; // nothing displayed yet -- mode is still recorded for the next Add
+
+            for (const panel of ww.panels) {
+                if (panel.plotlyReady && panel.chartEl) Plotly.purge(panel.chartEl);
+                panel.plotlyReady = false; // guards a late-arriving fetch from restyling this now-torn-down panel
+            }
+            document.getElementById("wwPanels").innerHTML = "";
+            ww.panels = [];
+
+            for (const channel of allChannels) {
+                const groupKey = wwPanelGroupKeyFor(channel);
+                let panel = ww.panels.find((p) => p.groupKey === groupKey);
+                if (!panel) {
+                    panel = wwCreatePanelObject(wwPanelLabelFor(channel), groupKey);
+                    ww.panels.push(panel);
+                }
+                panel.channels.push(channel);
+                ww.displayed.set(wwChannelKey(channel.sourceId, channel.channelName), { panel, channel });
+            }
+
+            for (const panel of ww.panels) {
+                wwCreatePanelDom(panel);
+                wwInitPanelPlot(panel);
+                wwRenderLegend(panel);
+            }
+        }
+
         function wwUpdateEmptyState() {
             const empty = ww.panels.length === 0;
             document.getElementById("wwEmptyState").hidden = !empty;
@@ -1964,6 +2083,10 @@
         document.getElementById("wwAutoscaleBtn").addEventListener("click", wwAutoscaleY);
         document.getElementById("clearWorkspaceBtn").addEventListener("click", wwClearWorkspace);
         document.addEventListener("powerwave:theme-change", wwApplyTheme);
+
+        // Phase 2C-B1: Grouped/Separate layout mode.
+        document.getElementById("layoutModeGroupedBtn").addEventListener("click", () => wwSetLayoutMode("grouped"));
+        document.getElementById("layoutModeSeparateBtn").addEventListener("click", () => wwSetLayoutMode("separate"));
 
         checkApiHealth();
         refreshSourceList();
