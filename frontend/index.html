@@ -5,21 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Powerwave</title>
     <script src="config.js"></script>
+    <!-- Appearance (Light/Dark) tokens + preference logic -- shared with
+         every other frontend page, applied before first paint to avoid a
+         theme flash. See docs/project-memory/DECISIONS.md DEC-023. -->
+    <link rel="stylesheet" href="theme.css">
+    <script src="theme.js"></script>
     <style>
-        :root {
-            --bg: #0f1420;
-            --panel: #161d2e;
-            --panel-border: #2a3348;
-            --text: #e7ecf5;
-            --text-dim: #8b96ad;
-            --accent: #4f8dfd;
-            --accent-dim: #2c4a80;
-            --ok: #3ecf8e;
-            --warn: #f5a623;
-            --error: #f2545b;
-            --radius: 8px;
-        }
-
         * { box-sizing: border-box; }
 
         body {
@@ -158,15 +149,15 @@
             padding: 10px 12px;
         }
         .upload-status.visible { display: block; }
-        .upload-status.busy { background: rgba(79, 141, 253, 0.12); color: var(--accent); }
-        .upload-status.ok { background: rgba(62, 207, 142, 0.12); color: var(--ok); }
-        .upload-status.error { background: rgba(242, 84, 91, 0.12); color: var(--error); }
+        .upload-status.busy { background: var(--accent-wash); color: var(--accent); }
+        .upload-status.ok { background: var(--ok-wash); color: var(--ok); }
+        .upload-status.error { background: var(--error-wash); color: var(--error); }
 
         .spinner {
             display: inline-block;
             width: 12px;
             height: 12px;
-            border: 2px solid rgba(79, 141, 253, 0.3);
+            border: 2px solid var(--accent-dim);
             border-top-color: var(--accent);
             border-radius: 50%;
             margin-right: 8px;
@@ -191,10 +182,10 @@
             cursor: pointer;
             border: 1px solid transparent;
         }
-        ul.source-list li:hover { background: rgba(255,255,255,0.03); }
+        ul.source-list li:hover { background: var(--hover-tint); }
         ul.source-list li.selected {
             border-color: var(--accent-dim);
-            background: rgba(79, 141, 253, 0.08);
+            background: var(--accent-wash-soft);
         }
 
         .source-list .source-name {
@@ -231,7 +222,7 @@
         }
 
         .stat {
-            background: rgba(255,255,255,0.02);
+            background: var(--surface-tint);
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
             padding: 10px 12px;
@@ -303,7 +294,7 @@
         }
         input[type="search"] {
             flex: 1;
-            background: rgba(255,255,255,0.03);
+            background: var(--hover-tint);
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
             padding: 8px 10px;
@@ -341,7 +332,7 @@
             gap: 8px;
             user-select: none;
         }
-        details.channel-group summary { background: rgba(255,255,255,0.02); }
+        details.channel-group summary { background: var(--surface-tint); }
         summary::-webkit-details-marker { display: none; }
         summary::marker { content: ""; }
         .chevron {
@@ -373,7 +364,7 @@
         .confirm-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(4, 7, 14, 0.6);
+            background: var(--overlay-backdrop);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -407,6 +398,7 @@
         <h1>Powerwave</h1>
         <div class="status-line">
             <span id="apiStatus"><span class="dot" id="apiDot"></span><span id="apiStatusText">Checking backend&hellip;</span></span>
+            <div id="themeToggle"></div>
         </div>
     </header>
 
@@ -1090,6 +1082,7 @@
         // ------------------------------------------------------------------
         document.getElementById("workspaceIdLabel").textContent = currentWorkspaceId();
         document.getElementById("newWorkspaceButton").addEventListener("click", startNewWorkspace);
+        window.PowerwaveTheme.mountThemeToggle(document.getElementById("themeToggle"));
         checkApiHealth();
         refreshSourceList();
     </script>

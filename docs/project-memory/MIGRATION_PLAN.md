@@ -4063,6 +4063,190 @@ above for a confident recommendation, consistent with this project's own
 
 ---
 
+## Light/Dark Theme & Crosshair Refinement Record (2026-08-15)
+
+`[FACT]` throughout except where explicitly marked `[DECISION]` (DEC-023).
+This is a small, general-application UX refinement — **not** Phase 2C work.
+Phase 2C (centralized toolbar, panel model, drag/reorder, multi-channel
+display) remains explicitly not started; nothing in this record touches it.
+
+### Scope
+
+Two owner-requested goals only:
+
+1. Light/Dark appearance support, Light preferred/default, persisted per
+   browser, coherent across the whole app (not waveform-page-only).
+2. A further, config-only refinement to the Plotly crosshair (already
+   restyled once in the Phase 2B closure pass, DEC-022) to make it visually
+   thinner/subtler, closer to uPlot's own crosshair weight.
+
+### Theme system
+
+A small, shared, reusable token system — not scattered hard-coded colors,
+not a frontend framework:
+
+- **`frontend/theme.css`** (new): defines every color as a CSS custom
+  property under a base `:root` (Light — the default, no `[data-theme]`
+  attribute needed) and `:root[data-theme="dark"]` (Dark — opt-in).
+  Tokens: `--bg`, `--panel`, `--panel-border`, `--text`, `--text-dim`,
+  `--accent`, `--accent-dim`, `--ok`, `--warn`, `--error` (the pre-existing
+  names, reused rather than renamed — they already meant exactly "page
+  background"/"surface"/"border"/etc.), plus new tokens added for this
+  pass: `--waveform-surface`, `--toolbar-surface` (distinct surfaces for
+  the chart/toolbar, per the task's own conceptual list), and a set of
+  "wash"/tint tokens (`--hover-tint`, `--surface-tint`, `--accent-wash`,
+  `--accent-wash-soft`, `--ok-wash`, `--error-wash`, `--overlay-backdrop`,
+  `--chart-overlay-bg`) that replace what used to be raw
+  `rgba(255,255,255,...)`/`rgba(0,0,0,...)` literals scattered per-page —
+  those literals were only ever correct against a dark background and
+  would have looked wrong (near-invisible or inverted) under Light without
+  this change. Also defines `--spike-color` (the Plotly crosshair color,
+  theme-sensitive) and the `.theme-toggle` control's own styling.
+- **`frontend/theme.js`** (new): `PowerwaveTheme.getTheme()`/`setTheme()`/
+  `mountThemeToggle()`. Applies `[data-theme]` to `<html>` synchronously,
+  before `<body>` paints (script runs early in `<head>`), to avoid a theme
+  flash. Default is `"light"` whenever nothing is stored. Persists via
+  `localStorage` key `powerwave.theme`. Also listens for the `storage`
+  event so a preference change in one tab (e.g. the main app) is reflected
+  live in another already-open tab (e.g. an open waveform-preview tab) —
+  both pages share one origin and one key, consistent with this being a
+  general application preference, not a per-page setting.
+- **`frontend/index.html`** / **`frontend/waveform-prototype.html`**: both
+  `<link rel="stylesheet" href="theme.css">` + `<script src="theme.js">`
+  early in `<head>` (same static-file pattern already used for
+  `config.js`); their own local hard-coded `:root { --bg: #0f1420; ... }`
+  blocks were removed (now supplied by the shared file); every
+  `rgba(...)`/hex color literal outside the theme tokens themselves was
+  replaced with a token (verified via `grep -n "rgba(\|#[0-9a-fA-F]{3,6}"` —
+  the only literals remaining in either file are `color: #fff` on solid
+  accent/danger buttons, which is intentionally the same value in both
+  themes, not a light/dark-sensitive color). Both pages gained a small
+  Light/Dark segmented control (`#themeToggle`, mounted via
+  `PowerwaveTheme.mountThemeToggle()`) in their header — a simple
+  two-button appearance selector, not a settings-page redesign, per the
+  task's own explicit scope limit.
+- Applies coherently to: the main Phase 1 page, source/channel browser,
+  channel tables, buttons, both confirmation dialogs, upload-status
+  banners, the waveform page, and the Plotly chart itself (below) — the
+  full list the task asked for.
+
+### Light-theme palette (original Oruxa direction, not Detego's)
+
+`--bg: #f3f5f9`, `--panel: #ffffff`, `--panel-border: #d9dfea`,
+`--text: #1b2333`, `--text-dim: #5c6579`, `--accent: #3568d4`,
+`--accent-dim: #c7d7f7`, `--ok: #1f9d63`, `--warn: #b8720a`,
+`--error: #d23c44`. Design intent: clean, professional, engineering-
+focused, bright without being harsh (an off-white page background with
+pure-white panel surfaces gives subtle depth without shadows/gradients),
+subtle low-alpha borders, a restrained mid-blue accent, and high enough
+text/background contrast for extended reading. No technical audit of
+Detego's actual palette was performed for this task (nor was one needed) —
+per DEC-020/`PRODUCT_REFERENCES.md`, Detego is a UI/UX *workflow* benchmark
+only, never a source of colors, and the owner repeated that constraint
+directly.
+
+### Dark theme
+
+Unchanged values, migrated onto the same token system rather than kept as
+a second, parallel implementation: `--bg: #0f1420`, `--panel: #161d2e`,
+`--panel-border: #2a3348`, `--text: #e7ecf5`, `--text-dim: #8b96ad`,
+`--accent: #4f8dfd`, `--accent-dim: #2c4a80`, `--ok: #3ecf8e`,
+`--warn: #f5a623`, `--error: #f2545b` — every one of these is the exact
+value the app already used before this pass; only their *location*
+changed (from two independent per-page `:root` blocks to one shared
+`:root[data-theme="dark"]` block). Same layout, same behavior, different
+appearance, exactly as the task required.
+
+### Plotly theme integration
+
+`waveform-prototype.html`'s `PlotlyRenderer` now reads colors from the
+active theme (`themeColors()`, via `getComputedStyle(document.documentElement)`)
+at chart-init time (`paper_bgcolor`/`plot_bgcolor` ← `--waveform-surface`,
+`font.color` ← `--text`, `xaxis`/`yaxis.gridcolor` ← `--panel-border`,
+trace `line.color` ← `--accent`, spike color ← `--spike-color`). A new
+`PlotlyRenderer.applyTheme(handle)` method re-applies these to an
+**already-rendered** chart on a `powerwave:theme-change` event, using only
+`Plotly.relayout` (layout-level: backgrounds, font, grid, spike colors)
+and `Plotly.restyle` (trace-level: line color) — **never**
+`Plotly.newPlot`/`Plotly.react` with fresh data, and **no new waveform
+range request is made**. Verified directly (see Tests below): switching
+theme after a chart is loaded triggers zero additional `fetch` calls.
+
+### Crosshair refinement (further pass beyond DEC-022)
+
+- `spikethickness`: `1` → `0.5`. **Technical finding**: Plotly's spike
+  lines are rendered as ordinary SVG stroke paths even for a `scattergl`
+  (WebGL) trace — the spike-line overlay itself is not part of the WebGL
+  trace layer — and SVG `stroke-width` reliably supports fractional values
+  below `1` across every current browser (standard SVG rendering, not an
+  exotic workaround). This means the prior pass's claim that
+  `spikethickness: 1` was Plotly's practical minimum was not fully
+  substantiated; `0.5` is used here as a genuine, natively-supported
+  thinner value, per the task's own explicit "if a smaller valid native
+  value works reliably, use it" instruction.
+- `spikecolor` alpha: `0.55` → `0.42` (both Light's and Dark's
+  `--spike-color`), applied via the same theme-token mechanism as every
+  other color — reduced further, compounding with the thickness change,
+  per the task's "aim closer to uPlot's crosshair visual weight" direction.
+- Unchanged: `spikedash: "dash"`, `spikesnap: "data"` (still snaps to real
+  recorded samples, never interpolated), `spikemode: "across"` (both
+  vertical and horizontal guide lines preserved), `hovermode: "closest"`
+  (moving X/Y hover values via `hovertemplate`, unchanged).
+- **No custom mouse-following overlay, no new cursor architecture, no
+  custom hover engine were built** — explicitly out of scope per the task,
+  consistent with DEC-022's same prior constraint.
+- **Honest limitation, stated per the task's own instruction**: pixel-level
+  visual confirmation of the thinner line was not performed in this
+  sandboxed, no-real-browser session — the change rests on SVG's
+  well-established fractional-stroke-width support, not a live screenshot
+  comparison. This is exactly what the task's "Live DEV verification"
+  section is for.
+
+### Tests
+
+- **Backend: 278 tests, unmodified, all passing** — zero backend files
+  touched (`git diff --stat -- backend/` empty), confirmed by a fresh
+  regression run.
+- **Frontend: 19 new scripted `jsdom` checks, all passing** (a new,
+  uncommitted one-off script, per this project's established testing
+  pattern — not a new permanent test framework), covering: Light is
+  default with no stored preference; Dark is selectable; Light is
+  restorable; the preference persists across a simulated page reload (the
+  real `theme.js` source is re-evaluated against the same `localStorage`
+  state, exactly as a real reload would re-run it); `[data-theme]` is
+  applied to `<html>`; the shared toggle control renders exactly two
+  buttons and updates `aria-pressed` state on click; the waveform page
+  independently picks up an already-saved preference via the same shared
+  mechanism; the waveform page's own toggle reflects that preference; the
+  Plotly chart initializes with the dashed/thinner/theme-colored/
+  sample-snapped crosshair configuration; hover X/Y values remain
+  configured; a theme switch triggers `Plotly.relayout`/`Plotly.restyle`
+  with the new theme's colors and **zero** additional `fetch` calls; and
+  Reset Time View still triggers exactly one fresh waveform request
+  (zoom/pan/reset behavior unchanged).
+
+### Preserved, unchanged
+
+Per the task's explicit requirement, none of the following changed: Plotly
+as the selected renderer (DEC-022); the waveform range API/its query
+parameters; full-resolution backend authority; the min/max display
+representation; zoom/pan interaction; Reset Time View / Autoscale Y
+semantics and their DEC-021 terminology split; sample snapping; the
+backend source/workspace lifecycle. **DEC-021's workspace-level,
+centralized-toolbar requirement is unaffected** — this pass touched only
+color/theme concerns on the existing single-channel preview page, not its
+navigation architecture. No backend file was modified.
+
+### Files changed
+
+Modified: `frontend/index.html`, `frontend/waveform-prototype.html`,
+`frontend/Dockerfile`, `frontend/.dockerignore` (comment only),
+`docs/project-memory/{DECISIONS,MIGRATION_PLAN,CURRENT_STATE,HANDOFF}.md`.
+New: `frontend/theme.css`, `frontend/theme.js`. No `backend/` file, no
+CI/deployment workflow file touched.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

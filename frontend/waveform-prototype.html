@@ -5,23 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Waveform Preview — Powerwave</title>
     <script src="config.js"></script>
+    <!-- Same shared appearance tokens/preference as index.html -- theme is
+         a general application setting, not a waveform-page-only one. See
+         docs/project-memory/DECISIONS.md DEC-023. -->
+    <link rel="stylesheet" href="theme.css">
+    <script src="theme.js"></script>
     <style>
-        /* Same palette as index.html, deliberately kept in sync so this
-           reads as part of the same application, not a separate tool. */
-        :root {
-            --bg: #0f1420;
-            --panel: #161d2e;
-            --panel-border: #2a3348;
-            --text: #e7ecf5;
-            --text-dim: #8b96ad;
-            --accent: #4f8dfd;
-            --accent-dim: #2c4a80;
-            --ok: #3ecf8e;
-            --warn: #f5a623;
-            --error: #f2545b;
-            --radius: 8px;
-        }
-
         * { box-sizing: border-box; }
 
         body {
@@ -35,6 +24,13 @@
         header {
             padding: 16px 24px;
             border-bottom: 1px solid var(--panel-border);
+        }
+
+        .header-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
         }
 
         header h1 {
@@ -130,7 +126,7 @@
             position: relative;
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
-            background: rgba(255,255,255,0.015);
+            background: var(--waveform-surface);
         }
 
         #chartContainer {
@@ -147,7 +143,7 @@
             gap: 8px;
             font-size: 0.78rem;
             color: var(--accent);
-            background: rgba(15, 20, 32, 0.85);
+            background: var(--chart-overlay-bg);
             padding: 5px 10px;
             border-radius: 999px;
         }
@@ -157,7 +153,7 @@
             display: inline-block;
             width: 11px;
             height: 11px;
-            border: 2px solid rgba(79, 141, 253, 0.3);
+            border: 2px solid var(--accent-dim);
             border-top-color: var(--accent);
             border-radius: 50%;
             animation: spin 0.7s linear infinite;
@@ -169,7 +165,7 @@
             font-size: 0.85rem;
             border-radius: var(--radius);
             padding: 10px 12px;
-            background: rgba(242, 84, 91, 0.12);
+            background: var(--error-wash);
             color: var(--error);
         }
         .error-banner[hidden] { display: none; }
@@ -215,7 +211,10 @@
 </head>
 <body>
     <header>
-        <h1>Waveform Preview<span class="proto-badge">Phase 2 — Early</span></h1>
+        <div class="header-top">
+            <h1>Waveform Preview<span class="proto-badge">Phase 2 — Early</span></h1>
+            <div id="themeToggle"></div>
+        </div>
         <div class="subtitle">Single-channel waveform preview — not the final Phase 2C workspace.
             <a class="back-link" href="index.html">&larr; Back to sources</a></div>
     </header>
@@ -326,6 +325,26 @@
         }
 
         // ------------------------------------------------------------------
+        // Theme-reactive Plotly colors -- read live from the shared
+        // appearance tokens (theme.css) rather than hard-coded per-theme
+        // hex values baked into this page's own JS. Called once at chart
+        // init and again (via PlotlyRenderer.applyTheme) whenever the
+        // user switches Light/Dark -- never triggers a data refetch, see
+        // that function's own comment.
+        // ------------------------------------------------------------------
+        function themeColors() {
+            const styles = getComputedStyle(document.documentElement);
+            const read = (name) => styles.getPropertyValue(name).trim();
+            return {
+                surface: read("--waveform-surface"),
+                text: read("--text"),
+                grid: read("--panel-border"),
+                accent: read("--accent"),
+                spike: read("--spike-color"),
+            };
+        }
+
+        // ------------------------------------------------------------------
         // Waveform data client: exact-range requests against the Phase 2A
         // API, with stale-request protection.
         //
@@ -410,6 +429,7 @@
         // ------------------------------------------------------------------
         const PlotlyRenderer = {
             init(container, payload, callbacks) {
+                const colors = themeColors();
                 const trace = {
                     x: payload.time,
                     y: payload.values,
@@ -418,41 +438,56 @@
                     // shape: "linear" (Plotly's own default) is what's used
                     // here -- explicitly NOT "spline", so no curve smoothing
                     // is applied between real sample points.
-                    line: { shape: "linear", width: 1.5, color: "#4f8dfd" },
+                    line: { shape: "linear", width: 1.5, color: colors.accent },
                     name: payload.channelName,
                     hovertemplate: "%{x:.6f}s: %{y}" + (payload.unit ? " " + payload.unit : "") + "<extra></extra>",
                 };
                 const layout = {
-                    paper_bgcolor: "#161d2e",
-                    plot_bgcolor: "#161d2e",
-                    font: { color: "#e7ecf5", size: 11 },
+                    paper_bgcolor: colors.surface,
+                    plot_bgcolor: colors.surface,
+                    font: { color: colors.text, size: 11 },
                     margin: { l: 55, r: 20, t: 10, b: 40 },
-                    // Crosshair styling (final refinement, post-UAT): native
-                    // Plotly axis spike-lines, deliberately styled thin,
-                    // dashed, and low-opacity so the guide lines assist
-                    // reading the waveform without visually competing with
-                    // it -- closer to the visual subtlety the owner liked
-                    // in uPlot's crosshair, without recreating uPlot's
-                    // cursor mechanics (no custom mouse-following overlay
-                    // was built; that responsiveness gap was explicitly
-                    // judged by the owner as not worth the added
-                    // complexity -- see DEC-022). `spikethickness: 1` is
-                    // already the thinnest practical pixel width; the
-                    // "lighter" requirement is carried by `spikedash:
-                    // "dash"` and the reduced-alpha `spikecolor` instead.
-                    // `spikesnap: "data"` is unchanged from the prior
-                    // refinement -- the crosshair still snaps to the
-                    // nearest REAL recorded sample, never an interpolated
-                    // in-between position.
+                    // Crosshair styling: native Plotly axis spike-lines,
+                    // deliberately styled thin, dashed, and low-opacity so
+                    // the guide lines assist reading the waveform without
+                    // visually competing with it -- closer to uPlot's
+                    // visual subtlety, without recreating uPlot's cursor
+                    // mechanics (no custom mouse-following overlay was
+                    // built -- see DEC-022/DEC-023).
+                    //
+                    // Thinner-crosshair refinement (DEC-023): Plotly's own
+                    // spike lines are drawn as ordinary SVG stroke paths
+                    // (even for a `scattergl` trace -- the spike overlay
+                    // itself is not part of the WebGL trace layer), and
+                    // SVG `stroke-width` reliably supports fractional
+                    // values below 1 across every current browser -- this
+                    // isn't a hack, it's standard SVG rendering. So
+                    // `spikethickness: 1` was NOT actually Plotly's
+                    // practical minimum; `0.5` is used here as a genuine,
+                    // natively-supported thinner value, combined with a
+                    // further-reduced spikecolor alpha (0.42, down from
+                    // 0.55) for compounding subtlety -- both levers per
+                    // the owner's "closer to uPlot's visual weight"
+                    // direction. Caveat, stated honestly: pixel-level
+                    // visual confirmation was not performed in this
+                    // sandboxed, no-real-browser session -- see this
+                    // task's live DEV verification step.
+                    // `spikesnap: "data"` is unchanged -- the crosshair
+                    // still snaps to the nearest REAL recorded sample,
+                    // never an interpolated in-between position. Colors
+                    // (`colors.grid`/`colors.spike`) are read from the
+                    // active theme (see themeColors()) and re-applied via
+                    // Plotly.relayout on theme change, never rebuilt from
+                    // scratch and never refetched -- see applyTheme below.
                     xaxis: {
-                        title: "Time (s)", gridcolor: "#2a3348", zeroline: false,
+                        title: "Time (s)", gridcolor: colors.grid, zeroline: false,
                         showspikes: true, spikemode: "across", spikesnap: "data",
-                        spikethickness: 1, spikedash: "dash", spikecolor: "rgba(139, 150, 173, 0.55)",
+                        spikethickness: 0.5, spikedash: "dash", spikecolor: colors.spike,
                     },
                     yaxis: {
-                        title: payload.unit || "", gridcolor: "#2a3348", zeroline: false,
+                        title: payload.unit || "", gridcolor: colors.grid, zeroline: false,
                         showspikes: true, spikemode: "across", spikesnap: "data",
-                        spikethickness: 1, spikedash: "dash", spikecolor: "rgba(139, 150, 173, 0.55)",
+                        spikethickness: 0.5, spikedash: "dash", spikecolor: colors.spike,
                     },
                     hovermode: "closest",
                     dragmode: "zoom",
@@ -496,12 +531,13 @@
             },
 
             update(handle, payload) {
+                const colors = themeColors();
                 Plotly.react(handle.container, [{
                     x: payload.time,
                     y: payload.values,
                     type: "scattergl",
                     mode: "lines",
-                    line: { shape: "linear", width: 1.5, color: "#4f8dfd" },
+                    line: { shape: "linear", width: 1.5, color: colors.accent },
                     name: payload.channelName,
                     hovertemplate: "%{x:.6f}s: %{y}" + (payload.unit ? " " + payload.unit : "") + "<extra></extra>",
                 }], handle.container.layout);
@@ -515,6 +551,29 @@
             setViewport(handle, startTime, endTime) {
                 handle.suppressFlag();
                 Plotly.relayout(handle.container, { "xaxis.range": [startTime, endTime] });
+            },
+
+            // Applies the current theme's colors to an already-rendered
+            // chart -- called on Light/Dark switch (see the
+            // "powerwave:theme-change" listener below). Deliberately uses
+            // only Plotly.relayout (layout-level: backgrounds, font, grid,
+            // spike colors) and Plotly.restyle (trace-level: line color),
+            // never Plotly.newPlot/react with fresh data -- no waveform
+            // range request happens here, matching this task's explicit
+            // "do not refetch waveform data just because the theme
+            // changes" requirement.
+            applyTheme(handle) {
+                const colors = themeColors();
+                Plotly.relayout(handle.container, {
+                    paper_bgcolor: colors.surface,
+                    plot_bgcolor: colors.surface,
+                    "font.color": colors.text,
+                    "xaxis.gridcolor": colors.grid,
+                    "yaxis.gridcolor": colors.grid,
+                    "xaxis.spikecolor": colors.spike,
+                    "yaxis.spikecolor": colors.spike,
+                });
+                Plotly.restyle(handle.container, { "line.color": [colors.accent] }, [0]);
             },
         };
 
@@ -655,6 +714,16 @@
 
         document.getElementById("resetViewBtn").addEventListener("click", resetView);
 
+        // Theme switch -- re-applies colors to the already-rendered chart
+        // only (see PlotlyRenderer.applyTheme's own comment); a no-op if
+        // no chart has been created yet (theme.js already applied the
+        // [data-theme] attribute before this script ran, so the first
+        // PlotlyRenderer.init() call always sees the correct theme via
+        // themeColors() regardless of this listener).
+        document.addEventListener("powerwave:theme-change", () => {
+            if (currentHandle) PlotlyRenderer.applyTheme(currentHandle);
+        });
+
         // ------------------------------------------------------------------
         // Init
         // ------------------------------------------------------------------
@@ -700,6 +769,7 @@
                 '<div class="value">' + escapeHtml(String(value)) + '</div></div>';
         }
 
+        window.PowerwaveTheme.mountThemeToggle(document.getElementById("themeToggle"));
         init();
     </script>
 </body>

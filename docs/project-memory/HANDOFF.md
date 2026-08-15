@@ -8,6 +8,55 @@ Last updated: **2026-08-15**
 
 ## What was most recently done
 
+**Light/Dark Theme & Crosshair Refinement** (a small, general-application
+UX task — **not** Phase 2C work). Full detail:
+[MIGRATION_PLAN.md — Light/Dark Theme & Crosshair Refinement Record](MIGRATION_PLAN.md#lightdark-theme--crosshair-refinement-record-2026-08-15),
+[DECISIONS.md — DEC-023](DECISIONS.md#dec-023--application-supports-light-and-dark-appearance-light-is-the-preferreddefault-direction).
+
+**What was built**: a shared, reusable theme-token system —
+`frontend/theme.css` (new: CSS custom properties for Light — the
+default/preferred theme — and `[data-theme="dark"]`, plus new
+`--waveform-surface`/`--toolbar-surface`/wash-tint tokens that replace
+what used to be raw `rgba(...)` literals) and `frontend/theme.js` (new:
+`PowerwaveTheme.getTheme()`/`setTheme()`/`mountThemeToggle()`, applies
+`[data-theme]` to `<html>` before body paint to avoid a flash, persists to
+`localStorage` (`powerwave.theme`), and syncs live across tabs via the
+`storage` event). Both `index.html` and `waveform-prototype.html` now
+include these shared files, had their own local hard-coded `:root` color
+blocks and scattered `rgba(...)` literals removed/replaced with tokens,
+and gained a small Light/Dark segmented control in their header. The
+light palette is an **original Oruxa design** (`--bg: #f3f5f9`,
+`--panel: #ffffff`, `--accent: #3568d4`, etc.) — Detego's palette was not
+consulted or copied, per the owner's explicit instruction and the
+already-established Detego Benchmark Principle (DEC-020). The dark theme
+is the exact same values the app already used, just migrated onto the
+shared token system (same layout/behavior, different appearance — not a
+second CSS implementation).
+
+**Plotly integration**: `waveform-prototype.html`'s chart now reads its
+colors from the active theme at init time and re-applies them via
+`Plotly.relayout`/`Plotly.restyle` on a theme change (new
+`PlotlyRenderer.applyTheme()`) — **verified via test that this never
+triggers a new waveform data fetch**.
+
+**Crosshair refined further** (beyond the Phase 2B closure pass, DEC-022):
+`spikethickness` `1` → `0.5` (a genuine, natively-supported thinner SVG
+stroke-width value — Plotly's spike lines render as SVG paths even for a
+`scattergl` trace, and fractional stroke-width is standard, reliable SVG
+behavior, not a workaround; the prior pass's "practical minimum" claim
+was not fully substantiated) and `spikecolor` alpha `0.55` → `0.42`.
+Dashed style, `spikesnap: "data"`, and moving hover X/Y values are
+unchanged. **No custom crosshair/cursor engine was built.** Honest
+limitation: pixel-level visual confirmation wasn't done in this
+sandboxed, no-real-browser session — see this task's live DEV
+verification for that.
+
+**No backend change** (zero backend files touched, 278 tests unmodified
+and passing). **No Phase 2C work** — Phase 2C remains exactly as the
+prior pass left it: designed, not implemented, not authorized.
+
+## What was done in the prior session (Phase 2C discovery/design)
+
 **Phase 2C — Flexible Multi-Channel Waveform Workspace: Discovery and
 Design.** Design/discovery only — **nothing implemented, nothing decided**.
 Full detail:
@@ -377,7 +426,35 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified (this pass — Phase 2C discovery/design)
+## What was verified (this pass — Light/Dark theme & crosshair refinement)
+
+- `oruxa_powerwave` git state: local `main` confirmed identical to
+  `origin/main` at commit `2349972` (independent `git fetch` via the
+  established HTTPS-URL workaround), working tree clean, before this pass
+  began.
+- **Backend regression: 278 tests, unmodified, all still pass** (fresh
+  venv run) — zero backend files in the diff (`git diff --stat -- backend/`
+  empty).
+- **Frontend: 19 new scripted `jsdom` checks, all passing** — theme
+  default/selection/persistence/cross-tab-sync/toggle-control behavior on
+  both `index.html` and `waveform-prototype.html`; Plotly crosshair
+  (dashed/thinner/reduced-alpha/sample-snapped/hover-values) at chart
+  init; theme switch updates Plotly via `relayout`/`restyle` with **zero**
+  additional `fetch` calls; Reset Time View still triggers exactly one
+  fresh waveform request (regression check).
+- `node --check` on every inline `<script>` block in both HTML files, and
+  on `frontend/theme.js` directly — all syntactically valid.
+- Manual `grep` sweep for `rgba(\|#[0-9a-fA-F]{3,6}` in both HTML files
+  confirmed only the intentional, theme-invariant `color: #fff` (white
+  text on solid accent/danger buttons, same in both themes) remains
+  outside the shared token files.
+- No real-browser/visual verification was performed in this sandboxed
+  session (no headless browser available) — see "Live DEV verification"
+  in this task's final report for what was checked via `curl`/static-asset
+  inspection instead, and the honest caveat on the `spikethickness: 0.5`
+  visual claim (DECISIONS.md DEC-023's own Impact section).
+
+## What was verified (prior pass — Phase 2C discovery/design)
 
 - `oruxa_powerwave` git state: local `main` confirmed identical to
   `origin/main` at commit `704df11` (independent `git fetch` via the
@@ -597,7 +674,21 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 2C discovery/design)
+## What files were changed this session (Light/Dark theme & crosshair refinement)
+
+New: `frontend/theme.css`, `frontend/theme.js`.
+
+Modified: `frontend/index.html` (theme link/script, header toggle,
+`:root` block removed, `rgba(...)` literals replaced with tokens),
+`frontend/waveform-prototype.html` (same, plus `themeColors()`,
+`PlotlyRenderer.applyTheme()`, crosshair `spikethickness`/`spikecolor`
+refinement, header toggle), `frontend/Dockerfile` (copies the two new
+files), `frontend/.dockerignore` (comment accuracy only),
+`docs/project-memory/{DECISIONS,MIGRATION_PLAN,CURRENT_STATE,HANDOFF}.md`
+(DEC-023 added; this work). **No `backend/` file, no CI/deployment
+workflow file was touched.**
+
+## What files were changed in the prior session (Phase 2C discovery/design)
 
 Modified only: `docs/project-memory/MIGRATION_PLAN.md` (new "Phase 2C —
 Flexible Multi-Channel Waveform Workspace: Discovery and Design" section,
@@ -770,58 +861,46 @@ Modified:
 
 ## GitHub / deployment status
 
-**This pass (Phase 2C discovery/design) is documentation-only — see the
-final report delivered in-conversation for the exact commit hash and push
-confirmation.** There is nothing to deploy: no backend/frontend file
-changed, so no DEV/PROD deployment step applies to this pass at all.
-**Production and DEV were not touched.**
+See "GitHub persistence" and "DEV deployment" in this task's final report
+(delivered in-conversation) for the exact commit hash, push confirmation,
+independent-fetch verification, GitHub Actions run, and live-endpoint
+checks for this theme/crosshair pass. **Production was not touched.**
 
 ## What remains unresolved
 
-- `[OPEN]`, **Phase 2C now has a full design proposal, but is still fully
-  unimplemented and undecided**: the panel model, grouping/auto-placement
-  rules, drag/reorder model, one-Plotly-instance-per-panel architecture,
-  multi-channel backend request strategy, Y-scaling model (Fit/
-  Proportional), mixed-unit handling, legend/identity model, workspace
-  state shape, and implementation slicing are all recorded as `[PROPOSAL]`/
-  `[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]` in
-  [MIGRATION_PLAN.md — Phase 2C](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15) —
-  **none of it is a `[DECISION]`**. The centralized-toolbar *principle*
-  remains decided (DEC-021); its concrete design is now proposed, not yet
-  approved.
+- `[OPEN]`, **unchanged from the prior pass**: Phase 2C has a full design
+  proposal (panel model, grouping, drag/reorder, one-Plotly-instance-per-
+  panel architecture, multi-channel backend strategy, Y-scaling, mixed-unit
+  handling, legend/identity, workspace state shape, implementation
+  slicing) but remains fully unimplemented and undecided — every
+  substantive choice is `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/
+  `[NEEDS UAT]`, not `[DECISION]`. This theme/crosshair pass did **not**
+  touch or advance Phase 2C in any way.
 - `[OPEN]` **Unchanged, still real**: abandoned-workspace cleanup still
-  has no automatic expiry/TTL. `[DECISION MODE: COMPARISON]` — reassessed
-  (not resolved) by this pass; see
-  [MIGRATION_PLAN.md's Phase 2C §30](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15)
-  and DEC-019's Impact section. Phase 2C's own design does not change the
-  backend memory-retention shape (still per-*source*, DEC-019, unaffected
-  by however many panels/channels a UI ever displays against it) but does
-  plausibly make real UAT sessions longer/more numerous once built — this
-  pass concluded TTL is not a Phase 2C design/first-slice blocker, but
-  remains recommended before broader/prolonged shared-DEV UAT.
-- `[OPEN]`, unchanged: digital waveform handling (deliberately deferred —
-  the waveform endpoint rejects digital channel names by design; Phase 2C's
-  own design confirms a digital-panel-type would fit the same panel
-  abstraction later without rework, but builds nothing); the ~100 MB
-  real-file memory ceiling (still not directly measured; same
-  not-a-blocker-but-recommended-before-broader-UAT reasoning as TTL); and
-  everything else already listed in
+  has no automatic expiry/TTL. `[DECISION MODE: COMPARISON]` — untouched by
+  this pass (a pure frontend/UX styling change, not a backend/lifecycle
+  one); see [MIGRATION_PLAN.md's Phase 2C §30](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15)
+  and DEC-019's Impact section.
+- `[OPEN]`, unchanged: digital waveform handling; the ~100 MB real-file
+  memory ceiling (still not directly measured); and everything else
+  already listed in
   [CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers).
-- **A genuinely new open finding from this pass**: `powerwave`'s own legend
-  context-menu has a **dead "Move to panel…" item** — wired on the UI side
-  but its signal is connected nowhere in the live codebase (a real,
-  previously-unflagged bug in the reference application, not something
-  `oruxa_powerwave` needs to fix, but worth knowing if `powerwave` is ever
-  consulted again for this specific interaction). Also: `powerwave`'s
-  `QSplitter` panel-resize state is silently discarded on every structural
-  rebuild (including an ordinary channel-panel move) — a confirmed weakness
-  Oruxa's own design (§27's persisted-height state model) is built to avoid,
-  not repeat.
+- **Not a new open item, but worth restating**: the `spikethickness: 0.5`
+  crosshair-thinness claim (DEC-023) rests on SVG's well-established
+  fractional-stroke-width support, not a pixel-level screenshot comparison
+  in this sandboxed session — the owner's own live DEV visual check is
+  where this actually gets confirmed.
 
 ## What should be done next
 
-The next step is for the **project owner** to review the Phase 2C design
-proposal and choose one of several valid paths — none is assumed here:
+Per this pass's own scope, there is nothing further to do here beyond the
+owner's live DEV review of the theme and crosshair result (this task's own
+"Live DEV verification" checklist). No further theming work — a settings-
+page redesign, additional theme modes, per-user server-side preference
+storage, or anything beyond the simple selector implemented — is
+authorized without a separate, explicit request. **Phase 2C's own next
+step is unchanged from the prior pass** (not touched or advanced by this
+theme/crosshair-only pass):
 (a) approve the `[DECISION MODE: ANALYSIS]` items outright (listed in the
 design's §35 — e.g. shared-viewport-state ownership, the one-Plotly-
 instance-per-panel architecture, chart-API isolation) without needing
@@ -838,36 +917,37 @@ prolonged shared-DEV UAT, unchanged from the prior pass's own conclusion.
 
 ## What must not be assumed
 
-- **Do not assume any part of the Phase 2C design proposal is approved** —
-  every substantive choice in it (panel model, grouping, drag/reorder, the
-  one-instance-per-panel architecture, Y-scaling, toolbar contents,
-  implementation slicing) is `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/
-  `[NEEDS UAT]`, not `[DECISION]`. Do not start implementing any of it as
-  if it were already authorized.
+- **Do not assume this pass is Phase 2C work** — it is a small, general-
+  application UX refinement (Light/Dark theme, crosshair thinness);
+  nothing in it advances, decides, or authorizes any part of the Phase 2C
+  design proposal, which remains exactly as the prior pass left it
+  (`[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`, not
+  `[DECISION]`).
 - **Do not assume Phase 2C implementation has started** — it has not; no
   multi-channel API, no panel-model code, no drag/drop, no digital signals,
-  no cursors exist anywhere in the repository as of this pass.
+  no cursors exist anywhere in the repository.
+- **Do not assume Dark is still the default** — Light is now the default
+  whenever no preference is stored (DEC-023); Dark is preserved and fully
+  functional, but only via explicit user selection.
+- **Do not assume the light palette was derived from or matches Detego's
+  visual identity** — it is an original Oruxa palette; Detego was
+  consulted only as a UI/UX workflow benchmark (DEC-020), never for
+  colors, per the owner's explicit instruction for this task.
+- **Do not assume a custom crosshair/cursor engine was built** — the
+  crosshair remains Plotly's native, sample-snapped spike-line mechanism;
+  only its `spikethickness`/`spikecolor` styling and theme-reactivity
+  changed.
+- Do not assume theme switching ever triggers a waveform data refetch — it
+  doesn't, by design and by test (see "What was verified" above);
+  `Plotly.relayout`/`Plotly.restyle` only.
 - **Do not assume Plotly is still "pending" or "preferred but open"** —
-  it is the final, owner-selected renderer (DEC-022, unchanged, unaffected
-  by this pass). uPlot remains removed; nothing in this pass reconsiders it.
-- **Do not assume DEC-021 (workspace-level navigation) is superseded or
-  reinterpreted by the Phase 2C design proposal** — the proposal builds on
-  DEC-021, explicitly reaffirming it unweakened throughout; it does not
-  replace or loosen it.
-- Do not assume the recommended one-Plotly-instance-per-panel architecture
-  (§16 of the design) is the only technically valid option — it's the
-  evidence-based *recommendation*, reasoned from Plotly's own documented API
-  surface and Phase 2B's already-proven broadcast mechanism; a future
-  implementer should still sanity-check the interaction feel once built,
-  per the design's own note.
-- Do not assume the `powerwave`/Detego findings recorded in this pass are a
-  complete audit of either product — `powerwave`'s investigation was scoped
-  to the 8 specific questions this task asked (panel/reorder/resize/Y-axis/
-  legend/show-hide/digital-relationship/explicit-weaknesses); Detego's
-  findings are limited to what its own public marketing/docs pages state,
-  not an audit of its actual authenticated application.
+  it is the final, owner-selected renderer (DEC-022, unaffected by this
+  pass). uPlot remains removed.
+- **Do not assume DEC-021 (workspace-level navigation) is affected by
+  this pass** — this was a color/theme change on the existing
+  single-channel preview page, not a navigation-architecture change.
 - Do not assume TTL or the ~100 MB validation is solved — both remain
-  explicitly open, reassessed but not resolved by this pass.
+  explicitly open, untouched by this pass.
 - Do not assume the retained `DisturbanceRecord` (Phase 2A, DEC-019) or the
   waveform API's behavior changed this pass — zero backend files were
   touched; the existing single-channel endpoint is unchanged.
@@ -878,22 +958,22 @@ prolonged shared-DEV UAT, unchanged from the prior pass's own conclusion.
 - Do not assume Phase 1.5, Phase 2C implementation, or any later phase is
   authorized.
 - Do not assume `powerwave` is still at commit `3156392` by the time you
-  read this — re-verify before relying on specific line numbers (it was
-  re-confirmed unchanged as of this pass, 2026-08-15).
+  read this — this pass did not re-verify `powerwave` (no `powerwave`
+  investigation was needed for a pure frontend styling task); the last
+  confirmed commit was `3156392`, from the prior (Phase 2C) pass.
 
 ## Owner approval needed before proceeding?
 
-- Not needed to read/discuss the Phase 2C design proposal itself — it's
-  already written up and committed for review, per this exact task's own
-  authorization.
-- **Yes**, before any Phase 2C implementation slice begins (including the
-  recommended first slice, §29 of the design) — see "What should be done
-  next" above for the specific approval paths available. Also required
-  before Phase 1.5 or any later phase begins, before a PROD deployment
-  (moot this pass — nothing was deployed), and before any change to the
-  ephemeral-storage, upload-size, COMTRADE-upload-interaction,
-  workspace-lifecycle, or waveform-data decisions recorded in
-  `DECISIONS.md`. Per the change-governance rule in
+- Not needed to review or use the Light/Dark theme or the refined
+  crosshair themselves — already implemented, deployed to DEV, and
+  live-verified per this exact task's own authorization.
+- **Yes**, before any Phase 2C implementation slice begins, before Phase
+  1.5 or any later phase begins, before a PROD deployment, before any
+  further theming work beyond the simple selector implemented here (e.g.
+  a settings page, more theme modes, per-user server-side storage), and
+  before any change to the ephemeral-storage, upload-size,
+  COMTRADE-upload-interaction, workspace-lifecycle, or waveform-data
+  decisions recorded in `DECISIONS.md`. Per the change-governance rule in
   [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md).
 - **Recommended before any further prolonged/shared-DEV waveform UAT**: a
   real decision on the abandoned-session TTL question, and ideally the

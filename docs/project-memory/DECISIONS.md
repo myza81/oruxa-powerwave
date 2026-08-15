@@ -1017,6 +1017,128 @@ Impact:
 
 ---
 
+## DEC-023 — Application supports Light and Dark appearance; Light is the preferred/default direction
+
+Date: 2026-08-15
+Status: Approved
+Source: explicit project-owner UX requirement for a focused theming/
+crosshair refinement task (2026-08-15), following Phase 2C's discovery/
+design pass (design only, not implemented).
+
+Decision:
+
+> Oruxa Powerwave supports Light and Dark appearance.
+> Light is the preferred/default direction.
+> Theme is a general application preference.
+> Detego is only a UI/UX benchmark; Oruxa uses its own palette.
+
+Implemented as a small, shared, reusable theme-token system (CSS custom
+properties, `frontend/theme.css`) and a shared preference module
+(`frontend/theme.js`), not scattered hard-coded colors, and not scoped to
+the waveform page alone — every existing static frontend page
+(`index.html`, `waveform-prototype.html`) includes both files and applies
+the theme coherently across the main Phase 1 page, source/channel browser,
+tables, buttons, dialogs, banners, the waveform page, and the Plotly chart
+itself. Light is the default whenever no preference is stored; the user's
+choice persists in `localStorage` (`powerwave.theme`) and applies
+immediately without a page reload. Dark is preserved through the same
+token system — same layout, same behavior, different appearance — not a
+second, parallel CSS implementation. The original Oruxa light palette
+(clean, professional, restrained accent, subtle borders) is explicitly
+**not** derived from or matching Detego's visual identity — Detego was
+consulted only per the already-established Detego Benchmark Principle
+(DEC-020/`PRODUCT_REFERENCES.md`) as a UI/UX workflow benchmark, never as
+a source of colors.
+
+Also recorded by this same decision:
+
+- The Plotly crosshair (native axis spike-lines, DEC-022/DEC-023 unchanged
+  in mechanism) was refined further for visual subtlety:
+  `spikethickness` reduced from `1` to `0.5` (Plotly's spike-line stroke is
+  rendered as an ordinary SVG path even for a `scattergl` trace, and SVG
+  `stroke-width` reliably supports fractional values below `1` across
+  current browsers — this is standard SVG rendering, not a workaround; see
+  Impact below for the honest caveat on visual confirmation), and
+  `spikecolor`'s alpha reduced from `0.55` to `0.42`, using the same
+  theme-token mechanism (`--spike-color`) so the crosshair's color is
+  correct in both Light and Dark.
+- **No custom mouse-following crosshair, no new cursor architecture, and
+  no custom hover engine were added.** The crosshair remains Plotly's
+  native, sample-snapped (`spikesnap: "data"`) spike-line mechanism —
+  unchanged since DEC-022, only its visual styling and theme-reactivity
+  were refined.
+- **Phase 2C (centralized toolbar, panel model, drag/reorder,
+  multi-channel display) remains explicitly not started.** This is a
+  general-app UX refinement, unrelated to and not a step toward Phase 2C
+  implementation.
+
+Reason:
+
+The owner wants the application to support both appearances, with Light as
+the preferred direction, while keeping the existing dark direction intact
+for users who prefer it — and wants this to feel like one coherent
+application (the waveform page must not look visually disconnected from
+the main app). A small, shared token system is the standard, low-complexity
+way to support this without introducing a frontend framework or scattering
+per-element color literals that would drift between the two themes over
+time. The crosshair was already refined once for visual subtlety
+(DEC-022); the owner still found it too thick, and closer inspection this
+pass found the earlier claim that `spikethickness: 1` was Plotly's
+practical minimum was not fully substantiated — SVG's own stroke-width
+support for sub-1 values is standard, not exotic, so a genuinely thinner
+native value was used instead of only relying on the alpha/dash levers
+already in place.
+
+Alternatives considered:
+
+Scattered per-page hard-coded light/dark color literals (rejected —
+directly contradicts the task's own "do not scatter hard-coded colors"
+instruction and this project's established preference for token-based,
+maintainable styling); a full settings-page redesign (rejected — the
+owner explicitly asked for a simple selector, not a redesigned settings
+experience); copying Detego's visual palette (rejected outright — the
+Detego Benchmark Principle, DEC-020, is explicit that Detego is a UI/UX
+*workflow* benchmark, never a source of colors or visual identity, and the
+owner repeated that constraint directly for this task); keeping
+`spikethickness: 1` unchanged and relying only on alpha/dash (a legitimate
+fallback the owner explicitly authorized if `1` really were the practical
+minimum — not needed here, since a genuinely thinner native value was
+available; both levers were used together anyway for compounding
+subtlety).
+
+Impact:
+
+- New files: `frontend/theme.css` (light/dark token definitions + the
+  Appearance toggle control's styles), `frontend/theme.js` (get/set/apply
+  preference logic, cross-tab `storage`-event sync, and a shared
+  `mountThemeToggle()` helper used identically by every page).
+- `frontend/index.html` / `frontend/waveform-prototype.html`: both now
+  `<link>`/`<script>` the shared theme files (loaded early, before body
+  paint, to avoid a theme flash); their own local hard-coded `:root` color
+  blocks and scattered `rgba(...)`/hex literals were replaced with the
+  shared tokens; both gained a small Light/Dark segmented control in their
+  header.
+- `frontend/waveform-prototype.html`'s Plotly integration reads colors
+  from the active theme at chart-init time and re-applies them via
+  `Plotly.relayout`/`Plotly.restyle` on a theme change — **no waveform
+  data is refetched when the theme changes**, per the task's explicit
+  requirement; only already-rendered chart chrome (backgrounds, font,
+  grid, spike colors) and the trace's line color are updated.
+- `frontend/Dockerfile` / `frontend/.dockerignore`: updated to
+  copy/document the two new static files, following the exact existing
+  pattern for `config.js`.
+- **Honest limitation, stated per this task's own instruction**: the
+  `spikethickness: 0.5` value was not visually confirmed with a real
+  screenshot in this sandboxed, no-real-browser session — the change rests
+  on SVG's well-established, universal support for fractional
+  `stroke-width`, not a live pixel-level comparison. Live DEV verification
+  (this task's own checklist) is the point at which the owner can visually
+  confirm the result.
+- No backend file was touched; all existing backend tests are unmodified
+  and passing.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

@@ -3,6 +3,7 @@
 # The image needs (see Dockerfile):
 #   index.html
 #   config.js
+#   theme.css / theme.js (shared Light/Dark appearance tokens + preference)
 #   docker-entrypoint.d/
 #   waveform-prototype.html (Phase 2B renderer-UAT prototype)
 #   vendor/ (vendored plotting-library static builds, see vendor/README.md)

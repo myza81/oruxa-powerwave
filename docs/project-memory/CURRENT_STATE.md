@@ -101,6 +101,30 @@ implementation has not started** — no multi-channel API, no panel model
 code, no drag/drop, no digital signals, no cursors exist anywhere in the
 repository as of this pass.
 
+`[FACT]` **A small, general-application UX refinement — Light/Dark theme
+support and a further Plotly crosshair refinement — is now implemented**
+(2026-08-15), **not** Phase 2C work — see
+[MIGRATION_PLAN.md — Light/Dark Theme & Crosshair Refinement Record](MIGRATION_PLAN.md#lightdark-theme--crosshair-refinement-record-2026-08-15).
+`[DECISION]` **DEC-023**: the application supports Light and Dark
+appearance, Light is the preferred/default direction, theme is a general
+application preference (not waveform-page-only), and Detego is used only
+as a UI/UX benchmark — its palette was not consulted or copied; the light
+theme is an original Oruxa palette. Implemented as a shared, reusable
+CSS-custom-property token system (`frontend/theme.css`) and preference
+module (`frontend/theme.js`) included by every static frontend page —
+applied coherently to the main app, channel browser, tables, buttons,
+dialogs, banners, the waveform page, and the Plotly chart itself. Dark is
+preserved through the same token system (same layout/behavior, different
+appearance), not a second CSS implementation. Plotly's chart colors update
+via `Plotly.relayout`/`Plotly.restyle` on a theme change — no waveform
+data is refetched. The crosshair's `spikethickness` was further reduced
+from `1` to `0.5` (a genuine, natively-supported thinner SVG stroke-width
+value — the prior pass's "practical minimum" claim was not fully
+substantiated) and its alpha reduced further (`0.55` → `0.42`); dashed
+style and sample-snapping (`spikesnap: "data"`) are unchanged; no custom
+crosshair/cursor engine was built. No backend file changed; 278 backend
+tests unmodified and passing. **Phase 2C remains not started.**
+
 ## Completed foundation work
 
 `[FACT]`, verified against the repository on 2026-08-15:
@@ -205,15 +229,23 @@ repository as of this pass.
   the renderer-switch UI were removed; `frontend/vendor/plotly/` is now
   the only vendored library. Plotly's native axis spike-lines
   (`showspikes`/`spikesnap: "data"`/`spikemode: "across"`) provide the
-  hover crosshair, restyled this pass to `spikedash: "dash"` and a
-  reduced-opacity `spikecolor` for a lighter, less visually dominant
-  guide line; sample-snapping and both vertical/horizontal lines are
+  hover crosshair, restyled at Phase 2B closure to `spikedash: "dash"` and
+  further refined (DEC-023, 2026-08-15) to `spikethickness: 0.5` (down
+  from `1`) and a further-reduced `spikecolor` alpha (`0.42`, down from
+  `0.55`); sample-snapping and both vertical/horizontal lines are
   unchanged. The relayout handler correctly triggers a full-record
   re-fetch on Plotly's native Autoscale/Reset-axes buttons; the viewport
   debounce is 120ms; "Reset Time View" stays terminologically distinct
-  from "Autoscale Y" (DEC-021, unweakened). Still no framework, no build
-  step, no routing for the main app — that remains an open, undecided
-  question for a later phase.
+  from "Autoscale Y" (DEC-021, unweakened). **Light/Dark appearance**
+  (DEC-023, 2026-08-15): both `index.html` and `waveform-prototype.html`
+  now include shared `frontend/theme.css`/`frontend/theme.js` — Light is
+  the default/preferred theme, Dark is user-selectable via a small header
+  toggle, the preference persists in `localStorage` and applies
+  immediately across both pages (including live cross-tab sync via the
+  `storage` event); Plotly's chart colors update via
+  `Plotly.relayout`/`Plotly.restyle` on a theme change without refetching
+  waveform data. Still no framework, no build step, no routing for the
+  main app — that remains an open, undecided question for a later phase.
 - **Docker/Compose**: unchanged — `compose.yaml` +
   `compose.dev.yaml`/`compose.prod.yaml`, DEV/PROD isolation verified in CI.
 - **CI/CD**: unchanged (`.github/workflows/{ci,deploy}.yml`) — used as-is
@@ -230,8 +262,9 @@ repository as of this pass.
   Design", "Phase 2A — Implementation Record", "Phase 2B — Renderer
   UAT Prototype Implementation Record", "Phase 2B — Plotly
   Refinement & Workspace-Level Navigation Record", "Phase 2B —
-  Renderer Closure Record", and "Phase 2C — Flexible Multi-Channel
-  Waveform Workspace: Discovery and Design" sections).
+  Renderer Closure Record", "Phase 2C — Flexible Multi-Channel
+  Waveform Workspace: Discovery and Design", and "Light/Dark Theme &
+  Crosshair Refinement Record" sections).
 
 ## Current architecture status
 
@@ -292,7 +325,9 @@ abstraction (unused by the event-file path), CI/CD pipeline, DEV/PROD
 deployment isolation, a working single-page frontend with
 collapsible/searchable channel grouping and a removal confirmation, plus
 (Phase 2B) an isolated renderer-UAT prototype page comparing uPlot and
-Plotly.js against that same waveform API, this documentation set. No
+Plotly.js against that same waveform API, and (DEC-023) a shared Light/
+Dark appearance system applied across the whole frontend including the
+Plotly chart, this documentation set. No
 frontend framework, no database schema, no authentication, no CSV/Excel/
 digital-waveform/cursors-measurements/calculated-signal/synchronization/
 draggable-panel features yet. A Phase 2 waveform-workspace **design
@@ -374,6 +409,20 @@ real-file memory validation were reassessed — neither escalates to a Phase
 2C design/first-slice blocker; both remain recommended before Phase 2C
 reaches broader/prolonged shared-DEV UAT, unchanged reasoning from Phase
 2A/2B. **Phase 2C has not started implementation.**
+
+`[DECISION]` Recorded 2026-08-15: **DEC-023** — the application supports
+Light and Dark appearance, Light is the preferred/default direction,
+theme is a general application preference (not waveform-page-only), and
+Detego was used only as a UI/UX benchmark for this decision — its palette
+was not consulted or copied; the light theme is an original Oruxa
+palette. Implemented via a shared CSS-token system
+(`frontend/theme.css`/`theme.js`) applied coherently across the whole
+frontend, including the Plotly waveform chart (colors update on theme
+change via `Plotly.relayout`/`Plotly.restyle`, no data refetch). The
+Plotly crosshair was further refined (`spikethickness` 1→0.5,
+`spikecolor` alpha 0.55→0.42); no custom crosshair/cursor engine was
+built. This is a general-app UX refinement, **not** Phase 2C — see
+[MIGRATION_PLAN.md — Light/Dark Theme & Crosshair Refinement Record](MIGRATION_PLAN.md#lightdark-theme--crosshair-refinement-record-2026-08-15).
 
 `[DECISION]` Recorded 2026-08-15: DEC-020 — `detego.app` is adopted as an
 official product/UI-UX/waveform-workspace/dashboard/workflow **benchmark**
@@ -501,6 +550,16 @@ abandoned-session TTL question (`[DECISION MODE: COMPARISON]`, reassessed
 but not resolved by the Phase 2C design pass) and the ~100 MB real-file
 memory validation remain recommended before any further
 prolonged/shared-DEV waveform UAT.
+**Separately, a small general-application UX refinement — Light/Dark
+theme support (DEC-023) and a further Plotly crosshair refinement — has
+been implemented** (2026-08-15), see
+[MIGRATION_PLAN.md — Light/Dark Theme & Crosshair Refinement Record](MIGRATION_PLAN.md#lightdark-theme--crosshair-refinement-record-2026-08-15).
+This is not Phase 2C work and does not change the Phase 2C authorization
+status above. The next step, per this pass's own closing instruction, is
+for the owner to review the theme/crosshair result via live DEV UAT — no
+further theming work is authorized beyond what's described there
+(e.g. no settings-page redesign, no additional theme modes) without a
+separate request.
 Phase 1.5 (CSV/Excel), synchronization, calculated signals, digital
 waveform delivery, authentication, and any other later-phase
 functionality remain explicitly **not** authorized.

@@ -1,0 +1,113 @@
+/* Powerwave appearance (Light/Dark) theme tokens.
+ *
+ * Shared across every static frontend page (index.html,
+ * waveform-prototype.html, and any future page) via a plain <link>, the
+ * same static-file pattern already used for config.js -- no build step,
+ * no framework (see docs/architecture/oruxa-architecture.md).
+ *
+ * Light is the default/preferred direction (no [data-theme] attribute, or
+ * data-theme="light"); Dark is opt-in via [data-theme="dark"], set by
+ * theme.js from the user's saved preference. Values are an original Oruxa
+ * palette -- not derived from or matching Detego's visual identity; Detego
+ * is a UI/UX workflow benchmark only, never a source of colors (see
+ * docs/project-memory/PRODUCT_REFERENCES.md).
+ *
+ * Every page that includes this file must render correctly using ONLY
+ * these custom properties for color -- no page should hard-code a literal
+ * color that differs between the two themes.
+ */
+:root {
+    /* ---- Light (default) ---- */
+    --bg: #f3f5f9;
+    --panel: #ffffff;
+    --panel-border: #d9dfea;
+    --text: #1b2333;
+    --text-dim: #5c6579;
+    --accent: #3568d4;
+    --accent-dim: #c7d7f7;
+    --ok: #1f9d63;
+    --warn: #b8720a;
+    --error: #d23c44;
+
+    /* Waveform/toolbar surfaces -- distinct tokens per the theme design
+       (kept equal to --panel/a slightly different neutral today, but named
+       separately so a future page can diverge from the generic panel
+       surface without inventing a new token then). */
+    --waveform-surface: #ffffff;
+    --toolbar-surface: #f8f9fc;
+
+    /* Subtle tint/wash tokens -- replace what used to be hard-coded
+       rgba(255,255,255,...)/rgba(0,0,0,...) literals scattered per-page.
+       Each one is intentionally theme-relative (an alpha-blended version
+       of a base token), not a fixed color, so it reads correctly against
+       either theme's own --bg/--panel. */
+    --hover-tint: rgba(27, 35, 51, 0.035);
+    --surface-tint: rgba(27, 35, 51, 0.025);
+    --accent-wash: rgba(53, 104, 212, 0.10);
+    --accent-wash-soft: rgba(53, 104, 212, 0.07);
+    --ok-wash: rgba(31, 157, 99, 0.12);
+    --error-wash: rgba(210, 60, 68, 0.10);
+    --overlay-backdrop: rgba(27, 35, 51, 0.35);
+    --chart-overlay-bg: rgba(255, 255, 255, 0.92);
+
+    /* Plotly spike-line (crosshair) color -- theme-sensitive; read at
+       runtime via getComputedStyle, see waveform-prototype.html. */
+    --spike-color: rgba(92, 101, 121, 0.42);
+
+    --radius: 8px;
+}
+
+:root[data-theme="dark"] {
+    /* ---- Dark (opt-in) ---- */
+    --bg: #0f1420;
+    --panel: #161d2e;
+    --panel-border: #2a3348;
+    --text: #e7ecf5;
+    --text-dim: #8b96ad;
+    --accent: #4f8dfd;
+    --accent-dim: #2c4a80;
+    --ok: #3ecf8e;
+    --warn: #f5a623;
+    --error: #f2545b;
+
+    --waveform-surface: #161d2e;
+    --toolbar-surface: #161d2e;
+
+    --hover-tint: rgba(255, 255, 255, 0.03);
+    --surface-tint: rgba(255, 255, 255, 0.02);
+    --accent-wash: rgba(79, 141, 253, 0.12);
+    --accent-wash-soft: rgba(79, 141, 253, 0.08);
+    --ok-wash: rgba(62, 207, 142, 0.12);
+    --error-wash: rgba(242, 84, 91, 0.12);
+    --overlay-backdrop: rgba(4, 7, 14, 0.6);
+    --chart-overlay-bg: rgba(15, 20, 32, 0.85);
+
+    --spike-color: rgba(139, 150, 173, 0.42);
+}
+
+/* Appearance selector -- a small, deliberately simple segmented control,
+   not a settings page (see docs/project-memory/DECISIONS.md DEC-023). */
+.theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+.theme-toggle button {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 0.76rem;
+    font-weight: 600;
+    padding: 5px 10px;
+    cursor: pointer;
+    line-height: 1.2;
+}
+.theme-toggle button:hover { color: var(--text); background: var(--hover-tint); }
+.theme-toggle button[aria-pressed="true"] {
+    background: var(--accent-wash-soft);
+    color: var(--accent);
+}
+.theme-toggle button + button { border-left: 1px solid var(--panel-border); }
