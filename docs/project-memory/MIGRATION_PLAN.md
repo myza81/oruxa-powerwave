@@ -4737,6 +4737,220 @@ no CI/deployment workflow file, no other frontend file.
 
 ---
 
+## Phase 2C-B2 — Unified Analog Canvas Layout Implementation Record (2026-08-15)
+
+`[FACT]` throughout except where explicitly marked `[DECISION]` (DEC-026).
+A small, deliberately-scoped **visual/layout refinement of Separate mode
+only** — no panel/data model change, no synchronization change, no backend
+change. **Direct vertical drag/reorder, drag-to-overlay/group,
+drag-out-to-separate, digital-channel rendering, and Custom layout mode
+are explicitly not started.**
+
+### Phase 2C-B1 manual UAT result (recorded here, this pass)
+
+The owner manually UAT'd the completed Phase 2C-B1 (Grouped/Separate
+toggle) implementation. **Passed**: Separate-mode waveform synchronization,
+horizontal zoom, pan, shared X/time movement. **Refinement required**:
+Separate mode's *visual layout* looked like a stack of independently
+bordered, individually-headed dedicated cards/panels (one per channel) —
+not the single continuous analog canvas the owner wanted. The owner
+supplied a Detego screenshot purely as a visual/layout reference (per the
+Detego Benchmark Principle, DEC-020) for what "one continuous canvas with
+independent lanes" should look like, and this task's own specification is
+the resolved target: **each analog channel keeps its own lane and its own
+Y scale (never merged onto one shared Y axis), but the surrounding visual
+chrome — card borders, repeated backgrounds, repeated headers — should
+disappear so all lanes read as one shared workspace.**
+
+### Unified analog canvas — new Separate-mode visual structure
+
+`#wwPanels` (the container all panel DOM nodes are appended to, unchanged
+from Phase 2C-A) gains a new `ww-panels-unified` class **only while
+`ww.layoutMode === "separate"`** (toggled in `wwSetLayoutMode`, CSS-only —
+no DOM restructuring). With that class present:
+
+- the container itself supplies ONE shared background
+  (`var(--waveform-surface)` — the same token each Plotly chart's own
+  `paper_bgcolor`/`plot_bgcolor` already reads via `wwThemeColors()`, so
+  the container's background and every chart's own background are
+  literally the same color — no visible seam) and ONE shared outer border/
+  radius, replacing N repeated per-panel cards with one workspace-level
+  frame;
+- each `.ww-panel` loses its own border/background/border-radius/
+  margin-bottom entirely and instead becomes one row of a CSS grid
+  (`grid-template-columns: 108px 1fr`) with a single hairline
+  `border-bottom` divider between lanes (omitted on the last lane) — a
+  subtle horizontal separator, not a repeated card;
+- the (now-redundant, since a Separate-mode panel's header text always
+  equals its one channel's name — the same string the legend chip already
+  shows) `.ww-panel-header` block is hidden; the existing compact legend
+  chip (colored dot + channel name + unit + remove control, unchanged
+  markup from Phase 2C-A/B1) becomes the sole per-lane label, placed in the
+  narrow 108px left column;
+- `.ww-chart-wrap` loses its own border/background and occupies the wide
+  right column (`1fr`) — **the waveform plot area gets the maximum
+  available width**, exactly as required;
+- lane height (`.ww-chart`) is reduced from 260px to 140px for this mode
+  only — compact enough that six lanes read as one stacked canvas, still
+  tall enough to inspect waveform shape (per this task's own §10 guidance;
+  no user-resizing was built, matching the explicit exclusion).
+
+**Grouped mode's own CSS is completely untouched** (the original, unscoped
+`.ww-panel` rule still declares its full card border/background/margin) —
+`#wwPanels` never gains `ww-panels-unified` while `ww.layoutMode ===
+"grouped"`, so Grouped mode continues to render exactly as Phase 2C-A
+shipped it. Nothing here changes what "grouping" means — it is purely
+which CSS class is toggled on the shared container, driven by the same
+`ww.layoutMode` flag Phase 2C-B1 already introduced.
+
+### Lane presentation — borders, spacing, labels, axes
+
+- **Borders**: no card border/background repeats per lane; one hairline
+  `border-bottom` divider between lanes (omitted on the last), one shared
+  outer container border.
+- **Spacing**: `.ww-panel` padding reduced to `2px 14px`, `margin-bottom:
+  0` — lanes stack tightly with no large vertical gaps.
+- **Labels**: the per-lane header text is hidden (redundant in Separate
+  mode); the existing legend chip (dot + channel name + unit + remove
+  button) is the one compact label, in a fixed-width left column so every
+  lane's label column — and therefore every lane's chart column — starts
+  at the same horizontal position, keeping the Y-axis regions visually
+  aligned across all six lanes.
+- **X-axis**: per this task's own §8, only the bottom-most lane (last in
+  `ww.panels`' order) shows X tick labels and the "Time (s)" title; every
+  other lane suppresses both via a new `wwUpdateBottomLaneAxis()` function
+  — a pure chrome `Plotly.relayout({"xaxis.showticklabels", "xaxis.title"})`
+  call per panel, never touching `xaxis.range`, so it cannot interact with
+  the existing viewport-broadcast loop-prevention path. Called after every
+  panel-array mutation that could change which lane is "last": adding
+  channels, removing a channel (removing the current bottom lane correctly
+  hands the shared-axis role to the new last lane — verified by test), and
+  rebuilding the layout on a mode switch. **Grouped mode never calls this
+  function's suppression path** — every Grouped panel keeps its own full
+  X axis, unchanged.
+- **Y-axis**: completely untouched — each lane still gets its own
+  independent Y axis and its own unit label (Plotly's native `yaxis.title`,
+  set once at panel creation in `wwBuildLayout`, unaffected by any of this
+  pass's CSS/axis-visibility work). **Channels are never merged onto one
+  shared Y axis** — this was the task's own explicit critical distinction
+  (§4), and nothing in this implementation touches trace-to-axis
+  assignment; each panel is still exactly one independent Plotly instance
+  with exactly one Y axis, exactly as Phase 2C-A/B1 already built it.
+
+### Synchronization preserved exactly
+
+No change to the shared-viewport mechanism itself: `wwWirePanelRelayout`,
+the 120ms debounced broadcast, per-panel `suppressNext` loop-prevention,
+and the stale-request-protected per-channel fetch pipeline are all
+byte-for-byte unchanged from Phase 2C-A/B1. Verified directly (jsdom):
+zooming any one Separate lane still broadcasts to all 6 lanes with exactly
+6 relayout calls (no runaway loop) and exactly 6 refetches; panning a
+different lane does the same; Reset Time View and Autoscale Y both still
+operate correctly across all 6 lanes without a stray refetch from
+Autoscale. The new `xaxis.showticklabels`/`xaxis.title` relayout calls are
+a disjoint code path from the range-broadcast relayout calls and were
+verified not to trigger it.
+
+### Grouped mode — no regression
+
+Verified via the full existing Phase 2C-A (19 checks) and Phase 2C-B1 (16
+checks) suites, re-run unmodified against this pass's code, both still
+passing in full, plus a new dedicated check that Grouped mode's panels
+never receive a `showticklabels` relayout call at all (its panels' X axes
+are simply never touched by the new suppression logic).
+
+### Future drag readiness (section 15)
+
+No new architecture was needed here beyond what Phase 2C-B1 (DEC-025)
+already built: `ww.panels` is still an ordered array of `{id, groupKey,
+label, channels: [...]}` objects — stable identity (`panel.id`), explicit
+channel membership (`panel.channels`), and explicit order (array position,
+which a future drag/reorder feature would mutate directly instead of the
+current algorithmic `wwRebuildLayout()` derivation). This pass's only
+addition — reading `ww.panels`' order to decide which lane is "last" for
+the shared X axis — is itself evidence that lane order is already a
+first-class, directly-inspectable property of the data model, not
+something baked into CSS or DOM position independently. No drag handle or
+drop-target markup was added (this task's own §15 explicitly said "if
+useful," and the existing `.ww-panel-header`'s flex row already has room
+for one later without restructuring); nothing here narrows that option.
+
+### Digital-section readiness (section 16)
+
+**Digital rendering was NOT implemented — no digital content, fake or
+real, exists anywhere in this pass.** No dedicated "digital section"
+container was introduced either, since nothing yet needs to attach to one
+(no digital data flows through Phase 2A/2C at all currently) — introducing
+an empty semantic boundary with nothing inside it was judged unnecessary
+scope for this slice. `#wwPanels` remains a single, self-contained
+container; adding a sibling digital section beneath it later does not
+require restructuring anything built in this pass, since `#wwPanels`
+already sits inside its own `<section class="workspace-section">` with
+room for additional siblings.
+
+### Data / API behavior — zero refetches, unchanged contract
+
+**This is a visual-only refinement; it does not touch data loading at
+all.** No waveform request is issued by the new CSS class toggle or the
+new axis-visibility relayout calls — verified directly: fetch-call counts
+before/after switching into Separate/unified mode are identical, exactly
+as Phase 2C-B1 already established. The Phase 2A waveform endpoint's query
+contract is unchanged (`channel_name`/`start_time`/`end_time`/
+`point_budget` only, confirmed by test); no backend file was touched; no
+batching endpoint was added.
+
+### Tests
+
+- **Backend: 278 tests, unmodified, all passing** — zero backend files
+  touched.
+- **Frontend, new: 20 scripted `jsdom` checks, all passing** (a new
+  one-off script, same established pattern) — covering this task's own
+  §18 list: static-CSS-source checks that the unified-container and
+  de-carded-lane rules exist and that Grouped's own card CSS is untouched;
+  Separate mode still creates one lane per channel and now also applies
+  the `ww-panels-unified` class; the mode switch still issues zero new
+  waveform fetches; only the bottom-most lane shows X tick labels/title
+  (verified against the actual `Plotly.relayout` calls, restricted to the
+  currently-active panel elements to avoid counting stale elements from
+  earlier torn-down layouts); Grouped mode's panels never receive an
+  axis-suppression relayout; zoom/pan/Reset Time View/Autoscale Y/no
+  per-lane modebar all still work identically; viewport preservation
+  across Separate→Grouped→Separate switches (including the re-applied
+  `ww-panels-unified` class); theme switching re-colors every lane without
+  refetching; removing the current bottom lane correctly hands the shared
+  axis to the new last lane; "Clear workspace" still empties the unified
+  container completely; and the waveform query-parameter whitelist is
+  unchanged.
+- **Frontend, existing: the full Phase 2C-B1 suite (16 checks), Phase 2C-A
+  suite (19 checks), and Phase 1 regression suite (4 checks) were all
+  re-run unmodified against this pass's code and all still pass in full**
+  — 39 existing checks, zero regressions. 59 total frontend checks this
+  pass.
+
+### Performance
+
+Structural evidence only (this sandboxed session has no real browser): the
+new CSS class toggle and axis-visibility relayout calls issue zero network
+requests (confirmed by test) — the visual refinement's cost is bounded by
+CSS reflow/paint and a handful of lightweight `Plotly.relayout` chrome
+calls (2 per lane at most: one on creation, one more only for lanes whose
+bottom-lane status actually changed), not by any new fetch latency. No
+change to the six-channel parallel-fetch baseline already measured in the
+Phase 2C-A/B1 records. Real browser rendering responsiveness and the
+actual visual appearance (whether the six lanes genuinely read as "one
+canvas" to a human eye) were **not** visually confirmed in this sandboxed,
+no-real-browser session — see this task's own live DEV verification
+section for the closest available substitute evidence, and the owner's
+own manual UAT remains the authority on whether the visual goal was
+actually achieved.
+
+### Files changed
+
+Modified only: `frontend/index.html`. No new files, no `backend/` file,
+no CI/deployment workflow file, no other frontend file.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

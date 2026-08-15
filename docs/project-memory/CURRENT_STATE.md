@@ -206,6 +206,34 @@ pass). **Direct drag/reorder, drag-to-overlay/group, drag-out-to-
 separate, Custom layout mode, and panel resize all remain explicitly not
 started.**
 
+`[FACT]` **Phase 2C-B1 manual UAT passed for synchronization/zoom/pan but
+flagged Separate mode's visual layout as not the desired appearance**
+(2026-08-15) — Separate mode looked like a stack of individually
+bordered/headed cards rather than one continuous analog canvas. **Phase
+2C-B2 — a unified analog canvas visual refinement of Separate mode — is
+now implemented** — see
+[MIGRATION_PLAN.md — Phase 2C-B2 Implementation Record](MIGRATION_PLAN.md#phase-2c-b2--unified-analog-canvas-layout-implementation-record-2026-08-15)
+and [DEC-026](DECISIONS.md#dec-026--separate-modes-visual-presentation-is-a-unified-analog-canvas-phase-2c-b2).
+`#wwPanels` gains a `ww-panels-unified` CSS class only while Separate mode
+is active: one shared outer background/border replaces N repeated panel
+cards, each lane becomes a CSS-grid row (narrow left label column, the
+waveform chart taking the maximum remaining width) separated by a
+hairline divider instead of a card border, and only the bottom-most lane
+shows X-axis tick labels/title (every other lane suppresses them, since
+all lanes already share one X/time viewport, DEC-021). **Each channel
+keeps its own independent lane and its own independent Y axis — channels
+are never merged onto one shared Y axis**, an explicit distinction from
+the visual chrome change. Grouped mode's own panel styling is completely
+untouched. This is a pure visual/CSS + chrome-relayout layer: no change
+to the shared-viewport synchronization mechanism, the panel data model, or
+the waveform data contract — switching into or out of unified mode issues
+zero new waveform requests, verified directly. No backend file changed
+(278 tests unmodified and passing); 20 new + 16 + 19 + 4 re-verified
+existing frontend `jsdom` checks passing (59 total this pass). **Direct
+drag/reorder, drag-to-overlay/group, drag-out-to-separate, digital-channel
+rendering, panel resize, and Custom layout mode all remain explicitly not
+started.**
+
 ## Completed foundation work
 
 `[FACT]`, verified against the repository on 2026-08-15:
@@ -346,9 +374,10 @@ started.**
   Renderer Closure Record", "Phase 2C — Flexible Multi-Channel
   Waveform Workspace: Discovery and Design", "Light/Dark Theme &
   Crosshair Refinement Record", "Phase 2C-A — Synchronized
-  Multi-Channel Waveform Display Implementation Record", and
-  "Phase 2C-B1 — Grouped / Separate Analog Waveform Layout
-  Implementation Record" sections).
+  Multi-Channel Waveform Display Implementation Record", "Phase 2C-B1 —
+  Grouped / Separate Analog Waveform Layout Implementation Record", and
+  "Phase 2C-B2 — Unified Analog Canvas Layout Implementation Record"
+  sections).
 
 ## Current architecture status
 
@@ -418,10 +447,15 @@ one workspace-level X/time viewport, a central Zoom/Pan/Reset-Time-
 View/Autoscale-Y toolbar, and a Grouped/Separate layout toggle (Separate
 = one panel per displayed channel, switchable without losing the
 displayed channel set or the current zoomed viewport) — built into the
-main app itself, this documentation set. No frontend framework, no
-database schema, no authentication, no CSV/Excel/digital-waveform/
-cursors-measurements/calculated-signal/synchronization features yet;
-**direct drag/reorder of panels, drag-to-overlay/group, drag-out-to-
+main app itself, this documentation set. **(Phase 2C-B2, DEC-026)**
+Separate mode now visually presents as one unified analog canvas (shared
+outer frame, borderless/hairline-divided lanes, narrow label column +
+maximum-width chart column per lane, only the bottom lane shows the
+shared time axis) — each lane still keeps its own independent Y axis;
+Grouped mode's own visual presentation is unchanged. No frontend
+framework, no database schema, no authentication, no CSV/Excel/digital-
+waveform/cursors-measurements/calculated-signal/synchronization features
+yet; **direct drag/reorder of panels, drag-to-overlay/group, drag-out-to-
 separate, Custom layout mode, and panel resize all remain not yet
 built**. A Phase 2 waveform-workspace **design
 proposal** exists (see [MIGRATION_PLAN.md](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14)),
@@ -681,15 +715,26 @@ implemented: **Phase 2C-B1 (DEC-025), a Grouped/Separate layout toggle**
 — see
 [MIGRATION_PLAN.md — Phase 2C-B1 Implementation Record](MIGRATION_PLAN.md#phase-2c-b1--grouped--separate-analog-waveform-layout-implementation-record-2026-08-15).
 Switching layout mode preserves the displayed channel set and the
-current shared viewport, and never issues a new waveform request. **The
-owner's explicitly stated next direction — direct vertical drag/reorder
-of panels, drag-to-overlay/group, and drag-out-to-separate — remains
-explicitly not started and not authorized**, along with Custom layout
-mode, panel resize, Proportional Y scaling, mixed-unit handling, digital
-channels, and shared crosshair. The next step is for the project owner to
-review Phase 2C-B1 via live DEV UAT and either request refinements,
-authorize the drag/reorder work directly (the owner's own stated next
-direction), or defer further Phase 2C work. Separately, resolving the
+current shared viewport, and never issues a new waveform request. Phase
+2C-B1's own manual UAT passed for synchronization/zoom/pan but flagged
+Separate mode's visual layout as not the desired appearance (individually
+carded/headed panels rather than one continuous canvas), and the owner's
+requested refinement is now also implemented: **Phase 2C-B2 (DEC-026), a
+unified analog canvas visual layer for Separate mode** — see
+[MIGRATION_PLAN.md — Phase 2C-B2 Implementation Record](MIGRATION_PLAN.md#phase-2c-b2--unified-analog-canvas-layout-implementation-record-2026-08-15).
+A shared outer frame replaces N repeated panel cards, lanes are separated
+by a hairline divider instead of a card border, and only the bottom-most
+lane shows the shared time axis — each lane still keeps its own
+independent Y axis, and Grouped mode's own visual presentation is
+unchanged. **The owner's explicitly stated next direction — direct
+vertical drag/reorder of panels, drag-to-overlay/group, and drag-out-to-
+separate — remains explicitly not started and not authorized**, along
+with Custom layout mode, panel resize, Proportional Y scaling, mixed-unit
+handling, digital channels, and shared crosshair. The next step is for the
+project owner to review Phase 2C-B2 via live DEV UAT and either request
+further refinements, authorize the drag/reorder work directly (the
+owner's own stated next direction), or defer further Phase 2C work.
+Separately, resolving the
 abandoned-session TTL question (`[DECISION MODE: COMPARISON]`, reassessed
 but not resolved by Phase 2C-A/B1 — neither changes the backend memory-
 retention shape) and the ~100 MB real-file memory validation remain

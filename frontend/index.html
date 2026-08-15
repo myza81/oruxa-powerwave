@@ -516,6 +516,55 @@
             color: var(--error);
         }
         .ww-error[hidden] { display: none; }
+
+        /* ---- Phase 2C-B2: unified analog canvas (Separate mode only) ----
+           Grouped mode is untouched (still the individual-card look above).
+           #wwPanels only gains this class while ww.layoutMode === "separate"
+           (see wwSetLayoutMode()) -- one shared outer container, borderless
+           lanes with a hairline divider instead of a repeated card, a
+           narrow left label column + a maximum-width chart column so every
+           lane's plotting/Y-axis region stays pixel-aligned with the next. */
+        #wwPanels.ww-panels-unified {
+            background: var(--waveform-surface);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+        #wwPanels.ww-panels-unified .ww-panel {
+            display: grid;
+            grid-template-columns: 108px 1fr;
+            align-items: center;
+            column-gap: 10px;
+            padding: 2px 14px;
+            margin-bottom: 0;
+            border: none;
+            border-bottom: 1px solid var(--panel-border);
+            border-radius: 0;
+            background: transparent;
+        }
+        #wwPanels.ww-panels-unified .ww-panel:last-child { border-bottom: none; }
+        /* Panel label is redundant with the (single-channel) legend chip in
+           this mode -- the legend chip becomes the one compact lane label. */
+        #wwPanels.ww-panels-unified .ww-panel-header { display: none; }
+        #wwPanels.ww-panels-unified .ww-legend {
+            grid-column: 1;
+            margin-bottom: 0;
+            flex-wrap: nowrap;
+        }
+        #wwPanels.ww-panels-unified .ww-legend-item {
+            background: transparent;
+            padding: 0;
+            font-size: 0.74rem;
+            white-space: nowrap;
+        }
+        #wwPanels.ww-panels-unified .ww-chart-wrap {
+            grid-column: 2;
+            border: none;
+            border-radius: 0;
+            background: transparent;
+        }
+        #wwPanels.ww-panels-unified .ww-chart { height: 140px; }
+        #wwPanels.ww-panels-unified .ww-error { grid-column: 1 / -1; }
     </style>
 </head>
 <body>
@@ -1389,6 +1438,16 @@
         //     Switching layout mode itself never issues a new waveform
         //     request -- each channel's already-fetched data is reused
         //     as-is when its panel is rebuilt (see wwRebuildLayout).
+        //   - Phase 2C-B2: this is a VISUAL refinement of Separate mode
+        //     only, layered entirely on top of the above -- no panel/data
+        //     model change. #wwPanels gains a "ww-panels-unified" class
+        //     while Separate is active (wwSetLayoutMode) so CSS alone turns
+        //     the per-lane cards into one shared outer canvas with a
+        //     narrow label column + a maximum-width chart column per lane
+        //     (hairline divider, not a repeated card); wwUpdateBottomLaneAxis()
+        //     hides X tick labels/title on every lane except the last, so
+        //     the stack visually reads as one shared time axis. Grouped
+        //     mode's own panel styling and per-panel X axis are untouched.
         // ==================================================================
 
         // Deterministic per-channel identity colors, assigned in the order
@@ -1821,6 +1880,28 @@
         // Zoom/Pan toolbar buttons -- set every panel's dragmode together;
         // a plain layout-level relayout, never touches xaxis.range, so it
         // cannot trigger the viewport-broadcast path above.
+        // Phase 2C-B2 (section 8): in Separate/unified mode only the
+        // bottom-most lane (last in ww.panels' order) shows X-axis tick
+        // labels/title -- every other lane suppresses them, so the stacked
+        // lanes read as sharing ONE time axis instead of repeating it N
+        // times. Grouped mode is untouched: every panel keeps its own full
+        // X axis exactly as Phase 2C-A/B1 shipped it (this function no-ops
+        // for it, leaving wwBuildLayout's own default in place). A pure
+        // chrome relayout (showticklabels/title only) -- never touches
+        // xaxis.range, so it cannot trigger the viewport-broadcast
+        // loop-prevention path in wwWirePanelRelayout.
+        function wwUpdateBottomLaneAxis() {
+            if (ww.layoutMode !== "separate") return;
+            ww.panels.forEach((panel, idx) => {
+                if (!panel.plotlyReady) return;
+                const isBottom = idx === ww.panels.length - 1;
+                Plotly.relayout(panel.chartEl, {
+                    "xaxis.showticklabels": isBottom,
+                    "xaxis.title": isBottom ? "Time (s)" : "",
+                });
+            });
+        }
+
         function wwSetDragMode(mode) {
             ww.dragMode = mode;
             for (const panel of ww.panels) {
@@ -1909,6 +1990,7 @@
 
             const touchedPanels = new Set(jobs.map((job) => job.panel));
             for (const panel of touchedPanels) wwRenderLegend(panel);
+            wwUpdateBottomLaneAxis();
         }
 
         function wwRemoveChannelByKey(key) {
@@ -1935,6 +2017,7 @@
                 wwRenderLegend(panel);
             }
             wwUpdateEmptyState();
+            wwUpdateBottomLaneAxis();
         }
 
         function wwRemovePanelDom(panel) {
@@ -1989,6 +2072,10 @@
             ww.layoutMode = mode;
             document.getElementById("layoutModeGroupedBtn").setAttribute("aria-pressed", String(mode === "grouped"));
             document.getElementById("layoutModeSeparateBtn").setAttribute("aria-pressed", String(mode === "separate"));
+            // Phase 2C-B2 (section 6): #wwPanels only gets the unified-canvas
+            // styling while Separate is active -- Grouped keeps the
+            // existing individual-card look, untouched.
+            document.getElementById("wwPanels").classList.toggle("ww-panels-unified", mode === "separate");
             wwRebuildLayout();
         }
 
@@ -2036,6 +2123,7 @@
                 wwInitPanelPlot(panel);
                 wwRenderLegend(panel);
             }
+            wwUpdateBottomLaneAxis();
         }
 
         function wwUpdateEmptyState() {

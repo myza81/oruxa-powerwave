@@ -1340,6 +1340,96 @@ Impact:
 
 ---
 
+## DEC-026 — Separate mode's visual presentation is a unified analog canvas (Phase 2C-B2)
+
+Date: 2026-08-15
+Status: Approved
+Source: explicit project-owner instructions opening the Phase 2C-B2 task
+(2026-08-15), following manual UAT of Phase 2C-B1 that passed for
+synchronization/zoom/pan but flagged Separate mode's visual layout (a
+stack of individually-carded/headed panels) as not the desired appearance,
+with an owner-supplied Detego screenshot as a visual/layout reference only
+(per the Detego Benchmark Principle, DEC-020).
+
+Decision:
+
+Separate mode's visual presentation is a **unified analog canvas**: every
+displayed analog channel keeps its own independent lane and its own
+independent Y scale (channels are never merged onto one shared Y axis —
+an explicit, deliberate distinction from the visual chrome change), but
+the surrounding chrome — per-lane card borders, repeated backgrounds,
+repeated panel headers, and repeated X-axis tick labels/titles on every
+lane — is removed so the six-plus lanes read as one continuous, shared
+analog workspace rather than N independent cards. Only the bottom-most
+lane displays the shared time axis; every other lane suppresses it, since
+all lanes already share one Oruxa-owned X/time viewport (DEC-021).
+**Grouped mode's visual presentation is unchanged** — this decision
+applies to Separate mode only.
+
+Confirmed as part of this same decision:
+
+- The unified-canvas styling is a pure CSS/relayout-chrome layer on top of
+  Phase 2C-B1's existing panel data model (`ww.panels`: displayed
+  channels, panel membership, panel order) — no change to that model, no
+  change to the shared-viewport synchronization mechanism (DEC-021), no
+  change to the waveform data contract (DEC-019/Phase 2A), no new waveform
+  fetch is issued by switching into or out of this mode.
+- The panel-order property this data model already carries (kept general
+  since DEC-025, specifically for a future drag/reorder feature) is reused
+  here to decide which lane is "bottom" for the shared time axis — further
+  evidence that lane order is already a first-class, directly-usable
+  property of the model, not something this decision needed to introduce.
+
+Reason:
+
+The owner's own Phase 2C-B1 UAT explicitly identified the individually-
+carded panel appearance as not matching the intended product direction,
+supplied a Detego screenshot as a layout/interaction reference (never a
+specification to copy, per DEC-020), and this task's own specification
+(§3/§4/§6) is the owner directly selecting "one continuous canvas,
+independent lanes, independent Y scales" as the resolved visual target.
+Per this project's own governance, a genuine owner selection of a specific
+visual direction — especially one explicitly distinguished from a
+rejected alternative (one shared Y axis) — is a decision worth recording,
+not merely an implementation detail.
+
+Alternatives considered:
+
+Merging all analog traces onto one shared Y axis inside a single Plotly
+figure (rejected — explicitly the wrong interpretation per this task's own
+§4 "critical distinction," and would have destroyed each channel's
+independent engineering scale); rewriting the panel architecture as one
+giant fixed-subplot Plotly figure to achieve the unified look (rejected —
+this task's own §7 explicitly discourages this without a strong,
+documented technical reason, and the existing one-Plotly-instance-per-lane
+architecture already achieves the same visual result via CSS alone);
+showing the full X axis on every lane (rejected — repeats the same time
+information N times, working against the "one shared time axis" reading
+this decision requires, per §8).
+
+Impact:
+
+- `frontend/index.html`: a `ww-panels-unified` CSS class toggled on the
+  shared `#wwPanels` container while `ww.layoutMode === "separate"`
+  (`wwSetLayoutMode`), new CSS rules scoping the de-carded/compact lane
+  presentation to that class only (Grouped mode's own `.ww-panel` styling
+  is untouched), and a new `wwUpdateBottomLaneAxis()` function that shows
+  X tick labels/title on only the last panel in `ww.panels`' order.
+- No backend file changed; the Phase 2A waveform endpoint's contract and
+  Phase 2C-A/B1's request/response shape are unchanged.
+- DEC-021 (shared workspace-level viewport), DEC-024 (one-Plotly-instance-
+  per-panel, viewport-aware Autoscale Y, central toolbar), and DEC-025
+  (Grouped/Separate layout modes, panel data model) are all reaffirmed
+  unweakened — this decision is a visual layer on top of them, not a
+  replacement for any of them.
+- **Direct vertical drag/reorder of lanes, drag-to-overlay/group,
+  drag-out-to-separate, digital-channel rendering, panel resize, and
+  Custom layout mode remain explicitly not started and not authorized by
+  this decision** — they are the owner's stated *next* direction, not
+  built here.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

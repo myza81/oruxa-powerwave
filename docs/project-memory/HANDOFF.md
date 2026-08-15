@@ -8,6 +8,67 @@ Last updated: **2026-08-15**
 
 ## What was most recently done
 
+**Phase 2C-B2 — Unified Analog Canvas Layout.** Following manual owner
+UAT of Phase 2C-B1 (**passed** for synchronization, horizontal zoom, and
+pan; **refinement requested** for Separate mode's visual layout, which
+looked like a stack of individually bordered/headed cards rather than one
+continuous analog canvas — the owner supplied a Detego screenshot purely
+as a visual/layout reference, per the Detego Benchmark Principle), this
+was a small, deliberately-scoped VISUAL refinement of Separate mode only.
+Full detail:
+[MIGRATION_PLAN.md — Phase 2C-B2 Implementation Record](MIGRATION_PLAN.md#phase-2c-b2--unified-analog-canvas-layout-implementation-record-2026-08-15),
+[DECISIONS.md — DEC-026](DECISIONS.md#dec-026--separate-modes-visual-presentation-is-a-unified-analog-canvas-phase-2c-b2).
+
+**What was built**: `#wwPanels` gains a `ww-panels-unified` CSS class only
+while `ww.layoutMode === "separate"` (toggled in `wwSetLayoutMode`). With
+it: one shared outer background/border replaces N repeated panel cards
+(the container's background is literally the same theme token each
+Plotly chart's own background already uses, so there's no visible seam);
+each lane becomes a CSS-grid row (narrow 108px label column + a
+maximum-width chart column) separated by a hairline `border-bottom`
+divider instead of a full card border; the now-redundant per-panel header
+is hidden and the existing compact legend chip (dot + channel name + unit
++ remove button) becomes the sole per-lane label; lane height drops from
+260px to 140px for compactness. A new `wwUpdateBottomLaneAxis()` function
+shows X tick labels/title on only the last panel in `ww.panels`' order —
+every other lane suppresses them, since all lanes already share one
+X/time viewport — called after every panel-array mutation (add, remove,
+mode-switch rebuild) so the "which lane is bottom" role correctly follows
+whichever lane is actually last. **Each lane keeps its own independent Y
+axis — channels are never merged onto one shared Y axis**, an explicit
+distinction from the visual chrome change (the task's own "critical
+distinction" section). Grouped mode's own CSS and per-panel X axis are
+completely untouched — the unified class is never applied while
+`ww.layoutMode === "grouped"`.
+
+**No architecture change**: this is a pure CSS/relayout-chrome layer on
+top of Phase 2C-B1's existing panel data model (`ww.panels`: displayed
+channels + panel membership + panel order, unchanged) and Phase 2C-A's
+shared-viewport synchronization mechanism (DEC-021, unchanged). Switching
+into or out of unified mode issues **zero** new waveform requests,
+verified directly — same as every prior Phase 2C-A/B1 layout operation.
+No drag handle/drop-target markup was added (optional per this task's own
+instructions); the existing panel-order property (already read here to
+decide the bottom lane) remains the same forward-compatible foundation
+Phase 2C-B1 (DEC-025) already established for a future drag/reorder
+feature.
+
+**Backend**: zero files changed — same endpoint, same query parameters,
+confirmed by test.
+
+**Tests**: 278 backend (unmodified) + 20 new frontend `jsdom` checks + the
+full existing Phase 2C-B1 (16), Phase 2C-A (19), and Phase 1 (4) suites
+all re-run unmodified and still passing (59 total this pass, no
+regressions). **Direct drag/reorder of panels, drag-to-overlay/group,
+drag-out-to-separate, digital-channel rendering, panel resize, and Custom
+layout mode were all explicitly not started.** Real-browser visual
+confirmation that the six lanes genuinely read as "one canvas" was not
+possible in this sandboxed, no-real-browser session — see this task's own
+final report for the closest available substitute evidence; final
+appearance judgment remains the owner's own manual UAT.
+
+## What was done in the prior session (Phase 2C-B1 — Grouped / Separate Analog Waveform Layout)
+
 **Phase 2C-B1 — Grouped / Separate Analog Waveform Layout.** Following
 manual owner UAT of Phase 2C-A (**passed** for shared synchronization,
 horizontal zoom, Reset Time View, pan synchronization, Voltage/Current
@@ -563,7 +624,46 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified (this pass — Phase 2C-B1 Grouped / Separate layout)
+## What was verified (this pass — Phase 2C-B2 unified analog canvas layout)
+
+- `oruxa_powerwave` git state: local `main` confirmed identical to
+  `origin/main` at commit `60a77bb` (independent `git fetch` via the
+  established HTTPS-URL workaround), working tree clean, before this pass
+  began.
+- **Backend regression: 278 tests, unmodified, all still pass** (fresh
+  venv run) — zero backend files in the diff (`git diff --stat -- backend/`
+  empty; diff scoped to `frontend/index.html` only).
+- **Frontend, new: 20 scripted `jsdom` checks, all passing** — static
+  CSS-source checks confirming the unified-container/de-carded-lane rules
+  exist and that Grouped mode's own card CSS is untouched; Separate mode
+  still creates 6 stacked lanes and now applies the `ww-panels-unified`
+  class; the mode switch still issues zero new waveform fetches; only the
+  bottom-most lane shows X tick labels/title (verified against actual
+  `Plotly.relayout` calls, restricted to currently-active panel elements);
+  Grouped mode's panels never receive an axis-suppression relayout;
+  zoom/pan/Reset Time View/Autoscale Y/no-modebar all still work
+  identically; viewport preservation across Separate→Grouped→Separate
+  (including the re-applied unified class); theme switching without
+  refetching; removing the current bottom lane correctly hands the shared
+  axis to the new last lane; "Clear workspace" empties the unified
+  container; waveform query-parameter whitelist unchanged.
+- **Frontend, existing: the full Phase 2C-B1 suite (16 checks), Phase 2C-A
+  suite (19 checks), and Phase 1 regression suite (4 checks) were all
+  re-run unmodified against this pass's code and all still pass in full**
+  — 39 existing checks, zero regressions (59 total this pass).
+- `node --check` on `frontend/index.html`'s inline `<script>` block —
+  syntactically valid.
+- `grep` cross-check: every `getElementById(...)` call resolves to an
+  `id=` that actually exists; no duplicate IDs.
+- No real-browser/visual verification of whether the six lanes genuinely
+  read as "one canvas" to a human eye was performed in this sandboxed
+  session (no headless browser available) — see "Live DEV verification"
+  in this task's final report for what was checked instead (API-level
+  evidence only), and its own explicit statement about what's honestly
+  unverified. Final visual-appearance judgment remains the owner's own
+  manual UAT.
+
+## What was verified (prior pass — Phase 2C-B1 Grouped / Separate layout)
 
 - `oruxa_powerwave` git state: local `main` confirmed identical to
   `origin/main` at commit `3f637ba` (independent `git fetch` via the
@@ -922,7 +1022,19 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 2C-B1 Grouped / Separate layout)
+## What files were changed this session (Phase 2C-B2 unified analog canvas layout)
+
+Modified only: `frontend/index.html` (new CSS rules scoped under
+`#wwPanels.ww-panels-unified` for the unified-canvas presentation; a
+`wwUpdateBottomLaneAxis()` function; the `ww-panels-unified` class toggle
+in `wwSetLayoutMode()`; calls to `wwUpdateBottomLaneAxis()` wired into
+`wwAddSelectedChannels()`, `wwRemoveChannel()`, and `wwRebuildLayout()`;
+the module header comment updated), `docs/project-memory/{DECISIONS,
+MIGRATION_PLAN,CURRENT_STATE,HANDOFF}.md` (DEC-026 added; this work). No
+new files. **No `frontend/waveform-prototype.html`/`theme.css`/`theme.js`
+change, no `backend/` file, no CI/deployment workflow file was touched.**
+
+## What files were changed in the prior session (Phase 2C-B1 Grouped / Separate layout)
 
 Modified only: `frontend/index.html` (a `ww.layoutMode` state field;
 `wwPanelGroupKeyFor`/`wwPanelLabelFor` helpers; `wwRebuildLayout()`;
@@ -1144,7 +1256,7 @@ Modified:
 See "GitHub persistence" and "DEV deployment" in this task's final report
 (delivered in-conversation) for the exact commit hash, push confirmation,
 independent-fetch verification, GitHub Actions run, and live-endpoint
-checks for this Phase 2C-B1 pass. **Production was not touched.**
+checks for this Phase 2C-B2 pass. **Production was not touched.**
 
 ## What remains unresolved
 
@@ -1154,57 +1266,70 @@ checks for this Phase 2C-B1 pass. **Production was not touched.**
   mode, panel resize, Proportional Y scaling, mixed-unit panel handling,
   digital-channel display, shared crosshair — every one of these remains
   `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`, not
-  `[DECISION]`. This pass (Phase 2C-B1) implemented and confirmed
-  Grouped/Separate layout switching (DEC-025) — it did **not** touch any
-  of the drag/reorder/overlay items above, which remain the owner's own
-  stated *next* direction, not started.
+  `[DECISION]`. This pass (Phase 2C-B2) was a VISUAL refinement of
+  Separate mode only (DEC-026) — it did **not** touch any of the
+  drag/reorder/overlay items above, which remain the owner's own stated
+  *next* direction, not started.
 - `[OPEN]` **Unchanged, still real**: abandoned-workspace cleanup still
   has no automatic expiry/TTL. `[DECISION MODE: COMPARISON]` — neither
-  Phase 2C-A nor Phase 2C-B1 changes the backend memory-retention shape
-  (still per-*source*, DEC-019, unaffected by how many panels/channels or
-  which layout mode a UI displays against it), but a real, now-more-
-  flexible multi-channel workspace is plausibly a richer, longer-lived
-  thing to explore than Phase 2B's single-channel preview was, which
-  raises (not resolves) the same urgency already flagged for Phase
-  2A/2B/2C-A. See
+  Phase 2C-A, Phase 2C-B1, nor Phase 2C-B2 changes the backend
+  memory-retention shape (still per-*source*, DEC-019, unaffected by how
+  many panels/channels, which layout mode, or which visual presentation a
+  UI displays against it), but a real, now-more-flexible multi-channel
+  workspace is plausibly a richer, longer-lived thing to explore than
+  Phase 2B's single-channel preview was, which raises (not resolves) the
+  same urgency already flagged for Phase 2A/2B/2C-A/2C-B1. See
   [MIGRATION_PLAN.md's Phase 2C §30](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15)
   and DEC-019's Impact section.
-- `[OPEN]`, unchanged: digital waveform handling; the ~100 MB real-file
-  memory ceiling (still not directly measured); and everything else
-  already listed in
+- `[OPEN]`, unchanged: digital waveform handling (no digital rendering or
+  digital-section container was built this pass either — see this task's
+  own final report); the ~100 MB real-file memory ceiling (still not
+  directly measured); and everything else already listed in
   [CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers).
 - **Carried over from Phase 2C-A's own manual UAT, deliberately not
   addressed this pass**: a small amount of interaction latency, judged
   currently bearable; and vertical (Y-axis) zoom being less intuitive
   than the rest of the toolbar — both explicitly flagged for a **later**
   UX refinement pass, not this one.
-- **Unchanged from Phase 2C-A**: real-browser rendering responsiveness at
-  higher displayed-channel counts was not visually confirmed in this
-  sandboxed, no-real-browser session — see this task's final report for
-  the live DEV evidence gathered instead.
+- **Unchanged from Phase 2C-A/B1**: real-browser rendering responsiveness
+  and actual visual appearance (whether the six lanes genuinely read as
+  "one canvas") were not visually confirmed in this sandboxed,
+  no-real-browser session — see this task's final report for the API/
+  structural-level DEV evidence gathered instead. Final appearance
+  judgment remains the owner's own manual UAT.
 
 ## What should be done next
 
-The next step is for the **project owner** to review Phase 2C-B1 via live
+The next step is for the **project owner** to review Phase 2C-B2 via live
 DEV UAT (this task's own checklist) and choose a direction — none is
-assumed here: (a) authorize the drag/reorder/overlay/split work directly
-(the owner's own explicitly stated next direction, §13 of this task's own
-instructions — vertical lane drag, reorder, drop-to-overlay/group,
-drag-out-to-separate); (b) request refinements to Grouped/Separate itself
-first (e.g. Custom mode, panel height); or (c) address the Phase 2C-A UAT
-findings (interaction latency, vertical-zoom discoverability) before
-further layout work. Do **not** begin any drag/reorder/overlay
-implementation without an explicit signal — this task's own closing
-instruction was to stop after Grouped/Separate. Separately, resolving the
-abandoned-session TTL question and the ~100 MB real-file memory
-validation remain recommended before broader/prolonged shared-DEV UAT,
-unchanged conclusion from every prior Phase 2 pass.
+assumed here: (a) confirm the unified-canvas appearance now matches what
+was intended, or request further visual refinement; (b) authorize the
+drag/reorder/overlay/split work directly (the owner's own explicitly
+stated next direction — vertical lane drag, reorder, drop-to-overlay/
+group, drag-out-to-separate); or (c) address the Phase 2C-A UAT findings
+(interaction latency, vertical-zoom discoverability) before further layout
+work. Do **not** begin any drag/reorder/overlay implementation without an
+explicit signal — this task's own closing instruction was to stop after
+the unified canvas refinement. Separately, resolving the abandoned-session
+TTL question and the ~100 MB real-file memory validation remain
+recommended before broader/prolonged shared-DEV UAT, unchanged conclusion
+from every prior Phase 2 pass.
 
 ## What must not be assumed
 
 - **Do not assume drag/reorder/overlay/split has started** — it has not;
   no direct vertical lane dragging, no reorder, no drop-to-overlay/group,
   no drag-out-to-separate, no Custom layout mode, no panel resize exist
+  anywhere in the repository.
+- **Do not assume the unified-canvas refinement changed the panel/layout
+  data model or the Y-axis behavior** — it did not; `ww.panels` (displayed
+  channels + panel membership + panel order) is byte-for-byte the same
+  model Phase 2C-B1 (DEC-025) built. Each lane still has its own
+  completely independent Y axis; **no channel was ever merged onto
+  another channel's Y axis** — this was an explicit, deliberate
+  distinction in the task's own instructions, not an incidental detail.
+- **Do not assume digital channels or a digital-section container exist**
+  — neither was built this pass; no digital content, fake or real, exists
   anywhere in the repository.
 - **Do not assume Separate is the default** — Grouped is, unchanged from
   Phase 2C-A; Separate is opt-in via the new toolbar toggle.
@@ -1258,9 +1383,9 @@ unchanged conclusion from every prior Phase 2 pass.
 
 ## Owner approval needed before proceeding?
 
-- Not needed to review or use Phase 2C-A or Phase 2C-B1 themselves —
-  already implemented, deployed to DEV, and live-verified per this exact
-  task's own authorization.
+- Not needed to review or use Phase 2C-A, Phase 2C-B1, or Phase 2C-B2
+  themselves — already implemented, deployed to DEV, and live-verified per
+  this exact task's own authorization.
 - **Yes**, before any drag/reorder/overlay/split work begins (the owner's
   own stated next direction, but still not yet explicitly authorized to
   *implement*), before Custom layout mode or panel resize, before Phase
