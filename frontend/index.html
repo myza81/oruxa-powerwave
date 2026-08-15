@@ -261,6 +261,20 @@
         }
         table.channels th { color: var(--text-dim); font-weight: 500; font-size: 0.75rem; }
 
+        /* Phase 2B renderer-UAT entry point -- a small, deliberately quiet
+           link per analog channel row, not a prominent feature. See
+           docs/project-memory/MIGRATION_PLAN.md's Phase 2B record. */
+        a.waveform-proto-link {
+            font-size: 0.76rem;
+            color: var(--text-dim);
+            text-decoration: none;
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 3px 8px;
+            white-space: nowrap;
+        }
+        a.waveform-proto-link:hover { color: var(--accent); border-color: var(--accent-dim); }
+
         footer {
             max-width: 1100px;
             margin: 0 auto;
@@ -885,7 +899,7 @@
                 '<span id="channelSearchCount"></span></div>';
 
             html += '<div id="channelGroups">';
-            html += renderAnalogGroup(data.analog_channels);
+            html += renderAnalogGroup(data.analog_channels, source);
             html += renderDigitalGroup(data.digital_channels);
             html += '</div>';
             html += '<p class="empty-state" id="channelSearchEmpty" hidden>No channels match your search.</p>';
@@ -906,7 +920,7 @@
         // table per UAT feedback -- they remain in the API response
         // (data.analog_channels still carries them) for any future
         // channel-detail view, just not rendered here.
-        function renderAnalogGroup(channels) {
+        function renderAnalogGroup(channels, source) {
             const total = channels.length;
             let body;
             if (total === 0) {
@@ -931,7 +945,7 @@
                         ["Name", (c) => c.name],
                         ["Unit", (c) => c.unit],
                         ["Phase", (c) => c.phase || "—"],
-                    ]) + '</div>';
+                    ], (c) => waveformPrototypeLinkHtml(source, c)) + '</div>';
                     body += '</details>';
                 }
                 body += '</div>';
@@ -962,19 +976,44 @@
                 '<div class="group-body">' + body + '</div></details>';
         }
 
-        function renderChannelTable(channels, columns) {
+        function renderChannelTable(channels, columns, actionColumn) {
             let html = '<table class="channels"><thead><tr>';
             for (const [label] of columns) html += '<th>' + escapeHtml(label) + '</th>';
+            if (actionColumn) html += '<th></th>';
             html += '</tr></thead><tbody>';
             for (const channel of channels) {
                 const searchText = [channel.name, channel.unit, channel.phase]
                     .filter(Boolean).join(" ").toLowerCase();
                 html += '<tr data-search="' + escapeHtml(searchText) + '">';
                 for (const [, accessor] of columns) html += '<td>' + escapeHtml(String(accessor(channel))) + '</td>';
+                if (actionColumn) html += '<td>' + actionColumn(channel) + '</td>';
                 html += '</tr>';
             }
             html += '</tbody></table>';
             return html;
+        }
+
+        // Phase 2B entry point: opens the isolated renderer-UAT prototype
+        // (waveform-prototype.html) in a new tab for exactly one analog
+        // channel, carrying only already-known identity (workspace/source/
+        // channel/unit/station name) via the query string -- the prototype
+        // page re-fetches actual waveform data itself via the Phase 2A API,
+        // this link never fetches or embeds waveform data. Deliberately a
+        // plain link, not a client-side route -- see
+        // docs/project-memory/MIGRATION_PLAN.md's Phase 2B record for why
+        // this stays a separate, isolated page rather than a panel embedded
+        // in this screen (keeps the main channel browser unchanged, keeps
+        // the prototype trivially removable).
+        function waveformPrototypeLinkHtml(source, channel) {
+            const url = "waveform-prototype.html?" + new URLSearchParams({
+                workspace_id: currentWorkspaceId(),
+                source_id: source.source_id,
+                channel_name: channel.name,
+                unit: channel.unit || "",
+                station_name: source.station_name || "",
+            }).toString();
+            return '<a class="waveform-proto-link" href="' + escapeHtml(url) +
+                '" target="_blank" rel="noopener">Waveform (UAT)</a>';
         }
 
         // ------------------------------------------------------------------

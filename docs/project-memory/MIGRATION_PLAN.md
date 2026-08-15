@@ -2254,6 +2254,251 @@ deployment file was touched.
 
 ---
 
+## Phase 2B — Renderer UAT Prototype Implementation Record (2026-08-15)
+
+Implements exactly the task's own scope: a bounded, isolated browser
+prototype letting the owner hands-on compare plotting libraries against
+the SAME Phase 2A backend data and the SAME interaction contract. **No
+winner chosen — plotting library remains `[DECISION MODE: UAT]`.** No
+Phase 2C (drag/reorder/panel) work, no digital channels, no cursors/
+measurements, no calculated signals, no synchronization, no CSV/Excel.
+
+### What was built
+
+`frontend/waveform-prototype.html` — a new, self-contained page, isolated
+from `index.html` (the main app) and from the Phase 2A backend API (which
+remains chart-library-independent — see its own module docstring). Opened
+from a new "Waveform (UAT)" link added to each **analog** channel row in
+`index.html`'s existing Phase 1 channel browser (digital rows are
+untouched — no link, consistent with Phase 2B's analog-only scope), which
+carries only already-known identity (`workspace_id`, `source_id`,
+`channel_name`, `unit`, `station_name`) via the query string — the
+prototype page fetches waveform data itself, this link never embeds it.
+
+**Deliberately not embedded as a panel inside `index.html`**: keeping it a
+separate page means the main channel browser's markup/JS is essentially
+untouched (one link added, no restructuring), the prototype is trivially
+deletable in its entirety later, and nothing about Phase 2B risks
+constraining `index.html`'s own future evolution.
+
+### Candidates implemented
+
+**uPlot** (v1.6.32, MIT) — vendored as a static, pre-built, minified IIFE
+bundle (`frontend/vendor/uplot/uPlot.iife.min.js`, 51,081 bytes +
+`uPlot.min.css`, 1,857 bytes = ~52 KB combined, ~22 KB gzipped). No
+build step, no npm dependency at deploy time — matches the project's
+existing no-build-step frontend architecture exactly (`frontend/vendor/README.md`
+records exact provenance/version for later removal or upgrade).
+
+**Plotly.js** (v3.7.0, MIT) — vendored as the **cartesian-only** minified
+distribution (`plotly.js-cartesian-dist-min`,
+`frontend/vendor/plotly/plotly-cartesian.min.js`, 1,424,820 bytes ≈
+1.36 MB, ~473 KB gzipped), not the full `plotly.js` bundle — this
+prototype only needs line/scatter charts, not 3D/maps/every other trace
+type the full bundle carries. Per the task's explicit instruction, Plotly
+was treated as a full primary candidate, not a fallback.
+
+**ECharts — deliberately omitted.** Reason: two well-implemented, fully
+fair prototypes (uPlot and Plotly) already give the owner a genuine
+comparison across the size/complexity spectrum (uPlot: ~52 KB, minimal
+API; Plotly: ~1.36 MB, batteries-included). Adding a third candidate
+would have meant either rushing its adapter to hit the same fairness bar
+the other two received, or measurably extending this task — the task's
+own guidance ("two good prototypes are better than three rushed ones")
+was applied directly.
+
+### Same-data comparison guarantee
+
+Both adapters are driven by **one shared coordinator** (`waveform-prototype.html`'s
+inline script) that owns the current fetched payload; a candidate never
+fetches its own data independently. Concretely:
+
+- Both call the identical endpoint (`GET .../sources/{id}/waveform`) with
+  the identical `channel_name`, and the identical fixed `POINT_BUDGET`
+  constant (4000 — matching the backend's own `DEFAULT_POINT_BUDGET`).
+- **Switching renderers does not issue a new request** — the coordinator
+  passes the already-fetched `{time, values, unit, channelName,
+  representation}` payload straight into the newly-selected adapter's
+  `init()`. Verified directly (`tests/` below): a renderer switch after
+  data has loaded produces zero additional `fetch` calls.
+- Both read the same `unit`/`channel_name`/timing fields from the same
+  response — neither renders a locally-recomputed or reformatted version
+  of anything the backend didn't send.
+
+### Range-request behaviour (zoom/pan → finer backend data)
+
+A shared `requestViewportRangeDebounced(startTime, endTime)` function is
+the **only** path either adapter has to request new data — both adapters'
+zoom/pan gesture handlers call it, nothing else does:
+
+- **uPlot**: wires uPlot's built-in `cursor.drag` + `hooks.setSelect`
+  (horizontal drag-to-zoom-select is uPlot's own native idiom) to compute
+  the selected time range and call the shared function.
+- **Plotly**: listens to Plotly's own `plotly_relayout` event (fired by
+  its native modebar zoom/pan/double-click-autoscale interactions) and
+  extracts the new x-axis range from it.
+
+**Debounce + stale-request protection** (`docs/project-memory/MIGRATION_PLAN.md`'s
+Phase 2 design §13/§14, this task's explicit "critical" requirement) —
+two independent layers, both implemented and both independently tested:
+
+1. A 200ms debounce timer around the viewport-change → fetch pipeline,
+   so a drag gesture's intermediate frames never each trigger their own
+   request.
+2. **`AbortController` + a monotonically increasing sequence number**,
+   together: every new range request aborts the previous request's
+   in-flight fetch immediately; a response is only ever applied if its
+   sequence number still matches the latest request issued, checked both
+   right after the fetch settles and again after the response body has
+   been read (covering the case where an abort signal doesn't actually
+   stop a response already in flight). A jsdom test specifically isolates
+   the sequence-number layer from the AbortController layer (by
+   simulating a fetch mock where abort does not reject the promise) and
+   confirms a later-arriving stale response is still correctly discarded
+   in favour of a newer one that resolved first.
+
+Requests are also clamped to the record's own bounds
+(`recordBounds.start`/`recordBounds.end`, learned from the initial
+unbounded request's own `start_time`/`end_time`) before being issued, so
+pan/zoom can never silently request outside the source's actual time
+range.
+
+### Waveform fidelity
+
+- **No frontend smoothing/filtering anywhere.** uPlot's default line path
+  (`paths.linear`, never overridden) draws straight segments directly
+  between real sample points — no spline/curve smoothing is enabled.
+  Plotly's trace explicitly sets `line: { shape: "linear" }` (not
+  `"spline"`), the same guarantee stated explicitly rather than left to
+  an unexamined default.
+- **Phase 2A's authoritative data is completely unchanged.** This
+  prototype only ever calls the existing, unmodified
+  `GET .../sources/{id}/waveform` endpoint — no backend file was touched
+  this pass (confirmed: `git diff --stat -- backend/` is empty, and all
+  278 existing backend tests, none modified, still pass).
+- **Narrower ranges reveal real higher-detail samples**, not a cached or
+  re-decimated view of the same coarse data — every viewport change is a
+  fresh request against the authoritative record (`app.services.waveform_service.extract_waveform_range`,
+  unchanged), which already guarantees (per its own Phase 2A tests) that
+  a sufficiently narrow range returns true full-resolution samples
+  (`representation: "full_resolution"`) rather than a display envelope.
+
+### Loading/error behaviour
+
+A small, non-blocking loading pill appears over the top-right of the
+chart during a range fetch (the previously-rendered chart is left visible
+underneath, never blanked) — this is the same "don't freeze/blank the
+UI" philosophy the owner approved in Phase 1's loading indicators, applied
+here rather than reinvented. Errors map through a `friendlyWaveformError()`
+function mirroring `index.html`'s own `friendlyErrorMessage()` pattern —
+plain-language messages for `source_not_found`, `channel_not_found`,
+`channel_not_analog`, `invalid_time_range`, `invalid_workspace`,
+`internal_error`, and a network-unreachable case — never a raw error code
+or stack trace.
+
+### Renderer isolation
+
+Both candidates implement one shared adapter contract
+(`init(container, payload, callbacks)` / `update(handle, payload)` /
+`setViewport(handle, start, end)` / `destroy(handle)`), documented in a
+comment block directly above the adapter definitions in
+`waveform-prototype.html`. `destroy()` is required to leave zero trace —
+verified by a dedicated test that switches renderers repeatedly and
+confirms every `init` is matched by a `destroy`/`purge`, with no
+duplicate DOM nodes accumulating in the chart container. Deleting a
+losing candidate later means removing its adapter object, its `<script>`
+tag, its vendored directory under `frontend/vendor/`, and its Dockerfile
+`COPY` line — nothing else in the frontend or backend references a
+specific library by name.
+
+### Detego benchmark observations
+
+A single, bounded, public-page fetch of `detego.app`'s own marketing
+copy (not a technical audit, not an interactive walkthrough, not
+reverse-engineered) surfaced these high-level, publicly-stated points,
+used only as design-direction inspiration for this prototype, never as a
+spec:
+
+- Multi-panel dashboard with waveforms, phasors, and harmonics presented
+  as distinct views within one workspace.
+- Explicitly advertises "zoom, cursors, and RMS overlay" on waveform
+  displays, plus pan.
+- Toolbar/chrome described as minimal, favoring direct chart interaction
+  over menu-heavy controls — informed this prototype's own choice to keep
+  chrome to a renderer selector + Reset View + a small debug panel, no
+  more.
+- Detego's own marketing copy states it uses "interactive Plotly.js
+  charts" — noted factually (it is public marketing text, not something
+  inferred from technical inspection) but **not** treated as a reason to
+  favor Plotly in this UAT, per DEC-020's explicit "do not favor it
+  merely because Detego uses or appears to use it."
+
+No deeper inspection was performed — consistent with
+`docs/project-memory/PRODUCT_REFERENCES.md`'s standing `[OPEN]` note that
+no full technical audit of Detego exists in this project's memory.
+
+### Performance comparison
+
+Measured directly (not claimed): vendored bundle sizes above (uPlot ≈
+52 KB / ~22 KB gzip vs. Plotly-cartesian ≈ 1.36 MB / ~473 KB gzip — Plotly
+is roughly 27× larger uncompressed, ~21× larger gzipped, even using the
+size-reduced cartesian-only build rather than the full `plotly.js`
+bundle). A small DEV-only debug panel on the prototype page itself
+(`<details>`, collapsed by default, does not affect the normal UX) reports
+per-request: API request duration, payload size (via `Blob` byte-exact
+sizing, not a UTF-16 length approximation), render/update duration,
+points rendered, original raw sample count in range, and the current
+visible time range — for both candidates, using the identical
+measurement code path (the coordinator, not the adapters, does the
+timing). No synthetic point-count/render-speed numbers are asserted here
+as project-memory fact — those depend on real interaction during the
+owner's own UAT session against real imported data; the debug panel
+exists specifically so that UAT session can observe them directly rather
+than trusting a canned benchmark.
+
+### Tests
+
+- **Backend: 278 tests, unchanged, all passing** — zero backend files
+  touched this pass.
+- **Frontend: 25 scripted checks, all passing** — a one-off `jsdom`
+  script (not committed, same established lightweight approach as every
+  prior frontend-verification pass in this project) drove the actual
+  shipped `waveform-prototype.html` against stub `uPlot`/`Plotly`
+  implementations satisfying their real public APIs, covering: initial
+  full-record request (correct URL, correct fixed point budget); zoom
+  producing a narrower debounced request; the stale-response scenario
+  with both protection layers verified independently; Reset View
+  restoring the full record and forcing the chart's visible scale;
+  error-banner display with friendly wording; renderer switch causing
+  zero additional backend requests and reusing the already-fetched data;
+  repeated renderer switching with no leaked/duplicated adapter instances
+  or DOM nodes; and Plotly's own programmatic-relayout-after-Reset not
+  looping back into a spurious second fetch.
+- **Manual verification**: visual/interactive correctness (does the zoom
+  gesture feel natural, does the chart look clean, is the axis readable)
+  is inherently a hands-on concern — that is the explicit purpose of the
+  owner's own upcoming UAT session, not something a scripted test can
+  substitute for.
+
+### Files changed
+
+New: `frontend/waveform-prototype.html`,
+`frontend/vendor/README.md`,
+`frontend/vendor/uplot/{uPlot.iife.min.js,uPlot.min.css,LICENSE}`,
+`frontend/vendor/plotly/{plotly-cartesian.min.js,LICENSE}`.
+
+Modified: `frontend/index.html` (one new link column on analog channel
+rows only; `renderChannelTable`/`renderAnalogGroup` extended with an
+optional action-column parameter, backward compatible — digital
+channels' call site is unchanged), `frontend/Dockerfile` (serves the new
+page + vendored assets), `frontend/.dockerignore` (comment updated to
+list the new required paths, no pattern changes).
+
+No `backend/` file, no `docker-entrypoint.d/` script, and no CI/deployment
+workflow file was touched.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

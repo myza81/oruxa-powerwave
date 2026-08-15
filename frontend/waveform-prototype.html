@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Waveform Prototype — Powerwave</title>
+    <script src="config.js"></script>
+    <link rel="stylesheet" href="vendor/uplot/uPlot.min.css">
+    <style>
+        /* Same palette as index.html, deliberately kept in sync so this
+           reads as part of the same application, not a separate tool --
+           see docs/project-memory/MIGRATION_PLAN.md's Phase 2B record,
+           "keep it polished and simple, not a developer test harness." */
+        :root {
+            --bg: #0f1420;
+            --panel: #161d2e;
+            --panel-border: #2a3348;
+            --text: #e7ecf5;
+            --text-dim: #8b96ad;
+            --accent: #4f8dfd;
+            --accent-dim: #2c4a80;
+            --ok: #3ecf8e;
+            --warn: #f5a623;
+            --error: #f2545b;
+            --radius: 8px;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.45;
+        }
+
+        header {
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--panel-border);
+        }
+
+        header h1 {
+            font-size: 1.1rem;
+            margin: 0 0 4px;
+            font-weight: 600;
+        }
+
+        .proto-badge {
+            display: inline-block;
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--warn);
+            border: 1px solid var(--warn);
+            border-radius: 999px;
+            padding: 2px 8px;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+
+        header .subtitle {
+            font-size: 0.82rem;
+            color: var(--text-dim);
+        }
+
+        main {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        section.panel {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 18px;
+            margin-bottom: 20px;
+        }
+
+        .identity-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            font-size: 0.85rem;
+            margin-bottom: 4px;
+        }
+        .identity-row .item .label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            letter-spacing: 0.03em;
+        }
+        .identity-row .item .value { font-weight: 600; }
+
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        button {
+            appearance: none;
+            border: none;
+            border-radius: var(--radius);
+            padding: 8px 14px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            background: var(--accent);
+            color: #fff;
+        }
+        button:disabled { background: var(--accent-dim); cursor: not-allowed; }
+        button.secondary {
+            background: transparent;
+            border: 1px solid var(--panel-border);
+            color: var(--text-dim);
+            font-weight: 500;
+        }
+        button.renderer-tab {
+            background: transparent;
+            border: 1px solid var(--panel-border);
+            color: var(--text-dim);
+            font-weight: 600;
+        }
+        button.renderer-tab.active {
+            background: rgba(79, 141, 253, 0.12);
+            border-color: var(--accent-dim);
+            color: var(--accent);
+        }
+
+        .toolbar-spacer { flex: 1; }
+
+        .interaction-hint {
+            font-size: 0.78rem;
+            color: var(--text-dim);
+            margin: 0 0 12px;
+        }
+
+        .chart-wrap {
+            position: relative;
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            background: rgba(255,255,255,0.015);
+        }
+
+        #chartContainer {
+            width: 100%;
+            height: 420px;
+        }
+
+        .chart-loading {
+            position: absolute;
+            top: 10px;
+            right: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.78rem;
+            color: var(--accent);
+            background: rgba(15, 20, 32, 0.85);
+            padding: 5px 10px;
+            border-radius: 999px;
+        }
+        .chart-loading[hidden] { display: none; }
+
+        .spinner {
+            display: inline-block;
+            width: 11px;
+            height: 11px;
+            border: 2px solid rgba(79, 141, 253, 0.3);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .error-banner {
+            margin-top: 12px;
+            font-size: 0.85rem;
+            border-radius: var(--radius);
+            padding: 10px 12px;
+            background: rgba(242, 84, 91, 0.12);
+            color: var(--error);
+        }
+        .error-banner[hidden] { display: none; }
+
+        .empty-state {
+            color: var(--text-dim);
+            font-size: 0.85rem;
+            padding: 40px 4px;
+            text-align: center;
+        }
+
+        details.debug-panel {
+            font-size: 0.78rem;
+            color: var(--text-dim);
+        }
+        details.debug-panel summary {
+            cursor: pointer;
+            font-weight: 600;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            font-size: 0.72rem;
+            letter-spacing: 0.03em;
+        }
+        table.debug-table {
+            margin-top: 10px;
+            border-collapse: collapse;
+            width: 100%;
+        }
+        table.debug-table td {
+            padding: 3px 8px 3px 0;
+            border-bottom: 1px solid var(--panel-border);
+        }
+        table.debug-table td:first-child { color: var(--text-dim); white-space: nowrap; }
+        table.debug-table td:last-child { font-family: ui-monospace, monospace; }
+
+        a.back-link {
+            font-size: 0.82rem;
+            color: var(--text-dim);
+            text-decoration: none;
+        }
+        a.back-link:hover { color: var(--accent); }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Waveform Prototype<span class="proto-badge">Phase 2B UAT</span></h1>
+        <div class="subtitle">Renderer comparison prototype — not the final waveform workspace.
+            <a class="back-link" href="index.html">&larr; Back to sources</a></div>
+    </header>
+
+    <main>
+        <section class="panel" id="identityPanel">
+            <div class="identity-row" id="identityRow">
+                <p class="empty-state" id="identityEmpty">Missing workspace/source/channel — open this page from a channel in the source browser.</p>
+            </div>
+        </section>
+
+        <section class="panel" id="chartPanel" hidden>
+            <div class="toolbar">
+                <span style="font-size:0.78rem;color:var(--text-dim);">Renderer:</span>
+                <button type="button" class="renderer-tab" id="tabUplot">uPlot</button>
+                <button type="button" class="renderer-tab" id="tabPlotly">Plotly</button>
+                <div class="toolbar-spacer"></div>
+                <button type="button" class="secondary" id="resetViewBtn">Reset View</button>
+            </div>
+
+            <p class="interaction-hint" id="interactionHint"></p>
+
+            <div class="chart-wrap">
+                <div id="chartContainer"></div>
+                <div class="chart-loading" id="chartLoading" hidden><span class="spinner"></span>Loading&hellip;</div>
+            </div>
+
+            <div class="error-banner" id="errorBanner" hidden role="alert"></div>
+        </section>
+
+        <section class="panel">
+            <details class="debug-panel" id="debugPanel">
+                <summary>Debug / performance (DEV only)</summary>
+                <table class="debug-table">
+                    <tr><td>Renderer</td><td id="dbgRenderer">—</td></tr>
+                    <tr><td>Representation</td><td id="dbgRepresentation">—</td></tr>
+                    <tr><td>Visible range</td><td id="dbgRange">—</td></tr>
+                    <tr><td>Original samples in range</td><td id="dbgOriginalCount">—</td></tr>
+                    <tr><td>Points rendered</td><td id="dbgPointCount">—</td></tr>
+                    <tr><td>API request time</td><td id="dbgRequestMs">—</td></tr>
+                    <tr><td>Payload size</td><td id="dbgPayloadSize">—</td></tr>
+                    <tr><td>Render/update time</td><td id="dbgRenderMs">—</td></tr>
+                    <tr><td>Library load (one-time, this session)</td><td id="dbgLibLoad">—</td></tr>
+                </table>
+            </details>
+        </section>
+    </main>
+
+    <script src="vendor/uplot/uPlot.iife.min.js"></script>
+    <script src="vendor/plotly/plotly-cartesian.min.js"></script>
+    <script>
+        // ==================================================================
+        // Phase 2B renderer UAT prototype.
+        //
+        // Purpose: let the owner hands-on compare plotting libraries against
+        // the SAME Phase 2A backend waveform data and the SAME interaction
+        // contract -- see docs/project-memory/MIGRATION_PLAN.md's Phase 2B
+        // record and docs/project-memory/PRODUCT_REFERENCES.md (Detego
+        // Benchmark Principle). This file is deliberately isolated from
+        // index.html and from the Phase 2A backend API itself -- the API is
+        // chart-library-independent (see WaveformRenderer adapter contract
+        // below), and everything library-specific lives in this one file so
+        // a losing candidate (and frontend/vendor/<name>/) can be deleted
+        // cleanly without touching anything else.
+        //
+        // Explicitly NOT in scope here (see project-memory for why):
+        // digital channels, cursors/measurements, calculated signals,
+        // synchronization, draggable/reorderable panels. This is a
+        // single-channel renderer test, not the future workspace.
+        // ==================================================================
+
+        // ------------------------------------------------------------------
+        // Configuration + identity (query-string driven -- this page is
+        // opened from index.html's channel table with the already-known
+        // workspace/source/channel identity, never re-derived here).
+        // ------------------------------------------------------------------
+        function apiBaseUrl() {
+            const config = window.POWERWAVE_CONFIG || {};
+            return (config.apiBaseUrl || "http://127.0.0.1:8000").replace(/\/$/, "");
+        }
+
+        const params = new URLSearchParams(window.location.search);
+        const IDENTITY = {
+            workspaceId: params.get("workspace_id") || "",
+            sourceId: params.get("source_id") || "",
+            channelName: params.get("channel_name") || "",
+            unit: params.get("unit") || "",
+            stationName: params.get("station_name") || "",
+        };
+
+        // Fixed for the whole prototype session -- identical for every
+        // renderer and every request, per the fair-comparison requirement
+        // (docs/project-memory/MIGRATION_PLAN.md's Phase 2B record §7).
+        // Matches the backend's own default (app.services.waveform_service.
+        // DEFAULT_POINT_BUDGET) so this prototype exercises the same budget
+        // a production frontend would get without passing one explicitly.
+        const POINT_BUDGET = 4000;
+
+        function escapeHtml(value) {
+            const div = document.createElement("div");
+            div.textContent = value;
+            return div.innerHTML;
+        }
+
+        // ------------------------------------------------------------------
+        // Waveform data client: exact-range requests against the Phase 2A
+        // API, with stale-request protection (task's "critical" requirement
+        // -- docs/project-memory/MIGRATION_PLAN.md's Phase 2B record §14).
+        //
+        // Two independent layers of protection, deliberately both, not
+        // either/or:
+        //   1. AbortController -- cancels the actual in-flight HTTP request
+        //      the moment a newer one starts, so a superseded request
+        //      normally never even finishes downloading.
+        //   2. A monotonically increasing sequence number, re-checked right
+        //      before applying a response -- covers the (real, if rare)
+        //      case where an abort signal doesn't stop a response that was
+        //      already in-flight past the point where abort takes effect;
+        //      a stale response is silently dropped rather than ever
+        //      reaching the renderer.
+        // ------------------------------------------------------------------
+        let activeAbortController = null;
+        let requestSequence = 0;
+
+        async function fetchWaveformRange(startTime, endTime, pointBudget) {
+            if (activeAbortController) activeAbortController.abort();
+            const controller = new AbortController();
+            activeAbortController = controller;
+            const seq = ++requestSequence;
+
+            const url = new URL(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(IDENTITY.workspaceId) +
+                "/sources/" + encodeURIComponent(IDENTITY.sourceId) + "/waveform"
+            );
+            url.searchParams.set("channel_name", IDENTITY.channelName);
+            if (startTime !== null && startTime !== undefined) url.searchParams.set("start_time", startTime);
+            if (endTime !== null && endTime !== undefined) url.searchParams.set("end_time", endTime);
+            url.searchParams.set("point_budget", String(pointBudget));
+
+            const t0 = performance.now();
+            let response;
+            try {
+                response = await fetch(url.toString(), { signal: controller.signal });
+            } catch (error) {
+                if (error.name === "AbortError") return { superseded: true };
+                throw error;
+            }
+            if (seq !== requestSequence) return { superseded: true };
+
+            const requestMs = performance.now() - t0;
+            const bodyText = await response.text();
+            if (seq !== requestSequence) return { superseded: true };
+
+            const payloadBytes = new Blob([bodyText]).size;
+            let body = null;
+            try { body = JSON.parse(bodyText); } catch (error) { /* handled by !response.ok / null body below */ }
+
+            if (!response.ok) {
+                const detail = (body && body.detail) || {};
+                return { superseded: false, error: detail, requestMs, payloadBytes };
+            }
+            return { superseded: false, body, requestMs, payloadBytes };
+        }
+
+        function friendlyWaveformError(code, message) {
+            const known = {
+                source_not_found: "This source is no longer available in this workspace — it may have been removed, or the workspace was reset.",
+                channel_not_found: "This channel is no longer available on this source.",
+                channel_not_analog: "This channel is digital — the waveform prototype only supports analog channels in Phase 2B.",
+                invalid_time_range: "That time range wasn't valid. Use Reset View to recover.",
+                invalid_workspace: "Something went wrong identifying your workspace.",
+                internal_error: "Something went wrong on our end. Please try again.",
+            };
+            return known[code] || (message || "Could not load waveform data.");
+        }
+
+        // ------------------------------------------------------------------
+        // WaveformRenderer adapter contract (shared by every candidate):
+        //
+        //   init(container, payload, callbacks) -> instance
+        //     payload:   { time: number[], values: number[], unit, channelName, stationName }
+        //     callbacks: { onViewportChange(startTime, endTime) }
+        //     returns an opaque instance handle passed back into update/
+        //     setViewport/destroy -- the coordinator never inspects it.
+        //   update(instance, payload) -- replace displayed data (same shape
+        //     as init's payload); called on every successful range response,
+        //     including a renderer switch reusing already-fetched data.
+        //   setViewport(instance, startTime, endTime) -- force the visible
+        //     X range without necessarily changing the data (used by Reset
+        //     View once the full-record data has already been fetched).
+        //   destroy(instance) -- full teardown: remove DOM, listeners, any
+        //     resize observers. Must leave zero trace so switching renderers
+        //     repeatedly never accumulates duplicate canvases/handlers.
+        //
+        // The backend API knows nothing about any of this -- adapters are
+        // the only place a specific charting library is referenced.
+        // ------------------------------------------------------------------
+
+        const UPlotAdapter = {
+            init(container, payload, callbacks) {
+                const resizeHandler = () => {
+                    if (instance) instance.setSize({ width: container.clientWidth, height: container.clientHeight });
+                };
+
+                const opts = {
+                    width: container.clientWidth,
+                    height: container.clientHeight,
+                    title: "",
+                    cursor: {
+                        drag: { x: true, y: false, uni: 30 }, // horizontal drag-to-zoom only
+                    },
+                    scales: { x: { time: false } }, // seconds, not epoch ms -- see time-axis note below
+                    series: [
+                        {},
+                        {
+                            label: payload.channelName + (payload.unit ? " (" + payload.unit + ")" : ""),
+                            stroke: "#4f8dfd",
+                            width: 1.5,
+                            points: { show: false },
+                            // No spline/smoothing: uPlot's default line path
+                            // draws straight segments directly between real
+                            // sample points (paths.linear, the built-in
+                            // default) -- this is the ordinary engineering
+                            // waveform connection the task requires, not an
+                            // opt-in; nothing here enables curve smoothing.
+                        },
+                    ],
+                    axes: [
+                        { label: "Time (s)", stroke: "#8b96ad", grid: { stroke: "#2a3348" } },
+                        { label: payload.unit || "", stroke: "#8b96ad", grid: { stroke: "#2a3348" } },
+                    ],
+                    hooks: {
+                        setSelect: [
+                            (u) => {
+                                if (u.select.width < 4) return; // ignore accidental micro-drags
+                                const startTime = u.posToVal(u.select.left, "x");
+                                const endTime = u.posToVal(u.select.left + u.select.width, "x");
+                                u.setSelect({ width: 0, height: 0 }, false); // clear selection box
+                                callbacks.onViewportChange(startTime, endTime);
+                            },
+                        ],
+                    },
+                };
+
+                const instance = new uPlot(opts, [payload.time, payload.values], container);
+                window.addEventListener("resize", resizeHandler);
+                return { uplot: instance, resizeHandler };
+            },
+
+            update(handle, payload) {
+                handle.uplot.setData([payload.time, payload.values]);
+            },
+
+            setViewport(handle, startTime, endTime) {
+                handle.uplot.setScale("x", { min: startTime, max: endTime });
+            },
+
+            destroy(handle) {
+                window.removeEventListener("resize", handle.resizeHandler);
+                handle.uplot.destroy();
+            },
+
+            interactionHint: "Drag horizontally on the chart to zoom into a time range. Use “Reset View” to return to the full record. (uPlot has no built-in pan gesture in this prototype — zoom in, then Reset View and zoom a different range.)",
+        };
+
+        const PlotlyAdapter = {
+            init(container, payload, callbacks) {
+                const trace = {
+                    x: payload.time,
+                    y: payload.values,
+                    type: "scattergl",
+                    mode: "lines",
+                    // shape: "linear" (Plotly's own default) is what's used
+                    // here -- explicitly NOT "spline", so no curve smoothing
+                    // is applied between real sample points.
+                    line: { shape: "linear", width: 1.5, color: "#4f8dfd" },
+                    name: payload.channelName,
+                    hovertemplate: "%{x:.6f}s: %{y}" + (payload.unit ? " " + payload.unit : "") + "<extra></extra>",
+                };
+                const layout = {
+                    paper_bgcolor: "#161d2e",
+                    plot_bgcolor: "#161d2e",
+                    font: { color: "#e7ecf5", size: 11 },
+                    margin: { l: 55, r: 20, t: 10, b: 40 },
+                    xaxis: { title: "Time (s)", gridcolor: "#2a3348", zeroline: false },
+                    yaxis: { title: payload.unit || "", gridcolor: "#2a3348", zeroline: false },
+                    dragmode: "zoom",
+                    showlegend: false,
+                };
+                const config = {
+                    responsive: true,
+                    displaylogo: false,
+                    modeBarButtonsToRemove: ["lasso2d", "select2d"],
+                };
+
+                Plotly.newPlot(container, [trace], layout, config);
+
+                let suppressNextRelayout = false; // set true right before our own setViewport-driven relayout
+                const relayoutHandler = (eventData) => {
+                    if (suppressNextRelayout) { suppressNextRelayout = false; return; }
+                    const x0 = eventData["xaxis.range[0]"];
+                    const x1 = eventData["xaxis.range[1]"];
+                    if (x0 === undefined || x1 === undefined) return; // e.g. autosize-only relayout, not a range change
+                    callbacks.onViewportChange(x0, x1);
+                };
+                container.on("plotly_relayout", relayoutHandler);
+
+                return { container, relayoutHandler, suppressFlag: () => { suppressNextRelayout = true; } };
+            },
+
+            update(handle, payload) {
+                Plotly.react(handle.container, [{
+                    x: payload.time,
+                    y: payload.values,
+                    type: "scattergl",
+                    mode: "lines",
+                    line: { shape: "linear", width: 1.5, color: "#4f8dfd" },
+                    name: payload.channelName,
+                    hovertemplate: "%{x:.6f}s: %{y}" + (payload.unit ? " " + payload.unit : "") + "<extra></extra>",
+                }], handle.container.layout);
+            },
+
+            setViewport(handle, startTime, endTime) {
+                handle.suppressFlag();
+                Plotly.relayout(handle.container, { "xaxis.range": [startTime, endTime] });
+            },
+
+            destroy(handle) {
+                handle.container.removeAllListeners("plotly_relayout");
+                Plotly.purge(handle.container);
+            },
+
+            interactionHint: "Drag on the chart to box-zoom into a time range. Use the modebar (top-right of the chart) to switch to pan mode, or double-click to autoscale. “Reset View” always returns to the full record.",
+        };
+
+        const ADAPTERS = { uplot: UPlotAdapter, plotly: PlotlyAdapter };
+
+        // ------------------------------------------------------------------
+        // Coordinator: owns current renderer, current data, the debounced
+        // viewport-change -> range-request pipeline, loading/error state,
+        // and the debug panel. This is the only place that knows about both
+        // "which library is active" and "what data is currently shown" --
+        // adapters know neither the API nor each other.
+        // ------------------------------------------------------------------
+        let currentRendererName = null;
+        let currentHandle = null;
+        let currentPayload = null; // last successfully rendered {time, values, unit, channelName, representation, startTime, endTime, originalSampleCount}
+        let recordBounds = null; // {start, end} of the full record, learned from the first (unbounded) request
+        let viewportDebounceTimer = null;
+        let libraryLoadNoted = false;
+
+        function setLoading(isLoading) {
+            document.getElementById("chartLoading").hidden = !isLoading;
+        }
+
+        function showError(message) {
+            const el = document.getElementById("errorBanner");
+            el.textContent = message;
+            el.hidden = false;
+        }
+
+        function clearError() {
+            document.getElementById("errorBanner").hidden = true;
+        }
+
+        function updateDebugPanel(rendererName, result, payload) {
+            document.getElementById("dbgRenderer").textContent = rendererName;
+            document.getElementById("dbgRepresentation").textContent = payload.representation;
+            document.getElementById("dbgRange").textContent =
+                payload.startTime.toFixed(6) + "s – " + payload.endTime.toFixed(6) + "s";
+            document.getElementById("dbgOriginalCount").textContent = payload.originalSampleCount.toLocaleString();
+            document.getElementById("dbgPointCount").textContent = payload.values.length.toLocaleString();
+            if (result) {
+                document.getElementById("dbgRequestMs").textContent = result.requestMs.toFixed(1) + " ms";
+                document.getElementById("dbgPayloadSize").textContent = (result.payloadBytes / 1024).toFixed(1) + " KB";
+            }
+        }
+
+        async function loadRangeImmediate(startTime, endTime) {
+            clearTimeout(viewportDebounceTimer);
+            setLoading(true);
+            clearError();
+
+            const result = await fetchWaveformRange(startTime, endTime, POINT_BUDGET);
+            if (result.superseded) return; // a newer request is already in flight or has already landed
+
+            setLoading(false);
+
+            if (result.error) {
+                showError(friendlyWaveformError(result.error.code, result.error.message));
+                return;
+            }
+            if (!result.body) {
+                showError("Could not reach the backend. Check your connection and try again.");
+                return;
+            }
+
+            const body = result.body;
+            if (recordBounds === null && startTime === null && endTime === null) {
+                // This was the initial, unbounded request -- its start/end
+                // ARE the record's true bounds (see app.services.waveform_
+                // service.extract_waveform_range's documented default
+                // behaviour: omitting both bounds returns the entire record).
+                recordBounds = { start: body.start_time, end: body.end_time };
+            }
+
+            const payload = {
+                time: body.time,
+                values: body.values,
+                unit: body.unit,
+                channelName: body.channel_name,
+                stationName: IDENTITY.stationName,
+                representation: body.representation,
+                startTime: body.start_time,
+                endTime: body.end_time,
+                originalSampleCount: body.original_sample_count,
+            };
+            currentPayload = payload;
+
+            const renderT0 = performance.now();
+            if (currentHandle) {
+                ADAPTERS[currentRendererName].update(currentHandle, payload);
+            }
+            const renderMs = performance.now() - renderT0;
+
+            updateDebugPanel(currentRendererName, result, payload);
+            document.getElementById("dbgRenderMs").textContent = renderMs.toFixed(1) + " ms";
+        }
+
+        function requestViewportRangeDebounced(startTime, endTime) {
+            // Clamp to the source's own bounds -- panning/zooming must never
+            // silently request outside the record (docs/project-memory/
+            // MIGRATION_PLAN.md's Phase 2B record §20).
+            if (recordBounds) {
+                startTime = Math.max(startTime, recordBounds.start);
+                endTime = Math.min(endTime, recordBounds.end);
+            }
+            if (startTime >= endTime) return;
+
+            clearTimeout(viewportDebounceTimer);
+            // 200ms: long enough that a drag gesture's intermediate frames
+            // never each trigger their own request (avoiding both a request
+            // storm and visible network lag mid-drag), short enough that
+            // the finer data still feels like a direct response to the
+            // zoom/pan action once the user's pointer settles.
+            viewportDebounceTimer = setTimeout(() => {
+                loadRangeImmediate(startTime, endTime);
+            }, 200);
+        }
+
+        async function resetView() {
+            if (!recordBounds) return;
+            await loadRangeImmediate(recordBounds.start, recordBounds.end);
+            if (currentHandle) {
+                ADAPTERS[currentRendererName].setViewport(currentHandle, recordBounds.start, recordBounds.end);
+            }
+        }
+
+        function switchRenderer(name) {
+            if (name === currentRendererName) return;
+            const container = document.getElementById("chartContainer");
+
+            if (currentHandle) {
+                ADAPTERS[currentRendererName].destroy(currentHandle);
+                currentHandle = null;
+            }
+            container.innerHTML = ""; // belt-and-suspenders against any adapter that doesn't fully clean up
+
+            currentRendererName = name;
+            document.getElementById("tabUplot").classList.toggle("active", name === "uplot");
+            document.getElementById("tabPlotly").classList.toggle("active", name === "plotly");
+            document.getElementById("interactionHint").textContent = ADAPTERS[name].interactionHint;
+
+            if (currentPayload) {
+                // Renderer switch reuses the already-fetched data -- no new
+                // backend request, per the task's own explicit requirement
+                // ("switching renderer does not change requested waveform
+                // data").
+                const callbacks = { onViewportChange: requestViewportRangeDebounced };
+                currentHandle = ADAPTERS[name].init(container, currentPayload, callbacks);
+            }
+        }
+
+        document.getElementById("tabUplot").addEventListener("click", () => switchRenderer("uplot"));
+        document.getElementById("tabPlotly").addEventListener("click", () => switchRenderer("plotly"));
+        document.getElementById("resetViewBtn").addEventListener("click", resetView);
+
+        // ------------------------------------------------------------------
+        // Init
+        // ------------------------------------------------------------------
+        async function init() {
+            if (!IDENTITY.workspaceId || !IDENTITY.sourceId || !IDENTITY.channelName) {
+                return; // identityEmpty message already shown in markup
+            }
+
+            document.getElementById("identityEmpty").remove();
+            const row = document.getElementById("identityRow");
+            row.innerHTML =
+                identityItem("Source", IDENTITY.stationName || "(unnamed)") +
+                identityItem("Channel", IDENTITY.channelName) +
+                identityItem("Unit", IDENTITY.unit || "—") +
+                identityItem("Workspace", IDENTITY.workspaceId);
+
+            document.getElementById("chartPanel").hidden = false;
+
+            const container = document.getElementById("chartContainer");
+            const callbacks = { onViewportChange: requestViewportRangeDebounced };
+
+            setLoading(true);
+            const libLoadStart = performance.now();
+
+            currentRendererName = "uplot";
+            document.getElementById("tabUplot").classList.add("active");
+            document.getElementById("interactionHint").textContent = UPlotAdapter.interactionHint;
+
+            // Initial load: no start/end -> entire available record (see
+            // app.services.waveform_service's documented default), bounded
+            // display representation from the backend, never the full
+            // record shipped to the browser by default.
+            await loadRangeImmediate(null, null);
+
+            if (currentPayload) {
+                currentHandle = ADAPTERS.uplot.init(container, currentPayload, callbacks);
+                document.getElementById("dbgLibLoad").textContent =
+                    (performance.now() - libLoadStart).toFixed(1) + " ms (uPlot init, includes first data load)";
+            }
+        }
+
+        function identityItem(label, value) {
+            return '<div class="item"><div class="label">' + escapeHtml(label) + '</div>' +
+                '<div class="value">' + escapeHtml(String(value)) + '</div></div>';
+        }
+
+        init();
+    </script>
+</body>
+</html>

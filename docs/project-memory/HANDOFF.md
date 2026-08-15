@@ -8,6 +8,47 @@ Last updated: **2026-08-15**
 
 ## What was most recently done
 
+**Phase 2B — Renderer UAT Prototype.** Built the bounded browser
+comparison prototype the Phase 2 design work called for: a new, isolated
+page (`frontend/waveform-prototype.html`) lets the owner hands-on compare
+**uPlot** and **Plotly.js** against the identical Phase 2A backend
+waveform data and interaction contract — same endpoint, same channel,
+same fixed point budget (4000), switching renderers reuses already-
+fetched data instead of re-fetching. Opened via a new "Waveform (UAT)"
+link added to each analog channel row in the existing Phase 1 channel
+browser (`frontend/index.html`) — the main app itself is otherwise
+unchanged. **No plotting-library winner was chosen — this is `[DECISION
+MODE: UAT]`, for the owner to judge.** No Phase 2C (draggable/panel)
+work, no digital channels, no cursors/measurements, no calculated
+signals, no synchronization. Full detail:
+[MIGRATION_PLAN.md — Phase 2B Implementation Record](MIGRATION_PLAN.md#phase-2b--renderer-uat-prototype-implementation-record-2026-08-15).
+
+**What was built, precisely**: uPlot (v1.6.32) and Plotly.js
+cartesian-only (v3.7.0) vendored as static, pre-built, minified bundles
+under `frontend/vendor/` (no build step — matches the project's existing
+architecture; provenance/versions recorded in `frontend/vendor/README.md`
+for later removal/upgrade). Both candidates implement one shared
+`WaveformRenderer` adapter contract (`init`/`update`/`setViewport`/
+`destroy`) so a losing candidate is cleanly deletable later. A shared
+coordinator owns the debounced (200ms), doubly-protected
+(`AbortController` **and** a sequence number, tested independently)
+range-request pipeline — zoom/pan in either renderer calls the same
+`requestViewportRangeDebounced()` function, nothing else. Neither
+renderer applies curve smoothing (uPlot's default linear path; Plotly's
+`line.shape: "linear"` set explicitly, not left to an unexamined
+default). Backend was **not touched** — `git diff --stat -- backend/` is
+empty, and all 278 existing backend tests, none modified, still pass.
+
+**TTL note for this pass**: per the task's explicit instruction, TTL was
+**not** implemented; a temporary DEV-only operational stopgap was
+documented instead (owner clicks `Start new workspace` at the end of the
+UAT session, or the DEV backend container is restarted between separate
+UAT sessions) — see
+[CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers).
+**This is not a claim that the TTL `[OPEN]` item is solved.**
+
+## What was done in the prior session (Detego benchmark documentation, three passes)
+
 **Documentation-only, three passes same day**: established `detego.app`
 as an official product/UI-UX/waveform-workspace/dashboard/workflow
 **benchmark** (explicitly not a ceiling or a spec to copy blindly) for
@@ -211,7 +252,38 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified (this pass — Phase 2A implementation)
+## What was verified (this pass — Phase 2B renderer UAT prototype)
+
+- `oruxa_powerwave` git state: local `main` confirmed identical to
+  `origin/main` (independent `git fetch`), working tree clean, before and
+  after this pass.
+- **Backend regression: 278 tests, unmodified, all still pass** —
+  confirmed zero backend files in the diff (`git diff --stat -- backend/`
+  empty).
+- **Frontend: 25 scripted `jsdom` checks, all passing**, driving the
+  actual shipped `waveform-prototype.html` (not a reimplementation)
+  against stub `uPlot`/`Plotly` objects satisfying their real public
+  APIs. Covers: initial full-record request shape; zoom → debounced
+  narrower request; the stale-response scenario with the
+  `AbortController` layer and the sequence-number fallback layer verified
+  **independently** (a dedicated test isolates the sequence-number path
+  by simulating an abort that doesn't reject the promise); Reset View;
+  friendly error-banner wording; renderer switch issuing zero new
+  requests and reusing already-fetched data; repeated renderer switching
+  with matched init/destroy counts and no duplicate DOM nodes; and
+  Plotly's own programmatic-relayout-after-Reset not looping into a
+  second fetch.
+- Vendored library integrity: exact byte sizes recorded (uPlot ≈ 52 KB
+  combined JS+CSS; Plotly-cartesian ≈ 1.36 MB JS), versions/licenses
+  recorded in `frontend/vendor/README.md`.
+- No real-browser/visual verification was performed in this sandboxed
+  session (no headless browser available) — see "Live DEV verification"
+  in this task's final report for what was checked via `curl`/static
+  asset inspection instead, and note clearly that interactive/visual
+  correctness is the explicit purpose of the owner's own upcoming UAT
+  session, not something already claimed done here.
+
+## What was verified (prior pass — Phase 2A implementation)
 
 - `oruxa_powerwave` git state: local `main` confirmed identical to
   `origin/main` (independent `git fetch`), working tree clean, before and
@@ -330,7 +402,29 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 2A implementation)
+## What files were changed this session (Phase 2B renderer UAT prototype)
+
+New: `frontend/waveform-prototype.html`, `frontend/vendor/README.md`,
+`frontend/vendor/uplot/{uPlot.iife.min.js,uPlot.min.css,LICENSE}`,
+`frontend/vendor/plotly/{plotly-cartesian.min.js,LICENSE}`.
+
+Modified: `frontend/index.html` (one new "Waveform (UAT)" link per analog
+channel row; `renderChannelTable`/`renderAnalogGroup` extended with a
+backward-compatible optional action-column parameter — digital channels'
+call site unchanged), `frontend/Dockerfile` (serves the new page +
+vendored assets), `frontend/.dockerignore` (comment only, no pattern
+changes), `docs/project-memory/{MIGRATION_PLAN,CURRENT_STATE,HANDOFF}.md`
+(this work).
+
+**`DECISIONS.md` was NOT modified** — no plotting-library winner was
+chosen (explicitly out of scope; `[DECISION MODE: UAT]`), and no other
+new non-UI technical decision was made this pass that wasn't already
+covered by DEC-019/DEC-020.
+
+No `backend/`, `docker-entrypoint.d/`, or CI/deployment workflow file was
+touched.
+
+## What files were changed in the prior session (Phase 2A implementation)
 
 New: `backend/app/domain/waveform_reduction.py`,
 `backend/app/services/waveform_service.py`,
@@ -441,121 +535,104 @@ Modified:
 
 ## GitHub / deployment status
 
-See "GitHub persistence" (and "DEV deployment," if applicable) in this
-task's final report (delivered in-conversation) for the exact commit
-hash, push confirmation, and independent-fetch verification for the
-Phase 2A implementation. **Whether this pass was deployed to DEV depends
-on what the final report states** — Phase 2A has no user-facing chart
-yet, so deployment was optional (backend-only verification is sufficient
-to prove the slice); check the final report's own "DEV deployment"
-section rather than assuming either way. **Production was not touched**
-regardless.
+See "GitHub persistence" and "DEV deployment" in this task's final report
+(delivered in-conversation) for the exact commit hash, push confirmation,
+independent-fetch verification, GitHub Actions run, and live-endpoint
+checks for the Phase 2B prototype. **Production was not touched.**
 
 ## What remains unresolved
 
-- `[OPEN]` **Materially more urgent now, still not resolved**:
-  abandoned-workspace cleanup (browser tab closed, network lost, or the
-  user never clicks `Remove`/`Start new workspace`) still has no automatic
-  expiry/TTL. Phase 2A's own memory measurements (up to 176 MB retained
-  per source in the largest synthetic scenario tested) make this a real,
-  not theoretical, concern for any prolonged or shared-DEV waveform UAT.
+- `[OPEN]` **Unchanged, still real**: abandoned-workspace cleanup
+  (browser tab closed, network lost, or the user never clicks
+  `Remove`/`Start new workspace`) still has no automatic expiry/TTL.
   `[DECISION MODE: COMPARISON]` — see
   [MIGRATION_PLAN.md §18](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14)
-  and DEC-019's Impact section. Deliberately not solved this pass (Phase
-  2A's scope was explicit-reset correctness, not TTL).
-- `[OPEN]`, unchanged, by design: plotting library, channel-selection/add
-  interaction, panel layout, drag/reorder panel UX, and digital waveform
-  handling remain `[UAT]`/`[PROPOSAL]` — Phase 2A deliberately did not
-  touch any of them. See
-  [MIGRATION_PLAN.md §29/§30/§37](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14).
-- `[OPEN]`, partially informed this pass: the ~100 MB real-file memory
-  ceiling still hasn't been measured against an actual near-100 MB
-  COMTRADE file — Phase 2A's benchmark used synthetic data at comparable
-  sample counts and established a precise parsed-memory expansion ratio
-  (4x for analog, 8x for digital) that narrows the estimate, but doesn't
-  replace a direct measurement.
-- Otherwise unchanged — see
-  [CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers):
-  disk-free upload/parse (not solved, judged disproportionate), long-term
-  persistence architecture (Phase 8), the discovery engineering-improvement
-  findings, and whether to commit richer real-event parity fixtures.
+  and DEC-019's Impact section. Phase 2B did not implement TTL (per
+  explicit task instruction) — instead documented a **temporary DEV-only
+  operational stopgap** for this specific UAT session (owner clicks
+  `Start new workspace` when done, or the DEV backend container is
+  restarted between separate sessions) — see
+  [CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers).
+  This is a stopgap, not a solution — do not mark this `[OPEN]` item
+  resolved.
+- `[UAT]`, the whole point of this pass: **the plotting-library choice is
+  now ready for the owner's hands-on judgment** (uPlot vs. Plotly,
+  prototype live on DEV) — but remains undecided. Also still `[UAT]`/
+  `[OPEN]`: zoom/pan interaction feel, autoscale behaviour, and every
+  Phase 2C question (draggable/reorderable panels, custom panel
+  grouping, independent Y axes).
+- `[OPEN]`, unchanged: digital waveform handling (deliberately deferred —
+  the waveform endpoint rejects digital channel names by design), the
+  ~100 MB real-file memory ceiling (still not directly measured), and
+  everything else already listed in
+  [CURRENT_STATE.md — Known blockers](CURRENT_STATE.md#known-blockers)
+  (disk-free upload/parse, long-term persistence architecture, discovery
+  engineering-improvement findings, richer parity fixtures).
 
 ## What should be done next
 
-Per this task's explicit closing instruction: **stop after Phase 2A**. Do
-not begin Phase 2B (chart library, frontend rendering, channel-selection
-UX, panel model) without explicit owner approval. Do not begin Phase 1.5,
-synchronization, calculated signals, digital waveform delivery, advanced
-analysis, persistence redesign, or authentication. The owner should
-review Phase 2A (the new endpoint, its 51 new tests, and its measured
-memory/performance numbers in the Phase 2A Implementation Record) and
-decide: proceed to Phase 2B; resolve the TTL question first
-(`[DECISION MODE: COMPARISON]`); and/or schedule the bounded
-plotting-library UAT prototype (`[DECISION MODE: UAT]`) described in the
-Phase 2 design section.
+Per Phase 2B's explicit closing instruction: **stop after the prototype
+is live and verified**. Do not begin Phase 2C (draggable/flexible panel
+workspace), digital channels, cursors/measurements, calculated signals,
+synchronization, or CSV/Excel without explicit owner approval. The next
+step is for the **owner to actually run the UAT session**: open the
+DEV build, import a COMTRADE source, open the waveform prototype from an
+analog channel, compare uPlot and Plotly directly (zoom, pan, reset,
+switch renderer repeatedly), and decide — a clear winner, "needs one
+small refinement first," or "neither is satisfactory yet" are all valid,
+honestly-reportable outcomes; nothing about this prototype should be
+read as steering toward a predetermined answer.
 
 ## What must not be assumed
 
-- **Do not assume a technical audit or feature comparison against
-  `detego.app` exists** — [PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md)
-  (DEC-020) establishes only the *reference relationship and its limits*
-  (benchmark, not ceiling; consult routinely, never copy blindly). No one
-  has yet recorded what Detego actually does or how it compares
-  feature-by-feature to `oruxa_powerwave` or `powerwave`.
-- **Do not treat Detego's absence of a feature as a reason to withhold
-  that feature from `oruxa_powerwave`** — DEC-020 explicitly says the
-  opposite: aim to exceed Detego where the owner's engineering
-  requirements justify it.
-- **Do not assume Phase 2B (or any later Phase 2 slice) is authorized** —
-  only Phase 2A (backend waveform data foundation) has been approved and
-  built (DEC-019). Chart library, frontend rendering, channel-selection
-  UX, and panel model remain unbuilt `[PROPOSAL]`/`[UAT]` items.
-- Do not assume the retained `DisturbanceRecord` is decimated/reduced
-  before being stored — it is not; `ActiveSource.record` is always the
-  exact, unmodified, full-resolution parse output. Only a *response* to a
-  range request may be reduced, and only when requested range's raw
-  sample count exceeds the request's `point_budget`.
-- Do not assume `powerwave`'s own decimation algorithm
-  (`build_aligned_data()` + `decimate_for_display()`) was reused — it
-  wasn't; it's confirmed plain nth-point stride sampling, not
-  peak-preserving, and `app/domain/waveform_reduction.py` implements a
-  different (min/max-envelope) algorithm instead.
+- **Do not assume a plotting-library winner has been chosen** — this
+  entire pass exists to make that decision possible via hands-on UAT, not
+  to make it. `DECISIONS.md` was not touched.
+- Do not assume the Phase 2B prototype is the final waveform workspace —
+  it is deliberately minimal (one channel, no cursors, no digital, no
+  panels) and isolated from `index.html`; it exists to compare renderers,
+  not to preview Phase 2C's actual design.
+- Do not assume switching renderers in the prototype re-fetches data —
+  it deliberately does not; the same already-fetched payload is handed to
+  whichever adapter is now active.
+- Do not assume TTL is solved — it explicitly is not; only a temporary,
+  manual, DEV-only operational stopgap was documented for this specific
+  UAT session (see "What remains unresolved" above).
+- Do not assume any technical audit of `detego.app` was performed this
+  pass beyond one bounded, public-marketing-page fetch (used only for
+  high-level UX inspiration, e.g. "Detego's own copy states it uses
+  Plotly.js" — noted factually, explicitly **not** used to favor Plotly
+  in this UAT, per DEC-020).
+- Do not assume the retained `DisturbanceRecord` (Phase 2A, DEC-019) or
+  the waveform API's behavior changed this pass — zero backend files were
+  touched; all 278 backend tests are unmodified and still pass.
 - Do not assume the waveform endpoint serves digital channels — it
   explicitly rejects a digital channel name with `channel_not_analog`;
-  digital waveform delivery is deferred, by design, not an oversight.
-- Do not assume `Start new workspace` is a client-only UUID rotation — it
-  is a real, backend-enforced whole-workspace reset (DEC-018): it calls
-  `DELETE /api/v1/workspaces/{workspace_id}` and only rotates the local id
-  after that call succeeds, and (since Phase 2A) that DELETE now also
-  releases each source's retained full-resolution record.
-- Do not assume abandoned-session cleanup (tab closed without clicking
-  anything) is solved — it is explicitly not, and matters more now (see
-  "What remains unresolved" above).
+  digital waveform delivery remains deferred, by design.
+- Do not assume `Start new workspace`/`Remove` behavior changed — both
+  are unchanged from DEC-018, and (as verified this pass) both correctly
+  make the waveform prototype respond safely to a source/workspace that's
+  gone.
 - Do not assume the COMTRADE upload interaction is still open for UAT — it
   is decided (DEC-017): two explicit slots, not auto-pairing.
-- Do not assume Scale/Offset were removed from the backend or API — only
-  from the frontend's primary browsing table.
-- Do not assume digital channels received any sub-classification — none
-  was added, deliberately (out of the prior refinement's scope).
-- Do not assume the classification rules include a naming-pattern tier —
-  they deliberately don't; only `parameter_type` and unit-based
-  classification exist.
-- Do not assume Phase 1.5, Phase 2B, or any later phase is authorized.
+- Do not assume Phase 1.5, Phase 2C, or any later phase is authorized.
 - Do not assume `powerwave` is still at commit `3156392` by the time you
   read this — re-verify before relying on specific line numbers (it was
   re-confirmed unchanged as of this pass, 2026-08-15).
 
 ## Owner approval needed before proceeding?
 
-- Not needed to review Phase 2A itself (it's already implemented and
-  merged, per explicit owner authorization for this exact slice).
-- **Yes**, before Phase 2B or any later Phase 2 slice begins, before
-  Phase 1.5 or any later phase begins, before a PROD deployment, and
-  before any change to the ephemeral-storage, upload-size,
+- Not needed to review or run the Phase 2B UAT prototype itself (it's
+  already implemented, deployed to DEV, and live-verified, per explicit
+  owner authorization for this exact slice).
+- **Yes**, before Phase 2C or any later Phase 2 slice begins, before
+  Phase 1.5 or any later phase begins, before a PROD deployment, before
+  any change to the ephemeral-storage, upload-size,
   COMTRADE-upload-interaction, workspace-lifecycle, or waveform-data
-  (DEC-019) decisions recorded in DECISIONS.md — per the change-governance
-  rule in [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md).
-- **Recommended before extended/shared-DEV waveform use specifically**
-  (not a hard gate on Phase 2A's own implementation and testing, which
-  used a controlled environment): a decision on the abandoned-session TTL
-  question, given Phase 2A's measured memory-growth consequence.
+  decisions recorded in DECISIONS.md, and — the actual point of this
+  pass — before a plotting library is chosen for production use. Per the
+  change-governance rule in [CLAUDE.md](../../CLAUDE.md) /
+  [AGENTS.md](../../AGENTS.md).
+- **Recommended before any further prolonged/shared-DEV waveform UAT
+  beyond this initial session**: a real decision on the abandoned-session
+  TTL question, rather than continuing to rely on the manual DEV stopgap.

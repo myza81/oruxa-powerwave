@@ -37,10 +37,22 @@ the active workspace now retains each source's full-resolution
 `DisturbanceRecord` (not just lightweight metadata), and a new
 `GET .../sources/{source_id}/waveform` endpoint serves bounded,
 peak-preserving (never naively decimated) waveform ranges for one analog
-channel at a time. **No chart library, no frontend waveform rendering,
-digital-channel waveform delivery, panel/layout UX, or Phase 2B/2C/2D
-work exists yet** — those remain `[PROPOSAL]`/`[UAT]`/`[OPEN]`, per the
-Phase 2 design section, and Phase 2A does not authorize starting them.
+channel at a time.
+
+`[FACT]` **Phase 2B (renderer UAT prototype) is now implemented**
+(2026-08-15) — see
+[MIGRATION_PLAN.md — Phase 2B Implementation Record](MIGRATION_PLAN.md#phase-2b--renderer-uat-prototype-implementation-record-2026-08-15).
+A new, isolated page (`frontend/waveform-prototype.html`, opened from a
+new link on each analog channel row in the existing Phase 1 channel
+browser) lets the owner hands-on compare **uPlot** and **Plotly.js**
+against the identical Phase 2A backend data/interaction contract — same
+endpoint, same channel, same fixed point budget, same debounced/
+stale-request-protected range-request pipeline, switching renderers
+reuses already-fetched data rather than re-fetching. **No winner has been
+chosen — the plotting library remains `[DECISION MODE: UAT]`.**
+Digital-channel rendering, cursors/measurements, calculated signals,
+synchronization, and Phase 2C's draggable/panel UX remain explicitly
+**not** implemented and not authorized by this pass.
 
 ## Completed foundation work
 
@@ -136,8 +148,15 @@ Phase 2 design section, and Phase 2A does not authorize starting them.
   workspace is non-empty) and only rotates the client-side `workspace_id`
   after that call succeeds; a failed cleanup leaves the old workspace,
   its source list, and its banner untouched and shows a visible error
-  instead. Still no framework, no build step, no routing — that remains an
-  open, undecided question for a later phase.
+  instead. **Added this pass (Phase 2B)**: `frontend/waveform-prototype.html`
+  — an isolated renderer-UAT prototype (not part of the main channel-browse
+  screen) with uPlot and Plotly.js adapters behind a shared contract,
+  driven entirely by the existing Phase 2A waveform API; one new
+  "Waveform (UAT)" link per analog channel row is the only change to
+  `index.html` itself. `frontend/vendor/{uplot,plotly}/` holds the
+  vendored (no-build-step, static, MIT-licensed) library bundles this
+  prototype uses. Still no framework, no build step, no routing for the
+  main app — that remains an open, undecided question for a later phase.
 - **Docker/Compose**: unchanged — `compose.yaml` +
   `compose.dev.yaml`/`compose.prod.yaml`, DEV/PROD isolation verified in CI.
 - **CI/CD**: unchanged (`.github/workflows/{ci,deploy}.yml`) — used as-is
@@ -151,7 +170,8 @@ Phase 2 design section, and Phase 2A does not authorize starting them.
   framework, DEC-020), and [MIGRATION_PLAN.md](MIGRATION_PLAN.md) (Phase 0 design, "Phase 1 —
   Implementation Record", "Phase 1 — UAT Refinement Record", "Phase 1 —
   Workspace-Reset Record", "Phase 2 — Waveform Workspace Discovery and
-  Design", and "Phase 2A — Implementation Record" sections).
+  Design", "Phase 2A — Implementation Record", and "Phase 2B — Renderer
+  UAT Prototype Implementation Record" sections).
 
 ## Current architecture status
 
@@ -210,14 +230,17 @@ plus (Phase 2A) a bounded, peak-preserving waveform range API serving one
 analog channel at a time from a retained full-resolution record, storage
 abstraction (unused by the event-file path), CI/CD pipeline, DEV/PROD
 deployment isolation, a working single-page frontend with
-collapsible/searchable channel grouping and a removal confirmation, this
-documentation set. No frontend framework, no database schema, no
-authentication, no CSV/Excel/frontend-waveform-rendering/digital-waveform/
-synchronization/calculated-signal features yet. A Phase 2 waveform-workspace
-**design proposal** exists (see [MIGRATION_PLAN.md](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14))
-of which only the backend foundation slice (Phase 2A) has been implemented
-so far — chart library, channel-selection UX, panel model, and Phase
-2B/2C/2D remain unbuilt proposals/UAT candidates.
+collapsible/searchable channel grouping and a removal confirmation, plus
+(Phase 2B) an isolated renderer-UAT prototype page comparing uPlot and
+Plotly.js against that same waveform API, this documentation set. No
+frontend framework, no database schema, no authentication, no CSV/Excel/
+digital-waveform/cursors-measurements/calculated-signal/synchronization/
+draggable-panel features yet. A Phase 2 waveform-workspace **design
+proposal** exists (see [MIGRATION_PLAN.md](MIGRATION_PLAN.md#phase-2--waveform-workspace-discovery-and-design-2026-08-14))
+of which the backend foundation (Phase 2A) and a bounded renderer
+comparison prototype (Phase 2B) have been implemented so far — the
+plotting-library choice, channel-selection UX, panel model, and Phase 2C/
+2D remain unbuilt proposals/UAT candidates, not decided.
 
 ## Current approved focus
 
@@ -228,9 +251,12 @@ corrected — see
 [Phase 1 — UAT Refinement Record](MIGRATION_PLAN.md#phase-1--uat-refinement-record-2026-08-14),
 and
 [Phase 1 — Workspace-Reset Record](MIGRATION_PLAN.md#phase-1--workspace-reset-record-2026-08-14).
-Phase 2A (backend waveform data foundation) is implemented — see
-[MIGRATION_PLAN.md — Phase 2A Implementation Record](MIGRATION_PLAN.md#phase-2a--waveform-data-foundation-implementation-record-2026-08-15).
-`[DECISION]` Recorded this pass: DEC-019 — the active workspace retains
+Phase 2A (backend waveform data foundation) and Phase 2B (renderer UAT
+prototype) are both implemented — see
+[MIGRATION_PLAN.md — Phase 2A](MIGRATION_PLAN.md#phase-2a--waveform-data-foundation-implementation-record-2026-08-15)
+and
+[Phase 2B Implementation Records](MIGRATION_PLAN.md#phase-2b--renderer-uat-prototype-implementation-record-2026-08-15).
+`[DECISION]` Recorded earlier: DEC-019 — the active workspace retains
 each source's full-resolution `DisturbanceRecord`, delivered only via
 bounded time-range requests with peak-preserving (never naive-stride)
 display reduction when needed; JSON-first transport for Phase 2A.
@@ -325,23 +351,38 @@ captured). Phase 1 and Phase 2A content were not touched.
   and DEC-019's Impact section. Should be resolved (a specific policy
   chosen from the Phase 2 design's compared options) before any prolonged
   or shared-DEV waveform UAT — see "Next approved activity" below.
+  **Temporary DEV-only operational policy proposed for the Phase 2B UAT
+  session specifically** (not a TTL implementation, not a substitute for
+  deciding the real policy): the owner's bounded UAT session should end
+  with an explicit `Start new workspace` click (already correct, DEC-018)
+  to release whatever sources were imported during that session; if DEV
+  is used for multiple separate UAT sessions before a real TTL/expiry
+  decision is made, restarting the `powerwave-dev` backend container
+  between sessions is a safe, simple, fully-effective reset (the registry
+  is in-memory only, per DEC-015/DEC-019) that requires no code change.
+  This is a documented stopgap for a short, controlled UAT window, not a
+  claim that the underlying `[OPEN]` item is solved.
 
 ## Next approved activity
 
 `[FACT]` Phase 1 is complete and has passed final owner UAT. Phase 2
-waveform-workspace discovery/design is complete, and **Phase 2A (backend
-waveform data foundation) is now implemented** — see
-[MIGRATION_PLAN.md — Phase 2A Implementation Record](MIGRATION_PLAN.md#phase-2a--waveform-data-foundation-implementation-record-2026-08-15).
-Per that task's own closing instruction, **Phase 2B is explicitly not
-authorized yet**: no chart library dependency, no frontend waveform
-rendering, no channel-selection UX, no panel model. The next step is for
-the project owner to review Phase 2A (the new API, its tests, and its
-measured memory/performance numbers) and decide: whether to proceed to
-Phase 2B; how to resolve the now-more-urgent abandoned-session TTL
-question (`[DECISION MODE: COMPARISON]`, per the Phase 2 design section
-and DEC-019) before any prolonged/shared-DEV waveform UAT; and which
-`[DECISION MODE: UAT]` items (plotting library, channel-selection
-interaction, panel-layout extras) to schedule bounded prototypes for.
+waveform-workspace discovery/design is complete. **Phase 2A (backend
+waveform data foundation) and Phase 2B (renderer UAT prototype) are both
+now implemented** — see
+[MIGRATION_PLAN.md — Phase 2A](MIGRATION_PLAN.md#phase-2a--waveform-data-foundation-implementation-record-2026-08-15)
+and
+[Phase 2B Implementation Records](MIGRATION_PLAN.md#phase-2b--renderer-uat-prototype-implementation-record-2026-08-15).
+Per Phase 2B's own closing instruction, **Phase 2C (draggable/flexible
+panel workspace) is explicitly not authorized yet**, and **no plotting
+library has been chosen** — that remains `[DECISION MODE: UAT]`, for the
+owner to judge hands-on. The next step is for the project owner to
+actually run the Phase 2B UAT session (uPlot vs. Plotly, against real
+imported COMTRADE data on DEV) and decide: which renderer (if either)
+feels right, or whether a refinement is needed before deciding; how to
+resolve the abandoned-session TTL question (`[DECISION MODE: COMPARISON]`)
+before any *further* prolonged/shared-DEV waveform UAT beyond this
+initial session; and which Phase 2C panel/interaction questions are ready
+to schedule their own bounded UAT prototypes for.
 Phase 1.5 (CSV/Excel), synchronization, calculated signals, digital
 waveform delivery, authentication, and any other later-phase
 functionality remain explicitly **not** authorized.
