@@ -5962,6 +5962,162 @@ own §11.
 
 ---
 
+## Phase 2C-C3 — COMTRADE Time-Axis Modes (2026-08-15)
+
+`[FACT]` throughout. Adds two selectable, workspace-level time-axis
+representations for COMTRADE waveforms: **Absolute Time** (real recording
+timestamp per sample, the new default) and **Elapsed Time** (time from
+record start = 0, the exact pre-existing unlabeled behavior, now made
+explicit and selectable). Explicitly NOT implemented this pass: Synthetic
+Elapsed Time, Sample Index, CSV/Excel timing modes, multi-source sync
+changes, trigger markers, digital channels.
+
+### Timing investigation (pre-implementation, per this task's own
+mandate)
+
+Traced by direct code reading, `backend/app/domain/timing.py` and the
+parser/schema layer:
+
+- `TimingInformation.start_time` and `.trigger_time` are separate,
+  independently-parsed fields from the COMTRADE CFG's two timestamp
+  lines — **never conflated**. `timing_reference` defaults to
+  `"absolute"` for COMTRADE (its own docstring already documents this:
+  start_time/trigger_time are trustworthy real timestamps).
+- The DAT file's own per-sample `ts` field is µs-from-**recording-start**
+  (COMTRADE spec) — sample 0's `ts` is always 0 by definition, and 0
+  coincides with `start_time`, **never** with `trigger_time` (the trigger
+  can occur at any offset, including — per the COMTRADE spec, though not
+  exercised by this codebase's own test fixtures — theoretically before
+  sample 0 for pre-trigger buffering, which this design already tolerates
+  since the axis origin is always `start_time`, independent of where
+  `trigger_time` falls).
+- Both timestamps are timezone-**naive** as parsed by this codebase — no
+  timezone/UTC-offset field exists anywhere in the parser or schema.
+  Confirmed by inspection, not invented: the frontend therefore never
+  attaches, assumes, or displays a timezone (task §11's explicit
+  requirement) and labels the axis context neutrally ("Record time").
+- `TimebaseOut` (`backend/app/schemas/source.py`) already exposes
+  `start_time`, `trigger_time`, and `timing_reference` via the existing
+  `GET .../channels` endpoint — **zero backend changes were needed for
+  this entire feature**; it is a pure frontend presentation transform.
+
+### Architecture
+
+- **Workspace-level state**, not per-panel: `ww.timeMode` (`"absolute"`
+  \| `"elapsed"`), with `WW_TIME_MODES` as the enum-like source of truth.
+  `synthetic_elapsed`/`sample_index` are reserved names for future
+  CSV/Excel work, not implemented.
+- **Shared physical viewport (DEC-021) stays in elapsed-seconds
+  internally, permanently** — `ww.viewport`/`ww.recordBounds` are never
+  touched by a mode switch. A single conversion boundary
+  (`wwElapsedToPlotlyX` / `wwPlotlyXToElapsed`) is the only place the two
+  representations meet; the fetch pipeline, sync/broadcast logic, and
+  backend `waveform` requests remain 100% elapsed-seconds, unchanged.
+- **Zero waveform refetches on a time-mode switch** — confirmed both
+  structurally (mode switch only calls `Plotly.restyle`/`relayout` on
+  already-loaded `channel.time`/`.values`) and by direct test assertion.
+- **Timezone-safe formatting**: `wwParseNaiveTimestamp`/
+  `wwFormatPlotlyDateString` use only `Date.UTC()`/`getUTC*()` — never
+  `new Date(isoString)` or local-time getters — so no browser-timezone
+  dependency exists anywhere in this path (task §11).
+- **Source capability model** (§24): `wwTimeModesForChannel()` gates on
+  the backend's own `timing_reference === "absolute"` field (a real
+  signal, not a frontend heuristic); Absolute is only offered when every
+  currently-displayed channel supports it, with Elapsed as the universal
+  fallback — no fake/unavailable option is ever shown.
+- **Multi-source limitation, documented, not fixed** (§25): if channels
+  from sources with different recording-start timestamps are ever
+  displayed together, Absolute-mode labels use only the
+  first-displayed channel's origin. Real, acknowledged gap for future
+  multi-source work — not exercised today since only one source can be
+  imported per workspace in the current UI.
+- **`ww.timeMode` persists across `wwClearWorkspace()`** — a viewing
+  preference, same policy as `ww.layoutMode`/`ww.dragMode` (deliberately
+  distinct from content-derived state like `ww.customGroups`, which IS
+  reset). Verified by test.
+- **Adaptive tick formatting** via Plotly's own native `tickformatstops`
+  (not custom logic) — broad-to-fine date/time bands for Absolute,
+  decimal-precision bands for Elapsed. SI-prefix formatting (`~s`) was
+  explicitly rejected for time values as ambiguous ("5m" = milli vs.
+  minutes).
+- **Separate-mode bottom-lane-only chrome preserved exactly**: the
+  renamed `wwApplyTimeAxisChrome()` (was `wwUpdateBottomLaneAxis()`)
+  keeps its original no-op guard for Grouped/Custom mode — only the
+  title text is now mode-aware. A regression was caught and fixed here
+  during this pass (see Verification below) where an early draft of this
+  function lost that guard and began issuing unnecessary relayout calls
+  on every panel in every layout mode.
+
+### Verification
+
+- **Frontend, new**: `phase2cc3_check.mjs` (scratch, not committed) —
+  26/26 passing. Covers: Absolute default, Elapsed selectable, mode
+  switching both directions, viewport preservation across a switch while
+  zoomed, displayed-channel preservation, zero-refetch, Reset Time View
+  in both modes, Autoscale Y unaffected, all three layout modes
+  (including Separate's bottom-lane-only axis and Grouped's
+  zero-showticklabels-relayout invariant), zoom/pan sync in both modes,
+  panel-height preservation, theme-switch preservation, adaptive
+  tick-format bands, a midnight/date rollover, a full year-boundary
+  rollover, the source capability model (both "wrong timing_reference"
+  and "no start_time" fallback cases), and time-mode persistence across
+  Clear workspace.
+- **Frontend, existing, re-run unmodified**: `frontend_logic_check.mjs`,
+  `theme_crosshair_check.mjs`, and the full Phase 2C-A through 2C-C2A
+  suites — 193 checks total, all passing except 2 in `phase2ca_check.mjs`
+  that assert a raw-elapsed-number `xaxis.range` (e.g. `range[0] === 0`)
+  on Reset Time View / zoom-broadcast; those 2 are the **expected,
+  correct** consequence of Absolute now being the COMTRADE default (the
+  broadcast range is legitimately a date string like
+  `"2026-01-01 00:00:00.200"` there, not `0.2`) — not a regression.
+  During this pass, running the existing suites first caught two real
+  regressions before they shipped: (1) a `timebase` scoping bug in
+  `renderAnalogGroup`/`renderChannelTable` that broke ALL channel
+  rendering, and (2) the `wwApplyTimeAxisChrome` Grouped-mode guard
+  regression described above. Both fixed; suites re-confirmed clean.
+- **Backend**: zero diff; full suite re-run in a fresh venv — 278/278
+  passing, unchanged from pre-existing state.
+- **Real COMTRADE verification** (§28): a synthetic ASCII COMTRADE
+  record imported through the real FastAPI app (`TestClient`, no
+  mocking) with a known, non-trivial `start_time`
+  (`2025-07-26T14:23:10.123456`) and a distinct `trigger_time` 200ms
+  later — confirmed the API returns both exactly as given, distinct, and
+  that sample 0's derived absolute time equals `start_time` exactly, NOT
+  `trigger_time`. A second scenario deliberately crosses a midnight/date
+  boundary (`2025-12-31T23:59:59.999... → 2026-01-01T00:00:00...`) and
+  confirms the API and the frontend's own `wwParseNaiveTimestamp`/
+  `wwFormatPlotlyDateString` both correctly roll the calendar date over.
+  Both scenarios' backend-returned values were then fed through the
+  actual shipped frontend JS (not a reimplementation) to confirm parser
+  and frontend agree exactly.
+- **Known precision limitation, documented**: JS `Date` has millisecond
+  resolution; COMTRADE CFG timestamps carry microsecond precision. A
+  sample whose fractional-second value rounds to exactly the next
+  millisecond (e.g. `.9995`s under round-half-up) can display 1ms later
+  than its literal microsecond value — an unavoidable consequence of
+  using epoch-ms as the internal representation, invisible in practice
+  since the UI never displays sub-millisecond precision. Not a rollover
+  logic bug (`Date.UTC` overflow handling is correct); purely a
+  display-rounding artifact at an extremely narrow boundary.
+
+### Files changed
+
+Modified only: `frontend/index.html`. No backend file, no CI/deployment
+workflow file.
+
+### Honest limitation
+
+This sandboxed session has no real browser. Whether the Absolute/Elapsed
+toggle reads as compact/discoverable in the toolbar, whether the
+adaptive tick formatting looks correct and uncluttered across a range of
+real zoom levels, and whether switching modes while zoomed feels
+seamless to a human eye are **not** confirmed here — only structural/
+behavioral evidence (jsdom DOM/state assertions, a real FastAPI
+TestClient for backend/API correctness) was verified. Final visual UAT
+remains the owner's own, per this task's own §29.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

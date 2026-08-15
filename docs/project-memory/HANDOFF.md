@@ -8,6 +8,94 @@ Last updated: **2026-08-15**
 
 ## What was most recently done
 
+**Phase 2C-C3 — COMTRADE Time-Axis Modes.** Adds two selectable,
+workspace-level time-axis representations for COMTRADE waveforms:
+**Absolute Time** (real recording timestamp per sample, the new
+default) and **Elapsed Time** (the pre-existing 0-based-from-record-
+start behavior, now explicit/selectable). Full detail:
+[MIGRATION_PLAN.md — Phase 2C-C3 Record](MIGRATION_PLAN.md#phase-2c-c3--comtrade-time-axis-modes-2026-08-15).
+
+**Timing investigation, done first per this task's own mandate**:
+`TimingInformation.start_time`/`.trigger_time` are separate,
+independently-parsed COMTRADE CFG fields, never conflated; the DAT
+file's per-sample `ts` (µs from recording start) has sample 0 always
+coinciding with `start_time`, **never** `trigger_time` (confirmed
+against real parsed metadata, not assumed); both timestamps are
+timezone-naive end to end (no timezone field exists anywhere in the
+parser/schema); `TimebaseOut` (`GET .../channels`) already exposed
+`start_time`/`trigger_time`/`timing_reference` before this pass —
+**zero backend changes were needed**, this is a pure frontend
+presentation transform.
+
+**Architecture**: `ww.timeMode` (`"absolute"` \| `"elapsed"`) is
+workspace-level, not per-panel. The shared physical viewport (DEC-021)
+stays authoritative in elapsed-seconds internally, permanently — a
+single conversion boundary (`wwElapsedToPlotlyX`/`wwPlotlyXToElapsed`)
+is the only place Absolute-mode date strings and Elapsed-mode numbers
+meet; the fetch pipeline and backend requests are untouched.
+**Zero waveform refetches on a mode switch** — confirmed by test.
+Timestamp parsing/formatting uses only `Date.UTC()`/`getUTC*()` — never
+local-time getters or `new Date(isoString)` — so there is no
+browser-timezone dependency anywhere in this path. The source
+capability model (`wwTimeModesForChannel()`) gates Absolute availability
+on the backend's own `timing_reference === "absolute"` field, falling
+back to Elapsed-only (with both toolbar buttons correctly
+enabled/disabled) rather than ever showing a fake option.
+`ww.timeMode` **persists across `wwClearWorkspace()`** — same
+viewing-preference policy as `ww.layoutMode`/`ww.dragMode`. Adaptive
+tick formatting uses Plotly's own native `tickformatstops` (broad-to-
+fine date/time bands for Absolute, decimal-precision bands for
+Elapsed) — SI-prefix (`~s`) formatting was explicitly rejected as
+ambiguous for time values.
+
+**Two real regressions were caught and fixed during this pass's own
+regression-suite re-run** (before anything shipped): (1) a `timebase`
+variable-scoping bug in `renderAnalogGroup`/`renderChannelTable` that
+broke ALL channel checkbox rendering (channel metadata plumbing needed
+`timebase` threaded through two intermediate functions that didn't
+have it in scope); (2) `wwApplyTimeAxisChrome()` (renamed from
+`wwUpdateBottomLaneAxis()`) initially lost its original Grouped/Custom-
+mode no-op guard, causing unnecessary relayout calls on every panel in
+every layout mode — fixed by restoring the guard and instead updating
+Grouped/Custom panel titles directly inside `wwSetTimeMode()`, where a
+mode switch actually needs it.
+
+**Verification**: 26 new frontend `jsdom` checks
+(`phase2cc3_check.mjs`) + the full existing `frontend_logic_check.mjs`,
+`theme_crosshair_check.mjs`, and Phase 2C-A through 2C-C2A suites (193
+checks) re-run unmodified, all passing except 2 pre-existing checks in
+the non-committed `phase2ca_check.mjs` that assert a raw-elapsed-number
+`xaxis.range` — the **expected, correct** consequence of Absolute now
+being the COMTRADE default, not a regression. Backend: zero diff,
+278/278 passing in a fresh venv. **Real COMTRADE verification**: a
+synthetic ASCII COMTRADE record imported through the actual FastAPI app
+(`TestClient`, no mocking) with a known `start_time`
+(`2025-07-26T14:23:10.123456`) and a distinct `trigger_time` 200ms
+later confirmed sample 0's absolute time equals `start_time` exactly,
+never `trigger_time`; a second scenario deliberately crossing a
+midnight/date boundary confirmed both the API and the frontend's own
+`wwParseNaiveTimestamp`/`wwFormatPlotlyDateString` correctly roll the
+calendar date over. Both scenarios' backend-returned values were then
+fed through the actual shipped frontend JS to confirm parser and
+frontend agree exactly.
+
+**Known, documented (not a bug) precision limitation**: JS `Date` has
+millisecond resolution vs. COMTRADE's microsecond-precision CFG
+timestamps — a sample whose fractional second rounds to exactly the
+next millisecond can display 1ms later than its literal value; invisible
+in practice since the UI never shows sub-millisecond precision, and not
+a rollover-logic defect (`Date.UTC` overflow handling itself is
+correct).
+
+**Backend**: zero files changed. **Real-browser visual confirmation —
+whether the toolbar toggle reads as compact/discoverable, whether
+adaptive tick formatting looks right across real zoom levels, whether
+mode-switching while zoomed feels seamless — was NOT and cannot be
+confirmed in this sandboxed session; this remains explicitly for the
+owner's own manual UAT.**
+
+## What was done in the prior session (Phase 2C-C2A — Panel Resize Responsiveness Investigation)
+
 **Phase 2C-C2A — Panel Resize Responsiveness Investigation.** The
 owner's manual UAT of Phase 2C-C2 (adjustable panel heights) **passed
 functionally** — resize works correctly in Grouped/Separate/Custom, the
@@ -1003,7 +1091,58 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified (this pass — Phase 2C-C2A panel resize responsiveness)
+## What was verified (this pass — Phase 2C-C3 COMTRADE time-axis modes)
+
+- `oruxa_powerwave` git state confirmed against `origin/main` (read-only
+  `git fetch`), working tree clean before this pass began.
+- **Backend regression: 278 tests, unmodified, all still pass** (fresh
+  venv run) — zero backend files in the diff (`git diff --stat --
+  backend/` empty; diff scoped to `frontend/index.html` only).
+- **Timing investigation, done first**: direct code reading of
+  `backend/app/domain/timing.py` and the schema/parser layer confirmed
+  `start_time`/`trigger_time` are separate fields, sample 0 coincides
+  with `start_time` (never `trigger_time`), both timestamps are
+  timezone-naive, and `TimebaseOut` already exposed everything needed —
+  zero backend changes required.
+- **Frontend, new: 26 scripted `jsdom` checks, all passing**
+  (`phase2cc3_check.mjs`) — Absolute default, Elapsed selectable, mode
+  switching both directions, viewport preservation while zoomed,
+  displayed-channel preservation, zero-refetch, Reset Time View in both
+  modes, Autoscale Y unaffected, all three layout modes (including
+  Separate's bottom-lane-only axis and Grouped's zero-showticklabels
+  invariant), zoom/pan sync in both modes, panel-height preservation,
+  theme-switch preservation, adaptive tick-format bands, a midnight/date
+  rollover, a full year-boundary rollover, the source capability model,
+  and time-mode persistence across Clear workspace.
+- **Frontend, existing: `frontend_logic_check.mjs`, `theme_crosshair_
+  check.mjs`, and the full Phase 2C-A through 2C-C2A suites (193 checks)
+  were all re-run unmodified against this pass's code** — all still pass
+  except 2 in the non-committed `phase2ca_check.mjs` that assert a
+  raw-elapsed-number `xaxis.range`, the expected consequence of Absolute
+  now being the COMTRADE default (not a regression; explained in the
+  final report). **This re-run caught two real regressions before they
+  shipped** (a `timebase`-scoping bug that broke all channel rendering,
+  and a `wwApplyTimeAxisChrome` Grouped-mode guard regression) — both
+  fixed and reconfirmed clean.
+- **Real COMTRADE verification**: a synthetic ASCII COMTRADE record with
+  a known, non-trivial `start_time`/distinct `trigger_time` imported via
+  a real FastAPI `TestClient` (no mocking) confirmed the API returns
+  both exactly, and that sample 0's absolute time equals `start_time`,
+  never `trigger_time`. A second scenario crossing a midnight/date
+  boundary confirmed both the API and the frontend's own timestamp
+  formula roll the calendar date over correctly — backend-returned
+  values were fed through the actual shipped frontend JS, not a
+  reimplementation.
+- `node --check` on `frontend/index.html`'s inline `<script>` block, and
+  a `getElementById`/`id=` cross-reference check (no dangling
+  references, no duplicate IDs) — both clean.
+- No real-browser/visual confirmation (toolbar toggle discoverability,
+  tick-formatting readability at real zoom levels, mode-switch-while-
+  zoomed "feel") was performed in this sandboxed session — see the final
+  report's explicit statement about what's honestly unverified. Final
+  visual judgment remains the owner's own manual UAT.
+
+## What was verified (prior pass — Phase 2C-C2A panel resize responsiveness)
 
 - `oruxa_powerwave` git state: local `main` confirmed identical to
   `origin/main` at commit `7b2d433` (independent `git fetch` via the
@@ -1623,7 +1762,28 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 2C-C2A panel resize responsiveness)
+## What files were changed this session (Phase 2C-C3 COMTRADE time-axis modes)
+
+Modified only: `frontend/index.html` (toolbar HTML for the Absolute/
+Elapsed toggle + date-context label; `channelCheckboxHtml`/
+`renderAnalogGroup`/`renderChannelTable` thread `timebase` through so
+each channel carries `recordingStartTime`/`timingReference`;
+`WW_TIME_MODES`/`ww.timeMode` state; new helpers
+`wwParseNaiveTimestamp`, `wwFormatPlotlyDateString`,
+`wwTimeModesForChannel`, `wwAvailableTimeModes`,
+`wwWorkspaceRecordingStartMs`, `wwElapsedToPlotlyX`,
+`wwPlotlyXToElapsed`, `wwTimeAxisTickFormat`, `wwTimeAxisTitle`,
+`wwUpdateTimeModeContext`, `wwUpdateTimeModeControlAvailability`,
+`wwSetTimeMode`; `wwBuildTrace`/`wwBuildLayout`/`wwLoadChannelRange`/
+`wwWirePanelRelayout`/`wwApplyAndFetchViewport` made mode-aware;
+`wwUpdateBottomLaneAxis()` renamed to `wwApplyTimeAxisChrome()` (same
+Separate-only guard, now mode-aware title); toolbar listeners wired),
+`docs/project-memory/{MIGRATION_PLAN,CURRENT_STATE,HANDOFF}.md` (this
+work). No new files. **No `backend/` file, no
+`frontend/waveform-prototype.html`/`theme.css`/`theme.js` change, no CI/
+deployment workflow file was touched.**
+
+## What files were changed in the prior session (Phase 2C-C2A panel resize responsiveness)
 
 Modified only: `frontend/index.html` (`wwSetPanelHeight()` split into
 `wwSetPanelHeightImmediate()` — the cheap DOM-only write, now called on
@@ -1943,7 +2103,7 @@ Modified:
 See "GitHub persistence" and "DEV deployment" in this task's final report
 (delivered in-conversation) for the exact commit hash, push confirmation,
 independent-fetch verification, GitHub Actions run, and live-endpoint
-checks for this Phase 2C-C2A pass. **Production was not touched.**
+checks for this Phase 2C-C3 pass. **Production was not touched.**
 
 ## What remains unresolved
 
@@ -1996,31 +2156,57 @@ checks for this Phase 2C-C2A pass. **Production was not touched.**
 
 ## What should be done next
 
-The next step is for the **project owner** to review Phase 2C-C2A via
-live DEV UAT (this task's own checklist) and confirm whether the resize
-drag now feels noticeably smoother than before, with no visible
-waveform distortion/flicker during the drag — this is a targeted,
-narrow-scope UAT (compare the SAME resize interaction already
-functionally accepted, just checking whether it now feels better), not a
-re-review of Phase 2C-C2's own already-accepted functionality/bounds. If
-the owner confirms improvement: no further action needed on this specific
-item. If the owner still finds it laggy, or finds the new decoupled
-behavior introduces any visible box/waveform divergence during fast
-drags, report back for a further look — do **not** assume either
-outcome. Separately, the owner may still choose to: (a) authorize the
+The next step is for the **project owner** to review Phase 2C-C3 via
+live DEV UAT (this task's own 22-step checklist): confirm Absolute Time
+is the default and shows a sensible real timestamp; compare the
+displayed Absolute Time against the imported record's own CFG metadata
+(start time, not trigger time); switch to Elapsed and back in both
+directions, including while zoomed, and confirm the same physical
+window stays visible; confirm this works identically in Grouped,
+Separate, and Custom layout modes, with Separate's bottom-lane-only
+axis behaving correctly; confirm Reset Time View, Autoscale Y, panel
+resize, and Light/Dark theme are all unaffected. If the owner confirms
+correctness: no further action needed on this item. If the displayed
+Absolute Time does not match the record's own metadata, or the viewport
+shifts on a mode switch, report back — do **not** assume either outcome.
+Separately, the owner may choose to: (a) authorize the
 drag/reorder/overlay/split work directly (still the owner's own possible
-next direction, deliberately set aside across three passes now, not
+next direction, deliberately set aside across four passes now, not
 abandoned); or (b) move on to digital channels (the owner's own
-explicitly stated next area). Do **not** begin any drag/reorder/overlay
-or digital-channel implementation without an explicit signal — this
-task's own closing instruction was to stop after the responsiveness
-investigation. Separately, resolving the abandoned-session TTL question
-and the ~100 MB real-file memory validation remain recommended before
-broader/prolonged shared-DEV UAT, unchanged conclusion from every prior
-Phase 2 pass.
+explicitly stated next area, and this task's own explicit instruction:
+do **not** begin digital-channel work without a separate signal).
+Separately, resolving the abandoned-session TTL question and the
+~100 MB real-file memory validation remain recommended before broader/
+prolonged shared-DEV UAT, unchanged conclusion from every prior Phase 2
+pass.
 
 ## What must not be assumed
 
+- **Do not assume the Absolute-mode timestamp is derived from the
+  trigger time, the browser's clock, the upload time, or a guessed
+  timezone** — it is derived exclusively from the backend's own
+  `timebase.start_time` (already-parsed, existing COMTRADE CFG field),
+  confirmed against real parsed metadata that sample 0 = `start_time`,
+  never `trigger_time`. There is no timezone anywhere in this path — the
+  parser never attaches one, and the frontend never invents or
+  silently converts to browser-local time.
+- **Do not assume Synthetic Elapsed Time or Sample Index are
+  implemented** — they are not; both are reserved NAMES in the
+  time-mode model (`WW_TIME_MODES`) for possible future CSV/Excel work
+  only. The only two selectable modes today are Absolute and Elapsed.
+- **Do not assume a time-mode switch ever refetches waveform data,
+  changes `ww.viewport`, or changes which channels are displayed** —
+  verified by test that it does none of these; it is a pure
+  presentation transform of already-loaded data.
+- **Do not assume multi-source Absolute-mode display has been solved**
+  — it has not; if channels from sources with different recording-start
+  timestamps were ever displayed together, Absolute-mode labels would
+  use only the first-displayed channel's origin. This is a documented,
+  known gap for future multi-source work, not something this pass fixed
+  or hid.
+- **Do not assume `ww.timeMode` resets when the workspace is cleared**
+  — it deliberately does not; it persists as a viewing preference, same
+  policy as `ww.layoutMode`/`ww.dragMode` (verified by test).
 - **Do not assume drag/reorder/overlay/split has started** — it has not;
   no direct vertical lane dragging (to reorder panels), no reorder, no
   drop-to-overlay/group by direct lane dragging, no drag-out-to-separate
@@ -2149,20 +2335,23 @@ Phase 2 pass.
 ## Owner approval needed before proceeding?
 
 - Not needed to review or use Phase 2C-A, Phase 2C-B1, Phase 2C-B2, Phase
-  2C-B3, Phase 2C-B3A, Phase 2C-C1, Phase 2C-C2, or Phase 2C-C2A
-  themselves — already implemented, deployed to DEV, and live-verified
-  per this exact task's own authorization. **Recommended, though**: a
-  quick owner UAT specifically comparing resize-drag feel before/after
-  Phase 2C-C2A, since the felt improvement could not be confirmed in
-  this sandbox.
+  2C-B3, Phase 2C-B3A, Phase 2C-C1, Phase 2C-C2, Phase 2C-C2A, or Phase
+  2C-C3 themselves — already implemented, deployed to DEV, and
+  live-verified per this exact task's own authorization. **Recommended,
+  though**: an owner UAT specifically comparing the displayed Absolute
+  Time against the imported record's own CFG metadata, and confirming
+  mode-switching while zoomed preserves the window exactly, since real
+  visual/browser confirmation could not be performed in this sandbox.
 - **Yes**, before any drag/reorder/overlay/split work begins (still the
   owner's own possible next direction, deliberately set aside across
-  this pass and the prior one in favor of Custom Groups and panel
-  resize, but still not yet explicitly authorized to *implement*),
-  before digital channels (the owner's own next stated area, not yet
-  begun), before Phase
-  1.5 or any later phase begins, before a PROD deployment, before any
-  further crosshair or theming work beyond what's already described in
+  four passes now in favor of Custom Groups, panel resize, and
+  time-axis modes, but still not yet explicitly authorized to
+  *implement*), before digital channels (the owner's own next stated
+  area, not yet begun — and this task's own explicit closing
+  instruction was to stop here, not begin it), before Synthetic Elapsed
+  Time, Sample Index, or any CSV/Excel timing mode, before Phase 1.5 or
+  any later phase begins, before a PROD deployment, before any further
+  crosshair or theming work beyond what's already described in
   project-memory, and before any change to the ephemeral-storage,
   upload-size, COMTRADE-upload-interaction, workspace-lifecycle, or
   waveform-data decisions recorded in `DECISIONS.md`. Per the change-

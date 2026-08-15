@@ -1716,6 +1716,117 @@ felt result.
 
 ---
 
+## DEC-029 — COMTRADE Absolute/Elapsed time-axis modes; Absolute is the default (Phase 2C-C3)
+
+Date: 2026-08-15
+Status: Approved
+Source: explicit project-owner instructions opening the Phase 2C-C3 task
+(2026-08-15), following the owner's own manual UAT of Phase 2C-C2A
+(**passed** — resize lag reported improved, that issue closed), naming
+this as the next feature ahead of digital channels.
+
+Decision:
+
+The waveform workspace gains a workspace-level (not per-panel) X-axis
+time representation, selectable via a compact toolbar control: **Absolute
+Time** (each sample's real recording timestamp, derived from the
+backend's already-existing `timebase.start_time`) and **Elapsed Time**
+(time from record start = 0, the exact pre-existing unlabeled behavior,
+now made explicit). **Absolute Time is the default for COMTRADE.**
+
+Confirmed as part of this same decision:
+
+- **Trigger timestamp does NOT define the elapsed-time origin.** Sample
+  0 always corresponds to `start_time`, never `trigger_time` — confirmed
+  by direct investigation of the parser/domain layer and against real
+  parsed COMTRADE metadata before any UI work began, per this task's own
+  explicit mandate not to assume otherwise.
+- **The shared physical viewport (DEC-021) remains authoritative in
+  elapsed-seconds internally, permanently.** A time-mode switch is a
+  presentation-only transform of already-loaded data at a single
+  conversion boundary (`wwElapsedToPlotlyX`/`wwPlotlyXToElapsed`); the
+  backend `waveform` API, the fetch pipeline, and the sync/broadcast
+  logic are entirely unaware of time mode and unchanged by this
+  decision. **Zero waveform refetches on a mode switch** — verified by
+  test, not merely intended.
+- **Zero backend changes.** `TimebaseOut` (`GET .../channels`) already
+  exposed `start_time`/`trigger_time`/`timing_reference` before this
+  pass — this entire feature is a frontend presentation transform.
+- **Timezone handling**: both COMTRADE timestamps are timezone-naive as
+  parsed by this codebase (no timezone field exists in the parser or
+  schema) — the frontend never invents, assumes, or silently converts to
+  browser-local time; all parsing/formatting uses only UTC-based
+  arithmetic (`Date.UTC()`/`getUTC*()`), and the axis context is labeled
+  neutrally ("Record time").
+- **Source capability model**: Absolute is only offered when every
+  currently-displayed channel's backend `timing_reference` field equals
+  `"absolute"` and a recording-start timestamp exists; otherwise the
+  toolbar falls back to Elapsed-only with the Absolute button visibly
+  disabled — never a fake/non-functional option.
+- **`Synthetic Elapsed Time` and `Sample Index` are reserved names** in
+  the time-mode model, for possible future CSV/Excel timing work — **not
+  implemented this phase**.
+- **`ww.timeMode` persists across a workspace clear** — a viewing
+  preference, the same policy already established for
+  `ww.layoutMode`/`ww.dragMode`.
+- **Multi-source limitation, explicitly not solved**: if channels from
+  sources with different recording-start timestamps were ever displayed
+  together, Absolute-mode labels would use only the first-displayed
+  channel's origin. Documented as a known gap for future multi-source
+  work, not addressed by this decision.
+
+Reason:
+
+The owner's own instructions opening this task are the explicit act of
+requesting this feature next (ahead of digital channels), and this
+task's own emphatic requirements (investigate timing semantics before
+any UI work; never let trigger time silently redefine the axis; never
+invent a timezone; preserve the shared viewport exactly across a mode
+switch) are architectural commitments worth recording, not merely
+implementation detail — consistent with this project's own governance
+for owner-directed feature decisions (DEC-024–DEC-028 precedent).
+
+Alternatives considered:
+
+Elapsed Time as the default, with Absolute opt-in (rejected — this
+task's own §2/§3 explicitly designated Absolute as the COMTRADE
+default); deriving the Absolute origin from `trigger_time` instead of
+`start_time` (rejected — this task's own §4/§9 explicitly warned against
+this exact assumption, and the parser/DAT-format semantics confirm
+sample 0 = `start_time` by COMTRADE spec definition, independent of
+where the trigger falls); converting naive timestamps to the browser's
+local timezone for display (rejected — this task's own §11 explicitly
+forbids this; no timezone information exists to convert with in the
+first place); maintaining two parallel authoritative viewport
+representations, one elapsed and one absolute (rejected — this task's
+own §7/§8 required a single conversion boundary with the existing
+elapsed-seconds coordinate system remaining sole authority, avoiding
+duplicated waveform data and any risk of the two representations
+drifting out of sync); implementing Synthetic Elapsed Time or Sample
+Index this phase (rejected — explicitly out of scope per this task's
+own §31, reserved as names only for a clean future extension).
+
+Impact:
+
+- `frontend/index.html`: toolbar HTML for the Absolute/Elapsed toggle +
+  date-context label; `WW_TIME_MODES`/`ww.timeMode` state;
+  `channelCheckboxHtml`/`renderAnalogGroup`/`renderChannelTable` thread
+  `timebase` so each channel carries `recordingStartTime`/
+  `timingReference`; new helpers `wwParseNaiveTimestamp`,
+  `wwFormatPlotlyDateString`, `wwTimeModesForChannel`,
+  `wwAvailableTimeModes`, `wwWorkspaceRecordingStartMs`,
+  `wwElapsedToPlotlyX`, `wwPlotlyXToElapsed`, `wwTimeAxisTickFormat`,
+  `wwTimeAxisTitle`, `wwUpdateTimeModeContext`,
+  `wwUpdateTimeModeControlAvailability`, `wwSetTimeMode`;
+  `wwBuildTrace`/`wwBuildLayout`/`wwLoadChannelRange`/
+  `wwWirePanelRelayout`/`wwApplyAndFetchViewport` made mode-aware;
+  `wwUpdateBottomLaneAxis()` renamed to `wwApplyTimeAxisChrome()` (same
+  Separate-only no-op guard for Grouped/Custom, now mode-aware title).
+  No backend file changed. See
+  [MIGRATION_PLAN.md — Phase 2C-C3 Record](MIGRATION_PLAN.md#phase-2c-c3--comtrade-time-axis-modes-2026-08-15).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

@@ -823,6 +823,16 @@
                 <button type="button" id="dragModeZoomBtn" aria-pressed="true">Zoom</button>
                 <button type="button" id="dragModePanBtn" aria-pressed="false">Pan</button>
             </div>
+            <!-- Phase 2C-C3: shared time-axis representation for the whole
+                 workspace (never per-panel -- see wwSetTimeMode()). COMTRADE
+                 defaults to Absolute; a channel whose source can't support
+                 Absolute (see wwTimeModesForChannel()) disables that option
+                 rather than showing a fake/non-functional choice. -->
+            <div class="theme-toggle" id="timeModeToggle" role="group" aria-label="Time axis mode">
+                <button type="button" id="timeModeAbsoluteBtn" aria-pressed="true">Absolute Time</button>
+                <button type="button" id="timeModeElapsedBtn" aria-pressed="false">Elapsed Time</button>
+            </div>
+            <span class="hint" id="wwTimeModeContext" hidden></span>
             <button class="secondary" type="button" id="wwResetViewBtn">Reset Time View</button>
             <button class="secondary" type="button" id="wwAutoscaleBtn">Autoscale Y</button>
             <div class="toolbar-spacer"></div>
@@ -1351,7 +1361,7 @@
                 '</div>';
 
             html += '<div id="channelGroups">';
-            html += renderAnalogGroup(data.analog_channels, source);
+            html += renderAnalogGroup(data.analog_channels, source, timebase);
             html += renderDigitalGroup(data.digital_channels);
             html += '</div>';
             html += '<p class="empty-state" id="channelSearchEmpty" hidden>No channels match your search.</p>';
@@ -1373,7 +1383,7 @@
         // table per UAT feedback -- they remain in the API response
         // (data.analog_channels still carries them) for any future
         // channel-detail view, just not rendered here.
-        function renderAnalogGroup(channels, source) {
+        function renderAnalogGroup(channels, source, timebase) {
             const total = channels.length;
             let body;
             if (total === 0) {
@@ -1398,7 +1408,7 @@
                         ["Name", (c) => c.name],
                         ["Unit", (c) => c.unit],
                         ["Phase", (c) => c.phase || "—"],
-                    ], (c) => waveformPrototypeLinkHtml(source, c), (c) => channelCheckboxHtml(source, c)) + '</div>';
+                    ], (c) => waveformPrototypeLinkHtml(source, c), (c) => channelCheckboxHtml(source, c, timebase)) + '</div>';
                     body += '</details>';
                 }
                 body += '</div>';
@@ -1490,7 +1500,18 @@
             return sourceId + "::" + channelName;
         }
 
-        function channelCheckboxHtml(source, channel) {
+        // Phase 2C-C3: `timebase` (already fetched by selectSource() for
+        // every source, see renderChannels()) carries `start_time` and
+        // `timing_reference` -- the SAME authoritative recording-start
+        // timestamp and backend-computed trustworthiness signal already
+        // used for the read-only "Start time"/"Timing mode" stat cards
+        // above. Threading it onto each checkbox (rather than adding a
+        // second network call) is what lets wwAddSelectedChannels carry a
+        // real, source-grounded Absolute-time origin per channel -- see
+        // wwTimeModesForChannel()'s own comment for why `timing_reference`
+        // specifically (not just "is start_time present") is the correct
+        // capability signal (section 10/24).
+        function channelCheckboxHtml(source, channel, timebase) {
             const key = channelSelectionKey(source.source_id, channel.name);
             const checked = selectedChannels.has(key) ? " checked" : "";
             return '<input type="checkbox" class="channel-select-cb"' + checked +
@@ -1499,6 +1520,8 @@
                 ' data-channel-name="' + escapeHtml(channel.name) + '"' +
                 ' data-unit="' + escapeHtml(channel.unit || "") + '"' +
                 ' data-engineering-type="' + escapeHtml(channel.engineering_type || "Undefined") + '"' +
+                ' data-recording-start-time="' + escapeHtml((timebase && timebase.start_time) || "") + '"' +
+                ' data-timing-reference="' + escapeHtml((timebase && timebase.timing_reference) || "") + '"' +
                 ' aria-label="Select ' + escapeHtml(channel.name) + '">';
         }
 
@@ -1529,6 +1552,8 @@
                         channelName: cb.dataset.channelName,
                         unit: cb.dataset.unit,
                         engineeringType: cb.dataset.engineeringType || "Undefined",
+                        recordingStartTime: cb.dataset.recordingStartTime || null,
+                        timingReference: cb.dataset.timingReference || null,
                     });
                 } else {
                     selectedChannels.delete(key);
@@ -1674,7 +1699,7 @@
         //     while Separate is active (wwSetLayoutMode) so CSS alone turns
         //     the per-lane cards into one shared outer canvas with a
         //     maximum-width chart column + a fixed-width label column per
-        //     lane (hairline divider, not a repeated card); wwUpdateBottomLaneAxis()
+        //     lane (hairline divider, not a repeated card); wwApplyTimeAxisChrome()
         //     hides X tick labels/title on every lane except the last, so
         //     the stack visually reads as one shared time axis. Grouped
         //     mode's own panel styling and per-panel X axis are untouched.
@@ -1734,6 +1759,18 @@
         // deviates from its mode's default.
         const WW_DEFAULT_PANEL_HEIGHT = { grouped: 260, separate: 140, custom: 260 };
 
+        // Phase 2C-C3: waveform time-axis representation modes, in
+        // canonical order. Only "absolute" and "elapsed" are implemented
+        // this slice. "synthetic_elapsed" and "sample_index" are RESERVED
+        // NAMES for future CSV/Excel sources (section 5/24) -- listed here
+        // in a comment only, deliberately not added to this array, so no
+        // UI/logic anywhere in this file ever offers or branches on a mode
+        // that doesn't actually exist yet:
+        //   synthetic_elapsed -- for a source with no real per-sample
+        //     timing metadata, a manufactured/assumed elapsed axis.
+        //   sample_index -- raw sample number, no time unit at all.
+        const WW_TIME_MODES = ["absolute", "elapsed"];
+
         const ww = {
             panels: [],            // ordered array of panel objects
             displayed: new Map(),  // "sourceId::channelName" -> {panel, channel}
@@ -1787,7 +1824,224 @@
             // same reasoning as ww.customGroups (a channel re-added later
             // naturally regains its old height).
             panelHeights: new Map(),
+            // Phase 2C-C3: waveform-workspace state (section 5 -- never
+            // embedded per-panel), one of WW_TIME_MODES. COMTRADE's own
+            // default is "absolute" (section 2/6). Unlike ww.customGroups/
+            // ww.panelHeights, this is a VIEWING PREFERENCE, not data tied
+            // to specific displayed content -- so, matching the existing
+            // precedent of ww.layoutMode/ww.dragMode, it is deliberately
+            // NOT reset by wwClearWorkspace(); it persists across a
+            // whole-workspace clear the same way the Grouped/Separate/
+            // Custom and Zoom/Pan choices already do.
+            timeMode: "absolute",
         };
+
+        // ==================================================================
+        // Phase 2C-C3: COMTRADE Absolute/Elapsed time-axis representation
+        //
+        // Architecture (section 8): the shared authoritative viewport
+        // (ww.viewport/ww.recordBounds) and every waveform API request
+        // ALWAYS stay in the existing native coordinate system -- elapsed
+        // seconds on the source's own time axis, exactly as
+        // app.services.waveform_service already documents and exactly as
+        // this app used, unlabeled, before this phase. Nothing about the
+        // API contract, the fetch/refetch pipeline, or the zoom/pan
+        // debounce mechanism changes. ONLY the Plotly-facing presentation
+        // (trace x-values, axis type/range/tick formatting, hover text)
+        // is transformed for Absolute mode -- and back again, at the one
+        // other boundary that needs it: reading a user's zoom/pan gesture
+        // back OUT of Plotly's own relayout event into elapsed seconds
+        // before it reaches the existing broadcast/fetch pipeline. See
+        // wwElapsedToPlotlyX()/wwPlotlyXToElapsed(), the two functions
+        // that ARE this boundary; nothing else in the app needs to know
+        // which mode is active.
+        //
+        // Timezone handling (section 11, the most important constraint
+        // here): COMTRADE's start_time/trigger_time are backend-verified
+        // TIMEZONE-NAIVE timestamps (see the Phase 2C-C3 investigation
+        // record in docs/project-memory/MIGRATION_PLAN.md) -- there is no
+        // offset/timezone field anywhere in the standard CFG format as
+        // parsed by this backend. A naive ISO string handed to `new
+        // Date(...)` is parsed using the BROWSER's own local timezone
+        // (environment-dependent, unpredictable), which would silently
+        // misrepresent the recording's own wall-clock time depending on
+        // where the app happens to be running -- exactly what section 11
+        // forbids. Every timestamp in this module is therefore handled as
+        // plain NUMERIC components (via Date.UTC()/getUTC*() exclusively,
+        // and via Plotly's own native "YYYY-MM-DD HH:MM:SS.ffffff"
+        // date-string format, which Plotly treats literally with no
+        // timezone conversion) -- never through a Date object's LOCAL
+        // getters/parsing, so the numbers shown always exactly reproduce
+        // the backend's own naive numbers regardless of the browser's own
+        // timezone.
+        // ==================================================================
+
+        // Parses "YYYY-MM-DDTHH:MM:SS[.ffffff]" (also tolerates a space in
+        // place of "T", matching Python's own isoformat() output for a
+        // naive datetime -- see TimingInformation.start_time/trigger_time)
+        // into milliseconds-since-epoch computed PURELY via Date.UTC() --
+        // an internal arithmetic anchor only, never displayed via local
+        // getters. Returns null if the string doesn't match (defensive;
+        // never invents a fallback timestamp -- section 10).
+        function wwParseNaiveTimestamp(isoString) {
+            if (!isoString) return null;
+            const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?/.exec(isoString);
+            if (!m) return null;
+            const [, y, mo, d, h, mi, s, frac] = m;
+            const ms = frac ? Math.round(Number("0." + frac) * 1000) : 0;
+            return Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s), ms);
+        }
+
+        // The inverse of wwParseNaiveTimestamp -- formats an internal
+        // UTC-anchored millisecond value into Plotly's own native date-axis
+        // string format, using UTC getters exclusively (see this section's
+        // own header comment for why).
+        function wwFormatPlotlyDateString(ms) {
+            const d = new Date(ms);
+            const pad = (n, len) => String(n).padStart(len || 2, "0");
+            return d.getUTCFullYear() + "-" + pad(d.getUTCMonth() + 1) + "-" + pad(d.getUTCDate()) +
+                " " + pad(d.getUTCHours()) + ":" + pad(d.getUTCMinutes()) + ":" + pad(d.getUTCSeconds()) +
+                "." + pad(d.getUTCMilliseconds(), 3);
+        }
+
+        // Phase 2C-C3 (section 24): which time modes are valid for ONE
+        // channel, derived from its own source's ALREADY-authoritative
+        // backend metadata -- never a frontend guess. `timingReference`
+        // (threaded from TimebaseOut.timing_reference, ultimately
+        // TimingInformation.timing_reference) is the backend's own signal
+        // for whether start_time/trigger_time are trustworthy real
+        // recording timestamps ("absolute", COMTRADE's own constructed
+        // value today) versus merely a compatibility anchor for a source
+        // whose native axis is something else -- see the domain model's
+        // own docstring, quoted in the Phase 2C-C3 investigation record.
+        // "elapsed" is always valid for every provider (every source
+        // always carries real relative sample timing).
+        function wwTimeModesForChannel(channel) {
+            if (channel.recordingStartMs !== null && channel.timingReference === "absolute") {
+                return ["absolute", "elapsed"];
+            }
+            return ["elapsed"];
+        }
+
+        // The workspace-wide available set is the INTERSECTION across
+        // every currently displayed channel, so the toolbar never offers a
+        // mode that wouldn't apply correctly to something on screen right
+        // now (section 24: "do NOT show unavailable fake options"). Falls
+        // back to ["elapsed"] (always valid) when nothing is displayed.
+        function wwAvailableTimeModes() {
+            const channels = Array.from(ww.displayed.values()).map((entry) => entry.channel);
+            if (channels.length === 0) return ["elapsed"];
+            let available = WW_TIME_MODES.slice();
+            for (const channel of channels) {
+                const modes = wwTimeModesForChannel(channel);
+                available = available.filter((m) => modes.indexOf(m) !== -1);
+            }
+            return available.length > 0 ? available : ["elapsed"];
+        }
+
+        // The workspace's shared Absolute-mode time origin: the recording
+        // start of the FIRST channel in display order that has one.
+        // Deliberately derived on demand (never cached/duplicated state),
+        // matching how ww.panels itself is always derived from
+        // ww.displayed rather than kept as a second source of truth.
+        //
+        // Known limitation, documented per section 25: if channels from
+        // MULTIPLE sources with DIFFERENT recording-start timestamps are
+        // ever displayed together (not the normal single-source workflow,
+        // and not prevented structurally), every panel still shares the
+        // SAME single physical viewport (elapsed seconds, DEC-021) -- but
+        // Absolute-mode labels for every panel are computed from this ONE
+        // origin (the first-displayed channel's own source), so a second
+        // source's channels would display an INCORRECT absolute timestamp
+        // offset by the difference between the two sources' own recording
+        // starts. Multi-source time alignment is explicitly out of scope
+        // for this task (section 25/31); this is a known, deliberate,
+        // documented gap for that future work, not a silent bug.
+        function wwWorkspaceRecordingStartMs() {
+            for (const entry of ww.displayed.values()) {
+                const ms = entry.channel.recordingStartMs;
+                if (ms !== null && ms !== undefined) return ms;
+            }
+            return null;
+        }
+
+        // elapsed seconds (the ONE authoritative coordinate system) -> a
+        // value Plotly's own x-axis can plot directly. In Elapsed mode (or
+        // when no trustworthy origin exists), this is the identity
+        // function -- Plotly gets exactly the same numbers it always did,
+        // unchanged from before this phase.
+        function wwElapsedToPlotlyX(elapsedSeconds) {
+            if (ww.timeMode === "absolute") {
+                const originMs = wwWorkspaceRecordingStartMs();
+                if (originMs !== null) return wwFormatPlotlyDateString(originMs + elapsedSeconds * 1000);
+            }
+            return elapsedSeconds;
+        }
+
+        // The inverse: a value Plotly reports back (via a plotly_relayout
+        // event, after a user's zoom/pan gesture) -> elapsed seconds, the
+        // coordinate system ww.viewport and the waveform API both always
+        // use regardless of ww.timeMode. Plotly reports date-axis range
+        // boundaries in the SAME native date-string format it was given,
+        // so this is parsed the same naive, timezone-free way as the
+        // origin itself (wwParseNaiveTimestamp already tolerates Plotly's
+        // own "YYYY-MM-DD HH:MM:SS.ffffff" spacing).
+        function wwPlotlyXToElapsed(x) {
+            if (ww.timeMode === "absolute") {
+                const originMs = wwWorkspaceRecordingStartMs();
+                if (originMs !== null) {
+                    const parsed = wwParseNaiveTimestamp(String(x));
+                    if (parsed !== null) return (parsed - originMs) / 1000;
+                }
+            }
+            return Number(x);
+        }
+
+        // Section 12/14: adaptive tick precision using ONLY Plotly's own
+        // native tickformatstops mechanism (an official, documented Plotly
+        // config option for exactly "different formatting at different
+        // zoom levels") -- no custom tick-generation logic. Absolute mode
+        // uses d3 UTC-style time-format specs against the date axis
+        // (Plotly's date axes are UTC-consistent by default -- see this
+        // section's own header comment); Elapsed mode adapts DECIMAL
+        // PRECISION on the existing seconds axis (unchanged unit, deeper
+        // zoom shows more fractional digits) rather than switching units
+        // (ms/s/min) -- a deliberate, honestly-documented simplification:
+        // full unit-switching would need the axis TITLE to change
+        // dynamically with zoom, which is materially more complex than
+        // this task's own cost/benefit guidance favors (section 14 itself
+        // only says a cleaner unit "may" be appropriate, not required).
+        function wwTimeAxisTickFormat() {
+            if (ww.timeMode === "absolute") {
+                return {
+                    tickformatstops: [
+                        { dtickrange: [null, 1000], value: "%H:%M:%S.%L" },
+                        { dtickrange: [1000, 60000], value: "%H:%M:%S" },
+                        { dtickrange: [60000, 3600000], value: "%H:%M" },
+                        { dtickrange: [3600000, null], value: "%b %d, %H:%M" },
+                    ],
+                    hoverformat: "%H:%M:%S.%L",
+                };
+            }
+            return {
+                tickformatstops: [
+                    { dtickrange: [null, 0.01], value: ".4~f" },
+                    { dtickrange: [0.01, 1], value: ".3~f" },
+                    { dtickrange: [1, 60], value: ".1~f" },
+                    { dtickrange: [60, null], value: ",.0f" },
+                ],
+                hoverformat: ".6f",
+            };
+        }
+
+        // Section 12: Absolute mode keeps each panel's own axis title
+        // empty -- the shared "<date> · Record time" context label (see
+        // wwUpdateTimeModeContext()) already carries that context once,
+        // rather than repeating it as a title on every panel. Elapsed
+        // mode keeps the existing "Time (s)" title, unchanged.
+        function wwTimeAxisTitle() {
+            return ww.timeMode === "absolute" ? "" : "Time (s)";
+        }
 
         function wwDefaultHeightForCurrentMode() {
             return WW_DEFAULT_PANEL_HEIGHT[ww.layoutMode] || WW_DEFAULT_PANEL_HEIGHT.grouped;
@@ -1993,7 +2247,11 @@
             if (!opts.isInitialLoad) {
                 const idx = panel.channels.indexOf(channelEntry);
                 if (idx !== -1 && panel.plotlyReady) {
-                    Plotly.restyle(panel.chartEl, { x: [body.time], y: [body.values] }, [idx]);
+                    // Phase 2C-C3: a re-fetched range (e.g. after zoom/pan)
+                    // must render in whichever time mode is CURRENTLY
+                    // active, same transform wwBuildTrace applies at
+                    // initial creation.
+                    Plotly.restyle(panel.chartEl, { x: [body.time.map(wwElapsedToPlotlyX)], y: [body.values] }, [idx]);
                 }
             }
         }
@@ -2076,9 +2334,17 @@
             });
         }
 
+        // Phase 2C-C3: x values are transformed per the CURRENT ww.timeMode
+        // (wwElapsedToPlotlyX) -- channel.time itself (the raw elapsed
+        // array as fetched) is never mutated, only read; a mode switch is
+        // always reversible with no data loss (see wwSetTimeMode). The
+        // hover template is mode-aware too: Plotly's own `|` date-format
+        // pipe syntax for a date-typed x (no custom formatting logic).
         function wwBuildTrace(channel) {
+            const xValues = (channel.time || []).map(wwElapsedToPlotlyX);
+            const xHoverFormat = ww.timeMode === "absolute" ? "%{x|%H:%M:%S.%L}" : "%{x:.6f}s";
             return {
-                x: channel.time || [],
+                x: xValues,
                 y: channel.values || [],
                 type: "scattergl",
                 mode: "lines",
@@ -2087,14 +2353,15 @@
                 // unchanged from Phase 2B.
                 line: { shape: "linear", width: 1.5, color: channel.color },
                 name: channel.channelName,
-                hovertemplate: "%{x:.6f}s: %{y}" + (channel.unit ? " " + channel.unit : "") +
+                hovertemplate: xHoverFormat + ": %{y}" + (channel.unit ? " " + channel.unit : "") +
                     "<extra>" + escapeHtml(channel.channelName) + "</extra>",
             };
         }
 
         function wwBuildLayout(panel, colors) {
             const unit = panel.channels.length ? panel.channels[0].unit : "";
-            const xrange = ww.viewport ? [ww.viewport.start, ww.viewport.end] : undefined;
+            const xrange = ww.viewport ? [wwElapsedToPlotlyX(ww.viewport.start), wwElapsedToPlotlyX(ww.viewport.end)] : undefined;
+            const tickFormat = wwTimeAxisTickFormat();
             // Crosshair config identical to waveform-prototype.html's own
             // (DEC-022/DEC-023, unchanged): thin, dashed, theme-driven,
             // sample-snapped. Each panel's spikes are independent --
@@ -2105,11 +2372,17 @@
                 plot_bgcolor: colors.surface,
                 font: { color: colors.text, size: 11 },
                 margin: { l: 55, r: 20, t: 10, b: 34 },
-                xaxis: {
-                    title: "Time (s)", gridcolor: colors.grid, zeroline: false, range: xrange,
+                xaxis: Object.assign({
+                    // Phase 2C-C3: "date" for Absolute mode (native Plotly
+                    // date axis -- adaptive tick spacing/formatting comes
+                    // from Plotly itself, not custom logic); default
+                    // (linear) for Elapsed, unchanged from before this
+                    // phase.
+                    type: ww.timeMode === "absolute" ? "date" : undefined,
+                    title: wwTimeAxisTitle(), gridcolor: colors.grid, zeroline: false, range: xrange,
                     showspikes: true, spikemode: "across", spikesnap: "data",
                     spikethickness: 0.35, spikedash: "3px,2px", spikecolor: colors.spike,
-                },
+                }, tickFormat),
                 yaxis: {
                     title: unit || "", gridcolor: colors.grid, zeroline: false,
                     showspikes: true, spikemode: "across", spikesnap: "data",
@@ -2286,7 +2559,13 @@
                 const x0 = eventData["xaxis.range[0]"];
                 const x1 = eventData["xaxis.range[1]"];
                 if (x0 !== undefined && x1 !== undefined) {
-                    wwBroadcastViewportDebounced(x0, x1);
+                    // Phase 2C-C3: in Absolute mode, Plotly reports a
+                    // date-typed range here, not elapsed seconds -- convert
+                    // back through the SAME boundary function
+                    // wwElapsedToPlotlyX uses (in reverse), so everything
+                    // downstream of this point (broadcast, fetch, viewport
+                    // state) never has to know which mode is active.
+                    wwBroadcastViewportDebounced(wwPlotlyXToElapsed(x0), wwPlotlyXToElapsed(x1));
                     return;
                 }
                 if (eventData["xaxis.autorange"] === true) {
@@ -2313,10 +2592,14 @@
         }
 
         async function wwApplyAndFetchViewport(startTime, endTime) {
+            // ww.viewport ALWAYS stays in elapsed seconds -- the one
+            // authoritative coordinate system (section 8) -- regardless of
+            // ww.timeMode; only the Plotly-facing range below is
+            // transformed.
             ww.viewport = { start: startTime, end: endTime };
             for (const panel of ww.panels) {
                 panel.suppressNext = true;
-                Plotly.relayout(panel.chartEl, { "xaxis.range": [startTime, endTime] });
+                Plotly.relayout(panel.chartEl, { "xaxis.range": [wwElapsedToPlotlyX(startTime), wwElapsedToPlotlyX(endTime)] });
             }
             await wwRefetchAllChannels(startTime, endTime);
         }
@@ -2361,20 +2644,27 @@
         // bottom-most lane (last in ww.panels' order) shows X-axis tick
         // labels/title -- every other lane suppresses them, so the stacked
         // lanes read as sharing ONE time axis instead of repeating it N
-        // times. Grouped mode is untouched: every panel keeps its own full
-        // X axis exactly as Phase 2C-A/B1 shipped it (this function no-ops
-        // for it, leaving wwBuildLayout's own default in place). A pure
-        // chrome relayout (showticklabels/title only) -- never touches
-        // xaxis.range, so it cannot trigger the viewport-broadcast
+        // times. Grouped/Custom mode is untouched: every panel keeps its
+        // own full X axis exactly as Phase 2C-A/B1/C1 shipped it (this
+        // function no-ops for it, leaving wwBuildLayout's own mode-aware
+        // title in place -- see wwSetTimeMode, which updates EXISTING
+        // Grouped/Custom panels' titles directly since this function can't).
+        // Phase 2C-C3: renamed from wwUpdateBottomLaneAxis; the title text
+        // is now mode-aware (wwTimeAxisTitle()) instead of the hardcoded
+        // "Time (s)" -- Absolute keeps titles empty (the shared date-context
+        // label above the panels already carries that context, section 12).
+        // A pure chrome relayout (showticklabels/title only) -- never
+        // touches xaxis.range, so it cannot trigger the viewport-broadcast
         // loop-prevention path in wwWirePanelRelayout.
-        function wwUpdateBottomLaneAxis() {
+        function wwApplyTimeAxisChrome() {
             if (ww.layoutMode !== "separate") return;
+            const title = wwTimeAxisTitle();
             ww.panels.forEach((panel, idx) => {
                 if (!panel.plotlyReady) return;
                 const isBottom = idx === ww.panels.length - 1;
                 Plotly.relayout(panel.chartEl, {
                     "xaxis.showticklabels": isBottom,
-                    "xaxis.title": isBottom ? "Time (s)" : "",
+                    "xaxis.title": isBottom ? title : "",
                 });
             });
         }
@@ -2424,6 +2714,16 @@
                     channelName: meta.channelName,
                     unit: meta.unit,
                     engineeringType: meta.engineeringType, // retained so a later layout-mode switch can regroup without re-fetching metadata
+                    // Phase 2C-C3: parsed once here (not re-parsed on every
+                    // Absolute-mode calculation) via wwParseNaiveTimestamp
+                    // -- see that function's own comment for why this is
+                    // NOT `new Date(meta.recordingStartTime)` (timezone
+                    // safety, section 11). `timingReference` is the
+                    // backend's own capability signal (section 24), kept
+                    // alongside so wwTimeModesForChannel never needs to
+                    // re-derive it from anywhere else.
+                    recordingStartMs: wwParseNaiveTimestamp(meta.recordingStartTime),
+                    timingReference: meta.timingReference || null,
                     color: wwNextColor(),
                     time: [],
                     values: [],
@@ -2467,7 +2767,8 @@
 
             const touchedPanels = new Set(jobs.map((job) => job.panel));
             for (const panel of touchedPanels) wwRenderLegend(panel);
-            wwUpdateBottomLaneAxis();
+            wwApplyTimeAxisChrome();
+            wwUpdateTimeModeControlAvailability();
         }
 
         function wwRemoveChannelByKey(key) {
@@ -2494,7 +2795,8 @@
                 wwRenderLegend(panel);
             }
             wwUpdateEmptyState();
-            wwUpdateBottomLaneAxis();
+            wwApplyTimeAxisChrome();
+            wwUpdateTimeModeControlAvailability();
         }
 
         function wwRemovePanelDom(panel) {
@@ -2551,6 +2853,106 @@
             // comment on the ww state object for why that's safe/desired).
             ww.panelHeights = new Map();
             wwUpdateEmptyState();
+            wwUpdateTimeModeControlAvailability();
+        }
+
+        // Phase 2C-C3: the shared "<date> · Record time" label (section
+        // 12) -- shown once, above the panels, instead of repeating date
+        // context on every tick/panel. Hidden entirely outside Absolute
+        // mode or when no displayed channel has a trustworthy recording-
+        // start timestamp.
+        function wwUpdateTimeModeContext() {
+            const el = document.getElementById("wwTimeModeContext");
+            if (!el) return;
+            const originMs = ww.timeMode === "absolute" ? wwWorkspaceRecordingStartMs() : null;
+            if (originMs === null) {
+                el.hidden = true;
+                return;
+            }
+            const d = new Date(originMs);
+            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            el.textContent = d.getUTCDate() + " " + months[d.getUTCMonth()] + " " + d.getUTCFullYear() + " · Record time";
+            el.hidden = false;
+        }
+
+        // Phase 2C-C3 (section 24): enables/disables each time-mode
+        // toolbar button per wwAvailableTimeModes() -- never leaves a mode
+        // selectable that wouldn't apply correctly to what's currently
+        // displayed. If the CURRENTLY active mode just became unavailable
+        // (e.g. the only Absolute-capable channel was just removed), falls
+        // back to whatever IS available -- "elapsed" is always valid for
+        // every provider, so this can never leave the workspace with no
+        // working axis.
+        function wwUpdateTimeModeControlAvailability() {
+            const available = wwAvailableTimeModes();
+            const absoluteBtn = document.getElementById("timeModeAbsoluteBtn");
+            const elapsedBtn = document.getElementById("timeModeElapsedBtn");
+            if (absoluteBtn) absoluteBtn.disabled = available.indexOf("absolute") === -1;
+            if (elapsedBtn) elapsedBtn.disabled = available.indexOf("elapsed") === -1;
+            if (available.indexOf(ww.timeMode) === -1) {
+                wwSetTimeMode(available[0] || "elapsed");
+            } else {
+                wwUpdateTimeModeContext();
+            }
+        }
+
+        // Phase 2C-C3: switches the shared waveform-workspace time-axis
+        // representation. Presentation-only (section 9) -- reuses every
+        // already-fetched channel's own .time/.values exactly as-is (no
+        // waveform refetch), and never touches ww.viewport (section 7) --
+        // the exact same physical event window stays visible, just
+        // relabeled.
+        function wwSetTimeMode(mode) {
+            if (mode !== "absolute" && mode !== "elapsed") return;
+            if (mode === ww.timeMode) return;
+            if (wwAvailableTimeModes().indexOf(mode) === -1) return;
+
+            ww.timeMode = mode;
+            document.getElementById("timeModeAbsoluteBtn").setAttribute("aria-pressed", String(mode === "absolute"));
+            document.getElementById("timeModeElapsedBtn").setAttribute("aria-pressed", String(mode === "elapsed"));
+            wwUpdateTimeModeContext();
+
+            const tickFormat = wwTimeAxisTickFormat();
+            const xrange = ww.viewport ? [wwElapsedToPlotlyX(ww.viewport.start), wwElapsedToPlotlyX(ww.viewport.end)] : undefined;
+            const xHoverFormat = mode === "absolute" ? "%{x|%H:%M:%S.%L}" : "%{x:.6f}s";
+
+            for (const panel of ww.panels) {
+                if (!panel.plotlyReady) continue;
+                // Re-derive each already-loaded channel's x values/hover
+                // format for the new mode -- zero network requests
+                // (section 9), same channel.time/.values array reused
+                // unmutated.
+                panel.channels.forEach((channel, idx) => {
+                    const xValues = (channel.time || []).map(wwElapsedToPlotlyX);
+                    Plotly.restyle(panel.chartEl, {
+                        x: [xValues],
+                        hovertemplate: [xHoverFormat + ": %{y}" + (channel.unit ? " " + channel.unit : "") +
+                            "<extra>" + escapeHtml(channel.channelName) + "</extra>"],
+                    }, [idx]);
+                });
+                // suppressNext: this relayout sets xaxis.range
+                // programmatically -- without this guard it would
+                // re-trigger the viewport-broadcast loop-prevention path
+                // in wwWirePanelRelayout and cause an unnecessary refetch,
+                // exactly the "zero refetch" contract this phase must not
+                // violate (section 9), using the SAME established pattern
+                // wwApplyAndFetchViewport already relies on.
+                panel.suppressNext = true;
+                Plotly.relayout(panel.chartEl, {
+                    "xaxis.type": mode === "absolute" ? "date" : "linear",
+                    "xaxis.range": xrange,
+                    "xaxis.tickformatstops": tickFormat.tickformatstops,
+                    "xaxis.hoverformat": tickFormat.hoverformat,
+                    // Grouped/Custom panels get their title corrected here
+                    // directly -- wwApplyTimeAxisChrome() below no-ops for
+                    // those modes (it only ever touches Separate-mode
+                    // lanes). In Separate mode this gets immediately
+                    // overridden per-lane (bottom lane only) by that same
+                    // call, which is the intended final state.
+                    "xaxis.title": wwTimeAxisTitle(),
+                });
+            }
+            wwApplyTimeAxisChrome();
         }
 
         // Phase 2C-C1: shows/hides "Edit Channel Groups" -- only relevant
@@ -2627,7 +3029,7 @@
                 wwInitPanelPlot(panel);
                 wwRenderLegend(panel);
             }
-            wwUpdateBottomLaneAxis();
+            wwApplyTimeAxisChrome();
         }
 
         function wwUpdateEmptyState() {
@@ -2890,6 +3292,10 @@
         document.getElementById("layoutModeGroupedBtn").addEventListener("click", () => wwSetLayoutMode("grouped"));
         document.getElementById("layoutModeSeparateBtn").addEventListener("click", () => wwSetLayoutMode("separate"));
         document.getElementById("layoutModeCustomBtn").addEventListener("click", () => wwSetLayoutMode("custom"));
+
+        // Phase 2C-C3: Absolute/Elapsed time-axis mode.
+        document.getElementById("timeModeAbsoluteBtn").addEventListener("click", () => wwSetTimeMode("absolute"));
+        document.getElementById("timeModeElapsedBtn").addEventListener("click", () => wwSetTimeMode("elapsed"));
 
         // Phase 2C-C1: Custom Groups editor.
         document.getElementById("editChannelGroupsBtn").addEventListener("click", wwOpenGroupEditor);

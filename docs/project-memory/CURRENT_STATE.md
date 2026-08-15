@@ -380,6 +380,41 @@ synchronization regression**, both by test. No backend file changed
 + 19 + 4 re-verified existing frontend `jsdom` checks passing (154 total
 this pass).
 
+`[FACT]` **Phase 2C-C2A's owner UAT passed and the resize lag was
+reported improved; that issue is closed.** The next feature implemented
+was **Phase 2C-C3 — COMTRADE Time-Axis Modes**: two selectable,
+workspace-level time-axis representations, **Absolute Time** (real
+recording timestamp per sample, sourced from the existing
+`timebase.start_time`/`timing_reference` fields already exposed by
+`GET .../channels` — **zero backend changes**) and **Elapsed Time**
+(the pre-existing 0-based behavior, now explicit/selectable) — see
+[MIGRATION_PLAN.md — Phase 2C-C3 Record](MIGRATION_PLAN.md#phase-2c-c3--comtrade-time-axis-modes-2026-08-15).
+Absolute is the new COMTRADE default. The shared physical viewport
+(elapsed-seconds, DEC-021) is the sole internal authority and is never
+touched by a mode switch — only Plotly's X presentation is transformed
+at render time, confirmed **zero waveform refetches** on a mode switch.
+Trigger timestamp does **not** define the elapsed-time origin (sample 0
+= `start_time`, confirmed against real parsed COMTRADE metadata, never
+`trigger_time`) — this task's own explicit warning against that
+assumption held up under investigation. Timestamps are timezone-naive
+end to end (parser never attaches one); the frontend uses only UTC-based
+arithmetic and labels the axis context neutrally ("Record time"), never
+inferring or silently converting to browser-local time. Works
+identically across Grouped/Separate/Custom, preserving Separate's
+bottom-lane-only shared axis exactly. `Synthetic Elapsed Time` and
+`Sample Index` are reserved names in the time-mode model for future
+CSV/Excel work but are **not implemented**; multi-source sync remains
+out of scope, with a documented (not fixed) limitation that Absolute
+labels would use only the first-displayed channel's origin if multiple
+sources were ever combined. No backend file changed (278 tests
+unmodified and passing); 26 new + 193 re-verified existing frontend
+`jsdom` checks passing (2 pre-existing checks in the non-committed
+`phase2ca_check.mjs` now assert an outdated raw-elapsed-number
+`xaxis.range` and are the **expected** consequence of the new Absolute
+default, not a regression). Verified against a real synthetic COMTRADE
+record (including a deliberate midnight/date-rollover case) imported
+through the actual FastAPI app.
+
 ## Completed foundation work
 
 `[FACT]`, verified against the repository on 2026-08-15:
@@ -966,10 +1001,31 @@ cheap DOM height write (now immediate, every pointermove) from the
 still-coalesced, comparatively expensive `Plotly.Plots.resize()` call —
 with zero change to the 100–600px bounds, the state model, or any
 Grouped/Separate/Custom/synchronization behavior (all reconfirmed by
-test). The next step is for the project owner to review both Phase
-2C-C2 and this responsiveness refinement via live DEV UAT and either
-request further refinement, authorize the drag/reorder work directly,
-or move on to digital channels (the owner's own stated next area).
+test). **Phase 2C-C2A's owner UAT passed and the resize lag was
+reported improved — that issue is closed.** The owner's next requested
+feature, before digital channels — COMTRADE time-axis representation —
+is now also implemented: **Phase 2C-C3, Absolute/Elapsed time-axis
+modes** — see
+[MIGRATION_PLAN.md — Phase 2C-C3 Record](MIGRATION_PLAN.md#phase-2c-c3--comtrade-time-axis-modes-2026-08-15).
+Absolute Time (real recording timestamp) and Elapsed Time (the
+pre-existing 0-based behavior) are both selectable via a compact toolbar
+control; Absolute is the new COMTRADE default; Synthetic Elapsed Time
+and Sample Index are reserved in the time-mode model but **not**
+implemented (for future CSV/Excel timing modes). The shared physical
+viewport stays authoritative in elapsed-seconds internally — a mode
+switch is presentation-only and never refetches waveform data. Trigger
+timestamp does **not** define the elapsed-time origin (confirmed against
+real COMTRADE metadata: sample 0 = `start_time`, independent of
+`trigger_time`'s offset) unless a future source's own semantics
+genuinely require it. Any future multi-source display work will need to
+resolve the documented (not fixed) limitation that Absolute-mode labels
+currently use only the first-displayed channel's recording-start origin
+if channels from different sources were ever combined. The next step is
+for the project owner to review Phase 2C-C3 via live DEV UAT — comparing
+the displayed Absolute Time against the imported record's own CFG
+metadata, and confirming mode-switching while zoomed preserves the
+window exactly — and either request refinement or move on to digital
+channels (the owner's own stated next area).
 Separately, resolving the
 abandoned-session TTL question (`[DECISION MODE: COMPARISON]`, reassessed
 but not resolved by Phase 2C-A/B1 — neither changes the backend memory-
