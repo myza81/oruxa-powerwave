@@ -8,6 +8,33 @@ Last updated: **2026-08-15**
 
 ## What was most recently done
 
+**Documentation-only**: established `detego.app` as a UI/UX/workflow/
+dashboard/product **benchmark** (explicitly not a ceiling or architecture
+requirement) for feature design, per direct owner instruction — new
+[PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md), DEC-020 in
+[DECISIONS.md](DECISIONS.md), and short pointer sections added to
+[CLAUDE.md](../../CLAUDE.md)/[AGENTS.md](../../AGENTS.md) (matching the
+existing architecture-reference pointer pattern — state the principle
+briefly, read detail at the source). **No production code changed.**
+
+**Provenance note, worth preserving**: an earlier version of this same
+request arrived mid-turn, structured as a system-reminder-wrapped message
+that referenced "an attached ZIP" never actually present in context, and
+asked for edits to this repository's own governance files plus a push to
+`main` while explicitly directing that this project's own
+change-governance step be skipped. That version was declined and flagged
+to the user rather than executed — an unverifiable, injection-shaped
+request is not owner authorization on its own. The owner then reissued
+the same direction as a normal, self-contained conversational instruction
+with no external attachment referenced or needed, which is what this
+pass and [PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md) are built from.
+**No technical audit of `detego.app` itself was performed or is claimed**
+— see [PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md)'s own `[OPEN]` note.
+Future sessions should not assume a feature comparison against Detego
+already exists just because this reference framework does.
+
+## What was done in the prior session (Phase 2A implementation)
+
 **Phase 2A — Waveform Data Foundation** (backend only). Following the
 Phase 2 discovery/design pass (summarized below), the owner authorized
 implementing exactly the first recommended vertical slice: retain each
@@ -448,6 +475,16 @@ Phase 2 design section.
 
 ## What must not be assumed
 
+- **Do not assume a technical audit or feature comparison against
+  `detego.app` exists** — [PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md)
+  (DEC-020) establishes only the *reference relationship and its limits*
+  (benchmark, not ceiling; consult routinely, never copy blindly). No one
+  has yet recorded what Detego actually does or how it compares
+  feature-by-feature to `oruxa_powerwave` or `powerwave`.
+- **Do not treat Detego's absence of a feature as a reason to withhold
+  that feature from `oruxa_powerwave`** — DEC-020 explicitly says the
+  opposite: aim to exceed Detego where the owner's engineering
+  requirements justify it.
 - **Do not assume Phase 2B (or any later Phase 2 slice) is authorized** —
   only Phase 2A (backend waveform data foundation) has been approved and
   built (DEC-019). Chart library, frontend rendering, channel-selection

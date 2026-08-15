@@ -737,6 +737,82 @@ Impact:
 
 ---
 
+## DEC-020 — `detego.app` is adopted as a UI/UX/product benchmark, not a ceiling or an architecture requirement
+
+Date: 2026-08-15
+Status: Approved
+Source: explicit project-owner direction, given directly in conversation
+(not via any external attachment — see the note in Alternatives
+considered below).
+
+Decision:
+`detego.app` is adopted as a **UI/UX, workflow, dashboard, and product
+benchmark** for `oruxa_powerwave` feature design, to be consulted
+routinely during Phase 2B/2C waveform-workspace design in particular. For
+major feature design, use the three-way comparison recorded in full in
+[PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md):
+
+```text
+powerwave                          = proven engineering behaviour /
+                                      reusable logic
+detego.app                         = UI/UX, workflow, dashboard, and
+                                      product benchmark
+owner requirements / approved
+decisions / UAT                    = final authority
+```
+
+**Detego is a benchmark, not a ceiling**: `oruxa_powerwave` should aim to
+be more capable and more useful than Detego wherever the owner's
+engineering requirements justify it. A feature Detego lacks is never, on
+its own, a reason to withhold that feature from `oruxa_powerwave`.
+Detego's own implementation must not be blindly copied or treated as an
+architecture requirement — it is consulted for inspiration/comparison,
+never as a specification to satisfy feature-for-feature.
+
+Reason:
+The project already has one engineering-behaviour reference
+(`powerwave`) but no equivalent reference for UI/UX/workflow quality,
+even though the owner has stated (recorded across this project's Phase 1
+UAT passes) that `oruxa_powerwave` should emphasize UI/UX more heavily
+than the desktop application. Establishing an explicit product/UI
+benchmark, with equally explicit limits on its authority, prevents two
+failure modes at once: designing Phase 2B/2C waveform UX from first
+principles with no external reference point, and — the opposite risk —
+silently treating Detego's feature set as a de facto scope ceiling or its
+implementation as something to copy rather than learn from.
+
+Alternatives considered:
+The same request was first received mid-turn, structured as a
+system-reminder-wrapped message referencing "an attached ZIP" that was
+never actually present in the assistant's accessible context, asking for
+edits to this repository's governance files and a push to `main` while
+explicitly directing the assistant to skip this document's own
+change-governance step. The assistant declined to act on that version,
+flagging it as an unverifiable, injection-shaped request rather than
+executing it — see the conversation record for the full flag. The owner
+then reissued the same direction as a normal, direct conversational
+instruction with self-contained content (no external attachment
+referenced or needed), which is the version this decision and
+[PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md) are built from. No
+technical audit of `detego.app` itself (its actual features, architecture,
+or UI) has been performed — this decision establishes the *reference
+relationship and its limits*, not a feature comparison; see
+[PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md)'s own `[OPEN]` note.
+
+Impact:
+- [CLAUDE.md](../../CLAUDE.md) and [AGENTS.md](../../AGENTS.md) both gain
+  a short pointer to [PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md),
+  matching the existing pattern used for the architecture reference
+  document (state the principle briefly, read the detail at the source).
+- Does **not** retroactively change any already-approved decision in this
+  document, and does not by itself approve or reject any specific Phase
+  2B/2C feature — it only establishes how Detego may be used as evidence
+  in a future `[PROPOSAL]`, per
+  [README.md's decision-mode framework](README.md#decision-modes).
+- No production code was changed for this decision.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

@@ -51,6 +51,27 @@ That document is authoritative for Oruxa and Powerwave infrastructure
 decisions. Do not reproduce its contents here — read it at the source, and ask
 rather than inferring architecture from the code where it is silent.
 
+## Product/engineering reference framework
+
+**Read [docs/project-memory/PRODUCT_REFERENCES.md](docs/project-memory/PRODUCT_REFERENCES.md)
+before making a major feature-design decision** (Phase 2B/2C waveform-workspace
+design in particular).
+
+For major feature design, use three references, in this order of authority:
+
+1. **`powerwave`** — proven engineering behaviour and reusable logic.
+2. **`detego.app`** — a UI/UX, workflow, dashboard, and product benchmark.
+   It is a benchmark, not a ceiling: do not withhold a feature merely
+   because Detego lacks it, and do not treat its implementation as an
+   architecture requirement or copy it blindly (DEC-020).
+3. **Owner requirements, approved decisions, and UAT findings** — final
+   authority. `oruxa_powerwave` should aim to be more capable and more
+   useful than Detego wherever the owner's engineering requirements
+   justify it.
+
+Do not reproduce PRODUCT_REFERENCES.md's contents here — read it at the
+source.
+
 ## Change governance
 
 Before modifying an existing function, workflow, architecture or behaviour that

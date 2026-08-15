@@ -146,7 +146,9 @@ Phase 2 design section, and Phase 2A does not authorize starting them.
 - **Documentation**: [docs/architecture/oruxa-architecture.md](../architecture/oruxa-architecture.md),
   [docs/development/development-workflow.md](../development/development-workflow.md),
   this project-memory framework, [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md),
-  and [MIGRATION_PLAN.md](MIGRATION_PLAN.md) (Phase 0 design, "Phase 1 —
+  [PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md) (new, 2026-08-15 — the
+  `powerwave`/`detego.app`/owner-authority feature-design reference
+  framework, DEC-020), and [MIGRATION_PLAN.md](MIGRATION_PLAN.md) (Phase 0 design, "Phase 1 —
   Implementation Record", "Phase 1 — UAT Refinement Record", "Phase 1 —
   Workspace-Reset Record", "Phase 2 — Waveform Workspace Discovery and
   Design", and "Phase 2A — Implementation Record" sections).
@@ -242,6 +244,19 @@ above**: chart library, channel-selection/add interaction, panel layout,
 drag/reorder panel UX, digital waveform handling, and abandoned-session
 TTL policy — all remain `[UAT]`/`[COMPARISON]`/`[OPEN]`, per the Phase 2
 design section and DEC-019's own Impact notes.
+
+`[DECISION]` Recorded 2026-08-15: DEC-020 — `detego.app` is adopted as a
+UI/UX/workflow/dashboard/product **benchmark** (not a ceiling) for feature
+design, especially Phase 2B/2C waveform-workspace work — see
+[PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md) for the full three-way
+comparison framework (`powerwave` = engineering behaviour,
+`detego.app` = UI/UX benchmark, owner requirements/DECISIONS/UAT = final
+authority). `oruxa_powerwave` should aim to exceed Detego where the
+owner's engineering requirements justify it; a feature Detego lacks is
+never on its own a reason to withhold it. No technical audit of
+`detego.app` has been performed — this decision establishes the reference
+relationship and its limits, not a feature comparison. Documentation-only;
+no production code changed.
 
 ## Known blockers
 
