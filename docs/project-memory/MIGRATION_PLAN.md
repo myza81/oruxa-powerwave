@@ -4951,6 +4951,148 @@ no CI/deployment workflow file, no other frontend file.
 
 ---
 
+## Phase 2C-B3 — Right-Side Compact Lane Labels Implementation Record (2026-08-15)
+
+`[FACT]` throughout. A small, deliberately-scoped **visual refinement of
+Separate mode's existing lane label only** — no panel/data model change,
+no synchronization change, no backend change, no change to the unified
+analog canvas container introduced by Phase 2C-B2. **Direct vertical
+drag/reorder, drag-to-overlay/group, drag-out-to-separate, digital-channel
+rendering, and lane resize are explicitly not started.**
+
+### Phase 2C-B2 manual UAT result (recorded here, this pass)
+
+The owner manually UAT'd the completed Phase 2C-B2 (unified analog canvas)
+implementation and confirmed: **Separate view now feels much better; the
+unified analog canvas direction is accepted.** The next refinement
+requested was label placement: in Separate mode, the lane label should
+appear as a small compact label tag on the RIGHT side, similar in
+placement/feel to Detego — used only as a UI/layout reference (per the
+Detego Benchmark Principle, DEC-020), never as a source of exact colors,
+typography, icons, or component styling to copy.
+
+### Right-side label refinement
+
+The existing compact legend chip (Phase 2C-A's original "one channel per
+lane" legend, unchanged markup pattern: colored dot + channel name + unit
++ remove button) moved from the lane's left edge to its right edge. In CSS
+terms: `.ww-panel`'s grid column order flipped from `[108px label][1fr
+chart]` to `[1fr chart][136px label]`, `.ww-chart-wrap` is now `grid-column:
+1` (was 2) and `.ww-legend` is now `grid-column: 2` with `justify-self:
+end` (was 1, left-aligned by default) so the tag hugs the lane's right
+edge, matching the ASCII layout in this task's own §3
+(`-------- waveform -------- [ TBIN1 VR ]`). **The waveform column keeps
+maximum available width** — this did not regress; only which side gets
+the fixed-width column changed, not its size relative to the chart.
+
+### Visual treatment
+
+The tag is now an explicit small pill (`border-radius: 999px`, a subtle
+1px `var(--panel-border)` border, `var(--surface-tint)` background,
+compact padding, `0.72rem` font) rather than the previous unstyled/
+transparent text row — per this task's own §7 "subtle border or pill/tag
+treatment if useful." Both colors are existing Oruxa theme tokens already
+used elsewhere in this file (`--surface-tint` for the search-highlight/
+group-header background, `--panel-border` for every existing hairline
+divider) — **no Detego color, typography, or icon was copied**; the tag's
+own CSS was re-verified this pass to have no inline style override, so
+Light/Dark readability comes entirely from the same token system already
+proven across the rest of the app (DEC-023). The tag has a `max-width`
+(130px) so an unusually long channel identifier truncates with an
+ellipsis (a new `.ww-legend-label` wrapping span, `text-overflow:
+ellipsis`) rather than growing the label column or crowding the waveform
+— the waveform retains visual priority, per this task's own §5/§7.
+
+### Existing labels — simplified, not duplicated
+
+No new redundant label was introduced. The per-lane `.ww-panel-header`
+(Phase 2C-A's original panel title, already hidden in unified/Separate
+mode since Phase 2C-B2 because it duplicated the legend chip's text) stays
+hidden — there is still exactly **one** label treatment per lane, per this
+task's own §6 ("prefer one clear primary label treatment"), it simply now
+sits on the right instead of the left, and looks like a tag instead of
+plain text.
+
+### Interaction behavior — remove control preserved cleanly
+
+The existing remove (×) control is unchanged and still sits inside the
+tag — it fits the compact pill without crowding (verified directly: the
+tag's flex layout is dot + `.ww-legend-label` (flexible, truncating) +
+remove button (fixed size), so the remove control never needs to be
+dropped or relocated). No tradeoff was needed here; no new interaction was
+added beyond what already existed.
+
+### Separate mode — unified analog canvas preserved
+
+The Phase 2C-B2 outer canvas (`#wwPanels.ww-panels-unified`'s shared
+background/border, the hairline lane dividers, the fixed-height compact
+lanes, and `wwUpdateBottomLaneAxis()`'s bottom-lane-only shared time axis)
+are **completely unchanged** by this pass — only the label column's side
+and the tag's own styling moved. Verified via the full existing Phase
+2C-B2 suite (20 checks), re-run unmodified, all still passing.
+
+### Grouped mode — no regression
+
+Grouped mode's own CSS is untouched (the unscoped `.ww-panel-header`/
+`.ww-legend`/`.ww-legend-item` rules, used only when `ww-panels-unified`
+is absent, were not touched at all this pass); `#wwPanels` never gains
+`ww-panels-unified` while `ww.layoutMode === "grouped"`. Verified via the
+full existing Phase 2C-A (19 checks) and Phase 2C-B1 (16 checks) suites,
+re-run unmodified, all still passing.
+
+### Functionality preserved
+
+No change to: the waveform API contract (`channel_name`/`start_time`/
+`end_time`/`point_budget`, confirmed by test), the shared X/time viewport
+mechanism (DEC-021), relayout loop-prevention (`suppressNext`), theme
+behavior (DEC-023), crosshair styling (`spikethickness: 0.35`,
+`spikedash: "3px,2px"`), point-budget behavior (`WW_POINT_BUDGET = 4000`,
+untouched), or source/workspace lifecycle (DEC-018). Verified directly:
+zoom/pan still broadcast to all 6 lanes with exactly 6 relayout calls (no
+loop) and 6 refetches; Reset Time View and Autoscale Y still work across
+all 6 lanes; no per-lane modebar; theme switching still re-colors every
+lane without a waveform refetch; switching Separate→Grouped→Separate
+still preserves the exact zoomed viewport and all 6 displayed channels.
+
+### Tests
+
+- **Backend: 278 tests, unmodified, all passing** — zero backend files
+  touched.
+- **Frontend, new: 16 scripted `jsdom` checks, all passing** (a new
+  one-off script, same established pattern) — covering this task's own
+  §12 list: CSS-source checks that the chart/label columns swapped sides
+  and the label tag is a compact pill; the DOM now wraps each tag's text
+  in a `.ww-legend-label` span; displayed-channel identity is correct in
+  each tag (channel name + unit); the remove control and color dot are
+  preserved inside the tag; 6 lanes still render with the unified-canvas
+  class; only the bottom lane still shows the shared X axis; Grouped mode
+  still groups correctly and never applies the unified class; zoom/pan/
+  Reset Time View/Autoscale Y/no-modebar all still work; theme switching
+  re-colors without refetching and the tag has no inline color override;
+  Grouped↔Separate still preserves viewport and displayed channels;
+  removal via the tag's remove button still removes the whole lane; and
+  the waveform query-parameter whitelist is unchanged.
+- **Frontend, existing: the full Phase 2C-B2 (20), Phase 2C-B1 (16),
+  Phase 2C-A (19), and Phase 1 (4) suites were all re-run unmodified
+  against this pass's code and all still pass in full** — 59 existing
+  checks, zero regressions. 75 total frontend checks this pass.
+
+### Files changed
+
+Modified only: `frontend/index.html`. No new files, no `backend/` file,
+no CI/deployment workflow file, no other frontend file.
+
+### Honest limitation
+
+This sandboxed session has no real browser. Whether the right-side tag
+genuinely reads as compact/readable/low-clutter to a human eye — the
+actual visual goal of this task — was **not** visually confirmed here;
+only structural/CSS-source evidence (grid column order, pill styling
+rules, DOM truncation target) was verified. Final visual-appearance
+judgment remains the owner's own manual UAT, per this task's own §13.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

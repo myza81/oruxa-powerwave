@@ -521,18 +521,25 @@
            Grouped mode is untouched (still the individual-card look above).
            #wwPanels only gains this class while ww.layoutMode === "separate"
            (see wwSetLayoutMode()) -- one shared outer container, borderless
-           lanes with a hairline divider instead of a repeated card, a
-           narrow left label column + a maximum-width chart column so every
-           lane's plotting/Y-axis region stays pixel-aligned with the next. */
+           lanes with a hairline divider instead of a repeated card, the
+           waveform column getting the maximum available width and a
+           fixed-width label column so every lane's plotting/Y-axis region
+           stays pixel-aligned with the next. */
         #wwPanels.ww-panels-unified {
             background: var(--waveform-surface);
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
             overflow: hidden;
         }
+        /* Phase 2C-B3: the label column moved from the left to the RIGHT
+           (owner-requested, Detego layout used only as a placement/
+           compactness reference -- no Detego colors/typography/icons
+           copied). Chart is grid-column 1 (maximum width, unchanged
+           priority); the label tag is grid-column 2, pinned to the right
+           edge of the lane via justify-self: end. */
         #wwPanels.ww-panels-unified .ww-panel {
             display: grid;
-            grid-template-columns: 108px 1fr;
+            grid-template-columns: 1fr 136px;
             align-items: center;
             column-gap: 10px;
             padding: 2px 14px;
@@ -544,21 +551,34 @@
         }
         #wwPanels.ww-panels-unified .ww-panel:last-child { border-bottom: none; }
         /* Panel label is redundant with the (single-channel) legend chip in
-           this mode -- the legend chip becomes the one compact lane label. */
+           this mode -- the legend chip is the one compact lane label. */
         #wwPanels.ww-panels-unified .ww-panel-header { display: none; }
         #wwPanels.ww-panels-unified .ww-legend {
-            grid-column: 1;
+            grid-column: 2;
+            grid-row: 1;
             margin-bottom: 0;
             flex-wrap: nowrap;
+            justify-self: end;
         }
+        /* Compact right-side tag: subtle pill, readable but secondary to
+           the waveform -- not a card header. */
         #wwPanels.ww-panels-unified .ww-legend-item {
-            background: transparent;
-            padding: 0;
-            font-size: 0.74rem;
+            background: var(--surface-tint);
+            border: 1px solid var(--panel-border);
+            border-radius: 999px;
+            padding: 2px 4px 2px 8px;
+            font-size: 0.72rem;
+            max-width: 130px;
+        }
+        #wwPanels.ww-panels-unified .ww-legend-label {
+            overflow: hidden;
+            text-overflow: ellipsis;
             white-space: nowrap;
+            min-width: 0;
         }
         #wwPanels.ww-panels-unified .ww-chart-wrap {
-            grid-column: 2;
+            grid-column: 1;
+            grid-row: 1;
             border: none;
             border-radius: 0;
             background: transparent;
@@ -1443,11 +1463,20 @@
         //     model change. #wwPanels gains a "ww-panels-unified" class
         //     while Separate is active (wwSetLayoutMode) so CSS alone turns
         //     the per-lane cards into one shared outer canvas with a
-        //     narrow label column + a maximum-width chart column per lane
-        //     (hairline divider, not a repeated card); wwUpdateBottomLaneAxis()
+        //     maximum-width chart column + a fixed-width label column per
+        //     lane (hairline divider, not a repeated card); wwUpdateBottomLaneAxis()
         //     hides X tick labels/title on every lane except the last, so
         //     the stack visually reads as one shared time axis. Grouped
         //     mode's own panel styling and per-panel X axis are untouched.
+        //   - Phase 2C-B3: another VISUAL-only refinement -- the label
+        //     column moved from the left to the RIGHT (owner-requested,
+        //     Detego used only as a placement/compactness reference, never
+        //     copied) and is now a small pill-style tag instead of plain
+        //     text. Same DOM (`.ww-legend`/`.ww-legend-item`, now with a
+        //     `.ww-legend-label` span for ellipsis truncation), just
+        //     re-ordered via CSS grid-column + restyled. No JS behavior
+        //     change beyond that one wrapping span; the existing remove
+        //     control is unchanged and still works inside the tag.
         // ==================================================================
 
         // Deterministic per-channel identity colors, assigned in the order
@@ -1707,7 +1736,8 @@
             for (const channel of panel.channels) {
                 html += '<span class="ww-legend-item">' +
                     '<span class="ww-legend-dot" style="background:' + channel.color + '"></span>' +
-                    escapeHtml(channel.channelName) + (channel.unit ? " (" + escapeHtml(channel.unit) + ")" : "") +
+                    '<span class="ww-legend-label">' + escapeHtml(channel.channelName) +
+                    (channel.unit ? " (" + escapeHtml(channel.unit) + ")" : "") + '</span>' +
                     '<button type="button" class="ww-legend-remove" data-source-id="' + escapeHtml(channel.sourceId) +
                     '" data-channel-name="' + escapeHtml(channel.channelName) + '" title="Remove from display" ' +
                     'aria-label="Remove ' + escapeHtml(channel.channelName) + ' from display">&times;</button>' +

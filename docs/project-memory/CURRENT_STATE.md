@@ -234,6 +234,30 @@ drag/reorder, drag-to-overlay/group, drag-out-to-separate, digital-channel
 rendering, panel resize, and Custom layout mode all remain explicitly not
 started.**
 
+`[FACT]` **Phase 2C-B2 manual UAT passed — the unified analog canvas
+direction is accepted** ("Separate view now feels much better") — see the
+"Update" note appended to
+[DEC-026](DECISIONS.md#dec-026--separate-modes-visual-presentation-is-a-unified-analog-canvas-phase-2c-b2)
+(no new decision entry — a refinement of the same visual-presentation
+concern DEC-026 already covers). The owner's next requested refinement —
+moving the Separate-mode lane label to a small compact tag on the RIGHT
+side, similar in placement/feel to Detego (used only as a layout
+reference, never for exact colors/typography/icons) — **is now
+implemented (Phase 2C-B3)** — see
+[MIGRATION_PLAN.md — Phase 2C-B3 Implementation Record](MIGRATION_PLAN.md#phase-2c-b3--right-side-compact-lane-labels-implementation-record-2026-08-15).
+The existing compact legend chip (dot + channel name + unit + remove
+button, unchanged since Phase 2C-A) moved from the lane's left edge to its
+right edge via a CSS grid-column swap and is now styled as a small pill
+(subtle border/background from existing Oruxa theme tokens, not Detego
+colors) with `max-width`/ellipsis truncation so the waveform column keeps
+maximum width. No panel/data model change, no synchronization change, no
+backend change; the remove control still works inside the tag. No backend
+file changed (278 tests unmodified and passing); 16 new + 20 + 16 + 19 + 4
+re-verified existing frontend `jsdom` checks passing (75 total this pass).
+**Direct drag/reorder, drag-to-overlay/group, drag-out-to-separate,
+digital-channel rendering, and lane resize all remain explicitly not
+started.**
+
 ## Completed foundation work
 
 `[FACT]`, verified against the repository on 2026-08-15:
@@ -375,9 +399,9 @@ started.**
   Waveform Workspace: Discovery and Design", "Light/Dark Theme &
   Crosshair Refinement Record", "Phase 2C-A — Synchronized
   Multi-Channel Waveform Display Implementation Record", "Phase 2C-B1 —
-  Grouped / Separate Analog Waveform Layout Implementation Record", and
-  "Phase 2C-B2 — Unified Analog Canvas Layout Implementation Record"
-  sections).
+  Grouped / Separate Analog Waveform Layout Implementation Record", "Phase
+  2C-B2 — Unified Analog Canvas Layout Implementation Record", and "Phase
+  2C-B3 — Right-Side Compact Lane Labels Implementation Record" sections).
 
 ## Current architecture status
 
@@ -449,10 +473,13 @@ View/Autoscale-Y toolbar, and a Grouped/Separate layout toggle (Separate
 displayed channel set or the current zoomed viewport) — built into the
 main app itself, this documentation set. **(Phase 2C-B2, DEC-026)**
 Separate mode now visually presents as one unified analog canvas (shared
-outer frame, borderless/hairline-divided lanes, narrow label column +
-maximum-width chart column per lane, only the bottom lane shows the
-shared time axis) — each lane still keeps its own independent Y axis;
-Grouped mode's own visual presentation is unchanged. No frontend
+outer frame, borderless/hairline-divided lanes, a maximum-width chart
+column per lane, only the bottom lane shows the shared time axis) — each
+lane still keeps its own independent Y axis; Grouped mode's own visual
+presentation is unchanged. **(Phase 2C-B3)** The Separate-mode lane label
+now sits as a small compact pill/tag on the RIGHT side of each lane
+(moved from the left, restyled as a subtle tag using existing Oruxa theme
+tokens) — the waveform column still keeps maximum width. No frontend
 framework, no database schema, no authentication, no CSV/Excel/digital-
 waveform/cursors-measurements/calculated-signal/synchronization features
 yet; **direct drag/reorder of panels, drag-to-overlay/group, drag-out-to-
@@ -726,12 +753,22 @@ A shared outer frame replaces N repeated panel cards, lanes are separated
 by a hairline divider instead of a card border, and only the bottom-most
 lane shows the shared time axis — each lane still keeps its own
 independent Y axis, and Grouped mode's own visual presentation is
-unchanged. **The owner's explicitly stated next direction — direct
+unchanged. Phase 2C-B2's own manual UAT passed and confirmed the unified-
+canvas direction is accepted ("Separate view now feels much better"), and
+the owner's next requested refinement — moving the lane label to a small
+compact tag on the right side, similar in placement/feel to Detego (used
+only as a layout reference) — is now also implemented: **Phase 2C-B3, a
+right-side compact label tag for Separate mode** — see
+[MIGRATION_PLAN.md — Phase 2C-B3 Implementation Record](MIGRATION_PLAN.md#phase-2c-b3--right-side-compact-lane-labels-implementation-record-2026-08-15).
+The existing legend chip (dot + channel name + unit + remove button) moved
+from the lane's left edge to its right edge and is now styled as a small
+pill using existing Oruxa theme tokens; the waveform column still keeps
+maximum width. **The owner's explicitly stated next direction — direct
 vertical drag/reorder of panels, drag-to-overlay/group, and drag-out-to-
 separate — remains explicitly not started and not authorized**, along
 with Custom layout mode, panel resize, Proportional Y scaling, mixed-unit
 handling, digital channels, and shared crosshair. The next step is for the
-project owner to review Phase 2C-B2 via live DEV UAT and either request
+project owner to review Phase 2C-B3 via live DEV UAT and either request
 further refinements, authorize the drag/reorder work directly (the
 owner's own stated next direction), or defer further Phase 2C work.
 Separately, resolving the

@@ -1428,6 +1428,19 @@ Impact:
   this decision** — they are the owner's stated *next* direction, not
   built here.
 
+**Update (2026-08-15, Phase 2C-B3, same day)**: following owner UAT
+confirming the unified-canvas direction itself is accepted ("Separate view
+now feels much better"), the lane label moved from the canvas's left edge
+to its right edge and was restyled as a small compact pill/tag (Detego
+used only as a placement/compactness reference, never for exact colors,
+typography, or icons — unchanged principle). This is a refinement of the
+same visual-presentation concern this decision already covers, not a new
+architectural direction — no new decision entry was added for it, per
+governance (only add an entry for something not already captured). See
+[MIGRATION_PLAN.md — Phase 2C-B3 Implementation Record](MIGRATION_PLAN.md#phase-2c-b3--right-side-compact-lane-labels-implementation-record-2026-08-15).
+The waveform column still keeps maximum available width; each lane still
+keeps its own independent Y axis; Grouped mode is still untouched.
+
 ---
 
 ## How to add a decision

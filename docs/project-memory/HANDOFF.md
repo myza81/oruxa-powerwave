@@ -8,6 +8,61 @@ Last updated: **2026-08-15**
 
 ## What was most recently done
 
+**Phase 2C-B3 — Right-Side Compact Lane Labels.** Following manual owner
+UAT of Phase 2C-B2 (**passed** — "Separate view now feels much better,
+unified analog canvas direction is accepted"), the owner's next requested
+refinement was moving the Separate-mode lane label to a small compact tag
+on the RIGHT side, similar in placement/feel to Detego — used only as a
+UI/layout reference (no colors/typography/icons/component styling
+copied). This was a small, deliberately-scoped VISUAL refinement of the
+existing lane label only. Full detail:
+[MIGRATION_PLAN.md — Phase 2C-B3 Implementation Record](MIGRATION_PLAN.md#phase-2c-b3--right-side-compact-lane-labels-implementation-record-2026-08-15),
+[DECISIONS.md — DEC-026 Update note](DECISIONS.md#dec-026--separate-modes-visual-presentation-is-a-unified-analog-canvas-phase-2c-b2)
+(no new decision entry — a refinement of the same visual-presentation
+concern DEC-026 already covers, per governance).
+
+**What was built**: the existing compact legend chip (dot + channel name
++ unit + remove button, unchanged since Phase 2C-A) moved from the lane's
+left edge to its right edge via a CSS grid-column swap on `.ww-panel`
+(`.ww-chart-wrap` is now `grid-column: 1`/`.ww-legend` is now
+`grid-column: 2` with `justify-self: end`) — the waveform column keeps
+maximum width, only which side got the fixed-width column changed. The
+tag is now an explicit small pill (`border-radius: 999px`, a subtle
+`var(--panel-border)` border, `var(--surface-tint)` background) using
+existing Oruxa theme tokens already proven across the rest of the app
+(DEC-023) — no Detego color/typography/icon was copied. A new
+`.ww-legend-label` wrapping span gives the text an ellipsis-truncation
+target (`max-width: 130px` on the tag) so an unusually long channel
+identifier can't crowd the waveform. The remove control and color dot are
+unchanged and still fit cleanly inside the tag — no interaction tradeoff
+was needed. The redundant per-lane header stays hidden (unchanged from
+Phase 2C-B2) — still exactly one label treatment per lane, just
+repositioned and restyled.
+
+**No architecture change**: Phase 2C-B2's unified-canvas container, lane
+dividers, compact lane height, and `wwUpdateBottomLaneAxis()`'s
+bottom-lane-only shared time axis are completely unchanged; Grouped
+mode's own CSS was not touched at all. No change to the shared-viewport
+synchronization mechanism, relayout loop-prevention, theme behavior,
+crosshair styling, point-budget, or source/workspace lifecycle — verified
+directly.
+
+**Backend**: zero files changed — same endpoint, same query parameters,
+confirmed by test.
+
+**Tests**: 278 backend (unmodified) + 16 new frontend `jsdom` checks + the
+full existing Phase 2C-B2 (20), Phase 2C-B1 (16), Phase 2C-A (19), and
+Phase 1 (4) suites all re-run unmodified and still passing (75 total this
+pass, no regressions). **Direct drag/reorder of panels, drag-to-
+overlay/group, drag-out-to-separate, digital-channel rendering, and lane
+resize were all explicitly not started.** Real-browser visual confirmation
+that the tag genuinely reads as compact/readable/low-clutter was not
+possible in this sandboxed, no-real-browser session — see this task's own
+final report for the closest available substitute evidence; final
+appearance judgment remains the owner's own manual UAT.
+
+## What was done in the prior session (Phase 2C-B2 — Unified Analog Canvas Layout)
+
 **Phase 2C-B2 — Unified Analog Canvas Layout.** Following manual owner
 UAT of Phase 2C-B1 (**passed** for synchronization, horizontal zoom, and
 pan; **refinement requested** for Separate mode's visual layout, which
@@ -624,7 +679,45 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified (this pass — Phase 2C-B2 unified analog canvas layout)
+## What was verified (this pass — Phase 2C-B3 right-side compact lane labels)
+
+- `oruxa_powerwave` git state: local `main` confirmed identical to
+  `origin/main` at commit `9fcc2d8` (independent `git fetch` via the
+  established HTTPS-URL workaround), working tree clean, before this pass
+  began.
+- **Backend regression: 278 tests, unmodified, all still pass** (fresh
+  venv run) — zero backend files in the diff (`git diff --stat -- backend/`
+  empty; diff scoped to `frontend/index.html` only).
+- **Frontend, new: 16 scripted `jsdom` checks, all passing** — CSS-source
+  checks confirming the chart/label grid columns swapped sides and the
+  label is now a compact pill (border-radius/max-width); a new
+  `.ww-legend-label` span exists per lane for ellipsis truncation;
+  displayed-channel identity is correct in each tag (name + unit); the
+  remove control and color dot are preserved inside the tag; 6 lanes still
+  render with the unified-canvas class; only the bottom lane still shows
+  the shared X axis; Grouped mode still groups correctly and never applies
+  the unified class; zoom/pan/Reset Time View/Autoscale Y/no-modebar all
+  still work; theme switching re-colors without refetching and the tag has
+  no inline color override; Grouped↔Separate still preserves viewport and
+  displayed channels; removal via the tag's remove button still removes
+  the whole lane; waveform query-parameter whitelist unchanged.
+- **Frontend, existing: the full Phase 2C-B2 (20), Phase 2C-B1 (16), Phase
+  2C-A (19), and Phase 1 (4) suites were all re-run unmodified against
+  this pass's code and all still pass in full** — 59 existing checks,
+  zero regressions (75 total this pass).
+- `node --check` on `frontend/index.html`'s inline `<script>` block —
+  syntactically valid.
+- `grep` cross-check: every `getElementById(...)` call resolves to an
+  `id=` that actually exists; no duplicate IDs.
+- No real-browser/visual verification of whether the tag genuinely reads
+  as compact/readable/low-clutter to a human eye was performed in this
+  sandboxed session (no headless browser available) — see "Live DEV
+  verification" in this task's final report for what was checked instead
+  (API-level evidence only), and its own explicit statement about what's
+  honestly unverified. Final visual-appearance judgment remains the
+  owner's own manual UAT.
+
+## What was verified (prior pass — Phase 2C-B2 unified analog canvas layout)
 
 - `oruxa_powerwave` git state: local `main` confirmed identical to
   `origin/main` at commit `60a77bb` (independent `git fetch` via the
@@ -1022,7 +1115,21 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 2C-B2 unified analog canvas layout)
+## What files were changed this session (Phase 2C-B3 right-side compact lane labels)
+
+Modified only: `frontend/index.html` (grid-column order swapped in the
+`#wwPanels.ww-panels-unified .ww-panel` CSS so the chart is column 1 and
+the label is column 2 with `justify-self: end`; `.ww-legend-item`
+restyled as a compact pill; a new `.ww-legend-label` rule for ellipsis
+truncation; `wwRenderLegend()` now wraps each channel's text in a
+`<span class="ww-legend-label">`; the module header comment updated),
+`docs/project-memory/{DECISIONS,MIGRATION_PLAN,CURRENT_STATE,HANDOFF}.md`
+(an "Update" note appended to DEC-026, no new decision entry; this work).
+No new files. **No `frontend/waveform-prototype.html`/`theme.css`/
+`theme.js` change, no `backend/` file, no CI/deployment workflow file was
+touched.**
+
+## What files were changed in the prior session (Phase 2C-B2 unified analog canvas layout)
 
 Modified only: `frontend/index.html` (new CSS rules scoped under
 `#wwPanels.ww-panels-unified` for the unified-canvas presentation; a
@@ -1256,7 +1363,7 @@ Modified:
 See "GitHub persistence" and "DEV deployment" in this task's final report
 (delivered in-conversation) for the exact commit hash, push confirmation,
 independent-fetch verification, GitHub Actions run, and live-endpoint
-checks for this Phase 2C-B2 pass. **Production was not touched.**
+checks for this Phase 2C-B3 pass. **Production was not touched.**
 
 ## What remains unresolved
 
@@ -1266,19 +1373,21 @@ checks for this Phase 2C-B2 pass. **Production was not touched.**
   mode, panel resize, Proportional Y scaling, mixed-unit panel handling,
   digital-channel display, shared crosshair — every one of these remains
   `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`, not
-  `[DECISION]`. This pass (Phase 2C-B2) was a VISUAL refinement of
-  Separate mode only (DEC-026) — it did **not** touch any of the
-  drag/reorder/overlay items above, which remain the owner's own stated
-  *next* direction, not started.
+  `[DECISION]`. This pass (Phase 2C-B3) was a VISUAL refinement of the
+  existing Separate-mode lane label only (an update to DEC-026, not a new
+  decision) — it did **not** touch any of the drag/reorder/overlay items
+  above, which remain the owner's own stated *next* direction, not
+  started.
 - `[OPEN]` **Unchanged, still real**: abandoned-workspace cleanup still
   has no automatic expiry/TTL. `[DECISION MODE: COMPARISON]` — neither
-  Phase 2C-A, Phase 2C-B1, nor Phase 2C-B2 changes the backend
-  memory-retention shape (still per-*source*, DEC-019, unaffected by how
-  many panels/channels, which layout mode, or which visual presentation a
-  UI displays against it), but a real, now-more-flexible multi-channel
-  workspace is plausibly a richer, longer-lived thing to explore than
-  Phase 2B's single-channel preview was, which raises (not resolves) the
-  same urgency already flagged for Phase 2A/2B/2C-A/2C-B1. See
+  Phase 2C-A, Phase 2C-B1, Phase 2C-B2, nor Phase 2C-B3 changes the
+  backend memory-retention shape (still per-*source*, DEC-019, unaffected
+  by how many panels/channels, which layout mode, or which visual
+  presentation a UI displays against it), but a real, now-more-flexible
+  multi-channel workspace is plausibly a richer, longer-lived thing to
+  explore than Phase 2B's single-channel preview was, which raises (not
+  resolves) the same urgency already flagged for Phase
+  2A/2B/2C-A/2C-B1/2C-B2. See
   [MIGRATION_PLAN.md's Phase 2C §30](MIGRATION_PLAN.md#phase-2c--flexible-multi-channel-waveform-workspace-discovery-and-design-2026-08-15)
   and DEC-019's Impact section.
 - `[OPEN]`, unchanged: digital waveform handling (no digital rendering or
@@ -1291,18 +1400,18 @@ checks for this Phase 2C-B2 pass. **Production was not touched.**
   currently bearable; and vertical (Y-axis) zoom being less intuitive
   than the rest of the toolbar — both explicitly flagged for a **later**
   UX refinement pass, not this one.
-- **Unchanged from Phase 2C-A/B1**: real-browser rendering responsiveness
-  and actual visual appearance (whether the six lanes genuinely read as
-  "one canvas") were not visually confirmed in this sandboxed,
-  no-real-browser session — see this task's final report for the API/
-  structural-level DEV evidence gathered instead. Final appearance
-  judgment remains the owner's own manual UAT.
+- **Unchanged from Phase 2C-A/B1/B2**: real-browser rendering
+  responsiveness and actual visual appearance (whether the tag genuinely
+  reads as compact/readable/low-clutter) were not visually confirmed in
+  this sandboxed, no-real-browser session — see this task's final report
+  for the API/structural-level DEV evidence gathered instead. Final
+  appearance judgment remains the owner's own manual UAT.
 
 ## What should be done next
 
-The next step is for the **project owner** to review Phase 2C-B2 via live
+The next step is for the **project owner** to review Phase 2C-B3 via live
 DEV UAT (this task's own checklist) and choose a direction — none is
-assumed here: (a) confirm the unified-canvas appearance now matches what
+assumed here: (a) confirm the right-side compact label now matches what
 was intended, or request further visual refinement; (b) authorize the
 drag/reorder/overlay/split work directly (the owner's own explicitly
 stated next direction — vertical lane drag, reorder, drop-to-overlay/
@@ -1310,10 +1419,10 @@ group, drag-out-to-separate); or (c) address the Phase 2C-A UAT findings
 (interaction latency, vertical-zoom discoverability) before further layout
 work. Do **not** begin any drag/reorder/overlay implementation without an
 explicit signal — this task's own closing instruction was to stop after
-the unified canvas refinement. Separately, resolving the abandoned-session
-TTL question and the ~100 MB real-file memory validation remain
-recommended before broader/prolonged shared-DEV UAT, unchanged conclusion
-from every prior Phase 2 pass.
+the right-side label refinement. Separately, resolving the
+abandoned-session TTL question and the ~100 MB real-file memory
+validation remain recommended before broader/prolonged shared-DEV UAT,
+unchanged conclusion from every prior Phase 2 pass.
 
 ## What must not be assumed
 
@@ -1331,6 +1440,13 @@ from every prior Phase 2 pass.
 - **Do not assume digital channels or a digital-section container exist**
   — neither was built this pass; no digital content, fake or real, exists
   anywhere in the repository.
+- **Do not assume the right-side label move changed anything besides the
+  tag's position/styling** — it did not; the same `.ww-legend`/
+  `.ww-legend-item` DOM (now with one added `.ww-legend-label` wrapping
+  span), the same remove control, the same color dot, the same panel/data
+  model, and the same unified-canvas container from Phase 2C-B2 are all
+  unchanged. Only the CSS grid-column order and the tag's own styling
+  moved.
 - **Do not assume Separate is the default** — Grouped is, unchanged from
   Phase 2C-A; Separate is opt-in via the new toolbar toggle.
 - **Do not assume channels are permanently locked to their panel in
@@ -1383,9 +1499,9 @@ from every prior Phase 2 pass.
 
 ## Owner approval needed before proceeding?
 
-- Not needed to review or use Phase 2C-A, Phase 2C-B1, or Phase 2C-B2
-  themselves — already implemented, deployed to DEV, and live-verified per
-  this exact task's own authorization.
+- Not needed to review or use Phase 2C-A, Phase 2C-B1, Phase 2C-B2, or
+  Phase 2C-B3 themselves — already implemented, deployed to DEV, and
+  live-verified per this exact task's own authorization.
 - **Yes**, before any drag/reorder/overlay/split work begins (the owner's
   own stated next direction, but still not yet explicitly authorized to
   *implement*), before Custom layout mode or panel resize, before Phase
