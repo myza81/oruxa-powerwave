@@ -4,9 +4,42 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-08-16**
+Last updated: **2026-08-17**
 
 ## What was most recently done
+
+**Phase 3B-UAT1 — Recording Row Divider Alignment.** Owner manual UAT
+of the Recordings page found one cosmetic issue: the Actions column's
+bottom row divider sat higher than the divider under the other columns
+instead of one continuous line. Full detail:
+[MIGRATION_PLAN.md — Phase 3B-UAT1 Record](MIGRATION_PLAN.md#phase-3b-uat1--recording-row-divider-alignment-2026-08-17).
+
+**Root cause**: the Actions `<td>` carried `.recording-actions`
+directly, and that class sets `display: flex` — overriding the cell's
+`display` away from `table-cell` and removing it from the browser's
+normal same-row-height cell-stretching, so it collapsed to its own
+shorter content height while sibling cells stretched to the row's
+tallest cell.
+
+**Fix**: the flex layout now lives on an inner `<div
+class="recording-actions">` inside a plain, unclassed `<td>` — the
+`<td>` itself is a normal table-cell again, stretching/aligning its
+border like every other cell. No column widths, button behavior,
+Open/Analyse/Remove handlers, search, Phase 3A-UAT4 containment, or
+responsive scrolling changed.
+
+**Verification**: 7 new frontend `jsdom` checks
+(`phase3buat1_check.mjs`) + the full existing Phase 1 through Phase 3B
+suites — the exact same 20 pre-existing, already-documented failures,
+zero new divergences. Backend: zero diff, 279/279 passing in a fresh
+venv.
+
+**Backend**: zero files changed. **Real-browser visual confirmation —
+whether the divider now reads as one continuous line across the full
+table width — was NOT and cannot be confirmed in this sandboxed
+session; this remains explicitly for the owner's own manual UAT.**
+
+## What was done in the prior session (Phase 3B — Recordings Page and Upload Workflow)
 
 **Phase 3B — Recordings Page and Upload Workflow.** Following the
 owner's own "finish this area before introducing additional features"
@@ -2743,7 +2776,18 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 3B recordings page and upload workflow)
+## What files were changed this session (Phase 3B-UAT1 recording row divider alignment)
+
+Modified only: `frontend/index.html` (moved `.recording-actions`'s flex
+layout from the Actions `<td>` itself onto a new inner `<div>`, plus one
+explanatory CSS comment). No new files. **No `backend/` file, no
+CI/deployment workflow file was touched.** Project memory:
+`MIGRATION_PLAN.md`, `CURRENT_STATE.md`, `HANDOFF.md` updated;
+`DECISIONS.md` intentionally NOT touched (a cosmetic correction within
+the already-decided DEC-032 Recordings page, not a new/revised
+decision).
+
+## What files were changed in the prior session (Phase 3B recordings page and upload workflow)
 
 Modified: `frontend/index.html` (the bulk of this phase — new
 Recordings page markup/CSS/JS, new upload modal, Main Sidebar Menu

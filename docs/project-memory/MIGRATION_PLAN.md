@@ -7511,6 +7511,73 @@ right at real widths were reasoned through and verified structurally
 
 ---
 
+## Phase 3B-UAT1 — Recording Row Divider Alignment (2026-08-17)
+
+`[FACT]`. Owner manual UAT of the Recordings page found one cosmetic
+issue: the Actions column's bottom row divider sat visibly higher than
+the divider under every other column, instead of one continuous line
+across the full row width.
+
+**Root cause (established by code inspection, not guessed)**: the
+Actions `<td>` carried the `.recording-actions` class directly
+(`<td class="recording-actions">`), and that class sets
+`display: flex` — overriding the cell's `display` away from the
+default `table-cell`. That removed it from the browser's normal
+same-row-height cell-stretching behavior every OTHER (unstyled-display)
+`<td>` in the row still received, so the Actions cell collapsed to its
+own shorter content height while sibling cells stretched to the row's
+tallest cell. Its `border-bottom` (the same shared rule every cell
+already uses, `table.recordings th, td { border-bottom: ... }`) was
+therefore drawn at a different, higher position whenever any other cell
+in that row was taller — which is also why the misalignment was
+reported as inconsistent/cosmetic rather than a hard layout break.
+
+**Fix**: the flex layout (`display: flex; gap: 8px;`) now lives on an
+inner `<div class="recording-actions">` wrapping the two action
+buttons, inside a plain, unclassed `<td>`. The `<td>` itself is once
+again a normal table-cell, so it stretches and aligns its border
+exactly like every other cell in the row — the row (`<tr>`), not
+independent per-cell styling, is what makes every cell share one bottom
+boundary. No column widths, button behavior, Open/Analyse/Remove
+handlers, search, containment (Phase 3A-UAT4's `overflow-wrap`/
+`min-width` technique on `.recording-name`/`.recording-files` is
+untouched), or responsive horizontal scrolling were changed.
+
+### Tests
+
+- **Frontend, new**: `phase3buat1_check.mjs` (scratch, not committed) —
+  7/7 passing. Confirms no CSS/markup ties the flex class to a `<td>`
+  anywhere in the source; the Actions cell in a rendered row is a plain,
+  unclassed `<td>` wrapping the inner flex div; the shared
+  `border-bottom` rule is the only one that applies (no competing,
+  more-specific rule for the Actions column); the same corrected
+  structure holds across multiple rows; a long/wrapping recording name
+  doesn't change the Actions cell's structure; and Open/Analyse and
+  Remove both remain fully functional after the change.
+- **Frontend, existing**: the full Phase 1 through Phase 3B suites
+  re-run — the exact same 20 pre-existing, already-documented failures,
+  zero new divergences.
+- **Backend**: zero diff, 279/279 passing in a fresh venv (no backend
+  file touched).
+
+### Files changed
+
+Modified: `frontend/index.html` only (one CSS comment, one markup
+change moving `.recording-actions` from the `<td>` to an inner `<div>`).
+No backend file, no CI/deployment workflow file. `DECISIONS.md` not
+touched — a cosmetic correction within the already-decided Phase 3B
+Recordings page (DEC-032), not a new/revised decision.
+
+### Honest limitation
+
+No real browser is available in this sandbox. Whether the row divider
+now visually reads as one continuous line across the full table width,
+exactly as the owner's own reference evidence called for, was reasoned
+through via the CSS/markup root-cause fix above but not visually
+confirmed — flagged for owner UAT.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

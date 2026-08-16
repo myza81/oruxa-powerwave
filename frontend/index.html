@@ -338,6 +338,24 @@
         .recording-name { font-weight: 600; color: var(--text); overflow-wrap: anywhere; max-width: 100%; }
         .recording-files { font-size: 0.76rem; color: var(--text-dim); margin-top: 2px; overflow-wrap: anywhere; max-width: 100%; }
         td.recording-name-cell { min-width: 0; max-width: 320px; }
+        /* Phase 3B-UAT1 (owner UAT, root cause): this class used to be
+           applied directly to the Actions <td>, which overrode that one
+           cell's `display` away from the default `table-cell` --
+           removing it from the browser's normal same-row-height
+           stretching that every OTHER (unstyled-display) <td> in the row
+           still gets. The Actions cell then collapsed to its own
+           (shorter) content height, so its shared `border-bottom` (the
+           same rule every cell gets, from `table.recordings td` above)
+           was drawn higher than the row's actual bottom whenever any
+           other cell in that row was taller -- e.g. a wrapped recording
+           name/filename. Fix: the flex layout now lives on an INNER div
+           inside a plain, unclassed <td> (see renderRecordingsTable()'s
+           own markup), so the <td> itself stays a normal table-cell and
+           stretches/aligns its border exactly like every other cell in
+           the row. The row
+           (<tr>), not independent per-cell styling, is what makes every
+           cell share one bottom boundary -- this fix restores that by
+           no longer opting the Actions cell out of it. */
         .recording-actions { display: flex; gap: 8px; white-space: nowrap; }
         #recordingsEmpty { text-align: center; padding: 48px 24px; }
         #recordingsEmpty p { margin: 0 0 16px; }
@@ -2476,12 +2494,12 @@
                     '<td>' + source.analog_channel_count + 'A + ' + source.digital_channel_count + 'D</td>' +
                     '<td>' + formatRecordingDuration(source.duration_seconds) + '</td>' +
                     '<td>' + formatImportedAt(source.created_at) + '</td>' +
-                    '<td class="recording-actions">' +
+                    '<td><div class="recording-actions">' +
                         '<button type="button" class="secondary" data-action="open" data-source-id="' +
                         escapeHtml(source.source_id) + '">Open / Analyse</button>' +
                         '<button type="button" class="danger" data-action="remove" data-source-id="' +
                         escapeHtml(source.source_id) + '" data-source-name="' + escapeHtml(name) + '">Remove</button>' +
-                    '</td>' +
+                    '</div></td>' +
                 '</tr>';
             }
             bodyEl.innerHTML = html;

@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-16** (Phase 3B).
+Last meaningful update: **2026-08-17** (Phase 3B-UAT1).
 
 ## Development phase
 
@@ -772,6 +772,23 @@ default `[hidden]` rule by origin, regardless of specificity) — explicit
 browser visual confirmation of the Recordings page layout, the upload
 modal's format selector, and long-filename wrapping in the Recording
 column — flagged for owner UAT.
+
+`[FACT]` **Owner UAT of the Recordings page found one cosmetic issue —
+Phase 3B-UAT1 — Recording Row Divider Alignment — is now implemented**
+(2026-08-17) — see
+[MIGRATION_PLAN.md — Phase 3B-UAT1 Record](MIGRATION_PLAN.md#phase-3b-uat1--recording-row-divider-alignment-2026-08-17).
+The Actions column's bottom row divider sat higher than the divider
+under the other columns. **Root cause**: the Actions `<td>` carried the
+`.recording-actions` flex class directly, overriding its `display`
+away from `table-cell` and removing it from the browser's normal
+same-row-height cell stretching. **Fix**: the flex layout now lives on
+an inner `<div>` inside a plain, unclassed `<td>`, so every cell in a
+row shares one border position again. No workflow, column widths, or
+containment behavior changed. No backend file changed (279 tests
+unmodified and passing); 7 new frontend `jsdom` checks passing
+(`phase3buat1_check.mjs`). **Unverified**: real-browser visual
+confirmation that the divider now reads as one continuous line —
+flagged for owner UAT.
 
 ## Completed foundation work
 
