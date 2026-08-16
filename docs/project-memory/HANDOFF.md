@@ -8,6 +8,66 @@ Last updated: **2026-08-16**
 
 ## What was most recently done
 
+**Phase 3A-UAT4 — Channel Filename Containment.** Owner manual UAT of
+Phase 3A-UAT3's overflow hardening found one remaining real overflow
+case, with browser evidence: in the Workspace Sidebar's Channels →
+source-detail section, uploaded CFG/DAT filenames (e.g.
+`260725_1309444309_Tanjung Bin BEN6K.cfg`/`.dat`) could still visibly
+extend past the Channels panel at a narrowed Sidebar width — despite
+Phase 3A-UAT3's own Finding C already having added `overflow-wrap:
+anywhere` to the filename text elements. Full detail:
+[MIGRATION_PLAN.md — Phase 3A-UAT4 Record](MIGRATION_PLAN.md#phase-3a-uat4--channel-filename-containment-2026-08-16).
+
+**Root cause (established by code inspection, not guessed)**:
+`.detail-header` is a flex CONTAINER with a single flex-item child — an
+unnamed, unstyled wrapping `<div>` holding the station-name `<h3>` and
+the filenames `.meta`. Phase 3A-UAT3's Finding C fix put
+`overflow-wrap: anywhere` on the TEXT elements but never gave their
+PARENT flex item its own `min-width: 0`. A flex item's automatic
+minimum width defaults to its content's un-shrunk min-content size (the
+well-known `min-width: auto` flex trap — the exact same class of bug
+already fixed at the SHELL level in Phase 3A-UAT1/UAT3, recurring one
+level deeper here, inside the Channels detail card). Text-level wrap
+rules only take effect once the box AROUND the text can actually become
+narrower than its unwrapped content — without that, the whole
+station-name + filenames block stayed at full width regardless of the
+text's own `overflow-wrap` setting. `white-space` inheritance and
+inline/span wrapping issues were both checked and ruled out.
+
+**Fix**: the previously-unnamed flex-item wrapper now has a real class,
+`.detail-header-info` (`min-width: 0; max-width: 100%;` — the actual
+root-cause fix). `.detail-header h3`/`.meta` additionally gained
+explicit `white-space: normal; max-width: 100%;` alongside their
+existing `overflow-wrap: anywhere` — belt-and-braces caps at every link
+in the chain. No truncation, no ellipsis, no shortened/fake filename
+string — the full CFG/DAT filename remains completely readable, now
+correctly wrapping across multiple lines at narrow widths.
+`word-break: break-word` was deliberately NOT added — `overflow-wrap:
+anywhere` alone is sufficient (it, unlike `break-word`, is specified to
+also reduce the element's own min-content contribution).
+
+**Verification**: 12 new frontend `jsdom` checks
+(`phase3auat4_check.mjs` — the owner's own exact CFG/DAT filenames, a
+longer underscore-heavy/unbroken-token stress fixture, and a
+520px/320px/240px Sidebar-width matrix) + the full existing Phase 1
+through Phase 3A-UAT3 suites — the exact same 20 pre-existing,
+already-documented failures, zero new divergences. Backend: zero diff,
+278/278 passing in a fresh venv.
+
+**Scope discipline**: filename containment only — Workspace Sidebar
+resize bounds, Main Workspace reflow, Plotly resizing, Grouped/Separate/
+Custom, the sticky ruler, panel-height resize, the responsive drawer,
+Custom Groups, and header/status-bar layout are all confirmed unchanged
+by test.
+
+**Backend**: zero files changed. **Real-browser visual confirmation —
+whether the filename now visibly wraps exactly as the owner's own
+reference example showed — was NOT and cannot be confirmed in this
+sandboxed session; this remains explicitly for the owner's own manual
+UAT.**
+
+## What was done in the prior session (Phase 3A-UAT3 — Targeted Overflow and Containment Fixes)
+
 **Phase 3A-UAT3 — Targeted Overflow and Containment Fixes.** An
 independent Codex audit of the Phase 3A shell (run against a local
 working tree that could not reach GitHub — SSH authentication failure)
@@ -2564,7 +2624,20 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 3A-UAT3 targeted overflow and containment fixes)
+## What files were changed this session (Phase 3A-UAT4 channel filename containment)
+
+Modified only: `frontend/index.html` (new `.detail-header-info` class
+with `min-width: 0; max-width: 100%;`, applied to the previously-unnamed
+flex-item wrapper in `renderChannels()`'s markup; `.detail-header
+h3`/`.meta` gained explicit `white-space: normal; max-width: 100%;`
+alongside their existing `overflow-wrap: anywhere`). No new files. **No
+`backend/` file, no CI/deployment workflow file was touched.** Project
+memory: `MIGRATION_PLAN.md`, `CURRENT_STATE.md`, `HANDOFF.md` updated;
+`DECISIONS.md` intentionally NOT touched (a targeted correction within
+the already-decided DEC-031 shell architecture and its own Phase
+3A-UAT3 containment pass, not a new/revised decision).
+
+## What files were changed in the prior session (Phase 3A-UAT3 targeted overflow and containment fixes)
 
 Modified only: `frontend/index.html` (CSS containment rules for Findings
 A/B/C/D/G; `shellSetActiveView()` resize call for Finding E;
@@ -3011,7 +3084,7 @@ Modified:
 See "GitHub persistence" and "DEV deployment" in this task's final report
 (delivered in-conversation) for the exact commit hash, push confirmation,
 independent-fetch verification, GitHub Actions run, and live-endpoint
-checks for this Phase 3A-UAT3 pass. **Production was not touched.**
+checks for this Phase 3A-UAT4 pass. **Production was not touched.**
 
 ## What remains unresolved
 
@@ -3064,24 +3137,28 @@ checks for this Phase 3A-UAT3 pass. **Production was not touched.**
 
 ## What should be done next
 
-**Phase 3A-UAT1 (width-reflow) and Phase 3A-UAT2 (duplicate theme
-control removal) already passed/are pending the SAME review cadence —
-UAT2's own review is still outstanding from the prior pass.** The next
-step is for the **project owner** to review BOTH the Phase 3A-UAT2
-cleanup AND this Phase 3A-UAT3 overflow/containment pass via live DEV
-UAT: confirm the Global Header reads cleanly with no leftover gap;
-confirm Settings is reachable/functional in both Main Sidebar Menu
-states; confirm Light/Dark still works app-wide; then specifically for
-UAT3 — narrow the Workspace Sidebar to 240px and confirm the channel
-table stays usable (scrolls rather than breaks); check long source/
-channel names if a real event with them is available; check Grouped and
-Custom mode legend chips with long channel names; narrow the browser
-around the ~900px responsive threshold and confirm the Sidebar becomes a
-reopenable drawer (via the "Sources" button) at a SAFE width, not an
-inline desktop width; switch to the Table placeholder, resize something,
-then switch back to Waveform and confirm it isn't visually stale; and
-generally confirm no panel/dialog/table visibly overflows its own frame
-anywhere in this pass's touched areas. This is a small, targeted
+**Phase 3A-UAT1 (width-reflow) passed owner UAT. Phase 3A-UAT2
+(duplicate theme control removal) and Phase 3A-UAT3 (broader overflow
+hardening) reviews are still outstanding — Phase 3A-UAT3's OWN manual
+UAT is what surfaced the filename bug this Phase 3A-UAT4 pass just
+fixed, so at least that portion of UAT3 has already been exercised by
+the owner.** The next step is for the **project owner** to review Phase
+3A-UAT2 through UAT4 together via live DEV UAT: confirm the Global
+Header reads cleanly with no leftover gap; confirm Settings is
+reachable/functional in both Main Sidebar Menu states; confirm
+Light/Dark still works app-wide; narrow the Workspace Sidebar to 240px
+and confirm BOTH the channel table (scrolls rather than breaks) AND the
+CFG/DAT filenames in the source-detail section (wrap across multiple
+lines, fully readable, no horizontal escape — this is the specific
+Phase 3A-UAT4 fix) stay contained; check long source/channel names if a
+real event with them is available; check Grouped and Custom mode legend
+chips with long channel names; narrow the browser around the ~900px
+responsive threshold and confirm the Sidebar becomes a reopenable
+drawer (via the "Sources" button) at a SAFE width, not an inline desktop
+width; switch to the Table placeholder, resize something, then switch
+back to Waveform and confirm it isn't visually stale; and generally
+confirm no panel/dialog/table/text visibly overflows its own frame
+anywhere in these passes' touched areas. This is a small, targeted
 containment pass — no other layout, sizing, or shell-structural behavior
 should have changed. If confirmed clean: no further action needed, and
 the still-open Phase 3A dimension/spacing feedback remains welcome
@@ -3090,7 +3167,7 @@ specific control/width/mode — do **not** assume the outcome. Separately,
 the owner may choose to: (a) request further Phase 3A dimension/spacing
 refinements; (b) authorize the drag/reorder/overlay/split work directly
 (still the owner's own possible next direction, deliberately set aside
-across eleven passes now, not abandoned); (c) request the
+across twelve passes now, not abandoned); (c) request the
 still-outstanding Grouped/Custom axis-duplication cleanup (Phase
 2C-C4's own section 16 gap, unchanged across four passes now); (d)
 authorize real Table/Split view implementation (explicitly NOT
@@ -3104,6 +3181,17 @@ unchanged conclusion from every prior Phase 2 pass.
 
 ## What must not be assumed
 
+- **Do not assume `.detail-header`'s station-name/filename child `<div>`
+  is still unnamed/unstyled** — as of Phase 3A-UAT4 it has a real class,
+  `.detail-header-info` (`min-width: 0; max-width: 100%;`). This is the
+  ACTUAL root-cause containment fix for the Channels source-detail
+  filename overflow; `overflow-wrap: anywhere` alone on the text elements
+  (Phase 3A-UAT3's own Finding C fix) was NOT sufficient by itself,
+  because the flex item wrapping them never had `min-width: 0`. If a
+  similar filename/long-text overflow is ever reported elsewhere in a
+  flex layout, check the PARENT flex item's `min-width` first, not just
+  the text element's own `overflow-wrap` — a text-level fix alone can be
+  silently ineffective if its containing flex item can't shrink.
 - **Do not assume `jsdom` implements `window.matchMedia`** — it does not,
   at all. `shellSyncSidebarWidthForBreakpoint()` (Phase 3A-UAT3, Finding
   F) calls it unconditionally at Init, so any NEW scratch test script
@@ -3445,23 +3533,25 @@ unchanged conclusion from every prior Phase 2 pass.
 - Not needed to review or use Phase 2C-A, Phase 2C-B1, Phase 2C-B2, Phase
   2C-B3, Phase 2C-B3A, Phase 2C-C1, Phase 2C-C2, Phase 2C-C2A, Phase
   2C-C3, Phase 2C-C4, Phase 2C-C4A, Phase 2C-C4B, Phase 3A, Phase
-  3A-UAT1, Phase 3A-UAT2, or Phase 3A-UAT3 themselves — already
-  implemented, deployed to DEV, and live-verified per this exact task's
-  own authorization. **Recommended, though**: an owner UAT specifically
-  confirming (a) the Global Header now reads cleanly with no leftover
-  gap where the removed Light/Dark control sat, (b) the Main Sidebar
-  Menu's "Settings" item remains comfortably reachable/usable in both
-  collapsed and expanded states, and (c) the Phase 3A-UAT3 overflow
-  fixes hold up visually — Workspace Sidebar at 240px, long source/
-  channel names if available, Grouped/Custom long legends, narrow-
-  browser behavior around the ~900px responsive threshold, sidebar
-  drawer reopen, and Waveform → placeholder → Waveform — plus the
+  3A-UAT1, Phase 3A-UAT2, Phase 3A-UAT3, or Phase 3A-UAT4 themselves —
+  already implemented, deployed to DEV, and live-verified per this exact
+  task's own authorization. **Recommended, though**: an owner UAT
+  specifically confirming (a) the Global Header now reads cleanly with
+  no leftover gap where the removed Light/Dark control sat, (b) the
+  Main Sidebar Menu's "Settings" item remains comfortably
+  reachable/usable in both collapsed and expanded states, (c) the Phase
+  3A-UAT3 overflow fixes hold up visually — Workspace Sidebar at 240px,
+  Grouped/Custom long legends, narrow-browser behavior around the
+  ~900px responsive threshold, sidebar drawer reopen, and
+  Waveform → placeholder → Waveform, and (d) the Phase 3A-UAT4 fix
+  specifically — the owner's own reported CFG/DAT filenames now wrap
+  fully within the Sidebar at 240px with no horizontal escape — plus the
   still-open Phase 3A proportions/dimensions feedback and the
   still-carried-forward Phase 2C-C4A tick-alignment-at-rescaled-units
   claim — none of which could be visually confirmed in this sandbox.
 - **Yes**, before any drag/reorder/overlay/split work begins (still the
   owner's own possible next direction, deliberately set aside across
-  eleven passes now, but still not yet explicitly authorized to
+  twelve passes now, but still not yet explicitly authorized to
   *implement* — Phase 3A's shell only avoids blocking it
   architecturally), before REAL Table or Split view implementation
   (explicitly not authorized yet — only structural placeholders exist),

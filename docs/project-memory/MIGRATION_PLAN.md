@@ -7151,6 +7151,130 @@ for owner UAT.
 
 ---
 
+## Phase 3A-UAT4 — Channel Filename Containment (2026-08-16)
+
+`[FACT]` throughout. Owner manual UAT of Phase 3A-UAT3's overflow
+hardening found ONE remaining real overflow case, with browser evidence:
+in the Workspace Sidebar's Channels → source details section, the
+uploaded CFG/DAT filenames (e.g. `260725_1309444309_Tanjung Bin
+BEN6K.cfg` / `.dat`) could visibly extend past the Channels panel at a
+narrowed Sidebar width, despite Phase 3A-UAT3's own Finding C already
+having added `overflow-wrap: anywhere` to `.detail-header h3`/`.meta`.
+
+### Root cause (established by code inspection, not guessed)
+
+`.detail-header` is a flex CONTAINER (`display: flex`) with a single
+flex ITEM child — an unnamed, unstyled wrapping `<div>` holding the
+station-name `<h3>` and the filenames `.meta`. Phase 3A-UAT3's Finding C
+fix put `overflow-wrap: anywhere` on the TEXT elements (`h3`/`.meta`)
+but never gave their PARENT flex item its own `min-width: 0`. A flex
+item's automatic minimum width defaults to its content's un-shrunk
+("min-content") size (the well-known `min-width: auto` flex trap — the
+exact same class of bug already fixed at the SHELL level in Phase
+3A-UAT1/UAT3, just one level deeper here, inside the Channels detail
+card rather than the shell's own regions). Text-level wrap rules only
+take effect once the box AROUND the text is actually permitted to
+become narrower than its unwrapped content — without `min-width: 0` on
+that flex item, the whole station-name + filenames block stayed at its
+full, un-shrunk width and visibly overflowed the Workspace Sidebar
+regardless of the text's own `overflow-wrap` setting. `white-space`
+inheritance was checked and ruled out (no ancestor of `.detail-header`
+sets `white-space: nowrap`/`pre`); no `inline`/`span` wrapping issue was
+found (`.meta` is already a block-level `<div>`); the actual filename
+element already had the correct `overflow-wrap` property, just on a box
+whose parent refused to shrink.
+
+### Fix
+
+The previously unnamed flex-item wrapper now has a real class,
+`.detail-header-info` (`renderChannels()`'s own markup:
+`'<div class="detail-header"><div class="detail-header-info">'`), with
+`min-width: 0; max-width: 100%;` — the actual root-cause fix.
+`.detail-header h3`/`.meta` additionally gained explicit `white-space:
+normal; max-width: 100%;` alongside their existing `overflow-wrap:
+anywhere` — `white-space: normal` documents (and guards against any
+future accidental override) the already-default wrapping behavior;
+`max-width: 100%` is a belt-and-braces cap at every link in the chain so
+no element in this path can ever exceed its parent's width, even if a
+future change reintroduces an oversized child. No truncation, no
+ellipsis, no shortened/fake filename string — the full CFG/DAT filename
+remains completely readable, wrapping across multiple lines at narrow
+widths exactly as the owner's own example showed. `.group-body`'s
+`overflow-x: auto` (Phase 3A-UAT3, Finding B, the channel TABLE's own
+containment) is untouched and unrelated — this is a different element
+in the same Channels section.
+
+### Filename behavior at each Sidebar width
+
+Verified structurally (no real browser in this sandbox) at 520px, the
+320px default, and the 240px minimum: the filename text is always fully
+present in the DOM (nothing truncated at the data level) and every
+element in the containment chain (`.detail-header-info` → `.meta`) is
+bounded by `min-width: 0`/`max-width: 100%`, so it cannot force its
+parent — the Sidebar itself, or Main Workspace beside it — any wider.
+At 240px the filename is expected to wrap across several lines, which
+this task's own spec explicitly accepts as correct behavior; what is
+not acceptable, and is now prevented, is horizontal escape.
+
+### Long-token handling
+
+Underscore-heavy segments and one deliberately long unbroken token
+(stress fixture: `260725_1309444309_VERY_LONG_TANJUNG_BIN_GENERATING_
+STATION_RECORDER_EVENT.cfg`/`.dat`) are handled by `overflow-wrap:
+anywhere`, which (unlike `overflow-wrap: break-word`) is specified to
+also reduce the element's own min-content contribution — meaning it
+genuinely allows the box to shrink, not just visually wrap once already
+narrow. `word-break: break-word` was deliberately NOT added — this
+task's own instruction to use it "only if genuinely needed," and
+`overflow-wrap: anywhere` alone is sufficient and already the modern,
+well-supported mechanism for this.
+
+### Regression preservation
+
+Confirmed unchanged by test: Workspace Sidebar resize behavior and its
+240–520px bounds, Main Workspace width reflow and Plotly resizing,
+Grouped/Separate/Custom layout modes, the sticky time ruler, panel-
+height resizing, the responsive drawer breakpoint, Custom Groups, and
+header/status-bar layout. This is filename containment only — no other
+Phase 3A shell rule was touched.
+
+### Tests
+
+- **Frontend, new**: `phase3auat4_check.mjs` (scratch, not committed) —
+  12/12 passing. Covers: the root-cause CSS chain (`.detail-header-info`
+  min-width/max-width, `.detail-header .meta` overflow-wrap/white-space/
+  max-width), the markup change actually applying, the owner's own exact
+  CFG and DAT filenames rendering in full, the longer underscore-heavy/
+  unbroken-token stress fixture (CFG and DAT) rendering in full, a
+  520px/320px/240px Sidebar-width matrix confirming the filename stays
+  fully present and the Sidebar's own committed width is never altered
+  by filename content, and confirmation that Main Workspace gains no
+  inline width as a side effect of rendering long filenames.
+- **Frontend, existing**: the full Phase 1 through Phase 3A-UAT3 suites
+  re-run — the exact same 20 pre-existing, already-documented failures,
+  zero new divergences.
+- **Backend**: zero diff, 278/278 passing in a fresh venv (no backend
+  file touched).
+
+### Files changed
+
+Modified: `frontend/index.html` only (CSS + one markup class addition).
+No backend file, no CI/deployment workflow file. `DECISIONS.md`
+intentionally **not** touched — a targeted correction within the
+already-decided Phase 3A shell architecture (DEC-031) and its own Phase
+3A-UAT3 containment pass, not a new or revised architectural decision.
+
+### Honest limitation
+
+No real browser is available in this sandbox. Whether the filename now
+visibly wraps exactly as the owner's own reference example showed (e.g.
+`260725_1309444309_` / `Tanjung Bin BEN6K.cfg` as two lines, or another
+natural browser wrapping result) was reasoned through and verified
+structurally (CSS rule inspection, DOM/data-level assertions) but not
+visually confirmed — flagged for owner UAT.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

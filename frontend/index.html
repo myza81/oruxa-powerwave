@@ -515,15 +515,36 @@
             margin-bottom: 18px;
         }
 
-        /* Phase 3A-UAT3 (Finding C): station name and source filenames
-           come straight from the imported COMTRADE files and can be long,
-           unbroken tokens (no spaces) that ordinary text wrapping can't
-           break on. `overflow-wrap: anywhere` lets them wrap in place --
-           the FULL value stays visible (nothing truncated/hidden), it
-           just stays inside the Workspace Sidebar instead of forcing it
-           (or a sibling) wider. */
-        .detail-header h3 { margin: 0 0 4px; font-size: 1.05rem; overflow-wrap: anywhere; }
-        .detail-header .meta { font-size: 0.8rem; color: var(--text-dim); overflow-wrap: anywhere; }
+        /* Phase 3A-UAT4 (owner UAT finding, root cause): `.detail-header`
+           is a flex CONTAINER; `.detail-header-info` (below) is the flex
+           ITEM that actually holds the station name + filenames. Phase
+           3A-UAT3 put `overflow-wrap: anywhere` on the TEXT elements
+           (h3/.meta) but never gave this ITEM its own `min-width: 0` --
+           text-level wrap rules only matter once the box around the text
+           is actually allowed to become narrower than its unwrapped
+           content. A flex item's automatic minimum width defaults to its
+           content's un-shrunk size (the well-known `min-width: auto`
+           flex trap, the same one already fixed at the shell level in
+           Phase 3A-UAT1/UAT3), so without this the whole station-name +
+           filenames block stayed at full width and visibly overflowed the
+           Workspace Sidebar regardless of the text's own wrap settings.
+           `max-width: 100%` is a second, explicit belt-and-braces cap so
+           this item can never exceed its parent's width even if a future
+           change reintroduces an oversized child. */
+        .detail-header-info { min-width: 0; max-width: 100%; }
+        /* Station name and source filenames come straight from the
+           imported COMTRADE files and can be long, unbroken tokens (no
+           spaces) that ordinary text wrapping can't break on.
+           `overflow-wrap: anywhere` lets them wrap in place -- the FULL
+           value stays visible (nothing truncated/hidden), it just stays
+           inside the Workspace Sidebar instead of forcing it (or a
+           sibling) wider. `white-space: normal` is the actual default for
+           a block element already, stated explicitly here so this rule
+           documents (and guards against any future accidental
+           `nowrap`/`pre` override) the full containment contract for this
+           specific element, per this task's own preferred rule set. */
+        .detail-header h3 { margin: 0 0 4px; font-size: 1.05rem; overflow-wrap: anywhere; white-space: normal; max-width: 100%; }
+        .detail-header .meta { font-size: 0.8rem; color: var(--text-dim); overflow-wrap: anywhere; white-space: normal; max-width: 100%; }
 
         .stat-grid {
             display: grid;
@@ -2107,7 +2128,7 @@
             shellUpdateStatusBar(source, timebase);
 
             let html = "";
-            html += '<div class="detail-header"><div>';
+            html += '<div class="detail-header"><div class="detail-header-info">';
             html += '<h3>' + escapeHtml(source.station_name) + '</h3>';
             html += '<div class="meta">' + escapeHtml(source.original_filenames.join(" + ")) + '</div>';
             html += '</div></div>';

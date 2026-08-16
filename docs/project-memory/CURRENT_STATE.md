@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-16** (Phase 3A-UAT3).
+Last meaningful update: **2026-08-16** (Phase 3A-UAT4).
 
 ## Development phase
 
@@ -686,6 +686,40 @@ polyfill it had never previously required — full suite returns to the
 identical pre-existing 20-failure baseline, zero new divergences.
 **Unverified**: real-browser visual confirmation at continuous (not just
 discrete simulated) viewport widths — flagged for owner UAT.
+
+`[FACT]` **Owner UAT of Phase 3A-UAT3 exposed one remaining real
+overflow case — Phase 3A-UAT4 — Channel Filename Containment — is now
+implemented** (2026-08-16) — see
+[MIGRATION_PLAN.md — Phase 3A-UAT4 Record](MIGRATION_PLAN.md#phase-3a-uat4--channel-filename-containment-2026-08-16).
+The affected area is the Workspace Sidebar's Channels → source-detail
+section: uploaded CFG/DAT filenames (e.g. `260725_1309444309_Tanjung
+Bin BEN6K.cfg`/`.dat`) could still visibly overflow at a narrowed
+Sidebar width, even after Phase 3A-UAT3's Finding C already added
+`overflow-wrap: anywhere` to the filename text elements. **Root cause**:
+`.detail-header`'s flex-item child (holding the station name +
+filenames) never had its own `min-width: 0` — the same `min-width:auto`
+flex trap already fixed at the shell level, recurring one level deeper
+inside this specific card. Text-level wrap rules only matter once the
+box around the text can actually shrink; without that, the whole block
+stayed at full width regardless of the text's own settings. **Fix**:
+the previously-unnamed wrapper now has a real class,
+`.detail-header-info` (`min-width: 0; max-width: 100%;`), with
+`.detail-header h3`/`.meta` additionally gaining explicit `white-space:
+normal; max-width: 100%;` alongside their existing `overflow-wrap:
+anywhere`. Filename text must now wrap fully within the Sidebar at
+every width down to the 240px minimum — full text always remains
+visible, nothing truncated/ellipsized/hidden. This is a targeted
+correction that does **not** reopen the wider Phase 3A shell design —
+Workspace Sidebar resize bounds, Main Workspace reflow, Grouped/
+Separate/Custom, the sticky ruler, panel-height resize, the responsive
+drawer, Custom Groups, and header/status-bar layout are all confirmed
+unchanged by test. No backend file changed (278 tests unmodified and
+passing); 12 new frontend `jsdom` checks passing
+(`phase3auat4_check.mjs`), using the owner's own exact reported
+filenames plus a longer underscore-heavy/unbroken-token stress fixture,
+verified across a 520px/320px/240px Sidebar-width matrix. **Unverified**:
+whether the filename now visibly wraps exactly as the owner's own
+reference example showed in a real browser — flagged for owner UAT.
 
 ## Completed foundation work
 
@@ -1382,20 +1416,31 @@ sourced identifiers, Plotly staleness when returning to Waveform after
 the view was hidden behind a Table/Split placeholder, the responsive
 drawer width being overridden by a persisted desktop inline width, and
 missing containment on Grouped/Custom legend chips (Separate's own
-already-UAT'd overlay tag was left untouched). The next step is for the
-project owner to review BOTH this cleanup and the overflow fixes via
-live DEV UAT — see the "Owner UAT" checklist in this task's own final
-report (header gap, Settings reachability, Sidebar at 240px, long
-source/channel names if available, Grouped/Custom long legends, narrow-
-browser behavior around the responsive threshold, sidebar drawer reopen,
-Waveform → placeholder → Waveform, no panel overflow) — plus the
-still-open Phase 3A proportions/dimensions review (Global Header height,
-Main Sidebar Menu width in both states, Workspace Sidebar width/resize
-feel, Main Workspace dominance, Status Bar geometry) — and either
-request further refinement or move on to whichever comes next (digital
-channels remains the owner's other previously-stated next area;
-Table/Split view implementation remains explicitly not authorized until
-a separate request).
+already-UAT'd overlay tag was left untouched). **Owner manual UAT of
+Phase 3A-UAT3 found one remaining real overflow case**: uploaded CFG/DAT
+filenames in the Channels source-detail section could still visibly
+overflow the Workspace Sidebar at narrow widths — fixed by **Phase
+3A-UAT4 — Channel Filename Containment** — see
+[MIGRATION_PLAN.md — Phase 3A-UAT4 Record](MIGRATION_PLAN.md#phase-3a-uat4--channel-filename-containment-2026-08-16).
+Root cause: the flex-item wrapper holding the station name + filenames
+never had `min-width: 0` — text-level `overflow-wrap` alone couldn't
+help until the box around the text was itself allowed to shrink. Now
+fixed (`.detail-header-info` class added with `min-width: 0; max-width:
+100%`), filename text wraps fully within the Sidebar at every width
+down to 240px, nothing truncated. The next step is for the project
+owner to review Phase 3A-UAT2 through UAT4 together via live DEV UAT —
+see the "Owner UAT" checklist in each task's own final report (header
+gap, Settings reachability, Sidebar at 240px with CFG/DAT filenames
+fully contained, long source/channel names if available, Grouped/Custom
+long legends, narrow-browser behavior around the responsive threshold,
+sidebar drawer reopen, Waveform → placeholder → Waveform, no panel
+overflow) — plus the still-open Phase 3A proportions/dimensions review
+(Global Header height, Main Sidebar Menu width in both states,
+Workspace Sidebar width/resize feel, Main Workspace dominance, Status
+Bar geometry) — and either request further refinement or move on to
+whichever comes next (digital channels remains the owner's other
+previously-stated next area; Table/Split view implementation remains
+explicitly not authorized until a separate request).
 Separately, resolving the
 abandoned-session TTL question (`[DECISION MODE: COMPARISON]`, reassessed
 but not resolved by Phase 2C-A/B1 — neither changes the backend memory-
