@@ -8,6 +8,125 @@ Last updated: **2026-08-16**
 
 ## What was most recently done
 
+**Phase 3B — Recordings Page and Upload Workflow.** Following the
+owner's own "finish this area before introducing additional features"
+direction, `oruxa_powerwave` gained a dedicated Recordings page,
+benchmarked (layout/workflow only, per the pre-existing DEC-020 Detego
+Benchmark Principle) against Detego's own Recordings page. Full detail:
+[MIGRATION_PLAN.md — Phase 3B Record](MIGRATION_PLAN.md#phase-3b--recordings-page-and-upload-workflow-2026-08-16),
+[DECISIONS.md — DEC-032](DECISIONS.md#dec-032--recordings-page-as-a-first-class-application-page-one-recording--one-logical-event-cfgdat-sessionworkspace-backed-not-a-persistent-cloud-library-phase-3b).
+
+**Navigation**: `shell.currentPage` (`"waveform"` | `"recordings"`) is
+new app-shell state, kept deliberately separate from `shell.activeView`
+(unchanged, still scoped to Table/Split sub-views WITHIN the Waveform
+page). Main Sidebar Menu's "Workspace" item was renamed "Waveform"; a
+new, real (not `disabled`) "Recordings" item was added right after it.
+`shellSetCurrentPage()` toggles `#workspaceRow`/`#pageRecordings`
+visibility using the exact same "hide, don't destroy" mechanism Phase
+3A's `shellSetActiveView()` already established for Table/Split — the
+entire waveform workspace (panels, live Plotly instances, Workspace
+Sidebar) is only ever hidden, never rebuilt, when navigating to
+Recordings.
+
+**Waveform state preservation, confirmed by test**: the physical
+viewport (byte-identical), layout mode, Custom Groups, panel heights,
+and time mode all survive a Waveform → Recordings → Waveform round-trip
+exactly, with zero waveform refetch caused by the navigation itself.
+Returning to Waveform schedules `wwScheduleResizeAllVisiblePlots()`
+(reusing Phase 3A-UAT1/UAT3's own helper — no new mechanism) in case the
+available width changed while the page was hidden — the same staleness
+risk Phase 3A-UAT3's Finding E already identified for the Table/Split
+case, recurring one level up here.
+
+**Recording abstraction**: one `SourceSummaryOut` (already one CFG+DAT
+pair, per the backend's existing model) is always exactly one
+Recordings row — never separate rows for the companion files, confirmed
+by test. `recordingDisplayName()` prefers the real `station_name`,
+falling back to the CFG filename only when blank — never invents a
+fault classification or description.
+
+**Recordings page**: heading "Recording Events," a searchable table
+(Recording name+filenames / Station / Recorder / Channels / Duration /
+Imported / Actions — "Format" and a separate "Station" column were both
+deliberately omitted this phase, reasoned through in the MIGRATION_PLAN
+record), an "Upload New" button, and a "No recordings loaded" empty
+state. No contextual Workspace Sidebar on this page (section 21's own
+preference). Long recording names/filenames reuse Phase 3A-UAT4's
+`overflow-wrap: anywhere`/`min-width: 0` containment technique; the
+table sits in an `overflow-x: auto` wrapper reusing Phase 3A-UAT3's
+Finding B technique.
+
+**Upload workflow — ONE implementation**: the always-visible "Import
+COMTRADE Event" form was removed from the Workspace Sidebar; its exact
+validation/upload logic was refactored (not duplicated) into a single
+extensible modal, opened by both the Recordings page's "Upload New" and
+the Global Header's "Import" shortcut (which now navigates to Recordings
+first). The modal's file-input fields are rendered from a small
+`RECORDING_FORMATS` provider model (`{id, label, enabled, files}`) —
+COMTRADE is the only `enabled: true` entry (same two required cfg/dat
+inputs, same ~100 MB guidance, same `POST .../sources` multipart
+contract, same error mapping as before); CSV and Excel are listed as
+real but `disabled` `<option>`s, proving forward-readiness without
+implementing either parser. Double-submit and mid-upload dismissal are
+both guarded by an explicit `uploadModalSubmitting` flag. On success,
+the modal closes and clears its own status immediately — no
+auto-navigation to Waveform, no auto-selecting the source into the
+Channels panel (that's the Recordings row's own "Open / Analyse" action,
+per the task's own preferred upload → list → user-chooses flow).
+
+**Row actions**: "Open / Analyse" calls the existing `selectSource()`
+unchanged and navigates to Waveform (no auto-display of channels — the
+existing checkbox + "Add selected" step is untouched). "Remove" reuses
+the existing confirmation-and-delete flow (`requestRemoveSource()`/
+`performRemoveSource()`) completely unchanged, now updating the
+Recordings list, the Workspace Sidebar, and the waveform-displayed-
+channel state consistently from one shared refresh
+(`refreshAllSourceViews()`) — there is no second, independently-drifting
+recording repository; both presentations read the same
+`GET .../sources` response.
+
+**Backend change — additive only**: `SourceSummaryOut` gained
+`duration_seconds`/`sample_count` (both already computed/stored on
+`SourceMetadata` since Phase 2A; no new storage, no new computation) so
+the Recordings list's Duration column doesn't need a separate
+`.../channels` fetch per row.
+
+**Storage semantics — explicitly unchanged**: the Recordings page is
+session/workspace-backed only, reflecting the current in-memory
+`WorkspaceRegistry` — no database table, no persistent cloud file
+library, no upload history across sessions. Persistent recording
+retention remains a separate future decision, per DEC-032.
+
+**A real CSS bug caught before shipping**: `#workspaceRow` and the
+Status Bar's waveform-only items both have author `display: flex` CSS,
+which beats the UA stylesheet's default `[hidden] { display: none }`
+rule by origin regardless of specificity — without explicit `[hidden]`
+override rules (now added for both), this phase's own `.hidden = true`
+toggles would have had zero visible effect. Caught by manual CSS review,
+not by the test suite (jsdom has no real layout engine and cannot
+detect this class of bug).
+
+**Verification**: 30 new frontend `jsdom` checks (`phase3b_check.mjs`)
++ two existing test files corrected in place where Phase 3B's own
+deliberate UX changes (no persistent success banner outside the modal;
+the old sidebar form's removal) made their prior assertions test
+since-removed behavior — the full suite otherwise returns to the exact
+same 20 pre-existing, already-documented failures, zero new
+divergences. Backend: `test_sources_api.py` gained two new/extended
+assertions for the new fields; 279/279 passing (278 + 1 new test), zero
+regressions.
+
+**Backend**: one small, additive schema change only (see above) —
+`SourceSummaryOut` gained two fields; no endpoint, table, or persistence
+semantics added. **Real-browser visual confirmation — whether the
+Recordings page reads as clear/simple/engineering-focused, whether the
+upload modal's format selector feels natural, and whether long-filename
+wrapping in the Recording column looks right at real widths — was NOT
+and cannot be confirmed in this sandboxed session; this remains
+explicitly for the owner's own manual UAT.**
+
+## What was done in the prior session (Phase 3A-UAT4 — Channel Filename Containment)
+
 **Phase 3A-UAT4 — Channel Filename Containment.** Owner manual UAT of
 Phase 3A-UAT3's overflow hardening found one remaining real overflow
 case, with browser evidence: in the Workspace Sidebar's Channels →
@@ -2624,7 +2743,23 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 3A-UAT4 channel filename containment)
+## What files were changed this session (Phase 3B recordings page and upload workflow)
+
+Modified: `frontend/index.html` (the bulk of this phase — new
+Recordings page markup/CSS/JS, new upload modal, Main Sidebar Menu
+rename + new item, removed the old always-visible sidebar upload form,
+`shell.currentPage`/`shellSetCurrentPage()`, `RECORDING_FORMATS`,
+`fetchSourcesList()`/`refreshAllSourceViews()`/`renderRecordingsTable()`
+and friends, two new `[hidden]` CSS override rules);
+`backend/app/schemas/source.py` (additive `duration_seconds`/
+`sample_count` fields on `SourceSummaryOut`);
+`backend/tests/test_sources_api.py` (new/extended coverage for those
+fields). No new files. No CI/deployment workflow file. Project memory:
+`DECISIONS.md` (new DEC-032 — this IS a meaningful product-navigation
+change, per this task's own explicit instruction), `MIGRATION_PLAN.md`,
+`CURRENT_STATE.md`, `HANDOFF.md` all updated.
+
+## What files were changed in the prior session (Phase 3A-UAT4 channel filename containment)
 
 Modified only: `frontend/index.html` (new `.detail-header-info` class
 with `min-width: 0; max-width: 100%;`, applied to the previously-unnamed
@@ -3084,7 +3219,7 @@ Modified:
 See "GitHub persistence" and "DEV deployment" in this task's final report
 (delivered in-conversation) for the exact commit hash, push confirmation,
 independent-fetch verification, GitHub Actions run, and live-endpoint
-checks for this Phase 3A-UAT4 pass. **Production was not touched.**
+checks for this Phase 3B pass. **Production was not touched.**
 
 ## What remains unresolved
 
@@ -3137,50 +3272,98 @@ checks for this Phase 3A-UAT4 pass. **Production was not touched.**
 
 ## What should be done next
 
-**Phase 3A-UAT1 (width-reflow) passed owner UAT. Phase 3A-UAT2
-(duplicate theme control removal) and Phase 3A-UAT3 (broader overflow
-hardening) reviews are still outstanding — Phase 3A-UAT3's OWN manual
-UAT is what surfaced the filename bug this Phase 3A-UAT4 pass just
-fixed, so at least that portion of UAT3 has already been exercised by
-the owner.** The next step is for the **project owner** to review Phase
-3A-UAT2 through UAT4 together via live DEV UAT: confirm the Global
-Header reads cleanly with no leftover gap; confirm Settings is
-reachable/functional in both Main Sidebar Menu states; confirm
-Light/Dark still works app-wide; narrow the Workspace Sidebar to 240px
-and confirm BOTH the channel table (scrolls rather than breaks) AND the
-CFG/DAT filenames in the source-detail section (wrap across multiple
-lines, fully readable, no horizontal escape — this is the specific
-Phase 3A-UAT4 fix) stay contained; check long source/channel names if a
-real event with them is available; check Grouped and Custom mode legend
-chips with long channel names; narrow the browser around the ~900px
-responsive threshold and confirm the Sidebar becomes a reopenable
-drawer (via the "Sources" button) at a SAFE width, not an inline desktop
-width; switch to the Table placeholder, resize something, then switch
-back to Waveform and confirm it isn't visually stale; and generally
-confirm no panel/dialog/table/text visibly overflows its own frame
-anywhere in these passes' touched areas. This is a small, targeted
-containment pass — no other layout, sizing, or shell-structural behavior
-should have changed. If confirmed clean: no further action needed, and
-the still-open Phase 3A dimension/spacing feedback remains welcome
-whenever convenient. If anything looks off, report back with the
-specific control/width/mode — do **not** assume the outcome. Separately,
-the owner may choose to: (a) request further Phase 3A dimension/spacing
-refinements; (b) authorize the drag/reorder/overlay/split work directly
-(still the owner's own possible next direction, deliberately set aside
-across twelve passes now, not abandoned); (c) request the
-still-outstanding Grouped/Custom axis-duplication cleanup (Phase
-2C-C4's own section 16 gap, unchanged across four passes now); (d)
-authorize real Table/Split view implementation (explicitly NOT
-authorized yet — the shell only avoids blocking it); or (e) move on to
-digital channels (the owner's own explicitly stated next area, and this
-task's own explicit instruction: do **not** begin digital-channel or
-Table/Split work without a separate signal). Separately, resolving the
-abandoned-session TTL question and the ~100 MB real-file memory
-validation remain recommended before broader/prolonged shared-DEV UAT,
-unchanged conclusion from every prior Phase 2 pass.
+**Phase 3A-UAT1 (width-reflow) passed owner UAT. Phase 3A-UAT2, UAT3,
+UAT4, and now Phase 3B are all still awaiting a live DEV review —
+Phase 3A-UAT3's OWN manual UAT is what surfaced the filename bug UAT4
+fixed, so that portion of UAT3 has already been exercised.** The next
+step is for the **project owner** to review Phase 3A-UAT2 through Phase
+3B together via live DEV UAT: confirm the Global Header reads cleanly
+with no leftover gap; confirm Settings is reachable/functional in both
+Main Sidebar Menu states; confirm Light/Dark still works app-wide;
+narrow the Workspace Sidebar to 240px and confirm BOTH the channel table
+(scrolls rather than breaks) AND the CFG/DAT filenames in the
+source-detail section stay contained; check long source/channel names
+if a real event with them is available; check Grouped and Custom mode
+legend chips with long channel names; narrow the browser around the
+~900px responsive threshold and confirm the Sidebar becomes a
+reopenable drawer at a SAFE width; switch to the Table placeholder,
+resize something, then switch back to Waveform and confirm it isn't
+visually stale; confirm no panel/dialog/table/text visibly overflows
+its own frame anywhere — and specifically for **Phase 3B**: does the
+Recordings page read as simple/clear/engineering-focused (not
+card-heavy); is the Main Sidebar Menu's Waveform/Recordings split
+intuitive; is the recording table readable with real data; does the
+Upload New modal feel clear (format selector, file fields, loading/
+error/success states); does Open/Analyse correctly land back on
+Waveform with the right source's channels available; does navigating
+Waveform ⇆ Recordings genuinely preserve viewport/zoom/grouping/panel
+heights/time mode as claimed. This is a large but still deliberately
+scoped pass — no Table/Split/digital-channel/CSV/Excel work, no shell
+restructuring beyond what's described above. If confirmed clean: no
+further action needed, and the still-open Phase 3A dimension/spacing
+feedback remains welcome whenever convenient. If anything looks off,
+report back with the specific control/page/mode — do **not** assume the
+outcome. Separately, the owner may choose to: (a) request further Phase
+3A dimension/spacing refinements or Phase 3B UX refinements; (b)
+authorize the drag/reorder/overlay/split work directly (still the
+owner's own possible next direction, deliberately set aside across
+thirteen passes now, not abandoned); (c) request the still-outstanding
+Grouped/Custom axis-duplication cleanup (Phase 2C-C4's own section 16
+gap, unchanged across four passes now); (d) authorize real Table/Split
+view implementation (explicitly NOT authorized yet — the shell only
+avoids blocking it); (e) authorize real CSV/Excel parsing (the upload
+modal's provider model is structurally ready but no parser exists —
+explicitly NOT authorized yet); or (f) move on to digital channels (the
+owner's own explicitly stated next area, and this task's own explicit
+instruction: do **not** begin digital-channel, Table/Split, or CSV/Excel
+work without a separate signal). Separately, resolving the abandoned-
+session TTL question and the ~100 MB real-file memory validation remain
+recommended before broader/prolonged shared-DEV UAT, unchanged
+conclusion from every prior Phase 2 pass — and now additionally relevant
+given Phase 3B makes uploading noticeably easier to reach (Global Header
+Import + Recordings' own Upload New), which may increase how often
+sources actually get imported during a shared-DEV session.
 
 ## What must not be assumed
 
+- **Do not assume `index.html` still has an always-visible "Import
+  COMTRADE Event" form in the Workspace Sidebar** — as of Phase 3B it was
+  removed (`#uploadForm`/`#cfgInput`/`#datInput`/`#uploadButton`/
+  `#uploadStatus` all no longer exist). Upload now happens exclusively
+  through `#uploadModalOverlay` (opened via `openUploadModal()`), driven
+  by `RECORDING_FORMATS`. If you need to trigger an upload from a test or
+  from other code, target the modal's dynamic file inputs
+  (`#uploadModalFileFields input[data-file-key="cfg"|"dat"]`), not the
+  old fixed IDs.
+- **Do not assume `shell.activeView` (`"waveform"`|`"table"`|`"split"`)
+  and `shell.currentPage` (`"waveform"`|`"recordings"`) are the same
+  concept** — they are two independent toggles at different levels.
+  `currentPage` controls which top-level PAGE is shown in Work Area
+  (`#workspaceRow` vs `#pageRecordings`); `activeView` only matters
+  WITHIN the Waveform page, selecting its own sub-view. Setting one does
+  not imply anything about the other except where `shellSetCurrentPage`/
+  the Main Sidebar Menu's own click handlers explicitly coordinate them
+  (e.g. clicking "Waveform" sets both to `"waveform"`).
+- **Do not assume `refreshSourceList()` alone keeps the Recordings page
+  in sync** — it only re-renders the Workspace Sidebar's compact source
+  list. Anything that actually changes the source set (upload, remove,
+  workspace reset) must call `refreshAllSourceViews()` instead, which
+  refreshes BOTH the Sidebar list and the Recordings table from one
+  shared fetch (`fetchSourcesList()`). `selectSource()` still correctly
+  calls the narrower `refreshSourceList()` on its own, since selecting an
+  already-listed source doesn't change the source SET.
+- **Do not assume every element with `.hidden = true`/`false` set via JS
+  actually becomes invisible** — if that element (or a class it carries)
+  has its OWN author CSS `display` property (e.g. `display: flex`), that
+  author rule beats the UA stylesheet's default `[hidden] {display:
+  none}` rule by ORIGIN alone, regardless of specificity or source
+  order, silently making the `hidden` attribute a no-op. `#workspaceRow`,
+  `#pageRecordings`, and `#bottomStatusBar .shell-status-item` all needed
+  (and now have) explicit `[hidden] { display: none; }` override rules
+  for exactly this reason — check for this whenever adding a NEW
+  `.hidden` toggle to an element that already has its own `display`
+  rule; jsdom-based tests cannot catch this class of bug (no real CSS
+  layout engine), so it must be checked by direct CSS inspection.
 - **Do not assume `.detail-header`'s station-name/filename child `<div>`
   is still unnamed/unstyled** — as of Phase 3A-UAT4 it has a real class,
   `.detail-header-info` (`min-width: 0; max-width: 100%;`). This is the
@@ -3533,32 +3716,45 @@ unchanged conclusion from every prior Phase 2 pass.
 - Not needed to review or use Phase 2C-A, Phase 2C-B1, Phase 2C-B2, Phase
   2C-B3, Phase 2C-B3A, Phase 2C-C1, Phase 2C-C2, Phase 2C-C2A, Phase
   2C-C3, Phase 2C-C4, Phase 2C-C4A, Phase 2C-C4B, Phase 3A, Phase
-  3A-UAT1, Phase 3A-UAT2, Phase 3A-UAT3, or Phase 3A-UAT4 themselves —
-  already implemented, deployed to DEV, and live-verified per this exact
-  task's own authorization. **Recommended, though**: an owner UAT
-  specifically confirming (a) the Global Header now reads cleanly with
-  no leftover gap where the removed Light/Dark control sat, (b) the
-  Main Sidebar Menu's "Settings" item remains comfortably
+  3A-UAT1, Phase 3A-UAT2, Phase 3A-UAT3, Phase 3A-UAT4, or Phase 3B
+  themselves — already implemented, deployed to DEV, and live-verified
+  per this exact task's own authorization. **Recommended, though**: an
+  owner UAT specifically confirming (a) the Global Header now reads
+  cleanly with no leftover gap where the removed Light/Dark control sat,
+  (b) the Main Sidebar Menu's "Settings" item remains comfortably
   reachable/usable in both collapsed and expanded states, (c) the Phase
   3A-UAT3 overflow fixes hold up visually — Workspace Sidebar at 240px,
   Grouped/Custom long legends, narrow-browser behavior around the
   ~900px responsive threshold, sidebar drawer reopen, and
-  Waveform → placeholder → Waveform, and (d) the Phase 3A-UAT4 fix
+  Waveform → placeholder → Waveform, (d) the Phase 3A-UAT4 fix
   specifically — the owner's own reported CFG/DAT filenames now wrap
-  fully within the Sidebar at 240px with no horizontal escape — plus the
-  still-open Phase 3A proportions/dimensions feedback and the
-  still-carried-forward Phase 2C-C4A tick-alignment-at-rescaled-units
-  claim — none of which could be visually confirmed in this sandbox.
+  fully within the Sidebar at 240px with no horizontal escape, and (e)
+  Phase 3B as a whole — Recordings page simplicity/readability, Main
+  Sidebar Menu Waveform/Recordings navigation, the Upload New modal
+  (format selector, file requirements, loading/error/success states),
+  the Open/Analyse workflow, and that Waveform ⇆ Recordings navigation
+  genuinely preserves viewport/zoom/grouping/panel-heights/time-mode as
+  claimed — plus the still-open Phase 3A proportions/dimensions feedback
+  and the still-carried-forward Phase 2C-C4A
+  tick-alignment-at-rescaled-units claim — none of which could be
+  visually confirmed in this sandbox.
 - **Yes**, before any drag/reorder/overlay/split work begins (still the
   owner's own possible next direction, deliberately set aside across
-  twelve passes now, but still not yet explicitly authorized to
+  thirteen passes now, but still not yet explicitly authorized to
   *implement* — Phase 3A's shell only avoids blocking it
   architecturally), before REAL Table or Split view implementation
   (explicitly not authorized yet — only structural placeholders exist),
-  before digital channels (the owner's own next stated area, not yet
-  begun — and this task's own explicit closing instruction was to stop
-  here, not begin it), before Synthetic Elapsed Time, Sample Index, or
-  any CSV/Excel timing mode, before the Grouped/Custom per-panel
+  before REAL CSV/Excel parsing (Phase 3B's upload modal is structurally
+  ready for these formats — `RECORDING_FORMATS` lists them as
+  `enabled: false` — but no parser exists for either; explicitly not
+  authorized yet), before a persistent/database-backed recording
+  library (Phase 3B's Recordings page is explicitly session/workspace-
+  backed only, per DEC-032 — persistent retention is a separate future
+  product/architecture decision, not to be backed into via a UI
+  feature), before digital channels (the owner's own next stated area,
+  not yet begun — and this task's own explicit closing instruction was
+  to stop here, not begin it), before Synthetic Elapsed Time, Sample
+  Index, or any CSV/Excel timing mode, before the Grouped/Custom per-panel
   axis-label duplication (Phase 2C-C4's own section 16 gap, unchanged
   and still outstanding across five passes now) is cleaned up, before
   interactive ruler zoom/pan/selection or a shared crosshair on the

@@ -54,6 +54,16 @@ class TestUpload:
         assert body["analog_channel_count"] == 3
         assert body["digital_channel_count"] == 2
         assert body["status"] == "ready"
+        # Phase 3B: duration_seconds/sample_count are new, additive fields
+        # on SourceSummaryOut (the Recordings page's list Duration column) --
+        # cross-checked against the pre-existing timebase.* fields on the
+        # channels endpoint, the values these two new fields are computed
+        # from, rather than a hardcoded magic number.
+        channels_body = client.get(
+            f"/api/v1/workspaces/ws-1/sources/{body['source_id']}/channels"
+        ).json()
+        assert body["sample_count"] == channels_body["timebase"]["sample_count"]
+        assert body["duration_seconds"] == pytest.approx(channels_body["timebase"]["duration_seconds"])
         # No waveform data anywhere in the response.
         assert "waveform_data" not in body
         assert "VA" not in body
@@ -212,6 +222,27 @@ class TestReadEndpoints:
         assert len(resp_a.json()) == 1
         assert len(resp_b.json()) == 1
         assert resp_a.json()[0]["source_id"] != resp_b.json()[0]["source_id"]
+
+    def test_list_includes_duration_and_sample_count(self, client, comtrade_fixtures_dir):
+        # Phase 3B: the Recordings page's list table reads duration/sample
+        # count straight from GET .../sources (no per-row .../channels
+        # fetch) -- confirm the LIST endpoint specifically carries them,
+        # not just the upload/get-one response.
+        cfg = _read(comtrade_fixtures_dir / "synth_ascii.cfg")
+        dat = _read(comtrade_fixtures_dir / "synth_ascii.dat")
+        source_id = client.post(
+            "/api/v1/workspaces/ws-list-duration/sources", files=_files(cfg, dat)
+        ).json()["source_id"]
+        channels_body = client.get(
+            f"/api/v1/workspaces/ws-list-duration/sources/{source_id}/channels"
+        ).json()
+
+        resp = client.get("/api/v1/workspaces/ws-list-duration/sources")
+
+        assert resp.status_code == 200
+        [row] = resp.json()
+        assert row["sample_count"] == channels_body["timebase"]["sample_count"]
+        assert row["duration_seconds"] == pytest.approx(channels_body["timebase"]["duration_seconds"])
 
 
 class TestLifecycle:

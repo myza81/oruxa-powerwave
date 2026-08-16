@@ -286,6 +286,29 @@ reference. This does not supersede the "Waveform workspace" example
 above, which still governs the internal panel/zoom/grouping design
 living inside the shell's own Main Workspace region.
 
+**Recordings page** (Phase 3B, 2026-08-16) — also no longer illustrative;
+a real, owner-approved decision
+([DECISIONS.md DEC-032](DECISIONS.md#dec-032--recordings-page-as-a-first-class-application-page-one-recording--one-logical-event-cfgdat-sessionworkspace-backed-not-a-persistent-cloud-library-phase-3b)),
+recorded here because it applied the same four-column method a second
+time: the owner supplied a screenshot of Detego's own Recordings page,
+named explicitly as the layout/workflow benchmark for the overall
+page shape (a compact table with a prominent-but-compact "Upload New"
+action, real columns, no card-heavy dashboard feel — never its
+branding, colors, icons, or exact column set); `powerwave`'s own
+engineering behaviour was not directly relevant here either (a page/
+navigation and upload-workflow question, not a signal-processing one);
+owner requirements were final authority over the benchmark in the two
+places they diverged — the written instruction to PREFER the real
+station/event name over the filename for the Recording column's display
+name (opposite of what Detego's own screenshot shows, which uses the
+filename as primary), and the explicit, repeated instruction not to
+imply a persistent cloud recording library, which Detego's own
+"Recordings" framing could otherwise suggest; and the resulting design
+(a session/workspace-backed list, a single extensible upload modal, a
+`recording = one CFG+DAT pair` abstraction general enough for future
+CSV/Excel formats) is an independent Oruxa implementation, informed by
+the benchmark, dictated by neither reference.
+
 **Multi-source synchronization** (Phase 3+, not yet scoped):
 - Detego may offer useful workflow inspiration for how synchronized
   sources are presented;

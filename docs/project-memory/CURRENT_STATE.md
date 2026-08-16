@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-16** (Phase 3A-UAT4).
+Last meaningful update: **2026-08-16** (Phase 3B).
 
 ## Development phase
 
@@ -721,6 +721,58 @@ verified across a 520px/320px/240px Sidebar-width matrix. **Unverified**:
 whether the filename now visibly wraps exactly as the owner's own
 reference example showed in a real browser — flagged for owner UAT.
 
+`[FACT]` **Phase 3B — Recordings Page and Upload Workflow — is now
+implemented** (2026-08-16) — see
+[MIGRATION_PLAN.md — Phase 3B Record](MIGRATION_PLAN.md#phase-3b--recordings-page-and-upload-workflow-2026-08-16)
+and [DECISIONS.md DEC-032](DECISIONS.md#dec-032--recordings-page-as-a-first-class-application-page-one-recording--one-logical-event-cfgdat-sessionworkspace-backed-not-a-persistent-cloud-library-phase-3b).
+The Main Sidebar Menu's "Workspace" item was renamed "Waveform" and a
+new, real "Recordings" item was added alongside it (`shell.currentPage`,
+new app-shell state kept separate from `shell.activeView`). Recordings
+(heading "Recording Events") is a dedicated page with no contextual
+Workspace Sidebar — a searchable table listing every source currently
+active in the workspace (one row per CFG+DAT pair, never separate rows
+for the companion files), with real columns only (Recording name +
+filenames, Station, Recorder, Channels, Duration, Imported, Actions) and
+an "Upload New" button. The always-visible "Import COMTRADE Event" form
+was removed from the Workspace Sidebar; its logic was refactored into
+ONE extensible upload modal (provider/format-driven via a small
+`RECORDING_FORMATS` model — COMTRADE the only enabled format, CSV/Excel
+listed as real but `disabled` options, proving forward-readiness without
+implementing either parser) shared by the Recordings page's "Upload New"
+button and the Global Header's "Import" shortcut. Navigating Waveform ⇆
+Recordings never destroys or rebuilds the waveform workspace — confirmed
+by test that the physical viewport, layout mode, Custom Groups, panel
+heights, and time mode all survive the round-trip exactly, with zero
+waveform refetch; returning to Waveform schedules a Plotly resize pass
+(reusing the Phase 3A-UAT1/UAT3 mechanism) in case available width
+changed while away. "Open / Analyse" reuses the existing `selectSource()`
+unchanged and navigates to Waveform; "Remove" reuses the existing
+confirmation-and-delete flow unchanged, now consistently updating the
+Recordings list, the Workspace Sidebar, and the waveform-displayed-
+channel state from one shared refresh. **Storage philosophy explicitly
+unchanged**: the Recordings page is session/workspace-backed only — no
+database table, no persistent cloud file library, no upload history
+across sessions were added; this remains a separate future decision.
+**One small, additive backend change**: `SourceSummaryOut` gained
+`duration_seconds`/`sample_count` (both already computed, no new storage)
+so the Recordings list's Duration column doesn't require a per-row
+`.../channels` fetch. 279 backend tests passing (278 + 1 new, zero
+regressions); 30 new frontend `jsdom` checks passing
+(`phase3b_check.mjs`); two existing test files' assertions were updated
+in place where Phase 3B's own deliberate UX changes (no persistent
+success banner outside the modal; the old sidebar upload form's removal)
+made their prior assertions test since-removed behavior, not a
+regression — full suite otherwise at the same pre-existing 20-failure
+baseline, zero new divergences. **A real CSS bug was caught and fixed
+before shipping**: `#workspaceRow` and the Status Bar's waveform-only
+items both had author `display: flex` CSS that would have silently
+defeated the `hidden` attribute (author CSS beats the UA stylesheet's
+default `[hidden]` rule by origin, regardless of specificity) — explicit
+`[hidden]` override rules were added for both. **Unverified**: real-
+browser visual confirmation of the Recordings page layout, the upload
+modal's format selector, and long-filename wrapping in the Recording
+column — flagged for owner UAT.
+
 ## Completed foundation work
 
 `[FACT]`, verified against the repository on 2026-08-15:
@@ -1427,20 +1479,30 @@ never had `min-width: 0` — text-level `overflow-wrap` alone couldn't
 help until the box around the text was itself allowed to shrink. Now
 fixed (`.detail-header-info` class added with `min-width: 0; max-width:
 100%`), filename text wraps fully within the Sidebar at every width
-down to 240px, nothing truncated. The next step is for the project
-owner to review Phase 3A-UAT2 through UAT4 together via live DEV UAT —
-see the "Owner UAT" checklist in each task's own final report (header
-gap, Settings reachability, Sidebar at 240px with CFG/DAT filenames
-fully contained, long source/channel names if available, Grouped/Custom
-long legends, narrow-browser behavior around the responsive threshold,
-sidebar drawer reopen, Waveform → placeholder → Waveform, no panel
-overflow) — plus the still-open Phase 3A proportions/dimensions review
-(Global Header height, Main Sidebar Menu width in both states,
-Workspace Sidebar width/resize feel, Main Workspace dominance, Status
-Bar geometry) — and either request further refinement or move on to
-whichever comes next (digital channels remains the owner's other
-previously-stated next area; Table/Split view implementation remains
-explicitly not authorized until a separate request).
+down to 240px, nothing truncated. Following the owner's own "finish this
+area before introducing additional features" direction, **Phase 3B —
+Recordings Page and Upload Workflow** — is now implemented — see
+[MIGRATION_PLAN.md — Phase 3B Record](MIGRATION_PLAN.md#phase-3b--recordings-page-and-upload-workflow-2026-08-16)
+and [DECISIONS.md DEC-032](DECISIONS.md#dec-032--recordings-page-as-a-first-class-application-page-one-recording--one-logical-event-cfgdat-sessionworkspace-backed-not-a-persistent-cloud-library-phase-3b).
+Recordings is now a first-class Main Sidebar Menu page (alongside the
+renamed "Waveform"), with its own upload workflow replacing the old
+always-visible sidebar form; see the summary a few paragraphs above for
+the full detail. The next step is for the project owner to review Phase
+3A-UAT2 through Phase 3B together via live DEV UAT — see the "Owner UAT"
+checklist in each task's own final report (header gap, Settings
+reachability, Sidebar at 240px with CFG/DAT filenames fully contained,
+long source/channel names if available, Grouped/Custom long legends,
+narrow-browser behavior around the responsive threshold, sidebar drawer
+reopen, Waveform → placeholder → Waveform, no panel overflow, Recordings
+page simplicity/readability, the Upload New modal, Open/Analyse, and
+Waveform ⇆ Recordings state preservation) — plus the still-open Phase 3A
+proportions/dimensions review (Global Header height, Main Sidebar Menu
+width in both states, Workspace Sidebar width/resize feel, Main
+Workspace dominance, Status Bar geometry) — and either request further
+refinement or move on to whichever comes next (digital channels remains
+the owner's other previously-stated next area; Table/Split view and real
+CSV/Excel parsing remain explicitly not authorized until a separate
+request).
 Separately, resolving the
 abandoned-session TTL question (`[DECISION MODE: COMPARISON]`, reassessed
 but not resolved by Phase 2C-A/B1 — neither changes the backend memory-

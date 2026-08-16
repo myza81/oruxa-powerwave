@@ -217,6 +217,16 @@
             flex-direction: row;
             min-height: 0;
         }
+        /* Phase 3B: explicit -- author CSS's `display: flex` above beats
+           the UA stylesheet's default `[hidden] { display: none }` rule by
+           ORIGIN alone (author always wins over UA, regardless of
+           specificity or source order), so without this override,
+           shellSetCurrentPage()'s `.hidden = true` (toggling away from the
+           Waveform page) would have no visible effect at all -- the same
+           class of bug already caught and fixed for #bottomStatusBar's
+           .shell-status-item[hidden] and proactively handled for
+           #pageRecordings[hidden] below. */
+        #workspaceRow[hidden] { display: none; }
 
         /* ---- Workspace Sidebar: contextual to the active engineering
            workspace (Sources/Channels/etc, section 8) -- NOT global nav.
@@ -279,6 +289,59 @@
         .shell-view-placeholder h3 { margin: 0 0 6px; color: var(--text); font-size: 1rem; }
         .shell-view-placeholder p { margin: 0; font-size: 0.85rem; }
 
+        /* ---- Recordings page (Phase 3B) -- a sibling of Workspace Row,
+           same "dominant content area" treatment as Main Workspace, but
+           with no contextual sidebar (section 21). Clear/simple/list-
+           based per the Detego benchmark (layout only -- Oruxa tokens
+           throughout, no Detego branding/colors/icons copied). ---- */
+        #pageRecordings {
+            flex: 1 1 auto;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 20px 24px;
+        }
+        #pageRecordings[hidden] { display: none; }
+        .recordings-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        .recordings-header h2 { margin: 0; font-size: 1.15rem; }
+        /* Same intentional horizontal-scroll containment technique as
+           Phase 3A-UAT3's Finding B (.group-body) -- the table's own
+           columns/content must never force the Recordings page, and by
+           extension Work Area, any wider (section 26). */
+        .recordings-table-wrap { overflow-x: auto; }
+        table.recordings {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        table.recordings th, table.recordings td {
+            text-align: left;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--panel-border);
+            vertical-align: top;
+        }
+        table.recordings th { color: var(--text-dim); font-weight: 500; font-size: 0.75rem; white-space: nowrap; }
+        table.recordings tr[hidden] { display: none; }
+        table.recordings tr:hover td { background: var(--hover-tint); }
+        /* Phase 3A-UAT4 containment precedent: the recording name and its
+           underlying filenames come straight from imported files and can
+           be long/unbroken -- wrap in place, never escape the cell/table,
+           never truncate. */
+        .recording-name { font-weight: 600; color: var(--text); overflow-wrap: anywhere; max-width: 100%; }
+        .recording-files { font-size: 0.76rem; color: var(--text-dim); margin-top: 2px; overflow-wrap: anywhere; max-width: 100%; }
+        td.recording-name-cell { min-width: 0; max-width: 320px; }
+        .recording-actions { display: flex; gap: 8px; white-space: nowrap; }
+        #recordingsEmpty { text-align: center; padding: 48px 24px; }
+        #recordingsEmpty p { margin: 0 0 16px; }
+
         /* ---- Bottom Status Bar: a sibling of Workspace Row inside Work
            Area -- structurally confined to Work Area's own width, so it
            can never render beneath Main Sidebar Menu (section 17,
@@ -298,6 +361,13 @@
             white-space: nowrap;
         }
         #bottomStatusBar .shell-status-item { display: flex; gap: 5px; align-items: baseline; }
+        /* Explicit -- author CSS's `display: flex` above beats the UA
+           stylesheet's default `[hidden] { display: none }` rule by
+           ORIGIN alone (author always wins over UA, regardless of
+           specificity or source order), so without this override,
+           shellSetStatusBarWaveformFieldsVisible()'s `.hidden = true`
+           would have no visible effect at all. */
+        #bottomStatusBar .shell-status-item[hidden] { display: none; }
         #bottomStatusBar .shell-status-label { text-transform: uppercase; letter-spacing: 0.03em; }
         #bottomStatusBar .shell-status-value { color: var(--text); font-weight: 600; }
 
@@ -400,6 +470,22 @@
             font-size: 0.85rem;
             color: var(--text);
         }
+
+        /* Phase 3B: the upload modal's "Recording format" selector --
+           disabled CSV/Excel options prove the provider architecture is
+           extensible (section 12/14) without pretending they work yet,
+           the same visible-but-disabled convention already established
+           for Table/Tools/Reports in the Main Sidebar Menu. */
+        select {
+            width: 100%;
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 8px 10px;
+            font-size: 0.85rem;
+            color: var(--text);
+        }
+        select:focus { outline: none; border-color: var(--accent-dim); }
 
         .hint {
             font-size: 0.78rem;
@@ -1213,11 +1299,11 @@
                  longer a permanent column (responsive addendum, section
                  3/6). -->
             <button type="button" class="secondary" id="shellSidebarToggleBtn" aria-label="Toggle sources panel">Sources</button>
-            <!-- Application-level Import entry point (section 4/26) --
-                 the actual upload form/workflow is unchanged and still
-                 lives in the Workspace Sidebar (section 8); this button
-                 just brings it into view (and opens the Sidebar drawer on
-                 narrow screens -- see shellOpenImport()). -->
+            <!-- Application-level Import shortcut (Phase 3B, section 17):
+                 navigates to Recordings and opens the SAME Upload
+                 Recording modal "Upload New" uses there -- one upload
+                 implementation, never a second independent one. See
+                 shellOpenImport(). -->
             <button type="button" class="secondary" id="shellImportBtn">Import</button>
             <!-- Active View selector (section 13) -- Waveform is the real,
                  current working view; Table/Split are structural
@@ -1243,21 +1329,30 @@
              (a flex-row sibling of Work Area, both inside #appBody), not
              interrupted by the Status Bar. Collapsed by default, toggled
              (never freely drag-resized -- that model is reserved for the
-             Workspace Sidebar only, section 21). "Workspace" is the one
-             real destination this phase; Table/Tools/Reports are visibly
-             present but `disabled` -- proving the rail holds multiple
-             icon+label items without inventing unfinished pages for them
-             (section 5's own instruction). "Settings" is real (flips the
-             existing Light/Dark preference) so the rail proves a second
-             working interaction beyond collapse/expand. -->
+             Workspace Sidebar only, section 21). "Waveform" and
+             "Recordings" (Phase 3B) are the two real destinations;
+             Table/Tools/Reports remain visibly present but `disabled` --
+             proving the rail holds multiple icon+label items without
+             inventing unfinished pages for them (section 5's own
+             instruction). "Settings" is real (flips the existing
+             Light/Dark preference). -->
         <nav id="mainSidebarMenu" aria-label="Main navigation">
             <button type="button" class="shell-nav-toggle" id="mainSidebarToggleBtn" aria-expanded="false" aria-label="Expand navigation menu">
                 <svg viewBox="0 0 18 18" width="16" height="16"><line x1="2" y1="5" x2="16" y2="5" stroke="currentColor" stroke-width="1.5"/><line x1="2" y1="9" x2="16" y2="9" stroke="currentColor" stroke-width="1.5"/><line x1="2" y1="13" x2="16" y2="13" stroke="currentColor" stroke-width="1.5"/></svg>
             </button>
             <div class="shell-nav-list">
-                <button type="button" class="shell-nav-item" id="mainNavWorkspaceBtn" aria-current="page">
+                <!-- Phase 3B: renamed from "Workspace" -- "Waveform" and
+                     "Recordings" are now the two first-class application
+                     pages (shell.currentPage), distinct from
+                     shell.activeView (Waveform/Table/Split, only
+                     meaningful while ON the Waveform page). -->
+                <button type="button" class="shell-nav-item" id="mainNavWaveformBtn" aria-current="page">
                     <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><rect x="2" y="2" width="6" height="6" rx="1"/><rect x="10" y="2" width="6" height="6" rx="1"/><rect x="2" y="10" width="14" height="6" rx="1"/></svg></span>
-                    <span class="shell-nav-label">Workspace</span>
+                    <span class="shell-nav-label">Waveform</span>
+                </button>
+                <button type="button" class="shell-nav-item" id="mainNavRecordingsBtn" aria-current="false">
+                    <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><line x1="3" y1="5" x2="15" y2="5" stroke-width="1.5"/><line x1="3" y1="9" x2="15" y2="9" stroke-width="1.5"/><line x1="3" y1="13" x2="11" y2="13" stroke-width="1.5"/></svg></span>
+                    <span class="shell-nav-label">Recordings</span>
                 </button>
                 <button type="button" class="shell-nav-item" disabled title="Table -- coming soon">
                     <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><rect x="2" y="3" width="14" height="12" rx="1"/><line x1="2" y1="8" x2="16" y2="8"/><line x1="7" y1="3" x2="7" y2="15"/></svg></span>
@@ -1290,43 +1385,31 @@
                      shellSetSidebarDrawerOpen(). -->
                 <div class="shell-sidebar-backdrop" id="shellSidebarBackdrop"></div>
                 <!-- Workspace Sidebar (section 8): contextual to the
-                     active engineering workspace, NOT global nav. Import
-                     form + Sources + Channels move here, unredesigned
-                     (section 15/27), just relocated. Horizontally
-                     resizable -- see shellCreateHorizontalSplit() in the
-                     JS section below. -->
+                     active engineering workspace, NOT global nav. Sources
+                     + Channels live here (Phase 3B moved the Import form
+                     out to the Recordings page's upload modal -- see the
+                     comment on #workspaceSidebar's first child below).
+                     Horizontally resizable -- see
+                     shellCreateHorizontalSplit() in the JS section
+                     below. -->
                 <aside id="workspaceSidebar">
-                    <section class="panel" aria-labelledby="upload-heading">
-                        <h2 id="upload-heading">Import COMTRADE Event</h2>
-
-                        <form id="uploadForm">
-                            <div class="field">
-                                <label for="cfgInput">Configuration file (.cfg)</label>
-                                <input type="file" id="cfgInput" accept=".cfg,.CFG,.comtrade" required>
-                            </div>
-                            <div class="field">
-                                <label for="datInput">Data file (.dat)</label>
-                                <input type="file" id="datInput" accept=".dat,.DAT" required>
-                            </div>
-
-                            <p class="hint" id="sizeHint">Best experience with event records up to 100 MB (combined .cfg + .dat).</p>
-
-                            <button type="submit" id="uploadButton">Upload &amp; Parse</button>
-                        </form>
-
-                        <div class="upload-status" id="uploadStatus" role="status" aria-live="polite"></div>
-                    </section>
-
+                    <!-- Phase 3B: the always-visible "Import COMTRADE Event"
+                         form that used to live here has moved into the
+                         Recordings page's "Upload New" modal (section 16 --
+                         one upload implementation, not two equally-prominent
+                         flows). The Workspace Sidebar now focuses on what
+                         section 16 asks for: sources already active in this
+                         workspace, and their channels. -->
                     <section class="panel" aria-labelledby="sources-heading">
                         <h2 id="sources-heading">Sources in this Workspace</h2>
                         <ul class="source-list" id="sourceList"></ul>
-                        <p class="empty-state" id="sourceListEmpty">No sources imported yet.</p>
+                        <p class="empty-state" id="sourceListEmpty">No sources imported yet. Go to Recordings to upload one.</p>
                     </section>
 
                     <section class="panel" aria-labelledby="channels-heading">
                         <h2 id="channels-heading">Channels</h2>
                         <div id="channelsPanel">
-                            <p class="empty-state">Upload a COMTRADE event, or select one from the list, to see its channels here.</p>
+                            <p class="empty-state">Select a recording from Recordings, or a source from the list above, to see its channels here.</p>
                         </div>
                     </section>
                 </aside>
@@ -1400,6 +1483,51 @@
                 </main>
             </div>
 
+            <!-- Recordings page (Phase 3B): a sibling of Workspace Row,
+                 toggled via shellSetCurrentPage() exactly like
+                 shellSetActiveView() already toggles Waveform/Table/Split
+                 -- the same established "hide, don't destroy" pattern, so
+                 navigating away and back never rebuilds or refetches
+                 anything here. No contextual Workspace Sidebar (section
+                 21's own preference) -- this is a dedicated management
+                 page that should maximize the recording list area. -->
+            <section id="pageRecordings" aria-label="Recordings" hidden>
+                <div class="recordings-header">
+                    <h2>Recording Events</h2>
+                    <button type="button" id="recordingsUploadBtn">Upload New</button>
+                </div>
+
+                <div class="search-row">
+                    <input type="search" id="recordingsSearch" placeholder="Search recordings&hellip;" aria-label="Search recordings">
+                    <span id="recordingsSearchCount"></span>
+                </div>
+
+                <!-- Phase 3A-UAT3/UAT4 containment precedent (Finding B):
+                     an intentional horizontal-scroll wrapper around the
+                     table, not a column count that assumes the Work Area
+                     is always wide. -->
+                <div class="recordings-table-wrap">
+                    <table class="recordings" id="recordingsTable">
+                        <thead>
+                            <tr>
+                                <th>Recording</th>
+                                <th>Station</th>
+                                <th>Recorder</th>
+                                <th>Channels</th>
+                                <th>Duration</th>
+                                <th>Imported</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="recordingsTableBody"></tbody>
+                    </table>
+                </div>
+                <div class="empty-state" id="recordingsEmpty" hidden>
+                    <p>No recordings loaded in this session.</p>
+                    <button type="button" id="recordingsEmptyUploadBtn">Upload New</button>
+                </div>
+            </section>
+
             <!-- Bottom Status Bar (section 17/18): a sibling of
                  Workspace Row inside Work Area -- see the CSS comment
                  above #bottomStatusBar for why this specific nesting is
@@ -1408,10 +1536,18 @@
                  shellUpdateStatusBar()/shellUpdateStatusBarChannelCount(). -->
             <div id="bottomStatusBar">
                 <span class="shell-status-item"><span class="shell-status-label">Workspace</span><span class="shell-status-value" id="statusBarWorkspaceId">&mdash;</span></span>
-                <span class="shell-status-item"><span class="shell-status-label">Station</span><span class="shell-status-value" id="statusBarStation">&mdash;</span></span>
-                <span class="shell-status-item"><span class="shell-status-label">Sample rate</span><span class="shell-status-value" id="statusBarSampleRate">&mdash;</span></span>
-                <span class="shell-status-item"><span class="shell-status-label">Duration</span><span class="shell-status-value" id="statusBarDuration">&mdash;</span></span>
-                <span class="shell-status-item"><span class="shell-status-label">Displayed channels</span><span class="shell-status-value" id="statusBarChannelCount">0</span></span>
+                <!-- Phase 3B: these four are specifically about the active
+                     waveform analysis context -- shellSetStatusBarWaveformFieldsVisible()
+                     hides them while shell.currentPage is "recordings"
+                     (section 20: don't show misleading waveform-only
+                     values when no recording is actively being analysed
+                     there). "Workspace" above stays visible on both
+                     pages -- it's workspace-level identity, not
+                     waveform-specific. -->
+                <span class="shell-status-item shell-status-item-waveform"><span class="shell-status-label">Station</span><span class="shell-status-value" id="statusBarStation">&mdash;</span></span>
+                <span class="shell-status-item shell-status-item-waveform"><span class="shell-status-label">Sample rate</span><span class="shell-status-value" id="statusBarSampleRate">&mdash;</span></span>
+                <span class="shell-status-item shell-status-item-waveform"><span class="shell-status-label">Duration</span><span class="shell-status-value" id="statusBarDuration">&mdash;</span></span>
+                <span class="shell-status-item shell-status-item-waveform"><span class="shell-status-label">Displayed channels</span><span class="shell-status-value" id="statusBarChannelCount">0</span></span>
             </div>
         </div>
     </div>
@@ -1479,6 +1615,46 @@
         </div>
     </div>
 
+    <!-- Phase 3B: the ONE upload modal -- format/provider driven
+         (RECORDING_FORMATS below), not hard-coded to COMTRADE (section
+         12/14). COMTRADE is the only ENABLED format this phase; CSV/Excel
+         are listed as visibly-disabled options, proving the architecture
+         without pretending those formats already work. Reused by both
+         "Upload New" on the Recordings page and the Global Header's
+         Import shortcut (section 17/11) -- one underlying implementation,
+         not two. Same dialog shell/dismissal pattern as Custom Groups
+         above (Cancel/close/Escape/backdrop-click), guarded against
+         closing mid-upload (section 25). -->
+    <div class="confirm-overlay" id="uploadModalOverlay" hidden>
+        <div class="group-editor-box" role="dialog" aria-modal="true" aria-labelledby="uploadModalTitle">
+            <div class="group-editor-header">
+                <h3 id="uploadModalTitle">Upload Recording</h3>
+                <button type="button" class="group-editor-close" id="uploadModalCloseBtn" aria-label="Close">&times;</button>
+            </div>
+
+            <form id="uploadModalForm">
+                <div class="field">
+                    <label for="uploadModalFormatSelect">Recording format</label>
+                    <select id="uploadModalFormatSelect"></select>
+                </div>
+
+                <!-- Populated by JS from the selected format's own file
+                     requirements (RECORDING_FORMATS) -- for COMTRADE this
+                     renders the exact same two required inputs the old
+                     always-visible sidebar form used. -->
+                <div id="uploadModalFileFields"></div>
+
+                <p class="hint" id="uploadModalSizeHint">Best experience with event records up to 100 MB (combined files).</p>
+                <div class="upload-status" id="uploadModalStatus" role="status" aria-live="polite"></div>
+
+                <div class="group-editor-footer">
+                    <button type="button" class="secondary" id="uploadModalCancelBtn">Cancel</button>
+                    <button type="submit" id="uploadModalSubmitBtn">Upload &amp; Import</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script src="vendor/plotly/plotly-cartesian.min.js"></script>
     <script>
         // ------------------------------------------------------------------
@@ -1497,6 +1673,39 @@
         // becomes approximate until updated to match (a known Phase 1
         // simplification -- see docs/project-memory/MIGRATION_PLAN.md).
         const CLIENT_SIZE_GUIDANCE_MB = 100;
+
+        // ------------------------------------------------------------------
+        // Phase 3B: Recording format/provider definitions (section 14).
+        //
+        // A small, DATA-driven model the upload modal renders its file
+        // inputs from, so adding a future format means adding an entry
+        // here (plus, eventually, its own backend endpoint/parser) rather
+        // than rewriting the modal. COMTRADE is the only `enabled: true`
+        // entry this phase -- CSV/Excel are real, visible options (proving
+        // the architecture, matching the same visible-but-disabled
+        // convention already used for Table/Tools/Reports in the Main
+        // Sidebar Menu) but are NOT selectable and NOT implemented. No
+        // parser exists for them; selecting one is prevented client-side
+        // by the <option disabled> below, same technique <select> already
+        // uses natively.
+        // ------------------------------------------------------------------
+        const RECORDING_FORMATS = [
+            {
+                id: "comtrade",
+                label: "COMTRADE",
+                enabled: true,
+                files: [
+                    { key: "cfg", label: "Configuration file (.cfg)", accept: ".cfg,.CFG,.comtrade" },
+                    { key: "dat", label: "Data file (.dat)", accept: ".dat,.DAT" },
+                ],
+            },
+            { id: "csv", label: "CSV (coming soon)", enabled: false, files: [
+                { key: "csv", label: "CSV file (.csv)", accept: ".csv,.CSV" },
+            ] },
+            { id: "excel", label: "Excel (coming soon)", enabled: false, files: [
+                { key: "xlsx", label: "Excel file (.xlsx)", accept: ".xlsx,.xls" },
+            ] },
+        ];
 
         // ------------------------------------------------------------------
         // Phase 3A: App Shell
@@ -1524,7 +1733,14 @@
         const SHELL_WORKSPACE_SIDEBAR_MAX_WIDTH = 520;
 
         const shell = {
-            activeView: "waveform", // "waveform" | "table" | "split" (section 13)
+            // Phase 3B (section 19): application PAGE state, separate from
+            // shell.activeView below (which stays scoped to WITHIN the
+            // "waveform" page -- Waveform/Table/Split are sub-views of the
+            // waveform analysis area, not top-level destinations).
+            // Navigating currentPage never touches ww (waveform-domain
+            // state) directly -- see shellSetCurrentPage().
+            currentPage: "waveform", // "waveform" | "recordings"
+            activeView: "waveform", // "waveform" | "table" | "split" (section 13) -- only meaningful while currentPage === "waveform"
             mainSidebarExpanded: false, // section 21 -- independent of Workspace Sidebar width, never coupled to it
         };
 
@@ -1692,6 +1908,59 @@
             if (view === "waveform") wwScheduleResizeAllVisiblePlots();
         }
 
+        // ---- Phase 3B: application page navigation (section 19) --
+        // Waveform <-> Recordings. Deliberately the same "hide, don't
+        // destroy" mechanism as shellSetActiveView() above: #workspaceRow
+        // (the entire waveform workspace -- panels, Plotly instances,
+        // Workspace Sidebar) is only ever `hidden`, never removed/rebuilt,
+        // so navigating away and back preserves ww's own state (viewport,
+        // layout mode, custom groups, panel heights, time mode) exactly,
+        // with zero waveform refetch (section 3/32). This function never
+        // reads/writes `ww` directly -- see the App Shell section's own
+        // header comment. ----
+        function shellSetCurrentPage(page) {
+            if (page !== "waveform" && page !== "recordings") return;
+            const wasWaveform = shell.currentPage === "waveform";
+            shell.currentPage = page;
+
+            document.getElementById("workspaceRow").hidden = page !== "waveform";
+            document.getElementById("pageRecordings").hidden = page !== "recordings";
+            document.getElementById("mainNavWaveformBtn").setAttribute("aria-current", String(page === "waveform"));
+            document.getElementById("mainNavRecordingsBtn").setAttribute("aria-current", String(page === "recordings"));
+
+            // The Waveform/Table/Split selector and the (responsive-only)
+            // "Sources" drawer toggle are both scoped to the waveform
+            // page specifically -- Table/Split are sub-views of waveform
+            // analysis, and there is no Workspace Sidebar drawer to open
+            // on Recordings. Inline-style toggle (not the `hidden`
+            // attribute) deliberately mirrors Phase 3A-UAT3's Finding F
+            // pattern: #shellSidebarToggleBtn already has higher-
+            // specificity `#id` CSS rules governing its responsive
+            // display, so only an inline style (or !important) can
+            // reliably override them regardless of viewport; clearing it
+            // back to "" on return cleanly hands control back to those
+            // existing rules.
+            document.getElementById("shellViewToggle").style.display = page === "waveform" ? "" : "none";
+            document.getElementById("shellSidebarToggleBtn").style.display = page === "waveform" ? "" : "none";
+
+            shellSetStatusBarWaveformFieldsVisible(page === "waveform");
+
+            if (page === "waveform" && !wasWaveform) {
+                // Section 3A-UAT3 Finding E's exact reasoning applies one
+                // level up here too: the whole workspace row was hidden,
+                // so any width change that happened while away (Main
+                // Sidebar Menu toggle, browser resize) could not actually
+                // resize Plotly's charts.
+                wwScheduleResizeAllVisiblePlots();
+            }
+            if (page === "recordings") {
+                // Cheap metadata refresh (same GET .../sources call
+                // refreshSourceList() already makes) -- never waveform
+                // data, never a plot rebuild (section 32).
+                refreshAllSourceViews();
+            }
+        }
+
         // ---- Workspace Sidebar drawer (responsive addendum, section 3/6)
         // -- only meaningful under the tablet/phone CSS breakpoint; a
         // harmless no-op visually above it, since the class this toggles
@@ -1700,16 +1969,14 @@
             document.getElementById("workspaceRow").classList.toggle("shell-sidebar-open", open);
         }
 
-        // ---- Import entry point (section 4/26): the real upload form/
-        // workflow is completely unchanged and still lives in the
-        // Workspace Sidebar (section 8) -- this just brings it into view,
-        // opening the drawer first on narrow screens where the sidebar
-        // isn't already visible. ----
+        // ---- Import entry point (Phase 3B, section 17): the Global
+        // Header's Import shortcut routes into the SAME single upload
+        // workflow the Recordings page's own "Upload New" button uses --
+        // there is exactly one upload modal/implementation, never a
+        // second independent one. ----
         function shellOpenImport() {
-            shellSetSidebarDrawerOpen(true);
-            const cfgInput = document.getElementById("cfgInput");
-            if (cfgInput && cfgInput.scrollIntoView) cfgInput.scrollIntoView({ block: "nearest" });
-            if (cfgInput) cfgInput.focus({ preventScroll: true });
+            shellSetCurrentPage("recordings");
+            openUploadModal();
         }
 
         // ---- Bottom Status Bar (section 17/18): real, already-available
@@ -1737,6 +2004,17 @@
 
         function shellUpdateStatusBarChannelCount(count) {
             document.getElementById("statusBarChannelCount").textContent = String(count);
+        }
+
+        // Phase 3B (section 20): only hides/shows the status items --
+        // never clears their stored values, so returning to the Waveform
+        // page instantly shows the correct last-known values again with
+        // zero recomputation (no Status Bar redesign, per this task's own
+        // explicit instruction).
+        function shellSetStatusBarWaveformFieldsVisible(visible) {
+            document.querySelectorAll(".shell-status-item-waveform").forEach((el) => {
+                el.hidden = !visible;
+            });
         }
 
         // ------------------------------------------------------------------
@@ -1839,7 +2117,7 @@
             renderChannels(null);
             wwClearWorkspace();
             document.getElementById("statusBarWorkspaceId").textContent = currentWorkspaceId();
-            await refreshSourceList();
+            await refreshAllSourceViews();
         }
 
         // ------------------------------------------------------------------
@@ -1872,13 +2150,13 @@
         let lastImportedSourceId = null;
 
         function setUploadStatus(kind, html) {
-            const el = document.getElementById("uploadStatus");
+            const el = document.getElementById("uploadModalStatus");
             el.className = "upload-status visible " + kind;
             el.innerHTML = html;
         }
 
         function clearUploadStatus() {
-            const el = document.getElementById("uploadStatus");
+            const el = document.getElementById("uploadModalStatus");
             el.className = "upload-status";
             el.innerHTML = "";
         }
@@ -1898,12 +2176,91 @@
             return knownMessages[code] || (message || "Import failed.");
         }
 
-        document.getElementById("uploadForm").addEventListener("submit", async (event) => {
-            event.preventDefault();
+        // ------------------------------------------------------------------
+        // Phase 3B: Upload Recording modal -- the ONE upload implementation
+        // (section 11/16/17), reused by "Upload New" on the Recordings page
+        // and the Global Header's Import shortcut alike. Structure is
+        // driven by RECORDING_FORMATS; the actual submit path stays
+        // COMTRADE-specific because that is the only format with a backend
+        // endpoint to call -- see RECORDING_FORMATS's own comment.
+        // ------------------------------------------------------------------
+        let uploadModalSubmitting = false; // section 25/30: guards against double-submit and mid-upload dismissal
 
-            const cfgFile = document.getElementById("cfgInput").files[0];
-            const datFile = document.getElementById("datInput").files[0];
-            if (!cfgFile || !datFile) return;
+        function uploadModalSelectedFormat() {
+            const value = document.getElementById("uploadModalFormatSelect").value;
+            return RECORDING_FORMATS.find((f) => f.id === value) || RECORDING_FORMATS[0];
+        }
+
+        function renderUploadModalFormatOptions() {
+            const select = document.getElementById("uploadModalFormatSelect");
+            select.innerHTML = RECORDING_FORMATS.map((format) =>
+                '<option value="' + escapeHtml(format.id) + '"' + (format.enabled ? "" : " disabled") + '>' +
+                escapeHtml(format.label) + '</option>'
+            ).join("");
+            const firstEnabled = RECORDING_FORMATS.find((f) => f.enabled);
+            if (firstEnabled) select.value = firstEnabled.id;
+        }
+
+        function renderUploadModalFileFields(format) {
+            const container = document.getElementById("uploadModalFileFields");
+            container.innerHTML = format.files.map((fileSpec, index) =>
+                '<div class="field">' +
+                    '<label for="uploadModalFile_' + index + '">' + escapeHtml(fileSpec.label) + '</label>' +
+                    '<input type="file" id="uploadModalFile_' + index + '" data-file-key="' +
+                    escapeHtml(fileSpec.key) + '" accept="' + escapeHtml(fileSpec.accept) + '" required>' +
+                '</div>'
+            ).join("");
+        }
+
+        document.getElementById("uploadModalFormatSelect").addEventListener("change", () => {
+            renderUploadModalFileFields(uploadModalSelectedFormat());
+        });
+
+        function openUploadModal() {
+            if (uploadModalSubmitting) return;
+            renderUploadModalFormatOptions();
+            renderUploadModalFileFields(uploadModalSelectedFormat());
+            clearUploadStatus();
+            document.getElementById("uploadModalOverlay").hidden = false;
+            document.getElementById("uploadModalFormatSelect").focus();
+        }
+
+        function closeUploadModal() {
+            if (uploadModalSubmitting) return; // section 25: never destroy state mid-upload
+            document.getElementById("uploadModalOverlay").hidden = true;
+            document.getElementById("uploadModalForm").reset();
+            clearUploadStatus();
+        }
+
+        document.getElementById("uploadModalCloseBtn").addEventListener("click", closeUploadModal);
+        document.getElementById("uploadModalCancelBtn").addEventListener("click", closeUploadModal);
+        document.getElementById("uploadModalOverlay").addEventListener("click", (event) => {
+            if (event.target.id === "uploadModalOverlay") closeUploadModal(); // backdrop
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            if (!document.getElementById("uploadModalOverlay").hidden) closeUploadModal();
+        });
+
+        document.getElementById("uploadModalForm").addEventListener("submit", async (event) => {
+            event.preventDefault();
+            if (uploadModalSubmitting) return; // section 25/30: no double-submit
+
+            const format = uploadModalSelectedFormat();
+            if (!format.enabled) return; // unreachable via the UI (disabled <option>) -- defensive only
+
+            const fileInputs = Array.from(document.querySelectorAll('#uploadModalFileFields input[type="file"]'));
+            const files = {};
+            for (const input of fileInputs) {
+                const file = input.files[0];
+                if (!file) return; // native `required` already blocks this in a real browser
+                files[input.dataset.fileKey] = file;
+            }
+
+            // Only COMTRADE is enabled this phase -- see RECORDING_FORMATS.
+            if (format.id !== "comtrade") return;
+            const cfgFile = files.cfg;
+            const datFile = files.dat;
 
             // Immediate client-side feedback -- NOT the authoritative check
             // (the backend enforces its own configured limit regardless of
@@ -1919,8 +2276,11 @@
                 );
             }
 
-            const button = document.getElementById("uploadButton");
-            button.disabled = true;
+            uploadModalSubmitting = true;
+            const submitBtn = document.getElementById("uploadModalSubmitBtn");
+            submitBtn.disabled = true;
+            document.getElementById("uploadModalCancelBtn").disabled = true;
+            document.getElementById("uploadModalCloseBtn").disabled = true;
             setUploadStatus("busy", '<span class="spinner"></span>Uploading and parsing&hellip;');
 
             const formData = new FormData();
@@ -1940,36 +2300,68 @@
                     return;
                 }
 
-                setUploadStatus("ok", "Imported “" + body.station_name + "” — " +
-                    body.analog_channel_count + " analog / " + body.digital_channel_count + " digital channels.");
                 lastImportedSourceId = body.source_id;
-                document.getElementById("uploadForm").reset();
-                await refreshSourceList();
-                selectSource(body.source_id);
+                await refreshAllSourceViews();
+                // Section 24: upload -> list -> user chooses Open/Analyse.
+                // No auto-navigation to Waveform, no auto-selecting this
+                // source into the Channels panel -- that is specifically
+                // what the Recordings row's own "Open / Analyse" action is
+                // for (section 10).
+                document.getElementById("uploadModalOverlay").hidden = true;
+                document.getElementById("uploadModalForm").reset();
+                clearUploadStatus();
             } catch (error) {
                 setUploadStatus("error", "Could not reach the backend. Check your connection and try again.");
             } finally {
-                button.disabled = false;
+                uploadModalSubmitting = false;
+                submitBtn.disabled = false;
+                document.getElementById("uploadModalCancelBtn").disabled = false;
+                document.getElementById("uploadModalCloseBtn").disabled = false;
             }
         });
 
         // ------------------------------------------------------------------
         // Source list
         // ------------------------------------------------------------------
-        async function refreshSourceList() {
-            const listEl = document.getElementById("sourceList");
-            const emptyEl = document.getElementById("sourceListEmpty");
-
-            let sources = [];
+        // Phase 3B: shared low-level fetch -- both the Workspace Sidebar's
+        // compact Sources list AND the Recordings page's table are just
+        // two different presentations of this SAME `GET .../sources`
+        // response (section 18: one source of truth, no second/drifting
+        // recording repository). Never returns waveform arrays -- this is
+        // the existing Phase 1 list endpoint, unchanged.
+        async function fetchSourcesList() {
             try {
                 const response = await fetch(
                     apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/sources"
                 );
-                if (response.ok) sources = await response.json();
+                if (response.ok) return await response.json();
             } catch (error) {
-                // Leave the list as-is; the connectivity indicator already
-                // communicates backend reachability.
+                // Leave callers' existing rendering as-is; the connectivity
+                // indicator already communicates backend reachability.
             }
+            return null;
+        }
+
+        // Refreshes BOTH the Workspace Sidebar's source list and the
+        // Recordings page's table together, from one fetch -- called at
+        // every point that actually changes the source set (upload
+        // success, remove, workspace reset) so neither view can drift out
+        // of sync with the other regardless of which page is currently
+        // active (section 18).
+        async function refreshAllSourceViews() {
+            const sources = await fetchSourcesList();
+            renderSourceListItems(sources || []);
+            renderRecordingsTable(sources || []);
+        }
+
+        async function refreshSourceList() {
+            const sources = await fetchSourcesList();
+            if (sources !== null) renderSourceListItems(sources);
+        }
+
+        function renderSourceListItems(sources) {
+            const listEl = document.getElementById("sourceList");
+            const emptyEl = document.getElementById("sourceListEmpty");
 
             listEl.innerHTML = "";
             emptyEl.style.display = sources.length === 0 ? "block" : "none";
@@ -2005,6 +2397,143 @@
                 listEl.appendChild(li);
             }
         }
+
+        // ------------------------------------------------------------------
+        // Phase 3B: Recordings page (section 5/8/9). Renders from the same
+        // `GET .../sources` response as the Workspace Sidebar's list --
+        // see fetchSourcesList()/refreshAllSourceViews() above. One
+        // SourceSummaryOut (one CFG+DAT pair) is always exactly one row --
+        // the backend has never created separate entries for a source's
+        // companion files, so this holds by construction, not by extra
+        // client-side de-duplication logic.
+        // ------------------------------------------------------------------
+
+        // Section 9: prefer the station/event name; fall back to the CFG
+        // filename (or the first filename if none looks like a .cfg) only
+        // when the station name itself is missing/blank. Never invents a
+        // fault classification or description.
+        function recordingCfgFilename(source) {
+            const cfgName = source.original_filenames.find((name) => /\.cfg$/i.test(name));
+            return cfgName || source.original_filenames[0] || null;
+        }
+
+        function recordingDisplayName(source) {
+            if (source.station_name && source.station_name.trim()) return source.station_name;
+            return recordingCfgFilename(source) || "Untitled recording";
+        }
+
+        // provider_type is backend-computed (never re-derived/guessed
+        // client-side, matching the existing engineering_type convention)
+        // -- currently always "COMTRADE".
+        function recordingFormatLabel(source) {
+            return source.provider_type || "Unknown format";
+        }
+
+        function formatRecordingDuration(seconds) {
+            if (typeof seconds !== "number" || !Number.isFinite(seconds)) return "—";
+            return seconds.toFixed(3) + " s";
+        }
+
+        // created_at is a real, timezone-AWARE backend timestamp (unlike
+        // the per-sample COMTRADE timestamps elsewhere in this app, which
+        // are deliberately timezone-naive -- see Phase 2C-C3) -- safe to
+        // use the browser's own local-time display here.
+        function formatImportedAt(isoString) {
+            const date = new Date(isoString);
+            if (Number.isNaN(date.getTime())) return "—";
+            return date.toLocaleString(undefined, {
+                year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+            });
+        }
+
+        function renderRecordingsTable(sources) {
+            const wrapEl = document.querySelector(".recordings-table-wrap");
+            const emptyEl = document.getElementById("recordingsEmpty");
+            const bodyEl = document.getElementById("recordingsTableBody");
+
+            const isEmpty = sources.length === 0;
+            wrapEl.hidden = isEmpty;
+            emptyEl.hidden = !isEmpty;
+            if (isEmpty) {
+                bodyEl.innerHTML = "";
+                document.getElementById("recordingsSearchCount").textContent = "";
+                return;
+            }
+
+            let html = "";
+            for (const source of sources) {
+                const name = recordingDisplayName(source);
+                const filenames = source.original_filenames.join(" + ");
+                const searchText = [name, source.station_name, filenames, recordingFormatLabel(source)]
+                    .filter(Boolean).join(" ").toLowerCase();
+                html += '<tr data-search="' + escapeHtml(searchText) + '">' +
+                    '<td class="recording-name-cell">' +
+                        '<div class="recording-name">' + escapeHtml(name) + '</div>' +
+                        '<div class="recording-files">' + escapeHtml(filenames) + '</div>' +
+                    '</td>' +
+                    '<td>' + escapeHtml(source.station_name || "—") + '</td>' +
+                    '<td>' + escapeHtml(source.recorder_name || "—") + '</td>' +
+                    '<td>' + source.analog_channel_count + 'A + ' + source.digital_channel_count + 'D</td>' +
+                    '<td>' + formatRecordingDuration(source.duration_seconds) + '</td>' +
+                    '<td>' + formatImportedAt(source.created_at) + '</td>' +
+                    '<td class="recording-actions">' +
+                        '<button type="button" class="secondary" data-action="open" data-source-id="' +
+                        escapeHtml(source.source_id) + '">Open / Analyse</button>' +
+                        '<button type="button" class="danger" data-action="remove" data-source-id="' +
+                        escapeHtml(source.source_id) + '" data-source-name="' + escapeHtml(name) + '">Remove</button>' +
+                    '</td>' +
+                '</tr>';
+            }
+            bodyEl.innerHTML = html;
+
+            bodyEl.querySelectorAll('button[data-action="open"]').forEach((btn) => {
+                btn.addEventListener("click", () => openRecordingForAnalysis(btn.dataset.sourceId));
+            });
+            bodyEl.querySelectorAll('button[data-action="remove"]').forEach((btn) => {
+                btn.addEventListener("click", () => requestRemoveSource(btn.dataset.sourceId, btn.dataset.sourceName));
+            });
+
+            applyRecordingsSearchFilter(document.getElementById("recordingsSearch").value);
+        }
+
+        // Section 10: activates/selects the recording in the current
+        // workspace context (reuses selectSource() unchanged -- same
+        // parser/import semantics, never re-uploads, never creates a
+        // duplicate source) and navigates to Waveform. Does not
+        // auto-display any channels -- that remains the user's own
+        // checkbox + "Add selected" step, unchanged.
+        function openRecordingForAnalysis(sourceId) {
+            selectSource(sourceId);
+            shellSetCurrentPage("waveform");
+        }
+
+        // Section 22: simple client-side substring filter across the
+        // fields actually shown -- same technique setupChannelSearch()
+        // already uses (data-search attribute + hidden toggle), no
+        // advanced filtering.
+        function applyRecordingsSearchFilter(query) {
+            const q = query.trim().toLowerCase();
+            const rows = Array.from(document.querySelectorAll("#recordingsTableBody tr[data-search]"));
+            const countEl = document.getElementById("recordingsSearchCount");
+            if (!q) {
+                for (const row of rows) row.hidden = false;
+                countEl.textContent = "";
+                return;
+            }
+            let visibleCount = 0;
+            for (const row of rows) {
+                const match = row.dataset.search.includes(q);
+                row.hidden = !match;
+                if (match) visibleCount++;
+            }
+            countEl.textContent = visibleCount + " of " + rows.length;
+        }
+
+        document.getElementById("recordingsSearch").addEventListener("input", (event) => {
+            applyRecordingsSearchFilter(event.target.value);
+        });
+        document.getElementById("recordingsUploadBtn").addEventListener("click", openUploadModal);
+        document.getElementById("recordingsEmptyUploadBtn").addEventListener("click", openUploadModal);
 
         // ------------------------------------------------------------------
         // Remove confirmation (the app's one and only modal -- section 19's
@@ -2075,7 +2604,10 @@
             // to a different source, are left alone) -- this never removes
             // the source itself a second time, only the display of it.
             wwRemoveChannelsForSource(sourceId);
-            await refreshSourceList();
+            // Section 18: keeps the Recordings page and the Waveform
+            // source state consistent regardless of which page is
+            // currently active.
+            await refreshAllSourceViews();
         }
 
         // ------------------------------------------------------------------
@@ -4408,11 +4940,16 @@
         document.getElementById("mainSidebarMenu").addEventListener("transitionend", (event) => {
             if (event.propertyName === "width") wwScheduleResizeAllVisiblePlots();
         });
-        // "Workspace" is the one real destination this phase -- clicking
-        // it returns the Active View to Waveform if the user had switched
-        // to a Table/Split placeholder, a small but real behavior rather
-        // than a dead button (section 5).
-        document.getElementById("mainNavWorkspaceBtn").addEventListener("click", () => shellSetActiveView("waveform"));
+        // Phase 3B: "Waveform" and "Recordings" are the two first-class
+        // Main Sidebar Menu destinations (section 3). Clicking "Waveform"
+        // also returns the Active View to Waveform if the user had
+        // switched to a Table/Split placeholder while last on that page --
+        // a small but real behavior rather than a dead button (section 5).
+        document.getElementById("mainNavWaveformBtn").addEventListener("click", () => {
+            shellSetCurrentPage("waveform");
+            shellSetActiveView("waveform");
+        });
+        document.getElementById("mainNavRecordingsBtn").addEventListener("click", () => shellSetCurrentPage("recordings"));
         // "Settings" is real (flips the existing Light/Dark preference) --
         // the sole theme entry point in this shell (Phase 3A-UAT2: the
         // Global Header's own duplicate #themeToggle was removed).
@@ -4511,7 +5048,7 @@
         });
 
         checkApiHealth();
-        refreshSourceList();
+        refreshAllSourceViews();
     </script>
 </body>
 </html>

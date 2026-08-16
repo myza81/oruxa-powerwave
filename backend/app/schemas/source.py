@@ -59,7 +59,15 @@ class TimebaseOut(BaseModel):
 
 
 class SourceSummaryOut(BaseModel):
-    """Identity/status summary -- the shape returned by upload, list, and get-one."""
+    """Identity/status summary -- the shape returned by upload, list, and get-one.
+
+    Phase 3B: `duration_seconds`/`sample_count` were added here (purely
+    additive -- both already existed on `SourceMetadata`/`ActiveSource`,
+    computed once at import time; no new storage, no new computation, no
+    change to any existing field) so the Recordings page's list table can
+    show a real Duration column without an extra per-row `.../channels`
+    request for every listed recording.
+    """
 
     source_id: str
     workspace_id: str
@@ -72,6 +80,8 @@ class SourceSummaryOut(BaseModel):
     nominal_frequency: float
     analog_channel_count: int
     digital_channel_count: int
+    duration_seconds: float
+    sample_count: int
 
     @classmethod
     def from_domain(cls, source: SourceMetadata) -> "SourceSummaryOut":
@@ -86,6 +96,8 @@ class SourceSummaryOut(BaseModel):
             nominal_frequency=source.nominal_frequency,
             analog_channel_count=len(source.analog_channels),
             digital_channel_count=len(source.digital_channels),
+            duration_seconds=source.duration_seconds,
+            sample_count=source.sample_count,
         )
 
 

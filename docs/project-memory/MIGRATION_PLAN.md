@@ -7275,6 +7275,242 @@ visually confirmed — flagged for owner UAT.
 
 ---
 
+## Phase 3B — Recordings Page and Upload Workflow (2026-08-16)
+
+`[FACT]` throughout. See
+[DECISIONS.md — DEC-032](DECISIONS.md#dec-032--recordings-page-as-a-first-class-application-page-one-recording--one-logical-event-cfgdat-sessionworkspace-backed-not-a-persistent-cloud-library-phase-3b)
+for the full decision record (owner instruction, reasoning, alternatives
+considered, impact) — this section is the implementation detail.
+
+### Navigation
+
+`shell.currentPage` (`"waveform"` | `"recordings"`) is new app-shell
+state, deliberately separate from `shell.activeView` (`"waveform"` |
+`"table"` | `"split"`, unchanged, still scoped to sub-views WITHIN the
+Waveform page). `shellSetCurrentPage()` toggles `#workspaceRow`/
+`#pageRecordings` visibility — the same "hide, don't destroy" mechanism
+Phase 3A's `shellSetActiveView()` already established for Table/Split,
+now applied one level up. Main Sidebar Menu's "Workspace" item was
+renamed "Waveform" (`#mainNavWaveformBtn`); a new, ENABLED "Recordings"
+item (`#mainNavRecordingsBtn`) was added right after it — both real
+destinations now, unlike the still-`disabled` Table/Tools/Reports
+placeholders. The Global Header's Waveform/Table/Split selector
+(`#shellViewToggle`) and the responsive Sources drawer toggle
+(`#shellSidebarToggleBtn`) are both scoped to the Waveform page
+specifically — hidden via a direct `.style.display` toggle (not the
+`hidden` attribute) while on Recordings, mirroring Phase 3A-UAT3's
+Finding F pattern, since `#shellSidebarToggleBtn` already has
+higher-specificity `#id` CSS rules governing its own responsive display
+that only an inline style can reliably beat regardless of viewport.
+
+### Waveform state preservation
+
+Confirmed by test, not assumed: navigating Waveform → Recordings →
+Waveform preserves the physical viewport (byte-identical), layout mode
+(Grouped/Separate/Custom), Custom Groups, panel heights, and time mode
+(Absolute/Elapsed) exactly, with **zero waveform refetch** caused by the
+navigation itself. Returning to Waveform schedules
+`wwScheduleResizeAllVisiblePlots()` (Phase 3A-UAT1/UAT3's own helper,
+no new mechanism) in case the available width changed while
+`#workspaceRow` was hidden — the exact same staleness risk Phase
+3A-UAT3's Finding E already identified and fixed for the Table/Split
+placeholder case, recurring one level up here.
+
+### Bottom Status Bar
+
+Preserves its Phase 3A geometry exactly (no redesign). The four
+waveform-specific items (Station/Sample rate/Duration/Displayed
+channels) are hidden via `shellSetStatusBarWaveformFieldsVisible()`
+while on Recordings — their underlying VALUES are never cleared, only
+hidden, so returning to Waveform shows the correct last-known values
+instantly with zero recomputation. The "Workspace" item (workspace-level
+identity, not waveform-specific) stays visible on both pages.
+
+### Recording abstraction
+
+One `SourceSummaryOut` (one CFG+DAT pair, as the backend has always
+modeled it) is always exactly one Recordings row — confirmed by test,
+not merely assumed from the existing API shape. `recordingDisplayName()`
+prefers the real `station_name`; falls back to the CFG filename (or the
+first filename) only when the station name itself is blank/missing —
+never invents a fault classification or description.
+
+### Recordings page
+
+Heading: "Recording Events" (compact Main Sidebar label: "Recordings").
+Columns, using only real backend metadata (`Do NOT show empty
+decorative columns`, per this task's own instruction — a separate
+"Station" column was deliberately OMITTED since `recordingDisplayName()`
+already prefers station_name as the primary Recording label in the
+common case, which would make a same-content Station column genuinely
+redundant by this design's own choice, not merely incomplete data):
+**Recording** (display name + the full CFG/DAT filenames as contained
+secondary text, reusing Phase 3A-UAT4's `overflow-wrap: anywhere`/
+`min-width: 0` containment technique), **Station**, **Recorder**,
+**Channels** (`NA + MD`, mirroring Detego's own compact convention —
+layout only, no Detego colors/branding), **Duration**, **Imported**
+(`created_at`, a real timezone-aware backend timestamp — distinct from
+the deliberately timezone-naive per-sample COMTRADE timestamps
+elsewhere in this app), **Actions**. "Format" was deliberately NOT its
+own column this phase — with only COMTRADE currently enabled it would
+read identically on every row today; format-readiness for CSV/Excel
+lives in the upload modal's own provider model instead (section 14).
+Empty state: "No recordings loaded in this session." + an Upload New
+button — never implies a permanent library is empty. Search: a simple
+client-side substring filter across recording name/station/filename/
+format, using the exact same `data-search` + hidden-toggle technique
+`setupChannelSearch()` already established. The table sits inside an
+intentional `overflow-x: auto` wrapper — the same Phase 3A-UAT3 Finding
+B containment technique — so it never forces the page, and by extension
+Work Area, any wider.
+
+### Upload workflow
+
+"Upload New" (Recordings page, top-right) and the Global Header's
+"Import" shortcut both open the SAME modal (`openUploadModal()`/
+`shellOpenImport()` respectively — `shellOpenImport()` now navigates to
+Recordings first, then opens the modal, rather than maintaining a
+separate import path). The modal's file-input fields are rendered from
+`RECORDING_FORMATS` — a small array of `{ id, label, enabled, files:
+[{key, label, accept}] }` definitions. COMTRADE (`enabled: true`)
+renders the exact same two required inputs (cfg/dat) the old
+always-visible sidebar form used, with unchanged validation, unchanged
+~100 MB client-side size guidance, and the exact same
+`POST .../sources` multipart contract, `friendlyErrorMessage()`
+mapping, and ephemeral-upload/staging semantics as before — this is a
+UI relocation and structural generalization, not a parser or backend
+contract change. CSV and Excel are listed (`enabled: false`) as real,
+visible, `disabled` `<option>`s — the browser natively prevents
+selecting a disabled option, so they cannot be falsely accepted; no
+parser exists for either. Loading/error/success states reuse the
+existing `setUploadStatus()`/`clearUploadStatus()` mechanism, retargeted
+to the modal's own status element. Double-submit is prevented by an
+explicit `uploadModalSubmitting` guard, which also blocks Cancel/
+close/Escape/backdrop-click while an upload is actively processing
+(section 25) — the same safe-dismissal pattern already established for
+the Custom Groups editor. **On success**: the modal closes and clears
+its own status immediately; the recording appears in the list; NO
+auto-navigation to Waveform and NO auto-selecting the new source into
+the Channels panel — that remains the Recordings row's own explicit
+"Open / Analyse" action, per this task's own preferred
+upload → list → user-chooses-Open/Analyse flow.
+
+### Row actions
+
+**Open / Analyse** calls the existing `selectSource(sourceId)`
+unchanged (same parser/import semantics; never re-uploads; never
+creates a duplicate source entry) and then `shellSetCurrentPage
+("waveform")`. It does not auto-display any channels — the existing
+checkbox + "Add selected" step is unchanged. **Remove** reuses the
+existing `requestRemoveSource()`/`performRemoveSource()` confirmation
+flow completely unchanged (same dialog, same wording, same DELETE
+call), now also called from the Recordings row — updating the
+Recordings list, the Workspace Sidebar's source list, and the
+waveform-displayed-channel state for that source consistently from one
+call (`refreshAllSourceViews()`), confirmed by test.
+
+### Backend change (additive only)
+
+`SourceSummaryOut` gained `duration_seconds`/`sample_count` — both
+already computed and stored on `SourceMetadata` at import time since
+Phase 2A; no new storage, no new computation, no change to any existing
+field, no new endpoint. This avoids the Recordings list needing a
+separate `.../channels` fetch per listed row just to show Duration,
+which would have multiplied network calls on every list render.
+
+### Session recording list (no second repository)
+
+The Recordings page renders from the SAME `GET .../sources` response
+the Workspace Sidebar's own source list already fetches
+(`fetchSourcesList()`, extracted from the pre-existing
+`refreshSourceList()`). A new shared `refreshAllSourceViews()` refreshes
+BOTH presentations together from one fetch, called at every point that
+actually changes the source set (upload success, remove, workspace
+reset, and initial page load) — confirmed by test that an uploaded
+source appears in the Recordings list and that Remove updates both the
+list and the waveform-displayed-channel state consistently, regardless
+of which page is currently active.
+
+### Storage semantics (unchanged philosophy)
+
+The Recordings page reflects the current browser/workspace session's
+`WorkspaceRegistry` state — the same ephemeral, in-memory,
+never-persisted-to-disk model DEC-012/DEC-015/DEC-019 already
+established. No database table, no object-storage retention, no
+user-account recording history, no upload history across sessions were
+added. UI copy avoids implying a permanent cloud library.
+
+### A real CSS bug caught and fixed before shipping
+
+`#workspaceRow` and `#bottomStatusBar .shell-status-item` both have
+`display: flex` as their own author CSS — which beats the UA
+stylesheet's default `[hidden] { display: none }` rule by ORIGIN alone
+(author always wins over UA, regardless of specificity or source
+order). Without an explicit `[hidden]` override on each, this phase's
+own `.hidden = true` toggles (hiding the Waveform page; hiding the
+waveform-only Status Bar fields) would have had NO visible effect at
+all. Caught by manual review (not by the jsdom test suite, which has no
+real CSS layout engine and cannot detect this class of bug) and fixed
+with two targeted `[hidden]` override rules, mirroring the pattern this
+project already uses elsewhere (`.confirm-overlay[hidden]`,
+`details.channel-group[hidden]`, `#pageRecordings[hidden]`, which was
+added proactively and correctly the first time).
+
+### Tests
+
+- **Frontend, new**: `phase3b_check.mjs` (scratch, not committed) —
+  30/30 passing. Covers navigation (Recordings enabled in the Main
+  Sidebar Menu, Waveform ⇆ Recordings round-trip, viewport/layout-mode/
+  panel-height/time-mode preservation, zero refetch, Status Bar field
+  visibility, Plotly resize-on-return), the recording list (empty state,
+  one-row-per-CFG+DAT-pair, real metadata, no fabricated fields, long-
+  name/filename containment, search, Remove updating both the list and
+  waveform source state), and the upload modal (open/Cancel/Escape/
+  backdrop/close, COMTRADE file-field rendering, CSV/Excel listed-but-
+  disabled, CFG/DAT required, the full success path closing the modal
+  and adding one row, error state, double-submit prevention, mid-upload
+  dismissal guard, the Header Import shortcut opening the same modal).
+- **Frontend, existing suite corrections**: `frontend_logic_check.mjs`'s
+  TEST 3/4 (originally testing a "stale success banner" that persisted
+  outside the old always-visible upload form) were updated in place —
+  Phase 3B's own modal now closes and clears its own status immediately
+  on success, so that specific persistent-banner premise no longer
+  applies by design; the underlying remove-confirmation-flow and
+  cross-source-isolation properties they protected are still tested,
+  now driven through the modal. `phase3a_check.mjs`'s own Import-button
+  test was similarly updated (it asserted the old `#cfgInput` element,
+  removed by design) to confirm the new Recordings-navigation-plus-
+  modal behavior instead. Both corrections follow this project's
+  established precedent (e.g. Phase 2C-C4B, Phase 3A-UAT2) of updating
+  assertions in place rather than leaving them failing.
+- **Frontend, full regression**: the exact same 20 pre-existing,
+  already-documented failures across the full suite, zero new
+  divergences, confirmed by running the whole suite before and after.
+- **Backend**: `test_sources_api.py` gained two new/extended assertions
+  for the new `duration_seconds`/`sample_count` fields, cross-checked
+  against the pre-existing `.../channels` endpoint's own `timebase.*`
+  values rather than a hardcoded number. 279/279 passing (278 + 1 new
+  test), zero regressions.
+
+### Files changed
+
+Modified: `frontend/index.html` (the bulk of this phase),
+`backend/app/schemas/source.py` (additive DTO fields),
+`backend/tests/test_sources_api.py` (new coverage for those fields).
+No CI/deployment workflow file, no other backend file.
+
+### Honest limitation
+
+No real browser is available in this sandbox. Whether the Recordings
+page reads as clear/simple/engineering-focused in practice, whether the
+upload modal's format selector and file-field rendering feel natural,
+and whether the long-filename wrapping in the Recording column looks
+right at real widths were reasoned through and verified structurally
+(DOM/state assertions, CSS rule inspection) but not visually confirmed
+— flagged for owner UAT.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

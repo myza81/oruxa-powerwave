@@ -2196,6 +2196,147 @@ entry was added, per governance. See
 
 ---
 
+## DEC-032 — Recordings page as a first-class application page; one recording = one logical event (CFG+DAT); session/workspace-backed, not a persistent cloud library (Phase 3B)
+
+Date: 2026-08-16
+Status: Approved
+Source: explicit project-owner instructions opening the Phase 3B task
+(2026-08-16), benchmarked against Detego's own Recordings page (layout
+reference only, per DEC-020's Detego Benchmark Principle — no Detego
+branding/colors/icons copied).
+
+Decision:
+
+`oruxa_powerwave` gains a dedicated **Recordings** page (heading
+"Recording Events"), registered as a first-class Main Sidebar Menu
+destination alongside the renamed **Waveform** page (`shell.currentPage`
+= `"waveform"` | `"recordings"`, deliberately separate from
+`shell.activeView`, which stays scoped to sub-views WITHIN the Waveform
+page — Table/Split remain sub-views of waveform analysis, not top-level
+pages). Confirmed as part of this same decision:
+
+- **Page navigation never destroys or rebuilds the waveform analysis
+  workspace.** `#workspaceRow` (the entire Workspace Sidebar + Main
+  Workspace + every live Plotly instance) is only ever `hidden`, never
+  removed/recreated, when navigating to Recordings — the exact same
+  "hide, don't destroy" mechanism `shellSetActiveView()` already
+  established for Table/Split in Phase 3A. `ww`'s own state (viewport,
+  layout mode, Custom Groups, panel heights, time mode) is untouched by
+  navigation; returning to Waveform schedules a Plotly resize pass
+  (reusing Phase 3A-UAT1/UAT3's `wwScheduleResizeAllVisiblePlots()`) in
+  case the available width changed while away, with zero waveform
+  refetch — confirmed by test.
+- **One logical recording = one CFG+DAT pair**, never two separate rows.
+  This already held at the backend/API level before this decision (one
+  `SourceMetadata`/`SourceSummaryOut` per imported COMTRADE source, both
+  companion files listed under `original_filenames`) — this decision
+  formalizes it as the FRONTEND'S recording abstraction too, deliberately
+  described in terms general enough for future formats: a CSV file, or
+  an Excel file, will each also be exactly one recording/event when
+  those providers exist later.
+- **No second, independently-drifting recording repository.** The
+  Recordings page renders from the SAME `GET .../sources` response the
+  Workspace Sidebar's own source list already fetches
+  (`fetchSourcesList()`); a shared `refreshAllSourceViews()` keeps both
+  presentations in sync at every point that actually changes the source
+  set (upload success, remove, workspace reset).
+- **The Recordings page is session/workspace-backed, not a persistent
+  cloud recording library.** It reflects whatever the CURRENT
+  browser/workspace session's `WorkspaceRegistry` holds — the same
+  ephemeral-by-design in-memory model DEC-012/DEC-015/DEC-019 already
+  established for the whole application. No database table, no
+  object-storage retention, no user-account recording history, no
+  upload history across sessions were added. UI wording was written to
+  avoid implying otherwise.
+- **One upload implementation.** The always-visible "Import COMTRADE
+  Event" form that previously lived in the Workspace Sidebar was
+  removed; its actual upload/validation logic was refactored (not
+  duplicated) into one extensible "Upload Recording" modal, opened by
+  the Recordings page's own "Upload New" button AND the Global Header's
+  "Import" shortcut (which now navigates to Recordings and opens the
+  same modal, rather than maintaining a second independent import path).
+- **The upload modal is provider/format-driven, not hard-coded to
+  COMTRADE**, via a small `RECORDING_FORMATS` definition (id, label,
+  `enabled`, required files) the modal's file-input fields are rendered
+  from. COMTRADE is the only `enabled: true` entry this phase — CSV and
+  Excel are listed as real, visible, `disabled` `<option>`s (the same
+  visible-but-disabled convention Phase 3A already established for
+  Table/Tools/Reports in the Main Sidebar Menu), proving the
+  architecture without pretending those formats already parse. No CSV
+  or Excel parser was implemented; this is structural readiness only.
+- **Backend change: additive only.** `SourceSummaryOut` gained
+  `duration_seconds`/`sample_count` (both already computed and stored on
+  `SourceMetadata` since Phase 2A — no new storage, no new computation,
+  no change to any existing field) so the Recordings list's Duration
+  column doesn't require a separate `.../channels` request per listed
+  row. No new endpoint, no new table, no new persistence semantics.
+- **Open / Analyse reuses `selectSource()` unchanged** (same
+  parser/import semantics, never re-uploads, never creates a duplicate
+  source) and navigates to Waveform — it does not auto-display any
+  channels; the existing checkbox + "Add selected" step is unchanged.
+  **Remove reuses the existing `requestRemoveSource()`/
+  `performRemoveSource()` confirmation flow unchanged**, updating the
+  Recordings list, the Workspace Sidebar's source list, and the
+  waveform-displayed-channel state consistently from one call.
+
+Reason:
+
+The owner's own instructions opening this task are the explicit request
+for this page, framed as "finish this area before introducing
+additional features," with Detego's Recordings page named as the
+layout/workflow benchmark (per the pre-existing DEC-020 Detego
+Benchmark Principle) and an explicit, repeated instruction not to
+silently change the project's existing no-persistent-event-storage
+philosophy while doing so.
+
+Alternatives considered:
+
+A persistent, database-backed recording library surviving across
+sessions (rejected — explicitly out of scope this phase per the task's
+own instructions; a separate future product/architecture decision, not
+one to back into via a UI feature); keeping the always-visible Workspace
+Sidebar upload form AND adding a second upload modal (rejected — the
+task's own explicit "one upload implementation only" instruction; two
+equally-prominent flows would drift and confuse); building the upload
+modal as COMTRADE-hard-coded with no format concept (rejected — the
+task's own explicit forward-compatibility requirement for CSV/Excel,
+even though neither is implemented now); fetching `.../channels` per row
+to populate a Duration column instead of any backend change (rejected —
+would multiply network calls just to render a list, contrary to this
+phase's own "Recordings page should not refetch... merely by opening"
+performance instruction; the additive `SourceSummaryOut` field change is
+lower-risk and lower-cost); implementing folders/sharing/upload-history
+now because Detego has them (rejected — the task's own explicit
+instruction that folders are future work, and DEC-020 already
+establishes that Detego is a benchmark, not a specification to copy
+blindly); auto-navigating to Waveform immediately after a successful
+upload (rejected — the task's own explicit preferred flow is
+upload → list → user chooses Open/Analyse).
+
+Impact:
+
+- `frontend/index.html`: Main Sidebar Menu gains a "Recordings" item and
+  renames "Workspace" to "Waveform"; new `#pageRecordings` page section
+  (sibling of `#workspaceRow`), new `#uploadModalOverlay` (replacing the
+  removed always-visible sidebar upload form); new `shell.currentPage`
+  state, `shellSetCurrentPage()`, `shellSetStatusBarWaveformFieldsVisible()`,
+  `RECORDING_FORMATS`, the upload-modal open/close/submit functions,
+  `fetchSourcesList()`/`refreshAllSourceViews()`/`renderRecordingsTable()`/
+  `recordingDisplayName()`/`openRecordingForAnalysis()`/
+  `applyRecordingsSearchFilter()`. Two CSS `[hidden]`-override rules
+  (`#workspaceRow[hidden]`, `#bottomStatusBar .shell-status-item[hidden]`)
+  were added where needed — author CSS's own `display: flex` on those
+  elements would otherwise beat the UA stylesheet's default `[hidden]`
+  rule by origin, silently making `.hidden = true` a no-op.
+- `backend/app/schemas/source.py`: `SourceSummaryOut` gained
+  `duration_seconds`/`sample_count` (additive only).
+  `backend/tests/test_sources_api.py`: two new/extended assertions for
+  the new fields. 279 backend tests passing (278 + 1 new), zero
+  regressions.
+- See [MIGRATION_PLAN.md — Phase 3B Record](MIGRATION_PLAN.md#phase-3b--recordings-page-and-upload-workflow-2026-08-16).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or
