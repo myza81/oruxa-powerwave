@@ -8,6 +8,100 @@ Last updated: **2026-08-16**
 
 ## What was most recently done
 
+**Phase 3A-UAT3 — Targeted Overflow and Containment Fixes.** An
+independent Codex audit of the Phase 3A shell (run against a local
+working tree that could not reach GitHub — SSH authentication failure)
+identified seven candidate overflow/containment risks. Per this task's
+own explicit instruction, every finding was independently re-verified by
+direct code inspection against canonical `main` (synced via this
+session's own established HTTPS fallback) before anything was
+implemented — none of the audit's conclusions were trusted blindly. Full
+detail:
+[MIGRATION_PLAN.md — Phase 3A-UAT3 Record](MIGRATION_PLAN.md#phase-3a-uat3--targeted-overflow-and-containment-fixes-2026-08-16).
+
+**Audit revalidation result: all seven findings confirmed STILL PRESENT
+and fixed — none rejected as invalid or already-fixed.**
+
+- **A (responsive sidebar reopen button)**: `#shellSidebarToggleBtn {
+  display: none; }` sat *after* its own `@media (max-width: 900px)`
+  override in source order; equal specificity meant the later,
+  unconditional rule always won, permanently hiding the reopen button
+  even inside the drawer breakpoint. Fixed by reordering (base rule
+  first, override second) — no `!important`.
+- **B (sidebar channel table containment)**: `.group-body` (wrapping
+  both analog sub-grouped and digital ungrouped channel tables) gained
+  `overflow-x: auto` — an overly wide table (several columns + a
+  `nowrap` action link) was previously at risk of being silently CLIPPED
+  by the outer `details.channel-group`'s own `overflow: hidden`, not
+  just untidy.
+- **C (source/detail metadata containment)**: `.detail-header
+  h3`/`.meta` and `.stat .value` gained `overflow-wrap: anywhere`;
+  `.stat` (a CSS Grid item) gained `min-width: 0` — long unbroken
+  station-name/filename/recorder-name/sampling-rate tokens now wrap in
+  place instead of risking forcing the Sidebar wider.
+- **D (modal / Custom Groups containment)**: Custom Groups chips now
+  wrap their channel-name+unit text in a dedicated `<span
+  class="group-chip-label">` (JS markup change, mirroring the
+  established `.ww-legend-label` pattern) with `min-width: 0;
+  overflow-wrap: anywhere;`; `.group-chip` gained `max-width: 100%`;
+  `.confirm-box p` gained `overflow-wrap: anywhere`; `.group-editor-box`
+  gained `overflow-x: hidden` (defense-in-depth, mirroring the Phase
+  3A-UAT1 `.ww-chart-wrap` precedent).
+- **E (waveform view visibility reflow)**: `shellSetActiveView()` now
+  calls the existing `wwScheduleResizeAllVisiblePlots()` (Phase
+  3A-UAT1's own helper, no new mechanism) whenever the active view
+  becomes `"waveform"` — a width change while Waveform was hidden behind
+  the Table/Split placeholder (still fully reachable, since sidebar/
+  window resize isn't gated by active view) no longer leaves Plotly's
+  charts stale once Waveform becomes visible again.
+- **F (responsive drawer-width override)**: `shellCreateHorizontalSplit()`
+  persists the desktop Workspace Sidebar width as an inline `style.width`
+  (highest CSS specificity short of `!important`), which unconditionally
+  beat the drawer breakpoint's own `width: min(320px, 82vw)` rule. Fixed
+  via a `window.matchMedia("(max-width: 900px)")` listener that clears
+  the inline width on entering drawer mode and restores it exactly on
+  returning to desktop — the persisted preference itself is never
+  mutated.
+- **G (Grouped/Custom legend containment)**: base (unscoped)
+  `.ww-legend-item`/`.ww-legend-label` gained the same
+  containment/ellipsis technique the already-owner-approved Separate-
+  mode overlay tag uses — added as a separate, lower-specificity rule so
+  `#wwPanels.ww-panels-unified .ww-legend-item/-label` (Separate mode,
+  already passed UAT) is completely untouched.
+
+**Scope discipline**: no shell restructuring, no Table/Split/digital-
+channel work, no backend change, no broad CSS normalization — every
+rule/JS change is scoped to exactly the selector or call site its
+finding named.
+
+**Test-infrastructure fix, not an application change**: jsdom has no
+`window.matchMedia` implementation at all; since Finding F's fix calls
+it unconditionally at Init, all 16 existing scratch scripts that run the
+real inline script needed a polyfill (minimal but real — evaluates
+`max-width: Npx` against a mutable `window.innerWidth`, fires `'change'`
+via a `window.__setInnerWidth(px)` test helper) or their `<script>` tag
+would throw and abort partway through — the same failure class Phase
+3A-UAT1 hit with the missing `requestAnimationFrame` polyfill. One
+script (`frontend_logic_check.mjs`) also needed a `requestAnimationFrame`
+polyfill it had never previously required.
+
+**Verification**: 29 new frontend `jsdom` checks
+(`phase3auat3_check.mjs`, using deterministic long-unbroken-token
+fixtures for filenames/station names/recorder names/channel names/
+units/group names/sample-rate text) + the full existing Phase 1 through
+Phase 3A-UAT2 suites (293 checks, after the polyfill fix) — the exact
+same 20 pre-existing, already-documented failures, zero new divergences.
+Backend: zero diff, 278/278 passing in a fresh venv.
+
+**Backend**: zero files changed. **Real-browser visual confirmation —
+whether each fix looks correct at real, continuous viewport widths (not
+just the discrete values a `matchMedia` polyfill can simulate), and
+whether the horizontal-scroll/wrap/ellipsis choices read well visually
+— was NOT and cannot be confirmed in this sandboxed session; this
+remains explicitly for the owner's own manual UAT.**
+
+## What was done in the prior session (Phase 3A-UAT2 — Remove Duplicate Header Theme Control)
+
 **Phase 3A-UAT2 — Remove Duplicate Header Theme Control.**
 Phase 3A-UAT1's width-reflow fix passed owner UAT; that issue is
 closed. The owner then requested one small, isolated UI cleanup: the
@@ -2470,7 +2564,19 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 3A-UAT2 remove duplicate header theme control)
+## What files were changed this session (Phase 3A-UAT3 targeted overflow and containment fixes)
+
+Modified only: `frontend/index.html` (CSS containment rules for Findings
+A/B/C/D/G; `shellSetActiveView()` resize call for Finding E;
+`shellSyncSidebarWidthForBreakpoint()`/`matchMedia` listener for Finding
+F; `.group-chip-label` markup wrap for Finding D). No new files. **No
+`backend/` file, no CI/deployment workflow file was touched.** Project
+memory: `MIGRATION_PLAN.md`, `CURRENT_STATE.md`, `HANDOFF.md` updated;
+`DECISIONS.md` intentionally NOT touched (targeted corrections within
+the already-decided DEC-031 shell architecture, not a new/revised
+decision).
+
+## What files were changed in the prior session (Phase 3A-UAT2 remove duplicate header theme control)
 
 Modified only: `frontend/index.html` (removed the `<div id="themeToggle">`
 element from the Global Header and its `mountThemeToggle()` Init call;
@@ -2905,7 +3011,7 @@ Modified:
 See "GitHub persistence" and "DEV deployment" in this task's final report
 (delivered in-conversation) for the exact commit hash, push confirmation,
 independent-fetch verification, GitHub Actions run, and live-endpoint
-checks for this Phase 3A-UAT2 pass. **Production was not touched.**
+checks for this Phase 3A-UAT3 pass. **Production was not touched.**
 
 ## What remains unresolved
 
@@ -2958,36 +3064,74 @@ checks for this Phase 3A-UAT2 pass. **Production was not touched.**
 
 ## What should be done next
 
-**Phase 3A-UAT1 (width-reflow) already passed owner UAT and is closed.**
-The next step is for the **project owner** to review this Phase 3A-UAT2
-cleanup via live DEV UAT: confirm the Global Header reads cleanly with
-no leftover gap where the removed Light/Dark control used to sit;
-confirm the Main Sidebar Menu's "Settings" item is comfortably reachable
-and works correctly in BOTH its collapsed and expanded states; confirm
-Light/Dark switching still works exactly as before app-wide (including
-on the waveform panels and sticky ruler). This is a small, isolated
-cleanup — no other layout, sizing, or behavior should have changed. If
-confirmed clean: no further action needed on this item, and the
-still-open Phase 3A dimension/spacing feedback remains welcome whenever
-convenient. If anything looks off, report back with the specific
-control/state — do **not** assume the outcome. Separately, the owner
-may choose to: (a) request further Phase 3A dimension/spacing
+**Phase 3A-UAT1 (width-reflow) and Phase 3A-UAT2 (duplicate theme
+control removal) already passed/are pending the SAME review cadence —
+UAT2's own review is still outstanding from the prior pass.** The next
+step is for the **project owner** to review BOTH the Phase 3A-UAT2
+cleanup AND this Phase 3A-UAT3 overflow/containment pass via live DEV
+UAT: confirm the Global Header reads cleanly with no leftover gap;
+confirm Settings is reachable/functional in both Main Sidebar Menu
+states; confirm Light/Dark still works app-wide; then specifically for
+UAT3 — narrow the Workspace Sidebar to 240px and confirm the channel
+table stays usable (scrolls rather than breaks); check long source/
+channel names if a real event with them is available; check Grouped and
+Custom mode legend chips with long channel names; narrow the browser
+around the ~900px responsive threshold and confirm the Sidebar becomes a
+reopenable drawer (via the "Sources" button) at a SAFE width, not an
+inline desktop width; switch to the Table placeholder, resize something,
+then switch back to Waveform and confirm it isn't visually stale; and
+generally confirm no panel/dialog/table visibly overflows its own frame
+anywhere in this pass's touched areas. This is a small, targeted
+containment pass — no other layout, sizing, or shell-structural behavior
+should have changed. If confirmed clean: no further action needed, and
+the still-open Phase 3A dimension/spacing feedback remains welcome
+whenever convenient. If anything looks off, report back with the
+specific control/width/mode — do **not** assume the outcome. Separately,
+the owner may choose to: (a) request further Phase 3A dimension/spacing
 refinements; (b) authorize the drag/reorder/overlay/split work directly
 (still the owner's own possible next direction, deliberately set aside
-across ten passes now, not abandoned); (c) request the still-outstanding
-Grouped/Custom axis-duplication cleanup (Phase 2C-C4's own section 16
-gap, unchanged across four passes now); (d) authorize real Table/Split
-view implementation (explicitly NOT authorized yet — the shell only
-avoids blocking it); or (e) move on to digital channels (the owner's
-own explicitly stated next area, and this task's own explicit
-instruction: do **not** begin digital-channel or Table/Split work
-without a separate signal). Separately, resolving the abandoned-session
-TTL question and the ~100 MB real-file memory validation remain
-recommended before broader/prolonged shared-DEV UAT, unchanged
-conclusion from every prior Phase 2 pass.
+across eleven passes now, not abandoned); (c) request the
+still-outstanding Grouped/Custom axis-duplication cleanup (Phase
+2C-C4's own section 16 gap, unchanged across four passes now); (d)
+authorize real Table/Split view implementation (explicitly NOT
+authorized yet — the shell only avoids blocking it); or (e) move on to
+digital channels (the owner's own explicitly stated next area, and this
+task's own explicit instruction: do **not** begin digital-channel or
+Table/Split work without a separate signal). Separately, resolving the
+abandoned-session TTL question and the ~100 MB real-file memory
+validation remain recommended before broader/prolonged shared-DEV UAT,
+unchanged conclusion from every prior Phase 2 pass.
 
 ## What must not be assumed
 
+- **Do not assume `jsdom` implements `window.matchMedia`** — it does not,
+  at all. `shellSyncSidebarWidthForBreakpoint()` (Phase 3A-UAT3, Finding
+  F) calls it unconditionally at Init, so any NEW scratch test script
+  that runs `index.html`'s real inline script needs the same
+  `window.matchMedia`/`window.__setInnerWidth(px)` polyfill already added
+  to all 16 existing scripts — omitting it aborts the whole `<script>`
+  tag partway through Init, the same failure class as the Phase 3A-UAT1
+  `requestAnimationFrame` gap.
+- **Do not assume `#shellSidebarToggleBtn`'s CSS is still ordered
+  base-rule-after-media-query** — Phase 3A-UAT3 (Finding A) moved the
+  base `display: none` rule to BEFORE its `@media (max-width: 900px)`
+  override; if either rule is edited again, keep the base rule first —
+  equal-specificity selectors resolve by source order, and the earlier
+  ordering silently disabled the reopen button.
+- **Do not assume the Workspace Sidebar's inline `style.width` always
+  reflects the user's desktop preference** — as of Phase 3A-UAT3
+  (Finding F), it is deliberately CLEARED while `window.matchMedia
+  ("(max-width: 900px)")` matches (so the CSS drawer rule governs) and
+  only reflects the real persisted width at desktop widths. Read
+  `workspaceSidebarSplit.getWidth()` (or the `localStorage` key), not
+  `style.width` directly, if you need the user's actual preference
+  regardless of current viewport.
+- **Do not assume `.ww-legend-item`/`.ww-legend-label` are unstyled
+  outside Separate mode** — Phase 3A-UAT3 (Finding G) added base
+  (Grouped/Custom) `max-width`/ellipsis containment; the more specific
+  `#wwPanels.ww-panels-unified .ww-legend-item/-label` selector (Separate
+  mode, already passed owner UAT) still wins there via specificity,
+  unchanged.
 - **Do not assume `index.html`'s Global Header still has a `#themeToggle`
   element or that `mountThemeToggle()` is called from `index.html`'s own
   Init** — as of Phase 3A-UAT2, both were removed; the Main Sidebar
@@ -3301,19 +3445,23 @@ conclusion from every prior Phase 2 pass.
 - Not needed to review or use Phase 2C-A, Phase 2C-B1, Phase 2C-B2, Phase
   2C-B3, Phase 2C-B3A, Phase 2C-C1, Phase 2C-C2, Phase 2C-C2A, Phase
   2C-C3, Phase 2C-C4, Phase 2C-C4A, Phase 2C-C4B, Phase 3A, Phase
-  3A-UAT1, or Phase 3A-UAT2 themselves — already implemented, deployed
-  to DEV, and live-verified per this exact task's own authorization.
-  **Recommended, though**: an owner UAT specifically confirming (a) the
-  Global Header now reads cleanly with no leftover gap where the removed
-  Light/Dark control sat, and (b) the Main Sidebar Menu's "Settings"
-  item remains comfortably reachable/usable in both collapsed and
-  expanded states — plus the still-open Phase 3A proportions/dimensions
-  feedback and the still-carried-forward Phase 2C-C4A
-  tick-alignment-at-rescaled-units claim — none of which could be
-  visually confirmed in this sandbox.
+  3A-UAT1, Phase 3A-UAT2, or Phase 3A-UAT3 themselves — already
+  implemented, deployed to DEV, and live-verified per this exact task's
+  own authorization. **Recommended, though**: an owner UAT specifically
+  confirming (a) the Global Header now reads cleanly with no leftover
+  gap where the removed Light/Dark control sat, (b) the Main Sidebar
+  Menu's "Settings" item remains comfortably reachable/usable in both
+  collapsed and expanded states, and (c) the Phase 3A-UAT3 overflow
+  fixes hold up visually — Workspace Sidebar at 240px, long source/
+  channel names if available, Grouped/Custom long legends, narrow-
+  browser behavior around the ~900px responsive threshold, sidebar
+  drawer reopen, and Waveform → placeholder → Waveform — plus the
+  still-open Phase 3A proportions/dimensions feedback and the
+  still-carried-forward Phase 2C-C4A tick-alignment-at-rescaled-units
+  claim — none of which could be visually confirmed in this sandbox.
 - **Yes**, before any drag/reorder/overlay/split work begins (still the
   owner's own possible next direction, deliberately set aside across
-  ten passes now, but still not yet explicitly authorized to
+  eleven passes now, but still not yet explicitly authorized to
   *implement* — Phase 3A's shell only avoids blocking it
   architecturally), before REAL Table or Split view implementation
   (explicitly not authorized yet — only structural placeholders exist),

@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-16**.
+Last meaningful update: **2026-08-16** (Phase 3A-UAT3).
 
 ## Development phase
 
@@ -639,6 +639,53 @@ unmodified and passing); 11 new frontend `jsdom` checks passing
 now-intentionally-removed `#themeToggle` exists in `index.html`) rather
 than left broken. **Unverified**: visual header spacing and Main Sidebar
 Menu Settings usability in a real browser — flagged for owner UAT.
+
+`[FACT]` **Phase 3A-UAT3 — Targeted Overflow and Containment Fixes — is
+now implemented** (2026-08-16) — see
+[MIGRATION_PLAN.md — Phase 3A-UAT3 Record](MIGRATION_PLAN.md#phase-3a-uat3--targeted-overflow-and-containment-fixes-2026-08-16).
+An independent Codex audit (run against a local tree that could not
+reach GitHub) identified seven candidate overflow/containment risks in
+the Phase 3A shell; per this task's own explicit instruction, every
+finding was independently re-verified against canonical `main` before
+anything was implemented — **all seven were confirmed still present and
+fixed**, none were rejected as invalid. Fixes: (A) corrected a CSS
+source-order bug that permanently hid the responsive Workspace Sidebar
+reopen button (`#shellSidebarToggleBtn`) even inside its own `@media
+(max-width: 900px)` breakpoint; (B) gave the Workspace Sidebar's channel
+table (`.group-body`) an intentional `overflow-x: auto` so a table too
+wide for a 240px sidebar scrolls instead of being silently clipped by
+the outer `overflow: hidden` group container; (C) added
+`overflow-wrap: anywhere`/`min-width: 0` to source/detail metadata
+(station name, filenames, recorder name, sampling-rate list) so long
+unbroken tokens wrap in place instead of forcing the Sidebar wider; (D)
+gave Custom Groups chips a dedicated, shrinkable `.group-chip-label`
+span (`max-width: 100%` on the chip, `overflow-wrap: anywhere` on the
+label) and confirm-dialog text the same wrap treatment; (E)
+`shellSetActiveView()` now schedules a Plotly resize pass (reusing Phase
+3A-UAT1's own `wwScheduleResizeAllVisiblePlots()`) whenever the active
+view becomes `"waveform"`, so charts that went stale while hidden behind
+the Table/Split placeholder catch up; (F) the Workspace Sidebar's
+persisted desktop width (an inline style, highest CSS specificity short
+of `!important`) is now cleared on entering the drawer breakpoint (so
+the CSS `min(320px, 82vw)` rule governs) and restored exactly on
+returning to desktop, via a `window.matchMedia` listener — the
+persisted preference itself is never mutated; (G) gave the base
+(Grouped/Custom) `.ww-legend-item`/`.ww-legend-label` the same
+containment/ellipsis technique the already-owner-approved Separate-mode
+overlay tag uses, without touching that more-specific, already-UAT'd
+rule at all. No shell restructuring, no Table/Split/digital-channel
+work, no backend change. No backend file changed (278 tests unmodified
+and passing); 29 new frontend `jsdom` checks passing
+(`phase3auat3_check.mjs`), using deterministic long-unbroken-token
+fixtures for every named content type. **Test-infrastructure fix, not
+an application change**: 16 existing scratch scripts needed a
+`window.matchMedia` polyfill (jsdom has none at all) since Finding F's
+fix now calls it unconditionally at Init; one of them
+(`frontend_logic_check.mjs`) also needed a `requestAnimationFrame`
+polyfill it had never previously required — full suite returns to the
+identical pre-existing 20-failure baseline, zero new divergences.
+**Unverified**: real-browser visual confirmation at continuous (not just
+discrete simulated) viewport widths — flagged for owner UAT.
 
 ## Completed foundation work
 
@@ -1322,17 +1369,33 @@ The Global Header's own `#themeToggle` Light/Dark control was removed
 (it duplicated the Main Sidebar Menu's existing "Settings" item); the
 Main Sidebar Menu is now the **single** theme entry point. All
 underlying theme mechanics (persistence, cross-tab sync, Plotly
-re-color, zero-refetch) are unchanged, confirmed by test. The next step
-is for the project owner to review this cleanup via live DEV UAT
-(header reads cleanly with no leftover gap; Settings remains reachable
-and functional in both collapsed and expanded Main Sidebar states) —
-plus the still-open Phase 3A proportions/dimensions review (Global
-Header height, Main Sidebar Menu width in both states, Workspace
-Sidebar width/resize feel, Main Workspace dominance, Status Bar
-geometry) — and either request further refinement or move on to
-whichever comes next (digital channels remains the owner's other
-previously-stated next area; Table/Split view implementation remains
-explicitly not authorized until a separate request).
+re-color, zero-refetch) are unchanged, confirmed by test. Following that,
+an independent Codex overflow/containment audit of the Phase 3A shell
+(seven findings, all independently re-verified against canonical `main`
+before implementation — none rejected) was addressed by **Phase 3A-UAT3
+— Targeted Overflow and Containment Fixes** — see
+[MIGRATION_PLAN.md — Phase 3A-UAT3 Record](MIGRATION_PLAN.md#phase-3a-uat3--targeted-overflow-and-containment-fixes-2026-08-16).
+Fixed: the responsive Workspace Sidebar reopen button's CSS cascade bug
+(it was permanently hidden), channel-table/source-metadata/Custom-Groups-
+chip containment at a narrowed (240px) Sidebar or with long COMTRADE-
+sourced identifiers, Plotly staleness when returning to Waveform after
+the view was hidden behind a Table/Split placeholder, the responsive
+drawer width being overridden by a persisted desktop inline width, and
+missing containment on Grouped/Custom legend chips (Separate's own
+already-UAT'd overlay tag was left untouched). The next step is for the
+project owner to review BOTH this cleanup and the overflow fixes via
+live DEV UAT — see the "Owner UAT" checklist in this task's own final
+report (header gap, Settings reachability, Sidebar at 240px, long
+source/channel names if available, Grouped/Custom long legends, narrow-
+browser behavior around the responsive threshold, sidebar drawer reopen,
+Waveform → placeholder → Waveform, no panel overflow) — plus the
+still-open Phase 3A proportions/dimensions review (Global Header height,
+Main Sidebar Menu width in both states, Workspace Sidebar width/resize
+feel, Main Workspace dominance, Status Bar geometry) — and either
+request further refinement or move on to whichever comes next (digital
+channels remains the owner's other previously-stated next area;
+Table/Split view implementation remains explicitly not authorized until
+a separate request).
 Separately, resolving the
 abandoned-session TTL question (`[DECISION MODE: COMPARISON]`, reassessed
 but not resolved by Phase 2C-A/B1 — neither changes the backend memory-

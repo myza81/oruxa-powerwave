@@ -315,6 +315,18 @@
            it is always what gets the freed space. Not a mobile-first
            redesign (section 23/responsive-target note): these are
            fallbacks, not the primary design target. */
+        /* Phase 3A-UAT3 (Finding A): the base/default rule must come
+           BEFORE the media-query override below, not after -- both
+           selectors share identical specificity (#shellSidebarToggleBtn),
+           so with equal specificity the LATER rule always wins regardless
+           of whether its own media query is active. Previously this base
+           rule sat after the @media block, so its `display: none`
+           permanently beat the drawer breakpoint's `display: inline-flex`
+           even inside that breakpoint, leaving the reopen button
+           unreachable. Correct ordering (base first, override second)
+           lets the override actually take effect exactly when its media
+           query matches. */
+        #shellSidebarToggleBtn { display: none; } /* only meaningful once the sidebar can be a drawer */
         @media (max-width: 900px) {
             #mainSidebarMenu.expanded { width: 52px; } /* forced collapsed rail regardless of JS state */
             #mainSidebarMenu.expanded .shell-nav-label { opacity: 0; }
@@ -352,7 +364,6 @@
             }
             #shellSidebarToggleBtn { display: inline-flex; }
         }
-        #shellSidebarToggleBtn { display: none; } /* only meaningful once the sidebar can be a drawer */
         @media (max-width: 640px) {
             #globalHeader h1 { font-size: 0.95rem; }
             #globalHeader { gap: 10px; padding: 8px 12px; }
@@ -504,8 +515,15 @@
             margin-bottom: 18px;
         }
 
-        .detail-header h3 { margin: 0 0 4px; font-size: 1.05rem; }
-        .detail-header .meta { font-size: 0.8rem; color: var(--text-dim); }
+        /* Phase 3A-UAT3 (Finding C): station name and source filenames
+           come straight from the imported COMTRADE files and can be long,
+           unbroken tokens (no spaces) that ordinary text wrapping can't
+           break on. `overflow-wrap: anywhere` lets them wrap in place --
+           the FULL value stays visible (nothing truncated/hidden), it
+           just stays inside the Workspace Sidebar instead of forcing it
+           (or a sibling) wider. */
+        .detail-header h3 { margin: 0 0 4px; font-size: 1.05rem; overflow-wrap: anywhere; }
+        .detail-header .meta { font-size: 0.8rem; color: var(--text-dim); overflow-wrap: anywhere; }
 
         .stat-grid {
             display: grid;
@@ -519,9 +537,12 @@
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
             padding: 10px 12px;
+            min-width: 0; /* grid items default to a content-based automatic minimum size, same trap as flex items */
         }
         .stat .label { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; }
-        .stat .value { font-size: 0.95rem; font-weight: 600; margin-top: 2px; }
+        /* Recorder/device identifiers and sampling-rate lists are also
+           unbroken-token-prone -- same reasoning as .detail-header above. */
+        .stat .value { font-size: 0.95rem; font-weight: 600; margin-top: 2px; overflow-wrap: anywhere; }
 
         table.channels {
             width: 100%;
@@ -633,7 +654,20 @@
             color: var(--text-dim);
             font-size: 0.78rem;
         }
-        .group-body { padding: 4px 14px 12px; }
+        /* Phase 3A-UAT3 (Finding B): the channel table (several columns +
+           an action link with `white-space: nowrap`) can need more width
+           than a narrowed (down to 240px) Workspace Sidebar provides. Both
+           analog (sub-grouped, `details.channel-subgroup .group-body`) and
+           digital (ungrouped, this same `.group-body` directly under
+           `details.channel-group`) tables are wrapped by an element with
+           this class. Without `overflow-x: auto` here, an overly wide
+           table would silently overflow into the outer
+           `details.channel-group`'s own `overflow: hidden` and get
+           CLIPPED -- unreachable, not just untidy. An intentional
+           horizontal scroll on this specific wrapper keeps every column
+           reachable (nothing hidden) without forcing the Sidebar itself,
+           or Main Workspace beside it, any wider. */
+        .group-body { padding: 4px 14px 12px; overflow-x: auto; }
         details.channel-subgroup {
             border-top: 1px solid var(--panel-border);
         }
@@ -666,7 +700,11 @@
             max-width: 380px;
             width: 100%;
         }
-        .confirm-box p { margin: 0 0 12px; font-size: 0.9rem; }
+        /* Phase 3A-UAT3 (Finding D): confirm-dialog text can interpolate a
+           long station name (e.g. the remove-source confirmation) -- wrap
+           it in place rather than letting an unbroken token push the
+           dialog past its own max-width. */
+        .confirm-box p { margin: 0 0 12px; font-size: 0.9rem; overflow-wrap: anywhere; }
         .confirm-box .hint { margin-bottom: 16px; }
         .confirm-actions {
             display: flex;
@@ -693,12 +731,19 @@
             width: 100%;
             max-height: 85vh;
             overflow-y: auto;
+            /* Phase 3A-UAT3 (Finding D): defense-in-depth only -- the
+               actual containment fix is the chip/label rules below (a
+               chip can now always shrink/wrap instead of forcing this box
+               wider). Mirrors the established Phase 3A-UAT1 .ww-chart-wrap
+               precedent: primary fix first, this is a safety net. */
+            overflow-x: hidden;
         }
         .group-editor-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
             margin-bottom: 4px;
+            flex-wrap: wrap; /* Finding D: header row may wrap rather than overflow at extreme zoom/narrow widths */
         }
         .group-editor-header h3 { margin: 0; font-size: 1rem; }
         .group-editor-close {
@@ -735,6 +780,7 @@
             border: 1px solid var(--panel-border);
             border-radius: 999px;
             padding: 4px 8px 4px 10px;
+            max-width: 100%; /* Phase 3A-UAT3 (Finding D): a chip can never force the dialog wider */
         }
         .group-chip-dot {
             width: 8px;
@@ -742,6 +788,17 @@
             border-radius: 50%;
             display: inline-block;
             flex-shrink: 0;
+        }
+        /* Phase 3A-UAT3 (Finding D): the channel name + unit text -- the
+           part of a chip most likely to be a long, unbroken identifier.
+           `min-width: 0` lets it actually shrink below its own
+           min-content size (the default flex-item behavior would
+           otherwise keep it, and so the whole chip, at full content
+           width); `overflow-wrap: anywhere` then lets it wrap in place --
+           full text stays visible, nothing truncated. */
+        .group-chip-label {
+            min-width: 0;
+            overflow-wrap: anywhere;
         }
         .group-chip-remove {
             appearance: none;
@@ -802,6 +859,7 @@
             justify-content: flex-end;
             gap: 10px;
             margin-top: 18px;
+            flex-wrap: wrap; /* Finding D: footer row may wrap rather than overflow at extreme zoom/narrow widths */
         }
 
         /* ---- Phase 2C-A: multi-channel selection ---- */
@@ -870,6 +928,15 @@
             background: var(--surface-tint);
             border-radius: 999px;
             padding: 3px 6px 3px 8px;
+            /* Phase 3A-UAT3 (Finding G): Grouped/Custom legend items had no
+               containment at all, unlike Separate's already-UAT'd overlay
+               tag (#wwPanels.ww-panels-unified .ww-legend-item below,
+               untouched by this change -- its own selector is more
+               specific and still wins there). Caps one item from ever
+               forcing the panel wider; larger than Separate's 150px since
+               Grouped/Custom panels are typically the full Main Workspace
+               width, not a compact overlay. */
+            max-width: 220px;
         }
         .ww-legend-dot {
             width: 8px;
@@ -877,6 +944,16 @@
             border-radius: 50%;
             display: inline-block;
             flex-shrink: 0;
+        }
+        /* Base (Grouped/Custom) ellipsis containment for the label text --
+           same technique the Separate-mode overlay tag already uses
+           (#wwPanels.ww-panels-unified .ww-legend-label), kept separate so
+           that already-UAT'd rule (higher specificity) is untouched. */
+        .ww-legend-label {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
         }
         .ww-legend-remove {
             appearance: none;
@@ -1577,6 +1654,21 @@
             document.getElementById("shellViewWaveformBtn").setAttribute("aria-pressed", String(view === "waveform"));
             document.getElementById("shellViewTableBtn").setAttribute("aria-pressed", String(view === "table"));
             document.getElementById("shellViewSplitBtn").setAttribute("aria-pressed", String(view === "split"));
+            // Phase 3A-UAT3 (Finding E): while Waveform is hidden (`display:
+            // none` via the `hidden` attribute), any parent-width change
+            // (Workspace Sidebar drag, Main Sidebar Menu toggle, browser
+            // resize -- all still reachable from the Table/Split
+            // placeholders) can't actually resize Plotly's hidden charts,
+            // so they'd keep whatever dimensions they last had when
+            // visible. Scheduling a resize pass here -- via the same
+            // rAF-coalesced helper Phase 3A-UAT1 already established --
+            // catches up once the browser has laid out the now-visible
+            // section (a single rAF is enough; removing `hidden` is an
+            // immediate style change, not an animated one, so there's no
+            // transition to wait out). Presentation-only: never touches
+            // ww.viewport, Y range, or the fetch pipeline, and is a cheap,
+            // idempotent no-op if nothing actually changed size.
+            if (view === "waveform") wwScheduleResizeAllVisiblePlots();
         }
 
         // ---- Workspace Sidebar drawer (responsive addendum, section 3/6)
@@ -4134,7 +4226,8 @@
                 const channel = entry.channel;
                 unassignedHtml += '<span class="group-chip">' +
                     '<span class="group-chip-dot" style="background:' + channel.color + '"></span>' +
-                    escapeHtml(channel.channelName) + (channel.unit ? " (" + escapeHtml(channel.unit) + ")" : "") +
+                    '<span class="group-chip-label">' + escapeHtml(channel.channelName) +
+                    (channel.unit ? " (" + escapeHtml(channel.unit) + ")" : "") + '</span>' +
                     '<select class="group-assign-select" data-channel-key="' + escapeHtml(key) + '">' +
                     '<option value="">Add to group&hellip;</option>' + groupOptionsHtml +
                     '</select>' +
@@ -4167,7 +4260,8 @@
                         const channel = entry.channel;
                         groupsHtml += '<span class="group-chip">' +
                             '<span class="group-chip-dot" style="background:' + channel.color + '"></span>' +
-                            escapeHtml(channel.channelName) + (channel.unit ? " (" + escapeHtml(channel.unit) + ")" : "") +
+                            '<span class="group-chip-label">' + escapeHtml(channel.channelName) +
+                            (channel.unit ? " (" + escapeHtml(channel.unit) + ")" : "") + '</span>' +
                             '<button type="button" class="group-chip-remove" data-channel-key="' + escapeHtml(key) +
                             '" title="Remove from group" aria-label="Remove ' + escapeHtml(channel.channelName) +
                             ' from group">&times;</button></span>';
@@ -4322,7 +4416,7 @@
         // (section 10/22) is expected to call again. `onResize` is what
         // was missing before Phase 3A-UAT1 -- see shellCreateHorizontalSplit()'s
         // own comment for the root-cause investigation.
-        shellCreateHorizontalSplit({
+        const workspaceSidebarSplit = shellCreateHorizontalSplit({
             handleEl: document.getElementById("workspaceSplitHandle"),
             panelEl: document.getElementById("workspaceSidebar"),
             min: SHELL_WORKSPACE_SIDEBAR_MIN_WIDTH,
@@ -4331,6 +4425,29 @@
             storageKey: SHELL_WORKSPACE_SIDEBAR_WIDTH_STORAGE_KEY,
             onResize: wwResizeAllVisiblePlots,
         });
+
+        // Phase 3A-UAT3 (Finding F): shellCreateHorizontalSplit() persists
+        // the desktop width as an INLINE `style.width` -- the highest CSS
+        // specificity short of !important -- which would otherwise always
+        // beat the drawer breakpoint's own `width: min(320px, 82vw)` media-
+        // query rule. Left alone, a persisted desktop width (e.g. 480px)
+        // would render as an unusably wide, viewport-overflowing drawer on
+        // a narrow phone/tablet screen. Entering drawer mode clears the
+        // inline width so the CSS rule governs; returning to desktop
+        // reapplies the split helper's own remembered width, unchanged --
+        // the desktop preference itself is never mutated by this, only the
+        // inline style is toggled on/off around it. Must match the
+        // `@media (max-width: 900px)` breakpoint above exactly.
+        const shellDrawerBreakpoint = window.matchMedia("(max-width: 900px)");
+        function shellSyncSidebarWidthForBreakpoint(isDrawerMode) {
+            if (isDrawerMode) {
+                document.getElementById("workspaceSidebar").style.width = "";
+            } else {
+                workspaceSidebarSplit.setWidth(workspaceSidebarSplit.getWidth());
+            }
+        }
+        shellSyncSidebarWidthForBreakpoint(shellDrawerBreakpoint.matches);
+        shellDrawerBreakpoint.addEventListener("change", (event) => shellSyncSidebarWidthForBreakpoint(event.matches));
 
         // Phase 3A-UAT1 (section 12): defensive, redundant coverage for
         // real browser window resizes -- Plotly's own `responsive: true`

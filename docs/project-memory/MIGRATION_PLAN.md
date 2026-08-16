@@ -7002,6 +7002,155 @@ inspection above but not visually confirmed. Flagged for owner UAT.
 
 ---
 
+## Phase 3A-UAT3 — Targeted Overflow and Containment Fixes (2026-08-16)
+
+`[FACT]` throughout. An independent Codex audit of the Phase 3A shell
+identified seven candidate overflow/containment risks (Findings A–G). The
+audit's own local working tree could not reach GitHub (SSH authentication
+failure), so per this task's explicit instruction, every finding was
+independently re-verified by direct code inspection against canonical
+`main` (fetched via the same HTTPS fallback used throughout this session)
+before anything was implemented — none of the audit's own conclusions
+were trusted blindly.
+
+### Audit revalidation matrix
+
+| Finding | Verdict | Evidence |
+|---|---|---|
+| A — responsive sidebar reopen button | **STILL PRESENT → FIXED** | `#shellSidebarToggleBtn { display: none; }` sat *after* the `@media (max-width: 900px)` override in source order; both selectors share identical specificity, so the later, unconditional rule always won — the reopen button was unreachable inside the drawer breakpoint. |
+| B — sidebar channel table containment | **STILL PRESENT → FIXED** | `table.channels` (several columns + a `white-space: nowrap` action link) had no horizontal-scroll wrapper; the outer `details.channel-group` already has `overflow: hidden`, so an overly wide table would be silently CLIPPED (unreachable), not merely untidy. |
+| C — source/detail metadata containment | **STILL PRESENT → FIXED** | `.detail-header h3`/`.meta` (station name, filenames) and `.stat .value` (recorder name, sampling-rate list) had no `overflow-wrap`; `.stat` (a CSS Grid item) had no `min-width: 0`. A long unbroken token could force the Workspace Sidebar's content wider. |
+| D — modal / Custom Groups long-content containment | **STILL PRESENT → FIXED** | `.group-chip` wrote channel name + unit as raw text with no dedicated, shrinkable label element and no `max-width`; `.confirm-box p` had no `overflow-wrap`. |
+| E — Waveform view visibility reflow | **STILL PRESENT → FIXED** | `shellSetActiveView()` only toggled the `hidden` attribute — it never called any resize function, so a width change while Waveform was hidden (still fully reachable from Table/Split, since sidebar/window resize isn't gated by active view) would leave Plotly's charts stale once Waveform became visible again. |
+| F — responsive drawer-width override | **STILL PRESENT → FIXED** | `shellCreateHorizontalSplit()` persists the desktop width as an inline `style.width` (highest specificity short of `!important`), which unconditionally beat the drawer breakpoint's own `width: min(320px, 82vw)` CSS rule — a persisted desktop width could render as an unusably wide, viewport-overflowing drawer on a narrow screen. |
+| G — Grouped/Custom legend containment | **STILL PRESENT → FIXED** | `.ww-legend-item`/`.ww-legend-label` (used by `wwRenderLegend()` in every layout mode) had no containment at all in the base/unscoped rule; only the Separate-mode overlay tag (`#wwPanels.ww-panels-unified .ww-legend-item/-label`) had `max-width`/ellipsis, confirming the audit's own framing exactly. |
+
+No finding was rejected as invalid or found already-fixed — all seven were
+confirmed present against current canonical `main` and fixed.
+
+### Fixes implemented (frontend/index.html only)
+
+- **A**: reordered the CSS so the base `display: none` rule now precedes
+  the `@media (max-width: 900px)` override — no `!important`, pure
+  source-order correction.
+- **B**: `.group-body` (the wrapper both analog sub-grouped and digital
+  ungrouped channel tables render into) gained `overflow-x: auto` — an
+  intentional, scoped horizontal scroll; nothing truncated or hidden.
+- **C**: `.detail-header h3`/`.meta` and `.stat .value` gained
+  `overflow-wrap: anywhere` (full text stays visible, wraps in place);
+  `.stat` (a grid item) gained `min-width: 0`.
+- **D**: the channel-name+unit text inside a Custom Groups chip is now
+  wrapped in its own `<span class="group-chip-label">` (JS markup change,
+  mirroring the established `.ww-legend-label` pattern) with
+  `min-width: 0; overflow-wrap: anywhere;`; `.group-chip` gained
+  `max-width: 100%`; `.confirm-box p` gained `overflow-wrap: anywhere`;
+  `.group-editor-box` gained `overflow-x: hidden` (defense-in-depth,
+  mirroring the Phase 3A-UAT1 `.ww-chart-wrap` precedent — the chip fix
+  is the actual containment mechanism); `.group-editor-header`/`-footer`
+  gained `flex-wrap: wrap`.
+- **E**: `shellSetActiveView()` now calls the existing
+  `wwScheduleResizeAllVisiblePlots()` (Phase 3A-UAT1's own rAF-coalesced
+  helper — no new resize mechanism) whenever the active view becomes
+  `"waveform"`. Presentation-only; never touches `ww.viewport`, Y range,
+  or the fetch pipeline.
+- **F**: a `window.matchMedia("(max-width: 900px)")` listener (matching
+  the CSS breakpoint exactly) now clears `#workspaceSidebar`'s inline
+  width on entering drawer mode (letting the CSS `min(320px, 82vw)` rule
+  govern) and reapplies the split helper's own remembered desktop width
+  on returning to desktop — the persisted preference itself
+  (`localStorage`/in-memory `width`) is never mutated, only the inline
+  style is toggled around it.
+- **G**: base (unscoped) `.ww-legend-item` gained `max-width: 220px`; a
+  new base `.ww-legend-label` rule adds the same
+  `overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  min-width: 0;` ellipsis technique the already-UAT'd Separate-mode
+  overlay tag uses — kept as a separate, lower-specificity rule so
+  `#wwPanels.ww-panels-unified .ww-legend-item/-label` (Separate mode)
+  is completely untouched and still wins there.
+
+None of these are a broad CSS rewrite: every rule/JS change is scoped to
+the exact selector or call site the corresponding finding named.
+
+### Long-content behavior
+
+Deterministic long-content fixtures (deliberately long, UNBROKEN tokens —
+the actual containment risk, not just long normal text) were used for
+filenames, station names, recorder/device names, channel names, units,
+custom group names, and sample-rate text. In every case the FULL value
+remains present in the DOM/data (confirmed by test) — only its visual
+presentation changes (wrap-in-place for Sidebar/dialog metadata and
+tables, so nothing is ever hidden; ellipsis for Grouped/Custom legend
+chips specifically, mirroring the already-owner-approved Separate
+treatment and consistent with `wwRenderLegend()`'s own existing design
+note that full detail is always available via Plotly's native hover
+tooltip).
+
+### Small-screen containment
+
+Only the seven targeted fixes above; no phone-UX redesign was performed.
+Finding F's fix specifically prevents a persisted desktop width from
+producing an oversized, viewport-overflowing drawer at the existing
+`@media (max-width: 900px)` breakpoint — the breakpoint's own already-
+designed `min(320px, 82vw)` safe width can now actually take effect.
+Finding A restores the already-designed reopen affordance at that same
+breakpoint. No new breakpoint, no new small-screen layout, no phone-
+specific UI was added.
+
+### Test-infrastructure fix (not an application change)
+
+`window.matchMedia` is not implemented in jsdom at all. Since Finding
+F's fix calls it unconditionally at Init, every existing scratch script
+that runs the real inline script needed a polyfill or its `<script>` tag
+would throw and abort partway through — the same failure class Phase
+3A-UAT1 hit with the missing `requestAnimationFrame` polyfill. A
+minimal, real (not a stub) `matchMedia` polyfill — evaluates `max-width:
+Npx` against a mutable `window.innerWidth`, fires registered `'change'`
+listeners via a `window.__setInnerWidth(px)` test helper — was added to
+all 16 existing scripts that execute `index.html`'s inline script, plus
+one script (`frontend_logic_check.mjs`) that also needed a
+`requestAnimationFrame` polyfill it had never previously required (this
+fix's initial sync call now reaches `shellCreateHorizontalSplit()`'s own
+rAF-coalesced path unconditionally at Init, even at desktop width).
+Confirmed by re-running the full suite before and after: the exact same
+20 pre-existing, already-documented failures — zero new divergences.
+
+### Tests
+
+- **Frontend, new**: `phase3auat3_check.mjs` (scratch, not committed) —
+  29/29 passing. Covers every finding (A–G) via CSS source-rule
+  inspection plus DOM/state assertions with the long-content fixtures
+  above, the Phase 3A-UAT1 Plotly containment invariant re-verified after
+  all fixes, and regression checks (Main Sidebar Menu collapse/expand,
+  panel-height resize, Grouped/Separate/Custom, Absolute/Elapsed, theme,
+  Phase 3A shell hierarchy).
+- **Frontend, existing**: the full Phase 1 through Phase 3A-UAT2 suites
+  (293 checks, after the matchMedia/rAF polyfill fix) — the exact same 20
+  pre-existing, already-documented failures, zero new divergences.
+- **Backend**: zero diff, 278/278 passing in a fresh venv (no backend
+  file touched).
+
+### Files changed
+
+Modified: `frontend/index.html` only (CSS + two small JS additions —
+`shellSetActiveView()`'s resize call, and the Finding F
+`matchMedia`/`shellSyncSidebarWidthForBreakpoint` block — plus the
+`.group-chip-label` markup wrap). No backend file, no CI/deployment
+workflow file. `DECISIONS.md` intentionally **not** touched — every fix
+here is a targeted correction within the already-decided Phase 3A shell
+architecture (DEC-031), not a new or revised architectural decision.
+
+### Honest limitation
+
+No real browser is available in this sandbox. Whether each fix looks
+correct at real, continuous viewport widths (not just the discrete
+values a `matchMedia` polyfill can simulate), whether the horizontal
+scroll on the channel table feels usable in practice at 240px, and
+whether the ellipsis/wrap choices read well visually were reasoned
+through and verified structurally but not visually confirmed — flagged
+for owner UAT.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping
