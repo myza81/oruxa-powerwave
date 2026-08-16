@@ -244,6 +244,31 @@ class TestReadEndpoints:
         assert row["sample_count"] == channels_body["timebase"]["sample_count"]
         assert row["duration_seconds"] == pytest.approx(channels_body["timebase"]["duration_seconds"])
 
+    def test_list_includes_timing_reference_and_timestamps(self, client, comtrade_fixtures_dir):
+        # Phase 3B-UAT5: the Recordings page's per-recording "Details"
+        # panel reads timing_reference/start_time/trigger_time/
+        # sampling_rates straight from GET .../sources too -- confirm the
+        # LIST endpoint specifically carries them, matching the
+        # .../channels endpoint's own timebase.* values exactly (same
+        # underlying SourceMetadata fields, never a second computation).
+        cfg = _read(comtrade_fixtures_dir / "synth_ascii.cfg")
+        dat = _read(comtrade_fixtures_dir / "synth_ascii.dat")
+        source_id = client.post(
+            "/api/v1/workspaces/ws-list-timing/sources", files=_files(cfg, dat)
+        ).json()["source_id"]
+        channels_body = client.get(
+            f"/api/v1/workspaces/ws-list-timing/sources/{source_id}/channels"
+        ).json()
+
+        resp = client.get("/api/v1/workspaces/ws-list-timing/sources")
+
+        assert resp.status_code == 200
+        [row] = resp.json()
+        assert row["timing_reference"] == channels_body["timebase"]["timing_reference"]
+        assert row["start_time"] == channels_body["timebase"]["start_time"]
+        assert row["trigger_time"] == channels_body["timebase"]["trigger_time"]
+        assert row["sampling_rates"] == channels_body["timebase"]["sampling_rates"]
+
 
 class TestLifecycle:
     def test_delete_releases_ownership_and_prevents_later_access(

@@ -67,6 +67,15 @@ class SourceSummaryOut(BaseModel):
     change to any existing field) so the Recordings page's list table can
     show a real Duration column without an extra per-row `.../channels`
     request for every listed recording.
+
+    Phase 3B-UAT5: `timing_reference`/`start_time`/`trigger_time`/
+    `sampling_rates` were added the same way -- all four already existed
+    on `SourceMetadata` (mirrored on `TimebaseOut` below), computed once
+    at import time; no new storage, no new computation. This lets the
+    Recordings page's per-recording "Details" panel render from the
+    SAME already-fetched `GET .../sources` list response, with zero
+    additional `.../channels` request needed just to show recording
+    metadata.
     """
 
     source_id: str
@@ -82,6 +91,10 @@ class SourceSummaryOut(BaseModel):
     digital_channel_count: int
     duration_seconds: float
     sample_count: int
+    timing_reference: str
+    start_time: datetime | None
+    trigger_time: datetime | None
+    sampling_rates: list[float]
 
     @classmethod
     def from_domain(cls, source: SourceMetadata) -> "SourceSummaryOut":
@@ -98,6 +111,10 @@ class SourceSummaryOut(BaseModel):
             digital_channel_count=len(source.digital_channels),
             duration_seconds=source.duration_seconds,
             sample_count=source.sample_count,
+            timing_reference=source.timing_reference,
+            start_time=source.start_time,
+            trigger_time=source.trigger_time,
+            sampling_rates=list(source.sampling_rates),
         )
 
 

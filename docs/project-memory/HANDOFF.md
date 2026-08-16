@@ -8,6 +8,78 @@ Last updated: **2026-08-17**
 
 ## What was most recently done
 
+**Phase 3B-UAT5 — Move Recording Metadata from Waveform to Recordings.**
+Full detail:
+[MIGRATION_PLAN.md — Phase 3B-UAT5 Record](MIGRATION_PLAN.md#phase-3b-uat5--move-recording-metadata-from-waveform-to-recordings-2026-08-17).
+No new DECISIONS.md entry (UI/data-relocation refinement within the
+already-decided DEC-032 Recordings architecture, same weight as
+UAT1–UAT3).
+
+**What changed**: the Waveform Workspace Sidebar's vertical metadata
+card stack (`.stat-grid`: Recorder, Nominal Frequency, Timing Mode,
+Samples, Duration, Sampling Rate(s), Start Time, Trigger Time) was
+removed from `renderChannels()`. The `.detail-header` identity block
+(station name + filenames) was deliberately kept — active source
+identification, not the metadata being relocated. Each Recordings row
+gained a `[ Details ]` button (order: `[ Details ] [ Open / Analyse ]
+[ Remove ]`) that expands a sibling `<tr class="recording-details-row">`
+directly beneath that row, showing that exact recording's metadata —
+reusing the existing `.stat-grid`/`statCard()` pattern verbatim, so its
+established containment rules apply automatically. **Multiple rows may
+be expanded at once** (documented design choice, not a single-open
+accordion) — tracked in a `recordingsExpandedDetails` Set keyed by
+`source_id`.
+
+**Timing Mode investigation (owner's explicit critical ask)**:
+confirmed via direct inspection of `backend/app/domain/timing.py` and
+its existing frontend consumer (`wwTimeModesForChannel()`) that
+`timing_reference` is genuine, permanent, source-level recording
+metadata parsed once from the COMTRADE record at import time —
+architecturally distinct from `ww.timeMode` (the user's live Absolute/
+Elapsed *view* toggle). Safe to relocate, but relabeled "Timing
+reference" (was "Timing mode") specifically to remove the ambiguity
+risk the owner flagged.
+
+**Zero extra backend activity**: `SourceSummaryOut` gained
+`timing_reference`/`start_time`/`trigger_time`/`sampling_rates` — purely
+additive, already-computed domain fields, no new storage/computation.
+The Details panel renders entirely from the already-fetched
+`GET .../sources` list response — expanding/collapsing is a pure
+client-side toggle with zero fetch, zero reparse, zero re-upload, zero
+`.../channels` request.
+
+**Multi-recording correctness**: each details row is built from its own
+loop iteration's `source` object (never a shared/global reference), so
+there is no cross-row metadata leakage — confirmed by a dedicated test
+with two recordings carrying different recorder names.
+
+**Unaffected**: Open/Analyse, Remove, search all work as before.
+`performRemoveSource()` now also drops the removed id from
+`recordingsExpandedDetails`; `applyRecordingsSearchFilter()` now also
+hides/shows each row's sibling details row in lockstep, so a filtered-
+out row's details panel can never remain visible as an orphan.
+
+**Verification**: 14 new frontend `jsdom` checks
+(`phase3buat5_check.mjs`) + four existing scripts corrected in place
+(`phase3auat3_check.mjs`'s recorder-name assertion, which described the
+now-removed Waveform-sidebar metadata; `phase3b_check.mjs`/
+`phase3buat1_check.mjs`/`phase3buat3_check.mjs`'s row-count selectors,
+which now also match each row's own sibling details row) + six scripts'
+mock `GET .../sources` fixtures extended with the four new fields — the
+full suite otherwise returns to the exact same 20 pre-existing,
+already-documented failures, zero new divergences. Backend: one
+additive test (`test_list_includes_timing_reference_and_timestamps`),
+280/280 passing (279 baseline + 1 new).
+
+**Backend**: `backend/app/schemas/source.py` (additive fields only),
+`backend/tests/test_sources_api.py` (one new test). **Real-browser
+visual confirmation — the expanded Details panel's spacing/grid
+wrapping at narrow widths and Light/Dark appearance — was NOT and cannot
+be confirmed in this sandboxed session; this remains explicitly for the
+owner's own manual UAT.**
+
+## What was done in the prior session (Phase 3B-UAT4 — Recordings as Default Entry Page)
+
 **Phase 3B-UAT4 — Recordings as Default Entry Page.** Full detail:
 [MIGRATION_PLAN.md — Phase 3B-UAT4 Record](MIGRATION_PLAN.md#phase-3b-uat4--recordings-as-default-entry-page-2026-08-17),
 [DECISIONS.md — DEC-033](DECISIONS.md#dec-033--recordings-is-the-applications-default-fresh-entry-page-no-separate-landingdashboard-page-phase-3b-uat4).

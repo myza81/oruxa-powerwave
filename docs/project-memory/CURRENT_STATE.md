@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-17** (Phase 3B-UAT4).
+Last meaningful update: **2026-08-17** (Phase 3B-UAT5).
 
 ## Development phase
 
@@ -857,6 +857,34 @@ unmodified and passing); 8 new frontend `jsdom` checks passing
 (`phase3buat4_check.mjs`). **Unverified**: real-browser visual
 confirmation that fresh page loads show Recordings with no visible
 flash — flagged for owner UAT.
+
+`[FACT]` **Recording metadata now lives on the Recordings page, not the
+Waveform sidebar — Phase 3B-UAT5 — Move Recording Metadata from Waveform
+to Recordings — is now implemented** (2026-08-17) — see
+[MIGRATION_PLAN.md — Phase 3B-UAT5 Record](MIGRATION_PLAN.md#phase-3b-uat5--move-recording-metadata-from-waveform-to-recordings-2026-08-17).
+The Waveform Workspace Sidebar's `.stat-grid` metadata card stack
+(Recorder, Nominal Frequency, Timing Mode, Samples, Duration, Sampling
+Rate(s), Start Time, Trigger Time) was removed; the `.detail-header`
+identity block (station name + filenames) stays. Each Recordings row
+gained a `[ Details ]` button that expands a sibling table row showing
+that exact recording's metadata, reusing the existing `.stat-grid`
+pattern — multiple rows may be expanded at once (documented design
+choice, not a single-open accordion). `SourceSummaryOut` gained
+`timing_reference`/`start_time`/`trigger_time`/`sampling_rates` (purely
+additive, already-computed domain fields) so the Details panel renders
+entirely from the already-fetched `GET .../sources` list response —
+zero extra fetch, zero reparse, zero re-upload. **Timing Mode
+investigation (owner's explicit ask)**: confirmed via code inspection
+that `timing_reference` is genuine, permanent, source-level recording
+metadata (from the parsed COMTRADE record, gating which Waveform display
+modes are even offered) — architecturally distinct from the user's live
+Absolute/Elapsed view toggle (`ww.timeMode`) — safe to relocate, but
+relabeled "Timing reference" (was "Timing mode") to remove the exact
+ambiguity risk the owner flagged. 280/280 backend tests passing (279
+baseline + 1 new); 14 new frontend `jsdom` checks passing
+(`phase3buat5_check.mjs`). **Unverified**: real-browser visual
+confirmation of the expanded Details panel's layout/spacing and Light/
+Dark appearance — flagged for owner UAT.
 
 ## Completed foundation work
 

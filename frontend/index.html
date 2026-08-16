@@ -368,6 +368,26 @@
            cell share one bottom boundary -- this fix restores that by
            no longer opting the Actions cell out of it. */
         .recording-actions { display: flex; gap: 8px; white-space: nowrap; }
+        /* Phase 3B-UAT5: per-recording expandable metadata -- a sibling
+           <tr> directly beneath the recording's own row (see
+           renderRecordingDetails()), not a separate drawer/modal/page.
+           Reuses the existing .stat-grid/.stat/statCard() machinery
+           already established for exactly this "compact grid of label/
+           value pairs" shape (Phase 3A-UAT3's containment rules on
+           .stat/.stat .value already apply automatically, unscoped). */
+        .recording-details-row[hidden] { display: none; }
+        .recording-details-row td {
+            background: var(--surface-tint);
+            padding: 16px;
+        }
+        .recording-details-title {
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            color: var(--text-dim);
+            margin: 0 0 10px;
+        }
+        .recording-details-grid { margin-bottom: 0; } /* .stat-grid's own margin-bottom is for mid-page spacing; this is the last thing in the cell */
         #recordingsEmpty { text-align: center; padding: 48px 24px; }
         #recordingsEmpty p { margin: 0 0 16px; }
 
@@ -2485,6 +2505,19 @@
         // client-side de-duplication logic.
         // ------------------------------------------------------------------
 
+        // Phase 3B-UAT5: which recordings' Details panels are currently
+        // expanded, keyed by source_id. renderRecordingsTable() rebuilds
+        // its whole innerHTML on every refresh (the established Phase 3B
+        // pattern -- same as renderSourceListItems()), so this small,
+        // explicit set is what lets an already-open Details panel survive
+        // an unrelated refresh (e.g. removing a DIFFERENT recording)
+        // instead of silently collapsing every time. Multiple recordings
+        // may be expanded at once -- the simpler implementation, and
+        // consistent with this codebase's own existing collapsible
+        // <details> elements (Analog/Digital channel groups), which
+        // likewise never enforce a single-open-at-a-time "accordion."
+        const recordingsExpandedDetails = new Set();
+
         // Section 9: prefer the station/event name; fall back to the CFG
         // filename (or the first filename if none looks like a .cfg) only
         // when the station name itself is missing/blank. Never invents a
@@ -2523,6 +2556,52 @@
             });
         }
 
+        // Phase 3B-UAT5: the full per-recording metadata panel, built
+        // entirely from the SAME SourceSummaryOut object already fetched
+        // for the table row -- no per-row `.../channels` request, no
+        // waveform data, no reparse. Reuses statCard()/.stat-grid
+        // verbatim (the exact "responsive grid of label/value pairs"
+        // this task's own preferred layout describes), so it
+        // automatically inherits the already-established long-value
+        // containment (overflow-wrap: anywhere, min-width: 0).
+        //
+        // Start/Trigger Time are formatted via a plain string
+        // `.replace("T", " ")`, matching the SAME technique the old
+        // Waveform-sidebar metadata block always used -- deliberately
+        // NOT parsed through `new Date(...)`, which would silently
+        // round COMTRADE's microsecond-precision timestamps down to
+        // JS Date's millisecond precision.
+        function renderRecordingDetails(source) {
+            const cfgName = source.original_filenames.find((name) => /\.cfg$/i.test(name));
+            const datName = source.original_filenames.find((name) => /\.dat$/i.test(name));
+
+            let html = '<div class="recording-details-title">Recording details</div>';
+            html += '<div class="stat-grid recording-details-grid">';
+            html += statCard("Recorder", source.recorder_name || "—");
+            html += statCard("Nominal frequency", source.nominal_frequency + " Hz");
+            // Section 14 investigation: `timing_reference` is the SOURCE's
+            // own timing capability (TimingInformation.timing_reference --
+            // "absolute" when start_time/trigger_time are real recording
+            // timestamps, from the parsed COMTRADE record), NOT the
+            // Waveform page's user-selectable Absolute/Elapsed display
+            // toggle (ww.timeMode) -- a different, immutable recording-
+            // level fact that happens to use similar wording. Labeled
+            // "Timing reference" here (not "Timing mode", the old
+            // Waveform-sidebar label) specifically to avoid that
+            // confusion -- see docs/project-memory/MIGRATION_PLAN.md's
+            // Phase 3B-UAT5 record for the full investigation.
+            html += statCard("Timing reference", source.timing_reference);
+            html += statCard("Samples", source.sample_count.toLocaleString());
+            html += statCard("Duration", source.duration_seconds.toFixed(4) + " s");
+            html += statCard("Sampling rate(s)", source.sampling_rates.map((r) => r + " Hz").join(", "));
+            if (source.start_time) html += statCard("Start time", source.start_time.replace("T", " "));
+            if (source.trigger_time) html += statCard("Trigger time", source.trigger_time.replace("T", " "));
+            if (cfgName) html += statCard("CFG", cfgName);
+            if (datName) html += statCard("DAT", datName);
+            html += '</div>';
+            return html;
+        }
+
         function renderRecordingsTable(sources) {
             const wrapEl = document.querySelector(".recordings-table-wrap");
             const emptyEl = document.getElementById("recordingsEmpty");
@@ -2543,7 +2622,8 @@
                 const filenames = source.original_filenames.join(" + ");
                 const searchText = [name, source.station_name, filenames, recordingFormatLabel(source)]
                     .filter(Boolean).join(" ").toLowerCase();
-                html += '<tr data-search="' + escapeHtml(searchText) + '">' +
+                const expanded = recordingsExpandedDetails.has(source.source_id);
+                html += '<tr data-search="' + escapeHtml(searchText) + '" data-source-id="' + escapeHtml(source.source_id) + '">' +
                     '<td class="recording-name-cell">' +
                         '<div class="recording-name">' + escapeHtml(name) + '</div>' +
                         '<div class="recording-files">' + escapeHtml(filenames) + '</div>' +
@@ -2554,15 +2634,31 @@
                     '<td>' + formatRecordingDuration(source.duration_seconds) + '</td>' +
                     '<td>' + formatImportedAt(source.created_at) + '</td>' +
                     '<td><div class="recording-actions">' +
+                        '<button type="button" class="secondary" data-action="details" data-source-id="' +
+                        escapeHtml(source.source_id) + '" aria-expanded="' + expanded + '">' +
+                        (expanded ? "Hide details" : "Details") + '</button>' +
                         '<button type="button" class="secondary" data-action="open" data-source-id="' +
                         escapeHtml(source.source_id) + '">Open / Analyse</button>' +
                         '<button type="button" class="danger" data-action="remove" data-source-id="' +
                         escapeHtml(source.source_id) + '" data-source-name="' + escapeHtml(name) + '">Remove</button>' +
                     '</div></td>' +
                 '</tr>';
+                // Phase 3B-UAT5: a sibling row directly beneath the
+                // recording's own row -- not a separate drawer/modal.
+                // Association is exact by construction: this markup is
+                // generated from THIS loop iteration's own `source`
+                // object, never a shared/global active-source reference,
+                // so there is no possible cross-row leakage.
+                html += '<tr class="recording-details-row" data-details-for="' + escapeHtml(source.source_id) + '"' +
+                    (expanded ? "" : " hidden") + '>' +
+                    '<td colspan="7">' + renderRecordingDetails(source) + '</td>' +
+                '</tr>';
             }
             bodyEl.innerHTML = html;
 
+            bodyEl.querySelectorAll('button[data-action="details"]').forEach((btn) => {
+                btn.addEventListener("click", () => toggleRecordingDetails(btn.dataset.sourceId));
+            });
             bodyEl.querySelectorAll('button[data-action="open"]').forEach((btn) => {
                 btn.addEventListener("click", () => openRecordingForAnalysis(btn.dataset.sourceId));
             });
@@ -2571,6 +2667,37 @@
             });
 
             applyRecordingsSearchFilter(document.getElementById("recordingsSearch").value);
+        }
+
+        // Section 10: simple expand/collapse, no accordion (see
+        // recordingsExpandedDetails' own comment for why). Pure client-
+        // side -- zero fetch, zero reparse, zero re-upload; the details
+        // row's content was already fully rendered above from the same
+        // already-fetched source list.
+        // Plain dataset matching rather than an interpolated attribute
+        // selector -- avoids depending on CSS.escape(), which real
+        // browsers support widely but which is one more thing that could
+        // go wrong for a value that is always just an opaque source_id.
+        function findRecordingDetailsRow(sourceId) {
+            return Array.from(document.querySelectorAll(".recording-details-row"))
+                .find((row) => row.dataset.detailsFor === sourceId);
+        }
+
+        function toggleRecordingDetails(sourceId) {
+            if (recordingsExpandedDetails.has(sourceId)) {
+                recordingsExpandedDetails.delete(sourceId);
+            } else {
+                recordingsExpandedDetails.add(sourceId);
+            }
+            const expanded = recordingsExpandedDetails.has(sourceId);
+            const detailsRow = findRecordingDetailsRow(sourceId);
+            const toggleBtn = Array.from(document.querySelectorAll('button[data-action="details"]'))
+                .find((btn) => btn.dataset.sourceId === sourceId);
+            if (detailsRow) detailsRow.hidden = !expanded;
+            if (toggleBtn) {
+                toggleBtn.setAttribute("aria-expanded", String(expanded));
+                toggleBtn.textContent = expanded ? "Hide details" : "Details";
+            }
         }
 
         // Section 10: activates/selects the recording in the current
@@ -2588,12 +2715,29 @@
         // fields actually shown -- same technique setupChannelSearch()
         // already uses (data-search attribute + hidden toggle), no
         // advanced filtering.
+        // Phase 3B-UAT5: a recording's details row is a SIBLING <tr>, not
+        // part of the searchable row itself (it carries no data-search
+        // attribute), so filtering the recording row must also hide/show
+        // its own details row -- otherwise a Details panel could stay
+        // visible as an orphan under a row the search has hidden, or a
+        // still-expanded row could reappear without its details attached.
+        // Collapsed detail rows are left `hidden` regardless (their own
+        // expanded/collapsed state is unaffected by search).
         function applyRecordingsSearchFilter(query) {
             const q = query.trim().toLowerCase();
             const rows = Array.from(document.querySelectorAll("#recordingsTableBody tr[data-search]"));
             const countEl = document.getElementById("recordingsSearchCount");
+            const syncDetailsRow = (row, matched) => {
+                const detailsRow = findRecordingDetailsRow(row.dataset.sourceId);
+                if (!detailsRow) return;
+                const expanded = recordingsExpandedDetails.has(row.dataset.sourceId);
+                detailsRow.hidden = !(matched && expanded);
+            };
             if (!q) {
-                for (const row of rows) row.hidden = false;
+                for (const row of rows) {
+                    row.hidden = false;
+                    syncDetailsRow(row, true);
+                }
                 countEl.textContent = "";
                 return;
             }
@@ -2601,6 +2745,7 @@
             for (const row of rows) {
                 const match = row.dataset.search.includes(q);
                 row.hidden = !match;
+                syncDetailsRow(row, match);
                 if (match) visibleCount++;
             }
             countEl.textContent = visibleCount + " of " + rows.length;
@@ -2681,6 +2826,11 @@
             // to a different source, are left alone) -- this never removes
             // the source itself a second time, only the display of it.
             wwRemoveChannelsForSource(sourceId);
+            // Phase 3B-UAT5: drop any expanded-details bookkeeping for the
+            // now-removed recording so it can't linger as stale state (the
+            // row itself won't be re-rendered anyway, but a future
+            // recording could never coincidentally reuse this source_id).
+            recordingsExpandedDetails.delete(sourceId);
             // Section 18: keeps the Recordings page and the Waveform
             // source state consistent regardless of which page is
             // currently active.
@@ -2737,21 +2887,22 @@
             shellUpdateStatusBar(source, timebase);
 
             let html = "";
+            // Phase 3B-UAT5: the recording METADATA card stack (Recorder,
+            // Nominal Frequency, Timing Reference, Samples, Duration,
+            // Sampling Rate(s), Start/Trigger Time) that used to render
+            // here via statCard()/.stat-grid was removed -- that's now
+            // the Recordings page's own per-recording "Details" panel
+            // (see renderRecordingDetails()), which reads the SAME
+            // underlying fields from the already-fetched source list,
+            // zero extra request. Kept here: a compact identity line
+            // (station name + filenames) -- "active source
+            // identification... still needed for analysis" while
+            // browsing/selecting channels (section 4) -- not the
+            // metadata block itself.
             html += '<div class="detail-header"><div class="detail-header-info">';
             html += '<h3>' + escapeHtml(source.station_name) + '</h3>';
             html += '<div class="meta">' + escapeHtml(source.original_filenames.join(" + ")) + '</div>';
             html += '</div></div>';
-
-            html += '<div class="stat-grid">';
-            html += statCard("Recorder", source.recorder_name || "—");
-            html += statCard("Nominal frequency", source.nominal_frequency + " Hz");
-            html += statCard("Timing mode", timebase.timing_reference);
-            html += statCard("Samples", timebase.sample_count.toLocaleString());
-            html += statCard("Duration", timebase.duration_seconds.toFixed(4) + " s");
-            html += statCard("Sampling rate(s)", timebase.sampling_rates.map((r) => r + " Hz").join(", "));
-            if (timebase.start_time) html += statCard("Start time", timebase.start_time.replace("T", " "));
-            if (timebase.trigger_time) html += statCard("Trigger time", timebase.trigger_time.replace("T", " "));
-            html += '</div>';
 
             html += '<div class="search-row">' +
                 '<input type="search" id="channelSearch" placeholder="Search channels&hellip;" aria-label="Search channels">' +

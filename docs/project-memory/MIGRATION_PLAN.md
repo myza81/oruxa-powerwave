@@ -7847,6 +7847,169 @@ owner UAT.
 
 ---
 
+## Phase 3B-UAT5 — Move Recording Metadata from Waveform to Recordings (2026-08-17)
+
+`[FACT]` throughout. No new DECISIONS.md entry — this is a UI/data-
+relocation refinement within the already-decided DEC-032 Recordings
+architecture, similar in weight to UAT1–UAT3 (none of which needed a new
+DEC entry either).
+
+### Owner request
+
+The Waveform Workspace Sidebar's vertical metadata card stack (Recorder,
+Nominal Frequency, Timing Mode, Samples, Duration, Sampling Rate(s),
+Start Time, Trigger Time) was relocated to the Recordings page, attached
+to the exact recording it describes, via a per-row expandable "Details"
+panel — not a modal, drawer, or separate page.
+
+### Waveform sidebar
+
+`renderChannels()`'s `.stat-grid` block (built from `statCard()` calls)
+was removed entirely. The `.detail-header` identity block (station name
++ original filenames) was deliberately KEPT — this is active source
+identification still needed while analysing waveforms, not the
+enumerated metadata the owner asked to relocate. Channels
+section/search/selection/Add-selected and all analysis controls are
+untouched.
+
+### Recording Details UX
+
+A `[ Details ]` button was added to each Recordings row's existing
+`.recording-actions` (order: `[ Details ] [ Open / Analyse ] [ Remove ]`).
+Clicking it toggles a sibling `<tr class="recording-details-row">`
+(`<td colspan="7">`) directly beneath that row — reusing the existing
+`.stat-grid`/`.stat`/`statCard()` machinery verbatim (inheriting its
+established Phase 3A-UAT3 containment rules — `min-width: 0` on `.stat`,
+`overflow-wrap: anywhere` on `.stat .value` — automatically, since
+nothing about that CSS is scoped to the Waveform sidebar).
+
+**Design choice — multiple rows may be expanded simultaneously** (not a
+single-open accordion). Chosen as the simpler implementation, and
+consistent with this codebase's own existing collapsible `<details>`
+elements (Analog/Digital channel groups), which likewise never enforce
+single-open-at-a-time behavior anywhere else in the app. Tracked in a
+small module-level `recordingsExpandedDetails` Set, keyed by
+`source_id`, so an open panel survives an unrelated list refresh (e.g.
+removing a *different* recording) instead of silently collapsing.
+
+### Metadata fields
+
+Recorder, Nominal frequency, Timing reference, Samples, Duration,
+Sampling rate(s), Start time, Trigger time, CFG filename, DAT filename.
+Start/Trigger Time use the same `.replace("T", " ")` string technique
+already established for the old Waveform-sidebar rendering — deliberately
+NOT `new Date(...)`, which would silently round COMTRADE's microsecond-
+precision timestamps to JS Date's millisecond precision.
+
+### Timing Mode investigation (Step 14 — critical)
+
+Confirmed via direct code inspection of `backend/app/domain/timing.py`'s
+own docstring and its existing frontend consumer,
+`wwTimeModesForChannel(channel)`:
+
+`TimingInformation.timing_reference` is genuine, permanent, backend-
+computed, source-level recording metadata — parsed once from the
+COMTRADE record at import time ("absolute" when start_time/trigger_time
+are real recording timestamps, "relative_elapsed" when the waveform
+data's own time axis is authoritative). It already gates which display
+modes the Waveform page even offers via `wwTimeModesForChannel()`. This
+is architecturally and semantically **distinct** from `ww.timeMode` (the
+user's live, in-session Absolute/Elapsed display-toggle selection in the
+Waveform page) — the two have never shared storage or a code path.
+
+**Conclusion**: safe and correct to relocate as recording metadata. The
+field was relabeled "Timing reference" (was "Timing mode" in the old
+Waveform sidebar) specifically to remove the exact ambiguity risk the
+owner flagged — "Timing mode" reads too easily as if it were describing
+the current view toggle rather than a source-level capability flag.
+
+### Metadata authority / zero-refetch
+
+`SourceSummaryOut` (`backend/app/schemas/source.py`) gained
+`timing_reference`/`start_time`/`trigger_time`/`sampling_rates` —
+purely additive; all four already existed on the domain `SourceMetadata`
+(computed once at import time, already mirrored on `TimebaseOut`); no
+new storage, no new computation. This lets the Details panel render
+entirely from the SAME already-fetched `GET .../sources` list response
+that already powers the Recordings table — expanding/collapsing a
+Details panel is a pure client-side toggle: zero fetch, zero reparse,
+zero re-upload, zero `.../channels` request. Recorder/Station come
+straight from backend metadata (never inferred from filenames); missing
+fields fall back to "—" per existing convention.
+
+### Multi-recording correctness
+
+Each details `<tr>` is built from that same loop iteration's own
+`source` object — never a shared/global "current source" reference — so
+there is no possible cross-row leakage; confirmed by a dedicated test
+with two recordings carrying different recorder names.
+
+### Open/Analyse, Remove, search
+
+Unchanged. `performRemoveSource()` now also deletes the removed
+source's id from `recordingsExpandedDetails` (hygiene — the row won't be
+re-rendered anyway, but this avoids a stale Set entry). Removing a
+recording removes its details row along with it (both are the same
+`<tr>` subtree). `applyRecordingsSearchFilter()` now also hides/shows
+each recording's sibling details row in lockstep with its own row, so a
+filtered-out row's (possibly still-expanded) details panel can never
+remain visible as an orphan; clearing the search restores it.
+
+### Responsive / theme
+
+No new hardcoded colors — `.recording-details-row td` uses
+`var(--surface-tint)`; everything else rides the reused `.stat-grid`
+tokens. Long filenames wrap via the same established containment, never
+ellipsized.
+
+### Tests
+
+- **Backend**: one additive test,
+  `test_list_includes_timing_reference_and_timestamps` (cross-checks the
+  list endpoint's new fields against the `.../channels` endpoint's own
+  `timebase.*` values, avoiding a hardcoded-value guess). 280/280
+  passing (279 baseline + 1 new).
+- **Frontend, new**: `phase3buat5_check.mjs` (scratch, not committed) —
+  14/14 passing. Covers: `.stat-grid` gone from the Waveform Channels
+  panel while `.detail-header` remains; zero new fetches on entering
+  Waveform; a Details control exists per row, collapsed by default;
+  expand/collapse toggles the correct row and button label/
+  `aria-expanded`; multiple rows can be expanded at once; every field
+  (including the relabeled "Timing reference" and full-precision Start/
+  Trigger Time) renders correctly; CFG/DAT filenames shown; long
+  filenames contained; two recordings' details never leak into each
+  other; Remove clears expanded state and the row cleanly; search hides
+  and restores an orphan-free details panel; expand/collapse causes zero
+  network requests of any kind.
+- **Frontend, existing suite correction**: three pre-existing scripts
+  (`phase3auat3_check.mjs`, `phase3b_check.mjs`, `phase3buat1_check.mjs`,
+  `phase3buat3_check.mjs`) had assertions that implicitly assumed either
+  the old Waveform-sidebar recorder-name rendering (now relocated) or
+  that `#recordingsTableBody tr` selects only real recording rows (now
+  also matches each row's own sibling `.recording-details-row`) —
+  updated in place, following this project's established precedent,
+  rather than left failing. Six other pre-existing scripts' mock
+  `GET .../sources` fixtures were extended with the four new
+  `SourceSummaryOut` fields (matching the real backend response shape)
+  since the new Details panel now reads them unconditionally on every
+  Recordings render.
+- **Frontend, full regression**: the exact same 20 pre-existing,
+  already-documented failures, zero new divergences.
+
+### Files changed
+
+`frontend/index.html`, `backend/app/schemas/source.py`,
+`backend/tests/test_sources_api.py`.
+
+### Honest limitation
+
+No real browser is available in this sandbox — the visual layout of the
+expanded Details panel (spacing, grid wrapping at narrow widths, Light/
+Dark appearance) was reasoned through structurally against existing
+`.stat-grid` CSS but not visually confirmed — flagged for owner UAT.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping
