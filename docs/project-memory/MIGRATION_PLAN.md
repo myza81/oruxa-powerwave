@@ -7657,6 +7657,85 @@ UAT.
 
 ---
 
+## Phase 3B-UAT3 — Recordings Header Action Cleanup (2026-08-17)
+
+`[FACT]`. Two small refinements to the Recordings page header, following
+directly from Phase 3B-UAT2's own relocation work.
+
+**Order**: "Start new workspace" and "Upload New" were already grouped
+together in `.recordings-header-actions` (Phase 3B-UAT2); this pass
+reordered them to `[ Start new workspace ] [ Upload New ]` (secondary
+action first, primary action last, closest to the table it affects) per
+the owner's preferred layout. Visual weight (`.secondary` vs. the
+unclassed/primary `#recordingsUploadBtn`) is what marks Upload New as
+the stronger action, not DOM order — confirmed unchanged: Upload New
+remains unclassed (primary button style), Start new workspace remains
+explicitly `.secondary`. No "Import" button exists anywhere in the
+document (it was already fully removed in Phase 3B-UAT2, not just
+hidden) — confirmed by test, not re-added.
+
+**Button typography**: reviewed font-size across every button class
+app-wide (base/primary `button`, `.secondary`, `.danger`,
+`.danger-solid`, `.theme-toggle button` in theme.css, `.shell-nav-item`).
+Found one real, small inconsistency: `.secondary` (0.8rem) and `.danger`
+(0.78rem) were two separate, near-duplicate literal values for the same
+"smaller than the primary action" tier — the two classes are frequently
+paired in the same row (e.g. Recordings' own Open / Analyse +
+Remove). Consolidated into one shared token, `--button-font-size-compact:
+0.8rem`, referenced by both. The primary/base `button` size (0.9rem) and
+`.theme-toggle button`'s own toolbar/segmented-control size (0.76rem,
+theme.css, deliberately the most compact tier) were left untouched —
+both are intentionally distinct tiers, not accidental drift, matching
+the owner's own "consistent hierarchy, not necessarily identical size"
+instruction. No other typography was touched.
+
+`.recordings-header` gained no new CSS beyond what Phase 3B-UAT2 already
+added (`flex-wrap: wrap`); the action group still wraps safely at
+narrow widths with the reordered buttons.
+
+### Tests
+
+- **Frontend, new**: `phase3buat3_check.mjs` (scratch, not committed) —
+  13/13 passing. Covers: no Import control anywhere; Upload New and
+  Start new workspace both present on Recordings; both sit in the same
+  `.recordings-header-actions` group with Start new workspace preceding
+  Upload New; Upload New stays unclassed/primary, Start new workspace
+  stays `.secondary`; both still call their existing, completely
+  unchanged handlers (opens the one upload modal / opens the existing
+  confirmation dialog); no duplicate `<form>`/upload-modal/
+  `#newWorkspaceButton`/`#newWorkspaceConfirmOverlay`/`shellOpenImport`
+  exist; the action group's `flex-wrap` containment rule is present;
+  the shared `--button-font-size-compact` token exists and both
+  `.secondary`/`.danger` reference it; the primary and toolbar/segmented
+  button sizes remain their own distinct, untouched tiers; and the full
+  existing Recordings workflow (search, Open/Analyse, Remove) remains
+  functional.
+- **Frontend, existing**: the full Phase 1 through Phase 3B-UAT2 suites
+  re-run — the exact same 20 pre-existing, already-documented failures,
+  zero new divergences (this pass needed no corrections to any existing
+  test file).
+- **Backend**: zero diff, 279/279 passing in a fresh venv (no backend
+  file touched).
+
+### Files changed
+
+Modified: `frontend/index.html` only (one CSS token + two font-size
+references, one markup reorder). No backend file, no CI/deployment
+workflow file. `DECISIONS.md` not touched — a cosmetic/ordering
+refinement within the already-decided DEC-032 Recordings/Waveform
+architecture, not a new or revised decision.
+
+### Honest limitation
+
+No real browser is available in this sandbox. Whether the reordered
+`[ Start new workspace ] [ Upload New ]` layout reads correctly, and
+whether the small font-size unification is visually imperceptible (as
+intended — 0.8rem vs. 0.78rem is a very small change) rather than
+introducing any visible shift, were reasoned through but not visually
+confirmed — flagged for owner UAT.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

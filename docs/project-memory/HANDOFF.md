@@ -8,6 +8,41 @@ Last updated: **2026-08-17**
 
 ## What was most recently done
 
+**Phase 3B-UAT3 — Recordings Header Action Cleanup.** Two small
+refinements following directly from Phase 3B-UAT2's own relocation
+work. Full detail:
+[MIGRATION_PLAN.md — Phase 3B-UAT3 Record](MIGRATION_PLAN.md#phase-3b-uat3--recordings-header-action-cleanup-2026-08-17).
+
+**Order**: "Start new workspace" and "Upload New" (already grouped in
+`.recordings-header-actions` since UAT2) were reordered to `[ Start new
+workspace ] [ Upload New ]` per the owner's preferred layout. Upload
+New stays visually primary (unclassed button); Start new workspace
+stays `.secondary`. No "Import" button exists anywhere — confirmed by
+test, not re-added (it was already fully removed in UAT2).
+
+**Button typography**: `.secondary` (0.8rem) and `.danger` (0.78rem)
+were two near-duplicate literal font-sizes for the same "compact
+action" tier (frequently paired in the same row, e.g. Recordings' Open
+/ Analyse + Remove) — consolidated into one shared
+`--button-font-size-compact: 0.8rem` token. The primary button size
+(0.9rem) and toolbar/segmented-control size (0.76rem, theme.css)
+remain their own deliberately distinct, untouched tiers.
+
+**Verification**: 13 new frontend `jsdom` checks
+(`phase3buat3_check.mjs`) + the full existing Phase 1 through Phase
+3B-UAT2 suites — the exact same 20 pre-existing, already-documented
+failures, zero new divergences (no existing test needed correction this
+pass). Backend: zero diff, 279/279 passing in a fresh venv.
+
+**Backend**: zero files changed. **Real-browser visual confirmation —
+whether the reordered actions read correctly, and whether the (very
+small, 0.8rem vs 0.78rem) font-size unification is visually
+imperceptible as intended — was NOT and cannot be confirmed in this
+sandboxed session; this remains explicitly for the owner's own manual
+UAT.**
+
+## What was done in the prior session (Phase 3B-UAT2 — Remove Duplicate Waveform-Page Import / New-Workspace Actions)
+
 **Phase 3B-UAT2 — Remove Duplicate Waveform-Page Import / New-Workspace
 Actions.** The owner established a clearer page-responsibility split:
 Recordings owns recording/session management (upload/import, Open/

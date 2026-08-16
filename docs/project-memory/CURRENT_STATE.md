@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-17** (Phase 3B-UAT2).
+Last meaningful update: **2026-08-17** (Phase 3B-UAT3).
 
 ## Development phase
 
@@ -808,6 +808,25 @@ channels-only) remains untouched and distinct. No backend file changed
 passing (`phase3buat2_check.mjs`). **Unverified**: real-browser visual
 confirmation of the simplified Waveform header and the grouped
 Recordings actions — flagged for owner UAT.
+
+`[FACT]` **Phase 3B-UAT3 — Recordings Header Action Cleanup — is now
+implemented** (2026-08-17) — see
+[MIGRATION_PLAN.md — Phase 3B-UAT3 Record](MIGRATION_PLAN.md#phase-3b-uat3--recordings-header-action-cleanup-2026-08-17).
+"Start new workspace" and "Upload New" (already grouped together since
+Phase 3B-UAT2) were reordered to `[ Start new workspace ] [ Upload New
+]` — Upload New remains visually primary (unclassed button style),
+Start new workspace remains `.secondary`. No "Import" button exists
+anywhere (confirmed, not re-added). A small button-typography
+inconsistency was also fixed: `.secondary` (0.8rem) and `.danger`
+(0.78rem) — two near-duplicate literal font sizes for the same
+"compact action" tier — now share one CSS token,
+`--button-font-size-compact: 0.8rem`; the primary button size (0.9rem)
+and the toolbar/segmented-control size (0.76rem) remain their own
+deliberately distinct, untouched tiers. No backend file changed (279
+tests unmodified and passing); 13 new frontend `jsdom` checks passing
+(`phase3buat3_check.mjs`). **Unverified**: real-browser visual
+confirmation of the reordered actions and the (intentionally very
+small) font-size unification — flagged for owner UAT.
 
 ## Completed foundation work
 

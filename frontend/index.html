@@ -525,6 +525,22 @@
         .hint.warn { color: var(--warn); }
         .hint.error { color: var(--error); }
 
+        /* Phase 3B-UAT3: a single shared reference for the app's compact/
+           secondary button text size, instead of each compact button
+           class declaring its own near-duplicate literal value
+           (.secondary was 0.8rem, .danger was 0.78rem -- effectively the
+           same size, drifted apart as two separate magic numbers, even
+           though they're the same "smaller than the primary action"
+           tier and are frequently paired in the same row, e.g. Recordings'
+           own Open / Analyse + Remove). Base `button` (primary actions,
+           0.9rem) and `.theme-toggle button` in theme.css (toolbar/
+           segmented controls, 0.76rem -- deliberately the most compact
+           tier) stay their own distinct sizes on purpose; this token only
+           unifies the two that were accidentally near-identical. */
+        :root {
+            --button-font-size-compact: 0.8rem;
+        }
+
         button {
             appearance: none;
             border: none;
@@ -548,7 +564,7 @@
             color: var(--text-dim);
             font-weight: 500;
             padding: 6px 12px;
-            font-size: 0.8rem;
+            font-size: var(--button-font-size-compact);
         }
 
         button.danger {
@@ -557,7 +573,7 @@
             color: var(--error);
             font-weight: 500;
             padding: 4px 10px;
-            font-size: 0.78rem;
+            font-size: var(--button-font-size-compact);
         }
 
         .upload-status {
@@ -1524,16 +1540,22 @@
                 <div class="recordings-header">
                     <h2>Recording Events</h2>
                     <div class="recordings-header-actions">
-                        <button type="button" id="recordingsUploadBtn">Upload New</button>
                         <!-- Phase 3B-UAT2: relocated from the Global Header
                              (unchanged element IDs/behavior) -- Recordings
                              is now the one workspace-management surface;
                              see startNewWorkspace()/resetToNewWorkspace(),
-                             completely unchanged by this move. -->
+                             completely unchanged by this move. Phase
+                             3B-UAT3: reordered to sit BEFORE Upload New
+                             (secondary action first, primary action last,
+                             closest to the content it acts on) -- visual
+                             weight (.secondary vs the unclassed/primary
+                             Upload New button below) is what marks Upload
+                             New as the stronger action, not DOM order. -->
                         <div class="shell-header-reset">
                             <button class="secondary" id="newWorkspaceButton" type="button">Start new workspace</button>
                             <p class="hint error" id="workspaceResetError" hidden role="alert"></p>
                         </div>
+                        <button type="button" id="recordingsUploadBtn">Upload New</button>
                     </div>
                 </div>
 
