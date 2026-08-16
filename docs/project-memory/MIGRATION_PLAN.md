@@ -6794,6 +6794,122 @@ adjust dimensions/spacing, not just confirm the structure.
 
 ---
 
+## Phase 3A-UAT1 — Responsive Waveform Width Reflow (2026-08-16)
+
+`[FACT]` throughout. Phase 3A's shell STRUCTURE passed owner UAT
+(geometry correct, Workspace Sidebar resize itself works). The owner's
+manual UAT found one important child-layout bug: when the Workspace
+Sidebar widened, Main Workspace correctly became narrower, but the
+Plotly waveform canvas did not follow — it could visually extend beyond
+its own panel frame instead of shrinking to fit.
+
+### Root cause (established by code inspection, not guessed)
+
+`shellCreateHorizontalSplit()`'s original comment asserted "real
+waveform panels/ruler pick up the new container width for free via
+their own existing `responsive: true` Plotly config." This was
+**incorrect**: Plotly's `responsive: true` reliably reacts to actual
+`window` resize events, but does **not** reliably detect a container
+that changed size for another reason — a sibling flex item (the
+Workspace Sidebar) growing/shrinking never fires a `window` resize
+event at all. Neither `shellCreateHorizontalSplit()`'s own resize path
+nor `shellSetMainSidebarExpanded()` ever called `Plotly.Plots.resize()`
+on the affected panels. The CSS flex `min-width: 0` chain was already
+correct at every level that matters (`#workArea`, `#mainWorkspace`) —
+the CONTAINER genuinely shrank; only the never-notified Plotly-rendered
+SVG stayed at its stale, wider pixel size and visually overflowed its
+(correctly-sized) `.ww-chart-wrap`, which had no `overflow` rule to
+contain it.
+
+### Fix
+
+1. **`shellCreateHorizontalSplit()` rewritten** to rAF-coalesce an
+   `options.onResize(width)` callback — reusing the EXACT established
+   Phase 2C-C2A pattern (cheap width write on every raw pointermove;
+   the callback, now potentially resizing several Plotly instances,
+   coalesced to at most once per animation frame; one authoritative
+   final call on pointerup/pointercancel so the last committed width is
+   always what Plotly actually resizes to).
+2. **New `wwResizeAllVisiblePlots()`** — reflows every panel in
+   `ww.panels` (Grouped/Separate/Custom alike, reusing the existing
+   `wwResizePanelPlot()` per panel — not a second implementation) plus
+   the sticky ruler if ready. Presentation-only: never touches
+   `ww.viewport`, Y range, trace data, or the fetch pipeline.
+3. **Wired into three trigger points**: the Workspace Sidebar's own
+   `onResize` option; a `transitionend` listener on `#mainSidebarMenu`
+   (guarded to `propertyName === "width"`) — the correct signal that an
+   animated collapse/expand's width has actually finished changing,
+   rather than resizing against a mid-transition value; and a
+   `window.resize` listener (rAF-coalesced via a small shared
+   `wwScheduleResizeAllVisiblePlots()` helper) as defensive, redundant
+   coverage for real browser window resizes, given Plotly's own
+   internal detection had just proven unreliable for a related case.
+4. **CSS defense-in-depth**: `.ww-chart-wrap` gained `overflow: hidden`
+   — a no-op once the resize fix above is correct (Plotly's own SVG
+   already exactly fills the wrapper), but ensures any FUTURE gap in
+   the resize wiring fails safely (clipped) instead of visually
+   bleeding out of the panel frame, per this task's own explicit
+   "the chart must actually resize correctly, don't merely hide a
+   stale width with clipping" instruction — the resize fix is primary,
+   this is a safety net, not a substitute.
+
+### Test-infrastructure fix (not an application change)
+
+`shellCreateHorizontalSplit()` now calls `requestAnimationFrame`
+unconditionally at Init time (every real browser has this natively).
+Re-running the full jsdom regression suite revealed six OLDER scratch
+scripts (`phase2ca_check.mjs`, `phase2cb1/b2/b3/b3a_check.mjs`,
+`phase2cc1_check.mjs`) were missing the `requestAnimationFrame`/
+`cancelAnimationFrame` polyfill that later scripts (from
+`phase2cc2_check.mjs` onward, once panel-height resize needed it)
+already have — this silently aborted their entire inline `<script>`
+evaluation partway through Init, cascading into dozens of unrelated-
+looking failures. Patched all six with the exact same polyfill line
+already used elsewhere (test infrastructure only) — confirmed the full
+suite returns to the identical 20-failure baseline from immediately
+before this task, zero new divergences from the actual code change.
+
+### Tests
+
+- **Frontend, new**: `phase3auat1_check.mjs` (scratch, not committed) —
+  20/20 passing. Covers: `.ww-chart-wrap` containment CSS, Workspace
+  Sidebar drag resizing every visible panel's Plotly instance AND the
+  sticky ruler, zero waveform fetches during resize, byte-identical
+  physical viewport before/after, no relayout call touching range/Y
+  state as a side effect, rAF-coalesced scheduling (many raw
+  pointermoves → far fewer resize calls), authoritative final resize on
+  pointerup, pointercancel cleanup + its own final resize (matching the
+  established `wwSetPanelHeight` contract), a subsequent drag after a
+  cancelled one still working, Main Sidebar Menu expand/collapse both
+  triggering a full reflow via `transitionend` (correctly scoped to the
+  `width` property only), zero fetch/viewport-preserving on menu
+  toggle, window resize triggering the same reflow path, rapid-fire
+  window resize events coalescing to one pass (no runaway loop), zero
+  fetch on window resize, Separate mode (all 6 lanes reflow) and Custom
+  mode (all panels reflow), Phase 3A shell hierarchy unchanged, and
+  panel-height resizing unaffected.
+- **Frontend, existing**: the full Phase 2C-A through Phase 3A suites
+  (264 checks, after the six-script polyfill fix) — the exact same
+  20 pre-existing, already-documented failures, zero new divergences.
+- **Backend**: zero diff, 278/278 passing in a fresh venv.
+
+### Files changed
+
+Modified only: `frontend/index.html`. No backend file, no CI/deployment
+workflow file.
+
+### Honest limitation
+
+This sandboxed session has no real browser. Whether the waveform
+canvas now genuinely stays visually contained during a real drag,
+whether the reflow feels smooth (not janky) during continuous dragging,
+and whether the `transitionend`-triggered Main-Sidebar-Menu reflow
+looks correct in practice were **not** visually confirmed — only
+structural/behavioral evidence (jsdom DOM/state assertions, CSS source
+inspection) was verified. This remains for owner manual UAT.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

@@ -583,6 +583,41 @@ narrow widths — no real browser in this sandbox; explicitly flagged for
 owner UAT, consistent with this phase's own "initial, UAT-refined"
 framing.
 
+`[FACT]` **Phase 3A's shell STRUCTURE passed owner UAT — one child-
+layout bug was found**: when the Workspace Sidebar widened, Main
+Workspace correctly became narrower, but the Plotly waveform canvas
+didn't reflow to fit, and could visually overflow its own panel frame.
+Fixed by **Phase 3A-UAT1 — Responsive Waveform Width Reflow** — see
+[MIGRATION_PLAN.md — Phase 3A-UAT1 Record](MIGRATION_PLAN.md#phase-3a-uat1--responsive-waveform-width-reflow-2026-08-16).
+**Root cause**: Plotly's own `responsive: true` config only reliably
+reacts to actual `window` resize events, not a container that changed
+size because a sibling flex item (the Workspace Sidebar) resized — the
+CSS itself was already correctly shrinking the container (`min-width:
+0` was already present everywhere it mattered); Plotly was simply never
+told to redraw, so its stale, wider SVG bled past the (correctly sized)
+`.ww-chart-wrap`. **Fix**: a new `wwResizeAllVisiblePlots()` (reuses the
+existing `wwResizePanelPlot()` per panel, plus the sticky ruler) is now
+called from three trigger points — the Workspace Sidebar's own resize
+(rAF-coalesced, one authoritative final call on pointerup/pointercancel,
+reusing the exact Phase 2C-C2A scheduling pattern), Main Sidebar Menu's
+`transitionend` event (the correct signal an animated collapse/expand's
+width has actually finished changing), and window resize (added
+defensively, rAF-coalesced). `.ww-chart-wrap` also gained `overflow:
+hidden` as a defense-in-depth safety net (a no-op once the resize fix
+itself is correct). Confirmed by test: zero waveform refetches, the
+physical viewport is byte-identical before/after any width-only change,
+works identically in Grouped/Separate/Custom. **Test-infrastructure
+fix, not an application change**: six older jsdom scratch scripts were
+missing a `requestAnimationFrame` polyfill this fix's own rAF-
+coalescing now unconditionally depends on at Init time (every real
+browser has this natively) — patched with the same polyfill later
+scripts already use; the full suite returns to the identical
+pre-existing 20-failure baseline, zero new divergences. No backend file
+changed (278 tests unmodified and passing); 20 new frontend `jsdom`
+checks passing (`phase3auat1_check.mjs`). **Unverified**: actual visual
+containment and reflow smoothness in a real browser — no real browser
+in this sandbox; flagged for owner UAT.
+
 ## Completed foundation work
 
 `[FACT]`, verified against the repository on 2026-08-15:
@@ -1243,16 +1278,32 @@ drag-resizable contextual Workspace Sidebar, a dominant Main Workspace
 Bar structurally confined beside Workspace Row only (never beneath Main
 Sidebar Menu — the owner's own explicit correction to an earlier, wrong
 interpretation). Explicitly an INITIAL shell, subject to UAT-driven
-dimension/spacing refinement. The next step is for the project owner to
-review Phase 3A via live DEV UAT — primarily assessing shell geometry
-and proportions (Global Header height, Main Sidebar Menu width in both
-states, the full-height menu geometry specifically, Workspace Sidebar
-width/resize feel, Main Workspace dominance, Status Bar geometry,
-overall visual simplicity) rather than pixel-perfect polish — and
-either request refinement or move on to whichever comes next (digital
-channels remains the owner's other previously-stated next area; Table/
-Split view implementation remains explicitly not authorized until a
-separate request).
+dimension/spacing refinement.
+**Phase 3A's shell structure passed owner UAT; one child-layout bug was
+found and fixed**: the Plotly waveform canvas did not reflow when the
+Workspace Sidebar widened, and could visually overflow its own panel
+frame — see **Phase 3A-UAT1 — Responsive Waveform Width Reflow**,
+[MIGRATION_PLAN.md — Phase 3A-UAT1 Record](MIGRATION_PLAN.md#phase-3a-uat1--responsive-waveform-width-reflow-2026-08-16).
+Root cause: Plotly's own `responsive: true` reliably reacts to
+`window` resize, but not to a sibling flex item resizing the container
+— the CSS itself already shrank correctly; Plotly was simply never
+told to redraw. Fixed with a new `wwResizeAllVisiblePlots()`, called
+from Workspace Sidebar drag (rAF-coalesced), Main Sidebar Menu's
+`transitionend` event, and window resize — confirmed zero waveform
+refetches and a byte-identical physical viewport before/after any
+width-only change, in Grouped/Separate/Custom alike. The next step is
+for the project owner to review Phase 3A-UAT1 via live DEV UAT —
+specifically: widen/narrow the Workspace Sidebar and confirm the
+waveform stays contained and reflows smoothly, test while zoomed,
+expand/collapse Main Sidebar Menu, resize the browser window, and
+confirm the sticky ruler stays aligned — plus the still-open Phase 3A
+proportions/dimensions review (Global Header height, Main Sidebar Menu
+width in both states, Workspace Sidebar width/resize feel, Main
+Workspace dominance, Status Bar geometry) — and either request further
+refinement or move on to whichever comes next (digital channels
+remains the owner's other previously-stated next area; Table/Split view
+implementation remains explicitly not authorized until a separate
+request).
 Separately, resolving the
 abandoned-session TTL question (`[DECISION MODE: COMPARISON]`, reassessed
 but not resolved by Phase 2C-A/B1 — neither changes the backend memory-

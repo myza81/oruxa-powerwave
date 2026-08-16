@@ -8,6 +8,79 @@ Last updated: **2026-08-16**
 
 ## What was most recently done
 
+**Phase 3A-UAT1 — Responsive Waveform Width Reflow.** Phase 3A's shell
+STRUCTURE passed owner UAT (geometry correct, Workspace Sidebar resize
+itself works). One child-layout bug was found: when the Workspace
+Sidebar widened, Main Workspace correctly became narrower, but the
+Plotly waveform canvas did not reflow to fit — it could visually
+extend beyond its own panel frame. Full detail:
+[MIGRATION_PLAN.md — Phase 3A-UAT1 Record](MIGRATION_PLAN.md#phase-3a-uat1--responsive-waveform-width-reflow-2026-08-16).
+
+**Root cause (established by code inspection, not guessed)**:
+`shellCreateHorizontalSplit()`'s own original comment incorrectly
+assumed Plotly's `responsive: true` config would automatically detect
+this kind of resize. It doesn't — `responsive: true` reliably reacts
+to actual `window` resize events, but a sibling flex item (the
+Workspace Sidebar) growing/shrinking never fires one. The CSS
+`min-width: 0` chain was already correct everywhere it mattered (the
+CONTAINER genuinely shrank); Plotly was simply never told to redraw,
+so its stale, wider rendered SVG visually overflowed its own
+(correctly-sized) `.ww-chart-wrap`, which had no `overflow` rule to
+contain it.
+
+**Fix**: `shellCreateHorizontalSplit()` was rewritten to rAF-coalesce
+an `options.onResize(width)` callback, reusing the EXACT established
+Phase 2C-C2A pattern (cheap width write on every raw pointermove;
+the callback coalesced to at most once per animation frame; one
+authoritative final call on pointerup/pointercancel). A new
+`wwResizeAllVisiblePlots()` reflows every panel in `ww.panels`
+(Grouped/Separate/Custom alike, reusing the existing
+`wwResizePanelPlot()` per panel) plus the sticky ruler — presentation-
+only, never touches `ww.viewport`, Y range, trace data, or the fetch
+pipeline. Wired into three trigger points: the Workspace Sidebar's own
+`onResize`; a `transitionend` listener on `#mainSidebarMenu` (guarded
+to `propertyName === "width"` — the correct signal an animated
+collapse/expand's width has actually finished changing, not a guessed
+timeout); and a defensive `window.resize` listener (rAF-coalesced),
+added since Plotly's own internal detection had just proven unreliable
+for a related case. `.ww-chart-wrap` also gained `overflow: hidden` as
+a defense-in-depth safety net (a no-op once the resize fix itself is
+correct, per this task's own "the chart must actually resize
+correctly, don't merely hide a stale width" instruction — the resize
+fix is primary, this is a safety net).
+
+**Test-infrastructure fix, not an application change**: this fix's own
+rAF-coalescing means `shellCreateHorizontalSplit()` now calls
+`requestAnimationFrame` unconditionally at Init time (every real
+browser has this natively). Re-running the full jsdom suite revealed
+six OLDER scratch scripts (`phase2ca_check.mjs`,
+`phase2cb1/b2/b3/b3a_check.mjs`, `phase2cc1_check.mjs`) were missing
+the `requestAnimationFrame`/`cancelAnimationFrame` polyfill later
+scripts already have (from `phase2cc2_check.mjs` onward, once panel-
+height resize needed it) — this silently aborted their ENTIRE inline
+`<script>` evaluation partway through Init, cascading into dozens of
+unrelated-looking failures on first run. Patched all six with the
+exact same polyfill line already used elsewhere; the suite returns to
+the identical 20-failure baseline from immediately before this task —
+zero new divergences from the actual code change, confirmed by
+re-running before/after, not assumed.
+
+**Verification**: 20 new frontend `jsdom` checks
+(`phase3auat1_check.mjs`) + the full existing Phase 2C-A through Phase
+3A suites (264 checks, after the polyfill fix) — the exact same
+pre-existing 20 failures, zero new. Backend: zero diff, 278/278 passing
+in a fresh venv.
+
+**Backend**: zero files changed. **Real-browser visual confirmation —
+whether the waveform canvas genuinely stays visually contained during a
+real drag, whether the reflow feels smooth rather than janky, and
+whether the `transitionend`-triggered Main Sidebar Menu reflow looks
+correct in practice — was NOT and cannot be confirmed in this
+sandboxed session; this remains explicitly for the owner's own manual
+UAT.**
+
+## What was done in the prior session (Phase 3A — Application Shell Redesign Foundation)
+
 **Phase 3A — Application Shell Redesign Foundation.** The first
 STRUCTURAL redesign of the frontend: the whole-page-scrolling, 2-column
 centered layout (`main { max-width: 1100px; margin: 0 auto }`) is
@@ -1426,7 +1499,55 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified (this pass — Phase 3A application shell redesign foundation)
+## What was verified (this pass — Phase 3A-UAT1 responsive waveform width reflow)
+
+- `oruxa_powerwave` git state confirmed against `origin/main` (read-only
+  `git fetch`), working tree clean before this pass began.
+- **Backend regression: 278 tests, unmodified, all still pass** (fresh
+  venv run) — zero backend files in the diff (`git diff --stat --
+  backend/` empty; diff scoped to `frontend/index.html` only).
+- **Root cause established by direct code inspection, not guessed**
+  (per this task's own explicit instruction): traced the missing
+  `Plotly.Plots.resize()` call in both `shellCreateHorizontalSplit()`
+  and `shellSetMainSidebarExpanded()`, confirmed the CSS `min-width: 0`
+  chain was already correct at every level that mattered, and confirmed
+  `.ww-chart-wrap` had no `overflow` rule to contain a stale-width
+  Plotly SVG.
+- **Frontend, new: 20 scripted `jsdom` checks, all passing**
+  (`phase3auat1_check.mjs`) — `.ww-chart-wrap` containment CSS,
+  Workspace Sidebar drag resizing every visible panel's Plotly instance
+  AND the sticky ruler, zero waveform fetches during resize,
+  byte-identical physical viewport before/after, no relayout call
+  touching range/Y state as a side effect of the resize, rAF-coalesced
+  scheduling (many raw pointermoves → far fewer resize calls),
+  authoritative final resize on pointerup, pointercancel cleanup + its
+  own final resize (matching the established `wwSetPanelHeight`
+  contract), a subsequent drag after a cancelled one still working,
+  Main Sidebar Menu expand/collapse both triggering a full reflow via
+  `transitionend` (correctly scoped to the `width` property only), zero
+  fetch/viewport-preserving on menu toggle, window resize triggering
+  the same reflow path, rapid-fire window resize events coalescing to
+  one pass (no runaway loop), zero fetch on window resize, Separate
+  mode (all 6 lanes reflow) and Custom mode (all panels reflow), Phase
+  3A shell hierarchy unchanged, and panel-height resizing unaffected.
+- **Frontend, existing: the full Phase 2C-A through Phase 3A suites
+  (264 checks, after fixing six older scripts' missing
+  requestAnimationFrame polyfill — a test-infrastructure gap this
+  fix's own rAF-coalescing exposed, not an application bug) — the exact
+  same pre-existing 20 failures already documented in those phases' own
+  records, zero new divergences.** Independently confirmed by running
+  the suite both before and after this phase's changes.
+- `node --check` on `frontend/index.html`'s inline `<script>` block, and
+  a `getElementById`/`id=` cross-reference check (no dangling
+  references, no duplicate IDs) — both clean.
+- No real-browser/visual confirmation was performed in this sandboxed
+  session — whether the waveform canvas genuinely stays visually
+  contained during a real drag, and whether the reflow feels smooth,
+  were NOT visually confirmed. See the final report's explicit
+  statement about what's honestly unverified. Final visual judgment
+  remains the owner's own manual UAT.
+
+## What was verified (prior pass — Phase 3A application shell redesign foundation)
 
 - `oruxa_powerwave` git state confirmed against `origin/main` (read-only
   `git fetch`), working tree clean before this pass began.
@@ -2271,7 +2392,19 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 3A application shell redesign foundation)
+## What files were changed this session (Phase 3A-UAT1 responsive waveform width reflow)
+
+Modified only: `frontend/index.html` (`shellCreateHorizontalSplit()`
+rewritten with rAF-coalesced resize scheduling; new
+`wwResizeAllVisiblePlots()` and `wwScheduleResizeAllVisiblePlots()`;
+Init wiring adds `onResize: wwResizeAllVisiblePlots` to the Workspace
+Sidebar split config, a `transitionend` listener on `#mainSidebarMenu`,
+and a `window.resize` listener; `.ww-chart-wrap` CSS gained `overflow:
+hidden`). No new files. **No `backend/` file, no
+`frontend/waveform-prototype.html`/`theme.css`/`theme.js` change, no CI/
+deployment workflow file was touched.**
+
+## What files were changed in the prior session (Phase 3A application shell redesign foundation)
 
 Modified only: `frontend/index.html` (full CSS restructuring —
 `#globalHeader`, `#appBody`, `#mainSidebarMenu`, `.shell-nav-*`,
@@ -2682,7 +2815,7 @@ Modified:
 See "GitHub persistence" and "DEV deployment" in this task's final report
 (delivered in-conversation) for the exact commit hash, push confirmation,
 independent-fetch verification, GitHub Actions run, and live-endpoint
-checks for this Phase 3A pass. **Production was not touched.**
+checks for this Phase 3A-UAT1 pass. **Production was not touched.**
 
 ## What remains unresolved
 
@@ -2735,48 +2868,65 @@ checks for this Phase 3A pass. **Production was not touched.**
 
 ## What should be done next
 
-The next step is for the **project owner** to review Phase 3A via live
-DEV UAT (this task's own 20-step checklist) — this is primarily a
-GEOMETRY/PROPORTIONS review, not a pixel-perfect polish review, per the
-task's own explicit "initial shell" framing: confirm Global Header
-spans the full width; confirm Main Sidebar Menu begins below the header
-and extends all the way to the bottom of the app body; confirm the
-Status Bar does NOT run underneath Main Sidebar Menu; confirm Workspace
-Sidebar and Main Workspace read as clearly separate regions from Main
-Sidebar Menu; drag the Workspace Sidebar boundary left/right and assess
-resize feel; confirm the waveform canvas reads as dominant; confirm the
-toolbar is compact; confirm the Sticky Time Axis is still correct;
-confirm the Status Bar is thin and correctly positioned; test Light/
-Dark; confirm Grouped/Separate/Custom, Custom Groups, panel-height
-resize, Absolute/Elapsed, and Open/Import all still work; resize the
-browser window and check for major layout failures (Table/Split
-functionality is explicitly NOT part of this review — neither is
-implemented). Also specifically assess: Global Header height, Main
-Sidebar Menu width (both collapsed and expanded), Workspace Sidebar
-width and resize feel, and overall visual simplicity — these are the
-exact dimensions this phase's own framing expects to be tuned. If the
-owner confirms the STRUCTURE is right (even if exact sizes need
-tuning): no further action needed on the structural item, and any
-dimension/spacing feedback becomes a small follow-up refinement pass,
-not a redo. If the structure itself is wrong, report back — do **not**
-assume either outcome. Separately, the owner may choose to: (a) request
-Phase 3A dimension/spacing refinements; (b) authorize the drag/reorder/
+The next step is for the **project owner** to review Phase 3A-UAT1 via
+live DEV UAT (this task's own 24-step checklist): widen the Workspace
+Sidebar significantly and confirm the waveform stays entirely inside
+its panel frame in Grouped mode; narrow it and confirm clean expansion;
+repeat in Separate mode across several lanes, checking overlay labels
+and sticky-ruler alignment; repeat in Custom mode; expand/collapse Main
+Sidebar Menu and confirm reflow both directions; resize the browser
+window and confirm no overflow; zoom before resizing and confirm the
+exact zoomed window remains after; test Light/Dark; confirm zero
+visible waveform reload during any of this. This is a targeted
+follow-up to a specific reported bug — the owner already confirmed
+Phase 3A's shell STRUCTURE is correct, so this review is about
+CONTAINMENT/REFLOW correctness, not proportions again (though the
+still-open Phase 3A dimension/spacing feedback remains welcome
+whenever convenient). If the owner confirms the waveform now stays
+contained and reflows correctly: no further action needed on this
+item. If any overflow or stale-width behavior remains, report back
+with the specific layout mode/interaction — do **not** assume either
+outcome. Separately, the owner may choose to: (a) request further Phase
+3A dimension/spacing refinements; (b) authorize the drag/reorder/
 overlay/split work directly (still the owner's own possible next
-direction, deliberately set aside across eight passes now, not
+direction, deliberately set aside across nine passes now, not
 abandoned); (c) request the still-outstanding Grouped/Custom axis-
 duplication cleanup (Phase 2C-C4's own section 16 gap, unchanged across
-three passes now); (d) authorize real Table/Split view implementation
-(explicitly NOT authorized by this phase — the shell only avoids
-blocking it); or (e) move on to digital channels (the owner's own
-explicitly stated next area, and this task's own explicit instruction:
-do **not** begin digital-channel or Table/Split work without a separate
-signal). Separately, resolving the abandoned-session TTL question and
-the ~100 MB real-file memory validation remain recommended before
-broader/prolonged shared-DEV UAT, unchanged conclusion from every prior
-Phase 2 pass.
+four passes now); (d) authorize real Table/Split view implementation
+(explicitly NOT authorized yet — the shell only avoids blocking it); or
+(e) move on to digital channels (the owner's own explicitly stated next
+area, and this task's own explicit instruction: do **not** begin
+digital-channel or Table/Split work without a separate signal).
+Separately, resolving the abandoned-session TTL question and the
+~100 MB real-file memory validation remain recommended before broader/
+prolonged shared-DEV UAT, unchanged conclusion from every prior Phase 2
+pass.
 
 ## What must not be assumed
 
+- **Do not assume Plotly's `responsive: true` config alone keeps a
+  waveform panel correctly sized after ANY container-width change** —
+  it reliably reacts to actual `window` resize events, but NOT to a
+  container that changed size for another reason (a sibling flex item
+  resizing). Any FUTURE code path that changes Main Workspace's
+  available width (a future Table/Split divider, a future Workspace
+  Sidebar redesign, etc.) must explicitly call
+  `wwResizeAllVisiblePlots()` (or `wwScheduleResizeAllVisiblePlots()`
+  for a rapid-fire-event source) — it will NOT happen automatically.
+  This was the exact root cause of the Phase 3A-UAT1 bug.
+- **Do not assume `shellCreateHorizontalSplit()`'s `onResize` callback
+  fires on every raw pointermove** — it is rAF-coalesced (at most once
+  per animation frame during a drag), with an authoritative final call
+  on pointerup/pointercancel. A caller that needs to observe every
+  intermediate width during a drag (not just the coalesced/final ones)
+  would need different wiring.
+- **Do not assume `.ww-chart-wrap`'s new `overflow: hidden` is what
+  fixes waveform containment** — it is a defense-in-depth safety net
+  only; the actual fix is making sure Plotly is always explicitly told
+  to resize. If a future gap in that wiring reappears, this CSS rule
+  will hide the symptom (clipped, not overflowing) without fixing the
+  underlying cause — don't mistake "no visible overflow" for "Plotly is
+  correctly sized."
 - **Do not assume the page still scrolls as a whole document** — as of
   Phase 3A, `<body>` has `overflow: hidden`; each shell region
   (Workspace Sidebar, `#activeViewArea`) owns its own internal scroll.
@@ -3051,35 +3201,37 @@ Phase 2 pass.
 
 - Not needed to review or use Phase 2C-A, Phase 2C-B1, Phase 2C-B2, Phase
   2C-B3, Phase 2C-B3A, Phase 2C-C1, Phase 2C-C2, Phase 2C-C2A, Phase
-  2C-C3, Phase 2C-C4, Phase 2C-C4A, Phase 2C-C4B, or Phase 3A themselves
-  — already implemented, deployed to DEV, and live-verified per this
-  exact task's own authorization. **Recommended, though**: an owner UAT
-  of Phase 3A's actual shell geometry/proportions (this is explicitly an
-  INITIAL shell, expected to need dimension/spacing tuning — the
-  structural hierarchy is what's load-bearing), plus the still-carried-
-  forward Phase 2C-C4A tick-alignment-at-rescaled-units claim, neither
-  of which could be visually confirmed in this sandbox.
+  2C-C3, Phase 2C-C4, Phase 2C-C4A, Phase 2C-C4B, Phase 3A, or Phase
+  3A-UAT1 themselves — already implemented, deployed to DEV, and
+  live-verified per this exact task's own authorization. **Recommended,
+  though**: an owner UAT specifically confirming the waveform canvas now
+  stays visually contained during a Workspace Sidebar drag (in Grouped/
+  Separate/Custom), reflows correctly on Main Sidebar Menu collapse/
+  expand and on browser window resize, and that the still-open Phase 3A
+  proportions/dimensions feedback and the still-carried-forward Phase
+  2C-C4A tick-alignment-at-rescaled-units claim — none of which could be
+  visually confirmed in this sandbox.
 - **Yes**, before any drag/reorder/overlay/split work begins (still the
   owner's own possible next direction, deliberately set aside across
-  eight passes now, but still not yet explicitly authorized to
+  nine passes now, but still not yet explicitly authorized to
   *implement* — Phase 3A's shell only avoids blocking it
   architecturally), before REAL Table or Split view implementation
-  (explicitly not authorized by Phase 3A — only structural placeholders
-  exist), before digital channels (the owner's own next stated area,
-  not yet begun — and this task's own explicit closing instruction was
-  to stop here, not begin it), before Synthetic Elapsed Time, Sample
-  Index, or any CSV/Excel timing mode, before the Grouped/Custom
-  per-panel axis-label duplication (Phase 2C-C4's own section 16 gap,
-  unchanged and still outstanding across four passes now) is cleaned
-  up, before interactive ruler zoom/pan/selection or a shared crosshair
-  on the ruler, before Cursor A/B or Delta Cursor functionality in the
-  Bottom Status Bar, before Phase 1.5 or any later phase begins, before
-  a PROD deployment, before any further crosshair or theming work
-  beyond what's already described in project-memory, and before any
-  change to the ephemeral-storage, upload-size,
-  COMTRADE-upload-interaction, workspace-lifecycle, or waveform-data
-  decisions recorded in `DECISIONS.md`. Per the change-governance rule
-  in [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md).
+  (explicitly not authorized yet — only structural placeholders exist),
+  before digital channels (the owner's own next stated area, not yet
+  begun — and this task's own explicit closing instruction was to stop
+  here, not begin it), before Synthetic Elapsed Time, Sample Index, or
+  any CSV/Excel timing mode, before the Grouped/Custom per-panel
+  axis-label duplication (Phase 2C-C4's own section 16 gap, unchanged
+  and still outstanding across five passes now) is cleaned up, before
+  interactive ruler zoom/pan/selection or a shared crosshair on the
+  ruler, before Cursor A/B or Delta Cursor functionality in the Bottom
+  Status Bar, before Phase 1.5 or any later phase begins, before a PROD
+  deployment, before any further crosshair or theming work beyond
+  what's already described in project-memory, and before any change to
+  the ephemeral-storage, upload-size, COMTRADE-upload-interaction,
+  workspace-lifecycle, or waveform-data decisions recorded in
+  `DECISIONS.md`. Per the change-governance rule in
+  [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md).
 - **Recommended before any further prolonged/shared-DEV waveform UAT**: a
   real decision on the abandoned-session TTL question, and ideally the
   ~100 MB real-file memory validation, rather than continuing to rely on

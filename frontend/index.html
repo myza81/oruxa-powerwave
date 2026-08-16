@@ -894,6 +894,14 @@
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
             background: var(--waveform-surface);
+            /* Phase 3A-UAT1: defense-in-depth containment only -- the
+               actual fix is making sure Plotly is always told to resize
+               (see wwResizeAllVisiblePlots()); once that's true, Plotly's
+               own rendered SVG already exactly fills this wrapper's width
+               and this rule is a no-op. It exists so a future gap in that
+               resize wiring fails safely (clipped) instead of visually
+               bleeding out of the panel frame. */
+            overflow: hidden;
         }
         .ww-chart { width: 100%; height: 260px; }
         .ww-chart-loading {
@@ -1434,21 +1442,56 @@
         // cancel mirrors the exact pattern already proven for panel-height
         // resize (wwWireResizeHandle) -- a reused, established mechanism,
         // not a new one.
+        // Phase 3A-UAT1 (root cause, section 5): Plotly's own
+        // `responsive: true` config only reliably reacts to actual
+        // `window` resize events -- it does NOT reliably detect a
+        // container that changed size for another reason (a sibling flex
+        // item, like this split's own panel, growing/shrinking). The
+        // CSS `min-width: 0` chain above already lets the CONTAINER shrink
+        // correctly; what was missing was ever telling Plotly to redraw at
+        // its new size, so its own last-rendered SVG stayed the old,
+        // wider pixel size and visually overflowed its (correctly sized)
+        // wrapper. Fixed here by rAF-coalescing an explicit
+        // `options.onResize(width)` callback -- reusing the EXACT
+        // established decoupling pattern from panel-height resize
+        // (wwSetPanelHeightImmediate/wwResizePanelPlot, Phase 2C-C2A):
+        // the cheap width write applies on every raw pointermove; the
+        // (potentially expensive, since it may resize several Plotly
+        // instances) `onResize` callback is coalesced to at most once per
+        // animation frame, with one authoritative final call on
+        // pointerup/pointercancel so the last committed width is always
+        // what Plotly actually resizes to, even if a frame was still
+        // pending.
         function shellCreateHorizontalSplit(options) {
             let width = shellLoadSplitWidth(options);
-            applyWidth(width);
+            let rafId = null;
 
-            function applyWidth(next) {
+            function applyWidthImmediate(next) {
                 width = Math.max(options.min, Math.min(options.max, next));
                 options.panelEl.style.width = width + "px";
-                if (options.onResize) options.onResize(width);
             }
+
+            function scheduleOnResize() {
+                if (!options.onResize || rafId !== null) return;
+                rafId = requestAnimationFrame(() => {
+                    rafId = null;
+                    options.onResize(width);
+                });
+            }
+
+            function applyWidth(next) {
+                applyWidthImmediate(next);
+                scheduleOnResize();
+            }
+
+            applyWidth(width); // initial layout -- harmless no-op if nothing is displayed yet
 
             let dragStartX = 0;
             let dragStartWidth = 0;
 
             function onPointerMove(event) {
-                applyWidth(dragStartWidth + (event.clientX - dragStartX));
+                applyWidthImmediate(dragStartWidth + (event.clientX - dragStartX));
+                scheduleOnResize();
             }
 
             function endDrag(event) {
@@ -1465,6 +1508,16 @@
                 if (options.storageKey) {
                     try { localStorage.setItem(options.storageKey, String(width)); } catch (error) { /* ignore */ }
                 }
+                // Authoritative final resize (section 7) -- cancel any
+                // still-pending rAF and call onResize synchronously
+                // against the FINAL committed width, exactly the same
+                // pointerup/pointercancel contract wwSetPanelHeight()
+                // already established.
+                if (rafId !== null) {
+                    cancelAnimationFrame(rafId);
+                    rafId = null;
+                }
+                if (options.onResize) options.onResize(width);
             }
 
             options.handleEl.addEventListener("pointerdown", (event) => {
@@ -1479,14 +1532,12 @@
                 event.preventDefault();
             });
 
-            // Section 9: this resize ONLY ever writes a CSS width -- it
-            // never touches ww.viewport, never calls the waveform fetch
-            // pipeline, so "zero waveform API requests during resize" is
-            // true by construction, not by care taken elsewhere. Real
-            // waveform panels/ruler pick up the new container width for
-            // free via their own existing `responsive: true` Plotly config
-            // (the same mechanism window-resize already relies on) -- no
-            // explicit Plotly.Plots.resize() call is needed here.
+            // Section 9: this resize ONLY ever writes a CSS width and
+            // (via onResize) triggers a presentation-only Plotly redraw --
+            // it never touches ww.viewport, the Y range, or the waveform
+            // fetch pipeline, so "zero waveform API requests during
+            // resize" is true by construction, not by care taken
+            // elsewhere.
             return { setWidth: applyWidth, getWidth: () => width };
         }
 
@@ -3108,6 +3159,49 @@
             }
         }
 
+        // Phase 3A-UAT1: reflows EVERY currently-visible waveform Plotly
+        // instance -- every panel in ww.panels (Grouped/Separate/Custom
+        // alike, section 8) plus the sticky ruler if it exists -- to its
+        // actual current container width. Presentation-only, exactly like
+        // every other Plotly.Plots.resize() call in this codebase: never
+        // touches ww.viewport, the Y range, trace data, or the waveform
+        // fetch pipeline. Called whenever something OUTSIDE Plotly's own
+        // reliable window-resize detection changes a panel's available
+        // width -- Workspace Sidebar drag, Main Sidebar Menu collapse/
+        // expand, and (defensively) actual window resize too -- since
+        // Plotly's own `responsive: true` config only reliably reacts to
+        // real `window` resize events, not an internal flex-sibling width
+        // change (see shellCreateHorizontalSplit()'s own comment for the
+        // full root-cause investigation). Reuses wwResizePanelPlot() per
+        // panel -- not a second resize implementation.
+        function wwResizeAllVisiblePlots() {
+            for (const panel of ww.panels) {
+                wwResizePanelPlot(panel);
+            }
+            if (ww.rulerReady) {
+                const rulerChartEl = document.getElementById("wwStickyRulerChart");
+                if (rulerChartEl && window.Plotly && Plotly.Plots && typeof Plotly.Plots.resize === "function") {
+                    Plotly.Plots.resize(rulerChartEl);
+                }
+            }
+        }
+
+        // Coalesces potentially-rapid-fire callers (a real browser window
+        // resize can fire this dozens of times during one drag of the OS
+        // window edge) to at most once per animation frame -- the same
+        // rAF-coalescing principle as shellCreateHorizontalSplit()'s own
+        // drag handling, just for callers that don't already do their own
+        // coalescing (the window `resize` event, and the Main Sidebar
+        // Menu's `transitionend` handler in Init).
+        let wwResizeAllRafId = null;
+        function wwScheduleResizeAllVisiblePlots() {
+            if (wwResizeAllRafId !== null) return;
+            wwResizeAllRafId = requestAnimationFrame(() => {
+                wwResizeAllRafId = null;
+                wwResizeAllVisiblePlots();
+            });
+        }
+
         // wwSetPanelHeight: both halves together, atomically -- used only
         // where an immediate, guaranteed-in-sync-with-Plotly result is
         // required (the final write on pointerup, below).
@@ -4187,6 +4281,20 @@
         document.getElementById("mainSidebarToggleBtn").addEventListener("click", () => {
             shellSetMainSidebarExpanded(!shell.mainSidebarExpanded);
         });
+        // Phase 3A-UAT1 (section 11): Main Sidebar Menu's collapsed/
+        // expanded width change also affects Main Workspace's available
+        // width, exactly like the Workspace Sidebar drag does -- so
+        // waveform panels must reflow here too. `#mainSidebarMenu` has its
+        // own CSS `transition: width 0.15s ease` (unchanged), so resizing
+        // Plotly IMMEDIATELY after toggling the class would redraw against
+        // the pre-transition (stale) width; `transitionend` is the
+        // standard, correct signal that the width has actually finished
+        // changing -- guarded to the `width` property specifically since
+        // other properties could in principle transition on this element
+        // later.
+        document.getElementById("mainSidebarMenu").addEventListener("transitionend", (event) => {
+            if (event.propertyName === "width") wwScheduleResizeAllVisiblePlots();
+        });
         // "Workspace" is the one real destination this phase -- clicking
         // it returns the Active View to Waveform if the user had switched
         // to a Table/Split placeholder, a small but real behavior rather
@@ -4215,7 +4323,9 @@
 
         // Workspace Sidebar <-> Main Workspace horizontal resize (section
         // 9) -- the SAME reusable helper a future Waveform <-> Table split
-        // (section 10/22) is expected to call again.
+        // (section 10/22) is expected to call again. `onResize` is what
+        // was missing before Phase 3A-UAT1 -- see shellCreateHorizontalSplit()'s
+        // own comment for the root-cause investigation.
         shellCreateHorizontalSplit({
             handleEl: document.getElementById("workspaceSplitHandle"),
             panelEl: document.getElementById("workspaceSidebar"),
@@ -4223,7 +4333,17 @@
             max: SHELL_WORKSPACE_SIDEBAR_MAX_WIDTH,
             defaultWidth: SHELL_WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
             storageKey: SHELL_WORKSPACE_SIDEBAR_WIDTH_STORAGE_KEY,
+            onResize: wwResizeAllVisiblePlots,
         });
+
+        // Phase 3A-UAT1 (section 12): defensive, redundant coverage for
+        // real browser window resizes -- Plotly's own `responsive: true`
+        // config is documented to react to these reliably on its own, but
+        // given the sibling-driven-resize case above turned out NOT to be
+        // reliably detected, an explicit listener removes any doubt for
+        // this case too, at negligible cost (rAF-coalesced, and a no-op
+        // resize is cheap/idempotent).
+        window.addEventListener("resize", wwScheduleResizeAllVisiblePlots);
 
         // Phase 2C-A: central Powerwave toolbar + theme integration.
         document.getElementById("dragModeZoomBtn").addEventListener("click", () => wwSetDragMode("zoom"));

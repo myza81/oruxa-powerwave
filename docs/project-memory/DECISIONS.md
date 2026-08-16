@@ -2172,6 +2172,28 @@ Impact:
   `shellUpdateStatusBarChannelCount()`. No backend file changed. See
   [MIGRATION_PLAN.md — Phase 3A Record](MIGRATION_PLAN.md#phase-3a--application-shell-redesign-foundation-2026-08-16).
 
+**Update (2026-08-16, Phase 3A-UAT1, owner UAT bug fix)**: the owner's
+manual UAT of this decision's own shell STRUCTURE passed, but found a
+child-layout bug — the Plotly waveform canvas did not reflow when the
+Workspace Sidebar widened, and could visually extend beyond its own
+panel frame. Root cause: this decision's own original implementation
+comment incorrectly asserted that Plotly's `responsive: true` config
+would automatically detect this kind of resize; it does not — that
+config reliably reacts to actual `window` resize events, not a
+container that changed size because a sibling flex item (the Workspace
+Sidebar) resized. The CSS `min-width: 0` chain introduced by this
+decision was already correct at every level that mattered; only the
+never-notified Plotly instance was the problem. Fixed by adding an
+explicit, rAF-coalesced `Plotly.Plots.resize()` call
+(`wwResizeAllVisiblePlots()`) triggered from the Workspace Sidebar's
+own resize, Main Sidebar Menu's `transitionend` event, and window
+resize (defensive). `WW_PANEL_MARGIN`, the sticky ruler's own
+alignment mechanism, and every other Phase 3A structural element are
+unaffected. This is a bug fix within the same decision's own
+implementation, not a new architectural direction — no new decision
+entry was added, per governance. See
+[MIGRATION_PLAN.md — Phase 3A-UAT1 Record](MIGRATION_PLAN.md#phase-3a-uat1--responsive-waveform-width-reflow-2026-08-16).
+
 ---
 
 ## How to add a decision
