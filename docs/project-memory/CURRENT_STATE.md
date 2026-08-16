@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-15**.
+Last meaningful update: **2026-08-16**.
 
 ## Development phase
 
@@ -617,6 +617,28 @@ changed (278 tests unmodified and passing); 20 new frontend `jsdom`
 checks passing (`phase3auat1_check.mjs`). **Unverified**: actual visual
 containment and reflow smoothness in a real browser — no real browser
 in this sandbox; flagged for owner UAT.
+
+`[FACT]` **Phase 3A-UAT1's width-reflow fix passed owner UAT; that issue
+is closed. Phase 3A-UAT2 — Remove Duplicate Header Theme Control — is
+now implemented** (2026-08-16) — see
+[MIGRATION_PLAN.md — Phase 3A-UAT2 Record](MIGRATION_PLAN.md#phase-3a-uat2--remove-duplicate-header-theme-control-2026-08-16).
+The Global Header's own `#themeToggle` Light/Dark segmented control was
+removed (element + its `mountThemeToggle()` call in Init) since it
+duplicated the Main Sidebar Menu's existing "Settings" item, which
+already toggles the same preference — **the Main Sidebar Menu is now the
+single theme/settings entry point** in `index.html`. `theme.js`'s shared
+`mountThemeToggle()` function itself, and `.theme-toggle` (a CSS class
+also used by the unrelated `#shellViewToggle` view selector), were left
+untouched — `frontend/waveform-prototype.html` (a separate page, out of
+scope) still mounts its own theme toggle unchanged. All underlying theme
+mechanics (persistence, cross-tab sync, Plotly re-color, zero-refetch)
+are confirmed unchanged by test. No backend file changed (278 tests
+unmodified and passing); 11 new frontend `jsdom` checks passing
+(`phase3auat2_check.mjs`); one pre-existing check in
+`theme_crosshair_check.mjs` was corrected in place (it asserted the
+now-intentionally-removed `#themeToggle` exists in `index.html`) rather
+than left broken. **Unverified**: visual header spacing and Main Sidebar
+Menu Settings usability in a real browser — flagged for owner UAT.
 
 ## Completed foundation work
 
@@ -1291,19 +1313,26 @@ told to redraw. Fixed with a new `wwResizeAllVisiblePlots()`, called
 from Workspace Sidebar drag (rAF-coalesced), Main Sidebar Menu's
 `transitionend` event, and window resize — confirmed zero waveform
 refetches and a byte-identical physical viewport before/after any
-width-only change, in Grouped/Separate/Custom alike. The next step is
-for the project owner to review Phase 3A-UAT1 via live DEV UAT —
-specifically: widen/narrow the Workspace Sidebar and confirm the
-waveform stays contained and reflows smoothly, test while zoomed,
-expand/collapse Main Sidebar Menu, resize the browser window, and
-confirm the sticky ruler stays aligned — plus the still-open Phase 3A
-proportions/dimensions review (Global Header height, Main Sidebar Menu
-width in both states, Workspace Sidebar width/resize feel, Main
-Workspace dominance, Status Bar geometry) — and either request further
-refinement or move on to whichever comes next (digital channels
-remains the owner's other previously-stated next area; Table/Split view
-implementation remains explicitly not authorized until a separate
-request).
+width-only change, in Grouped/Separate/Custom alike. **Phase 3A-UAT1's
+width-reflow fix passed owner UAT; that issue is closed.** The owner
+then requested one small isolated UI cleanup — **Phase 3A-UAT2 — Remove
+Duplicate Header Theme Control** — see
+[MIGRATION_PLAN.md — Phase 3A-UAT2 Record](MIGRATION_PLAN.md#phase-3a-uat2--remove-duplicate-header-theme-control-2026-08-16).
+The Global Header's own `#themeToggle` Light/Dark control was removed
+(it duplicated the Main Sidebar Menu's existing "Settings" item); the
+Main Sidebar Menu is now the **single** theme entry point. All
+underlying theme mechanics (persistence, cross-tab sync, Plotly
+re-color, zero-refetch) are unchanged, confirmed by test. The next step
+is for the project owner to review this cleanup via live DEV UAT
+(header reads cleanly with no leftover gap; Settings remains reachable
+and functional in both collapsed and expanded Main Sidebar states) —
+plus the still-open Phase 3A proportions/dimensions review (Global
+Header height, Main Sidebar Menu width in both states, Workspace
+Sidebar width/resize feel, Main Workspace dominance, Status Bar
+geometry) — and either request further refinement or move on to
+whichever comes next (digital channels remains the owner's other
+previously-stated next area; Table/Split view implementation remains
+explicitly not authorized until a separate request).
 Separately, resolving the
 abandoned-session TTL question (`[DECISION MODE: COMPARISON]`, reassessed
 but not resolved by Phase 2C-A/B1 — neither changes the backend memory-

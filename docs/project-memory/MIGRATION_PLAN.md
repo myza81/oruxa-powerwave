@@ -6910,6 +6910,98 @@ inspection) was verified. This remains for owner manual UAT.
 
 ---
 
+## Phase 3A-UAT2 — Remove Duplicate Header Theme Control (2026-08-16)
+
+`[FACT]` throughout. Phase 3A-UAT1's width-reflow fix passed owner UAT —
+that issue is closed. The owner then requested one small, isolated UI
+cleanup: the Global Header carried its own Light/Dark segmented control
+(`#themeToggle`, mounted via `window.PowerwaveTheme.mountThemeToggle()`)
+that duplicated the Main Sidebar Menu's existing "Settings" item (which
+already flips the same Light/Dark preference). The owner wanted only one
+theme entry point, keeping the Main Sidebar Menu's.
+
+### Change
+
+`frontend/index.html` only:
+
+1. Removed the `<div id="themeToggle"></div>` element from
+   `#globalHeaderActions` in the Global Header markup.
+2. Removed the corresponding
+   `window.PowerwaveTheme.mountThemeToggle(document.getElementById("themeToggle"))`
+   call from Init.
+3. Updated a stale code comment on the Main Sidebar Menu's "Settings"
+   click handler that referenced the now-removed header control as "the
+   primary, full segmented control" — it now correctly describes
+   Settings as the sole theme entry point.
+
+`#globalHeaderActions` is a plain `display: flex; gap: 10px` row with no
+fixed widths or placeholder reserved for the removed element, so the gap
+closes cleanly with zero CSS change needed. The shared `.theme-toggle`
+CSS class was **not** touched or removed — it is also the class used by
+the unrelated `#shellViewToggle` (Waveform/Table/Split) segmented
+control, and `theme.js`'s `mountThemeToggle()` function itself was **not**
+touched or removed — `frontend/waveform-prototype.html` (an isolated,
+separate page, out of this task's scope) still mounts and uses it
+unchanged.
+
+### Theme behavior — unchanged, verified
+
+All underlying theme mechanics are untouched: `theme.js`'s
+`getTheme()`/`setTheme()`, the `powerwave.theme` `localStorage` key, the
+cross-tab `storage`-event sync, the `powerwave:theme-change`
+`CustomEvent`, and Plotly's own theme re-color via `relayout`/`restyle`
+(zero waveform refetch) all work exactly as before — confirmed by test,
+not just assumed, since removing only a UI mount point could not by
+itself change any of these (they are consumed via `window.PowerwaveTheme`
+directly by the Settings handler, never through the removed toggle's own
+internal state).
+
+### Tests
+
+- **Frontend, new**: `phase3auat2_check.mjs` (scratch, not committed) —
+  11/11 passing. Covers: `#themeToggle` absent from the DOM entirely,
+  `#globalHeader` contains no Light/Dark-labeled buttons, Main Sidebar
+  Menu's `#mainNavSettingsBtn` exists inside `.shell-nav-bottom` and
+  still flips Light→Dark→Light on click, the preference persists across
+  a simulated reload, theme change causes zero waveform refetch, theme
+  change still triggers the existing per-panel Plotly chrome relayout
+  (`paper_bgcolor`), the Global Header's remaining controls (Sources
+  drawer toggle, Import, Waveform/Table/Split selector, Start new
+  workspace) still render, Main Sidebar Menu collapse/expand still
+  works, and the displayed-channel/panel state is undisturbed.
+- **Frontend, existing suite fix**: `theme_crosshair_check.mjs`'s own
+  pre-existing "theme toggle control renders and switches theme on
+  click" test asserted `#themeToggle` exists in `index.html`'s real
+  header markup — no longer true by design, so it was corrected in
+  place (not deleted) to assert the element's absence instead, with a
+  comment pointing to `phase3auat2_check.mjs` for full coverage and
+  noting `mountThemeToggle()` itself remains proven functional via the
+  very next block in the same file (`waveform-prototype.html`, unchanged).
+- **Frontend, full regression suite**: re-ran every existing scratch
+  script (Phase 2C-A through Phase 3A-UAT1) — the exact same 20
+  pre-existing, already-documented failures, zero new divergences.
+- **Backend**: zero diff, 278/278 passing in a fresh venv (no backend
+  file touched).
+
+### Files changed
+
+Modified: `frontend/index.html` (application change), plus this record
+and `CURRENT_STATE.md`/`HANDOFF.md` (project memory). No backend file,
+no CI/deployment workflow file. `DECISIONS.md` DEC-031 was **not**
+updated — this is a UI-cleanup refinement within an already-decided
+architecture, not a new or corrected architectural decision, so no
+governance update note was needed for this pass.
+
+### Honest limitation
+
+No real browser is available in this sandbox — visual confirmation that
+the header now reads cleanly with no leftover gap, and that the Main
+Sidebar Menu's Settings control remains comfortably reachable/usable in
+both collapsed and expanded states, was reasoned through via the DOM/CSS
+inspection above but not visually confirmed. Flagged for owner UAT.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

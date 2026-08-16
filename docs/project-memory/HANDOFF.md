@@ -8,6 +8,52 @@ Last updated: **2026-08-16**
 
 ## What was most recently done
 
+**Phase 3A-UAT2 — Remove Duplicate Header Theme Control.**
+Phase 3A-UAT1's width-reflow fix passed owner UAT; that issue is
+closed. The owner then requested one small, isolated UI cleanup: the
+Global Header's own Light/Dark segmented control (`#themeToggle`)
+duplicated the Main Sidebar Menu's existing "Settings" item, which
+already flips the same theme preference. Full detail:
+[MIGRATION_PLAN.md — Phase 3A-UAT2 Record](MIGRATION_PLAN.md#phase-3a-uat2--remove-duplicate-header-theme-control-2026-08-16).
+
+**What was built**: removed the `<div id="themeToggle"></div>` element
+from `#globalHeaderActions` in the Global Header, and removed the
+corresponding `window.PowerwaveTheme.mountThemeToggle(...)` call from
+Init. `#globalHeaderActions` is a plain `flex; gap: 10px` row with no
+reserved placeholder width, so the gap closed cleanly with zero CSS
+change needed. **The Main Sidebar Menu's "Settings" item is now the
+sole theme entry point** in `index.html`. Neither the shared
+`.theme-toggle` CSS class (also used by the unrelated `#shellViewToggle`
+Waveform/Table/Split selector) nor `theme.js`'s `mountThemeToggle()`
+function itself were touched — `frontend/waveform-prototype.html` (a
+separate page, out of scope) still mounts and uses the latter unchanged.
+A stale code comment on the Settings click handler, which referenced
+the now-removed header control, was corrected.
+
+**Theme behavior — unchanged, confirmed by test**: persistence
+(`localStorage` key `powerwave.theme`), cross-tab `storage`-event sync,
+the `powerwave:theme-change` `CustomEvent`, Plotly's per-panel
+`relayout`/`restyle` re-color, and zero waveform refetch on a theme
+change all still work exactly as before, since they are consumed via
+`window.PowerwaveTheme` directly and were never dependent on the
+removed toggle's own internal state.
+
+**Verification**: 11 new frontend `jsdom` checks
+(`phase3auat2_check.mjs`) + one pre-existing `theme_crosshair_check.mjs`
+check corrected in place (it asserted `#themeToggle` exists in
+`index.html`, no longer true by design) + the full existing Phase 2C-A
+through Phase 3A-UAT1 suites — the exact same 20 pre-existing,
+already-documented failures, zero new divergences. Backend: zero diff,
+278/278 passing in a fresh venv.
+
+**Backend**: zero files changed. **Real-browser visual confirmation —
+whether the header now reads cleanly with no leftover gap, and whether
+Settings remains comfortably reachable/usable in both Main Sidebar Menu
+states — was NOT and cannot be confirmed in this sandboxed session; this
+remains explicitly for the owner's own manual UAT.**
+
+## What was done in the prior session (Phase 3A-UAT1 — Responsive Waveform Width Reflow)
+
 **Phase 3A-UAT1 — Responsive Waveform Width Reflow.** Phase 3A's shell
 STRUCTURE passed owner UAT (geometry correct, Workspace Sidebar resize
 itself works). One child-layout bug was found: when the Workspace
@@ -1499,7 +1545,39 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified (this pass — Phase 3A-UAT1 responsive waveform width reflow)
+## What was verified (this pass — Phase 3A-UAT2 remove duplicate header theme control)
+
+- `oruxa_powerwave` git state confirmed against GitHub `main` (read-only
+  `git fetch`), working tree clean before this pass began.
+- **Backend regression: 278 tests, unmodified, all still pass** (fresh
+  venv run) — zero backend files in the diff (diff scoped to
+  `frontend/index.html` only).
+- **Frontend, new: 11 scripted `jsdom` checks, all passing**
+  (`phase3auat2_check.mjs`) — `#themeToggle` absent from the DOM
+  entirely, `#globalHeader` contains no Light/Dark-labeled buttons, the
+  Main Sidebar Menu's `#mainNavSettingsBtn` exists in `.shell-nav-bottom`
+  and still flips Light→Dark→Light, the preference persists across a
+  simulated reload, theme change causes zero waveform refetch, theme
+  change still triggers the existing per-panel Plotly chrome relayout,
+  the Global Header's remaining controls still render, Main Sidebar Menu
+  collapse/expand still works, displayed-channel/panel state undisturbed.
+- **Frontend, existing suite correction**: `theme_crosshair_check.mjs`'s
+  own pre-existing test asserting `#themeToggle` exists in `index.html`
+  was corrected in place (it now asserts absence, by design) rather than
+  left to fail — full suite re-run confirms all its OTHER checks (19
+  total) still pass unmodified.
+- **Frontend, full regression: the exact same pre-existing 20 failures
+  already documented in prior phases' own records, zero new
+  divergences** — independently confirmed by running the full scratch
+  suite both before and after this pass's change.
+- `git diff --check` clean (no whitespace errors).
+- No real-browser/visual confirmation was performed in this sandboxed
+  session — whether the header now reads cleanly with no leftover gap,
+  and whether Settings remains comfortably reachable in both collapsed
+  and expanded Main Sidebar states, were NOT visually confirmed. Final
+  visual judgment remains the owner's own manual UAT.
+
+## What was verified (prior pass — Phase 3A-UAT1 responsive waveform width reflow)
 
 - `oruxa_powerwave` git state confirmed against `origin/main` (read-only
   `git fetch`), working tree clean before this pass began.
@@ -2392,7 +2470,19 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 3A-UAT1 responsive waveform width reflow)
+## What files were changed this session (Phase 3A-UAT2 remove duplicate header theme control)
+
+Modified only: `frontend/index.html` (removed the `<div id="themeToggle">`
+element from the Global Header and its `mountThemeToggle()` Init call;
+corrected a stale code comment on the Main Sidebar Menu's Settings
+handler). No new files. **No `backend/` file, no
+`frontend/waveform-prototype.html`/`theme.css`/`theme.js` change (both
+still used unmodified by `waveform-prototype.html`), no CI/deployment
+workflow file was touched.** Project memory: `MIGRATION_PLAN.md`,
+`CURRENT_STATE.md`, `HANDOFF.md` updated; `DECISIONS.md` intentionally
+NOT touched (no new/corrected architectural decision this pass).
+
+## What files were changed in the prior session (Phase 3A-UAT1 responsive waveform width reflow)
 
 Modified only: `frontend/index.html` (`shellCreateHorizontalSplit()`
 rewritten with rAF-coalesced resize scheduling; new
@@ -2815,7 +2905,7 @@ Modified:
 See "GitHub persistence" and "DEV deployment" in this task's final report
 (delivered in-conversation) for the exact commit hash, push confirmation,
 independent-fetch verification, GitHub Actions run, and live-endpoint
-checks for this Phase 3A-UAT1 pass. **Production was not touched.**
+checks for this Phase 3A-UAT2 pass. **Production was not touched.**
 
 ## What remains unresolved
 
@@ -2868,42 +2958,51 @@ checks for this Phase 3A-UAT1 pass. **Production was not touched.**
 
 ## What should be done next
 
-The next step is for the **project owner** to review Phase 3A-UAT1 via
-live DEV UAT (this task's own 24-step checklist): widen the Workspace
-Sidebar significantly and confirm the waveform stays entirely inside
-its panel frame in Grouped mode; narrow it and confirm clean expansion;
-repeat in Separate mode across several lanes, checking overlay labels
-and sticky-ruler alignment; repeat in Custom mode; expand/collapse Main
-Sidebar Menu and confirm reflow both directions; resize the browser
-window and confirm no overflow; zoom before resizing and confirm the
-exact zoomed window remains after; test Light/Dark; confirm zero
-visible waveform reload during any of this. This is a targeted
-follow-up to a specific reported bug — the owner already confirmed
-Phase 3A's shell STRUCTURE is correct, so this review is about
-CONTAINMENT/REFLOW correctness, not proportions again (though the
-still-open Phase 3A dimension/spacing feedback remains welcome
-whenever convenient). If the owner confirms the waveform now stays
-contained and reflows correctly: no further action needed on this
-item. If any overflow or stale-width behavior remains, report back
-with the specific layout mode/interaction — do **not** assume either
-outcome. Separately, the owner may choose to: (a) request further Phase
-3A dimension/spacing refinements; (b) authorize the drag/reorder/
-overlay/split work directly (still the owner's own possible next
-direction, deliberately set aside across nine passes now, not
-abandoned); (c) request the still-outstanding Grouped/Custom axis-
-duplication cleanup (Phase 2C-C4's own section 16 gap, unchanged across
-four passes now); (d) authorize real Table/Split view implementation
-(explicitly NOT authorized yet — the shell only avoids blocking it); or
-(e) move on to digital channels (the owner's own explicitly stated next
-area, and this task's own explicit instruction: do **not** begin
-digital-channel or Table/Split work without a separate signal).
-Separately, resolving the abandoned-session TTL question and the
-~100 MB real-file memory validation remain recommended before broader/
-prolonged shared-DEV UAT, unchanged conclusion from every prior Phase 2
-pass.
+**Phase 3A-UAT1 (width-reflow) already passed owner UAT and is closed.**
+The next step is for the **project owner** to review this Phase 3A-UAT2
+cleanup via live DEV UAT: confirm the Global Header reads cleanly with
+no leftover gap where the removed Light/Dark control used to sit;
+confirm the Main Sidebar Menu's "Settings" item is comfortably reachable
+and works correctly in BOTH its collapsed and expanded states; confirm
+Light/Dark switching still works exactly as before app-wide (including
+on the waveform panels and sticky ruler). This is a small, isolated
+cleanup — no other layout, sizing, or behavior should have changed. If
+confirmed clean: no further action needed on this item, and the
+still-open Phase 3A dimension/spacing feedback remains welcome whenever
+convenient. If anything looks off, report back with the specific
+control/state — do **not** assume the outcome. Separately, the owner
+may choose to: (a) request further Phase 3A dimension/spacing
+refinements; (b) authorize the drag/reorder/overlay/split work directly
+(still the owner's own possible next direction, deliberately set aside
+across ten passes now, not abandoned); (c) request the still-outstanding
+Grouped/Custom axis-duplication cleanup (Phase 2C-C4's own section 16
+gap, unchanged across four passes now); (d) authorize real Table/Split
+view implementation (explicitly NOT authorized yet — the shell only
+avoids blocking it); or (e) move on to digital channels (the owner's
+own explicitly stated next area, and this task's own explicit
+instruction: do **not** begin digital-channel or Table/Split work
+without a separate signal). Separately, resolving the abandoned-session
+TTL question and the ~100 MB real-file memory validation remain
+recommended before broader/prolonged shared-DEV UAT, unchanged
+conclusion from every prior Phase 2 pass.
 
 ## What must not be assumed
 
+- **Do not assume `index.html`'s Global Header still has a `#themeToggle`
+  element or that `mountThemeToggle()` is called from `index.html`'s own
+  Init** — as of Phase 3A-UAT2, both were removed; the Main Sidebar
+  Menu's "Settings" item (`#mainNavSettingsBtn`, flips theme directly via
+  `window.PowerwaveTheme.getTheme()`/`setTheme()`) is now the sole theme
+  entry point on this page.
+- **Do not assume `theme.js`'s `mountThemeToggle()` function itself was
+  removed or is unused** — it is still a live, shared, tested function;
+  `frontend/waveform-prototype.html` (a separate, out-of-scope page)
+  still mounts and uses it unchanged. Only `index.html`'s own header
+  instance was removed.
+- **Do not assume `.theme-toggle` (the CSS class) was removed** — it
+  remains in use by the unrelated `#shellViewToggle` (Waveform/Table/
+  Split) segmented control in the Global Header; only the `#themeToggle`
+  element and its mount call were removed.
 - **Do not assume Plotly's `responsive: true` config alone keeps a
   waveform panel correctly sized after ANY container-width change** —
   it reliably reacts to actual `window` resize events, but NOT to a
@@ -3201,19 +3300,20 @@ pass.
 
 - Not needed to review or use Phase 2C-A, Phase 2C-B1, Phase 2C-B2, Phase
   2C-B3, Phase 2C-B3A, Phase 2C-C1, Phase 2C-C2, Phase 2C-C2A, Phase
-  2C-C3, Phase 2C-C4, Phase 2C-C4A, Phase 2C-C4B, Phase 3A, or Phase
-  3A-UAT1 themselves — already implemented, deployed to DEV, and
-  live-verified per this exact task's own authorization. **Recommended,
-  though**: an owner UAT specifically confirming the waveform canvas now
-  stays visually contained during a Workspace Sidebar drag (in Grouped/
-  Separate/Custom), reflows correctly on Main Sidebar Menu collapse/
-  expand and on browser window resize, and that the still-open Phase 3A
-  proportions/dimensions feedback and the still-carried-forward Phase
-  2C-C4A tick-alignment-at-rescaled-units claim — none of which could be
+  2C-C3, Phase 2C-C4, Phase 2C-C4A, Phase 2C-C4B, Phase 3A, Phase
+  3A-UAT1, or Phase 3A-UAT2 themselves — already implemented, deployed
+  to DEV, and live-verified per this exact task's own authorization.
+  **Recommended, though**: an owner UAT specifically confirming (a) the
+  Global Header now reads cleanly with no leftover gap where the removed
+  Light/Dark control sat, and (b) the Main Sidebar Menu's "Settings"
+  item remains comfortably reachable/usable in both collapsed and
+  expanded states — plus the still-open Phase 3A proportions/dimensions
+  feedback and the still-carried-forward Phase 2C-C4A
+  tick-alignment-at-rescaled-units claim — none of which could be
   visually confirmed in this sandbox.
 - **Yes**, before any drag/reorder/overlay/split work begins (still the
   owner's own possible next direction, deliberately set aside across
-  nine passes now, but still not yet explicitly authorized to
+  ten passes now, but still not yet explicitly authorized to
   *implement* — Phase 3A's shell only avoids blocking it
   architecturally), before REAL Table or Split view implementation
   (explicitly not authorized yet — only structural placeholders exist),

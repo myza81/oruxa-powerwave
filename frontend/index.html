@@ -1129,7 +1129,6 @@
                 <button type="button" id="shellViewTableBtn" aria-pressed="false">Table</button>
                 <button type="button" id="shellViewSplitBtn" aria-pressed="false">Split</button>
             </div>
-            <div id="themeToggle"></div>
             <!-- Moved from the old page footer (section 27's control
                  inventory) -- a whole-workspace lifecycle action, at home
                  alongside Import at the application level. -->
@@ -4274,7 +4273,6 @@
         // ------------------------------------------------------------------
         document.getElementById("statusBarWorkspaceId").textContent = currentWorkspaceId();
         document.getElementById("newWorkspaceButton").addEventListener("click", startNewWorkspace);
-        window.PowerwaveTheme.mountThemeToggle(document.getElementById("themeToggle"));
 
         // Phase 3A: App Shell wiring.
         shellSetMainSidebarExpanded(shellLoadMainSidebarExpanded());
@@ -4301,10 +4299,8 @@
         // than a dead button (section 5).
         document.getElementById("mainNavWorkspaceBtn").addEventListener("click", () => shellSetActiveView("waveform"));
         // "Settings" is real (flips the existing Light/Dark preference) --
-        // proves the rail holds a second working interaction beyond
-        // collapse/expand, without mounting a redundant duplicate theme
-        // control (the Global Header's own #themeToggle remains the
-        // primary, full segmented control).
+        // the sole theme entry point in this shell (Phase 3A-UAT2: the
+        // Global Header's own duplicate #themeToggle was removed).
         document.getElementById("mainNavSettingsBtn").addEventListener("click", () => {
             const current = window.PowerwaveTheme.getTheme();
             window.PowerwaveTheme.setTheme(current === "dark" ? "light" : "dark");
