@@ -8,6 +8,121 @@ Last updated: **2026-08-16**
 
 ## What was most recently done
 
+**Phase 3A — Application Shell Redesign Foundation.** The first
+STRUCTURAL redesign of the frontend: the whole-page-scrolling, 2-column
+centered layout (`main { max-width: 1100px; margin: 0 auto }`) is
+replaced by a full-viewport application shell. Full detail:
+[MIGRATION_PLAN.md — Phase 3A Record](MIGRATION_PLAN.md#phase-3a--application-shell-redesign-foundation-2026-08-16),
+[DECISIONS.md DEC-031](DECISIONS.md#dec-031--application-shell-architecture-global-header-full-height-main-sidebar-menu-work-area-workspace-row--bottom-status-bar-phase-3a).
+
+**Owner design principle**: "the active analysis area / waveform canvas
+must dominate the screen" — clear, simple, compact, minimal clutter,
+scalable for future engineering functions. Detego named as the UI/UX/
+layout benchmark only (never branding/colors/typography/
+implementation, per the existing DEC-020 Detego Benchmark Principle).
+
+**Corrected shell hierarchy** (the owner explicitly corrected an
+earlier, wrong interpretation mid-specification):
+```
+App
+├── Global Header                      (full application width)
+└── Body
+    ├── Main Sidebar Menu               (FULL Body height)
+    └── Work Area
+        ├── Workspace Row               (Workspace Sidebar ⇆ Main Workspace)
+        └── Bottom Status Bar           (beside Workspace Row only,
+                                          never beneath Main Sidebar Menu)
+```
+This is a real DOM/CSS nesting: Main Sidebar Menu and Work Area are the
+two direct flex children of `#appBody`; the Status Bar/Workspace Row
+split happens ONE LEVEL DEEPER, inside Work Area — this specific
+nesting depth (not pixel matching) is what structurally guarantees the
+Status Bar can never render beneath Main Sidebar Menu. The task's own
+instructions explicitly labeled the alternative (a full-width status
+bar beneath everything) "Incorrect."
+
+**Main Sidebar Menu**: narrow icon rail (52px collapsed/184px
+expanded), collapsed by default, toggled via a button — never freely
+drag-resizable (a deliberately different interaction model from the
+Workspace Sidebar, and its state is deliberately independent of
+Workspace Sidebar width — section 21's own explicit requirement).
+Items: "Workspace" (the one real destination, `aria-current="page"`);
+"Table"/"Tools"/"Reports" (visibly present, `disabled`, clearly marked
+"coming soon" — proves the rail holds multiple items without inventing
+fake pages); "Settings" (real — flips the existing Light/Dark
+preference). Small hand-authored inline SVG icons, zero new dependency.
+
+**Workspace Sidebar**: contextual to the active engineering workspace
+(Import/Sources/Channels, relocated unredesigned — same IDs, same
+logic), explicitly NOT global navigation. Horizontally drag-resizable
+via a new small, REUSABLE split-pane helper
+(`shellCreateHorizontalSplit()` — default 320px/min 240px/max 520px,
+explicit state persisted to `localStorage` for the session, zero
+waveform refetch by construction). The SAME function a future
+Waveform ⇆ Table split is expected to reuse (section 10/22) — not a
+generic layout framework, deliberately small.
+
+**Main Workspace**: Workspace Toolbar (unchanged controls; "Clear
+workspace" relocated into it, the old separate heading row removed as
+redundant) above an Active View Area holding `shell.activeView`
+(`"waveform"`|`"table"`|`"split"` — app-shell state, deliberately
+separate from waveform-domain state `ww`, per section 28's own explicit
+instruction — the shell never reads/writes `ww` directly). Waveform is
+real; Table/Split are structural placeholders only — confirmed by test:
+zero fake data, zero new fetches when switched to.
+
+**Sticky Time Axis**: preserved exactly (Phase 2C-C4B's accepted
+compact layout, unchanged). Its scrolling ancestor changed from the
+whole page to `#activeViewArea` specifically (every shell region now
+has its own internal scroll) — functionally identical `position:
+sticky` behavior, just a more contained scrolling context.
+
+**Bottom Status Bar**: real values only — workspace id (moved from the
+old page footer), source station name, sample rate, duration (from the
+same already-fetched `renderChannels()` data, no new API call), and
+displayed-channel count (`ww.displayed.size`, read-only). Cursor A/B,
+Delta Cursor, fault/event state are explicitly NOT shown — deferred to
+documentation, never fabricated.
+
+**Responsive strategy**: desktop/laptop is the unconditional primary
+target (the shell above applies with no alteration). Under ~900px, Main
+Sidebar Menu force-collapses and Workspace Sidebar becomes a reopenable
+overlay drawer (pure CSS `position: absolute` against `#workspaceRow`
+itself, not `fixed` against the viewport — avoids needing the header's
+own height). Under ~640px, header/status-bar spacing tighten further.
+Main Workspace always gets the space freed by a collapsed/hidden
+secondary region. Phone is a secondary companion mode per the owner's
+own explicit framing, not fully designed this phase — only structurally
+un-blocked.
+
+**Existing control inventory — what moved** (section 27): "Waveform
+Workspace" heading removed (redundant); "Clear workspace" moved into
+the Workspace Toolbar; "Workspace: <id>" + "Start new workspace" moved
+from the page footer into the Bottom Status Bar / Global Header
+respectively; Import/Sources/Channels moved from the old 2-column page
+grid into the Workspace Sidebar, unredesigned internally. Everything
+else kept its exact element ID, only its container moved.
+
+**Verification**: 40 new frontend `jsdom` checks (`phase3a_check.mjs`)
++ the FULL existing Phase 2C-A through 2C-C4B suites (224 checks)
+re-run unmodified — **the exact same pre-existing pass/fail counts as
+immediately before this phase (20 already-documented failures, zero
+new divergences), independently confirmed before/after, not assumed**.
+This held because every existing waveform element kept its exact ID
+and internal DOM relationships — only its container moved. Backend:
+zero diff, 278/278 passing in a fresh venv.
+
+**Backend**: zero files changed. **Real-browser visual confirmation —
+actual proportions, resize feel, Main Sidebar Menu's collapsed width,
+and the entire responsive/drawer behavior at real narrow viewport
+widths — was NOT and cannot be confirmed in this sandboxed session;
+this remains explicitly for the owner's own manual UAT. This is
+explicitly an INITIAL shell per the task's own framing — the owner's
+UAT is expected to adjust dimensions/spacing, not just confirm the
+structure.**
+
+## What was done in the prior session (Phase 2C-C4B — Compact Sticky Time-Axis Layout Correction)
+
 **Phase 2C-C4B — Compact Sticky Time-Axis Layout Correction.**
 **Phase 2C-C4's sticky ruler functionality passed owner UAT.**
 **Phase 2C-C4A's visual LAYOUT failed owner UAT**: the custom DOM
@@ -1311,7 +1426,50 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified (this pass — Phase 2C-C4B compact sticky time-axis layout correction)
+## What was verified (this pass — Phase 3A application shell redesign foundation)
+
+- `oruxa_powerwave` git state confirmed against `origin/main` (read-only
+  `git fetch`), working tree clean before this pass began.
+- **Backend regression: 278 tests, unmodified, all still pass** (fresh
+  venv run) — zero backend files in the diff (`git diff --stat --
+  backend/` empty; diff scoped to `frontend/index.html` only).
+- **Frontend, new: 40 scripted `jsdom` checks, all passing**
+  (`phase3a_check.mjs`) — every shell structural relationship (Global
+  Header/Body/Main Sidebar Menu/Work Area/Workspace Row/Bottom Status
+  Bar/Workspace Sidebar/Main Workspace), including the specific
+  parent-chain assertion proving the Status Bar's parent (`#workArea`)
+  differs from Main Sidebar Menu's parent (`#appBody`) — the exact
+  structural guarantee behind "the Status Bar can never render beneath
+  Main Sidebar Menu"; Main Sidebar Menu collapse/expand and confirmed
+  non-drag-resizability; Workspace Sidebar drag-resize (live resize,
+  min/max clamping, zero waveform fetches, pointer-listener cleanup
+  after pointerup, localStorage persistence); the full existing
+  waveform feature set re-verified working end to end (channel
+  selection, Grouped/Separate/Custom, zoom/pan/Reset Time View/
+  Autoscale Y, Absolute/Elapsed, panel-height resize, Custom Groups,
+  theme switching); the Active View state model (all three values
+  representable, Table/Split contain zero fake data and trigger zero
+  fetches); Bottom Status Bar real-value sourcing and channel-count
+  sync; and workspace-reset clearing both waveform and status-bar state
+  cleanly.
+- **Frontend, existing: the full Phase 2C-A through 2C-C4B suites (224
+  checks) were all re-run unmodified against this pass's code — the
+  EXACT SAME pre-existing pass/fail counts as immediately before this
+  phase (20 already-documented failures across those phases' own
+  records), zero new divergences.** This was independently confirmed by
+  running the suite both before and after this phase's changes, not
+  assumed from the diff alone.
+- `node --check` on `frontend/index.html`'s inline `<script>` block, and
+  a `getElementById`/`id=` cross-reference check (no dangling
+  references, no duplicate IDs) — both clean.
+- No real-browser/visual confirmation was performed in this sandboxed
+  session — actual shell proportions, resize feel, and responsive
+  behavior at real narrow widths were NOT visually confirmed. See the
+  final report's explicit statement about what's honestly unverified.
+  This is explicitly an INITIAL shell (task's own framing) — final
+  visual judgment remains the owner's own manual UAT.
+
+## What was verified (prior pass — Phase 2C-C4B compact sticky time-axis layout correction)
 
 - `oruxa_powerwave` git state confirmed against `origin/main` (read-only
   `git fetch`), working tree clean before this pass began.
@@ -2113,7 +2271,30 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 2C-C4B compact sticky time-axis layout correction)
+## What files were changed this session (Phase 3A application shell redesign foundation)
+
+Modified only: `frontend/index.html` (full CSS restructuring —
+`#globalHeader`, `#appBody`, `#mainSidebarMenu`, `.shell-nav-*`,
+`#workArea`, `#workspaceRow`, `#workspaceSidebar`,
+`.shell-split-handle`, `#mainWorkspace`, `#activeViewArea`,
+`.shell-view-placeholder`, `#bottomStatusBar`, `.shell-sidebar-backdrop`,
+plus two responsive media queries; removed the old `main`/`footer`/
+`.ww-header` page-grid CSS). HTML restructured: existing Import/
+Sources/Channels panels moved into `#workspaceSidebar`; the existing
+waveform workspace moved into `#activeViewArea`'s new `#viewWaveform`
+container; new `#viewTable`/`#viewSplit` placeholders added; every
+existing element ID preserved. New JS: `shell` state object,
+`shellCreateHorizontalSplit()`, `shellSetMainSidebarExpanded()`,
+`shellSetActiveView()`, `shellSetSidebarDrawerOpen()`,
+`shellOpenImport()`, `shellUpdateStatusBar()`,
+`shellUpdateStatusBarChannelCount()`; small hooks added into
+`renderChannels()` and the three existing `ww.displayed`-count-changing
+call sites (`wwAddSelectedChannels`/`wwRemoveChannel`/
+`wwClearWorkspace`). No new files. **No `backend/` file, no
+`frontend/waveform-prototype.html`/`theme.css`/`theme.js` change, no CI/
+deployment workflow file was touched.**
+
+## What files were changed in the prior session (Phase 2C-C4B compact sticky time-axis layout correction)
 
 Modified only: `frontend/index.html` (`#wwStickyRulerTitle`/
 `#wwStickyRulerContext` DOM elements and their `.ww-sticky-ruler-title`/
@@ -2501,7 +2682,7 @@ Modified:
 See "GitHub persistence" and "DEV deployment" in this task's final report
 (delivered in-conversation) for the exact commit hash, push confirmation,
 independent-fetch verification, GitHub Actions run, and live-endpoint
-checks for this Phase 2C-C4B pass. **Production was not touched.**
+checks for this Phase 3A pass. **Production was not touched.**
 
 ## What remains unresolved
 
@@ -2554,38 +2735,94 @@ checks for this Phase 2C-C4B pass. **Production was not touched.**
 
 ## What should be done next
 
-The next step is for the **project owner** to review Phase 2C-C4B via
-live DEV UAT (this task's own 15-step checklist): confirm the sticky
-ruler now reads as a compact, conventional X-axis strip — tick labels
-first, a small title directly below them, no large blank vertical area,
-and no date text anywhere inside the ruler; confirm Absolute mode shows
-"Record Time" (capital T) below the ticks; switch to Elapsed and
-confirm "Time (ms)"/"Time (s)" shows correctly below the ticks
-depending on the current visible range; zoom deeply and confirm the
-unit/title changes correctly while the ruler stays compact; scroll
-through many Separate lanes and confirm the ruler remains visible and
-aligned; pan/zoom; resize lanes; test Light/Dark. **Also carry forward
-the still-outstanding Phase 2C-C4A claim**: visually confirm tick
-positions still line up with the waveform data once rescaled to
-milliseconds (this correction pass did not touch that rescale logic,
-so it remains equally unverified). If the owner confirms correctness:
-no further action needed on this item. If the layout still doesn't
-match the reference screenshot, or tick alignment is visibly off,
-report back — do **not** assume either outcome. Separately, the owner
-may choose to: (a) authorize the drag/reorder/overlay/split work
-directly (still the owner's own possible next direction, deliberately
-set aside across seven passes now, not abandoned); (b) request the
-still-outstanding Grouped/Custom axis-duplication cleanup (Phase
-2C-C4's own section 16 gap, unchanged by this and the prior phase); or
-(c) move on to digital channels (the owner's own explicitly stated next
-area, and this task's own explicit instruction: do **not** begin
-digital-channel work without a separate signal). Separately, resolving
-the abandoned-session TTL question and the ~100 MB real-file memory
-validation remain recommended before broader/prolonged shared-DEV UAT,
-unchanged conclusion from every prior Phase 2 pass.
+The next step is for the **project owner** to review Phase 3A via live
+DEV UAT (this task's own 20-step checklist) — this is primarily a
+GEOMETRY/PROPORTIONS review, not a pixel-perfect polish review, per the
+task's own explicit "initial shell" framing: confirm Global Header
+spans the full width; confirm Main Sidebar Menu begins below the header
+and extends all the way to the bottom of the app body; confirm the
+Status Bar does NOT run underneath Main Sidebar Menu; confirm Workspace
+Sidebar and Main Workspace read as clearly separate regions from Main
+Sidebar Menu; drag the Workspace Sidebar boundary left/right and assess
+resize feel; confirm the waveform canvas reads as dominant; confirm the
+toolbar is compact; confirm the Sticky Time Axis is still correct;
+confirm the Status Bar is thin and correctly positioned; test Light/
+Dark; confirm Grouped/Separate/Custom, Custom Groups, panel-height
+resize, Absolute/Elapsed, and Open/Import all still work; resize the
+browser window and check for major layout failures (Table/Split
+functionality is explicitly NOT part of this review — neither is
+implemented). Also specifically assess: Global Header height, Main
+Sidebar Menu width (both collapsed and expanded), Workspace Sidebar
+width and resize feel, and overall visual simplicity — these are the
+exact dimensions this phase's own framing expects to be tuned. If the
+owner confirms the STRUCTURE is right (even if exact sizes need
+tuning): no further action needed on the structural item, and any
+dimension/spacing feedback becomes a small follow-up refinement pass,
+not a redo. If the structure itself is wrong, report back — do **not**
+assume either outcome. Separately, the owner may choose to: (a) request
+Phase 3A dimension/spacing refinements; (b) authorize the drag/reorder/
+overlay/split work directly (still the owner's own possible next
+direction, deliberately set aside across eight passes now, not
+abandoned); (c) request the still-outstanding Grouped/Custom axis-
+duplication cleanup (Phase 2C-C4's own section 16 gap, unchanged across
+three passes now); (d) authorize real Table/Split view implementation
+(explicitly NOT authorized by this phase — the shell only avoids
+blocking it); or (e) move on to digital channels (the owner's own
+explicitly stated next area, and this task's own explicit instruction:
+do **not** begin digital-channel or Table/Split work without a separate
+signal). Separately, resolving the abandoned-session TTL question and
+the ~100 MB real-file memory validation remain recommended before
+broader/prolonged shared-DEV UAT, unchanged conclusion from every prior
+Phase 2 pass.
 
 ## What must not be assumed
 
+- **Do not assume the page still scrolls as a whole document** — as of
+  Phase 3A, `<body>` has `overflow: hidden`; each shell region
+  (Workspace Sidebar, `#activeViewArea`) owns its own internal scroll.
+  Global Header, Main Sidebar Menu, and the Bottom Status Bar are fixed
+  in place and never scroll away. This is a structural change from
+  every prior phase.
+- **Do not assume `main`/`header`/`footer` bare-element CSS selectors
+  still exist** — they were replaced by ID-scoped shell selectors
+  (`#globalHeader`, `#appBody`, `#mainWorkspace`, etc.). The semantic
+  tags themselves are still used in the HTML (`<header id="globalHeader">`,
+  `<main id="mainWorkspace">`) but styled only via their IDs now.
+- **Do not assume Table or Split view do anything real** — both are
+  structural placeholders (`.shell-view-placeholder`) with zero data,
+  zero fetches, and zero real grid/split rendering. `shell.activeView`
+  can represent all three states, but only `"waveform"` has real
+  content. Do NOT build real Table/Split functionality without a
+  separate, explicit authorization — Phase 3A only avoids blocking it
+  architecturally.
+- **Do not assume Main Sidebar Menu and Workspace Sidebar share any
+  state** — they are deliberately independent: one is a collapsed/
+  expanded boolean toggle (`shell.mainSidebarExpanded`), the other is a
+  drag-resized pixel width (`SHELL_WORKSPACE_SIDEBAR_*` constants +
+  `shellCreateHorizontalSplit()`). Do not couple them when adding future
+  behavior — the task's own section 21 explicitly required this
+  independence.
+- **Do not assume the shell reads or writes waveform-domain state
+  (`ww`) directly** — it does not, except for a few narrow, one-way
+  READS explicitly called by the OWNING waveform code (e.g.
+  `shellUpdateStatusBarChannelCount(ww.displayed.size)` is called FROM
+  `wwAddSelectedChannels`/`wwRemoveChannel`/`wwClearWorkspace`, never
+  the reverse). Keep this direction when extending either side.
+- **Do not assume Workspace Sidebar's min/max width (240px/520px) is
+  computed dynamically against the current window width** — it is not;
+  these are fixed pixel bounds, a documented, deliberate initial-phase
+  simplification. The responsive drawer fallback (below ~900px) is what
+  actually prevents an unusably narrow squeeze at real narrow
+  viewports, not dynamic bound computation.
+- **Do not assume the responsive drawer/collapse behavior was visually
+  verified** — it was reasoned through and covered by CSS source
+  inspection, but real narrow-viewport rendering was NOT confirmed in
+  this sandbox (no real browser). Flagged for owner UAT.
+- **Do not assume "Tools" exists anywhere in the UI** — it was
+  deliberately omitted from both the Global Header and (as a REAL
+  destination) Main Sidebar Menu this phase; only a disabled,
+  clearly-marked placeholder nav item exists in the rail. No functional
+  Tools destination exists yet.
 - **Do not assume the ruler's title is rendered by a custom DOM
   element** — as of Phase 2C-C4B, `#wwStickyRulerTitle` and
   `#wwStickyRulerContext` were both deleted entirely (not hidden — the
@@ -2814,33 +3051,35 @@ unchanged conclusion from every prior Phase 2 pass.
 
 - Not needed to review or use Phase 2C-A, Phase 2C-B1, Phase 2C-B2, Phase
   2C-B3, Phase 2C-B3A, Phase 2C-C1, Phase 2C-C2, Phase 2C-C2A, Phase
-  2C-C3, Phase 2C-C4, Phase 2C-C4A, or Phase 2C-C4B themselves — already
-  implemented, deployed to DEV, and live-verified per this exact task's
-  own authorization. **Recommended, though**: an owner UAT specifically
-  confirming the ruler now reads as a compact, conventional X-axis
-  matching the reference screenshot (ticks above, small title below, no
-  large blank area, no date), confirming exact "Record Time" wording,
-  and — carried forward from Phase 2C-C4A, still unverified — visually
-  confirming ruler tick alignment holds once Elapsed mode rescales to
-  milliseconds at fine zoom.
+  2C-C3, Phase 2C-C4, Phase 2C-C4A, Phase 2C-C4B, or Phase 3A themselves
+  — already implemented, deployed to DEV, and live-verified per this
+  exact task's own authorization. **Recommended, though**: an owner UAT
+  of Phase 3A's actual shell geometry/proportions (this is explicitly an
+  INITIAL shell, expected to need dimension/spacing tuning — the
+  structural hierarchy is what's load-bearing), plus the still-carried-
+  forward Phase 2C-C4A tick-alignment-at-rescaled-units claim, neither
+  of which could be visually confirmed in this sandbox.
 - **Yes**, before any drag/reorder/overlay/split work begins (still the
   owner's own possible next direction, deliberately set aside across
-  seven passes now in favor of Custom Groups, panel resize, time-axis
-  modes, the sticky ruler, and its title refinements, but still not yet
-  explicitly authorized to *implement*), before digital channels (the
-  owner's own next stated area, not yet begun — and this task's own
-  explicit closing instruction was to stop here, not begin it), before
-  Synthetic Elapsed Time, Sample Index, or any CSV/Excel timing mode,
-  before the Grouped/Custom per-panel axis-label duplication (Phase
-  2C-C4's own section 16 gap, unchanged and still outstanding across
-  three passes now) is cleaned up, before interactive ruler zoom/pan/
-  selection or a shared crosshair on the ruler, before Phase 1.5 or any
-  later phase begins, before a PROD deployment, before any further
-  crosshair or theming work beyond what's already described in
-  project-memory, and before any change to the ephemeral-storage,
-  upload-size, COMTRADE-upload-interaction, workspace-lifecycle, or
-  waveform-data decisions recorded in `DECISIONS.md`. Per the change-
-  governance rule in [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md).
+  eight passes now, but still not yet explicitly authorized to
+  *implement* — Phase 3A's shell only avoids blocking it
+  architecturally), before REAL Table or Split view implementation
+  (explicitly not authorized by Phase 3A — only structural placeholders
+  exist), before digital channels (the owner's own next stated area,
+  not yet begun — and this task's own explicit closing instruction was
+  to stop here, not begin it), before Synthetic Elapsed Time, Sample
+  Index, or any CSV/Excel timing mode, before the Grouped/Custom
+  per-panel axis-label duplication (Phase 2C-C4's own section 16 gap,
+  unchanged and still outstanding across four passes now) is cleaned
+  up, before interactive ruler zoom/pan/selection or a shared crosshair
+  on the ruler, before Cursor A/B or Delta Cursor functionality in the
+  Bottom Status Bar, before Phase 1.5 or any later phase begins, before
+  a PROD deployment, before any further crosshair or theming work
+  beyond what's already described in project-memory, and before any
+  change to the ephemeral-storage, upload-size,
+  COMTRADE-upload-interaction, workspace-lifecycle, or waveform-data
+  decisions recorded in `DECISIONS.md`. Per the change-governance rule
+  in [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md).
 - **Recommended before any further prolonged/shared-DEV waveform UAT**: a
   real decision on the abandoned-session TTL question, and ideally the
   ~100 MB real-file memory validation, rather than continuing to rely on

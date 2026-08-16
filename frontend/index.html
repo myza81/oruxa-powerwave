@@ -13,36 +13,86 @@
     <style>
         * { box-sizing: border-box; }
 
-        body {
+        html, body {
+            height: 100%;
             margin: 0;
+        }
+
+        /* ==================================================================
+           Phase 3A: Application Shell
+           ==================================================================
+           An INITIAL shell architecture (docs/project-memory/DECISIONS.md
+           DEC-031) -- exact widths/heights/spacing are expected to be
+           refined by owner UAT, but the STRUCTURAL hierarchy below is the
+           one the owner explicitly corrected and considers load-bearing:
+
+             App
+             +-- Global Header                    (#globalHeader, full width)
+             +-- Body                              (#appBody)
+                 +-- Main Sidebar Menu              (#mainSidebarMenu, FULL
+                 |                                   body height)
+                 +-- Work Area                      (#workArea)
+                     +-- Workspace Row              (#workspaceRow)
+                     |   +-- Workspace Sidebar       (#workspaceSidebar,
+                     |   |                            drag-resizable)
+                     |   +-- split handle            (#workspaceSplitHandle)
+                     |   +-- Main Workspace          (#mainWorkspace)
+                     +-- Bottom Status Bar          (#bottomStatusBar --
+                                                      beside Workspace Row
+                                                      only, NEVER beneath
+                                                      Main Sidebar Menu)
+
+           This is a real DOM/CSS hierarchy, not a simulated one -- the
+           Status Bar is a sibling of Workspace Row INSIDE Work Area, and
+           Main Sidebar Menu is a sibling of Work Area INSIDE Body, so a
+           flex column split at the Body level is what keeps the Sidebar
+           spanning the full body height beside BOTH Workspace Row and the
+           Status Bar, while a separate flex column split one level deeper
+           (inside Work Area) is what keeps the Status Bar confined to the
+           Work Area's own width (never sliding under Main Sidebar Menu).
+           `overflow: hidden` on <body> is deliberate: each scrollable
+           region (Workspace Sidebar, the waveform Active View Area) owns
+           its own internal scrollbar so Global Header/Main Sidebar Menu/
+           Bottom Status Bar stay fixed in place -- there is no outer page
+           scroll anymore (unlike every prior phase, which scrolled the
+           whole document). */
+        body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: var(--bg);
             color: var(--text);
             line-height: 1.45;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
 
-        header {
+        /* ---- Global Header: full application width, application-level
+           controls only (never waveform-local -- those stay in the
+           Workspace Toolbar, section 4/12). ---- */
+        #globalHeader {
+            flex: 0 0 auto;
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            padding: 16px 24px;
+            gap: 16px;
+            padding: 10px 18px;
             border-bottom: 1px solid var(--panel-border);
+            flex-wrap: wrap;
+            min-height: 48px;
         }
-
-        header h1 {
-            font-size: 1.25rem;
+        #globalHeader h1 {
+            font-size: 1.05rem;
             margin: 0;
             font-weight: 600;
+            white-space: nowrap;
         }
-
         .status-line {
             display: flex;
             align-items: center;
-            gap: 20px;
-            font-size: 0.85rem;
+            gap: 8px;
+            font-size: 0.8rem;
             color: var(--text-dim);
+            white-space: nowrap;
         }
-
         .dot {
             display: inline-block;
             width: 8px;
@@ -53,18 +103,261 @@
         }
         .dot.ok { background: var(--ok); }
         .dot.error { background: var(--error); }
-
-        main {
-            max-width: 1100px;
-            margin: 0 auto;
-            padding: 24px;
-            display: grid;
-            grid-template-columns: minmax(320px, 380px) 1fr;
-            gap: 24px;
+        #globalHeaderSpacer { flex: 1; min-width: 8px; }
+        #globalHeaderActions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
         }
 
-        @media (max-width: 800px) {
-            main { grid-template-columns: 1fr; }
+        /* ---- Body: Main Sidebar Menu (full height) beside Work Area.
+           This is the ONE split that must span the full body height --
+           see the header comment above for why this level, specifically,
+           is what keeps the Status Bar from running under the menu. ---- */
+        #appBody {
+            flex: 1 1 auto;
+            display: flex;
+            flex-direction: row;
+            min-height: 0;
+        }
+
+        /* ---- Main Sidebar Menu: narrow icon rail by default, a
+           collapsed/expanded TOGGLE (never freely drag-resizable --
+           section 5/21, deliberately a different interaction model from
+           the Workspace Sidebar's own drag-resize). `flex: 0 0 auto` +
+           full-height flex column makes it span exactly the Body's own
+           height, beside both Workspace Row and the Status Bar below it
+           (a sibling of Work Area, not of Workspace Row -- this is what
+           makes section 3's geometry correct by construction, not by
+           careful pixel matching). ---- */
+        #mainSidebarMenu {
+            flex: 0 0 auto;
+            width: 52px;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--panel-border);
+            background: var(--panel);
+            overflow-y: auto;
+            overflow-x: hidden;
+            transition: width 0.15s ease;
+        }
+        #mainSidebarMenu.expanded { width: 184px; }
+        .shell-nav-toggle {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 40px;
+            border: none;
+            background: transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            border-bottom: 1px solid var(--panel-border);
+        }
+        .shell-nav-toggle:hover { color: var(--text); background: var(--hover-tint); }
+        .shell-nav-list {
+            flex: 1 1 auto;
+            display: flex;
+            flex-direction: column;
+            padding: 6px 0;
+            gap: 2px;
+        }
+        .shell-nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            height: 38px;
+            padding: 0 14px;
+            border: none;
+            background: transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+        }
+        .shell-nav-item:hover:not(:disabled) { color: var(--text); background: var(--hover-tint); }
+        .shell-nav-item[aria-current="page"] { color: var(--accent); background: var(--accent-wash-soft); }
+        .shell-nav-item:disabled { color: var(--text-dim); opacity: 0.45; cursor: default; }
+        .shell-nav-icon {
+            flex: 0 0 auto;
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .shell-nav-icon svg { width: 16px; height: 16px; stroke: currentColor; fill: none; }
+        .shell-nav-label {
+            opacity: 0;
+            transition: opacity 0.1s ease;
+        }
+        #mainSidebarMenu.expanded .shell-nav-label { opacity: 1; }
+        .shell-nav-bottom {
+            flex: 0 0 auto;
+            border-top: 1px solid var(--panel-border);
+            padding: 6px 0;
+        }
+
+        /* ---- Work Area: everything right of Main Sidebar Menu, split
+           vertically into Workspace Row (most space) and the thin Status
+           Bar (section 6). ---- */
+        #workArea {
+            flex: 1 1 auto;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            min-height: 0;
+        }
+        #workspaceRow {
+            flex: 1 1 auto;
+            display: flex;
+            flex-direction: row;
+            min-height: 0;
+        }
+
+        /* ---- Workspace Sidebar: contextual to the active engineering
+           workspace (Sources/Channels/etc, section 8) -- NOT global nav.
+           Explicit width state (section 20), not "whatever the DOM
+           happens to be" -- see shellCreateHorizontalSplit(). ---- */
+        #workspaceSidebar {
+            flex: 0 0 auto;
+            width: 320px;
+            overflow-y: auto;
+            border-right: 1px solid var(--panel-border);
+            background: var(--bg);
+            padding: 16px;
+        }
+        #workspaceSidebar > .panel + .panel { margin-top: 16px; }
+
+        /* ---- Reusable horizontal split-pane handle (section 10) -- the
+           SAME small class/mechanism is intended for a future Waveform
+           <-> Table split, not a one-off. ---- */
+        .shell-split-handle {
+            flex: 0 0 auto;
+            width: 6px;
+            cursor: col-resize;
+            background: transparent;
+            position: relative;
+            touch-action: none;
+        }
+        .shell-split-handle::after {
+            content: "";
+            position: absolute;
+            top: 0; bottom: 0; left: 2px;
+            width: 2px;
+            background: var(--panel-border);
+        }
+        .shell-split-handle:hover::after,
+        .shell-split-handle.shell-split-active::after {
+            background: var(--accent);
+        }
+
+        /* ---- Main Workspace: the dominant area (section 11/24). Toolbar
+           (fixed) on top, Active View Area (scrollable, holds the current
+           Waveform/Table/Split view) filling the rest. ---- */
+        #mainWorkspace {
+            flex: 1 1 auto;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            min-height: 0;
+        }
+        #activeViewArea {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 0 14px;
+        }
+        .shell-view-placeholder {
+            padding: 48px 24px;
+            text-align: center;
+            color: var(--text-dim);
+        }
+        .shell-view-placeholder h3 { margin: 0 0 6px; color: var(--text); font-size: 1rem; }
+        .shell-view-placeholder p { margin: 0; font-size: 0.85rem; }
+
+        /* ---- Bottom Status Bar: a sibling of Workspace Row inside Work
+           Area -- structurally confined to Work Area's own width, so it
+           can never render beneath Main Sidebar Menu (section 17,
+           explicitly the most important geometry rule in this phase).
+           Thin, engineering-focused, real values only (section 18). ---- */
+        #bottomStatusBar {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            padding: 6px 14px;
+            border-top: 1px solid var(--panel-border);
+            background: var(--toolbar-surface);
+            font-size: 0.74rem;
+            color: var(--text-dim);
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+        #bottomStatusBar .shell-status-item { display: flex; gap: 5px; align-items: baseline; }
+        #bottomStatusBar .shell-status-label { text-transform: uppercase; letter-spacing: 0.03em; }
+        #bottomStatusBar .shell-status-value { color: var(--text); font-weight: 600; }
+
+        /* ==================================================================
+           Responsive fallback (section 23 of Phase 3A, refined by the
+           owner's follow-up responsive-target guidance). Desktop/laptop
+           (the default, no media query below) is the canonical, highest-
+           priority experience -- nothing above this point is altered for
+           it. Two breakpoints adapt the SAME DOM/state (no separate phone
+           markup): a tablet/narrow-laptop breakpoint that turns the
+           Workspace Sidebar into a reopenable overlay drawer while
+           collapsing Main Sidebar Menu, and a phone-width breakpoint that
+           tightens the header/status bar further. The Main Workspace
+           (waveform canvas) is never sacrificed at either breakpoint --
+           it is always what gets the freed space. Not a mobile-first
+           redesign (section 23/responsive-target note): these are
+           fallbacks, not the primary design target. */
+        @media (max-width: 900px) {
+            #mainSidebarMenu.expanded { width: 52px; } /* forced collapsed rail regardless of JS state */
+            #mainSidebarMenu.expanded .shell-nav-label { opacity: 0; }
+            /* Workspace Sidebar becomes a reopenable overlay drawer,
+               rather than a permanent column, so Main Workspace can use
+               the freed width -- section 8/9 of the responsive addendum.
+               `position: absolute` against `#workspaceRow` itself (not
+               `fixed` against the viewport) deliberately avoids needing to
+               know the Global Header's own height -- `#workspaceRow`'s own
+               box already starts below the header and right of Main
+               Sidebar Menu, so `top/bottom/left: 0` here is correct by
+               construction. Pure CSS -- no JS media-query duplication;
+               only the open/closed toggle (`.shell-sidebar-open`) is JS
+               (shellSetSidebarDrawerOpen()). -->
+            #workspaceRow { position: relative; }
+            #workspaceSidebar {
+                position: absolute;
+                top: 0; bottom: 0; left: 0;
+                width: min(320px, 82vw);
+                z-index: 6;
+                border-right: 1px solid var(--panel-border);
+                box-shadow: 2px 0 12px rgba(0, 0, 0, 0.18);
+                transform: translateX(-110%);
+                transition: transform 0.15s ease;
+            }
+            #workspaceRow.shell-sidebar-open #workspaceSidebar { transform: translateX(0); }
+            .shell-split-handle { display: none; } /* no drag-resize while the sidebar is an overlay */
+            .shell-sidebar-backdrop { display: none; }
+            #workspaceRow.shell-sidebar-open .shell-sidebar-backdrop {
+                display: block;
+                position: absolute;
+                inset: 0;
+                background: var(--overlay-backdrop);
+                z-index: 5;
+            }
+            #shellSidebarToggleBtn { display: inline-flex; }
+        }
+        #shellSidebarToggleBtn { display: none; } /* only meaningful once the sidebar can be a drawer */
+        @media (max-width: 640px) {
+            #globalHeader h1 { font-size: 0.95rem; }
+            #globalHeader { gap: 10px; padding: 8px 12px; }
+            #bottomStatusBar { gap: 12px; font-size: 0.7rem; padding: 5px 10px; }
+            #workspaceSidebar { padding: 12px; }
         }
 
         section.panel {
@@ -266,24 +559,17 @@
         }
         a.waveform-proto-link:hover { color: var(--accent); border-color: var(--accent-dim); }
 
-        footer {
-            max-width: 1100px;
-            margin: 0 auto;
-            padding: 12px 24px 24px;
-            font-size: 0.75rem;
-            color: var(--text-dim);
+        /* Phase 3A: the old page-footer's content ("Start new workspace" +
+           its error banner) moved into the Global Header -- see section 27
+           of that phase's own control inventory. `#workspaceResetError`
+           keeps its existing classes/behavior, just a new small wrapper
+           for header placement. */
+        .shell-header-reset {
             display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
+            align-items: center;
+            gap: 8px;
         }
-
-        .footer-actions {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-end;
-            gap: 6px;
-        }
-        .footer-actions .hint { margin: 0; max-width: 260px; text-align: right; }
+        .shell-header-reset .hint { margin: 0; max-width: 220px; }
 
         /* Channel search */
         .search-row {
@@ -529,25 +815,16 @@
         input[type="checkbox"].channel-select-cb { cursor: pointer; }
         td.select-col { width: 24px; }
 
-        /* ---- Phase 2C-A: waveform workspace ---- */
-        section.workspace-section {
-            max-width: 1100px;
-            margin: 0 auto 24px;
-            padding: 0 24px;
-        }
-        .ww-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 12px;
-        }
-        .ww-header h2 {
-            font-size: 0.95rem;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            color: var(--text-dim);
-            margin: 0;
-        }
+        /* ---- Phase 2C-A: waveform workspace ----
+           Phase 3A: no longer a page-width-constrained top-level section --
+           it now fills the Main Workspace's Active View Area (section 11);
+           the old "Waveform Workspace" heading was removed as redundant
+           with the Global Header's own View selector (already labeled
+           "Waveform") and to avoid an oversized heading (section 24).
+           `#clearWorkspaceBtn` moved into the toolbar itself, see below --
+           this is the "if a control moves, record where it moved" item
+           from section 27 of that phase's own control inventory. */
+        section.workspace-section { padding-top: 10px; }
         .ww-toolbar {
             display: flex;
             align-items: center;
@@ -762,12 +1039,16 @@
            (Phase 2C-C3, DEC-029) -- never an independent authority (this
            phase's own section 9). `position: sticky`, not `fixed`: its
            containing block is `.workspace-section` itself (an ordinary
-           in-flow block, never scroll-clipped), so it stays pinned to the
-           viewport bottom only WHILE some part of the workspace is still
-           below the viewport, and scrolls away naturally once the whole
-           workspace has been scrolled past -- "does not permanently float
-           over unrelated content" (section 4), achieved with ordinary
-           browser layout, no scroll listener. Horizontal padding (14px)
+           in-flow block), and its nearest SCROLLING ancestor is now
+           `#activeViewArea` (Phase 3A gave every shell region its own
+           internal scroll -- see that ID's own CSS comment; previously
+           it was the whole page/viewport, before Phase 3A's shell
+           restructuring). Same mechanism either way: it stays pinned to
+           that scroll container's own bottom edge only WHILE some part of
+           the workspace is still below it, and scrolls away naturally
+           once the whole workspace has been scrolled past -- "does not
+           permanently float over unrelated content" (section 4), achieved
+           with ordinary browser layout, no scroll listener. Horizontal padding (14px)
            deliberately matches `.ww-panel`'s own horizontal padding
            exactly -- see `wwSyncStickyRuler()`'s own comment for why this,
            together with the SAME Plotly `margin.l`/`margin.r` as
@@ -807,127 +1088,228 @@
     </style>
 </head>
 <body>
-    <header>
-        <h1>Powerwave</h1>
+    <!-- ==================================================================
+         Phase 3A: Application Shell (docs/project-memory/DECISIONS.md
+         DEC-031). See the CSS block's own header comment above for the
+         full structural rationale. App-shell state (view/nav/sidebar
+         width) is kept deliberately separate from waveform-domain state
+         (`ww`) -- see the "Phase 3A: App Shell" JS section below,
+         section 28 of that phase's own instructions. -->
+    <header id="globalHeader">
+        <h1>Oruxa Powerwave</h1>
         <div class="status-line">
             <span id="apiStatus"><span class="dot" id="apiDot"></span><span id="apiStatusText">Checking backend&hellip;</span></span>
+        </div>
+        <div id="globalHeaderSpacer"></div>
+        <div id="globalHeaderActions">
+            <!-- Only visible under the tablet/phone breakpoint (see CSS) --
+                 opens the Workspace Sidebar as a drawer once it's no
+                 longer a permanent column (responsive addendum, section
+                 3/6). -->
+            <button type="button" class="secondary" id="shellSidebarToggleBtn" aria-label="Toggle sources panel">Sources</button>
+            <!-- Application-level Import entry point (section 4/26) --
+                 the actual upload form/workflow is unchanged and still
+                 lives in the Workspace Sidebar (section 8); this button
+                 just brings it into view (and opens the Sidebar drawer on
+                 narrow screens -- see shellOpenImport()). -->
+            <button type="button" class="secondary" id="shellImportBtn">Import</button>
+            <!-- Active View selector (section 13) -- Waveform is the real,
+                 current working view; Table/Split are structural
+                 placeholders only (section 14), never fake data. -->
+            <div class="theme-toggle" id="shellViewToggle" role="group" aria-label="Active view">
+                <button type="button" id="shellViewWaveformBtn" aria-pressed="true">Waveform</button>
+                <button type="button" id="shellViewTableBtn" aria-pressed="false">Table</button>
+                <button type="button" id="shellViewSplitBtn" aria-pressed="false">Split</button>
+            </div>
             <div id="themeToggle"></div>
+            <!-- Moved from the old page footer (section 27's control
+                 inventory) -- a whole-workspace lifecycle action, at home
+                 alongside Import at the application level. -->
+            <div class="shell-header-reset">
+                <button class="secondary" id="newWorkspaceButton" type="button">Start new workspace</button>
+                <p class="hint error" id="workspaceResetError" hidden role="alert"></p>
+            </div>
         </div>
     </header>
 
-    <main>
-        <div>
-            <section class="panel" aria-labelledby="upload-heading">
-                <h2 id="upload-heading">Import COMTRADE Event</h2>
+    <div id="appBody">
+        <!-- Main Sidebar Menu (section 5): the application's narrow
+             primary navigation rail -- full Body height by construction
+             (a flex-row sibling of Work Area, both inside #appBody), not
+             interrupted by the Status Bar. Collapsed by default, toggled
+             (never freely drag-resized -- that model is reserved for the
+             Workspace Sidebar only, section 21). "Workspace" is the one
+             real destination this phase; Table/Tools/Reports are visibly
+             present but `disabled` -- proving the rail holds multiple
+             icon+label items without inventing unfinished pages for them
+             (section 5's own instruction). "Settings" is real (flips the
+             existing Light/Dark preference) so the rail proves a second
+             working interaction beyond collapse/expand. -->
+        <nav id="mainSidebarMenu" aria-label="Main navigation">
+            <button type="button" class="shell-nav-toggle" id="mainSidebarToggleBtn" aria-expanded="false" aria-label="Expand navigation menu">
+                <svg viewBox="0 0 18 18" width="16" height="16"><line x1="2" y1="5" x2="16" y2="5" stroke="currentColor" stroke-width="1.5"/><line x1="2" y1="9" x2="16" y2="9" stroke="currentColor" stroke-width="1.5"/><line x1="2" y1="13" x2="16" y2="13" stroke="currentColor" stroke-width="1.5"/></svg>
+            </button>
+            <div class="shell-nav-list">
+                <button type="button" class="shell-nav-item" id="mainNavWorkspaceBtn" aria-current="page">
+                    <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><rect x="2" y="2" width="6" height="6" rx="1"/><rect x="10" y="2" width="6" height="6" rx="1"/><rect x="2" y="10" width="14" height="6" rx="1"/></svg></span>
+                    <span class="shell-nav-label">Workspace</span>
+                </button>
+                <button type="button" class="shell-nav-item" disabled title="Table -- coming soon">
+                    <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><rect x="2" y="3" width="14" height="12" rx="1"/><line x1="2" y1="8" x2="16" y2="8"/><line x1="7" y1="3" x2="7" y2="15"/></svg></span>
+                    <span class="shell-nav-label">Table</span>
+                </button>
+                <button type="button" class="shell-nav-item" disabled title="Tools -- coming soon">
+                    <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><circle cx="6" cy="6" r="3"/><line x1="8.1" y1="8.1" x2="15" y2="15"/></svg></span>
+                    <span class="shell-nav-label">Tools</span>
+                </button>
+                <button type="button" class="shell-nav-item" disabled title="Reports -- coming soon">
+                    <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><rect x="3" y="2" width="12" height="14" rx="1"/><line x1="6" y1="6" x2="12" y2="6"/><line x1="6" y1="9" x2="12" y2="9"/><line x1="6" y1="12" x2="10" y2="12"/></svg></span>
+                    <span class="shell-nav-label">Reports</span>
+                </button>
+            </div>
+            <div class="shell-nav-bottom">
+                <button type="button" class="shell-nav-item" id="mainNavSettingsBtn">
+                    <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><circle cx="9" cy="9" r="3"/><path d="M9 2v2M9 14v2M2 9h2M14 9h2M4.4 4.4l1.4 1.4M12.2 12.2l1.4 1.4M4.4 13.6l1.4-1.4M12.2 5.8l1.4-1.4" stroke-width="1.3"/></svg></span>
+                    <span class="shell-nav-label">Settings</span>
+                </button>
+            </div>
+        </nav>
 
-                <form id="uploadForm">
-                    <div class="field">
-                        <label for="cfgInput">Configuration file (.cfg)</label>
-                        <input type="file" id="cfgInput" accept=".cfg,.CFG,.comtrade" required>
+        <!-- Work Area (section 6): everything right of Main Sidebar Menu,
+             vertically split into Workspace Row (most space) and the
+             Bottom Status Bar. -->
+        <div id="workArea">
+            <div id="workspaceRow">
+                <!-- Only rendered visible by CSS under the drawer
+                     breakpoint while the sidebar is open -- see
+                     shellSetSidebarDrawerOpen(). -->
+                <div class="shell-sidebar-backdrop" id="shellSidebarBackdrop"></div>
+                <!-- Workspace Sidebar (section 8): contextual to the
+                     active engineering workspace, NOT global nav. Import
+                     form + Sources + Channels move here, unredesigned
+                     (section 15/27), just relocated. Horizontally
+                     resizable -- see shellCreateHorizontalSplit() in the
+                     JS section below. -->
+                <aside id="workspaceSidebar">
+                    <section class="panel" aria-labelledby="upload-heading">
+                        <h2 id="upload-heading">Import COMTRADE Event</h2>
+
+                        <form id="uploadForm">
+                            <div class="field">
+                                <label for="cfgInput">Configuration file (.cfg)</label>
+                                <input type="file" id="cfgInput" accept=".cfg,.CFG,.comtrade" required>
+                            </div>
+                            <div class="field">
+                                <label for="datInput">Data file (.dat)</label>
+                                <input type="file" id="datInput" accept=".dat,.DAT" required>
+                            </div>
+
+                            <p class="hint" id="sizeHint">Best experience with event records up to 100 MB (combined .cfg + .dat).</p>
+
+                            <button type="submit" id="uploadButton">Upload &amp; Parse</button>
+                        </form>
+
+                        <div class="upload-status" id="uploadStatus" role="status" aria-live="polite"></div>
+                    </section>
+
+                    <section class="panel" aria-labelledby="sources-heading">
+                        <h2 id="sources-heading">Sources in this Workspace</h2>
+                        <ul class="source-list" id="sourceList"></ul>
+                        <p class="empty-state" id="sourceListEmpty">No sources imported yet.</p>
+                    </section>
+
+                    <section class="panel" aria-labelledby="channels-heading">
+                        <h2 id="channels-heading">Channels</h2>
+                        <div id="channelsPanel">
+                            <p class="empty-state">Upload a COMTRADE event, or select one from the list, to see its channels here.</p>
+                        </div>
+                    </section>
+                </aside>
+
+                <div class="shell-split-handle" id="workspaceSplitHandle" role="separator" aria-orientation="vertical" aria-label="Resize Workspace Sidebar" tabindex="-1"></div>
+
+                <!-- Main Workspace (section 11): the dominant area. -->
+                <main id="mainWorkspace">
+                    <!-- Phase 2C-A: synchronized multi-channel waveform
+                         workspace. See docs/project-memory/MIGRATION_PLAN.md's
+                         Phase 2C-A record and DEC-021 (workspace-level
+                         navigation). Central Powerwave toolbar controls
+                         every displayed panel at once. Native per-panel
+                         Plotly modebars are disabled (see wwInitPanelPlot)
+                         -- this is the only navigation surface. -->
+                    <div class="ww-toolbar" id="wwToolbar" hidden>
+                        <div class="theme-toggle" id="dragModeToggle" role="group" aria-label="Drag mode">
+                            <button type="button" id="dragModeZoomBtn" aria-pressed="true">Zoom</button>
+                            <button type="button" id="dragModePanBtn" aria-pressed="false">Pan</button>
+                        </div>
+                        <div class="theme-toggle" id="timeModeToggle" role="group" aria-label="Time axis mode">
+                            <button type="button" id="timeModeAbsoluteBtn" aria-pressed="true">Absolute Time</button>
+                            <button type="button" id="timeModeElapsedBtn" aria-pressed="false">Elapsed Time</button>
+                        </div>
+                        <span class="hint" id="wwTimeModeContext" hidden></span>
+                        <button class="secondary" type="button" id="wwResetViewBtn">Reset Time View</button>
+                        <button class="secondary" type="button" id="wwAutoscaleBtn">Autoscale Y</button>
+                        <div class="toolbar-spacer"></div>
+                        <div class="theme-toggle" id="layoutModeToggle" role="group" aria-label="Waveform layout">
+                            <button type="button" id="layoutModeGroupedBtn" aria-pressed="true">Grouped</button>
+                            <button type="button" id="layoutModeSeparateBtn" aria-pressed="false">Separate</button>
+                            <button type="button" id="layoutModeCustomBtn" aria-pressed="false">Custom</button>
+                        </div>
+                        <button class="secondary" type="button" id="editChannelGroupsBtn" hidden>Edit Channel Groups</button>
+                        <button class="secondary" type="button" id="clearWorkspaceBtn" hidden>Clear workspace</button>
                     </div>
-                    <div class="field">
-                        <label for="datInput">Data file (.dat)</label>
-                        <input type="file" id="datInput" accept=".dat,.DAT" required>
+
+                    <!-- Active View Area (section 11/13): holds whichever
+                         of Waveform/Table/Split is currently active --
+                         see shellSetActiveView(). Only Waveform is real
+                         this phase. -->
+                    <div id="activeViewArea">
+                        <section class="workspace-section" id="viewWaveform" aria-label="Waveform view">
+                            <p class="empty-state" id="wwEmptyState">Select analog channels and click &ldquo;Add selected&rdquo; to display waveforms.</p>
+
+                            <div id="wwPanels"></div>
+
+                            <!-- Phase 2C-C4: sticky shared time-axis ruler --
+                                 see wwSyncStickyRuler(). Sticky behavior is
+                                 unchanged by the Phase 3A shell restructuring
+                                 -- only its scrolling ancestor changed (see
+                                 the CSS comment above #activeViewArea). -->
+                            <div class="ww-sticky-ruler" id="wwStickyRuler" hidden>
+                                <div class="ww-sticky-ruler-chart" id="wwStickyRulerChart"></div>
+                            </div>
+                        </section>
+
+                        <!-- Structural placeholders only (section 13/14) --
+                             no fake table data, no real Split view this
+                             phase. Proves the Active View shell can host a
+                             future mode without redesigning it later. -->
+                        <section class="shell-view-placeholder" id="viewTable" hidden aria-label="Table view">
+                            <h3>Table view</h3>
+                            <p>Not implemented yet -- this shell slot is reserved for a future Excel-like data table.</p>
+                        </section>
+                        <section class="shell-view-placeholder" id="viewSplit" hidden aria-label="Split view">
+                            <h3>Split view</h3>
+                            <p>Not implemented yet -- this shell slot is reserved for a future Waveform &harr; Table split.</p>
+                        </section>
                     </div>
-
-                    <p class="hint" id="sizeHint">Best experience with event records up to 100 MB (combined .cfg + .dat).</p>
-
-                    <button type="submit" id="uploadButton">Upload &amp; Parse</button>
-                </form>
-
-                <div class="upload-status" id="uploadStatus" role="status" aria-live="polite"></div>
-            </section>
-
-            <section class="panel" style="margin-top: 20px;" aria-labelledby="sources-heading">
-                <h2 id="sources-heading">Sources in this Workspace</h2>
-                <ul class="source-list" id="sourceList"></ul>
-                <p class="empty-state" id="sourceListEmpty">No sources imported yet.</p>
-            </section>
-        </div>
-
-        <section class="panel" aria-labelledby="channels-heading">
-            <h2 id="channels-heading">Channels</h2>
-            <div id="channelsPanel">
-                <p class="empty-state">Upload a COMTRADE event, or select one from the list, to see its channels here.</p>
+                </main>
             </div>
-        </section>
-    </main>
 
-    <!-- Phase 2C-A: synchronized multi-channel waveform workspace. Built
-         directly into the main app (not an isolated page like Phase 2B's
-         waveform-prototype.html) -- this is now real functionality, not a
-         UAT prototype. See docs/project-memory/MIGRATION_PLAN.md's
-         Phase 2C-A record and DEC-021 (workspace-level navigation). -->
-    <section class="workspace-section" aria-labelledby="workspace-heading">
-        <div class="ww-header">
-            <h2 id="workspace-heading">Waveform Workspace</h2>
-            <button class="secondary" type="button" id="clearWorkspaceBtn" hidden>Clear workspace</button>
-        </div>
-
-        <!-- Central Powerwave toolbar (DEC-021): controls every displayed
-             panel at once. Native per-panel Plotly modebars are disabled
-             (see wwInitPanelPlot) -- this is the only navigation surface. -->
-        <div class="ww-toolbar" id="wwToolbar" hidden>
-            <div class="theme-toggle" id="dragModeToggle" role="group" aria-label="Drag mode">
-                <button type="button" id="dragModeZoomBtn" aria-pressed="true">Zoom</button>
-                <button type="button" id="dragModePanBtn" aria-pressed="false">Pan</button>
+            <!-- Bottom Status Bar (section 17/18): a sibling of
+                 Workspace Row inside Work Area -- see the CSS comment
+                 above #bottomStatusBar for why this specific nesting is
+                 what keeps it from ever running under Main Sidebar Menu.
+                 Real, already-available values only -- see
+                 shellUpdateStatusBar()/shellUpdateStatusBarChannelCount(). -->
+            <div id="bottomStatusBar">
+                <span class="shell-status-item"><span class="shell-status-label">Workspace</span><span class="shell-status-value" id="statusBarWorkspaceId">&mdash;</span></span>
+                <span class="shell-status-item"><span class="shell-status-label">Station</span><span class="shell-status-value" id="statusBarStation">&mdash;</span></span>
+                <span class="shell-status-item"><span class="shell-status-label">Sample rate</span><span class="shell-status-value" id="statusBarSampleRate">&mdash;</span></span>
+                <span class="shell-status-item"><span class="shell-status-label">Duration</span><span class="shell-status-value" id="statusBarDuration">&mdash;</span></span>
+                <span class="shell-status-item"><span class="shell-status-label">Displayed channels</span><span class="shell-status-value" id="statusBarChannelCount">0</span></span>
             </div>
-            <!-- Phase 2C-C3: shared time-axis representation for the whole
-                 workspace (never per-panel -- see wwSetTimeMode()). COMTRADE
-                 defaults to Absolute; a channel whose source can't support
-                 Absolute (see wwTimeModesForChannel()) disables that option
-                 rather than showing a fake/non-functional choice. -->
-            <div class="theme-toggle" id="timeModeToggle" role="group" aria-label="Time axis mode">
-                <button type="button" id="timeModeAbsoluteBtn" aria-pressed="true">Absolute Time</button>
-                <button type="button" id="timeModeElapsedBtn" aria-pressed="false">Elapsed Time</button>
-            </div>
-            <span class="hint" id="wwTimeModeContext" hidden></span>
-            <button class="secondary" type="button" id="wwResetViewBtn">Reset Time View</button>
-            <button class="secondary" type="button" id="wwAutoscaleBtn">Autoscale Y</button>
-            <div class="toolbar-spacer"></div>
-            <!-- Phase 2C-B1/C1: layout mode -- Grouped (by engineering type,
-                 the existing default), Separate (one panel per channel), or
-                 Custom (user-defined grouping, Phase 2C-C1). Does not change
-                 which channels are displayed, only how they're arranged --
-                 see wwSetLayoutMode()/wwRebuildLayout(). -->
-            <div class="theme-toggle" id="layoutModeToggle" role="group" aria-label="Waveform layout">
-                <button type="button" id="layoutModeGroupedBtn" aria-pressed="true">Grouped</button>
-                <button type="button" id="layoutModeSeparateBtn" aria-pressed="false">Separate</button>
-                <button type="button" id="layoutModeCustomBtn" aria-pressed="false">Custom</button>
-            </div>
-            <!-- Phase 2C-C1: only relevant in Custom mode -- see
-                 wwUpdateEditGroupsButtonVisibility(). Starts hidden;
-                 Custom is never the default layout mode. -->
-            <button class="secondary" type="button" id="editChannelGroupsBtn" hidden>Edit Channel Groups</button>
         </div>
-
-        <p class="empty-state" id="wwEmptyState">Select analog channels and click &ldquo;Add selected&rdquo; to display waveforms.</p>
-
-        <div id="wwPanels"></div>
-
-        <!-- Phase 2C-C4: sticky shared time-axis ruler -- ONE workspace-
-             level strip, not per-panel/per-layout-mode (section 3/5). A
-             presentation layer only, over the authoritative
-             ww.viewport/ww.timeMode state -- see wwSyncStickyRuler().
-             Hidden whenever nothing is displayed (section 17).
-             Phase 2C-C4B: no separate title/date DOM elements -- the
-             ruler's Plotly chart renders its own native x-axis title
-             ("Record Time" / "Time (ms)" / "Time (s)" / "Time (min)")
-             directly below its own tick labels, exactly like every real
-             waveform panel's own axis title (section 8); no date is
-             shown in the ruler at all (section 5/6). -->
-        <div class="ww-sticky-ruler" id="wwStickyRuler" hidden>
-            <div class="ww-sticky-ruler-chart" id="wwStickyRulerChart"></div>
-        </div>
-    </section>
-
-    <footer>
-        <span>Workspace: <code id="workspaceIdLabel"></code></span>
-        <div class="footer-actions">
-            <button class="secondary" id="newWorkspaceButton" type="button">Start new workspace</button>
-            <p class="hint error" id="workspaceResetError" hidden role="alert"></p>
-        </div>
-    </footer>
+    </div>
 
     <div class="confirm-overlay" id="confirmOverlay" hidden>
         <div class="confirm-box" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle">
@@ -1010,6 +1392,189 @@
         // becomes approximate until updated to match (a known Phase 1
         // simplification -- see docs/project-memory/MIGRATION_PLAN.md).
         const CLIENT_SIZE_GUIDANCE_MB = 100;
+
+        // ------------------------------------------------------------------
+        // Phase 3A: App Shell
+        //
+        // Deliberately separate from waveform-domain state (`ww`, defined
+        // much later in this file) -- section 28 of that phase's own
+        // instructions: nothing in this section ever reads or writes `ww`
+        // directly. Where the shell needs to reflect a waveform-domain
+        // fact (e.g. the Bottom Status Bar's displayed-channel count), the
+        // OWNING waveform code calls a small shell setter explicitly
+        // (shellUpdateStatusBarChannelCount()) rather than the shell
+        // reaching in on its own -- a narrow, one-way dependency, not a
+        // merge of the two state models. This keeps the shell reusable for
+        // a future Table/Split view that has nothing to do with `ww` at
+        // all.
+        // ------------------------------------------------------------------
+        const SHELL_MAIN_SIDEBAR_STORAGE_KEY = "powerwave.shell.mainSidebarExpanded";
+        const SHELL_WORKSPACE_SIDEBAR_WIDTH_STORAGE_KEY = "powerwave.shell.workspaceSidebarWidth";
+
+        // Section 20: explicit, documented layout state -- never "whatever
+        // the DOM happens to be." These are INITIAL values, expected to be
+        // tuned by owner UAT (this phase's own framing note).
+        const SHELL_WORKSPACE_SIDEBAR_DEFAULT_WIDTH = 320;
+        const SHELL_WORKSPACE_SIDEBAR_MIN_WIDTH = 240;
+        const SHELL_WORKSPACE_SIDEBAR_MAX_WIDTH = 520;
+
+        const shell = {
+            activeView: "waveform", // "waveform" | "table" | "split" (section 13)
+            mainSidebarExpanded: false, // section 21 -- independent of Workspace Sidebar width, never coupled to it
+        };
+
+        // ---- Reusable horizontal split-pane (section 10) ----
+        // Deliberately small -- wires ONE drag handle to resize ONE panel
+        // within given bounds, with optional localStorage persistence, and
+        // nothing else. Not a generic layout framework (section 10's own
+        // explicit instruction); a future Waveform <-> Table split
+        // (section 22) is expected to call this SAME function a second
+        // time with different arguments, not a reason to build something
+        // larger now. Pointer Capture + add/remove-on-pointerdown/up/
+        // cancel mirrors the exact pattern already proven for panel-height
+        // resize (wwWireResizeHandle) -- a reused, established mechanism,
+        // not a new one.
+        function shellCreateHorizontalSplit(options) {
+            let width = shellLoadSplitWidth(options);
+            applyWidth(width);
+
+            function applyWidth(next) {
+                width = Math.max(options.min, Math.min(options.max, next));
+                options.panelEl.style.width = width + "px";
+                if (options.onResize) options.onResize(width);
+            }
+
+            let dragStartX = 0;
+            let dragStartWidth = 0;
+
+            function onPointerMove(event) {
+                applyWidth(dragStartWidth + (event.clientX - dragStartX));
+            }
+
+            function endDrag(event) {
+                options.handleEl.removeEventListener("pointermove", onPointerMove);
+                options.handleEl.removeEventListener("pointerup", endDrag);
+                options.handleEl.removeEventListener("pointercancel", endDrag);
+                options.handleEl.classList.remove("shell-split-active");
+                if (options.handleEl.hasPointerCapture && options.handleEl.hasPointerCapture(event.pointerId)) {
+                    options.handleEl.releasePointerCapture(event.pointerId);
+                }
+                // Section 20: persist the user's chosen width for the
+                // active browser session/workspace -- localStorage only,
+                // no backend persistence (explicitly out of scope).
+                if (options.storageKey) {
+                    try { localStorage.setItem(options.storageKey, String(width)); } catch (error) { /* ignore */ }
+                }
+            }
+
+            options.handleEl.addEventListener("pointerdown", (event) => {
+                if (event.button !== undefined && event.button !== 0) return; // primary pointer only
+                dragStartX = event.clientX;
+                dragStartWidth = width;
+                options.handleEl.classList.add("shell-split-active");
+                if (options.handleEl.setPointerCapture) options.handleEl.setPointerCapture(event.pointerId);
+                options.handleEl.addEventListener("pointermove", onPointerMove);
+                options.handleEl.addEventListener("pointerup", endDrag);
+                options.handleEl.addEventListener("pointercancel", endDrag);
+                event.preventDefault();
+            });
+
+            // Section 9: this resize ONLY ever writes a CSS width -- it
+            // never touches ww.viewport, never calls the waveform fetch
+            // pipeline, so "zero waveform API requests during resize" is
+            // true by construction, not by care taken elsewhere. Real
+            // waveform panels/ruler pick up the new container width for
+            // free via their own existing `responsive: true` Plotly config
+            // (the same mechanism window-resize already relies on) -- no
+            // explicit Plotly.Plots.resize() call is needed here.
+            return { setWidth: applyWidth, getWidth: () => width };
+        }
+
+        function shellLoadSplitWidth(options) {
+            if (options.storageKey) {
+                try {
+                    const stored = Number(localStorage.getItem(options.storageKey));
+                    if (Number.isFinite(stored) && stored >= options.min && stored <= options.max) return stored;
+                } catch (error) { /* ignore */ }
+            }
+            return options.defaultWidth;
+        }
+
+        // ---- Main Sidebar Menu: collapsed/expanded TOGGLE (section
+        // 5/21) -- never drag-resizable, and deliberately never coupled to
+        // Workspace Sidebar width; these are two independent layout
+        // regions with two different interaction models on purpose. ----
+        function shellSetMainSidebarExpanded(expanded) {
+            shell.mainSidebarExpanded = expanded;
+            document.getElementById("mainSidebarMenu").classList.toggle("expanded", expanded);
+            document.getElementById("mainSidebarToggleBtn").setAttribute("aria-expanded", String(expanded));
+            try { localStorage.setItem(SHELL_MAIN_SIDEBAR_STORAGE_KEY, expanded ? "1" : "0"); } catch (error) { /* ignore */ }
+        }
+
+        function shellLoadMainSidebarExpanded() {
+            try { return localStorage.getItem(SHELL_MAIN_SIDEBAR_STORAGE_KEY) === "1"; } catch (error) { return false; }
+        }
+
+        // ---- Active View (section 13/14): Waveform is the real, current
+        // working view; Table/Split are structural placeholders only,
+        // never fake data. ----
+        function shellSetActiveView(view) {
+            if (view !== "waveform" && view !== "table" && view !== "split") return;
+            shell.activeView = view;
+            document.getElementById("viewWaveform").hidden = view !== "waveform";
+            document.getElementById("viewTable").hidden = view !== "table";
+            document.getElementById("viewSplit").hidden = view !== "split";
+            document.getElementById("shellViewWaveformBtn").setAttribute("aria-pressed", String(view === "waveform"));
+            document.getElementById("shellViewTableBtn").setAttribute("aria-pressed", String(view === "table"));
+            document.getElementById("shellViewSplitBtn").setAttribute("aria-pressed", String(view === "split"));
+        }
+
+        // ---- Workspace Sidebar drawer (responsive addendum, section 3/6)
+        // -- only meaningful under the tablet/phone CSS breakpoint; a
+        // harmless no-op visually above it, since the class this toggles
+        // has no effect outside that media query. ----
+        function shellSetSidebarDrawerOpen(open) {
+            document.getElementById("workspaceRow").classList.toggle("shell-sidebar-open", open);
+        }
+
+        // ---- Import entry point (section 4/26): the real upload form/
+        // workflow is completely unchanged and still lives in the
+        // Workspace Sidebar (section 8) -- this just brings it into view,
+        // opening the drawer first on narrow screens where the sidebar
+        // isn't already visible. ----
+        function shellOpenImport() {
+            shellSetSidebarDrawerOpen(true);
+            const cfgInput = document.getElementById("cfgInput");
+            if (cfgInput && cfgInput.scrollIntoView) cfgInput.scrollIntoView({ block: "nearest" });
+            if (cfgInput) cfgInput.focus({ preventScroll: true });
+        }
+
+        // ---- Bottom Status Bar (section 17/18): real, already-available
+        // values only -- never fabricated. Two independent update points,
+        // matching the two independent facts it shows: which SOURCE is
+        // currently selected (station/sample rate/duration, sourced from
+        // renderChannels()'s own already-fetched data -- no new API call)
+        // and how many channels are currently DISPLAYED in the waveform
+        // workspace (ww.displayed.size, read -- never mutated -- from the
+        // existing call sites that already track that count changing). ----
+        function shellUpdateStatusBar(source, timebase) {
+            const stationEl = document.getElementById("statusBarStation");
+            const rateEl = document.getElementById("statusBarSampleRate");
+            const durationEl = document.getElementById("statusBarDuration");
+            if (!source || !timebase) {
+                stationEl.textContent = "—";
+                rateEl.textContent = "—";
+                durationEl.textContent = "—";
+                return;
+            }
+            stationEl.textContent = source.station_name || "—";
+            rateEl.textContent = timebase.sampling_rates.map((r) => r + " Hz").join(", ");
+            durationEl.textContent = timebase.duration_seconds.toFixed(3) + " s";
+        }
+
+        function shellUpdateStatusBarChannelCount(count) {
+            document.getElementById("statusBarChannelCount").textContent = String(count);
+        }
 
         // ------------------------------------------------------------------
         // Workspace identity (client-generated, scoped per browser --
@@ -1110,7 +1675,7 @@
             clearUploadStatus();
             renderChannels(null);
             wwClearWorkspace();
-            document.getElementById("workspaceIdLabel").textContent = currentWorkspaceId();
+            document.getElementById("statusBarWorkspaceId").textContent = currentWorkspaceId();
             await refreshSourceList();
         }
 
@@ -1388,11 +1953,16 @@
             const panel = document.getElementById("channelsPanel");
             if (!data) {
                 panel.innerHTML = '<p class="empty-state">Upload a COMTRADE event, or select one from the list, to see its channels here.</p>';
+                shellUpdateStatusBar(null, null);
                 return;
             }
 
             const source = data.source;
             const timebase = data.timebase;
+            // Phase 3A (section 17/18): the Bottom Status Bar reuses this
+            // SAME already-fetched data -- no new API call, no second
+            // implementation of what a "source" is.
+            shellUpdateStatusBar(source, timebase);
 
             let html = "";
             html += '<div class="detail-header"><div>';
@@ -2873,6 +3443,10 @@
             // just keeps it in sync if it was already visible) -- ww.panels
             // and ww.viewport are both already final at this point.
             wwSyncStickyRuler();
+            // Phase 3A (section 18): the Bottom Status Bar's displayed-
+            // channel count -- a narrow, one-way read of ww.displayed,
+            // never a shell mutation of waveform state.
+            shellUpdateStatusBarChannelCount(ww.displayed.size);
         }
 
         function wwRemoveChannelByKey(key) {
@@ -2905,6 +3479,7 @@
             // last displayed channel; otherwise a cheap no-op resync
             // (ww.viewport is unchanged by a channel removal).
             wwSyncStickyRuler();
+            shellUpdateStatusBarChannelCount(ww.displayed.size);
         }
 
         function wwRemovePanelDom(panel) {
@@ -2971,6 +3546,7 @@
             // wwSyncStickyRuler() call (when channels are next added) fully
             // overwrites its range/type/tickformat regardless.
             wwSyncStickyRuler();
+            shellUpdateStatusBarChannelCount(ww.displayed.size);
         }
 
         // Phase 2C-C4A: ONE shared decision for the sticky ruler's
@@ -3602,9 +4178,52 @@
         // ------------------------------------------------------------------
         // Init
         // ------------------------------------------------------------------
-        document.getElementById("workspaceIdLabel").textContent = currentWorkspaceId();
+        document.getElementById("statusBarWorkspaceId").textContent = currentWorkspaceId();
         document.getElementById("newWorkspaceButton").addEventListener("click", startNewWorkspace);
         window.PowerwaveTheme.mountThemeToggle(document.getElementById("themeToggle"));
+
+        // Phase 3A: App Shell wiring.
+        shellSetMainSidebarExpanded(shellLoadMainSidebarExpanded());
+        document.getElementById("mainSidebarToggleBtn").addEventListener("click", () => {
+            shellSetMainSidebarExpanded(!shell.mainSidebarExpanded);
+        });
+        // "Workspace" is the one real destination this phase -- clicking
+        // it returns the Active View to Waveform if the user had switched
+        // to a Table/Split placeholder, a small but real behavior rather
+        // than a dead button (section 5).
+        document.getElementById("mainNavWorkspaceBtn").addEventListener("click", () => shellSetActiveView("waveform"));
+        // "Settings" is real (flips the existing Light/Dark preference) --
+        // proves the rail holds a second working interaction beyond
+        // collapse/expand, without mounting a redundant duplicate theme
+        // control (the Global Header's own #themeToggle remains the
+        // primary, full segmented control).
+        document.getElementById("mainNavSettingsBtn").addEventListener("click", () => {
+            const current = window.PowerwaveTheme.getTheme();
+            window.PowerwaveTheme.setTheme(current === "dark" ? "light" : "dark");
+        });
+
+        document.getElementById("shellViewWaveformBtn").addEventListener("click", () => shellSetActiveView("waveform"));
+        document.getElementById("shellViewTableBtn").addEventListener("click", () => shellSetActiveView("table"));
+        document.getElementById("shellViewSplitBtn").addEventListener("click", () => shellSetActiveView("split"));
+
+        document.getElementById("shellImportBtn").addEventListener("click", shellOpenImport);
+        document.getElementById("shellSidebarToggleBtn").addEventListener("click", () => {
+            const row = document.getElementById("workspaceRow");
+            shellSetSidebarDrawerOpen(!row.classList.contains("shell-sidebar-open"));
+        });
+        document.getElementById("shellSidebarBackdrop").addEventListener("click", () => shellSetSidebarDrawerOpen(false));
+
+        // Workspace Sidebar <-> Main Workspace horizontal resize (section
+        // 9) -- the SAME reusable helper a future Waveform <-> Table split
+        // (section 10/22) is expected to call again.
+        shellCreateHorizontalSplit({
+            handleEl: document.getElementById("workspaceSplitHandle"),
+            panelEl: document.getElementById("workspaceSidebar"),
+            min: SHELL_WORKSPACE_SIDEBAR_MIN_WIDTH,
+            max: SHELL_WORKSPACE_SIDEBAR_MAX_WIDTH,
+            defaultWidth: SHELL_WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
+            storageKey: SHELL_WORKSPACE_SIDEBAR_WIDTH_STORAGE_KEY,
+        });
 
         // Phase 2C-A: central Powerwave toolbar + theme integration.
         document.getElementById("dragModeZoomBtn").addEventListener("click", () => wwSetDragMode("zoom"));

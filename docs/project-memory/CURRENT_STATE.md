@@ -533,6 +533,56 @@ whether the compact layout visually matches the owner's reference
 screenshot, and the Phase 2C-C4A tick-alignment-at-rescaled-units claim
 (unchanged, not re-touched by this pass) — both flagged for owner UAT.
 
+`[FACT]` **Phase 3A — Application Shell Redesign Foundation** is the
+first STRUCTURAL redesign of the frontend: the whole-page-scrolling,
+2-column centered layout is replaced by a full-viewport app shell — see
+[MIGRATION_PLAN.md — Phase 3A Record](MIGRATION_PLAN.md#phase-3a--application-shell-redesign-foundation-2026-08-16)
+and [DECISIONS.md DEC-031](DECISIONS.md#dec-031--application-shell-architecture-global-header-full-height-main-sidebar-menu-work-area-workspace-row--bottom-status-bar-phase-3a).
+Corrected shell hierarchy (the owner explicitly corrected an earlier,
+wrong interpretation mid-specification): `Global Header` (full width)
+above `Body`, which splits into `Main Sidebar Menu` (FULL Body height —
+by construction, since it's a direct flex-row sibling of `Work Area`
+inside `Body`) and `Work Area`, which itself splits into `Workspace Row`
+(Workspace Sidebar ⇆ Main Workspace) above the `Bottom Status Bar` —
+this nesting depth is what structurally guarantees the Status Bar can
+never render beneath Main Sidebar Menu, not careful pixel matching.
+**Explicitly an INITIAL shell** — exact widths/heights/spacing are
+expected to be tuned by owner UAT.
+Main Sidebar Menu: narrow icon rail, collapsed by default, toggled
+(never drag-resizable — independent state from Workspace Sidebar
+width). Workspace Sidebar (Import/Sources/Channels, relocated
+unredesigned): horizontally drag-resizable via a new small, reusable
+split-pane helper (`shellCreateHorizontalSplit()`, default 320px/min
+240px/max 520px, explicit state persisted to `localStorage` for the
+session) — the SAME function a future Waveform ⇆ Table split is
+expected to reuse. Main Workspace: Workspace Toolbar (unchanged
+controls, "Clear workspace" relocated into it) above an Active View
+Area holding `shell.activeView` (`"waveform"`|`"table"`|`"split"` —
+app-shell state, deliberately separate from waveform-domain state `ww`,
+per section 28's own explicit instruction); Waveform is real, Table/
+Split are structural placeholders only (confirmed by test: zero fake
+data, zero new fetches). Bottom Status Bar: real values only (workspace
+id, station, sample rate, duration, displayed-channel count — sourced
+from data already fetched for other reasons, never fabricated).
+Responsive: desktop/laptop is the unconditional primary target; under
+~900px Main Sidebar Menu force-collapses and Workspace Sidebar becomes
+a reopenable overlay drawer (pure CSS, no JS breakpoint duplication);
+phone is treated as a secondary companion mode, not fully designed this
+phase, only structurally un-blocked. **Every existing Phase 2C waveform
+feature (Grouped/Separate/Custom, Custom Groups, synchronized zoom/pan,
+Reset Time View, Autoscale Y, Absolute/Elapsed, the sticky ruler,
+panel-height resize, Light/Dark theme, crosshair) was relocated, not
+rewritten** — every element kept its exact ID; confirmed unchanged by
+the FULL existing jsdom regression suite showing the exact same
+pre-existing pass/fail counts as immediately before this phase (zero
+new divergences, independently verified before/after, not assumed). No
+backend file changed (278 tests unmodified and passing); 40 new
+frontend `jsdom` checks passing (`phase3a_check.mjs`). **Unverified**:
+actual visual proportions, resize feel, and responsive behavior at real
+narrow widths — no real browser in this sandbox; explicitly flagged for
+owner UAT, consistent with this phase's own "initial, UAT-refined"
+framing.
+
 ## Completed foundation work
 
 `[FACT]`, verified against the repository on 2026-08-15:
@@ -1180,14 +1230,29 @@ already uses), which places ticks first and the title below them for
 free. Total ruler height dropped from ~63–80px to ~43–45px. Absolute
 mode's exact wording is now "Record Time" (capital T); no date appears
 in the ruler at all. The Elapsed unit-rescaling logic from Phase
-2C-C4A is completely unchanged. The next step is for the project owner
-to review Phase 2C-C4B via live DEV UAT — confirming the ruler now
-reads as a compact, conventional X-axis matching the reference
-screenshot (ticks above, small title below, no large blank area, no
-date), that "Record Time" appears with the correct capitalization, and
-that the still-outstanding tick-alignment-at-rescaled-units claim from
-Phase 2C-C4A holds visually — and either request further refinement or
-move on to digital channels (the owner's own stated next area).
+2C-C4A is completely unchanged.
+**The owner's next request, ahead of any further waveform-domain
+refinement, was the first structural application-layout redesign**:
+**Phase 3A — Application Shell Redesign Foundation** — see
+[MIGRATION_PLAN.md — Phase 3A Record](MIGRATION_PLAN.md#phase-3a--application-shell-redesign-foundation-2026-08-16)
+and [DECISIONS.md DEC-031](DECISIONS.md#dec-031--application-shell-architecture-global-header-full-height-main-sidebar-menu-work-area-workspace-row--bottom-status-bar-phase-3a).
+The single centered page is now a full-viewport shell: a full-width
+Global Header, a full-height collapsible Main Sidebar Menu, a
+drag-resizable contextual Workspace Sidebar, a dominant Main Workspace
+(unchanged waveform functionality, just relocated), and a Bottom Status
+Bar structurally confined beside Workspace Row only (never beneath Main
+Sidebar Menu — the owner's own explicit correction to an earlier, wrong
+interpretation). Explicitly an INITIAL shell, subject to UAT-driven
+dimension/spacing refinement. The next step is for the project owner to
+review Phase 3A via live DEV UAT — primarily assessing shell geometry
+and proportions (Global Header height, Main Sidebar Menu width in both
+states, the full-height menu geometry specifically, Workspace Sidebar
+width/resize feel, Main Workspace dominance, Status Bar geometry,
+overall visual simplicity) rather than pixel-perfect polish — and
+either request refinement or move on to whichever comes next (digital
+channels remains the owner's other previously-stated next area; Table/
+Split view implementation remains explicitly not authorized until a
+separate request).
 Separately, resolving the
 abandoned-session TTL question (`[DECISION MODE: COMPARISON]`, reassessed
 but not resolved by Phase 2C-A/B1 — neither changes the backend memory-

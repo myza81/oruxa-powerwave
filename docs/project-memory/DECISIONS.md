@@ -2013,6 +2013,167 @@ same sticky-ruler feature — no new decision entry. See
 
 ---
 
+## DEC-031 — Application shell architecture: Global Header, full-height Main Sidebar Menu, Work Area (Workspace Row + Bottom Status Bar) (Phase 3A)
+
+Date: 2026-08-16
+Status: Approved
+Source: explicit project-owner instructions opening the Phase 3A task
+(2026-08-16), with an owner correction to an earlier interpretation of
+the shell geometry, plus two owner follow-up messages establishing the
+responsive/small-screen strategy (tablet as adaptive secondary target,
+phone as a simplified companion mode, desktop/laptop as the primary,
+non-negotiable target).
+
+Decision:
+
+`oruxa_powerwave`'s frontend moves from a single centered page (`main {
+max-width: 1100px; margin: 0 auto }`, the whole document scrolling
+together) to a full-viewport application shell with this exact
+structural hierarchy — a real DOM/CSS nesting, not a simulated one:
+
+```
+App
+├── Global Header                      (#globalHeader, full width)
+└── Body                                (#appBody)
+    ├── Main Sidebar Menu               (#mainSidebarMenu, FULL Body height)
+    └── Work Area                       (#workArea)
+        ├── Workspace Row               (#workspaceRow)
+        │   ├── Workspace Sidebar       (#workspaceSidebar, drag-resizable)
+        │   └── Main Workspace          (#mainWorkspace)
+        │       ├── Workspace Toolbar   (#wwToolbar, existing, relocated)
+        │       └── Active View Area    (#activeViewArea)
+        └── Bottom Status Bar           (#bottomStatusBar)
+```
+
+Confirmed as part of this same decision:
+
+- **Main Sidebar Menu spans the FULL Body height** by construction, not
+  by careful pixel matching: it and Work Area are the two direct flex
+  children of `#appBody` (a flex row), so a flex column split ONE LEVEL
+  DEEPER (inside Work Area, splitting Workspace Row from the Status Bar)
+  is what confines the Status Bar to Work Area's own width — it can
+  never render beneath Main Sidebar Menu, because it isn't a sibling of
+  it in the DOM at all. This was the owner's own explicit correction to
+  an earlier, wrong interpretation, and is the single most important
+  geometry rule in this decision.
+- **Main Sidebar Menu is collapsed/expanded via a TOGGLE, never freely
+  drag-resizable** — a deliberately different interaction model from the
+  Workspace Sidebar, which is drag-resizable and never has a
+  collapsed/expanded state. These are two independent layout regions
+  with two independent state models, on purpose (never coupled).
+- **Workspace Sidebar is contextual to the active engineering
+  workspace** (Sources/Channels/Import today; Values/Groups/Table
+  controls later), explicitly NOT global application navigation — that
+  role belongs to Main Sidebar Menu instead. Horizontally resizable via
+  a small, REUSABLE split-pane helper (`shellCreateHorizontalSplit()`),
+  not a one-off resize mechanism — the same function is intended to
+  drive a future Waveform ⇆ Table split inside Main Workspace, called a
+  second time with different arguments, not a reason to build a larger
+  generic layout framework now.
+- **Layout state is explicit, not DOM-derived**: Workspace Sidebar width
+  (default 320px, min 240px, max 520px — fixed pixel bounds, not
+  dynamically computed against the current window width; a documented,
+  deliberate initial-phase simplification) persists to `localStorage`
+  for the active session; Main Sidebar Menu's collapsed/expanded state
+  is a separate, independently-persisted boolean. No backend
+  persistence for either.
+- **Active View concept**: `shell.activeView` (`"waveform"` | `"table"`
+  | `"split"`) is app-shell state, kept deliberately separate from
+  waveform-domain state (`ww`) — the shell never reads or writes `ww`
+  directly; the reverse direction (waveform code calling a narrow shell
+  setter like `shellUpdateStatusBarChannelCount()`) is the only coupling
+  allowed, and even that is a one-way read, never a mutation of `ww`
+  from shell code. Table and Split are structural placeholders only
+  this phase — no fake grid data, no real Split rendering — proving the
+  Active View Area can host a future mode without needing to be
+  redesigned later.
+- **Existing waveform functionality is relocated, not rewritten**: the
+  entire Phase 2C waveform workspace (Grouped/Separate/Custom, Custom
+  Groups editor, synchronized zoom/pan, Reset Time View, Autoscale Y,
+  Absolute/Elapsed time modes, the sticky shared time-axis ruler,
+  panel-height resizing, Light/Dark theme, crosshair) moved into the
+  Active View Area's Waveform container with every existing element ID
+  preserved — confirmed unchanged by the full existing jsdom regression
+  suite (224 checks, the exact same pre-existing pass/fail counts as
+  before this phase, zero new divergences).
+- **Bottom Status Bar shows only real, already-available values**
+  (workspace id, source station name, sample rate, duration, displayed-
+  channel count) — sourced from data the app already fetches for other
+  reasons (the same `renderChannels()` payload, and `ww.displayed.size`)
+  — never a fabricated value for a feature that doesn't exist yet
+  (Cursor A/B, Delta Cursor, fault/event state are explicitly deferred
+  to documentation, not fake live UI).
+- **Responsive strategy — desktop/laptop primary, tablet adaptive,
+  phone a simplified companion mode, never mobile-first**: the shell
+  defined above is unconditionally the default (no media query alters
+  it). Two breakpoints adapt the SAME DOM/state, not separate markup:
+  under ~900px, Main Sidebar Menu is forced to its collapsed icon rail
+  and the Workspace Sidebar becomes a reopenable overlay drawer (pure
+  CSS `position: absolute` against `#workspaceRow` itself, not `fixed`
+  against the viewport — deliberately avoids needing to know the Global
+  Header's own height); under ~640px, the header/status bar tighten
+  further. Main Workspace (the waveform canvas) always receives the
+  space freed by a collapsed/hidden secondary region — it is never
+  itself the thing that shrinks first. A future Waveform ⇆ Table Split
+  is expected to similarly avoid forcing an unusably narrow side-by-side
+  layout at insufficient width, though the actual fallback behavior for
+  that specific future feature is not decided now.
+
+Reason:
+
+The owner's own instructions opening this task are the explicit act of
+requesting this shell (ahead of any Table/Split implementation), with
+an owner CORRECTION to the shell geometry mid-specification (the
+Main-Sidebar-Menu-vs-Status-Bar nesting) that this document exists
+specifically to prevent from being silently re-litigated by a future
+session — see [README.md — Conflict-resolution rules](README.md#conflict-resolution-rules).
+Per this project's own governance, resolving an owner-corrected,
+load-bearing structural decision is worth recording explicitly, not
+left as implicit CSS.
+
+Alternatives considered:
+
+A full-width Status Bar beneath everything, including Main Sidebar Menu
+(rejected — this was the owner's own explicitly corrected, INCORRECT
+prior interpretation; the task's own instructions labeled this
+structure "Incorrect" in so many words); coupling Main Sidebar Menu's
+collapsed/expanded state to Workspace Sidebar width, e.g. auto-
+collapsing one when the other resizes (rejected — the task's own
+section 21 explicitly required these stay independent); a large,
+generic, reusable layout/splitter framework covering arbitrary future
+panel arrangements (rejected — explicitly out of proportion to this
+phase's own "keep it small and understandable" instruction; a small
+function reusable for exactly the two known future cases, Workspace
+Sidebar and a future Waveform/Table split, is sufficient); dynamically
+computing Workspace Sidebar's maximum width as a function of the
+current window width rather than a fixed pixel cap (rejected for this
+initial phase — judged more complexity than an INITIAL shell,
+explicitly framed as subject to UAT-driven refinement, justified;
+mitigated instead by the drawer-mode responsive fallback, which removes
+the squeeze concern entirely at genuinely narrow widths); building a
+fully polished phone-specific UI in this phase (rejected — the owner's
+own explicit instruction: phone is a secondary companion/review mode,
+not a target for full parity, and desktop workspace quality must not be
+sacrificed to accommodate it).
+
+Impact:
+
+- `frontend/index.html`: full CSS restructuring (`#globalHeader`,
+  `#appBody`, `#mainSidebarMenu`, `#workArea`, `#workspaceRow`,
+  `#workspaceSidebar`, `.shell-split-handle`, `#mainWorkspace`,
+  `#activeViewArea`, `.shell-view-placeholder`, `#bottomStatusBar`, plus
+  two responsive media queries); HTML restructured to move existing
+  Import/Sources/Channels panels into `#workspaceSidebar` and the
+  existing waveform workspace into `#activeViewArea`'s `#viewWaveform`,
+  with every existing element ID preserved; new `shell` state object,
+  `shellCreateHorizontalSplit()`, `shellSetMainSidebarExpanded()`,
+  `shellSetActiveView()`, `shellSetSidebarDrawerOpen()`,
+  `shellOpenImport()`, `shellUpdateStatusBar()`,
+  `shellUpdateStatusBarChannelCount()`. No backend file changed. See
+  [MIGRATION_PLAN.md — Phase 3A Record](MIGRATION_PLAN.md#phase-3a--application-shell-redesign-foundation-2026-08-16).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

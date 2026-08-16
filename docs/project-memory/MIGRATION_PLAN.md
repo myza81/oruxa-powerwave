@@ -6542,6 +6542,258 @@ itself was not touched).
 
 ---
 
+## Phase 3A — Application Shell Redesign Foundation (2026-08-16)
+
+`[FACT]` throughout. `[DECISION]` DEC-031 records the architecture
+itself. This is the first STRUCTURAL redesign of the application shell
+— moving from a single centered page (the whole document scrolling
+together) to a full-viewport app shell with a fixed Global Header, a
+full-height primary navigation rail, a resizable contextual sidebar,
+and a dominant Main Workspace, with a thin Bottom Status Bar correctly
+confined to the work area's own width. Explicitly framed by the owner
+as an INITIAL layout architecture — exact widths/heights/spacing are
+expected to be tuned by later UAT; the STRUCTURAL hierarchy is what's
+load-bearing this phase.
+
+### Owner design principle
+
+"The active analysis area / waveform canvas must dominate the screen"
+— clear, simple, compact controls, minimal visual clutter, scalable for
+future engineering functions. Detego named as the UI/UX/layout
+benchmark (never branding/colors/typography/implementation — per the
+existing Detego Benchmark Principle, DEC-020,
+[PRODUCT_REFERENCES.md](PRODUCT_REFERENCES.md)); Oruxa's own existing
+Light/Dark theme tokens used throughout, no palette redesign.
+
+### Corrected shell hierarchy
+
+The owner explicitly corrected an earlier interpretation mid-
+specification. The final, authoritative geometry:
+
+```
+App
+├── Global Header                      (full application width)
+└── Body
+    ├── Main Sidebar Menu               (FULL Body height)
+    └── Work Area
+        ├── Workspace Row               (most vertical space)
+        │   ├── Workspace Sidebar       (drag-resizable)
+        │   └── Main Workspace
+        └── Bottom Status Bar           (beside Workspace Row only,
+                                          never beneath Main Sidebar Menu)
+```
+
+This is a real DOM/CSS nesting: Main Sidebar Menu and Work Area are the
+two direct flex children of `#appBody`; Workspace Row and the Status
+Bar are a SEPARATE flex split one level deeper, inside Work Area — this
+specific nesting (not careful pixel matching) is what makes the
+geometry correct by construction. See DEC-031 for the full rationale
+and rejected alternative (a full-width Status Bar beneath everything,
+which the task's own instructions explicitly labeled "Incorrect").
+
+### Global Header
+
+Full application width. Application-level only, never waveform-local
+controls (those stay in the Workspace Toolbar, unchanged). Contents:
+app title, API status dot, an Import entry point (brings the unchanged
+upload form in the Workspace Sidebar into view — does not redesign the
+underlying COMTRADE import workflow), an Active View selector
+(Waveform/Table/Split — a real, functional 3-state toggle; Table/Split
+render structural placeholders only), the existing Light/Dark theme
+toggle, and "Start new workspace" (moved from the old page footer).
+"Tools" was deliberately OMITTED from the header this phase — no real
+destination exists yet, and adding an inert button was judged to
+conflict with this task's own repeated "do not invent unfinished
+pages/affordances" guidance; easy to add later once a real Tools
+feature exists.
+
+### Main Sidebar Menu
+
+Narrow icon rail (52px collapsed / 184px expanded), collapsed by
+default, toggled via a button — never freely drag-resizable (a
+deliberately different interaction model from the Workspace Sidebar).
+State (`shell.mainSidebarExpanded`) is independent of Workspace Sidebar
+width by design (section 21's own explicit requirement — never
+coupled). Items: "Workspace" (the one real destination this phase,
+`aria-current="page"`, clicking it returns Active View to Waveform);
+"Table"/"Tools"/"Reports" (visibly present, `disabled`, `title="...
+coming soon"` — proves the rail holds multiple icon+label items without
+inventing fake pages for them); "Settings" (real — flips the existing
+Light/Dark preference via the same `window.PowerwaveTheme` API the
+Global Header's own toggle uses, proving a second working interaction
+beyond collapse/expand without mounting a redundant duplicate control).
+Icons are small hand-authored inline SVGs (`stroke="currentColor"`,
+theme-safe, zero new dependency).
+
+### Work Area
+
+`#workArea`: Workspace Row (flex:1, most space) stacked above the
+Bottom Status Bar (flex:0 0 auto, thin). A real DOM split, not a
+simulated one — see "Corrected shell hierarchy" above.
+
+### Workspace Sidebar
+
+Contextual to the active engineering workspace, explicitly NOT global
+navigation (that's Main Sidebar Menu's role). The existing Import
+form + Sources list + Channels panel moved here unredesigned (same
+IDs, same `renderChannels()`/`setupSelectionControls()` logic,
+confirmed unchanged by the existing jsdom regression suite) — stacked
+vertically now (a single narrower column) rather than the old 2-column
+page grid. Horizontally resizable: default 320px, min 240px, max 520px
+(section 20's own required explicit state — fixed pixel bounds this
+phase, not dynamically computed against window width, a documented
+initial-phase simplification; the responsive drawer fallback below
+650px width removes the "unusable strip" risk at genuinely narrow
+viewports instead). Width persists to `localStorage`
+(`powerwave.shell.workspaceSidebarWidth`) for the active session — no
+backend persistence.
+
+### Reusable horizontal split-pane foundation
+
+`shellCreateHorizontalSplit(options)` — deliberately small (wires ONE
+drag handle to resize ONE panel within given bounds, with optional
+`localStorage` persistence), not a generic layout framework. Reuses the
+EXACT established Pointer Capture + add/remove-on-pointerdown/up/cancel
+pattern already proven for panel-height resize (`wwWireResizeHandle`,
+Phase 2C-C2/C2A) — a proven mechanism, not a new one. This is the SAME
+function a future Waveform ⇆ Table split inside Main Workspace is
+expected to call a second time with different arguments (section
+10/22's own explicit forward-compatibility requirement) — not
+implemented this phase, but not blocked by this one either.
+
+### Main Workspace
+
+`#mainWorkspace`: Workspace Toolbar (unchanged content — Zoom/Pan/Reset
+Time View/Autoscale Y/Time Mode/Layout Mode/Edit Custom Groups, plus
+the relocated "Clear workspace" button, previously in a separate
+heading row now removed as redundant with the Active View concept)
+above `#activeViewArea` (scrollable, holds whichever of Waveform/Table/
+Split is active). The waveform workspace's own old "Waveform Workspace"
+h2 heading was removed — redundant with the Header's own View selector
+already labeled "Waveform," and avoiding an oversized heading per this
+task's own visual-hierarchy guidance.
+
+### Active View architecture
+
+`shell.activeView` (`"waveform"` | `"table"` | `"split"`) — app-shell
+state, deliberately separate from waveform-domain state (`ww`); the
+shell never reads/writes `ww` directly, only the reverse (a narrow,
+one-way read via `shellUpdateStatusBarChannelCount()`). Waveform is the
+real, current view. Table and Split render clean structural
+placeholders (`.shell-view-placeholder`, "Not implemented yet — this
+shell slot is reserved for...") — confirmed by test to contain zero
+`<table>` markup and trigger zero new fetches when switched to. Proves
+the Active View Area can host a future mode without needing
+architectural rework later.
+
+### Sticky Time Axis
+
+Preserved exactly — the accepted Phase 2C-C4B compact layout (ticks
+above, "Record Time"/"Time (ms)"/"Time (s)"/"Time (min)" below, no
+date in the ruler) is completely unchanged. The sticky mechanism's
+nearest SCROLLING ancestor changed from the whole page (every prior
+phase) to `#activeViewArea` specifically (Phase 3A gave every shell
+region its own internal scroll) — functionally identical behavior,
+just a more contained scrolling context; confirmed unchanged by test.
+
+### Bottom Status Bar
+
+A sibling of Workspace Row inside Work Area (see "Corrected shell
+hierarchy") — structurally confined to Work Area's own width, never
+render-able beneath Main Sidebar Menu. Thin, real values only: workspace
+id (moved from the old footer), source station name, sample rate,
+duration (from the same already-fetched `renderChannels()` payload —
+no new API call), and displayed-channel count (`ww.displayed.size`,
+read-only). Cursor A/B, Delta Cursor, fault/event state are explicitly
+NOT shown (they don't exist yet) — deferred to documentation, never
+fabricated live UI.
+
+### Responsive strategy
+
+Desktop/laptop is the unconditional primary target — the shell above
+applies with no media query alteration. Two breakpoints adapt the SAME
+DOM/state (no separate phone markup): under ~900px, Main Sidebar Menu
+is forced to its collapsed icon rail and Workspace Sidebar becomes a
+reopenable overlay drawer (pure CSS `position: absolute` against
+`#workspaceRow` itself — deliberately avoids needing the Global
+Header's own height, unlike `position: fixed` against the viewport);
+under ~640px, header/status-bar spacing tighten further. Main Workspace
+always receives the space freed by a collapsed/hidden secondary
+region — it is never itself what shrinks first. Phone is treated as a
+secondary companion/review mode per the owner's own explicit framing,
+not a target for full parity with desktop — not fully designed this
+phase, only structurally un-blocked (no severe layout breakage;
+essential navigation and the waveform stay reachable). A future
+Waveform ⇆ Table Split's own narrow-width fallback behavior is
+explicitly not decided now — only NOT blocked by anything built here.
+
+### Existing control inventory (section 27) — what moved
+
+- "Waveform Workspace" heading — removed (redundant with the header's
+  View selector).
+- "Clear workspace" — moved from a dedicated heading row into the
+  Workspace Toolbar itself.
+- "Workspace: <id>" label + "Start new workspace" — moved from the page
+  footer: the id display now lives in the Bottom Status Bar
+  (`#statusBarWorkspaceId`), "Start new workspace" moved into the
+  Global Header.
+- Import form, Sources list, Channels panel — moved from the old
+  2-column page grid into the (now single-column) Workspace Sidebar,
+  unredesigned internally.
+- Everything else (Open/Import trigger, channel search/selection, Add
+  selected, Grouped/Separate/Custom, Edit Channel Groups, theme
+  selector, Zoom/Pan/Reset Time View/Autoscale Y, Absolute/Elapsed,
+  panel resize, sticky ruler) — same element, same ID, relocated
+  container only.
+
+### Tests
+
+- **Frontend, new**: `phase3a_check.mjs` (scratch, not committed) —
+  40/40 passing. Covers: every shell structural relationship from
+  section 29 (Global Header/Body/Main Sidebar Menu/Work Area/Workspace
+  Row/Bottom Status Bar/Workspace Sidebar/Main Workspace, including the
+  specific parent-chain assertion that proves the Status Bar can never
+  render beneath Main Sidebar Menu), Main Sidebar Menu collapse/expand
+  and non-drag-resizability, Workspace Sidebar drag-resize (live resize,
+  min/max clamping, zero waveform fetches, pointer-listener cleanup
+  after pointerup, localStorage persistence), Main Workspace/Active View
+  Area structure, the full existing waveform feature set re-verified
+  working (channel selection, Grouped/Separate/Custom, zoom/pan/Reset
+  Time View/Autoscale Y, Absolute/Elapsed, panel-height resize, Custom
+  Groups, theme switching), the Active View state model (all three
+  values representable, Table/Split contain zero fake data/fetches),
+  Bottom Status Bar real-value sourcing and channel-count sync, and
+  workspace-reset clearing both waveform and status-bar state cleanly.
+- **Frontend, existing, re-run unmodified**: the full Phase 2C-A through
+  2C-C4B suites (224 checks) — the EXACT SAME pre-existing pass/fail
+  counts as immediately before this phase (20 already-documented
+  failures, all explained in those phases' own records) — **zero new
+  divergences from the shell restructuring**. This was not assumed; it
+  was independently confirmed by running the full suite before and
+  after this phase's changes. It held because every existing waveform
+  element kept its exact ID and internal DOM relationships — only its
+  container moved.
+- **Backend**: zero diff, 278/278 passing in a fresh venv.
+
+### Files changed
+
+Modified only: `frontend/index.html`. No backend file, no CI/deployment
+workflow file.
+
+### Honest limitation
+
+This sandboxed session has no real browser. The shell's actual visual
+proportions, whether the waveform canvas genuinely reads as dominant,
+whether the Workspace Sidebar resize feels smooth, whether Main Sidebar
+Menu's collapsed width feels right, and the entire responsive/drawer
+behavior at real narrow viewport widths were **not** visually confirmed
+— only structural/behavioral evidence (jsdom DOM/state assertions, CSS
+source inspection) was verified. This is explicitly an INITIAL shell
+per the task's own framing; the owner's manual UAT is expected to
+adjust dimensions/spacing, not just confirm the structure.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

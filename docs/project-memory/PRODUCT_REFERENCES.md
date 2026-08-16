@@ -268,6 +268,24 @@ actually designed.
 - design an independent, potentially superior workspace — informed by
   both, dictated by neither.
 
+**Application shell** (Phase 3A, 2026-08-16) — this one is no longer
+illustrative; it is now a real, owner-approved decision
+([DECISIONS.md DEC-031](DECISIONS.md#dec-031--application-shell-architecture-global-header-full-height-main-sidebar-menu-work-area-workspace-row--bottom-status-bar-phase-3a)),
+recorded here because it applied this exact four-column method: Detego
+named explicitly as the UI/UX/layout benchmark for the overall
+Global-Header/Main-Sidebar-Menu/Workspace-Sidebar/Main-Workspace/
+Status-Bar arrangement (never its branding, colors, typography, or
+implementation); `powerwave`'s own engineering behaviour was not
+directly relevant to this specific decision (a shell/navigation
+question, not a signal-processing one); the owner's own corrected shell
+geometry (Main Sidebar Menu spans the full Body height, the Status Bar
+never runs beneath it) was final authority over any benchmark
+inspiration; and the resulting Oruxa design is an independent
+implementation, informed by the benchmark, dictated by neither
+reference. This does not supersede the "Waveform workspace" example
+above, which still governs the internal panel/zoom/grouping design
+living inside the shell's own Main Workspace region.
+
 **Multi-source synchronization** (Phase 3+, not yet scoped):
 - Detego may offer useful workflow inspiration for how synchronized
   sources are presented;
