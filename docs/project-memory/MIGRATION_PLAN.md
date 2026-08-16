@@ -7578,6 +7578,85 @@ confirmed — flagged for owner UAT.
 
 ---
 
+## Phase 3B-UAT2 — Remove Duplicate Waveform-Page Import / New-Workspace Actions (2026-08-17)
+
+`[FACT]`. The owner established a clearer page-responsibility split:
+Recordings owns recording/session management (upload/import, Open/
+Analyse, Remove, and now whole-workspace lifecycle); Waveform stays
+engineering-analysis-only. Two Global Header controls previously visible
+regardless of page — "Import" and "Start new workspace" — duplicated
+what Recordings already provides.
+
+**Change**: the Global Header's own "Import" shortcut
+(`#shellImportBtn`, and the now-unused `shellOpenImport()` function)
+was removed entirely — Recordings' own "Upload New" button already
+opens the identical Upload Recording modal, so a second header-level
+entry point to the same action was redundant. "Start new workspace"
+(`#newWorkspaceButton` + its `#workspaceResetError` banner) was
+relocated — same element IDs, same `startNewWorkspace()`/
+`resetToNewWorkspace()` logic, completely unchanged — from the Global
+Header into the Recordings page's own header row, grouped with "Upload
+New" in a new `.recordings-header-actions` wrapper. `.recordings-header`
+gained `flex-wrap: wrap` so the now-larger action group wraps safely at
+narrow widths instead of overflowing.
+
+**Explicitly unchanged**: the whole-workspace reset lifecycle itself
+(confirmation, DELETE-then-rotate order, failure handling, DEC-018) —
+only WHERE the trigger button lives moved. `startNewWorkspace()`'s own
+`document.getElementById("sourceList").children.length > 0` check still
+works correctly regardless of page, since the Workspace Sidebar's
+`#sourceList` stays in the DOM (only hidden, never removed) when
+navigating to Recordings. "Clear workspace" (`#clearWorkspaceBtn`, in
+the Waveform toolbar) is untouched and remains the distinct,
+displayed-channels-only operation it always was — confirmed by test
+that it never calls the whole-workspace DELETE endpoint.
+
+### Tests
+
+- **Frontend, new**: `phase3buat2_check.mjs` (scratch, not committed) —
+  14/14 passing. Covers: no Import control anywhere in the document;
+  `#newWorkspaceButton` no longer inside `#globalHeader`; Recordings
+  page contains both Upload New and Start new workspace; exactly one
+  `<form>`/upload modal and exactly one `#newWorkspaceButton`/
+  `#newWorkspaceConfirmOverlay` exist (no duplicate implementations);
+  Upload New still opens the one modal; Start new workspace still opens
+  the existing confirmation (not an immediate reset); Cancel is a true
+  no-op; a successful confirm still issues exactly one whole-workspace
+  DELETE and clears/rotates state (waveform-displayed-channels included);
+  a failed reset leaves sources untouched with the existing error shown;
+  Waveform → Recordings and Recordings → Waveform navigation both cause
+  zero workspace-DELETE calls and leave displayed channels/sources
+  untouched; Clear workspace remains present, functional, and distinct
+  from Start new workspace.
+- **Frontend, existing suite corrections**: `phase3b_check.mjs`,
+  `phase3a_check.mjs`, and `phase3auat2_check.mjs` each had one
+  assertion updated in place where it referenced the now-intentionally-
+  removed `#shellImportBtn`/`shellOpenImport()` — following this
+  project's established precedent of updating assertions rather than
+  leaving them failing.
+- **Frontend, full regression**: the exact same 20 pre-existing,
+  already-documented failures, zero new divergences.
+- **Backend**: zero diff, 279/279 passing in a fresh venv (no backend
+  file touched — this is a pure UI-relocation task).
+
+### Files changed
+
+Modified: `frontend/index.html` only. No backend file, no CI/deployment
+workflow file. `DECISIONS.md` not touched — a UI relocation within the
+already-decided DEC-032 Recordings/Waveform architecture, not a new or
+revised decision.
+
+### Honest limitation
+
+No real browser is available in this sandbox. Whether the Global
+Header now reads as appropriately simplified on the Waveform page, and
+whether the Recordings page's two grouped actions (Upload New, Start
+new workspace) read clearly with Upload New still visually primary,
+were reasoned through but not visually confirmed — flagged for owner
+UAT.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

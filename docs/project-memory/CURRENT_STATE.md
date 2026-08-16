@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-17** (Phase 3B-UAT1).
+Last meaningful update: **2026-08-17** (Phase 3B-UAT2).
 
 ## Development phase
 
@@ -789,6 +789,25 @@ unmodified and passing); 7 new frontend `jsdom` checks passing
 (`phase3buat1_check.mjs`). **Unverified**: real-browser visual
 confirmation that the divider now reads as one continuous line —
 flagged for owner UAT.
+
+`[FACT]` **Owner established a clearer Recordings/Waveform
+responsibility split — Phase 3B-UAT2 — Remove Duplicate Waveform-Page
+Import / New-Workspace Actions — is now implemented** (2026-08-17) —
+see
+[MIGRATION_PLAN.md — Phase 3B-UAT2 Record](MIGRATION_PLAN.md#phase-3b-uat2--remove-duplicate-waveform-page-import--new-workspace-actions-2026-08-17).
+Recordings is now the sole recording/session-management surface
+(upload/import, Open/Analyse, Remove, and whole-workspace lifecycle);
+Waveform stays analysis-only. The Global Header's own "Import"
+shortcut was removed entirely (Recordings' "Upload New" already covers
+it); "Start new workspace" was relocated (same element ID, same
+unchanged `startNewWorkspace()`/`resetToNewWorkspace()` logic) from the
+Global Header onto the Recordings page's own header row, grouped
+beside "Upload New". "Clear workspace" (Waveform toolbar, displayed-
+channels-only) remains untouched and distinct. No backend file changed
+(279 tests unmodified and passing); 14 new frontend `jsdom` checks
+passing (`phase3buat2_check.mjs`). **Unverified**: real-browser visual
+confirmation of the simplified Waveform header and the grouped
+Recordings actions — flagged for owner UAT.
 
 ## Completed foundation work
 

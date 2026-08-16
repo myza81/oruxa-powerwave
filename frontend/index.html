@@ -310,8 +310,19 @@
             justify-content: space-between;
             gap: 16px;
             margin-bottom: 16px;
+            flex-wrap: wrap; /* Phase 3B-UAT2: two action groups now sit on the right; wrap rather than overflow at narrow widths */
         }
         .recordings-header h2 { margin: 0; font-size: 1.15rem; }
+        /* Phase 3B-UAT2: groups "Upload New" (primary) with the relocated
+           "Start new workspace" (secondary, via .shell-header-reset's own
+           existing `.secondary` button styling) on the right side of the
+           page header -- Upload New stays visually primary, matching the
+           task's own "do not make it compete unnecessarily" instruction. */
+        .recordings-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
         /* Same intentional horizontal-scroll containment technique as
            Phase 3A-UAT3's Finding B (.group-body) -- the table's own
            columns/content must never force the Recordings page, and by
@@ -705,11 +716,14 @@
         }
         a.waveform-proto-link:hover { color: var(--accent); border-color: var(--accent-dim); }
 
-        /* Phase 3A: the old page-footer's content ("Start new workspace" +
-           its error banner) moved into the Global Header -- see section 27
-           of that phase's own control inventory. `#workspaceResetError`
-           keeps its existing classes/behavior, just a new small wrapper
-           for header placement. */
+        /* "Start new workspace" + its error banner (`#workspaceResetError`,
+           unchanged classes/behavior throughout every relocation). Phase
+           3A moved this into the Global Header; Phase 3B-UAT2 moved it
+           again, off the header entirely and onto the Recordings page's
+           own header row (see .recordings-header-actions below) -- the
+           owner's responsibility split makes Recordings the one
+           workspace-management surface, so this whole-workspace
+           lifecycle action belongs there, not on the Waveform page. */
         .shell-header-reset {
             display: flex;
             align-items: center;
@@ -1317,12 +1331,6 @@
                  longer a permanent column (responsive addendum, section
                  3/6). -->
             <button type="button" class="secondary" id="shellSidebarToggleBtn" aria-label="Toggle sources panel">Sources</button>
-            <!-- Application-level Import shortcut (Phase 3B, section 17):
-                 navigates to Recordings and opens the SAME Upload
-                 Recording modal "Upload New" uses there -- one upload
-                 implementation, never a second independent one. See
-                 shellOpenImport(). -->
-            <button type="button" class="secondary" id="shellImportBtn">Import</button>
             <!-- Active View selector (section 13) -- Waveform is the real,
                  current working view; Table/Split are structural
                  placeholders only (section 14), never fake data. -->
@@ -1331,13 +1339,16 @@
                 <button type="button" id="shellViewTableBtn" aria-pressed="false">Table</button>
                 <button type="button" id="shellViewSplitBtn" aria-pressed="false">Split</button>
             </div>
-            <!-- Moved from the old page footer (section 27's control
-                 inventory) -- a whole-workspace lifecycle action, at home
-                 alongside Import at the application level. -->
-            <div class="shell-header-reset">
-                <button class="secondary" id="newWorkspaceButton" type="button">Start new workspace</button>
-                <p class="hint error" id="workspaceResetError" hidden role="alert"></p>
-            </div>
+            <!-- Phase 3B-UAT2: Import and "Start new workspace" both moved
+                 OFF the Global Header entirely (they used to live here,
+                 visible regardless of page) and onto the Recordings page
+                 itself -- see #pageRecordings' own .recordings-header
+                 below. Recordings is now the one management surface
+                 (recording upload/import, workspace lifecycle); the
+                 Waveform page/Global Header stay focused on analysis
+                 navigation, per the owner's own responsibility split. No
+                 empty placeholder is left here -- #globalHeaderActions
+                 simply has fewer children now. -->
         </div>
     </header>
 
@@ -1512,7 +1523,18 @@
             <section id="pageRecordings" aria-label="Recordings" hidden>
                 <div class="recordings-header">
                     <h2>Recording Events</h2>
-                    <button type="button" id="recordingsUploadBtn">Upload New</button>
+                    <div class="recordings-header-actions">
+                        <button type="button" id="recordingsUploadBtn">Upload New</button>
+                        <!-- Phase 3B-UAT2: relocated from the Global Header
+                             (unchanged element IDs/behavior) -- Recordings
+                             is now the one workspace-management surface;
+                             see startNewWorkspace()/resetToNewWorkspace(),
+                             completely unchanged by this move. -->
+                        <div class="shell-header-reset">
+                            <button class="secondary" id="newWorkspaceButton" type="button">Start new workspace</button>
+                            <p class="hint error" id="workspaceResetError" hidden role="alert"></p>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="search-row">
@@ -1637,12 +1659,14 @@
          (RECORDING_FORMATS below), not hard-coded to COMTRADE (section
          12/14). COMTRADE is the only ENABLED format this phase; CSV/Excel
          are listed as visibly-disabled options, proving the architecture
-         without pretending those formats already work. Reused by both
-         "Upload New" on the Recordings page and the Global Header's
-         Import shortcut (section 17/11) -- one underlying implementation,
-         not two. Same dialog shell/dismissal pattern as Custom Groups
-         above (Cancel/close/Escape/backdrop-click), guarded against
-         closing mid-upload (section 25). -->
+         without pretending those formats already work. Opened by "Upload
+         New" on the Recordings page (both the header and empty-state
+         buttons) -- the one and only upload implementation (Phase
+         3B-UAT2 removed the Global Header's own Import shortcut, which
+         used to open this same modal; Recordings' own "Upload New" now
+         covers that role). Same dialog shell/dismissal pattern as Custom
+         Groups above (Cancel/close/Escape/backdrop-click), guarded
+         against closing mid-upload (section 25). -->
     <div class="confirm-overlay" id="uploadModalOverlay" hidden>
         <div class="group-editor-box" role="dialog" aria-modal="true" aria-labelledby="uploadModalTitle">
             <div class="group-editor-header">
@@ -1987,16 +2011,6 @@
             document.getElementById("workspaceRow").classList.toggle("shell-sidebar-open", open);
         }
 
-        // ---- Import entry point (Phase 3B, section 17): the Global
-        // Header's Import shortcut routes into the SAME single upload
-        // workflow the Recordings page's own "Upload New" button uses --
-        // there is exactly one upload modal/implementation, never a
-        // second independent one. ----
-        function shellOpenImport() {
-            shellSetCurrentPage("recordings");
-            openUploadModal();
-        }
-
         // ---- Bottom Status Bar (section 17/18): real, already-available
         // values only -- never fabricated. Two independent update points,
         // matching the two independent facts it shows: which SOURCE is
@@ -2196,11 +2210,13 @@
 
         // ------------------------------------------------------------------
         // Phase 3B: Upload Recording modal -- the ONE upload implementation
-        // (section 11/16/17), reused by "Upload New" on the Recordings page
-        // and the Global Header's Import shortcut alike. Structure is
-        // driven by RECORDING_FORMATS; the actual submit path stays
-        // COMTRADE-specific because that is the only format with a backend
-        // endpoint to call -- see RECORDING_FORMATS's own comment.
+        // (section 11/16/17), opened by "Upload New" on the Recordings
+        // page (Phase 3B-UAT2 removed the Global Header's own Import
+        // shortcut -- Recordings' own Upload New now covers that role).
+        // Structure is driven by RECORDING_FORMATS; the actual submit
+        // path stays COMTRADE-specific because that is the only format
+        // with a backend endpoint to call -- see RECORDING_FORMATS's own
+        // comment.
         // ------------------------------------------------------------------
         let uploadModalSubmitting = false; // section 25/30: guards against double-submit and mid-upload dismissal
 
@@ -4980,7 +4996,6 @@
         document.getElementById("shellViewTableBtn").addEventListener("click", () => shellSetActiveView("table"));
         document.getElementById("shellViewSplitBtn").addEventListener("click", () => shellSetActiveView("split"));
 
-        document.getElementById("shellImportBtn").addEventListener("click", shellOpenImport);
         document.getElementById("shellSidebarToggleBtn").addEventListener("click", () => {
             const row = document.getElementById("workspaceRow");
             shellSetSidebarDrawerOpen(!row.classList.contains("shell-sidebar-open"));

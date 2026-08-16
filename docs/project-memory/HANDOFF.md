@@ -8,6 +8,43 @@ Last updated: **2026-08-17**
 
 ## What was most recently done
 
+**Phase 3B-UAT2 — Remove Duplicate Waveform-Page Import / New-Workspace
+Actions.** The owner established a clearer page-responsibility split:
+Recordings owns recording/session management (upload/import, Open/
+Analyse, Remove, and now whole-workspace lifecycle); Waveform stays
+analysis-only. Full detail:
+[MIGRATION_PLAN.md — Phase 3B-UAT2 Record](MIGRATION_PLAN.md#phase-3b-uat2--remove-duplicate-waveform-page-import--new-workspace-actions-2026-08-17).
+
+**What changed**: the Global Header's own "Import" shortcut
+(`#shellImportBtn`, and `shellOpenImport()`) was removed entirely —
+Recordings' own "Upload New" already opens the identical modal, so a
+second header-level entry point was redundant. "Start new workspace"
+(`#newWorkspaceButton`/`#workspaceResetError`) was relocated — same
+IDs, same completely unchanged `startNewWorkspace()`/
+`resetToNewWorkspace()` lifecycle logic — from the Global Header onto
+the Recordings page's own header row, grouped with "Upload New" in a
+new `.recordings-header-actions` wrapper (`.recordings-header` gained
+`flex-wrap: wrap` for safe narrow-width wrapping). "Clear workspace"
+(Waveform toolbar) is untouched and remains distinct — confirmed by
+test it never calls the whole-workspace DELETE endpoint.
+
+**Verification**: 14 new frontend `jsdom` checks
+(`phase3buat2_check.mjs`) + three existing test files corrected in
+place where they referenced the now-intentionally-removed
+`#shellImportBtn`/`shellOpenImport()` — the full suite otherwise
+returns to the exact same 20 pre-existing, already-documented failures,
+zero new divergences. Backend: zero diff, 279/279 passing in a fresh
+venv.
+
+**Backend**: zero files changed — a pure UI-relocation task. **Real-
+browser visual confirmation — whether the Waveform header now reads as
+appropriately simplified, and whether the Recordings page's grouped
+actions read clearly with Upload New still visually primary — was NOT
+and cannot be confirmed in this sandboxed session; this remains
+explicitly for the owner's own manual UAT.**
+
+## What was done in the prior session (Phase 3B-UAT1 — Recording Row Divider Alignment)
+
 **Phase 3B-UAT1 — Recording Row Divider Alignment.** Owner manual UAT
 of the Recordings page found one cosmetic issue: the Actions column's
 bottom row divider sat higher than the divider under the other columns
