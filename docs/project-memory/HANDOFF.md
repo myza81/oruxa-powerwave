@@ -8,6 +8,52 @@ Last updated: **2026-08-17**
 
 ## What was most recently done
 
+**Phase 3B-UAT4 — Recordings as Default Entry Page.** Full detail:
+[MIGRATION_PLAN.md — Phase 3B-UAT4 Record](MIGRATION_PLAN.md#phase-3b-uat4--recordings-as-default-entry-page-2026-08-17),
+[DECISIONS.md — DEC-033](DECISIONS.md#dec-033--recordings-is-the-applications-default-fresh-entry-page-no-separate-landingdashboard-page-phase-3b-uat4).
+
+**What changed**: a fresh visit to the app now shows the Recordings
+page ("Recording Events") by default instead of an empty Waveform
+workspace — `shell.currentPage`'s default value changed from
+`"waveform"` to `"recordings"`, applied via `shellSetCurrentPage
+("recordings")` called explicitly near the start of Init (the SAME
+function every other navigation already goes through). The static HTML
+defaults (`#workspaceRow` now starts `hidden`, `#pageRecordings` no
+longer does, `aria-current` on the two Main Sidebar Menu buttons
+swapped) were kept hand-in-sync to avoid any flash of the old default.
+The old unconditional trailing `refreshAllSourceViews()` call at the
+end of Init was removed — the Recordings list is now populated exactly
+once, via `shellSetCurrentPage`'s own existing branch for that.
+
+**No landing/dashboard page was added** — Recording Events remains the
+operational entry page (a future dashboard is an open question, not
+built now). **No routing framework was introduced** — the app has no
+URL-aware navigation at all; this is a single default-state change, not
+a router.
+
+**Unaffected**: `shellSetCurrentPage()` itself is unmodified, so
+Recordings ⇆ Waveform navigation still preserves viewport, layout mode,
+Custom Groups, panel heights, and time mode with zero refetch — reused
+the exact "hide, don't destroy" mechanism established since Phase 3A/
+3B, confirmed by test with a full multi-hop round trip. The Global
+Header is untouched by this specific pass (Phase 3B-UAT2/UAT3 already
+relocated page-specific actions off it).
+
+**Verification**: 8 new frontend `jsdom` checks (`phase3buat4_check.mjs`)
++ one existing assertion in `phase3buat2_check.mjs` corrected in place
+(it had implicitly assumed Waveform was the default page) — the full
+suite otherwise returns to the exact same 20 pre-existing, already-
+documented failures, zero new divergences. Backend: zero diff, 279/279
+passing in a fresh venv.
+
+**Backend**: zero files changed. **Real-browser visual confirmation —
+whether a fresh page load genuinely shows Recordings with no visible
+flash of the old Waveform default — was NOT and cannot be confirmed in
+this sandboxed session; this remains explicitly for the owner's own
+manual UAT.**
+
+## What was done in the prior session (Phase 3B-UAT3 — Recordings Header Action Cleanup)
+
 **Phase 3B-UAT3 — Recordings Header Action Cleanup.** Two small
 refinements following directly from Phase 3B-UAT2's own relocation
 work. Full detail:

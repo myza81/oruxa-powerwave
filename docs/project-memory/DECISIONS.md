@@ -2337,6 +2337,105 @@ Impact:
 
 ---
 
+## DEC-033 — Recordings is the application's default fresh-entry page; no separate landing/dashboard page (Phase 3B-UAT4)
+
+Date: 2026-08-17
+Status: Approved
+Source: explicit project-owner instructions opening the Phase 3B-UAT4
+task (2026-08-17).
+
+Decision:
+
+Visiting the application fresh (e.g. `https://dev.powerwave.oruxa.uk/`
+with no prior in-session navigation) now shows the **Recordings** page
+(heading "Recording Events") by default, not an empty Waveform
+workspace. The intended product flow is:
+
+```
+Recording Events → choose/upload a recording → Open / Analyse → Waveform
+```
+
+not the reverse. Confirmed as part of this same decision:
+
+- **No separate Powerwave landing/dashboard page was added.** Recording
+  Events itself is the operational entry page — there is not yet enough
+  meaningful dashboard content (no saved workspaces, persistent history,
+  shared recordings, reports, or notifications) to justify an
+  intermediate step before it. A future landing/dashboard page remains
+  open for later consideration if/when the product gains that content,
+  not decided now.
+- **Implementation is the smallest robust option, not a routing
+  framework.** The app has no URL-aware navigation at all; building one
+  purely to satisfy "fresh entry = Recordings" was judged out of
+  proportion to this change. The fix is a single default-state value —
+  `shell.currentPage` now initializes to `"recordings"` instead of
+  `"waveform"` — applied through the SAME `shellSetCurrentPage()`
+  function every other in-app navigation already uses (not a separate
+  "initial page" code path), with the static HTML's own default
+  visibility/`aria-current` attributes kept hand-in-sync to avoid a
+  visible flash to the old Waveform-default state before that Init call
+  runs.
+- **Fresh entry vs. in-session navigation stay distinct.** Only the
+  DEFAULT/INITIAL state changed — `shellSetCurrentPage()` itself is
+  completely unmodified, so the already-established "hide, don't
+  destroy" behavior (Recordings ⇆ Waveform navigation never rebuilds or
+  refetches the waveform workspace; viewport, layout mode, Custom
+  Groups, panel heights, and time mode all survive any number of round
+  trips) is unaffected — confirmed by test.
+- **The Global Header stays general-purpose.** This decision did not
+  add or remove any Global Header control on its own — Phase 3B-UAT2/
+  UAT3 had already relocated all page-specific management actions
+  (Import removed entirely; Start new workspace + Upload New living in
+  the Recordings page's own header row) off the Global Header, which
+  this decision's own product-flow framing endorses as the correct
+  standing arrangement: the Global Header is reserved for genuinely
+  global application/user-level functions (identity, future account/
+  settings), not page-specific actions, regardless of which page
+  happens to be the default.
+
+Reason:
+
+The owner's own instructions frame this as reflecting how an engineer
+actually works: choosing or uploading the recording to analyse comes
+first, opening it in Waveform comes second. Landing on an empty
+Waveform workspace put the product's own natural entry step (browsing/
+importing recordings) one unnecessary click away from where the session
+actually starts.
+
+Alternatives considered:
+
+A dedicated Powerwave landing/dashboard page shown before Recordings
+(rejected — explicitly out of scope per the owner's own instruction;
+there is not yet enough real dashboard content to justify it, and
+inventing placeholder dashboard content was explicitly disallowed); a
+real URL-based router (`/`, `/recordings`, `/waveform` each resolving
+independently, with `history.pushState`/`popstate` handling) (rejected
+for this pass — the task's own explicit "do not build a routing
+framework just for this if the current app does not need one"; the
+single default-state change is sufficient for the stated requirement
+and does not block a future router from being introduced when the
+product actually needs shareable/bookmarkable URLs); defaulting
+`shell.currentPage` in the JS state object alone without also updating
+the static HTML defaults (considered, but rejected as less robust — it
+would rely on script-execution-before-first-paint timing to avoid a
+visible flash rather than guaranteeing it structurally).
+
+Impact:
+
+- `frontend/index.html`: `shell.currentPage`'s default value changed
+  from `"waveform"` to `"recordings"`; `shellSetCurrentPage("recordings")`
+  is now called explicitly near the start of Init (replacing a
+  redundant unconditional trailing `refreshAllSourceViews()` call, so
+  a fresh load still fetches the source list exactly once); the static
+  HTML defaults for `#workspaceRow` (now `hidden`), `#pageRecordings`
+  (no longer `hidden`), and the Main Sidebar Menu's `aria-current`
+  attributes on `#mainNavWaveformBtn`/`#mainNavRecordingsBtn` were
+  updated to match. No other function's behavior changed. No backend
+  file touched.
+- See [MIGRATION_PLAN.md — Phase 3B-UAT4 Record](MIGRATION_PLAN.md#phase-3b-uat4--recordings-as-default-entry-page-2026-08-17).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

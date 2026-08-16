@@ -1390,12 +1390,19 @@
                      "Recordings" are now the two first-class application
                      pages (shell.currentPage), distinct from
                      shell.activeView (Waveform/Table/Split, only
-                     meaningful while ON the Waveform page). -->
-                <button type="button" class="shell-nav-item" id="mainNavWaveformBtn" aria-current="page">
+                     meaningful while ON the Waveform page). Phase
+                     3B-UAT4: static aria-current defaults below now match
+                     shell's own default currentPage ("recordings") --
+                     kept in sync by hand here specifically to avoid a
+                     visible flash to the (previously default) Waveform
+                     page before Init's shellSetCurrentPage("recordings")
+                     call runs; that call is still what makes this the
+                     actual source of truth at runtime. -->
+                <button type="button" class="shell-nav-item" id="mainNavWaveformBtn" aria-current="false">
                     <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><rect x="2" y="2" width="6" height="6" rx="1"/><rect x="10" y="2" width="6" height="6" rx="1"/><rect x="2" y="10" width="14" height="6" rx="1"/></svg></span>
                     <span class="shell-nav-label">Waveform</span>
                 </button>
-                <button type="button" class="shell-nav-item" id="mainNavRecordingsBtn" aria-current="false">
+                <button type="button" class="shell-nav-item" id="mainNavRecordingsBtn" aria-current="true">
                     <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><line x1="3" y1="5" x2="15" y2="5" stroke-width="1.5"/><line x1="3" y1="9" x2="15" y2="9" stroke-width="1.5"/><line x1="3" y1="13" x2="11" y2="13" stroke-width="1.5"/></svg></span>
                     <span class="shell-nav-label">Recordings</span>
                 </button>
@@ -1422,9 +1429,11 @@
 
         <!-- Work Area (section 6): everything right of Main Sidebar Menu,
              vertically split into Workspace Row (most space) and the
-             Bottom Status Bar. -->
+             Bottom Status Bar. Phase 3B-UAT4: hidden by default -- see
+             the aria-current comment above; Recordings is now the
+             fresh-entry default, kept in sync with shell.currentPage. -->
         <div id="workArea">
-            <div id="workspaceRow">
+            <div id="workspaceRow" hidden>
                 <!-- Only rendered visible by CSS under the drawer
                      breakpoint while the sidebar is open -- see
                      shellSetSidebarDrawerOpen(). -->
@@ -1535,8 +1544,10 @@
                  navigating away and back never rebuilds or refetches
                  anything here. No contextual Workspace Sidebar (section
                  21's own preference) -- this is a dedicated management
-                 page that should maximize the recording list area. -->
-            <section id="pageRecordings" aria-label="Recordings" hidden>
+                 page that should maximize the recording list area.
+                 Phase 3B-UAT4: visible by default -- Recordings is now
+                 the application's fresh-entry page (section 2/3). -->
+            <section id="pageRecordings" aria-label="Recordings">
                 <div class="recordings-header">
                     <h2>Recording Events</h2>
                     <div class="recordings-header-actions">
@@ -1802,8 +1813,18 @@
             // "waveform" page -- Waveform/Table/Split are sub-views of the
             // waveform analysis area, not top-level destinations).
             // Navigating currentPage never touches ww (waveform-domain
-            // state) directly -- see shellSetCurrentPage().
-            currentPage: "waveform", // "waveform" | "recordings"
+            // state) directly -- see shellSetCurrentPage(). Phase 3B-UAT4
+            // (section 2/3): "recordings" is now the default fresh-entry
+            // page -- an engineer normally chooses/uploads a recording
+            // first, then opens it in Waveform, not the other way round.
+            // No routing framework was introduced for this (the app has
+            // no URL-aware navigation at all yet, and building one was
+            // explicitly out of scope for this small a change) -- this
+            // single default value, applied via the same
+            // shellSetCurrentPage() every other navigation already goes
+            // through, is the smallest robust implementation. See
+            // shellSetCurrentPage("recordings")'s own Init call below.
+            currentPage: "recordings", // "waveform" | "recordings"
             activeView: "waveform", // "waveform" | "table" | "split" (section 13) -- only meaningful while currentPage === "waveform"
             mainSidebarExpanded: false, // section 21 -- independent of Workspace Sidebar width, never coupled to it
         };
@@ -4978,6 +4999,16 @@
         document.getElementById("newWorkspaceButton").addEventListener("click", startNewWorkspace);
 
         // Phase 3A: App Shell wiring.
+        // Phase 3B-UAT4 (section 3): Recordings is the fresh-entry
+        // default page. Calling the SAME shellSetCurrentPage() every
+        // other navigation already goes through -- not a separate
+        // "initial page" code path -- both applies it (redundant with,
+        // but consistent with, the static HTML defaults above) and
+        // triggers the one Init-time Recordings list fetch via its own
+        // existing `if (page === "recordings") refreshAllSourceViews();`
+        // branch, replacing the old unconditional trailing call at the
+        // end of Init (see below) so there is only ONE fetch, not two.
+        shellSetCurrentPage("recordings");
         shellSetMainSidebarExpanded(shellLoadMainSidebarExpanded());
         document.getElementById("mainSidebarToggleBtn").addEventListener("click", () => {
             shellSetMainSidebarExpanded(!shell.mainSidebarExpanded);
@@ -5102,8 +5133,11 @@
             if (!document.getElementById("groupEditorOverlay").hidden) wwCloseGroupEditor();
         });
 
+        // Phase 3B-UAT4: the Recordings list is now populated by the
+        // shellSetCurrentPage("recordings") call above (its own
+        // `if (page === "recordings")` branch) -- no separate trailing
+        // call here, so a fresh page load fetches sources exactly once.
         checkApiHealth();
-        refreshAllSourceViews();
     </script>
 </body>
 </html>

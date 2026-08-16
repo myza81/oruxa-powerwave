@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-17** (Phase 3B-UAT3).
+Last meaningful update: **2026-08-17** (Phase 3B-UAT4).
 
 ## Development phase
 
@@ -827,6 +827,36 @@ tests unmodified and passing); 13 new frontend `jsdom` checks passing
 (`phase3buat3_check.mjs`). **Unverified**: real-browser visual
 confirmation of the reordered actions and the (intentionally very
 small) font-size unification — flagged for owner UAT.
+
+`[FACT]` **Recordings is now the application's default fresh-entry page
+— Phase 3B-UAT4 — Recordings as Default Entry Page — is now
+implemented** (2026-08-17) — see
+[MIGRATION_PLAN.md — Phase 3B-UAT4 Record](MIGRATION_PLAN.md#phase-3b-uat4--recordings-as-default-entry-page-2026-08-17)
+and [DECISIONS.md DEC-033](DECISIONS.md#dec-033--recordings-is-the-applications-default-fresh-entry-page-no-separate-landingdashboard-page-phase-3b-uat4).
+Visiting the application fresh now shows the Recordings page ("Recording
+Events") instead of an empty Waveform workspace, reflecting the intended
+product flow: choose/upload a recording → Open / Analyse → Waveform.
+**No separate Powerwave landing/dashboard page was added** — Recording
+Events itself remains the operational entry page; a future dashboard
+remains an open, undecided future question, not built now. **No routing
+framework was introduced** — the app has no URL-aware navigation at
+all, so the implementation is a single default-state change
+(`shell.currentPage` now initializes to `"recordings"`), applied via
+the same `shellSetCurrentPage()` every other navigation already uses,
+with the static HTML's own default visibility/`aria-current` attributes
+kept hand-in-sync to avoid any flash of the old Waveform default.
+`shellSetCurrentPage()` itself is unmodified, so the already-established
+"hide, don't destroy" navigation behavior (Recordings ⇆ Waveform
+preserves viewport, layout mode, Custom Groups, panel heights, and time
+mode, with zero waveform refetch) is unaffected — confirmed by test with
+a full multi-hop round trip. The Global Header is unaffected by this
+specific change (Phase 3B-UAT2/UAT3 had already relocated all page-
+specific actions off it) and remains reserved for genuinely global
+application/user-level functions. No backend file changed (279 tests
+unmodified and passing); 8 new frontend `jsdom` checks passing
+(`phase3buat4_check.mjs`). **Unverified**: real-browser visual
+confirmation that fresh page loads show Recordings with no visible
+flash — flagged for owner UAT.
 
 ## Completed foundation work
 

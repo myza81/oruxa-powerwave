@@ -7736,6 +7736,117 @@ confirmed — flagged for owner UAT.
 
 ---
 
+## Phase 3B-UAT4 — Recordings as Default Entry Page (2026-08-17)
+
+`[FACT]` throughout. See
+[DECISIONS.md — DEC-033](DECISIONS.md#dec-033--recordings-is-the-applications-default-fresh-entry-page-no-separate-landingdashboard-page-phase-3b-uat4)
+for the full decision record — this section is the implementation
+detail.
+
+### Default entry
+
+`shell.currentPage`'s default value changed from `"waveform"` to
+`"recordings"`. `shellSetCurrentPage("recordings")` is now called
+explicitly near the start of Init — the SAME function every other
+in-app page navigation already goes through, not a separate "initial
+page" code path. That call's own existing `if (page === "recordings")
+refreshAllSourceViews();` branch now supplies the Init-time Recordings
+list fetch, so the old unconditional trailing `refreshAllSourceViews();`
+call at the very end of Init was removed — a fresh load still fetches
+the source list exactly once, not twice.
+
+### No visible flash
+
+The static HTML defaults were updated to match, rather than relying
+solely on script-execution-before-first-paint timing: `#workspaceRow`
+now starts with the `hidden` attribute, `#pageRecordings` no longer
+does, and `#mainNavWaveformBtn`/`#mainNavRecordingsBtn`'s
+`aria-current` attributes were swapped (`"false"`/`"true"`) to match
+what `shellSetCurrentPage()` itself would set at runtime. This is
+belt-and-suspenders robustness, not strictly required by browser
+script-execution timing, but removes any dependency on that timing
+being reliable.
+
+### No routing framework
+
+The app has no URL-aware navigation at all. Per this task's own
+explicit "do not build a routing framework just for this if the
+current app does not need one," no `history.pushState`/`popstate`
+handling or path-based routing was introduced — the single default-
+state change is the smallest robust implementation of "fresh entry
+opens Recordings." This does not block a real router being introduced
+later if the product needs shareable/bookmarkable URLs.
+
+### No landing/dashboard page
+
+No separate Powerwave landing/dashboard page was added ahead of
+Recordings — Recording Events itself is the operational entry page, per
+the owner's own explicit instruction. No placeholder/fake dashboard
+content (recent activity, saved workspaces, etc.) was invented.
+
+### Fresh entry vs. in-session navigation
+
+`shellSetCurrentPage()` itself was not modified — only its default
+INITIAL value changed. The already-established "hide, don't destroy"
+navigation behavior (Recordings ⇆ Waveform preserves viewport, layout
+mode, Custom Groups, panel heights, and time mode across any number of
+round trips, with zero waveform refetch) is unaffected — confirmed by
+test with a full Recordings → Open/Analyse → Waveform → Recordings →
+Waveform round trip building up real analysis state first.
+
+### Global Header
+
+Unaffected by this specific change — Phase 3B-UAT2/UAT3 had already
+relocated every page-specific management action (Import removed
+entirely; Start new workspace + Upload New living in the Recordings
+page's own header row) off the Global Header. This decision's own
+product-flow framing (recorded in DEC-033) endorses that standing
+arrangement as correct going forward: the Global Header stays reserved
+for genuinely global application/user-level functions, not page-
+specific actions, regardless of which page is the default.
+
+### Tests
+
+- **Frontend, new**: `phase3buat4_check.mjs` (scratch, not committed) —
+  8/8 passing. Covers: fresh initialization selects Recordings with no
+  click; the Recordings Main Sidebar Menu item is active initially
+  (Waveform is not); `#workspaceRow` starts hidden and `#pageRecordings`
+  starts visible; zero waveform panels/displayed channels/waveform
+  fetches are constructed on fresh entry, and the waveform-only Status
+  Bar fields start correctly hidden; the Recordings list is fetched
+  exactly once at Init (not twice); navigating to Waveform and back to
+  Recordings both still work correctly from the new default; and a full
+  Recordings → Open/Analyse → Waveform → Recordings → Waveform round
+  trip (with real viewport/layout-mode/panel-height/time-mode state
+  built up first) preserves all of it with zero refetch. No URL-path
+  tests were added, since none were implemented (per this task's own
+  instruction to only test paths actually implemented).
+- **Frontend, existing suite correction**: one assertion in
+  `phase3buat2_check.mjs` that had implicitly assumed Waveform was the
+  default page (a sanity check, not the test's actual subject) was
+  updated to explicitly navigate to Waveform first — following this
+  project's established precedent of updating assertions in place
+  rather than leaving them failing.
+- **Frontend, full regression**: the exact same 20 pre-existing,
+  already-documented failures, zero new divergences.
+- **Backend**: zero diff, 279/279 passing in a fresh venv (no backend
+  file touched — this is a pure frontend default-state change).
+
+### Files changed
+
+Modified: `frontend/index.html` only. No backend file, no CI/deployment
+workflow file.
+
+### Honest limitation
+
+No real browser is available in this sandbox. Whether a fresh page load
+genuinely shows Recordings with no visible flash of the old Waveform
+default, and whether the product flow reads naturally in practice, were
+reasoned through structurally but not visually confirmed — flagged for
+owner UAT.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping
