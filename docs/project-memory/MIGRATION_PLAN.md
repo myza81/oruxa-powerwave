@@ -6424,6 +6424,124 @@ against the reference screenshot supplied for this task.
 
 ---
 
+## Phase 2C-C4B — Compact Sticky Time-Axis Layout Correction (2026-08-16)
+
+`[FACT]` throughout. **Owner manual UAT confirmed Phase 2C-C4's sticky
+ruler functionality passed** (stays visible while scrolling, alignment
+good, zoom/pan sync good, Absolute/Elapsed switching good, resize
+doesn't break it). **Phase 2C-C4A's visual layout FAILED owner UAT**:
+the custom DOM title placed ABOVE the Plotly tick chart, together with
+an Absolute-only date line also above it, produced a tall strip with a
+large blank vertical gap — reading as an "information card," not a
+compact X-axis. The owner supplied a reference screenshot and an exact
+desired layout: tick labels first, a small axis title directly below
+them (never above), no date inside the ruler at all.
+
+### Root cause of the blank-area appearance
+
+Investigation traced the visible gap to the ruler's own Plotly chart
+configuration, not the custom DOM elements' sizing: `margin: { t: 4,
+b: 24 }` inside a `height: 46px` chart left `46 − 4 − 24 = 18px` of
+genuinely empty "plot area" space (Plotly's own invisible domain box,
+present even with zero traces and a hidden Y axis) — stacked underneath
+~28–34px of custom title/date DOM lines above the chart. The combined
+effect was the reported large blank panel.
+
+### Fix: Plotly's own native `xaxis.title`, not a second DOM title
+
+Rather than repositioning the existing custom title element below the
+chart (which would still need bespoke CSS to re-derive the exact same
+centering-over-plot-area math Plotly's own title already computes for
+free), the ruler now sets `xaxis.title` directly on its own Plotly
+layout — the **exact same mechanism every real waveform panel already
+uses** for its own "Time (s)" title (`wwBuildLayout`/
+`wwTimeAxisTitle`). Plotly's own title rendering places it below the
+tick labels by convention, already proven correct and pixel-aligned in
+this exact codebase on every panel. `#wwStickyRulerTitle` and
+`#wwStickyRulerContext` (the custom DOM title and date elements) were
+deleted entirely, along with their CSS — not merely hidden, since dead
+code was judged worse than a slightly larger diff. The ruler's own
+Plotly margin changed to `{ t: 2, b: 34 }` (near-zero top margin — no
+plot-area content ever needs it; `b: 34` reused verbatim from the real
+panels' own already-proven tick+title fit), and
+`.ww-sticky-ruler-chart`'s CSS height reduced from 46px to 40px. Net
+result: total ruler height drops from roughly 63–80px (Elapsed/
+Absolute, C4A) to approximately **43–45px** (2px wrapper padding +
+1px border + 40px chart) — compact, and no longer taller in Absolute
+mode than Elapsed (no date line to add height in either mode now).
+
+### Wording and date removal
+
+Absolute mode's title changed from "Record time" (C4A, lowercase t) to
+the owner's exact specified wording **"Record Time"** (capital T).
+Elapsed mode's "Time (ms)"/"Time (s)"/"Time (min)" wording is
+unchanged (already matched what the owner specified). **No date text
+appears in the sticky ruler at all anymore** — the toolbar's own
+`#wwTimeModeContext` label (unchanged, still "<date> · Record time",
+lowercase, exactly as Phase 2C-C3 first established it) remains the
+only place the date is shown.
+
+### What did NOT change
+
+The unit-aware rescaling introduced in Phase 2C-C4A
+(`wwStickyRulerElapsedUnit()`, the single shared decision for both tick
+values and title) is completely unchanged — still the one source of
+truth, still scoped entirely to the ruler's own independent Plotly
+domain, still leaving `ww.viewport`, `wwElapsedToPlotlyX()`, every real
+panel's own axis, and Phase 2C-C3's timing semantics untouched.
+`WW_PANEL_MARGIN`, the sticky CSS mechanism (`position: sticky; bottom:
+0`, no scroll listener), Separate mode's all-lanes tick suppression,
+Grouped/Custom's unchanged (still-duplicate, still out of this task's
+scope) per-panel axes, zoom/pan synchronization, Reset Time View,
+Autoscale Y, panel resize, Custom Groups, and the waveform API are all
+completely unaffected — confirmed by test, not merely asserted.
+
+### Tests
+
+- **Frontend, updated**: `phase2cc4a_check.mjs` (scratch, not
+  committed) was rewritten — per this task's own explicit instruction
+  ("update those assertions rather than treating the correction as a
+  regression") — since its assertions read a DOM element
+  (`#wwStickyRulerTitle`) that no longer exists. Now reads the ruler's
+  Plotly layout's own `xaxis.title` property instead. 25/25 passing
+  (broader than the original 23 — added checks for the removed DOM
+  elements/CSS rules, the compact chart height, and the reused b:34
+  margin). Covers: no separate title/date DOM elements exist, compact
+  CSS height (<= 42px), near-zero top margin, exact "Record Time"
+  wording, no date anywhere in the ruler, ms/s/min adaptive titles
+  (including via zoom/pan), title/tick unit consistency, mode
+  switching, zero waveform fetches, Reset Time View, Grouped/Separate/
+  Custom (including Separate's still-suppressed per-lane ticks), sticky
+  CSS/margin/alignment unchanged, zero Plotly work on synthetic scroll
+  events, theme switching (confirming a single `font.color` relayout
+  still covers both ticks and the title, since the title deliberately
+  has no separate `title.font` override), and workspace-reset behavior.
+- **Frontend, existing, re-run unmodified**: the full Phase 2C-A
+  through 2C-C4 suites (199 checks) show the exact same 20 failures
+  already fully documented in the Phase 2C-C4/2C-C4A records — **zero
+  new divergences from this correction pass**, since none of this
+  pass's changes touch the underlying causes (the ruler's own extra
+  Plotly call, the Elapsed-mode rescale, or Separate's all-lanes
+  suppression).
+- **Backend**: zero diff, 278/278 passing in a fresh venv.
+
+### Files changed
+
+Modified only: `frontend/index.html`. No backend file, no CI/deployment
+workflow file.
+
+### Honest limitation
+
+This sandboxed session has no real browser. The resulting compactness,
+exact spacing, and whether the layout now genuinely reads as a
+conventional X-axis (matching the owner's own reference screenshot)
+could not be visually confirmed — this remains for owner UAT, as does
+the still-outstanding tick-alignment-at-rescaled-units claim carried
+over from Phase 2C-C4A (unchanged by this pass, since the rescale logic
+itself was not touched).
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

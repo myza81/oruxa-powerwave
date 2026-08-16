@@ -1984,6 +1984,33 @@ already covers, not a new architectural direction — no new decision
 entry was added, per governance. See
 [MIGRATION_PLAN.md — Phase 2C-C4A Record](MIGRATION_PLAN.md#phase-2c-c4a--sticky-time-axis-title-placement-and-unit-label-2026-08-16).
 
+**Update (2026-08-16, Phase 2C-C4B, cosmetic correction)**: the owner's
+manual UAT of Phase 2C-C4A's own visual layout **failed** — the custom
+DOM title (plus an Absolute-only date line, both placed above the
+Plotly tick chart) produced a tall strip with a large blank vertical
+gap, reading as an "information card" rather than a compact
+conventional X-axis. The owner supplied a reference screenshot and an
+exact desired layout: tick labels first, a small title directly below
+them, no date inside the ruler at all. **Resolution**: the custom
+`#wwStickyRulerTitle`/`#wwStickyRulerContext` DOM elements (and their
+CSS) were deleted entirely; the ruler now sets `xaxis.title` directly
+on its own Plotly layout — the exact same native mechanism every real
+waveform panel already uses for its own title — which places the title
+below the tick labels by Plotly's own convention, already proven
+pixel-aligned in this codebase. The ruler's own margin changed to
+`{t:2, b:34}` (reusing the real panels' own already-proven b:34 fit)
+and its chart height reduced 46px→40px, bringing total ruler height
+from ~63–80px down to ~43–45px. Absolute mode's wording changed to the
+owner's exact specification, "Record Time" (capital T); the ruler no
+longer shows any date text (the toolbar's own date-context label is
+unaffected). The Elapsed unit-rescaling logic and its single-source-of-
+truth principle from the entry above are completely unchanged — this
+correction only affects HOW the resulting title text is rendered
+(Plotly-native vs. custom DOM) and the chart's own compactness, not
+what decides the text or values themselves. Still a refinement of the
+same sticky-ruler feature — no new decision entry. See
+[MIGRATION_PLAN.md — Phase 2C-C4B Record](MIGRATION_PLAN.md#phase-2c-c4b--compact-sticky-time-axis-layout-correction-2026-08-16).
+
 ---
 
 ## How to add a decision

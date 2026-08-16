@@ -8,6 +8,72 @@ Last updated: **2026-08-16**
 
 ## What was most recently done
 
+**Phase 2C-C4B — Compact Sticky Time-Axis Layout Correction.**
+**Phase 2C-C4's sticky ruler functionality passed owner UAT.**
+**Phase 2C-C4A's visual LAYOUT failed owner UAT**: the custom DOM
+title placed above the Plotly tick chart, together with an
+Absolute-only date line also above it, produced a tall strip with a
+large blank vertical gap — reading as an "information card," not a
+compact X-axis. The owner supplied a reference screenshot and an exact
+desired layout: tick labels first, a small title directly below them
+(never above), no date inside the ruler at all. Full detail:
+[MIGRATION_PLAN.md — Phase 2C-C4B Record](MIGRATION_PLAN.md#phase-2c-c4b--compact-sticky-time-axis-layout-correction-2026-08-16).
+
+**Root cause traced**: not the DOM title's own sizing, but the ruler's
+own Plotly chart margin — `t:4, b:24` inside a `height:46px` chart left
+`46-4-24=18px` of genuinely empty invisible plot-area space (present
+even with zero traces and a hidden Y axis), stacked underneath the DOM
+title/date lines above it.
+
+**Fix**: the ruler now sets `xaxis.title` directly on its own Plotly
+layout — the exact same mechanism every real waveform panel already
+uses for its own "Time (s)" title — instead of a separate, hand-
+positioned DOM element. Plotly places titles below tick labels by its
+own convention, already proven pixel-aligned in this exact codebase on
+every panel; no bespoke CSS centering math needed. `#wwStickyRulerTitle`
+and `#wwStickyRulerContext` (the custom title/date DOM elements from
+Phase 2C-C4A) were deleted entirely, along with their CSS. The ruler's
+own margin changed to `{t:2, b:34}` (b:34 reused verbatim from the real
+panels' own already-proven fit), and the chart's CSS height reduced
+from 46px to 40px. **Resulting total ruler height: ~43–45px**, down
+from ~63–80px in Phase 2C-C4A.
+
+**Wording/date changes**: Absolute mode's title is now the owner's
+exact specified wording, **"Record Time"** (capital T, was "Record
+time" in C4A). No date text appears in the ruler at all anymore — the
+toolbar's own `#wwTimeModeContext` label is unchanged and remains the
+only place the date is shown.
+
+**What did NOT change**: the unit-aware Elapsed rescaling from Phase
+2C-C4A (`wwStickyRulerElapsedUnit()`, the single shared decision for
+both tick values and title) is completely untouched — same single
+source of truth, still scoped entirely to the ruler's own independent
+Plotly domain. `WW_PANEL_MARGIN`, `position: sticky`/`bottom: 0`, no
+scroll listener, Separate mode's all-lanes tick suppression, Grouped/
+Custom's unchanged per-panel axes, zoom/pan sync, Reset Time View,
+Autoscale Y, panel resize, Custom Groups, and the waveform API are all
+completely unaffected — confirmed by test.
+
+**Verification**: `phase2cc4a_check.mjs` (scratch, not committed) was
+rewritten per this task's own explicit instruction ("update those
+assertions rather than treating the correction as a regression") since
+its old assertions read a DOM element that no longer exists — now 25/25
+passing (broader than the original 23; added checks for the removed
+DOM elements/CSS, the compact chart height, and the reused b:34
+margin). The full existing Phase 2C-A through 2C-C4 suites (199 checks)
+show the exact same 20 failures already fully documented in the Phase
+2C-C4/2C-C4A records — zero new divergences introduced by this
+correction, since none of this pass's changes touch the underlying
+causes. Backend: zero diff, 278/278 passing in a fresh venv.
+
+**Backend**: zero files changed. **Real-browser visual confirmation —
+whether the compact layout genuinely matches the owner's reference
+screenshot, whether spacing feels right — was NOT and cannot be
+confirmed in this sandboxed session; this remains explicitly for the
+owner's own manual UAT.**
+
+## What was done in the prior session (Phase 2C-C4A — Sticky Time-Axis Title Placement and Unit Label)
+
 **Phase 2C-C4A — Sticky Time-Axis Title Placement and Unit Label.**
 **Owner manual UAT confirmed Phase 2C-C4 passed functionally**
 (sticky shared time axis stays visible while scrolling, ruler
@@ -1245,7 +1311,43 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified (this pass — Phase 2C-C4A sticky time-axis title placement and unit label)
+## What was verified (this pass — Phase 2C-C4B compact sticky time-axis layout correction)
+
+- `oruxa_powerwave` git state confirmed against `origin/main` (read-only
+  `git fetch`), working tree clean before this pass began.
+- **Backend regression: 278 tests, unmodified, all still pass** (fresh
+  venv run) — zero backend files in the diff (`git diff --stat --
+  backend/` empty; diff scoped to `frontend/index.html` only).
+- **Frontend, rewritten (per this task's own explicit instruction): 25
+  scripted `jsdom` checks, all passing** (`phase2cc4a_check.mjs`,
+  updated in place rather than left as a documented divergence, since
+  its old assertions read a DOM element — `#wwStickyRulerTitle` — that
+  no longer exists) — no separate title/date DOM elements exist,
+  compact CSS height (<= 42px), near-zero top margin, exact "Record
+  Time" wording, no date shown anywhere in the ruler, ms/s/min adaptive
+  titles via zoom/pan, title/tick unit consistency preserved, mode
+  switching, zero waveform fetches, Reset Time View, Grouped/Separate/
+  Custom (including Separate's still-suppressed per-lane ticks), sticky
+  CSS/margin/alignment unchanged, zero Plotly work on synthetic scroll
+  events, theme switching (a single `font.color` relayout still covers
+  both ticks and the native title), and workspace-reset behavior.
+- **Frontend, existing: the full Phase 2C-A through 2C-C4 suites (199
+  checks) were all re-run unmodified against this pass's code — the
+  exact same 20 failures already fully documented in the Phase
+  2C-C4/2C-C4A records, zero new divergences** introduced by this
+  correction (none of this pass's changes touch the underlying causes
+  of those existing, already-explained failures).
+- `node --check` on `frontend/index.html`'s inline `<script>` block, and
+  a `getElementById`/`id=` cross-reference check (no dangling
+  references, no duplicate IDs) — both clean.
+- No real-browser/visual confirmation was performed in this sandboxed
+  session — whether the compact layout genuinely reads as a
+  conventional X-axis matching the owner's own reference screenshot was
+  NOT visually confirmed. See the final report's explicit statement
+  about what's honestly unverified. Final visual judgment remains the
+  owner's own manual UAT.
+
+## What was verified (prior pass — Phase 2C-C4A sticky time-axis title placement and unit label)
 
 - `oruxa_powerwave` git state confirmed against `origin/main` (read-only
   `git fetch`), working tree clean before this pass began.
@@ -2011,7 +2113,22 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 2C-C4A sticky time-axis title placement and unit label)
+## What files were changed this session (Phase 2C-C4B compact sticky time-axis layout correction)
+
+Modified only: `frontend/index.html` (`#wwStickyRulerTitle`/
+`#wwStickyRulerContext` DOM elements and their `.ww-sticky-ruler-title`/
+`.ww-sticky-ruler-context` CSS deleted entirely; `.ww-sticky-ruler`
+padding simplified, `.ww-sticky-ruler-chart` height reduced 46px→40px;
+`wwSyncStickyRuler()` rewritten to set `xaxis.title` on the ruler's own
+Plotly layout/relayout calls instead of writing to a DOM title element,
+with margin changed to `{t:2, b:34}`; Absolute mode's title wording
+changed to "Record Time" (capital T); `wwUpdateTimeModeContext()`
+simplified to only drive the toolbar's own label, no longer touching a
+ruler-side date element). No new files. **No `backend/` file, no
+`frontend/waveform-prototype.html`/`theme.css`/`theme.js` change, no CI/
+deployment workflow file was touched.**
+
+## What files were changed in the prior session (Phase 2C-C4A sticky time-axis title placement and unit label)
 
 Modified only: `frontend/index.html` (`.ww-sticky-ruler-title` CSS
 (new) + `.ww-sticky-ruler-context` CSS updated to centered/dimmer;
@@ -2384,7 +2501,7 @@ Modified:
 See "GitHub persistence" and "DEV deployment" in this task's final report
 (delivered in-conversation) for the exact commit hash, push confirmation,
 independent-fetch verification, GitHub Actions run, and live-endpoint
-checks for this Phase 2C-C4A pass. **Production was not touched.**
+checks for this Phase 2C-C4B pass. **Production was not touched.**
 
 ## What remains unresolved
 
@@ -2437,39 +2554,57 @@ checks for this Phase 2C-C4A pass. **Production was not touched.**
 
 ## What should be done next
 
-The next step is for the **project owner** to review Phase 2C-C4A via
-live DEV UAT (this task's own 16-step checklist): confirm the title
-sits cleanly at the top of the sticky ruler, above the ticks, small and
-visually secondary; confirm Absolute mode reads "Record time" with a
-clean, non-duplicated date line beneath it; switch to Elapsed and
-confirm the title shows the right unit for the current zoom (e.g.
-"Time (s)" at full record); zoom deeply and confirm the title changes
-to "Time (ms)" together with the ticks; pan and confirm both stay in
-sync; **critically, visually confirm the ruler's tick positions still
-line up with the waveform data beneath them once rescaled to
-milliseconds** — this is the one specific claim this sandbox reasoned
-through but could not visually verify; scroll through many Separate
-lanes and confirm the title stays visible with the ruler; test Grouped
-and Custom; test Light/Dark; resize panels and confirm no alignment
-regression. If the owner confirms correctness (including tick
-alignment at ms-scale specifically): no further action needed on this
-item. If tick alignment is visibly off at any zoom level, or the title
-placement/spacing doesn't match the reference screenshot well enough,
+The next step is for the **project owner** to review Phase 2C-C4B via
+live DEV UAT (this task's own 15-step checklist): confirm the sticky
+ruler now reads as a compact, conventional X-axis strip — tick labels
+first, a small title directly below them, no large blank vertical area,
+and no date text anywhere inside the ruler; confirm Absolute mode shows
+"Record Time" (capital T) below the ticks; switch to Elapsed and
+confirm "Time (ms)"/"Time (s)" shows correctly below the ticks
+depending on the current visible range; zoom deeply and confirm the
+unit/title changes correctly while the ruler stays compact; scroll
+through many Separate lanes and confirm the ruler remains visible and
+aligned; pan/zoom; resize lanes; test Light/Dark. **Also carry forward
+the still-outstanding Phase 2C-C4A claim**: visually confirm tick
+positions still line up with the waveform data once rescaled to
+milliseconds (this correction pass did not touch that rescale logic,
+so it remains equally unverified). If the owner confirms correctness:
+no further action needed on this item. If the layout still doesn't
+match the reference screenshot, or tick alignment is visibly off,
 report back — do **not** assume either outcome. Separately, the owner
 may choose to: (a) authorize the drag/reorder/overlay/split work
 directly (still the owner's own possible next direction, deliberately
-set aside across six passes now, not abandoned); (b) request the
+set aside across seven passes now, not abandoned); (b) request the
 still-outstanding Grouped/Custom axis-duplication cleanup (Phase
-2C-C4's own section 16 gap, unchanged by this phase); or (c) move on to
-digital channels (the owner's own explicitly stated next area, and this
-task's own explicit instruction: do **not** begin digital-channel work
-without a separate signal). Separately, resolving the abandoned-session
-TTL question and the ~100 MB real-file memory validation remain
-recommended before broader/prolonged shared-DEV UAT, unchanged
-conclusion from every prior Phase 2 pass.
+2C-C4's own section 16 gap, unchanged by this and the prior phase); or
+(c) move on to digital channels (the owner's own explicitly stated next
+area, and this task's own explicit instruction: do **not** begin
+digital-channel work without a separate signal). Separately, resolving
+the abandoned-session TTL question and the ~100 MB real-file memory
+validation remain recommended before broader/prolonged shared-DEV UAT,
+unchanged conclusion from every prior Phase 2 pass.
 
 ## What must not be assumed
 
+- **Do not assume the ruler's title is rendered by a custom DOM
+  element** — as of Phase 2C-C4B, `#wwStickyRulerTitle` and
+  `#wwStickyRulerContext` were both deleted entirely (not hidden — the
+  elements and their CSS no longer exist in the file at all). The
+  title is now Plotly's own native `xaxis.title` property on the
+  ruler's own chart layout, read via `layout.xaxis.title` (at init) or
+  the most recent relayout's `update["xaxis.title"]` — the same pattern
+  every real waveform panel already uses for its own title.
+- **Do not assume "Record time" (lowercase t) is still the sticky
+  ruler's Absolute-mode wording** — it is now "Record Time" (capital
+  T), per explicit owner instruction in Phase 2C-C4B. The TOOLBAR's own
+  `#wwTimeModeContext` label is unaffected and still uses lowercase
+  "Record time" — the two are deliberately different now; do not
+  "fix" one to match the other without checking which context you're
+  in.
+- **Do not assume any date text appears inside the sticky ruler** — it
+  does not, as of Phase 2C-C4B; the ruler shows only tick labels and
+  the mode title. The toolbar's own date-context label is the sole
+  remaining place a date is shown.
 - **Do not assume the ruler's Elapsed-mode tick VALUES are still raw
   seconds with just a relabeled title** — they are genuinely rescaled
   (×1000 for ms, ×1/60 for min) by `wwStickyRulerElapsedUnit()`, the
@@ -2490,11 +2625,11 @@ conclusion from every prior Phase 2 pass.
   constant multiplier) but NOT visually confirmed; no browser is
   available in this sandbox. Treat this as the single most important
   open item for owner UAT, not a settled fact.
-- **Do not assume the ruler's date-context line and the toolbar's own
-  date-context label show identical text anymore** — they deliberately
-  don't, as of Phase 2C-C4A: the ruler shows only the date (its own
-  title now says "Record time" immediately above); the toolbar keeps
-  its full "<date> · Record time" wording, unchanged.
+- **Do not assume the ruler still has its own date-context line at
+  all** — Phase 2C-C4A gave it one (date-only, alongside a
+  "Record time" title); Phase 2C-C4B removed it entirely per owner
+  correction. Only the toolbar's `#wwTimeModeContext` label still shows
+  a date, unchanged full "<date> · Record time" wording.
 - **Do not assume the sticky ruler is interactive** — it deliberately is
   not this slice (`staticPlot: true`, `pointer-events: none` on its CSS
   wrapper): not draggable, not zoomable, not pannable, not selectable,
@@ -2679,32 +2814,33 @@ conclusion from every prior Phase 2 pass.
 
 - Not needed to review or use Phase 2C-A, Phase 2C-B1, Phase 2C-B2, Phase
   2C-B3, Phase 2C-B3A, Phase 2C-C1, Phase 2C-C2, Phase 2C-C2A, Phase
-  2C-C3, Phase 2C-C4, or Phase 2C-C4A themselves — already implemented,
-  deployed to DEV, and live-verified per this exact task's own
-  authorization. **Recommended, though**: an owner UAT specifically
-  confirming the title's top placement/size against the reference
-  screenshot, confirming Absolute/Elapsed titles read correctly, and —
-  most importantly — visually confirming ruler tick alignment still
-  holds once Elapsed mode rescales to milliseconds at fine zoom, since
-  that specific claim could not be verified in this sandbox.
+  2C-C3, Phase 2C-C4, Phase 2C-C4A, or Phase 2C-C4B themselves — already
+  implemented, deployed to DEV, and live-verified per this exact task's
+  own authorization. **Recommended, though**: an owner UAT specifically
+  confirming the ruler now reads as a compact, conventional X-axis
+  matching the reference screenshot (ticks above, small title below, no
+  large blank area, no date), confirming exact "Record Time" wording,
+  and — carried forward from Phase 2C-C4A, still unverified — visually
+  confirming ruler tick alignment holds once Elapsed mode rescales to
+  milliseconds at fine zoom.
 - **Yes**, before any drag/reorder/overlay/split work begins (still the
   owner's own possible next direction, deliberately set aside across
-  six passes now in favor of Custom Groups, panel resize, time-axis
-  modes, the sticky ruler, and this title refinement, but still not yet
+  seven passes now in favor of Custom Groups, panel resize, time-axis
+  modes, the sticky ruler, and its title refinements, but still not yet
   explicitly authorized to *implement*), before digital channels (the
   owner's own next stated area, not yet begun — and this task's own
   explicit closing instruction was to stop here, not begin it), before
   Synthetic Elapsed Time, Sample Index, or any CSV/Excel timing mode,
   before the Grouped/Custom per-panel axis-label duplication (Phase
-  2C-C4's own section 16 gap, unchanged and still outstanding) is
-  cleaned up, before interactive ruler zoom/pan/selection or a shared
-  crosshair on the ruler, before Phase 1.5 or any later phase begins,
-  before a PROD deployment, before any further crosshair or theming
-  work beyond what's already described in project-memory, and before
-  any change to the ephemeral-storage, upload-size,
-  COMTRADE-upload-interaction, workspace-lifecycle, or waveform-data
-  decisions recorded in `DECISIONS.md`. Per the change-governance rule
-  in [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md).
+  2C-C4's own section 16 gap, unchanged and still outstanding across
+  three passes now) is cleaned up, before interactive ruler zoom/pan/
+  selection or a shared crosshair on the ruler, before Phase 1.5 or any
+  later phase begins, before a PROD deployment, before any further
+  crosshair or theming work beyond what's already described in
+  project-memory, and before any change to the ephemeral-storage,
+  upload-size, COMTRADE-upload-interaction, workspace-lifecycle, or
+  waveform-data decisions recorded in `DECISIONS.md`. Per the change-
+  governance rule in [CLAUDE.md](../../CLAUDE.md) / [AGENTS.md](../../AGENTS.md).
 - **Recommended before any further prolonged/shared-DEV waveform UAT**: a
   real decision on the abandoned-session TTL question, and ideally the
   ~100 MB real-file memory validation, rather than continuing to rely on
