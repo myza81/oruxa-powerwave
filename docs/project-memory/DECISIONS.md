@@ -1952,6 +1952,38 @@ Impact:
   file changed. See
   [MIGRATION_PLAN.md — Phase 2C-C4 Record](MIGRATION_PLAN.md#phase-2c-c4--sticky-shared-waveform-time-axis-2026-08-15).
 
+**Update (2026-08-16, Phase 2C-C4A, cosmetic follow-up)**: the owner's
+manual UAT of this decision's own implementation passed functionally
+(sticky behavior, alignment, zoom/pan sync, Absolute/Elapsed switching,
+resize interaction all confirmed working). The owner's next request was
+a cosmetic title-placement refinement: a small title at the TOP of the
+ruler (never under the ticks) — a fixed "Record time" for Absolute mode,
+and a genuinely unit-aware "Time (ms)"/"Time (s)"/"Time (min)" for
+Elapsed mode. Implementing the Elapsed title correctly required real
+(not purely cosmetic) work: Phase 2C-C3's existing tick formatting never
+actually switched units, only decimal precision, always in raw seconds
+— so a naive title-only change would have produced exactly the "title
+says ms, ticks show seconds" mismatch this follow-up task's own
+instructions explicitly forbade. **Resolution**: one new shared function,
+`wwStickyRulerElapsedUnit(spanSeconds)`, is now the single decision both
+the title and the ruler's own tick values consult (a simple 3-tier
+span-based rule: <1s → ms, <60s → s, ≥60s → min), with the ruler's own
+independent numeric x-axis domain genuinely rescaled by the chosen
+unit's constant factor. This rescale is scoped entirely to the ruler's
+own Plotly instance — `ww.viewport`, `wwElapsedToPlotlyX()`, every real
+waveform panel's own axis, and Phase 2C-C3's timing semantics are all
+completely untouched, preserving this decision's own "presentation
+layer only, never an independent authority" principle exactly. The
+reasoning that a uniform multiplicative rescale preserves tick pixel-
+position alignment (Plotly's own "nice round tick value" algorithm is
+scale-covariant under a constant multiplier) was worked through
+carefully but **could not be visually confirmed in this sandbox** — no
+real browser is available — and is flagged explicitly for owner UAT.
+This is a refinement of the same sticky-ruler feature this decision
+already covers, not a new architectural direction — no new decision
+entry was added, per governance. See
+[MIGRATION_PLAN.md — Phase 2C-C4A Record](MIGRATION_PLAN.md#phase-2c-c4a--sticky-time-axis-title-placement-and-unit-label-2026-08-16).
+
 ---
 
 ## How to add a decision

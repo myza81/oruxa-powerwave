@@ -454,6 +454,42 @@ call count from the ruler's own extra instance, and the superseded
 bottom-lane-only assumption) — not regressions, documented in the
 Phase 2C-C4 implementation record.
 
+`[FACT]` **Phase 2C-C4's owner manual UAT passed functionally**: sticky
+ruler stays visible while scrolling, alignment good, zoom/pan sync
+good, Absolute/Elapsed switching good, resizing does not break the
+ruler. The next request was **cosmetic only — Phase 2C-C4A, sticky
+time-axis title placement and unit label** — see
+[MIGRATION_PLAN.md — Phase 2C-C4A Record](MIGRATION_PLAN.md#phase-2c-c4a--sticky-time-axis-title-placement-and-unit-label-2026-08-16).
+A small title now sits at the TOP of the sticky ruler (never under the
+ticks): **Absolute mode shows a fixed "Record time"**; the ruler's own
+date-context line is simplified to just the date (the toolbar's own
+copy keeps its full "<date> · Record time" wording, unchanged).
+**Elapsed mode's title is now genuinely unit-aware** — "Time (ms)",
+"Time (s)", or "Time (min)" depending on the visible span — derived
+from a single new shared decision function
+(`wwStickyRulerElapsedUnit()`) that ALSO drives a real rescale of the
+ruler's own (independent, trace-less) tick values, so the title can
+never disagree with what the ticks actually show. This rescale is
+scoped entirely to the ruler's own Plotly instance — `ww.viewport`,
+every real waveform panel's own axis, and Phase 2C-C3's timing
+semantics are all completely untouched; confirmed zero new
+synchronization loop and zero waveform refetches. Works across
+Grouped/Separate/Custom, and updates automatically on zoom/pan/mode
+switch via the same existing call sites as Phase 2C-C4 (no new
+wiring). No backend file changed (278 tests unmodified and passing);
+23 new frontend `jsdom` checks passing, plus the existing suites
+re-verified with 20 failures across the Phase 2C-A through 2C-C4
+suites, all explained (the pre-existing Phase 2C-C3/2C-C4 divergences
+already documented in those phases, plus a new — and equally
+expected — divergence where several older, pre-COMTRADE-timing test
+fixtures' "last relayout call" assumption now sometimes resolves to
+the ruler's own correctly-rescaled value instead of a panel's raw
+value) — not regressions. **Honest, unverified caveat**: the claim
+that rescaling the ruler's own axis domain preserves tick-pixel
+alignment with the real (unrescaled) waveform panels was reasoned
+through carefully but could not be visually confirmed in this
+sandbox (no real browser) — flagged explicitly for owner UAT.
+
 ## Completed foundation work
 
 `[FACT]`, verified against the repository on 2026-08-15:
@@ -1076,11 +1112,25 @@ pixel-aligned tick positions with every panel via a new shared
 suppresses ticks on every lane (not just the bottom one, now redundant
 with the ruler); Grouped/Custom panels' own per-panel axis labels are
 deliberately left unchanged this slice — a documented, known
-duplication left for a future cleanup pass. The next step is for the
-project owner to review Phase 2C-C4 via live DEV UAT — scrolling through
-enough Separate lanes to require it, confirming the ruler stays visible
-and aligned, zooming/panning/switching time mode/resizing lanes, and
-testing Light/Dark — and either request refinement or move on to
+duplication left for a future cleanup pass. **Phase 2C-C4's owner
+manual UAT passed functionally.** The next request was cosmetic
+only: **Phase 2C-C4A, sticky time-axis title placement and unit
+label** — see
+[MIGRATION_PLAN.md — Phase 2C-C4A Record](MIGRATION_PLAN.md#phase-2c-c4a--sticky-time-axis-title-placement-and-unit-label-2026-08-16).
+A small title now sits at the top of the sticky ruler, above the
+ticks: "Record time" (Absolute, fixed) or "Time (ms)"/"Time (s)"/
+"Time (min)" (Elapsed, unit-aware, derived from the same shared
+decision that also rescales the ruler's own tick values, so title and
+ticks can never disagree). The ruler's date-context line simplified to
+just the date, since "Record time" now appears as the title just
+above it. No timing semantics or synchronization changed; the rescale
+is scoped entirely to the ruler's own independent Plotly instance. The
+next step is for the project owner to review Phase 2C-C4A via live DEV
+UAT — confirming the title sits cleanly at the top, reads correctly in
+both modes, updates automatically on zoom (Time (s) ↔ Time (ms)), and
+in particular **visually confirming tick alignment still holds** in
+Elapsed mode at fine zoom (the one claim this sandbox could not verify
+directly) — and either request further refinement or move on to
 digital channels (the owner's own stated next area).
 Separately, resolving the
 abandoned-session TTL question (`[DECISION MODE: COMPARISON]`, reassessed

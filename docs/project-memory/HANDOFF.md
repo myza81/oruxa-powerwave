@@ -4,9 +4,80 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-08-15**
+Last updated: **2026-08-16**
 
 ## What was most recently done
+
+**Phase 2C-C4A — Sticky Time-Axis Title Placement and Unit Label.**
+**Owner manual UAT confirmed Phase 2C-C4 passed functionally**
+(sticky shared time axis stays visible while scrolling, ruler
+alignment good, zoom/pan sync good, Absolute/Elapsed switching good,
+resizing does not break the ruler) before this task began. The next
+request was explicitly **cosmetic only**: relocate the ruler's title
+to the top of the strip (not under the ticks) and give it a small,
+compact, mode-appropriate wording — full detail:
+[MIGRATION_PLAN.md — Phase 2C-C4A Record](MIGRATION_PLAN.md#phase-2c-c4a--sticky-time-axis-title-placement-and-unit-label-2026-08-16).
+
+**Absolute mode**: a fixed, compact title — "Record time" — never a
+per-unit label (Absolute is a timestamp representation, not an
+elapsed unit scale). The ruler's own date-context line simplified from
+"26 Jul 2025 · Record time" to just "26 Jul 2025", avoiding duplicate
+"Record time" wording now that the title says it directly above.
+**The toolbar's own copy of the context label is deliberately
+unchanged** — still the full "<date> · Record time" wording, since it
+has no adjacent title to duplicate against.
+
+**Elapsed mode**: the title is now genuinely unit-aware — "Time (ms)",
+"Time (s)", or "Time (min)" depending on the visible span. This
+required real engineering, not just a label swap: investigation found
+Phase 2C-C3's existing tick formatting never actually switched units
+at all (always raw seconds, only adapting decimal precision at finer
+zoom) — a fixed "Time (ms)" title over an unchanged seconds-formatted
+tick would have been exactly the "title says X, ticks show Y"
+mismatch this task's own instructions explicitly forbade. **Fix**: one
+new shared function, `wwStickyRulerElapsedUnit(spanSeconds)`, is now
+the SINGLE decision both the title AND the ruler's own tick values
+consult — a simple 3-tier span rule (< 1s → ms, < 60s → s, ≥ 60s →
+min), with the ruler's own (independent, trace-less) Plotly x-axis
+domain genuinely rescaled by the chosen unit's constant factor. This
+rescale is scoped ENTIRELY to the ruler's own Plotly instance —
+`ww.viewport`, `wwElapsedToPlotlyX()`, every real waveform panel's own
+axis, and Phase 2C-C3's timing semantics are all completely untouched.
+Updates automatically on zoom/pan/mode-switch via the same existing
+`wwSyncStickyRuler()` call sites Phase 2C-C4 already wired — no new
+synchronization loop, confirmed zero waveform refetches.
+
+**Honest, unverified caveat (flagged explicitly, not glossed over)**:
+the claim that a uniform rescale of the ruler's own axis domain
+preserves tick pixel-position alignment with the real (unrescaled)
+waveform panels below it was reasoned through carefully (Plotly's
+"nice round tick value" algorithm is scale-covariant under a constant
+multiplier) but **could not be visually confirmed in this sandbox** —
+no real browser is available. This is the single most important thing
+for the owner to check during UAT.
+
+**Verification**: 23 new frontend `jsdom` checks
+(`phase2cc4a_check.mjs`) + the full existing Phase 2C-A through 2C-C4
+suites (222 checks) re-run unmodified. 20 failures appear, all
+explained — not regressions: the same pre-existing Phase 2C-C3/2C-C4
+divergences already documented in those phases' own records, plus a
+new (equally expected) divergence where several older, pre-COMTRADE-
+timing test fixtures' "last relayout call" assumption now sometimes
+resolves to the ruler's own correctly-rescaled value instead of a
+panel's raw value, and `phase2cc4_check.mjs`'s own date-context-
+equality assertion, which asserted the exact thing this phase's own
+design deliberately changed. None of these frozen, one-off scripts
+were modified, per this project's established precedent. Backend:
+zero diff, 278/278 passing in a fresh venv.
+
+**Backend**: zero files changed. **Real-browser visual confirmation —
+whether the title's placement/size/spacing reads as intended against
+the owner's own reference screenshot, and critically whether tick
+alignment genuinely holds at fine Elapsed-mode zoom — was NOT and
+cannot be confirmed in this sandboxed session; this remains explicitly
+for the owner's own manual UAT.**
+
+## What was done in the prior session (Phase 2C-C4 — Sticky Shared Waveform Time Axis)
 
 **Phase 2C-C4 — Sticky Shared Waveform Time Axis.** **Owner UAT
 confirmed Phase 2C-C3 passed** (Absolute Time correct, Elapsed Time
@@ -1174,7 +1245,53 @@ single-page UI direction. None of these were touched.
    blanket clear-on-any-removal) — deliberately forward-compatible with a
    future multi-source workspace.
 
-## What was verified (this pass — Phase 2C-C4 sticky shared waveform time axis)
+## What was verified (this pass — Phase 2C-C4A sticky time-axis title placement and unit label)
+
+- `oruxa_powerwave` git state confirmed against `origin/main` (read-only
+  `git fetch`), working tree clean before this pass began.
+- **Backend regression: 278 tests, unmodified, all still pass** (fresh
+  venv run) — zero backend files in the diff (`git diff --stat --
+  backend/` empty; diff scoped to `frontend/index.html` only).
+- **Frontend, new: 23 scripted `jsdom` checks, all passing**
+  (`phase2cc4a_check.mjs`) — title element positioned before the tick
+  chart in DOM order (top placement), Absolute title exactly "Record
+  time", the simplified date-only ruler context line vs. the toolbar's
+  unchanged full text, ms/s/min titles (min-scale verified directly
+  against `wwStickyRulerElapsedUnit()` since the fixture's own record
+  is too short to reach a real 60s+ zoom), the ruler's rescaled tick
+  values genuinely matching the title's unit (no mismatch — the exact
+  thing section 4 required), zoom and pan both updating the unit/title
+  correctly, Absolute↔Elapsed switching, zero waveform fetches on a
+  mode switch, Reset Time View, Grouped/Separate/Custom, sticky CSS/
+  margin/alignment-input unchanged, theme switching, and workspace-
+  reset ruler/title clearing (including confirming `ww.timeMode`'s own
+  established persistence-across-clear behavior is unaffected).
+- **Frontend, existing: the full Phase 2C-A through 2C-C4 suites (222
+  checks) were all re-run unmodified against this pass's code.** 20
+  failures appear, all explained by either (1) the same pre-existing
+  Phase 2C-C3/2C-C4 divergences already documented in those phases'
+  own records, or (2) two new divergences directly caused by this
+  phase's own deliberate design: several older, pre-COMTRADE-timing
+  test fixtures' "last relayout call has this xaxis.range value"
+  assumption now sometimes resolves to the ruler's own correctly-
+  rescaled value (e.g. `100` instead of `0.1` for a 100ms zoom) instead
+  of a real panel's raw value; and `phase2cc4_check.mjs`'s own
+  assertion that the toolbar and ruler date-context text are identical,
+  which is exactly what this phase's own section 5 deliberately
+  changed. None of these frozen, one-off, not-committed scripts were
+  modified, per this project's established precedent.
+- `node --check` on `frontend/index.html`'s inline `<script>` block, and
+  a `getElementById`/`id=` cross-reference check (no dangling
+  references, no duplicate IDs) — both clean.
+- No real-browser/visual confirmation was performed in this sandboxed
+  session — in particular, whether rescaling the ruler's own axis
+  domain for ms/min display genuinely preserves tick-pixel alignment
+  with the real (unrescaled) waveform panels was reasoned through
+  carefully but NOT visually confirmed. See the final report's explicit
+  statement about what's honestly unverified. Final visual judgment
+  remains the owner's own manual UAT.
+
+## What was verified (prior pass — Phase 2C-C4 sticky shared waveform time axis)
 
 - `oruxa_powerwave` git state confirmed against `origin/main` (read-only
   `git fetch`), working tree clean before this pass began.
@@ -1894,7 +2011,20 @@ single-page UI direction. None of these were touched.
   correctly (`VA`/`VB` → `Voltage`, `IA` → `Current` for the synthetic
   fixture).
 
-## What files were changed this session (Phase 2C-C4 sticky shared waveform time axis)
+## What files were changed this session (Phase 2C-C4A sticky time-axis title placement and unit label)
+
+Modified only: `frontend/index.html` (`.ww-sticky-ruler-title` CSS
+(new) + `.ww-sticky-ruler-context` CSS updated to centered/dimmer;
+`#wwStickyRulerTitle` markup (new, before the context line and chart);
+new `wwStickyRulerElapsedUnit(spanSeconds)` helper; `wwSyncStickyRuler()`
+rewritten to compute/apply a mode-aware title and (Elapsed-only) rescaled
+tick range/format; `wwUpdateTimeModeContext()` updated so the ruler's own
+context line shows only the date, while the toolbar's copy keeps its
+full wording unchanged). No new files. **No `backend/` file, no
+`frontend/waveform-prototype.html`/`theme.css`/`theme.js` change, no CI/
+deployment workflow file was touched.**
+
+## What files were changed in the prior session (Phase 2C-C4 sticky shared waveform time axis)
 
 Modified only: `frontend/index.html` (`.ww-sticky-ruler`/
 `.ww-sticky-ruler-context`/`.ww-sticky-ruler-chart` CSS; `#wwStickyRuler`/
@@ -2254,7 +2384,7 @@ Modified:
 See "GitHub persistence" and "DEV deployment" in this task's final report
 (delivered in-conversation) for the exact commit hash, push confirmation,
 independent-fetch verification, GitHub Actions run, and live-endpoint
-checks for this Phase 2C-C4 pass. **Production was not touched.**
+checks for this Phase 2C-C4A pass. **Production was not touched.**
 
 ## What remains unresolved
 
@@ -2307,38 +2437,64 @@ checks for this Phase 2C-C4 pass. **Production was not touched.**
 
 ## What should be done next
 
-The next step is for the **project owner** to review Phase 2C-C4 via
-live DEV UAT (this task's own 17-step checklist, Separate mode as the
-primary scenario): create enough Separate lanes to require vertical
-scrolling; confirm the sticky ruler remains visible while scrolling
-toward the top and through middle lanes; confirm its tick positions
-visually line up with the waveform data underneath at various zoom
-levels; zoom and pan and confirm the ruler updates; switch Absolute ↔
-Elapsed and confirm the ruler changes without changing the physical
-window; resize several lanes and confirm the ruler stays aligned; test
-Light/Dark; then also confirm Grouped and Custom modes; and confirm the
-ruler never covers waveform content/controls (in particular the lowest
-visible panel's resize handle) and that reaching the end of the
-workspace feels natural. Also flag whether the now-documented Grouped/
-Custom per-panel axis-label duplication (section 16) is actually
-bothersome enough in practice to warrant a follow-up cleanup pass, or
-acceptable as-is. If the owner confirms correctness: no further action
-needed on this item. If tick alignment is visibly off, or the ruler
-obscures content, report back — do **not** assume either outcome.
-Separately, the owner may choose to: (a) authorize the
-drag/reorder/overlay/split work directly (still the owner's own possible
-next direction, deliberately set aside across five passes now, not
-abandoned); (b) request the Grouped/Custom axis-duplication cleanup
-flagged above; or (c) move on to digital channels (the owner's own
-explicitly stated next area, and this task's own explicit instruction:
-do **not** begin digital-channel work without a separate signal).
-Separately, resolving the abandoned-session TTL question and the
-~100 MB real-file memory validation remain recommended before broader/
-prolonged shared-DEV UAT, unchanged conclusion from every prior Phase 2
-pass.
+The next step is for the **project owner** to review Phase 2C-C4A via
+live DEV UAT (this task's own 16-step checklist): confirm the title
+sits cleanly at the top of the sticky ruler, above the ticks, small and
+visually secondary; confirm Absolute mode reads "Record time" with a
+clean, non-duplicated date line beneath it; switch to Elapsed and
+confirm the title shows the right unit for the current zoom (e.g.
+"Time (s)" at full record); zoom deeply and confirm the title changes
+to "Time (ms)" together with the ticks; pan and confirm both stay in
+sync; **critically, visually confirm the ruler's tick positions still
+line up with the waveform data beneath them once rescaled to
+milliseconds** — this is the one specific claim this sandbox reasoned
+through but could not visually verify; scroll through many Separate
+lanes and confirm the title stays visible with the ruler; test Grouped
+and Custom; test Light/Dark; resize panels and confirm no alignment
+regression. If the owner confirms correctness (including tick
+alignment at ms-scale specifically): no further action needed on this
+item. If tick alignment is visibly off at any zoom level, or the title
+placement/spacing doesn't match the reference screenshot well enough,
+report back — do **not** assume either outcome. Separately, the owner
+may choose to: (a) authorize the drag/reorder/overlay/split work
+directly (still the owner's own possible next direction, deliberately
+set aside across six passes now, not abandoned); (b) request the
+still-outstanding Grouped/Custom axis-duplication cleanup (Phase
+2C-C4's own section 16 gap, unchanged by this phase); or (c) move on to
+digital channels (the owner's own explicitly stated next area, and this
+task's own explicit instruction: do **not** begin digital-channel work
+without a separate signal). Separately, resolving the abandoned-session
+TTL question and the ~100 MB real-file memory validation remain
+recommended before broader/prolonged shared-DEV UAT, unchanged
+conclusion from every prior Phase 2 pass.
 
 ## What must not be assumed
 
+- **Do not assume the ruler's Elapsed-mode tick VALUES are still raw
+  seconds with just a relabeled title** — they are genuinely rescaled
+  (×1000 for ms, ×1/60 for min) by `wwStickyRulerElapsedUnit()`, the
+  SAME function that also chooses the title text, so title and ticks
+  can never disagree (Phase 2C-C4A, section 4 of that task). This
+  rescale is scoped ENTIRELY to the ruler's own independent Plotly
+  x-axis domain.
+- **Do not assume this rescale touches `ww.viewport`,
+  `wwElapsedToPlotlyX()`, `wwBuildTrace()`, or any real waveform
+  panel's own axis** — it does not; all of those remain exactly as
+  Phase 2C-C3 left them, always raw elapsed seconds. Grouped/Custom
+  panels' own per-panel axes (already a known, separate duplication
+  with the ruler since Phase 2C-C4) are unaffected and still show raw
+  seconds via the unchanged `wwTimeAxisTickFormat()`.
+- **Do not assume Elapsed-mode unit-switching was verified to preserve
+  tick-pixel alignment in a real browser** — it was reasoned through
+  (Plotly's own "nice tick value" algorithm is scale-covariant under a
+  constant multiplier) but NOT visually confirmed; no browser is
+  available in this sandbox. Treat this as the single most important
+  open item for owner UAT, not a settled fact.
+- **Do not assume the ruler's date-context line and the toolbar's own
+  date-context label show identical text anymore** — they deliberately
+  don't, as of Phase 2C-C4A: the ruler shows only the date (its own
+  title now says "Record time" immediately above); the toolbar keeps
+  its full "<date> · Record time" wording, unchanged.
 - **Do not assume the sticky ruler is interactive** — it deliberately is
   not this slice (`staticPlot: true`, `pointer-events: none` on its CSS
   wrapper): not draggable, not zoomable, not pannable, not selectable,
@@ -2523,23 +2679,24 @@ pass.
 
 - Not needed to review or use Phase 2C-A, Phase 2C-B1, Phase 2C-B2, Phase
   2C-B3, Phase 2C-B3A, Phase 2C-C1, Phase 2C-C2, Phase 2C-C2A, Phase
-  2C-C3, or Phase 2C-C4 themselves — already implemented, deployed to
-  DEV, and live-verified per this exact task's own authorization.
-  **Recommended, though**: an owner UAT specifically scrolling through
-  enough Separate lanes to require it, confirming the sticky ruler stays
-  visible and its ticks visually align with waveform data, and
-  confirming zoom/pan/mode-switch/resize/theme all keep it correctly
-  updated — since real visual/browser confirmation could not be
-  performed in this sandbox.
+  2C-C3, Phase 2C-C4, or Phase 2C-C4A themselves — already implemented,
+  deployed to DEV, and live-verified per this exact task's own
+  authorization. **Recommended, though**: an owner UAT specifically
+  confirming the title's top placement/size against the reference
+  screenshot, confirming Absolute/Elapsed titles read correctly, and —
+  most importantly — visually confirming ruler tick alignment still
+  holds once Elapsed mode rescales to milliseconds at fine zoom, since
+  that specific claim could not be verified in this sandbox.
 - **Yes**, before any drag/reorder/overlay/split work begins (still the
   owner's own possible next direction, deliberately set aside across
-  five passes now in favor of Custom Groups, panel resize, time-axis
-  modes, and the sticky ruler, but still not yet explicitly authorized
-  to *implement*), before digital channels (the owner's own next stated
-  area, not yet begun — and this task's own explicit closing
-  instruction was to stop here, not begin it), before Synthetic Elapsed
-  Time, Sample Index, or any CSV/Excel timing mode, before the
-  Grouped/Custom per-panel axis-label duplication (section 16) is
+  six passes now in favor of Custom Groups, panel resize, time-axis
+  modes, the sticky ruler, and this title refinement, but still not yet
+  explicitly authorized to *implement*), before digital channels (the
+  owner's own next stated area, not yet begun — and this task's own
+  explicit closing instruction was to stop here, not begin it), before
+  Synthetic Elapsed Time, Sample Index, or any CSV/Excel timing mode,
+  before the Grouped/Custom per-panel axis-label duplication (Phase
+  2C-C4's own section 16 gap, unchanged and still outstanding) is
   cleaned up, before interactive ruler zoom/pan/selection or a shared
   crosshair on the ruler, before Phase 1.5 or any later phase begins,
   before a PROD deployment, before any further crosshair or theming

@@ -6287,6 +6287,143 @@ task's own §29.
 
 ---
 
+## Phase 2C-C4A — Sticky Time-Axis Title Placement and Unit Label (2026-08-16)
+
+`[FACT]` throughout. **Owner manual UAT confirmed Phase 2C-C4 passed
+functionally** (sticky shared time axis stays visible while scrolling,
+ruler alignment good, zoom/pan sync good, Absolute/Elapsed switching
+good, resizing does not break the ruler). This pass is a **cosmetic-only
+refinement**: relocating the ruler's title to the top of the strip (not
+under the ticks) and giving Elapsed mode a genuine, unit-aware title
+("Time (ms)"/"Time (s)"/"Time (min)") instead of a fixed "Time (s)".
+No timing semantics, synchronization, or sticky behavior changed.
+
+### Absolute title and date-context simplification
+
+Title is a fixed, compact "Record time" — never a per-unit label,
+since Absolute is a timestamp representation, not an elapsed unit
+scale (task's own explicit instruction). The ruler's own date-context
+line (previously "26 Jul 2025 · Record time") is simplified to just the
+date ("26 Jul 2025"), since the "Record time" wording now already
+appears immediately above it as the title — avoiding the awkward
+"Record time / 26 Jul 2025 · Record time" duplication the task
+explicitly flagged. **The toolbar's own copy of the context label
+(`#wwTimeModeContext`) is deliberately left unchanged** — still the
+full "26 Jul 2025 · Record time" wording — since it has no adjacent
+title element of its own to create a duplication with.
+
+### Elapsed title: genuine unit-aware rescaling, not just a label
+
+The task's own §4 was explicit and non-negotiable: "Do NOT allow a
+mismatch such as: title = Time (s), ticks = milliseconds. There should
+be one shared source of truth." Investigation found that Phase 2C-C3's
+existing `wwTimeAxisTickFormat()` never actually switches units at all
+— Elapsed mode always displays raw elapsed **seconds**, only adapting
+DECIMAL PRECISION at finer zoom (e.g. "0.0042" at the finest band,
+still literally seconds) — a deliberate, honestly-documented
+simplification from that phase. Simply attaching a "Time (ms)" title to
+that unchanged seconds-formatted number would have been exactly the
+mismatch §4 forbids.
+
+**Resolution**: a new function, `wwStickyRulerElapsedUnit(spanSeconds)`,
+is the ONE shared decision both the ruler's title AND its own tick
+values now consult — a simple 3-tier span-based rule (span < 1s → ms,
+< 60s → s, ≥ 60s → min). The ruler's own (independent, trace-less)
+Plotly x-axis domain is rescaled by the chosen unit's constant factor
+(×1000 for ms, ×1/60 for min) purely as a presentation transform — this
+is scoped **entirely to the ruler's own Plotly instance**:
+`wwElapsedToPlotlyX()`, `wwBuildTrace()`, every real waveform panel's
+own axis, and `ww.viewport` itself are all completely untouched (the
+same category of presentation-only transform Absolute mode's date-
+string conversion already established in Phase 2C-C3 — the physical
+viewport never changes representation, only what a Plotly x-axis is
+told to display).
+
+**Alignment reasoning (not visually re-verified, honestly flagged)**: a
+uniform multiplicative rescale of the ruler's own numeric domain does
+not shift tick pixel positions relative to the shared viewport, because
+Plotly's own "nice round tick value" algorithm (the 1-2-5 heuristic) is
+scale-covariant — it picks proportionally equivalent step sizes
+regardless of a constant multiplier applied to the whole domain, so a
+given elapsed-time instant lands at the same pixel offset whether the
+ruler's own axis is labeled in seconds or milliseconds. This reasoning
+was worked through carefully but **could not be visually confirmed in
+this sandbox** (no real browser) — flagged explicitly for owner UAT.
+Grouped/Custom panels' own axes (already a documented, unaddressed
+duplication with the ruler since Phase 2C-C4, §16/§20 of that task)
+are completely unaffected by this rescale — they still call the
+unchanged `wwTimeAxisTickFormat()` directly, in raw seconds, exactly as
+before.
+
+### Layout
+
+`#wwStickyRulerTitle`, a new small (0.68rem), centered, `--text-dim`
+element, sits at the TOP of `.ww-sticky-ruler`, before both the
+(Absolute-only) date-context line and the Plotly tick strip — never
+underneath the ticks. Centered within the same 55px/20px left/right
+inset as the Plotly plot area itself (`WW_PANEL_MARGIN`), so it
+visually centers over the ticks rather than the ruler's own outer
+edges. Height increases modestly (one new text line) — accepted per
+the task's own "small increase... acceptable" guidance; Elapsed mode's
+net height stays lower than Absolute's (no date-context line shown in
+Elapsed mode, unchanged from before this phase).
+
+### Tests
+
+- **Frontend, new**: `phase2cc4a_check.mjs` (scratch, not committed) —
+  23/23 passing. Covers: title element positioned before the tick
+  chart in DOM order, Absolute title exactly "Record time", the
+  simplified date-only ruler context line vs. the toolbar's unchanged
+  full text, ms/s/min titles (min-scale tested directly against
+  `wwStickyRulerElapsedUnit()` since the test fixture's own record is
+  too short to reach a real 60s+ zoom), the ruler's rescaled tick
+  values genuinely matching the title's unit (no mismatch), zoom and
+  pan both updating the unit/title correctly, Absolute↔Elapsed
+  switching, zero waveform fetches on a mode switch, Reset Time View,
+  Grouped/Separate/Custom, sticky CSS/margin/alignment-input
+  unchanged, theme switching, and workspace-reset ruler/title clearing
+  (including confirming `ww.timeMode`'s own established persistence-
+  across-clear behavior from Phase 2C-C3 is unaffected).
+- **Frontend, existing, re-run unmodified**: the full Phase 2C-A
+  through Phase 2C-C4 suites (222 checks total) were all re-run
+  unmodified. **20 failures appear, all explained** — not regressions:
+  (1) the same pre-existing Phase 2C-C3/2C-C4 divergences already
+  documented in those phases' own records (`phase2ca_check.mjs`'s
+  Absolute-default assumptions, and every Separate-mode "only the
+  bottom lane shows ticks" assumption superseded by Phase 2C-C4's own
+  §16 change); (2) a NEW divergence appearing across most of the
+  remaining scripts (`phase2cb1`, `phase2cb2`, `phase2cb3`,
+  `phase2cb3a`, `phase2cc1`, `phase2cc2`, `phase2cc3`) — each asserts
+  the value of the LAST Plotly relayout call carrying an `xaxis.range`
+  update, which used to always be a real panel's own (raw-elapsed-
+  seconds) value; it is now sometimes the RULER's own correctly-
+  rescaled value instead (e.g. `100` instead of `0.1` for a 100ms
+  zoom), since these older fixtures predate COMTRADE timing metadata
+  and default to Elapsed mode; and (3) `phase2cc4_check.mjs`'s own
+  date-context-text-equality assertion, which asserted the exact thing
+  this phase's own §5 deliberately changed. Per this project's
+  established precedent, none of these frozen, one-off, not-committed
+  scripts were modified — `phase2cc4a_check.mjs` explicitly covers what
+  changed.
+- **Backend**: zero diff, 278/278 passing in a fresh venv.
+
+### Files changed
+
+Modified only: `frontend/index.html`. No backend file, no CI/deployment
+workflow file.
+
+### Honest limitation
+
+This sandboxed session has no real browser. The claim that a uniform
+rescale of the ruler's own axis domain preserves tick-position
+alignment with the (unchanged, unrescaled) real waveform panels was
+reasoned through carefully but **not visually confirmed** — this is
+the single most important thing for the owner to check during UAT,
+alongside whether the title's placement/size/spacing reads as intended
+against the reference screenshot supplied for this task.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

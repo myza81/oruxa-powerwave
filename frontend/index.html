@@ -787,14 +787,39 @@
             pointer-events: none;
         }
         .ww-sticky-ruler[hidden] { display: none; }
-        .ww-sticky-ruler-context {
-            font-size: 0.72rem;
+        /* Phase 2C-C4A: small, compact mode title -- "Record time"
+           (Absolute) or "Time (ms)"/"Time (s)"/"Time (min)" (Elapsed) --
+           always shown at the TOP of the ruler, above the tick strip
+           (never underneath it -- this task's own section 6). Centered
+           within the SAME left/right inset as the Plotly plot area
+           itself (55px/20px, matching WW_PANEL_MARGIN -- section 7), not
+           across the whole strip width, so it visually centers over the
+           ticks rather than the ruler's own outer edges. Deliberately
+           small/secondary (0.68rem, --text-dim) -- a compact engineering
+           plot label, not an axis heading (section 8). */
+        .ww-sticky-ruler-title {
+            font-size: 0.68rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
             color: var(--text-dim);
-            /* Matches WW_PANEL_MARGIN.l so the date label lines up with
-               where the ticks themselves start, not the ruler's outer
-               edge (section 15: "place cleanly within/adjacent," not
-               centered on the whole strip). */
-            padding-left: 55px;
+            text-align: center;
+            padding: 0 20px 0 55px;
+        }
+        /* Phase 2C-C3: the date-only context line (Absolute mode only) --
+           now just the date itself ("26 Jul 2025"), since the "Record
+           time" wording moved to .ww-sticky-ruler-title directly above it
+           (section 5: avoid "Record time" / "<date> · Record time"
+           duplication). Same centered inset as the title, smaller/
+           dimmer -- secondary to the title, which is itself secondary to
+           the waveform traces. */
+        .ww-sticky-ruler-context {
+            font-size: 0.64rem;
+            color: var(--text-dim);
+            text-align: center;
+            /* Matches WW_PANEL_MARGIN.l/r so the date label lines up with
+               where the ticks themselves start/end, not the ruler's outer
+               edge. */
+            padding: 0 20px 0 55px;
         }
         .ww-sticky-ruler-context[hidden] { display: none; }
         .ww-sticky-ruler-chart { width: 100%; height: 46px; }
@@ -903,8 +928,14 @@
              level strip, not per-panel/per-layout-mode (section 3/5). A
              presentation layer only, over the authoritative
              ww.viewport/ww.timeMode state -- see wwSyncStickyRuler().
-             Hidden whenever nothing is displayed (section 17). -->
+             Hidden whenever nothing is displayed (section 17).
+             Phase 2C-C4A: a small top-of-strip title ("Record time" /
+             "Time (ms)" / "Time (s)" / "Time (min)") sits above the
+             tick strip, with the (Absolute-only) date-context line
+             directly below it -- both above the ticks, never under
+             them (section 6). -->
         <div class="ww-sticky-ruler" id="wwStickyRuler" hidden>
+            <div class="ww-sticky-ruler-title" id="wwStickyRulerTitle"></div>
             <div class="ww-sticky-ruler-context" id="wwStickyRulerContext" hidden></div>
             <div class="ww-sticky-ruler-chart" id="wwStickyRulerChart"></div>
         </div>
@@ -2962,6 +2993,42 @@
             wwSyncStickyRuler();
         }
 
+        // Phase 2C-C4A: ONE shared decision for the sticky ruler's
+        // Elapsed-mode display unit -- both its title AND its own tick
+        // values are derived from this single function, so "title says
+        // ms" can never disagree with "ticks show seconds" (section 4).
+        // Presentation-only: it rescales ONLY the ruler's own independent
+        // numeric x-axis domain by a constant factor -- the ruler carries
+        // zero trace data and has never shared a Plotly instance with any
+        // real panel (see wwSyncStickyRuler()'s own comment), so this
+        // never touches wwElapsedToPlotlyX(), wwBuildTrace(), any real
+        // waveform panel's own axis, or ww.viewport itself. This is the
+        // same category of presentation-only transform Absolute mode's
+        // date-string conversion already established in Phase 2C-C3 --
+        // the physical viewport never changes representation, only what
+        // a Plotly x-axis is told to display. A uniform multiplicative
+        // rescale of both the range and Plotly's own "nice round tick
+        // value" choices is scale-covariant (the 1-2-5 nice-number
+        // heuristic picks proportionally equivalent steps regardless of
+        // the constant multiplier applied to the whole domain), so this
+        // does not shift WHERE ticks land relative to the shared
+        // viewport -- see this phase's own report for the honest caveat
+        // that this specific claim was reasoned through, not visually
+        // confirmed in a real browser (no browser is available in this
+        // sandbox).
+        //
+        // A simple 3-tier span-based decision -- deliberately NOT the
+        // panels' own 4-tier decimal-PRECISION bands in
+        // wwTimeAxisTickFormat() (dtickrange-keyed, which stay byte-for-
+        // byte unchanged and keep using raw seconds always -- this task's
+        // own scope is the ruler's title/presentation, not a Grouped/
+        // Custom panel-axis redesign, section 20).
+        function wwStickyRulerElapsedUnit(spanSeconds) {
+            if (spanSeconds < 1) return { scale: 1000, tickformat: ",.1f", title: "Time (ms)" };
+            if (spanSeconds < 60) return { scale: 1, tickformat: ".3~f", title: "Time (s)" };
+            return { scale: 1 / 60, tickformat: ".2~f", title: "Time (min)" };
+        }
+
         // Phase 2C-C4: ONE Oruxa-owned shared time-axis strip for the
         // whole workspace (section 3) -- a lightweight, trace-less Plotly
         // instance whose ONLY job is rendering the shared x-axis, never a
@@ -3000,16 +3067,46 @@
         function wwSyncStickyRuler() {
             const wrapEl = document.getElementById("wwStickyRuler");
             const chartEl = document.getElementById("wwStickyRulerChart");
+            const titleEl = document.getElementById("wwStickyRulerTitle");
             if (!wrapEl || !chartEl) return;
 
             const hasChannels = ww.panels.length > 0;
             wrapEl.hidden = !hasChannels;
             if (!hasChannels) return; // section 17: no unnecessary ruler when empty
 
-            const tickFormat = wwTimeAxisTickFormat();
-            const xrange = ww.viewport
-                ? [wwElapsedToPlotlyX(ww.viewport.start), wwElapsedToPlotlyX(ww.viewport.end)]
-                : undefined;
+            // Phase 2C-C4A: Absolute mode reuses wwTimeAxisTickFormat()
+            // exactly as Phase 2C-C4 already did (unchanged) with the
+            // fixed "Record time" title (section 5) -- never a per-unit
+            // label, since Absolute is a timestamp representation, not an
+            // elapsed unit scale. Elapsed mode now derives BOTH its range
+            // rescale AND its title from wwStickyRulerElapsedUnit(),
+            // reading the CURRENT visible span fresh every call -- so a
+            // zoom/pan that changes the chosen unit (section 11) is
+            // picked up automatically the next time this function runs,
+            // with no separate wiring needed beyond the existing call
+            // sites (wwApplyAndFetchViewport/wwSetTimeMode) already used.
+            let xrange, tickformatstops, tickformat, hoverformat, title;
+            if (ww.timeMode === "absolute") {
+                const tf = wwTimeAxisTickFormat();
+                xrange = ww.viewport
+                    ? [wwElapsedToPlotlyX(ww.viewport.start), wwElapsedToPlotlyX(ww.viewport.end)]
+                    : undefined;
+                tickformatstops = tf.tickformatstops;
+                tickformat = "";
+                hoverformat = tf.hoverformat;
+                title = "Record time";
+            } else {
+                const spanSeconds = ww.viewport ? Math.abs(ww.viewport.end - ww.viewport.start) : 1;
+                const unit = wwStickyRulerElapsedUnit(spanSeconds);
+                xrange = ww.viewport
+                    ? [ww.viewport.start * unit.scale, ww.viewport.end * unit.scale]
+                    : undefined;
+                tickformatstops = [];
+                tickformat = unit.tickformat;
+                hoverformat = unit.tickformat;
+                title = unit.title;
+            }
+            if (titleEl) titleEl.textContent = title;
 
             if (!ww.rulerReady) {
                 const colors = wwThemeColors();
@@ -3018,12 +3115,13 @@
                     paper_bgcolor: "transparent",
                     plot_bgcolor: "transparent",
                     font: { color: colors.text, size: 10 },
-                    xaxis: Object.assign({
+                    xaxis: {
                         type: ww.timeMode === "absolute" ? "date" : undefined,
                         range: xrange,
                         gridcolor: colors.grid, zeroline: false, showgrid: false,
                         ticks: "outside", tickcolor: colors.grid, ticklen: 4,
-                    }, tickFormat),
+                        tickformatstops: tickformatstops, tickformat: tickformat, hoverformat: hoverformat,
+                    },
                     // No Y data ever -- this instance exists purely to
                     // render the shared X axis (section 3/25).
                     yaxis: { visible: false, fixedrange: true, range: [0, 1] },
@@ -3043,7 +3141,9 @@
                 Plotly.relayout(chartEl, {
                     "xaxis.type": ww.timeMode === "absolute" ? "date" : "linear",
                     "xaxis.range": xrange,
-                    "xaxis.tickformatstops": tickFormat.tickformatstops,
+                    "xaxis.tickformatstops": tickformatstops,
+                    "xaxis.tickformat": tickformat,
+                    "xaxis.hoverformat": hoverformat,
                 });
             }
             wwUpdateTimeModeContext();
@@ -3055,11 +3155,20 @@
         // mode or when no displayed channel has a trustworthy recording-
         // start timestamp.
         // Phase 2C-C4 (section 15): also drives the equivalent label
-        // placed alongside the sticky ruler -- same computed text, same
-        // hidden/shown rule, written to a second DOM target so the date
-        // context stays visible even once the toolbar's own copy has
-        // scrolled out of view. Not a second implementation -- one
-        // computation, two destinations.
+        // placed alongside the sticky ruler.
+        // Phase 2C-C4A (section 5): the toolbar's own label
+        // (#wwTimeModeContext) keeps the FULL "<date> · Record time"
+        // wording unchanged -- it has no separate title element next to
+        // it, so the "· Record time" suffix still carries useful context
+        // there. The ruler's own copy (#wwStickyRulerContext) now shows
+        // ONLY the date ("<date>") -- the "Record time" wording already
+        // appears immediately above it via #wwStickyRulerTitle
+        // (wwSyncStickyRuler()), so repeating it here would read as
+        // "Record time / <date> · Record time," an awkward duplication
+        // this task's own section 5 explicitly asked to avoid. Same
+        // underlying date computation for both -- not a second
+        // implementation, just two destinations with two (deliberately
+        // different) amounts of wording.
         function wwUpdateTimeModeContext() {
             const el = document.getElementById("wwTimeModeContext");
             const rulerEl = document.getElementById("wwStickyRulerContext");
@@ -3071,9 +3180,9 @@
             }
             const d = new Date(originMs);
             const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-            const text = d.getUTCDate() + " " + months[d.getUTCMonth()] + " " + d.getUTCFullYear() + " · Record time";
-            if (el) { el.textContent = text; el.hidden = false; }
-            if (rulerEl) { rulerEl.textContent = text; rulerEl.hidden = false; }
+            const dateText = d.getUTCDate() + " " + months[d.getUTCMonth()] + " " + d.getUTCFullYear();
+            if (el) { el.textContent = dateText + " · Record time"; el.hidden = false; }
+            if (rulerEl) { rulerEl.textContent = dateText; rulerEl.hidden = false; }
         }
 
         // Phase 2C-C3 (section 24): enables/disables each time-mode
