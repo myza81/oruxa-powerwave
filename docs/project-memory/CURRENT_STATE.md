@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-17** (Phase 3B-UAT6).
+Last meaningful update: **2026-08-17** (Phase 3B-UAT7).
 
 ## Development phase
 
@@ -911,6 +911,33 @@ render where). 9 new frontend `jsdom` checks passing
 (`phase3buat6_check.mjs`). **Unverified**: real-browser visual
 confirmation of the compact horizontal table's readability and
 horizontal-scroll behavior at narrow widths — flagged for owner UAT.
+
+`[FACT]` **UAT6's table layout was accepted technically but rejected on
+UX grounds; a redesigned structured details panel is now implemented —
+Phase 3B-UAT7 — Recording Details UX Redesign** (2026-08-17) — see
+[MIGRATION_PLAN.md — Phase 3B-UAT7 Record](MIGRATION_PLAN.md#phase-3b-uat7--recording-details-ux-redesign-2026-08-17).
+An analysis-first design-review turn preceded implementation (three
+alternatives compared; owner approved Option B, "structured two-zone
+details," plus a rule to remove CFG/DAT filenames from the main
+Recordings table). What changed: the main Recording cell now shows only
+the logical recording name (`.recording-files` sub-line deleted; the
+search index still includes filenames even though they're no longer
+visibly rendered); the UAT6 `<table>`/`<thead>` details grammar was
+replaced by three plain zones — a wrapping "facts" strip (Nominal
+frequency/Timing reference/Samples/Sampling rate(s)), dedicated
+full-width Start/Trigger timing lines, and a Files group separated by a
+quiet divider; a thin `--accent` left bar on the details panel plus a
+`--accent-wash-soft` tint on the parent row (via a new
+`tr.recording-row-expanded` class) visually tie an open panel to its own
+row, even with several expanded at once; the Details toggle now keeps a
+stable "Details" label and reuses the app's existing `.chevron`
+disclosure glyph (already used for Analog/Digital channel groups)
+instead of swapping button text, visually demoted (transparent border)
+below Open/Analyse and Remove. Zero backend diff, 280/280 backend tests
+passing (unchanged). 19 new frontend `jsdom` checks passing
+(`phase3buat7_check.mjs`). **Unverified**: real-browser visual
+confirmation of the accent-bar/row-tint association, chevron rotation
+smoothness, and overall polish — flagged for owner UAT.
 
 ## Completed foundation work
 

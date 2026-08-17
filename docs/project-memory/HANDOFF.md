@@ -8,6 +8,67 @@ Last updated: **2026-08-17**
 
 ## What was most recently done
 
+**Phase 3B-UAT7 — Recording Details UX Redesign.** Full detail:
+[MIGRATION_PLAN.md — Phase 3B-UAT7 Record](MIGRATION_PLAN.md#phase-3b-uat7--recording-details-ux-redesign-2026-08-17).
+No new DECISIONS.md entry.
+
+**Owner feedback**: UAT6's `<table>`-grammar Details panel was
+technically correct but rejected on UX grounds — read as "a second
+spreadsheet," gave Start/Trigger Time no more room than any other
+field, no visible connection to its parent row. A dedicated analysis
+turn (three alternatives compared: inline facts strip, structured
+two-zone panel, side inspector) preceded implementation; owner approved
+**Option B — structured two-zone details**, plus a rule to remove
+CFG/DAT filenames from the main Recordings table entirely.
+
+**Main table**: `td.recording-name-cell` now shows only the logical
+recording name — the `.recording-files` sub-line (CFG+DAT filenames)
+was deleted. The search index still includes filenames even though
+they're no longer visibly rendered, so filename search still works.
+
+**Details panel — three zones, no table markup**: `renderRecordingDetails()`
+was rewritten from `<table><thead>…` to (1) a `flex-wrap` "facts" strip
+for Nominal frequency/Timing reference/Samples/Sampling rate(s), (2)
+dedicated full-width Start/Trigger timing lines (fixing "timestamps
+under-emphasized"), (3) a Files group separated by a quiet divider
+(unchanged from UAT6). Start/Trigger still use the established
+`.replace("T", " ")` technique — full microsecond precision preserved,
+`new Date()` still never used.
+
+**Row association**: a 3px `--accent` left bar on the details panel
+plus a `--accent-wash-soft` tint on the parent row (new
+`tr.recording-row-expanded` class, toggled by a new `findRecordingRow()`
+helper) tie an open panel to its own row even with several expanded at
+once — both existing theme tokens, no new hardcoded colors.
+
+**Details interaction**: the toggle button keeps a stable "Details"
+label at all times (no "Hide details" swap); it reuses the app's
+existing `.chevron` disclosure glyph (already used for Analog/Digital
+channel groups) with a new `[aria-expanded="true"] .chevron` rotation
+rule, and has a transparent border by default to visually demote it
+below Open/Analyse and Remove (both unchanged). `toggleRecordingDetails()`
+no longer touches `textContent` — only `aria-expanded` changes.
+
+**Verification**: 19 new frontend `jsdom` checks (`phase3buat7_check.mjs`)
++ five existing assertions corrected in place across `phase3auat3_check.mjs`,
+`phase3b_check.mjs`, `phase3buat5_check.mjs`, `phase3buat6_check.mjs`
+(each had assumed the now-superseded `<table>` grammar, text-swap
+label, "Start time"/"Trigger time" zone labels, or main-row filename
+line) — the full suite otherwise returns to the exact same 20
+pre-existing, already-documented failures, zero new divergences.
+Backend: zero diff, 280/280 passing in a fresh venv (unchanged — no new
+field was needed, every rendered value already existed in
+`SourceSummaryOut`).
+
+**Backend**: zero files changed. **Real-browser visual confirmation —
+whether the accent-bar/row-tint association reads as intended, whether
+the chevron rotation feels smooth, and whether the panel now feels
+genuinely more polished — was NOT and cannot be confirmed in this
+sandboxed session; this remains explicitly for the owner's own manual
+UAT.**
+
+## What was done in the prior session (Phase 3B-UAT6 — No Duplicate Metadata in Recording Details)
+
 **Phase 3B-UAT6 — No Duplicate Metadata in Recording Details.** Full
 detail:
 [MIGRATION_PLAN.md — Phase 3B-UAT6 Record](MIGRATION_PLAN.md#phase-3b-uat6--no-duplicate-metadata-in-recording-details-2026-08-17).

@@ -342,12 +342,16 @@
         table.recordings th { color: var(--text-dim); font-weight: 500; font-size: 0.75rem; white-space: nowrap; }
         table.recordings tr[hidden] { display: none; }
         table.recordings tr:hover td { background: var(--hover-tint); }
-        /* Phase 3A-UAT4 containment precedent: the recording name and its
-           underlying filenames come straight from imported files and can
-           be long/unbroken -- wrap in place, never escape the cell/table,
-           never truncate. */
+        /* Phase 3A-UAT4 containment precedent: the recording name comes
+           straight from imported files (or a real station name) and can
+           be long/unbroken -- wrap in place, never escape the cell/
+           table, never truncate. Phase 3B-UAT7: CFG/DAT filenames used
+           to render here too (.recording-files, now removed) -- the
+           main table shows logical recording identity only; physical
+           filenames moved exclusively into expanded Details' Files
+           zone (see renderRecordingDetails()), so they're never shown
+           twice. */
         .recording-name { font-weight: 600; color: var(--text); overflow-wrap: anywhere; max-width: 100%; }
-        .recording-files { font-size: 0.76rem; color: var(--text-dim); margin-top: 2px; overflow-wrap: anywhere; max-width: 100%; }
         td.recording-name-cell { min-width: 0; max-width: 320px; }
         /* Phase 3B-UAT1 (owner UAT, root cause): this class used to be
            applied directly to the Actions <td>, which overrode that one
@@ -368,51 +372,49 @@
            cell share one bottom boundary -- this fix restores that by
            no longer opting the Actions cell out of it. */
         .recording-actions { display: flex; gap: 8px; white-space: nowrap; }
-        /* Phase 3B-UAT5: per-recording expandable metadata -- a sibling
-           <tr> directly beneath the recording's own row (see
-           renderRecordingDetails()), not a separate drawer/modal/page.
-           Phase 3B-UAT6 moved its content to a compact horizontal table
-           + Files list (see .recording-details-table below) once
-           Recorder/Duration/Channels were dropped as main-table
-           duplicates -- the old vertical .stat-grid/.stat/statCard()
-           machinery this comment used to describe is no longer used
-           anywhere in the app and was removed. */
+        /* Phase 3B-UAT7 (owner UX review of UAT6): the horizontal
+           <table>-grammar details panel read as "a second spreadsheet"
+           and gave Start/Trigger Time no more room than a one-word
+           field -- replaced with a structured inline panel: a compact
+           wrapping "facts" strip (Zone 1), dedicated full-width timing
+           lines (Zone 2), and a Files group (Zone 3), inset beneath the
+           parent row with a thin accent bar so it visually belongs to
+           that row even when several rows are expanded at once. See
+           docs/project-memory/MIGRATION_PLAN.md's Phase 3B-UAT7 record
+           for the full before/after rationale. */
         .recording-details-row[hidden] { display: none; }
+        /* The accent bar is the row-association cue (paired with
+           tr.recording-row-expanded below, same color family) -- a
+           restrained 3px rule, not a colored background wash. */
         .recording-details-row td {
             background: var(--surface-tint);
-            padding: 16px;
+            border-left: 3px solid var(--accent);
+            padding: 14px 16px 14px 18px;
         }
-        .recording-details-title {
-            font-size: 0.78rem;
-            text-transform: uppercase;
-            letter-spacing: 0.03em;
-            color: var(--text-dim);
-            margin: 0 0 10px;
+        /* Zone 1: short scalar facts as label/value pairs that wrap as a
+           unit -- a flex strip, not a table, so it reflows to fewer
+           columns at narrower widths instead of forcing a horizontal
+           scrollbar or squeezing a column. */
+        .recording-details-facts {
+            display: flex;
+            flex-wrap: wrap;
+            column-gap: 28px;
+            row-gap: 6px;
+            margin-bottom: 12px;
         }
-        /* Phase 3B-UAT6: Recorder/Duration/Channels already live in the
-           main Recordings table's own columns -- the expanded panel no
-           longer repeats them, and switched from vertical .stat-grid
-           cards to one compact horizontal row (owner's own mockup),
-           since the field list shrank to values that read naturally
-           left-to-right. Same overflow-x: auto containment technique as
-           .recordings-table-wrap -- a wide row scrolls horizontally at
-           narrow widths rather than breaking Work Area's own width. */
-        .recording-details-table-wrap { overflow-x: auto; margin-bottom: 14px; }
-        .recording-details-table { border-collapse: collapse; font-size: 0.82rem; }
-        .recording-details-table th, .recording-details-table td {
-            text-align: left;
-            padding: 2px 20px 2px 0;
-            vertical-align: top;
-        }
-        .recording-details-table th {
-            color: var(--text-dim);
-            font-weight: 500;
-            font-size: 0.72rem;
-            text-transform: uppercase;
-            letter-spacing: 0.02em;
-            white-space: nowrap;
-        }
-        .recording-details-table td { color: var(--text); overflow-wrap: anywhere; }
+        .recording-details-fact { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
+        .recording-details-fact-label { font-size: 0.72rem; color: var(--text-dim); }
+        .recording-details-fact-value { font-size: 0.88rem; color: var(--text); font-weight: 500; overflow-wrap: anywhere; white-space: normal; }
+        /* Zone 2: Start/Trigger get dedicated full-width lines instead of
+           sharing table-column width with short fields -- this is the
+           direct fix for "timestamps not receiving enough emphasis." */
+        .recording-details-timing { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+        .recording-details-timing-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+        .recording-details-timing-row .recording-details-fact-label { flex-shrink: 0; width: 52px; }
+        .recording-details-timing-value { font-size: 0.88rem; color: var(--text); overflow-wrap: anywhere; }
+        /* A quiet rule, not a bordered card, separates Files from timing
+           while keeping both inside the same panel. */
+        .recording-details-divider { border-top: 1px solid var(--panel-border); margin: 2px 0 12px; }
         .recording-details-files-title {
             font-size: 0.72rem;
             text-transform: uppercase;
@@ -424,6 +426,26 @@
         .recording-details-file { display: flex; gap: 10px; min-width: 0; }
         .recording-details-file-label { color: var(--text-dim); font-weight: 500; flex-shrink: 0; width: 34px; }
         .recording-details-file-name { overflow-wrap: anywhere; min-width: 0; }
+        /* Companion half of the row-association cue: a very subtle tint
+           on the PARENT row while its own details are expanded, same
+           accent family as the details panel's left bar -- not a
+           "selected for analysis" state, just "this row owns the open
+           panel below it." */
+        tr.recording-row-expanded td { background: var(--accent-wash-soft); }
+        /* Details is a disclosure control, not a peer of Open/Analyse or
+           Remove -- same button geometry (keeps the row of three
+           controls aligned) but a transparent border and the shared
+           .chevron glyph (already used for Analog/Digital channel
+           groups) demote it and communicate state, instead of swapping
+           the button's own label text between "Details"/"Hide details". */
+        button.recording-details-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            border-color: transparent;
+        }
+        button.recording-details-toggle:hover { border-color: var(--panel-border); }
+        button.recording-details-toggle[aria-expanded="true"] .chevron { transform: rotate(90deg); }
         #recordingsEmpty { text-align: center; padding: 48px 24px; }
         #recordingsEmpty p { margin: 0 0 16px; }
 
@@ -2573,7 +2595,7 @@
             });
         }
 
-        // Phase 3B-UAT5/UAT6: the full per-recording metadata panel,
+        // Phase 3B-UAT5/UAT6/UAT7: the full per-recording metadata panel,
         // built entirely from the SAME SourceSummaryOut object already
         // fetched for the table row -- no per-row `.../channels`
         // request, no waveform data, no reparse.
@@ -2581,14 +2603,17 @@
         // Phase 3B-UAT6 (owner clarification): Recorder, Duration, and
         // Channels are already visible as their own columns in the main
         // Recordings table -- repeating them here just duplicates the
-        // row directly above. This panel now shows ONLY the
-        // supplementary technical fields the main table has no room
-        // for, laid out as one compact horizontal row (not vertical
-        // .stat-grid cards -- the owner's own mockup), plus a separate
-        // "Files" section for CFG/DAT. Values still inherit containment
-        // (overflow-wrap: anywhere) and the table sits in an
-        // overflow-x: auto wrapper so a narrow viewport scrolls instead
-        // of breaking Work Area's own width.
+        // row directly above. This panel shows ONLY the supplementary
+        // fields the main table has no room for.
+        //
+        // Phase 3B-UAT7 (owner UX review): the UAT6 horizontal <table>
+        // read as a second spreadsheet and gave Start/Trigger Time no
+        // more room than any other field. Restructured into three zones
+        // instead of table columns: a wrapping "facts" strip (short
+        // scalar fields), dedicated full-width timing lines, and a
+        // Files group -- see the `.recording-details-*` CSS comment for
+        // the layout rationale and DECISIONS/MIGRATION_PLAN for the full
+        // before/after writeup. No `<table>`/`<thead>` grammar remains.
         //
         // Start/Trigger Time are formatted via a plain string
         // `.replace("T", " ")`, matching the SAME technique the old
@@ -2602,12 +2627,17 @@
             const startTime = source.start_time ? source.start_time.replace("T", " ") : "—";
             const triggerTime = source.trigger_time ? source.trigger_time.replace("T", " ") : "—";
 
-            let html = '<div class="recording-details-title">Recording details</div>';
-            html += '<div class="recording-details-table-wrap"><table class="recording-details-table"><thead><tr>';
-            html += '<th>Nominal frequency</th><th>Timing reference</th><th>Samples</th>' +
-                '<th>Sampling rate(s)</th><th>Start time</th><th>Trigger time</th>';
-            html += '</tr></thead><tbody><tr>';
-            html += '<td>' + escapeHtml(source.nominal_frequency + " Hz") + '</td>';
+            const fact = (label, value) =>
+                '<span class="recording-details-fact"><span class="recording-details-fact-label">' +
+                escapeHtml(label) + '</span><span class="recording-details-fact-value">' +
+                escapeHtml(value) + '</span></span>';
+            const timingRow = (label, value) =>
+                '<div class="recording-details-timing-row"><span class="recording-details-fact-label">' +
+                escapeHtml(label) + '</span><span class="recording-details-timing-value">' +
+                escapeHtml(value) + '</span></div>';
+
+            let html = '<div class="recording-details-facts">';
+            html += fact("Nominal frequency", source.nominal_frequency + " Hz");
             // Section 14 investigation: `timing_reference` is the SOURCE's
             // own timing capability (TimingInformation.timing_reference --
             // "absolute" when start_time/trigger_time are real recording
@@ -2619,14 +2649,18 @@
             // Waveform-sidebar label) specifically to avoid that
             // confusion -- see docs/project-memory/MIGRATION_PLAN.md's
             // Phase 3B-UAT5 record for the full investigation.
-            html += '<td>' + escapeHtml(source.timing_reference) + '</td>';
-            html += '<td>' + escapeHtml(source.sample_count.toLocaleString()) + '</td>';
-            html += '<td>' + escapeHtml(source.sampling_rates.map((r) => r + " Hz").join(", ")) + '</td>';
-            html += '<td>' + escapeHtml(startTime) + '</td>';
-            html += '<td>' + escapeHtml(triggerTime) + '</td>';
-            html += '</tr></tbody></table></div>';
+            html += fact("Timing reference", source.timing_reference);
+            html += fact("Samples", source.sample_count.toLocaleString());
+            html += fact("Sampling rate(s)", source.sampling_rates.map((r) => r + " Hz").join(", "));
+            html += '</div>';
+
+            html += '<div class="recording-details-timing">';
+            html += timingRow("Start", startTime);
+            html += timingRow("Trigger", triggerTime);
+            html += '</div>';
 
             if (cfgName || datName) {
+                html += '<div class="recording-details-divider"></div>';
                 html += '<div class="recording-details-files-title">Files</div>';
                 html += '<div class="recording-details-files">';
                 if (cfgName) {
@@ -2659,14 +2693,19 @@
             let html = "";
             for (const source of sources) {
                 const name = recordingDisplayName(source);
+                // Phase 3B-UAT7: CFG/DAT filenames are no longer rendered
+                // in this row (moved exclusively to expanded Details'
+                // Files zone) -- `filenames` still feeds the search
+                // index below so a filename search still finds the
+                // right row even though it's no longer printed here.
                 const filenames = source.original_filenames.join(" + ");
                 const searchText = [name, source.station_name, filenames, recordingFormatLabel(source)]
                     .filter(Boolean).join(" ").toLowerCase();
                 const expanded = recordingsExpandedDetails.has(source.source_id);
-                html += '<tr data-search="' + escapeHtml(searchText) + '" data-source-id="' + escapeHtml(source.source_id) + '">' +
+                html += '<tr data-search="' + escapeHtml(searchText) + '" data-source-id="' + escapeHtml(source.source_id) +
+                    '" class="' + (expanded ? "recording-row-expanded" : "") + '">' +
                     '<td class="recording-name-cell">' +
                         '<div class="recording-name">' + escapeHtml(name) + '</div>' +
-                        '<div class="recording-files">' + escapeHtml(filenames) + '</div>' +
                     '</td>' +
                     '<td>' + escapeHtml(source.station_name || "—") + '</td>' +
                     '<td>' + escapeHtml(source.recorder_name || "—") + '</td>' +
@@ -2674,9 +2713,9 @@
                     '<td>' + formatRecordingDuration(source.duration_seconds) + '</td>' +
                     '<td>' + formatImportedAt(source.created_at) + '</td>' +
                     '<td><div class="recording-actions">' +
-                        '<button type="button" class="secondary" data-action="details" data-source-id="' +
+                        '<button type="button" class="secondary recording-details-toggle" data-action="details" data-source-id="' +
                         escapeHtml(source.source_id) + '" aria-expanded="' + expanded + '">' +
-                        (expanded ? "Hide details" : "Details") + '</button>' +
+                        '<span class="chevron">&#9656;</span>Details</button>' +
                         '<button type="button" class="secondary" data-action="open" data-source-id="' +
                         escapeHtml(source.source_id) + '">Open / Analyse</button>' +
                         '<button type="button" class="danger" data-action="remove" data-source-id="' +
@@ -2723,6 +2762,15 @@
                 .find((row) => row.dataset.detailsFor === sourceId);
         }
 
+        // Phase 3B-UAT7: the recording's OWN row (not its details row) --
+        // used to apply the restrained "this row owns the open panel
+        // below it" tint (tr.recording-row-expanded, same accent family
+        // as the details panel's left bar).
+        function findRecordingRow(sourceId) {
+            return Array.from(document.querySelectorAll("#recordingsTableBody tr[data-source-id]"))
+                .find((row) => row.dataset.sourceId === sourceId);
+        }
+
         function toggleRecordingDetails(sourceId) {
             if (recordingsExpandedDetails.has(sourceId)) {
                 recordingsExpandedDetails.delete(sourceId);
@@ -2731,13 +2779,15 @@
             }
             const expanded = recordingsExpandedDetails.has(sourceId);
             const detailsRow = findRecordingDetailsRow(sourceId);
+            const parentRow = findRecordingRow(sourceId);
             const toggleBtn = Array.from(document.querySelectorAll('button[data-action="details"]'))
                 .find((btn) => btn.dataset.sourceId === sourceId);
             if (detailsRow) detailsRow.hidden = !expanded;
-            if (toggleBtn) {
-                toggleBtn.setAttribute("aria-expanded", String(expanded));
-                toggleBtn.textContent = expanded ? "Hide details" : "Details";
-            }
+            if (parentRow) parentRow.classList.toggle("recording-row-expanded", expanded);
+            // Label stays the stable "Details" text (owner direction --
+            // no "Hide details" swap); only aria-expanded changes, which
+            // the CSS chevron-rotation rule keys off directly.
+            if (toggleBtn) toggleBtn.setAttribute("aria-expanded", String(expanded));
         }
 
         // Section 10: activates/selects the recording in the current

@@ -8112,6 +8112,147 @@ owner UAT.
 
 ---
 
+## Phase 3B-UAT7 — Recording Details UX Redesign (2026-08-17)
+
+`[FACT]` throughout. No new DECISIONS.md entry (governance did not
+require one for this UX-presentation refinement, per the task's own
+instruction) — a design-review-then-implementation pass on the already-
+decided DEC-032 Recordings architecture, following the same
+analysis-first pattern the project already uses for `[DECISION MODE:
+COMPARISON]` items, but resolved as an approved implementation task
+rather than a formal decision record.
+
+### Owner feedback that triggered this phase
+
+Phase 3B-UAT6's horizontal `<table>`-grammar Details panel was
+technically correct (right fields, no duplication, exact association)
+but the owner rejected it on UX grounds: it read as "a second
+spreadsheet" embedded under the main table, gave Start/Trigger Time no
+more visual room than any other field, and had no visible connection to
+its own parent row. A dedicated analysis turn preceded this
+implementation (three alternatives compared: an inline facts strip, a
+structured two-zone panel, and a side inspector pane) — the owner
+approved **Option B, structured two-zone details**, plus an additional
+rule: CFG/DAT filenames must be removed from the main Recordings table
+entirely and shown only inside expanded Details.
+
+### Main Recordings table
+
+`td.recording-name-cell` now renders only the logical recording name
+(`recordingDisplayName()`, unchanged) — the `.recording-files` sub-line
+that used to print `original_filenames.join(" + ")` beneath it was
+deleted, and its now-unused CSS rule removed. Station, Recorder,
+Channels, Duration, Imported, Actions are all unchanged. The search
+index (`searchText`) still includes `filenames` even though they're no
+longer rendered — a filename search still finds the right row; only the
+*visible* duplication was removed, not the searchability.
+
+### Recording Details — structured two-zone panel
+
+`renderRecordingDetails()` was rewritten from `<table><thead>…` markup
+to three plain-HTML zones, none of them a table:
+
+- **Zone 1 (facts)** — Nominal frequency, Timing reference, Samples,
+  Sampling rate(s) as `label`/`value` pairs in a `flex-wrap` strip
+  (`.recording-details-facts`/`.recording-details-fact`) — each pair is
+  an atomic unit that wraps as a whole at narrow widths, unlike a rigid
+  `<table>` column.
+- **Zone 2 (timing)** — Start/Trigger get dedicated full-width lines
+  (`.recording-details-timing`), each on its own row with a
+  fixed-width "Start"/"Trigger" label so both timestamps align — this
+  is the direct fix for "timestamps not receiving enough emphasis."
+  Still formatted via the established `.replace("T", " ")` string
+  technique (never `new Date()`), so full microsecond precision is
+  unchanged.
+- **Zone 3 (files)** — unchanged from UAT6's own Files styling
+  (`.recording-details-files`/`.recording-details-file`), now separated
+  from Zone 2 by a quiet `.recording-details-divider` rule instead of a
+  second heading system.
+
+The `.recording-details-table`/`.recording-details-table-wrap`/
+`.recording-details-title` CSS (UAT6's table grammar) was deleted
+outright — confirmed via grep to have no other caller before removal.
+
+### Parent-row association
+
+Two halves of one restrained visual cue, both using the existing
+`--accent`/`--accent-wash-soft` theme tokens (no new hardcoded colors):
+a 3px `border-left: var(--accent)` on the details panel's own `<td>`,
+and a `tr.recording-row-expanded td { background: var(--accent-wash-soft); }`
+tint applied to the *parent* row (not the details row) while its panel
+is open, toggled by `toggleRecordingDetails()`'s own new
+`findRecordingRow()` lookup. With multiple rows expanded at once, each
+panel remains attributable to its own row by this same visual family
+plus DOM adjacency.
+
+### Details interaction refinement
+
+The Details button keeps a **stable "Details" label** at all times (no
+"Details"/"Hide details" swap) — `button.recording-details-toggle`
+reuses the app's own pre-existing `.chevron` glyph (already used for
+Analog/Digital channel groups' `<details>`/`<summary>` disclosure), with
+a new `button.recording-details-toggle[aria-expanded="true"] .chevron`
+rule providing the same 90°-rotation convention in this non-`<details>`
+context. The button's border is transparent by default (visually
+demoting it below the two real actions, Open/Analyse and Remove, which
+keep their existing `.secondary`/`.danger` styling untouched) and
+appears on hover. `toggleRecordingDetails()` no longer touches
+`textContent` at all — only `aria-expanded` changes, which both the
+chevron-rotation CSS and assistive technology key off directly. Open/
+Analyse and Remove semantics, placement, and confirmation flow are
+completely unchanged.
+
+### Responsive/theme behavior
+
+Zone 1's `flex-wrap` strip reflows to fewer columns at narrow widths
+without any horizontal scrollbar (unlike UAT6's `<table>`, which had no
+reflow option). Zone 2's timing lines are already full-width blocks, so
+they were never at risk of squeezing. Zone 3 reuses UAT6's own
+already-established filename containment
+(`overflow-wrap: anywhere`/`min-width: 0`). All new colors are existing
+Light/Dark theme tokens (`--accent`, `--accent-wash-soft`,
+`--panel-border`) — no new hardcoded values.
+
+### Tests
+
+- **Frontend, new**: `phase3buat7_check.mjs` (scratch, not committed) —
+  19/19 passing. Covers: main-table filename removal + summary-field
+  preservation (7 checks), Details presentation (chevron/stable label/
+  no table grammar/parent-row class/correct row attribution/multiple-
+  open, 7 checks), metadata preservation (exact fields, no Recorder/
+  Duration/Channels duplication, no cross-recording leakage, 3 checks),
+  and Files (removed from main row, present + correctly associated +
+  long-filename-safe in Details, zero network activity on toggle, 2
+  checks).
+- **Frontend, existing suite correction**: five pre-existing assertions
+  across `phase3auat3_check.mjs`, `phase3b_check.mjs` (two),
+  `phase3buat5_check.mjs` (five), and `phase3buat6_check.mjs` (two) had
+  implicitly assumed either the UAT6 `<table>` grammar, the old
+  "Details"/"Hide details" text-swap, the old "Start time"/"Trigger
+  time" zone labels, or the old main-row filename sub-line — all
+  updated in place with explanatory comments, following this project's
+  established precedent, rather than left failing.
+- **Frontend, full regression**: the exact same 20 pre-existing,
+  already-documented failures, zero new divergences.
+- **Backend**: zero diff, 280/280 passing in a fresh venv (no backend
+  file touched — this is a pure frontend presentation change; no new
+  field was needed since every rendered value already existed in
+  `SourceSummaryOut`).
+
+### Files changed
+
+`frontend/index.html` only.
+
+### Honest limitation
+
+No real browser is available in this sandbox — whether the accent-bar/
+row-tint association genuinely reads as intended, whether the chevron
+rotation is visually smooth, and whether the overall panel now feels
+"polished" rather than merely structurally different, were reasoned
+through but not visually confirmed — flagged for owner UAT.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping
