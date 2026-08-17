@@ -8395,6 +8395,159 @@ through but not visually confirmed — flagged for owner UAT.
 
 ---
 
+## Phase 3B-UAT8 — Waveform Sidebar Cleanup + Main Navigation Refinement (2026-08-17)
+
+`[FACT]` throughout. No new DECISIONS.md entry (a UI/presentation
+refinement within the already-decided DEC-031/DEC-032 shell/Recordings
+architecture).
+
+### Owner product-responsibility rule
+
+Recordings = recording management (upload, metadata, Remove, choose/
+open for analysis). Waveform = active recording context + channel
+analysis only. The Waveform sidebar's old "Sources in this Workspace"
+section (a clickable, multi-source list with its own per-row Remove
+button) duplicated exactly that Recordings-owned management surface.
+
+### Waveform sidebar: Active Recording replaces the source list
+
+`renderSourceListItems()` (which rendered EVERY source in the workspace
+as a switchable, removable list item) was replaced by
+`renderActiveRecording(sources)` — read-only, renders ONLY whichever
+source `selectedSourceId` currently names (the same selection
+`selectSource()` already manages, completely unchanged), reusing
+`recordingDisplayName()` for identity-naming consistency with
+Recordings. No list, no click-to-switch, no Remove button. The old
+`.panel` bordered-card treatment was replaced with a lighter, restrained
+block (`.active-recording`, a plain bottom-border divider, no card) — a
+direct application of section 19's own "is the heavy card still
+necessary?" review, now that there's nothing left to manage here.
+
+**Deliberate behavior change, called out explicitly**: switching which
+source's channels are being browsed can no longer happen from inside
+Waveform — the user goes back to Recordings and opens a different row.
+This is the intended consequence of the owner's own product-
+responsibility rule, not an accidental regression; multi-source
+**display** (multiple different sources' channels shown together in
+`ww.displayed`/`ww.panels`) is completely untouched — only the
+single-source **browsing/selection** UI moved.
+
+**"Active Recording" terminology** (section 10's own conflict check):
+`selectedSourceId` already represents exactly one source at a time for
+channel browsing, even though the workspace may hold several — "Active
+Recording" is therefore an accurate, truthful label for current
+behavior, not an invented concept; no terminology conflict found.
+
+**`startNewWorkspace()` fix**: its "does the workspace have ANY sources
+at all" check used to read `#sourceList.children.length` (the now-
+removed list's own DOM child count) — replaced with a small module-
+level `latestSourcesCount` cache, kept current inside
+`refreshAllSourceViews()`/`refreshSourceList()` (the only two places
+that actually refetch the source set), so the workspace-reset
+confirmation lifecycle is unaffected by removing the list.
+
+### Channels section: no more repeated identity
+
+`renderChannels()`'s `.detail-header` block (station name + CFG/DAT
+filenames, deliberately KEPT since Phase 3B-UAT5 as "active source
+identification... still needed for analysis") was removed outright —
+that identification now lives in Active Recording, directly above
+Channels, so repeating it inside Channels was exactly the redundancy
+the owner flagged. The Channels section now begins directly with
+channel interaction (search, Add selected/Clear selection, the channel
+tree) — unchanged in every other respect. The now-fully-unused
+`.detail-header`/`.detail-header-info`/`.source-list`/`.source-name`/
+`.source-sub` CSS (all fully dead once their only markup was removed)
+was deleted rather than left as dead code.
+
+### Main Sidebar: reordered, and a real bug fixed
+
+Reordered to Recordings first, Waveform second (matching the actual
+product flow: fresh entry → Recordings → choose/open → Waveform), then
+unchanged Table/Tools/Reports.
+
+**Bug found and fixed while reviewing active/inactive states (section
+13's own ask)**: `.shell-nav-item[aria-current="page"]` (the CSS rule
+providing the accent tint/background for the active nav item) had
+NEVER actually matched anything — `shellSetCurrentPage()` was writing
+the STRING `"true"`/`"false"` to `aria-current`, a value the CSS
+selector (which always expected the literal token `"page"`) could never
+match. The active-state visual has therefore been silently broken since
+Phase 3B first introduced page-level navigation. Fixed via a new shared
+`setShellNavCurrent(id, isCurrent)` helper: writes `aria-current="page"`
+when active, REMOVES the attribute entirely when not (the ARIA APG
+convention for both — never `aria-current="false"`). A narrow 3px left
+accent bar (`border-left`, reserved as transparent on every item so
+gaining/losing it never shifts layout) was added alongside the now-
+actually-working background/text-color tint, giving the "combination of
+cues, not text color alone" the task asked for.
+
+**Icons reviewed**: Recordings gained a new "list of records" icon
+(three rows, each with a small leading marker dot) — deliberately
+distinct from the Main Sidebar's own hamburger toggle icon (also
+3 plain lines), which the OLD Recordings icon was visually confusable
+with. Waveform gained a genuine zigzag/oscillation polyline icon,
+replacing a dashboard-panel-shaped rectangle icon that didn't read as
+"waveform" at all. Table/Tools/Reports/Settings icons were left
+unchanged — already correct or already within the task's own explicit
+"as appropriate" allowance (Tools' magnifying-glass icon reads as
+"search," one of the task's own listed acceptable options).
+
+**Collapsed state**: unaffected structurally — the same DOM order is
+what the icon-only rail reflects, so reordering alone fixes collapsed
+order too. `title` attributes were added to the two enabled items
+(Recordings/Waveform/Settings) for a hover tooltip, matching the
+disabled items' pre-existing `title="… -- coming soon"` convention;
+`.shell-nav-label` text stays in the DOM (only `opacity: 0` while
+collapsed, never `display:none`/`aria-hidden`), so accessible names
+were already available in collapsed state before this pass too.
+
+### Tests
+
+- **Frontend, new**: `phase3buat8_check.mjs` (scratch, not committed) —
+  24/24 passing. Covers Main Sidebar order/active-state/aria-current/
+  disabled-state/collapsed-order/icons (11 checks), Waveform sidebar
+  cleanup — no "Sources in this Workspace", Active Recording present
+  with correct name/counts exactly once, no Remove button, no CFG/DAT
+  or repeated heading inside Channels, Search/Add-selected/Clear-
+  selection/channel-groups preserved, the empty state, and removing the
+  active source leaving no stale identity (9 checks), and no-regression
+  checks — row-click-to-open still selects the right source among
+  multiple recordings, Active Recording reflects it, channel browsing
+  uses the right source, navigation state (layout mode/time mode)
+  survives, and zero extra fetch for Active Recording (4 checks).
+- **Frontend, existing suite correction**: `phase3auat4_check.mjs` was
+  substantially rewritten (its entire original premise — long CFG/DAT
+  filename containment inside the Waveform Channels panel — no longer
+  applies now that filenames don't render there at all; retargeted to
+  the equivalent concern that DOES still apply, long recording-NAME
+  containment inside Active Recording). `phase3auat3_check.mjs`,
+  `phase3b_check.mjs`, `phase3buat4_check.mjs`, and
+  `phase3buat5_check.mjs` each had one or two assertions corrected in
+  place (the removed `.detail-header`, and the `aria-current`
+  string-vs-token fix) — all with explanatory comments, following this
+  project's established precedent.
+- **Frontend, full regression**: the exact same 20 pre-existing,
+  already-documented failures, zero new divergences.
+- **Backend**: zero diff, 280/280 passing in a fresh venv (this is a
+  pure frontend presentation/navigation change).
+
+### Files changed
+
+`frontend/index.html` only.
+
+### Honest limitation
+
+No real browser is available in this sandbox — whether the accent bar
++ tint combination reads clearly at a glance, whether the new
+Recordings/Waveform icons are visually distinguishable enough from each
+other and from Table's icon, and whether the lighter (non-card) Active
+Recording section still feels sufficiently "present" rather than
+easy to miss, were reasoned through but not visually confirmed —
+flagged for owner UAT.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

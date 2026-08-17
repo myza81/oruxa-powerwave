@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-17** (Phase 3B-UAT7).
+Last meaningful update: **2026-08-17** (Phase 3B-UAT8).
 
 ## Development phase
 
@@ -966,6 +966,41 @@ substantially rewritten for the final state). **Unverified**: whether
 row-click-to-open feels natural versus accidental, and whether the
 icon-only Actions column reads clearly without visible tooltips — both
 flagged for owner UAT.
+
+`[FACT]` **Waveform sidebar management UI removed (Recordings-only now)
+and Main Sidebar reordered/bug-fixed — Phase 3B-UAT8 — Waveform Sidebar
+Cleanup + Main Navigation Refinement** (2026-08-17) — see
+[MIGRATION_PLAN.md — Phase 3B-UAT8 Record](MIGRATION_PLAN.md#phase-3b-uat8--waveform-sidebar-cleanup--main-navigation-refinement-2026-08-17).
+Owner product-responsibility rule: Recordings = management, Waveform =
+active recording context + analysis only. The Waveform sidebar's old
+"Sources in this Workspace" (a clickable multi-source list with a
+per-row Remove button) was replaced by a compact, read-only "Active
+Recording" section showing only whichever source is currently selected
+(name + analog/digital counts, no list, no Remove, no source-switching
+— switching now happens exclusively via Recordings' own row click).
+`renderChannels()`'s repeated station-name/CFG/DAT identity block was
+removed (that identity now lives in Active Recording, directly above
+Channels). **Bug found and fixed**: the Main Sidebar's active-item CSS
+rule (`[aria-current="page"]`) had never actually matched anything since
+Phase 3B introduced page navigation — the JS was writing the string
+`"true"`/`"false"` instead of the token `"page"`, so the active-page
+accent tint/background was silently broken the whole time; fixed via a
+shared `setShellNavCurrent()` helper (writes `"page"` when active,
+removes the attribute when not — the ARIA APG convention), plus a new
+narrow left accent bar. Main Sidebar reordered to Recordings first,
+Waveform second (matching the actual product flow); Recordings/Waveform
+got new, more semantically correct icons (a record-list icon, a
+zigzag/waveform icon) — Table/Tools/Reports/Settings icons unchanged.
+Zero backend diff, 280/280 backend tests passing (unchanged). 24 new
+frontend `jsdom` checks passing (`phase3buat8_check.mjs`); one
+pre-existing script (`phase3auat4_check.mjs`) substantially rewritten
+since its entire original premise — CFG/DAT filename containment inside
+the Waveform Channels panel — no longer applies (filenames don't render
+in Waveform at all anymore; retargeted to the equivalent long-name
+containment concern in Active Recording). **Unverified**: whether the
+accent-bar/tint combination and the new icons read clearly, and whether
+the lighter (non-card) Active Recording section still feels sufficiently
+present — flagged for owner UAT.
 
 ## Completed foundation work
 

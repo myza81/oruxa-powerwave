@@ -8,6 +8,79 @@ Last updated: **2026-08-17**
 
 ## What was most recently done
 
+**Phase 3B-UAT8 — Waveform Sidebar Cleanup + Main Navigation
+Refinement.** Full detail:
+[MIGRATION_PLAN.md — Phase 3B-UAT8 Record](MIGRATION_PLAN.md#phase-3b-uat8--waveform-sidebar-cleanup--main-navigation-refinement-2026-08-17).
+No new DECISIONS.md entry.
+
+**Owner rule**: Recordings = recording management; Waveform = active
+recording context + channel analysis only. The Waveform sidebar
+previously duplicated Recordings' own management UI.
+
+**Active Recording replaces "Sources in this Workspace"**: the old
+multi-source clickable list (with a per-row Remove button) is gone —
+`renderActiveRecording(sources)` now shows ONLY whichever source
+`selectedSourceId` currently names (name + analog/digital counts),
+read-only, no list, no Remove, no source-switching. **Deliberate
+behavior change**: switching which source's channels you're browsing
+now requires going back to Recordings and opening a different row —
+this is the intended consequence of the owner's own rule, not a
+regression; multi-source *display* (`ww.displayed`/`ww.panels`) is
+completely untouched. The section itself dropped the old bordered
+`.panel` card for a lighter, restrained block (a bottom-border divider,
+no card) — nothing left to manage here justified the heavier treatment.
+`startNewWorkspace()`'s "does the workspace have any sources" check
+(previously reading the old list's own DOM child count) now uses a
+small `latestSourcesCount` cache kept current in
+`refreshAllSourceViews()`/`refreshSourceList()`.
+
+**Channels no longer repeats identity**: `renderChannels()`'s
+`.detail-header` block (station name + CFG/DAT filenames, deliberately
+kept since Phase 3B-UAT5) was removed — that identity now lives in
+Active Recording directly above Channels. The now-fully-dead
+`.detail-header`/`.source-list`/`.source-name`/`.source-sub` CSS was
+deleted, not left unused.
+
+**Main Sidebar reordered, and a real pre-existing bug fixed**:
+Recordings now comes first, Waveform second (matching the actual
+product flow). While reviewing active/inactive states, found that
+`.shell-nav-item[aria-current="page"]` — the CSS rule providing the
+active-item accent tint — had NEVER actually matched anything:
+`shellSetCurrentPage()` was writing the STRING `"true"`/`"false"`
+instead of the token `"page"` the CSS always expected, so the active-
+page visual has been silently broken since Phase 3B introduced page
+navigation. Fixed via a new `setShellNavCurrent()` helper (writes
+`"page"` when active, removes the attribute entirely when not — the
+ARIA APG convention for both). Added a narrow 3px left accent bar
+alongside the now-actually-working tint. New icons for Recordings (a
+record-list glyph, distinct from the sidebar's own hamburger toggle
+icon it used to resemble) and Waveform (a genuine zigzag/waveform
+polyline, replacing a dashboard-panel-shaped icon that didn't read as
+"waveform"); Table/Tools/Reports/Settings icons left unchanged.
+Collapsed-sidebar order follows automatically from the DOM reorder;
+`title` tooltips added to the enabled items for parity with the
+disabled items' existing tooltip convention.
+
+**Verification**: 24 new frontend `jsdom` checks
+(`phase3buat8_check.mjs`) + `phase3auat4_check.mjs` substantially
+rewritten (its entire premise — CFG/DAT filename containment inside the
+Waveform Channels panel — no longer applies; retargeted to the
+equivalent long-NAME containment concern in Active Recording) + smaller
+corrections in `phase3auat3_check.mjs`, `phase3b_check.mjs`,
+`phase3buat4_check.mjs`, `phase3buat5_check.mjs` (the removed
+`.detail-header`, and the `aria-current` string-vs-token fix) — the
+full suite otherwise returns to the exact same 20 pre-existing, already-
+documented failures, zero new divergences. Backend: zero diff, 280/280
+passing in a fresh venv.
+
+**Backend**: zero files changed. **Real-browser visual confirmation —
+whether the accent-bar/tint combination and new icons read clearly, and
+whether the lighter Active Recording section still feels sufficiently
+present — was NOT and cannot be confirmed in this sandboxed session;
+this remains explicitly for the owner's own manual UAT.**
+
+## What was done in the prior session (Phase 3B-UAT7 (continued) — Final Table Restructuring and Row-Click-to-Open)
+
 **Phase 3B-UAT7 (continued) — Final Table Restructuring and
 Row-Click-to-Open.** Full detail:
 [MIGRATION_PLAN.md — Phase 3B-UAT7 (continued) Record](MIGRATION_PLAN.md#phase-3b-uat7-continued--final-table-restructuring-and-row-click-to-open-2026-08-17).

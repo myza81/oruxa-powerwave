@@ -168,8 +168,13 @@
             align-items: center;
             gap: 10px;
             height: 38px;
-            padding: 0 14px;
+            /* Phase 3B-UAT8: a 3px left border reserves the accent-bar
+               space on EVERY item (transparent when inactive), not just
+               the active one -- so gaining/losing the bar on navigation
+               never shifts the icon/label horizontally. */
+            padding: 0 14px 0 11px;
             border: none;
+            border-left: 3px solid transparent;
             background: transparent;
             color: var(--text-dim);
             cursor: pointer;
@@ -179,7 +184,18 @@
             overflow: hidden;
         }
         .shell-nav-item:hover:not(:disabled) { color: var(--text); background: var(--hover-tint); }
-        .shell-nav-item[aria-current="page"] { color: var(--accent); background: var(--accent-wash-soft); }
+        /* Phase 3B-UAT8: accent tint + stronger text + a narrow left
+           accent bar together (not text color alone) -- restrained, not
+           a loud saturated block; the SAME accent family used for the
+           Recording Details row-association cue elsewhere in this app.
+           This rule only ever matches now that shellSetCurrentPage()
+           writes the token "page" instead of the string "true"/"false"
+           (see setShellNavCurrent()'s own comment) -- previously dead. */
+        .shell-nav-item[aria-current="page"] {
+            color: var(--accent);
+            background: var(--accent-wash-soft);
+            border-left-color: var(--accent);
+        }
         .shell-nav-item:disabled { color: var(--text-dim); opacity: 0.45; cursor: default; }
         .shell-nav-icon {
             flex: 0 0 auto;
@@ -721,36 +737,36 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        ul.source-list {
-            list-style: none;
-            margin: 0;
-            padding: 0;
+        /* Phase 3B-UAT8: replaces the old multi-source list/card
+           (ul.source-list, a clickable-with-a-Remove-button-per-row
+           management list) -- Active Recording is read-only context, not
+           a management surface (that's Recordings' job now), so it gets
+           a small restrained section instead of a bordered .panel card
+           (section 19's own "is the heavy card still necessary?"
+           review -- it isn't, once there's nothing left to manage here). */
+        .active-recording {
+            padding-bottom: 14px;
+            margin-bottom: 14px;
+            border-bottom: 1px solid var(--panel-border);
         }
-
-        ul.source-list li {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-            padding: 10px 8px;
-            border-radius: var(--radius);
-            cursor: pointer;
-            border: 1px solid transparent;
-        }
-        ul.source-list li:hover { background: var(--hover-tint); }
-        ul.source-list li.selected {
-            border-color: var(--accent-dim);
-            background: var(--accent-wash-soft);
-        }
-
-        .source-list .source-name {
-            font-size: 0.88rem;
-            font-weight: 600;
-        }
-        .source-list .source-sub {
-            font-size: 0.76rem;
+        .active-recording h2 {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
             color: var(--text-dim);
+            margin: 0 0 6px;
         }
+        /* Phase 3A-UAT4 containment precedent, carried forward: recording
+           names come straight from imported files/real station names and
+           can be long/unbroken -- wrap in place, never overflow the
+           Workspace Sidebar. No flex-item min-width trap here (.active-
+           recording is a plain block section, not display:flex), so
+           overflow-wrap alone is sufficient; max-width:100% is kept as
+           the same defensive belt-and-braces cap used everywhere else
+           this containment pattern appears. */
+        .active-recording-name { font-size: 0.95rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; max-width: 100%; }
+        .active-recording-meta { font-size: 0.8rem; color: var(--text-dim); margin-top: 2px; }
+        .active-recording .empty-state { padding: 0; text-align: left; font-size: 0.85rem; }
 
         .empty-state {
             color: var(--text-dim);
@@ -758,44 +774,6 @@
             padding: 20px 4px;
             text-align: center;
         }
-
-        .detail-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 18px;
-        }
-
-        /* Phase 3A-UAT4 (owner UAT finding, root cause): `.detail-header`
-           is a flex CONTAINER; `.detail-header-info` (below) is the flex
-           ITEM that actually holds the station name + filenames. Phase
-           3A-UAT3 put `overflow-wrap: anywhere` on the TEXT elements
-           (h3/.meta) but never gave this ITEM its own `min-width: 0` --
-           text-level wrap rules only matter once the box around the text
-           is actually allowed to become narrower than its unwrapped
-           content. A flex item's automatic minimum width defaults to its
-           content's un-shrunk size (the well-known `min-width: auto`
-           flex trap, the same one already fixed at the shell level in
-           Phase 3A-UAT1/UAT3), so without this the whole station-name +
-           filenames block stayed at full width and visibly overflowed the
-           Workspace Sidebar regardless of the text's own wrap settings.
-           `max-width: 100%` is a second, explicit belt-and-braces cap so
-           this item can never exceed its parent's width even if a future
-           change reintroduces an oversized child. */
-        .detail-header-info { min-width: 0; max-width: 100%; }
-        /* Station name and source filenames come straight from the
-           imported COMTRADE files and can be long, unbroken tokens (no
-           spaces) that ordinary text wrapping can't break on.
-           `overflow-wrap: anywhere` lets them wrap in place -- the FULL
-           value stays visible (nothing truncated/hidden), it just stays
-           inside the Workspace Sidebar instead of forcing it (or a
-           sibling) wider. `white-space: normal` is the actual default for
-           a block element already, stated explicitly here so this rule
-           documents (and guards against any future accidental
-           `nowrap`/`pre` override) the full containment contract for this
-           specific element, per this task's own preferred rule set. */
-        .detail-header h3 { margin: 0 0 4px; font-size: 1.05rem; overflow-wrap: anywhere; white-space: normal; max-width: 100%; }
-        .detail-header .meta { font-size: 0.8rem; color: var(--text-dim); overflow-wrap: anywhere; white-space: normal; max-width: 100%; }
 
         table.channels {
             width: 100%;
@@ -1492,20 +1470,34 @@
                      pages (shell.currentPage), distinct from
                      shell.activeView (Waveform/Table/Split, only
                      meaningful while ON the Waveform page). Phase
-                     3B-UAT4: static aria-current defaults below now match
-                     shell's own default currentPage ("recordings") --
-                     kept in sync by hand here specifically to avoid a
+                     3B-UAT8: reordered so Recordings comes FIRST,
+                     Waveform second -- fresh entry is Recordings
+                     (Phase 3B-UAT4), and the normal product flow is
+                     Recordings -> choose/open event -> Waveform, so
+                     navigation order now follows that flow instead of
+                     contradicting it. Static aria-current defaults below
+                     match shell's own default currentPage ("recordings")
+                     -- kept in sync by hand here specifically to avoid a
                      visible flash to the (previously default) Waveform
                      page before Init's shellSetCurrentPage("recordings")
                      call runs; that call is still what makes this the
-                     actual source of truth at runtime. -->
-                <button type="button" class="shell-nav-item" id="mainNavWaveformBtn" aria-current="false">
-                    <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><rect x="2" y="2" width="6" height="6" rx="1"/><rect x="10" y="2" width="6" height="6" rx="1"/><rect x="2" y="10" width="14" height="6" rx="1"/></svg></span>
-                    <span class="shell-nav-label">Waveform</span>
-                </button>
-                <button type="button" class="shell-nav-item" id="mainNavRecordingsBtn" aria-current="true">
-                    <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><line x1="3" y1="5" x2="15" y2="5" stroke-width="1.5"/><line x1="3" y1="9" x2="15" y2="9" stroke-width="1.5"/><line x1="3" y1="13" x2="11" y2="13" stroke-width="1.5"/></svg></span>
+                     actual source of truth at runtime. Only the active
+                     item ever carries aria-current (value "page", the
+                     ARIA APG convention for a current-page nav item --
+                     see shellSetCurrentPage()'s own comment for the
+                     Phase 3B-UAT8 fix this replaces: the CSS active-state
+                     rule always expected "page" but the JS had been
+                     writing the STRING "true"/"false" instead, so the
+                     accent tint/background never actually applied). The
+                     inactive item has NO aria-current attribute at all
+                     (not "false") -- also the ARIA APG convention. -->
+                <button type="button" class="shell-nav-item" id="mainNavRecordingsBtn" aria-current="page" title="Recordings">
+                    <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><circle cx="3.5" cy="5" r="1.1" fill="currentColor" stroke="none"/><line x1="6.5" y1="5" x2="15" y2="5" stroke-width="1.5"/><circle cx="3.5" cy="9" r="1.1" fill="currentColor" stroke="none"/><line x1="6.5" y1="9" x2="15" y2="9" stroke-width="1.5"/><circle cx="3.5" cy="13" r="1.1" fill="currentColor" stroke="none"/><line x1="6.5" y1="13" x2="12" y2="13" stroke-width="1.5"/></svg></span>
                     <span class="shell-nav-label">Recordings</span>
+                </button>
+                <button type="button" class="shell-nav-item" id="mainNavWaveformBtn" title="Waveform">
+                    <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><polyline points="1,9 4,9 6,3 8,15 10,9 12,4 14,14 17,9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                    <span class="shell-nav-label">Waveform</span>
                 </button>
                 <button type="button" class="shell-nav-item" disabled title="Table -- coming soon">
                     <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><rect x="2" y="3" width="14" height="12" rx="1"/><line x1="2" y1="8" x2="16" y2="8"/><line x1="7" y1="3" x2="7" y2="15"/></svg></span>
@@ -1521,7 +1513,7 @@
                 </button>
             </div>
             <div class="shell-nav-bottom">
-                <button type="button" class="shell-nav-item" id="mainNavSettingsBtn">
+                <button type="button" class="shell-nav-item" id="mainNavSettingsBtn" title="Settings">
                     <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><circle cx="9" cy="9" r="3"/><path d="M9 2v2M9 14v2M2 9h2M14 9h2M4.4 4.4l1.4 1.4M12.2 12.2l1.4 1.4M4.4 13.6l1.4-1.4M12.2 5.8l1.4-1.4" stroke-width="1.3"/></svg></span>
                     <span class="shell-nav-label">Settings</span>
                 </button>
@@ -1550,21 +1542,34 @@
                 <aside id="workspaceSidebar">
                     <!-- Phase 3B: the always-visible "Import COMTRADE Event"
                          form that used to live here has moved into the
-                         Recordings page's "Upload New" modal (section 16 --
-                         one upload implementation, not two equally-prominent
-                         flows). The Workspace Sidebar now focuses on what
-                         section 16 asks for: sources already active in this
-                         workspace, and their channels. -->
-                    <section class="panel" aria-labelledby="sources-heading">
-                        <h2 id="sources-heading">Sources in this Workspace</h2>
-                        <ul class="source-list" id="sourceList"></ul>
-                        <p class="empty-state" id="sourceListEmpty">No sources imported yet. Go to Recordings to upload one.</p>
+                         Recordings page's "Upload New" modal (section 16).
+                         Phase 3B-UAT8 (owner product-responsibility rule --
+                         Recordings = recording management, Waveform =
+                         active recording context + channel
+                         analysis): the multi-source management list that
+                         used to live here (click-to-switch, a Remove
+                         button per source) duplicated Recordings' own
+                         row-click-to-open/Remove -- replaced with a
+                         compact, read-only "Active Recording" context
+                         reflecting whichever source is currently selected
+                         (selectSource()'s existing `selectedSourceId`,
+                         unchanged) -- see renderActiveRecording(). To
+                         browse a DIFFERENT recording's channels, the user
+                         goes back to Recordings and opens that row --
+                         switching is no longer possible from inside
+                         Waveform, which is the deliberate, owner-directed
+                         behavior change this section implements. -->
+                    <section class="active-recording" aria-labelledby="active-recording-heading">
+                        <h2 id="active-recording-heading">Active Recording</h2>
+                        <div id="activeRecordingContent">
+                            <p class="empty-state" id="activeRecordingEmpty">No active recording. Open a recording from Recordings.</p>
+                        </div>
                     </section>
 
                     <section class="panel" aria-labelledby="channels-heading">
                         <h2 id="channels-heading">Channels</h2>
                         <div id="channelsPanel">
-                            <p class="empty-state">Select a recording from Recordings, or a source from the list above, to see its channels here.</p>
+                            <p class="empty-state">Select a recording from Recordings to see its channels here.</p>
                         </div>
                     </section>
                 </aside>
@@ -2092,6 +2097,16 @@
             if (view === "waveform") wwScheduleResizeAllVisiblePlots();
         }
 
+        // Phase 3B-UAT8: sets/clears aria-current="page" (the ARIA APG
+        // token for "this is the current page" in a nav landmark) on a
+        // Main Sidebar Menu item -- shared by shellSetCurrentPage() below
+        // so both nav items always go through the same, correct logic.
+        function setShellNavCurrent(id, isCurrent) {
+            const el = document.getElementById(id);
+            if (isCurrent) el.setAttribute("aria-current", "page");
+            else el.removeAttribute("aria-current");
+        }
+
         // ---- Phase 3B: application page navigation (section 19) --
         // Waveform <-> Recordings. Deliberately the same "hide, don't
         // destroy" mechanism as shellSetActiveView() above: #workspaceRow
@@ -2109,8 +2124,18 @@
 
             document.getElementById("workspaceRow").hidden = page !== "waveform";
             document.getElementById("pageRecordings").hidden = page !== "recordings";
-            document.getElementById("mainNavWaveformBtn").setAttribute("aria-current", String(page === "waveform"));
-            document.getElementById("mainNavRecordingsBtn").setAttribute("aria-current", String(page === "recordings"));
+            // Phase 3B-UAT8 fix: the active-state CSS rule
+            // (`.shell-nav-item[aria-current="page"]`) always expected
+            // the token "page" (the ARIA APG convention for a current
+            // navigation item), but this used to write the STRING
+            // "true"/"false" instead -- a value that CSS attribute
+            // selector never matched, so the accent tint/background
+            // never actually rendered for either item, regardless of
+            // which page was active. Fixed to set "page" when active and
+            // remove the attribute entirely when not (also the APG
+            // convention -- not aria-current="false").
+            setShellNavCurrent("mainNavWaveformBtn", page === "waveform");
+            setShellNavCurrent("mainNavRecordingsBtn", page === "recordings");
 
             // The Waveform/Table/Split selector and the (responsive-only)
             // "Sources" drawer toggle are both scoped to the waveform
@@ -2222,7 +2247,7 @@
         // DELETE fails, the old workspace_id, its visible source list, and
         // its banner are all left exactly as they were, plus a visible error.
         function startNewWorkspace() {
-            const hasSources = document.getElementById("sourceList").children.length > 0;
+            const hasSources = latestSourcesCount > 0;
             if (hasSources) {
                 requestNewWorkspaceConfirm();
             } else {
@@ -2315,6 +2340,18 @@
         // Upload
         // ------------------------------------------------------------------
         let selectedSourceId = null;
+
+        // Phase 3B-UAT8: how many sources currently exist in this
+        // workspace (ANY source, not just the selected/active one) --
+        // startNewWorkspace() needs this to decide whether a
+        // confirmation is needed before discarding everything. This used
+        // to be read off the old multi-source list's own DOM child count
+        // (`#sourceList.children.length`); that list is gone (replaced by
+        // the single-source "Active Recording" context), so this small
+        // cache is the new source of truth, kept current inside
+        // refreshAllSourceViews() -- the one place that actually
+        // refetches the source set.
+        let latestSourcesCount = 0;
 
         // Tracks which source the current success/import banner describes,
         // so removing that specific source clears it -- but removing a
@@ -2518,60 +2555,51 @@
             return null;
         }
 
-        // Refreshes BOTH the Workspace Sidebar's source list and the
-        // Recordings page's table together, from one fetch -- called at
-        // every point that actually changes the source set (upload
-        // success, remove, workspace reset) so neither view can drift out
-        // of sync with the other regardless of which page is currently
-        // active (section 18).
+        // Refreshes BOTH the Workspace Sidebar's Active Recording context
+        // and the Recordings page's table together, from one fetch --
+        // called at every point that actually changes the source set
+        // (upload success, remove, workspace reset) so neither view can
+        // drift out of sync with the other regardless of which page is
+        // currently active (section 18).
         async function refreshAllSourceViews() {
             const sources = await fetchSourcesList();
-            renderSourceListItems(sources || []);
+            latestSourcesCount = (sources || []).length;
+            renderActiveRecording(sources || []);
             renderRecordingsTable(sources || []);
         }
 
         async function refreshSourceList() {
             const sources = await fetchSourcesList();
-            if (sources !== null) renderSourceListItems(sources);
+            if (sources !== null) {
+                latestSourcesCount = sources.length;
+                renderActiveRecording(sources);
+            }
         }
 
-        function renderSourceListItems(sources) {
-            const listEl = document.getElementById("sourceList");
-            const emptyEl = document.getElementById("sourceListEmpty");
-
-            listEl.innerHTML = "";
-            emptyEl.style.display = sources.length === 0 ? "block" : "none";
-
-            for (const source of sources) {
-                const li = document.createElement("li");
-                li.className = source.source_id === selectedSourceId ? "selected" : "";
-                li.setAttribute("role", "button");
-                li.setAttribute("tabindex", "0");
-
-                const info = document.createElement("div");
-                info.innerHTML =
-                    '<div class="source-name">' + escapeHtml(source.station_name || "(unnamed)") + '</div>' +
-                    '<div class="source-sub">' + source.analog_channel_count + ' analog &middot; ' +
-                    source.digital_channel_count + ' digital</div>';
-
-                const removeBtn = document.createElement("button");
-                removeBtn.className = "danger";
-                removeBtn.type = "button";
-                removeBtn.textContent = "Remove";
-                removeBtn.addEventListener("click", (event) => {
-                    event.stopPropagation();
-                    requestRemoveSource(source.source_id, source.station_name || "(unnamed)");
-                });
-
-                li.appendChild(info);
-                li.appendChild(removeBtn);
-                li.addEventListener("click", () => selectSource(source.source_id));
-                li.addEventListener("keydown", (event) => {
-                    if (event.key === "Enter" || event.key === " ") selectSource(source.source_id);
-                });
-
-                listEl.appendChild(li);
+        // Phase 3B-UAT8: replaces the old renderSourceListItems() (a
+        // clickable list of EVERY source, each with its own Remove
+        // button -- source management that duplicated Recordings).
+        // Read-only: renders ONLY whichever source `selectedSourceId`
+        // currently names (the same selection selectSource() already
+        // manages, untouched) -- no source-switching UI, no Remove
+        // button. Zero extra fetch: `sources` is the SAME already-
+        // fetched list refreshAllSourceViews()/refreshSourceList() just
+        // received, and `selectedSourceId`'s own channel data (fetched
+        // separately by selectSource() -- unchanged) is not touched
+        // here at all, so this never depends on or triggers a
+        // `.../channels` request just to show the recording's name/
+        // channel counts.
+        function renderActiveRecording(sources) {
+            const contentEl = document.getElementById("activeRecordingContent");
+            const source = sources.find((s) => s.source_id === selectedSourceId);
+            if (!source) {
+                contentEl.innerHTML = '<p class="empty-state" id="activeRecordingEmpty">No active recording. Open a recording from Recordings.</p>';
+                return;
             }
+            contentEl.innerHTML =
+                '<div class="active-recording-name">' + escapeHtml(recordingDisplayName(source)) + '</div>' +
+                '<div class="active-recording-meta">' + source.analog_channel_count + ' analog &middot; ' +
+                source.digital_channel_count + ' digital</div>';
         }
 
         // ------------------------------------------------------------------
@@ -3083,7 +3111,7 @@
         function renderChannels(data) {
             const panel = document.getElementById("channelsPanel");
             if (!data) {
-                panel.innerHTML = '<p class="empty-state">Upload a COMTRADE event, or select one from the list, to see its channels here.</p>';
+                panel.innerHTML = '<p class="empty-state">Select a recording from Recordings to see its channels here.</p>';
                 shellUpdateStatusBar(null, null);
                 return;
             }
@@ -3096,23 +3124,18 @@
             shellUpdateStatusBar(source, timebase);
 
             let html = "";
-            // Phase 3B-UAT5: the recording METADATA card stack (Recorder,
-            // Nominal Frequency, Timing Reference, Samples, Duration,
-            // Sampling Rate(s), Start/Trigger Time) that used to render
-            // here via statCard()/.stat-grid was removed -- that's now
-            // the Recordings page's own per-recording "Details" panel
-            // (see renderRecordingDetails()), which reads the SAME
-            // underlying fields from the already-fetched source list,
-            // zero extra request. Kept here: a compact identity line
-            // (station name + filenames) -- "active source
-            // identification... still needed for analysis" while
-            // browsing/selecting channels (section 4) -- not the
-            // metadata block itself.
-            html += '<div class="detail-header"><div class="detail-header-info">';
-            html += '<h3>' + escapeHtml(source.station_name) + '</h3>';
-            html += '<div class="meta">' + escapeHtml(source.original_filenames.join(" + ")) + '</div>';
-            html += '</div></div>';
-
+            // Phase 3B-UAT5 removed the recording METADATA card stack
+            // (Recorder, Nominal Frequency, etc.) here -- that's the
+            // Recordings page's own per-recording "Details" panel now.
+            // Phase 3B-UAT8 removed the compact identity line (station
+            // name + CFG/DAT filenames) that UAT5 had deliberately KEPT
+            // as "active source identification" -- the new Active
+            // Recording section directly above this Channels panel (see
+            // renderActiveRecording()) already shows that identity, so
+            // repeating it here was exactly the redundancy the owner
+            // flagged. The Channels section now begins directly with
+            // channel interaction, per the owner's own preferred
+            // structure.
             html += '<div class="search-row">' +
                 '<input type="search" id="channelSearch" placeholder="Search channels&hellip;" aria-label="Search channels">' +
                 '<span id="channelSearchCount"></span></div>';
