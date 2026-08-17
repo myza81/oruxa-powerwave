@@ -8,6 +8,67 @@ Last updated: **2026-08-17**
 
 ## What was most recently done
 
+**Phase 3B-UAT7 (continued) — Final Table Restructuring and
+Row-Click-to-Open.** Full detail:
+[MIGRATION_PLAN.md — Phase 3B-UAT7 (continued) Record](MIGRATION_PLAN.md#phase-3b-uat7-continued--final-table-restructuring-and-row-click-to-open-2026-08-17).
+Two further owner refinements, folded into the same pass as the
+structured-details redesign below (still un-UAT'd as a whole). No new
+DECISIONS.md entry.
+
+**Final main-table columns**: `Recording | Start Time | Duration |
+Sampling Rate(s) | Actions`. Station/Recorder/Channels/Imported are no
+longer main-table columns; Sampling Rate(s) and Start Time were
+promoted from Details (purely additive frontend formatting via two new
+helpers, `formatRecordingStartTime()`/`formatSamplingRates()` — zero
+backend change, every value already existed on `SourceSummaryOut`;
+`formatSamplingRates()` renders every real rate, never simplifying a
+genuine multi-rate source down to one value).
+
+**Details reorganized (reversed direction)**: Technical zone (Recorder,
+Channels, Nominal frequency, Timing reference, Samples — Recorder/
+Channels moved back IN from the main table), Timing zone (Trigger,
+Imported — Start Time moved OUT to the main table; Imported moved IN
+from the old main-table column, `formatImportedAt()` reused unchanged),
+Files zone (CFG, DAT, unchanged). A new shared
+`.recording-details-zone-title` class gives each zone a quiet caption
+now that the field count grew.
+
+**Row-click-to-open**: the explicit "Open / Analyse" button was
+removed. The recording `<tr>` itself (`tabindex="0"`, `role="button"`,
+`aria-label` naming the action) is now the primary Open/Analyse target
+— clicking it or pressing Enter/Space while focused calls the SAME
+`openRecordingForAnalysis()` the old button called, no second
+implementation. Actions is icon-only: Details reuses the app's existing
+`.chevron` glyph (already used for Analog/Digital channel groups);
+Remove reuses `&times;` (already this codebase's established close/
+remove glyph elsewhere). Isolation: both buttons' click handlers call
+`event.stopPropagation()`; the row's own keydown handler additionally
+guards with `event.target !== row`, since a keydown bubbles up
+independently of a focused button's native Enter/Space-to-click
+conversion — verified by a dedicated test that dispatches a bubbling
+keydown directly on the Details button. New CSS: `cursor: pointer` and
+a `:focus-visible` outline on the row (reusing the pre-existing hover
+rule, not duplicating it), staying visually distinct from the existing
+`tr.recording-row-expanded` tint.
+
+**Verification**: `phase3buat7_check.mjs` was substantially rewritten
+for the final state — 22/22 passing. Existing-suite corrections across
+`phase3b_check.mjs`, `phase3buat1_check.mjs`, `phase3buat3_check.mjs`,
+`phase3buat4_check.mjs`, `phase3buat5_check.mjs`, and
+`phase3buat6_check.mjs` (each had assumed the pre-restructuring column/
+zone split or the three-button Actions column) — the full suite
+otherwise returns to the exact same 20 pre-existing, already-documented
+failures, zero new divergences. Backend: zero diff, 280/280 passing in
+a fresh venv.
+
+**Backend**: zero files changed. **Real-browser visual confirmation —
+whether row-click-to-open feels natural rather than accidental, and
+whether the icon-only Actions column reads clearly without visible
+tooltips — was NOT and cannot be confirmed in this sandboxed session;
+this remains explicitly for the owner's own manual UAT.**
+
+## What was done in the prior session (Phase 3B-UAT7 — Recording Details UX Redesign)
+
 **Phase 3B-UAT7 — Recording Details UX Redesign.** Full detail:
 [MIGRATION_PLAN.md — Phase 3B-UAT7 Record](MIGRATION_PLAN.md#phase-3b-uat7--recording-details-ux-redesign-2026-08-17).
 No new DECISIONS.md entry.

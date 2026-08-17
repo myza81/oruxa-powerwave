@@ -939,6 +939,34 @@ passing (unchanged). 19 new frontend `jsdom` checks passing
 confirmation of the accent-bar/row-tint association, chevron rotation
 smoothness, and overall polish — flagged for owner UAT.
 
+`[FACT]` **Two further owner refinements were folded into the same
+Phase 3B-UAT7 pass before it went through another UAT round** — see
+[MIGRATION_PLAN.md — Phase 3B-UAT7 (continued) Record](MIGRATION_PLAN.md#phase-3b-uat7-continued--final-table-restructuring-and-row-click-to-open-2026-08-17)
+(2026-08-17). **Final main-table columns**: Recording | Start Time |
+Duration | Sampling Rate(s) | Actions — Station/Recorder/Channels/
+Imported removed as columns; Sampling Rate(s) and Start Time promoted
+from Details (both purely additive frontend formatting, zero backend
+change; `formatSamplingRates()` renders every real rate, never
+simplifying a genuine multi-rate source). **Details reorganized into
+Technical** (Recorder, Channels, Nominal frequency, Timing reference,
+Samples) **/ Timing** (Trigger, Imported — Start Time moved out, the
+opposite direction from Sampling Rate(s)) **/ Files** (CFG, DAT) zones,
+each with a quiet zone-title caption. **Row-click-to-open**: the
+explicit "Open / Analyse" button was removed; the recording `<tr>`
+itself (`tabindex="0"`, `role="button"`, `aria-label`) is now the
+primary Open/Analyse target, reusing the same `openRecordingForAnalysis()`
+call — no second implementation. Actions is icon-only now (Details'
+`.chevron` glyph + Remove's `&times;`, both already-established glyphs
+elsewhere in this app), with `event.stopPropagation()` on both buttons'
+click handlers plus an `event.target !== row` guard on the row's own
+keydown handler isolating them from the row's click/Enter/Space
+activation. Zero backend diff, 280/280 backend tests passing
+(unchanged). 22 frontend `jsdom` checks passing (`phase3buat7_check.mjs`,
+substantially rewritten for the final state). **Unverified**: whether
+row-click-to-open feels natural versus accidental, and whether the
+icon-only Actions column reads clearly without visible tooltips — both
+flagged for owner UAT.
+
 ## Completed foundation work
 
 `[FACT]`, verified against the repository on 2026-08-15:

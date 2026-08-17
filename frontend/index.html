@@ -342,6 +342,18 @@
         table.recordings th { color: var(--text-dim); font-weight: 500; font-size: 0.75rem; white-space: nowrap; }
         table.recordings tr[hidden] { display: none; }
         table.recordings tr:hover td { background: var(--hover-tint); }
+        /* Phase 3B-UAT7 (row-click-to-open refinement): the recording
+           row itself is the primary Open/Analyse target -- pointer
+           cursor communicates that; the existing tr:hover rule above
+           already provides the "subtle highlight" (reused, not
+           duplicated). Scoped to tr[data-source-id] specifically so it
+           never applies to the sibling .recording-details-row, which
+           has no click action of its own. A visible focus outline is
+           required for keyboard users (Tab reaches the row via its own
+           tabindex="0"); :focus-visible keeps it from also flashing on
+           an ordinary mouse click. */
+        table.recordings tr[data-source-id] { cursor: pointer; }
+        table.recordings tr[data-source-id]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
         /* Phase 3A-UAT4 containment precedent: the recording name comes
            straight from imported files (or a real station name) and can
            be long/unbroken -- wrap in place, never escape the cell/
@@ -353,6 +365,16 @@
            twice. */
         .recording-name { font-weight: 600; color: var(--text); overflow-wrap: anywhere; max-width: 100%; }
         td.recording-name-cell { min-width: 0; max-width: 320px; }
+        /* Phase 3B-UAT7 (final owner update): Start Time and Sampling
+           Rate(s) are promoted from Details into the main table as
+           primary recognition/characteristic data. Both values already
+           contain natural break points (a space between date and time;
+           ", " between multiple rates), so normal wrapping already
+           keeps them readable -- min-width: 0 just prevents the table
+           cell's own content-based automatic minimum width from forcing
+           the whole table wider at narrow viewports (the same trap
+           .recording-name-cell already guards against above). */
+        td.recording-start-time-cell, td.recording-sampling-rates-cell { min-width: 0; }
         /* Phase 3B-UAT1 (owner UAT, root cause): this class used to be
            applied directly to the Actions <td>, which overrode that one
            cell's `display` away from the default `table-cell` --
@@ -394,7 +416,19 @@
         /* Zone 1: short scalar facts as label/value pairs that wrap as a
            unit -- a flex strip, not a table, so it reflows to fewer
            columns at narrower widths instead of forcing a horizontal
-           scrollbar or squeezing a column. */
+           scrollbar or squeezing a column. Phase 3B-UAT7 (final owner
+           update): now the TECHNICAL/SOURCE zone (Recorder, Channels,
+           Nominal frequency, Timing reference, Samples) -- Sampling
+           rate(s) was promoted to the main table and removed from here
+           to avoid repetition; Recorder/Channels moved IN from the main
+           table for the same reason (no longer shown there). */
+        .recording-details-zone-title {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            color: var(--text-dim);
+            margin: 0 0 4px;
+        }
         .recording-details-facts {
             display: flex;
             flex-wrap: wrap;
@@ -405,23 +439,21 @@
         .recording-details-fact { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
         .recording-details-fact-label { font-size: 0.72rem; color: var(--text-dim); }
         .recording-details-fact-value { font-size: 0.88rem; color: var(--text); font-weight: 500; overflow-wrap: anywhere; white-space: normal; }
-        /* Zone 2: Start/Trigger get dedicated full-width lines instead of
-           sharing table-column width with short fields -- this is the
-           direct fix for "timestamps not receiving enough emphasis." */
+        /* TIMING/SESSION zone: Trigger Time (source-level, timezone-naive
+           COMTRADE timestamp) and Imported Time (session-level,
+           timezone-aware backend timestamp -- a DIFFERENT kind of "when"
+           that stays conceptually distinct, see formatImportedAt()'s own
+           comment) each get a dedicated full-width line rather than
+           sharing column width with short fields. Start Time itself
+           moved OUT to the main table (Phase 3B-UAT7 final update) and
+           is never repeated here. */
         .recording-details-timing { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
         .recording-details-timing-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-        .recording-details-timing-row .recording-details-fact-label { flex-shrink: 0; width: 52px; }
+        .recording-details-timing-row .recording-details-fact-label { flex-shrink: 0; width: 66px; }
         .recording-details-timing-value { font-size: 0.88rem; color: var(--text); overflow-wrap: anywhere; }
-        /* A quiet rule, not a bordered card, separates Files from timing
-           while keeping both inside the same panel. */
+        /* A quiet rule, not a bordered card, separates zones while
+           keeping them inside the same panel. */
         .recording-details-divider { border-top: 1px solid var(--panel-border); margin: 2px 0 12px; }
-        .recording-details-files-title {
-            font-size: 0.72rem;
-            text-transform: uppercase;
-            letter-spacing: 0.02em;
-            color: var(--text-dim);
-            margin: 0 0 4px;
-        }
         .recording-details-files { display: flex; flex-direction: column; gap: 2px; font-size: 0.82rem; }
         .recording-details-file { display: flex; gap: 10px; min-width: 0; }
         .recording-details-file-label { color: var(--text-dim); font-weight: 500; flex-shrink: 0; width: 34px; }
@@ -432,18 +464,28 @@
            "selected for analysis" state, just "this row owns the open
            panel below it." */
         tr.recording-row-expanded td { background: var(--accent-wash-soft); }
-        /* Details is a disclosure control, not a peer of Open/Analyse or
-           Remove -- same button geometry (keeps the row of three
-           controls aligned) but a transparent border and the shared
-           .chevron glyph (already used for Analog/Digital channel
-           groups) demote it and communicate state, instead of swapping
-           the button's own label text between "Details"/"Hide details". */
-        button.recording-details-toggle {
+        /* Phase 3B-UAT7 (row-click-to-open refinement): Actions is
+           icon-only now -- Details disclosure + Remove -- since the row
+           itself is the primary Open/Analyse target (no separate
+           visible button; see renderRecordingsTable()'s own row click/
+           keydown wiring, which reuses openRecordingForAnalysis()
+           directly, never a second implementation). Shared compact
+           square geometry for both icon buttons. */
+        .recording-actions button.icon-button {
             display: inline-flex;
             align-items: center;
-            gap: 4px;
-            border-color: transparent;
+            justify-content: center;
+            padding: 6px 9px;
+            line-height: 1;
         }
+        /* Details is a disclosure control, not a peer of Remove -- a
+           transparent border and the shared .chevron glyph (already
+           used for Analog/Digital channel groups) demote it and
+           communicate state via rotation. There is no visible label to
+           keep stable anymore (icon-only) -- aria-label/title carry
+           "Show details"/"Hide details" for assistive tech instead,
+           swapped in toggleRecordingDetails(). */
+        button.recording-details-toggle { border-color: transparent; }
         button.recording-details-toggle:hover { border-color: var(--panel-border); }
         button.recording-details-toggle[aria-expanded="true"] .chevron { transform: rotate(90deg); }
         #recordingsEmpty { text-align: center; padding: 48px 24px; }
@@ -1643,11 +1685,9 @@
                         <thead>
                             <tr>
                                 <th>Recording</th>
-                                <th>Station</th>
-                                <th>Recorder</th>
-                                <th>Channels</th>
+                                <th>Start Time</th>
                                 <th>Duration</th>
-                                <th>Imported</th>
+                                <th>Sampling Rate(s)</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -2595,37 +2635,66 @@
             });
         }
 
+        // Phase 3B-UAT7 (final owner update): Start Time is promoted to
+        // the main Recordings table as primary recognition data. Same
+        // plain-string `.replace("T", " ")` technique used everywhere
+        // else in this app for COMTRADE-sourced timestamps -- NOT
+        // `new Date(...)`, which would (a) silently round microsecond
+        // precision to JS Date's millisecond precision and (b) apply
+        // the browser's local timezone to a value that is deliberately
+        // timezone-naive (see Phase 2C-C3). `start_time` is optional on
+        // `SourceSummaryOut` (`datetime | None`) -- not every provider
+        // guarantees one.
+        function formatRecordingStartTime(startTime) {
+            return startTime ? startTime.replace("T", " ") : "—";
+        }
+
+        // Phase 3B-UAT7 (final owner update): Sampling Rate(s) is
+        // promoted to the main table as primary recording-characteristic
+        // information -- moved out of expanded Details to avoid
+        // repetition. Renders EVERY real rate `SourceSummaryOut` reports
+        // (never assumes exactly one, never collapses/simplifies a
+        // genuine multi-rate COMTRADE source down to a single value).
+        function formatSamplingRates(rates) {
+            if (!Array.isArray(rates) || rates.length === 0) return "—";
+            return rates.map((r) => r + " Hz").join(", ");
+        }
+
         // Phase 3B-UAT5/UAT6/UAT7: the full per-recording metadata panel,
         // built entirely from the SAME SourceSummaryOut object already
         // fetched for the table row -- no per-row `.../channels`
         // request, no waveform data, no reparse.
         //
-        // Phase 3B-UAT6 (owner clarification): Recorder, Duration, and
-        // Channels are already visible as their own columns in the main
-        // Recordings table -- repeating them here just duplicates the
-        // row directly above. This panel shows ONLY the supplementary
-        // fields the main table has no room for.
-        //
-        // Phase 3B-UAT7 (owner UX review): the UAT6 horizontal <table>
-        // read as a second spreadsheet and gave Start/Trigger Time no
-        // more room than any other field. Restructured into three zones
-        // instead of table columns: a wrapping "facts" strip (short
-        // scalar fields), dedicated full-width timing lines, and a
-        // Files group -- see the `.recording-details-*` CSS comment for
-        // the layout rationale and DECISIONS/MIGRATION_PLAN for the full
-        // before/after writeup. No `<table>`/`<thead>` grammar remains.
-        //
-        // Start/Trigger Time are formatted via a plain string
-        // `.replace("T", " ")`, matching the SAME technique the old
-        // Waveform-sidebar metadata block always used -- deliberately
-        // NOT parsed through `new Date(...)`, which would silently
-        // round COMTRADE's microsecond-precision timestamps down to
-        // JS Date's millisecond precision.
+        // Phase 3B-UAT7 (owner UX review, then a final owner update to
+        // the main-table/Details split): the UAT6 horizontal <table>
+        // read as a second spreadsheet. Restructured into three zones,
+        // none of them a table:
+        //   Technical (facts strip)  -- Recorder, Channels, Nominal
+        //     frequency, Timing reference, Samples.
+        //   Timing (dedicated lines) -- Trigger, Imported.
+        //   Files                    -- CFG, DAT.
+        // Recording name, Start Time, Duration, and Sampling Rate(s) are
+        // deliberately NEVER repeated here -- they're the main table's
+        // own primary-recognition columns now (see renderRecordingsTable()
+        // and formatRecordingStartTime()/formatSamplingRates()).
+        // Recorder/Channels moved IN from the main table (no longer
+        // shown there) to the same non-duplication rule, just the
+        // opposite direction.
         function renderRecordingDetails(source) {
             const cfgName = source.original_filenames.find((name) => /\.cfg$/i.test(name));
             const datName = source.original_filenames.find((name) => /\.dat$/i.test(name));
-            const startTime = source.start_time ? source.start_time.replace("T", " ") : "—";
+            // Trigger Time: a source-level, timezone-naive COMTRADE
+            // timestamp -- same `.replace("T", " ")` technique used
+            // everywhere else in this app for that reason (never
+            // `new Date(...)`, which would round microsecond precision
+            // and apply a local timezone that was never really there).
             const triggerTime = source.trigger_time ? source.trigger_time.replace("T", " ") : "—";
+            // Imported Time: a DIFFERENT, session-level, timezone-AWARE
+            // backend timestamp (when this browser session imported the
+            // file) -- reuses formatImportedAt() unchanged, preserving
+            // the Phase 3B-UAT5 distinction that Imported must never be
+            // conflated with Start/Trigger's recording-native timing.
+            const importedTime = formatImportedAt(source.created_at);
 
             const fact = (label, value) =>
                 '<span class="recording-details-fact"><span class="recording-details-fact-label">' +
@@ -2636,7 +2705,10 @@
                 escapeHtml(label) + '</span><span class="recording-details-timing-value">' +
                 escapeHtml(value) + '</span></div>';
 
-            let html = '<div class="recording-details-facts">';
+            let html = '<div class="recording-details-zone-title">Technical</div>';
+            html += '<div class="recording-details-facts">';
+            html += fact("Recorder", source.recorder_name || "—");
+            html += fact("Channels", source.analog_channel_count + " Analog / " + source.digital_channel_count + " Digital");
             html += fact("Nominal frequency", source.nominal_frequency + " Hz");
             // Section 14 investigation: `timing_reference` is the SOURCE's
             // own timing capability (TimingInformation.timing_reference --
@@ -2651,17 +2723,18 @@
             // Phase 3B-UAT5 record for the full investigation.
             html += fact("Timing reference", source.timing_reference);
             html += fact("Samples", source.sample_count.toLocaleString());
-            html += fact("Sampling rate(s)", source.sampling_rates.map((r) => r + " Hz").join(", "));
             html += '</div>';
 
+            html += '<div class="recording-details-divider"></div>';
+            html += '<div class="recording-details-zone-title">Timing</div>';
             html += '<div class="recording-details-timing">';
-            html += timingRow("Start", startTime);
             html += timingRow("Trigger", triggerTime);
+            html += timingRow("Imported", importedTime);
             html += '</div>';
 
             if (cfgName || datName) {
                 html += '<div class="recording-details-divider"></div>';
-                html += '<div class="recording-details-files-title">Files</div>';
+                html += '<div class="recording-details-zone-title">Files</div>';
                 html += '<div class="recording-details-files">';
                 if (cfgName) {
                     html += '<div class="recording-details-file"><span class="recording-details-file-label">CFG</span>' +
@@ -2702,24 +2775,35 @@
                 const searchText = [name, source.station_name, filenames, recordingFormatLabel(source)]
                     .filter(Boolean).join(" ").toLowerCase();
                 const expanded = recordingsExpandedDetails.has(source.source_id);
+                const detailsLabel = expanded ? "Hide details" : "Show details";
+                // Phase 3B-UAT7 (row-click-to-open refinement): the row
+                // itself is now the primary Open/Analyse target -- no
+                // separate visible button. `role="button"` + `tabindex`
+                // + `aria-label` give it a real accessible name/action
+                // (one of this task's own suggested approaches); native
+                // `role="row"` semantics are intentionally overridden
+                // ONLY for this row (never for `.recording-details-row`,
+                // which stays a plain row). The two REAL nested <button>
+                // elements (Details/Remove) remain independently
+                // focusable/operable -- see the click/keydown wiring
+                // below, which stops the row's own handler from firing
+                // for events that originate inside .recording-actions.
                 html += '<tr data-search="' + escapeHtml(searchText) + '" data-source-id="' + escapeHtml(source.source_id) +
-                    '" class="' + (expanded ? "recording-row-expanded" : "") + '">' +
+                    '" class="' + (expanded ? "recording-row-expanded" : "") + '"' +
+                    ' tabindex="0" role="button" aria-label="Open ' + escapeHtml(name) + ' for analysis">' +
                     '<td class="recording-name-cell">' +
                         '<div class="recording-name">' + escapeHtml(name) + '</div>' +
                     '</td>' +
-                    '<td>' + escapeHtml(source.station_name || "—") + '</td>' +
-                    '<td>' + escapeHtml(source.recorder_name || "—") + '</td>' +
-                    '<td>' + source.analog_channel_count + 'A + ' + source.digital_channel_count + 'D</td>' +
+                    '<td class="recording-start-time-cell">' + formatRecordingStartTime(source.start_time) + '</td>' +
                     '<td>' + formatRecordingDuration(source.duration_seconds) + '</td>' +
-                    '<td>' + formatImportedAt(source.created_at) + '</td>' +
+                    '<td class="recording-sampling-rates-cell">' + formatSamplingRates(source.sampling_rates) + '</td>' +
                     '<td><div class="recording-actions">' +
-                        '<button type="button" class="secondary recording-details-toggle" data-action="details" data-source-id="' +
-                        escapeHtml(source.source_id) + '" aria-expanded="' + expanded + '">' +
-                        '<span class="chevron">&#9656;</span>Details</button>' +
-                        '<button type="button" class="secondary" data-action="open" data-source-id="' +
-                        escapeHtml(source.source_id) + '">Open / Analyse</button>' +
-                        '<button type="button" class="danger" data-action="remove" data-source-id="' +
-                        escapeHtml(source.source_id) + '" data-source-name="' + escapeHtml(name) + '">Remove</button>' +
+                        '<button type="button" class="secondary recording-details-toggle icon-button" data-action="details" data-source-id="' +
+                        escapeHtml(source.source_id) + '" aria-expanded="' + expanded + '" aria-label="' + detailsLabel +
+                        '" title="' + detailsLabel + '"><span class="chevron">&#9656;</span></button>' +
+                        '<button type="button" class="danger icon-button" data-action="remove" data-source-id="' +
+                        escapeHtml(source.source_id) + '" data-source-name="' + escapeHtml(name) +
+                        '" aria-label="Remove recording" title="Remove recording">&times;</button>' +
                     '</div></td>' +
                 '</tr>';
                 // Phase 3B-UAT5: a sibling row directly beneath the
@@ -2730,19 +2814,47 @@
                 // so there is no possible cross-row leakage.
                 html += '<tr class="recording-details-row" data-details-for="' + escapeHtml(source.source_id) + '"' +
                     (expanded ? "" : " hidden") + '>' +
-                    '<td colspan="7">' + renderRecordingDetails(source) + '</td>' +
+                    '<td colspan="5">' + renderRecordingDetails(source) + '</td>' +
                 '</tr>';
             }
             bodyEl.innerHTML = html;
 
+            // Phase 3B-UAT7 (row-click-to-open refinement): Details/
+            // Remove each stop the click from ever reaching the row's
+            // own listener below -- this is the "child controls must
+            // not trigger the parent row" isolation, not a second
+            // Open/Analyse implementation guarding itself.
             bodyEl.querySelectorAll('button[data-action="details"]').forEach((btn) => {
-                btn.addEventListener("click", () => toggleRecordingDetails(btn.dataset.sourceId));
-            });
-            bodyEl.querySelectorAll('button[data-action="open"]').forEach((btn) => {
-                btn.addEventListener("click", () => openRecordingForAnalysis(btn.dataset.sourceId));
+                btn.addEventListener("click", (event) => {
+                    event.stopPropagation();
+                    toggleRecordingDetails(btn.dataset.sourceId);
+                });
             });
             bodyEl.querySelectorAll('button[data-action="remove"]').forEach((btn) => {
-                btn.addEventListener("click", () => requestRemoveSource(btn.dataset.sourceId, btn.dataset.sourceName));
+                btn.addEventListener("click", (event) => {
+                    event.stopPropagation();
+                    requestRemoveSource(btn.dataset.sourceId, btn.dataset.sourceName);
+                });
+            });
+            // The row itself is the primary Open/Analyse target --
+            // reuses the SAME openRecordingForAnalysis() the old button
+            // called, no second implementation. Only fires for clicks/
+            // keydowns whose target IS the row (not a bubbled event
+            // from a nested Details/Remove <button>, which would
+            // otherwise also reach this listener via normal bubbling
+            // even though its own click handler already stopped
+            // propagation -- keydown is a different event and bubbles
+            // independently, so the `event.target === row` guard below
+            // is what actually prevents Enter/Space on a focused child
+            // button from ALSO activating the row).
+            bodyEl.querySelectorAll('tr[data-source-id]').forEach((row) => {
+                row.addEventListener("click", () => openRecordingForAnalysis(row.dataset.sourceId));
+                row.addEventListener("keydown", (event) => {
+                    if (event.target !== row) return;
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    openRecordingForAnalysis(row.dataset.sourceId);
+                });
             });
 
             applyRecordingsSearchFilter(document.getElementById("recordingsSearch").value);
@@ -2784,10 +2896,17 @@
                 .find((btn) => btn.dataset.sourceId === sourceId);
             if (detailsRow) detailsRow.hidden = !expanded;
             if (parentRow) parentRow.classList.toggle("recording-row-expanded", expanded);
-            // Label stays the stable "Details" text (owner direction --
-            // no "Hide details" swap); only aria-expanded changes, which
-            // the CSS chevron-rotation rule keys off directly.
-            if (toggleBtn) toggleBtn.setAttribute("aria-expanded", String(expanded));
+            if (toggleBtn) {
+                toggleBtn.setAttribute("aria-expanded", String(expanded));
+                // Icon-only control (row click is Open/Analyse now) --
+                // the chevron rotation is the VISIBLE state signal;
+                // aria-label/title carry the equivalent accessible text,
+                // swapped here since there's no visible label to keep
+                // stable anymore.
+                const label = expanded ? "Hide details" : "Show details";
+                toggleBtn.setAttribute("aria-label", label);
+                toggleBtn.setAttribute("title", label);
+            }
         }
 
         // Section 10: activates/selects the recording in the current

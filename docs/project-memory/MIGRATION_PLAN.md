@@ -8253,6 +8253,148 @@ through but not visually confirmed — flagged for owner UAT.
 
 ---
 
+## Phase 3B-UAT7 (continued) — Final Table Restructuring and Row-Click-to-Open (2026-08-17)
+
+`[FACT]` throughout. No new DECISIONS.md entry. Two further owner
+refinements, delivered in the same working session before the prior
+Phase 3B-UAT7 record's structured-details redesign had its next UAT
+round — both folded into one implementation pass and one commit.
+
+### 1. Final main-table column set
+
+The main Recordings table's columns were finalized to:
+
+```
+Recording | Start Time | Duration | Sampling Rate(s) | Actions
+```
+
+Station, Recorder, Channels, and Imported were removed as main-table
+columns. Sampling Rate(s) was **promoted** into the main table (it had
+lived in expanded Details since Phase 3B-UAT5/UAT6) as primary
+recording-characteristic information; Start Time was promoted for the
+first time (previously Details-only). Two new formatting helpers back
+these: `formatRecordingStartTime()` (the established
+`.replace("T", " ")` string technique — never `new Date()`, preserving
+full microsecond precision and COMTRADE's timezone-naive semantics) and
+`formatSamplingRates()` (renders EVERY real rate `SourceSummaryOut`
+reports, verified with a genuine multi-rate fixture — never assumes or
+collapses to exactly one rate). Both are purely additive frontend
+functions; no backend change was needed since every value was already
+present on `SourceSummaryOut`.
+
+### 2. Details reorganized into Technical / Timing / Files
+
+Reflecting the reversed non-duplication rule (Recorder/Channels moved
+OUT of the main table and INTO Details; Sampling Rate(s)/Start Time
+moved the opposite direction), `renderRecordingDetails()`'s zones became:
+
+- **Technical** (facts strip): Recorder, Channels ("N Analog / M
+  Digital" — a fuller phrase than the main table's old compact "NA +
+  MD" summary, since it's no longer competing for column width),
+  Nominal frequency, Timing reference, Samples.
+- **Timing** (dedicated lines): Trigger, Imported — Start Time moved
+  OUT (now main-table-only); Imported moved IN (previously a main-table
+  column, `formatImportedAt()` reused unchanged, preserving its
+  established distinction from timezone-naive per-sample COMTRADE
+  timestamps).
+- **Files** (unchanged): CFG, DAT.
+
+A shared `.recording-details-zone-title` class (generalized from the
+old Files-only title) gives each zone a quiet, uppercase, dim caption —
+added specifically because the zone count/field count grew enough
+(5 + 2 + 2) that implicit grouping via spacing alone was judged
+insufficient for scanability.
+
+### 3. Row-click-to-open
+
+The explicit "Open / Analyse" button was removed. The recording `<tr>`
+itself is now the primary Open/Analyse target — clicking (or pressing
+Enter/Space while focused) an ordinary part of the row calls the SAME
+`openRecordingForAnalysis()` the old button called; no second
+implementation.
+
+**Accessible semantics** (the task's own flagged concern — "a `<tr>`
+cannot automatically inherit all correct native `<button>` semantics"):
+the row gets `tabindex="0"`, `role="button"`, and an `aria-label`
+naming the action (e.g. `"Open Tanjung Bin BEN6K for analysis"`). This
+is one of the task's own suggested approaches, chosen over a heavier
+full ARIA grid/roving-tabindex pattern (disproportionate for a small
+recordings table) and over inventing genuinely invalid markup. The two
+real nested `<button>` elements (Details, Remove) remain independently
+focusable/operable; their own `click` handlers call
+`event.stopPropagation()` so a button click never also reaches the
+row's listener, and the row's own `keydown` handler additionally
+guards with `event.target !== row` — a `keydown` on a focused child
+button bubbles up independently of the button's native Enter/Space-to-
+click conversion, so this guard is what actually stops it from
+double-firing the row's own action (confirmed by a dedicated test that
+dispatches a bubbling `keydown` directly on the Details button).
+
+**Actions column** is now icon-only: Details (the existing `.chevron`
+disclosure glyph, reused verbatim from Analog/Digital channel groups,
+rotating via the pre-existing `[aria-expanded="true"]` CSS rule) and
+Remove (`&times;`, the SAME glyph this codebase already uses for every
+other close/remove control — modal close buttons, channel remove tags,
+group delete). Neither button has visible text anymore; both carry
+`aria-label`/`title` (Details' swaps between "Show details"/"Hide
+details" in `toggleRecordingDetails()`, since there's no longer a
+visible label to keep stable; Remove's is the fixed "Remove recording").
+
+**Row interaction states**: `cursor: pointer` and the pre-existing
+`table.recordings tr:hover td { background: var(--hover-tint); }` rule
+(reused, not duplicated) signal "this row opens something"; a new
+`:focus-visible` outline (`var(--accent)`) gives keyboard users a
+visible indicator without flashing on an ordinary mouse click; the
+pre-existing `tr.recording-row-expanded` tint (from the earlier UAT7
+pass) remains a visually distinct, separate state in the same accent
+family. All three states use only existing Light/Dark theme tokens.
+
+### Tests
+
+- **Frontend**: `phase3buat7_check.mjs` (scratch, not committed) was
+  substantially rewritten for the final state — 22/22 passing. Covers:
+  final main-table column presence/absence (Recording/Start Time/
+  Duration/Sampling Rate(s) present; Station/Recorder/Channels/Imported/
+  Nominal Frequency/Timing Reference/Samples/CFG/DAT absent), a genuine
+  multi-rate source rendered truthfully (not simplified to one rate),
+  Details' final field set (present/absent per the reversed rule),
+  multi-recording no-leakage, the explicit Open/Analyse button's
+  removal, row click selecting the correct source among multiple
+  recordings and navigating to Waveform with zero re-upload/duplicate-
+  source/workspace-reset, Details/Remove/expanded-Details-content clicks
+  never triggering row navigation, keyboard Enter and Space opening the
+  focused row, the row's accessible semantics, the keydown-bubbling
+  isolation guard specifically, Details/Remove remaining independently
+  keyboard-operable real `<button>` elements, and the presence of the
+  intended hover/focus/expanded CSS rules.
+- **Frontend, existing suite correction**: assertions across
+  `phase3b_check.mjs`, `phase3buat1_check.mjs` (two), `phase3buat3_check.mjs`,
+  `phase3buat4_check.mjs`, `phase3buat5_check.mjs` (three), and
+  `phase3buat6_check.mjs` (five) had assumed either the pre-restructuring
+  main-table/Details field split, the three-button Actions column, or
+  the explicit Open/Analyse button — all updated in place with
+  explanatory comments, following this project's established precedent.
+- **Frontend, full regression**: the exact same 20 pre-existing,
+  already-documented failures, zero new divergences.
+- **Backend**: zero diff, 280/280 passing in a fresh venv (no backend
+  file touched — every rendered value already existed on
+  `SourceSummaryOut`).
+
+### Files changed
+
+`frontend/index.html` only.
+
+### Honest limitation
+
+No real browser is available in this sandbox — whether row-click-to-
+open feels natural (vs. accidentally clicking a row while scanning
+text), whether the icon-only Actions column reads clearly without
+tooltips visible at a glance, and whether the final Technical/Timing/
+Files zone grouping scans well with the fuller field set, were reasoned
+through but not visually confirmed — flagged for owner UAT.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping
