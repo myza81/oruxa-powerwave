@@ -8010,6 +8010,108 @@ Dark appearance) was reasoned through structurally against existing
 
 ---
 
+## Phase 3B-UAT6 — No Duplicate Metadata in Recording Details (2026-08-17)
+
+`[FACT]` throughout. No new DECISIONS.md entry — a targeted content/
+layout refinement of the Phase 3B-UAT5 Details panel just shipped, same
+weight as UAT1–UAT5.
+
+### Owner clarification
+
+The Phase 3B-UAT5 Details panel repeated fields the main Recordings
+table already shows (Recorder, Duration, and implicitly Channels never
+appeared there but Recorder/Duration did). Owner's rule: **main table =
+quick identification/summary metadata; expanded Details = supplementary
+technical metadata not already shown in the main table.**
+
+### What changed
+
+`renderRecordingDetails()` no longer renders Recorder or Duration — both
+stay exactly where they already were, as their own columns in the main
+Recordings table (untouched, not redesigned). The panel now shows only:
+Nominal frequency, Timing reference, Samples, Sampling rate(s), Start
+time, Trigger time — followed by a separate "Files" section listing CFG
+and DAT filenames, matching the owner's own mockup layout.
+
+### Layout — compact horizontal table, not vertical cards
+
+Per the owner's explicit "avoid metadata cards... make the remaining
+technical metadata compact and easy to scan" direction, the panel
+switched from the vertical `.stat-grid`/`.stat` card layout (Phase
+3B-UAT5's reuse of the old Waveform-sidebar pattern) to one real
+`<table class="recording-details-table">` with a `<thead>` label row and
+a single `<tbody>` data row — six columns read left-to-right in one
+compact line, exactly as the owner's own ASCII table mockup showed. The
+table sits inside a `.recording-details-table-wrap` (`overflow-x: auto`)
+using the same containment technique already established for
+`.recordings-table-wrap` — a narrow viewport scrolls the row
+horizontally rather than breaking Work Area's own width or silently
+truncating a value. The Files section is a simple compact label/value
+list (`.recording-details-files`/`.recording-details-file`), not a
+second table.
+
+### Dead code removed
+
+Since UAT5's Recordings Details panel was the last remaining caller of
+the old Waveform-sidebar-era `.stat-grid`/`.stat`/`statCard()` machinery
+(the Waveform sidebar itself stopped using it as of UAT5), and this pass
+moved the Details panel off it too, `.stat-grid`/`.stat`/`.stat .label`/
+`.stat .value` (CSS) and `statCard()` (JS) are now unused anywhere in
+the app and were deleted rather than left as dead code. Comments
+referencing the old machinery were updated in place rather than left
+stale.
+
+### Preserved
+
+The main Recordings table itself was not redesigned — same columns
+(Recording, Station, Recorder, Channels, Duration, Imported, Actions),
+same data, same behavior. Open/Analyse, Remove, search, and the
+Details-expand/collapse mechanism itself (multiple rows expandable at
+once, `recordingsExpandedDetails` Set, zero extra fetch) are all
+unchanged from UAT5 — this pass only changed what content renders
+inside an already-expanded panel.
+
+### Tests
+
+- **Frontend, new**: `phase3buat6_check.mjs` (scratch, not committed) —
+  9/9 passing. Covers: Recorder/Duration/Channels remain in the main
+  table; none of the three are repeated in Details (value AND label
+  both absent); the six supplementary fields render correctly; CFG/DAT
+  stay correctly associated per recording with no cross-row leakage;
+  the technical metadata renders as one real `<table>` with exactly one
+  horizontal data row (using the native `table.tBodies[0].rows` API,
+  not a "tbody tr" CSS selector -- jsdom's selector engine has a known
+  quirk where that selector also matches a sibling `<thead>`'s row for
+  HTML tables, discovered and worked around while writing this test).
+- **Frontend, existing suite correction**: `phase3buat5_check.mjs`'s own
+  field-list/CSS-selector/cross-leakage assertions (written for the
+  now-superseded UAT5 layout) were updated in place for the new field
+  list and markup, following this project's established precedent.
+  `phase3auat3_check.mjs`'s `.stat`/`.stat .value` containment assertion
+  was updated to check the new `.recording-details-table td`/
+  `.recording-details-file-name` rules instead (the CSS classes it used
+  to check no longer exist).
+- **Frontend, full regression**: the exact same 20 pre-existing,
+  already-documented failures, zero new divergences.
+- **Backend**: zero diff -- no new field was needed (Recorder/Duration/
+  Channels were already in `SourceSummaryOut` since Phase 3B/3B-UAT5;
+  this pass only changed which already-available fields the frontend
+  chooses to render where).
+
+### Files changed
+
+`frontend/index.html` only.
+
+### Honest limitation
+
+No real browser is available in this sandbox — whether the compact
+horizontal table reads naturally at typical widths, and whether it
+scrolls acceptably rather than feeling cramped at narrow widths, was
+reasoned through structurally but not visually confirmed — flagged for
+owner UAT.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping

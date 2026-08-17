@@ -371,10 +371,12 @@
         /* Phase 3B-UAT5: per-recording expandable metadata -- a sibling
            <tr> directly beneath the recording's own row (see
            renderRecordingDetails()), not a separate drawer/modal/page.
-           Reuses the existing .stat-grid/.stat/statCard() machinery
-           already established for exactly this "compact grid of label/
-           value pairs" shape (Phase 3A-UAT3's containment rules on
-           .stat/.stat .value already apply automatically, unscoped). */
+           Phase 3B-UAT6 moved its content to a compact horizontal table
+           + Files list (see .recording-details-table below) once
+           Recorder/Duration/Channels were dropped as main-table
+           duplicates -- the old vertical .stat-grid/.stat/statCard()
+           machinery this comment used to describe is no longer used
+           anywhere in the app and was removed. */
         .recording-details-row[hidden] { display: none; }
         .recording-details-row td {
             background: var(--surface-tint);
@@ -387,7 +389,41 @@
             color: var(--text-dim);
             margin: 0 0 10px;
         }
-        .recording-details-grid { margin-bottom: 0; } /* .stat-grid's own margin-bottom is for mid-page spacing; this is the last thing in the cell */
+        /* Phase 3B-UAT6: Recorder/Duration/Channels already live in the
+           main Recordings table's own columns -- the expanded panel no
+           longer repeats them, and switched from vertical .stat-grid
+           cards to one compact horizontal row (owner's own mockup),
+           since the field list shrank to values that read naturally
+           left-to-right. Same overflow-x: auto containment technique as
+           .recordings-table-wrap -- a wide row scrolls horizontally at
+           narrow widths rather than breaking Work Area's own width. */
+        .recording-details-table-wrap { overflow-x: auto; margin-bottom: 14px; }
+        .recording-details-table { border-collapse: collapse; font-size: 0.82rem; }
+        .recording-details-table th, .recording-details-table td {
+            text-align: left;
+            padding: 2px 20px 2px 0;
+            vertical-align: top;
+        }
+        .recording-details-table th {
+            color: var(--text-dim);
+            font-weight: 500;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
+        }
+        .recording-details-table td { color: var(--text); overflow-wrap: anywhere; }
+        .recording-details-files-title {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            color: var(--text-dim);
+            margin: 0 0 4px;
+        }
+        .recording-details-files { display: flex; flex-direction: column; gap: 2px; font-size: 0.82rem; }
+        .recording-details-file { display: flex; gap: 10px; min-width: 0; }
+        .recording-details-file-label { color: var(--text-dim); font-weight: 500; flex-shrink: 0; width: 34px; }
+        .recording-details-file-name { overflow-wrap: anywhere; min-width: 0; }
         #recordingsEmpty { text-align: center; padding: 48px 24px; }
         #recordingsEmpty p { margin: 0 0 16px; }
 
@@ -696,25 +732,6 @@
            specific element, per this task's own preferred rule set. */
         .detail-header h3 { margin: 0 0 4px; font-size: 1.05rem; overflow-wrap: anywhere; white-space: normal; max-width: 100%; }
         .detail-header .meta { font-size: 0.8rem; color: var(--text-dim); overflow-wrap: anywhere; white-space: normal; max-width: 100%; }
-
-        .stat-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-
-        .stat {
-            background: var(--surface-tint);
-            border: 1px solid var(--panel-border);
-            border-radius: var(--radius);
-            padding: 10px 12px;
-            min-width: 0; /* grid items default to a content-based automatic minimum size, same trap as flex items */
-        }
-        .stat .label { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; }
-        /* Recorder/device identifiers and sampling-rate lists are also
-           unbroken-token-prone -- same reasoning as .detail-header above. */
-        .stat .value { font-size: 0.95rem; font-weight: 600; margin-top: 2px; overflow-wrap: anywhere; }
 
         table.channels {
             width: 100%;
@@ -2556,14 +2573,22 @@
             });
         }
 
-        // Phase 3B-UAT5: the full per-recording metadata panel, built
-        // entirely from the SAME SourceSummaryOut object already fetched
-        // for the table row -- no per-row `.../channels` request, no
-        // waveform data, no reparse. Reuses statCard()/.stat-grid
-        // verbatim (the exact "responsive grid of label/value pairs"
-        // this task's own preferred layout describes), so it
-        // automatically inherits the already-established long-value
-        // containment (overflow-wrap: anywhere, min-width: 0).
+        // Phase 3B-UAT5/UAT6: the full per-recording metadata panel,
+        // built entirely from the SAME SourceSummaryOut object already
+        // fetched for the table row -- no per-row `.../channels`
+        // request, no waveform data, no reparse.
+        //
+        // Phase 3B-UAT6 (owner clarification): Recorder, Duration, and
+        // Channels are already visible as their own columns in the main
+        // Recordings table -- repeating them here just duplicates the
+        // row directly above. This panel now shows ONLY the
+        // supplementary technical fields the main table has no room
+        // for, laid out as one compact horizontal row (not vertical
+        // .stat-grid cards -- the owner's own mockup), plus a separate
+        // "Files" section for CFG/DAT. Values still inherit containment
+        // (overflow-wrap: anywhere) and the table sits in an
+        // overflow-x: auto wrapper so a narrow viewport scrolls instead
+        // of breaking Work Area's own width.
         //
         // Start/Trigger Time are formatted via a plain string
         // `.replace("T", " ")`, matching the SAME technique the old
@@ -2574,11 +2599,15 @@
         function renderRecordingDetails(source) {
             const cfgName = source.original_filenames.find((name) => /\.cfg$/i.test(name));
             const datName = source.original_filenames.find((name) => /\.dat$/i.test(name));
+            const startTime = source.start_time ? source.start_time.replace("T", " ") : "—";
+            const triggerTime = source.trigger_time ? source.trigger_time.replace("T", " ") : "—";
 
             let html = '<div class="recording-details-title">Recording details</div>';
-            html += '<div class="stat-grid recording-details-grid">';
-            html += statCard("Recorder", source.recorder_name || "—");
-            html += statCard("Nominal frequency", source.nominal_frequency + " Hz");
+            html += '<div class="recording-details-table-wrap"><table class="recording-details-table"><thead><tr>';
+            html += '<th>Nominal frequency</th><th>Timing reference</th><th>Samples</th>' +
+                '<th>Sampling rate(s)</th><th>Start time</th><th>Trigger time</th>';
+            html += '</tr></thead><tbody><tr>';
+            html += '<td>' + escapeHtml(source.nominal_frequency + " Hz") + '</td>';
             // Section 14 investigation: `timing_reference` is the SOURCE's
             // own timing capability (TimingInformation.timing_reference --
             // "absolute" when start_time/trigger_time are real recording
@@ -2590,15 +2619,26 @@
             // Waveform-sidebar label) specifically to avoid that
             // confusion -- see docs/project-memory/MIGRATION_PLAN.md's
             // Phase 3B-UAT5 record for the full investigation.
-            html += statCard("Timing reference", source.timing_reference);
-            html += statCard("Samples", source.sample_count.toLocaleString());
-            html += statCard("Duration", source.duration_seconds.toFixed(4) + " s");
-            html += statCard("Sampling rate(s)", source.sampling_rates.map((r) => r + " Hz").join(", "));
-            if (source.start_time) html += statCard("Start time", source.start_time.replace("T", " "));
-            if (source.trigger_time) html += statCard("Trigger time", source.trigger_time.replace("T", " "));
-            if (cfgName) html += statCard("CFG", cfgName);
-            if (datName) html += statCard("DAT", datName);
-            html += '</div>';
+            html += '<td>' + escapeHtml(source.timing_reference) + '</td>';
+            html += '<td>' + escapeHtml(source.sample_count.toLocaleString()) + '</td>';
+            html += '<td>' + escapeHtml(source.sampling_rates.map((r) => r + " Hz").join(", ")) + '</td>';
+            html += '<td>' + escapeHtml(startTime) + '</td>';
+            html += '<td>' + escapeHtml(triggerTime) + '</td>';
+            html += '</tr></tbody></table></div>';
+
+            if (cfgName || datName) {
+                html += '<div class="recording-details-files-title">Files</div>';
+                html += '<div class="recording-details-files">';
+                if (cfgName) {
+                    html += '<div class="recording-details-file"><span class="recording-details-file-label">CFG</span>' +
+                        '<span class="recording-details-file-name">' + escapeHtml(cfgName) + '</span></div>';
+                }
+                if (datName) {
+                    html += '<div class="recording-details-file"><span class="recording-details-file-label">DAT</span>' +
+                        '<span class="recording-details-file-name">' + escapeHtml(datName) + '</span></div>';
+                }
+                html += '</div>';
+            }
             return html;
         }
 
@@ -2926,11 +2966,6 @@
             panel.innerHTML = html;
             setupChannelSearch(data.analog_channels, data.digital_channels);
             setupSelectionControls(source);
-        }
-
-        function statCard(label, value) {
-            return '<div class="stat"><div class="label">' + escapeHtml(label) + '</div>' +
-                '<div class="value">' + escapeHtml(String(value)) + '</div></div>';
         }
 
         // Analog Channels: collapsible top-level section (open by default --

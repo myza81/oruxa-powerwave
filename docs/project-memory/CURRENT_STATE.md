@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-17** (Phase 3B-UAT5).
+Last meaningful update: **2026-08-17** (Phase 3B-UAT6).
 
 ## Development phase
 
@@ -885,6 +885,32 @@ baseline + 1 new); 14 new frontend `jsdom` checks passing
 (`phase3buat5_check.mjs`). **Unverified**: real-browser visual
 confirmation of the expanded Details panel's layout/spacing and Light/
 Dark appearance — flagged for owner UAT.
+
+`[FACT]` **Recording Details no longer repeats main-table metadata —
+Phase 3B-UAT6 — No Duplicate Metadata in Recording Details — is now
+implemented** (2026-08-17) — see
+[MIGRATION_PLAN.md — Phase 3B-UAT6 Record](MIGRATION_PLAN.md#phase-3b-uat6--no-duplicate-metadata-in-recording-details-2026-08-17).
+Owner clarification after Phase 3B-UAT5: the expanded Details panel had
+been repeating Recorder and Duration, both already visible as their own
+columns in the main Recordings table. Rule applied: main table = quick
+identification/summary; expanded Details = supplementary technical
+metadata only. `renderRecordingDetails()` now shows just Nominal
+frequency, Timing reference, Samples, Sampling rate(s), Start time,
+Trigger time, plus a separate "Files" section for CFG/DAT — Recorder,
+Duration, and Channels are never repeated. The layout also switched from
+vertical `.stat-grid` cards to one compact horizontal `<table>` row
+(owner's own mockup), inside an `overflow-x: auto` wrapper so it scrolls
+rather than breaks Work Area's width at narrow viewports. The now-fully-
+unused `.stat-grid`/`.stat`/`statCard()` machinery (its last caller was
+this same Details panel) was deleted rather than left as dead code. The
+main Recordings table itself was not redesigned; Open/Analyse, Remove,
+search, and the expand/collapse mechanism are unchanged. Zero backend
+diff (no new field needed — Recorder/Duration/Channels were already in
+`SourceSummaryOut`; this only changed which already-available fields
+render where). 9 new frontend `jsdom` checks passing
+(`phase3buat6_check.mjs`). **Unverified**: real-browser visual
+confirmation of the compact horizontal table's readability and
+horizontal-scroll behavior at narrow widths — flagged for owner UAT.
 
 ## Completed foundation work
 

@@ -8,6 +8,62 @@ Last updated: **2026-08-17**
 
 ## What was most recently done
 
+**Phase 3B-UAT6 — No Duplicate Metadata in Recording Details.** Full
+detail:
+[MIGRATION_PLAN.md — Phase 3B-UAT6 Record](MIGRATION_PLAN.md#phase-3b-uat6--no-duplicate-metadata-in-recording-details-2026-08-17).
+No new DECISIONS.md entry (targeted refinement of the Phase 3B-UAT5
+Details panel, same weight as UAT1–UAT5).
+
+**Owner clarification**: the Phase 3B-UAT5 Details panel had been
+repeating Recorder and Duration, both already visible as their own
+columns in the main Recordings table. Rule: main table = quick
+identification/summary metadata; expanded Details = supplementary
+technical metadata not already shown in the main table.
+
+**What changed**: `renderRecordingDetails()` no longer shows Recorder or
+Duration — both stay exactly where they already were, untouched, in the
+main table. The panel now shows only Nominal frequency, Timing
+reference, Samples, Sampling rate(s), Start time, Trigger time, plus a
+separate "Files" section listing CFG/DAT — matching the owner's own
+mockup. Layout switched from vertical `.stat-grid` cards to one compact
+horizontal `<table>` row (six columns, one data row), wrapped in an
+`overflow-x: auto` container (same technique as `.recordings-table-wrap`)
+so a narrow viewport scrolls rather than breaks Work Area's width.
+
+**Dead code removed**: since this Details panel was the last remaining
+caller of the old Waveform-sidebar-era `.stat-grid`/`.stat`/
+`statCard()` machinery, and this pass moved it off that pattern too,
+those CSS rules and the JS function were deleted (not left unused) —
+stale comments referencing them were updated in place.
+
+**Preserved**: the main Recordings table was not redesigned (same
+columns, same data). Open/Analyse, Remove, search, and the expand/
+collapse mechanism (multiple rows expandable at once, zero extra fetch)
+are all unchanged from UAT5.
+
+**Verification**: 9 new frontend `jsdom` checks (`phase3buat6_check.mjs`)
++ two existing scripts corrected in place: `phase3buat5_check.mjs`'s own
+field-list/CSS-selector/leakage assertions (written for the now-
+superseded UAT5 field list) were updated for the new layout;
+`phase3auat3_check.mjs`'s `.stat`/`.stat .value` containment assertion
+was retargeted to the new `.recording-details-table td`/
+`.recording-details-file-name` rules (the old classes it checked no
+longer exist). While writing the new test, discovered and worked around
+a jsdom selector-engine quirk (`"tbody tr"` also matches a sibling
+`<thead>`'s row for HTML tables) by using the native
+`table.tBodies[0].rows` API instead. Full suite returns to the exact
+same 20 pre-existing, already-documented failures, zero new divergences.
+
+**Backend**: zero files changed — no new field was needed (Recorder/
+Duration/Channels were already in `SourceSummaryOut`; this pass only
+changed which already-available fields render where). **Real-browser
+visual confirmation — whether the compact horizontal table reads
+naturally and scrolls acceptably at narrow widths — was NOT and cannot
+be confirmed in this sandboxed session; this remains explicitly for the
+owner's own manual UAT.**
+
+## What was done in the prior session (Phase 3B-UAT5 — Move Recording Metadata from Waveform to Recordings)
+
 **Phase 3B-UAT5 — Move Recording Metadata from Waveform to Recordings.**
 Full detail:
 [MIGRATION_PLAN.md — Phase 3B-UAT5 Record](MIGRATION_PLAN.md#phase-3b-uat5--move-recording-metadata-from-waveform-to-recordings-2026-08-17).
