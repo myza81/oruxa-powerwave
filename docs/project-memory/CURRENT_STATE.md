@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-17** (Phase 3B-UAT9).
+Last meaningful update: **2026-08-17** (Phase 3B-UAT10).
 
 ## Development phase
 
@@ -1025,6 +1025,25 @@ frontend `jsdom` checks passing (`phase3buat9_check.mjs`, source-level
 only — jsdom has no scrollbar rendering). **Unverified**: actual
 rendered slimness/hover-contrast/theme legibility — flagged for owner
 UAT (requires a real browser).
+
+`[FACT]` **Scrollbar track gutters in the reported border-line areas
+now blend with their local surfaces — Phase 3B-UAT10 — Targeted
+Scrollbar Track / Divider Fix** (2026-08-17) — see
+[MIGRATION_PLAN.md — Phase 3B-UAT10 Record](MIGRATION_PLAN.md#phase-3b-uat10--targeted-scrollbar-track--divider-fix-2026-08-17).
+The global Phase 3B-UAT9 slim scrollbar baseline remains unchanged:
+6px WebKit scrollbar dimensions, borderless rounded thumbs, and theme
+thumb tokens are still shared from `frontend/theme.css`. The follow-up
+fix adds only targeted local track colors for `#mainSidebarMenu`,
+`#workspaceSidebar`, `.group-editor-box`, and `.group-body`, including
+`::-webkit-scrollbar-track-piece` plus Firefox `scrollbar-color` track
+colors. This addresses the diagnosed cause: a transparent scrollbar
+gutter could make adjacent real panel/divider borders read like a
+scrollbar rail. Structural borders and overflow/layout rules are
+preserved. Lightweight committed source-level coverage now lives in
+`backend/tests/test_frontend_scrollbar_css.py`; `git diff --check`,
+the focused test (4/4), and the full backend suite (309/309, two
+existing warnings) pass. Real rendered visual confirmation remains for
+owner UAT in a browser.
 
 ## Completed foundation work
 

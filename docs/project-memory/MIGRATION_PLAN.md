@@ -8548,6 +8548,91 @@ flagged for owner UAT.
 
 ---
 
+## Phase 3B-UAT10 — Targeted Scrollbar Track / Divider Fix (2026-08-17)
+
+`[FACT]` throughout. No new DECISIONS.md entry (targeted cosmetic
+follow-up to Phase 3B-UAT9; no architecture, data, or behaviour
+decision).
+
+### Root cause diagnosed
+
+Phase 3B-UAT9 correctly removed borders from the scrollbar pseudo-
+elements themselves: the shared `::-webkit-scrollbar-track` rule is
+transparent and borderless, and the thumb is borderless and rounded.
+The remaining owner-visible "line" was therefore not a scrollbar
+border in the CSS. It was primarily the combination of a transparent
+scrollbar gutter/track beside existing real container/divider borders
+(`border-right` on the main/workspace sidebars, `border`/`overflow:
+hidden` on grouped channel containers, and the modal border around the
+group editor). With a transparent track, those structural lines could
+visually read as a rail beside the thumb.
+
+### What changed
+
+The global Phase 3B-UAT9 baseline in `frontend/theme.css` remains
+unchanged: universal Firefox/WebKit scrollbar styling, 6px dimensions,
+transparent global track, borderless rounded theme-token thumb, and
+transparent global corner.
+
+A small targeted follow-up block was added after the global rules:
+
+- `#mainSidebarMenu` uses `var(--panel)` as the local track surface.
+- `#workspaceSidebar` uses `var(--bg)` as the local track surface.
+- `.group-editor-box` uses `var(--panel)` as the local track surface.
+- `.group-body` uses `var(--panel)` as the local track surface.
+
+For each targeted area, the Firefox path (`scrollbar-color:
+var(--scrollbar-thumb) <local-surface>`) now supplies a non-transparent
+track color, and the Chromium/WebKit path explicitly styles both
+`::-webkit-scrollbar-track` and `::-webkit-scrollbar-track-piece` with
+the same local background and `border: 0`. Local scrollbar corners were
+also matched to the same local surface to avoid a boxed corner when
+both axes are present.
+
+### What deliberately did not change
+
+No `overflow`/`overflow-x`/`overflow-y` declaration was changed. No
+scrollbar size, width, layout dimension, sidebar width, split handle,
+or scrolling behaviour was changed. No structural border was removed:
+`#mainSidebarMenu` and `#workspaceSidebar` keep their `border-right`,
+`details.channel-group` keeps its real group border, and
+`.group-editor-box` keeps its modal border. The fix is scoped to the
+scrollbar pseudo-element rendering layer and Firefox scrollbar track
+color only.
+
+### Tests
+
+- **Committed source-level regression checks**:
+  `backend/tests/test_frontend_scrollbar_css.py` verifies the global
+  scrollbar baseline remains slim/borderless, the four targeted
+  containers have local-surface track colors, the UAT10 block does not
+  introduce width/height/overflow/layout-border rules, and the relevant
+  existing scroll containers still retain their overflow declarations
+  and structural borders in `frontend/index.html`.
+- **Verification run**: `git diff --check` clean;
+  `cd backend && /private/tmp/oruxa-powerwave-pytest-venv/bin/python -m pytest tests/test_frontend_scrollbar_css.py`
+  passed (4/4); full backend suite passed (309/309, two existing
+  warnings: Starlette `httpx` deprecation and the malformed-CFG test's
+  expected COMTRADE warning).
+
+### Files changed
+
+- `frontend/theme.css`
+- `backend/tests/test_frontend_scrollbar_css.py`
+- `docs/project-memory/CURRENT_STATE.md`
+- `docs/project-memory/HANDOFF.md`
+- `docs/project-memory/MIGRATION_PLAN.md`
+
+### Honest limitation
+
+The fix is based on CSS diagnosis and source-level regression checks.
+Actual browser rendering can still vary by operating system scrollbar
+mode (overlay vs classic scrollbars), so final confirmation that the
+visible border-line impression is gone remains an owner UAT item in a
+real browser.
+
+---
+
 ## Phase 3B-UAT9 — Slim Borderless Scrollbars (2026-08-17)
 
 `[FACT]` throughout. No new DECISIONS.md entry (a global cosmetic

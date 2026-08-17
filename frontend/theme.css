@@ -143,6 +143,47 @@
     background: transparent;
 }
 
+/* Phase 3B-UAT10: keep the global scrollbar baseline above, but blend
+   tracks locally where a transparent gutter can visually expose adjacent
+   structural dividers as a "rail". The divider borders stay intact. */
+#mainSidebarMenu {
+    scrollbar-color: var(--scrollbar-thumb) var(--panel);
+}
+#mainSidebarMenu::-webkit-scrollbar-track,
+#mainSidebarMenu::-webkit-scrollbar-track-piece {
+    background: var(--panel);
+    border: 0;
+}
+#mainSidebarMenu::-webkit-scrollbar-corner {
+    background: var(--panel);
+}
+#workspaceSidebar {
+    scrollbar-color: var(--scrollbar-thumb) var(--bg);
+}
+#workspaceSidebar::-webkit-scrollbar-track,
+#workspaceSidebar::-webkit-scrollbar-track-piece {
+    background: var(--bg);
+    border: 0;
+}
+#workspaceSidebar::-webkit-scrollbar-corner {
+    background: var(--bg);
+}
+.group-editor-box,
+.group-body {
+    scrollbar-color: var(--scrollbar-thumb) var(--panel);
+}
+.group-editor-box::-webkit-scrollbar-track,
+.group-editor-box::-webkit-scrollbar-track-piece,
+.group-body::-webkit-scrollbar-track,
+.group-body::-webkit-scrollbar-track-piece {
+    background: var(--panel);
+    border: 0;
+}
+.group-editor-box::-webkit-scrollbar-corner,
+.group-body::-webkit-scrollbar-corner {
+    background: var(--panel);
+}
+
 /* Appearance selector -- a small, deliberately simple segmented control,
    not a settings page (see docs/project-memory/DECISIONS.md DEC-023). */
 .theme-toggle {

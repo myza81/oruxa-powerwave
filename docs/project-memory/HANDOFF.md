@@ -8,51 +8,59 @@ Last updated: **2026-08-17**
 
 ## What was most recently done
 
+**Phase 3B-UAT10 — Targeted Scrollbar Track / Divider Fix.** Full detail:
+[MIGRATION_PLAN.md — Phase 3B-UAT10 Record](MIGRATION_PLAN.md#phase-3b-uat10--targeted-scrollbar-track--divider-fix-2026-08-17).
+No new DECISIONS.md entry.
+
+**Root cause**: Phase 3B-UAT9 already made the scrollbar pseudo-
+elements themselves borderless. The remaining visible "rail" was
+primarily a transparent scrollbar gutter beside existing real
+container/divider borders, especially around `#workspaceSidebar`,
+`#mainSidebarMenu`, `.group-editor-box`, and `.group-body`.
+
+**What changed**: the shared Phase 3B-UAT9 baseline in
+`frontend/theme.css` stays intact. A narrow local block now gives those
+four affected scroll containers local-surface scrollbar tracks:
+`#mainSidebarMenu` uses `var(--panel)`, `#workspaceSidebar` uses
+`var(--bg)`, and `.group-editor-box`/`.group-body` use `var(--panel)`.
+Both browser paths are covered: Firefox via `scrollbar-color`, and
+Chromium/WebKit via explicit `::-webkit-scrollbar-track` plus
+`::-webkit-scrollbar-track-piece` backgrounds. Corners also match the
+same local surfaces.
+
+**What was preserved**: no `overflow` rules, scrollbar dimensions,
+sidebar widths, split-handle layout, or real structural borders were
+changed. The sidebar `border-right`, group border, and editor modal
+border all remain; the fix only blends the scrollbar track rendering
+layer so those true dividers no longer read as a scrollbar border-line.
+
+**Verification coverage**: committed lightweight source-level tests in
+`backend/tests/test_frontend_scrollbar_css.py` check the global
+slim/borderless baseline, the UAT10 local track rules (including
+`track-piece`), and that relevant scroll containers retain their
+overflow and structural border declarations. `git diff --check` is
+clean; the focused test passes (4/4); the full backend suite passes
+(309/309, two existing warnings). Real browser visual confirmation
+remains for owner UAT because OS/browser scrollbar modes can affect the
+final look.
+
+## What was done in the prior session (Phase 3B-UAT9 — Slim Borderless Scrollbars)
+
 **Phase 3B-UAT9 — Slim Borderless Scrollbars.** Full detail:
 [MIGRATION_PLAN.md — Phase 3B-UAT9 Record](MIGRATION_PLAN.md#phase-3b-uat9--slim-borderless-scrollbars-2026-08-17).
 No new DECISIONS.md entry.
 
-**What changed**: a global, presentation-only scrollbar cosmetics pass
-— one shared rule set added to `frontend/theme.css` (already shared
-with `waveform-prototype.html`), not duplicated per-page/per-panel.
-Universal `*` selector covers both Firefox (`scrollbar-width: thin`,
-`scrollbar-color`) and Chromium/WebKit (`::-webkit-scrollbar` family)
-unconditionally — these properties are no-ops on non-scrolling
-elements, so this touches no layout. 6px thumb/track size (within the
-requested 5-7px range), transparent border-free track and corner,
-fully rounded (`border-radius: 999px`) borderless thumb, strengthening
-to a dedicated hover token on hover (never the loud `--accent` color).
-Two new theme tokens, `--scrollbar-thumb`/`--scrollbar-thumb-hover`,
-added to both Light and Dark `:root` blocks, following the SAME alpha-
-over-neutral-base convention as `--hover-tint`/`--surface-tint` — no
-hardcoded colors anywhere in the new rules. CSS only, no browser-
-specific JavaScript.
+**Summary**: a global, presentation-only scrollbar cosmetics pass added
+one shared rule set to `frontend/theme.css`: universal Firefox
+(`scrollbar-width: thin`, `scrollbar-color`) plus Chromium/WebKit
+(`::-webkit-scrollbar` family), 6px thumb/track size, transparent
+border-free global track/corner, borderless rounded thumb using
+`--scrollbar-thumb`/`--scrollbar-thumb-hover` tokens in both Light and
+Dark themes. No scrolling containers or layout borders were touched in
+that pass; the UAT10 follow-up above only colors local tracks in the
+reported areas.
 
-**Scrolling functionality preserved**: none of the seven scrollable
-containers identified before making this change
-(`#mainSidebarMenu`/`#workspaceSidebar`/`#activeViewArea`/
-`#pageRecordings`/`.recordings-table-wrap`/`.group-body`/
-`.group-editor-box`) had their `overflow: auto` (or `-x`/`-y` variant)
-touched, and none of their own layout borders (e.g.
-`#workspaceSidebar`'s `border-right`) were touched either — the new
-rules only ever target the separate `::-webkit-scrollbar-*` pseudo-
-element rendering layer.
-
-**Verification**: 18 new frontend `jsdom` checks
-(`phase3buat9_check.mjs`) — source-level only, since jsdom has no
-scrollbar rendering at all; real visual slimness/hover-contrast/theme
-legibility needs an actual browser. Full suite: the exact same 20
-pre-existing, already-documented failures, zero new divergences (a
-purely additive CSS change touches no JS behavior). Backend: zero diff,
-280/280 passing in a fresh venv.
-
-**Backend**: zero files changed. **Real-browser visual confirmation —
-actual rendered scrollbar slimness, hover contrast, and legibility
-against both Light and Dark surfaces — was NOT and cannot be confirmed
-in this sandboxed session; this remains explicitly for the owner's own
-manual UAT.**
-
-## What was done in the prior session (Phase 3B-UAT8 — Waveform Sidebar Cleanup + Main Navigation Refinement)
+## What was done in the earlier session (Phase 3B-UAT8 — Waveform Sidebar Cleanup + Main Navigation Refinement)
 
 **Phase 3B-UAT8 — Waveform Sidebar Cleanup + Main Navigation
 Refinement.** Full detail:
