@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-17** (Phase 3B-UAT10).
+Last meaningful update: **2026-08-17** (Phase 3B-UAT11).
 
 ## Development phase
 
@@ -1044,6 +1044,26 @@ preserved. Lightweight committed source-level coverage now lives in
 the focused test (4/4), and the full backend suite (309/309, two
 existing warnings) pass. Real rendered visual confirmation remains for
 owner UAT in a browser.
+
+`[FACT]` **The remaining hard line immediately right of the Workspace
+Sidebar scrollbar has been corrected — Phase 3B-UAT11 — Workspace
+Sidebar Divider / Scrollbar Line Cleanup** (2026-08-17) — see
+[MIGRATION_PLAN.md — Phase 3B-UAT11 Record](MIGRATION_PLAN.md#phase-3b-uat11--workspace-sidebar-divider--scrollbar-line-cleanup-2026-08-17).
+Owner real-browser UAT after UAT10 showed the thumb/track were acceptable
+but a thin line remained immediately to the scrollbar's right. Source
+inspection identified that line as the structural
+`#workspaceSidebar { border-right: 1px solid var(--panel-border); }`,
+not a scrollbar pseudo-element; the adjacent `.shell-split-handle::after`
+already provided a centered resize/divider affordance. The fix removes
+the sidebar's hard right border on both desktop and drawer variants and
+keeps the resize handle as the single desktop separator. The drawer
+keeps its existing shadow boundary. UAT9/UAT10 scrollbar size, thumb,
+track, track-piece, and Firefox rules are unchanged; sidebar width,
+resize bounds, overflow, and Plotly resize callback are unchanged.
+Focused UAT11 source checks pass (6/6), committed/tracked backend tests
+pass (286/286, two existing warnings), and `git diff --check` is clean;
+a raw full pytest against this dirty local worktree fails only on
+pre-existing untracked digital-waveform tests outside UAT11 scope.
 
 ## Completed foundation work
 

@@ -8548,6 +8548,110 @@ flagged for owner UAT.
 
 ---
 
+## Phase 3B-UAT11 — Workspace Sidebar Divider / Scrollbar Line Cleanup (2026-08-17)
+
+`[FACT]` throughout. No new DECISIONS.md entry (targeted visual follow-up
+inside the already-approved Phase 3A/3B shell structure; no architecture,
+navigation, or behavior decision).
+
+### Owner UAT evidence
+
+After Phase 3B-UAT10, owner real-browser UAT confirmed the scrollbar thumb
+looked slim/acceptable and the track was largely blended, but a thin hard
+vertical line remained immediately to the right of the Workspace Sidebar
+scrollbar. The line still read visually as a scrollbar rail.
+
+### Confirmed source
+
+Source inspection found the remaining line was not a scrollbar
+pseudo-element. It was the Workspace Sidebar's structural divider:
+
+```css
+#workspaceSidebar {
+    border-right: 1px solid var(--panel-border);
+}
+```
+
+The adjacent resize handle already drew a second separator via
+`.shell-split-handle::after` (`width: 2px`, `left: 2px`,
+`background: var(--panel-border)`) inside the 6px drag target. The
+desktop boundary therefore had an avoidable multi-line appearance:
+scrollbar thumb/gutter, the sidebar's own border flush against it, and
+then the handle's centered divider.
+
+No `#mainWorkspace` border-left, parent border, pseudo-element, or inset
+shadow was found at that boundary. The only drawer-specific extra boundary
+was the existing shadow used when the Workspace Sidebar becomes an overlay
+under 900px.
+
+### Fix
+
+The fix removes the Workspace Sidebar's hard right border in both its
+desktop/base rule and the <=900px drawer override:
+
+```css
+#workspaceSidebar {
+    border-right: 0;
+}
+```
+
+Desktop separation is now provided by the existing resize handle's centered
+divider, so there is one visual separator instead of a border directly
+hugging the scrollbar plus a handle line. Narrow-screen drawer separation
+is still provided by the existing overlay shadow/backdrop, without
+reintroducing the hard scrollbar-adjacent border.
+
+### What deliberately did not change
+
+UAT9/UAT10 scrollbar styling is unchanged: 6px WebKit dimensions,
+borderless rounded thumb, targeted local track blending,
+`::-webkit-scrollbar-track-piece`, and Firefox `scrollbar-color` remain as
+implemented. No scrollbar was hidden.
+
+Workspace layout geometry is unchanged: `#workspaceSidebar` keeps
+`width: 320px`, the JS resize constants remain 320/240/520, the 6px
+`.shell-split-handle` drag target remains, the pointer-capture resize
+helper remains, and `onResize: wwResizeAllVisiblePlots` remains wired.
+No Plotly data path, viewport state, channel tree behavior, Recordings
+page behavior, theme behavior, or responsive shell state was changed.
+
+### Tests
+
+- **Committed source-level checks updated**:
+  `backend/tests/test_frontend_scrollbar_css.py` now verifies the UAT9
+  scrollbar baseline, UAT10 track blending, the UAT11 rule that
+  `#workspaceSidebar` no longer carries the hard
+  `border-right: 1px solid var(--panel-border)`, the resize handle still
+  exists and provides the centered divider/hover affordance, the sidebar
+  overflow/background/width rules remain, the resize constants and
+  Plotly resize callback remain wired, and the <=900px drawer keeps its
+  overlay/shadow behavior while also avoiding the hard right border.
+- **Verification run**: `git diff --check` clean;
+  `cd backend && /private/tmp/oruxa-powerwave-pytest-venv/bin/python -m pytest tests/test_frontend_scrollbar_css.py`
+  passed (6/6); committed/tracked backend tests passed (286/286, two
+  existing warnings). A raw `cd backend && pytest` against the whole
+  dirty local worktree failed 8 unrelated untracked digital-waveform
+  tests (`tests/test_digital_waveform_api.py`) because those tests expect
+  unmerged digital-waveform backend behavior not present in canonical
+  `HEAD`; those files were pre-existing and not touched by UAT11.
+
+### Files changed
+
+- `frontend/index.html`
+- `backend/tests/test_frontend_scrollbar_css.py`
+- `docs/project-memory/CURRENT_STATE.md`
+- `docs/project-memory/HANDOFF.md`
+- `docs/project-memory/MIGRATION_PLAN.md`
+
+### Honest limitation
+
+The source diagnosis is clear, and the committed checks protect against
+reintroducing the hard scrollbar-adjacent border. Actual perception of
+the softened boundary still depends on real browser/OS scrollbar rendering,
+so final confirmation remains an owner DEV UAT item.
+
+---
+
 ## Phase 3B-UAT10 — Targeted Scrollbar Track / Divider Fix (2026-08-17)
 
 `[FACT]` throughout. No new DECISIONS.md entry (targeted cosmetic

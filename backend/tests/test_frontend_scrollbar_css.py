@@ -19,6 +19,16 @@ def declaration_block(source: str, selector: str) -> str:
     return match.group("body")
 
 
+def declaration_blocks(source: str, selector: str) -> list[str]:
+    return [
+        match.group("body")
+        for match in re.finditer(
+            rf"{re.escape(selector)}\s*\{{(?P<body>[^}}]*)\}}",
+            source,
+        )
+    ]
+
+
 def section(source: str, start: str, end: str) -> str:
     start_index = source.index(start)
     end_index = source.index(end, start_index)
@@ -117,7 +127,7 @@ def test_scroll_container_overflow_and_structural_borders_are_preserved():
     assert "background: var(--panel);" in main_sidebar
 
     assert "overflow-y: auto;" in workspace_sidebar
-    assert "border-right: 1px solid var(--panel-border);" in workspace_sidebar
+    assert "width: 320px;" in workspace_sidebar
     assert "background: var(--bg);" in workspace_sidebar
 
     assert "border: 1px solid var(--panel-border);" in group
@@ -128,3 +138,52 @@ def test_scroll_container_overflow_and_structural_borders_are_preserved():
     assert "border: 1px solid var(--panel-border);" in editor
     assert "overflow-y: auto;" in editor
     assert "overflow-x: hidden;" in editor
+
+
+def test_workspace_sidebar_divider_is_on_resize_handle_not_scrollbar_edge():
+    html = read(INDEX_HTML)
+
+    workspace_blocks = declaration_blocks(html, "#workspaceSidebar")
+    assert workspace_blocks, "Missing #workspaceSidebar CSS"
+    assert sum("border-right: 0;" in block for block in workspace_blocks) >= 2
+    assert all(
+        "border-right: 1px solid var(--panel-border);" not in block
+        for block in workspace_blocks
+    )
+
+    split_handle = declaration_block(html, ".shell-split-handle")
+    split_handle_after = declaration_block(html, ".shell-split-handle::after")
+    split_handle_active = declaration_block(
+        html,
+        ".shell-split-handle:hover::after,\n        .shell-split-handle.shell-split-active::after",
+    )
+
+    assert "width: 6px;" in split_handle
+    assert "cursor: col-resize;" in split_handle
+    assert "touch-action: none;" in split_handle
+    assert "left: 2px;" in split_handle_after
+    assert "width: 2px;" in split_handle_after
+    assert "background: var(--panel-border);" in split_handle_after
+    assert "background: var(--accent);" in split_handle_active
+    assert 'id="workspaceSplitHandle"' in html
+    assert 'role="separator"' in html
+    assert 'aria-label="Resize Workspace Sidebar"' in html
+
+
+def test_workspace_sidebar_resize_and_drawer_rules_are_preserved():
+    html = read(INDEX_HTML)
+    drawer = section(html, "@media (max-width: 900px)", "@media (max-width: 640px)")
+
+    assert "const SHELL_WORKSPACE_SIDEBAR_DEFAULT_WIDTH = 320;" in html
+    assert "const SHELL_WORKSPACE_SIDEBAR_MIN_WIDTH = 240;" in html
+    assert "const SHELL_WORKSPACE_SIDEBAR_MAX_WIDTH = 520;" in html
+    assert "panelEl: document.getElementById(\"workspaceSidebar\")," in html
+    assert "handleEl: document.getElementById(\"workspaceSplitHandle\")," in html
+    assert "onResize: wwResizeAllVisiblePlots," in html
+
+    assert "width: min(320px, 82vw);" in drawer
+    assert "position: absolute;" in drawer
+    assert "border-right: 0;" in drawer
+    assert "box-shadow: 2px 0 12px rgba(0, 0, 0, 0.18);" in drawer
+    assert "transform: translateX(-110%);" in drawer
+    assert ".shell-split-handle { display: none; }" in drawer

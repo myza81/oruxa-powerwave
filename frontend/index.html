@@ -252,7 +252,10 @@
             flex: 0 0 auto;
             width: 320px;
             overflow-y: auto;
-            border-right: 1px solid var(--panel-border);
+            /* Phase 3B-UAT11: no hard divider directly against the
+               scrollbar edge. Desktop separation is provided by the
+               adjacent resize handle's centered divider instead. */
+            border-right: 0;
             background: var(--bg);
             padding: 16px;
         }
@@ -582,7 +585,7 @@
                 top: 0; bottom: 0; left: 0;
                 width: min(320px, 82vw);
                 z-index: 6;
-                border-right: 1px solid var(--panel-border);
+                border-right: 0;
                 box-shadow: 2px 0 12px rgba(0, 0, 0, 0.18);
                 transform: translateX(-110%);
                 transition: transform 0.15s ease;

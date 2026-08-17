@@ -8,43 +8,60 @@ Last updated: **2026-08-17**
 
 ## What was most recently done
 
+**Phase 3B-UAT11 — Workspace Sidebar Divider / Scrollbar Line Cleanup.**
+Full detail:
+[MIGRATION_PLAN.md — Phase 3B-UAT11 Record](MIGRATION_PLAN.md#phase-3b-uat11--workspace-sidebar-divider--scrollbar-line-cleanup-2026-08-17).
+No new DECISIONS.md entry.
+
+**Confirmed remaining line source**: owner real-browser UAT after UAT10
+showed the remaining hard line immediately to the right of the Workspace
+Sidebar scrollbar. Source inspection identified that line as
+`#workspaceSidebar { border-right: 1px solid var(--panel-border); }`,
+not a scrollbar pseudo-element. The adjacent 6px
+`#workspaceSplitHandle` already had its own centered divider via
+`.shell-split-handle::after`, so desktop showed scrollbar/gutter +
+sidebar border + resize-handle divider.
+
+**What changed**: `#workspaceSidebar` now has `border-right: 0` in the
+base/desktop rule and in the <=900px drawer override. The existing resize
+handle remains unchanged and is now the single desktop visual separator;
+the drawer keeps its existing shadow/backdrop boundary instead of
+reintroducing a hard line at the scrollbar edge.
+
+**What was preserved**: UAT9/UAT10 scrollbar baseline and local track
+blending are unchanged. `#workspaceSidebar` still has `width: 320px`,
+`overflow-y: auto`, `background: var(--bg)`, and the JS resize bounds
+remain 320/240/520 with `onResize: wwResizeAllVisiblePlots`. The handle's
+6px drag target, centered 2px divider, hover/active accent affordance,
+and `role="separator"` markup are still present. No Recordings,
+channel-tree, Plotly data, theme, or responsive shell behavior was
+otherwise changed.
+
+**Verification coverage**: `backend/tests/test_frontend_scrollbar_css.py`
+now checks UAT9 baseline, UAT10 track blending, UAT11 no-hard-border
+rules for `#workspaceSidebar`, handle/divider presence, resize constants,
+Plotly resize callback wiring, and drawer shadow/overlay behavior. Real
+browser perception remains for owner DEV UAT. `git diff --check` is
+clean; the focused test passes (6/6); committed/tracked backend tests pass
+(286/286, two existing warnings). A raw full pytest against the dirty
+local worktree fails 8 unrelated untracked digital-waveform tests because
+those local tests expect backend behavior not present in canonical `HEAD`.
+
+## What was done in the prior session (Phase 3B-UAT10 — Targeted Scrollbar Track / Divider Fix)
+
 **Phase 3B-UAT10 — Targeted Scrollbar Track / Divider Fix.** Full detail:
 [MIGRATION_PLAN.md — Phase 3B-UAT10 Record](MIGRATION_PLAN.md#phase-3b-uat10--targeted-scrollbar-track--divider-fix-2026-08-17).
 No new DECISIONS.md entry.
 
-**Root cause**: Phase 3B-UAT9 already made the scrollbar pseudo-
-elements themselves borderless. The remaining visible "rail" was
-primarily a transparent scrollbar gutter beside existing real
-container/divider borders, especially around `#workspaceSidebar`,
-`#mainSidebarMenu`, `.group-editor-box`, and `.group-body`.
+**Summary**: UAT10 kept the shared UAT9 slim scrollbar baseline intact
+and added local-surface track colors for `#mainSidebarMenu`,
+`#workspaceSidebar`, `.group-editor-box`, and `.group-body`, including
+Firefox `scrollbar-color` and WebKit `::-webkit-scrollbar-track-piece`.
+It deliberately preserved structural dividers; UAT11 above is the
+follow-up that removes the one hard Workspace Sidebar border owner UAT
+still saw as a scrollbar-adjacent rail.
 
-**What changed**: the shared Phase 3B-UAT9 baseline in
-`frontend/theme.css` stays intact. A narrow local block now gives those
-four affected scroll containers local-surface scrollbar tracks:
-`#mainSidebarMenu` uses `var(--panel)`, `#workspaceSidebar` uses
-`var(--bg)`, and `.group-editor-box`/`.group-body` use `var(--panel)`.
-Both browser paths are covered: Firefox via `scrollbar-color`, and
-Chromium/WebKit via explicit `::-webkit-scrollbar-track` plus
-`::-webkit-scrollbar-track-piece` backgrounds. Corners also match the
-same local surfaces.
-
-**What was preserved**: no `overflow` rules, scrollbar dimensions,
-sidebar widths, split-handle layout, or real structural borders were
-changed. The sidebar `border-right`, group border, and editor modal
-border all remain; the fix only blends the scrollbar track rendering
-layer so those true dividers no longer read as a scrollbar border-line.
-
-**Verification coverage**: committed lightweight source-level tests in
-`backend/tests/test_frontend_scrollbar_css.py` check the global
-slim/borderless baseline, the UAT10 local track rules (including
-`track-piece`), and that relevant scroll containers retain their
-overflow and structural border declarations. `git diff --check` is
-clean; the focused test passes (4/4); the full backend suite passes
-(309/309, two existing warnings). Real browser visual confirmation
-remains for owner UAT because OS/browser scrollbar modes can affect the
-final look.
-
-## What was done in the prior session (Phase 3B-UAT9 — Slim Borderless Scrollbars)
+## What was done in the earlier session (Phase 3B-UAT9 — Slim Borderless Scrollbars)
 
 **Phase 3B-UAT9 — Slim Borderless Scrollbars.** Full detail:
 [MIGRATION_PLAN.md — Phase 3B-UAT9 Record](MIGRATION_PLAN.md#phase-3b-uat9--slim-borderless-scrollbars-2026-08-17).
