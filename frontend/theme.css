@@ -60,6 +60,16 @@
     --spike-color: rgba(60, 68, 87, 0.6);
 
     --radius: 8px;
+
+    /* Phase 3B-UAT9: slim borderless scrollbars, applied globally (see
+       the rule set below, right after the [data-theme="dark"] block).
+       Same alpha-over-a-neutral-base convention as --hover-tint/
+       --surface-tint above (rgba(27,35,51,...) for Light, rgba(255,255,
+       255,...) for Dark) -- not a new, unrelated color, just a stronger
+       alpha of the SAME base so the thumb reads as "part of this theme's
+       neutral scale," not an arbitrary accent. */
+    --scrollbar-thumb: rgba(27, 35, 51, 0.18);
+    --scrollbar-thumb-hover: rgba(27, 35, 51, 0.32);
 }
 
 :root[data-theme="dark"] {
@@ -92,6 +102,45 @@
        modestly stronger contrast against the dark waveform surface,
        stopping short of full opacity. */
     --spike-color: rgba(168, 178, 199, 0.6);
+
+    --scrollbar-thumb: rgba(255, 255, 255, 0.16);
+    --scrollbar-thumb-hover: rgba(255, 255, 255, 0.28);
+}
+
+/* Phase 3B-UAT9: slim, borderless scrollbars -- one shared rule set for
+   every scrollable container on every page that links this file
+   (index.html, waveform-prototype.html), rather than per-panel rules.
+   Applied via a universal selector deliberately (matches the owner's
+   own suggested pattern): scrollbar-width/scrollbar-color and the
+   ::-webkit-scrollbar family only have any visual effect on elements
+   that actually scroll, so this is a no-op everywhere else -- it does
+   not touch layout, size, or non-scrollbar borders on any element.
+   Firefox: scrollbar-width/scrollbar-color (no ::-webkit-* support).
+   Chromium/Safari: the ::-webkit-scrollbar family. No browser-specific
+   JS -- CSS only, both paths declared for every element unconditionally
+   so neither engine needs a feature check. */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+*::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+*::-webkit-scrollbar-track {
+    background: transparent;
+    border: 0;
+}
+*::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border: 0;
+    border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+}
+*::-webkit-scrollbar-corner {
+    background: transparent;
 }
 
 /* Appearance selector -- a small, deliberately simple segmented control,

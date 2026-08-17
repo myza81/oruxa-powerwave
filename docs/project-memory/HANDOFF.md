@@ -8,6 +8,52 @@ Last updated: **2026-08-17**
 
 ## What was most recently done
 
+**Phase 3B-UAT9 — Slim Borderless Scrollbars.** Full detail:
+[MIGRATION_PLAN.md — Phase 3B-UAT9 Record](MIGRATION_PLAN.md#phase-3b-uat9--slim-borderless-scrollbars-2026-08-17).
+No new DECISIONS.md entry.
+
+**What changed**: a global, presentation-only scrollbar cosmetics pass
+— one shared rule set added to `frontend/theme.css` (already shared
+with `waveform-prototype.html`), not duplicated per-page/per-panel.
+Universal `*` selector covers both Firefox (`scrollbar-width: thin`,
+`scrollbar-color`) and Chromium/WebKit (`::-webkit-scrollbar` family)
+unconditionally — these properties are no-ops on non-scrolling
+elements, so this touches no layout. 6px thumb/track size (within the
+requested 5-7px range), transparent border-free track and corner,
+fully rounded (`border-radius: 999px`) borderless thumb, strengthening
+to a dedicated hover token on hover (never the loud `--accent` color).
+Two new theme tokens, `--scrollbar-thumb`/`--scrollbar-thumb-hover`,
+added to both Light and Dark `:root` blocks, following the SAME alpha-
+over-neutral-base convention as `--hover-tint`/`--surface-tint` — no
+hardcoded colors anywhere in the new rules. CSS only, no browser-
+specific JavaScript.
+
+**Scrolling functionality preserved**: none of the seven scrollable
+containers identified before making this change
+(`#mainSidebarMenu`/`#workspaceSidebar`/`#activeViewArea`/
+`#pageRecordings`/`.recordings-table-wrap`/`.group-body`/
+`.group-editor-box`) had their `overflow: auto` (or `-x`/`-y` variant)
+touched, and none of their own layout borders (e.g.
+`#workspaceSidebar`'s `border-right`) were touched either — the new
+rules only ever target the separate `::-webkit-scrollbar-*` pseudo-
+element rendering layer.
+
+**Verification**: 18 new frontend `jsdom` checks
+(`phase3buat9_check.mjs`) — source-level only, since jsdom has no
+scrollbar rendering at all; real visual slimness/hover-contrast/theme
+legibility needs an actual browser. Full suite: the exact same 20
+pre-existing, already-documented failures, zero new divergences (a
+purely additive CSS change touches no JS behavior). Backend: zero diff,
+280/280 passing in a fresh venv.
+
+**Backend**: zero files changed. **Real-browser visual confirmation —
+actual rendered scrollbar slimness, hover contrast, and legibility
+against both Light and Dark surfaces — was NOT and cannot be confirmed
+in this sandboxed session; this remains explicitly for the owner's own
+manual UAT.**
+
+## What was done in the prior session (Phase 3B-UAT8 — Waveform Sidebar Cleanup + Main Navigation Refinement)
+
 **Phase 3B-UAT8 — Waveform Sidebar Cleanup + Main Navigation
 Refinement.** Full detail:
 [MIGRATION_PLAN.md — Phase 3B-UAT8 Record](MIGRATION_PLAN.md#phase-3b-uat8--waveform-sidebar-cleanup--main-navigation-refinement-2026-08-17).

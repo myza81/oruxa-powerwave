@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-17** (Phase 3B-UAT8).
+Last meaningful update: **2026-08-17** (Phase 3B-UAT9).
 
 ## Development phase
 
@@ -1001,6 +1001,30 @@ containment concern in Active Recording). **Unverified**: whether the
 accent-bar/tint combination and the new icons read clearly, and whether
 the lighter (non-card) Active Recording section still feels sufficiently
 present — flagged for owner UAT.
+
+`[FACT]` **All scrollbars across the frontend are now slim and
+borderless — Phase 3B-UAT9 — Slim Borderless Scrollbars** (2026-08-17)
+— see
+[MIGRATION_PLAN.md — Phase 3B-UAT9 Record](MIGRATION_PLAN.md#phase-3b-uat9--slim-borderless-scrollbars-2026-08-17).
+A single shared rule set was added to `frontend/theme.css` (already
+shared with `waveform-prototype.html`) — a universal `*` selector
+covering both the Firefox path (`scrollbar-width: thin`/
+`scrollbar-color`) and the Chromium/WebKit path
+(`::-webkit-scrollbar` family), 6px thumb, transparent border-free
+track/corner, fully rounded thumb using two new theme tokens
+(`--scrollbar-thumb`/`--scrollbar-thumb-hover`, defined in both Light
+and Dark, following the same alpha-over-neutral-base convention as
+`--hover-tint`/`--surface-tint` — no hardcoded colors). CSS only, no
+browser-specific JavaScript. Zero scrolling functionality removed —
+all seven identified scrollable containers
+(`#mainSidebarMenu`/`#workspaceSidebar`/`#activeViewArea`/
+`#pageRecordings`/`.recordings-table-wrap`/`.group-body`/
+`.group-editor-box`) keep their existing `overflow: auto` and layout
+borders untouched. Zero backend diff (backend untouched). 18 new
+frontend `jsdom` checks passing (`phase3buat9_check.mjs`, source-level
+only — jsdom has no scrollbar rendering). **Unverified**: actual
+rendered slimness/hover-contrast/theme legibility — flagged for owner
+UAT (requires a real browser).
 
 ## Completed foundation work
 

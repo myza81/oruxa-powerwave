@@ -8548,6 +8548,89 @@ flagged for owner UAT.
 
 ---
 
+## Phase 3B-UAT9 — Slim Borderless Scrollbars (2026-08-17)
+
+`[FACT]` throughout. No new DECISIONS.md entry (a global cosmetic
+refinement, no architecture/behavior change).
+
+### What changed
+
+A single shared scrollbar rule set was added to `frontend/theme.css`
+(the file already shared between `index.html` and
+`waveform-prototype.html` via a plain `<link>`) — a universal `*`
+selector declares both the Firefox path (`scrollbar-width: thin`,
+`scrollbar-color`) and the Chromium/WebKit path
+(`::-webkit-scrollbar`/`-track`/`-thumb`/`-thumb:hover`/`-corner`) for
+every element unconditionally, since these properties are no-ops on
+non-scrolling elements. No per-panel/per-page duplication, matching the
+task's own "one reusable/shared style" preference. Two new theme
+tokens, `--scrollbar-thumb`/`--scrollbar-thumb-hover`, were added to
+both the Light `:root` and Dark `:root[data-theme="dark"]` blocks,
+following the SAME alpha-over-neutral-base convention already
+established for `--hover-tint`/`--surface-tint`
+(`rgba(27,35,51,...)` in Light, `rgba(255,255,255,...)` in Dark) — not
+an unrelated new color, just a stronger alpha of the existing neutral
+scale, and no hardcoded literal color anywhere in the rule set itself.
+
+- Vertical/horizontal scrollbar size: 6px (within the requested 5-7px
+  range).
+- Track: `transparent`, `border: 0`.
+- Thumb: theme-derived neutral color, `border: 0`, `border-radius:
+  999px` (fully rounded), strengthens to `--scrollbar-thumb-hover` on
+  hover — never the loud `--accent` color.
+- Corner (where a vertical and horizontal scrollbar meet): transparent,
+  so no boxed appearance there either.
+- No browser-specific JavaScript — CSS only, per the task's own
+  explicit instruction.
+
+### Scrollable containers preserved
+
+No `overflow`/`overflow-x`/`overflow-y` declaration was touched on any
+container — `#mainSidebarMenu`, `#workspaceSidebar`, `#activeViewArea`,
+`#pageRecordings`, `.recordings-table-wrap`, `.group-body`, and
+`.group-editor-box` (the seven actual scrollable containers identified
+in `frontend/index.html` before making this change) all keep their
+existing `overflow: auto` (or `-x`/`-y` variant) unchanged — this is a
+scrollbar-cosmetics-only pass, never a scrolling-functionality change.
+Non-scrollbar layout borders (e.g. `#workspaceSidebar`'s
+`border-right`, `.group-editor-box`'s `border`) are untouched — the new
+rules only ever target the `::-webkit-scrollbar-*` pseudo-elements,
+which are a separate rendering layer from an element's own box border.
+
+### Tests
+
+- **Frontend, new**: `phase3buat9_check.mjs` (scratch, not committed) —
+  18/18 passing. Source-level checks only (jsdom has no scrollbar
+  rendering at all, so real visual slimness/contrast is for owner
+  UAT): the rule set exists exactly once in the shared `theme.css` (not
+  duplicated in either HTML page), both the Firefox and Chromium/WebKit
+  paths are present, size is within 5-7px, track/thumb/corner have no
+  border and use theme tokens (no hardcoded hex), hover uses the
+  dedicated hover token (not `--accent`), both theme blocks define
+  genuinely different token values, and every one of the seven
+  identified scrollable containers still declares its own
+  `overflow: auto` with its own layout border untouched.
+- **Frontend, full regression**: the exact same 20 pre-existing,
+  already-documented failures, zero new divergences (a purely additive
+  CSS change touches no JS behavior).
+- **Backend**: zero diff, 280/280 passing in a fresh venv (no backend
+  file touched).
+
+### Files changed
+
+`frontend/theme.css` only.
+
+### Honest limitation
+
+No real browser is available in this sandbox — actual scrollbar
+rendering (slimness, hover contrast, whether 6px genuinely reads as
+"slim" rather than "hard to grab," and whether the thumb is
+sufficiently visible against both Light and Dark surfaces) could only
+be reasoned through at the CSS-source level, not visually confirmed —
+flagged for owner UAT.
+
+---
+
 ## Phase 0 — Target Architecture Design
 
 ### 1. Canonical runtime implementation mapping
