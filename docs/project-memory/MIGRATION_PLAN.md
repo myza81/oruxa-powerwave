@@ -8548,6 +8548,186 @@ flagged for owner UAT.
 
 ---
 
+## Phase 4A-UAT5 — Simplify Analog Channel Toggle Rows (2026-08-18)
+
+`[FACT]` throughout. No new DECISIONS.md entry -- a UX simplification of
+the analog sidebar row's own interaction model within already-approved
+architecture, not a new architectural commitment.
+
+### Owner direction
+
+Increase the analog color dot from 7px to 10px; dim the ENTIRE row (not
+only the dot) to 25% opacity when a channel is not displayed; remove
+both the analog checkbox and the sidebar remove button, replacing them
+with direct row-click-to-toggle display; combine Name + Unit into one
+"Channel" column (e.g. "GT4 VB (kV)", omitting empty parens when unit is
+missing), removing the Unit column entirely; analog checkbox selection
+state is removed outright -- "Add N selected"/"Clear selection" now
+refer to DIGITAL selection only; preserve default-all-display-on-open
+and hide/show persistence across ordinary navigation; reuse
+`wwColorForChannel()` unchanged (no new color logic); do not redesign
+Separate mode (its existing local lane label/dot/remove `x` stays
+exactly as UAT4 left it) or digital's checkbox/selection workflow.
+
+### Row-as-toggle (replaces checkbox + sidebar remove button)
+
+`analogChannelRowAttrs(source, channel, timebase)` (new) builds the
+extra attributes spliced onto the analog `<tr>` itself --
+`class="channel-row--toggle[ channel-row--hidden]"`, `tabindex="0"
+role="button" aria-pressed`, plus the same `data-*` channel-identity
+fields the old checkbox used to carry (`unit`, `engineering-type`,
+`recording-start-time`, `timing-reference`) so no metadata is lost.
+Mirrors the pre-existing `table.recordings tr[data-source-id]`
+row-as-button pattern rather than inventing a new interaction
+primitive. `renderChannelTable()` gained an opt-in `rowAttrsFn(channel)`
+parameter for this -- digital's own call site never passes it, so
+digital rows are structurally unaffected.
+
+`wwToggleAnalogChannelDisplay(row)` (new) reads the row's own `data-*`
+fields and calls the SAME pre-existing `wwRemoveChannelByKey()` /
+`wwAddSelectedChannels()` paths the old checkbox + button used --
+section 9's "no second active/inactive map, no new color logic" is
+satisfied by construction (`wwAddSelectedChannels` already calls
+`wwColorForChannel()` internally). Wired via delegated `click` and
+`keydown` (Enter and Space, mirroring the existing recordings-row
+keyboard pattern) listeners on `#channelGroups` in
+`setupSelectionControls()`, scoped to `tr.channel-row--toggle` so
+digital rows (which never carry that class) can never be affected.
+
+`wwSyncChannelBrowserDisplayState()` reworked to iterate
+`tr.channel-row--toggle` elements (previously `.channel-name-cell`),
+toggling the `channel-row--hidden` class, `aria-pressed`, and a
+`title`/`aria-label` of "Hide `<name>`" / "Show `<name>`" -- called from
+the same mutation points as before (`wwAddSelectedChannels`,
+`wwRemoveChannel`, `wwClearWorkspace`, and unconditionally after
+`renderChannels()` in `selectSource()`).
+
+### Name/Unit consolidation
+
+`analogChannelNameCellHtml(source, channel)` reworked: renders only the
+10px color dot + one combined text label (`"name (unit)"`, or bare
+`name` when unit is empty/missing) -- no more `data-*` attributes or
+remove-button markup on this cell (both moved to the row, see above).
+`renderAnalogGroup()`'s columns dropped from `[Name, Unit, Phase]` to
+`[Channel, Phase]`; the analog `renderChannelTable()` call now passes
+`checkboxColumn: null` (no checkbox) and the new `rowAttrsFn`.
+`channelCheckboxHtml()` and the `selectedChannels` Map were deleted
+entirely -- there is nothing left in the DOM for an analog `change`
+event to populate. `digitalChannelCheckboxHtml()`/
+`selectedDigitalChannels` are completely untouched.
+
+### Selection controls: digital-only now
+
+`setupSelectionControls()`'s `change` listener no longer branches on
+`channel-kind` (every remaining `.channel-select-cb` is digital's own);
+`syncButtons()` now counts `selectedDigitalChannels.size` only;
+`addBtn`/`clearBtn` handlers touch only `selectedDigitalChannels`/
+`wwAddDigitalChannels`. Button TEXT is unchanged ("Add N selected"/
+"Clear selection") -- still truthful, since N can now only ever reflect
+a digital selection; no UI copy change was made to avoid introducing
+new strings for a count that was already exclusively meaningful once
+analog's own contribution became structurally impossible. The delegated
+`.channel-remove-btn` click listener was removed (that button no longer
+exists for analog; digital never used it).
+
+### CSS
+
+`.channel-color-dot`: 7px -> 10px. New `.channel-row--toggle` (cursor:
+pointer, `:hover td` background tint via `var(--hover-tint)`,
+`:focus-visible` outline matching the recordings-row pattern). New
+`.channel-row--hidden` (opacity 0.25; `:hover`/`:focus-visible` raise it
+to 0.55 so a hidden row stays discoverable without ever reading as
+"displayed" -- owner's explicit 45-60% guidance). Removed entirely:
+`.channel-color-dot--dim` (dimming is now row-level) and
+`.channel-remove-btn`/`:hover`/`[hidden]` (control is gone for analog).
+
+### Layout modes
+
+Grouped/Custom: unchanged behavior from UAT4 (sidebar is the legend, no
+canvas chip strip, group headings remain) -- only the row's own
+interaction model changed. Separate mode: `wwRenderLegend()`, every
+`.ww-legend*` CSS rule, and the Separate-mode overlay overrides are
+completely untouched -- verified by a dedicated coexistence test (the
+sidebar row toggle and the Separate lane's own local `x` both read/
+write the same `ww.displayed` state without corruption, in either
+order). Digital: `renderDigitalGroup()`/`digitalChannelCheckboxHtml()`/
+`selectedDigitalChannels`/the digital `change`-listener branch are all
+byte-for-byte unaffected; a dedicated test confirms digital rows never
+receive the `channel-row--toggle` class.
+
+### Tests
+
+New dedicated `phase4a_uat5_check.mjs` (scratch convention, not
+committed, 21 checks): row structure (2-column table, no checkbox, no
+"Waveform (UAT)", no sidebar remove button, 10px dot, Name+Unit
+combined with correct empty-unit handling, group headings preserved);
+row-click display state (default-all-on-open, click-to-hide drops the
+trace + dims the row + `aria-pressed=false`, click-to-show restores it,
+color identity stable across the toggle, hide state persists across a
+Recordings<->Waveform navigation round trip); keyboard accessibility
+(focusable, `role="button"`, Enter and Space both toggle,
+`aria-label`/`title` flip Hide<->Show, `:focus-visible` CSS exists);
+digital isolation (checkbox/Add-selected/Clear-selection workflow fully
+intact, clicking analog rows never changes the digital-only count,
+digital's checkbox template never calls the analog color authority,
+digital rows never carry `channel-row--toggle`); Separate-mode
+coexistence (existing lane chip unchanged; sidebar toggle and the
+lane's own local remove both correctly read/write `ww.displayed`).
+
+`phase4a_uat4_check.mjs` (UAT4's own dedicated suite) was updated in
+place rather than left describing removed behavior: its `dotFor()`
+helper now reads the color dot via the new `tr.channel-row--toggle`
+identity instead of the retired `.channel-name-cell` data attributes;
+its own checkbox/remove-button-specific checks were rewritten to use
+row clicks; its "4 columns"/"6-9px dot" assertions were updated to the
+new 2-column/10px reality. All of UAT4's still-applicable coverage
+(color authority stability, Grouped/Custom legend removal, Separate
+mode's unchanged chip, digital isolation) re-verified passing
+unchanged. `phase2ca_check.mjs` (the oldest checkbox-driven analog
+selection suite), `phase3a_check.mjs`, and `phase3buat8_check.mjs` each
+had their own analog-checkbox-specific assertions rewritten to the
+row-click model for the same reason; every correction was verified, via
+the established stash-and-rerun-against-canonical-`main` technique, to
+be describing a genuinely CHANGED behavior rather than masking a new
+regression. Full existing frontend regression suite: still exactly the
+established 18-failure baseline (17 pre-existing + 1 pre-existing
+button-size-tier issue), independently reconfirmed against pre-UAT5
+`main` (`d16fb91`) file-by-file. Backend: 321/321, unchanged (no backend
+file touched this pass).
+
+### Files changed
+
+`frontend/index.html` only.
+
+### A note on how this landed in Git history
+
+This is a shared local clone (see [README.md](README.md) on why GitHub,
+not any one local working copy, is canonical): while this phase's edits
+were still in progress and unreviewed, a concurrent session on the same
+machine committed and pushed the in-progress working tree twice, under
+the commit messages **"adjusting padding"** (`e51b647`, `be201d3`) --
+each swept up this phase's own CSS/JS edits alongside a few small,
+unrelated spacing tweaks (`.shell-view-placeholder` padding,
+`.ww-panel`/`#wwDigitalRegion` margin-bottom, `#wwDigitalScroll`
+max-height) made by that other session. The resulting `HEAD` was
+verified, edit-by-edit, against this phase's own intended diff (syntax
+check, full regression suite, and a line-level diff against `d16fb91`)
+before this record was written -- nothing was lost or corrupted, but
+the commit messages on `origin/main` do **not** describe this phase's
+actual change. This document is the authoritative record of what
+`e51b647`/`be201d3` actually contain; no history rewrite (amend/rebase/
+force-push) was performed, per this project's own git safety rules.
+
+### Honest limitations
+
+No real browser is available in this sandbox -- the actual rendered
+appearance (10px dot legibility, the row hover/focus tint, the 25%/55%
+hidden-row opacity reading as "clearly hidden but discoverable", keyboard
+focus ring visibility) was reasoned through and structurally exercised
+via jsdom, but not visually confirmed -- flagged for owner UAT.
+
+---
+
 ## Phase 4A-UAT4 — Channel Sidebar as Analog Legend (2026-08-18)
 
 `[FACT]` throughout. No new DECISIONS.md entry -- a UX consolidation

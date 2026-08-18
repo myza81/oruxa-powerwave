@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-18** (Phase 4A-UAT4).
+Last meaningful update: **2026-08-18** (Phase 4A-UAT5).
 
 ## Development phase
 
@@ -1240,6 +1240,39 @@ pre-existing by comparison against untouched canonical `main`); backend
 consolidation). Not yet owner-UAT'd in a real browser — flagged as
 **not** ready for further waveform feature work until that UAT
 completes.
+
+`[FACT]` **Analog channel sidebar rows are now the display toggle
+directly — Phase 4A-UAT5 — Simplify Analog Channel Toggle Rows**
+(2026-08-18) — see
+[MIGRATION_PLAN.md — Phase 4A-UAT5 Record](MIGRATION_PLAN.md#phase-4a-uat5--simplify-analog-channel-toggle-rows-2026-08-18).
+The analog checkbox and the UAT4-era sidebar remove button are both
+gone: clicking (or Enter/Space-activating) a channel's own row toggles
+its display directly, reusing the existing `wwAddSelectedChannels()`/
+`wwRemoveChannelByKey()` paths and `wwColorForChannel()` unchanged — no
+new color logic, no second active/inactive map. A displayed row is
+100% opacity; a hidden row dims to 25% (rising to 55% on hover/focus for
+discoverability) across the WHOLE row, not only the dot. The color dot
+grew from 7px to 10px. Name and Unit are combined into one "Channel"
+column (`"GT4 VB (kV)"`, or bare `"GT4 VB"` when unit is empty) — the
+Unit column is gone. **Analog checkbox selection is removed outright**:
+"Add N selected"/"Clear selection" now refer to DIGITAL selection only
+(button text unchanged — still truthful, since N can only ever reflect
+a digital pick now); digital's own checkbox/selection workflow,
+`renderDigitalGroup()`, and `digitalChannelCheckboxHtml()` are
+byte-for-byte untouched. **Separate mode is explicitly NOT redesigned**
+— `wwRenderLegend()` and every `.ww-legend*` rule are unchanged; the
+sidebar row toggle and the Separate lane's own local remove control
+coexist safely, both reading/writing the same `ww.displayed` state.
+Default-all-display-on-open and hide/show persistence across ordinary
+navigation are both preserved. Full frontend regression suite: still
+exactly the established 18-failure baseline (reconfirmed file-by-file
+against pre-UAT5 `main`); backend 321/321 unchanged (no backend file
+touched). Landed on `origin/main` via a concurrent session's own commits
+(`e51b647`, `be201d3`, titled "adjusting padding") rather than a
+dedicated commit — see the MIGRATION_PLAN.md record's own "A note on how
+this landed in Git history" for what happened and how it was verified;
+nothing was lost, but `git log`/`git blame` alone will not describe this
+change accurately. Not yet owner-UAT'd in a real browser.
 
 ## Completed foundation work
 

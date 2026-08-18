@@ -8,6 +8,66 @@ Last updated: **2026-08-18**
 
 ## What was most recently done
 
+**Phase 4A-UAT5 — Simplify Analog Channel Toggle Rows.** Full detail:
+[MIGRATION_PLAN.md — Phase 4A-UAT5 Record](MIGRATION_PLAN.md#phase-4a-uat5--simplify-analog-channel-toggle-rows-2026-08-18).
+
+**Owner direction**: remove the analog checkbox and the UAT4-era sidebar
+remove button; clicking (or Enter/Space-activating) a channel's own row
+now toggles its display directly. Dim the WHOLE row (not just the dot)
+to 25% opacity when hidden, rising to ~55% on hover/focus for
+discoverability. Grow the color dot from 7px to 10px. Combine Name+Unit
+into one "Channel" column, dropping the Unit column entirely (omit empty
+parens when unit is missing). Analog checkbox SELECTION is removed
+outright -- "Add N selected"/"Clear selection" now describe DIGITAL
+selection only. Reuse `wwColorForChannel()` unchanged (no new color
+logic). Do NOT redesign Separate mode (its existing local lane label/
+dot/remove stays exactly as UAT4 left it) or digital's own checkbox/
+selection workflow.
+
+**What changed** (`frontend/index.html` only): new
+`analogChannelRowAttrs()` makes the analog `<tr>` itself the
+interactive toggle (`tabindex`, `role="button"`, `aria-pressed`, the
+same `data-*` metadata the old checkbox carried), mirroring the
+pre-existing `table.recordings` row-as-button pattern; new
+`wwToggleAnalogChannelDisplay()` calls the SAME
+`wwRemoveChannelByKey()`/`wwAddSelectedChannels()` paths the old
+checkbox+button used. `renderChannelTable()` gained an opt-in
+`rowAttrsFn` parameter (digital's own call site never passes it, so
+digital is structurally unaffected). `analogChannelNameCellHtml()` now
+renders just the 10px dot + combined "name (unit)" text.
+`channelCheckboxHtml()` and `selectedChannels` were deleted entirely;
+`setupSelectionControls()` simplified to digital-only counting/adding/
+clearing (button text unchanged -- still truthful). CSS:
+`.channel-color-dot` 7px->10px; new `.channel-row--toggle`/
+`.channel-row--hidden` (25%, 55% on hover/focus); removed
+`.channel-color-dot--dim`/`.channel-remove-btn` entirely.
+`wwRenderLegend()`/every `.ww-legend*` rule: untouched.
+
+**Verification**: `phase2ca_check.mjs`, `phase3a_check.mjs`, and
+`phase3buat8_check.mjs` had their own analog-checkbox-specific
+assertions rewritten to the row-click model; `phase4a_uat4_check.mjs`
+was updated in place (its `dotFor()` helper now reads the new row
+identity) rather than left describing removed behavior -- all of UAT4's
+still-applicable coverage re-verified passing unchanged. New dedicated
+`phase4a_uat5_check.mjs` (21 checks, scratch convention) covers row
+structure, click/keyboard toggling, color stability, default-all +
+navigation persistence, digital isolation, and Separate-mode
+coexistence. Full regression suite still exactly the established
+18-failure baseline (reconfirmed against pre-UAT5 `main`); backend
+321/321 unchanged.
+
+**Git note**: this phase's edits landed on `origin/main` via a
+concurrent session's own commits (`e51b647`, `be201d3`, titled
+"adjusting padding") rather than a dedicated commit from this session --
+see the MIGRATION_PLAN.md record's own note for what happened and how it
+was verified intact. No history rewrite was performed.
+
+**Not yet done**: real-browser confirmation (10px dot legibility, the
+25%/55% hidden-row opacity read, hover/focus tint, keyboard focus ring)
+-- flagged for owner UAT before any further waveform feature work.
+
+## What was done in the prior session (Phase 4A-UAT4 — Channel Sidebar as Analog Legend)
+
 **Phase 4A-UAT4 — Channel Sidebar as Analog Legend.** Full detail:
 [MIGRATION_PLAN.md — Phase 4A-UAT4 Record](MIGRATION_PLAN.md#phase-4a-uat4--channel-sidebar-as-analog-legend-2026-08-18).
 
@@ -60,7 +120,7 @@ unchanged (no backend file touched).
 as perceived by eye, whether the canvas genuinely "feels" cleaner) --
 flagged for owner UAT before any further waveform feature work.
 
-## What was done in the prior session (Phase 4A-UAT3 — Build SHA / Version Provenance)
+## What was done in the earlier session (Phase 4A-UAT3 — Build SHA / Version Provenance)
 
 **Phase 4A-UAT3 — Build SHA / Version Provenance.** Full detail:
 [MIGRATION_PLAN.md — Phase 4A-UAT3 Record](MIGRATION_PLAN.md#phase-4a-uat3--build-sha--version-provenance-2026-08-18).
