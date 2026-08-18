@@ -800,19 +800,73 @@
         }
         table.channels th { color: var(--text-dim); font-weight: 500; font-size: 0.7rem; }
 
-        /* Phase 2B renderer-UAT entry point -- a small, deliberately quiet
-           link per analog channel row, not a prominent feature. See
-           docs/project-memory/MIGRATION_PLAN.md's Phase 2B record. */
-        a.waveform-proto-link {
-            font-size: 0.76rem;
-            color: var(--text-dim);
-            text-decoration: none;
-            border: 1px solid var(--panel-border);
-            border-radius: var(--radius);
-            padding: 3px 8px;
-            white-space: nowrap;
+        /* Phase 4A-UAT4: the analog channel browser is now the primary
+           waveform legend for Grouped/Custom (section 2/3) -- replaces
+           the removed .waveform-proto-link column above and the
+           .ww-legend chip strip those two modes no longer render
+           (Separate mode's own .ww-legend chip is unchanged -- owner
+           clarification, see wwRenderLegend()'s own comment).
+           .channel-name-cell holds a color dot + the channel name +
+           (only while displayed) a compact remove control, all within
+           the existing "Name" column -- no extra column, per section
+           17's own "do not leave a blank
+           fifth column". */
+        .channel-name-cell {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
         }
-        a.waveform-proto-link:hover { color: var(--accent); border-color: var(--accent-dim); }
+        .channel-name-text {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
+        }
+        /* Section 18: compact, ~7px -- clearly visible, never dominates
+           the row. Section 5: background is set inline, per-channel,
+           from wwColorForChannel() -- the SAME value the Plotly trace
+           uses, never a second color assignment. A subtle border keeps
+           pale/light trace colors visible against both themes (section
+           19) without altering the trace color itself. */
+        .channel-color-dot {
+            width: 7px;
+            height: 7px;
+            min-width: 7px;
+            border-radius: 50%;
+            display: inline-block;
+            border: 1px solid var(--panel-border);
+        }
+        /* Section 8: a channel not currently displayed keeps its real,
+           stable color visible (never removed) but visually subdued --
+           the engineer can still see what color it WILL use when
+           re-added. Toggled by wwSyncChannelBrowserDisplayState(), never
+           baked into the color value itself. */
+        .channel-color-dot--dim { opacity: 0.35; }
+        /* Section 11: the sidebar's own remove control -- Grouped/Custom
+           no longer have a canvas-side .ww-legend-remove chip at all
+           (see wwRenderLegend()'s own comment), so this is now their
+           ONLY removal affordance; Separate mode keeps its existing
+           .ww-legend-remove chip UNCHANGED (owner clarification) as a
+           second, equally valid path there. Same visual language (quiet
+           by default, --error on hover) and the same underlying
+           wwRemoveChannelByKey() removal behavior either way. Hidden by
+           default; wwSyncChannelBrowserDisplayState() shows it only for
+           a channel that is currently displayed. */
+        .channel-remove-btn {
+            appearance: none;
+            border: none;
+            background: transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 0.85rem;
+            padding: 0 2px;
+            line-height: 1;
+            margin-left: auto;
+            flex-shrink: 0;
+        }
+        .channel-remove-btn:hover { color: var(--error); }
+        .channel-remove-btn[hidden] { display: none; }
 
         /* "Start new workspace" + its error banner (`#workspaceResetError`,
            unchanged classes/behavior throughout every relocation). Phase
@@ -1174,6 +1228,13 @@
             font-size: 0.74rem;
             color: var(--text-dim);
         }
+        /* Phase 4A-UAT4 (owner clarification): this legend chip strip is
+           now Separate-mode ONLY (see wwRenderLegend()'s own comment) --
+           Grouped/Custom no longer render it at all (the Channels sidebar
+           is their legend instead). Separate mode's own presentation
+           (dot + name/unit + remove control, right-side overlay
+           position) is explicitly preserved unchanged -- the owner
+           approved its current look as-is. */
         .ww-legend {
             display: flex;
             flex-wrap: wrap;
@@ -1196,7 +1257,13 @@
                specific and still wins there). Caps one item from ever
                forcing the panel wider; larger than Separate's 150px since
                Grouped/Custom panels are typically the full Main Workspace
-               width, not a compact overlay. */
+               width, not a compact overlay. This base rule is now
+               unreachable in practice (Phase 4A-UAT4: Grouped/Custom
+               never render .ww-legend content), kept only because the
+               Separate-mode override below still depends on this
+               selector's specificity ordering -- removing it would be a
+               pure cleanup, not a behavior change, and out of this
+               phase's own focused scope. */
             max-width: 220px;
         }
         .ww-legend-dot {
@@ -1336,8 +1403,14 @@
             background: transparent;
         }
         #wwPanels.ww-panels-unified .ww-panel:last-child { border-bottom: none; }
-        /* Panel label is redundant with the (single-channel) legend chip in
-           this mode -- the legend chip is the one compact lane label. */
+        /* Phase 4A-UAT4 (owner clarification): Separate mode's existing
+           presentation is explicitly preserved unchanged -- panel header
+           stays hidden (redundant with the legend chip, which remains
+           Separate mode's one compact lane label: dot + name/unit +
+           remove control, unchanged from before this phase). Only
+           Grouped/Custom stopped rendering .ww-legend content at all
+           (see wwRenderLegend()'s own comment) -- this selector and the
+           .ww-legend overlay rules below are otherwise untouched. */
         #wwPanels.ww-panels-unified .ww-panel-header { display: none; }
         /* Overlay positioning: floats over the chart, not a layout column.
            pointer-events: none on the wrapper (it shrink-wraps to the pill
@@ -3259,6 +3332,20 @@
                 }
                 const data = await response.json();
                 renderChannels(data);
+                // Phase 4A-UAT4: renderChannels() just rebuilt the channel
+                // table from scratch, so every dot/remove-control starts
+                // as "not displayed" regardless of TRUE current state --
+                // correct for a genuinely new source (nothing displayed
+                // yet, about to become so below), but WRONG when
+                // re-opening/re-selecting an ALREADY-open source (the
+                // `if` below is then skipped entirely, since
+                // wwApplyDefaultChannelDisplay() never re-runs -- see its
+                // own comment). Sync unconditionally here so the already-
+                // established displayed set is always reflected; the
+                // default-display branch below re-syncs again via its own
+                // wwAddSelectedChannels() call, a harmless no-op repeat in
+                // that case.
+                wwSyncChannelBrowserDisplayState();
                 // Phase 4A (section 8/9/10): a genuinely NEW source-open
                 // applies the owner's explicit "display all analog + all
                 // digital by default" UAT experiment -- tracked per
@@ -3439,10 +3526,10 @@
                     body += '<summary><span class="chevron">&#9656;</span>' + escapeHtml(type) +
                         ' <span class="count-badge">(' + group.length + ')</span></summary>';
                     body += '<div class="group-body">' + renderChannelTable(group, [
-                        ["Name", (c) => c.name],
+                        ["Name", (c) => analogChannelNameCellHtml(source, c), { raw: true }],
                         ["Unit", (c) => c.unit],
                         ["Phase", (c) => c.phase || "—"],
-                    ], (c) => waveformPrototypeLinkHtml(source, c), (c) => channelCheckboxHtml(source, c, timebase)) + '</div>';
+                    ], null, (c) => channelCheckboxHtml(source, c, timebase)) + '</div>';
                     body += '</details>';
                 }
                 body += '</div>';
@@ -3509,6 +3596,12 @@
                 '<div class="group-body">' + body + '</div></details>';
         }
 
+        // Phase 4A-UAT4: a column entry is [label, accessor] (existing
+        // behavior -- accessor's return value is always escaped) or
+        // [label, accessor, { raw: true }] (accessor returns already-safe
+        // HTML, e.g. analogChannelNameCellHtml()'s own dot+name+remove
+        // markup, rendered verbatim). Digital's own table never uses
+        // `raw` -- only the analog Name column needs it.
         function renderChannelTable(channels, columns, actionColumn, checkboxColumn) {
             let html = '<table class="channels"><thead><tr>';
             if (checkboxColumn) html += '<th></th>';
@@ -3520,7 +3613,10 @@
                     .filter(Boolean).join(" ").toLowerCase();
                 html += '<tr data-search="' + escapeHtml(searchText) + '">';
                 if (checkboxColumn) html += '<td class="select-col">' + checkboxColumn(channel) + '</td>';
-                for (const [, accessor] of columns) html += '<td>' + escapeHtml(String(accessor(channel))) + '</td>';
+                for (const [, accessor, opts] of columns) {
+                    const value = accessor(channel);
+                    html += '<td>' + (opts && opts.raw ? value : escapeHtml(String(value))) + '</td>';
+                }
                 if (actionColumn) html += '<td>' + actionColumn(channel) + '</td>';
                 html += '</tr>';
             }
@@ -3528,27 +3624,35 @@
             return html;
         }
 
-        // Phase 2B entry point: opens the isolated renderer-UAT prototype
-        // (waveform-prototype.html) in a new tab for exactly one analog
-        // channel, carrying only already-known identity (workspace/source/
-        // channel/unit/station name) via the query string -- the prototype
-        // page re-fetches actual waveform data itself via the Phase 2A API,
-        // this link never fetches or embeds waveform data. Deliberately a
-        // plain link, not a client-side route -- see
-        // docs/project-memory/MIGRATION_PLAN.md's Phase 2B record for why
-        // this stays a separate, isolated page rather than a panel embedded
-        // in this screen (keeps the main channel browser unchanged, keeps
-        // the prototype trivially removable).
-        function waveformPrototypeLinkHtml(source, channel) {
-            const url = "waveform-prototype.html?" + new URLSearchParams({
-                workspace_id: currentWorkspaceId(),
-                source_id: source.source_id,
-                channel_name: channel.name,
-                unit: channel.unit || "",
-                station_name: source.station_name || "",
-            }).toString();
-            return '<a class="waveform-proto-link" href="' + escapeHtml(url) +
-                '" target="_blank" rel="noopener">Waveform (UAT)</a>';
+        // Phase 4A-UAT4: the analog Name cell -- a small color dot (the
+        // SAME color wwColorForChannel() gives the Plotly trace, section
+        // 5's "one color authority"), the channel name, and (only when
+        // this exact channel is currently displayed) a compact remove
+        // control -- reusing the existing wwRemoveChannelByKey() removal
+        // path, just relocated here from the removed waveform legend chip
+        // strip (Phase 4A-UAT4: the sidebar is now the analog legend --
+        // see docs/project-memory/MIGRATION_PLAN.md's own record). The
+        // remove button is always present in the DOM (never re-rendered) but
+        // starts `hidden`; wwSyncChannelBrowserDisplayState() toggles it
+        // (and the dot's dimmed state) in place whenever the displayed
+        // set changes, since this cell is built once per render while
+        // display state can change many times after.
+        //
+        // Section 27 (accessibility): the dot is `aria-hidden` -- it is a
+        // color->identity mapping aid, not new information; the channel
+        // name text remains the real accessible label, exactly as
+        // before.
+        function analogChannelNameCellHtml(source, channel) {
+            const color = wwColorForChannel(source.source_id, channel.name);
+            return '<span class="channel-name-cell" data-source-id="' + escapeHtml(source.source_id) +
+                '" data-channel-name="' + escapeHtml(channel.name) + '">' +
+                '<span class="channel-color-dot" style="background:' + escapeHtml(color) + '" aria-hidden="true"></span>' +
+                '<span class="channel-name-text">' + escapeHtml(channel.name) + '</span>' +
+                '<button type="button" class="channel-remove-btn" hidden' +
+                ' data-source-id="' + escapeHtml(source.source_id) + '"' +
+                ' data-channel-name="' + escapeHtml(channel.name) + '"' +
+                ' title="Remove from display" aria-label="Remove ' + escapeHtml(channel.name) + ' from display">&times;</button>' +
+                '</span>';
         }
 
         // ------------------------------------------------------------------
@@ -3629,6 +3733,29 @@
                 ' aria-label="Select ' + escapeHtml(channel.name) + '">';
         }
 
+        // Phase 4A-UAT4: the Channels sidebar is now the primary analog
+        // legend (section 2/3) -- keeps every analog row's color-dot
+        // dimmed state and remove-control visibility in sync with
+        // ww.displayed. analogChannelNameCellHtml() builds each row ONCE
+        // per renderChannels() call, but the displayed set can change many
+        // times after that (Add selected, sidebar remove, source removal,
+        // workspace clear, default-display-on-open) -- called from each of
+        // those mutation points rather than re-rendering the whole table
+        // every time (cheap DOM pass, no innerHTML rebuild, no lost scroll
+        // position/search-filter state). A no-op if the channel browser
+        // isn't currently showing this source (querySelectorAll finds
+        // nothing).
+        function wwSyncChannelBrowserDisplayState() {
+            for (const cell of document.querySelectorAll("#channelGroups .channel-name-cell")) {
+                const key = wwChannelKey(cell.dataset.sourceId, cell.dataset.channelName);
+                const isDisplayed = ww.displayed.has(key);
+                const dot = cell.querySelector(".channel-color-dot");
+                if (dot) dot.classList.toggle("channel-color-dot--dim", !isDisplayed);
+                const removeBtn = cell.querySelector(".channel-remove-btn");
+                if (removeBtn) removeBtn.hidden = !isDisplayed;
+            }
+        }
+
         // Wired fresh after every renderChannels() call (the whole panel is
         // rebuilt via innerHTML, same reason setupChannelSearch is re-wired
         // each time too) -- delegated single `change` listener on
@@ -3683,6 +3810,20 @@
                     selectedChannels.delete(key);
                 }
                 syncButtons();
+            });
+
+            // Phase 4A-UAT4: the sidebar's own removal path (Grouped/
+            // Custom's ONLY one now -- see wwRenderLegend()'s own
+            // comment; Separate mode's existing .ww-legend-remove chip
+            // stays available too, unchanged). Same wwRemoveChannelByKey()
+            // removal path either way; delegated on #channelGroups (same
+            // technique as the `change` listener above) so it survives
+            // every renderChannels() rebuild without needing to be
+            // re-wired per button.
+            groupsEl.addEventListener("click", (event) => {
+                const btn = event.target.closest(".channel-remove-btn");
+                if (!btn) return;
+                wwRemoveChannelByKey(wwChannelKey(btn.dataset.sourceId, btn.dataset.channelName));
             });
 
             addBtn.addEventListener("click", () => {
@@ -3850,6 +3991,17 @@
         //     positioning; the same `.ww-legend`/`.ww-legend-item`/
         //     `.ww-legend-label` markup and the same remove control are
         //     reused unchanged.
+        //   - Phase 4A-UAT4 (owner clarification): the `.ww-legend` chip
+        //     strip described above is now GROUPED/CUSTOM-only removed --
+        //     the Channels sidebar is the primary analog legend for those
+        //     two modes (color dot + name; see analogChannelNameCellHtml()),
+        //     with its own per-channel remove control
+        //     (wwSyncChannelBrowserDisplayState()). Separate mode's own
+        //     `.ww-legend` chip -- this bullet's own Detego-benchmarked
+        //     overlay placement, dot, name/unit, and remove control -- is
+        //     explicitly PRESERVED UNCHANGED (the owner approved its
+        //     current look as-is); wwRenderLegend() is simply no longer
+        //     called for Grouped/Custom panels, see its own comment.
         // ==================================================================
 
         // Deterministic per-channel identity colors, assigned in the order
@@ -3925,6 +4077,18 @@
             // blocking future drag/reorder.
             layoutMode: "grouped",
             colorIndex: 0,
+            // Phase 4A-UAT4: "sourceId::channelName" -> assigned trace
+            // color -- the ONE color authority both the Plotly trace and
+            // the Channels sidebar's color dot read from (see
+            // wwColorForChannel()). Assigned once, the first time a
+            // channel identity is ever seen this workspace session;
+            // reused on every later lookup, including after remove +
+            // re-add. Same lifecycle policy as ww.customGroups/
+            // ww.panelHeights below: individual channel/source removal
+            // deliberately leaves this alone, only wwClearWorkspace()
+            // clears it (a brand-new workspace has no color history to
+            // remember).
+            channelColors: new Map(),
             panelSeq: 0,
             viewportDebounceTimer: null,
             // Incremented by wwClearWorkspace() -- guards against an
@@ -4307,6 +4471,27 @@
             return color;
         }
 
+        // Phase 4A-UAT4: the ONE color authority -- both wwAddSelectedChannels()
+        // (the Plotly trace) and the Channels sidebar's color dot
+        // (analogChannelNameCellHtml()) call this SAME function, never a
+        // separate sidebar-only color assignment. Stable channel identity
+        // (source_id + channel name, the same wwChannelKey() convention
+        // used everywhere else in this codebase) is the color key -- two
+        // sources with identically-named channels get distinct colors,
+        // never accidentally shared. A channel not yet displayed still
+        // gets a real, stable color here (called from the sidebar render
+        // path too, section 8's own "the user should still be able to
+        // understand what color the channel WILL use when re-added").
+        function wwColorForChannel(sourceId, channelName) {
+            const key = wwChannelKey(sourceId, channelName);
+            let color = ww.channelColors.get(key);
+            if (!color) {
+                color = wwNextColor();
+                ww.channelColors.set(key, color);
+            }
+            return color;
+        }
+
         // Same technique as waveform-prototype.html's own themeColors() --
         // read live from the shared appearance tokens (theme.css) rather
         // than hard-coding per-theme values here.
@@ -4508,10 +4693,20 @@
             wwWireResizeHandle(panel);
         }
 
-        // Compact identity per section 11: panel/group name (header),
-        // channel name + unit (legend row) -- full detail (exact value)
-        // stays in the existing native Plotly hover tooltip, not repeated
-        // here. Kept deliberately small -- no large legend/metadata card.
+        // Phase 4A-UAT4 (owner clarification): Separate-mode-ONLY now --
+        // one lane = one channel there, so the local overlay tag remains
+        // the useful per-lane identity the owner explicitly asked to keep
+        // unchanged (dot, name/unit, remove control, right-side overlay
+        // position -- all untouched). Grouped/Custom panels can hold
+        // several channels each and now rely on the Channels sidebar as
+        // their legend instead (section 2/3) -- callers only invoke this
+        // when `ww.layoutMode === "separate"` (see wwAddSelectedChannels()/
+        // wwRebuildLayout()); wwRemoveChannel()'s own "panel still has
+        // channels" branch never needs this call at all, since a Separate
+        // panel always holds exactly one channel and therefore never hits
+        // that branch. `channel.color` is wwColorForChannel()'s value --
+        // the same one color authority the sidebar dot and the Plotly
+        // trace both already use (section 5), never a second assignment.
         function wwRenderLegend(panel) {
             let html = "";
             for (const channel of panel.channels) {
@@ -5019,7 +5214,7 @@
                     // re-derive it from anywhere else.
                     recordingStartMs: wwParseNaiveTimestamp(meta.recordingStartTime),
                     timingReference: meta.timingReference || null,
-                    color: wwNextColor(),
+                    color: wwColorForChannel(meta.sourceId, meta.channelName),
                     time: [],
                     values: [],
                     abortController: null,
@@ -5061,8 +5256,14 @@
                 if (!isNewPanel) wwAddTraceToPanel(panel, channelEntry);
             }
 
-            const touchedPanels = new Set(jobs.map((job) => job.panel));
-            for (const panel of touchedPanels) wwRenderLegend(panel);
+            // Phase 4A-UAT4 (owner clarification): Separate mode's own
+            // per-lane legend chip is unchanged and still needs
+            // (re-)rendering here -- see wwRenderLegend()'s own comment
+            // for why Grouped/Custom never call it.
+            if (ww.layoutMode === "separate") {
+                const touchedPanels = new Set(jobs.map((job) => job.panel));
+                for (const panel of touchedPanels) wwRenderLegend(panel);
+            }
             wwApplyTimeAxisChrome();
             wwUpdateTimeModeControlAvailability();
             // Phase 2C-C4 (section 17): shows the sticky ruler on the
@@ -5074,6 +5275,10 @@
             // channel count -- a narrow, one-way read of ww.displayed,
             // never a shell mutation of waveform state.
             shellUpdateStatusBarChannelCount(ww.displayed.size);
+            // Phase 4A-UAT4: the sidebar is now the analog legend -- keep
+            // its dots/remove-controls in sync with the just-updated
+            // displayed set.
+            wwSyncChannelBrowserDisplayState();
         }
 
         function wwRemoveChannelByKey(key) {
@@ -5096,8 +5301,6 @@
             if (panel.channels.length === 0) {
                 wwRemovePanelDom(panel);
                 ww.panels = ww.panels.filter((p) => p !== panel);
-            } else {
-                wwRenderLegend(panel);
             }
             wwUpdateEmptyState();
             wwApplyTimeAxisChrome();
@@ -5107,6 +5310,10 @@
             // (ww.viewport is unchanged by a channel removal).
             wwSyncStickyRuler();
             shellUpdateStatusBarChannelCount(ww.displayed.size);
+            // Phase 4A-UAT4: the sidebar is now the analog legend -- keep
+            // its dots/remove-controls in sync with the just-updated
+            // displayed set.
+            wwSyncChannelBrowserDisplayState();
         }
 
         function wwRemovePanelDom(panel) {
@@ -5676,6 +5883,11 @@
             // default-all-display case.
             ww.digitalDisplayed.clear();
             ww.sourceDefaultsApplied.clear();
+            // Phase 4A-UAT4: same policy as ww.customGroups/ww.panelHeights
+            // above -- a brand-new workspace has no color history worth
+            // remembering; individual channel/source removal deliberately
+            // leaves this alone (see the field's own comment on ww).
+            ww.channelColors.clear();
             wwUpdateEmptyState();
             wwUpdateTimeModeControlAvailability();
             // Phase 2C-C4 (section 17/30): "starting a new workspace: ruler
@@ -5689,6 +5901,11 @@
             wwSyncStickyRuler();
             wwRebuildDigitalChart();
             shellUpdateStatusBarChannelCount(ww.displayed.size);
+            // Phase 4A-UAT4: ww.displayed was cleared in bulk above (not
+            // via wwRemoveChannel(), which self-syncs) -- explicit sync so
+            // the sidebar's dots/remove-controls reflect the now-empty
+            // displayed set.
+            wwSyncChannelBrowserDisplayState();
         }
 
         // Phase 2C-C4A: ONE shared decision for the sticky ruler's
@@ -6060,9 +6277,20 @@
             for (const panel of ww.panels) {
                 wwCreatePanelDom(panel);
                 wwInitPanelPlot(panel);
-                wwRenderLegend(panel);
+                // Phase 4A-UAT4 (owner clarification): only Separate mode
+                // still has a per-lane legend chip to render -- see
+                // wwRenderLegend()'s own comment. Switching INTO Separate
+                // renders it fresh here; switching OUT of it is a no-op
+                // (Grouped/Custom panels never had a .ww-legend element
+                // populated in the first place).
+                if (ww.layoutMode === "separate") wwRenderLegend(panel);
             }
             wwApplyTimeAxisChrome();
+            // Note: the DISPLAYED set itself is unchanged by a layout-mode
+            // switch (only how channels are grouped into panels changes),
+            // and channel colors are stable per-channel (wwColorForChannel()),
+            // never per-panel -- so the sidebar's dots/remove-controls
+            // never need re-syncing here.
         }
 
         // Phase 4A-UAT1B: immediate loading feedback for

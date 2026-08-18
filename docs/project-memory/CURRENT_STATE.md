@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-18** (Phase 4A-UAT3).
+Last meaningful update: **2026-08-18** (Phase 4A-UAT4).
 
 ## Development phase
 
@@ -1207,6 +1207,39 @@ failure from an external toolbar/font-size commit, not from this
 phase's own work). No DEV/PROD deployment dispatched from this sandbox
 this pass (no deploy credentials available here) — structural
 verification only; owner end-to-end confirmation remains the next step.
+
+`[FACT]` **The Channels sidebar is now the primary analog waveform
+legend — Phase 4A-UAT4 — Channel Sidebar as Analog Legend** (2026-08-18)
+— see
+[MIGRATION_PLAN.md — Phase 4A-UAT4 Record](MIGRATION_PLAN.md#phase-4a-uat4--channel-sidebar-as-analog-legend-2026-08-18).
+The obsolete per-channel "Waveform (UAT)" control is removed (no dead
+column, no dead handler). Each analog channel row in the sidebar now
+shows a small color dot beside its name — the SAME color
+(`wwColorForChannel()`, keyed by `sourceId::channelName`, the one color
+authority) driving both that dot and its Plotly trace, never two
+independently-assigned colors; a channel not currently displayed keeps
+its real color visible but dimmed, never hidden entirely, so an
+engineer can see what color it will use when re-added. Colors are
+stable through remove+re-add, layout-mode switches, time-mode switches,
+and navigation — a `ww.channelColors` map persists for the workspace
+session (cleared only by a whole-workspace reset, the same lifecycle
+policy already established for `ww.customGroups`/`ww.panelHeights`).
+**Grouped and Custom modes** no longer render the duplicated per-channel
+chip-legend strip above the canvas (the sidebar is their legend now;
+group/custom-group headings are unchanged); their removal affordance
+moved into the sidebar row itself, reusing the pre-existing
+`wwRemoveChannelByKey()`. **Separate mode's existing per-lane legend
+chip (dot, name/unit, overlay position, remove control) is explicitly
+UNCHANGED** — one lane = one channel there, so it was never the same
+duplication the owner asked to remove; this was clarified mid-task after
+an initial uniform-removal attempt, which was reverted before this
+record was written. Full frontend regression suite: still exactly the
+established 18-failure baseline (all independently reconfirmed
+pre-existing by comparison against untouched canonical `main`); backend
+321/321 unchanged (no backend file touched — pure frontend UX
+consolidation). Not yet owner-UAT'd in a real browser — flagged as
+**not** ready for further waveform feature work until that UAT
+completes.
 
 ## Completed foundation work
 

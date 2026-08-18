@@ -8548,6 +8548,182 @@ flagged for owner UAT.
 
 ---
 
+## Phase 4A-UAT4 — Channel Sidebar as Analog Legend (2026-08-18)
+
+`[FACT]` throughout. No new DECISIONS.md entry -- a UX consolidation
+(one legend authority instead of two duplicated ones) within already-
+approved architecture, not a new architectural commitment.
+
+### Owner direction
+
+Remove the obsolete "Waveform (UAT)" per-channel control; remove the
+duplicated analog waveform legend/chip strip above the canvas; use the
+existing Channels sidebar as the analog waveform legend instead (a small
+color dot beside each channel name, driven by the exact same color the
+Plotly trace uses); preserve all existing selection/display/removal
+behavior.
+
+**Mid-task owner clarification** (received after the initial Grouped/
+Custom/Separate-uniform removal was already implemented and tested):
+the chip-strip removal applies to **Grouped and Custom modes only**.
+**Separate mode's existing per-lane legend chip (color dot, name/unit,
+overlay position, remove control) is explicitly preserved unchanged** --
+one lane = one channel there, so the local label is not the same kind
+of duplication a multi-channel Grouped/Custom panel's chip strip was.
+The implementation below reflects the corrected, final behavior; the
+initial uniform-removal attempt (which briefly moved Separate mode's
+identity onto `.ww-panel-header` instead) was reverted before this
+record was written.
+
+### Color authority (the one thing every other change here depends on)
+
+New `ww.channelColors: Map<"sourceId::channelName", color>` and
+`wwColorForChannel(sourceId, channelName)` -- the ONE color authority
+both the Plotly trace (`wwAddSelectedChannels`'s `channelEntry.color`)
+and the Channels sidebar's color dot
+(`analogChannelNameCellHtml()`) read from; never a second,
+independently-assigned sidebar color. Assigns a fresh palette color
+(the pre-existing `wwNextColor()`) the FIRST time a given channel
+identity (the same `wwChannelKey()` `"sourceId::channelName"`
+convention used everywhere else in this codebase -- two sources with an
+identically-named channel never collide) is ever seen, and reuses that
+SAME color on every later lookup -- including after the channel is
+removed and re-added. Same lifecycle policy as the pre-existing
+`ww.customGroups`/`ww.panelHeights`: individual channel/source removal
+deliberately leaves it alone, only `wwClearWorkspace()` clears it (a
+brand-new workspace has no color history to remember). Colors are
+pre-assigned for EVERY analog channel at channel-LIST-render time (not
+lazily only once displayed), so a not-yet-displayed row still shows the
+real color it will use if re-added (owner's own explicit requirement).
+
+### Channel sidebar legend (Grouped/Custom)
+
+`analogChannelNameCellHtml(source, channel)` replaces the plain-text
+"Name" column accessor with a small raw-HTML cell:
+`<dot> <name> <remove-button-if-currently-displayed>`, reusing the
+existing "Name" column (`renderChannelTable()` gained an opt-in `{raw:
+true}` column flag for this, since its own auto-escaping is otherwise
+still the default for every other column, digital included). This
+directly replaces the freed "Waveform (UAT)" action-column slot (never
+a 5th column). The dot is `aria-hidden` (a color->identity mapping aid,
+not new information; the channel name text remains the real accessible
+label). Compact (7px diameter, matching section 18's 6-9px preference),
+a subtle theme-token border for contrast in both Light/Dark without
+altering the trace color itself.
+
+**Displayed vs not-displayed**: `.channel-color-dot--dim` (35% opacity,
+toggled, never baked into the stored color) for a channel not currently
+displayed -- the real color stays visible, never removed entirely
+(owner's own explicit requirement, section 8). `wwSyncChannelBrowserDisplayState()`
+(new) does a lightweight DOM pass over already-rendered
+`.channel-name-cell` elements, toggling the dot's dimmed class and the
+remove button's `hidden` state from `ww.displayed` -- called from every
+mutation point (`wwAddSelectedChannels`, `wwRemoveChannel`,
+`wwClearWorkspace`, and unconditionally after `renderChannels()` in
+`selectSource()` to cover re-opening an already-open source, whose
+default-display branch is skipped and would otherwise leave the
+sidebar showing stale "not displayed" state for channels that actually
+already are). Checkbox-checked state (queued for "Add selected") and
+displayed state are explicitly kept distinct, per the owner's own
+section 9 -- merely checking a box never dims/undims a dot.
+
+**Removal**: a `.channel-remove-btn` (visually identical to the
+existing `.ww-legend-remove` chip button, just relocated/duplicated
+into the sidebar row) is Grouped/Custom's ONLY removal affordance now
+(they have no canvas-side chip anymore); wired via one delegated click
+listener on `#channelGroups` (same technique the existing checkbox
+`change` listener already used), calling the SAME pre-existing
+`wwRemoveChannelByKey()` -- no new removal mechanism.
+
+### Canvas legend removal (Grouped/Custom only)
+
+`wwRenderLegend()` (pre-existing, unchanged in its own implementation)
+is now called ONLY when `ww.layoutMode === "separate"` -- from
+`wwAddSelectedChannels()` and `wwRebuildLayout()` (the two call sites
+where Grouped/Custom panels could otherwise still have received a
+freshly-rendered chip). `wwRemoveChannel()`'s own former
+"panel still has channels, re-render its legend" branch was removed
+entirely: Separate panels always hold exactly one channel (removing it
+always empties the whole panel, never hits that branch), and Grouped/
+Custom never show the chip at all now, so the branch was dead code for
+both cases. Group/custom-group HEADINGS ("Voltage", "Current", "Group
+1") are unaffected -- those come from `.ww-panel-label`/
+`wwPanelLabelFor()`, a completely separate mechanism never touched.
+
+### Separate mode (unchanged, per the owner's clarification)
+
+`.ww-legend`, `.ww-legend-item`, `.ww-legend-dot`, `.ww-legend-label`,
+`.ww-legend-remove`, and their Separate-mode overlay-positioning
+overrides (`#wwPanels.ww-panels-unified .ww-legend`, etc., including
+the Detego-benchmarked right-side overlay placement from Phase
+2C-B3A) are all present in the CSS exactly as before this phase --
+zero changes. `panel.legendEl`/`wwRenderLegend()`'s own implementation
+are unchanged; only the CALL SITES became conditional on layout mode
+(see above).
+
+### Tests
+
+Full existing frontend regression suite required substantial updates
+given the scale of this refactor -- several pre-existing tests directly
+asserted on `.ww-legend-item` counts inside GROUPED/CUSTOM panels
+(`phase2ca_check.mjs`, `phase2cb1_check.mjs`, `phase2cc1_check.mjs`,
+`phase2cc2_check.mjs`, `phase3auat3_check.mjs`), which no longer exist
+there by design; each was corrected in place to verify the same
+underlying fact (channel membership/removal/long-name-containment)
+through the channel's own Plotly trace count or the new sidebar
+`.channel-name-cell`/`.channel-remove-btn` elements instead, with an
+explanatory comment. One cascading failure (`phase2cc2_check.mjs`'s own
+custom-group-height-persistence check) resolved automatically once its
+own upstream `.ww-legend-item` assertion was fixed (the early throw had
+been skipping a resize drag entirely). Every correction was verified,
+before being treated as "pre-existing baseline, not to touch," by
+stashing this phase's changes and re-running the identical test file
+against untouched canonical `main` -- confirming the SAME failures
+already existed there, completely unrelated to this phase's own work
+(all trace to the pre-existing DEC-030 sticky-ruler relayout-counting
+pattern already documented in prior phases' own records).
+
+New dedicated `phase4a_uat4_check.mjs` (scratch convention, not
+committed, 21 checks): obsolete-control removal (no "Waveform (UAT)"
+text/link anywhere, no leftover 5th column, checkbox/Add-selected
+behavior preserved); color mapping (every analog row has a dot, a
+displayed channel's dot color exactly equals its own Plotly trace
+color, distinct channels get distinct colors, color survives remove +
+re-add, color stable across Grouped/Separate/Custom, stable across
+Absolute/Elapsed, stable across a Recordings<->Waveform navigation
+round trip re-selecting the same open source, two sources with an
+identically-named channel get non-colliding colors); displayed-vs-not
+dot treatment (dimmed-but-visible, real color never removed, checkbox
+state never itself changes dimmed state); waveform legend removal
+(Grouped/Custom: zero `.ww-legend-item` chips, group headings remain;
+Separate: its existing chip -- dot, name/unit, remove control -- is
+verified completely unchanged, per the owner's clarification); removal/
+re-add workflow via the sidebar end to end; layout containment (name
+ellipsis CSS present, dot diameter within the 6-9px range, digital rows
+provably untouched by the new color-authority code).
+
+Full existing frontend regression suite: still exactly the established
+18-failure baseline (17 pre-existing + 1 pre-existing-but-newly-
+surfaced button-size-tier issue from an external, unrelated commit,
+first confirmed in the Phase 4A-UAT3 record). Backend: 321/321,
+unchanged (no backend file touched this pass -- pure frontend UX
+consolidation).
+
+### Files changed
+
+`frontend/index.html` only.
+
+### Honest limitations
+
+No real browser is available in this sandbox -- the actual rendered
+appearance of the color dots (contrast against both themes, compact
+sizing as perceived by eye), the freed canvas vertical space "feeling"
+noticeably cleaner, and Separate mode's continued visual correctness
+were reasoned through and structurally exercised via jsdom, but not
+visually confirmed -- flagged for owner UAT.
+
+---
+
 ## Phase 4A-UAT3 — Build SHA / Version Provenance (2026-08-18)
 
 `[FACT]` throughout. No new DECISIONS.md entry -- a small, operationally-

@@ -8,6 +8,60 @@ Last updated: **2026-08-18**
 
 ## What was most recently done
 
+**Phase 4A-UAT4 — Channel Sidebar as Analog Legend.** Full detail:
+[MIGRATION_PLAN.md — Phase 4A-UAT4 Record](MIGRATION_PLAN.md#phase-4a-uat4--channel-sidebar-as-analog-legend-2026-08-18).
+
+**Owner direction**: remove the obsolete "Waveform (UAT)" per-channel
+control; remove the duplicated analog waveform legend/chip strip above
+the canvas; use the existing Channels sidebar as the analog legend
+instead (color dot beside each channel name, driven by the exact same
+color the Plotly trace uses); preserve all selection/display/removal
+behavior. **Mid-task clarification**: this applies to Grouped/Custom
+modes ONLY -- Separate mode's existing per-lane legend chip (dot,
+name/unit, overlay position, remove control) is explicitly preserved
+unchanged, since one lane = one channel there is not the same
+duplication a multi-channel Grouped/Custom panel's chip strip was. An
+initial uniform-removal attempt was reverted before finishing, once
+this clarification arrived.
+
+**What changed** (`frontend/index.html` only): new `wwColorForChannel()`
+-- the ONE color authority both the Plotly trace and the sidebar's new
+color dot read from, keyed by the existing `sourceId::channelName`
+identity convention, backed by a `ww.channelColors` map that persists
+for the workspace session (cleared only by a whole-workspace reset,
+same policy as `ww.customGroups`/`ww.panelHeights`). Each analog
+sidebar row (`analogChannelNameCellHtml()`) now shows a small (7px)
+color dot + the name + (only while displayed) a compact remove button
+reusing the pre-existing `wwRemoveChannelByKey()`; a not-currently-
+displayed channel's dot stays visible but dimmed (35% opacity), never
+hidden. `wwRenderLegend()` (the pre-existing chip-strip renderer,
+implementation untouched) is now called ONLY when
+`ww.layoutMode === "separate"` -- Grouped/Custom simply stop rendering
+it, dropping the duplicated per-channel chips while their group/custom-
+group HEADINGS (a separate, untouched mechanism) remain.
+`wwSyncChannelBrowserDisplayState()` (new) keeps the sidebar's dots/
+remove-buttons live-accurate as the displayed set changes through any
+path (add, remove, workspace clear, re-opening an already-open source).
+
+**Verification**: several pre-existing frontend tests asserted directly
+on `.ww-legend-item` chip counts inside Grouped/Custom panels -- all
+corrected in place (verified via each channel's own Plotly trace count
+or the new sidebar elements instead), each one independently confirmed
+NOT a regression by re-running the identical test against untouched
+canonical `main` first. New `phase4a_uat4_check.mjs` (21 checks, scratch
+convention) covers obsolete-control removal, color-authority/stability
+across every navigation path, displayed-vs-dimmed dot treatment,
+Grouped/Custom legend removal vs Separate's unchanged chip, the full
+removal/re-add workflow, and layout containment. Full regression suite
+still exactly the established 18-failure baseline; backend 321/321
+unchanged (no backend file touched).
+
+**Not yet done**: real-browser confirmation (color contrast/dot sizing
+as perceived by eye, whether the canvas genuinely "feels" cleaner) --
+flagged for owner UAT before any further waveform feature work.
+
+## What was done in the prior session (Phase 4A-UAT3 — Build SHA / Version Provenance)
+
 **Phase 4A-UAT3 — Build SHA / Version Provenance.** Full detail:
 [MIGRATION_PLAN.md — Phase 4A-UAT3 Record](MIGRATION_PLAN.md#phase-4a-uat3--build-sha--version-provenance-2026-08-18).
 
@@ -57,7 +111,7 @@ verified but not yet confirmed end-to-end against a real running
 deployment. Owner verification commands are in the MIGRATION_PLAN.md
 record.
 
-## What was done in the prior session (Phase 4A-UAT2 — Fix Remaining Digital Waveform UAT Failures)
+## What was done in the earlier session (Phase 4A-UAT2 — Fix Remaining Digital Waveform UAT Failures)
 
 **Phase 4A-UAT2 — Fix Remaining Digital Waveform UAT Failures.** Full
 detail:
