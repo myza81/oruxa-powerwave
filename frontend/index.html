@@ -767,14 +767,14 @@
            overflow-wrap alone is sufficient; max-width:100% is kept as
            the same defensive belt-and-braces cap used everywhere else
            this containment pattern appears. */
-        .active-recording-name { font-size: 0.95rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; max-width: 100%; }
+        .active-recording-name { font-size: 0.75rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; max-width: 100%; }
         .active-recording-meta { font-size: 0.7
-            rem; color: var(--text-dim); margin-top: 2px; }
-        .active-recording .empty-state { padding: 0; text-align: left; font-size: 0.85rem; }
+        rem; color: var(--text-dim); margin-top: 2px; }
+        .active-recording .empty-state { padding: 0; text-align: left; font-size: 0.75rem; }
 
         .empty-state {
             color: var(--text-dim);
-            font-size: 0.85rem;
+            font-size: 0.75rem;
             padding: 20px 4px;
             text-align: center;
         }
@@ -782,12 +782,12 @@
         table.channels {
             width: 100%;
             border-collapse: collapse;
-            font-size: 0.85rem;
+            font-size: 0.7rem;
             margin-bottom: 20px;
         }
         table.channels caption {
             text-align: left;
-            font-size: 0.82rem;
+            font-size: 0.7rem;
             font-weight: 600;
             color: var(--text-dim);
             text-transform: uppercase;
@@ -799,7 +799,7 @@
             padding: 6px 10px;
             border-bottom: 1px solid var(--panel-border);
         }
-        table.channels th { color: var(--text-dim); font-weight: 500; font-size: 0.75rem; }
+        table.channels th { color: var(--text-dim); font-weight: 500; font-size: 0.7rem; }
 
         /* Phase 2B renderer-UAT entry point -- a small, deliberately quiet
            link per analog channel row, not a prominent feature. See
@@ -913,7 +913,7 @@
         details.channel-subgroup:first-child { border-top: none; }
         details.channel-subgroup summary {
             padding: 8px 0;
-            font-size: 0.82rem;
+            font-size: 0.75rem;
         }
         details.channel-subgroup .group-body { padding: 0 0 10px; }
         tr[hidden] { display: none; }
