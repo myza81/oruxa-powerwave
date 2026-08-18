@@ -950,7 +950,7 @@
            horizontal scroll on this specific wrapper keeps every column
            reachable (nothing hidden) without forcing the Sidebar itself,
            or Main Workspace beside it, any wider. */
-        .group-body { padding: 4px 14px 12px; overflow-x: auto; }
+        .group-body { padding: 4px 10px 12px; overflow-x: auto; }
         details.channel-subgroup {
             border-top: 1px solid var(--panel-border);
         }
@@ -3517,10 +3517,9 @@
                     body += '<summary><span class="chevron">&#9656;</span>' + escapeHtml(type) +
                         ' <span class="count-badge">(' + group.length + ')</span></summary>';
                     body += '<div class="group-body">' + renderChannelTable(group, [
-                        ["Name", (c) => analogChannelNameCellHtml(source, c), { raw: true }],
-                        ["Unit", (c) => c.unit],
+                        ["Channel", (c) => analogChannelNameCellHtml(source, c), { raw: true }],
                         ["Phase", (c) => c.phase || "—"],
-                    ], null, (c) => channelCheckboxHtml(source, c, timebase)) + '</div>';
+                    ], null, null, (c) => analogChannelRowAttrs(source, c, timebase)) + '</div>';
                     body += '</details>';
                 }
                 body += '</div>';
@@ -3587,13 +3586,19 @@
                 '<div class="group-body">' + body + '</div></details>';
         }
 
-        // Phase 4A-UAT4: a column entry is [label, accessor] (existing
+        // Phase 4A-UAT4/UAT5: a column entry is [label, accessor] (existing
         // behavior -- accessor's return value is always escaped) or
         // [label, accessor, { raw: true }] (accessor returns already-safe
-        // HTML, e.g. analogChannelNameCellHtml()'s own dot+name+remove
-        // markup, rendered verbatim). Digital's own table never uses
-        // `raw` -- only the analog Name column needs it.
-        function renderChannelTable(channels, columns, actionColumn, checkboxColumn) {
+        // HTML, e.g. analogChannelNameCellHtml()'s own dot+name markup,
+        // rendered verbatim). Digital's own table never uses `raw` -- only
+        // the analog Channel column needs it.
+        //
+        // `rowAttrsFn(channel)`, if given, returns an extra attribute
+        // string spliced onto the <tr> itself (UAT5: this is how analog
+        // rows become the toggle control -- class/tabindex/role/
+        // aria-pressed/data-* -- without digital's row rendering changing
+        // at all, since renderDigitalGroup() never passes this argument).
+        function renderChannelTable(channels, columns, actionColumn, checkboxColumn, rowAttrsFn) {
             let html = '<table class="channels"><thead><tr>';
             if (checkboxColumn) html += '<th></th>';
             for (const [label] of columns) html += '<th>' + escapeHtml(label) + '</th>';
@@ -3602,7 +3607,8 @@
             for (const channel of channels) {
                 const searchText = [channel.name, channel.unit, channel.phase]
                     .filter(Boolean).join(" ").toLowerCase();
-                html += '<tr data-search="' + escapeHtml(searchText) + '">';
+                const extraAttrs = rowAttrsFn ? rowAttrsFn(channel) : "";
+                html += '<tr data-search="' + escapeHtml(searchText) + '"' + extraAttrs + '>';
                 if (checkboxColumn) html += '<td class="select-col">' + checkboxColumn(channel) + '</td>';
                 for (const [, accessor, opts] of columns) {
                     const value = accessor(channel);
@@ -3615,82 +3621,50 @@
             return html;
         }
 
-        // Phase 4A-UAT4: the analog Name cell -- a small color dot (the
-        // SAME color wwColorForChannel() gives the Plotly trace, section
-        // 5's "one color authority"), the channel name, and (only when
-        // this exact channel is currently displayed) a compact remove
-        // control -- reusing the existing wwRemoveChannelByKey() removal
-        // path, just relocated here from the removed waveform legend chip
-        // strip (Phase 4A-UAT4: the sidebar is now the analog legend --
-        // see docs/project-memory/MIGRATION_PLAN.md's own record). The
-        // remove button is always present in the DOM (never re-rendered) but
-        // starts `hidden`; wwSyncChannelBrowserDisplayState() toggles it
-        // (and the dot's dimmed state) in place whenever the displayed
-        // set changes, since this cell is built once per render while
-        // display state can change many times after.
+        // Phase 4A-UAT5: the analog Channel cell -- a color dot (the SAME
+        // color wwColorForChannel() gives the Plotly trace, section 9's
+        // "one color authority") plus the channel name and unit combined
+        // into one label ("GT4 VB (kV)"), omitting the parens entirely
+        // when unit is empty/missing. The Unit column itself is gone (see
+        // renderAnalogGroup()) -- this cell carries that information
+        // instead so no data is lost. No remove control and no data-*
+        // identity attributes live here any more: the whole <tr> is now
+        // the interactive element (see analogChannelRowAttrs()), so this
+        // cell is purely presentational.
         //
         // Section 27 (accessibility): the dot is `aria-hidden` -- it is a
         // color->identity mapping aid, not new information; the channel
-        // name text remains the real accessible label, exactly as
+        // name/unit text remains the real accessible label, exactly as
         // before.
         function analogChannelNameCellHtml(source, channel) {
             const color = wwColorForChannel(source.source_id, channel.name);
-            return '<span class="channel-name-cell" data-source-id="' + escapeHtml(source.source_id) +
-                '" data-channel-name="' + escapeHtml(channel.name) + '">' +
+            const label = channel.unit ? channel.name + " (" + channel.unit + ")" : channel.name;
+            return '<span class="channel-name-cell">' +
                 '<span class="channel-color-dot" style="background:' + escapeHtml(color) + '" aria-hidden="true"></span>' +
-                '<span class="channel-name-text">' + escapeHtml(channel.name) + '</span>' +
-                '<button type="button" class="channel-remove-btn" hidden' +
-                ' data-source-id="' + escapeHtml(source.source_id) + '"' +
-                ' data-channel-name="' + escapeHtml(channel.name) + '"' +
-                ' title="Remove from display" aria-label="Remove ' + escapeHtml(channel.name) + ' from display">&times;</button>' +
+                '<span class="channel-name-text">' + escapeHtml(label) + '</span>' +
                 '</span>';
         }
 
-        // ------------------------------------------------------------------
-        // Phase 2C-A: multi-channel selection -- analog channels only,
-        // reusing the existing collapsible/searchable browser above
-        // unchanged (checkboxes live inside the same rows). Selection
-        // state (`selectedChannels`) is a plain Map keyed by
-        // "sourceId::channelName", independent of which source's channel
-        // table happens to be rendered right now -- switching the selected
-        // source rebuilds this table (innerHTML replace, see selectSource)
-        // but a channel checked earlier stays checked (and counted) if the
-        // user browses back to it, since the Map (not the DOM) is the
-        // source of truth. See wwAddSelectedChannels() for how this
-        // becomes displayed waveform panels.
-        // ------------------------------------------------------------------
-        const selectedChannels = new Map();
-
-        // Phase 4A: digital channels get their OWN selection map, never
-        // merged into selectedChannels -- "Add selected"/"Clear
-        // selection" now act on whichever kind(s) currently have
-        // checkboxes checked (see setupSelectionControls() below), but
-        // the underlying add path stays distinct (wwAddSelectedChannels
-        // for analog, wwAddDigitalChannels for digital) since the two
-        // have genuinely different display architectures (per-panel
-        // Plotly instances vs. one shared digital-region figure).
-        const selectedDigitalChannels = new Map();
-
-        function channelSelectionKey(sourceId, channelName) {
-            return sourceId + "::" + channelName;
-        }
-
-        // Phase 2C-C3: `timebase` (already fetched by selectSource() for
-        // every source, see renderChannels()) carries `start_time` and
-        // `timing_reference` -- the SAME authoritative recording-start
-        // timestamp and backend-computed trustworthiness signal already
-        // used for the read-only "Start time"/"Timing mode" stat cards
-        // above. Threading it onto each checkbox (rather than adding a
-        // second network call) is what lets wwAddSelectedChannels carry a
-        // real, source-grounded Absolute-time origin per channel -- see
-        // wwTimeModesForChannel()'s own comment for why `timing_reference`
-        // specifically (not just "is start_time present") is the correct
-        // capability signal (section 10/24).
-        function channelCheckboxHtml(source, channel, timebase) {
-            const key = channelSelectionKey(source.source_id, channel.name);
-            const checked = selectedChannels.has(key) ? " checked" : "";
-            return '<input type="checkbox" class="channel-select-cb"' + checked +
-                ' data-channel-kind="analog"' +
+        // Phase 4A-UAT5: builds the extra attributes that turn an analog
+        // channel's <tr> itself into the display toggle -- replacing the
+        // removed checkbox + sidebar remove button entirely. Mirrors the
+        // existing table.recordings tr[data-source-id] row-as-button
+        // pattern (role="button" on a <tr>, tabindex, aria-label) rather
+        // than inventing a new interaction primitive.
+        //
+        // `aria-pressed` (not opacity alone, section 33) carries the
+        // displayed/hidden state for assistive tech; the same data-*
+        // fields the old checkbox used to carry (unit/engineering-type/
+        // recording-start-time/timing-reference) are threaded here instead
+        // so wwToggleAnalogChannelDisplay() can call wwAddSelectedChannels()
+        // with exactly the same channel metadata as before -- no second
+        // active/inactive map, no re-fetch.
+        function analogChannelRowAttrs(source, channel, timebase) {
+            const key = wwChannelKey(source.source_id, channel.name);
+            const isDisplayed = ww.displayed.has(key);
+            const label = (isDisplayed ? "Hide " : "Show ") + channel.name;
+            return ' class="channel-row--toggle' + (isDisplayed ? "" : " channel-row--hidden") + '"' +
+                ' tabindex="0" role="button" aria-pressed="' + isDisplayed + '"' +
                 ' data-source-id="' + escapeHtml(source.source_id) + '"' +
                 ' data-source-name="' + escapeHtml(source.station_name || "") + '"' +
                 ' data-channel-name="' + escapeHtml(channel.name) + '"' +
@@ -3698,17 +3672,39 @@
                 ' data-engineering-type="' + escapeHtml(channel.engineering_type || "Undefined") + '"' +
                 ' data-recording-start-time="' + escapeHtml((timebase && timebase.start_time) || "") + '"' +
                 ' data-timing-reference="' + escapeHtml((timebase && timebase.timing_reference) || "") + '"' +
-                ' aria-label="Select ' + escapeHtml(channel.name) + '">';
+                ' aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '"';
         }
 
-        // Phase 4A: digital's own checkbox template, mirroring
-        // channelCheckboxHtml() -- data-channel-kind="digital" is what
-        // setupSelectionControls()'s shared change listener uses to route
-        // into selectedDigitalChannels (never selectedChannels/analog).
-        // data-channel-index threads the channel's original COMTRADE index
-        // through for the stable secondary sort tiebreak (section 16/43),
-        // the same purpose channelIndex serves on a displayed digital
-        // entry (see wwSortedDigitalEntries()).
+        // ------------------------------------------------------------------
+        // Phase 4A-UAT5: analog channels no longer have selectable
+        // checkboxes at all -- clicking/activating a row directly toggles
+        // its display (see analogChannelRowAttrs()/
+        // wwToggleAnalogChannelDisplay()), reusing ww.displayed as the
+        // ONE authority (section 9: no second active/inactive map). The
+        // old `selectedChannels` Map and its analog checkbox markup
+        // (channelCheckboxHtml()) are gone entirely -- there is nothing
+        // left for an analog `change` event to populate.
+        //
+        // Digital channels are unaffected: they keep the pre-existing
+        // checkbox + "Add N selected"/"Clear selection" selection
+        // workflow below, now digital-only (the buttons' count/behavior
+        // were already exclusively meaningful for digital once analog's
+        // contribution became structurally impossible -- see
+        // setupSelectionControls()).
+        // ------------------------------------------------------------------
+        const selectedDigitalChannels = new Map();
+
+        function channelSelectionKey(sourceId, channelName) {
+            return sourceId + "::" + channelName;
+        }
+
+        // Phase 4A: digital's own checkbox template -- UNCHANGED by UAT5
+        // (analog's row-toggle redesign does not touch digital's
+        // selection workflow at all). data-channel-index threads the
+        // channel's original COMTRADE index through for the stable
+        // secondary sort tiebreak (section 16/43), the same purpose
+        // channelIndex serves on a displayed digital entry (see
+        // wwSortedDigitalEntries()).
         function digitalChannelCheckboxHtml(source, channel, timebase) {
             const key = channelSelectionKey(source.source_id, channel.name);
             const checked = selectedDigitalChannels.has(key) ? " checked" : "";
@@ -3724,47 +3720,79 @@
                 ' aria-label="Select ' + escapeHtml(channel.name) + '">';
         }
 
-        // Phase 4A-UAT4: the Channels sidebar is now the primary analog
-        // legend (section 2/3) -- keeps every analog row's color-dot
-        // dimmed state and remove-control visibility in sync with
-        // ww.displayed. analogChannelNameCellHtml() builds each row ONCE
-        // per renderChannels() call, but the displayed set can change many
-        // times after that (Add selected, sidebar remove, source removal,
-        // workspace clear, default-display-on-open) -- called from each of
-        // those mutation points rather than re-rendering the whole table
-        // every time (cheap DOM pass, no innerHTML rebuild, no lost scroll
+        // Phase 4A-UAT5: the Channels sidebar is the primary analog legend
+        // (section 2/3) -- keeps every analog row's displayed/hidden
+        // state (class, aria-pressed, label/title) in sync with
+        // ww.displayed. Rows are built ONCE per renderChannels() call, but
+        // the displayed set can change many times after that (row toggle,
+        // Separate-mode lane remove, source removal, workspace clear,
+        // default-display-on-open) -- called from each of those mutation
+        // points rather than re-rendering the whole table every time
+        // (cheap DOM pass, no innerHTML rebuild, no lost scroll
         // position/search-filter state). A no-op if the channel browser
         // isn't currently showing this source (querySelectorAll finds
         // nothing).
         function wwSyncChannelBrowserDisplayState() {
-            for (const cell of document.querySelectorAll("#channelGroups .channel-name-cell")) {
-                const key = wwChannelKey(cell.dataset.sourceId, cell.dataset.channelName);
+            for (const row of document.querySelectorAll("#channelGroups tr.channel-row--toggle")) {
+                const key = wwChannelKey(row.dataset.sourceId, row.dataset.channelName);
                 const isDisplayed = ww.displayed.has(key);
-                const dot = cell.querySelector(".channel-color-dot");
-                if (dot) dot.classList.toggle("channel-color-dot--dim", !isDisplayed);
-                const removeBtn = cell.querySelector(".channel-remove-btn");
-                if (removeBtn) removeBtn.hidden = !isDisplayed;
+                row.classList.toggle("channel-row--hidden", !isDisplayed);
+                row.setAttribute("aria-pressed", String(isDisplayed));
+                const label = (isDisplayed ? "Hide " : "Show ") + row.dataset.channelName;
+                row.setAttribute("aria-label", label);
+                row.title = label;
+            }
+        }
+
+        // Phase 4A-UAT5: the row-toggle handler itself -- reuses the
+        // existing wwRemoveChannelByKey()/wwAddSelectedChannels() paths
+        // exactly as the old checkbox + "Add selected"/sidebar remove
+        // button did, just triggered directly by the row instead (section
+        // 9: no second active/inactive map, no new color logic --
+        // wwAddSelectedChannels already calls wwColorForChannel()
+        // internally). The channel metadata the removed checkbox used to
+        // carry via its own data-* attributes now lives on the row
+        // itself (see analogChannelRowAttrs()).
+        function wwToggleAnalogChannelDisplay(row) {
+            const sourceId = row.dataset.sourceId;
+            const channelName = row.dataset.channelName;
+            const key = wwChannelKey(sourceId, channelName);
+            if (ww.displayed.has(key)) {
+                wwRemoveChannelByKey(key);
+            } else {
+                wwAddSelectedChannels([{
+                    sourceId,
+                    sourceName: row.dataset.sourceName,
+                    channelName,
+                    unit: row.dataset.unit,
+                    engineeringType: row.dataset.engineeringType || "Undefined",
+                    recordingStartTime: row.dataset.recordingStartTime || null,
+                    timingReference: row.dataset.timingReference || null,
+                }]);
             }
         }
 
         // Wired fresh after every renderChannels() call (the whole panel is
         // rebuilt via innerHTML, same reason setupChannelSearch is re-wired
-        // each time too) -- delegated single `change` listener on
-        // #channelGroups rather than one listener per checkbox.
+        // each time too) -- delegated listeners on #channelGroups rather
+        // than one per checkbox/row.
         function setupSelectionControls() {
             const addBtn = document.getElementById("addSelectedBtn");
             const clearBtn = document.getElementById("clearSelectionBtn");
             const groupsEl = document.getElementById("channelGroups");
 
-            // Phase 4A: the count/enabled-state now reflects BOTH
-            // selection maps together -- "Add N selected"/"Clear
-            // selection" read as one combined action regardless of
-            // whether the user checked analog boxes, digital boxes, or
-            // both, matching the existing single-button UI (no separate
-            // "Add analog"/"Add digital" buttons introduced -- section 37's
-            // own "prefer minimal adaptation" guidance).
+            // Phase 4A-UAT5: analog no longer has selectable checkboxes at
+            // all (rows toggle display directly -- see
+            // wwToggleAnalogChannelDisplay()), so "Add N selected"/"Clear
+            // selection" now refer to DIGITAL selection only. The button
+            // text/behavior is unchanged from the user's point of view --
+            // it was always describing "how many checkboxes are checked",
+            // and a checked checkbox can now only ever be digital, so no
+            // wording change is needed to stay truthful. Never leaves a
+            // button claiming "Add 0 selected" for analog: there is no
+            // analog contribution to this count any more, structurally.
             function syncButtons() {
-                const count = selectedChannels.size + selectedDigitalChannels.size;
+                const count = selectedDigitalChannels.size;
                 addBtn.textContent = "Add " + count + " selected";
                 addBtn.disabled = count === 0;
                 clearBtn.disabled = count === 0;
@@ -3773,55 +3801,49 @@
             groupsEl.addEventListener("change", (event) => {
                 const cb = event.target;
                 if (!cb.classList || !cb.classList.contains("channel-select-cb")) return;
+                // Phase 4A-UAT5: every remaining `.channel-select-cb` is
+                // digital's own (analog's checkbox markup is gone) -- no
+                // more kind-branching needed here.
                 const key = channelSelectionKey(cb.dataset.sourceId, cb.dataset.channelName);
-                if (cb.dataset.channelKind === "digital") {
-                    if (cb.checked) {
-                        selectedDigitalChannels.set(key, {
-                            sourceId: cb.dataset.sourceId,
-                            sourceName: cb.dataset.sourceName,
-                            channelName: cb.dataset.channelName,
-                            channelIndex: Number(cb.dataset.channelIndex) || 0,
-                            recordingStartTime: cb.dataset.recordingStartTime || null,
-                            timingReference: cb.dataset.timingReference || null,
-                        });
-                    } else {
-                        selectedDigitalChannels.delete(key);
-                    }
-                } else if (cb.checked) {
-                    selectedChannels.set(key, {
+                if (cb.checked) {
+                    selectedDigitalChannels.set(key, {
                         sourceId: cb.dataset.sourceId,
                         sourceName: cb.dataset.sourceName,
                         channelName: cb.dataset.channelName,
-                        unit: cb.dataset.unit,
-                        engineeringType: cb.dataset.engineeringType || "Undefined",
+                        channelIndex: Number(cb.dataset.channelIndex) || 0,
                         recordingStartTime: cb.dataset.recordingStartTime || null,
                         timingReference: cb.dataset.timingReference || null,
                     });
                 } else {
-                    selectedChannels.delete(key);
+                    selectedDigitalChannels.delete(key);
                 }
                 syncButtons();
             });
 
-            // Phase 4A-UAT4: the sidebar's own removal path (Grouped/
-            // Custom's ONLY one now -- see wwRenderLegend()'s own
-            // comment; Separate mode's existing .ww-legend-remove chip
-            // stays available too, unchanged). Same wwRemoveChannelByKey()
-            // removal path either way; delegated on #channelGroups (same
-            // technique as the `change` listener above) so it survives
-            // every renderChannels() rebuild without needing to be
-            // re-wired per button.
+            // Phase 4A-UAT5: analog rows are now their own toggle control
+            // (see analogChannelRowAttrs()/wwToggleAnalogChannelDisplay())
+            // -- click and keyboard (Enter/Space) both delegated on
+            // #channelGroups so they survive every renderChannels()
+            // rebuild without needing to be re-wired per row, mirroring
+            // the existing table.recordings row-as-button wiring
+            // elsewhere in this file. Digital rows never carry the
+            // `channel-row--toggle` class, so this never fires for them.
             groupsEl.addEventListener("click", (event) => {
-                const btn = event.target.closest(".channel-remove-btn");
-                if (!btn) return;
-                wwRemoveChannelByKey(wwChannelKey(btn.dataset.sourceId, btn.dataset.channelName));
+                const row = event.target.closest("tr.channel-row--toggle");
+                if (!row) return;
+                wwToggleAnalogChannelDisplay(row);
+            });
+            groupsEl.addEventListener("keydown", (event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                const row = event.target.closest("tr.channel-row--toggle");
+                if (!row || event.target !== row) return;
+                event.preventDefault();
+                wwToggleAnalogChannelDisplay(row);
             });
 
             addBtn.addEventListener("click", () => {
-                if (selectedChannels.size === 0 && selectedDigitalChannels.size === 0) return;
-                if (selectedChannels.size > 0) wwAddSelectedChannels(Array.from(selectedChannels.values()));
-                if (selectedDigitalChannels.size > 0) wwAddDigitalChannels(Array.from(selectedDigitalChannels.values()));
-                selectedChannels.clear();
+                if (selectedDigitalChannels.size === 0) return;
+                wwAddDigitalChannels(Array.from(selectedDigitalChannels.values()));
                 selectedDigitalChannels.clear();
                 // Uncheck any checkboxes currently rendered for the
                 // just-added channels (same table, since Add is only ever
@@ -3831,7 +3853,6 @@
             });
 
             clearBtn.addEventListener("click", () => {
-                selectedChannels.clear();
                 selectedDigitalChannels.clear();
                 for (const cb of groupsEl.querySelectorAll(".channel-select-cb:checked")) cb.checked = false;
                 syncButtons();
