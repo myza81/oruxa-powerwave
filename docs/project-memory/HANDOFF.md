@@ -4,9 +4,63 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-08-18**
+Last updated: **2026-08-19**
 
 ## What was most recently done
+
+**Phase 4A-UAT6 — Global Analog Channel Visibility Across Layout Modes.**
+Full detail:
+[MIGRATION_PLAN.md — Phase 4A-UAT6 Record](MIGRATION_PLAN.md#phase-4a-uat6--global-analog-channel-visibility-across-layout-modes-2026-08-19),
+[DECISIONS.md — DEC-035](DECISIONS.md#dec-035--analog-channel-visibility-is-workspace-global-layout-mode-governs-arrangement-only-never-visibility-phase-4a-uat6).
+
+**Owner report**: hiding an analog channel in Grouped mode did not
+reliably persist when switching to Separate/Custom. Required rule:
+`ww.displayed` is the ONE global visibility authority; layout mode is
+presentation-only, never a second source of truth.
+
+**Root cause**: the simple hide-then-switch-mode flow was ALREADY
+correct (`wwRebuildLayout()` always re-derives every layout from
+`ww.displayed` fresh) -- confirmed by reproducing the owner's own
+example against pre-UAT6 code, which passed. The REAL bug was in the
+Custom Groups editor: `wwOpenGroupEditor()` filtered a group's
+membership down to only currently-displayed channels, and Apply
+committed that pruned copy back into `ww.customGroups` -- permanently
+losing a hidden channel's group assignment (so re-enabling it later
+dropped it into its own auto-solo panel instead of its original group).
+
+**What changed** (`frontend/index.html` only): `wwOpenGroupEditor()` no
+longer filters membership by visibility at open time. New
+`ww.channelMeta` map (same lifecycle as `ww.channelColors`/
+`ww.customGroups`/`ww.panelHeights` -- survives hide, cleared only by
+`wwClearWorkspace()`) lets the editor's group chips still show a hidden
+member's name/unit/color (dimmed via new `.group-chip--hidden`) without
+needing it in `ww.displayed`. New `wwIsAnalogChannelVisible()` helper
+(pure readability wrapper around the pre-existing `ww.displayed.has(...)`
+check, zero behavior change). `wwColorForChannel()` and the Separate-mode
+local `x` (already routing through the same global removal path) are
+unchanged.
+
+**Separately discovered, NOT fixed**: a genuine, unrelated pre-existing
+rendering bug -- `wwAddSelectedChannels()` can double-add a Plotly trace
+for the 2nd..Nth channel of a brand-new panel when 2+ new channels join
+the same group in one batch call (most commonly default-display-on-open).
+Flagged for the owner as its own separate task; this phase's own tests
+were written to check ground-truth state, not the affected Plotly-call
+counts, so this phase's correctness claims don't depend on that bug
+being fixed.
+
+**Verification**: new dedicated `phase4a_uat6_check.mjs` (13 checks,
+scratch convention) covers the full A-F cross-mode visibility matrix,
+state persistence, source isolation, and digital isolation. Full
+regression suite still exactly the established 18-failure baseline;
+backend 321/321 unchanged.
+
+**Not yet done**: real-browser confirmation of the owner's original
+reported sequence and the new hidden-chip dimming -- flagged for owner
+UAT. The separately-discovered double-add rendering bug remains
+unfixed, pending its own task.
+
+## What was done in the prior session (Phase 4A-UAT5 — Simplify Analog Channel Toggle Rows)
 
 **Phase 4A-UAT5 — Simplify Analog Channel Toggle Rows.** Full detail:
 [MIGRATION_PLAN.md — Phase 4A-UAT5 Record](MIGRATION_PLAN.md#phase-4a-uat5--simplify-analog-channel-toggle-rows-2026-08-18).
@@ -66,7 +120,7 @@ was verified intact. No history rewrite was performed.
 25%/55% hidden-row opacity read, hover/focus tint, keyboard focus ring)
 -- flagged for owner UAT before any further waveform feature work.
 
-## What was done in the prior session (Phase 4A-UAT4 — Channel Sidebar as Analog Legend)
+## What was done in the earlier session (Phase 4A-UAT4 — Channel Sidebar as Analog Legend)
 
 **Phase 4A-UAT4 — Channel Sidebar as Analog Legend.** Full detail:
 [MIGRATION_PLAN.md — Phase 4A-UAT4 Record](MIGRATION_PLAN.md#phase-4a-uat4--channel-sidebar-as-analog-legend-2026-08-18).

@@ -8548,6 +8548,162 @@ flagged for owner UAT.
 
 ---
 
+## Phase 4A-UAT6 — Global Analog Channel Visibility Across Layout Modes (2026-08-19)
+
+`[DECISION]` See
+[DECISIONS.md — DEC-035](DECISIONS.md#dec-035--analog-channel-visibility-is-workspace-global-layout-mode-governs-arrangement-only-never-visibility-phase-4a-uat6):
+analog channel visibility is workspace-global across Grouped, Separate,
+and Custom; layout mode controls arrangement only, never visibility.
+Everything below is `[FACT]` implementation detail of that decision.
+
+### Owner direction
+
+Real-browser UAT observation: hiding an analog channel while in Grouped
+mode did not consistently persist when switching to Separate or Custom
+(the channel could reappear). Required rule: `ww.displayed` (channel
+visibility) is the ONE global authority; layout mode is a pure
+presentation/arrangement derivation from it, never a second source of
+truth. Diagnose the exact state duplication, fix it, and add permanent
+cross-mode tests.
+
+### Root cause
+
+Two investigation paths, one dead end and one real bug:
+
+- **The simple flow (hide in Grouped → switch layout) was NOT actually
+  broken.** `wwRebuildLayout()` (pre-existing since Phase 2C-B1) already
+  derives every layout's panels from `Array.from(ww.displayed.values())`
+  fresh on every call — there was never a second Grouped/Separate/Custom
+  visible-state to fall out of sync. A dedicated jsdom reproduction of
+  the owner's own literal example (hide B in Grouped → Separate → Custom
+  → back to Grouped) was written FIRST, against the pre-UAT6 code, and
+  it already passed — confirming this path was architecturally sound
+  before any fix was applied.
+- **The real, concrete, reproducible bug: the Custom Groups editor.**
+  `wwOpenGroupEditor()` seeded its working copy via
+  `group.channelKeys.filter((key) => displayedKeys.has(key))` —
+  filtering OUT any group member that happened to be hidden at the
+  moment the editor was opened. `wwApplyGroupEditor()` then committed
+  that FILTERED copy straight back into `ww.customGroups`, permanently
+  losing the hidden member's group assignment. Reproduced directly: add
+  A/B/C to a Custom Group → hide B → open + Apply the editor without
+  touching anything → `ww.customGroups` silently drops `B` → re-enabling
+  B afterward puts it in its own auto-solo panel instead of rejoining
+  the group. This is exactly "group membership != visibility" being
+  violated by treating "currently invisible" as "currently unassigned."
+  Plausibly the actual mechanism behind at least some of what the owner
+  observed as "Custom doesn't consistently respect hidden state."
+
+### Global visibility authority
+
+No new state introduced for visibility itself — `ww.displayed` already
+was, and remains, the one global authority (confirmed correct by the
+root-cause investigation above). A new `wwIsAnalogChannelVisible(sourceId,
+channelName)` helper wraps the existing `ww.displayed.has(wwChannelKey(...))`
+check purely for readability/intent at call sites
+(`analogChannelRowAttrs()`, `wwSyncChannelBrowserDisplayState()`) — pure
+refactor, zero behavior change.
+
+### Grouped / Separate / Custom
+
+All three already deriving from `wwPanelGroupKeyFor()` intersecting
+`ww.displayed` with that mode's own grouping rule — unchanged by this
+phase, confirmed correct by tests. Separate mode's own local lane `x`
+was already routing through `wwRemoveChannelByKey()` (the same global
+removal path the sidebar uses) since it was introduced in Phase 2C-B1 —
+already satisfied "Separate's local x updates global visibility" before
+this phase; verified, not newly implemented.
+
+### Custom Group membership survives hide/re-enable
+
+`wwOpenGroupEditor()` no longer filters `channelKeys` to displayed-only
+at open time — the full membership is preserved in the working copy
+regardless of a member's current visibility. New `ww.channelMeta: Map<
+"sourceId::channelName", {sourceId, sourceName, channelName, unit,
+engineeringType}>` (same lifecycle as `ww.channelColors`/
+`ww.customGroups`/`ww.panelHeights` — populated on every add in
+`wwAddSelectedChannels()`, never deleted by hide/remove, cleared only by
+`wwClearWorkspace()`) lets `wwRenderGroupEditor()`'s group-card chip loop
+describe a hidden member's name/unit/color without needing it in
+`ww.displayed` — reads `ww.channelMeta`/`wwColorForChannel()` instead of
+`ww.displayed.get(key)`, which would have silently skipped rendering that
+chip entirely. A hidden member's chip renders with a new
+`.group-chip--hidden` class (opacity 0.5, `title="Hidden -- not
+currently displayed"`) — a visual cue, per the owner's own "optionally
+show hidden state subtly... but do not expand scope" guidance, not a new
+interaction. The "Unassigned" picker itself remains scoped to
+currently-displayed channels only (unchanged, out of scope to expand).
+
+### Re-enable behavior
+
+Clicking a hidden row (or the Separate lane's own local `x`, or any
+future control built on the same primitives) calls the SAME
+`wwAddSelectedChannels()`/`wwRemoveChannelByKey()` paths as before —
+`wwColorForChannel()` is untouched and reused unchanged, so color never
+resets on hide/re-enable/layout-switch. Because `wwPanelGroupKeyFor()`
+already looks up `wwCustomGroupFor()` fresh from the current
+`ww.customGroups` on every call, and that data is no longer pruned by
+the editor, a re-enabled channel automatically rejoins its ORIGINAL
+Custom Group with zero additional code — this "just works" once the
+editor stopped corrupting the underlying membership data.
+
+### A separately discovered, out-of-scope bug (not fixed here)
+
+While writing cross-mode tests, a genuine, unrelated, pre-existing
+rendering bug surfaced: `wwAddSelectedChannels()` can double-invoke
+`Plotly.addTraces()` for the 2nd..Nth channel of a brand-new panel when
+2+ NEW channels destined for the same group are added in a single batch
+call (`isNewPanel` is computed per-meta WITHIN that same loop, so a
+panel created moments earlier by an earlier meta in the SAME batch looks
+"pre-existing" to every later meta that joins it) — the most common
+real-world trigger being default-display-on-open for a source whose
+first-ever-displayed engineering-type group has 2+ channels. Confirmed
+via a dedicated jsdom reproduction (a fresh source open showed 7
+tracked Plotly calls for a 4-channel Voltage group, not 4). This is
+unrelated to visibility state and out of scope for this phase (a
+rendering-duplication concern, not a state-duplication one) — flagged
+for the owner per this project's own change-governance process rather
+than fixed here. This project's own test suite's assertions were
+adjusted to check ground-truth `ww.displayed`/`panel.channels` rather
+than the affected Plotly-call-derived counts, so this phase's own
+cross-mode correctness claims do not depend on that separate bug being
+fixed.
+
+### Tests
+
+New dedicated `phase4a_uat6_check.mjs` (scratch convention, not
+committed, 13 checks): A. Grouped hide propagates to Separate/Custom;
+B. Separate's local `x` hide propagates globally (Grouped/Custom too);
+C. hiding from the sidebar while Custom is active propagates back to
+Grouped/Separate; D. re-enabling from the sidebar restores the channel
+in every layout; E. Custom Group membership survives hide, survives an
+editor open+Apply cycle while hidden, and a re-enabled member rejoins
+its original group (not auto-solo) — plus the editor's own chip list
+still rendering a hidden member, dimmed; F. color identity stable
+through hide/re-enable/every layout switch; state persistence across
+Grouped→Separate→Custom→Absolute/Elapsed→Recordings→Waveform; source
+isolation (hiding `src1::A` never touches `src2::A`); digital isolation
+(digital's checkbox/selection workflow provably untouched). Full
+existing frontend regression suite: still exactly the established
+18-failure baseline (independently reconfirmed). Backend: 321/321
+unchanged (no backend file touched).
+
+### Files changed
+
+`frontend/index.html` only.
+
+### Honest limitations
+
+No real browser is available in this sandbox — the actual visual
+correctness (hidden-chip dimming legibility, the owner's original
+real-browser reproduction sequence) was reasoned through and
+structurally exercised via jsdom, but not visually confirmed — flagged
+for owner UAT. The separately-discovered double-`addTraces` bug (see
+above) was deliberately NOT fixed in this pass; it remains present in
+the shipped app and should be evaluated as its own, separate task.
+
+---
+
 ## Phase 4A-UAT5 — Simplify Analog Channel Toggle Rows (2026-08-18)
 
 `[FACT]` throughout. No new DECISIONS.md entry -- a UX simplification of

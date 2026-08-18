@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-18** (Phase 4A-UAT5).
+Last meaningful update: **2026-08-19** (Phase 4A-UAT6).
 
 ## Development phase
 
@@ -1273,6 +1273,38 @@ dedicated commit — see the MIGRATION_PLAN.md record's own "A note on how
 this landed in Git history" for what happened and how it was verified;
 nothing was lost, but `git log`/`git blame` alone will not describe this
 change accurately. Not yet owner-UAT'd in a real browser.
+
+`[DECISION]` **Analog channel visibility is workspace-global; layout
+mode governs arrangement only, never visibility — Phase 4A-UAT6 —
+Global Analog Channel Visibility Across Layout Modes** (2026-08-19,
+[DEC-035](DECISIONS.md#dec-035--analog-channel-visibility-is-workspace-global-layout-mode-governs-arrangement-only-never-visibility-phase-4a-uat6))
+— see
+[MIGRATION_PLAN.md — Phase 4A-UAT6 Record](MIGRATION_PLAN.md#phase-4a-uat6--global-analog-channel-visibility-across-layout-modes-2026-08-19).
+`ww.displayed` was confirmed (via a direct reproduction of the owner's
+own reported sequence, which already passed against pre-UAT6 code) to
+already be the one correct global visibility authority every layout
+renderer derives from — no state-duplication bug existed in the simple
+Grouped/Separate/Custom hide-and-switch path. The REAL, concrete bug was
+in the Custom Groups editor: opening it silently filtered a group's
+membership down to only currently-displayed channels, and Applying
+committed that filtered (i.e. pruned) copy back — permanently losing a
+hidden channel's group assignment, so re-enabling it later dropped it
+into its own auto-solo panel instead of its original group. Fixed by no
+longer filtering membership at open time; a new `ww.channelMeta` map
+(same lifecycle as `ww.channelColors`/`ww.customGroups`/`ww.panelHeights`
+— survives hide, cleared only by a whole-workspace reset) lets the
+editor still describe a hidden member's name/unit/color (rendered
+dimmed via `.group-chip--hidden`) without requiring it to be displayed.
+`wwColorForChannel()` and the Separate-mode local `x` (which was already
+routing through the same global `wwRemoveChannelByKey()` path) are both
+unchanged. **A separate, unrelated, pre-existing rendering bug was
+discovered but deliberately NOT fixed in this pass** — `wwAddSelectedChannels()`
+can double-add a Plotly trace for the 2nd..Nth channel of a brand-new
+panel when 2+ new channels join the same group in one batch call (most
+commonly triggered by default-display-on-open); flagged for the owner as
+its own separate task. Full frontend regression suite: still exactly the
+established 18-failure baseline; backend 321/321 unchanged (no backend
+file touched). Not yet owner-UAT'd in a real browser.
 
 ## Completed foundation work
 

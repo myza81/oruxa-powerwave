@@ -1065,6 +1065,11 @@
             padding: 4px 8px 4px 10px;
             max-width: 100%; /* Phase 3A-UAT3 (Finding D): a chip can never force the dialog wider */
         }
+        /* Phase 4A-UAT6: a group chip for a channel currently hidden via
+           the sidebar -- membership is preserved (see wwOpenGroupEditor()'s
+           own comment), this is purely a visual cue so the owner can tell,
+           at a glance, which assigned channels aren't presently drawn. */
+        .group-chip--hidden { opacity: 0.5; }
         .group-chip-dot {
             width: 8px;
             height: 8px;
@@ -3660,8 +3665,7 @@
         // with exactly the same channel metadata as before -- no second
         // active/inactive map, no re-fetch.
         function analogChannelRowAttrs(source, channel, timebase) {
-            const key = wwChannelKey(source.source_id, channel.name);
-            const isDisplayed = ww.displayed.has(key);
+            const isDisplayed = wwIsAnalogChannelVisible(source.source_id, channel.name);
             const label = (isDisplayed ? "Hide " : "Show ") + channel.name;
             return ' class="channel-row--toggle' + (isDisplayed ? "" : " channel-row--hidden") + '"' +
                 ' tabindex="0" role="button" aria-pressed="' + isDisplayed + '"' +
@@ -3734,8 +3738,7 @@
         // nothing).
         function wwSyncChannelBrowserDisplayState() {
             for (const row of document.querySelectorAll("#channelGroups tr.channel-row--toggle")) {
-                const key = wwChannelKey(row.dataset.sourceId, row.dataset.channelName);
-                const isDisplayed = ww.displayed.has(key);
+                const isDisplayed = wwIsAnalogChannelVisible(row.dataset.sourceId, row.dataset.channelName);
                 row.classList.toggle("channel-row--hidden", !isDisplayed);
                 row.setAttribute("aria-pressed", String(isDisplayed));
                 const label = (isDisplayed ? "Hide " : "Show ") + row.dataset.channelName;
@@ -4101,6 +4104,19 @@
             // clears it (a brand-new workspace has no color history to
             // remember).
             channelColors: new Map(),
+            // Phase 4A-UAT6: "sourceId::channelName" -> {sourceId,
+            // sourceName, channelName, unit, engineeringType} -- survives
+            // a channel being hidden (wwRemoveChannel never deletes from
+            // here), same lifecycle policy as ww.channelColors/
+            // ww.customGroups/ww.panelHeights above (only wwClearWorkspace()
+            // clears it). Exists so UI that needs to describe a HIDDEN
+            // channel -- the Custom Groups editor's own group chips, in
+            // particular -- can still show its real name/unit without
+            // requiring it to be in ww.displayed. ww.displayed itself
+            // remains the ONE global visibility authority (see
+            // wwIsAnalogChannelVisible()); this map is metadata only, never
+            // consulted to decide whether a channel is currently shown.
+            channelMeta: new Map(),
             panelSeq: 0,
             viewportDebounceTimer: null,
             // Incremented by wwClearWorkspace() -- guards against an
@@ -4502,6 +4518,20 @@
                 ww.channelColors.set(key, color);
             }
             return color;
+        }
+
+        // Phase 4A-UAT6: the ONE authority for "is this analog channel
+        // currently visible" -- ww.displayed is already, by construction,
+        // the global (not per-layout-mode) set of currently-shown analog
+        // channels (see wwRebuildLayout()'s own comment: every layout
+        // renderer derives its panels from this SAME flat set, intersected
+        // with that mode's own grouping rule -- there is no separate
+        // Grouped/Separate/Custom visible-state to keep in sync). This
+        // helper exists purely so call sites read as intent ("is it
+        // visible") rather than the underlying Map mechanics, matching the
+        // owner's own requested naming (section 4/17/18 of the UAT6 spec).
+        function wwIsAnalogChannelVisible(sourceId, channelName) {
+            return ww.displayed.has(wwChannelKey(sourceId, channelName));
         }
 
         // Same technique as waveform-prototype.html's own themeColors() --
@@ -5199,6 +5229,17 @@
             for (const meta of channelMetas) {
                 const key = wwChannelKey(meta.sourceId, meta.channelName);
                 if (ww.displayed.has(key)) continue; // already displayed -- skip silently
+
+                // Phase 4A-UAT6: cache display metadata independent of
+                // ww.displayed's own lifecycle -- see ww.channelMeta's own
+                // comment on the ww state object for why (the Custom
+                // Groups editor needs to describe a channel's name/unit
+                // even while it is currently hidden).
+                ww.channelMeta.set(key, {
+                    sourceId: meta.sourceId, sourceName: meta.sourceName,
+                    channelName: meta.channelName, unit: meta.unit,
+                    engineeringType: meta.engineeringType,
+                });
 
                 const groupKey = wwPanelGroupKeyFor(meta);
                 let panel = ww.panels.find((p) => p.groupKey === groupKey);
@@ -5900,6 +5941,9 @@
             // remembering; individual channel/source removal deliberately
             // leaves this alone (see the field's own comment on ww).
             ww.channelColors.clear();
+            // Phase 4A-UAT6: same policy -- a brand-new workspace has no
+            // metadata history worth remembering either.
+            ww.channelMeta.clear();
             wwUpdateEmptyState();
             wwUpdateTimeModeControlAvailability();
             // Phase 2C-C4 (section 17/30): "starting a new workspace: ruler
@@ -6431,21 +6475,22 @@
         let groupEditorState = null;
 
         // Opens the editor, seeding the working copy from ww.customGroups
-        // filtered to only channels CURRENTLY displayed -- a channel
-        // removed since the groups were last edited silently drops out of
-        // its old group; a channel added since then starts Unassigned
-        // (falls under the same auto-solo rule as any other unassigned
-        // channel once Applied). Groups from ww.customGroups that have
-        // no channels left after filtering are still shown (empty) so the
-        // user can see what happened and delete or repopulate them
-        // explicitly, rather than having them silently vanish.
+        // in full -- a HIDDEN channel's membership is preserved (Phase
+        // 4A-UAT6, section 7/12: "group membership != visibility" -- a
+        // channel the user has hidden via the sidebar must return to its
+        // existing Custom Group automatically when re-enabled, never fall
+        // back to auto-solo). wwRenderGroupEditor() below is what limits
+        // the "Unassigned" picker to currently-displayed channels only
+        // (assigning a hidden channel to a NEW group from this modal
+        // remains out of scope, per the owner's own "do not expand scope"
+        // instruction) -- membership already assigned is a completely
+        // separate concern from that picker and is never pruned here.
         function wwOpenGroupEditor() {
-            const displayedKeys = new Set(ww.displayed.keys());
             groupEditorState = {
                 groups: ww.customGroups.map((group) => ({
                     id: group.id,
                     label: group.label,
-                    channelKeys: group.channelKeys.filter((key) => displayedKeys.has(key)),
+                    channelKeys: group.channelKeys.slice(),
                 })),
                 groupSeq: ww.customGroupSeq,
             };
@@ -6515,15 +6560,24 @@
                     groupsHtml += '<p class="hint">No channels assigned yet.</p>';
                 } else {
                     for (const key of group.channelKeys) {
-                        const entry = ww.displayed.get(key);
-                        if (!entry) continue;
-                        const channel = entry.channel;
-                        groupsHtml += '<span class="group-chip">' +
-                            '<span class="group-chip-dot" style="background:' + channel.color + '"></span>' +
-                            '<span class="group-chip-label">' + escapeHtml(channel.channelName) +
-                            (channel.unit ? " (" + escapeHtml(channel.unit) + ")" : "") + '</span>' +
+                        // Phase 4A-UAT6: reads from ww.channelMeta (survives
+                        // hide) rather than ww.displayed (would silently
+                        // drop a hidden member from view here, even though
+                        // its membership is correctly preserved in
+                        // groupEditorState -- section 12's own "do NOT
+                        // remove hidden channels from the editor merely
+                        // because they are not currently visible").
+                        const meta = ww.channelMeta.get(key);
+                        if (!meta) continue; // defensive: a key that was never actually assigned a real channel
+                        const isHidden = !wwIsAnalogChannelVisible(meta.sourceId, meta.channelName);
+                        const color = wwColorForChannel(meta.sourceId, meta.channelName);
+                        groupsHtml += '<span class="group-chip' + (isHidden ? ' group-chip--hidden' : '') + '"' +
+                            (isHidden ? ' title="Hidden -- not currently displayed"' : '') + '>' +
+                            '<span class="group-chip-dot" style="background:' + color + '"></span>' +
+                            '<span class="group-chip-label">' + escapeHtml(meta.channelName) +
+                            (meta.unit ? " (" + escapeHtml(meta.unit) + ")" : "") + '</span>' +
                             '<button type="button" class="group-chip-remove" data-channel-key="' + escapeHtml(key) +
-                            '" title="Remove from group" aria-label="Remove ' + escapeHtml(channel.channelName) +
+                            '" title="Remove from group" aria-label="Remove ' + escapeHtml(meta.channelName) +
                             ' from group">&times;</button></span>';
                     }
                 }

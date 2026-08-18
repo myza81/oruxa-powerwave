@@ -2616,6 +2616,130 @@ Impact:
 
 ---
 
+## DEC-035 — Analog channel visibility is workspace-global; layout mode governs arrangement only, never visibility (Phase 4A-UAT6)
+
+Date: 2026-08-19
+Status: Approved
+Source: explicit project-owner UAT feedback (2026-08-19) — hiding an
+analog channel while in one layout mode (Grouped) was observed to not
+consistently persist when switching to another (Separate/Custom); the
+owner's own task text states the required rule verbatim ("CHANNEL
+VISIBILITY = global workspace state. LAYOUT MODE = presentation/
+arrangement of currently-visible channels... Switching layout modes must
+never implicitly re-enable it") and explicitly asked for a DECISION entry
+if this rises to architecture/state-model weight.
+
+Decision:
+
+**Channel visibility and layout mode are two independent axes of state,
+never conflated:**
+
+- `ww.displayed` (pre-existing since Phase 2C-A) is confirmed and
+  formalized as the ONE authoritative "is this analog channel currently
+  visible" state — global across the whole workspace, never
+  per-layout-mode. A new helper, `wwIsAnalogChannelVisible(sourceId,
+  channelName)`, wraps the existing `ww.displayed.has(wwChannelKey(...))`
+  check so call sites read as intent, matching the owner's own requested
+  naming; it introduces no new/parallel state.
+- `wwRebuildLayout()` (pre-existing) already derives every layout
+  renderer's panels from this SAME flat `ww.displayed` set, intersected
+  with that mode's own grouping rule (`wwPanelGroupKeyFor()`) — Grouped
+  by `engineering_type`, Separate by channel identity (one lane each),
+  Custom by `ww.customGroups` membership (auto-solo when unassigned).
+  There is deliberately no second Grouped-visible/Separate-visible/
+  Custom-visible map to keep in sync — the rejected alternative this
+  decision explicitly forecloses for all future waveform work.
+- Direct verification (dedicated jsdom reproduction, `frontend`
+  regression suite) confirmed the simple "hide in Grouped → switch to
+  Separate/Custom" flow was ALREADY correct against this architecture —
+  no separate bug existed there. The one CONCRETE, reproducible violation
+  found was in the Custom Groups editor: `wwOpenGroupEditor()` seeded its
+  working copy filtered to only currently-displayed channels, so a
+  hidden group member was silently and PERMANENTLY dropped from
+  `ww.customGroups` the next time the editor was opened and Applied
+  (even without touching that channel) — conflating "hidden" with
+  "unassign from group," a direct violation of "group membership !=
+  visibility." Fixed by no longer filtering at open time; membership is
+  preserved in full regardless of a member's current visibility.
+- **Group membership metadata now survives a channel being hidden**: a
+  new `ww.channelMeta: Map<"sourceId::channelName", {sourceId,
+  sourceName, channelName, unit, engineeringType}>`, same lifecycle
+  policy as `ww.channelColors`/`ww.customGroups`/`ww.panelHeights`
+  (populated on every add, never deleted by hide/remove, cleared only by
+  `wwClearWorkspace()`). This exists purely so the Custom Groups editor
+  can still describe a hidden member's name/unit (rendered dimmed, via a
+  new `.group-chip--hidden` CSS class) without needing that channel to be
+  in `ww.displayed` — visibility state and display metadata are
+  explicitly two different concerns now, not implicitly coupled via
+  "is it currently in `ww.displayed`."
+- Re-enabling a previously-hidden channel (from the sidebar, or via a
+  Separate-mode lane's own local remove, which already routed through
+  the same `wwRemoveChannelByKey()`/`wwAddSelectedChannels()` global
+  paths before this decision) restores it into whichever Custom Group
+  last claimed it — never auto-solo — and reuses its existing
+  `wwColorForChannel()` color, never reassigning one.
+
+Reason: a channel's visibility is a property of the ENGINEER'S CURRENT
+VIEWING DECISION (workspace-scoped), not a property of any one
+arrangement of that workspace. Letting layout mode implicitly own
+visibility — even accidentally, via a UI feature that only LOOKED at
+currently-visible channels and silently forgot the rest — breaks the
+owner's basic trust that hiding a channel is a durable action, not a
+per-view toggle that quietly resets itself.
+
+Alternatives considered:
+
+- **A separate visible-state map per layout mode** (Grouped-visible/
+  Separate-visible/Custom-visible) — explicitly rejected by the owner's
+  own task text ("the latter is explicitly rejected") and would have
+  been a straightforward way to REINTRODUCE exactly the class of bug
+  this decision fixes, for any future feature that touches per-mode
+  state.
+- **Deleting a hidden channel from its Custom Group entirely (treating
+  hide as unassign)** — rejected; this was the ACTUAL prior (buggy)
+  behavior of the group editor before this fix, and it violates the
+  owner's explicit "membership != visibility, do not delete from the
+  Custom Group definition" instruction.
+- **Caching a hidden channel's already-fetched waveform data for reuse
+  on re-enable** — considered (section 19 of the owner's own task text
+  raised it) but not implemented: existing fetch/cache semantics
+  (refetch on every add, established since Phase 2B) are preserved
+  unchanged, per the same task text's own "preserve current fetch/cache
+  semantics unless a correction is necessary" — introducing a new cache
+  layer was judged out of scope for a visibility-consistency fix.
+
+Impact:
+
+- `frontend/index.html` only: `wwIsAnalogChannelVisible()` (new),
+  `ww.channelMeta` (new map + population in `wwAddSelectedChannels()` +
+  clearing in `wwClearWorkspace()`), `wwOpenGroupEditor()`/
+  `wwRenderGroupEditor()` (membership preservation fix), `.group-chip--hidden`
+  CSS (new). `analogChannelRowAttrs()`/`wwSyncChannelBrowserDisplayState()`
+  refactored to call the new helper (no behavior change). No backend
+  file touched.
+- New dedicated `phase4a_uat6_check.mjs` (scratch convention, not
+  committed, 13 checks) covering the cross-mode visibility matrix
+  (A-F from the owner's own task text), state persistence across
+  layout/time-mode/navigation, source isolation, and digital isolation.
+- **Separately discovered, out-of-scope pre-existing bug, NOT fixed by
+  this decision**: `wwAddSelectedChannels()` can double-invoke
+  `Plotly.addTraces()` for the 2nd..Nth channel of a brand-new panel
+  when 2+ new channels are added in a single batch call destined for the
+  same group (the most common real trigger being default-display-on-
+  open for a source with 2+ channels sharing one `engineering_type`) —
+  `isNewPanel` is computed per-meta within the SAME batch loop, so a
+  panel created moments earlier by an EARLIER meta in that same batch is
+  incorrectly treated as "already existed before this call" for every
+  later meta that joins it, triggering a redundant `addTraces` on top of
+  the trace `newPlot` already drew. Flagged for the owner per this
+  project's own change-governance process (issue/evidence/proposed
+  fix/benefits/risks/impact) rather than fixed here, since it is a
+  rendering-duplication concern unrelated to visibility state and this
+  decision's own scope.
+- See [MIGRATION_PLAN.md — Phase 4A-UAT6 Record](MIGRATION_PLAN.md#phase-4a-uat6--global-analog-channel-visibility-across-layout-modes-2026-08-19).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or
