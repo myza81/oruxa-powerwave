@@ -1389,6 +1389,38 @@
            them for free, with no bespoke DOM/CSS positioning needed. This
            wrapper now holds only the (much shorter) chart element, so its
            own padding is reduced to a small, symmetric breathing margin. */
+        /* Phase 4A: digital channel region. Visually distinguishable from
+           analog .ww-panel cards (own subtle background tint, compact
+           title) but still reads as part of the same analysis canvas --
+           same border/radius language as .ww-panel, not a heavier or
+           lighter treatment. #wwDigitalScroll is the ONLY scroll
+           container -- a fixed max-height with overflow-y: auto, so a
+           source with hundreds of digital channels never lets the region
+           consume the whole page (section 7); the Plotly figure inside it
+           is sized (via JS, wwRebuildDigitalChart()) to its own full
+           content height so Plotly never needs its own internal
+           scrolling -- an ordinary tall chart in a scrollable div, the
+           same low-complexity approach explicitly preferred over a
+           resizable/virtualized region for this first implementation. */
+        #wwDigitalRegion {
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+        #wwDigitalRegion[hidden] { display: none; }
+        .ww-digital-title {
+            font-size: 0.78rem;
+            font-weight: 700;
+            padding: 10px 14px 8px;
+            border-bottom: 1px solid var(--panel-border);
+            background: var(--surface-tint);
+        }
+        #wwDigitalScroll {
+            max-height: 260px;
+            overflow-y: auto;
+        }
         .ww-sticky-ruler {
             position: sticky;
             bottom: 0;
@@ -1616,9 +1648,31 @@
                          this phase. -->
                     <div id="activeViewArea">
                         <section class="workspace-section" id="viewWaveform" aria-label="Waveform view">
-                            <p class="empty-state" id="wwEmptyState">Select analog channels and click &ldquo;Add selected&rdquo; to display waveforms.</p>
+                            <p class="empty-state" id="wwEmptyState">Select channels and click &ldquo;Add selected&rdquo; to display waveforms, or open a recording to see all channels by default.</p>
 
                             <div id="wwPanels"></div>
+
+                            <!-- Phase 4A: digital channel region -- BELOW
+                                 every analog panel, ABOVE the shared sticky
+                                 ruler (never mixed into an analog panel; see
+                                 wwRebuildDigitalChart()). ONE Plotly figure
+                                 for every displayed digital channel (never
+                                 one-Plotly-instance-per-channel -- see
+                                 docs/project-memory/MIGRATION_PLAN.md's
+                                 Phase 4A record for why), sized tall enough
+                                 to hold every lane without Plotly's own
+                                 internal scrolling; #wwDigitalScroll (a
+                                 plain CSS overflow-y: auto box with a fixed
+                                 max-height) provides the actual vertical
+                                 scroll, so the shared ruler below it never
+                                 disappears while scrolling through digital
+                                 lanes. -->
+                            <div id="wwDigitalRegion" hidden>
+                                <div class="ww-digital-title">Digital Channels</div>
+                                <div id="wwDigitalScroll">
+                                    <div id="wwDigitalChart"></div>
+                                </div>
+                            </div>
 
                             <!-- Phase 2C-C4: sticky shared time-axis ruler --
                                  see wwSyncStickyRuler(). Sticky behavior is
@@ -3096,10 +3150,74 @@
                     panel.innerHTML = '<p class="empty-state">Could not load this source’s channels.</p>';
                     return;
                 }
-                renderChannels(await response.json());
+                const data = await response.json();
+                renderChannels(data);
+                // Phase 4A (section 8/9/10): a genuinely NEW source-open
+                // applies the owner's explicit "display all analog + all
+                // digital by default" UAT experiment -- tracked per
+                // sourceId in ww.sourceDefaultsApplied (not per call), so
+                // re-opening the SAME already-open recording's row a
+                // second time (e.g. after the user manually hid a channel)
+                // never re-forces anything back on. Reset only by
+                // wwClearWorkspace() -- see that Set's own comment on ww.
+                if (!ww.sourceDefaultsApplied.has(sourceId)) {
+                    ww.sourceDefaultsApplied.add(sourceId);
+                    // Awaited deliberately (not fire-and-forget): the
+                    // caller of selectSource() must be able to rely on
+                    // "the default display is fully applied" once this
+                    // returns -- otherwise a fast subsequent action
+                    // (another selectSource(), a manual Add-selected
+                    // click, a test) could race the still-in-flight
+                    // default-add and produce duplicate/inconsistent
+                    // panels.
+                    await wwApplyDefaultChannelDisplay(data);
+                }
             } catch (error) {
                 panel.innerHTML = '<p class="empty-state">Could not reach the backend.</p>';
             }
+        }
+
+        // Phase 4A: builds the SAME channelMetas shape
+        // wwAddSelectedChannels()/wwAddDigitalChannels() already expect
+        // from real checkbox selections, straight from the just-fetched
+        // channel list -- reuses the existing add pipeline exactly (no
+        // second, parallel "make everything visible" implementation).
+        // Analog and digital use the identical default policy (section
+        // 8: "do not create different default policies for analog vs
+        // digital").
+        async function wwApplyDefaultChannelDisplay(data) {
+            const source = data.source;
+            const timebase = data.timebase;
+            const recordingStartTime = (timebase && timebase.start_time) || null;
+            const timingReference = (timebase && timebase.timing_reference) || null;
+
+            const analogMetas = data.analog_channels.map((ch) => ({
+                sourceId: source.source_id,
+                sourceName: source.station_name,
+                channelName: ch.name,
+                unit: ch.unit,
+                engineeringType: ch.engineering_type || "Undefined",
+                recordingStartTime: recordingStartTime,
+                timingReference: timingReference,
+            }));
+            const digitalMetas = data.digital_channels.map((ch) => ({
+                sourceId: source.source_id,
+                sourceName: source.station_name,
+                channelName: ch.name,
+                channelIndex: ch.index,
+                recordingStartTime: recordingStartTime,
+                timingReference: timingReference,
+            }));
+
+            // Concurrent, not sequential -- analog and digital use
+            // entirely independent display architectures/state (never
+            // contend for the same panel/DOM), so there is no ordering
+            // requirement between them; Promise.all just avoids making
+            // one wait on the other for no reason.
+            await Promise.all([
+                analogMetas.length > 0 ? wwAddSelectedChannels(analogMetas) : Promise.resolve(),
+                digitalMetas.length > 0 ? wwAddDigitalChannels(digitalMetas) : Promise.resolve(),
+            ]);
         }
 
         // Display order for analog sub-groups. Mirrors
@@ -3154,7 +3272,7 @@
 
             html += '<div id="channelGroups">';
             html += renderAnalogGroup(data.analog_channels, source, timebase);
-            html += renderDigitalGroup(data.digital_channels);
+            html += renderDigitalGroup(data.digital_channels, source, timebase);
             html += '</div>';
             html += '<p class="empty-state" id="channelSearchEmpty" hidden>No channels match your search.</p>';
 
@@ -3207,20 +3325,56 @@
                 '<div class="group-body">' + body + '</div></details>';
         }
 
-        // Digital Channels: collapsed by default -- this is the section that
-        // was overwhelming to scroll through in UAT (e.g. 282 channels).
-        // No sub-classification is introduced here (out of scope for this
-        // refinement -- see docs/project-memory/MIGRATION_PLAN.md).
-        function renderDigitalGroup(channels) {
-            const total = channels.length;
-            const body = total === 0
-                ? '<p class="empty-state">No digital channels.</p>'
-                : renderChannelTable(channels, [
-                    ["Name", (c) => c.name],
-                    ["Normal state", (c) => c.normal_state],
-                ]);
+        // Phase 4A: presentation-group labels, in the owner's required
+        // vertical order (Triggered, Never Triggered, Spare -- mirrors
+        // app.domain.digital_classification.KNOWN_GROUPS exactly, never
+        // re-derived from scratch here).
+        const DIGITAL_GROUP_LABELS = {
+            triggered: "Triggered", never_triggered: "Never Triggered", spare: "Spare",
+        };
+        const DIGITAL_GROUP_ORDER = ["triggered", "never_triggered", "spare"];
 
-            return '<details class="channel-group" data-group="digital">' +
+        // Digital Channels: sub-grouped by backend-computed classification
+        // (Phase 4A, replacing the old flat/collapsed-by-default table) --
+        // Triggered, Never Triggered, Spare, each alphabetically sorted
+        // (case-insensitive, stable original-index tiebreak) via the SAME
+        // wwDigitalSortChannels() the rendered digital lanes themselves
+        // use, so this browser and the waveform region can never disagree
+        // about order (section 17). Every subgroup starts OPEN (section
+        // 18: "keep all three groups accessible... do NOT hide Spare by
+        // default" -- this is a deliberate UAT experiment, not a place to
+        // preemptively declutter). Each row now carries a checkbox --
+        // Phase 4A is the first time digital channels can be added to the
+        // display at all (previously informational only).
+        function renderDigitalGroup(channels, source, timebase) {
+            const total = channels.length;
+            let body;
+            if (total === 0) {
+                body = '<p class="empty-state">No digital channels.</p>';
+            } else {
+                const byGroup = new Map();
+                for (const ch of channels) {
+                    const group = ch.classification || "never_triggered";
+                    if (!byGroup.has(group)) byGroup.set(group, []);
+                    byGroup.get(group).push(ch);
+                }
+                body = '<div class="subgroup-list">';
+                for (const group of DIGITAL_GROUP_ORDER) {
+                    if (!byGroup.has(group)) continue;
+                    const sorted = wwDigitalSortChannels(byGroup.get(group));
+                    body += '<details class="channel-subgroup" open data-subgroup="' + escapeHtml(group) + '">';
+                    body += '<summary><span class="chevron">&#9656;</span>' + escapeHtml(DIGITAL_GROUP_LABELS[group]) +
+                        ' <span class="count-badge">(' + sorted.length + ')</span></summary>';
+                    body += '<div class="group-body">' + renderChannelTable(sorted, [
+                        ["Name", (c) => c.name],
+                        ["Normal state", (c) => c.normal_state],
+                    ], null, (c) => digitalChannelCheckboxHtml(source, c, timebase)) + '</div>';
+                    body += '</details>';
+                }
+                body += '</div>';
+            }
+
+            return '<details class="channel-group" open data-group="digital">' +
                 '<summary><span class="chevron">&#9656;</span>Digital Channels ' +
                 '<span class="count-badge">(' + total + ')</span></summary>' +
                 '<div class="group-body">' + body + '</div></details>';
@@ -3283,6 +3437,16 @@
         // ------------------------------------------------------------------
         const selectedChannels = new Map();
 
+        // Phase 4A: digital channels get their OWN selection map, never
+        // merged into selectedChannels -- "Add selected"/"Clear
+        // selection" now act on whichever kind(s) currently have
+        // checkboxes checked (see setupSelectionControls() below), but
+        // the underlying add path stays distinct (wwAddSelectedChannels
+        // for analog, wwAddDigitalChannels for digital) since the two
+        // have genuinely different display architectures (per-panel
+        // Plotly instances vs. one shared digital-region figure).
+        const selectedDigitalChannels = new Map();
+
         function channelSelectionKey(sourceId, channelName) {
             return sourceId + "::" + channelName;
         }
@@ -3302,11 +3466,35 @@
             const key = channelSelectionKey(source.source_id, channel.name);
             const checked = selectedChannels.has(key) ? " checked" : "";
             return '<input type="checkbox" class="channel-select-cb"' + checked +
+                ' data-channel-kind="analog"' +
                 ' data-source-id="' + escapeHtml(source.source_id) + '"' +
                 ' data-source-name="' + escapeHtml(source.station_name || "") + '"' +
                 ' data-channel-name="' + escapeHtml(channel.name) + '"' +
                 ' data-unit="' + escapeHtml(channel.unit || "") + '"' +
                 ' data-engineering-type="' + escapeHtml(channel.engineering_type || "Undefined") + '"' +
+                ' data-recording-start-time="' + escapeHtml((timebase && timebase.start_time) || "") + '"' +
+                ' data-timing-reference="' + escapeHtml((timebase && timebase.timing_reference) || "") + '"' +
+                ' aria-label="Select ' + escapeHtml(channel.name) + '">';
+        }
+
+        // Phase 4A: digital's own checkbox template, mirroring
+        // channelCheckboxHtml() -- data-channel-kind="digital" is what
+        // setupSelectionControls()'s shared change listener uses to route
+        // into selectedDigitalChannels (never selectedChannels/analog).
+        // data-channel-index threads the channel's original COMTRADE index
+        // through for the stable secondary sort tiebreak (section 16/43),
+        // the same purpose channelIndex serves on a displayed digital
+        // entry (see wwSortedDigitalEntries()).
+        function digitalChannelCheckboxHtml(source, channel, timebase) {
+            const key = channelSelectionKey(source.source_id, channel.name);
+            const checked = selectedDigitalChannels.has(key) ? " checked" : "";
+            return '<input type="checkbox" class="channel-select-cb"' + checked +
+                ' data-channel-kind="digital"' +
+                ' data-source-id="' + escapeHtml(source.source_id) + '"' +
+                ' data-source-name="' + escapeHtml(source.station_name || "") + '"' +
+                ' data-channel-name="' + escapeHtml(channel.name) + '"' +
+                ' data-channel-index="' + escapeHtml(String(channel.index)) + '"' +
+                ' data-classification="' + escapeHtml(channel.classification || "never_triggered") + '"' +
                 ' data-recording-start-time="' + escapeHtml((timebase && timebase.start_time) || "") + '"' +
                 ' data-timing-reference="' + escapeHtml((timebase && timebase.timing_reference) || "") + '"' +
                 ' aria-label="Select ' + escapeHtml(channel.name) + '">';
@@ -3321,8 +3509,15 @@
             const clearBtn = document.getElementById("clearSelectionBtn");
             const groupsEl = document.getElementById("channelGroups");
 
+            // Phase 4A: the count/enabled-state now reflects BOTH
+            // selection maps together -- "Add N selected"/"Clear
+            // selection" read as one combined action regardless of
+            // whether the user checked analog boxes, digital boxes, or
+            // both, matching the existing single-button UI (no separate
+            // "Add analog"/"Add digital" buttons introduced -- section 37's
+            // own "prefer minimal adaptation" guidance).
             function syncButtons() {
-                const count = selectedChannels.size;
+                const count = selectedChannels.size + selectedDigitalChannels.size;
                 addBtn.textContent = "Add " + count + " selected";
                 addBtn.disabled = count === 0;
                 clearBtn.disabled = count === 0;
@@ -3332,7 +3527,20 @@
                 const cb = event.target;
                 if (!cb.classList || !cb.classList.contains("channel-select-cb")) return;
                 const key = channelSelectionKey(cb.dataset.sourceId, cb.dataset.channelName);
-                if (cb.checked) {
+                if (cb.dataset.channelKind === "digital") {
+                    if (cb.checked) {
+                        selectedDigitalChannels.set(key, {
+                            sourceId: cb.dataset.sourceId,
+                            sourceName: cb.dataset.sourceName,
+                            channelName: cb.dataset.channelName,
+                            channelIndex: Number(cb.dataset.channelIndex) || 0,
+                            recordingStartTime: cb.dataset.recordingStartTime || null,
+                            timingReference: cb.dataset.timingReference || null,
+                        });
+                    } else {
+                        selectedDigitalChannels.delete(key);
+                    }
+                } else if (cb.checked) {
                     selectedChannels.set(key, {
                         sourceId: cb.dataset.sourceId,
                         sourceName: cb.dataset.sourceName,
@@ -3349,9 +3557,11 @@
             });
 
             addBtn.addEventListener("click", () => {
-                if (selectedChannels.size === 0) return;
-                wwAddSelectedChannels(Array.from(selectedChannels.values()));
+                if (selectedChannels.size === 0 && selectedDigitalChannels.size === 0) return;
+                if (selectedChannels.size > 0) wwAddSelectedChannels(Array.from(selectedChannels.values()));
+                if (selectedDigitalChannels.size > 0) wwAddDigitalChannels(Array.from(selectedDigitalChannels.values()));
                 selectedChannels.clear();
+                selectedDigitalChannels.clear();
                 // Uncheck any checkboxes currently rendered for the
                 // just-added channels (same table, since Add is only ever
                 // clicked while viewing a channel list).
@@ -3361,6 +3571,7 @@
 
             clearBtn.addEventListener("click", () => {
                 selectedChannels.clear();
+                selectedDigitalChannels.clear();
                 for (const cb of groupsEl.querySelectorAll(".channel-select-cb:checked")) cb.checked = false;
                 syncButtons();
             });
@@ -3640,6 +3851,37 @@
             // is never torn down/recreated, only hidden and re-shown (see
             // wwSyncStickyRuler()'s own comment).
             rulerReady: false,
+            // Phase 4A: digital channels. Deliberately a SEPARATE flat map
+            // from ww.displayed/ww.panels -- digital channels never get
+            // their own Plotly-instance-per-panel (hundreds of digital
+            // channels would mean hundreds of Plotly instances, the exact
+            // thing DEC-024/DEC-026 already avoided for analog even at
+            // typical single-digit-to-low-dozens channel counts). Instead
+            // ALL displayed digital channels render as lanes inside ONE
+            // shared Plotly figure (wwRebuildDigitalChart()) -- see
+            // docs/project-memory/MIGRATION_PLAN.md's Phase 4A record for
+            // the full architecture rationale. Key: "sourceId::channelName"
+            // (same convention as ww.displayed), value: {sourceId,
+            // sourceName, channelName, classification, channelIndex,
+            // normalState, initialState, transitions: [{time, state}],
+            // recordingStartMs, timingReference}. `chartReady` parallels
+            // `rulerReady`/`panel.plotlyReady` -- guards the one-time
+            // Plotly.newPlot vs. subsequent Plotly.react/relayout calls.
+            digitalDisplayed: new Map(),
+            digitalChartReady: false,
+            // Guards wwRebuildDigitalChart()'s one-time chartEl.on("plotly_click", ...)
+            // registration -- parallels rulerReady/chartReady above, never
+            // reset by wwClearWorkspace() (the chart element itself is
+            // never torn down, same as the sticky ruler's own chartEl).
+            digitalClickWired: false,
+            // Phase 4A (section 10): sources whose default "all channels
+            // displayed" has already been applied THIS SESSION -- checked/
+            // set only by selectSource(). Prevents re-forcing every
+            // channel back on merely because the user re-opens the SAME
+            // recording's row from Recordings a second time after manually
+            // hiding some channels. Reset only by wwClearWorkspace() (a
+            // brand-new workspace has no history to remember).
+            sourceDefaultsApplied: new Set(),
         };
 
         // ==================================================================
@@ -3767,6 +4009,16 @@
             for (const entry of ww.displayed.values()) {
                 const ms = entry.channel.recordingStartMs;
                 if (ms !== null && ms !== undefined) return ms;
+            }
+            // Phase 4A: falls back to a displayed DIGITAL channel's own
+            // origin only when no analog channel is currently displayed
+            // (e.g. the user removed every analog channel but kept
+            // digital ones) -- analog is checked first, unchanged, since
+            // it's overwhelmingly the common case and this preserves this
+            // function's existing behavior byte-for-byte whenever any
+            // analog channel is displayed.
+            for (const entry of ww.digitalDisplayed.values()) {
+                if (entry.recordingStartMs !== null && entry.recordingStartMs !== undefined) return entry.recordingStartMs;
             }
             return null;
         }
@@ -3937,6 +4189,11 @@
                 text: read("--text"),
                 grid: read("--panel-border"),
                 spike: read("--spike-color"),
+                // Phase 4A: digital lane trace color -- readable against
+                // both waveform-surface tokens without relying on color
+                // ALONE to communicate state (the step geometry itself,
+                // high lane vs. low lane, already does that structurally).
+                accent: read("--accent"),
             };
         }
 
@@ -4456,6 +4713,15 @@
             // site needed to keep the sticky ruler's own range in sync,
             // without adding a second synchronization loop.
             wwSyncStickyRuler();
+            // Phase 4A (section 3/31): digital lanes share this exact same
+            // authoritative viewport -- zoom/pan/Reset Time View all reach
+            // digital through this one call site too, never a second
+            // synchronization path. Presentation-only: zero digital-
+            // waveform refetch (unlike wwRefetchAllChannels() below, which
+            // IS analog-specific -- digital's full-record data never needs
+            // re-fetching for a viewport change, see
+            // extract_digital_waveform's own docstring).
+            wwRebuildDigitalChart();
             await wwRefetchAllChannels(startTime, endTime);
         }
 
@@ -4688,6 +4954,308 @@
             }
         }
 
+        // ==================================================================
+        // Phase 4A: Digital channel region
+        //
+        // Architecture (see docs/project-memory/MIGRATION_PLAN.md's Phase
+        // 4A record for the full investigation/rationale): analog panels
+        // are one-Plotly-instance-per-panel (DEC-024/DEC-026, confirmed by
+        // direct inspection to still be true even for Separate mode's own
+        // "unified canvas" -- that is a CSS-only visual treatment over N
+        // real independent Plotly instances, never a shared figure). That
+        // architecture does not scale to a source with hundreds of digital
+        // channels -- hundreds of Plotly instances would be a severe,
+        // measurable performance risk this phase's own instructions
+        // explicitly warned against creating without analysis first.
+        // Digital channels therefore render as N step traces inside ONE
+        // shared Plotly figure instead: a genuine architecture difference
+        // from analog, deliberate and reported, not an oversight.
+        //
+        // Data shape: digital channels are NEVER added to
+        // ww.displayed/ww.panels (the analog-only model) -- a fully
+        // separate ww.digitalDisplayed Map, "sourceId::channelName" keyed
+        // (the SAME wwChannelKey() convention analog already uses, for
+        // identity consistency -- section 53).
+        // ==================================================================
+
+        // Numeric sort weight for the three presentation groups -- mirrors
+        // app.domain.digital_classification.KNOWN_GROUPS' own order
+        // exactly (Triggered, Never Triggered, Spare) so the backend and
+        // frontend can never independently disagree about group order.
+        const WW_DIGITAL_GROUP_ORDER = { triggered: 0, never_triggered: 1, spare: 2 };
+
+        // Compact vertical density (section 47: "much denser than analog
+        // panels"). WW_DIGITAL_LANE_PX is one lane's baseline-to-baseline
+        // pixel height; the whole figure's height is always exactly
+        // `displayedCount * WW_DIGITAL_LANE_PX + margin`, computed fresh on
+        // every rebuild -- #wwDigitalScroll (a plain CSS
+        // `overflow-y: auto` box with a fixed max-height, see the CSS
+        // comment on #wwDigitalRegion) is what actually scrolls when that
+        // exceeds the visible region (section 7/22), never Plotly's own
+        // internal scrolling.
+        const WW_DIGITAL_LANE_PX = 22;
+        const WW_DIGITAL_LANE_HIGH = 0.62; // fraction of one lane occupied by the "high" plateau
+        // Truncated Y-axis tick-label length -- the FULL name is always
+        // still available via each trace's own hovertext (section 44); a
+        // native Plotly axis tick has no built-in hover-tooltip mechanism
+        // of its own, so truncating the visible label (with a full-name
+        // hover fallback on the trace itself) was judged the more robust
+        // choice over relying on `automargin` alone to fit arbitrarily
+        // long engineering channel names (section 20/21).
+        const WW_DIGITAL_NAME_MAX_CHARS = 26;
+
+        // Group -> case-insensitive alphabetical -> stable original-index
+        // tiebreak (section 16/43/57). The SAME function drives both the
+        // rendered digital lanes (wwRebuildDigitalChart, below) and the
+        // channel browser's own digital grouping (renderDigitalGroup) --
+        // one implementation, so the two views can never independently
+        // drift out of agreement (section 17).
+        function wwDigitalSortChannels(channels) {
+            return channels.slice().sort((a, b) => {
+                const groupDiff = WW_DIGITAL_GROUP_ORDER[a.classification] - WW_DIGITAL_GROUP_ORDER[b.classification];
+                if (groupDiff !== 0) return groupDiff;
+                const nameDiff = a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+                if (nameDiff !== 0) return nameDiff;
+                return a.index - b.index;
+            });
+        }
+
+        function wwSortedDigitalEntries() {
+            // wwDigitalSortChannels() reads .name/.index/.classification --
+            // a displayed digital entry already carries all three under
+            // slightly different field names (.channelName/.channelIndex),
+            // so this small adapter keeps the shared sort function generic
+            // enough to also serve the channel-browser's own
+            // DigitalChannelOut-shaped objects (see renderDigitalGroup()).
+            const entries = Array.from(ww.digitalDisplayed.values()).map((entry) => ({
+                name: entry.channelName, index: entry.channelIndex, classification: entry.classification, entry,
+            }));
+            return wwDigitalSortChannels(entries).map((wrapped) => wrapped.entry);
+        }
+
+        function wwTruncateDigitalName(name) {
+            if (name.length <= WW_DIGITAL_NAME_MAX_CHARS) return name;
+            return name.slice(0, WW_DIGITAL_NAME_MAX_CHARS - 1) + "…";
+        }
+
+        // ONE Plotly figure, one step (line_shape: "hv") trace per
+        // displayed digital channel -- see this section's own header
+        // comment for why never one-Plotly-instance-per-channel. Called
+        // from EVERY site that changes the displayed digital set, the
+        // shared viewport, ww.timeMode, or the theme (wwApplyAndFetchViewport,
+        // wwSetTimeMode, wwApplyTheme, wwClearWorkspace,
+        // wwRemoveChannelsForSource, and the digital add/remove functions
+        // below) -- always via Plotly.react (Plotly's own "call as often
+        // as needed, it diffs efficiently" API; it also transparently
+        // handles the very first render, so no separate ready-flag
+        // newPlot/relayout branching is needed, unlike the sticky ruler's
+        // own trace-less instance). A single, deliberately simple update
+        // path, not three separately optimized ones (relayout-only for
+        // viewport, restyle-only for time-mode, full-rebuild for
+        // add/remove) -- digital trace data is inherently small (sparse
+        // transitions, never dense samples, see
+        // app.services.waveform_service.extract_digital_waveform's own
+        // docstring), so the cost of always doing a full react call stays
+        // low regardless of how many digital channels are displayed.
+        //
+        // X axis: shares wwElapsedToPlotlyX()/ww.viewport exactly like
+        // every analog panel (section 3/29) -- never an independent
+        // viewport authority. `fixedrange: true` on both axes -- the user
+        // cannot drag/zoom the digital chart directly this phase (avoids
+        // needing a second relayout listener/feedback-loop guard
+        // entirely; zoom/pan stays an analog-panel-or-ruler-only gesture
+        // that digital always follows, never leads). Y axis: not a real
+        // engineering scale (binary/state semantics, section 30) -- ticks
+        // are channel names via `tickmode: "array"`, not autoscaled, never
+        // touched by Autoscale Y (which only ever iterates ww.panels).
+        // X-axis tick labels are hidden entirely (section 33) -- the
+        // shared sticky ruler below remains the one bottom time reference.
+        function wwRebuildDigitalChart() {
+            const regionEl = document.getElementById("wwDigitalRegion");
+            const chartEl = document.getElementById("wwDigitalChart");
+            if (!regionEl || !chartEl) return;
+
+            const entries = wwSortedDigitalEntries();
+            regionEl.hidden = entries.length === 0;
+            if (entries.length === 0) {
+                ww.digitalChartReady = false;
+                return;
+            }
+
+            const colors = wwThemeColors();
+            const n = entries.length;
+            const traces = [];
+            const tickvals = [];
+            const ticktext = [];
+
+            entries.forEach((entry, i) => {
+                // Index 0 (first in sorted order) gets the HIGHEST y, so it
+                // renders at the TOP without needing a reversed axis.
+                const laneBase = n - 1 - i;
+                const low = laneBase;
+                const high = laneBase + WW_DIGITAL_LANE_HIGH;
+
+                const rawTime = [entry.startTime];
+                const rawState = [entry.initialState];
+                for (const t of entry.transitions) {
+                    rawTime.push(t.time);
+                    rawState.push(t.state);
+                }
+                // Extend the final state's line to the record end so the
+                // trace visibly continues rather than stopping at the last
+                // real transition.
+                rawTime.push(entry.endTime);
+                rawState.push(rawState[rawState.length - 1]);
+
+                const x = rawTime.map(wwElapsedToPlotlyX);
+                const y = rawState.map((s) => (s ? high : low));
+                const hovertext = rawState.map((s) => entry.channelName + ": " + (s ? "HIGH (1)" : "LOW (0)"));
+
+                traces.push({
+                    x, y,
+                    mode: "lines",
+                    // "hv": holds flat at the current state until the NEXT
+                    // point's x, then jumps vertically -- a true step
+                    // trace, exact transition timing preserved (section 4).
+                    line: { shape: "hv", width: 1.6, color: colors.accent },
+                    hoverinfo: "text",
+                    hovertext,
+                    showlegend: false,
+                });
+
+                tickvals.push(laneBase + WW_DIGITAL_LANE_HIGH / 2);
+                ticktext.push(wwTruncateDigitalName(entry.channelName));
+            });
+
+            const xrange = ww.viewport
+                ? [wwElapsedToPlotlyX(ww.viewport.start), wwElapsedToPlotlyX(ww.viewport.end)]
+                : undefined;
+
+            chartEl.style.height = (n * WW_DIGITAL_LANE_PX + 16) + "px";
+
+            Plotly.react(chartEl, traces, {
+                paper_bgcolor: "transparent",
+                plot_bgcolor: "transparent",
+                font: { color: colors.text, size: 10 },
+                // A wider left margin than WW_PANEL_MARGIN.l -- analog's
+                // 55px is sized for a short unit label ("V"/"A"), not a
+                // scrollable column of engineering channel NAMES; digital
+                // has no Y-axis semantics to keep pixel-aligned with
+                // anything (section 30), so this is free to differ. Right
+                // margin still matches WW_PANEL_MARGIN.r for a consistent
+                // right edge.
+                margin: { l: 150, r: WW_PANEL_MARGIN.r, t: 6, b: 6 },
+                xaxis: {
+                    type: ww.timeMode === "absolute" ? "date" : undefined,
+                    range: xrange,
+                    showticklabels: false,
+                    showgrid: false, zeroline: false, fixedrange: true,
+                },
+                yaxis: {
+                    range: [-0.3, n - 1 + WW_DIGITAL_LANE_HIGH + 0.3],
+                    tickmode: "array", tickvals: tickvals, ticktext: ticktext,
+                    tickfont: { size: 10 },
+                    showgrid: false, zeroline: false, fixedrange: true,
+                },
+                hovermode: "closest",
+                showlegend: false,
+            }, {
+                staticPlot: false,
+                responsive: true,
+                displayModeBar: false,
+            });
+            ww.digitalChartReady = true;
+
+            // Section 38/51: "existing checkbox/visibility interaction
+            // must remain meaningful for both analog and digital... users
+            // retain ability to hide/remove/re-add channels" -- analog
+            // gets this via each panel's own per-channel legend remove
+            // button; digital has no per-lane DOM element to attach one
+            // to (one shared Plotly figure, Y-axis-tick labels, not real
+            // rows -- see this function's own header comment on why).
+            // Clicking a lane's own trace is the lowest-cost equivalent:
+            // wired ONCE (chartEl persists across rebuilds, like the
+            // sticky ruler's chartEl -- see wwClearWorkspace()'s own
+            // comment), re-deriving wwSortedDigitalEntries() fresh on
+            // every click (never a closure over a stale array) so
+            // curveNumber always maps to the entry that produced that
+            // exact trace in the MOST RECENT Plotly.react call above.
+            if (!ww.digitalClickWired) {
+                chartEl.on("plotly_click", (eventData) => {
+                    if (!eventData || !eventData.points || !eventData.points.length) return;
+                    const clicked = wwSortedDigitalEntries()[eventData.points[0].curveNumber];
+                    if (!clicked) return;
+                    wwRemoveDigitalChannelByKey(wwChannelKey(clicked.sourceId, clicked.channelName));
+                });
+                ww.digitalClickWired = true;
+            }
+        }
+
+        // Fetches (batched, one request per source among the newly-added
+        // channels -- section 28) and displays digital channels that
+        // aren't already in ww.digitalDisplayed. `channelMetas` entries:
+        // {sourceId, sourceName, channelName, channelIndex,
+        // recordingStartTime, timingReference} -- the RAW checkbox
+        // data-recording-start-time string, parsed to ms internally
+        // (below), matching wwAddSelectedChannels()'s own established
+        // convention exactly (never `new Date(...)`, timezone safety).
+        async function wwAddDigitalChannels(channelMetas) {
+            const toFetch = channelMetas.filter(
+                (m) => !ww.digitalDisplayed.has(wwChannelKey(m.sourceId, m.channelName))
+            );
+            if (toFetch.length === 0) return;
+
+            const bySource = new Map();
+            for (const meta of toFetch) {
+                if (!bySource.has(meta.sourceId)) bySource.set(meta.sourceId, []);
+                bySource.get(meta.sourceId).push(meta);
+            }
+
+            for (const [sourceId, metas] of bySource) {
+                const params = new URLSearchParams();
+                for (const m of metas) params.append("channel_names", m.channelName);
+                try {
+                    const response = await fetch(
+                        apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                        "/sources/" + encodeURIComponent(sourceId) + "/digital-waveform?" + params.toString()
+                    );
+                    if (!response.ok) continue;
+                    const body = await response.json();
+                    const metaByName = new Map(metas.map((m) => [m.channelName, m]));
+                    for (const chan of body.channels) {
+                        const meta = metaByName.get(chan.channel_name);
+                        if (!meta) continue;
+                        ww.digitalDisplayed.set(wwChannelKey(sourceId, chan.channel_name), {
+                            sourceId: sourceId,
+                            sourceName: meta.sourceName,
+                            channelName: chan.channel_name,
+                            channelIndex: meta.channelIndex,
+                            classification: chan.classification,
+                            normalState: chan.normal_state,
+                            initialState: chan.initial_state,
+                            transitions: chan.transitions,
+                            startTime: chan.start_time,
+                            endTime: chan.end_time,
+                            recordingStartMs: wwParseNaiveTimestamp(meta.recordingStartTime),
+                            timingReference: meta.timingReference || null,
+                        });
+                    }
+                } catch (error) {
+                    // Leave whatever was already displayed as-is -- same
+                    // resilience policy as fetchSourcesList()/selectSource().
+                }
+            }
+            wwRebuildDigitalChart();
+            wwUpdateEmptyState();
+        }
+
+        function wwRemoveDigitalChannelByKey(key) {
+            if (ww.digitalDisplayed.delete(key)) {
+                wwRebuildDigitalChart();
+                wwUpdateEmptyState();
+            }
+        }
+
         // Hook for source removal (performRemoveSource) -- removes only
         // the channels belonging to that specific source_id, leaving any
         // other displayed source's channels untouched. Never called for
@@ -4701,6 +5269,21 @@
                 }
             }
             for (const { panel, channel } of toRemove) wwRemoveChannel(panel, channel);
+            // Phase 4A: removing a source's ANALOG channels from the
+            // display must also remove its DIGITAL channels -- both are
+            // "this source is no longer part of the analysis," never a
+            // partial removal.
+            let removedAnyDigital = false;
+            for (const [key, entry] of ww.digitalDisplayed) {
+                if (entry.sourceId === sourceId) {
+                    ww.digitalDisplayed.delete(key);
+                    removedAnyDigital = true;
+                }
+            }
+            if (removedAnyDigital) {
+                wwRebuildDigitalChart();
+                wwUpdateEmptyState();
+            }
         }
 
         // "Clear workspace" button and "Start new workspace" hook (section
@@ -4731,6 +5314,16 @@
             // deliberately leaves ww.panelHeights alone (see its own
             // comment on the ww state object for why that's safe/desired).
             ww.panelHeights = new Map();
+            // Phase 4A: a whole-workspace reset clears every displayed
+            // digital channel too -- there is no source left for stale
+            // digital state to belong to. sourceDefaultsApplied is also
+            // cleared here (not by individual source removal, same policy
+            // as ww.customGroups/ww.panelHeights above) -- a brand-new
+            // workspace has no "already applied defaults" history to
+            // remember; the NEXT source opened is unambiguously a fresh
+            // default-all-display case.
+            ww.digitalDisplayed.clear();
+            ww.sourceDefaultsApplied.clear();
             wwUpdateEmptyState();
             wwUpdateTimeModeControlAvailability();
             // Phase 2C-C4 (section 17/30): "starting a new workspace: ruler
@@ -4742,6 +5335,7 @@
             // wwSyncStickyRuler() call (when channels are next added) fully
             // overwrites its range/type/tickformat regardless.
             wwSyncStickyRuler();
+            wwRebuildDigitalChart();
             shellUpdateStatusBarChannelCount(ww.displayed.size);
         }
 
@@ -5033,6 +5627,13 @@
             // functions used just above, so the ruler is guaranteed to
             // agree with what every panel now shows.
             wwSyncStickyRuler();
+            // Phase 4A (section 32): digital presentation must switch
+            // Absolute/Elapsed consistently with analog and the shared
+            // ruler -- wwRebuildDigitalChart() re-derives every trace's x
+            // values fresh from each entry's own already-fetched
+            // transitions via wwElapsedToPlotlyX() (now reading the NEW
+            // ww.timeMode), zero new network request.
+            wwRebuildDigitalChart();
         }
 
         // Phase 2C-C1: shows/hides "Edit Channel Groups" -- only relevant
@@ -5113,7 +5714,13 @@
         }
 
         function wwUpdateEmptyState() {
-            const empty = ww.panels.length === 0;
+            // Phase 4A: the workspace is only "empty" if NEITHER analog
+            // NOR digital channels are displayed -- a digital-only display
+            // (e.g. the user removed every analog channel but kept
+            // digital ones) still needs the shared toolbar (Zoom/Pan/Reset
+            // Time View all still act on the one shared viewport digital
+            // uses too, section 3/31) and "Clear workspace".
+            const empty = ww.panels.length === 0 && ww.digitalDisplayed.size === 0;
             document.getElementById("wwEmptyState").hidden = !empty;
             document.getElementById("wwToolbar").hidden = empty;
             document.getElementById("clearWorkspaceBtn").hidden = empty;
@@ -5127,6 +5734,11 @@
         // here (unlike Phase 2B's single-channel page, which used the
         // theme's own --accent for its one trace).
         function wwApplyTheme() {
+            // Phase 4A: digital re-theme is independent of whether any
+            // ANALOG panel exists (a source could have digital channels
+            // displayed with zero analog channels displayed) -- checked
+            // and handled before the analog-only early return below.
+            if (ww.digitalDisplayed.size > 0) wwRebuildDigitalChart();
             if (ww.panels.length === 0) return;
             const colors = wwThemeColors();
             for (const panel of ww.panels) {

@@ -86,3 +86,14 @@ class InvalidTimeRangeError(ImportServiceError):
     """start_time/end_time are malformed (e.g. start_time > end_time)."""
 
     code = "invalid_time_range"
+
+
+class ChannelNotDigitalError(ImportServiceError):
+    """Requested channel exists but is analog, not digital (Phase 4A).
+
+    Symmetric with ChannelNotAnalogError -- the digital-waveform endpoint
+    only serves digital channels, exactly as the analog waveform endpoint
+    only serves analog ones.
+    """
+
+    code = "channel_not_digital"

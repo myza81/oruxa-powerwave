@@ -42,6 +42,12 @@ class DigitalChannelSummary:
     name: str
     index: int
     normal_state: int = 0
+    # Phase 4A: presentation-group classification (Triggered/Never
+    # Triggered/Spare), computed once at import time from the full-record
+    # digital sample array (see app.domain.digital_classification and
+    # import_service.py's own call site) -- never re-derived per request,
+    # never changes when the user zooms/pans a viewport.
+    classification: str = "never_triggered"
 
 
 @dataclass(slots=True)

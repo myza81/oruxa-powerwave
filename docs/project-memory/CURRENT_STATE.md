@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-17** (Phase 3B-UAT11).
+Last meaningful update: **2026-08-17** (Phase 4A).
 
 ## Development phase
 
@@ -1064,6 +1064,44 @@ Focused UAT11 source checks pass (6/6), committed/tracked backend tests
 pass (286/286, two existing warnings), and `git diff --check` is clean;
 a raw full pytest against this dirty local worktree fails only on
 pre-existing untracked digital-waveform tests outside UAT11 scope.
+
+`[FACT]` **Digital (binary/state) channels now render in the Waveform
+workspace — Phase 4A — Digital Channels Rendering** (2026-08-17) — see
+[MIGRATION_PLAN.md — Phase 4A Implementation Record](MIGRATION_PLAN.md#phase-4a--digital-channels-rendering-implementation-record-2026-08-17)
+and [DECISIONS.md — DEC-034](DECISIONS.md#dec-034--digital-channel-rendering-shared-batched-full-record-transition-api-one-shared-multi-trace-plotly-figure-not-one-instance-per-channel-phase-4a).
+A new backend endpoint (`GET .../sources/{id}/digital-waveform`,
+batched via repeated `channel_names` params) serves each displayed
+digital channel's full-record transition list (never point-budget/range-
+reduced — digital transitions are inherently sparse, so full delivery is
+both the most truthful and the smallest-payload representation);
+classification (Triggered/Never Triggered/Spare, with the owner's exact
+required precedence — name-contains-"spare" beats any observed high
+state, and "any non-zero sample across the full record" is Triggered
+even with zero 0→1 transitions) is computed once at import time, never
+re-scanned per request. The frontend renders every displayed digital
+channel as one true step (`line_shape: "hv"`) trace inside a SINGLE
+shared Plotly figure — a genuinely different architecture from analog's
+own one-instance-per-panel model (DEC-024/DEC-026), chosen because a
+COMTRADE record may carry hundreds of digital channels and the owner
+explicitly required them ALL displayed by default. The digital region
+sits in its own vertically-scrollable area strictly below all analog
+panels and strictly above the existing shared sticky ruler (DEC-030),
+which remains the one authoritative bottom time reference. **Opening a
+source now displays every analog AND digital channel by default**
+(previously analog required a manual checkbox + "Add selected"); this
+is scoped per source-open (`ww.sourceDefaultsApplied`), never reapplied
+merely by navigating Waveform → Recordings → Waveform back to an
+already-open recording, so a manually-hidden channel stays hidden. This
+is a deliberate owner-directed UAT experiment, not a claim that it
+scales indefinitely without limits — see the Phase 4A record's own
+performance section and the open owner-UAT questions in its final
+report. Full existing frontend regression suite returned to exactly its
+established pre-existing baseline (17 failures, all independently
+confirmed as pre-existing and unrelated to this phase); backend suite
+311/311 passing (286 pre-existing + 25 new). Not yet owner-UAT'd in a
+real browser — flagged, per this task's own explicit closing
+instruction, as **not** ready for any further waveform feature work
+until that UAT completes.
 
 ## Completed foundation work
 

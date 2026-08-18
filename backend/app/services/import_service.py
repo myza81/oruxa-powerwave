@@ -38,6 +38,7 @@ from pathlib import Path
 from fastapi import UploadFile
 
 from app.domain.channel_classification import classify_analog_channel
+from app.domain.digital_classification import classify_digital_channel
 from app.domain.disturbance_record import DisturbanceRecord
 from app.domain.source import (
     ActiveSource,
@@ -215,8 +216,20 @@ def _build_source_metadata(
         )
         for ch in record.analog_channels
     ]
+    # Phase 4A: Triggered/Never Triggered/Spare classification, computed
+    # once here (at import time) from the full-record digital sample
+    # array -- never re-scanned per request/render (see
+    # digital_classification.py's own module docstring for the exact
+    # precedence rule).
     digital = [
-        DigitalChannelSummary(name=ch.name, index=ch.index, normal_state=ch.normal_state)
+        DigitalChannelSummary(
+            name=ch.name,
+            index=ch.index,
+            normal_state=ch.normal_state,
+            classification=classify_digital_channel(
+                name=ch.name, values=record.waveform_data[ch.name]
+            ),
+        )
         for ch in record.digital_channels
     ]
 

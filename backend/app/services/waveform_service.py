@@ -26,10 +26,11 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from app.domain.source import ActiveSource
+from app.domain.source import ActiveSource, DigitalChannelSummary
 from app.domain.waveform_reduction import build_min_max_envelope
 from app.services.errors import (
     ChannelNotAnalogError,
+    ChannelNotDigitalError,
     ChannelNotFoundError,
     InvalidTimeRangeError,
 )
@@ -164,4 +165,118 @@ def extract_waveform_range(
         representation=representation,
         time=out_time,
         values=out_values,
+    )
+
+
+@dataclass(slots=True)
+class DigitalTransition:
+    time: float
+    state: int
+
+
+@dataclass(slots=True)
+class DigitalWaveformResult:
+    """One digital channel's full-record transition list (Phase 4A).
+
+    See app.schemas.digital_waveform for the wire shape.
+
+    Deliberately NOT a dense sample array and NOT point-budget-reduced:
+    digital data is a step function, so the minimal, engineering-safe
+    representation is the initial state plus every transition edge (see
+    this module's own top-level docstring update note, and DEC-019's
+    caution against ever applying analog-style envelope reduction to
+    digital data -- transitions are already sparse for any real
+    protection/status channel, so returning all of them is both the most
+    truthful AND the smallest-payload representation, not a tradeoff).
+    """
+
+    source_id: str
+    channel_name: str
+    classification: str
+    normal_state: int
+    initial_state: int
+    transitions: list[DigitalTransition]
+    start_time: float
+    end_time: float
+    sample_count: int
+
+
+def _resolve_digital_channel(active: ActiveSource, channel_name: str) -> DigitalChannelSummary:
+    """Validate channel_name and return its DigitalChannelSummary.
+
+    Raises ChannelNotFoundError if channel_name isn't any channel on this
+    source, or ChannelNotDigitalError if it names a real but analog
+    channel -- symmetric with _resolve_analog_channel above.
+    """
+    for channel in active.metadata.digital_channels:
+        if channel.name == channel_name:
+            return channel
+    for channel in active.metadata.analog_channels:
+        if channel.name == channel_name:
+            raise ChannelNotDigitalError(
+                f"Channel '{channel_name}' is an analog channel; the digital-waveform "
+                "endpoint serves digital channels only."
+            )
+    raise ChannelNotFoundError(f"No channel named '{channel_name}' on this source.")
+
+
+def extract_digital_waveform(active: ActiveSource, *, channel_name: str) -> DigitalWaveformResult:
+    """Extract one digital channel's full-record transition list.
+
+    Always the full record -- no start_time/end_time/point_budget
+    parameters, deliberately (see this module's own investigation record
+    in docs/project-memory/MIGRATION_PLAN.md's Phase 4A entry): a real
+    protection/status channel's transition COUNT is already tiny relative
+    to its sample count, so range-scoping and reduction would only add
+    request complexity without a measured payload-size problem to solve.
+    The frontend fetches this once per displayed digital channel and
+    re-renders presentation-only (viewport zoom/pan, Absolute/Elapsed) —
+    exactly like the shared time-mode conversion already established for
+    analog panels (DEC-029), never a second data fetch.
+
+    Never mutates `active.record.waveform_data`. Raises
+    app.services.errors.ChannelNotFoundError / ChannelNotDigitalError —
+    mapped onto HTTP status codes the same way every other
+    ImportServiceError subclass already is.
+    """
+    channel = _resolve_digital_channel(active, channel_name)
+
+    waveform_data = active.record.waveform_data
+    time_full = waveform_data["time"].to_numpy()
+    values_full = waveform_data[channel_name].to_numpy()
+
+    if values_full.size == 0:
+        return DigitalWaveformResult(
+            source_id=active.metadata.source_id,
+            channel_name=channel_name,
+            classification=channel.classification,
+            normal_state=channel.normal_state,
+            initial_state=0,
+            transitions=[],
+            start_time=0.0,
+            end_time=0.0,
+            sample_count=0,
+        )
+
+    # Vectorized edge-finding: np.diff flags every sample-to-sample change;
+    # nonzero() gives the indices of the SAMPLE AFTER each change (the new
+    # state's own first sample) -- only actual transitions are then
+    # iterated in the Python loop below, never the full sample array, so
+    # this stays fast regardless of the record's raw sample count.
+    change_indices = np.nonzero(np.diff(values_full) != 0)[0] + 1
+    transitions = [
+        DigitalTransition(time=float(time_full[i]), state=int(values_full[i]))
+        for i in change_indices
+    ]
+
+    return DigitalWaveformResult(
+        source_id=active.metadata.source_id,
+        channel_name=channel_name,
+        classification=channel.classification,
+        normal_state=channel.normal_state,
+        initial_state=int(values_full[0]),
+        transitions=transitions,
+        start_time=float(time_full[0]),
+        end_time=float(time_full[-1]),
+        sample_count=int(values_full.shape[0]),
     )

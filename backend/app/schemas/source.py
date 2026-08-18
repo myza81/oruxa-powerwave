@@ -46,6 +46,10 @@ class DigitalChannelOut(BaseModel):
     name: str
     index: int
     normal_state: int
+    # Phase 4A: "triggered" | "never_triggered" | "spare" -- computed once
+    # at import time (app.domain.digital_classification), never re-derived
+    # per request. See DigitalChannelSummary's own docstring.
+    classification: str
 
 
 class TimebaseOut(BaseModel):

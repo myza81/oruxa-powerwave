@@ -27,11 +27,16 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Upl
 
 from app.config import Settings
 from app.domain.source import ActiveSource
+from app.schemas.digital_waveform import DigitalWaveformBatchOut, DigitalWaveformOut
 from app.schemas.source import ErrorOut, SourceChannelsOut, SourceSummaryOut
 from app.schemas.waveform import WaveformRangeOut
 from app.services.errors import ImportServiceError
 from app.services.import_service import import_comtrade_source
-from app.services.waveform_service import DEFAULT_POINT_BUDGET, extract_waveform_range
+from app.services.waveform_service import (
+    DEFAULT_POINT_BUDGET,
+    extract_digital_waveform,
+    extract_waveform_range,
+)
 from app.services.workspace_registry import WorkspaceRegistry
 
 logger = logging.getLogger(__name__)
@@ -49,6 +54,7 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "source_not_found": status.HTTP_404_NOT_FOUND,
     "channel_not_found": status.HTTP_404_NOT_FOUND,
     "channel_not_analog": status.HTTP_400_BAD_REQUEST,
+    "channel_not_digital": status.HTTP_400_BAD_REQUEST,
     "invalid_time_range": status.HTTP_400_BAD_REQUEST,
     "internal_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
@@ -208,6 +214,53 @@ def get_source_waveform(
         )
         raise _http_error(exc) from exc
     return WaveformRangeOut.from_result(result)
+
+
+@router.get("/{source_id}/digital-waveform", response_model=DigitalWaveformBatchOut)
+def get_source_digital_waveform(
+    workspace_id: str,
+    source_id: str,
+    channel_names: list[str] = Query(
+        ...,
+        description=(
+            "One or more digital channel names, as returned by GET .../channels "
+            "(repeat the query parameter for a batch: "
+            "?channel_names=A&channel_names=B). Batched deliberately -- a "
+            "source may carry hundreds of digital channels, and N separate "
+            "requests for N channels would be wasteful (see "
+            "docs/project-memory/MIGRATION_PLAN.md's Phase 4A record)."
+        ),
+    ),
+    registry: WorkspaceRegistry = Depends(get_workspace_registry),
+) -> DigitalWaveformBatchOut:
+    """Phase 4A batched digital-waveform endpoint.
+
+    Digital channels only (mirrors GET .../waveform's analog-only
+    contract, symmetrically) -- see
+    app.services.errors.ChannelNotDigitalError. Always returns the full
+    record's transition list per channel; no start_time/end_time/
+    point_budget parameters -- see extract_digital_waveform's own
+    docstring for why.
+    """
+    workspace_id = _validate_workspace_id(workspace_id)
+    active = _get_or_404(registry, workspace_id, source_id)
+    results: list[DigitalWaveformOut] = []
+    for channel_name in channel_names:
+        try:
+            result = extract_digital_waveform(active, channel_name=channel_name)
+        except ImportServiceError as exc:
+            logger.info(
+                "Digital waveform request rejected (%s) for workspace %s source %s "
+                "channel %s: %s",
+                exc.code,
+                workspace_id,
+                source_id,
+                channel_name,
+                exc.message,
+            )
+            raise _http_error(exc) from exc
+        results.append(DigitalWaveformOut.from_result(result))
+    return DigitalWaveformBatchOut(channels=results)
 
 
 @router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT)

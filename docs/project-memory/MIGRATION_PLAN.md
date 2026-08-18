@@ -8548,6 +8548,271 @@ flagged for owner UAT.
 
 ---
 
+## Phase 4A — Digital Channels Rendering Implementation Record (2026-08-17)
+
+`[FACT]` throughout. New architecture decision — see
+[DECISIONS.md — DEC-034](DECISIONS.md#dec-034--digital-channel-rendering-shared-batched-full-record-transition-api-one-shared-multi-trace-plotly-figure-not-one-instance-per-channel-phase-4a).
+
+### Owner directive
+
+Pause cosmetic UX work (Phase 3B-UAT7–UAT11) and return to core waveform
+functionality: render COMTRADE digital (binary/state) channels alongside
+the existing analog waveform architecture. Explicit instruction: display
+ALL analog and digital channels by default once a recording is opened,
+then evaluate real performance/usability through owner UAT before
+deciding whether any default channel filtering is needed — do not
+prematurely optimize by hiding channels automatically.
+
+### Mandatory startup investigation (completed before implementation)
+
+Reviewed the existing full-resolution analog waveform API
+(`extract_waveform_range`, DEC-019), the analog rendering architecture
+(one Plotly instance per panel, DEC-024/DEC-026), Grouped/Separate/Custom
+layouts (DEC-025/DEC-027), the shared X viewport (DEC-021), the shared
+sticky time-axis ruler (DEC-030), the channel browser, and the COMTRADE
+digital-channel domain representation. Confirmed via direct source
+inspection: digital sample values are `np.int8` 0/1 (normal-state
+inversion NOT applied — raw bits preserved,
+`app/providers/comtrade.py`), retained only in
+`DisturbanceRecord.waveform_data` (never on lightweight metadata), and
+that no existing API path served them at all — `_resolve_analog_channel`
+explicitly rejected digital channel names
+(`ChannelNotAnalogError`). This confirmed digital-waveform delivery was
+genuinely undecided architecture, not an oversight to quietly extend.
+
+### Backend
+
+- `app/domain/digital_classification.py` (new): pure, stateless
+  `classify_digital_channel(*, name, values)` — Spare (name contains
+  "spare", case-insensitive, anywhere) → precedence over Triggered even
+  when the channel does go high; else any non-zero sample across the
+  FULL record → Triggered (a channel that starts high and stays high the
+  whole record, never transitioning, is still Triggered); else Never
+  Triggered.
+- `app/services/import_service.py`: `_build_source_metadata()` now
+  computes `classification` once per digital channel at import time
+  (same established pattern as `duration_seconds`/`sampling_rates`/
+  analog `engineering_type`) — never re-scanned per request.
+- `app/domain/source.py` / `app/schemas/source.py`:
+  `DigitalChannelSummary`/`DigitalChannelOut` gained a `classification:
+  str` field.
+- `app/services/errors.py`: new `ChannelNotDigitalError`, symmetric with
+  the existing `ChannelNotAnalogError`.
+- `app/services/waveform_service.py`: new
+  `extract_digital_waveform(active, *, channel_name)` — vectorized
+  (`np.diff`) transition-finding, always full-record (no `start_time`/
+  `end_time`/`point_budget`), returning `classification`, `normal_state`,
+  `initial_state`, a sparse `transitions: [{time, state}]` list, and
+  `start_time`/`end_time`/`sample_count`.
+- `app/schemas/digital_waveform.py` (new):
+  `DigitalTransitionOut`/`DigitalWaveformOut`/`DigitalWaveformBatchOut`.
+- `app/api/v1/sources.py`: new
+  `GET .../sources/{source_id}/digital-waveform?channel_names=A&channel_names=B...`
+  (repeated query param — batched, one request per source among
+  newly-displayed channels, not one request per channel).
+- **Tests**: `backend/tests/test_digital_classification.py` (17 cases —
+  every Triggered/Never-Triggered/Spare scenario including "starts high,
+  never transitions" and the "SPARE TRIP" name-precedence-despite-going-
+  high edge case, parametrized case-insensitive/substring Spare-name
+  matching, stable ordering of `KNOWN_GROUPS`).
+  `backend/tests/test_digital_waveform_api.py` (8 cases — classification
+  exposed via `GET .../channels`, exact transition timestamps against
+  the `synth_ascii` fixture (`BRK_A`/`BRK_B`), batch order preservation,
+  404/400 error mapping, two-source isolation). Full backend suite:
+  **311/311 passing** (286 pre-existing + this phase's 25 new), zero
+  regressions.
+
+### Frontend
+
+- New `ww` state: `digitalDisplayed: Map<"sourceId::channelName", entry>`
+  (fully separate from the analog-only `ww.displayed`/`ww.panels`),
+  `digitalChartReady`, `digitalClickWired`, `sourceDefaultsApplied:
+  Set<sourceId>`.
+- New DOM: `#wwDigitalRegion` (hidden when empty) → `.ww-digital-title`
+  → `#wwDigitalScroll` (fixed `max-height: 260px`, `overflow-y: auto`) →
+  `#wwDigitalChart` — positioned strictly below `#wwPanels`, strictly
+  above the existing `#wwStickyRuler`; the ruler is never nested inside
+  the scroll container, so it cannot scroll out of view.
+- `wwRebuildDigitalChart()`: one shared Plotly figure, one `line_shape:
+  "hv"` step trace per displayed digital channel at incrementing Y-axis
+  lane offsets; Y-axis ticks are the (truncated, 26-char max) channel
+  names via `tickmode: "array"`, full name always available via
+  per-trace `hovertext`; X-axis tick labels suppressed entirely (the
+  sticky ruler remains the one bottom time reference — no duplicated
+  axis); `fixedrange: true` on both axes. Always updated via
+  `Plotly.react`, called from every site that changes the displayed
+  digital set, `ww.viewport`, `ww.timeMode`, or the theme.
+  `wwDigitalSortChannels()`/`wwSortedDigitalEntries()`: group (Triggered
+  → Never Triggered → Spare) → case-insensitive alphabetical → stable
+  original-index tiebreak — the SAME function drives both the rendered
+  lanes and the channel browser's own digital grouping, so the two can
+  never disagree.
+- `wwAddDigitalChannels(channelMetas)`: batches by source, calls the new
+  `/digital-waveform` endpoint with repeated `channel_names` params.
+  `wwRemoveDigitalChannelByKey(key)`: used by workspace/source-removal
+  AND by a new `plotly_click` listener on the digital chart (wired once,
+  re-deriving the current sorted entry list on every click) — the
+  lowest-cost per-lane remove affordance available given digital lanes
+  have no individual DOM row of their own, keeping "hide/remove/re-add"
+  meaningful for digital the same way analog's per-panel legend remove
+  button already is.
+- `renderDigitalGroup()` (channel browser) rewritten: previously a flat,
+  collapsed-by-default, checkbox-less table; now sub-grouped by
+  Triggered/Never Triggered/Spare (each `<details open>`, group counts
+  shown), each subgroup alphabetically sorted via the same
+  `wwDigitalSortChannels()`, each row carrying a checkbox
+  (`digitalChannelCheckboxHtml`, `data-channel-kind="digital"`) —
+  Phase 4A is the first time digital channels could be added to the
+  display at all.
+- `selectedDigitalChannels` (new Map, parallel to the existing
+  `selectedChannels`): the shared "Add N selected"/"Clear selection" UI
+  now acts on whichever kind(s) currently have checkboxes checked,
+  routing into the correct add path (`wwAddSelectedChannels` for analog,
+  `wwAddDigitalChannels` for digital) without a second set of buttons.
+- **Default display policy**: `wwApplyDefaultChannelDisplay(data)`
+  (new, `async`) builds the same `channelMetas` shape the existing
+  checkbox-driven add paths already expect, straight from the
+  just-fetched channel list, and `await`s both `wwAddSelectedChannels`/
+  `wwAddDigitalChannels` concurrently (`Promise.all`). `selectSource()`
+  calls this ONLY the first time a given `sourceId` is opened this
+  session (`ww.sourceDefaultsApplied`), and awaits it — a fire-and-forget
+  version was caught and fixed during implementation because it created
+  a real race against any fast subsequent action (another `selectSource`
+  call, a manual "Add selected" click, or a test's own scripted
+  follow-up). Reset only by `wwClearWorkspace()`, so a manually-hidden
+  channel is never reapplied merely by navigating
+  Waveform → Recordings → Waveform and re-opening the same already-open
+  recording.
+- Autoscale Y remains analog-only (`ww.panels` only) — never touches the
+  digital chart. Reset Time View resets both analog and digital X
+  viewport to the same full-record range (both funnel through
+  `wwApplyAndFetchViewport`). Absolute/Elapsed switching restyles the
+  digital chart's presentation via the same `wwElapsedToPlotlyX`
+  boundary analog uses, with zero additional `/digital-waveform` fetch.
+
+### Digital display ordering (owner's exact required precedence)
+
+1. **Triggered**, 2. **Never Triggered**, 3. **Spare** (always last) —
+   both in the rendered lanes and the channel browser, identically.
+   Within a group: case-insensitive alphabetical, stable original-index
+   tiebreak on ties. Verified with a mixed fixture (`alarm`, `ALARM_B`,
+   `Breaker`, `cb_trip` sort to that exact order) and the exact "SPARE
+   TRIP still classified Spare despite a real high sample" and
+   "ALWAYS_HIGH still classified Triggered despite zero transitions"
+   edge cases from the owner's own worked examples.
+
+### Tests
+
+- New dedicated frontend verification script (not committed — this
+  project's established scratch-verification convention):
+  `phase4a_check.mjs`, 25 checks covering: default display policy
+  (new-source = all displayed; manual per-lane removal via
+  `plotly_click` persists across a Waveform → Recordings → Waveform
+  round trip; default is never reapplied on re-navigation);
+  classification precedence as delivered (Triggered via any high
+  sample; Triggered despite zero transitions; Never Triggered;
+  Spare-name-precedence-despite-going-high); ordering (group order,
+  case-insensitive alphabetical, channel-browser/rendered-region
+  agreement, full classified-set group counts); digital region
+  placement (document order strictly below analog panels, strictly
+  above the shared ruler); digital rendering (`line_shape: "hv"` step
+  geometry with exact transition timestamps, no duplicated bottom axis
+  labels, HIGH/LOW distinguishable via geometry not color alone, one
+  shared Plotly figure never one-per-channel); shared viewport (analog
+  zoom broadcasts to the digital chart's X range, Reset Time View
+  resets both, Autoscale Y never touches digital, Absolute/Elapsed
+  switch causes zero additional digital fetch); large channel count (40
+  displayed lanes genuinely exceed the fixed 260px scroll viewport,
+  forcing real scrolling — not just declared CSS — while the ruler
+  stays outside the scroll container); long channel names (truncated
+  tick label, full name always available via hover); source isolation
+  (two sources' digital channels never leak, per-entry key always
+  matches its own recorded `sourceId`, removing one source's channels
+  leaves the other's completely untouched).
+- **Full existing frontend regression suite re-run**: total failures
+  returned to exactly the established pre-existing baseline (**17**,
+  across `phase2cb1/cb2/cb3/cb3a/cc1/cc2/cc3/cc4_check.mjs` only — every
+  one independently confirmed, by running the identical test files
+  against the untouched canonical `frontend/index.html` from `HEAD`, to
+  already fail identically with ZERO Phase 4A involvement; all trace to
+  the pre-existing DEC-030 sticky ruler's own relayout/newPlot calls
+  being counted by hardcoded assertions written before the ruler
+  existed). `phase2ca_check.mjs` went from its own previously-documented
+  3-failure baseline to **0** — three genuinely pre-existing,
+  ruler-related assertion bugs were fixed in place as an unavoidable
+  side effect of correctly accounting for `selectSource()`'s new
+  earlier-firing default-display flow, not scope creep.
+  `phase3buat8_check.mjs`'s one zero-fetch assertion was corrected in
+  place (selecting a source now legitimately fetches waveform data as
+  part of opening it — the assertion now checks that a pure navigation
+  round trip adds no ADDITIONAL fetch, which is what it always actually
+  meant to verify). `phase3buat9_check.mjs`'s one border-value assertion
+  was corrected in place to match the already-committed, unrelated
+  Phase 3B-UAT11 divider change (`#workspaceSidebar`'s `border-right`
+  intentionally became `0` in that separate, already-shipped commit).
+- **Backend**: 311/311 passing in a fresh venv (286 pre-existing +
+  17 classification + 8 digital-waveform-API = 311), zero regressions.
+
+### Files changed
+
+- `backend/app/domain/digital_classification.py` (new)
+- `backend/app/schemas/digital_waveform.py` (new)
+- `backend/app/domain/source.py`
+- `backend/app/schemas/source.py`
+- `backend/app/services/errors.py`
+- `backend/app/services/import_service.py`
+- `backend/app/services/waveform_service.py`
+- `backend/app/api/v1/sources.py`
+- `backend/tests/test_digital_classification.py` (new)
+- `backend/tests/test_digital_waveform_api.py` (new)
+- `frontend/index.html`
+- `docs/project-memory/DECISIONS.md` (new DEC-034)
+- `docs/project-memory/CURRENT_STATE.md`
+- `docs/project-memory/HANDOFF.md`
+- `docs/project-memory/MIGRATION_PLAN.md`
+
+### Performance observations (representative source: the 40-digital-channel
+test fixture used by `phase4a_check.mjs` — no real large COMTRADE file
+with hundreds of digital channels was available in this sandbox, so
+these are structural/qualitative jsdom-harness observations, not
+real-browser timing measurements; explicitly labeled as such rather than
+claimed as "fast")
+
+- Analog channels: 1. Digital channels: 40 (5 Triggered / 33 Never
+  Triggered / 2 Spare). Plotly figures: 3 total (1 analog panel, 1
+  shared digital figure, 1 sticky ruler) — never 41. Digital trace
+  count: 40 traces inside that one shared figure. Network requests for
+  the default-display open: 1 `.../channels` + 1 analog `.../waveform` +
+  1 batched `.../digital-waveform` (all 40 digital channels in one
+  request, not 40). Digital chart height at 40 lanes: computed at
+  `40 * 22px + 16px = 896px`, comfortably exceeding the fixed 260px
+  `#wwDigitalScroll` viewport — confirmed to genuinely require
+  scrolling, not just declare `overflow: auto` untested. Zoom/pan:
+  `fixedrange: true` on the digital chart means it never independently
+  drives relayout, so its own responsiveness is bounded entirely by one
+  `Plotly.react` call per shared-viewport change — structurally bounded
+  regardless of displayed digital channel count, but real 100+/300+
+  channel responsiveness was NOT measured in a real browser and remains
+  an open owner-UAT question (see the final report).
+
+### Honest limitations
+
+- No real browser is available in this sandbox — actual rendered
+  readability of the digital step traces in Light/Dark themes, hover
+  tooltip legibility, real scroll feel inside `#wwDigitalScroll`, and
+  real zoom/pan responsiveness at 100+/300+ simultaneously-displayed
+  digital channels were reasoned through and structurally exercised via
+  jsdom, but not visually confirmed — flagged for owner UAT.
+- No COMTRADE fixture with hundreds of real digital channels was
+  available; the 40-channel synthetic fixture used for the scrolling/
+  performance checks is a stand-in, not a claim that behavior at
+  hundreds of channels was directly measured.
+- Digital channels have no drag-to-reorder and no custom-grouping
+  editor this phase (owner's own explicit scope exclusion) — only the
+  Triggered/Never-Triggered/Spare presentation grouping exists.
+
+---
+
 ## Phase 3B-UAT11 — Workspace Sidebar Divider / Scrollbar Line Cleanup (2026-08-17)
 
 `[FACT]` throughout. No new DECISIONS.md entry (targeted visual follow-up

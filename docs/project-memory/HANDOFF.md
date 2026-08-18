@@ -8,6 +8,84 @@ Last updated: **2026-08-17**
 
 ## What was most recently done
 
+**Phase 4A — Digital Channels Rendering.** Full detail:
+[MIGRATION_PLAN.md — Phase 4A Implementation Record](MIGRATION_PLAN.md#phase-4a--digital-channels-rendering-implementation-record-2026-08-17)
+and [DECISIONS.md — DEC-034](DECISIONS.md#dec-034--digital-channel-rendering-shared-batched-full-record-transition-api-one-shared-multi-trace-plotly-figure-not-one-instance-per-channel-phase-4a)
+(new architecture decision).
+
+**Owner directive**: pause the cosmetic UX passes (UAT7–UAT11 above) and
+return to core waveform functionality — render COMTRADE digital
+(binary/state) channels alongside the existing analog waveform
+architecture. Explicit instruction: display ALL analog and digital
+channels by default once a recording is opened, then evaluate real
+performance/usability through owner UAT before deciding whether any
+default channel filtering is needed.
+
+**What changed (backend)**: a new batched
+`GET .../sources/{id}/digital-waveform?channel_names=A&channel_names=B...`
+endpoint serves each requested digital channel's classification
+(Triggered/Never Triggered/Spare — computed once at import time, never
+per-request) and its full-record transition list (`{time, state}`,
+never point-budget/range-reduced — digital transitions are inherently
+sparse, so full delivery is both the most truthful and, in practice, the
+smallest payload). New `app/domain/digital_classification.py` implements
+the owner's exact required precedence (name contains "spare" beats any
+observed high state; "any non-zero sample across the full record" is
+Triggered even with zero transitions).
+
+**What changed (frontend)**: every displayed digital channel now
+renders as one true-step (`line_shape: "hv"`) trace inside a SINGLE
+shared Plotly figure — deliberately NOT one Plotly instance per digital
+channel, a genuinely different architecture from analog's own
+one-instance-per-panel model (DEC-024/DEC-026), chosen because a
+COMTRADE record may carry hundreds of digital channels. The digital
+region (`#wwDigitalRegion` → `#wwDigitalScroll`, independently
+vertically scrollable) sits strictly below all analog panels and
+strictly above the existing shared sticky ruler (DEC-030), which is
+never nested inside the scroll container and remains the one
+authoritative bottom time reference. Digital shares the exact analog X
+viewport (zoom/pan/Reset Time View/Absolute-Elapsed all stay in sync,
+zero second synchronization authority); Autoscale Y remains
+analog-only. A `plotly_click` listener on the digital chart gives each
+lane a remove affordance (mirroring analog's per-panel legend remove
+button), since digital lanes have no individual DOM row of their own.
+
+**Default display policy (the owner's explicit UAT experiment)**:
+opening/re-opening a source that hasn't been auto-defaulted THIS
+SESSION (`ww.sourceDefaultsApplied`) now displays every analog AND
+every digital channel — same policy for both. Manually hiding/removing
+a channel afterward is never undone merely by navigating
+Waveform → Recordings → Waveform back to the same already-open
+recording (reset only by a whole-workspace clear). This intentionally
+does NOT solve "what if a source has hundreds of channels" by hiding
+anything automatically — that is exactly what owner UAT is meant to
+evaluate.
+
+**Verification**: new dedicated `phase4a_check.mjs` (25 checks, not
+committed — this project's established scratch-verification
+convention) covers classification precedence, display ordering,
+default-display persistence across navigation, digital rendering
+structure, shared-viewport sync, large-channel-count scrolling, long
+channel names, and multi-source isolation. Full existing frontend
+regression suite returned to exactly its established pre-existing
+17-failure baseline (independently re-confirmed against the untouched
+canonical `HEAD`, unrelated to this phase — all trace to the
+pre-existing DEC-030 sticky ruler's relayout/newPlot calls being
+undercounted by assertions written before the ruler existed);
+`phase2ca_check.mjs`'s own previously-documented 3-failure baseline was
+fixed to 0 as an unavoidable side effect of correctly accounting for
+`selectSource()`'s new default-display flow. Backend: 311/311 passing
+(286 pre-existing + 25 new), zero regressions. `git diff --check`
+clean.
+
+**Not yet done**: real-browser owner UAT (readability of digital step
+traces in Light/Dark, hover tooltip legibility, real scroll feel, real
+zoom/pan responsiveness at 100+/300+ simultaneously-displayed digital
+channels) — explicitly flagged as the next required step before any
+further waveform feature work (cursor/measurement tools etc.) begins.
+
+## What was done in the prior session (Phase 3B-UAT11 — Workspace Sidebar Divider / Scrollbar Line Cleanup)
+
 **Phase 3B-UAT11 — Workspace Sidebar Divider / Scrollbar Line Cleanup.**
 Full detail:
 [MIGRATION_PLAN.md — Phase 3B-UAT11 Record](MIGRATION_PLAN.md#phase-3b-uat11--workspace-sidebar-divider--scrollbar-line-cleanup-2026-08-17).
@@ -47,7 +125,7 @@ clean; the focused test passes (6/6); committed/tracked backend tests pass
 local worktree fails 8 unrelated untracked digital-waveform tests because
 those local tests expect backend behavior not present in canonical `HEAD`.
 
-## What was done in the prior session (Phase 3B-UAT10 — Targeted Scrollbar Track / Divider Fix)
+## What was done in the earlier session (Phase 3B-UAT10 — Targeted Scrollbar Track / Divider Fix)
 
 **Phase 3B-UAT10 — Targeted Scrollbar Track / Divider Fix.** Full detail:
 [MIGRATION_PLAN.md — Phase 3B-UAT10 Record](MIGRATION_PLAN.md#phase-3b-uat10--targeted-scrollbar-track--divider-fix-2026-08-17).
@@ -4269,6 +4347,13 @@ sources actually get imported during a shared-DEV session.
 
 ## Owner approval needed before proceeding?
 
+- **Yes — Phase 4A (Digital Channels Rendering) specifically needs
+  real-browser owner UAT before any further waveform feature work
+  (cursor/measurement tools etc.) begins**, per that task's own explicit
+  closing instruction. See "What was most recently done" at the top of
+  this document for the open questions (digital step-trace readability
+  in Light/Dark, hover tooltips, scroll feel, zoom/pan responsiveness at
+  a real large digital-channel count).
 - Not needed to review or use Phase 2C-A, Phase 2C-B1, Phase 2C-B2, Phase
   2C-B3, Phase 2C-B3A, Phase 2C-C1, Phase 2C-C2, Phase 2C-C2A, Phase
   2C-C3, Phase 2C-C4, Phase 2C-C4A, Phase 2C-C4B, Phase 3A, Phase
@@ -4307,9 +4392,13 @@ sources actually get imported during a shared-DEV session.
   library (Phase 3B's Recordings page is explicitly session/workspace-
   backed only, per DEC-032 — persistent retention is a separate future
   product/architecture decision, not to be backed into via a UI
-  feature), before digital channels (the owner's own next stated area,
-  not yet begun — and this task's own explicit closing instruction was
-  to stop here, not begin it), before Synthetic Elapsed Time, Sample
+  feature), before cursor/measurement tools or any further waveform
+  feature builds on top of digital-channel rendering (Phase 4A is now
+  implemented and deployed to DEV per that task's own authorization, but
+  its own explicit closing instruction was to stop for real-browser
+  owner UAT before proceeding further — see the Phase 4A entry at the
+  top of this document for the specific open questions), before
+  Synthetic Elapsed Time, Sample
   Index, or any CSV/Excel timing mode, before the Grouped/Custom per-panel
   axis-label duplication (Phase 2C-C4's own section 16 gap, unchanged
   and still outstanding across five passes now) is cleaned up, before

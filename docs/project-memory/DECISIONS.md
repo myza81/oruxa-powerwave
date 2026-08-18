@@ -2436,6 +2436,186 @@ Impact:
 
 ---
 
+## DEC-034 — Digital channel rendering: shared batched full-record transition API; one shared multi-trace Plotly figure, not one instance per channel (Phase 4A)
+
+Date: 2026-08-17
+Status: Approved
+Source: explicit project-owner instructions opening the Phase 4A task
+(2026-08-17), pausing cosmetic UX work to return to core waveform
+functionality — rendering COMTRADE digital (binary/state) channels
+alongside the existing analog waveform architecture, with an explicit
+directive to display ALL analog and digital channels by default after a
+recording is opened and evaluate real performance/usability via owner
+UAT before considering any default filtering.
+
+Decision:
+
+**Backend — a new batched, full-record digital-waveform endpoint,
+architecturally distinct from the analog waveform endpoint:**
+
+- `GET /api/v1/workspaces/{workspace_id}/sources/{source_id}/digital-waveform?channel_names=A&channel_names=B...`
+  (repeated query param) returns, per channel: `classification`,
+  `normal_state`, `initial_state`, a sparse `transitions: [{time, state}]`
+  list, `start_time`/`end_time`/`sample_count` — always the FULL record,
+  never `point_budget`/range-scoped like the existing analog `.../waveform`
+  endpoint (DEC-019). Reasoning: a digital channel's transition COUNT is
+  inherently small/sparse regardless of total sample count (COMTRADE
+  digital channels are step/state signals, not continuous analog
+  waveforms), so full-record delivery is simultaneously the most
+  truthful representation (zero risk of losing a real state transition,
+  satisfying the owner's explicit "never downsample digital data" and
+  "preserve exact transition timing" requirements) AND, in practice, the
+  smallest payload — a point-budget/range-based contract modeled on
+  analog would have added complexity for no real benefit here.
+  `extract_digital_waveform()` (`app/services/waveform_service.py`)
+  vectorizes transition-finding via `np.diff`, independent of raw sample
+  count.
+- **Classification is computed ONCE, at import time**, in
+  `_build_source_metadata()` (`app/services/import_service.py`) —
+  `classify_digital_channel()` (new `app/domain/digital_classification.py`,
+  pure/stateless) implements the owner's exact required precedence:
+  name contains "spare" (case-insensitive, anywhere) → **Spare**
+  (takes precedence over any observed high state); else any non-zero
+  sample across the FULL record → **Triggered** (a channel that starts
+  high and never transitions is still Triggered — not defined as
+  "contains a 0→1 transition"); else → **Never Triggered**. Stored on
+  `DigitalChannelSummary`/`DigitalChannelOut` (`classification: str`),
+  never re-derived from a full-record scan at request or render time —
+  matching the established "compute once at import" pattern
+  `duration_seconds`/`sampling_rates`/analog `engineering_type` already
+  use.
+
+**Frontend — ONE shared Plotly figure with many step traces, a
+genuinely different rendering architecture from analog's own
+one-Plotly-instance-per-panel model (DEC-024, DEC-026):**
+
+- `wwRebuildDigitalChart()` renders every displayed digital channel as
+  one `line_shape: "hv"` (true step, exact transition timing preserved)
+  trace inside a SINGLE Plotly figure, at incrementing Y-axis lane
+  offsets; Y-axis ticks ARE the (truncated) channel names via
+  `tickmode: "array"` (full name always available per-trace via
+  `hovertext`, since a native Plotly axis tick has no tooltip mechanism
+  of its own); X-axis tick labels are suppressed entirely (the existing
+  DEC-030 sticky ruler remains the one authoritative bottom time
+  reference — no second/duplicated bottom axis). `fixedrange: true` on
+  both axes — the digital chart never independently drives the shared
+  viewport, only follows it, so it needs no relayout listener or
+  feedback-loop guard. A single `Plotly.react`-based update path is
+  reused for every change type (channel add/remove, viewport change,
+  Absolute/Elapsed switch, theme switch) rather than three separately
+  optimized paths, a deliberate simplification justified by digital
+  trace data's inherently small size (sparse transitions, not dense
+  samples).
+- **Rejected: one Plotly instance per digital channel** — the same
+  per-panel-instance approach analog already uses (DEC-024) — because a
+  COMTRADE record may carry hundreds of digital channels, and the owner
+  explicitly required them ALL displayed by default; hundreds of
+  independent Plotly instances was judged a real, foreseeable
+  performance risk not worth taking when a single shared figure serves
+  every stated requirement (compact lanes, shared viewport, readable
+  step transitions) without it.
+- **Digital region placement**: a dedicated, independently
+  vertically-scrollable region (`#wwDigitalRegion` → `#wwDigitalScroll`,
+  fixed `max-height: 260px`) strictly below all analog panels and above
+  the shared sticky ruler — the ruler itself is never nested inside the
+  scrolling container, so it cannot scroll out of view. Digital lanes
+  are NEVER mixed into analog panels, and remain in this one dedicated
+  region regardless of the analog Grouped/Separate/Custom layout mode
+  (DEC-025/DEC-027) — those three modes continue to govern ONLY analog
+  arrangement.
+- **Default-all-display, scoped per source-open, not per navigation**:
+  `ww.sourceDefaultsApplied: Set<sourceId>`, checked/set only inside
+  `selectSource()`, reset only by `wwClearWorkspace()`. A genuinely new
+  source-open displays every analog AND every digital channel (same
+  policy for both — the owner was explicit that analog and digital must
+  not get different default policies); manually hiding/removing a
+  channel afterward is never undone merely by navigating
+  Waveform → Recordings → Waveform and re-opening the same already-open
+  recording. This is a deliberate, owner-directed UAT experiment (owner's
+  own words: "do not prematurely optimize the product behavior by hiding
+  channels automatically") — not a claim that this scales indefinitely;
+  see the Phase 4A implementation record's own performance section.
+- **Per-lane removal**: digital lanes have no individual DOM row (one
+  shared Plotly figure, Y-axis-tick labels, not real per-channel
+  elements), so a `plotly_click` listener on the digital chart (wired
+  once, re-deriving the current sorted entry list fresh on every click
+  so `curveNumber` always maps correctly even as the displayed set
+  changes) removes the clicked lane's channel via the same
+  `wwRemoveDigitalChannelByKey()` used by the workspace-reset/
+  source-removal paths — keeping "hide/remove/re-add" meaningful for
+  digital the same way analog's per-panel legend remove button already
+  is, per this task's own explicit requirement that channel-visibility
+  interaction stay meaningful for both kinds.
+
+Reason:
+
+The owner's own task-opening instructions are the explicit act of
+requesting digital-channel rendering next, with several requirements
+stated prescriptively enough (full-resolution transition timing must
+never be lost; hundreds of digital channels must not create hundreds of
+Plotly instances without first analysing the performance impact; digital
+must share the exact analog X viewport with no second synchronization
+authority; classification precedence and display ordering are given as
+exact, testable rules) that they constitute real architectural
+commitments worth recording — consistent with this project's own
+governance for owner-directed feature decisions (DEC-024–DEC-030
+precedent), and explicitly required by this task's own "architecture
+decision threshold" instruction (report + record rather than bury a
+genuinely new API/rendering pattern inside implementation).
+
+Alternatives considered:
+
+- **One Plotly instance per digital channel** (rejected — see above;
+  the direct opposite of what DEC-024/026 established for analog would
+  have been reused unexamined, without regard for digital's very
+  different potential channel count).
+- **A range/`point_budget`-scoped digital-waveform endpoint, mirroring
+  the analog contract exactly** (considered, rejected — digital
+  transition data is inherently sparse regardless of sample count, so a
+  full-record response is both simpler and, in the vast majority of
+  real recordings, smaller than a range-scoped one; it also trivially
+  guarantees zero data loss across a zoom, satisfying the "never
+  downsample digital data" requirement without needing separate
+  full-resolution-vs-display-representation bookkeeping the way analog's
+  min/max envelope logic (DEC-019) needs).
+- **A separate DOM label column instead of Plotly Y-axis ticks for
+  channel names** (considered — would have made the "full name via
+  hover" requirement moot since a real DOM element can just show the
+  full name — but rejected in favor of keeping the digital chart a
+  single self-contained Plotly figure, avoiding a second layout system
+  that would need to stay pixel-aligned with the chart's own lane rows
+  on every resize/theme change).
+- **Automatically hiding Spare (or any group) by default** (explicitly
+  rejected — the owner's own instruction was to observe real UAT
+  evidence before making that product decision, not to pre-empt it).
+
+Impact:
+
+- New backend files: `app/domain/digital_classification.py`,
+  `app/schemas/digital_waveform.py`. Modified:
+  `app/domain/source.py` (`DigitalChannelSummary.classification`),
+  `app/schemas/source.py` (`DigitalChannelOut.classification`),
+  `app/services/import_service.py` (classify once at import),
+  `app/services/waveform_service.py` (`extract_digital_waveform`),
+  `app/services/errors.py` (`ChannelNotDigitalError`),
+  `app/api/v1/sources.py` (new endpoint). New tests:
+  `backend/tests/test_digital_classification.py` (17 cases),
+  `backend/tests/test_digital_waveform_api.py` (8 cases).
+- `frontend/index.html`: new digital-workspace state
+  (`ww.digitalDisplayed`, `ww.digitalChartReady`, `ww.digitalClickWired`,
+  `ww.sourceDefaultsApplied`), new DOM region, new CSS, and the digital
+  add/remove/rebuild/sort functions described above; the existing
+  analog checkbox/"Add selected"/"Clear selection" UI now acts on
+  whichever kind(s) currently have checkboxes checked, via a second,
+  parallel `selectedDigitalChannels` map (never merged with the
+  existing analog-only `selectedChannels`). New dedicated test coverage:
+  `phase4a_check.mjs` (not committed — this project's established
+  scratch-verification convention, see MIGRATION_PLAN.md's own Phase
+  4A record for the full test list).
+- See [MIGRATION_PLAN.md — Phase 4A Implementation Record](MIGRATION_PLAN.md#phase-4a--digital-channels-rendering-implementation-record-2026-08-17).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or
