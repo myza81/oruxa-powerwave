@@ -257,7 +257,6 @@
                adjacent resize handle's centered divider instead. */
             border-right: 0;
             background: var(--bg);
-            padding: 16px;
         }
         #workspaceSidebar > .panel + .panel { margin-top: 16px; }
 
@@ -617,11 +616,12 @@
         }
 
         section.panel h2 {
-            font-size: 0.95rem;
+            font-size: 0.85rem;
             text-transform: uppercase;
             letter-spacing: 0.04em;
             color: var(--text-dim);
             margin: 0 0 14px;
+            padding: 0 10px;
         }
 
         .field { margin-bottom: 14px; }
@@ -685,7 +685,7 @@
             border: none;
             border-radius: var(--radius);
             padding: 10px 16px;
-            font-size: 0.9rem;
+            font-size: var(--button-font-size-compact);
             font-weight: 600;
             cursor: pointer;
             background: var(--accent);
@@ -748,7 +748,7 @@
            (section 19's own "is the heavy card still necessary?"
            review -- it isn't, once there's nothing left to manage here). */
         .active-recording {
-            padding-bottom: 14px;
+            padding: 10px;
             margin-bottom: 14px;
             border-bottom: 1px solid var(--panel-border);
         }
@@ -835,6 +835,7 @@
             align-items: center;
             gap: 10px;
             margin-bottom: 16px;
+            padding: 0 10px;
         }
         input[type="search"] {
             flex: 1;
@@ -1106,6 +1107,7 @@
             gap: 10px;
             margin-bottom: 16px;
             flex-wrap: wrap;
+            padding: 0 10px;
         }
         input[type="checkbox"].channel-select-cb { cursor: pointer; }
         td.select-col { width: 24px; }
@@ -1147,6 +1149,7 @@
             padding: 10px;
             border-bottom: 1px solid grey;
             border-bottom: 1px solid var(--panel-border);
+            background: var(--panel);
         }
         .ww-toolbar[hidden] { display: none; }
         .toolbar-spacer { flex: 1; }
