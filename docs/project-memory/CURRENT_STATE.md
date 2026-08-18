@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-18** (Phase 4A-UAT1B).
+Last meaningful update: **2026-08-18** (Phase 4A-UAT2).
 
 ## Development phase
 
@@ -1142,6 +1142,43 @@ change it). Frontend regression suite still exactly the established
 17-failure pre-existing baseline; backend 311/311 unchanged. Not yet
 owner-UAT'd in a real browser — flagged as **not** ready for further
 waveform feature work until that UAT completes.
+
+`[FACT]` **Phase 4A-UAT2 — Fix Remaining Digital Waveform UAT
+Failures** (2026-08-18) — see
+[MIGRATION_PLAN.md — Phase 4A-UAT2 Record](MIGRATION_PLAN.md#phase-4a-uat2--fix-remaining-digital-waveform-uat-failures-2026-08-18).
+Real-browser owner UAT on the Phase 4A-UAT1B build reported grouping/
+ordering as PASS, but four criteria as FAILED: alignment, loader
+visibility, label overlay, and HIGH-band boldness — treated as
+authoritative over any prior "code exists that was intended to solve
+this" claim. Root causes found via direct source investigation: (1)
+alignment — `wwResizeAllVisiblePlots()` (the established Phase 3A-UAT1
+catch-up path for Plotly's own `responsive:true` not reliably detecting
+non-window container resizes) had never been updated to include the
+digital chart, so any Workspace Sidebar drag, Main Sidebar collapse,
+window resize, or even ordinary Recordings→Waveform navigation left
+digital's rendered width stale relative to analog/ruler, independent of
+the UAT1B margin fix; (2) loader — this project's own Phase 2C-C2A
+finding ("the browser cannot paint until synchronous work returns
+control") applies here too; fixed with an explicit double-`requestAnimationFrame`
+paint-yield plus reordering `openRecordingForAnalysis()` so the page
+becomes visible before `selectSource()`'s loader does; (3) labels — the
+label annotation was vertically offset above its own trace rather than
+centered on it, now fixed to `yanchor:"middle"` at the trace's exact Y;
+(4) HIGH band — no concrete logic bug was found after exhaustive
+re-audit of the interval-generation code (re-verified correct via jsdom
+against constant-HIGH/constant-LOW/transitioned fixtures both before and
+after), so HIGH bands were switched from a second gapped line trace to
+`layout.shapes` — the same simpler, already-proven-working primitive
+already used for the group-divider lines in the same chart — removing
+an entire class of possible trace-rendering risk. A new
+`wwDiagnoseDigitalAlignment()` diagnostic (run in the browser console)
+reads Plotly's own real `_fullLayout` geometry for the owner to verify
+directly. Pure frontend change, no backend file touched, no new
+architecture decision. Frontend regression suite still the established
+17-failure baseline; backend 311/311 unchanged. **Explicitly cannot be
+accepted as visually fixed from this sandbox alone** — no real browser
+is available here; every fix is evidence-backed but owner real-browser
+UAT remains required before any further waveform feature work.
 
 ## Completed foundation work
 

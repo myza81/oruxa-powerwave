@@ -8548,6 +8548,200 @@ flagged for owner UAT.
 
 ---
 
+## Phase 4A-UAT2 — Fix Remaining Digital Waveform UAT Failures (2026-08-18)
+
+`[FACT]` throughout. No new DECISIONS.md entry -- root-cause fixes and a
+more robust rendering primitive within DEC-034's already-approved
+architecture (one shared Plotly figure, batched full-record delivery),
+not a new architectural commitment.
+
+### Owner real-browser UAT on the deployed Phase 4A-UAT1B build
+
+**PASS**: digital classification/group ordering (Triggered -> Never
+Triggered -> Spare, alphabetical within each) -- preserved unchanged
+this pass, not touched.
+
+**FAILED** (owner real-browser observation, authoritative over any
+jsdom/source-level check): (1) digital waveform still not visually
+time-aligned with analog/shared ruler despite UAT1B's margin.l fix; (2)
+loading animation/progress not visible during initial all-channel
+loading; (3) digital channel labels not overlaid on the signal lanes,
+still read as a separate label column; (4) HIGH state not rendered as an
+obvious bold/thick band -- "effectively uniform thin blue lines."
+
+### Root cause investigation (source-level; no real browser available in
+this sandbox -- see "Honest limitations" below)
+
+**Failure A (alignment) -- confirmed root cause**:
+`wwResizeAllVisiblePlots()` (the established Phase 3A-UAT1 catch-up path
+for "Plotly's own `responsive: true` only reliably reacts to actual
+`window` resize events, not a container that changed size for another
+reason") resized every analog panel and the shared ruler, but was NEVER
+updated when Phase 4A introduced the digital chart -- it simply never
+existed in that function. This function is called from FIVE real,
+everyday interaction paths: Workspace Sidebar drag-resize, Main Sidebar
+Menu collapse/expand, actual browser window resize, switching among
+Waveform/Table/Split, and (critically) every Recordings -> Waveform
+navigation (`shellSetCurrentPage("waveform")`'s own "any width change
+that happened while away" catch-up). Any one of these leaves the digital
+chart's rendered Plotly SVG stale at its old width while analog/ruler
+correctly redraw at the new one -- a structural cause of misalignment
+independent of the margin VALUES themselves (UAT1B's own fix), matching
+the task's own explicit warning not to assume equal `margin.l` implies
+equal rendered alignment. A second, smaller gap: `#wwDigitalChart` (unlike
+`.ww-chart`/`.ww-sticky-ruler-chart`) never had an explicit CSS
+`width: 100%` rule, silently relying on default block-level sizing
+inside a scrolling parent -- a less certain layout context than the
+other two surfaces' own explicit declarations.
+
+**Failure B (loader invisible) -- confirmed root cause**: this project's
+own Phase 2C-C2A investigation already documented the exact underlying
+mechanism -- "the browser cannot paint a new [DOM state] until the
+CURRENT synchronous unit of work returns control." `wwSetWorkspaceLoading(true,
+...)`'s DOM write is not itself a guarantee the browser painted it; on a
+fast local/DEV connection, the gap between "loader shown" and the next
+heavy synchronous block (channel-browser HTML, `wwApplyDefaultChannelDisplay`)
+can be too short for the browser to actually rasterize an intermediate
+frame, even across a real `await fetch()`. A second, independent
+contributor: `openRecordingForAnalysis(sourceId)` called
+`selectSource(sourceId)` (whose very first statement shows the loader)
+BEFORE `shellSetCurrentPage("waveform")` (which un-hides the loader's
+own ancestor container, `#workspaceRow`) -- ordering that, even though
+it did not ultimately block the eventual paint once traced through
+carefully, left avoidable ambiguity about a hidden-ancestor state.
+
+**Failure C (labels not overlaid) -- confirmed contributing bug**: the
+label annotation's `y`/`yanchor` (`y: y + 0.32, yanchor: "bottom"`)
+anchored the label's bottom edge ABOVE the trace's own Y, placing label
+and trace in two visually distinct vertical bands within the same lane
+instead of genuinely overlapping -- close enough to still read as
+"attached to this lane" in isolation, but not the "sits ON TOP OF /
+INSIDE the lane" treatment the owner's reference image shows, especially
+compounded by Failures A/B making the whole composition look
+disconnected.
+
+**Failure D (HIGH band not visible) -- investigated exhaustively,
+no logic bug found; root cause presumed to be a real-browser Plotly.js
+rendering behavior this sandbox cannot reproduce**: `wwDigitalHighIntervals()`
+and the band-trace-building code were re-audited line by line (interval
+generation, state tracking, `null`-gap segmentation, trace ordering,
+line width 7 vs 1, hover config, `colors.accent` resolution, Absolute/
+Elapsed conversion, initial-state semantics) and, separately, re-proven
+correct end to end against realistic fixture data covering a
+constant-HIGH channel, a constant-LOW channel, and a channel with a real
+transition -- all passing in the jsdom harness both before and after
+this investigation. Since jsdom cannot render Plotly.js at all (no
+canvas/SVG rendering engine, and the mock only records the arguments
+Plotly was CALLED with), a jsdom pass proves the DATA reaching Plotly was
+correct but cannot prove anything about what a real browser actually
+painted from it -- exactly the gap the owner's real-browser UAT is
+catching. No further logic bug was found through static analysis alone.
+
+### What changed
+
+**A. Alignment**: `wwResizeAllVisiblePlots()` now also calls
+`Plotly.Plots.resize()` on the digital chart when `ww.digitalChartReady`,
+alongside every analog panel and the ruler -- the SAME shared authority
+all three already funnel through for every non-window-resize geometry
+change. `#wwDigitalChart` gained an explicit `width: 100%` CSS rule,
+matching `.ww-chart`/`.ww-sticky-ruler-chart`'s own pattern exactly.
+`wwRebuildDigitalChart()` also schedules one additional, defensive
+`requestAnimationFrame`-deferred `Plotly.Plots.resize()` after every
+rebuild (a cheap no-op if the width was already correct) as a further
+belt-and-braces measure against any remaining first-render timing risk.
+A new `wwDiagnoseDigitalAlignment()` function (exposed globally, run as
+`wwDiagnoseDigitalAlignment()` in the browser DevTools console) reads
+each surface's REAL rendered geometry -- `getBoundingClientRect()` plus
+Plotly's own internal `_fullLayout.xaxis._offset`/`._length` (the
+ACTUAL computed layout after any automargin/annotation adjustment, not
+just the `margin` value originally requested) -- and prints a
+side-by-side comparison table of analog/digital/ruler's absolute
+page-pixel plot-left and plot-right edges, since no real browser is
+available in this sandbox to verify pixel geometry directly.
+
+**B. Loader**: a new `wwYieldToPaint()` helper
+(`requestAnimationFrame` nested inside a second `requestAnimationFrame`
+-- the standard "wait until the DOM mutation I just made has genuinely
+been painted, not merely scheduled" pattern) is awaited immediately
+after `wwSetWorkspaceLoading(true, ...)` in `selectSource()`, before
+`refreshSourceList()` or any other work begins -- reusing this
+codebase's own established Phase 2C-C2A "separate the cheap DOM write
+from the expensive work, let the browser breathe between them"
+principle, applied here to a loading overlay instead of a resize
+handle. `openRecordingForAnalysis()` now calls
+`shellSetCurrentPage("waveform")` BEFORE `selectSource(sourceId)`
+(previously the other order), so the loader's own ancestor container is
+unconditionally already visible by the time the loader itself becomes
+visible.
+
+**C. Labels**: the label annotation's `y`/`yanchor` changed to `y: y,
+yanchor: "middle"` -- centered exactly on the trace's own Y (previously
+offset 0.32 units above it), so the trace visibly runs behind/through
+the label, matching the reference image's "label sits ON the lane"
+treatment rather than a separate row above it.
+
+**D. HIGH/LOW rendering**: HIGH-interval bars are now rendered as
+`layout.shapes` (`type: "line"`, from the interval's own start/end X to
+the lane's own Y, `line: {width: 7, color: accent}`) -- the exact same
+Plotly primitive already used (and, per the owner's own PASS on
+grouping, already working) for the group-divider lines in this SAME
+chart -- rather than a second, `null`-gapped line TRACE per channel.
+This removes trace-diffing/hover-configuration/multi-segment-gap
+handling as a variable entirely, in favor of a simpler, more predictable
+primitive for "a static colored bar from x0 to x1," given no concrete
+logic bug could be found in the previous trace-based approach through
+exhaustive static analysis. The thin baseline trace is unchanged (one
+per channel, full record width, real hovertext). Each channel now
+produces exactly ONE trace again (not two) -- the digital-lane
+click-to-remove handler's `curveNumber` mapping simplified back to
+`entries[curveNumber]` directly (no more `/2`).
+
+### Tests
+
+`phase4a_check.mjs` (scratch convention, not committed) grew from 31 to
+35 checks: `wwResizeAllVisiblePlots()` includes the digital chart;
+`wwDiagnoseDigitalAlignment()` runs without error and reports on all
+three surfaces (values are necessarily null/zero in jsdom -- no real
+layout engine -- confirmed as an expected, explicitly-acknowledged
+limitation, not a bug); the label annotation's `y`/`yanchor` matches the
+trace's own Y exactly; `openRecordingForAnalysis()` navigates to
+Waveform before `selectSource()` starts, so the loader's own container
+is already visible; HIGH-interval boundaries are exact transition
+timestamps via `layout.shapes` (re-verified against a known
+constant-HIGH channel, a known constant-LOW channel, and a channel with
+a real transition, per the task's own explicit "prove with at least
+one of each" instruction); the HIGH-band shape's line width (7) is
+visibly greater than the baseline trace's (1); one trace per channel in
+one shared Plotly figure (never one-per-channel). Every pre-existing
+Phase 4A/UAT1B check (classification, ordering, default-display
+persistence, source isolation, loading-overlay progress/clearing) still
+passes unchanged. Full existing frontend regression suite: still exactly
+the established 17-failure pre-existing baseline. Backend: 311/311,
+unchanged (no backend file touched this pass).
+
+### Files changed
+
+`frontend/index.html` only.
+
+### Honest limitations (owner real-browser verification still required)
+
+**This pass cannot be accepted based solely on jsdom/source-level
+checks** -- no real browser is available in this sandbox, matching this
+task's own explicit instruction. Every fix above is backed by a
+concrete, well-evidenced root cause found through direct source-code
+investigation (not a guess), and jsdom confirms the DATA/CONFIG reaching
+Plotly is now structurally correct in every case -- but jsdom cannot
+render Plotly.js at all, so it cannot independently confirm any of the
+four failures are now visually resolved, particularly Failure D (HIGH
+band visibility), where no logic bug was found and the fix (switching to
+a simpler rendering primitive) is a well-reasoned but unproven-in-browser
+change. `wwDiagnoseDigitalAlignment()` is provided specifically so the
+owner (or a future session with real browser access) can independently
+verify Failure A's resolution with real numbers, not just re-read this
+record's own reasoning.
+
+---
+
 ## Phase 4A-UAT1B — Digital Waveform UX / Correctness Refinement (2026-08-18)
 
 `[FACT]` throughout. No new DECISIONS.md entry -- this refines the

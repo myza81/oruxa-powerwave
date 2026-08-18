@@ -8,6 +8,61 @@ Last updated: **2026-08-18**
 
 ## What was most recently done
 
+**Phase 4A-UAT2 — Fix Remaining Digital Waveform UAT Failures.** Full
+detail:
+[MIGRATION_PLAN.md — Phase 4A-UAT2 Record](MIGRATION_PLAN.md#phase-4a-uat2--fix-remaining-digital-waveform-uat-failures-2026-08-18).
+
+**Real-browser owner UAT on the Phase 4A-UAT1B build**: grouping/
+ordering PASSED (unchanged this pass); alignment, loader visibility,
+label overlay, and HIGH-band boldness all FAILED despite UAT1B's code
+existing to address them -- owner real-browser observation treated as
+authoritative, not reinterpreted as already solved.
+
+**Root causes found (source investigation, no real browser available in
+this sandbox)**: (1) **alignment** -- `wwResizeAllVisiblePlots()` (the
+established Phase 3A-UAT1 catch-up for Plotly's `responsive:true` not
+reliably detecting non-window container resizes) was never updated to
+include the digital chart when Phase 4A introduced it -- ANY Workspace
+Sidebar drag, Main Sidebar collapse, window resize, or even a plain
+Recordings→Waveform navigation left digital's rendered width stale
+relative to analog/ruler, independent of UAT1B's own margin.l fix. (2)
+**loader** -- this codebase's own Phase 2C-C2A finding ("the browser
+cannot paint until synchronous work returns control") applies here too;
+a bare `await fetch()` on a fast DEV connection was not a reliable paint
+guarantee. (3) **labels** -- the label annotation was vertically
+anchored ABOVE its own trace, not centered on it, so it read as a
+separate band rather than a true overlay. (4) **HIGH band** -- no
+concrete logic bug was found after exhaustive re-audit (re-verified
+correct via jsdom against constant-HIGH/LOW/transitioned fixtures); the
+fix was switching to a simpler, more robust rendering primitive rather
+than continuing to guess at an undetectable-from-here bug.
+
+**What changed** (`frontend/index.html` only): `wwResizeAllVisiblePlots()`
+now resizes the digital chart alongside every analog panel and the
+ruler; `#wwDigitalChart` gained an explicit `width:100%` CSS rule; a new
+`wwYieldToPaint()` (double `requestAnimationFrame`) is awaited right
+after the loader becomes visible, before any other work starts;
+`openRecordingForAnalysis()` now navigates to Waveform BEFORE calling
+`selectSource()` (previously the other order); the label annotation is
+now `yanchor:"middle"` at the trace's exact Y; HIGH-interval bars are
+now `layout.shapes` (matching the already-working group-divider lines
+in the same chart) instead of a second gapped line trace -- each channel
+is back to one trace. A new `wwDiagnoseDigitalAlignment()` console
+diagnostic reads Plotly's real `_fullLayout` geometry for the owner to
+verify directly.
+
+**Verification**: `phase4a_check.mjs` grew from 31 to 35 checks. Full
+frontend regression suite still exactly the established 17-failure
+baseline. Backend: 311/311, unchanged (no backend file touched).
+
+**Not yet done, explicitly**: real-browser confirmation of all four
+fixes -- this pass cannot be accepted as visually correct from jsdom/
+source-level checks alone; the next required step is the owner running
+`wwDiagnoseDigitalAlignment()` and eyes-on verification in a real
+browser.
+
+## What was done in the prior session (Phase 4A-UAT1B — Digital Waveform UX / Correctness Refinement)
+
 **Phase 4A-UAT1B — Digital Waveform UX / Correctness Refinement.** Full
 detail:
 [MIGRATION_PLAN.md — Phase 4A-UAT1B Record](MIGRATION_PLAN.md#phase-4a-uat1b--digital-waveform-ux--correctness-refinement-2026-08-18).
@@ -59,7 +114,7 @@ of which touch digital channels or call `selectSource()`). Backend:
 alignment/loading fixes -- explicitly flagged as the next required step
 before any further waveform feature work.
 
-## What was done in the prior session (Phase 4A — Digital Channels Rendering)
+## What was done in the earlier session (Phase 4A — Digital Channels Rendering)
 
 **Phase 4A — Digital Channels Rendering.** Full detail:
 [MIGRATION_PLAN.md — Phase 4A Implementation Record](MIGRATION_PLAN.md#phase-4a--digital-channels-rendering-implementation-record-2026-08-17)

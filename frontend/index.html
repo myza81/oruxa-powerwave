@@ -1450,6 +1450,16 @@
                (section 22), so no extra vertical breathing room here. */
             padding: 0 14px;
         }
+        /* Phase 4A-UAT2: explicit, matching .ww-chart/.ww-sticky-ruler-chart's
+           own explicit width:100% rules exactly -- #wwDigitalChart never
+           had one (a real gap found during the alignment investigation:
+           the other two surfaces are both explicit, digital silently
+           relied on default block-level sizing inside a scrolling
+           parent, a less certain layout context). Belt-and-braces
+           alongside the wwResizeAllVisiblePlots()/wwRebuildDigitalChart()
+           fixes -- removes any ambiguity about how this container's
+           width is determined. */
+        #wwDigitalChart { width: 100%; }
         .ww-sticky-ruler {
             position: sticky;
             bottom: 0;
@@ -3043,12 +3053,26 @@
         // Section 10: activates/selects the recording in the current
         // workspace context (reuses selectSource() unchanged -- same
         // parser/import semantics, never re-uploads, never creates a
-        // duplicate source) and navigates to Waveform. Does not
-        // auto-display any channels -- that remains the user's own
-        // checkbox + "Add selected" step, unchanged.
+        // duplicate source) and navigates to Waveform. Phase 4A: opening
+        // a recording auto-displays every analog + digital channel by
+        // default (see wwApplyDefaultChannelDisplay()) -- no longer a
+        // manual checkbox + "Add selected" step for a fresh source.
+        //
+        // Phase 4A-UAT2 (order matters): shellSetCurrentPage("waveform")
+        // now runs FIRST, selectSource() second -- previously the other
+        // way around. selectSource()'s own workspace-loading overlay
+        // (wwSetWorkspaceLoading()) lives inside #viewWaveform, which is
+        // inside #workspaceRow -- if selectSource() ran first, the loader
+        // became `hidden=false` while its own ANCESTOR container was
+        // still `#workspaceRow.hidden=true` (still on the Recordings
+        // page), which is one contributor to the owner UAT finding that
+        // the loader "does not appear": a hidden ancestor keeps every
+        // descendant invisible regardless of its own visibility state.
+        // Making the page switch unconditionally happen first removes
+        // any ambiguity about that ordering.
         function openRecordingForAnalysis(sourceId) {
-            selectSource(sourceId);
             shellSetCurrentPage("waveform");
+            selectSource(sourceId);
         }
 
         // Section 22: simple client-side substring filter across the
@@ -3190,6 +3214,11 @@
             // cleared in `finally` below so a thrown/rejected fetch can
             // never leave it stuck (normal error handling is unchanged).
             wwSetWorkspaceLoading(true, "Loading recording…");
+            // Phase 4A-UAT2: an explicit, guaranteed paint opportunity
+            // BEFORE any other work starts -- see wwYieldToPaint()'s own
+            // comment for why a bare `await` on a fast-resolving fetch was
+            // not sufficient (owner UAT: the loader "does not appear").
+            await wwYieldToPaint();
             try {
                 selectedSourceId = sourceId;
                 await refreshSourceList();
@@ -4616,6 +4645,22 @@
         // change (see shellCreateHorizontalSplit()'s own comment for the
         // full root-cause investigation). Reuses wwResizePanelPlot() per
         // panel -- not a second resize implementation.
+        // Phase 4A-UAT2 root-cause fix (Failure A -- alignment): this
+        // function is THE established catch-up path for "Plotly's own
+        // `responsive: true` only reliably reacts to actual `window`
+        // resize events, not a container that changed size for another
+        // reason" (Phase 3A-UAT1's own documented finding, still true
+        // here) -- called from every Workspace Sidebar drag, Main Sidebar
+        // Menu collapse/expand, real window resize, and Recordings ->
+        // Waveform navigation. It resized every analog panel and the
+        // shared ruler, but was NEVER updated to also resize the digital
+        // chart when Phase 4A introduced it -- meaning any one of those
+        // everyday interactions left the digital chart's own rendered
+        // Plotly SVG stale at its OLD width while analog/ruler correctly
+        // redrew at the new one, a real, structural cause of "digital
+        // doesn't visually line up with analog" independent of the
+        // margin/padding values themselves. Digital is now resized
+        // alongside them, from the exact same authority.
         function wwResizeAllVisiblePlots() {
             for (const panel of ww.panels) {
                 wwResizePanelPlot(panel);
@@ -4624,6 +4669,12 @@
                 const rulerChartEl = document.getElementById("wwStickyRulerChart");
                 if (rulerChartEl && window.Plotly && Plotly.Plots && typeof Plotly.Plots.resize === "function") {
                     Plotly.Plots.resize(rulerChartEl);
+                }
+            }
+            if (ww.digitalChartReady) {
+                const digitalChartEl = document.getElementById("wwDigitalChart");
+                if (digitalChartEl && window.Plotly && Plotly.Plots && typeof Plotly.Plots.resize === "function") {
+                    Plotly.Plots.resize(digitalChartEl);
                 }
             }
         }
@@ -5225,6 +5276,47 @@
         // ww.panels). X-axis tick labels are hidden entirely (section
         // 33) -- the shared sticky ruler below remains the one bottom
         // time reference.
+        // Phase 4A-UAT2: a real-browser diagnostic for the alignment
+        // acceptance criterion (analog X pixel(T) === digital X
+        // pixel(T) === ruler X pixel(T)) -- there is no real browser
+        // available in this sandbox to verify rendered pixel geometry
+        // directly, so this is exposed for the owner (or a future
+        // session) to run in the browser DevTools console:
+        // `wwDiagnoseDigitalAlignment()`. Reads Plotly's own internal
+        // `_fullLayout` (the ACTUAL computed layout AFTER any
+        // automargin/annotation adjustments -- not just the `margin`
+        // value this code originally requested) plus each container's
+        // real `getBoundingClientRect()`, and prints a table of every
+        // surface's absolute page-pixel plot-left/plot-right edge. A
+        // correct result has analog/digital/ruler's plotLeftPage and
+        // plotRightPage columns matching (within ~1px browser-rendering
+        // tolerance).
+        function wwDiagnoseDigitalAlignment() {
+            const surfaces = [
+                { name: "analog (first panel)", chartEl: ww.panels[0] && ww.panels[0].chartEl },
+                { name: "digital", chartEl: document.getElementById("wwDigitalChart") },
+                { name: "ruler", chartEl: document.getElementById("wwStickyRulerChart") },
+            ];
+            const results = {};
+            for (const { name, chartEl } of surfaces) {
+                if (!chartEl) { results[name] = { status: "not present" }; continue; }
+                const rect = chartEl.getBoundingClientRect();
+                const fl = chartEl._fullLayout;
+                const offset = fl && fl.xaxis ? fl.xaxis._offset : null;
+                const length = fl && fl.xaxis ? fl.xaxis._length : null;
+                results[name] = {
+                    containerLeftPx: Math.round(rect.left),
+                    containerWidthPx: Math.round(rect.width),
+                    "xaxis._offset": offset,
+                    "xaxis._length": length,
+                    plotLeftPage: offset === null ? null : Math.round(rect.left + offset),
+                    plotRightPage: offset === null || length === null ? null : Math.round(rect.left + offset + length),
+                };
+            }
+            console.table(results);
+            return results;
+        }
+
         function wwRebuildDigitalChart() {
             const regionEl = document.getElementById("wwDigitalRegion");
             const chartEl = document.getElementById("wwDigitalChart");
@@ -5288,29 +5380,44 @@
                     showlegend: false,
                 });
 
-                // Bold band -- only during HIGH intervals, `null`-gapped
-                // between separate runs so Plotly never connects them.
-                const bandX = [];
-                const bandY = [];
-                const bandHover = [];
-                wwDigitalHighIntervals(entry).forEach(([hiStart, hiEnd], idx) => {
-                    if (idx > 0) { bandX.push(null); bandY.push(null); bandHover.push(null); }
-                    bandX.push(wwElapsedToPlotlyX(hiStart), wwElapsedToPlotlyX(hiEnd));
-                    bandY.push(y, y);
-                    bandHover.push(entry.channelName + ": HIGH (1)", entry.channelName + ": HIGH (1)");
-                });
-                traces.push({
-                    x: bandX, y: bandY,
-                    mode: "lines",
-                    line: { width: 7, color: colors.accent },
-                    hoverinfo: bandX.length ? "text" : "skip",
-                    hovertext: bandHover,
-                    showlegend: false,
-                });
+                // Bold band -- only during HIGH intervals. Phase 4A-UAT2:
+                // rendered as `layout.shapes` (type: "line"), NOT a second
+                // trace with `null`-gapped segments -- the same simpler,
+                // more predictable Plotly primitive already proven for
+                // the group-divider lines above, in this SAME chart.
+                // Owner UAT on the previous (two-trace) version reported
+                // the HIGH band effectively never visible ("uniform thin
+                // blue lines") despite jsdom-verified correct trace data
+                // -- since jsdom cannot render Plotly at all, that
+                // mismatch could only be a real-browser rendering
+                // behavior this sandbox cannot reproduce; switching to a
+                // shapes-based bar removes trace-diffing/hover-config as
+                // a variable entirely, a strictly simpler code path for
+                // "a static colored bar from x0 to x1". Exact transition
+                // timestamps are still preserved exactly (a shape's own
+                // x0/x1 IS the real transition time, no interpolation).
+                for (const [hiStart, hiEnd] of wwDigitalHighIntervals(entry)) {
+                    shapes.push({
+                        type: "line", xref: "x", x0: wwElapsedToPlotlyX(hiStart), x1: wwElapsedToPlotlyX(hiEnd),
+                        yref: "y", y0: y, y1: y,
+                        line: { color: colors.accent, width: 7 },
+                    });
+                }
 
+                // Phase 4A-UAT2: centered ON the trace's own Y (yanchor
+                // "middle", same y as the baseline/band above) -- the
+                // previous version anchored the label's BOTTOM edge above
+                // the trace (yanchor "bottom", y+0.32), which visually
+                // separated label and trace into two distinct vertical
+                // bands within the same lane instead of genuinely
+                // overlapping ("label sits ON the lane", not next to it
+                // -- owner UAT: "still looks like label column | waveform
+                // line"). Centering the label directly on the trace's own
+                // Y makes the trace visibly run behind/through the label,
+                // matching the reference image's own treatment.
                 annotations.push({
                     x: 0.006, xref: "paper", xanchor: "left",
-                    y: y + 0.32, yref: "y", yanchor: "bottom",
+                    y, yref: "y", yanchor: "middle",
                     text: wwTruncateDigitalName(entry.channelName),
                     showarrow: false,
                     font: { size: 9, color: colors.text },
@@ -5359,6 +5466,22 @@
                 displayModeBar: false,
             });
             ww.digitalChartReady = true;
+            // Phase 4A-UAT2: an explicit, guaranteed one-frame-later
+            // resize catch-up after every rebuild -- belt-and-braces on
+            // top of the wwResizeAllVisiblePlots() fix above. Plotly.react()
+            // measures the container synchronously at call time; this
+            // catches the (rarer, but real) case where that measurement
+            // happened before the browser had settled the container's
+            // FINAL layout width for some other reason (e.g. the very
+            // first time #wwDigitalRegion's own `hidden` flips to false
+            // in this same call, immediately above). A no-op, cheap
+            // Plotly.Plots.resize() call if the width was already
+            // correct.
+            requestAnimationFrame(() => {
+                if (window.Plotly && Plotly.Plots && typeof Plotly.Plots.resize === "function") {
+                    Plotly.Plots.resize(chartEl);
+                }
+            });
 
             // Section 38/51: "existing checkbox/visibility interaction
             // must remain meaningful for both analog and digital... users
@@ -5367,19 +5490,20 @@
             // button; digital has no per-lane DOM element to attach one
             // to (one shared Plotly figure, overlaid annotations, not
             // real rows -- see this function's own header comment on
-            // why). Clicking a lane's own trace is the lowest-cost
-            // equivalent: wired ONCE (chartEl persists across rebuilds,
-            // like the sticky ruler's chartEl -- see wwClearWorkspace()'s
-            // own comment), re-deriving wwSortedDigitalEntries() fresh on
-            // every click. Each channel now produces exactly TWO traces
-            // (baseline, band, in that order, header rows contribute
-            // none) -- curveNumber therefore maps to entries[floor(curveNumber/2)],
-            // regardless of which of the two the user actually clicked.
+            // why). Clicking a lane's own baseline trace is the
+            // lowest-cost equivalent: wired ONCE (chartEl persists across
+            // rebuilds, like the sticky ruler's chartEl -- see
+            // wwClearWorkspace()'s own comment), re-deriving
+            // wwSortedDigitalEntries() fresh on every click. Phase
+            // 4A-UAT2: HIGH bands are now `layout.shapes`, not a second
+            // trace (shapes do not fire plotly_click), so each channel
+            // produces exactly ONE trace again (the baseline, spanning
+            // the full lane width) -- curveNumber maps directly to
+            // entries[curveNumber], header rows contributing none.
             if (!ww.digitalClickWired) {
                 chartEl.on("plotly_click", (eventData) => {
                     if (!eventData || !eventData.points || !eventData.points.length) return;
-                    const entryIndex = Math.floor(eventData.points[0].curveNumber / 2);
-                    const clicked = wwSortedDigitalEntries()[entryIndex];
+                    const clicked = wwSortedDigitalEntries()[eventData.points[0].curveNumber];
                     if (!clicked) return;
                     wwRemoveDigitalChannelByKey(wwChannelKey(clicked.sourceId, clicked.channelName));
                 });
@@ -5936,6 +6060,31 @@
 
         function wwSetWorkspaceLoadingProgress(loaded, total) {
             wwSetWorkspaceLoading(true, "Loading channels… " + loaded + " / " + total);
+        }
+
+        // Phase 4A-UAT2: a real, guaranteed paint opportunity -- not just
+        // "an await happened." A DOM write (like wwSetWorkspaceLoading's
+        // `hidden = false`) is not itself a promise that the browser has
+        // painted it; browsers are free to skip rendering an intermediate
+        // state that lasts only a few milliseconds before the next
+        // synchronous task starts, even across an `await` on a fast-
+        // resolving fetch (owner UAT finding: the loader "does not
+        // appear" on a fast local/DEV connection). requestAnimationFrame
+        // fires immediately BEFORE the browser's next repaint; a SECOND,
+        // nested rAF fires in the frame AFTER that repaint has actually
+        // been committed -- the standard, well-established double-rAF
+        // pattern for "wait until the DOM mutation I just made has
+        // genuinely been painted," not merely scheduled. Reuses the exact
+        // "separate the cheap DOM write from the expensive work, and let
+        // the browser breathe between them" principle Phase 2C-C2A's own
+        // panel-resize investigation already established for this
+        // codebase (wwSetPanelHeightImmediate/wwResizePanelPlot) -- same
+        // root cause class, same fix shape, applied here to a loading
+        // overlay instead of a resize handle.
+        function wwYieldToPaint() {
+            return new Promise((resolve) => {
+                requestAnimationFrame(() => requestAnimationFrame(resolve));
+            });
         }
 
         function wwUpdateEmptyState() {
