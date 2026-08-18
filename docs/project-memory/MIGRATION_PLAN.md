@@ -8548,6 +8548,171 @@ flagged for owner UAT.
 
 ---
 
+## Phase 4A-UAT1B — Digital Waveform UX / Correctness Refinement (2026-08-18)
+
+`[FACT]` throughout. No new DECISIONS.md entry -- this refines the
+*presentation* (trace geometry, label placement, margins) within the
+architecture DEC-034 already approved (one shared Plotly figure, batched
+full-record digital-waveform delivery); it does not change either of
+those two architectural commitments.
+
+### Owner UAT findings addressed
+
+1. Digital sorting/grouping looked purely alphabetical rather than
+   respecting classification order.
+2. Digital traces did not visually line up with analog traces.
+3. Opening a recording with all analog + digital displayed by default
+   could lag with no visible loading state.
+4. Constant-HIGH vs constant-LOW digital signals were hard to tell apart.
+5. New owner visual direction (screenshot benchmark): small overlaid
+   pill labels directly on each lane; HIGH shown as a bold/thick band;
+   LOW as a thin line; no two-plateau step trace as the primary visual.
+
+### Root cause investigation (before any change)
+
+- **Finding 1 (sorting)**: `wwDigitalSortChannels()`/`wwSortedDigitalEntries()`
+  were re-audited end to end (frontend sort function, the
+  `ww.digitalDisplayed` population path in `wwAddDigitalChannels()`, and
+  the backend `classify_digital_channel()`/import-time computation) and
+  found CORRECT -- confirmed against both the ASCII and BINARY COMTRADE
+  provider paths directly (`ComtradeProvider().load(...)` +
+  `classify_digital_channel()` on `tests/fixtures/comtrade/synth_binary.*`,
+  not just the ASCII fixture Phase 4A's own tests used). The real gap:
+  the RENDERED digital region had **zero visual indication of group
+  boundaries** -- no header, no separator, no count -- so a recording
+  where one classification (typically Never Triggered) numerically
+  dominates reads as "just alphabetical" even though the underlying
+  order was already correct. The channel browser already showed this
+  via its `<details>` subgroup structure; the rendered chart never did.
+- **Finding 2 (alignment)**: confirmed as a real, reproducible bug.
+  `wwRebuildDigitalChart()`'s own Plotly `margin.l` was `150` (sized for
+  a wide Y-axis tick-label column), while every analog panel and the
+  shared sticky ruler use `WW_PANEL_MARGIN.l` (`55`) -- two genuinely
+  different left margins meant the digital plot area's actual pixel
+  origin was offset from analog/ruler's, so identical X values rendered
+  at different screen positions. A second, smaller contributor: analog
+  panels (`.ww-chart-wrap`, inside `.ww-panel`'s 14px padding) and the
+  ruler (`.ww-sticky-ruler`'s own 14px padding) both had 14px of
+  horizontal CSS padding around their chart element; `#wwDigitalScroll`
+  had none.
+- **Finding 4 (HIGH/LOW ambiguity)**: the previous two-plateau `hv`-step
+  trace (LOW at one Y, HIGH at a second Y, same line width/color)
+  required noticing a Y-position shift to tell state apart -- a real,
+  legitimate readability gap, independent of the owner's separate visual
+  redesign request.
+
+### What changed
+
+**A. Group headers in the rendered digital region** (fixes Finding 1):
+`wwDigitalLayoutRows()` (new) interleaves a header row (group name,
+UPPERCASE, count) between each non-empty classification block on top of
+the already-correct `wwSortedDigitalEntries()` order; a subtle divider
+`shape` marks each boundary. Same three groups, same order, same counts
+as the channel browser -- never a second, independently-computed
+grouping.
+
+**B. True pixel alignment** (fixes Finding 2): `wwRebuildDigitalChart()`'s
+margin is now `WW_PANEL_MARGIN.l`/`.r` -- identical to every analog panel
+and the shared ruler. `#wwDigitalScroll` gained `padding: 0 14px`,
+matching `.ww-sticky-ruler`'s own horizontal padding exactly. This was
+only possible because of change C below (labels no longer need a wide
+Y-axis tick column).
+
+**C. Rendering redesign to the owner's visual benchmark** (fixes
+Finding 4, delivers the new visual direction): each digital lane is now
+ONE flat Y position (not two), carrying exactly two traces --
+`wwDigitalHighIntervals(entry)` (new) derives the channel's HIGH-state
+time intervals from `initialState` + the sparse `transitions` list
+(never a full per-sample array, which digital delivery never carries at
+all):
+- A thin, muted **baseline** trace (`line.width: 1`, `colors.grid`)
+  spans the entire record -- always present, representing "this channel
+  exists, LOW unless marked otherwise."
+- A thick, bold **HIGH band** trace (`line.width: 7`, `colors.accent`),
+  `null`-gapped between separate HIGH runs, drawn ONLY during the
+  channel's actual HIGH intervals -- a constant-HIGH channel now shows a
+  bold band spanning the FULL record width; a constant-LOW channel shows
+  no band at all, only the thin line. Exact transition timestamps are
+  preserved exactly (a straight segment's own start/end IS the real
+  transition time).
+
+Channel name labels moved from Y-axis ticks to Plotly **annotations**
+(`xref: "paper"`, so they stay pinned to the plot area's left edge
+regardless of X zoom/pan -- never drifting with the data), rendered as a
+small opaque pill (`colors.panel` background, `colors.grid` border,
+9px font) directly overlaid on the lane, matching the owner's screenshot
+benchmark. Truncation budget shrank from 26 to 18 characters (a smaller
+overlay pill, not a wide column); the FULL name remains available via
+the baseline trace's own hovertext, unchanged in spirit from before.
+The Y axis itself is now fully hidden (`visible: false`) -- it carried
+no real engineering scale before either, only tick labels, which are
+gone.
+
+The per-lane click-to-remove interaction (Phase 4A) still works: each
+channel now produces 2 traces instead of 1, so `curveNumber` maps to
+`entries[Math.floor(curveNumber / 2)]`, regardless of which of the two
+(thin baseline or bold band) the user actually clicked.
+
+**D. Immediate loading feedback** (fixes Finding 3): a new
+`#wwWorkspaceLoading` overlay (absolute-positioned over
+`.workspace-section`, `role="status"`/`aria-live="polite"`) is shown as
+the VERY FIRST statement in `selectSource()` -- before
+`refreshSourceList()`'s own fetch even starts -- with the text "Loading
+recording…", then "Loading channels…" once the default-display fetch
+pipeline begins. A `try/finally` guarantees it is always cleared,
+success or failure (including a 404/network-error path), never left
+stuck. `wwAddSelectedChannels()`/`wwAddDigitalChannels()` gained
+optional `onChannelLoaded`/`onBatchLoaded` callbacks (unused by every
+pre-existing call site -- backward compatible) that
+`wwApplyDefaultChannelDisplay()` uses to drive a REAL "N / total"
+channel-loaded counter (analog channels each resolve independently, one
+fetch per channel, so each bumps the counter as it lands; digital is one
+batched request per source, so it reports its whole batch's count at
+once) -- never a fake percentage or fabricated stage count, per this
+task's own explicit instruction.
+
+### Files changed
+
+`frontend/index.html` only. No backend file touched (pure frontend
+presentation/UX refinement; the batched digital-waveform API and
+import-time classification from Phase 4A are unchanged and already
+correct).
+
+### Tests
+
+`phase4a_check.mjs` (scratch convention, not committed) extended from 25
+to 31 checks: the HIGH-band trace's segment boundaries are the exact
+transition timestamps; a constant-HIGH channel's band spans the full
+record while a constant-LOW channel has no band at all; the digital
+chart's left/right margin now exactly matches the analog panel's own
+margin; the Y axis is fully hidden (no more tick-based label column);
+the rendered region shows one header + count per non-empty group in the
+exact required order, with a divider shape at each boundary; the long
+channel name's overlaid annotation is truncated with the full name still
+in hover text; the loading overlay appears synchronously (before the
+`/channels` fetch resolves), reports a real per-channel progress count
+reaching the true total, and is cleared even on a fetch failure. Every
+pre-existing Phase 4A check (classification, ordering, default-display
+persistence, shared-viewport sync, source isolation) re-verified passing
+unchanged. Full existing frontend regression suite re-run: still exactly
+the established 17-failure pre-existing baseline (`phase2cb1/cb2/cb3/
+cb3a/cc1/cc2/cc3/cc4_check.mjs`, all independently unrelated to digital
+channels -- none of those fixtures carry any digital channel or call
+`selectSource()` at all). Backend: 311/311 passing, unchanged (no
+backend file touched this pass).
+
+### Honest limitations
+
+No real browser is available in this sandbox -- the actual rendered
+appearance of the bold HIGH band / thin baseline / overlaid pill labels
+against the owner's screenshot benchmark, real pixel alignment as
+perceived by eye (not just asserted equal margin values), and the
+loading overlay's real-world timing/feel were reasoned through and
+structurally exercised via jsdom, but not visually confirmed --
+flagged for owner UAT.
+
+---
+
 ## Phase 4A — Digital Channels Rendering Implementation Record (2026-08-17)
 
 `[FACT]` throughout. New architecture decision — see

@@ -4,9 +4,62 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-08-17**
+Last updated: **2026-08-18**
 
 ## What was most recently done
+
+**Phase 4A-UAT1B — Digital Waveform UX / Correctness Refinement.** Full
+detail:
+[MIGRATION_PLAN.md — Phase 4A-UAT1B Record](MIGRATION_PLAN.md#phase-4a-uat1b--digital-waveform-ux--correctness-refinement-2026-08-18).
+
+**Owner UAT on Phase 4A found four issues**: (1) digital sorting/grouping
+looked purely alphabetical, (2) digital traces didn't visually line up
+with analog, (3) opening a recording with everything displayed by
+default could lag with no loading feedback, (4) constant-HIGH vs
+constant-LOW signals were hard to tell apart -- plus a new visual
+direction (screenshot benchmark): small overlaid pill labels on each
+lane, HIGH as a bold band, LOW as a thin line, not a two-plateau step
+trace.
+
+**Root causes, confirmed before changing anything**: (1) was NOT a
+sort/classification bug -- re-verified end to end including the BINARY
+COMTRADE provider path Phase 4A's own tests never exercised; the real
+gap was that the rendered chart never showed group headers/separators
+(the channel browser already did). (2) WAS a real bug: the digital
+chart's own Plotly left margin (150px) differed from every analog
+panel's and the shared ruler's (55px, `WW_PANEL_MARGIN.l`), so identical
+X values rendered at different pixel positions. (4) was a genuine
+readability gap in the old two-plateau step-trace design.
+
+**What changed** (pure frontend, `frontend/index.html` only -- no
+backend file touched, no new architecture decision): the rendered
+digital region now shows a header + count for each non-empty
+classification group, in the required order, with a divider at each
+boundary. Each digital lane is now ONE flat Y position carrying two
+traces: a thin muted baseline (always present) and a bold/thick band
+(drawn only during HIGH intervals, derived from `initialState` +
+transitions) -- constant-HIGH now shows a full-width bold band,
+constant-LOW shows no band at all. Channel labels moved from Y-axis
+ticks to small opaque pill annotations overlaid directly on each lane
+(`xref: "paper"`, pinned to the plot area's left edge regardless of
+zoom/pan) -- this is what let the margin become identical to
+`WW_PANEL_MARGIN`, fixing the alignment bug. A new
+`#wwWorkspaceLoading` overlay is shown as the very first statement in
+`selectSource()` (before any fetch starts), reports a REAL per-channel
+"N / total" progress count (never fake), and is always cleared via
+`try/finally`.
+
+**Verification**: `phase4a_check.mjs` grew from 25 to 31 checks (scratch
+convention, not committed). Full frontend regression suite still exactly
+the established 17-failure pre-existing baseline (unrelated files, none
+of which touch digital channels or call `selectSource()`). Backend:
+311/311, unchanged (no backend file touched). `git diff --check` clean.
+
+**Not yet done**: real-browser owner UAT of the new visual design and
+alignment/loading fixes -- explicitly flagged as the next required step
+before any further waveform feature work.
+
+## What was done in the prior session (Phase 4A — Digital Channels Rendering)
 
 **Phase 4A — Digital Channels Rendering.** Full detail:
 [MIGRATION_PLAN.md — Phase 4A Implementation Record](MIGRATION_PLAN.md#phase-4a--digital-channels-rendering-implementation-record-2026-08-17)
@@ -84,7 +137,7 @@ zoom/pan responsiveness at 100+/300+ simultaneously-displayed digital
 channels) — explicitly flagged as the next required step before any
 further waveform feature work (cursor/measurement tools etc.) begins.
 
-## What was done in the prior session (Phase 3B-UAT11 — Workspace Sidebar Divider / Scrollbar Line Cleanup)
+## What was done in the earlier session (Phase 3B-UAT11 — Workspace Sidebar Divider / Scrollbar Line Cleanup)
 
 **Phase 3B-UAT11 — Workspace Sidebar Divider / Scrollbar Line Cleanup.**
 Full detail:

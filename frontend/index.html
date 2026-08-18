@@ -1119,7 +1119,26 @@
            `#clearWorkspaceBtn` moved into the toolbar itself, see below --
            this is the "if a control moves, record where it moved" item
            from section 27 of that phase's own control inventory. */
-        section.workspace-section { padding-top: 10px; }
+        section.workspace-section { padding-top: 10px; position: relative; }
+        /* Phase 4A-UAT1B: an overlay (not an inline banner) so it visibly
+           blocks/dims whatever was previously displayed while a NEW
+           source's channels load -- appropriate when switching recordings,
+           harmless on a first, empty load. Positioned against
+           .workspace-section's own `position: relative` above, so it
+           covers exactly the waveform view area, not the whole page. */
+        .ww-workspace-loading {
+            position: absolute;
+            inset: 0;
+            z-index: 5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: var(--chart-overlay-bg);
+            color: var(--text-dim);
+            font-size: 0.85rem;
+        }
+        .ww-workspace-loading[hidden] { display: none; }
         .ww-toolbar {
             display: flex;
             align-items: center;
@@ -1420,6 +1439,16 @@
         #wwDigitalScroll {
             max-height: 260px;
             overflow-y: auto;
+            /* Phase 4A-UAT1B: matches .ww-sticky-ruler's own horizontal
+               padding exactly (14px) -- combined with wwRebuildDigitalChart()'s
+               Plotly margin now also matching WW_PANEL_MARGIN.l/.r, this
+               makes the digital plot area's actual pixel origin identical
+               to every analog panel's and the shared ruler's, fixing the
+               visual-alignment bug (owner UAT finding). Vertical padding
+               stays 0 -- #wwDigitalChart's own JS-computed height already
+               sizes it exactly, and this is the one scrolling container
+               (section 22), so no extra vertical breathing room here. */
+            padding: 0 14px;
         }
         .ww-sticky-ruler {
             position: sticky;
@@ -1648,6 +1677,23 @@
                          this phase. -->
                     <div id="activeViewArea">
                         <section class="workspace-section" id="viewWaveform" aria-label="Waveform view">
+                            <!-- Phase 4A-UAT1B: immediate loading feedback (owner
+                                 UAT finding: opening a recording with the new
+                                 all-channels-by-default policy can take a
+                                 visible moment, with nothing on screen telling
+                                 the user the app is working, not frozen).
+                                 Shown/hidden by wwSetWorkspaceLoading() from
+                                 selectSource() -- appears before the /channels
+                                 fetch even starts, stays up through the
+                                 default-display fetch pipeline, and is always
+                                 cleared in a `finally` so a failure can never
+                                 leave it stuck. role="status"/aria-live so a
+                                 screen reader announces the text updates. -->
+                            <div id="wwWorkspaceLoading" class="ww-workspace-loading" hidden role="status" aria-live="polite">
+                                <span class="spinner"></span>
+                                <span id="wwWorkspaceLoadingText">Loading recording&hellip;</span>
+                            </div>
+
                             <p class="empty-state" id="wwEmptyState">Select channels and click &ldquo;Add selected&rdquo; to display waveforms, or open a recording to see all channels by default.</p>
 
                             <div id="wwPanels"></div>
@@ -3135,13 +3181,22 @@
         // Channel detail
         // ------------------------------------------------------------------
         async function selectSource(sourceId) {
-            selectedSourceId = sourceId;
-            await refreshSourceList();
-
-            const panel = document.getElementById("channelsPanel");
-            panel.innerHTML = '<p class="empty-state"><span class="spinner"></span>Loading channels&hellip;</p>';
-
+            // Phase 4A-UAT1B: shown as the very first thing this function
+            // does -- synchronously, before even refreshSourceList()'s own
+            // fetch starts. The owner UAT finding was specifically that
+            // opening a recording (now auto-displaying every analog +
+            // digital channel) can take a visible moment with nothing on
+            // screen to show the app is working, not frozen. Always
+            // cleared in `finally` below so a thrown/rejected fetch can
+            // never leave it stuck (normal error handling is unchanged).
+            wwSetWorkspaceLoading(true, "Loading recording…");
             try {
+                selectedSourceId = sourceId;
+                await refreshSourceList();
+
+                const panel = document.getElementById("channelsPanel");
+                panel.innerHTML = '<p class="empty-state"><span class="spinner"></span>Loading channels&hellip;</p>';
+
                 const response = await fetch(
                     apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
                     "/sources/" + encodeURIComponent(sourceId) + "/channels"
@@ -3170,10 +3225,14 @@
                     // click, a test) could race the still-in-flight
                     // default-add and produce duplicate/inconsistent
                     // panels.
+                    wwSetWorkspaceLoading(true, "Loading channels…");
                     await wwApplyDefaultChannelDisplay(data);
                 }
             } catch (error) {
-                panel.innerHTML = '<p class="empty-state">Could not reach the backend.</p>';
+                document.getElementById("channelsPanel").innerHTML =
+                    '<p class="empty-state">Could not reach the backend.</p>';
+            } finally {
+                wwSetWorkspaceLoading(false);
             }
         }
 
@@ -3209,14 +3268,32 @@
                 timingReference: timingReference,
             }));
 
+            // Phase 4A-UAT1B: a REAL "N / total" progress counter for the
+            // loading overlay -- not a fake percentage. Analog channels
+            // each resolve independently (one fetch per channel), so each
+            // one bumps the counter as it lands; digital is delivered as
+            // ONE batched request per source, so it can only truthfully
+            // report completion of that whole batch at once (still a real
+            // count, just coarser-grained -- see wwAddDigitalChannels()).
+            const totalChannels = analogMetas.length + digitalMetas.length;
+            let loadedChannels = 0;
+            const bumpProgress = (by) => {
+                loadedChannels += by;
+                wwSetWorkspaceLoadingProgress(loadedChannels, totalChannels);
+            };
+
             // Concurrent, not sequential -- analog and digital use
             // entirely independent display architectures/state (never
             // contend for the same panel/DOM), so there is no ordering
             // requirement between them; Promise.all just avoids making
             // one wait on the other for no reason.
             await Promise.all([
-                analogMetas.length > 0 ? wwAddSelectedChannels(analogMetas) : Promise.resolve(),
-                digitalMetas.length > 0 ? wwAddDigitalChannels(digitalMetas) : Promise.resolve(),
+                analogMetas.length > 0
+                    ? wwAddSelectedChannels(analogMetas, { onChannelLoaded: () => bumpProgress(1) })
+                    : Promise.resolve(),
+                digitalMetas.length > 0
+                    ? wwAddDigitalChannels(digitalMetas, { onBatchLoaded: (count) => bumpProgress(count) })
+                    : Promise.resolve(),
             ]);
         }
 
@@ -4191,9 +4268,15 @@
                 spike: read("--spike-color"),
                 // Phase 4A: digital lane trace color -- readable against
                 // both waveform-surface tokens without relying on color
-                // ALONE to communicate state (the step geometry itself,
-                // high lane vs. low lane, already does that structurally).
+                // ALONE to communicate state (the bold-band-vs-thin-line
+                // geometry itself already does that structurally).
                 accent: read("--accent"),
+                // Phase 4A-UAT1B: the digital lane label pill's own
+                // background/text -- an opaque card-surface color (not a
+                // translucent wash) so the overlaid label stays legible
+                // sitting directly on top of the trace, in both themes.
+                panel: read("--panel"),
+                dim: read("--text-dim"),
             };
         }
 
@@ -4820,7 +4903,14 @@
         // there is no architecture here that locks a channel to its panel
         // permanently (a future drag/reorder phase is where the user gets
         // to move it directly).
-        async function wwAddSelectedChannels(channelMetas) {
+        async function wwAddSelectedChannels(channelMetas, options) {
+            // Phase 4A-UAT1B: onChannelLoaded, if given, fires once per
+            // channel as its own independent fetch resolves -- a real
+            // progress signal for the workspace loading overlay (see
+            // wwApplyDefaultChannelDisplay()), never a fake percentage.
+            // Optional and unused by every other existing call site
+            // (manual "Add selected" clicks, the structural scale test).
+            const onChannelLoaded = (options && options.onChannelLoaded) || null;
             const epochAtStart = ww.epoch;
             const newlyCreatedPanels = [];
             const jobs = [];
@@ -4884,6 +4974,7 @@
 
             await Promise.all(jobs.map(({ panel, channelEntry }) =>
                 wwLoadChannelRange(panel, channelEntry, fetchStart, fetchEnd, { isInitialLoad: true })
+                    .then(() => { if (onChannelLoaded) onChannelLoaded(channelEntry); })
             ));
 
             // The workspace may have been cleared/reset while those fetches
@@ -4994,15 +5085,12 @@
         // exceeds the visible region (section 7/22), never Plotly's own
         // internal scrolling.
         const WW_DIGITAL_LANE_PX = 22;
-        const WW_DIGITAL_LANE_HIGH = 0.62; // fraction of one lane occupied by the "high" plateau
-        // Truncated Y-axis tick-label length -- the FULL name is always
-        // still available via each trace's own hovertext (section 44); a
-        // native Plotly axis tick has no built-in hover-tooltip mechanism
-        // of its own, so truncating the visible label (with a full-name
-        // hover fallback on the trace itself) was judged the more robust
-        // choice over relying on `automargin` alone to fit arbitrarily
-        // long engineering channel names (section 20/21).
-        const WW_DIGITAL_NAME_MAX_CHARS = 26;
+        // Phase 4A-UAT1B: the truncation budget shrank from 26 -- the
+        // label is now a small overlaid pill near the left edge of each
+        // lane (owner visual benchmark), not a wide Y-axis tick column,
+        // so it has less horizontal room by design. The FULL name is
+        // still always available via each trace's own hovertext.
+        const WW_DIGITAL_NAME_MAX_CHARS = 18;
 
         // Group -> case-insensitive alphabetical -> stable original-index
         // tiebreak (section 16/43/57). The SAME function drives both the
@@ -5038,38 +5126,105 @@
             return name.slice(0, WW_DIGITAL_NAME_MAX_CHARS - 1) + "…";
         }
 
-        // ONE Plotly figure, one step (line_shape: "hv") trace per
-        // displayed digital channel -- see this section's own header
-        // comment for why never one-Plotly-instance-per-channel. Called
-        // from EVERY site that changes the displayed digital set, the
-        // shared viewport, ww.timeMode, or the theme (wwApplyAndFetchViewport,
+        // Phase 4A-UAT1B: interleaves group HEADER rows (Triggered/Never
+        // Triggered/Spare, with a count) between each classification
+        // block, on top of the already-correct wwSortedDigitalEntries()
+        // order -- owner UAT feedback was that the rendered region
+        // "looked" purely alphabetical because nothing ever visually
+        // marked where one classification group ended and the next
+        // began (the channel browser already had this via its
+        // <details>/count-badge structure; the rendered chart never did).
+        // Returns a flat list of rows top-to-bottom; header rows carry no
+        // trace, only a Y position for their annotation/divider.
+        function wwDigitalLayoutRows(entries) {
+            const byGroup = { triggered: [], never_triggered: [], spare: [] };
+            for (const entry of entries) {
+                (byGroup[entry.classification] || byGroup.never_triggered).push(entry);
+            }
+            const rows = [];
+            for (const group of DIGITAL_GROUP_ORDER) {
+                const groupEntries = byGroup[group];
+                if (groupEntries.length === 0) continue;
+                rows.push({ type: "header", group, count: groupEntries.length });
+                for (const entry of groupEntries) rows.push({ type: "channel", entry });
+            }
+            return rows;
+        }
+
+        // Returns the HIGH-state time intervals for one displayed digital
+        // entry as [[startTime, endTime], ...] -- derived from
+        // initialState + the sparse transitions list (never the full
+        // per-sample array, which digital delivery never carries at all --
+        // see extract_digital_waveform's own docstring). A channel that
+        // starts high and never transitions yields one interval spanning
+        // the whole record (section 9/57's own "still Triggered" case);
+        // a channel that is always low yields zero intervals.
+        function wwDigitalHighIntervals(entry) {
+            const intervals = [];
+            let state = entry.initialState;
+            let openStart = state ? entry.startTime : null;
+            for (const t of entry.transitions) {
+                if (state && !t.state) {
+                    intervals.push([openStart, t.time]);
+                    openStart = null;
+                } else if (!state && t.state) {
+                    openStart = t.time;
+                }
+                state = t.state;
+            }
+            if (state) intervals.push([openStart, entry.endTime]);
+            return intervals;
+        }
+
+        // ONE Plotly figure, two traces per displayed digital channel --
+        // see this section's own header comment for why never
+        // one-Plotly-instance-per-channel. Called from EVERY site that
+        // changes the displayed digital set, the shared viewport,
+        // ww.timeMode, or the theme (wwApplyAndFetchViewport,
         // wwSetTimeMode, wwApplyTheme, wwClearWorkspace,
         // wwRemoveChannelsForSource, and the digital add/remove functions
-        // below) -- always via Plotly.react (Plotly's own "call as often
-        // as needed, it diffs efficiently" API; it also transparently
-        // handles the very first render, so no separate ready-flag
-        // newPlot/relayout branching is needed, unlike the sticky ruler's
-        // own trace-less instance). A single, deliberately simple update
-        // path, not three separately optimized ones (relayout-only for
-        // viewport, restyle-only for time-mode, full-rebuild for
-        // add/remove) -- digital trace data is inherently small (sparse
-        // transitions, never dense samples, see
-        // app.services.waveform_service.extract_digital_waveform's own
-        // docstring), so the cost of always doing a full react call stays
-        // low regardless of how many digital channels are displayed.
+        // below) -- always via Plotly.react.
+        //
+        // Phase 4A-UAT1B rendering redesign (owner visual benchmark,
+        // logic-analyzer style): each lane is ONE flat Y position, not two
+        // (previously low/high plateaus via a single `hv`-shaped trace).
+        // A thin, muted BASELINE trace spans the whole record at that Y --
+        // always present, representing "this channel exists, currently
+        // LOW unless marked otherwise". A separate, much thicker BAND
+        // trace (built from wwDigitalHighIntervals(), gapped with `null`
+        // between separate HIGH runs) draws ONLY during HIGH intervals, at
+        // the exact same Y, in the theme accent color -- reading as a bold
+        // bar riding on top of the thin line. This makes constant-HIGH
+        // (full-width bold band) and constant-LOW (no band at all, just
+        // the thin line) immediately, structurally distinguishable --
+        // never relying on color alone -- which the previous two-plateau
+        // step trace did not make obvious enough (owner UAT finding).
+        // Exact transition timestamps are preserved exactly (a straight
+        // segment's own start/end IS the real transition time; no
+        // interpolation).
+        //
+        // Channel name labels are Plotly ANNOTATIONS anchored to the
+        // PLOT AREA (xref: "paper", so they stay pinned to the left edge
+        // regardless of X zoom/pan), not Y-axis ticks -- this is what
+        // lets the left margin match WW_PANEL_MARGIN.l exactly (see
+        // below), fixing a real visual-alignment bug: the OLD
+        // margin.l:150 (sized for a wide tick-label column) put the
+        // digital plot area's actual origin at a different pixel offset
+        // than every analog panel and the shared ruler (both margin.l:55),
+        // so digital transitions never lined up with analog/ruler
+        // visually even though the underlying X data was already
+        // identical. Group headers get their own (trace-less) annotation
+        // + a subtle divider shape at the boundary above them.
         //
         // X axis: shares wwElapsedToPlotlyX()/ww.viewport exactly like
         // every analog panel (section 3/29) -- never an independent
         // viewport authority. `fixedrange: true` on both axes -- the user
-        // cannot drag/zoom the digital chart directly this phase (avoids
-        // needing a second relayout listener/feedback-loop guard
-        // entirely; zoom/pan stays an analog-panel-or-ruler-only gesture
-        // that digital always follows, never leads). Y axis: not a real
-        // engineering scale (binary/state semantics, section 30) -- ticks
-        // are channel names via `tickmode: "array"`, not autoscaled, never
-        // touched by Autoscale Y (which only ever iterates ww.panels).
-        // X-axis tick labels are hidden entirely (section 33) -- the
-        // shared sticky ruler below remains the one bottom time reference.
+        // cannot drag/zoom the digital chart directly this phase. Y axis
+        // stays fully hidden (binary/state semantics, section 30) --
+        // never touched by Autoscale Y (which only ever iterates
+        // ww.panels). X-axis tick labels are hidden entirely (section
+        // 33) -- the shared sticky ruler below remains the one bottom
+        // time reference.
         function wwRebuildDigitalChart() {
             const regionEl = document.getElementById("wwDigitalRegion");
             const chartEl = document.getElementById("wwDigitalChart");
@@ -5083,68 +5238,106 @@
             }
 
             const colors = wwThemeColors();
-            const n = entries.length;
+            const rows = wwDigitalLayoutRows(entries);
+            const totalRows = rows.length;
             const traces = [];
-            const tickvals = [];
-            const ticktext = [];
+            const annotations = [];
+            const shapes = [];
 
-            entries.forEach((entry, i) => {
-                // Index 0 (first in sorted order) gets the HIGHEST y, so it
-                // renders at the TOP without needing a reversed axis.
-                const laneBase = n - 1 - i;
-                const low = laneBase;
-                const high = laneBase + WW_DIGITAL_LANE_HIGH;
+            rows.forEach((row, i) => {
+                // Row 0 (first, Triggered's own header) gets the HIGHEST
+                // y, so the whole stack renders top-to-bottom without
+                // needing a reversed axis.
+                const y = totalRows - 1 - i;
 
-                const rawTime = [entry.startTime];
-                const rawState = [entry.initialState];
-                for (const t of entry.transitions) {
-                    rawTime.push(t.time);
-                    rawState.push(t.state);
+                if (row.type === "header") {
+                    annotations.push({
+                        x: 0.006, xref: "paper", xanchor: "left",
+                        y, yref: "y", yanchor: "middle",
+                        text: DIGITAL_GROUP_LABELS[row.group].toUpperCase() + " (" + row.count + ")",
+                        showarrow: false,
+                        font: { size: 9, color: colors.dim },
+                        align: "left",
+                    });
+                    if (i > 0) {
+                        // Divider sits exactly halfway between this header
+                        // row and the previous (different-group) row.
+                        shapes.push({
+                            type: "line", xref: "paper", x0: 0, x1: 1,
+                            yref: "y", y0: y + 0.5, y1: y + 0.5,
+                            line: { color: colors.grid, width: 1 },
+                        });
+                    }
+                    return;
                 }
-                // Extend the final state's line to the record end so the
-                // trace visibly continues rather than stopping at the last
-                // real transition.
-                rawTime.push(entry.endTime);
-                rawState.push(rawState[rawState.length - 1]);
 
-                const x = rawTime.map(wwElapsedToPlotlyX);
-                const y = rawState.map((s) => (s ? high : low));
-                const hovertext = rawState.map((s) => entry.channelName + ": " + (s ? "HIGH (1)" : "LOW (0)"));
+                const entry = row.entry;
+                const startX = wwElapsedToPlotlyX(entry.startTime);
+                const endX = wwElapsedToPlotlyX(entry.endTime);
 
+                // Thin baseline -- always drawn, full record width. Real
+                // (not "hoverinfo: skip") hovertext so the full channel
+                // name is discoverable by hovering ANYWHERE on the lane,
+                // not only during a HIGH interval.
                 traces.push({
-                    x, y,
+                    x: [startX, endX], y: [y, y],
                     mode: "lines",
-                    // "hv": holds flat at the current state until the NEXT
-                    // point's x, then jumps vertically -- a true step
-                    // trace, exact transition timing preserved (section 4).
-                    line: { shape: "hv", width: 1.6, color: colors.accent },
+                    line: { width: 1, color: colors.grid },
                     hoverinfo: "text",
-                    hovertext,
+                    hovertext: [entry.channelName + ": LOW (0)", entry.channelName + ": LOW (0)"],
                     showlegend: false,
                 });
 
-                tickvals.push(laneBase + WW_DIGITAL_LANE_HIGH / 2);
-                ticktext.push(wwTruncateDigitalName(entry.channelName));
+                // Bold band -- only during HIGH intervals, `null`-gapped
+                // between separate runs so Plotly never connects them.
+                const bandX = [];
+                const bandY = [];
+                const bandHover = [];
+                wwDigitalHighIntervals(entry).forEach(([hiStart, hiEnd], idx) => {
+                    if (idx > 0) { bandX.push(null); bandY.push(null); bandHover.push(null); }
+                    bandX.push(wwElapsedToPlotlyX(hiStart), wwElapsedToPlotlyX(hiEnd));
+                    bandY.push(y, y);
+                    bandHover.push(entry.channelName + ": HIGH (1)", entry.channelName + ": HIGH (1)");
+                });
+                traces.push({
+                    x: bandX, y: bandY,
+                    mode: "lines",
+                    line: { width: 7, color: colors.accent },
+                    hoverinfo: bandX.length ? "text" : "skip",
+                    hovertext: bandHover,
+                    showlegend: false,
+                });
+
+                annotations.push({
+                    x: 0.006, xref: "paper", xanchor: "left",
+                    y: y + 0.32, yref: "y", yanchor: "bottom",
+                    text: wwTruncateDigitalName(entry.channelName),
+                    showarrow: false,
+                    font: { size: 9, color: colors.text },
+                    align: "left",
+                    bgcolor: colors.panel,
+                    bordercolor: colors.grid,
+                    borderwidth: 1,
+                    borderpad: 2,
+                });
             });
 
             const xrange = ww.viewport
                 ? [wwElapsedToPlotlyX(ww.viewport.start), wwElapsedToPlotlyX(ww.viewport.end)]
                 : undefined;
 
-            chartEl.style.height = (n * WW_DIGITAL_LANE_PX + 16) + "px";
+            chartEl.style.height = (totalRows * WW_DIGITAL_LANE_PX + 16) + "px";
 
             Plotly.react(chartEl, traces, {
                 paper_bgcolor: "transparent",
                 plot_bgcolor: "transparent",
                 font: { color: colors.text, size: 10 },
-                // A wider left margin than WW_PANEL_MARGIN.l -- analog's
-                // 55px is sized for a short unit label ("V"/"A"), not a
-                // scrollable column of engineering channel NAMES; digital
-                // has no Y-axis semantics to keep pixel-aligned with
-                // anything (section 30), so this is free to differ. Right
-                // margin still matches WW_PANEL_MARGIN.r for a consistent
-                // right edge.
-                margin: { l: 150, r: WW_PANEL_MARGIN.r, t: 6, b: 6 },
+                // Matches every analog panel's own left margin exactly
+                // (WW_PANEL_MARGIN.l) -- labels are overlaid annotations
+                // now, not a Y-axis tick column, so there is no longer any
+                // reason for this to differ; this is the actual alignment
+                // fix (see this function's own header comment).
+                margin: { l: WW_PANEL_MARGIN.l, r: WW_PANEL_MARGIN.r, t: 6, b: 6 },
                 xaxis: {
                     type: ww.timeMode === "absolute" ? "date" : undefined,
                     range: xrange,
@@ -5152,11 +5345,12 @@
                     showgrid: false, zeroline: false, fixedrange: true,
                 },
                 yaxis: {
-                    range: [-0.3, n - 1 + WW_DIGITAL_LANE_HIGH + 0.3],
-                    tickmode: "array", tickvals: tickvals, ticktext: ticktext,
-                    tickfont: { size: 10 },
-                    showgrid: false, zeroline: false, fixedrange: true,
+                    range: [-0.5, totalRows - 1 + 0.5],
+                    visible: false,
+                    fixedrange: true,
                 },
+                annotations,
+                shapes,
                 hovermode: "closest",
                 showlegend: false,
             }, {
@@ -5171,19 +5365,21 @@
             // retain ability to hide/remove/re-add channels" -- analog
             // gets this via each panel's own per-channel legend remove
             // button; digital has no per-lane DOM element to attach one
-            // to (one shared Plotly figure, Y-axis-tick labels, not real
-            // rows -- see this function's own header comment on why).
-            // Clicking a lane's own trace is the lowest-cost equivalent:
-            // wired ONCE (chartEl persists across rebuilds, like the
-            // sticky ruler's chartEl -- see wwClearWorkspace()'s own
-            // comment), re-deriving wwSortedDigitalEntries() fresh on
-            // every click (never a closure over a stale array) so
-            // curveNumber always maps to the entry that produced that
-            // exact trace in the MOST RECENT Plotly.react call above.
+            // to (one shared Plotly figure, overlaid annotations, not
+            // real rows -- see this function's own header comment on
+            // why). Clicking a lane's own trace is the lowest-cost
+            // equivalent: wired ONCE (chartEl persists across rebuilds,
+            // like the sticky ruler's chartEl -- see wwClearWorkspace()'s
+            // own comment), re-deriving wwSortedDigitalEntries() fresh on
+            // every click. Each channel now produces exactly TWO traces
+            // (baseline, band, in that order, header rows contribute
+            // none) -- curveNumber therefore maps to entries[floor(curveNumber/2)],
+            // regardless of which of the two the user actually clicked.
             if (!ww.digitalClickWired) {
                 chartEl.on("plotly_click", (eventData) => {
                     if (!eventData || !eventData.points || !eventData.points.length) return;
-                    const clicked = wwSortedDigitalEntries()[eventData.points[0].curveNumber];
+                    const entryIndex = Math.floor(eventData.points[0].curveNumber / 2);
+                    const clicked = wwSortedDigitalEntries()[entryIndex];
                     if (!clicked) return;
                     wwRemoveDigitalChannelByKey(wwChannelKey(clicked.sourceId, clicked.channelName));
                 });
@@ -5199,7 +5395,15 @@
         // data-recording-start-time string, parsed to ms internally
         // (below), matching wwAddSelectedChannels()'s own established
         // convention exactly (never `new Date(...)`, timezone safety).
-        async function wwAddDigitalChannels(channelMetas) {
+        async function wwAddDigitalChannels(channelMetas, options) {
+            // Phase 4A-UAT1B: onBatchLoaded(count), if given, fires once
+            // per source batch as that ONE request resolves (or fails --
+            // still "accounted for", so the loading overlay's total
+            // always reaches 100% even if a source's batch errors) -- see
+            // wwAddSelectedChannels()'s own onChannelLoaded for the
+            // analog equivalent and wwApplyDefaultChannelDisplay() for
+            // where both feed the same counter.
+            const onBatchLoaded = (options && options.onBatchLoaded) || null;
             const toFetch = channelMetas.filter(
                 (m) => !ww.digitalDisplayed.has(wwChannelKey(m.sourceId, m.channelName))
             );
@@ -5244,6 +5448,7 @@
                     // Leave whatever was already displayed as-is -- same
                     // resilience policy as fetchSourcesList()/selectSource().
                 }
+                if (onBatchLoaded) onBatchLoaded(metas.length);
             }
             wwRebuildDigitalChart();
             wwUpdateEmptyState();
@@ -5711,6 +5916,26 @@
                 wwRenderLegend(panel);
             }
             wwApplyTimeAxisChrome();
+        }
+
+        // Phase 4A-UAT1B: immediate loading feedback for
+        // selectSource()/wwApplyDefaultChannelDisplay() -- see the DOM
+        // comment on #wwWorkspaceLoading for why this exists. `text`
+        // omitted just toggles visibility without changing the message
+        // (used to hide it). Never shows fake percentages -- either a
+        // truthful stage description or, once real per-channel progress
+        // is available (see wwSetWorkspaceLoadingProgress), a real count.
+        function wwSetWorkspaceLoading(visible, text) {
+            const el = document.getElementById("wwWorkspaceLoading");
+            if (!el) return;
+            el.hidden = !visible;
+            if (visible && text) {
+                document.getElementById("wwWorkspaceLoadingText").textContent = text;
+            }
+        }
+
+        function wwSetWorkspaceLoadingProgress(loaded, total) {
+            wwSetWorkspaceLoading(true, "Loading channels… " + loaded + " / " + total);
         }
 
         function wwUpdateEmptyState() {

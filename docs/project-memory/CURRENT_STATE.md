@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-17** (Phase 4A).
+Last meaningful update: **2026-08-18** (Phase 4A-UAT1B).
 
 ## Development phase
 
@@ -1102,6 +1102,46 @@ confirmed as pre-existing and unrelated to this phase); backend suite
 real browser — flagged, per this task's own explicit closing
 instruction, as **not** ready for any further waveform feature work
 until that UAT completes.
+
+`[FACT]` **Digital waveform rendering corrected/redesigned per owner UAT
+— Phase 4A-UAT1B — Digital Waveform UX / Correctness Refinement**
+(2026-08-18) — see
+[MIGRATION_PLAN.md — Phase 4A-UAT1B Record](MIGRATION_PLAN.md#phase-4a-uat1b--digital-waveform-ux--correctness-refinement-2026-08-18).
+Owner UAT on Phase 4A found: (1) the rendered digital region looked
+purely alphabetical rather than classification-grouped (root cause: the
+sort/classification data was ALREADY correct end to end, verified fresh
+against both the ASCII and BINARY COMTRADE provider paths — the
+rendered chart simply never showed any group header/separator, unlike
+the channel browser, so a numerically-dominant group made the whole
+thing read as flat), (2) digital traces did not visually line up with
+analog traces (root cause: a real bug — the digital chart's own Plotly
+left margin, 150px, differed from every analog panel's and the shared
+ruler's 55px, so identical X values rendered at different pixel
+positions), (3) opening a recording with everything displayed by
+default could lag with no visible loading state, (4) constant-HIGH vs
+constant-LOW digital signals were hard to tell apart. All four are now
+fixed: rendered group headers with counts mirror the channel browser
+exactly; the digital chart's margin now exactly matches
+`WW_PANEL_MARGIN` (true pixel alignment, not approximate); and the
+rendering itself was redesigned to the owner's own visual benchmark — a
+thin muted baseline line always present, with a bold/thick band drawn
+only during HIGH intervals (derived from `initialState` + the sparse
+`transitions` list), making constant-HIGH (full-width bold band) and
+constant-LOW (no band, thin line only) immediately distinguishable
+without relying on color alone; channel name labels are now small
+opaque pill annotations overlaid directly on each lane (pinned to the
+plot area's left edge via `xref: "paper"`), not a wide Y-axis tick
+column — this is also what made the margin fix possible. A new
+`#wwWorkspaceLoading` overlay appears as the very first thing
+`selectSource()` does (before any fetch starts), reports a REAL
+per-channel "N / total" progress count (never a fake percentage), and
+is always cleared via `try/finally` regardless of success or failure.
+Pure frontend change — no backend file touched, no new architecture
+decision (refines DEC-034's existing rendering approach, does not
+change it). Frontend regression suite still exactly the established
+17-failure pre-existing baseline; backend 311/311 unchanged. Not yet
+owner-UAT'd in a real browser — flagged as **not** ready for further
+waveform feature work until that UAT completes.
 
 ## Completed foundation work
 
