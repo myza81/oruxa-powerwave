@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-18** (Phase 4A-UAT2).
+Last meaningful update: **2026-08-18** (Phase 4A-UAT3).
 
 ## Development phase
 
@@ -1179,6 +1179,34 @@ architecture decision. Frontend regression suite still the established
 accepted as visually fixed from this sandbox alone** — no real browser
 is available here; every fix is evidence-backed but owner real-browser
 UAT remains required before any further waveform feature work.
+
+`[FACT]` **Deployed build provenance is now exposed — Phase 4A-UAT3 —
+Build SHA / Version Provenance** (2026-08-18) — see
+[MIGRATION_PLAN.md — Phase 4A-UAT3 Record](MIGRATION_PLAN.md#phase-4a-uat3--build-sha--version-provenance-2026-08-18).
+`APP_VERSION` (already `deploy.yml`'s own `github.sha`, already used to
+tag Docker images) is now also passed as a runtime environment variable
+into both containers. `GET /health` returns `version`
+(short 7-char) and `git_sha` (full 40-char), sourced only from that
+variable — never by running `git` inside a container. The frontend's
+existing `config.js` runtime-config mechanism (regenerated at container
+start by `frontend/docker-entrypoint.d/10-powerwave-config.sh`, never at
+Docker build time) now also carries `environment`/`buildVersion`; on
+startup the app logs one console line
+(`Oruxa Powerwave — <environment> — build <version>`) and sets
+`document.documentElement.dataset.build` from the same value, so a
+stale browser tab truthfully shows the stale build it actually loaded —
+deliberately never re-fetched from GitHub at runtime, which would hide
+exactly the mismatch this feature exists to surface. A container/process
+started without `APP_VERSION` set reports the truthful `"local"`
+fallback (matching `scripts/deploy.sh`'s own pre-existing convention),
+never a fabricated hash. Pure additive change, no backend behavior
+otherwise altered, no new architecture decision. Backend 321/321 (311
+pre-existing + 10 new); frontend regression suite at 18 failures (the
+established 17 plus one pre-existing, independently-confirmed-unrelated
+failure from an external toolbar/font-size commit, not from this
+phase's own work). No DEV/PROD deployment dispatched from this sandbox
+this pass (no deploy credentials available here) — structural
+verification only; owner end-to-end confirmation remains the next step.
 
 ## Completed foundation work
 

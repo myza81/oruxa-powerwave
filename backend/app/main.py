@@ -97,7 +97,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "environment": settings.environment}
+        # Phase 4A-UAT3: build provenance -- both fields come straight from
+        # Settings (itself sourced only from the APP_VERSION environment
+        # variable, see app.config.load_settings), never computed here by
+        # inspecting the filesystem or running `git`.
+        return {
+            "status": "ok",
+            "environment": settings.environment,
+            "version": settings.version,
+            "git_sha": settings.git_sha,
+        }
 
     return app
 

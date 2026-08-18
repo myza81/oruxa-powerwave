@@ -19,6 +19,50 @@ def test_defaults_are_development():
     assert settings.database_url is None
     assert not settings.is_production
     assert settings.max_event_upload_size_mb == DEFAULT_MAX_EVENT_UPLOAD_SIZE_MB
+    # Phase 4A-UAT3: no APP_VERSION set -- truthful "local" fallback, never
+    # a fabricated commit hash.
+    assert settings.git_sha == "local"
+    assert settings.version == "local"
+
+
+class TestBuildProvenance:
+    """Phase 4A-UAT3: APP_VERSION -> Settings.git_sha/.version.
+
+    Sourced ONLY from the APP_VERSION environment variable -- never by
+    running `git` or inspecting the filesystem (see load_settings()'s own
+    comment).
+    """
+
+    def test_full_sha_is_recorded_verbatim(self):
+        full_sha = "331cca07555c09edd24f09589b59c5cae0aa200b"
+        settings = load_settings({**BASE_ENV, "APP_VERSION": full_sha})
+
+        assert settings.git_sha == full_sha
+
+    def test_version_is_the_short_seven_character_form(self):
+        full_sha = "331cca07555c09edd24f09589b59c5cae0aa200b"
+        settings = load_settings({**BASE_ENV, "APP_VERSION": full_sha})
+
+        assert settings.version == "331cca0"
+
+    def test_blank_app_version_falls_back_to_local(self):
+        settings = load_settings({**BASE_ENV, "APP_VERSION": "   "})
+
+        assert settings.git_sha == "local"
+        assert settings.version == "local"
+
+    def test_unset_app_version_falls_back_to_local_in_production_too(self):
+        settings = load_settings(
+            {**BASE_ENV, "ENVIRONMENT": "production", "CORS_ORIGINS": "https://powerwave.oruxa.uk"}
+        )
+
+        assert settings.git_sha == "local"
+        assert settings.version == "local"
+
+    def test_app_version_is_stripped_of_surrounding_whitespace(self):
+        settings = load_settings({**BASE_ENV, "APP_VERSION": "  abc1234  "})
+
+        assert settings.git_sha == "abc1234"
 
 
 def test_settings_are_frozen():

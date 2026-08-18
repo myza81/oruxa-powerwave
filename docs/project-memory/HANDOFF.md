@@ -8,6 +8,57 @@ Last updated: **2026-08-18**
 
 ## What was most recently done
 
+**Phase 4A-UAT3 — Build SHA / Version Provenance.** Full detail:
+[MIGRATION_PLAN.md — Phase 4A-UAT3 Record](MIGRATION_PLAN.md#phase-4a-uat3--build-sha--version-provenance-2026-08-18).
+
+**Owner requirement**: make it trivial to verify exactly which Git
+commit DEV/PROD is actually serving, so "GitHub main is newer than the
+deployment" or "the browser is showing a stale build" is immediately
+detectable instead of a source of confusion.
+
+**Source of truth**: `APP_VERSION` -- already set by `deploy.yml` to
+`github.sha` and already used to tag the `powerwave-backend`/
+`powerwave-frontend` Docker images -- is now ALSO passed straight
+through as a runtime env var into both containers. Nothing runs `git`
+inside a container; an un-deployed local container truthfully reports
+`"local"` (reusing `scripts/deploy.sh`'s own existing fallback
+convention, not a new one).
+
+**What changed**: `GET /health` now returns `version` (short 7-char) and
+`git_sha` (full 40-char) alongside `status`/`environment`. The
+frontend's existing `config.js` runtime-config mechanism (regenerated at
+container START by `frontend/docker-entrypoint.d/10-powerwave-config.sh`,
+never at Docker build time) now also carries `environment`/
+`buildVersion`; on startup the app logs exactly ONE console line
+(`Oruxa Powerwave — <environment> — build <version>`) and sets
+`document.documentElement.dataset.build` from the same value.
+`compose.yaml` (the portable base -- unchanged shape for DEV/PROD, only
+the value differs) passes `APP_VERSION` into both services'
+`environment:` blocks, so frontend and backend always report the exact
+same SHA from the exact same deploy-time source, never two
+independently-maintained version strings.
+
+**Verification**: backend 321/321 (311 pre-existing + 10 new, covering
+full-SHA passthrough, short-version truncation, the `"local"` fallback
+in both dev and production, and the entrypoint script writing both new
+fields via its own real-`sh` test harness). New `phase4a_uat3_check.mjs`
+(5 checks, scratch convention) covers the console message firing exactly
+once, the DOM marker matching the injected value, and the same truthful
+fallback frontend-side. Full frontend regression suite: 18 failures --
+the established 17 plus one PRE-EXISTING, independently-confirmed-
+unrelated failure (`phase3buat3_check.mjs`'s button-size-tier
+assertion) traced to an external "adjusting the header toolbar and
+button font size" commit made outside this task's own session, not
+introduced by this phase's own (CSS-untouched) changes.
+
+**Not yet done**: no DEV/PROD deployment dispatched from this sandbox
+(no deploy credentials available here) -- the mechanism is structurally
+verified but not yet confirmed end-to-end against a real running
+deployment. Owner verification commands are in the MIGRATION_PLAN.md
+record.
+
+## What was done in the prior session (Phase 4A-UAT2 — Fix Remaining Digital Waveform UAT Failures)
+
 **Phase 4A-UAT2 — Fix Remaining Digital Waveform UAT Failures.** Full
 detail:
 [MIGRATION_PLAN.md — Phase 4A-UAT2 Record](MIGRATION_PLAN.md#phase-4a-uat2--fix-remaining-digital-waveform-uat-failures-2026-08-18).
@@ -61,7 +112,7 @@ source-level checks alone; the next required step is the owner running
 `wwDiagnoseDigitalAlignment()` and eyes-on verification in a real
 browser.
 
-## What was done in the prior session (Phase 4A-UAT1B — Digital Waveform UX / Correctness Refinement)
+## What was done in the earlier session (Phase 4A-UAT1B — Digital Waveform UX / Correctness Refinement)
 
 **Phase 4A-UAT1B — Digital Waveform UX / Correctness Refinement.** Full
 detail:

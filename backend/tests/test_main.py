@@ -1,4 +1,5 @@
 import importlib
+from dataclasses import replace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -40,7 +41,22 @@ def test_health_reports_ok(settings):
         response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "environment": "development"}
+    assert response.json() == {
+        "status": "ok",
+        "environment": "development",
+        "version": "local",
+        "git_sha": "local",
+    }
+
+
+def test_health_reports_the_configured_build_provenance(settings):
+    deployed = replace(settings, git_sha="331cca07555c09edd24f09589b59c5cae0aa200b", version="331cca0")
+    with TestClient(create_app(deployed)) as client:
+        response = client.get("/health")
+
+    body = response.json()
+    assert body["version"] == "331cca0"
+    assert body["git_sha"] == "331cca07555c09edd24f09589b59c5cae0aa200b"
 
 
 def test_storage_is_built_during_startup(settings):

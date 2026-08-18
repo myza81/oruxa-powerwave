@@ -29,10 +29,22 @@ fi
 # Development and local use keep the convenient default.
 : "${API_BASE_URL:=http://127.0.0.1:8000}"
 
+# Phase 4A-UAT3: build provenance. APP_VERSION is set by deploy.sh/CI to the
+# full deployed Git commit SHA (github.sha) -- never computed here by
+# executing git inside the container, and never fabricated: a container
+# started without it (bare `docker run`, local `docker compose up` without
+# deploy.sh) truthfully reports "local", matching scripts/deploy.sh's own
+# `APP_VERSION="${APP_VERSION:-local}"` fallback exactly, so DEV/PROD and an
+# ad-hoc local container never disagree about what "unknown" means.
+: "${APP_VERSION:=local}"
+
 cat > "${CONFIG_DIR}/config.js" <<EOF
 window.POWERWAVE_CONFIG = {
   apiBaseUrl: "${API_BASE_URL}",
+  environment: "${ENVIRONMENT}",
+  buildVersion: "${APP_VERSION}",
 };
 EOF
 
 echo "powerwave: API base URL set to ${API_BASE_URL}"
+echo "powerwave: build version set to ${APP_VERSION}"

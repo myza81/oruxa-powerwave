@@ -17,6 +17,8 @@ def settings(tmp_path) -> Settings:
         cors_origins=("http://localhost:8101",),
         database_url=None,
         max_event_upload_size_mb=100,
+        git_sha="local",
+        version="local",
     )
 
 

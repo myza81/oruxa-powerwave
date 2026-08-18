@@ -25,6 +25,16 @@ services:
 
     restart: unless-stopped
 
+    # Phase 4A-UAT3: the SAME APP_VERSION already used above to tag this
+    # image, also passed through as a runtime env var so the entrypoint
+    # (frontend/docker-entrypoint.d/10-powerwave-config.sh) can write it
+    # into config.js -- one source of truth for both the image tag and the
+    # frontend's own build-provenance marker, never a second, separately
+    # maintained version string. ENVIRONMENT is already provided by each
+    # overlay (compose.dev.yaml/compose.prod.yaml); merged here alongside it.
+    environment:
+      APP_VERSION: ${APP_VERSION:-local}
+
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
       interval: 10s
@@ -47,6 +57,11 @@ services:
     environment:
       STORAGE_TYPE: ${STORAGE_TYPE:-local}
       STORAGE_PATH: ${STORAGE_PATH:-/data}
+      # Phase 4A-UAT3: same source of truth as the frontend's own
+      # APP_VERSION above (and the image tag both services already use) --
+      # never a second, independently-maintained version value. Read by
+      # app.config.load_settings() and exposed on GET /health.
+      APP_VERSION: ${APP_VERSION:-local}
 
     volumes:
       # A named volume is the portable default. Compose scopes it to the

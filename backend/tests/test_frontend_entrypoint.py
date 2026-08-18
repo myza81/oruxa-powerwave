@@ -124,3 +124,40 @@ class TestProductionSucceedsWhenConfigured:
 
         assert "oruxa.uk" not in source
         assert "https://" not in source
+
+
+class TestBuildProvenance:
+    """Phase 4A-UAT3: APP_VERSION/ENVIRONMENT -> config.js.
+
+    Never computed by running `git` inside the container -- APP_VERSION is
+    whatever deploy.sh/CI already set as the deployed image tag's own
+    version (github.sha), passed straight through.
+    """
+
+    FULL_SHA = "331cca07555c09edd24f09589b59c5cae0aa200b"
+
+    def test_app_version_is_written_verbatim_into_config_js(self, tmp_path):
+        result = run(tmp_path, APP_VERSION=self.FULL_SHA)
+
+        assert result.returncode == 0, result.stderr
+        assert self.FULL_SHA in config_js(tmp_path)
+
+    def test_missing_app_version_falls_back_to_local_not_a_fabricated_hash(self, tmp_path):
+        result = run(tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        content = config_js(tmp_path)
+        assert 'buildVersion: "local"' in content
+
+    def test_environment_is_written_into_config_js(self, tmp_path):
+        result = run(tmp_path, ENVIRONMENT="production", API_BASE_URL=PROD_URL)
+
+        assert result.returncode == 0, result.stderr
+        assert 'environment: "production"' in config_js(tmp_path)
+
+    def test_written_config_includes_the_build_provenance_fields(self, tmp_path):
+        run(tmp_path, APP_VERSION=self.FULL_SHA)
+
+        content = config_js(tmp_path)
+        assert "buildVersion" in content
+        assert "environment" in content

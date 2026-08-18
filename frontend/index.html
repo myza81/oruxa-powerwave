@@ -616,7 +616,7 @@
         }
 
         section.panel h2 {
-            font-size: 0.85rem;
+            font-size: 0.75rem;
             text-transform: uppercase;
             letter-spacing: 0.04em;
             color: var(--text-dim);
@@ -753,7 +753,7 @@
             border-bottom: 1px solid var(--panel-border);
         }
         .active-recording h2 {
-            font-size: 0.72rem;
+            font-size: 0.75rem;
             text-transform: uppercase;
             letter-spacing: 0.04em;
             color: var(--text-dim);
@@ -768,7 +768,8 @@
            the same defensive belt-and-braces cap used everywhere else
            this containment pattern appears. */
         .active-recording-name { font-size: 0.95rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; max-width: 100%; }
-        .active-recording-meta { font-size: 0.8rem; color: var(--text-dim); margin-top: 2px; }
+        .active-recording-meta { font-size: 0.7
+            rem; color: var(--text-dim); margin-top: 2px; }
         .active-recording .empty-state { padding: 0; text-align: left; font-size: 0.85rem; }
 
         .empty-state {
@@ -843,7 +844,7 @@
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
             padding: 8px 10px;
-            font-size: 0.85rem;
+            font-size: 0.75rem;
             color: var(--text);
         }
         input[type="search"]:focus {
@@ -871,7 +872,7 @@
             cursor: pointer;
             padding: 10px 14px;
             font-weight: 600;
-            font-size: 0.88rem;
+            font-size: 0.75rem;
             display: flex;
             align-items: center;
             gap: 8px;
@@ -1960,6 +1961,24 @@
         function apiBaseUrl() {
             const config = window.POWERWAVE_CONFIG || {};
             return (config.apiBaseUrl || "http://127.0.0.1:8000").replace(/\/$/, "");
+        }
+
+        // Phase 4A-UAT3: build provenance -- same runtime-config mechanism
+        // apiBaseUrl() already uses (config.js is regenerated from the
+        // environment at container start by
+        // frontend/docker-entrypoint.d/10-powerwave-config.sh, never at
+        // Docker build time), so this reflects whatever build the browser
+        // ACTUALLY loaded -- including a stale one, which is the whole
+        // point (see that entrypoint script's own comment). Never
+        // hardcoded, never re-fetched from GitHub at runtime (that would
+        // show the latest commit, not the one actually running -- exactly
+        // the ambiguity this feature exists to remove). "local" is the
+        // truthful fallback for a bare `python -m http.server`/no-Docker
+        // dev session, matching scripts/deploy.sh's own
+        // `APP_VERSION="${APP_VERSION:-local}"` convention exactly.
+        function buildVersion() {
+            const config = window.POWERWAVE_CONFIG || {};
+            return config.buildVersion || "local";
         }
 
         // Mirrors the backend's default MAX_EVENT_UPLOAD_SIZE_MB
@@ -6367,6 +6386,17 @@
         // ------------------------------------------------------------------
         // Init
         // ------------------------------------------------------------------
+        // Phase 4A-UAT3: build provenance -- logged exactly ONCE, here at
+        // Init, never on a timer/interval/repeated call. Machine-readable
+        // marker on <html> (document.documentElement.dataset.build) is set
+        // from the SAME window.POWERWAVE_CONFIG.buildVersion value the
+        // console line reads, so an audit script and a human reading
+        // DevTools always agree.
+        document.documentElement.dataset.build = buildVersion();
+        console.log(
+            "Oruxa Powerwave — " + (window.POWERWAVE_CONFIG && window.POWERWAVE_CONFIG.environment || "development") +
+            " — build " + buildVersion()
+        );
         document.getElementById("statusBarWorkspaceId").textContent = currentWorkspaceId();
         document.getElementById("newWorkspaceButton").addEventListener("click", startNewWorkspace);
 

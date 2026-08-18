@@ -140,6 +140,8 @@ class TestUpload:
             cors_origins=("http://localhost:8101",),
             database_url=None,
             max_event_upload_size_mb=1,  # 1 MB combined ceiling
+            git_sha="local",
+            version="local",
         )
         app = create_app(tiny_limit_settings)
         with TestClient(app) as client:

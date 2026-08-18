@@ -30,6 +30,16 @@ class Settings:
     cors_origins: tuple[str, ...]
     database_url: str | None
     max_event_upload_size_mb: int
+    # Phase 4A-UAT3: build provenance. Sourced ONLY from the APP_VERSION
+    # environment variable (compose.yaml passes through the exact value
+    # deploy.yml sets to `github.sha` -- the full 40-character commit SHA),
+    # never computed by running `git` inside the running container/process.
+    # "local" is the deliberate, truthful fallback when no deployment set
+    # it (bare `docker run`, a plain `uvicorn` dev session) -- same
+    # convention scripts/deploy.sh's own `APP_VERSION="${APP_VERSION:-local}"`
+    # already uses, never a fabricated commit hash.
+    git_sha: str
+    version: str
 
     @property
     def is_production(self) -> bool:
@@ -89,6 +99,16 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     else:
         max_event_upload_size_mb = DEFAULT_MAX_EVENT_UPLOAD_SIZE_MB
 
+    # Phase 4A-UAT3: APP_VERSION is the full deployed Git commit SHA
+    # (deploy.yml sets it to `github.sha`; compose.yaml passes it through
+    # unchanged) -- read verbatim, never derived by running `git` here.
+    # "local" (blank/unset) is the truthful fallback, never a fabricated
+    # hash; `version` is simply its short (7-char) form, matching `git rev-parse
+    # --short` convention, except "local" itself is already short enough to
+    # pass through unchanged rather than being truncated into nonsense.
+    git_sha = env.get("APP_VERSION", "").strip() or "local"
+    version = git_sha if git_sha == "local" else git_sha[:7]
+
     return Settings(
         environment=environment,
         storage_type=storage_type,
@@ -96,4 +116,6 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         cors_origins=cors_origins,
         database_url=database_url,
         max_event_upload_size_mb=max_event_upload_size_mb,
+        git_sha=git_sha,
+        version=version,
     )

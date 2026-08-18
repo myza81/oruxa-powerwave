@@ -1,8 +1,7 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
-
-from app.config import Settings
 from app.storage import (
     ImmutableFileError,
     InvalidCategoryError,
@@ -168,14 +167,7 @@ class TestGetStorage:
         assert backend.root == Path(settings.storage_path).resolve()
 
     def test_unknown_backend_is_rejected(self, settings):
-        broken = Settings(
-            environment=settings.environment,
-            storage_type="s3",
-            storage_path=settings.storage_path,
-            cors_origins=settings.cors_origins,
-            database_url=None,
-            max_event_upload_size_mb=settings.max_event_upload_size_mb,
-        )
+        broken = replace(settings, storage_type="s3")
 
         with pytest.raises(StorageError):
             get_storage(broken)

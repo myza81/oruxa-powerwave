@@ -8548,6 +8548,137 @@ flagged for owner UAT.
 
 ---
 
+## Phase 4A-UAT3 — Build SHA / Version Provenance (2026-08-18)
+
+`[FACT]` throughout. No new DECISIONS.md entry -- a small, operationally-
+focused provenance mechanism reusing the deployment's own already-existing
+`APP_VERSION`/`github.sha` value end to end, not a new architectural
+commitment.
+
+### Owner requirement
+
+Make it easy to verify exactly which Git commit is currently deployed and
+served by DEV/PROD, preventing the specific class of confusion where
+GitHub `main` is newer than what a deployment (or a stale browser tab) is
+actually running, with no fast way to tell.
+
+### Build identity source of truth
+
+`APP_VERSION` -- already set by `deploy.yml` to `${{ github.sha }}` (the
+full 40-character commit SHA) and already used by `scripts/deploy.sh`/
+`compose.yaml` to tag the `powerwave-backend`/`powerwave-frontend`
+Docker images -- is now ALSO passed straight through as a runtime
+environment variable to both running containers. Nothing computes Git
+state by executing `git` inside a container; a plain `docker run` or
+local `docker compose up` without `deploy.sh` truthfully reports
+`"local"` (matching `scripts/deploy.sh`'s own pre-existing
+`APP_VERSION="${APP_VERSION:-local}"` fallback convention exactly, not a
+new one invented for this feature).
+
+### Backend
+
+- `app/config.py`: `Settings` gained `git_sha: str` and `version: str`.
+  `load_settings()` reads `APP_VERSION` from the environment (blank/unset
+  -> `"local"`); `version` is simply its short (7-char) form, `"local"`
+  passed through unchanged rather than sliced into nonsense.
+- `app/main.py`: `GET /health` now returns
+  `{"status": "ok", "environment": ..., "version": ..., "git_sha": ...}`.
+
+### Frontend
+
+- `frontend/docker-entrypoint.d/10-powerwave-config.sh` (the SAME
+  mechanism that already regenerates `config.js` from `API_BASE_URL` at
+  container start, never at Docker build time -- see its own module
+  comment) now also writes `environment` and `buildVersion` (from
+  `APP_VERSION`, default `"local"`) into `window.POWERWAVE_CONFIG`. The
+  checked-in default `frontend/config.js` (used for a bare local
+  file-serve with no Docker) mirrors the same shape with
+  `buildVersion: "local"`.
+- `frontend/index.html`: new `buildVersion()` helper (mirrors
+  `apiBaseUrl()`'s own established pattern exactly -- reads
+  `window.POWERWAVE_CONFIG.buildVersion`, `"local"` fallback). At Init,
+  logs exactly ONE console line --
+  `Oruxa Powerwave — <environment> — build <version>` -- and sets
+  `document.documentElement.dataset.build` from the same value, so a
+  human in DevTools and an audit script
+  (`document.documentElement.dataset.build`) always agree, and both
+  reflect whatever build the browser ACTUALLY loaded (including a stale
+  cached one -- the entire point, per the owner's own explicit
+  instruction not to fetch the latest SHA from GitHub at runtime, which
+  would hide exactly the problem this feature exists to surface).
+
+### Deployment wiring
+
+`compose.yaml` (the portable base, unchanged for DEV/PROD -- only the
+deployment-supplied `APP_VERSION` value differs) now passes
+`APP_VERSION: ${APP_VERSION:-local}` into both the `frontend` and
+`backend` services' `environment:` blocks, alongside the image-tag usage
+that already existed. Frontend and backend therefore always receive the
+exact same SHA from the exact same deploy-time value -- never two
+separately-maintained version strings.
+
+### Local development fallback
+
+Any container or process started without `APP_VERSION` set (bare
+`docker run`, local `docker compose up` without `deploy.sh`, the
+checked-in `frontend/config.js` used for a no-Docker file-serve) reports
+`"local"` for both `version`/`git_sha` (backend) and `buildVersion`
+(frontend) -- never a fabricated commit hash.
+
+### Tests
+
+Backend: `test_config.py` gained a `TestBuildProvenance` class (5 cases
+-- full SHA recorded verbatim, short 7-char `version`, blank ->
+`"local"`, unset in production too, whitespace stripped);
+`test_main.py` gained a build-provenance `/health` case (`test_defaults_are_development`'s
+own fallback assertions extended, not duplicated); `test_frontend_entrypoint.py`
+gained a `TestBuildProvenance` class (4 cases -- `APP_VERSION` written
+verbatim, missing -> `"local"`, `ENVIRONMENT` written, both fields
+present). Three pre-existing tests that constructed `Settings(...)`
+directly (`test_storage.py`, `test_sources_api.py`) were updated for the
+two new required fields -- `test_storage.py`'s own case switched to
+`dataclasses.replace(settings, ...)`, more robust against any future
+field addition. Backend suite: 321/321 (311 pre-existing + 10 new), zero
+regressions.
+
+Frontend: new `phase4a_uat3_check.mjs` (scratch convention, not
+committed, 5 checks) -- exactly one startup console message per load
+(never spammed), the DOM marker matches the injected config value
+exactly, a different injected SHA produces a different marker (never
+hardcoded), the truthful `"local"` fallback when no `buildVersion` was
+configured at all, and `buildVersion()` itself reads live from
+`window.POWERWAVE_CONFIG`. Full existing frontend regression suite
+re-run: **18** failures, not the previously-established 17 -- the
+extra one (`phase3buat3_check.mjs`'s own button-size-tier assertion) was
+independently confirmed, by stashing this phase's own changes and
+re-running against untouched canonical `main`, to ALREADY exist there,
+introduced by an external "adjusting the header toolbar and button font
+size" commit made outside this task's own session -- unrelated to and
+not introduced by this phase's own changes, which touch none of that
+CSS.
+
+### Files changed
+
+`backend/app/config.py`, `backend/app/main.py`,
+`backend/tests/conftest.py`, `backend/tests/test_config.py`,
+`backend/tests/test_frontend_entrypoint.py`, `backend/tests/test_main.py`,
+`backend/tests/test_sources_api.py`, `backend/tests/test_storage.py`,
+`compose.yaml`, `frontend/config.js`,
+`frontend/docker-entrypoint.d/10-powerwave-config.sh`,
+`frontend/index.html`.
+
+### Honest limitations
+
+No DEV/PROD deployment was dispatched from this sandbox this pass (no
+`gh` CLI or token available, consistent with every prior phase in this
+session) -- the mechanism is verified structurally (backend unit tests,
+frontend jsdom checks, the entrypoint script's own real-`sh` test
+harness) but not yet confirmed end-to-end against a real deployed
+container. Owner verification (the exact commands below) is the
+remaining step.
+
+---
+
 ## Phase 4A-UAT2 — Fix Remaining Digital Waveform UAT Failures (2026-08-18)
 
 `[FACT]` throughout. No new DECISIONS.md entry -- root-cause fixes and a
