@@ -29,6 +29,8 @@ def _metadata(workspace_id: str, source_id: str) -> SourceMetadata:
         trigger_time=None,
         sample_count=10,
         duration_seconds=1.0,
+        elapsed_start_seconds=0.0,
+        elapsed_end_seconds=1.0,
         sampling_rates=(1000.0,),
         samples_per_rate=(10,),
     )

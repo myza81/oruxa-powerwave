@@ -26,6 +26,8 @@ from __future__ import annotations
 
 import hashlib
 
+import pytest
+
 from app.providers.comtrade import ComtradeProvider
 
 _EXPECTED = {
@@ -68,6 +70,8 @@ def test_parity_channel_and_metadata_values(comtrade_fixtures_dir):
         ] == expected["digital"], stem
         assert record.sample_count() == expected["sample_count"], stem
         assert record.duration_seconds() == expected["duration"], stem
+        assert record.elapsed_start_seconds() == pytest.approx(0.0), stem
+        assert record.elapsed_end_seconds() == pytest.approx(expected["duration"]), stem
         assert record.timing_info.start_time.isoformat() == expected["start_time"], stem
         assert record.timing_info.trigger_time.isoformat() == expected["trigger_time"], stem
         assert record.sampling_info.sampling_rates == expected["sampling_rates"], stem

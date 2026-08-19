@@ -245,6 +245,14 @@ class TestReadEndpoints:
         [row] = resp.json()
         assert row["sample_count"] == channels_body["timebase"]["sample_count"]
         assert row["duration_seconds"] == pytest.approx(channels_body["timebase"]["duration_seconds"])
+        assert row["elapsed_start_seconds"] == pytest.approx(
+            channels_body["timebase"]["elapsed_start_seconds"]
+        )
+        assert row["elapsed_end_seconds"] == pytest.approx(
+            channels_body["timebase"]["elapsed_end_seconds"]
+        )
+        assert row["elapsed_start_seconds"] == pytest.approx(0.0)
+        assert row["elapsed_end_seconds"] == pytest.approx(0.00975)
 
     def test_list_includes_timing_reference_and_timestamps(self, client, comtrade_fixtures_dir):
         # Phase 3B-UAT5: the Recordings page's per-recording "Details"

@@ -8648,6 +8648,109 @@ owner UAT after this push.
 
 ---
 
+## Phase 4A-UAT10 — Source-Aware Time Bounds (2026-08-19)
+
+### Owner-approved scope
+
+Owner approved the fix from **COMTRADE Duration Investigation — Part 2**:
+establish a source-aware time-domain foundation without implementing
+cross-record synchronization. Explicitly out of scope: absolute timestamp
+alignment between recordings, trigger alignment, nearest-sample matching,
+correlation, manual sync tools, resampling, or changing COMTRADE's DAT-vs-CFG
+timestamp authority.
+
+This pass also preserves the already-present Phase 4A-UAT9 product direction
+in the working tree: opening a recording starts with zero analog and zero
+digital channels displayed. Source bounds therefore cannot depend on a
+rendered waveform request.
+
+### Proven bug
+
+Owner UAT showed one active COMTRADE recording (`GPTH 275kV - BEN5K`) with
+status metadata reporting `Duration = 7.020 s` while the waveform and Reset
+Time View showed only approximately `0 -> 1.3 s`. The follow-up investigation
+confirmed backend metadata duration and waveform extraction both derive from
+the retained `waveform_data["time"]` path; the mismatch was frontend state:
+`ww.recordBounds` was a workspace-global full-record authority learned from
+the first unbounded waveform response and not owned by a source.
+
+### Implementation
+
+Backend:
+
+- `DisturbanceRecord` now exposes `elapsed_start_seconds()` and
+  `elapsed_end_seconds()` from the retained time column (falling back to
+  `0 -> duration_seconds()` only when no time column exists).
+- `SourceMetadata`, `SourceSummaryOut`, and `TimebaseOut` carry
+  `elapsed_start_seconds` / `elapsed_end_seconds` as additive fields.
+- `import_service` populates those fields once at import time from the
+  authoritative `DisturbanceRecord`.
+
+Frontend:
+
+- Removed `ww.recordBounds` entirely.
+- Added `ww.sourceBounds: Map<source_id, {start, end}>`, populated from
+  `/channels.timebase.elapsed_start_seconds` /
+  `elapsed_end_seconds` as soon as a recording is opened, even when no
+  channels are displayed.
+- Added derived `ww.workspaceBounds`, computed from the currently
+  participating source set: the selected source plus any source with displayed
+  analog or digital channels. This preserves existing multi-source display
+  semantics without inventing alignment.
+- Kept `ww.viewport` as the user's zoom/pan window only. Zoom/pan clamps to
+  `workspaceBounds`; `Reset Time View` restores `workspaceBounds`.
+- Analog and digital add paths fetch the current viewport if one exists. A
+  waveform response no longer establishes permanent full-record bounds.
+- Source removal deletes that source's `sourceBounds` entry and recomputes
+  workspace bounds from remaining participants. Start New Workspace clears
+  source bounds, workspace bounds, viewport, and display state.
+
+### Behaviour
+
+Opening a source with duration `7.020 s` now immediately establishes:
+
+```text
+sourceBounds[source_id] = 0 -> 7.020
+workspaceBounds         = 0 -> 7.020
+viewport                = 0 -> 7.020
+```
+
+with zero displayed channels and zero waveform fetches required to discover
+that extent. If a `7 s` source and a `15 s` source both participate under the
+current unaligned elapsed model, `workspaceBounds` is `0 -> 15`; the shorter
+source is not stretched, padded, held, or resampled. Absolute/Elapsed remains
+presentation-only over this same internal elapsed viewport.
+
+### Tests
+
+Added/updated backend tests for explicit elapsed bounds flowing through the
+COMTRADE provider, source metadata/list responses, and existing `SourceMetadata`
+fixtures. Added static frontend regression checks proving:
+
+- `sourceBounds` / `workspaceBounds` / `viewport` exist as distinct state;
+- `recordBounds` is absent from `frontend/index.html`;
+- source bounds are read from backend elapsed timebase metadata;
+- opening a source records bounds before channel display/fetch;
+- Reset Time View uses workspace bounds;
+- waveform responses no longer establish full bounds;
+- zoom/pan clamps through `wwClampRangeToWorkspace`.
+
+Targeted verification during implementation:
+
+```bash
+cd backend
+pytest tests/test_sources_api.py tests/test_comtrade_parity.py \
+  tests/test_waveform_service.py tests/test_workspace_registry.py \
+  tests/test_frontend_source_bounds.py
+```
+
+Result: `57 passed`, with the existing FastAPI/TestClient deprecation warning
+and one known malformed-CFG warning.
+
+### Decision
+
+Recorded as [DEC-037](DECISIONS.md#dec-037--waveform-time-domain-state-is-source-aware-source-bounds-workspace-bounds-and-viewport-are-distinct-phase-4a-uat10).
+
 ## Phase 4A-UAT8 — Digital Channel Row Toggle (2026-08-19)
 
 `[FACT]` throughout. No new DECISIONS.md entry -- a UI-consistency pass

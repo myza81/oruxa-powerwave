@@ -74,6 +74,8 @@ class SourceMetadata:
 
     sample_count: int
     duration_seconds: float
+    elapsed_start_seconds: float
+    elapsed_end_seconds: float
     sampling_rates: tuple[float, ...]
     samples_per_rate: tuple[int, ...]
 

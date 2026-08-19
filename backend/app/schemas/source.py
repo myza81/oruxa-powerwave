@@ -58,6 +58,8 @@ class TimebaseOut(BaseModel):
     trigger_time: datetime | None
     sample_count: int
     duration_seconds: float
+    elapsed_start_seconds: float
+    elapsed_end_seconds: float
     sampling_rates: list[float]
     samples_per_rate: list[int]
 
@@ -94,6 +96,8 @@ class SourceSummaryOut(BaseModel):
     analog_channel_count: int
     digital_channel_count: int
     duration_seconds: float
+    elapsed_start_seconds: float
+    elapsed_end_seconds: float
     sample_count: int
     timing_reference: str
     start_time: datetime | None
@@ -114,6 +118,8 @@ class SourceSummaryOut(BaseModel):
             analog_channel_count=len(source.analog_channels),
             digital_channel_count=len(source.digital_channels),
             duration_seconds=source.duration_seconds,
+            elapsed_start_seconds=source.elapsed_start_seconds,
+            elapsed_end_seconds=source.elapsed_end_seconds,
             sample_count=source.sample_count,
             timing_reference=source.timing_reference,
             start_time=source.start_time,
@@ -140,6 +146,8 @@ class SourceChannelsOut(BaseModel):
                 trigger_time=source.trigger_time,
                 sample_count=source.sample_count,
                 duration_seconds=source.duration_seconds,
+                elapsed_start_seconds=source.elapsed_start_seconds,
+                elapsed_end_seconds=source.elapsed_end_seconds,
                 sampling_rates=list(source.sampling_rates),
                 samples_per_rate=list(source.samples_per_rate),
             ),

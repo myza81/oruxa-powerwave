@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-19** (Phase 4A-UAT8).
+Last meaningful update: **2026-08-19** (Phase 4A-UAT10).
 
 ## Development phase
 
@@ -1395,12 +1395,34 @@ channel kinds). `ww.digitalDisplayed` (pre-existing) remains the one
 digital visibility authority, completely independent of `ww.displayed`
 (analog) — confirmed via tests that switching analog layout mode
 (Grouped/Separate/Custom) never touches digital visibility, and vice
-versa. Triggered/Never Triggered/Spare classification, sort order, and
-default-all-on-open are all unchanged; hiding a channel never moves it
-out of its classification subgroup. Full frontend regression suite:
+versa. Triggered/Never Triggered/Spare classification and sort order are
+unchanged; hiding a channel never moves it out of its classification
+subgroup. The later default-hidden source-open policy is covered by the
+Phase 4A-UAT10 note below. Full frontend regression suite:
 still exactly the established 18-failure baseline; backend 321/321
 unchanged (no backend file touched). Not yet owner-UAT'd in a real
 browser.
+
+`[FACT]` **Waveform time bounds are now source-aware — Phase 4A-UAT10 —
+Source-Aware Time Bounds** (2026-08-19) — see
+[MIGRATION_PLAN.md — Phase 4A-UAT10 Record](MIGRATION_PLAN.md#phase-4a-uat10--source-aware-time-bounds-2026-08-19)
+and [DECISIONS.md DEC-037](DECISIONS.md#dec-037--waveform-time-domain-state-is-source-aware-source-bounds-workspace-bounds-and-viewport-are-distinct-phase-4a-uat10).
+This fixes the UAT-proven stale-domain bug where a COMTRADE source could
+show correct source metadata duration (`7.020 s`) while waveform full/reset
+view inherited an older source's shorter extent (`~1.3 s`). Backend
+timebase metadata now exposes explicit `elapsed_start_seconds` and
+`elapsed_end_seconds` from the retained source time column. Frontend state
+is split into `ww.sourceBounds` (source-id scoped native elapsed bounds),
+derived `ww.workspaceBounds` (union of currently participating selected/
+displayed sources), and `ww.viewport` (user zoom/pan only). `ww.recordBounds`
+has been removed; waveform responses no longer become full-record
+authority. `Reset Time View` now restores `workspaceBounds`. Opening a
+recording establishes source/workspace bounds immediately even when zero
+analog and zero digital channels are displayed. Analog and digital displays
+share this same derived viewport; neither channel kind is privileged as a
+timing authority. This is intentionally synchronization-ready, but no
+cross-source timestamp alignment, trigger matching, correlation, manual
+offset, or resampling was implemented.
 
 ## Completed foundation work
 

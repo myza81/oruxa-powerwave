@@ -247,6 +247,8 @@ def _build_source_metadata(
         trigger_time=record.timing_info.trigger_time,
         sample_count=record.sample_count(),
         duration_seconds=record.duration_seconds(),
+        elapsed_start_seconds=record.elapsed_start_seconds(),
+        elapsed_end_seconds=record.elapsed_end_seconds(),
         sampling_rates=tuple(record.sampling_info.sampling_rates),
         samples_per_rate=tuple(record.sampling_info.samples_per_rate),
         analog_channels=analog,

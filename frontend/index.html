@@ -951,6 +951,37 @@
             color: var(--text-dim);
             font-size: 0.78rem;
         }
+        /* Phase 4A-UAT9: the per-group "Show all"/"Hide all" toggle --
+           compact, visually subordinate to the group name/count (section
+           22: "avoid large full-size buttons... visually subordinate to
+           the group name"), pushed to the far right of the summary's own
+           flex row via margin-left: auto so it never crowds the label.
+           Deliberately reuses the neutral/subtle button language already
+           established elsewhere in this sidebar (quiet by default, a
+           firmer accent only once pressed/all-visible) rather than a
+           bespoke style. */
+        .group-toggle-btn {
+            appearance: none;
+            border: 1px solid var(--panel-border);
+            border-radius: 999px;
+            background: transparent;
+            color: var(--text-dim);
+            font-size: 0.7rem;
+            font-weight: 500;
+            padding: 2px 9px;
+            line-height: 1.4;
+            cursor: pointer;
+            margin-left: auto;
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
+        .group-toggle-btn:hover { color: var(--text); border-color: var(--accent-dim); }
+        .group-toggle-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+        /* "Hide all" (every member already visible) reads with a firmer
+           accent tint -- the same visual language an already-active
+           toggle uses elsewhere in this app, never a second color
+           system. */
+        .group-toggle-btn[aria-pressed="true"] { color: var(--accent); border-color: var(--accent-dim); }
         /* Phase 3A-UAT3 (Finding B): the channel table (several columns +
            an action link with `white-space: nowrap`) can need more width
            than a narrowed (down to 240px) Workspace Sidebar provides. Both
@@ -1780,7 +1811,7 @@
                                 <span id="wwWorkspaceLoadingText">Loading recording&hellip;</span>
                             </div>
 
-                            <p class="empty-state" id="wwEmptyState">Click a channel in the sidebar to display its waveform, or open a recording to see all channels by default.</p>
+                            <p class="empty-state" id="wwEmptyState">Select channels from the sidebar to display waveforms.</p>
 
                             <div id="wwPanels"></div>
 
@@ -3147,10 +3178,10 @@
         // Section 10: activates/selects the recording in the current
         // workspace context (reuses selectSource() unchanged -- same
         // parser/import semantics, never re-uploads, never creates a
-        // duplicate source) and navigates to Waveform. Phase 4A: opening
-        // a recording auto-displays every analog + digital channel by
-        // default (see wwApplyDefaultChannelDisplay()) -- no manual
-        // per-channel step needed for a fresh source.
+        // duplicate source) and navigates to Waveform. Phase 4A-UAT9:
+        // opening a recording displays NO channels by default (see this
+        // task's own product rule) -- the user opts in per-channel or via
+        // a group's own Show all toggle (see wwToggleChannelGroupDisplay()).
         //
         // Phase 4A-UAT2 (order matters): shellSetCurrentPage("waveform")
         // now runs FIRST, selectSource() second -- previously the other
@@ -3314,6 +3345,7 @@
             // not sufficient (owner UAT: the loader "does not appear").
             await wwYieldToPaint();
             try {
+                const previousSelectedSourceId = selectedSourceId;
                 selectedSourceId = sourceId;
                 await refreshSourceList();
 
@@ -3330,41 +3362,30 @@
                 }
                 const data = await response.json();
                 renderChannels(data);
-                // Phase 4A-UAT4: renderChannels() just rebuilt the channel
-                // table from scratch, so every dot/remove-control starts
-                // as "not displayed" regardless of TRUE current state --
-                // correct for a genuinely new source (nothing displayed
-                // yet, about to become so below), but WRONG when
-                // re-opening/re-selecting an ALREADY-open source (the
-                // `if` below is then skipped entirely, since
-                // wwApplyDefaultChannelDisplay() never re-runs -- see its
-                // own comment). Sync unconditionally here so the already-
-                // established displayed set is always reflected; the
-                // default-display branch below re-syncs again via its own
-                // wwAddSelectedChannels() call, a harmless no-op repeat in
-                // that case.
+                // Phase 4A-UAT10: opening/selecting a source establishes
+                // that source's true elapsed bounds immediately from the
+                // backend timebase metadata, even with zero channels visible.
+                // A newly-selected source resets the view to the derived
+                // participating-source workspace extent; re-opening the same
+                // source (page navigation or sidebar refresh) preserves the
+                // user's current viewport.
+                const boundsChanged = wwRememberSourceBoundsFromChannelsData(data);
+                await wwRefreshWorkspaceBounds({
+                    resetViewport: previousSelectedSourceId !== sourceId || !ww.viewport || boundsChanged,
+                });
+                // Phase 4A-UAT9: opening a source no longer auto-displays
+                // any channel (see this task's own product rule -- default
+                // visibility is now zero, opt-in only, to keep opening a
+                // recording lightweight). renderChannels() just rebuilt
+                // the channel table from scratch, so every row starts as
+                // "not displayed" via its own initial markup -- correct
+                // for a genuinely new source, but this sync is still
+                // needed when RE-opening/re-selecting an ALREADY-open
+                // source whose channels the user has since toggled, so the
+                // sidebar reflects the TRUE current ww.displayed/
+                // ww.digitalDisplayed state rather than the fresh-row
+                // default.
                 wwSyncChannelBrowserDisplayState();
-                // Phase 4A (section 8/9/10): a genuinely NEW source-open
-                // applies the owner's explicit "display all analog + all
-                // digital by default" UAT experiment -- tracked per
-                // sourceId in ww.sourceDefaultsApplied (not per call), so
-                // re-opening the SAME already-open recording's row a
-                // second time (e.g. after the user manually hid a channel)
-                // never re-forces anything back on. Reset only by
-                // wwClearWorkspace() -- see that Set's own comment on ww.
-                if (!ww.sourceDefaultsApplied.has(sourceId)) {
-                    ww.sourceDefaultsApplied.add(sourceId);
-                    // Awaited deliberately (not fire-and-forget): the
-                    // caller of selectSource() must be able to rely on
-                    // "the default display is fully applied" once this
-                    // returns -- otherwise a fast subsequent action
-                    // (another selectSource(), a manual channel-row
-                    // click, a test) could race the still-in-flight
-                    // default-add and produce duplicate/inconsistent
-                    // panels.
-                    wwSetWorkspaceLoading(true, "Loading channels…");
-                    await wwApplyDefaultChannelDisplay(data);
-                }
             } catch (error) {
                 document.getElementById("channelsPanel").innerHTML =
                     '<p class="empty-state">Could not reach the backend.</p>';
@@ -3373,66 +3394,6 @@
             }
         }
 
-        // Phase 4A: builds the SAME channelMetas shape
-        // wwAddSelectedChannels()/wwAddDigitalChannels() already expect
-        // from a real row-toggle click, straight from the just-fetched
-        // channel list -- reuses the existing add pipeline exactly (no
-        // second, parallel "make everything visible" implementation).
-        // Analog and digital use the identical default policy (section
-        // 8: "do not create different default policies for analog vs
-        // digital").
-        async function wwApplyDefaultChannelDisplay(data) {
-            const source = data.source;
-            const timebase = data.timebase;
-            const recordingStartTime = (timebase && timebase.start_time) || null;
-            const timingReference = (timebase && timebase.timing_reference) || null;
-
-            const analogMetas = data.analog_channels.map((ch) => ({
-                sourceId: source.source_id,
-                sourceName: source.station_name,
-                channelName: ch.name,
-                unit: ch.unit,
-                engineeringType: ch.engineering_type || "Undefined",
-                recordingStartTime: recordingStartTime,
-                timingReference: timingReference,
-            }));
-            const digitalMetas = data.digital_channels.map((ch) => ({
-                sourceId: source.source_id,
-                sourceName: source.station_name,
-                channelName: ch.name,
-                channelIndex: ch.index,
-                recordingStartTime: recordingStartTime,
-                timingReference: timingReference,
-            }));
-
-            // Phase 4A-UAT1B: a REAL "N / total" progress counter for the
-            // loading overlay -- not a fake percentage. Analog channels
-            // each resolve independently (one fetch per channel), so each
-            // one bumps the counter as it lands; digital is delivered as
-            // ONE batched request per source, so it can only truthfully
-            // report completion of that whole batch at once (still a real
-            // count, just coarser-grained -- see wwAddDigitalChannels()).
-            const totalChannels = analogMetas.length + digitalMetas.length;
-            let loadedChannels = 0;
-            const bumpProgress = (by) => {
-                loadedChannels += by;
-                wwSetWorkspaceLoadingProgress(loadedChannels, totalChannels);
-            };
-
-            // Concurrent, not sequential -- analog and digital use
-            // entirely independent display architectures/state (never
-            // contend for the same panel/DOM), so there is no ordering
-            // requirement between them; Promise.all just avoids making
-            // one wait on the other for no reason.
-            await Promise.all([
-                analogMetas.length > 0
-                    ? wwAddSelectedChannels(analogMetas, { onChannelLoaded: () => bumpProgress(1) })
-                    : Promise.resolve(),
-                digitalMetas.length > 0
-                    ? wwAddDigitalChannels(digitalMetas, { onBatchLoaded: (count) => bumpProgress(count) })
-                    : Promise.resolve(),
-            ]);
-        }
 
         // Display order for analog sub-groups. Mirrors
         // backend/app/domain/channel_classification.py's KNOWN_CATEGORIES
@@ -3517,7 +3478,9 @@
                     const group = byType.get(type);
                     body += '<details class="channel-subgroup" open data-subgroup="' + escapeHtml(type) + '">';
                     body += '<summary><span class="chevron">&#9656;</span>' + escapeHtml(type) +
-                        ' <span class="count-badge">(' + group.length + ')</span></summary>';
+                        ' <span class="count-badge">(' + group.length + ')</span>' +
+                        groupToggleButtonHtml("analog", type) +
+                        '</summary>';
                     body += '<div class="group-body">' + renderChannelTable(group, [
                         ["Channel", (c) => analogChannelNameCellHtml(source, c), { raw: true }],
                         ["Phase", (c) => c.phase || "—"],
@@ -3576,7 +3539,9 @@
                     const sorted = wwDigitalSortChannels(byGroup.get(group));
                     body += '<details class="channel-subgroup" open data-subgroup="' + escapeHtml(group) + '">';
                     body += '<summary><span class="chevron">&#9656;</span>' + escapeHtml(DIGITAL_GROUP_LABELS[group]) +
-                        ' <span class="count-badge">(' + sorted.length + ')</span></summary>';
+                        ' <span class="count-badge">(' + sorted.length + ')</span>' +
+                        groupToggleButtonHtml("digital", DIGITAL_GROUP_LABELS[group]) +
+                        '</summary>';
                     body += '<div class="group-body">' + renderChannelTable(sorted, [
                         ["Channel", (c) => digitalChannelNameCellHtml(c), { raw: true }],
                     ], null, (c) => digitalChannelRowAttrs(source, c, timebase)) + '</div>';
@@ -3626,6 +3591,31 @@
             }
             html += '</tbody></table>';
             return html;
+        }
+
+        // Phase 4A-UAT9: a compact "Show all"/"Hide all" toggle rendered
+        // inside a channel subgroup's own <summary> (section 8/9/15/22 --
+        // one per analog engineering-type group AND one per digital
+        // classification group, never hardcoded to just Voltage/Current
+        // or just Triggered -- every subgroup renderAnalogGroup()/
+        // renderDigitalGroup() ever builds gets one, since a subgroup by
+        // construction never renders with zero channels, section 25).
+        // `kind`/`groupLabel` are the only identity this button needs --
+        // membership itself is derived live from the DOM at click/sync
+        // time (wwChannelGroupRows(), see wwToggleChannelGroupDisplay()'s
+        // own comment for why: no separate group-selection state, section
+        // 10/11/16 -- the per-row data-* attributes already sitting in
+        // the SAME <details> are the only source of truth). Starts in the
+        // "Show all"/`aria-pressed="false"` shape unconditionally;
+        // wwSyncChannelBrowserDisplayState() corrects it to the true
+        // current state immediately after render, exactly like every
+        // individual row's own aria-pressed already does (never trust
+        // this initial markup as the real state).
+        function groupToggleButtonHtml(kind, groupLabel) {
+            const label = "Show all " + groupLabel + " channels";
+            return ' <button type="button" class="group-toggle-btn" data-channel-kind="' + escapeHtml(kind) + '"' +
+                ' data-group-label="' + escapeHtml(groupLabel) + '" aria-pressed="false"' +
+                ' aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '">Show all</button>';
         }
 
         // Phase 4A-UAT5: the analog Channel cell -- a color dot (the SAME
@@ -3765,6 +3755,68 @@
                 row.setAttribute("aria-label", label);
                 row.title = label;
             }
+            // Phase 4A-UAT9: each group's own Show all/Hide all button
+            // (section 10) is DERIVED, never a separate group-selection
+            // state -- reads the (just-synced, above) aria-pressed of
+            // every row inside its own <details class="channel-subgroup">
+            // sibling. "Hide all" only when EVERY row in the group is
+            // currently displayed; "Show all" for both the none-visible
+            // AND partial cases (section 8's own explicit preference:
+            // "PARTIAL -> Show all", i.e. this button always means
+            // "ensure every member of this group is visible" until that
+            // is already true).
+            for (const btn of document.querySelectorAll("#channelGroups .group-toggle-btn")) {
+                const rows = wwChannelGroupRows(btn);
+                const allVisible = rows.length > 0 && rows.every((row) => row.getAttribute("aria-pressed") === "true");
+                btn.textContent = allVisible ? "Hide all" : "Show all";
+                btn.setAttribute("aria-pressed", String(allVisible));
+                const groupLabel = btn.dataset.groupLabel;
+                const label = (allVisible ? "Hide all " : "Show all ") + groupLabel + " channels";
+                btn.setAttribute("aria-label", label);
+                btn.title = label;
+            }
+        }
+
+        // Phase 4A-UAT9: every currently-rendered channel row belonging to
+        // this group-toggle button's own subgroup -- the SAME rows
+        // wwSyncChannelBrowserDisplayState() already keeps accurate, so
+        // this is always a live read of the true current state, never a
+        // second membership list to keep in sync (section 10/11/16: "no
+        // separate group-selection state... derive it from the
+        // authoritative per-channel visibility set").
+        function wwChannelGroupRows(button) {
+            const subgroupEl = button.closest("details.channel-subgroup");
+            return subgroupEl ? Array.from(subgroupEl.querySelectorAll("tr.channel-row--toggle")) : [];
+        }
+
+        // Phase 4A-UAT9: the SAME channelMetas shape wwAddSelectedChannels()
+        // has always expected, read from a row's own data-* attributes --
+        // extracted here (previously inlined in wwToggleAnalogChannelDisplay()
+        // alone) so wwToggleChannelGroupDisplay()'s own "Show all" can
+        // build a whole batch of these without duplicating the shape a
+        // third time.
+        function analogMetaFromRow(row) {
+            return {
+                sourceId: row.dataset.sourceId,
+                sourceName: row.dataset.sourceName,
+                channelName: row.dataset.channelName,
+                unit: row.dataset.unit,
+                engineeringType: row.dataset.engineeringType || "Undefined",
+                recordingStartTime: row.dataset.recordingStartTime || null,
+                timingReference: row.dataset.timingReference || null,
+            };
+        }
+
+        // Digital's own equivalent of analogMetaFromRow() above.
+        function digitalMetaFromRow(row) {
+            return {
+                sourceId: row.dataset.sourceId,
+                sourceName: row.dataset.sourceName,
+                channelName: row.dataset.channelName,
+                channelIndex: Number(row.dataset.channelIndex) || 0,
+                recordingStartTime: row.dataset.recordingStartTime || null,
+                timingReference: row.dataset.timingReference || null,
+            };
         }
 
         // Phase 4A-UAT5: the analog row-toggle handler -- reuses the
@@ -3773,25 +3825,13 @@
         // button did, just triggered directly by the row instead (section
         // 9: no second active/inactive map, no new color logic --
         // wwAddSelectedChannels already calls wwColorForChannel()
-        // internally). The channel metadata the removed checkbox used to
-        // carry via its own data-* attributes now lives on the row
-        // itself (see analogChannelRowAttrs()).
+        // internally).
         function wwToggleAnalogChannelDisplay(row) {
-            const sourceId = row.dataset.sourceId;
-            const channelName = row.dataset.channelName;
-            const key = wwChannelKey(sourceId, channelName);
+            const key = wwChannelKey(row.dataset.sourceId, row.dataset.channelName);
             if (ww.displayed.has(key)) {
                 wwRemoveChannelByKey(key);
             } else {
-                wwAddSelectedChannels([{
-                    sourceId,
-                    sourceName: row.dataset.sourceName,
-                    channelName,
-                    unit: row.dataset.unit,
-                    engineeringType: row.dataset.engineeringType || "Undefined",
-                    recordingStartTime: row.dataset.recordingStartTime || null,
-                    timingReference: row.dataset.timingReference || null,
-                }]);
+                wwAddSelectedChannels([analogMetaFromRow(row)]);
             }
         }
 
@@ -3805,20 +3845,72 @@
         // one digital visibility authority; this never touches
         // ww.displayed (analog) or vice versa.
         function wwToggleDigitalChannelDisplay(row) {
-            const sourceId = row.dataset.sourceId;
-            const channelName = row.dataset.channelName;
-            const key = wwChannelKey(sourceId, channelName);
+            const key = wwChannelKey(row.dataset.sourceId, row.dataset.channelName);
             if (ww.digitalDisplayed.has(key)) {
                 wwRemoveDigitalChannelByKey(key);
             } else {
-                wwAddDigitalChannels([{
-                    sourceId,
-                    sourceName: row.dataset.sourceName,
-                    channelName,
-                    channelIndex: Number(row.dataset.channelIndex) || 0,
-                    recordingStartTime: row.dataset.recordingStartTime || null,
-                    timingReference: row.dataset.timingReference || null,
-                }]);
+                wwAddDigitalChannels([digitalMetaFromRow(row)]);
+            }
+        }
+
+        // Phase 4A-UAT9: the group-level "Show all"/"Hide all" handler.
+        // "Hide all" only when every member is currently visible; every
+        // other state (none visible, or partial) means "Show all" --
+        // ensure every group member becomes visible (section 8's own
+        // explicit "PARTIAL -> Show all" preference). Membership is read
+        // live from the DOM (wwChannelGroupRows()) -- no second
+        // group-selection state to keep in sync (section 10/11/16).
+        //
+        // Both branches are single BATCH calls (wwRemoveChannelsByKeys()/
+        // wwRemoveDigitalChannelsByKeys() for hide; wwAddSelectedChannels()/
+        // wwAddDigitalChannels() already batch internally for show -- see
+        // each one's own comment) -- never N individual per-channel calls
+        // (section 19). A large group's "Show all" reuses the exact
+        // established wwSetWorkspaceLoading()/wwSetWorkspaceLoadingProgress()
+        // truthful-progress mechanism (section 21), shown only when there
+        // is more than one channel to load so a single-channel group
+        // toggle stays as quiet as an individual row click.
+        async function wwToggleChannelGroupDisplay(button) {
+            const isDigital = button.dataset.channelKind === "digital";
+            const rows = wwChannelGroupRows(button);
+            if (rows.length === 0) return;
+            const allVisible = rows.every((row) => row.getAttribute("aria-pressed") === "true");
+
+            if (allVisible) {
+                const keys = rows.map((row) => wwChannelKey(row.dataset.sourceId, row.dataset.channelName));
+                if (isDigital) wwRemoveDigitalChannelsByKeys(keys);
+                else wwRemoveChannelsByKeys(keys);
+                return;
+            }
+
+            // Only the currently-hidden members need adding -- an
+            // already-visible one would be silently skipped by
+            // wwAddSelectedChannels()/wwAddDigitalChannels()'s own
+            // "already displayed" guard anyway, so this filter is an
+            // optimization (smaller batch, no wasted meta-building), not
+            // a correctness requirement.
+            const toShow = rows.filter((row) => row.getAttribute("aria-pressed") !== "true");
+            if (toShow.length === 0) return;
+            const metas = toShow.map(isDigital ? digitalMetaFromRow : analogMetaFromRow);
+
+            const showProgress = metas.length > 1;
+            if (showProgress) {
+                wwSetWorkspaceLoading(true, "Loading channels…");
+                await wwYieldToPaint();
+            }
+            let loaded = 0;
+            const bump = (by) => {
+                loaded += by;
+                if (showProgress) wwSetWorkspaceLoadingProgress(loaded, metas.length);
+            };
+            try {
+                if (isDigital) {
+                    await wwAddDigitalChannels(metas, { onBatchLoaded: (count) => bump(count) });
+                } else {
+                    await wwAddSelectedChannels(metas, { onChannelLoaded: () => bump(1) });
+                }
+            } finally {
+                if (showProgress) wwSetWorkspaceLoading(false);
             }
         }
 
@@ -3853,6 +3945,24 @@
             const groupsEl = document.getElementById("channelGroups");
 
             groupsEl.addEventListener("click", (event) => {
+                // Phase 4A-UAT9 (section 23): the group toggle button lives
+                // inside a <summary> -- without preventDefault(), the
+                // native <details> would ALSO toggle open/closed from the
+                // very same click (summary's own default action).
+                // stopPropagation() is defensive (this delegated listener
+                // is the only one on #channelGroups reacting to summary
+                // clicks anyway). Checked BEFORE the row check below since
+                // the button is structurally outside any <tr> -- the row
+                // check alone would already ignore it, but checking the
+                // button first keeps the "which control was this" logic
+                // in one obvious place.
+                const groupBtn = event.target.closest(".group-toggle-btn");
+                if (groupBtn) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    wwToggleChannelGroupDisplay(groupBtn);
+                    return;
+                }
                 const row = event.target.closest("tr.channel-row--toggle");
                 if (!row) return;
                 wwToggleChannelRowDisplay(row);
@@ -4081,8 +4191,17 @@
         const ww = {
             panels: [],            // ordered array of panel objects
             displayed: new Map(),  // "sourceId::channelName" -> {panel, channel}
-            viewport: null,        // {start, end} shared X range, or null before the first channel ever loads
-            recordBounds: null,    // {start, end} of the full record, learned once from the first unbounded fetch
+            // Phase 4A-UAT10: source-aware time state. sourceBounds is the
+            // backend-owned native elapsed extent for EACH recording, keyed
+            // by stable source_id. workspaceBounds is derived from the
+            // currently participating source set (selected source plus any
+            // source with displayed analog/digital channels). viewport is
+            // only the user's current zoom/pan window. These three concepts
+            // deliberately stay separate so a stale viewport can never
+            // become a later source's full-record authority.
+            sourceBounds: new Map(),
+            workspaceBounds: null,
+            viewport: null,
             dragMode: "zoom",
             // Phase 2C-B1: which algorithm currently derives ww.panels from
             // the flat set of displayed channels -- "grouped" (by
@@ -4197,21 +4316,113 @@
             // reset by wwClearWorkspace() (the chart element itself is
             // never torn down, same as the sticky ruler's own chartEl).
             digitalClickWired: false,
-            // Phase 4A (section 10): sources whose default "all channels
-            // displayed" has already been applied THIS SESSION -- checked/
-            // set only by selectSource(). Prevents re-forcing every
-            // channel back on merely because the user re-opens the SAME
-            // recording's row from Recordings a second time after manually
-            // hiding some channels. Reset only by wwClearWorkspace() (a
-            // brand-new workspace has no history to remember).
-            sourceDefaultsApplied: new Set(),
         };
+
+        function wwFiniteNumber(value) {
+            return typeof value === "number" && Number.isFinite(value);
+        }
+
+        function wwNormalizeBounds(start, end) {
+            const s = Number(start);
+            const e = Number(end);
+            if (!Number.isFinite(s) || !Number.isFinite(e) || s >= e) return null;
+            return { start: s, end: e };
+        }
+
+        function wwBoundsEqual(a, b) {
+            if (!a || !b) return a === b;
+            return a.start === b.start && a.end === b.end;
+        }
+
+        function wwSourceBoundsFromTimebase(timebase) {
+            if (!timebase) return null;
+            const explicit = wwNormalizeBounds(timebase.elapsed_start_seconds, timebase.elapsed_end_seconds);
+            if (explicit) return explicit;
+            // Legacy additive-schema fallback only. Current backend exposes
+            // explicit elapsed bounds; this preserves older DEV assets during
+            // a rolling deploy without making rate/count math a frontend
+            // timing authority.
+            if (wwFiniteNumber(timebase.duration_seconds) && timebase.duration_seconds > 0) {
+                return { start: 0, end: timebase.duration_seconds };
+            }
+            return null;
+        }
+
+        function wwRememberSourceBounds(sourceId, bounds) {
+            const normalized = bounds && wwNormalizeBounds(bounds.start, bounds.end);
+            if (!sourceId || !normalized) return false;
+            const previous = ww.sourceBounds.get(sourceId) || null;
+            ww.sourceBounds.set(sourceId, normalized);
+            return !wwBoundsEqual(previous, normalized);
+        }
+
+        function wwRememberSourceBoundsFromChannelsData(data) {
+            if (!data || !data.source) return false;
+            return wwRememberSourceBounds(data.source.source_id, wwSourceBoundsFromTimebase(data.timebase));
+        }
+
+        function wwParticipatingSourceIds() {
+            const ids = new Set();
+            if (selectedSourceId && ww.sourceBounds.has(selectedSourceId)) ids.add(selectedSourceId);
+            for (const { channel } of ww.displayed.values()) {
+                if (channel && ww.sourceBounds.has(channel.sourceId)) ids.add(channel.sourceId);
+            }
+            for (const entry of ww.digitalDisplayed.values()) {
+                if (entry && ww.sourceBounds.has(entry.sourceId)) ids.add(entry.sourceId);
+            }
+            return ids;
+        }
+
+        function wwDeriveWorkspaceBounds() {
+            let start = null;
+            let end = null;
+            for (const sourceId of wwParticipatingSourceIds()) {
+                const bounds = ww.sourceBounds.get(sourceId);
+                if (!bounds) continue;
+                start = start === null ? bounds.start : Math.min(start, bounds.start);
+                end = end === null ? bounds.end : Math.max(end, bounds.end);
+            }
+            return start === null || end === null ? null : { start, end };
+        }
+
+        function wwClampRangeToWorkspace(start, end) {
+            if (!ww.workspaceBounds) return wwNormalizeBounds(start, end);
+            return wwNormalizeBounds(
+                Math.max(start, ww.workspaceBounds.start),
+                Math.min(end, ww.workspaceBounds.end)
+            );
+        }
+
+        async function wwRefreshWorkspaceBounds(options) {
+            options = options || {};
+            const next = wwDeriveWorkspaceBounds();
+            ww.workspaceBounds = next;
+
+            if (!next) {
+                ww.viewport = null;
+                wwSyncStickyRuler();
+                wwRebuildDigitalChart();
+                return;
+            }
+
+            const desired = options.resetViewport || !ww.viewport
+                ? next
+                : (wwClampRangeToWorkspace(ww.viewport.start, ww.viewport.end) || next);
+
+            if (wwBoundsEqual(ww.viewport, desired)) {
+                wwSyncStickyRuler();
+                wwRebuildDigitalChart();
+                return;
+            }
+
+            await wwApplyAndFetchViewport(desired.start, desired.end);
+        }
 
         // ==================================================================
         // Phase 2C-C3: COMTRADE Absolute/Elapsed time-axis representation
         //
         // Architecture (section 8): the shared authoritative viewport
-        // (ww.viewport/ww.recordBounds) and every waveform API request
+        // (ww.viewport, bounded by derived ww.workspaceBounds) and every waveform API request
         // ALWAYS stay in the existing native coordinate system -- elapsed
         // seconds on the source's own time axis, exactly as
         // app.services.waveform_service already documents and exactly as
@@ -4671,14 +4882,6 @@
             }
 
             const body = result.body;
-            if (ww.recordBounds === null && startTime === null && endTime === null) {
-                // First-ever unbounded request across the whole workspace --
-                // its start/end ARE the record's true bounds (matches
-                // app.services.waveform_service's documented default: no
-                // start/end_time returns the entire record).
-                ww.recordBounds = { start: body.start_time, end: body.end_time };
-                ww.viewport = { start: body.start_time, end: body.end_time };
-            }
 
             channelEntry.time = body.time;
             channelEntry.values = body.values;
@@ -5101,11 +5304,8 @@
         }
 
         function wwBroadcastViewportDebounced(startTime, endTime) {
-            if (ww.recordBounds) {
-                startTime = Math.max(startTime, ww.recordBounds.start);
-                endTime = Math.min(endTime, ww.recordBounds.end);
-            }
-            if (startTime >= endTime) return;
+            const clamped = wwClampRangeToWorkspace(startTime, endTime);
+            if (!clamped) return;
 
             clearTimeout(ww.viewportDebounceTimer);
             // 120ms -- same debounce window Phase 2B already established
@@ -5113,7 +5313,7 @@
             // frames, short enough not to add perceptible wait to a
             // discrete click).
             ww.viewportDebounceTimer = setTimeout(() => {
-                wwApplyAndFetchViewport(startTime, endTime);
+                wwApplyAndFetchViewport(clamped.start, clamped.end);
             }, 120);
         }
 
@@ -5159,9 +5359,9 @@
         // EVERY panel -- a distinct operation from "Autoscale Y" (DEC-021's
         // required terminology, unchanged from Phase 2B).
         async function wwResetTimeView() {
-            if (!ww.recordBounds) return;
+            if (!ww.workspaceBounds) return;
             clearTimeout(ww.viewportDebounceTimer);
-            await wwApplyAndFetchViewport(ww.recordBounds.start, ww.recordBounds.end);
+            await wwApplyAndFetchViewport(ww.workspaceBounds.start, ww.workspaceBounds.end);
         }
 
         // "Autoscale Y": viewport-aware Fit only (section 8) -- every
@@ -5244,9 +5444,10 @@
             // Phase 4A-UAT1B: onChannelLoaded, if given, fires once per
             // channel as its own independent fetch resolves -- a real
             // progress signal for the workspace loading overlay (see
-            // wwApplyDefaultChannelDisplay()), never a fake percentage.
-            // Optional and unused by every other existing call site
-            // (manual row-click toggles, the structural scale test).
+            // wwToggleChannelGroupDisplay(), Phase 4A-UAT9's own "Show
+            // all" batch caller), never a fake percentage. Optional and
+            // unused by every other existing call site (manual row-click
+            // toggles, the structural scale test).
             const onChannelLoaded = (options && options.onChannelLoaded) || null;
             const epochAtStart = ww.epoch;
             const newlyCreatedPanels = [];
@@ -5308,15 +5509,13 @@
             wwUpdateEmptyState();
             for (const { panel } of jobs) wwSetLoading(panel, true);
 
-            // Newly-added channels join at the ALREADY-ESTABLISHED shared
-            // viewport (if one exists) -- they must not silently show a
-            // different time range than every other displayed channel.
-            // Only the very first channel the workspace ever displays gets
-            // an unbounded request (its response establishes recordBounds
-            // and the initial viewport, exactly like Phase 2B).
-            const isFirstEverLoad = ww.recordBounds === null;
-            const fetchStart = isFirstEverLoad ? null : ww.viewport.start;
-            const fetchEnd = isFirstEverLoad ? null : ww.viewport.end;
+            // Newly-added channels join the current user viewport. Full
+            // source/workspace bounds are now already known from timebase
+            // metadata (Phase 4A-UAT10), so no waveform response gets to
+            // become the full-record authority.
+            const activeRange = ww.viewport || ww.workspaceBounds;
+            const fetchStart = activeRange ? activeRange.start : null;
+            const fetchEnd = activeRange ? activeRange.end : null;
 
             await Promise.all(jobs.map(({ panel, channelEntry }) =>
                 wwLoadChannelRange(panel, channelEntry, fetchStart, fetchEnd, { isInitialLoad: true })
@@ -5374,6 +5573,7 @@
             // its dots/remove-controls in sync with the just-updated
             // displayed set.
             wwSyncChannelBrowserDisplayState();
+            wwRefreshWorkspaceBounds();
         }
 
         function wwRemoveChannelByKey(key) {
@@ -5402,13 +5602,15 @@
             wwUpdateTimeModeControlAvailability();
             // Phase 2C-C4 (section 17): hides the ruler if that was the
             // last displayed channel; otherwise a cheap no-op resync
-            // (ww.viewport is unchanged by a channel removal).
+            // (ww.viewport may be clamped below if this source no longer
+            // participates in the derived workspace bounds).
             wwSyncStickyRuler();
             shellUpdateStatusBarChannelCount(ww.displayed.size);
             // Phase 4A-UAT4: the sidebar is now the analog legend -- keep
             // its dots/remove-controls in sync with the just-updated
             // displayed set.
             wwSyncChannelBrowserDisplayState();
+            wwRefreshWorkspaceBounds();
         }
 
         function wwRemovePanelDom(panel) {
@@ -5419,6 +5621,55 @@
             if (panel.containerEl && panel.containerEl.parentNode) {
                 panel.containerEl.parentNode.removeChild(panel.containerEl);
             }
+        }
+
+        // Phase 4A-UAT9: the batch form of wwRemoveChannel() -- a group's
+        // "Hide all" removes potentially dozens of channels at once, and
+        // calling wwRemoveChannel() once per channel would re-run the
+        // whole tail of workspace-wide refresh calls (empty-state/time-
+        // axis/ruler/status-bar/sidebar-sync) once PER channel instead of
+        // once for the whole batch (section 19: "prefer a batch
+        // operation... one coherent rebuild/update"). Channels are
+        // grouped by panel first so a panel losing several channels at
+        // once gets exactly ONE Plotly.deleteTraces() call (Plotly's own
+        // API already accepts an array of indices) instead of one call
+        // per channel -- indices are computed before any mutation and
+        // applied in descending order so removing one never invalidates
+        // another's index within the same panel.
+        function wwRemoveChannelsByKeys(keys) {
+            const byPanel = new Map();
+            for (const key of keys) {
+                const entry = ww.displayed.get(key);
+                if (!entry) continue;
+                if (!byPanel.has(entry.panel)) byPanel.set(entry.panel, []);
+                byPanel.get(entry.panel).push(entry.channel);
+            }
+            if (byPanel.size === 0) return;
+
+            for (const [panel, channels] of byPanel) {
+                const indices = channels
+                    .map((channel) => panel.channels.indexOf(channel))
+                    .filter((idx) => idx !== -1)
+                    .sort((a, b) => b - a);
+                for (const channel of channels) {
+                    if (channel.abortController) channel.abortController.abort();
+                    ww.displayed.delete(wwChannelKey(channel.sourceId, channel.channelName));
+                }
+                if (panel.plotlyReady && indices.length > 0) Plotly.deleteTraces(panel.chartEl, indices);
+                for (const idx of indices) panel.channels.splice(idx, 1);
+
+                if (panel.channels.length === 0) {
+                    wwRemovePanelDom(panel);
+                    ww.panels = ww.panels.filter((p) => p !== panel);
+                }
+            }
+            wwUpdateEmptyState();
+            wwApplyTimeAxisChrome();
+            wwUpdateTimeModeControlAvailability();
+            wwSyncStickyRuler();
+            shellUpdateStatusBarChannelCount(ww.displayed.size);
+            wwSyncChannelBrowserDisplayState();
+            wwRefreshWorkspaceBounds();
         }
 
         // ==================================================================
@@ -5853,8 +6104,9 @@
             // still "accounted for", so the loading overlay's total
             // always reaches 100% even if a source's batch errors) -- see
             // wwAddSelectedChannels()'s own onChannelLoaded for the
-            // analog equivalent and wwApplyDefaultChannelDisplay() for
-            // where both feed the same counter.
+            // analog equivalent; wwToggleChannelGroupDisplay() (Phase
+            // 4A-UAT9) is the current caller feeding both into one
+            // shared progress counter for a large group's "Show all".
             const onBatchLoaded = (options && options.onBatchLoaded) || null;
             const toFetch = channelMetas.filter(
                 (m) => !ww.digitalDisplayed.has(wwChannelKey(m.sourceId, m.channelName))
@@ -5909,6 +6161,7 @@
             // aria-pressed/label), same reason the analog add path ends
             // with this same call.
             wwSyncChannelBrowserDisplayState();
+            wwRefreshWorkspaceBounds();
         }
 
         function wwRemoveDigitalChannelByKey(key) {
@@ -5916,6 +6169,26 @@
                 wwRebuildDigitalChart();
                 wwUpdateEmptyState();
                 wwSyncChannelBrowserDisplayState();
+                wwRefreshWorkspaceBounds();
+            }
+        }
+
+        // Phase 4A-UAT9: the batch form -- digital's own rebuild
+        // (wwRebuildDigitalChart()) is ALREADY one coherent Plotly.react()
+        // call regardless of how many channels changed (DEC-034), so
+        // batching here is simpler than analog's own wwRemoveChannelsByKeys():
+        // just delete every key from the map first, then rebuild/refresh
+        // exactly once for the whole group instead of once per channel.
+        function wwRemoveDigitalChannelsByKeys(keys) {
+            let removedAny = false;
+            for (const key of keys) {
+                if (ww.digitalDisplayed.delete(key)) removedAny = true;
+            }
+            if (removedAny) {
+                wwRebuildDigitalChart();
+                wwUpdateEmptyState();
+                wwSyncChannelBrowserDisplayState();
+                wwRefreshWorkspaceBounds();
             }
         }
 
@@ -5948,6 +6221,8 @@
                 wwUpdateEmptyState();
                 wwSyncChannelBrowserDisplayState();
             }
+            ww.sourceBounds.delete(sourceId);
+            wwRefreshWorkspaceBounds();
         }
 
         // "Clear workspace" button and "Start new workspace" hook (section
@@ -5962,8 +6237,9 @@
             document.getElementById("wwPanels").innerHTML = "";
             ww.panels = [];
             ww.displayed.clear();
+            ww.sourceBounds.clear();
+            ww.workspaceBounds = null;
             ww.viewport = null;
-            ww.recordBounds = null;
             // Phase 2C-C1: a whole-workspace reset is the one place
             // ww.customGroups IS cleared (unlike removing a single channel
             // or source, which deliberately leaves it alone -- see the
@@ -5980,14 +6256,8 @@
             ww.panelHeights = new Map();
             // Phase 4A: a whole-workspace reset clears every displayed
             // digital channel too -- there is no source left for stale
-            // digital state to belong to. sourceDefaultsApplied is also
-            // cleared here (not by individual source removal, same policy
-            // as ww.customGroups/ww.panelHeights above) -- a brand-new
-            // workspace has no "already applied defaults" history to
-            // remember; the NEXT source opened is unambiguously a fresh
-            // default-all-display case.
+            // digital state to belong to.
             ww.digitalDisplayed.clear();
-            ww.sourceDefaultsApplied.clear();
             // Phase 4A-UAT4: same policy as ww.customGroups/ww.panelHeights
             // above -- a brand-new workspace has no color history worth
             // remembering; individual channel/source removal deliberately
@@ -6431,9 +6701,10 @@
             return results;
         }
 
-        // Phase 4A-UAT1B: immediate loading feedback for
-        // selectSource()/wwApplyDefaultChannelDisplay() -- see the DOM
-        // comment on #wwWorkspaceLoading for why this exists. `text`
+        // Phase 4A-UAT1B: immediate loading feedback for selectSource()/
+        // wwToggleChannelGroupDisplay() (Phase 4A-UAT9's group "Show all")
+        // -- see the DOM comment on #wwWorkspaceLoading for why this
+        // exists. `text`
         // omitted just toggles visibility without changing the message
         // (used to hide it). Never shows fake percentages -- either a
         // truthful stage description or, once real per-channel progress

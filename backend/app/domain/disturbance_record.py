@@ -80,6 +80,26 @@ class DisturbanceRecord:
 
         return 0.0
 
+    def elapsed_start_seconds(self) -> float:
+        """First sample time on the record's internal elapsed-seconds axis."""
+        if self.waveform_data.empty:
+            return 0.0
+
+        if "time" in self.waveform_data.columns:
+            return float(self.waveform_data["time"].iloc[0])
+
+        return 0.0
+
+    def elapsed_end_seconds(self) -> float:
+        """Last sample time on the record's internal elapsed-seconds axis."""
+        if self.waveform_data.empty:
+            return 0.0
+
+        if "time" in self.waveform_data.columns:
+            return float(self.waveform_data["time"].iloc[-1])
+
+        return self.duration_seconds()
+
     def validate(self) -> list[str]:
         """Run lightweight consistency checks. Never raises."""
         errors: list[str] = []

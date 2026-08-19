@@ -8,52 +8,55 @@ Last updated: **2026-08-19**
 
 ## What was most recently done
 
-**Phase 4A-UAT8 — Digital Channel Row Toggle.** Full detail:
-[MIGRATION_PLAN.md — Phase 4A-UAT8 Record](MIGRATION_PLAN.md#phase-4a-uat8--digital-channel-row-toggle-2026-08-19).
+**Phase 4A-UAT10 — Source-Aware Time Bounds.** Full detail:
+[MIGRATION_PLAN.md — Phase 4A-UAT10 Record](MIGRATION_PLAN.md#phase-4a-uat10--source-aware-time-bounds-2026-08-19),
+[DECISIONS.md — DEC-037](DECISIONS.md#dec-037--waveform-time-domain-state-is-source-aware-source-bounds-workspace-bounds-and-viewport-are-distinct-phase-4a-uat10).
 
-**Owner direction**: give digital channels the SAME direct row-click
-show/hide model analog already has (UAT5/UAT6): 100%/25% row opacity,
-10px dot, no checkbox, no separate "selected but not added" state.
-Remove the sidebar's "Normal state" column (owner-determined dead
-weight). Preserve digital waveform rendering, classification, and
-default-all-on-open exactly as-is -- sidebar interaction only.
+**Owner direction**: fix the UAT-proven COMTRADE duration/domain mismatch
+without implementing cross-record synchronization. The specific bug:
+backend/source metadata knew the active recording duration was `7.020 s`,
+but waveform full/reset view could remain around `0 -> 1.3 s` because
+frontend `ww.recordBounds`/`ww.viewport` could be inherited from a
+previous source.
 
-**What changed** (`frontend/index.html` only): new
-`digitalChannelRowAttrs()`/`wwToggleDigitalChannelDisplay()` mirror
-analog's own UAT5 mechanism exactly, reusing the pre-existing
-`wwRemoveDigitalChannelByKey()`/`wwAddDigitalChannels()` paths (no new
-fetch/cache, no second visibility map) -- `ww.digitalDisplayed`
-(pre-existing) remains the one digital visibility authority. A new
-`wwToggleChannelRowDisplay()` dispatches a row click/keydown to the
-correct kind's handler via `data-channel-kind` -- the only place analog/
-digital interaction logic touches at all. Digital's dot reuses analog's
-own 10px `.channel-color-dot` sizing but adds a new
-`.channel-color-dot--neutral` modifier (`var(--text-dim)`, never
-`wwColorForChannel()`) instead of a per-channel color. The "Normal
-state" column is gone (UI-only -- `normal_state` still flows through
-`ww.digitalDisplayed` and digital rendering unchanged).
+**What changed**: backend timebase metadata now exposes explicit
+`elapsed_start_seconds` and `elapsed_end_seconds`, derived from the
+retained `DisturbanceRecord` time column at import time. Frontend
+`ww.recordBounds` was removed. Time-domain state is now:
+`ww.sourceBounds` (source-id scoped native elapsed bounds),
+`ww.workspaceBounds` (derived union of the currently participating
+selected/displayed source set), and `ww.viewport` (user zoom/pan only).
+Opening a source records its source bounds immediately from `/channels`
+metadata, even when zero analog and zero digital channels are displayed.
+`Reset Time View` restores `workspaceBounds`; waveform responses no
+longer establish permanent full bounds.
 
-**With digital now also a row toggle, "Add N selected"/"Clear
-selection" had no remaining consumer at all and was removed entirely**
--- `selectedDigitalChannels`, `channelSelectionKey()`,
-`digitalChannelCheckboxHtml()`, the `.selection-row` HTML/CSS, and the
-button handlers are all deleted; `setupSelectionControls()` was renamed
-`setupChannelRowToggles()`. A stale `#wwEmptyState` message referencing
-the removed button was also caught and corrected.
+**Participation semantics**: the current selected source participates even
+with zero visible channels; any source with displayed analog or digital
+channels also participates. This preserves current multi-source display
+ability without adding timestamp alignment. If a `7 s` and a `15 s`
+source both participate in today's unaligned elapsed model, workspace
+bounds are `0 -> 15`; the shorter source is never stretched, padded, or
+resampled.
 
-**Verification**: new dedicated `phase4a_uat8_check.mjs` (15 checks) --
-structure, toggle (click/Enter/Space, no duplicate lane, exactly one
-re-fetch on re-show), persistence across analog layout/time-mode/
-navigation, classification stability, source isolation. Several existing
-test files that had asserted "digital keeps its checkbox" as an
-isolation guarantee for THEIR OWN earlier phase were updated in place to
-verify the current, still-true invariant (analog/digital visibility stay
-independent) via the new mechanism. Full regression suite still exactly
-the established 18-failure baseline; backend 321/321 unchanged.
+**Existing local prerequisite preserved**: the working tree already
+contained the approved Phase 4A-UAT9 default-hidden/group-toggle changes
+before this task began. UAT10 was implemented on top of that state rather
+than reverting it; source bounds therefore do not depend on rendered
+channels.
 
-**Not yet done**: real-browser visual confirmation (neutral dot contrast
-against analog color dots in both themes, hidden-row opacity read) --
-flagged for owner UAT.
+**Verification**: frontend/static regression slice passed:
+`pytest tests/test_frontend_source_bounds.py tests/test_frontend_entrypoint.py
+tests/test_frontend_scrollbar_css.py` -> `29 passed`. Targeted source-bounds
+suite passed:
+`pytest tests/test_sources_api.py tests/test_comtrade_parity.py
+tests/test_waveform_service.py tests/test_workspace_registry.py
+tests/test_frontend_source_bounds.py` -> `57 passed` with the existing
+FastAPI/TestClient deprecation warning and one malformed-CFG warning. Full
+backend suite passed: `pytest` -> `327 passed`, same two warnings.
+
+**Not yet done**: commit/push, CI/automatic DEV deployment verification, and
+owner real-browser UAT of the BEN5K 7.020 s case.
 
 ## What was done in the prior session (CI/CD — Automatic DEV Deployment After CI, DEC-036)
 

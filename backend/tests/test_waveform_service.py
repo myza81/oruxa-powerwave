@@ -67,6 +67,8 @@ def _active_source(n: int = 10_000, rate_hz: float = 10_000.0) -> ActiveSource:
         trigger_time=now,
         sample_count=n,
         duration_seconds=float(time[-1] - time[0]),
+        elapsed_start_seconds=float(time[0]),
+        elapsed_end_seconds=float(time[-1]),
         sampling_rates=(rate_hz,),
         samples_per_rate=(n,),
         analog_channels=[AnalogChannelSummary(name="VA", index=1, unit="V", engineering_type="Voltage")],

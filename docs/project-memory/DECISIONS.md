@@ -2933,6 +2933,65 @@ Impact:
 
 ---
 
+## DEC-037 — Waveform time-domain state is source-aware: source bounds, workspace bounds, and viewport are distinct (Phase 4A-UAT10)
+
+Date: 2026-08-19
+Status: Approved
+Source: explicit project-owner approval in the Phase 4A-UAT10 task arising
+from "COMTRADE Duration Investigation — Part 2".
+
+Decision:
+The waveform workspace separates time-domain state into three concepts:
+
+- **Source bounds** — each recording's true native elapsed extent, keyed by
+  stable `source_id` and supplied by backend timebase metadata.
+- **Workspace bounds** — the derived min/max union of the currently
+  participating source set.
+- **Viewport** — the user's current zoom/pan window inside workspace bounds.
+
+`Reset Time View` restores the derived workspace bounds. A waveform response,
+an analog channel, a digital channel, or the first request to finish must never
+be promoted into a later source's full-record time authority. Absolute/Elapsed
+remains presentation-only over the same internal elapsed coordinate system.
+
+Reason:
+Owner UAT exposed a real stale-state bug: one COMTRADE source reported
+`7.020 s` in source metadata while the waveform and Reset Time View showed
+only approximately `0 -> 1.3 s`. Investigation found the backend duration
+path and waveform endpoint both use the retained source time column; the
+visible mismatch came from frontend `ww.recordBounds`/`ww.viewport` being
+workspace-global mutable state without source ownership, so a newly opened
+recording could inherit a previous source's bounds.
+
+Alternatives considered:
+
+- Keep `ww.recordBounds` as the full-record authority and clear it on source
+  switch only — rejected as too narrow; it preserves the same conflation that
+  caused the bug and does not prepare for multi-source comparison.
+- Infer frontend bounds as `0 -> duration_seconds` only — rejected as the
+  primary authority because backend already owns the engineering time axis;
+  the frontend may use that shape only as a legacy additive-schema fallback.
+- Implement cross-source synchronization/alignment now — explicitly rejected
+  by the owner for this phase.
+
+Impact:
+
+- Backend source/timebase metadata exposes explicit elapsed start/end seconds
+  in addition to duration.
+- Frontend stores source bounds in `ww.sourceBounds`, derives
+  `ww.workspaceBounds`, and keeps `ww.viewport` as user view only.
+- Zero-channel source-open can still establish correct time bounds without
+  rendering any analog or digital waveform.
+- Digital-only displays use the same workspace bounds; analog is not a timing
+  authority.
+- This is synchronization-ready: a future phase can introduce an alignment
+  offset between source-native bounds and aligned workspace bounds, but no
+  timestamp alignment, trigger matching, correlation, manual offset controls,
+  or resampling is implemented by this decision.
+- See [MIGRATION_PLAN.md — Phase 4A-UAT10](MIGRATION_PLAN.md#phase-4a-uat10--source-aware-time-bounds-2026-08-19).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or
