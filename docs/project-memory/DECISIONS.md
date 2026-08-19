@@ -2722,21 +2722,51 @@ Impact:
   (A-F from the owner's own task text), state persistence across
   layout/time-mode/navigation, source isolation, and digital isolation.
 - **Separately discovered, out-of-scope pre-existing bug, NOT fixed by
-  this decision**: `wwAddSelectedChannels()` can double-invoke
-  `Plotly.addTraces()` for the 2nd..Nth channel of a brand-new panel
-  when 2+ new channels are added in a single batch call destined for the
-  same group (the most common real trigger being default-display-on-
-  open for a source with 2+ channels sharing one `engineering_type`) —
-  `isNewPanel` is computed per-meta within the SAME batch loop, so a
-  panel created moments earlier by an EARLIER meta in that same batch is
-  incorrectly treated as "already existed before this call" for every
-  later meta that joins it, triggering a redundant `addTraces` on top of
-  the trace `newPlot` already drew. Flagged for the owner per this
-  project's own change-governance process (issue/evidence/proposed
-  fix/benefits/risks/impact) rather than fixed here, since it is a
+  this decision** (RESOLVED — see "UAT7 resolution" below):
+  `wwAddSelectedChannels()` can double-invoke `Plotly.addTraces()` for
+  the 2nd..Nth channel of a brand-new panel when 2+ new channels are
+  added in a single batch call destined for the same group (the most
+  common real trigger being default-display-on-open for a source with
+  2+ channels sharing one `engineering_type`) — `isNewPanel` is computed
+  per-meta within the SAME batch loop, so a panel created moments
+  earlier by an EARLIER meta in that same batch is incorrectly treated
+  as "already existed before this call" for every later meta that joins
+  it, triggering a redundant `addTraces` on top of the trace `newPlot`
+  already drew. Flagged for the owner per this project's own
+  change-governance process (issue/evidence/proposed fix/benefits/
+  risks/impact) rather than fixed here, since it is a
   rendering-duplication concern unrelated to visibility state and this
   decision's own scope.
 - See [MIGRATION_PLAN.md — Phase 4A-UAT6 Record](MIGRATION_PLAN.md#phase-4a-uat6--global-analog-channel-visibility-across-layout-modes-2026-08-19).
+
+**UAT7 resolution (2026-08-19, owner-approved follow-up, no new DECISION
+entry needed — same root cause, same architecture, a rendering-layer
+correction only):** confirmed via a direct jsdom reproduction against
+the code exactly as this decision left it (new empty Grouped panel +
+A/B/C added in one `wwAddSelectedChannels()` batch produced 5 traces —
+`A, B, C, B, C` — not 3; confirmed exactly 3 waveform network requests
+in the same batch, proving the duplication was rendering-only, never a
+duplicate fetch). Root cause exactly as diagnosed above. Fixed by
+changing the second loop's gating condition from the per-meta
+`isNewPanel` flag to membership in `newlyCreatedPanels` (already
+correctly built, just not consulted at the right point) — a channel
+whose panel is in `newlyCreatedPanels` is fully drawn by the
+`wwInitPanelPlot()` loop immediately above (single clear owner: **new**
+panels' complete trace set), and is now correctly skipped by the
+incremental `wwAddTraceToPanel()` loop (single clear owner:
+**pre-existing** panels' incremental additions) — the two ownership
+paths can no longer both draw the same channel. Also added: a stable
+per-trace `meta: wwChannelKey(sourceId, channelName)` field (Plotly's
+own documented metadata property, never used for rendering) on every
+built trace, and an on-demand console diagnostic,
+`wwDiagnoseDuplicateAnalogTraces()`, mirroring the established
+`wwDiagnoseDigitalAlignment()` (Phase 4A-UAT2) pattern. New dedicated
+`phase4a_uat7_check.mjs` (18 checks) — including the exact regression
+case, confirmed to genuinely fail against pre-fix code (14 of 18 checks
+failed) before the fix and pass after. Full existing frontend
+regression suite: unchanged at the established 18-failure baseline;
+backend 321/321 unchanged. See
+[MIGRATION_PLAN.md — Phase 4A-UAT7 Record](MIGRATION_PLAN.md#phase-4a-uat7--fix-duplicate-analog-trace-rendering-2026-08-19).
 
 ---
 

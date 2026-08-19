@@ -8548,6 +8548,196 @@ flagged for owner UAT.
 
 ---
 
+## Phase 4A-UAT7 — Fix Duplicate Analog Trace Rendering (2026-08-19)
+
+`[FACT]` throughout, resolving the out-of-scope defect DEC-035 flagged
+and deliberately did not fix. No new DECISIONS.md entry — a rendering-
+layer correction within DEC-035's own already-approved scope; DEC-035
+itself was updated in place with the confirmed resolution.
+
+### Owner direction
+
+Fix the duplicate-analog-trace defect DEC-035 discovered and
+deliberately left unfixed during Phase 4A-UAT6. Narrowly scoped:
+duplicate trace REMOVAL only — no channel-visibility, layout-mode, or
+digital-rendering redesign.
+
+### Reproduction
+
+A dedicated jsdom repro (new empty Grouped panel, `wwAddSelectedChannels()`
+called ONCE with A/B/C) against code exactly as DEC-035 left it: the
+panel's real Plotly-tracked trace list came back as `A, B, C, B, C` (5
+entries, not 3) — B and C each doubled. The SAME batch's waveform
+network requests were confirmed to be exactly 3 (one per channel) —
+proving the duplication was purely a rendering artifact, never a
+duplicate fetch. Also confirmed via the broader matrix (see Tests
+below): Separate mode was NOT affected (already one trace per lane,
+confirmed both before and after); default-display-on-open (5 channels,
+2 groups) was affected exactly the same way as any other multi-channel
+batch.
+
+### Root cause
+
+`wwAddSelectedChannels()`'s per-meta loop pushes every new channel into
+`panel.channels` unconditionally (regardless of which meta happened to
+create the panel object), so by the time the function's SECOND phase
+runs, a brand-new panel's `panel.channels` already holds its COMPLETE
+final channel set. `wwInitPanelPlot()` (called once per entry in
+`newlyCreatedPanels`) therefore already draws that complete set in a
+single `Plotly.newPlot()` call. The bug: the function's own SECOND loop
+— meant to handle channels joining a panel that already existed BEFORE
+this call — used a per-meta `isNewPanel` flag computed as "was a panel
+object already present in `ww.panels` at the exact moment this meta was
+processed." For the 2nd, 3rd, ... Nth channel destined for a panel an
+EARLIER meta in the SAME batch had just created, that flag incorrectly
+read `false` (the panel object WAS already present — just moments
+earlier, within this identical call) — so those channels also received
+an incremental `Plotly.addTraces()` call, redrawing them on top of what
+`newPlot()` had already drawn. `wwRebuildLayout()` (used for every
+layout-mode switch and Custom Groups Apply) was never affected — it has
+no such split ownership, only a single `wwInitPanelPlot()` call per
+panel, always drawing that panel's complete, final channel list.
+
+### Fix — one unambiguous trace-ownership path
+
+The smallest change consistent with the existing architecture: the
+second loop's gating condition changed from the per-meta `isNewPanel`
+flag (removed entirely — no longer meaningful) to membership in
+`newlyCreatedPanels` itself (already correctly built, just not
+consulted at the right point). A channel's panel being in
+`newlyCreatedPanels` now unambiguously means "already fully drawn by
+`wwInitPanelPlot()` above, in this exact call" — skip the incremental
+add. A channel's panel NOT being in `newlyCreatedPanels` means "this
+panel existed before this batch call" — it still correctly receives
+exactly one incremental `Plotly.addTraces()` call. The two ownership
+paths (Option A: new-panel creation owns its complete trace set; Option
+B: incremental add owns pre-existing-panel additions) can no longer
+both draw the same channel, by construction.
+
+### Verification helper
+
+Every built trace (`wwBuildTrace()`) now carries a `meta:
+wwChannelKey(sourceId, channelName)` field — Plotly's own documented,
+purely-informational trace property (never consulted by Plotly for
+rendering), giving a stable per-channel identity to verify against
+directly, rather than proxying through the display `name` (which two
+different sources can legitimately share — DEC-035's own
+source-isolation requirement). A new on-demand console diagnostic,
+`wwDiagnoseDuplicateAnalogTraces()`, reads every rendered panel's REAL
+`chartEl.data` (Plotly's own live trace array) via that `meta` field and
+reports any channel appearing more than once in the same panel —
+mirrors the established `wwDiagnoseDigitalAlignment()` pattern (Phase
+4A-UAT2) for a sandbox with no real browser available to this agent;
+never called automatically, no production logging.
+
+### Grouped
+
+Full A-E matrix verified: new panel + 1 channel → 1 trace; new panel +
+N channels in one batch → exactly N traces (the key regression, 3-of-3
+not 3-of-5); existing panel + 1 → +1; existing panel + N in one batch →
+exactly +N; hide then re-enable → exactly one trace (not zero, not two).
+
+### Custom
+
+Verified: a brand-new Custom group populated with multiple members in
+one batch (via the group editor's Apply → `wwRebuildLayout()` path,
+which was never affected by this bug in the first place, confirmed
+directly); an existing Custom group receiving more members via a second
+Apply; a hidden Custom-group member re-enabled via the sidebar rejoining
+its group without a duplicate. Custom Group membership (DEC-035)
+remains fully independent of visibility — untouched by this phase.
+
+### Separate
+
+Confirmed unaffected both before and after this fix — one channel = one
+lane = one Plotly instance = one trace, structurally incapable of the
+multi-channel-batch-into-one-panel scenario this bug required (Separate
+panels only ever hold exactly one channel each). Left completely
+untouched, per the owner's own "if Separate is not affected, preserve
+it untouched" instruction.
+
+### Default-all source open
+
+Verified directly: opening a fresh 5-analog-channel source produces
+`ww.displayed.size === 5` and exactly 5 unique rendered trace keys
+across the whole workspace (2 panels: Voltage with 4, Current with 1) —
+no duplicates, matching one-for-one.
+
+### Network/render impact
+
+No duplicate network requests were ever occurring — confirmed via the
+key-regression repro (3 channels, exactly 3 waveform fetches, both
+before and after this fix) and via the broader matrix. The fix
+eliminates the EXTRA, duplicate `Plotly.addTraces()` calls and the
+resulting doubled trace objects (structurally: fewer Plotly operations,
+smaller in-memory trace arrays per multi-channel panel) — a real,
+measurable reduction in rendering work for any multi-channel
+default-display-on-open or multi-channel Add, though actual browser
+paint/responsiveness cannot be measured in this sandbox (no real browser
+available) and is flagged for owner UAT.
+
+### State preservation
+
+`wwColorForChannel()` untouched and reused unchanged — verified a
+channel's Plotly trace color still exactly matches its sidebar dot after
+this fix. Global visibility (DEC-035, `ww.displayed`) unaffected —
+verified hide-in-Grouped → stays hidden in Separate/Custom → re-enable
+→ exactly one trace, end to end. Custom Group membership (DEC-035)
+independent of visibility, unaffected. Sidebar/legend state (UAT5/UAT6:
+10px dot, row toggle, 100%/25% opacity, Name (unit), no analog checkbox,
+no sidebar remove control, Grouped/Custom no duplicate chip legend,
+Separate local lane label/remove retained) — none of these surfaces were
+touched by this change; no regression expected or observed in the
+existing UAT5/UAT6 test suites (both still pass unchanged).
+
+### Digital preservation
+
+`wwAddDigitalChannels()`/`wwRebuildDigitalChart()` — confirmed, by
+direct source inspection, to never call `wwAddTraceToPanel()` and to
+have no `newlyCreatedPanels`-style concept at all (one shared Plotly
+figure, `Plotly.react()`-based, architecturally distinct since Phase 4A
+— DEC-034). Untouched by this phase; a source with digital channels
+still renders its digital region correctly.
+
+### Tests
+
+New dedicated `phase4a_uat7_check.mjs` (scratch convention, not
+committed, 18 checks): the key regression (new Grouped panel + A/B/C in
+one batch → exactly 3 unique traces, zero duplicates, exactly 3 waveform
+requests); the full Grouped A-E matrix; Custom (new panel multi-add,
+existing panel receiving more members, hidden-member re-enable, group-
+editor Apply/rebuild path); Separate (one trace per lane, confirmed
+unaffected); default-all-on-open (displayed count == unique trace
+count); source isolation (two sources sharing a channel name remain two
+distinct trace identities); DEC-035 global-visibility non-regression
+(hide/switch-modes/re-enable → exactly one trace); color-mapping
+non-regression (trace color == sidebar dot color); digital isolation (2
+checks); the new `wwDiagnoseDuplicateAnalogTraces()` diagnostic itself.
+**Confirmed as a genuine regression guard**: 14 of these 18 checks fail
+against the code exactly as DEC-035/Phase 4A-UAT6 left it, and all 18
+pass after this fix (the other 4 — Separate mode and digital isolation —
+correctly pass either way, since those paths were never affected).
+
+Full existing frontend regression suite: still exactly the established
+18-failure baseline (independently reconfirmed, including UAT5/UAT6's
+own dedicated suites passing unchanged). Backend: 321/321 unchanged (no
+backend file touched).
+
+### Files changed
+
+`frontend/index.html` only.
+
+### Honest limitations
+
+No real browser is available in this sandbox — the actual visual
+confirmation (no doubled/thicker traces, responsiveness improvement on
+a large real recording) was reasoned through and structurally exercised
+via jsdom (trace-count/identity assertions, request-count assertions),
+but not visually or performance-confirmed in a real browser — flagged
+for owner UAT.
+
+---
+
 ## Phase 4A-UAT6 — Global Analog Channel Visibility Across Layout Modes (2026-08-19)
 
 `[DECISION]` See

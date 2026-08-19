@@ -4790,6 +4790,16 @@
                 name: channel.channelName,
                 hovertemplate: xHoverFormat + ": %{y}" + (channel.unit ? " " + channel.unit : "") +
                     "<extra>" + escapeHtml(channel.channelName) + "</extra>",
+                // Phase 4A-UAT7: a stable "sourceId::channelName" identity
+                // (the same wwChannelKey() convention used everywhere
+                // else), carried purely as trace metadata -- Plotly's own
+                // documented `meta` field, never read by Plotly itself for
+                // rendering. Lets a trace's TRUE identity be verified
+                // directly (duplicate-trace regression tests, future
+                // debugging) without proxying through the display `name`
+                // alone, which two different sources can legitimately
+                // share (DEC-035's own source-isolation requirement).
+                meta: wwChannelKey(channel.sourceId, channel.channelName),
             };
         }
 
@@ -5243,12 +5253,10 @@
 
                 const groupKey = wwPanelGroupKeyFor(meta);
                 let panel = ww.panels.find((p) => p.groupKey === groupKey);
-                let isNewPanel = false;
                 if (!panel) {
                     panel = wwCreatePanelObject(wwPanelLabelFor(meta), groupKey);
                     ww.panels.push(panel);
                     newlyCreatedPanels.push(panel);
-                    isNewPanel = true;
                 }
 
                 const channelEntry = {
@@ -5275,7 +5283,7 @@
                 };
                 panel.channels.push(channelEntry);
                 ww.displayed.set(key, { panel, channel: channelEntry });
-                jobs.push({ panel, channelEntry, isNewPanel });
+                jobs.push({ panel, channelEntry });
             }
 
             if (jobs.length === 0) return;
@@ -5305,8 +5313,26 @@
             if (epochAtStart !== ww.epoch) return;
 
             for (const panel of newlyCreatedPanels) wwInitPanelPlot(panel);
-            for (const { panel, channelEntry, isNewPanel } of jobs) {
-                if (!isNewPanel) wwAddTraceToPanel(panel, channelEntry);
+            // Phase 4A-UAT7 (DEC-035): trace ownership is now unambiguous --
+            // wwInitPanelPlot() just above already draws EVERY channel
+            // currently in a newly-created panel's own panel.channels
+            // (populated in full by the meta loop above, since
+            // panel.channels.push() runs for every meta regardless of
+            // which one happened to create the panel object) via a single
+            // Plotly.newPlot() call. This loop must therefore skip every
+            // job whose panel was created THIS SAME batch -- checking
+            // membership in `newlyCreatedPanels` (built fresh per call),
+            // not a per-meta "was the panel object already present at the
+            // moment I was processed" flag, which incorrectly answered
+            // "no" for every channel joining a panel an EARLIER meta in
+            // this identical batch had just created, causing
+            // wwAddTraceToPanel() to redraw that channel a second time on
+            // top of what newPlot() had already drawn (the DEC-035
+            // duplicate-trace bug). A channel joining a panel that already
+            // existed BEFORE this call (not in newlyCreatedPanels) still
+            // correctly gets exactly one incremental addTraces() call here.
+            for (const { panel, channelEntry } of jobs) {
+                if (!newlyCreatedPanels.includes(panel)) wwAddTraceToPanel(panel, channelEntry);
             }
 
             // Phase 4A-UAT4 (owner clarification): Separate mode's own
@@ -6347,6 +6373,36 @@
             // and channel colors are stable per-channel (wwColorForChannel()),
             // never per-panel -- so the sidebar's dots/remove-controls
             // never need re-syncing here.
+        }
+
+        // Phase 4A-UAT7 (DEC-035): a lightweight, on-demand console
+        // diagnostic (never called automatically, no production logging)
+        // -- reads each currently-rendered analog panel's REAL Plotly
+        // trace list (`chartEl.data`, kept live by Plotly itself) via each
+        // trace's own `meta` field (see wwBuildTrace()'s own comment for
+        // why that, not the display `name`, is the true per-channel
+        // identity) and reports any channel appearing more than once in
+        // the SAME panel -- the exact symptom this phase fixed. Callable
+        // from DevTools as wwDiagnoseDuplicateAnalogTraces(), the same
+        // established pattern as wwDiagnoseDigitalAlignment() (Phase
+        // 4A-UAT2) for a sandbox with no real browser available to this
+        // agent.
+        function wwDiagnoseDuplicateAnalogTraces() {
+            const results = [];
+            for (const panel of ww.panels) {
+                if (!panel.plotlyReady || !panel.chartEl) continue;
+                const keys = (panel.chartEl.data || []).map((t) => t.meta);
+                const counts = new Map();
+                for (const key of keys) counts.set(key, (counts.get(key) || 0) + 1);
+                const duplicates = Array.from(counts.entries()).filter(([, count]) => count > 1);
+                results.push({
+                    panel: panel.label, traceCount: keys.length,
+                    uniqueChannelCount: counts.size,
+                    duplicateChannelKeys: duplicates.map(([key]) => key).join(", ") || "(none)",
+                });
+            }
+            console.table(results);
+            return results;
         }
 
         // Phase 4A-UAT1B: immediate loading feedback for

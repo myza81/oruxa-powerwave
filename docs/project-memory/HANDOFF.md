@@ -8,6 +8,57 @@ Last updated: **2026-08-19**
 
 ## What was most recently done
 
+**Phase 4A-UAT7 — Fix Duplicate Analog Trace Rendering.** Full detail:
+[MIGRATION_PLAN.md — Phase 4A-UAT7 Record](MIGRATION_PLAN.md#phase-4a-uat7--fix-duplicate-analog-trace-rendering-2026-08-19),
+[DECISIONS.md — DEC-035's own "UAT7 resolution"](DECISIONS.md#dec-035--analog-channel-visibility-is-workspace-global-layout-mode-governs-arrangement-only-never-visibility-phase-4a-uat6).
+
+**Owner direction**: fix the duplicate-analog-trace defect DEC-035
+discovered during UAT6 and deliberately left unfixed. Narrowly scoped to
+duplicate-trace removal only -- no visibility/layout/digital redesign.
+
+**Reproduction**: a new empty Grouped panel + `wwAddSelectedChannels()`
+called ONCE with A/B/C produced 5 real Plotly traces (`A, B, C, B, C`),
+not 3 -- but exactly 3 waveform network requests, proving the
+duplication was rendering-only, never a duplicate fetch. Separate mode
+and `wwRebuildLayout()` (layout switches, Custom Groups Apply) were
+confirmed NOT affected.
+
+**Root cause**: `wwAddSelectedChannels()`'s per-meta loop pushes every
+new channel into `panel.channels` unconditionally, so a brand-new
+panel's `panel.channels` is already COMPLETE by the time
+`wwInitPanelPlot()` draws it via one `Plotly.newPlot()` call. The bug
+was the function's SEPARATE incremental-add loop, which used a per-meta
+`isNewPanel` flag meaning "was the panel object already present when I
+was processed" -- true for a panel an EARLIER channel in the SAME batch
+had just created, so the 2nd..Nth channel of that panel ALSO got a
+redundant `Plotly.addTraces()` call on top of what `newPlot()` had
+already drawn.
+
+**What changed** (`frontend/index.html` only): the incremental-add
+loop's gating condition changed from the per-meta `isNewPanel` flag
+(removed) to membership in `newlyCreatedPanels` (already correctly
+tracked, just not consulted at the right point) -- one unambiguous
+trace-ownership path per panel. Also added: a stable `meta:
+wwChannelKey(sourceId, channelName)` field on every built trace (Plotly's
+own documented metadata property), and an on-demand
+`wwDiagnoseDuplicateAnalogTraces()` console helper (mirrors
+`wwDiagnoseDigitalAlignment()`, Phase 4A-UAT2).
+
+**Verification**: new dedicated `phase4a_uat7_check.mjs` (18 checks) --
+the key regression, the full Grouped A-E matrix, Custom (new/existing
+group multi-add, hidden-member re-enable, editor Apply path), Separate
+(confirmed unaffected), default-all-on-open (displayed count == unique
+trace count), source isolation, DEC-035 global-visibility non-regression,
+color-mapping non-regression, digital isolation, and the new diagnostic
+itself. Confirmed as a genuine regression guard: 14 of 18 checks fail
+against pre-fix code, all 18 pass after. Full regression suite still
+exactly the established 18-failure baseline; backend 321/321 unchanged.
+
+**Not yet done**: real-browser visual/performance confirmation -- flagged
+for owner UAT.
+
+## What was done in the prior session (Phase 4A-UAT6 — Global Analog Channel Visibility Across Layout Modes)
+
 **Phase 4A-UAT6 — Global Analog Channel Visibility Across Layout Modes.**
 Full detail:
 [MIGRATION_PLAN.md — Phase 4A-UAT6 Record](MIGRATION_PLAN.md#phase-4a-uat6--global-analog-channel-visibility-across-layout-modes-2026-08-19),
@@ -40,14 +91,11 @@ check, zero behavior change). `wwColorForChannel()` and the Separate-mode
 local `x` (already routing through the same global removal path) are
 unchanged.
 
-**Separately discovered, NOT fixed**: a genuine, unrelated pre-existing
+**Separately discovered, then NOT fixed here (fixed the following
+session, Phase 4A-UAT7 above)**: a genuine, unrelated pre-existing
 rendering bug -- `wwAddSelectedChannels()` can double-add a Plotly trace
 for the 2nd..Nth channel of a brand-new panel when 2+ new channels join
 the same group in one batch call (most commonly default-display-on-open).
-Flagged for the owner as its own separate task; this phase's own tests
-were written to check ground-truth state, not the affected Plotly-call
-counts, so this phase's correctness claims don't depend on that bug
-being fixed.
 
 **Verification**: new dedicated `phase4a_uat6_check.mjs` (13 checks,
 scratch convention) covers the full A-F cross-mode visibility matrix,
@@ -55,12 +103,7 @@ state persistence, source isolation, and digital isolation. Full
 regression suite still exactly the established 18-failure baseline;
 backend 321/321 unchanged.
 
-**Not yet done**: real-browser confirmation of the owner's original
-reported sequence and the new hidden-chip dimming -- flagged for owner
-UAT. The separately-discovered double-add rendering bug remains
-unfixed, pending its own task.
-
-## What was done in the prior session (Phase 4A-UAT5 — Simplify Analog Channel Toggle Rows)
+## What was done in the earlier session (Phase 4A-UAT5 — Simplify Analog Channel Toggle Rows)
 
 **Phase 4A-UAT5 — Simplify Analog Channel Toggle Rows.** Full detail:
 [MIGRATION_PLAN.md — Phase 4A-UAT5 Record](MIGRATION_PLAN.md#phase-4a-uat5--simplify-analog-channel-toggle-rows-2026-08-18).

@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-19** (Phase 4A-UAT6).
+Last meaningful update: **2026-08-19** (Phase 4A-UAT7).
 
 ## Development phase
 
@@ -1305,6 +1305,37 @@ commonly triggered by default-display-on-open); flagged for the owner as
 its own separate task. Full frontend regression suite: still exactly the
 established 18-failure baseline; backend 321/321 unchanged (no backend
 file touched). Not yet owner-UAT'd in a real browser.
+
+`[FACT]` **Duplicate analog trace rendering is fixed — Phase 4A-UAT7 —
+Fix Duplicate Analog Trace Rendering** (2026-08-19), resolving the
+out-of-scope defect DEC-035 flagged and deliberately left unfixed — see
+[MIGRATION_PLAN.md — Phase 4A-UAT7 Record](MIGRATION_PLAN.md#phase-4a-uat7--fix-duplicate-analog-trace-rendering-2026-08-19)
+and [DECISIONS.md — DEC-035's own "UAT7 resolution"](DECISIONS.md#dec-035--analog-channel-visibility-is-workspace-global-layout-mode-governs-arrangement-only-never-visibility-phase-4a-uat6).
+Confirmed root cause: `wwAddSelectedChannels()`'s incremental-add loop
+used a per-meta flag that incorrectly treated a panel created moments
+earlier by an EARLIER channel in the SAME batch as "pre-existing,"
+causing that panel's 2nd..Nth channel to be drawn twice (once via the
+new panel's own complete `Plotly.newPlot()`, once more via a redundant
+`Plotly.addTraces()`) — most commonly triggered by default-display-on-
+open for any source whose first-populated engineering-type group has
+2+ channels. Reproduced directly (3-channel batch produced 5 traces,
+`A, B, C, B, C`, with exactly 3 correct network requests — the
+duplication was rendering-only, never a duplicate fetch). Fixed by
+gating the incremental-add loop on membership in `newlyCreatedPanels`
+(already correctly tracked, just not consulted at the right point)
+instead of the incorrect per-meta flag — one panel, one clear trace-
+ownership path (new-panel creation owns its complete set; incremental
+add owns only channels joining an ALREADY-existing panel). Also added a
+stable `meta: wwChannelKey(...)` field on every built trace and an
+on-demand `wwDiagnoseDuplicateAnalogTraces()` console helper (mirrors
+the established `wwDiagnoseDigitalAlignment()` pattern). Separate mode
+was confirmed never affected (structurally one channel per lane) and is
+untouched; `wwColorForChannel()`, DEC-035's global visibility, and
+Custom Group membership are all unaffected and reverified. Digital
+rendering confirmed untouched (architecturally distinct code path, no
+shared trace-ownership logic). Full frontend regression suite: still
+exactly the established 18-failure baseline; backend 321/321 unchanged
+(no backend file touched). Not yet owner-UAT'd in a real browser.
 
 ## Completed foundation work
 
