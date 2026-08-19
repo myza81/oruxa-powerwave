@@ -8659,10 +8659,11 @@ alignment between recordings, trigger alignment, nearest-sample matching,
 correlation, manual sync tools, resampling, or changing COMTRADE's DAT-vs-CFG
 timestamp authority.
 
-This pass also preserves the already-present Phase 4A-UAT9 product direction
-in the working tree: opening a recording starts with zero analog and zero
-digital channels displayed. Source bounds therefore cannot depend on a
-rendered waveform request.
+This pass also preserves the already-present
+[Phase 4A-UAT9](#phase-4a-uat9--default-hidden-channels--group-visibility-toggles-2026-08-19)
+product direction in the working tree: opening a recording starts with zero
+analog and zero digital channels displayed. Source bounds therefore cannot
+depend on a rendered waveform request.
 
 ### Proven bug
 
@@ -8750,6 +8751,98 @@ and one known malformed-CFG warning.
 ### Decision
 
 Recorded as [DEC-037](DECISIONS.md#dec-037--waveform-time-domain-state-is-source-aware-source-bounds-workspace-bounds-and-viewport-are-distinct-phase-4a-uat10).
+
+## Phase 4A-UAT9 — Default-Hidden Channels + Group Visibility Toggles (2026-08-19)
+
+### Owner-approved scope
+
+Follow-up to DEC-034's deliberate "display everything by default" UAT
+experiment (Phase 4A). Owner direction: reverse the default so opening a
+recording displays zero analog and zero digital channels, add compact
+per-group Show all/Hide all controls so bulk display/hide stays efficient
+without the unconditional default-render cost, and preserve every prior
+UAT5–UAT8 row-toggle behaviour (10px dots, opacity states, direct toggle,
+DEC-035 global visibility, Grouped/Separate/Custom correctness, no
+duplicate traces, no checkboxes) exactly as-is. Explicitly out of scope:
+the COMTRADE duration/timing investigation (picked up separately by
+UAT10 above), cursor tools, calculated signals, annotations,
+multi-recording sync, channel reorder, user-selected colors, digital
+custom groups.
+
+### What changed (`frontend/index.html` only)
+
+- `selectSource()` no longer calls any default-display path.
+  `wwApplyDefaultChannelDisplay()` and `ww.sourceDefaultsApplied` are
+  removed entirely — a freshly opened source renders its channel browser
+  (metadata/classification) without fetching or drawing any waveform.
+- Every analog and digital row starts with `aria-pressed="false"` and
+  the pre-existing `.channel-row--hidden` (25% opacity) treatment — the
+  same visual state DEC-034/UAT5/UAT8 already used for an explicitly
+  hidden channel, not a new state.
+- New `groupToggleButtonHtml(kind, groupLabel)` renders a compact
+  "Show all"/"Hide all" `<button>` inside each analog and digital
+  subgroup's `<summary>` (skipped for an empty group). New
+  `wwChannelGroupRows(button)` derives that group's member rows live from
+  the DOM (`tr.channel-row--toggle` inside the closest
+  `details.channel-subgroup`) — there is no separate group-selection
+  state; the button's own label/`aria-pressed` is recomputed by the
+  existing `wwSyncChannelBrowserDisplayState()` sync pass, run from every
+  mutation point.
+- New `wwToggleChannelGroupDisplay(button)` is the batched group
+  handler: "Show all" reuses `wwAddSelectedChannels()`/
+  `wwAddDigitalChannels()`'s existing batch-safe single-`newPlot`-per-panel
+  behaviour (UAT7); "Hide all" uses new `wwRemoveChannelsByKeys()`/
+  `wwRemoveDigitalChannelsByKeys()`, which group targeted channels by
+  panel and issue exactly one `Plotly.deleteTraces()` per affected panel
+  plus one pass of the tail-end refresh functions for the whole batch —
+  never N individual per-channel rebuilds. Large groups reuse the
+  existing `wwSetWorkspaceLoading`/`wwSetWorkspaceLoadingProgress`/
+  `wwYieldToPaint` progress path so the UI stays responsive and truthful.
+- The row-toggle click listener checks `.group-toggle-btn` first, calling
+  `event.preventDefault()`/`stopPropagation()` before the row-toggle
+  check, so clicking the group control never also expands/collapses the
+  `<details>` subgroup.
+- `#wwEmptyState` copy changed to "Select channels from the sidebar to
+  display waveforms." — a guidance message, not an error state.
+- `analogMetaFromRow(row)`/`digitalMetaFromRow(row)` extracted (shared by
+  the single-row toggles and the new group toggle, removing triplicated
+  object-construction code).
+- `ww.recordBounds`/viewport establishment inside `wwLoadChannelRange()`
+  was deliberately left unchanged — see that function's own comment —
+  to avoid conflating this task with the separate COMTRADE
+  duration/timing investigation UAT10 later resolved.
+
+### Tests
+
+Existing scratch-convention jsdom suites (`phase4a_check.mjs`,
+`phase4a_uat4_check.mjs` through `phase4a_uat8_check.mjs`) were updated:
+every test whose actual subject requires channels to already be visible
+now calls a `showAllAnalog(window, sourceId)`/`showAllDigital(window,
+sourceId)` helper directly (built from that file's own fixtures, calling
+`wwAddSelectedChannels`/`wwAddDigitalChannels`) immediately after
+`selectSource()`, rather than relying on the old default-display; the
+handful of tests originally about default-display-on-open itself were
+rewritten to assert the new zero-default policy instead. A dedicated
+`phase4a_uat9_check.mjs` covering the group-toggle matrix specifically
+was not created as a separate file; its behaviour is exercised inline
+across the updated files above (including a large-group, 33-channel
+"Loading channels… 33 / 33" progress-batching check in
+`phase4a_check.mjs`).
+
+Layering UAT10's `ww.sourceBounds`/`workspaceBounds`/`viewport` rewrite on
+top of this change (both landed in the same push) temporarily elevated the
+frontend regression count from the established 18-failure baseline to 34;
+a follow-up audit found 16 of those were obsolete test expectations from
+the bounds rewrite (updated) and one was a genuine bug — `wwClearWorkspace()`
+incorrectly clearing `sourceBounds` for a source that was still open — fixed
+separately (commit `a0da033`, "fix: preserve source bounds on display
+clear"). Frontend suite is back to exactly the established 18-failure
+baseline (621 passed); backend 328 passed, no backend file touched by this
+phase.
+
+### Decision
+
+Recorded as [DEC-038](DECISIONS.md#dec-038--waveform-channels-default-to-hidden-on-open-group-level-showhide-controls-added-phase-4a-uat9).
 
 ## Phase 4A-UAT8 — Digital Channel Row Toggle (2026-08-19)
 

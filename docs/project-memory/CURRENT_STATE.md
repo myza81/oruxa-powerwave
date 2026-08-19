@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-19** (Phase 4A-UAT10).
+Last meaningful update: **2026-08-19** (Phase 4A-UAT9 and Phase 4A-UAT10).
 
 ## Development phase
 
@@ -1398,10 +1398,43 @@ digital visibility authority, completely independent of `ww.displayed`
 versa. Triggered/Never Triggered/Spare classification and sort order are
 unchanged; hiding a channel never moves it out of its classification
 subgroup. The later default-hidden source-open policy is covered by the
-Phase 4A-UAT10 note below. Full frontend regression suite:
+Phase 4A-UAT9 fact below. Full frontend regression suite:
 still exactly the established 18-failure baseline; backend 321/321
 unchanged (no backend file touched). Not yet owner-UAT'd in a real
 browser.
+
+`[FACT]` **Waveform channels default to hidden on open; per-group
+Show all/Hide all controls added — Phase 4A-UAT9 — Default-Hidden
+Channels + Group Visibility Toggles** (2026-08-19) — see
+[MIGRATION_PLAN.md — Phase 4A-UAT9 Record](MIGRATION_PLAN.md#phase-4a-uat9--default-hidden-channels--group-visibility-toggles-2026-08-19)
+and [DECISIONS.md DEC-038](DECISIONS.md#dec-038--waveform-channels-default-to-hidden-on-open-group-level-showhide-controls-added-phase-4a-uat9).
+**Supersedes DEC-034's "display everything by default" experiment** (that
+bullet in DEC-034 is now marked superseded in place; the rest of DEC-034
+is unaffected). Opening a recording — a genuinely new source or a fresh
+workspace — now displays **zero** analog and **zero** digital channels;
+no waveform data is fetched merely by opening a source. Every channel row
+starts deactivated (`aria-pressed="false"`, 25% opacity via the existing
+`.channel-row--hidden` treatment). Each engineering-classification
+subgroup (analog: Voltage/Current/Power/Frequency/ROCOF/Undefined/etc.;
+digital: Triggered/Never Triggered/Spare) gained a compact "Show all"/
+"Hide all" toggle on its own group header, derived live from the existing
+per-row `aria-pressed` state — no separate group-selection state exists.
+Toggling a group is one batched Plotly update per affected panel, never
+one rebuild per channel. Once the engineer manually shows/hides a channel
+or group, that choice persists across layout-mode switching, Absolute/
+Elapsed switching, and Waveform ↔ Recordings navigation while the same
+source stays open (DEC-034/DEC-035's persistence guarantee, unchanged);
+only a genuinely new source-open or fresh workspace resets to zero again.
+Custom Group membership remains independent of visibility (DEC-035),
+unaffected by this change. `ww.sourceDefaultsApplied` and
+`wwApplyDefaultChannelDisplay()` were removed entirely. No dedicated
+`phase4a_uat9_check.mjs` file was created; coverage is folded into the
+existing `phase4a_check.mjs`/`phase4a_uat4_check.mjs`–`phase4a_uat8_check.mjs`
+suites. Frontend regression suite: back to exactly the established
+18-failure baseline (621 passed) after a follow-up audit resolved fallout
+from layering Phase 4A-UAT10's bounds rewrite on top (see that fact below);
+backend 328 passed, no backend file touched by this phase. Owner has
+completed real-browser UAT.
 
 `[FACT]` **Waveform time bounds are now source-aware — Phase 4A-UAT10 —
 Source-Aware Time Bounds** (2026-08-19) — see
@@ -1422,7 +1455,17 @@ analog and zero digital channels are displayed. Analog and digital displays
 share this same derived viewport; neither channel kind is privileged as a
 timing authority. This is intentionally synchronization-ready, but no
 cross-source timestamp alignment, trigger matching, correlation, manual
-offset, or resampling was implemented.
+offset, or resampling was implemented. **Fully completed**: committed,
+pushed, CI green, automatic DEV deployment verified live at the deployed
+SHA. A follow-up audit found the frontend regression count had temporarily
+risen from the established 18-failure baseline to 34 after this bounds
+rewrite landed; 16 were obsolete test expectations (updated) and one was a
+genuine bug — `wwClearWorkspace()` incorrectly cleared `sourceBounds` for a
+still-open source — fixed in commit `a0da033` ("fix: preserve source
+bounds on display clear"). Frontend suite is back to exactly the
+established 18-failure baseline (621 passed); backend 328 passed. Owner
+has completed real-browser UAT of the BEN5K 7.020 s case and all UAT10
+checks passed.
 
 ## Completed foundation work
 

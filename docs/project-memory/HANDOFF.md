@@ -55,10 +55,75 @@ tests/test_frontend_source_bounds.py` -> `57 passed` with the existing
 FastAPI/TestClient deprecation warning and one malformed-CFG warning. Full
 backend suite passed: `pytest` -> `327 passed`, same two warnings.
 
-**Not yet done**: commit/push, CI/automatic DEV deployment verification, and
-owner real-browser UAT of the BEN5K 7.020 s case.
+**Fully completed.** Committed and pushed as `02c3fce`; CI ran and
+succeeded; `Deploy Powerwave (DEV, automatic)` fired via `workflow_run` and
+succeeded; `curl https://api.dev.powerwave.oruxa.uk/health` returned
+`git_sha` matching the pushed commit exactly. Layering this bounds rewrite
+on top of the already-present, not-yet-committed Phase 4A-UAT9 work (see
+the session note below) temporarily elevated the frontend jsdom regression
+suite from the established 18-failure baseline to 34 failures — a
+follow-up audit found 16 were obsolete test expectations from the bounds
+rewrite (updated) and one was a genuine bug, `wwClearWorkspace()`
+incorrectly clearing `ww.sourceBounds` for a source that was still open,
+fixed and pushed as `a0da033` ("fix: preserve source bounds on display
+clear"). Frontend suite is back to exactly the established 18-failure
+baseline (`621 passed`); backend `328 passed`. **Owner has completed
+real-browser UAT of the BEN5K 7.020 s case and all UAT10 checks passed.**
 
-## What was done in the prior session (CI/CD — Automatic DEV Deployment After CI, DEC-036)
+## What was done in the prior session (Phase 4A-UAT9 — Default-Hidden Channels + Group Visibility Toggles)
+
+**Phase 4A-UAT9 — Default-Hidden Channels + Group Visibility Toggles.**
+Full detail:
+[MIGRATION_PLAN.md — Phase 4A-UAT9 Record](MIGRATION_PLAN.md#phase-4a-uat9--default-hidden-channels--group-visibility-toggles-2026-08-19),
+[DECISIONS.md — DEC-038](DECISIONS.md#dec-038--waveform-channels-default-to-hidden-on-open-group-level-showhide-controls-added-phase-4a-uat9).
+
+**Owner direction**: DEC-034's "display everything by default" policy was
+an explicit, time-boxed UAT experiment, not a permanent commitment. Real
+UAT evidence showed the unconditional fetch/render of every channel on
+every source-open is a real, avoidable cost. Reverse the default so a
+newly opened recording displays zero analog and zero digital channels, add
+compact per-group "Show all"/"Hide all" controls so bulk display/hide
+stays efficient, and preserve every prior UAT5–UAT8 row-toggle behaviour
+exactly as-is.
+
+**What changed** (`frontend/index.html` only): `ww.sourceDefaultsApplied`
+and `wwApplyDefaultChannelDisplay()` removed entirely — `selectSource()`
+no longer displays anything by default. Every row starts
+`aria-pressed="false"` / 25% opacity (the pre-existing hidden-row
+treatment, not a new state). New `groupToggleButtonHtml()` renders a
+"Show all"/"Hide all" button on each analog/digital subgroup header; new
+`wwChannelGroupRows()` derives that group's membership live from the DOM
+(no separate group-selection state); new `wwToggleChannelGroupDisplay()`
+is the batched handler — "Show all" reuses UAT7's existing
+one-`newPlot`-per-panel batch path, "Hide all" uses new
+`wwRemoveChannelsByKeys()`/`wwRemoveDigitalChannelsByKeys()` (one
+`Plotly.deleteTraces()` per affected panel, one refresh pass for the whole
+batch, never per-channel). The group button's click handler
+`stopPropagation()`s so it never also toggles the `<details>` subgroup.
+Empty-state copy changed to "Select channels from the sidebar to display
+waveforms." Visibility persistence (layout-mode/time-mode/navigation) and
+Custom Group membership independence (DEC-035) are both unchanged — this
+only changes what an engineer sees at the very first open.
+
+**Verification**: existing scratch-convention jsdom suites
+(`phase4a_check.mjs`, `phase4a_uat4_check.mjs`–`phase4a_uat8_check.mjs`)
+updated so every test whose subject needs channels already visible calls a
+`showAllAnalog`/`showAllDigital` helper explicitly, rather than relying on
+the removed default; the handful of tests that were originally about
+default-display-on-open itself were rewritten for the new zero-default
+policy. No dedicated `phase4a_uat9_check.mjs` file was created — group-
+toggle coverage (including a 33-channel batched-progress check) is folded
+into the files above. Frontend suite returned to exactly the established
+18-failure baseline; backend unaffected (no backend file touched).
+
+**Not yet done at the time this task ended**: this work was left committed
+locally but unpushed when a new owner request (Phase 4A-UAT10, above)
+arrived and was implemented on top of it; both were pushed together in
+commit `02c3fce`. Real-browser owner UAT of the group-toggle controls
+specifically has not been separately confirmed (folded into the general
+UAT10 DEV verification above).
+
+## What was done in the earlier session (CI/CD — Automatic DEV Deployment After CI, DEC-036)
 
 **CI/CD — Automatic DEV Deployment After CI (DEC-036).** Full detail:
 [MIGRATION_PLAN.md — CI/CD Record](MIGRATION_PLAN.md#cicd--automatic-dev-deployment-after-ci-2026-08-19),

@@ -2528,7 +2528,11 @@ one-Plotly-instance-per-panel model (DEC-024, DEC-026):**
   region regardless of the analog Grouped/Separate/Custom layout mode
   (DEC-025/DEC-027) — those three modes continue to govern ONLY analog
   arrangement.
-- **Default-all-display, scoped per source-open, not per navigation**:
+- **Default-all-display, scoped per source-open, not per navigation**
+  (**Superseded 2026-08-19 by [DEC-038](#dec-038--waveform-channels-default-to-hidden-on-open-group-level-showhide-controls-added-phase-4a-uat9);
+  see that entry for the current behaviour. The rest of this decision —
+  endpoint architecture, shared Plotly figure, classification precedence,
+  digital region placement — is unaffected and remains current.**):
   `ww.sourceDefaultsApplied: Set<sourceId>`, checked/set only inside
   `selectSource()`, reset only by `wwClearWorkspace()`. A genuinely new
   source-open displays every analog AND every digital channel (same
@@ -2989,6 +2993,100 @@ Impact:
   timestamp alignment, trigger matching, correlation, manual offset controls,
   or resampling is implemented by this decision.
 - See [MIGRATION_PLAN.md — Phase 4A-UAT10](MIGRATION_PLAN.md#phase-4a-uat10--source-aware-time-bounds-2026-08-19).
+
+---
+
+## DEC-038 — Waveform channels default to hidden on open; group-level Show/Hide controls added (Phase 4A-UAT9)
+
+Date: 2026-08-19
+Status: Approved
+Source: explicit project-owner instruction, delivered as the Phase 4A-UAT9
+task, directing evaluation of real UAT evidence gathered under DEC-034's
+"display everything by default" experiment before deciding the product's
+lasting default.
+
+Decision:
+
+**Waveform channels are opt-in by default to reduce initial rendering
+cost. Group-level visibility controls allow efficient bulk display/hide.**
+
+Concretely:
+
+- Opening a recording (a genuinely new source or a fresh workspace)
+  displays **zero** analog channels and **zero** digital channels.
+  `ww.displayed` and `ww.digitalDisplayed` both start empty; no waveform
+  data is fetched merely by opening a source.
+- Every analog and digital channel row in the sidebar starts
+  deactivated: `aria-pressed="false"`, 25% opacity (`.channel-row--hidden`),
+  same visual/interaction language DEC-034/UAT5/UAT8 already established
+  for an explicitly-hidden row — there is no separate "default" visual
+  state.
+- Each engineering-classification subgroup (analog: Voltage, Current,
+  Power, Frequency, ROCOF, Undefined, etc.; digital: Triggered, Never
+  Triggered, Spare) gained a compact **Show all** / **Hide all** toggle
+  on its own group header, computed live from the existing per-row
+  `aria-pressed` state (none/partial visible → "Show all"; all visible →
+  "Hide all") — no separate group-selection state is stored anywhere.
+  Toggling a group is one batched update (one `Plotly.newPlot`/
+  `deleteTraces` pass per affected panel), not N individual per-channel
+  rebuilds.
+- Once the engineer manually shows or hides a channel or group — by
+  either the sidebar or a Separate-mode lane's own remove control — that
+  choice persists exactly as DEC-034/DEC-035 already required: surviving
+  layout-mode switching (Grouped/Separate/Custom), Absolute/Elapsed
+  switching, and Waveform ↔ Recordings navigation while the same source
+  stays open. Only a genuinely new source-open or a fresh workspace
+  resets to zero again.
+- Custom Group membership (`ww.customGroups`) remains completely
+  independent of visibility (DEC-035); hiding a group member never
+  drops it from its group.
+
+Reason:
+
+DEC-034 explicitly scoped "display everything by default" as a
+deliberate, time-boxed UAT experiment, not a permanent product
+commitment ("not a claim that this scales indefinitely"). Owner UAT
+against that experiment showed the default-all-display cost is real and
+avoidable: every source-open unconditionally fetched and rendered every
+analog and digital channel's full waveform data before the engineer had
+chosen to look at any of it, regardless of how many of a recording's
+channels the engineer actually cared about in a given session. Group-level
+Show all/Hide all replaces the removed "select everything up front" cost
+with an explicit, still-efficient bulk action the engineer reaches for
+only when they actually want a whole group.
+
+Alternatives considered:
+
+- **Keep default-all-display, add a way to hide unwanted channels faster**
+  — rejected; it does not address the real cost, which is the unconditional
+  fetch/render of every channel on every source-open, not merely the
+  effort of hiding channels afterward.
+- **Default some groups visible (e.g. Voltage/Current) and others hidden**
+  — rejected; an inconsistent default is harder to reason about than a
+  single "nothing until you choose" rule, and the owner's original
+  requirement that analog and digital never get different default
+  policies (DEC-034) still applies by extension.
+- **Pre-fetch waveform data in the background for instant display on
+  first click, without rendering it** — rejected as out of scope; this
+  decision addresses the render/fetch policy only, not a caching
+  strategy, and would reintroduce the same unconditional-fetch cost this
+  decision removes.
+
+Impact:
+
+- Supersedes DEC-034's "Default-all-display, scoped per source-open, not
+  per navigation" bullet only; the rest of DEC-034 (digital-waveform
+  endpoint architecture, shared single-Plotly-figure rendering,
+  classification precedence, digital region placement) is unaffected and
+  remains current. See the amendment note on that bullet in
+  [DEC-034](#dec-034--digital-channel-rendering-shared-batched-full-record-transition-api-one-shared-multi-trace-plotly-figure-not-one-instance-per-channel-phase-4a).
+- `frontend/index.html`: `ww.sourceDefaultsApplied` and
+  `wwApplyDefaultChannelDisplay()` removed entirely; new
+  `groupToggleButtonHtml()`, `wwChannelGroupRows()`,
+  `wwToggleChannelGroupDisplay()`, `wwRemoveChannelsByKeys()`,
+  `wwRemoveDigitalChannelsByKeys()`, `analogMetaFromRow()`/
+  `digitalMetaFromRow()`. No backend change.
+- See [MIGRATION_PLAN.md — Phase 4A-UAT9](MIGRATION_PLAN.md#phase-4a-uat9--default-hidden-channels--group-visibility-toggles-2026-08-19).
 
 ---
 
