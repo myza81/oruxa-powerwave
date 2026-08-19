@@ -1626,15 +1626,34 @@
             pointer-events: none;
         }
         .ww-cursor-line[hidden] { display: none; }
+        /* Owner cosmetic refinement (post-UAT): 1px, down from the
+           original 2px -- slimmer/lighter while still clearly visible in
+           both themes. The 10px .ww-cursor-hit drag target below is
+           UNCHANGED -- only the visible stroke got thinner. */
         .ww-cursor-stroke {
             position: absolute;
             top: 0; bottom: 0;
-            left: -1px;
-            width: 2px;
+            left: -0.5px;
+            width: 1px;
             pointer-events: none;
         }
         .ww-cursor-line--a .ww-cursor-stroke { background: var(--accent); }
         .ww-cursor-line--b .ww-cursor-stroke { background: var(--error); }
+        /* Owner cosmetic refinement: a very subtle filled band between A
+           and B, part of the SAME overlay (not a second system) --
+           positioned/sized in JS exactly like the two lines (left/width in
+           px, relative to this overlay), so it stays pixel-aligned with
+           them automatically on every recompute. Sits BEHIND the lines in
+           DOM/paint order (built first in wwEnsureCursorDom()). Never
+           interactive -- purely a visual emphasis of the selected window. */
+        .ww-cursor-range {
+            position: absolute;
+            top: 0; bottom: 0;
+            width: 0;
+            background: var(--cursor-range-fill);
+            pointer-events: none;
+        }
+        .ww-cursor-range[hidden] { display: none; }
         /* Invisible wide grab strip (section 14: ~8-12px, centered on the
            thin visible line) -- the only part of a cursor line itself that
            accepts pointer events. */
@@ -1701,16 +1720,32 @@
             overflow: hidden;
         }
         .ww-cursor-ruler-overlay[hidden] { display: none; }
+        /* Same 1px slim-down as .ww-cursor-stroke above -- the ruler
+           segment is display-only (no drag target here, see this rule's
+           own header comment), so there is no hit-target width to
+           preserve. */
         .ww-cursor-ruler-stroke {
             position: absolute;
             top: 0; bottom: 0;
-            width: 2px;
-            margin-left: -1px;
+            width: 1px;
+            margin-left: -0.5px;
             pointer-events: none;
         }
         .ww-cursor-ruler-stroke[hidden] { display: none; }
         .ww-cursor-ruler-stroke.ww-cursor-a { background: var(--accent); }
         .ww-cursor-ruler-stroke.ww-cursor-b { background: var(--error); }
+        /* The range band's own continuation across the ruler -- same
+           token, same JS-driven left/width, so it reads as one unbroken
+           fill together with .ww-cursor-range above (identical split
+           technique the two cursor LINES already use). */
+        .ww-cursor-ruler-range {
+            position: absolute;
+            top: 0; bottom: 0;
+            width: 0;
+            background: var(--cursor-range-fill);
+            pointer-events: none;
+        }
+        .ww-cursor-ruler-range[hidden] { display: none; }
     </style>
 </head>
 <body>
@@ -6895,7 +6930,13 @@
             const overlay = document.getElementById("wwCursorOverlay");
             const rulerOverlay = document.getElementById("wwCursorRulerOverlay");
             if (overlay && !overlay.dataset.built) {
-                overlay.innerHTML = ["a", "b"].map((kind) => {
+                // Owner cosmetic refinement: the A-B range band is built
+                // FIRST (so it paints behind both cursor lines in DOM/
+                // paint order) as one more element in this SAME overlay --
+                // positioned/hidden by wwUpdateCursorOverlay() exactly
+                // like the two lines, never a second overlay system.
+                overlay.innerHTML = '<div class="ww-cursor-range" data-cursor-range hidden></div>' +
+                    ["a", "b"].map((kind) => {
                     const letter = kind === "a" ? "A" : "B";
                     return '<div class="ww-cursor-line ww-cursor-line--' + kind + '" data-cursor-line="' + kind + '" hidden>' +
                         '<div class="ww-cursor-stroke"></div>' +
@@ -6912,6 +6953,7 @@
             }
             if (rulerOverlay && !rulerOverlay.dataset.built) {
                 rulerOverlay.innerHTML =
+                    '<div class="ww-cursor-ruler-range" data-cursor-ruler-range hidden></div>' +
                     '<div class="ww-cursor-ruler-stroke ww-cursor-a" data-cursor-ruler-line="a" hidden></div>' +
                     '<div class="ww-cursor-ruler-stroke ww-cursor-b" data-cursor-ruler-line="b" hidden></div>';
                 rulerOverlay.dataset.built = "1";
@@ -7000,6 +7042,42 @@
                 if (rulerLineEl) {
                     rulerLineEl.hidden = !drawable;
                     if (drawable) rulerLineEl.style.left = (pageX - rulerRect.left) + "px";
+                }
+            }
+
+            // Owner cosmetic refinement: the A-B range band. Shown only
+            // when BOTH cursors are visible (closing either one already
+            // makes Δt "—" in the readout -- the band follows the same
+            // "needs both endpoints" rule). Deliberately uses UNCLAMPED
+            // pixel positions for its two edges (not gated on
+            // `inViewport` the way the lines themselves are) -- an
+            // endpoint currently off-screen still has a real pixel
+            // position on the same infinite line the viewport is a window
+            // onto, and the overlay's own `overflow: hidden` (section 9's
+            // established containment) naturally clips the band to
+            // whatever portion of [A, B] is currently visible, exactly
+            // the "highlight of the selected time window" this is meant
+            // to be rather than something that disappears the moment one
+            // endpoint scrolls out of view.
+            const rangeEl = overlayEl.querySelector("[data-cursor-range]");
+            const rulerRangeEl = rulerOverlayEl.querySelector("[data-cursor-ruler-range]");
+            const bandReady = cursors.a.visible && cursors.b.visible &&
+                Number.isFinite(cursors.a.time) && Number.isFinite(cursors.b.time);
+            const aX = bandReady ? wwCursorTimeToPixelX(cursors.a.time) : null;
+            const bX = bandReady ? wwCursorTimeToPixelX(cursors.b.time) : null;
+            const bandDrawable = bandReady && aX !== null && bX !== null;
+            if (rangeEl) {
+                rangeEl.hidden = !bandDrawable;
+                if (bandDrawable) {
+                    rangeEl.style.left = (Math.min(aX, bX) - sectionRect.left) + "px";
+                    rangeEl.style.width = Math.abs(bX - aX) + "px";
+                }
+            }
+            if (rulerRangeEl) {
+                rulerRangeEl.hidden = !bandDrawable;
+                if (bandDrawable) {
+                    rulerRangeEl.style.left = (Math.min(aX, bX) - rulerRect.left) + "px";
+                    rulerRangeEl.style.width = Math.abs(bX - aX) + "px";
                 }
             }
         }
@@ -7135,6 +7213,30 @@
                 if (aEl && kind === "a") aEl.textContent = aShown ? wwFormatCursorPointTime(cursors.a.time) : "—";
                 if (bEl && kind === "b") bEl.textContent = bShown ? wwFormatCursorPointTime(cursors.b.time) : "—";
                 if (dEl) dEl.textContent = aShown && bShown ? wwFormatCursorDuration(cursors.b.time - cursors.a.time) : "—";
+
+                // Owner cosmetic refinement: keep the range band tracking
+                // the dragged edge live too -- the other cursor's own
+                // pixel position is cheap to re-derive (one more
+                // wwCursorTimeToPixelX() call, no metrics re-measure).
+                if (aShown && bShown) {
+                    const otherX = kind === "a" ? wwCursorTimeToPixelX(cursors.b.time) : wwCursorTimeToPixelX(cursors.a.time);
+                    if (otherX !== null) {
+                        const left = Math.min(pageX, otherX);
+                        const width = Math.abs(otherX - pageX);
+                        const rangeEl = overlay.querySelector("[data-cursor-range]");
+                        const rulerRangeEl = rulerOverlay.querySelector("[data-cursor-ruler-range]");
+                        if (rangeEl) {
+                            rangeEl.hidden = false;
+                            rangeEl.style.left = (left - sectionRect.left) + "px";
+                            rangeEl.style.width = width + "px";
+                        }
+                        if (rulerRangeEl) {
+                            rulerRangeEl.hidden = false;
+                            rulerRangeEl.style.left = (left - rulerRect.left) + "px";
+                            rulerRangeEl.style.width = width + "px";
+                        }
+                    }
+                }
             }
 
             function onPointerMove(event) {

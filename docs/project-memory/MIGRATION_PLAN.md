@@ -8811,6 +8811,61 @@ Recorded as [DEC-039](DECISIONS.md#dec-039--ab-time-measurement-cursors-are-one-
 
 ---
 
+## Phase 4B Cosmetic Refinement — Thinner A/B Lines + Range Highlight Band (2026-08-19)
+
+### Owner-approved scope
+
+A small, low-risk cosmetic-only refinement requested AFTER Phase 4B above
+had already passed owner UAT. Explicitly not a redesign: reuse the
+existing cursor overlay architecture unchanged, no new heavy re-render
+path, no change to A/B off-by-default, initial 1/3-2/3 placement, close
+buttons, live readout, adaptive units, engineering-time authority,
+cross-layout/cross-mode persistence, drag smoothness, zero-refetch
+dragging, or channel-visibility non-interference.
+
+### What changed (`frontend/index.html` + `frontend/theme.css` only)
+
+1. **Thinner lines**: `.ww-cursor-stroke`/`.ww-cursor-ruler-stroke` width
+   reduced from 2px to 1px (with their centering `left`/`margin-left`
+   halved to match). `.ww-cursor-hit`'s 10px drag hit target is
+   byte-for-byte unchanged -- only the visible stroke got slimmer, drag
+   usability is unaffected.
+2. **A-B range highlight band**: a new `.ww-cursor-range`/
+   `.ww-cursor-ruler-range` element pair, built once in the SAME
+   `wwEnsureCursorDom()` call (prepended before the two cursor lines so it
+   paints behind them) and positioned/hidden by the SAME
+   `wwUpdateCursorOverlay()` pass plus the drag path's own
+   `livePositionUpdate()` -- never a second overlay system. Shown only
+   when BOTH A and B are visible (the same "needs both endpoints" rule
+   the Δt readout already used); its two edges use UNCLAMPED pixel
+   positions (an off-screen endpoint still has a real position on the
+   same line; the overlay's own pre-existing `overflow: hidden`
+   containment clips the band to whatever portion of `[A, B]` is
+   currently in view, rather than the band vanishing the moment either
+   endpoint scrolls out of the viewport).
+3. **New theme token**: `--cursor-range-fill` in `theme.css`, Light
+   `rgba(53, 104, 212, 0.05)` / Dark `rgba(79, 141, 253, 0.05)` -- the
+   same accent-blue RGB base `--accent-wash` already uses for each theme,
+   at the owner-specified ~5% alpha, faint enough to sit behind both the
+   cursor lines and every waveform trace. `pointer-events: none`
+   throughout -- the band is display-only, identical to the ruler
+   segment's own established non-interactive treatment.
+
+### Tests
+
+`phase4b_check.mjs` extended with 7 new checks (29 total, up from 22):
+line width (1px, hit target unchanged), the new theme token existing for
+both themes, the band's structural presence/position in both overlay
+segments, its non-interactivity and paint order, closing either cursor
+hiding it, live tracking during a drag with zero waveform fetches, and a
+spot-check that engineering time/layout/time-mode persistence are all
+otherwise unaffected. Full frontend regression suite reconfirmed at
+exactly the established 18-failure baseline (unchanged from before this
+refinement -- no test needed adjusting). Backend: 328/328 passed,
+unchanged (no backend file touched).
+
+---
+
 ## Phase 4A-UAT10 — Source-Aware Time Bounds (2026-08-19)
 
 ### Owner-approved scope

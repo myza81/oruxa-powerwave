@@ -1501,7 +1501,24 @@ frontend regression suite: back to exactly the established 18-failure
 baseline (one pre-existing check's assertion about the ruler wrapper's
 child count was updated to account for the new, intentional
 `#wwCursorRulerOverlay` element). Backend: 328/328 passed, unchanged (no
-backend file touched). Not yet owner-UAT'd in a real browser.
+backend file touched). **Owner UAT passed** — functional behaviour above
+fully confirmed in a real browser.
+
+`[FACT]` **Post-UAT cosmetic refinement — thinner A/B lines + range
+highlight band** (2026-08-19) — see
+[MIGRATION_PLAN.md — Phase 4B Cosmetic Refinement Record](MIGRATION_PLAN.md#phase-4b-cosmetic-refinement--thinner-ab-lines--range-highlight-band-2026-08-19)
+(addendum to DEC-039, not its own decision — purely visual, no
+architecture/behaviour change). Visible A/B stroke width reduced 2px →
+1px (10px drag hit target unchanged). A subtle blue-tinted band now fills
+the region between A and B — new theme token `--cursor-range-fill`
+(Light `rgba(53,104,212,0.05)` / Dark `rgba(79,141,253,0.05)`, the same
+accent-blue base `--accent-wash` already uses, at ~5% alpha) — spanning
+analog panels, digital region, and the sticky ruler continuously via the
+SAME two-segment overlay the cursor lines already use, shown only when
+both A and B are visible, updating live during drag with zero waveform
+fetches. `phase4b_check.mjs` extended to 29 checks; full frontend suite
+still exactly the established 18-failure baseline; backend 328/328
+unchanged.
 
 ## Completed foundation work
 

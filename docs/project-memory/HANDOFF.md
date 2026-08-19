@@ -86,8 +86,33 @@ the established 18-failure baseline both by direct count and by
 (the same 9 files/18 failures were already failing beforehand). Backend:
 328/328 passed, unchanged (no backend file touched).
 
+**Fully completed and owner-UAT'd.** Committed, pushed, CI green, automatic
+DEV deployment verified live at the deployed SHA (`9080aa9`). Owner
+confirmed all Phase 4B UAT checks passed in a real browser.
+
+**Post-UAT cosmetic refinement (same day)**: owner requested two small,
+purely visual follow-ups on top of the already-approved architecture above
+-- see
+[MIGRATION_PLAN.md — Phase 4B Cosmetic Refinement Record](MIGRATION_PLAN.md#phase-4b-cosmetic-refinement--thinner-ab-lines--range-highlight-band-2026-08-19)
+(recorded as an addendum to DEC-039, not a new decision). (1) The visible
+A/B stroke width was reduced from 2px to 1px -- the 10px drag hit target
+is unchanged. (2) A subtle blue-tinted band (new theme token
+`--cursor-range-fill`, the same accent-blue RGB base `--accent-wash`
+already uses per theme, at ~5% alpha) now fills the region between A and
+B, spanning analog panels, digital region, and the sticky ruler
+continuously via the SAME two-segment overlay the cursor lines already
+use (`.ww-cursor-range`/`.ww-cursor-ruler-range`, built once in the
+existing `wwEnsureCursorDom()`, positioned by the existing
+`wwUpdateCursorOverlay()` pass and the drag path's own live-update
+function -- never a second overlay system). Shown only when both A and B
+are visible; updates live during drag with zero waveform fetches. No
+change to state model, initial placement, toggle behaviour, persistence,
+or any other approved Phase 4B behaviour. `phase4b_check.mjs` extended to
+29 checks (from 22); full frontend regression suite still exactly the
+established 18-failure baseline; backend 328/328 unchanged.
+
 **Not yet done**: commit/push, CI/automatic DEV deployment verification,
-and owner real-browser UAT.
+and owner real-browser UAT of this cosmetic refinement specifically.
 
 ## What was done in the prior session (Phase 4A-UAT10 — Source-Aware Time Bounds)
 

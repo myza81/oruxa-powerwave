@@ -3216,6 +3216,19 @@ Impact:
   this same architecture.
 - See [MIGRATION_PLAN.md — Phase 4B](MIGRATION_PLAN.md#phase-4b--ab-time-measurement-cursors-2026-08-19).
 
+**Addendum (2026-08-19, post-UAT cosmetic refinement)**: after owner UAT
+passed the functional behaviour above, the visible A/B stroke width was
+reduced from 2px to 1px (the 10px drag hit target is unchanged), and a
+subtle A-B range-highlight band (new theme token `--cursor-range-fill`,
+the same accent-blue base as `--accent-wash` at ~5% alpha) was added as
+one more element in the SAME overlay system (`.ww-cursor-range`/
+`.ww-cursor-ruler-range`, positioned/hidden by the same
+`wwUpdateCursorOverlay()` pass and the drag path's own live-update
+function). Purely cosmetic — no change to this decision's architecture,
+state model, or any of the behaviour it records above; not significant
+enough to warrant its own decision number. See
+[MIGRATION_PLAN.md — Phase 4B cosmetic refinement addendum](MIGRATION_PLAN.md#phase-4b-cosmetic-refinement--thinner-ab-lines--range-highlight-band-2026-08-19).
+
 ---
 
 ## How to add a decision
