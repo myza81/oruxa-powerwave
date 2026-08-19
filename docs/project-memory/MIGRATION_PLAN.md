@@ -8648,6 +8648,169 @@ owner UAT after this push.
 
 ---
 
+## Phase 4B — A/B Time Measurement Cursors (2026-08-19)
+
+### Owner-approved scope
+
+The first dedicated measurement feature: two draggable, workspace-level A
+(blue)/B (red) TIME cursors (never amplitude cursors) that visually span
+the entire waveform workspace -- every analog panel, the digital region,
+and the shared time ruler -- so an engineer can mark two times, compare
+event timing, and read a live Δt. Explicitly out of scope: amplitude
+measurement, ΔY, sample snapping, value interpolation, a cursor-linked
+table, cross-source synchronization, event annotations, calculated
+signals.
+
+**Owner mid-task clarification**: cursor state is GLOBAL across
+Grouped/Separate/Custom (never per-layout state) -- switching layout mode
+must recompute only the overlay's pixel projection, never the stored
+engineering time.
+
+### Architecture (DEC-039)
+
+One workspace-level DOM overlay, never a Plotly `layout.shapes` entry
+duplicated into every panel -- see
+[DECISIONS.md DEC-039](DECISIONS.md#dec-039--ab-time-measurement-cursors-are-one-workspace-level-dom-overlay-over-the-shared-elapsed-time-domain-never-a-per-panel-plotly-shape-phase-4b)
+for the full architecture, alternatives considered, and reasoning; not
+duplicated here.
+
+### Implementation (`frontend/index.html` only, no backend change)
+
+**State**: `ww.measurementCursors = { enabled, a: {visible, time}, b:
+{visible, time} }`, appended to the `ww` object literal. `time` values are
+always elapsed engineering seconds -- the same coordinate system as
+`ww.viewport`/`ww.workspaceBounds` (DEC-037), never pixels or a Plotly
+paper coordinate.
+
+**DOM**: `#wwCursorModeBtn` (a `.secondary` toolbar toggle, same visual
+language as Zoom/Pan/Reset Time View, living inside the EXISTING
+`#wwToolbar` so it naturally follows `wwUpdateEmptyState()`'s established
+show/hide-when-empty gate -- a deliberate simplification permitted by the
+task's own section 27 fallback language, not an oversight).
+`#wwCursorOverlay` (a sibling of `#wwPanels`/`#wwDigitalRegion` inside
+`.workspace-section`, `position: absolute`, height set by JS to reach
+exactly the top of the ruler -- never further, to avoid a double line
+where the ruler sits in its natural, non-stuck flow position).
+`#wwCursorRulerOverlay` (a child of `#wwStickyRuler` itself, inheriting
+its `position: sticky` automatically -- the fix for the ruler's sticky
+pinning otherwise detaching the line from it mid-scroll). Right side of
+`#bottomStatusBar`: A/B/Δt readout, pushed there via a flex spacer
+(`.ww-status-spacer`), the same technique `.toolbar-spacer` already uses.
+
+**Pixel<->time conversion (one authority, section 12)**:
+`wwCursorPlotMetrics()` reads a REAL rendered Plotly surface's own
+`_fullLayout.xaxis._offset`/`_length` (preferring the ruler chart, falling
+back to the digital chart, then the first analog panel) -- the exact
+technique `wwDiagnoseDigitalAlignment()` (Phase 4A-UAT2) already
+established, never a guessed/hard-coded margin.
+`wwCursorTimeToPixelX()`/`wwCursorPixelXToTime()` are the two directions;
+the inverse clamps to the plot's own bounds during drag (section 15),
+equivalent to clamping engineering time to `[viewport.start,
+viewport.end]` since the plot's own xaxis range already IS that viewport.
+A cursor outside the current viewport is explicitly hidden (not merely
+positioned beyond the visible plot area) -- its engineering time is
+untouched either way (section 15/16: "do NOT silently move the cursor").
+
+**Dragging (section 13/14/38)**: pointer-capture on a wide (~10px)
+invisible hit strip or the compact "[A ×]"/"[B ×]" label -- plot metrics
+are measured ONCE at pointerdown and reused for the whole gesture (nothing
+that would change plot geometry can happen mid-drag, since this never
+touches `ww.viewport`/panels/layout); each pointermove only writes
+`style.left`/textContent, never a Plotly call, backend fetch, or layout
+rebuild. `wwUpdateCursorOverlay()` (the one authoritative recompute-and-
+render pass) runs once on pointerup, mirroring the same "cheap during
+drag, one full pass at the end" shape `wwWireResizeHandle()` already
+established for panel-height dragging.
+
+**Recompute hook points (section 39)**: rather than a new, independent
+resize/scroll listener, `wwUpdateCursorOverlay()` is called from the
+small number of EXISTING functions that already run on every event that
+can move a cursor's pixel projection: `wwSyncStickyRuler()` (viewport/
+time-mode/channel add-remove/clear), `wwRebuildLayout()` (Grouped/
+Separate/Custom switch, Custom Groups editor Apply -- deliberately never
+touches cursor TIME, per the owner's clarification above),
+`wwResizeAllVisiblePlots()` (window resize, Workspace Sidebar drag, Main
+Sidebar Menu collapse/expand), `wwResizePanelPlot()` (individual panel-
+height drag), and `wwRebuildDigitalChart()` (digital region height
+changes).
+
+**Source-aware bounds integration (section 25, reusing DEC-037's own
+"fresh viewport" signal)**: `wwRefreshWorkspaceBounds()` already computes
+`isFreshViewport` (true on a genuinely new source selection, the first
+viewport ever, or source bounds that actually changed -- the SAME
+condition that already decides "reset vs. clamp existing" for
+`ww.viewport` itself). `wwReinitCursorsForNewViewport()` is called
+exactly when that flag is true AND cursor mode is enabled, reinitializing
+A/B to the new viewport's 1/3-2/3 -- stale times from a previous
+recording never carry over. Re-selecting the SAME already-open source
+(the flag is false) never reinitializes. When the workspace becomes
+genuinely empty (no participating source left), cursor mode is disabled
+automatically. "Start New Workspace" (`wwClearWorkspace({
+resetSourceBounds: true })`) is the one place cursor state resets
+completely (`wwResetMeasurementCursors()`); the plain "Clear workspace"
+button deliberately leaves cursor state alone (it keeps the still-
+selected source's bounds/viewport).
+
+**Formatting**: `wwFormatCursorDuration()` (three tiers -- µs/ms/s,
+signed, so Δt's sign per section 21 is preserved) is a NEW, dedicated
+function -- deliberately not a reuse of `wwStickyRulerElapsedUnit()`/
+`wwTimeAxisTickFormat()`, which configure an entire Plotly axis for a
+visible span, a different job from formatting one scalar duration as
+status-bar text. `wwFormatCursorPointTime()` (A/B's own point-in-time
+text) reuses `wwFormatPlotlyDateString()` -- the same naive-UTC formatter
+every other Absolute-mode surface already uses -- for Absolute mode,
+falling back to `wwFormatCursorDuration()` in Elapsed mode or when no
+trustworthy recording origin exists, matching `wwElapsedToPlotlyX()`'s own
+existing fallback.
+
+**Colors**: A reuses the existing `--accent` token, B reuses `--error` --
+both already theme-aware blue/red-ish tokens (Light and Dark), not new
+hard-coded hex values, satisfying the owner's "distinct A=blue/B=red
+identity... accessible in both themes" requirement without introducing a
+third color system alongside the existing waveform trace palette.
+
+### Tests
+
+New dedicated `phase4b_check.mjs` (22 checks, scratch convention -- not
+committed to the repo): default-off activation and 1/3-2/3 init (including
+with zero displayed channels), structural verification of exactly one A/B
+overlay pair for the whole workspace (never one per panel) and the
+overlay's own height/parentage, dragging (time update, no waveform
+refetch, edge clamping), zoom/pan preserving cursor engineering time while
+an out-of-viewport cursor goes off-screen and reappears correctly on
+Reset Time View, individual close (Δt unavailable, toolbar mode stays
+on) and the OFF->ON restore path, adaptive µs/ms/s formatting and signed
+Δt, Absolute/Elapsed presentation-only, the owner's own Grouped ->
+Separate -> Custom -> Grouped global-persistence acceptance scenario
+(drag A/B in Grouped, assert identical time/Δt after each subsequent
+layout switch), digital-region continuity, default-hidden non-
+interference (zero waveform fetches from merely enabling cursor mode),
+confirmation `ww.recordBounds` was never reintroduced, source-switch
+reinit vs. same-source-reselect non-reinit, and Start New Workspace's
+full reset vs. plain Clear workspace's preservation.
+
+Verification against the existing regression suite: adding
+`#wwCursorRulerOverlay` as a second child of `#wwStickyRuler` made one
+pre-existing `phase2cc4a_check.mjs` check's "the ruler wrapper contains
+ONLY the chart element" assertion obsolete (a foreseeable, intentional
+consequence of this phase's own architecture, not a regression -- the
+title/date-context elements that check actually guards against are still
+confirmed absent) -- updated to assert exactly two children (the chart
+plus the new cursor overlay) instead of one. Full frontend regression
+suite confirmed back to exactly the established 18-failure baseline after
+that update (verified both ways: 19 failures with the stale assertion
+still in place, 18 after correcting it, and cross-checked against
+canonical pre-Phase-4B `frontend/index.html` via `git stash` to confirm
+the 9 other still-failing files were already failing beforehand,
+unrelated to this phase). Backend: 328/328 passed, unchanged (no backend
+file touched).
+
+### Decision
+
+Recorded as [DEC-039](DECISIONS.md#dec-039--ab-time-measurement-cursors-are-one-workspace-level-dom-overlay-over-the-shared-elapsed-time-domain-never-a-per-panel-plotly-shape-phase-4b).
+
+---
+
 ## Phase 4A-UAT10 — Source-Aware Time Bounds (2026-08-19)
 
 ### Owner-approved scope

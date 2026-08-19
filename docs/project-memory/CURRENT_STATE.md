@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-19** (Phase 4A-UAT9 and Phase 4A-UAT10).
+Last meaningful update: **2026-08-19** (Phase 4B, on top of Phase 4A-UAT9 and Phase 4A-UAT10).
 
 ## Development phase
 
@@ -1466,6 +1466,42 @@ bounds on display clear"). Frontend suite is back to exactly the
 established 18-failure baseline (621 passed); backend 328 passed. Owner
 has completed real-browser UAT of the BEN5K 7.020 s case and all UAT10
 checks passed.
+
+`[FACT]` **A/B time measurement cursors are implemented — Phase 4B — A/B
+Time Measurement Cursors** (2026-08-19) — see
+[MIGRATION_PLAN.md — Phase 4B Record](MIGRATION_PLAN.md#phase-4b--ab-time-measurement-cursors-2026-08-19)
+and [DECISIONS.md DEC-039](DECISIONS.md#dec-039--ab-time-measurement-cursors-are-one-workspace-level-dom-overlay-over-the-shared-elapsed-time-domain-never-a-per-panel-plotly-shape-phase-4b).
+A/B workspace-level time measurement cursors overlay the entire waveform
+stack, including analog, digital, and shared time ruler. Cursor state is
+stored in the shared elapsed engineering-time domain; A is blue, B red;
+Δt is adaptive-formatted. Implemented as ONE DOM overlay per cursor (plus
+a second, sticky-nested segment crossing the ruler) — never a Plotly
+`layout.shapes` entry duplicated into every analog panel. Off by default;
+first activation places A/B at 1/3 and 2/3 of the current viewport.
+Cursor state is global across Grouped/Separate/Custom (owner mid-task
+clarification) — a layout-mode switch recomputes only the overlay's pixel
+projection, never the stored engineering time. Dragging is DOM-only
+(cached plot metrics + `style.left`/textContent writes), never a Plotly
+redraw or waveform refetch. Zoom/pan/Reset Time View preserve cursor
+engineering time exactly; an out-of-viewport cursor goes off-screen
+rather than being silently relocated. Absolute/Elapsed switching changes
+only the A/B text, never the underlying time. Cursor mode works even with
+zero displayed channels (the readout only needs `ww.viewport`, already
+valid per Phase 4A-UAT10 as soon as a source is opened); the visual line
+additionally needs a rendered plotting surface to project onto. A
+genuinely new source selection (reusing DEC-037's own "fresh viewport"
+signal) reinitializes A/B to the new source's 1/3-2/3; re-selecting the
+same already-open source does not; "Start New Workspace" resets cursor
+state completely, while the plain "Clear workspace" button leaves it
+alone. No amplitude/value-at-cursor measurement, sample snapping, or
+cursor-linked table was implemented — explicitly out of scope, left for a
+future measurement phase to build on this same architecture. New
+dedicated `phase4b_check.mjs` (22 checks, scratch convention). Full
+frontend regression suite: back to exactly the established 18-failure
+baseline (one pre-existing check's assertion about the ruler wrapper's
+child count was updated to account for the new, intentional
+`#wwCursorRulerOverlay` element). Backend: 328/328 passed, unchanged (no
+backend file touched). Not yet owner-UAT'd in a real browser.
 
 ## Completed foundation work
 

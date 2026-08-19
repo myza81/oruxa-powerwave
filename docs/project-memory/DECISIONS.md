@@ -3090,6 +3090,134 @@ Impact:
 
 ---
 
+## DEC-039 — A/B time measurement cursors are ONE workspace-level DOM overlay over the shared elapsed-time domain, never a per-panel Plotly shape (Phase 4B)
+
+Date: 2026-08-19
+Status: Approved
+Source: explicit project-owner task specification opening Phase 4B ("A/B
+Time Cursors"), the first dedicated measurement feature built on top of
+the shared-viewport architecture DEC-021/DEC-024/DEC-030/DEC-037 already
+established.
+
+Decision:
+
+A/B workspace-level time measurement cursors overlay the entire waveform
+stack, including analog, digital, and shared time ruler. Cursor state is
+stored in the shared elapsed engineering-time domain; A is blue, B red;
+Δt is adaptive-formatted.
+
+Concretely:
+
+- **Architecture**: a plain absolutely-positioned DOM overlay
+  (`#wwCursorOverlay`, a sibling of `#wwPanels`/`#wwDigitalRegion` inside
+  `.workspace-section`) plus one nested sibling overlay
+  (`#wwCursorRulerOverlay`, a child of `#wwStickyRuler` itself so it
+  inherits that element's own `position: sticky` pinning automatically) —
+  never a Plotly `layout.shapes` entry duplicated into every analog panel.
+  The two segments are driven by the identical time→pixel conversion
+  (`wwCursorPlotMetrics()`/`wwCursorTimeToPixelX()`, reading a real
+  rendered surface's own `_fullLayout.xaxis._offset`/`_length`, the same
+  established technique `wwDiagnoseDigitalAlignment()` already proved in
+  Phase 4A-UAT2) and abut exactly at the ruler's top edge, so they read as
+  one continuous line without needing a second synchronization mechanism.
+- **State**: `ww.measurementCursors = { enabled, a: {visible, time}, b:
+  {visible, time} }`. `a.time`/`b.time` are ALWAYS elapsed engineering
+  seconds in the exact same coordinate system as `ww.viewport`/
+  `ww.workspaceBounds` (DEC-037) — never pixels, never a Plotly paper
+  coordinate, never an absolute timestamp string. Absolute-mode display
+  is a pure formatting transform at render time only, exactly parallel to
+  how `ww.viewport` itself is already treated.
+- **Global across layout modes**: cursor state is workspace-level, never
+  per-layout — switching Grouped/Separate/Custom recomputes ONLY the
+  overlay's pixel projection (panel geometry changed) and never touches
+  `a.time`/`b.time`, matching the same "layout mode governs arrangement
+  only" principle DEC-035 already established for analog visibility.
+- **Default off; 1/3-2/3 initial placement**: a source/workspace starts
+  with cursor mode disabled. First activation places A at
+  `viewport.start + width/3` and B at `viewport.start + 2*width/3`.
+  Toggling OFF then ON again within the same source/workspace restores
+  whatever positions were last set (including un-hiding an individually
+  closed cursor) rather than re-initializing — only a genuinely new
+  source selection (reusing the exact same "fresh viewport" signal
+  `wwRefreshWorkspaceBounds()` already computes for DEC-037) or "Start New
+  Workspace" reinitializes/fully resets.
+- **Dragging is DOM-only**: pointer-capture drag on a wide invisible hit
+  strip or the compact "[A ×]"/"[B ×]" label updates `style.left`/
+  textContent directly, using plot metrics cached once at drag-start —
+  never a Plotly redraw, backend fetch, or full layout rebuild per
+  pointermove, which is the actual reason this is a DOM overlay and not
+  Plotly shapes (the fragmented-state/redraw-cost risk the owner's task
+  spec explicitly called out).
+- **Readout**: A/B/Δt shown at the right side of the bottom status bar
+  (a flex spacer, not a floating dialog), Δt signed
+  (`B.time - A.time`), adaptive µs/ms/s text formatting via a new,
+  dedicated `wwFormatCursorDuration()` — deliberately separate from
+  `wwStickyRulerElapsedUnit()`/`wwTimeAxisTickFormat()`, which configure a
+  Plotly axis for an entire visible span, a different job from formatting
+  one scalar duration as status-bar text.
+- **Works with zero displayed channels**: the readout only needs a valid
+  `ww.viewport` (established immediately on source-open per DEC-037, even
+  with nothing displayed); the visual line additionally needs a rendered
+  plotting surface to project onto, so it simply stays undrawn (never
+  guessed/approximated) until one exists.
+
+Reason:
+
+This is the first dedicated measurement feature in the product, and its
+own task specification was explicit that a naive per-panel-shapes
+implementation would create exactly the fragmentation, alignment risk,
+and duplicated-state problems this project's shared-viewport work
+(DEC-021 onward) already spent several phases eliminating for the
+waveform itself — worth recording as a decision, not just an
+implementation detail, because every future measurement feature
+(amplitude/value-at-cursor, a cursor-linked table, multi-source
+comparison) will build on this same overlay/state architecture rather
+than reinventing it.
+
+Alternatives considered:
+
+- **A Plotly `layout.shapes` vertical line per panel** — rejected per the
+  owner's own explicit instruction (section 9 of the task spec): N
+  independent lines to keep pixel-aligned across every analog panel, the
+  digital chart, and the ruler on every zoom/pan/resize/layout change,
+  the exact duplicated-state risk a workspace-level overlay avoids by
+  construction.
+- **A single overlay spanning the ruler's own row too (no separate
+  sticky-nested segment)** — rejected: since the ruler is `position:
+  sticky`, a plain non-sticky overlay's line would visually detach from
+  the ruler the moment it becomes pinned mid-scroll (the analog/digital
+  portion scrolls normally, the ruler does not) — the two-segment design
+  is the direct fix for that, not a workaround chosen for its own sake.
+- **Recomputing pixel projection continuously via a scroll/resize
+  listener loop** — rejected in favor of hooking into the small number of
+  EXISTING functions that already run on every event that can move a
+  cursor's projection (`wwSyncStickyRuler()`, `wwRebuildLayout()`,
+  `wwResizeAllVisiblePlots()`, `wwRebuildDigitalChart()`), avoiding a
+  second, independent trigger mechanism alongside ones that already exist
+  for the exact same class of "something about the plot geometry changed"
+  event.
+
+Impact:
+
+- `frontend/index.html` only — no backend change. New state:
+  `ww.measurementCursors`. New DOM: `#wwCursorModeBtn` (toolbar),
+  `#wwCursorOverlay`/`#wwCursorRulerOverlay` (workspace/ruler overlays),
+  status-bar A/B/Δt readout. New functions: `wwCursorPlotMetrics()`,
+  `wwCursorTimeToPixelX()`/`wwCursorPixelXToTime()`,
+  `wwFormatCursorDuration()`/`wwFormatCursorPointTime()`,
+  `wwEnsureCursorDom()`, `wwUpdateCursorOverlay()`,
+  `wwToggleMeasurementCursors()`, `wwSetMeasurementCursorVisible()`,
+  `wwInitMeasurementCursorPositions()`, `wwReinitCursorsForNewViewport()`,
+  `wwResetMeasurementCursors()`, `wwWireCursorDrag()`.
+- No amplitude/value-at-cursor measurement, ΔY, sample snapping, value
+  interpolation, cursor-linked table, cross-source synchronization, event
+  annotations, or calculated signals were implemented — explicitly out of
+  scope for this phase, left for a future measurement phase to build on
+  this same architecture.
+- See [MIGRATION_PLAN.md — Phase 4B](MIGRATION_PLAN.md#phase-4b--ab-time-measurement-cursors-2026-08-19).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

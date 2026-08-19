@@ -8,6 +8,89 @@ Last updated: **2026-08-19**
 
 ## What was most recently done
 
+**Phase 4B — A/B Time Measurement Cursors.** Full detail:
+[MIGRATION_PLAN.md — Phase 4B Record](MIGRATION_PLAN.md#phase-4b--ab-time-measurement-cursors-2026-08-19),
+[DECISIONS.md — DEC-039](DECISIONS.md#dec-039--ab-time-measurement-cursors-are-one-workspace-level-dom-overlay-over-the-shared-elapsed-time-domain-never-a-per-panel-plotly-shape-phase-4b).
+
+**Owner direction**: the first dedicated measurement feature -- two
+draggable, workspace-level A (blue)/B (red) TIME cursors spanning the
+entire waveform workspace (every analog panel, the digital region, and
+the shared time ruler), with a live A/B/Δt readout. Mid-task
+clarification: cursor state must be GLOBAL across Grouped/Separate/Custom
+(never per-layout), and layout switching must only recompute pixel
+projection, never the stored engineering time.
+
+**What changed** (`frontend/index.html` only): new `ww.measurementCursors
+= { enabled, a: {visible, time}, b: {visible, time} }` state, storing
+elapsed engineering seconds in the exact same coordinate system as
+`ww.viewport`/`ww.workspaceBounds` (DEC-037) -- never pixels. Rendered as
+ONE workspace-level DOM overlay (`#wwCursorOverlay`, absolutely positioned
+inside `.workspace-section`, height computed to reach exactly the ruler's
+top edge) plus a second segment nested inside `#wwStickyRuler` itself
+(`#wwCursorRulerOverlay`, inheriting that element's own `position: sticky`
+automatically) -- never a Plotly `layout.shapes` entry per panel. Both
+segments read pixel geometry from a real rendered Plotly surface's own
+`_fullLayout.xaxis._offset`/`_length` (`wwCursorPlotMetrics()`, the same
+technique `wwDiagnoseDigitalAlignment()` already established in Phase
+4A-UAT2), so they stay pixel-aligned with every panel/the ruler with no
+guessed offsets. New compact `#wwCursorModeBtn` toggle lives inside the
+existing `#wwToolbar` (so it naturally follows the toolbar's own
+show/hide-when-empty gate); new A/B/Δt readout sits at the right edge of
+the bottom status bar via a flex spacer.
+
+Dragging is pointer-capture on a wide invisible hit strip or the compact
+"[A ×]"/"[B ×]" label, with plot metrics cached once at drag-start --
+every pointermove is a `style.left`/textContent write only, never a
+Plotly redraw or waveform fetch. First activation places A/B at 1/3 and
+2/3 of the current viewport; toggling the toolbar mode OFF then ON within
+the same source restores prior positions (including un-hiding an
+individually-closed cursor) rather than reinitializing. A genuinely new
+source selection reuses `wwRefreshWorkspaceBounds()`'s own existing
+"fresh viewport" signal (DEC-037) to reinitialize A/B to 1/3-2/3 of the
+NEW source -- re-selecting the same already-open source does not, and
+"Start New Workspace" resets cursor state completely while the plain
+"Clear workspace" button leaves it alone. A cursor outside the current
+viewport is explicitly hidden rather than silently relocated, and
+reappears at its exact original time once the viewport includes it again
+(zoom back out / Reset Time View). Absolute/Elapsed switching changes
+only the A/B text (new `wwFormatCursorPointTime()`, reusing the existing
+`wwFormatPlotlyDateString()` naive-UTC formatter for Absolute), never the
+underlying time; Δt uses a new, dedicated three-tier (µs/ms/s, signed)
+`wwFormatCursorDuration()` -- deliberately separate from the ruler's own
+axis-formatting functions, which answer a different question (configuring
+an entire Plotly axis, not formatting one scalar duration as text). Cursor
+mode works even with zero displayed channels (the readout only needs
+`ww.viewport`; the visual line additionally needs a rendered plotting
+surface, so it just stays undrawn until one exists, never approximated).
+A reuses the existing `--accent` theme token, B reuses `--error` -- both
+already theme-aware, no new hard-coded colors.
+
+**Verification**: new dedicated `phase4b_check.mjs` (22 checks, scratch
+convention) covering activation/1/3-2/3 init (including with zero
+channels displayed), the one-overlay-not-per-panel structural guarantee,
+dragging (time update/no refetch/edge clamping), zoom/pan preserving
+cursor time with correct off-screen/reappear behavior, individual close
+and the OFF->ON restore path, adaptive formatting and signed Δt,
+Absolute/Elapsed presentation-only, the owner's own Grouped->Separate->
+Custom->Grouped global-persistence scenario, digital continuity,
+default-hidden non-interference, and source-switch reinit vs.
+same-source-reselect non-reinit. Adding `#wwCursorRulerOverlay` as a
+second child of `#wwStickyRuler` made one PRE-EXISTING
+`phase2cc4a_check.mjs` check's "ruler wrapper has exactly one child"
+assertion obsolete (an intentional, foreseeable consequence of this
+phase's own architecture -- the title/date-context elements that check
+actually guards against are still confirmed absent) -- updated
+accordingly. Full frontend regression suite reconfirmed back to exactly
+the established 18-failure baseline both by direct count and by
+`git stash`-comparing against canonical pre-Phase-4B `frontend/index.html`
+(the same 9 files/18 failures were already failing beforehand). Backend:
+328/328 passed, unchanged (no backend file touched).
+
+**Not yet done**: commit/push, CI/automatic DEV deployment verification,
+and owner real-browser UAT.
+
+## What was done in the prior session (Phase 4A-UAT10 — Source-Aware Time Bounds)
+
 **Phase 4A-UAT10 — Source-Aware Time Bounds.** Full detail:
 [MIGRATION_PLAN.md — Phase 4A-UAT10 Record](MIGRATION_PLAN.md#phase-4a-uat10--source-aware-time-bounds-2026-08-19),
 [DECISIONS.md — DEC-037](DECISIONS.md#dec-037--waveform-time-domain-state-is-source-aware-source-bounds-workspace-bounds-and-viewport-are-distinct-phase-4a-uat10).
@@ -70,7 +153,7 @@ clear"). Frontend suite is back to exactly the established 18-failure
 baseline (`621 passed`); backend `328 passed`. **Owner has completed
 real-browser UAT of the BEN5K 7.020 s case and all UAT10 checks passed.**
 
-## What was done in the prior session (Phase 4A-UAT9 — Default-Hidden Channels + Group Visibility Toggles)
+## What was done in the earlier session (Phase 4A-UAT9 — Default-Hidden Channels + Group Visibility Toggles)
 
 **Phase 4A-UAT9 — Default-Hidden Channels + Group Visibility Toggles.**
 Full detail:

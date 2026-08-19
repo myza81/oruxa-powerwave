@@ -537,6 +537,14 @@
         #bottomStatusBar .shell-status-item[hidden] { display: none; }
         #bottomStatusBar .shell-status-label { text-transform: uppercase; letter-spacing: 0.03em; }
         #bottomStatusBar .shell-status-value { color: var(--text); font-weight: 600; }
+        /* Phase 4B: pushes the A/B/Δt readout to the right edge of the bar
+           (owner requirement) -- a flex spacer, the same technique
+           .toolbar-spacer already uses in #wwToolbar, not a second layout
+           mechanism. */
+        .ww-status-spacer { flex: 1 1 auto; }
+        .ww-cursor-readout { gap: 14px; }
+        .ww-cursor-readout-a .shell-status-value { color: var(--accent); }
+        .ww-cursor-readout-b .shell-status-value { color: var(--error); }
 
         /* ==================================================================
            Responsive fallback (section 23 of Phase 3A, refined by the
@@ -1585,6 +1593,124 @@
            `margin: { t: 2, b: 34 }`) -- no separate title/date DOM
            elements above it anymore, so no extra height for those. */
         .ww-sticky-ruler-chart { width: 100%; height: 40px; }
+
+        /* Phase 4B: A/B time measurement cursors -- a workspace-level DOM
+           overlay (see #wwCursorOverlay's own HTML comment for the "why
+           not a Plotly shape per panel" reasoning). `top`/`left`/`right: 0`
+           with a JS-computed `height` (never `bottom: 0` -- that would
+           extend the overlay across the ruler's own row too, producing the
+           double-line section 33 explicitly warns against whenever the
+           ruler is in its natural, non-stuck flow position). The container
+           itself is pointer-events: none so it never blocks Plotly hover,
+           panel resize handles, or digital-lane clicks underneath it
+           (section 34) -- only the two small per-cursor hit targets/labels
+           opt back in. */
+        .ww-cursor-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            pointer-events: none;
+            z-index: 3;
+            overflow: hidden;
+        }
+        .ww-cursor-overlay[hidden] { display: none; }
+        /* One `.ww-cursor-line` per cursor, positioned via inline `left`
+           (px, relative to this overlay -- see wwUpdateCursorOverlay()).
+           Full height of the overlay itself (top/bottom: 0), not the
+           visible-line width -- this is the DRAG HIT AREA's own bounding
+           box, wide enough to grab comfortably (section 14) while the
+           visible stroke inside it stays thin (section 7/8). */
+        .ww-cursor-line {
+            position: absolute;
+            top: 0; bottom: 0;
+            width: 0;
+            pointer-events: none;
+        }
+        .ww-cursor-line[hidden] { display: none; }
+        .ww-cursor-stroke {
+            position: absolute;
+            top: 0; bottom: 0;
+            left: -1px;
+            width: 2px;
+            pointer-events: none;
+        }
+        .ww-cursor-line--a .ww-cursor-stroke { background: var(--accent); }
+        .ww-cursor-line--b .ww-cursor-stroke { background: var(--error); }
+        /* Invisible wide grab strip (section 14: ~8-12px, centered on the
+           thin visible line) -- the only part of a cursor line itself that
+           accepts pointer events. */
+        .ww-cursor-hit {
+            position: absolute;
+            top: 0; bottom: 0;
+            left: -5px;
+            width: 10px;
+            cursor: ew-resize;
+            pointer-events: auto;
+            touch-action: none;
+        }
+        /* Compact "[A ×]" pill, attached to the top of the line (section 7).
+           translateX(-50%) centers it on the cursor's own X, matching the
+           line/hit-target's own centering convention. */
+        .ww-cursor-label {
+            position: absolute;
+            top: 2px;
+            left: 0;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            padding: 1px 4px 1px 6px;
+            border-radius: 999px;
+            font-size: 0.68rem;
+            font-weight: 700;
+            line-height: 1.5;
+            color: #fff;
+            pointer-events: auto;
+            cursor: ew-resize;
+            touch-action: none;
+            white-space: nowrap;
+        }
+        .ww-cursor-line--a .ww-cursor-label { background: var(--accent); }
+        .ww-cursor-line--b .ww-cursor-label { background: var(--error); }
+        .ww-cursor-close {
+            appearance: none;
+            border: none;
+            background: transparent;
+            color: inherit;
+            font-size: 0.75rem;
+            line-height: 1;
+            padding: 0 1px;
+            cursor: pointer;
+            opacity: 0.85;
+        }
+        .ww-cursor-close:hover { opacity: 1; }
+        .ww-cursor-close:focus-visible, .ww-cursor-label:focus-visible {
+            outline: 2px solid var(--text);
+            outline-offset: 1px;
+        }
+        /* The ruler's own segment -- a child of #wwStickyRuler (already
+           `position: sticky`), so `top/bottom: 0` here stretches to that
+           sticky element's own established height with no JS-computed
+           height needed. Purely visual continuation of the same line --
+           never an independent drag target (section 34: the analog/digital
+           hit area above is enough to grab the whole line). */
+        .ww-cursor-ruler-overlay {
+            position: absolute;
+            top: 0; bottom: 0; left: 0; right: 0;
+            pointer-events: none;
+            z-index: 5;
+            overflow: hidden;
+        }
+        .ww-cursor-ruler-overlay[hidden] { display: none; }
+        .ww-cursor-ruler-stroke {
+            position: absolute;
+            top: 0; bottom: 0;
+            width: 2px;
+            margin-left: -1px;
+            pointer-events: none;
+        }
+        .ww-cursor-ruler-stroke[hidden] { display: none; }
+        .ww-cursor-ruler-stroke.ww-cursor-a { background: var(--accent); }
+        .ww-cursor-ruler-stroke.ww-cursor-b { background: var(--error); }
     </style>
 </head>
 <body>
@@ -1778,6 +1904,20 @@
                         <span class="hint" id="wwTimeModeContext" hidden></span>
                         <button class="secondary" type="button" id="wwResetViewBtn">Reset Time View</button>
                         <button class="secondary" type="button" id="wwAutoscaleBtn">Autoscale Y</button>
+                        <!-- Phase 4B: A/B time measurement cursors -- a mode
+                             toggle, same visual language as every other
+                             `.secondary` toolbar button (not a new button
+                             style). aria-pressed carries the on/off state
+                             (section 41 -- must not rely on cursor
+                             visibility several screens below); title/
+                             aria-label give the same accessible name. Lives
+                             inside the EXISTING #wwToolbar, so it naturally
+                             follows wwUpdateEmptyState()'s established
+                             show/hide-when-empty gate exactly like Zoom/Pan/
+                             Reset Time View already do -- see
+                             wwToggleMeasurementCursors()'s own comment for
+                             why this is deliberate, not an oversight. -->
+                        <button class="secondary" type="button" id="wwCursorModeBtn" aria-pressed="false" title="A/B time cursors">Cursors A/B</button>
                         <div class="toolbar-spacer"></div>
                         <div class="theme-toggle" id="layoutModeToggle" role="group" aria-label="Waveform layout">
                             <button type="button" id="layoutModeGroupedBtn" aria-pressed="true">Grouped</button>
@@ -1813,6 +1953,27 @@
 
                             <p class="empty-state" id="wwEmptyState">Select channels from the sidebar to display waveforms.</p>
 
+                            <!-- Phase 4B: A/B time measurement cursors -- ONE
+                                 workspace-level overlay, never a per-panel
+                                 Plotly shape (section 9 of that task). Spans
+                                 from the top of this section down to the top
+                                 of the shared sticky ruler (height set by
+                                 wwUpdateCursorOverlay(), not CSS, since it
+                                 must track however tall the analog+digital
+                                 content currently is). A SEPARATE nested
+                                 overlay lives inside #wwStickyRuler itself
+                                 (see below) so the cursor line inherits the
+                                 ruler's own `position: sticky` pinning
+                                 automatically instead of scrolling away with
+                                 the rest of this absolutely-positioned,
+                                 non-sticky overlay -- the two segments abut
+                                 exactly at the ruler's top edge and are
+                                 driven by the identical time->pixel
+                                 conversion, so they read as one continuous
+                                 line (section 33). `hidden` by default;
+                                 shown only while ww.measurementCursors.enabled. -->
+                            <div id="wwCursorOverlay" class="ww-cursor-overlay" hidden></div>
+
                             <div id="wwPanels"></div>
 
                             <!-- Phase 4A: digital channel region -- BELOW
@@ -1843,6 +2004,12 @@
                                  -- only its scrolling ancestor changed (see
                                  the CSS comment above #activeViewArea). -->
                             <div class="ww-sticky-ruler" id="wwStickyRuler" hidden>
+                                <!-- Phase 4B: the cursor overlay's ruler
+                                     segment -- see #wwCursorOverlay's own
+                                     comment above. A child of the sticky
+                                     wrapper itself, so it sticks in lockstep
+                                     with the ruler with no extra JS. -->
+                                <div id="wwCursorRulerOverlay" class="ww-cursor-ruler-overlay" hidden></div>
                                 <div class="ww-sticky-ruler-chart" id="wwStickyRulerChart"></div>
                             </div>
                         </section>
@@ -1945,6 +2112,19 @@
                 <span class="shell-status-item shell-status-item-waveform"><span class="shell-status-label">Sample rate</span><span class="shell-status-value" id="statusBarSampleRate">&mdash;</span></span>
                 <span class="shell-status-item shell-status-item-waveform"><span class="shell-status-label">Duration</span><span class="shell-status-value" id="statusBarDuration">&mdash;</span></span>
                 <span class="shell-status-item shell-status-item-waveform"><span class="shell-status-label">Displayed channels</span><span class="shell-status-value" id="statusBarChannelCount">0</span></span>
+                <!-- Phase 4B: A/B/Δt measurement readout -- pushed to the
+                     RIGHT side of the status bar (owner requirement) via
+                     the flex spacer below, rather than a floating dialog.
+                     Shown/hidden by wwUpdateCursorOverlay() together with
+                     the overlay itself; independent of whether any channel
+                     is currently displayed (section 27 -- the readout only
+                     needs a valid ww.viewport, not a rendered plot). -->
+                <div class="ww-status-spacer"></div>
+                <span class="shell-status-item ww-cursor-readout" id="wwCursorReadout" hidden>
+                    <span class="shell-status-item ww-cursor-readout-a"><span class="shell-status-label">A</span><span class="shell-status-value" id="statusBarCursorA">&mdash;</span></span>
+                    <span class="shell-status-item ww-cursor-readout-b"><span class="shell-status-label">B</span><span class="shell-status-value" id="statusBarCursorB">&mdash;</span></span>
+                    <span class="shell-status-item"><span class="shell-status-label">&Delta;t</span><span class="shell-status-value" id="statusBarCursorDelta">&mdash;</span></span>
+                </span>
             </div>
         </div>
     </div>
@@ -4316,6 +4496,30 @@
             // reset by wwClearWorkspace() (the chart element itself is
             // never torn down, same as the sticky ruler's own chartEl).
             digitalClickWired: false,
+            // Phase 4B: A/B time measurement cursors. `enabled` is the one
+            // mode toggle (section 4/24: OFF hides both cursors and the
+            // readout but retains a/b.time so a simple OFF->ON within the
+            // same source/workspace restores the previous positions --
+            // only "Start new workspace" wipes this, see
+            // wwClearWorkspace()'s own comment). `a`/`b` are stored ONLY as
+            // elapsed engineering seconds in the exact same coordinate
+            // system as ww.viewport/ww.workspaceBounds (section 6) -- never
+            // pixels, never a Plotly paper coordinate, never an absolute
+            // timestamp string; Absolute-mode display is a pure formatting
+            // transform read at render time (wwFormatCursorPointTime()),
+            // exactly like ww.timeMode already treats ww.viewport itself.
+            // `visible` is per-cursor (section 22/23: closing A's × must
+            // never touch B or the master `enabled` flag) and is
+            // deliberately separate from `time` so re-showing a closed
+            // cursor (cycling the toolbar mode OFF->ON, section 23) can
+            // restore it at its LAST time rather than forcing a fresh
+            // 1/3-2/3 re-init -- see wwToggleMeasurementCursors()'s own
+            // comment for exactly when a fresh init does vs. doesn't happen.
+            measurementCursors: {
+                enabled: false,
+                a: { visible: true, time: null },
+                b: { visible: true, time: null },
+            },
         };
 
         function wwFiniteNumber(value) {
@@ -4397,25 +4601,48 @@
             options = options || {};
             const next = wwDeriveWorkspaceBounds();
             ww.workspaceBounds = next;
+            // Phase 4B (section 25): captured BEFORE ww.viewport is
+            // touched below -- true exactly when this call is about to
+            // establish a genuinely fresh viewport (a new source
+            // selection, the very first viewport ever, or source bounds
+            // that actually changed), the same signal ww.viewport itself
+            // already uses to decide "reset vs. clamp existing" just
+            // below. Reused, not reinvented, for cursor reinitialization
+            // so the two can never disagree about what counts as "a fresh
+            // view" (least-surprising behavior per that section's own
+            // guidance).
+            const isFreshViewport = !!(options.resetViewport || !ww.viewport);
 
             if (!next) {
                 ww.viewport = null;
                 wwSyncStickyRuler();
                 wwRebuildDigitalChart();
+                // Section 27: workspace just became genuinely empty (no
+                // participating source left) -- cursor mode has nothing
+                // valid left to measure against.
+                if (ww.measurementCursors.enabled) {
+                    ww.measurementCursors.enabled = false;
+                    wwUpdateCursorOverlay();
+                }
                 return;
             }
 
-            const desired = options.resetViewport || !ww.viewport
+            const desired = isFreshViewport
                 ? next
                 : (wwClampRangeToWorkspace(ww.viewport.start, ww.viewport.end) || next);
 
             if (wwBoundsEqual(ww.viewport, desired)) {
+                if (isFreshViewport) wwReinitCursorsForNewViewport();
                 wwSyncStickyRuler();
                 wwRebuildDigitalChart();
                 return;
             }
 
             await wwApplyAndFetchViewport(desired.start, desired.end);
+            if (isFreshViewport) {
+                wwReinitCursorsForNewViewport();
+                wwUpdateCursorOverlay();
+            }
         }
 
         // ==================================================================
@@ -5117,6 +5344,13 @@
             if (panel.plotlyReady && window.Plotly && Plotly.Plots && typeof Plotly.Plots.resize === "function") {
                 Plotly.Plots.resize(panel.chartEl);
             }
+            // Phase 4B (section 39): this is also the per-panel drag-resize
+            // handle's own rAF-flushed resize call (wwWireResizeHandle) --
+            // a panel's height changing shifts where everything below it
+            // (digital region, ruler) sits, so the overlay's height/pixel
+            // projection must be recomputed here too, not just from the
+            // window/sidebar-resize path below.
+            wwUpdateCursorOverlay();
         }
 
         // Phase 3A-UAT1: reflows EVERY currently-visible waveform Plotly
@@ -5166,6 +5400,11 @@
                     Plotly.Plots.resize(digitalChartEl);
                 }
             }
+            // Phase 4B (section 39): window resize, Workspace Sidebar
+            // drag, and Main Sidebar Menu collapse/expand all funnel
+            // through here -- one more hook point so the cursor overlay's
+            // pixel projection never goes stale after any of them.
+            wwUpdateCursorOverlay();
         }
 
         // Coalesces potentially-rapid-fire callers (a real browser window
@@ -5902,6 +6141,10 @@
             regionEl.hidden = entries.length === 0;
             if (entries.length === 0) {
                 ww.digitalChartReady = false;
+                // Phase 4B: the digital region's own height (or presence)
+                // just changed -- recompute regardless of whether it went
+                // to zero (nothing displayed) or is about to be rebuilt.
+                wwUpdateCursorOverlay();
                 return;
             }
 
@@ -6088,6 +6331,10 @@
                 });
                 ww.digitalClickWired = true;
             }
+            // Phase 4B (section 39): the digital region's own height
+            // (WW_DIGITAL_LANE_PX * row count) just potentially changed,
+            // which shifts where the ruler sits below it.
+            wwUpdateCursorOverlay();
         }
 
         // Fetches (batched, one request per source among the newly-added
@@ -6245,6 +6492,12 @@
                 ww.sourceBounds.clear();
                 ww.workspaceBounds = null;
                 ww.viewport = null;
+                // Phase 4B (section 24): "Start New Workspace" is the one
+                // place cursor state resets completely -- the plain "Clear
+                // workspace" branch below deliberately does NOT call this
+                // (it keeps the still-selected source's bounds/viewport,
+                // so existing cursor times stay meaningful).
+                wwResetMeasurementCursors();
             } else {
                 ww.workspaceBounds = wwDeriveWorkspaceBounds();
                 ww.viewport = ww.workspaceBounds ? { start: ww.workspaceBounds.start, end: ww.workspaceBounds.end } : null;
@@ -6475,6 +6728,12 @@
                 });
             }
             wwUpdateTimeModeContext();
+            // Phase 4B: every path that reaches this function already
+            // changed the viewport, the displayed-channel set, or the time
+            // mode -- all three can move where a cursor's engineering time
+            // now projects to on screen, so this is one of the hook points
+            // that keeps the overlay's pixel positions in sync (section 17).
+            wwUpdateCursorOverlay();
         }
 
         // Phase 2C-C3: the shared "<date> · Record time" label (section
@@ -6497,6 +6756,439 @@
             const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
             const dateText = d.getUTCDate() + " " + months[d.getUTCMonth()] + " " + d.getUTCFullYear();
             if (el) { el.textContent = dateText + " · Record time"; el.hidden = false; }
+        }
+
+        // ==================================================================
+        // Phase 4B: A/B time measurement cursors
+        //
+        // Architecture: ONE workspace-level DOM overlay (see
+        // #wwCursorOverlay/#wwCursorRulerOverlay's own HTML comments), never
+        // a Plotly `layout.shapes` entry per panel -- shapes would mean N
+        // independent lines to keep pixel-aligned across every analog
+        // panel, the digital chart, AND the ruler on every zoom/pan/resize/
+        // layout change, exactly the fragmentation/duplicated-state risk
+        // this task's own section 9 called out. A plain absolutely-
+        // positioned overlay, recomputed from the same single X-conversion
+        // authority every other shared-viewport feature already uses
+        // (ww.viewport + each surface's real Plotly `_fullLayout.xaxis`
+        // geometry, the exact technique wwDiagnoseDigitalAlignment() already
+        // established in Phase 4A-UAT2), is both simpler and cheaper: a
+        // drag becomes a handful of `style.left`/textContent writes, never
+        // a Plotly redraw (section 38).
+        //
+        // State: ww.measurementCursors.{a,b}.time are ALWAYS elapsed
+        // engineering seconds in the exact same coordinate system as
+        // ww.viewport/ww.workspaceBounds (section 6) -- reusing
+        // wwElapsedToPlotlyX() only when a value must be RENDERED as text
+        // in Absolute mode, exactly parallel to how ww.viewport itself is
+        // never converted except at a Plotly-facing boundary.
+        // ==================================================================
+
+        // One authoritative source of "where is the shared plotting area,
+        // in real page pixels" -- reused by every pixel<->time conversion
+        // below (section 12: "one X conversion authority"). Deliberately
+        // reads a REAL rendered Plotly surface's own `_fullLayout.xaxis`
+        // offset/length (never a guessed/hard-coded margin) -- the ruler
+        // chart is preferred (present whenever ANY channel, analog or
+        // digital, is displayed, per wwSyncStickyRuler()'s own gate), with
+        // the digital chart as a fallback for the rare case the ruler
+        // element exists but hasn't painted yet, and the first analog
+        // panel as a last resort. Returns null (never a guess) when no
+        // surface has actually rendered its plotting area yet -- callers
+        // must treat that as "cannot draw a line right now," not average
+        // out substitute geometry.
+        function wwCursorPlotMetrics() {
+            const candidates = [
+                ww.rulerReady ? document.getElementById("wwStickyRulerChart") : null,
+                ww.digitalChartReady ? document.getElementById("wwDigitalChart") : null,
+                ww.panels[0] && ww.panels[0].plotlyReady ? ww.panels[0].chartEl : null,
+            ];
+            for (const chartEl of candidates) {
+                if (!chartEl) continue;
+                const fl = chartEl._fullLayout;
+                const offset = fl && fl.xaxis ? fl.xaxis._offset : null;
+                const length = fl && fl.xaxis ? fl.xaxis._length : null;
+                if (!Number.isFinite(offset) || !Number.isFinite(length) || length <= 0) continue;
+                const rect = chartEl.getBoundingClientRect();
+                if (rect.width === 0 && rect.height === 0) continue; // detached/hidden
+                return { plotLeftPage: rect.left + offset, plotWidth: length };
+            }
+            return null;
+        }
+
+        // Engineering elapsed seconds -> page-absolute pixel X. Returns
+        // null exactly when wwCursorPlotMetrics()/ww.viewport can't
+        // currently answer that question (section 15: an out-of-viewport
+        // or not-yet-rendered cursor stays off-screen, never silently
+        // relocated).
+        function wwCursorTimeToPixelX(time) {
+            if (!ww.viewport || !Number.isFinite(time)) return null;
+            const metrics = wwCursorPlotMetrics();
+            if (!metrics) return null;
+            const span = ww.viewport.end - ww.viewport.start;
+            if (!(span > 0)) return null;
+            const frac = (time - ww.viewport.start) / span;
+            return metrics.plotLeftPage + frac * metrics.plotWidth;
+        }
+
+        // The inverse, used only while dragging -- clamps to the current
+        // viewport's own plotting bounds (section 15: "clamp to current
+        // viewport" during visible interaction), which is exactly
+        // equivalent to clamping the returned TIME to
+        // [viewport.start, viewport.end] since the plot's own xaxis range
+        // already IS that viewport by construction.
+        function wwCursorPixelXToTime(pageX, metrics) {
+            const m = metrics || wwCursorPlotMetrics();
+            if (!m || !ww.viewport) return null;
+            const clampedX = Math.max(m.plotLeftPage, Math.min(m.plotLeftPage + m.plotWidth, pageX));
+            const frac = m.plotWidth > 0 ? (clampedX - m.plotLeftPage) / m.plotWidth : 0;
+            return ww.viewport.start + frac * (ww.viewport.end - ww.viewport.start);
+        }
+
+        // Section 20/48: three plain tiers (µs / ms / s) -- deliberately a
+        // NEW, separate function from wwStickyRulerElapsedUnit()/
+        // wwTimeAxisTickFormat() rather than reusing either: those two
+        // exist to configure a Plotly axis (a range + tickformat spec for
+        // an ENTIRE visible span), while this formats one scalar duration
+        // as plain text for the status bar -- a genuinely different job,
+        // not a second implementation of the same one (section 20's own
+        // "avoid conflicting formatting logic" is about not having two
+        // functions disagree on the same question, not about sharing code
+        // that answers a different question). Signed -- callers needing an
+        // unsigned magnitude (none currently) would do that themselves;
+        // Δt's signedness (section 21) depends on this NOT taking abs().
+        function wwFormatCursorDuration(seconds) {
+            if (!Number.isFinite(seconds)) return "—";
+            const abs = Math.abs(seconds);
+            if (abs > 0 && abs < 0.001) return (seconds * 1e6).toFixed(1) + " µs";
+            if (abs < 1) return (seconds * 1000).toFixed(3) + " ms";
+            return seconds.toFixed(3) + " s";
+        }
+
+        // A/B's own point-in-time display (section 18/20): Elapsed mode is
+        // just wwFormatCursorDuration() on the raw engineering value.
+        // Absolute mode reuses wwFormatPlotlyDateString() (the SAME naive-
+        // UTC formatter every other Absolute-mode surface already uses --
+        // never a second timestamp implementation), trimmed to its
+        // "HH:MM:SS.mmm" tail for status-bar compactness (the date portion
+        // is already shown once, via #wwTimeModeContext, elsewhere). Falls
+        // back to elapsed formatting if no trustworthy recording origin
+        // exists yet, same fallback wwElapsedToPlotlyX() itself already
+        // uses.
+        function wwFormatCursorPointTime(elapsedSeconds) {
+            if (!Number.isFinite(elapsedSeconds)) return "—";
+            if (ww.timeMode === "absolute") {
+                const originMs = wwWorkspaceRecordingStartMs();
+                if (originMs !== null) {
+                    const full = wwFormatPlotlyDateString(originMs + elapsedSeconds * 1000);
+                    return full.slice(full.indexOf(" ") + 1);
+                }
+            }
+            return wwFormatCursorDuration(elapsedSeconds);
+        }
+
+        // Builds each cursor's DOM once (lazily) and never again -- every
+        // later update only ever toggles `hidden`/writes `style.left`/
+        // textContent on these same nodes (section 38: no innerHTML churn
+        // on drag or resize).
+        function wwEnsureCursorDom() {
+            const overlay = document.getElementById("wwCursorOverlay");
+            const rulerOverlay = document.getElementById("wwCursorRulerOverlay");
+            if (overlay && !overlay.dataset.built) {
+                overlay.innerHTML = ["a", "b"].map((kind) => {
+                    const letter = kind === "a" ? "A" : "B";
+                    return '<div class="ww-cursor-line ww-cursor-line--' + kind + '" data-cursor-line="' + kind + '" hidden>' +
+                        '<div class="ww-cursor-stroke"></div>' +
+                        '<div class="ww-cursor-hit" data-cursor-drag="' + kind + '"></div>' +
+                        '<div class="ww-cursor-label" data-cursor-drag="' + kind + '" tabindex="0" role="button" ' +
+                            'aria-label="Cursor ' + letter + '">' +
+                            '<span>' + letter + '</span>' +
+                            '<button type="button" class="ww-cursor-close" data-cursor-close="' + kind + '" ' +
+                                'aria-label="Remove cursor ' + letter + '">&times;</button>' +
+                        '</div>' +
+                    '</div>';
+                }).join("");
+                overlay.dataset.built = "1";
+            }
+            if (rulerOverlay && !rulerOverlay.dataset.built) {
+                rulerOverlay.innerHTML =
+                    '<div class="ww-cursor-ruler-stroke ww-cursor-a" data-cursor-ruler-line="a" hidden></div>' +
+                    '<div class="ww-cursor-ruler-stroke ww-cursor-b" data-cursor-ruler-line="b" hidden></div>';
+                rulerOverlay.dataset.built = "1";
+            }
+        }
+
+        // The one recompute-and-render pass -- safe/cheap to call from
+        // anywhere (viewport change, layout switch, resize, theme, drag
+        // end): every branch either no-ops or does a handful of style/
+        // textContent writes, never a Plotly call. Handles BOTH halves
+        // independently on purpose (section 27): the status-bar readout
+        // only needs ww.viewport (works with zero displayed channels),
+        // while the visual line additionally needs wwCursorPlotMetrics()
+        // (only available once something has actually rendered a plotting
+        // area) -- so with zero channels displayed, cursor mode can be ON
+        // and the readout can show real A/B/Δt values with no line drawn
+        // yet, which is the intentional, honest state (there is genuinely
+        // nothing to draw a line across).
+        function wwUpdateCursorOverlay() {
+            const overlayEl = document.getElementById("wwCursorOverlay");
+            const rulerOverlayEl = document.getElementById("wwCursorRulerOverlay");
+            const readoutEl = document.getElementById("wwCursorReadout");
+            if (!overlayEl || !rulerOverlayEl || !readoutEl) return;
+
+            const cursors = ww.measurementCursors;
+            const active = cursors.enabled && !!ww.viewport;
+
+            document.getElementById("wwCursorModeBtn").setAttribute("aria-pressed", String(cursors.enabled));
+
+            // ---- status-bar readout (channel-display-independent) ----
+            readoutEl.hidden = !active;
+            if (active) {
+                const aShown = cursors.a.visible && Number.isFinite(cursors.a.time);
+                const bShown = cursors.b.visible && Number.isFinite(cursors.b.time);
+                document.getElementById("statusBarCursorA").textContent = aShown ? wwFormatCursorPointTime(cursors.a.time) : "—";
+                document.getElementById("statusBarCursorB").textContent = bShown ? wwFormatCursorPointTime(cursors.b.time) : "—";
+                document.getElementById("statusBarCursorDelta").textContent =
+                    aShown && bShown ? wwFormatCursorDuration(cursors.b.time - cursors.a.time) : "—";
+            }
+
+            // ---- visual overlay ----
+            if (!active) {
+                overlayEl.hidden = true;
+                rulerOverlayEl.hidden = true;
+                return;
+            }
+            wwEnsureCursorDom();
+
+            const workspaceSectionEl = document.getElementById("viewWaveform");
+            const rulerWrapEl = document.getElementById("wwStickyRuler");
+            const metrics = wwCursorPlotMetrics();
+            const canDraw = !!metrics && workspaceSectionEl && rulerWrapEl && !rulerWrapEl.hidden;
+
+            overlayEl.hidden = !canDraw;
+            rulerOverlayEl.hidden = !canDraw;
+            if (!canDraw) return;
+
+            // Section 10: stop exactly at the top of the ruler -- never
+            // its bottom, never the bottom of the last analog panel/top of
+            // digital (this height IS "through analog + digital, no
+            // further"; the ruler's OWN segment, drawn by
+            // #wwCursorRulerOverlay above, covers the remaining "down
+            // through the ruler" requirement).
+            const sectionRect = workspaceSectionEl.getBoundingClientRect();
+            const rulerRect = rulerWrapEl.getBoundingClientRect();
+            overlayEl.style.height = Math.max(0, rulerRect.top - sectionRect.top) + "px";
+
+            for (const kind of ["a", "b"]) {
+                const cursor = cursors[kind];
+                const lineEl = overlayEl.querySelector('[data-cursor-line="' + kind + '"]');
+                const rulerLineEl = rulerOverlayEl.querySelector('[data-cursor-ruler-line="' + kind + '"]');
+                const shown = cursor.visible && Number.isFinite(cursor.time);
+                // Section 15/16: a cursor outside the CURRENT viewport
+                // stays off-screen rather than being drawn (and remaining
+                // pointer-interactive) beyond the plot area's own edges --
+                // its engineering time is untouched either way, only
+                // drawability changes.
+                const inViewport = shown && cursor.time >= ww.viewport.start && cursor.time <= ww.viewport.end;
+                const pageX = inViewport ? wwCursorTimeToPixelX(cursor.time) : null;
+                const drawable = inViewport && pageX !== null;
+
+                if (lineEl) {
+                    lineEl.hidden = !drawable;
+                    if (drawable) lineEl.style.left = (pageX - sectionRect.left) + "px";
+                }
+                if (rulerLineEl) {
+                    rulerLineEl.hidden = !drawable;
+                    if (drawable) rulerLineEl.style.left = (pageX - rulerRect.left) + "px";
+                }
+            }
+        }
+
+        // Section 5: A = viewport.start + width/3, B = viewport.start +
+        // 2*width/3. Only ever called when there is no prior position to
+        // preserve -- see wwToggleMeasurementCursors()'s own comment.
+        function wwInitMeasurementCursorPositions() {
+            if (!ww.viewport) return;
+            const width = ww.viewport.end - ww.viewport.start;
+            ww.measurementCursors.a.time = ww.viewport.start + width / 3;
+            ww.measurementCursors.b.time = ww.viewport.start + (2 * width) / 3;
+        }
+
+        // The one toolbar mode toggle (section 4/24). OFF retains a/b.time
+        // exactly as they were (nothing here ever clears them) -- turning
+        // back ON:
+        //   - fresh-inits to 1/3 / 2/3 ONLY the first time this workspace
+        //     ever enables cursors (both times still null);
+        //   - otherwise restores the EXISTING times untouched, and also
+        //     restores `visible: true` for both -- this is deliberately
+        //     the same action that satisfies section 24's "OFF -> ON
+        //     restores previous positions" AND section 23's "minimum
+        //     acceptable" un-hide path for a cursor closed via its own ×
+        //     while mode stayed on, without needing two different toggle
+        //     behaviors.
+        // Section 27: requires a valid ww.viewport (a real workspace/
+        // source) to do anything at all -- the button itself already only
+        // exists inside the toolbar, which is already hidden whenever the
+        // workspace is empty (wwUpdateEmptyState()), so this guard is
+        // belt-and-braces, not the primary gate.
+        function wwToggleMeasurementCursors() {
+            if (!ww.viewport) return;
+            const cursors = ww.measurementCursors;
+            if (cursors.enabled) {
+                cursors.enabled = false;
+            } else {
+                cursors.enabled = true;
+                if (!Number.isFinite(cursors.a.time) || !Number.isFinite(cursors.b.time)) {
+                    wwInitMeasurementCursorPositions();
+                }
+                cursors.a.visible = true;
+                cursors.b.visible = true;
+            }
+            wwUpdateCursorOverlay();
+        }
+
+        // Section 22: an individual cursor's own × -- hides ONLY that
+        // cursor (visible: false, time untouched) and never touches
+        // ww.measurementCursors.enabled or the other cursor.
+        function wwSetMeasurementCursorVisible(kind, visible) {
+            const cursor = ww.measurementCursors[kind];
+            if (!cursor) return;
+            cursor.visible = !!visible;
+            wwUpdateCursorOverlay();
+        }
+
+        // Section 25: called only from the one place ww.viewport is reset
+        // to a genuinely fresh value (wwRefreshWorkspaceBounds()'s own
+        // `resetViewport` branch -- a new source selection, the first
+        // viewport ever established, or source bounds that actually
+        // changed). Reinitializes ONLY if cursor mode is currently
+        // enabled, using the freshly-resolved ww.viewport -- stale A/B
+        // times from a previous recording must never silently carry over
+        // into a different one (section 25's own explicit requirement).
+        // Layout-mode switches, zoom/pan, and re-selecting the SAME
+        // already-open source never call this (section 17: engineering
+        // cursor time is otherwise always preserved, only its pixel
+        // projection is recomputed).
+        function wwReinitCursorsForNewViewport() {
+            if (!ww.measurementCursors.enabled) return;
+            wwInitMeasurementCursorPositions();
+            ww.measurementCursors.a.visible = true;
+            ww.measurementCursors.b.visible = true;
+        }
+
+        // Section 24: "Start New Workspace" is the one place cursor state
+        // resets completely (unlike the plain "Clear workspace" button,
+        // which keeps the still-selected source's bounds/viewport and
+        // therefore deliberately leaves cursor state alone -- see this
+        // function's own two call sites in wwClearWorkspace()).
+        function wwResetMeasurementCursors() {
+            ww.measurementCursors.enabled = false;
+            ww.measurementCursors.a = { visible: true, time: null };
+            ww.measurementCursors.b = { visible: true, time: null };
+        }
+
+        // Section 13/14/38: pointer-capture drag on either the wide
+        // invisible hit strip or the top label -- both share the same
+        // handler via `data-cursor-drag`. Plot metrics are measured ONCE
+        // at pointerdown and reused for the whole gesture (section 38:
+        // "lightweight... prefer DOM/CSS updates," not a
+        // wwCursorPlotMetrics() call, itself just a couple of cheap
+        // getBoundingClientRect() reads, on every single pointermove --
+        // still correct because nothing that would change plot geometry
+        // can happen mid-drag, this function never touches ww.viewport/
+        // panels/layout, section 13's own explicit requirement). Only
+        // ww.measurementCursors[kind].time changes; wwUpdateCursorOverlay()
+        // is deliberately NOT called on every move (would re-measure
+        // metrics and touch every surface) -- pointerup does one final
+        // full pass instead, exactly the same "cheap during drag, one
+        // authoritative pass at the end" shape wwWireResizeHandle() already
+        // established for panel-height dragging.
+        function wwWireCursorDrag() {
+            const overlayEl = document.getElementById("wwCursorOverlay");
+            if (!overlayEl) return;
+
+            let draggingKind = null;
+            let dragMetrics = null;
+            let dragTarget = null;
+
+            function livePositionUpdate(kind, time) {
+                const overlay = document.getElementById("wwCursorOverlay");
+                const rulerOverlay = document.getElementById("wwCursorRulerOverlay");
+                const sectionEl = document.getElementById("viewWaveform");
+                const rulerWrapEl = document.getElementById("wwStickyRuler");
+                if (!overlay || !rulerOverlay || !sectionEl || !rulerWrapEl) return;
+                const pageX = wwCursorTimeToPixelX(time);
+                if (pageX === null) return;
+                const sectionRect = sectionEl.getBoundingClientRect();
+                const rulerRect = rulerWrapEl.getBoundingClientRect();
+                const lineEl = overlay.querySelector('[data-cursor-line="' + kind + '"]');
+                const rulerLineEl = rulerOverlay.querySelector('[data-cursor-ruler-line="' + kind + '"]');
+                if (lineEl) lineEl.style.left = (pageX - sectionRect.left) + "px";
+                if (rulerLineEl) rulerLineEl.style.left = (pageX - rulerRect.left) + "px";
+
+                const cursors = ww.measurementCursors;
+                const aShown = cursors.a.visible && Number.isFinite(cursors.a.time);
+                const bShown = cursors.b.visible && Number.isFinite(cursors.b.time);
+                const aEl = document.getElementById("statusBarCursorA");
+                const bEl = document.getElementById("statusBarCursorB");
+                const dEl = document.getElementById("statusBarCursorDelta");
+                if (aEl && kind === "a") aEl.textContent = aShown ? wwFormatCursorPointTime(cursors.a.time) : "—";
+                if (bEl && kind === "b") bEl.textContent = bShown ? wwFormatCursorPointTime(cursors.b.time) : "—";
+                if (dEl) dEl.textContent = aShown && bShown ? wwFormatCursorDuration(cursors.b.time - cursors.a.time) : "—";
+            }
+
+            function onPointerMove(event) {
+                if (!draggingKind || !dragMetrics) return;
+                const time = wwCursorPixelXToTime(event.clientX, dragMetrics);
+                if (time === null) return;
+                ww.measurementCursors[draggingKind].time = time;
+                livePositionUpdate(draggingKind, time);
+            }
+
+            function endDrag(event) {
+                if (!dragTarget) return;
+                dragTarget.removeEventListener("pointermove", onPointerMove);
+                dragTarget.removeEventListener("pointerup", endDrag);
+                dragTarget.removeEventListener("pointercancel", endDrag);
+                if (dragTarget.hasPointerCapture && dragTarget.hasPointerCapture(event.pointerId)) {
+                    dragTarget.releasePointerCapture(event.pointerId);
+                }
+                dragTarget = null;
+                draggingKind = null;
+                dragMetrics = null;
+                wwUpdateCursorOverlay(); // one authoritative final pass
+            }
+
+            overlayEl.addEventListener("pointerdown", (event) => {
+                const closeBtn = event.target.closest("[data-cursor-close]");
+                if (closeBtn) {
+                    wwSetMeasurementCursorVisible(closeBtn.getAttribute("data-cursor-close"), false);
+                    return;
+                }
+                const handle = event.target.closest("[data-cursor-drag]");
+                if (!handle) return;
+                if (event.button !== undefined && event.button !== 0) return;
+                const kind = handle.getAttribute("data-cursor-drag");
+                if (!ww.measurementCursors[kind] || !ww.measurementCursors[kind].visible) return;
+                dragMetrics = wwCursorPlotMetrics();
+                if (!dragMetrics) return;
+                draggingKind = kind;
+                dragTarget = handle;
+                if (handle.setPointerCapture) handle.setPointerCapture(event.pointerId);
+                handle.addEventListener("pointermove", onPointerMove);
+                handle.addEventListener("pointerup", endDrag);
+                handle.addEventListener("pointercancel", endDrag);
+                event.preventDefault();
+            });
+
+            // Plain click (not a drag gesture) on the × already fires via
+            // pointerdown above -- also handle a keyboard activation
+            // (Enter/Space) on the close button for accessibility (section
+            // 54), since pointerdown alone never fires for keyboard users.
+            overlayEl.addEventListener("click", (event) => {
+                const closeBtn = event.target.closest("[data-cursor-close]");
+                if (closeBtn) wwSetMeasurementCursorVisible(closeBtn.getAttribute("data-cursor-close"), false);
+            });
         }
 
         // Phase 2C-C3 (section 24): enables/disables each time-mode
@@ -6641,7 +7333,18 @@
         // function already produces algorithmically, not a redesign of it.
         function wwRebuildLayout() {
             const allChannels = Array.from(ww.displayed.values()).map((entry) => entry.channel);
-            if (allChannels.length === 0) return; // nothing displayed yet -- mode is still recorded for the next Add
+            if (allChannels.length === 0) {
+                // Phase 4B: no analog panel to rebuild, but a layout-mode
+                // switch can still happen with digital-only display (or
+                // even zero display) -- recompute regardless so a cursor's
+                // pixel projection never goes stale relative to whatever IS
+                // currently rendered (the ruler/digital chart, if either
+                // exists). Cursor TIME itself is never touched by a layout
+                // switch either way (owner clarification: A/B are global
+                // across Grouped/Separate/Custom).
+                wwUpdateCursorOverlay();
+                return; // nothing displayed yet -- mode is still recorded for the next Add
+            }
 
             for (const panel of ww.panels) {
                 if (panel.plotlyReady && panel.chartEl) Plotly.purge(panel.chartEl);
@@ -6678,6 +7381,12 @@
             // and channel colors are stable per-channel (wwColorForChannel()),
             // never per-panel -- so the sidebar's dots/remove-controls
             // never need re-syncing here.
+            // Phase 4B (owner clarification): A/B cursor TIME is global
+            // across Grouped/Separate/Custom -- this function never reads
+            // or writes ww.measurementCursors. Only the overlay's PIXEL
+            // projection needs recomputing here, since every panel's own
+            // plotting-area geometry was just torn down and rebuilt above.
+            wwUpdateCursorOverlay();
         }
 
         // Phase 4A-UAT7 (DEC-035): a lightweight, on-demand console
@@ -7165,6 +7874,9 @@
         document.getElementById("wwResetViewBtn").addEventListener("click", wwResetTimeView);
         document.getElementById("wwAutoscaleBtn").addEventListener("click", wwAutoscaleY);
         document.getElementById("clearWorkspaceBtn").addEventListener("click", wwClearWorkspace);
+        // Phase 4B: A/B time measurement cursors.
+        document.getElementById("wwCursorModeBtn").addEventListener("click", wwToggleMeasurementCursors);
+        wwWireCursorDrag();
         document.addEventListener("powerwave:theme-change", wwApplyTheme);
 
         // Phase 2C-B1/C1: Grouped/Separate/Custom layout mode.
