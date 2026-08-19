@@ -8648,6 +8648,163 @@ owner UAT after this push.
 
 ---
 
+## Phase 4A-UAT8 — Digital Channel Row Toggle (2026-08-19)
+
+`[FACT]` throughout. No new DECISIONS.md entry -- a UI-consistency pass
+applying the already-approved analog row-toggle interaction model
+(UAT5/UAT6) to digital, within already-approved architecture.
+
+### Owner direction
+
+Digital channels should use the SAME direct row-click show/hide model
+analog already uses: 100%/25% row opacity, 10px dot, no checkbox, no
+separate "selected but not added" state. Remove the sidebar's "Normal
+state" column (owner-determined dead weight there). Preserve digital
+waveform rendering, Triggered/Never Triggered/Spare classification, and
+default-all-on-open exactly as they are -- sidebar interaction only.
+
+### Digital row interaction
+
+`digitalChannelRowAttrs(source, channel, timebase)` (new) mirrors
+`analogChannelRowAttrs()` exactly in shape (`class="channel-row--toggle[
+channel-row--hidden]"`, `tabindex="0" role="button" aria-pressed`,
+`aria-label`/`title` "Hide/Show `<name>`") but carries DIGITAL metadata
+(`channelIndex`/`classification`) and a `data-channel-kind="digital"`
+marker (analog rows now carry `data-channel-kind="analog"` too, added
+purely for this dispatch). `wwToggleDigitalChannelDisplay(row)` (new)
+mirrors `wwToggleAnalogChannelDisplay()`, calling the SAME pre-existing
+`wwRemoveDigitalChannelByKey()`/`wwAddDigitalChannels()` paths the old
+checkbox + "Add selected" used -- no new fetch/cache mechanism, no
+second visibility map. A new one-line dispatcher,
+`wwToggleChannelRowDisplay(row)`, routes a click/keydown to the correct
+kind's own handler by `data-channel-kind` -- the ONLY place analog and
+digital interaction logic touches at all; visibility state, fetch path,
+and (analog-only) color assignment stay fully separate beyond that
+dispatch point.
+
+### Visibility state
+
+No new visibility state introduced -- `ww.digitalDisplayed` (pre-existing
+since Phase 4A) was already the global, workspace-scoped digital
+visibility authority; `wwIsDigitalChannelVisible(sourceId, channelName)`
+(new) is a pure readability wrapper around it, mirroring
+`wwIsAnalogChannelVisible()`. `wwSyncChannelBrowserDisplayState()`
+(pre-existing) is generalized to dispatch by `data-channel-kind` when
+syncing row opacity/`aria-pressed`/label -- now called from
+`wwAddDigitalChannels()`, `wwRemoveDigitalChannelByKey()`, and
+`wwRemoveChannelsForSource()`'s digital branch (previously analog-only
+call sites), so the sidebar reflects digital state changes from EVERY
+mutation path -- including the digital waveform region's own pre-existing
+"click a lane's baseline trace to remove it" affordance
+(`wwRebuildDigitalChart()`'s `plotly_click` handler), which already
+called `wwRemoveDigitalChannelByKey()` and now automatically keeps the
+sidebar in sync too, with zero changes to that canvas-click code itself.
+
+### Dot
+
+10px, reusing the exact `.channel-color-dot` sizing/shape analog already
+established (UAT5) via a shared CSS class -- but with a NEW
+`.channel-color-dot--neutral` modifier (`background: var(--text-dim)`,
+the same token already used for dimmed/secondary text everywhere in this
+file) instead of an inline per-channel color. No `wwColorForChannel()`
+involvement anywhere in the digital path -- confirmed by a dedicated
+regression test. `--text-dim` is a theme-adaptive CSS custom property
+(distinct Light/Dark values), so the dot is readable in both by
+construction, not by manual tuning.
+
+### Normal state column removed
+
+`renderDigitalGroup()`'s `renderChannelTable()` call drops the `["Normal
+state", (c) => c.normal_state]` column entirely -- digital's own table
+is now a single `["Channel", ...]` column (dot + plain name, via new
+`digitalChannelNameCellHtml()`), matching the preferred compact structure
+from the owner's own task text. UI-only removal: `chan.normal_state` is
+still fetched from the backend, still flows into `ww.digitalDisplayed`
+entries (`normalState`), and is still used exactly as before wherever
+digital rendering itself needs it (HIGH/LOW baseline logic) -- nothing
+about the domain model, API response, or `renderDigitalGroup()`'s own
+`channels` argument shape changed.
+
+### Selection workflow removed entirely
+
+With digital now also a direct row toggle, the shared "Add N
+selected"/"Clear selection" workflow had no remaining checkbox-driven
+consumer of any kind -- removed completely, not merely simplified
+further: `selectedDigitalChannels` Map, `channelSelectionKey()`,
+`digitalChannelCheckboxHtml()`, the `.selection-row` HTML block (and its
+now-dead `.selection-row`/`.channel-select-cb`/`td.select-col` CSS), and
+`setupSelectionControls()`'s checkbox `change` listener + `addBtn`/
+`clearBtn` handlers are ALL deleted. `setupSelectionControls()` itself
+was renamed to `setupChannelRowToggles()` (it now does exactly one
+thing: wire the shared delegated click/keydown listeners for every
+channel row, analog and digital alike) and takes no parameter (the
+`source` argument it used to receive was already unused before this
+phase). A stale `#wwEmptyState` message ("Select channels and click
+'Add selected'...") was also caught and corrected to describe the
+current row-click model -- the one piece of USER-FACING copy that had
+gone stale, found by grepping the whole file for "Add selected"
+afterward; several purely-internal comments referencing the old
+mechanism by name were updated too, for the same reason.
+
+### Classification / source identity / analog preservation
+
+`DIGITAL_GROUP_LABELS`/`DIGITAL_GROUP_ORDER`/`wwDigitalSortChannels()`/
+classification precedence (Spare wins on name match, even if the signal
+went HIGH) are completely untouched -- confirmed by dedicated tests
+(hiding a Triggered/Spare channel leaves it in its own subgroup with its
+own count badge unchanged). `wwChannelKey(sourceId, channelName)` remains
+the identity for `ww.digitalDisplayed`, confirmed source-isolated (two
+sources sharing a digital channel name stay independent). Every UAT5/
+UAT6/UAT7 analog guarantee (row toggle, 10px trace-colored dot, Name
+(unit), global visibility across Grouped/Separate/Custom, Separate's
+local lane label/`x`, stable color, no duplicate traces) reconfirmed
+passing unchanged by the full existing regression suite.
+
+### Tests
+
+New dedicated `phase4a_uat8_check.mjs` (scratch convention, not
+committed, 15 checks): structure (1-column table, no checkbox, 10px
+neutral dot with no inline style, focusable/role=button, no Add-selected/
+Clear-selection anywhere); toggle (default-all-visible on open, click
+hides with the digital chart's own trace count dropping by exactly one,
+click again restores it with no duplicate lane, Enter/Space keyboard
+parity, re-show issues exactly one batched fetch -- same as the old
+checkbox+Add-selected path, no cache redesign); persistence (hidden
+channel survives a full Grouped->Separate->Custom->Absolute/Elapsed->
+Recordings/Waveform round trip; analog layout switches alone never touch
+`ww.digitalDisplayed`); classification (hidden Triggered/Spare channels
+stay in their own subgroup, count badges unaffected by visibility);
+source isolation. Existing suites required targeted updates for the
+same reason UAT5's own analog checkbox removal did the first time:
+several pre-existing tests asserted "digital keeps its checkbox" as an
+explicit isolation guarantee for THAT phase's own scope --
+`phase2ca_check.mjs`, `phase3buat8_check.mjs`, `phase4a_check.mjs`
+(a column-position selector broke once the checkbox column disappeared,
+fixed to read `row.dataset.channelName` directly instead),
+`phase4a_uat4_check.mjs`, `phase4a_uat5_check.mjs`,
+`phase4a_uat6_check.mjs` were each updated in place to verify the
+CURRENT, still-true invariant (digital and analog visibility state stay
+fully independent) via the new row-toggle mechanism, rather than left
+describing removed behavior. Every correction was verified to genuinely
+reflect intentional behavior change (not mask a new regression). Full
+existing frontend regression suite: still exactly the established
+18-failure baseline. Backend: 321/321 unchanged (no backend file
+touched).
+
+### Files changed
+
+`frontend/index.html` only.
+
+### Honest limitations
+
+No real browser is available in this sandbox -- the actual visual
+confirmation (neutral dot legibility/contrast against the analog color
+dots in both themes, the 25%/55% hidden-row opacity read for digital
+rows specifically) was reasoned through and structurally exercised via
+jsdom, but not visually confirmed -- flagged for owner UAT.
+
+---
+
 ## Phase 4A-UAT7 — Fix Duplicate Analog Trace Rendering (2026-08-19)
 
 `[FACT]` throughout, resolving the out-of-scope defect DEC-035 flagged

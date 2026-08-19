@@ -8,6 +8,55 @@ Last updated: **2026-08-19**
 
 ## What was most recently done
 
+**Phase 4A-UAT8 — Digital Channel Row Toggle.** Full detail:
+[MIGRATION_PLAN.md — Phase 4A-UAT8 Record](MIGRATION_PLAN.md#phase-4a-uat8--digital-channel-row-toggle-2026-08-19).
+
+**Owner direction**: give digital channels the SAME direct row-click
+show/hide model analog already has (UAT5/UAT6): 100%/25% row opacity,
+10px dot, no checkbox, no separate "selected but not added" state.
+Remove the sidebar's "Normal state" column (owner-determined dead
+weight). Preserve digital waveform rendering, classification, and
+default-all-on-open exactly as-is -- sidebar interaction only.
+
+**What changed** (`frontend/index.html` only): new
+`digitalChannelRowAttrs()`/`wwToggleDigitalChannelDisplay()` mirror
+analog's own UAT5 mechanism exactly, reusing the pre-existing
+`wwRemoveDigitalChannelByKey()`/`wwAddDigitalChannels()` paths (no new
+fetch/cache, no second visibility map) -- `ww.digitalDisplayed`
+(pre-existing) remains the one digital visibility authority. A new
+`wwToggleChannelRowDisplay()` dispatches a row click/keydown to the
+correct kind's handler via `data-channel-kind` -- the only place analog/
+digital interaction logic touches at all. Digital's dot reuses analog's
+own 10px `.channel-color-dot` sizing but adds a new
+`.channel-color-dot--neutral` modifier (`var(--text-dim)`, never
+`wwColorForChannel()`) instead of a per-channel color. The "Normal
+state" column is gone (UI-only -- `normal_state` still flows through
+`ww.digitalDisplayed` and digital rendering unchanged).
+
+**With digital now also a row toggle, "Add N selected"/"Clear
+selection" had no remaining consumer at all and was removed entirely**
+-- `selectedDigitalChannels`, `channelSelectionKey()`,
+`digitalChannelCheckboxHtml()`, the `.selection-row` HTML/CSS, and the
+button handlers are all deleted; `setupSelectionControls()` was renamed
+`setupChannelRowToggles()`. A stale `#wwEmptyState` message referencing
+the removed button was also caught and corrected.
+
+**Verification**: new dedicated `phase4a_uat8_check.mjs` (15 checks) --
+structure, toggle (click/Enter/Space, no duplicate lane, exactly one
+re-fetch on re-show), persistence across analog layout/time-mode/
+navigation, classification stability, source isolation. Several existing
+test files that had asserted "digital keeps its checkbox" as an
+isolation guarantee for THEIR OWN earlier phase were updated in place to
+verify the current, still-true invariant (analog/digital visibility stay
+independent) via the new mechanism. Full regression suite still exactly
+the established 18-failure baseline; backend 321/321 unchanged.
+
+**Not yet done**: real-browser visual confirmation (neutral dot contrast
+against analog color dots in both themes, hidden-row opacity read) --
+flagged for owner UAT.
+
+## What was done in the prior session (CI/CD — Automatic DEV Deployment After CI, DEC-036)
+
 **CI/CD — Automatic DEV Deployment After CI (DEC-036).** Full detail:
 [MIGRATION_PLAN.md — CI/CD Record](MIGRATION_PLAN.md#cicd--automatic-dev-deployment-after-ci-2026-08-19),
 [DECISIONS.md — DEC-036](DECISIONS.md#dec-036--dev-deployment-is-automatic-after-ci-succeeds-on-main-prod-remains-fully-manual).
@@ -36,19 +85,14 @@ all in the new file -- every value the manual workflow selects via
 matches `deploy.yml`'s own dev-targeted group so the two paths queue
 instead of racing each other).
 
-**Verification**: `yamllint` + Python YAML parsing both clean on all
-three workflow files. No `gh`/GitHub Actions API access in this sandbox
--- the actual live run sequence (CI -> auto DEV deploy -> SHA match)
-could not be directly observed; flagged for owner verification after
-this push.
+**Verified live after push** (commit `93168a3`): CI ran and succeeded,
+`Deploy Powerwave (DEV, automatic)` fired via `workflow_run` and
+succeeded, and `curl https://api.dev.powerwave.oruxa.uk/health` returned
+`git_sha` matching the pushed commit exactly -- the full chain confirmed
+working end to end via the public GitHub API (no `gh` CLI needed, the
+repo is public).
 
-**Not yet done**: owner should confirm the actual GitHub Actions run
-sequence after this push, and independently check the `prod` GitHub
-Environment's protection rules (required reviewers etc.) as defense in
-depth -- this decision's safety doesn't depend on that setting, but it's
-worth confirming.
-
-## What was done in the prior session (Phase 4A-UAT7 — Fix Duplicate Analog Trace Rendering)
+## What was done in the earlier session (Phase 4A-UAT7 — Fix Duplicate Analog Trace Rendering)
 
 **Phase 4A-UAT7 — Fix Duplicate Analog Trace Rendering.** Full detail:
 [MIGRATION_PLAN.md — Phase 4A-UAT7 Record](MIGRATION_PLAN.md#phase-4a-uat7--fix-duplicate-analog-trace-rendering-2026-08-19),

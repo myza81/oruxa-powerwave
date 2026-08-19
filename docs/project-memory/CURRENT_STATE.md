@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-19** (CI/CD — Automatic DEV Deployment After CI, DEC-036).
+Last meaningful update: **2026-08-19** (Phase 4A-UAT8).
 
 ## Development phase
 
@@ -1372,6 +1372,35 @@ explicit deployment, so it was left as-is. Validated via `yamllint` +
 Python YAML parsing (both clean); no live GitHub Actions run could be
 observed from this sandbox (no `gh`/API credentials available) — flagged
 for owner verification after this push.
+
+`[FACT]` **Digital channel visibility now uses direct row toggles
+matching the analog interaction model — Phase 4A-UAT8 — Digital Channel
+Row Toggle** (2026-08-19) — see
+[MIGRATION_PLAN.md — Phase 4A-UAT8 Record](MIGRATION_PLAN.md#phase-4a-uat8--digital-channel-row-toggle-2026-08-19).
+Visible digital rows are 100% opacity; hidden rows 25% (rising to ~55%
+on hover/focus for discoverability, same as analog). Digital uses a
+neutral 10px dark-grey dot (`.channel-color-dot--neutral`, the
+`--text-dim` theme token, never `wwColorForChannel()`) — never confused
+with an analog trace-color dot. Digital checkboxes and the sidebar's
+"Normal state" column are both removed from the UI (the underlying
+`normal_state` field is untouched everywhere digital rendering itself
+still needs it). **With digital now also a direct row toggle, the shared
+"Add N selected"/"Clear selection" workflow had no remaining consumer of
+any kind and was removed entirely** — `selectedDigitalChannels`,
+`channelSelectionKey()`, `digitalChannelCheckboxHtml()`, the
+`.selection-row` HTML/CSS, and the button handlers are all deleted;
+`setupSelectionControls()` was renamed `setupChannelRowToggles()` (now
+just wires the shared click/keydown row-toggle listeners for both
+channel kinds). `ww.digitalDisplayed` (pre-existing) remains the one
+digital visibility authority, completely independent of `ww.displayed`
+(analog) — confirmed via tests that switching analog layout mode
+(Grouped/Separate/Custom) never touches digital visibility, and vice
+versa. Triggered/Never Triggered/Spare classification, sort order, and
+default-all-on-open are all unchanged; hiding a channel never moves it
+out of its classification subgroup. Full frontend regression suite:
+still exactly the established 18-failure baseline; backend 321/321
+unchanged (no backend file touched). Not yet owner-UAT'd in a real
+browser.
 
 ## Completed foundation work
 
