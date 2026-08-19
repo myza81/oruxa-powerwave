@@ -1666,12 +1666,34 @@
             pointer-events: auto;
             touch-action: none;
         }
-        /* Compact "[A ×]" pill, attached to the top of the line (section 7).
-           translateX(-50%) centers it on the cursor's own X, matching the
-           line/hit-target's own centering convention. */
+        /* Phase 4B-UAT1: the sticky label layer -- see #wwCursorLabelLayer's
+           own HTML comment for why this must be a SIBLING of
+           #wwCursorOverlay, not nested inside it. `height: 0` so it never
+           adds scrollable space of its own (it's purely a positioning
+           anchor for its absolutely-positioned label children); `top`
+           matches "just below the top of the visible waveform workspace"
+           (section 7) -- #activeViewArea (the real scroll container) has no
+           fixed header of its own above the workspace section, so a small
+           fixed px offset here is sufficient without needing to read any
+           other layout token. z-index above both cursor overlays (section
+           13). */
+        .ww-cursor-label-layer {
+            position: sticky;
+            top: 6px;
+            left: 0; right: 0;
+            height: 0;
+            pointer-events: none;
+            z-index: 6;
+        }
+        .ww-cursor-label-layer[hidden] { display: none; }
+        /* Compact "[A ×]" pill (section 7). translateX(-50%) centers it on
+           the cursor's own X -- positioned via inline `left` in the SAME
+           coordinate space as the lines (relative to `.workspace-section`'s
+           own left edge), written by the identical wwCursorTimeToPixelX()
+           authority. */
         .ww-cursor-label {
             position: absolute;
-            top: 2px;
+            top: 0;
             left: 0;
             transform: translateX(-50%);
             display: flex;
@@ -1688,8 +1710,13 @@
             touch-action: none;
             white-space: nowrap;
         }
-        .ww-cursor-line--a .ww-cursor-label { background: var(--accent); }
-        .ww-cursor-line--b .ww-cursor-label { background: var(--error); }
+        /* Explicit -- author `display: flex` above beats the UA
+           `[hidden] { display: none }` rule by ORIGIN alone, same
+           established gotcha #bottomStatusBar .shell-status-item[hidden]
+           already documents. */
+        .ww-cursor-label[hidden] { display: none; }
+        .ww-cursor-label--a { background: var(--accent); }
+        .ww-cursor-label--b { background: var(--error); }
         .ww-cursor-close {
             appearance: none;
             border: none;
@@ -2008,6 +2035,28 @@
                                  line (section 33). `hidden` by default;
                                  shown only while ww.measurementCursors.enabled. -->
                             <div id="wwCursorOverlay" class="ww-cursor-overlay" hidden></div>
+                            <!-- Phase 4B-UAT1: the A/B label pills, split
+                                 out of #wwCursorOverlay into their own
+                                 `position: sticky` layer (owner requirement:
+                                 the labels must stay visible near the top of
+                                 the visible waveform viewport while
+                                 scrolling; the vertical LINES themselves
+                                 must NOT become sticky -- see
+                                 #wwCursorOverlay's own comment, unchanged).
+                                 A sibling of #wwCursorOverlay, NOT a
+                                 descendant of it -- `position: sticky`
+                                 breaks/clips under an `overflow: hidden`
+                                 ancestor that isn't itself the real scroll
+                                 container (#wwCursorOverlay has
+                                 `overflow: hidden`, #activeViewArea is the
+                                 actual one, see that ID's own CSS comment),
+                                 so this layer sits directly inside
+                                 `.workspace-section` (plain `overflow:
+                                 visible`) with nothing else in between. Same
+                                 X-projection authority as the lines
+                                 (wwUpdateCursorOverlay()/the drag path's own
+                                 live-update function write BOTH). -->
+                            <div id="wwCursorLabelLayer" class="ww-cursor-label-layer" hidden></div>
 
                             <div id="wwPanels"></div>
 
@@ -6929,24 +6978,23 @@
         function wwEnsureCursorDom() {
             const overlay = document.getElementById("wwCursorOverlay");
             const rulerOverlay = document.getElementById("wwCursorRulerOverlay");
+            const labelLayer = document.getElementById("wwCursorLabelLayer");
             if (overlay && !overlay.dataset.built) {
                 // Owner cosmetic refinement: the A-B range band is built
                 // FIRST (so it paints behind both cursor lines in DOM/
                 // paint order) as one more element in this SAME overlay --
                 // positioned/hidden by wwUpdateCursorOverlay() exactly
                 // like the two lines, never a second overlay system.
+                // Phase 4B-UAT1: the label pill itself is built separately
+                // below, in #wwCursorLabelLayer -- see that element's own
+                // HTML comment for why it can no longer live nested inside
+                // `.ww-cursor-line` (position: sticky needs to escape
+                // #wwCursorOverlay's `overflow: hidden`).
                 overlay.innerHTML = '<div class="ww-cursor-range" data-cursor-range hidden></div>' +
                     ["a", "b"].map((kind) => {
-                    const letter = kind === "a" ? "A" : "B";
                     return '<div class="ww-cursor-line ww-cursor-line--' + kind + '" data-cursor-line="' + kind + '" hidden>' +
                         '<div class="ww-cursor-stroke"></div>' +
                         '<div class="ww-cursor-hit" data-cursor-drag="' + kind + '"></div>' +
-                        '<div class="ww-cursor-label" data-cursor-drag="' + kind + '" tabindex="0" role="button" ' +
-                            'aria-label="Cursor ' + letter + '">' +
-                            '<span>' + letter + '</span>' +
-                            '<button type="button" class="ww-cursor-close" data-cursor-close="' + kind + '" ' +
-                                'aria-label="Remove cursor ' + letter + '">&times;</button>' +
-                        '</div>' +
                     '</div>';
                 }).join("");
                 overlay.dataset.built = "1";
@@ -6957,6 +7005,19 @@
                     '<div class="ww-cursor-ruler-stroke ww-cursor-a" data-cursor-ruler-line="a" hidden></div>' +
                     '<div class="ww-cursor-ruler-stroke ww-cursor-b" data-cursor-ruler-line="b" hidden></div>';
                 rulerOverlay.dataset.built = "1";
+            }
+            if (labelLayer && !labelLayer.dataset.built) {
+                labelLayer.innerHTML = ["a", "b"].map((kind) => {
+                    const letter = kind === "a" ? "A" : "B";
+                    return '<div class="ww-cursor-label ww-cursor-label--' + kind + '" data-cursor-label="' + kind + '" ' +
+                        'data-cursor-drag="' + kind + '" tabindex="0" role="button" hidden ' +
+                        'aria-label="Cursor ' + letter + '">' +
+                        '<span>' + letter + '</span>' +
+                        '<button type="button" class="ww-cursor-close" data-cursor-close="' + kind + '" ' +
+                            'aria-label="Remove cursor ' + letter + '">&times;</button>' +
+                    '</div>';
+                }).join("");
+                labelLayer.dataset.built = "1";
             }
         }
 
@@ -6975,8 +7036,9 @@
         function wwUpdateCursorOverlay() {
             const overlayEl = document.getElementById("wwCursorOverlay");
             const rulerOverlayEl = document.getElementById("wwCursorRulerOverlay");
+            const labelLayerEl = document.getElementById("wwCursorLabelLayer");
             const readoutEl = document.getElementById("wwCursorReadout");
-            if (!overlayEl || !rulerOverlayEl || !readoutEl) return;
+            if (!overlayEl || !rulerOverlayEl || !labelLayerEl || !readoutEl) return;
 
             const cursors = ww.measurementCursors;
             const active = cursors.enabled && !!ww.viewport;
@@ -6998,6 +7060,7 @@
             if (!active) {
                 overlayEl.hidden = true;
                 rulerOverlayEl.hidden = true;
+                labelLayerEl.hidden = true;
                 return;
             }
             wwEnsureCursorDom();
@@ -7009,6 +7072,7 @@
 
             overlayEl.hidden = !canDraw;
             rulerOverlayEl.hidden = !canDraw;
+            labelLayerEl.hidden = !canDraw;
             if (!canDraw) return;
 
             // Section 10: stop exactly at the top of the ruler -- never
@@ -7025,6 +7089,7 @@
                 const cursor = cursors[kind];
                 const lineEl = overlayEl.querySelector('[data-cursor-line="' + kind + '"]');
                 const rulerLineEl = rulerOverlayEl.querySelector('[data-cursor-ruler-line="' + kind + '"]');
+                const labelEl = labelLayerEl.querySelector('[data-cursor-label="' + kind + '"]');
                 const shown = cursor.visible && Number.isFinite(cursor.time);
                 // Section 15/16: a cursor outside the CURRENT viewport
                 // stays off-screen rather than being drawn (and remaining
@@ -7042,6 +7107,14 @@
                 if (rulerLineEl) {
                     rulerLineEl.hidden = !drawable;
                     if (drawable) rulerLineEl.style.left = (pageX - rulerRect.left) + "px";
+                }
+                // Phase 4B-UAT1: the sticky label uses the IDENTICAL pageX/
+                // sectionRect.left conversion as the line right above --
+                // one X-projection authority (section 5), just written to
+                // a second element living in a different (sticky) layer.
+                if (labelEl) {
+                    labelEl.hidden = !drawable;
+                    if (drawable) labelEl.style.left = (pageX - sectionRect.left) + "px";
                 }
             }
 
@@ -7183,7 +7256,8 @@
         // established for panel-height dragging.
         function wwWireCursorDrag() {
             const overlayEl = document.getElementById("wwCursorOverlay");
-            if (!overlayEl) return;
+            const labelLayerEl = document.getElementById("wwCursorLabelLayer");
+            if (!overlayEl || !labelLayerEl) return;
 
             let draggingKind = null;
             let dragMetrics = null;
@@ -7192,17 +7266,24 @@
             function livePositionUpdate(kind, time) {
                 const overlay = document.getElementById("wwCursorOverlay");
                 const rulerOverlay = document.getElementById("wwCursorRulerOverlay");
+                const labelLayer = document.getElementById("wwCursorLabelLayer");
                 const sectionEl = document.getElementById("viewWaveform");
                 const rulerWrapEl = document.getElementById("wwStickyRuler");
-                if (!overlay || !rulerOverlay || !sectionEl || !rulerWrapEl) return;
+                if (!overlay || !rulerOverlay || !labelLayer || !sectionEl || !rulerWrapEl) return;
                 const pageX = wwCursorTimeToPixelX(time);
                 if (pageX === null) return;
                 const sectionRect = sectionEl.getBoundingClientRect();
                 const rulerRect = rulerWrapEl.getBoundingClientRect();
                 const lineEl = overlay.querySelector('[data-cursor-line="' + kind + '"]');
                 const rulerLineEl = rulerOverlay.querySelector('[data-cursor-ruler-line="' + kind + '"]');
+                const labelEl = labelLayer.querySelector('[data-cursor-label="' + kind + '"]');
                 if (lineEl) lineEl.style.left = (pageX - sectionRect.left) + "px";
                 if (rulerLineEl) rulerLineEl.style.left = (pageX - rulerRect.left) + "px";
+                // Phase 4B-UAT1: the sticky label follows the same live
+                // pageX every pointermove -- still just a style.left write,
+                // no extra metrics measurement (section 20's own "no
+                // independent horizontal positioning logic" requirement).
+                if (labelEl) labelEl.style.left = (pageX - sectionRect.left) + "px";
 
                 const cursors = ww.measurementCursors;
                 const aShown = cursors.a.visible && Number.isFinite(cursors.a.time);
@@ -7261,7 +7342,7 @@
                 wwUpdateCursorOverlay(); // one authoritative final pass
             }
 
-            overlayEl.addEventListener("pointerdown", (event) => {
+            function onPointerDown(event) {
                 const closeBtn = event.target.closest("[data-cursor-close]");
                 if (closeBtn) {
                     wwSetMeasurementCursorVisible(closeBtn.getAttribute("data-cursor-close"), false);
@@ -7281,16 +7362,28 @@
                 handle.addEventListener("pointerup", endDrag);
                 handle.addEventListener("pointercancel", endDrag);
                 event.preventDefault();
-            });
+            }
 
+            function onClick(event) {
+                const closeBtn = event.target.closest("[data-cursor-close]");
+                if (closeBtn) wwSetMeasurementCursorVisible(closeBtn.getAttribute("data-cursor-close"), false);
+            }
+
+            // Phase 4B-UAT1: the drag hit-strip (`.ww-cursor-hit`, inside
+            // #wwCursorOverlay) and the label/close-button (now inside the
+            // SEPARATE sticky #wwCursorLabelLayer, see that element's own
+            // HTML comment) are no longer the same DOM subtree -- the same
+            // two handlers are wired to both, rather than duplicating drag
+            // logic (section 11/12: labels stay draggable, same pointer-
+            // capture/live-update path either way).
+            overlayEl.addEventListener("pointerdown", onPointerDown);
+            labelLayerEl.addEventListener("pointerdown", onPointerDown);
             // Plain click (not a drag gesture) on the × already fires via
             // pointerdown above -- also handle a keyboard activation
             // (Enter/Space) on the close button for accessibility (section
             // 54), since pointerdown alone never fires for keyboard users.
-            overlayEl.addEventListener("click", (event) => {
-                const closeBtn = event.target.closest("[data-cursor-close]");
-                if (closeBtn) wwSetMeasurementCursorVisible(closeBtn.getAttribute("data-cursor-close"), false);
-            });
+            overlayEl.addEventListener("click", onClick);
+            labelLayerEl.addEventListener("click", onClick);
         }
 
         // Phase 2C-C3 (section 24): enables/disables each time-mode

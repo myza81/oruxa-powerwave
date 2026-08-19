@@ -45,11 +45,11 @@
     --surface-tint: rgba(27, 35, 51, 0.025);
     --accent-wash: rgba(53, 104, 212, 0.10);
     --accent-wash-soft: rgba(53, 104, 212, 0.07);
-    /* Phase 4B cosmetic refinement: the A/B cursor range-highlight fill --
-       same blue base as --accent-wash, deliberately fainter (owner-
-       specified ~5%) since it must sit visually behind cursor A/B and
-       every waveform trace, never compete with them. */
-    --cursor-range-fill: rgba(53, 104, 212, 0.05);
+    /* Phase 4B-UAT1: the A/B cursor range-highlight fill -- same blue base
+       as --accent-wash. Raised from the original 0.05 to 0.20 (owner
+       feedback: 5% read as too faint) while still sitting visually behind
+       cursor A/B and every waveform trace, never competing with them. */
+    --cursor-range-fill: rgba(53, 104, 212, 0.20);
     --ok-wash: rgba(31, 157, 99, 0.12);
     --error-wash: rgba(210, 60, 68, 0.10);
     --overlay-backdrop: rgba(27, 35, 51, 0.35);
@@ -97,9 +97,10 @@
     --surface-tint: rgba(255, 255, 255, 0.02);
     --accent-wash: rgba(79, 141, 253, 0.12);
     --accent-wash-soft: rgba(79, 141, 253, 0.08);
-    /* Same rationale as Light's own --cursor-range-fill above -- Dark's
-       own accent blue base, same ~5% alpha. */
-    --cursor-range-fill: rgba(79, 141, 253, 0.05);
+    /* Phase 4B-UAT1: same rationale/change as Light's own
+       --cursor-range-fill above -- Dark's own accent blue base, raised
+       from 0.05 to 0.20. */
+    --cursor-range-fill: rgba(79, 141, 253, 0.20);
     --ok-wash: rgba(62, 207, 142, 0.12);
     --error-wash: rgba(242, 84, 91, 0.12);
     --overlay-backdrop: rgba(4, 7, 14, 0.6);

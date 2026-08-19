@@ -3229,6 +3229,31 @@ state model, or any of the behaviour it records above; not significant
 enough to warrant its own decision number. See
 [MIGRATION_PLAN.md — Phase 4B cosmetic refinement addendum](MIGRATION_PLAN.md#phase-4b-cosmetic-refinement--thinner-ab-lines--range-highlight-band-2026-08-19).
 
+**Addendum 2 (2026-08-19, Phase 4B-UAT1)**: two more owner-requested
+refinements, both still cosmetic. (1) `--cursor-range-fill`'s alpha raised
+from 0.05 to 0.20 (owner: 5% read as too faint) — same blue base per
+theme, no other change. (2) The A/B label pills ("[A ×]"/"[B ×]") are now
+`position: sticky`, so they stay visible near the top of the visible
+waveform viewport while the user scrolls a tall waveform stack — the
+vertical cursor LINES themselves remain full-height and non-sticky,
+unchanged (owner's own explicit constraint: only the label, never the
+engineering cursor, becomes viewport-relative). Structurally, the label
+markup moved out of `#wwCursorOverlay` (which has `overflow: hidden`,
+incompatible with `position: sticky` escaping to the real scroll
+container) into a new sibling element, `#wwCursorLabelLayer`, living
+directly inside `.workspace-section` where no `overflow: hidden` ancestor
+sits between it and `#activeViewArea` (the actual scrolling container).
+Both the vertical-line overlay and the new sticky label layer are driven
+by the identical `wwCursorTimeToPixelX()` pixel-projection authority — no
+second/independent horizontal positioning logic was introduced. Dragging
+from the label (pointer-capture, live update, zero waveform fetch) and
+the individual × close buttons both continue to work unchanged, now
+wired via the same two delegated handlers attached to both
+`#wwCursorOverlay` and `#wwCursorLabelLayer`. No manual scroll listener
+was added — this is CSS `position: sticky` only, per the owner's own
+explicit preference. See
+[MIGRATION_PLAN.md — Phase 4B-UAT1 Record](MIGRATION_PLAN.md#phase-4b-uat1--stronger-range-highlight--sticky-cursor-labels-2026-08-19).
+
 ---
 
 ## How to add a decision

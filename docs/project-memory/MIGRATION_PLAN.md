@@ -8648,6 +8648,105 @@ owner UAT after this push.
 
 ---
 
+## Phase 4B-UAT1 — Stronger Range Highlight + Sticky Cursor Labels (2026-08-19)
+
+### Owner-approved scope
+
+A narrowly-scoped follow-up to Phase 4B and its cosmetic-refinement
+addendum below, both already owner-UAT'd. Two requests: (1) raise the A-B
+range-highlight band's opacity from ~5% to ~20% (5% read as too faint);
+(2) make the top "[A ×]"/"[B ×]" label pills remain visible near the top
+of the visible waveform viewport while scrolling a tall waveform stack --
+explicitly NOT making the engineering cursor or its vertical line sticky,
+only the label. Reuse the existing overlay architecture (DEC-039); no
+redesign, no new heavy re-render path, no scroll-event pixel loops.
+
+### What changed (`frontend/index.html` + `frontend/theme.css` only)
+
+**Range opacity**: `--cursor-range-fill` raised from `rgba(53, 104, 212,
+0.05)`/`rgba(79, 141, 253, 0.05)` (Light/Dark) to `0.20` for both --
+`theme.css` only, no other property touched. Geometry, positioning,
+drag-live-update behavior, and `pointer-events: none` are all byte-for-
+byte unchanged.
+
+**Sticky labels**: investigated the actual scroll container first, per
+this task's own instruction. `#activeViewArea` (a sibling of the fixed
+`#wwToolbar`, `overflow-y: auto`) is the real scrolling ancestor for the
+whole waveform workspace -- unchanged since Phase 3A. `#wwCursorOverlay`
+(the line/hit-target overlay) has `overflow: hidden`, which per the CSS
+Overflow spec establishes ITS OWN box as the nearest "scroll container"
+for any `position: sticky` descendant, breaking the intended stick-to-
+`#activeViewArea` behavior entirely -- CSS sticky could not simply be
+added to the existing `.ww-cursor-label` in place.
+
+Fix: the label markup was extracted into a NEW sibling element,
+`#wwCursorLabelLayer` (`position: sticky; top: 6px;`), living directly
+inside `.workspace-section` (`overflow: visible`, no scroll-container
+ancestor between it and `#activeViewArea`) -- so it sticks correctly to
+the top of the actual scrolled viewport, with a 6px offset keeping it
+just below the true top edge (section 7's "small top offset is
+acceptable"; no fixed page-wide coordinate needed since `#wwToolbar`
+lives OUTSIDE `#activeViewArea` entirely, so there is no header height to
+subtract). `height: 0` so the layer adds no scrollable space of its own;
+its label children remain `position: absolute` (a `position: sticky`
+element is a valid containing block for absolutely-positioned
+descendants), positioned via the SAME `pageX - sectionRect.left`
+conversion `wwCursorTimeToPixelX()` already produces for the lines
+(section 5/19 -- one X-projection authority, never a second
+implementation). `wwEnsureCursorDom()` now builds three things instead
+of two (line overlay, ruler segment, label layer); `wwUpdateCursorOverlay()`
+and the drag path's own `livePositionUpdate()` both write the label's
+`style.left`/`hidden` alongside the line's, in the same pass. The line
+overlay (`.ww-cursor-line`, full `top:0`/`bottom:0`) is completely
+unchanged -- still spans analog through digital through the ruler
+segment exactly as before (section 9); only the label pill moved.
+
+Interaction: `.ww-cursor-close` and the label's own `data-cursor-drag`
+now live inside `#wwCursorLabelLayer` instead of `#wwCursorOverlay`.
+`wwWireCursorDrag()`'s pointerdown/click handlers were extracted into
+named functions and attached to BOTH elements (no duplicated drag logic)
+so pointer-capture drag and the × close buttons work identically whether
+triggered from the invisible hit strip (still in `#wwCursorOverlay`) or
+the sticky label itself (section 11/12/21). Z-index: label layer above
+both cursor overlays (section 13) so it always renders on top; it never
+blocks unrelated controls since its own `pointer-events: none` only opts
+back in on the label pills themselves, same policy the line overlay
+already used.
+
+No manual scroll event listener was added anywhere -- CSS `position:
+sticky` handles the entire behavior natively (section 6/16's own explicit
+preference), so scrolling costs nothing beyond ordinary browser
+compositing.
+
+### Tests
+
+`phase4b_check.mjs` extended to 37 checks (from 29): the range-opacity
+assertion updated from 0.05 to 0.20 (an intentional value change, not a
+regression); new checks confirm the label layer is `position: sticky`
+and a genuine sibling of (not nested inside) `#wwCursorOverlay`, the
+label markup no longer appears inside a `.ww-cursor-line` template, all
+three overlay pieces (line overlay/ruler segment/label layer) render
+distinctly when cursor mode is active, the sticky label's X stays
+pixel-identical to its cursor line's X after pan/layout-switch/resize,
+a dispatched `scroll` event never changes `a.time`/`b.time` and no
+`addEventListener("scroll"` exists anywhere in the shipped script,
+dragging directly from the label element itself (not only the hit strip)
+updates the correct cursor with zero waveform fetch, the × close button
+remains functional while living in the sticky layer and only affects its
+own cursor, and the label layer's z-index exceeds both cursor overlays
+while the line's own full-height CSS is unchanged. Full frontend
+regression suite reconfirmed at exactly the established 18-failure
+baseline. Backend: 328/328 passed, unchanged (no backend file touched).
+
+### Decision
+
+Recorded as an addendum to
+[DEC-039](DECISIONS.md#dec-039--ab-time-measurement-cursors-are-one-workspace-level-dom-overlay-over-the-shared-elapsed-time-domain-never-a-per-panel-plotly-shape-phase-4b)
+-- cosmetic/structural refinement within the already-approved overlay
+architecture, not a new decision.
+
+---
+
 ## Phase 4B — A/B Time Measurement Cursors (2026-08-19)
 
 ### Owner-approved scope

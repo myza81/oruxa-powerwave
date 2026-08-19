@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-19** (Phase 4B, on top of Phase 4A-UAT9 and Phase 4A-UAT10).
+Last meaningful update: **2026-08-19** (Phase 4B-UAT1, on top of Phase 4B, Phase 4A-UAT9, and Phase 4A-UAT10).
 
 ## Development phase
 
@@ -1509,16 +1509,39 @@ highlight band** (2026-08-19) — see
 [MIGRATION_PLAN.md — Phase 4B Cosmetic Refinement Record](MIGRATION_PLAN.md#phase-4b-cosmetic-refinement--thinner-ab-lines--range-highlight-band-2026-08-19)
 (addendum to DEC-039, not its own decision — purely visual, no
 architecture/behaviour change). Visible A/B stroke width reduced 2px →
-1px (10px drag hit target unchanged). A subtle blue-tinted band now fills
-the region between A and B — new theme token `--cursor-range-fill`
-(Light `rgba(53,104,212,0.05)` / Dark `rgba(79,141,253,0.05)`, the same
-accent-blue base `--accent-wash` already uses, at ~5% alpha) — spanning
-analog panels, digital region, and the sticky ruler continuously via the
-SAME two-segment overlay the cursor lines already use, shown only when
-both A and B are visible, updating live during drag with zero waveform
-fetches. `phase4b_check.mjs` extended to 29 checks; full frontend suite
-still exactly the established 18-failure baseline; backend 328/328
-unchanged.
+1px (10px drag hit target unchanged). A subtle blue-tinted band fills the
+region between A and B — new theme token `--cursor-range-fill`, the same
+accent-blue base `--accent-wash` already uses per theme — spanning analog
+panels, digital region, and the sticky ruler continuously via the SAME
+two-segment overlay the cursor lines already use, shown only when both A
+and B are visible, updating live during drag with zero waveform fetches.
+**This token's alpha was raised again shortly after** — see the
+Phase 4B-UAT1 fact immediately below for the current value.
+
+`[FACT]` **Phase 4B-UAT1 — stronger range highlight + sticky cursor
+labels** (2026-08-19) — see
+[MIGRATION_PLAN.md — Phase 4B-UAT1 Record](MIGRATION_PLAN.md#phase-4b-uat1--stronger-range-highlight--sticky-cursor-labels-2026-08-19)
+(second addendum to DEC-039, not its own decision). `--cursor-range-fill`
+raised from ~5% to **~20% alpha** (Light `rgba(53,104,212,0.20)` / Dark
+`rgba(79,141,253,0.20)`) — this is the current value; the 0.05 figure in
+the paragraph above is superseded. The A/B label pills ("[A ×]"/"[B ×]")
+are now `position: sticky`, staying visible near the top of the visible
+waveform viewport while scrolling a tall waveform stack — the vertical
+cursor lines themselves remain full-height and non-sticky, unchanged
+(only the label became viewport-relative, never the engineering cursor
+or its line). Structurally, the label markup moved out of
+`#wwCursorOverlay` (`overflow: hidden`, incompatible with sticky escaping
+to the real `#activeViewArea` scroll container) into a new sibling,
+`#wwCursorLabelLayer`, living directly inside `.workspace-section`
+(`overflow: visible`). Both the line overlay and the new sticky label
+layer are driven by the identical `wwCursorTimeToPixelX()` projection —
+no second horizontal-positioning implementation. Dragging from the label
+and the individual × close buttons continue to work unchanged (same
+pointer-capture/live-update path, now wired to both
+`#wwCursorOverlay`/`#wwCursorLabelLayer`). No manual scroll listener was
+added — CSS `position: sticky` only. `phase4b_check.mjs` extended to 37
+checks (from 29); full frontend suite still exactly the established
+18-failure baseline; backend 328/328 unchanged.
 
 ## Completed foundation work
 
