@@ -8548,6 +8548,106 @@ flagged for owner UAT.
 
 ---
 
+## CI/CD — Automatic DEV Deployment After CI (2026-08-19)
+
+`[DECISION]` See
+[DECISIONS.md — DEC-036](DECISIONS.md#dec-036--dev-deployment-is-automatic-after-ci-succeeds-on-main-prod-remains-fully-manual),
+narrowing [DEC-003](DECISIONS.md#dec-003--deployment-is-manual-dev-and-prod-stay-isolated-prod-gets-the-commit-dev-tested).
+Infrastructure/CI work, not a waveform-workspace feature phase — recorded
+here outside the Phase 4A sequence since it's cross-cutting.
+
+### Owner direction
+
+Investigate (separately, see the investigation this decision followed)
+why pushing to `main` no longer auto-deployed DEV, then, on reviewing
+that history, approved restoring it -- narrowly: DEV auto-deploys after
+CI succeeds on `main`; PROD stays fully manual, forever, by construction
+(not merely by convention); the existing manual `deploy.yml` remains
+available unchanged as a DEV/PROD fallback.
+
+### What changed
+
+New `.github/workflows/deploy-dev.yml` only -- `deploy.yml` is untouched
+(verified: zero diff). Trigger: `workflow_run` on the "CI" workflow's
+completion, filtered to `branches: [main]`; the job itself gates on
+`if: github.event.workflow_run.conclusion == 'success'`, so a failed or
+cancelled CI run never deploys. The exact SHA deployed is
+`github.event.workflow_run.head_sha` (the commit CI actually validated),
+threaded through as `APP_VERSION` into the same `scripts/deploy.sh` path
+the manual workflow already uses -- preserving the existing build-
+provenance chain (Phase 4A-UAT3: frontend `buildVersion()` == backend
+`/health.git_sha` == deployed commit) with no new mechanism.
+
+DEV-only by construction: no `inputs:` block exists at all (GitHub
+doesn't populate `inputs.*` outside `workflow_dispatch`), so every value
+that the manual workflow selects via `${{ inputs.target }}` is instead
+the literal string `"dev"` in three places -- `environment: dev`,
+`TARGET=dev` in the deploy command, and `concurrency.group:
+powerwave-deploy-dev` (deliberately the same group name
+`deploy.yml`'s own `powerwave-deploy-${{ inputs.target }}` resolves to
+when a human dispatches `target: dev`, so a manual and an automatic DEV
+deploy can never race against the same VPS path). There is no
+expression, variable, or branch anywhere in the new file capable of
+evaluating to `prod`.
+
+### Why `workflow_run`, not a bare `push` trigger
+
+A `push` trigger added directly to a new file would start deployment in
+*parallel* with CI, not *after* it -- the exact race the owner's own
+task text explicitly forbade. `workflow_run` structurally cannot fire
+until GitHub has recorded CI as fully completed for that run. A bare
+`push` added to the EXISTING `deploy.yml` was considered and rejected
+for a sharper reason: that file's steps all read `${{ inputs.target }}`,
+populated only for `workflow_dispatch` -- a push-triggered run would hit
+an empty/undefined target, an unpredictable risk not worth taking on a
+workflow also capable of deploying PROD.
+
+### Validation
+
+`python3 -m yamllint` (default ruleset, truthy/line-length/document-start
+disabled to match the existing two workflow files' own style) passes
+clean on all three workflow files. `python3 -c "import yaml; ..."`
+confirms the new file parses as valid YAML with the expected structure
+(the `on:` key resolving to PyYAML's boolean `True` under `safe_load` is
+a pre-existing, harmless YAML-1.1-vs-1.2 parser quirk -- `deploy.yml`
+exhibits the identical artifact; GitHub's own Actions parser treats `on:`
+as the literal string key). No `gh`/GitHub Actions API access is
+available in this sandbox, so the actual live run sequence (CI -> DEV
+deploy -> SHA match) could not be directly observed here; see the final
+report's own "Verification" section for what was and wasn't confirmed
+this way.
+
+### Governance docs updated
+
+`DECISIONS.md` (new DEC-036; DEC-003 annotated in place with a pointer,
+not rewritten -- everything DEC-003 says about PROD/isolation/commit
+traceability remains in force verbatim), `CURRENT_STATE.md`,
+`MIGRATION_PLAN.md` (this record), `HANDOFF.md`,
+`docs/development/development-workflow.md` (workflow diagram and DEV
+deployment section updated to describe automatic-after-CI). `AGENTS.md`'s
+existing "Deployment is manual. Do not deploy to production unless
+explicitly asked." already names only PROD explicitly -- left as-is,
+already compatible with this decision.
+
+### Files changed
+
+`.github/workflows/deploy-dev.yml` (new). No other application code
+touched.
+
+### Honest limitations
+
+GitHub Environment protection rules (required reviewers, branch
+restrictions) on the `prod` environment are a repository-UI setting this
+agent cannot inspect from a local clone -- this decision's own safety
+guarantee doesn't depend on that setting (the new file is structurally
+incapable of a `prod` deploy regardless), but the owner should
+independently confirm `prod` still has appropriate protection as defense
+in depth. No real GitHub Actions run of the new workflow could be
+observed from this sandbox (no `gh`/API credentials) -- flagged for
+owner UAT after this push.
+
+---
+
 ## Phase 4A-UAT7 — Fix Duplicate Analog Trace Rendering (2026-08-19)
 
 `[FACT]` throughout, resolving the out-of-scope defect DEC-035 flagged

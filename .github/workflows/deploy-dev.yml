@@ -1,0 +1,82 @@
+name: Deploy Powerwave (DEV, automatic)
+
+# Automatic DEV deployment after a successful CI run on main. This file is
+# DEV-only by construction: there is no `target` input, no environment
+# expression, and no branch/path logic that could ever resolve to "prod" --
+# every value that would otherwise come from a manual choice is the literal
+# string "dev". PROD remains reachable only through deploy.yml's manual
+# workflow_dispatch (see DEC-036).
+#
+# `workflow_run` (not `push`) is deliberate: it fires only once the "CI"
+# workflow has FULLY completed on main, so a deploy can never start before
+# CI has validated the exact commit. `github.event.workflow_run.head_sha`
+# (not `github.sha`, which is unreliable in a workflow_run context) is the
+# exact commit CI just validated, and is the exact commit deployed --
+# satisfying the same "PROD gets the commit DEV tested" traceability
+# DEC-003 already established for the manual path.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+# Shares its group name with deploy.yml's own dev-targeted runs
+# (`powerwave-deploy-${{ inputs.target }}` evaluates to this same literal
+# string when a human manually dispatches target=dev) -- a manual dev
+# deploy and an automatic one can never run concurrently against the same
+# VPS path. Queued, not cancelled: a half-applied deployment is worse than
+# a slow one (same policy as deploy.yml).
+concurrency:
+  group: powerwave-deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to dev
+    runs-on: ubuntu-latest
+    # Only proceed if CI actually passed. workflow_run fires on every CI
+    # completion regardless of outcome (success, failure, or cancelled) --
+    # this is the gate that turns "CI finished" into "CI passed", so a
+    # broken commit on main is never auto-deployed.
+    if: github.event.workflow_run.conclusion == 'success'
+    environment: dev
+
+    steps:
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+          printf '%s\n' "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Validate deployment configuration
+        env:
+          VPS_APP_PATH: ${{ vars.VPS_APP_PATH }}
+        run: |
+          if [ -z "$VPS_APP_PATH" ]; then
+            echo "ERROR: VPS_APP_PATH is not configured for the dev environment."
+            exit 1
+          fi
+
+      - name: Deploy to VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_APP_PATH: ${{ vars.VPS_APP_PATH }}
+          # The exact SHA that CI just validated -- never github.sha, which
+          # in a workflow_run-triggered run reflects this workflow's own
+          # (unrelated) checkout, not necessarily the commit CI tested.
+          APP_VERSION: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          ssh \
+            -i ~/.ssh/id_ed25519 \
+            -o IdentitiesOnly=yes \
+            "${VPS_USER}@${VPS_HOST}" \
+            "cd ${VPS_APP_PATH} && \
+             git fetch origin && \
+             git checkout --detach ${APP_VERSION} && \
+             APP_VERSION=${APP_VERSION} TARGET=dev ./scripts/deploy.sh"

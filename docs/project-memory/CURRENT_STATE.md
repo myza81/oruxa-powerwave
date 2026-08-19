@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-19** (Phase 4A-UAT7).
+Last meaningful update: **2026-08-19** (CI/CD — Automatic DEV Deployment After CI, DEC-036).
 
 ## Development phase
 
@@ -1336,6 +1336,42 @@ rendering confirmed untouched (architecturally distinct code path, no
 shared trace-ownership logic). Full frontend regression suite: still
 exactly the established 18-failure baseline; backend 321/321 unchanged
 (no backend file touched). Not yet owner-UAT'd in a real browser.
+
+`[DECISION]` **DEV deployment is now automatic after CI succeeds on
+main; PROD remains fully manual, forever, by construction —
+[DEC-036](DECISIONS.md#dec-036--dev-deployment-is-automatic-after-ci-succeeds-on-main-prod-remains-fully-manual)**
+(2026-08-19), narrowing
+[DEC-003](DECISIONS.md#dec-003--deployment-is-manual-dev-and-prod-stay-isolated-prod-gets-the-commit-dev-tested)
+— see
+[MIGRATION_PLAN.md — CI/CD Record](MIGRATION_PLAN.md#cicd--automatic-dev-deployment-after-ci-2026-08-19).
+Followed an owner-requested investigation into why pushes to `main`
+stopped auto-deploying DEV: the original `deploy.yml` (2026-08-09) DID
+trigger on `push`, but was deliberately replaced with
+`workflow_dispatch`-only the same day when the single dev/prod-selectable
+workflow was introduced, and formalized 5 days later as DEC-003 — not a
+regression, but the owner approved restoring automation for DEV
+specifically. New `.github/workflows/deploy-dev.yml` (the existing
+`deploy.yml` is byte-for-byte untouched): triggers on `workflow_run` of
+the "CI" workflow completing on `main` (never a bare `push`, which would
+race CI rather than wait for it), its one job gated on
+`conclusion == 'success'` so a failing commit is never deployed, and
+deploys the EXACT SHA CI validated
+(`github.event.workflow_run.head_sha`, not `github.sha`, which is
+unreliable in a `workflow_run` context) — preserving the existing build-
+provenance chain (Phase 4A-UAT3) unchanged. The new file is DEV-only by
+construction: no `target` input exists at all, every value the manual
+workflow selects via `${{ inputs.target }}` is the literal string `"dev"`
+in this file, and it shares its concurrency group with `deploy.yml`'s own
+dev-targeted runs so the two paths can never race the same VPS. The
+manual `deploy.yml` (`workflow_dispatch`, `dev`/`prod` choice) remains
+completely unchanged and is still the only way to reach PROD. Governance
+updated: DECISIONS.md (new DEC-036; DEC-003 annotated in place, not
+rewritten), `development-workflow.md`, `HANDOFF.md`, this file.
+`AGENTS.md`'s existing wording already named only PROD as requiring
+explicit deployment, so it was left as-is. Validated via `yamllint` +
+Python YAML parsing (both clean); no live GitHub Actions run could be
+observed from this sandbox (no `gh`/API credentials available) — flagged
+for owner verification after this push.
 
 ## Completed foundation work
 

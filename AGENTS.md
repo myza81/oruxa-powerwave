@@ -109,7 +109,11 @@ refactoring along the way.
 
 - **GitHub is the single source of truth.** Never fix an environment by editing
   files on a host. A VPS checkout is a deployment artefact, not a workspace.
-- **Deployment is manual.** Do not deploy to production unless explicitly asked.
+- **PROD deployment is manual, always.** Do not deploy to production unless
+  explicitly asked, and never by any automated trigger. DEV deploys itself
+  automatically after CI succeeds on `main` ([DEC-036](docs/project-memory/DECISIONS.md#dec-036--dev-deployment-is-automatic-after-ci-succeeds-on-main-prod-remains-fully-manual))
+  — the manual `workflow_dispatch` deploy workflow remains available as a
+  DEV fallback and is the only way to reach PROD.
 - **Configuration lives in one place.** Only [backend/app/config.py](backend/app/config.py)
   reads the environment; everything else receives a frozen `Settings`. Do not
   add `os.environ` reads elsewhere, and do not perform I/O at import time.

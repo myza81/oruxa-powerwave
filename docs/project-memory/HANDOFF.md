@@ -8,6 +8,48 @@ Last updated: **2026-08-19**
 
 ## What was most recently done
 
+**CI/CD — Automatic DEV Deployment After CI (DEC-036).** Full detail:
+[MIGRATION_PLAN.md — CI/CD Record](MIGRATION_PLAN.md#cicd--automatic-dev-deployment-after-ci-2026-08-19),
+[DECISIONS.md — DEC-036](DECISIONS.md#dec-036--dev-deployment-is-automatic-after-ci-succeeds-on-main-prod-remains-fully-manual).
+
+**Owner report**: DEV deployment stopped auto-starting after a push to
+`main`; owner recalled it working previously. **Investigation finding**
+(not a regression): the original `deploy.yml` (2026-08-09) genuinely did
+trigger on `push`, but was deliberately replaced with
+`workflow_dispatch`-only that same day when DEV/PROD environment
+selection was introduced, and formalized 5 days later as DEC-003 ("no
+auto-deploy-on-merge... without a separate decision"). On reviewing this
+history, the owner approved restoring DEV automation specifically.
+
+**What changed**: new `.github/workflows/deploy-dev.yml` only --
+`deploy.yml` is byte-for-byte untouched, remains the manual `dev`/`prod`
+fallback, and remains the only path to PROD. Trigger: `workflow_run` on
+"CI" completing on `main` (never a bare `push`, which would race CI
+rather than wait for it); the one job gates on `conclusion == 'success'`
+so a failing commit is never deployed; deploys the EXACT SHA CI
+validated (`github.event.workflow_run.head_sha`, not the unreliable
+`github.sha` in this context), preserving the existing build-provenance
+chain unchanged. DEV-only by construction: no `target` input exists at
+all in the new file -- every value the manual workflow selects via
+`${{ inputs.target }}` is the literal string `"dev"` here (job
+`environment:`, `TARGET=`, and the concurrency group, which deliberately
+matches `deploy.yml`'s own dev-targeted group so the two paths queue
+instead of racing each other).
+
+**Verification**: `yamllint` + Python YAML parsing both clean on all
+three workflow files. No `gh`/GitHub Actions API access in this sandbox
+-- the actual live run sequence (CI -> auto DEV deploy -> SHA match)
+could not be directly observed; flagged for owner verification after
+this push.
+
+**Not yet done**: owner should confirm the actual GitHub Actions run
+sequence after this push, and independently check the `prod` GitHub
+Environment's protection rules (required reviewers etc.) as defense in
+depth -- this decision's safety doesn't depend on that setting, but it's
+worth confirming.
+
+## What was done in the prior session (Phase 4A-UAT7 — Fix Duplicate Analog Trace Rendering)
+
 **Phase 4A-UAT7 — Fix Duplicate Analog Trace Rendering.** Full detail:
 [MIGRATION_PLAN.md — Phase 4A-UAT7 Record](MIGRATION_PLAN.md#phase-4a-uat7--fix-duplicate-analog-trace-rendering-2026-08-19),
 [DECISIONS.md — DEC-035's own "UAT7 resolution"](DECISIONS.md#dec-035--analog-channel-visibility-is-workspace-global-layout-mode-governs-arrangement-only-never-visibility-phase-4a-uat6).
@@ -57,7 +99,7 @@ exactly the established 18-failure baseline; backend 321/321 unchanged.
 **Not yet done**: real-browser visual/performance confirmation -- flagged
 for owner UAT.
 
-## What was done in the prior session (Phase 4A-UAT6 — Global Analog Channel Visibility Across Layout Modes)
+## What was done in the earlier session (Phase 4A-UAT6 — Global Analog Channel Visibility Across Layout Modes)
 
 **Phase 4A-UAT6 — Global Analog Channel Visibility Across Layout Modes.**
 Full detail:

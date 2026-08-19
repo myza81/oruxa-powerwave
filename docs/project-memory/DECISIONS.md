@@ -79,7 +79,11 @@ working copy or a chat session (see [README.md](README.md)).
 ## DEC-003 — Deployment is manual; DEV and PROD stay isolated; PROD gets the commit DEV tested
 
 Date: recorded 2026-08-14
-Status: Approved
+Status: Approved — **narrowed by [DEC-036](#dec-036--dev-deployment-is-automatic-after-ci-succeeds-on-main-prod-remains-fully-manual)
+(2026-08-19): DEV deployment is no longer required to be manually triggered.**
+Everything else below (PROD is always manual; DEV/PROD isolation; PROD gets
+the exact commit DEV tested) remains fully in force — see DEC-036 for the
+precise, current DEV-automation rule.
 Source: [AGENTS.md](../../AGENTS.md) § Ground rules; `.github/workflows/deploy.yml`;
 [docs/development/development-workflow.md](../development/development-workflow.md).
 
@@ -101,7 +105,8 @@ Impact:
 Any new domain feature — including future Powerwave engineering
 functionality — must fit this deployment model. No auto-deploy-on-merge, and
 no DEV-to-PROD data/config fallback, should be introduced without a separate
-decision.
+decision. **(2026-08-19: the owner approved exactly this — see DEC-036 — for
+DEV only; PROD remains governed by this decision unmodified.)**
 
 ---
 
@@ -2767,6 +2772,164 @@ failed) before the fix and pass after. Full existing frontend
 regression suite: unchanged at the established 18-failure baseline;
 backend 321/321 unchanged. See
 [MIGRATION_PLAN.md — Phase 4A-UAT7 Record](MIGRATION_PLAN.md#phase-4a-uat7--fix-duplicate-analog-trace-rendering-2026-08-19).
+
+---
+
+## DEC-036 — DEV deployment is automatic after CI succeeds on main; PROD remains fully manual
+
+Date: 2026-08-19
+Status: Approved
+Source: explicit owner instruction (2026-08-19), following a requested
+investigation into why pushes to `main` no longer auto-deployed DEV (the
+owner recalled this working early in the project). The investigation
+found the original `deploy.yml` (commit `b6dba53`, 2026-08-09) DID trigger
+on `push: branches: [main]`; that trigger was deliberately replaced with
+`workflow_dispatch` + a `dev`/`prod` target choice input the same day
+(commit `af0c78a`), and formalized five days later as DEC-003. The owner,
+on reviewing that history, approved restoring automatic DEV deployment —
+scoped narrowly and safely — rather than reverting to the original
+trigger.
+
+Decision:
+
+- **A routine push/merge to `main` automatically deploys DEV**, but only
+  after the "CI" workflow has completed on that exact commit with
+  `conclusion == success`. A commit that fails CI (or whose CI run is
+  cancelled) is never auto-deployed.
+- **A routine push/merge to `main` NEVER deploys PROD**, under any
+  circumstance, by construction (see "DEV isolation" below) — not merely
+  by convention.
+- **PROD always requires an explicit, manual `workflow_dispatch`** —
+  unchanged from DEC-003.
+- **The existing manual `deploy.yml` (`workflow_dispatch`, `dev`/`prod`
+  choice) remains fully available, unchanged, as the fallback path for
+  DEV** (e.g. re-deploying an older commit, redeploying after a
+  transient VPS issue, or deploying DEV without waiting for a fresh push)
+  **and remains the only way to reach PROD.**
+
+### Architecture
+
+New, separate `.github/workflows/deploy-dev.yml` — `deploy.yml` itself is
+untouched (verified: zero diff).
+
+```yaml
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success'
+    environment: dev
+    # APP_VERSION: ${{ github.event.workflow_run.head_sha }}
+```
+
+**Why `workflow_run`, not `push` on the new file directly**: a `push`
+trigger on `deploy-dev.yml` itself would start deployment in *parallel*
+with CI, not *after* it — exactly the race condition section 10 of the
+owner's own task text explicitly forbade ("Do not create a race where
+deployment begins before CI has validated the commit"). `workflow_run`
+only fires once GitHub has recorded the referenced workflow ("CI",
+matched by exact `name:` string) as fully `completed` for that specific
+run, which structurally cannot happen before CI itself has finished.
+
+**CI gating, precisely**: the `workflow_run` event fires for EVERY
+completion of CI on `main` (success, failure, or cancelled alike) — the
+job-level `if: github.event.workflow_run.conclusion == 'success'` is
+what turns "CI finished" into "CI passed." A failing commit still
+triggers this workflow, but its one job is skipped, never deploying a
+red build.
+
+**Exact-SHA guarantee (section 11/12 of the owner's task text)**:
+`github.event.workflow_run.head_sha` is the exact commit CI validated —
+deliberately NOT `github.sha`, which in a `workflow_run`-triggered run
+reflects this (unrelated) workflow's own default-branch checkout and is
+not guaranteed to equal the commit that triggered the run, especially if
+another push lands in the gap between CI completing and this workflow
+starting. That SHA becomes `APP_VERSION`, passed through unchanged to
+`scripts/deploy.sh` exactly as the manual path already does — preserving
+the existing build-provenance chain (frontend `buildVersion()` == backend
+`/health.git_sha` == this exact deployed commit, Phase 4A-UAT3) with no
+new mechanism.
+
+### DEV isolation (why this cannot deploy PROD)
+
+`deploy-dev.yml` has no `target`/environment input of any kind — no
+`inputs:` block exists at all under `workflow_run:` (GitHub does not
+even populate `inputs.*` for non-`workflow_dispatch` events). Every value
+that, in the manual `deploy.yml`, is selected via `${{ inputs.target }}`
+is instead the **literal string `"dev"`**, appearing three places:
+`environment: dev` (job-level), `TARGET=dev` (the SSH command passed to
+`scripts/deploy.sh`), and the shared `concurrency.group:
+powerwave-deploy-dev`. There is no expression, variable, or code path in
+this file capable of evaluating to `prod` — it is not merely configured
+for dev, it is structurally incapable of targeting anything else.
+
+The concurrency group deliberately matches what `deploy.yml`'s own
+`powerwave-deploy-${{ inputs.target }}` resolves to when a human manually
+dispatches `target: dev` — so a manual DEV deploy and an automatic one
+can never run concurrently against the same VPS path (queued, not
+cancelled, matching the existing "a half-applied deployment is worse than
+a slow one" policy).
+
+Reason:
+The owner's own explanation for approving this: routine DEV deployment
+after every merge is valuable feedback (matches the original, pre-DEC-003
+intent) and is safe to automate now that it can be gated on CI and
+structurally prevented from ever reaching PROD — neither of which was
+true of the original 2026-08-09 `push`-triggered workflow (which had no
+CI gate and, more importantly, predates the single dev/prod-selectable
+`deploy.yml` entirely, so the "could this resolve to prod" question never
+even applied to it).
+
+Alternatives considered:
+
+- **A bare `push: branches: [main]` trigger added directly to the
+  existing `deploy.yml`** — rejected: `deploy.yml`'s steps all read
+  `${{ inputs.target }}`, which is only populated for `workflow_dispatch`
+  events; a push-triggered run would hit an empty/undefined target,
+  which is exactly the kind of subtle, unpredictable risk the owner's own
+  task text warned against introducing carelessly into a workflow also
+  capable of deploying PROD.
+- **A reusable workflow (`workflow_call`) shared between `deploy.yml`
+  and `deploy-dev.yml`** — considered, rejected as unnecessary
+  abstraction for this scope: it would still require SOME mechanism to
+  fix the reused workflow's own target to `dev` for the automatic
+  caller, and a small amount of structural duplication (the SSH/deploy
+  steps, ~25 lines) is a smaller, more auditable risk than introducing a
+  shared workflow that a future change could accidentally invoke with an
+  unsafe input.
+- **Re-running the backend test suite again inside `deploy-dev.yml`
+  itself** (mirroring `deploy.yml`'s own `needs: test` job) — rejected:
+  CI's own `test` job already ran the identical suite against this exact
+  SHA, and the `if: conclusion == 'success'` gate already requires that
+  to have passed; re-running it would be redundant work, not additional
+  safety.
+
+Impact:
+
+- New `.github/workflows/deploy-dev.yml`. `deploy.yml` unchanged (byte-
+  for-byte, verified via diff).
+- `docs/project-memory/DECISIONS.md` (this entry; DEC-003 annotated with
+  a pointer, not rewritten or marked Superseded — most of DEC-003 remains
+  in force verbatim), `CURRENT_STATE.md`, `MIGRATION_PLAN.md`,
+  `HANDOFF.md`, `docs/development/development-workflow.md` all updated to
+  describe the new automatic-DEV / manual-PROD reality.
+  `AGENTS.md`'s existing "Deployment is manual. Do not deploy to
+  production unless explicitly asked." already only names PROD
+  explicitly — read literally it was already compatible with this
+  decision, so it was left as-is rather than reworded.
+- **GitHub Environment protection** (required reviewers, branch
+  restrictions on the `prod` environment) is a repository-UI setting this
+  agent cannot inspect or configure from a local clone — flagged for the
+  owner to independently confirm the `prod` GitHub Environment still (or
+  now) has appropriate protection rules; this decision's own code-level
+  guarantee (no `target` expression, hardcoded `dev` throughout
+  `deploy-dev.yml`) does not depend on that UI setting, but defense in
+  depth is still worth the owner's own five-minute check.
+- See [MIGRATION_PLAN.md — CI/CD: Automatic DEV Deployment After CI](MIGRATION_PLAN.md#cicd--automatic-dev-deployment-after-ci-2026-08-19).
 
 ---
 

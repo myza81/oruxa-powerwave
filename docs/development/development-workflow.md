@@ -31,16 +31,22 @@ Pull Request
      ↓
 merge to main
      ↓
-deploy main to DEV
+CI runs again on main
+     ↓
+CI succeeds → DEV deploys automatically  (DEC-036, 2026-08-19)
      ↓
 test / UAT in DEV
      ↓
-if approved, deploy the SAME commit to PROD
+if approved, deploy the SAME commit to PROD  (manual, always)
 ```
 
-Nothing is automatic past "merge to main." Deploying to DEV and deploying to
-PROD are both manual, deliberate actions you trigger yourself in GitHub
-Actions.
+**DEV deploys itself once CI passes on `main` — you don't have to trigger
+it.** PROD is the one step in this whole pipeline that stays manual,
+always: nothing you do short of explicitly running the deploy workflow
+with `target: prod` will ever reach it. (Before 2026-08-19, DEV also
+required a manual `workflow_dispatch` click, same as PROD — see
+[DEC-036](../project-memory/DECISIONS.md#dec-036--dev-deployment-is-automatic-after-ci-succeeds-on-main-prod-remains-fully-manual)
+for why that changed and why it's safe.)
 
 ---
 
@@ -193,7 +199,17 @@ Current DEV environment:
 > see [section 13](#13-deployment-safety-rule)). If any value above no
 > longer matches reality, fix this document rather than trusting it blindly.
 
-To deploy:
+**DEV now deploys itself automatically** (DEC-036, 2026-08-19): once CI
+succeeds on `main`, a separate `.github/workflows/deploy-dev.yml`
+workflow deploys that exact commit — no click required. You'll see it as
+a second workflow run ("Deploy Powerwave (DEV, automatic)") appear in
+Actions right after CI finishes. If CI fails, this workflow still
+appears (GitHub always records it) but its one job is skipped — no
+broken commit is ever auto-deployed.
+
+You can still trigger a DEV deploy manually — to redeploy an older
+commit, retry after a transient VPS issue, or deploy without waiting for
+a fresh push:
 
 ```text
 GitHub
@@ -204,7 +220,9 @@ GitHub
 ```
 
 This runs the backend test suite first, then deploys whichever commit you
-pick (defaults to the branch you run it from — normally `main`).
+pick (defaults to the branch you run it from — normally `main`). This is
+also still the **only** way to reach PROD (see [section 10](#10-prod-deployment))
+— automatic deployment applies to DEV only, never PROD, by construction.
 
 ---
 
@@ -302,9 +320,14 @@ missing — never silently fall back to a default that could point at the
 wrong environment.
 
 Concretely: `VPS_APP_PATH` must be explicitly configured per GitHub
-Environment. The deploy workflow
-([.github/workflows/deploy.yml](../../.github/workflows/deploy.yml)) checks
-this before doing anything else, and refuses to proceed if it's unset.
+Environment. Both the manual deploy workflow
+([.github/workflows/deploy.yml](../../.github/workflows/deploy.yml)) and
+the automatic DEV workflow
+([.github/workflows/deploy-dev.yml](../../.github/workflows/deploy-dev.yml),
+DEC-036) check this before doing anything else, and refuse to proceed if
+it's unset. `deploy-dev.yml` always resolves to the `dev` GitHub
+Environment — that value is a literal string in the file, never an
+expression, so there is no path by which it could resolve to `prod`.
 
 Current intended mapping:
 
