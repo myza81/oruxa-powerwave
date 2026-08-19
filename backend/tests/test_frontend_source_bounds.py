@@ -64,3 +64,18 @@ def test_zoom_pan_clamps_to_workspace_bounds():
     broadcast_body = source[broadcast_idx : source.index("async function wwApplyAndFetchViewport", broadcast_idx)]
     assert "wwClampRangeToWorkspace(startTime, endTime)" in broadcast_body
     assert "wwApplyAndFetchViewport(clamped.start, clamped.end)" in broadcast_body
+
+
+def test_display_only_clear_preserves_selected_source_bounds():
+    source = _source()
+
+    reset_idx = source.index("wwClearWorkspace({ resetSourceBounds: true })")
+    listener_idx = source.index('addEventListener("click", wwClearWorkspace)')
+    clear_idx = source.index("function wwClearWorkspace(options)")
+    clear_body = source[clear_idx : source.index("// Phase 2C-C1", clear_idx)]
+
+    assert reset_idx < clear_idx
+    assert listener_idx > clear_idx
+    assert "if (options.resetSourceBounds)" in clear_body
+    assert "ww.sourceBounds.clear()" in clear_body
+    assert "ww.workspaceBounds = wwDeriveWorkspaceBounds()" in clear_body

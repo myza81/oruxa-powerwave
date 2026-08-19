@@ -2552,7 +2552,7 @@
             lastImportedSourceId = null;
             clearUploadStatus();
             renderChannels(null);
-            wwClearWorkspace();
+            wwClearWorkspace({ resetSourceBounds: true });
             document.getElementById("statusBarWorkspaceId").textContent = currentWorkspaceId();
             await refreshAllSourceViews();
         }
@@ -6226,9 +6226,13 @@
         }
 
         // "Clear workspace" button and "Start new workspace" hook (section
-        // 14/16) -- removes every displayed panel/channel. Does not touch
-        // any imported source; purely display-state.
-        function wwClearWorkspace() {
+        // 14/16) -- removes every displayed panel/channel. The toolbar
+        // action is display-only and keeps source bounds for the still-
+        // selected/imported source; the true Start New Workspace lifecycle
+        // passes resetSourceBounds because every old source was just
+        // released server-side.
+        function wwClearWorkspace(options) {
+            options = options || {};
             clearTimeout(ww.viewportDebounceTimer);
             ww.epoch += 1; // invalidate any in-flight channel-display batch
             for (const panel of ww.panels) {
@@ -6237,9 +6241,14 @@
             document.getElementById("wwPanels").innerHTML = "";
             ww.panels = [];
             ww.displayed.clear();
-            ww.sourceBounds.clear();
-            ww.workspaceBounds = null;
-            ww.viewport = null;
+            if (options.resetSourceBounds) {
+                ww.sourceBounds.clear();
+                ww.workspaceBounds = null;
+                ww.viewport = null;
+            } else {
+                ww.workspaceBounds = wwDeriveWorkspaceBounds();
+                ww.viewport = ww.workspaceBounds ? { start: ww.workspaceBounds.start, end: ww.workspaceBounds.end } : null;
+            }
             // Phase 2C-C1: a whole-workspace reset is the one place
             // ww.customGroups IS cleared (unlike removing a single channel
             // or source, which deliberately leaves it alone -- see the
