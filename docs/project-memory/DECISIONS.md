@@ -3522,6 +3522,96 @@ exactly "Cur A"/"Cur B", unchanged. Calculated RMS/angle/phasor
 measurements (deriving a new value from an instantaneous waveform) remain
 explicitly out of scope, per the bullet immediately above.
 
+**Addendum 2 (2026-08-20, Phase 4C2 — digital A/B cursor state)**: this
+decision's own authority principle extends, by reference, to digital
+channels: **digital A/B cursor measurement reports the authoritative
+recorded digital state (0/1) at the cursor time. It is source-native,
+full-resolution, and independent of displayed/rendered waveform
+representation.** Recorded as an addendum here, not a new decision
+number, because the underlying engineering rule is IDENTICAL to this
+decision's own core principle above — only the channel kind (digital
+instead of analog) and the value type (an integer state instead of a
+float) differ.
+
+Concretely:
+
+- **Same backend endpoint, same shared index computation**: `POST
+  .../sources/{source_id}/cursor-values` (unchanged path) now accepts
+  `digital_channel_names` alongside `analog_channel_names`, and
+  `extract_cursor_values()` resolves BOTH kinds from the SAME two
+  already-computed nearest-sample indices for that source — a source
+  with both analog and digital channels displayed still costs exactly
+  one request, one pair of index lookups, never a second lookup for
+  digital.
+- **No separate transition-search algorithm**: digital channels are
+  confirmed (by direct inspection of
+  `app.providers.comtrade._build_dataframe`) to live in the SAME dense,
+  per-sample `waveform_data` DataFrame and the SAME shared `"time"`
+  column analog channels use — `extract_digital_waveform`'s own sparse
+  transition list is a DERIVED, display-oriented representation
+  (`np.diff` over that same dense array), not a second source of truth.
+  Reading the dense digital column at the nearest-sample index is
+  therefore both the full-resolution authority AND the correct
+  implementation of the exact-transition-timestamp rule ("state at T =
+  the NEW state beginning at T") for free, with no special-casing.
+- **Compact inline presentation, never a table column**: "Cur A"/"Cur B"
+  full-width sidebar columns (Phase 4C1) remain analog-only. Digital rows
+  instead get compact inline "A:0 B:1" badges appended to the existing
+  Channel cell (`.digital-cur-badges`, pushed to the row's right edge via
+  `margin-left: auto`) — an explicit, deliberate UI distinction from
+  analog, per the owner's own instruction, not an oversight.
+- **Separate cache, same key shape**: `ww.digitalCursorValues` (a second
+  `Map<"sourceId::channelName", {aState, bState}>`) is deliberately never
+  the same Map as `ww.cursorValues` — avoids any risk of an analog float
+  `0.0` and a digital state `0` colliding under a shared key, even though
+  both reuse the identical `wwChannelKey()` shape.
+- **Neutral badge styling**: no red/green, no alarm/healthy implication —
+  digital semantics vary by signal (a channel's own `classification`/
+  `normal_state` are UNCHANGED by and UNUSED by this measurement, exactly
+  as DEC-034's Triggered/Never Triggered/Spare classification already is
+  computed once at import time and never re-derived per request).
+
+Reason: the owner's own Phase 4C2 task specification investigated
+digital's internal storage FIRST (rather than assuming a
+transition-interval-search design) and confirmed it is sample-dense, not
+sparse — the smallest-maintainable design was therefore to extend this
+decision's existing mechanism, not build a parallel one.
+
+Impact:
+
+- Backend: `extract_cursor_values()` extended (`analog_channel_names`/
+  `digital_channel_names` request params, `digital_channels` response
+  list); new `DigitalChannelCursorState` dataclass/
+  `DigitalChannelCursorStateOut` schema. Request field renamed
+  `channel_names` -> `analog_channel_names` for symmetry/type clarity (an
+  internal-only API with no external consumers; a clean rename, not a
+  versioned/back-compat change, per this project's own established
+  convention of preferring clean renames over compatibility shims). 19
+  new backend tests (12 service-level, 7 API-level), full suite 374/374
+  passing.
+- Frontend: new `ww.digitalCursorValues`, `wwDigitalCurStateText()`,
+  `wwDigitalCurBadgeHtml()`, `wwUpdateDigitalCursorBadgesForChannels()`,
+  `wwUpdateAllDigitalCursorBadges()`,
+  `wwClearDigitalCursorValuesForChannels()`,
+  `wwDisplayedDigitalSourceIds()`/
+  `wwDisplayedDigitalChannelNamesForSource()`; `wwFetchCursorValuesForSource()`/
+  `wwFetchAllCursorValues()` extended to cover both kinds together, one
+  combined request per source; hooked into the existing digital "core
+  mutation" functions (`wwAddDigitalChannels()`,
+  `wwRemoveDigitalChannelByKey()`, `wwRemoveDigitalChannelsByKeys()`,
+  `wwRemoveChannelsForSource()`'s own digital branch) mirroring Phase
+  4C1's analog hook pattern exactly. New `phase4c2_check.mjs` (24 checks).
+  Full frontend regression suite reconfirmed at exactly the established
+  18-failure baseline.
+- Does NOT alter DEC-034's digital classification/grouping architecture,
+  DEC-035's analog-visibility-is-workspace-global principle, or DEC-039's
+  cursor-TIME architecture in any way.
+- Explicitly NOT implemented: digital transition count between A/B,
+  digital duration-HIGH between A/B, a sequence-of-events table, digital
+  normal/abnormal interpretation, RMS, angle, delta angle, calculated
+  analog measurements, or cross-source synchronization.
+- See [MIGRATION_PLAN.md — Phase 4C2](MIGRATION_PLAN.md#phase-4c2--digital-ab-cursor-state-2026-08-20).
+
 ---
 
 ## How to add a decision

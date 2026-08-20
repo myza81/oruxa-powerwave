@@ -58,7 +58,7 @@ class TestValidRequests:
 
         resp = _cursor_values(
             client, "ws-1", source_id,
-            channel_names=["VA", "VB", "IA"], cursor_a_time=0.001, cursor_b_time=None,
+            analog_channel_names=["VA", "VB", "IA"], cursor_a_time=0.001, cursor_b_time=None,
         )
 
         assert resp.status_code == 200, resp.text
@@ -80,7 +80,7 @@ class TestValidRequests:
 
         resp = _cursor_values(
             client, "ws-1", source_id,
-            channel_names=["VA"], cursor_a_time=0.0, cursor_b_time=0.001,
+            analog_channel_names=["VA"], cursor_a_time=0.0, cursor_b_time=0.001,
         )
 
         assert resp.status_code == 200, resp.text
@@ -94,7 +94,7 @@ class TestValidRequests:
 
         resp = _cursor_values(
             client, "ws-1", source_id,
-            channel_names=["VA", "VB", "IA"], cursor_a_time=0.001, cursor_b_time=None,
+            analog_channel_names=["VA", "VB", "IA"], cursor_a_time=0.001, cursor_b_time=None,
         )
 
         assert resp.status_code == 200, resp.text
@@ -107,7 +107,7 @@ class TestBoundsAndUnknownChannels:
 
         resp = _cursor_values(
             client, "ws-1", source_id,
-            channel_names=["VA"], cursor_a_time=999.0, cursor_b_time=None,
+            analog_channel_names=["VA"], cursor_a_time=999.0, cursor_b_time=None,
         )
 
         assert resp.status_code == 200, resp.text
@@ -120,7 +120,7 @@ class TestBoundsAndUnknownChannels:
 
         resp = _cursor_values(
             client, "ws-1", source_id,
-            channel_names=["VA", "NOT_A_REAL_CHANNEL"], cursor_a_time=0.001, cursor_b_time=None,
+            analog_channel_names=["VA", "NOT_A_REAL_CHANNEL"], cursor_a_time=0.001, cursor_b_time=None,
         )
 
         assert resp.status_code == 200, resp.text
@@ -132,7 +132,7 @@ class TestBoundsAndUnknownChannels:
 
         resp = _cursor_values(
             client, "ws-1", source_id,
-            channel_names=["VA", "BRK_A"], cursor_a_time=0.001, cursor_b_time=None,
+            analog_channel_names=["VA", "BRK_A"], cursor_a_time=0.001, cursor_b_time=None,
         )
 
         assert resp.status_code == 200, resp.text
@@ -146,7 +146,7 @@ class TestSourceIdentity:
 
         resp = _cursor_values(
             client, "ws-1", "does-not-exist",
-            channel_names=["VA"], cursor_a_time=0.001, cursor_b_time=None,
+            analog_channel_names=["VA"], cursor_a_time=0.001, cursor_b_time=None,
         )
 
         assert resp.status_code == 404
@@ -157,10 +157,10 @@ class TestSourceIdentity:
         assert source_a != source_b
 
         resp_a = _cursor_values(
-            client, "ws-1", source_a, channel_names=["VA"], cursor_a_time=0.001, cursor_b_time=None
+            client, "ws-1", source_a, analog_channel_names=["VA"], cursor_a_time=0.001, cursor_b_time=None
         )
         resp_b = _cursor_values(
-            client, "ws-1", source_b, channel_names=["VA"], cursor_a_time=0.001, cursor_b_time=None
+            client, "ws-1", source_b, analog_channel_names=["VA"], cursor_a_time=0.001, cursor_b_time=None
         )
         assert resp_a.json()["source_id"] == source_a
         assert resp_b.json()["source_id"] == source_b
@@ -175,7 +175,7 @@ class TestNeitherCursorSupplied:
     def test_empty_cursor_request_still_succeeds_with_null_values(self, client, comtrade_fixtures_dir):
         source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
 
-        resp = _cursor_values(client, "ws-1", source_id, channel_names=["VA"])
+        resp = _cursor_values(client, "ws-1", source_id, analog_channel_names=["VA"])
 
         assert resp.status_code == 200, resp.text
         body = resp.json()
@@ -183,3 +183,97 @@ class TestNeitherCursorSupplied:
         assert body["cursor_b"] is None
         assert body["channels"][0]["a_value"] is None
         assert body["channels"][0]["b_value"] is None
+
+
+class TestDigitalValidRequests:
+    """Phase 4C2. synth_ascii's own digital channels: BRK_A transitions
+    0 -> 1 exactly at sample index 20 (t=0.005s); BRK_B transitions 0 -> 1
+    exactly at sample index 10 (t=0.0025s) -- both hand-verified directly
+    against synth_ascii.dat."""
+
+    def test_exact_transition_timestamp_reads_the_new_state(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+
+        resp = _cursor_values(
+            client, "ws-1", source_id,
+            digital_channel_names=["BRK_A"], cursor_a_time=0.005, cursor_b_time=None,
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["digital_channels"][0]["a_state"] == 1
+
+    def test_sample_just_before_transition_reads_the_old_state(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+
+        resp = _cursor_values(
+            client, "ws-1", source_id,
+            digital_channel_names=["BRK_A"], cursor_a_time=0.00475, cursor_b_time=None,
+        )
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["digital_channels"][0]["a_state"] == 0
+
+    def test_analog_and_digital_channels_batched_in_one_request(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+
+        resp = _cursor_values(
+            client, "ws-1", source_id,
+            analog_channel_names=["VA"], digital_channel_names=["BRK_A", "BRK_B"],
+            cursor_a_time=0.005, cursor_b_time=None,
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["channels"][0]["a_value"] == pytest.approx(0.0)  # VA raw 0 at index 20
+        by_name = {c["channel_name"]: c for c in body["digital_channels"]}
+        assert by_name["BRK_A"]["a_state"] == 1
+        assert by_name["BRK_B"]["a_state"] == 1  # already flipped earlier, at t=0.0025s
+
+    def test_digital_state_is_plain_integer_in_the_json_response(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+
+        resp = _cursor_values(
+            client, "ws-1", source_id,
+            digital_channel_names=["BRK_A"], cursor_a_time=0.005, cursor_b_time=None,
+        )
+
+        state = resp.json()["digital_channels"][0]["a_state"]
+        assert isinstance(state, int) and not isinstance(state, bool)
+
+
+class TestDigitalBoundsAndUnknownChannels:
+    def test_digital_cursor_time_beyond_source_end_returns_null_not_clamped(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+
+        resp = _cursor_values(
+            client, "ws-1", source_id,
+            digital_channel_names=["BRK_A"], cursor_a_time=999.0, cursor_b_time=None,
+        )
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["digital_channels"][0]["a_state"] is None
+
+    def test_unknown_digital_channel_name_is_silently_omitted(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+
+        resp = _cursor_values(
+            client, "ws-1", source_id,
+            digital_channel_names=["BRK_A", "NOT_A_REAL_CHANNEL"], cursor_a_time=0.005, cursor_b_time=None,
+        )
+
+        assert resp.status_code == 200, resp.text
+        names = [c["channel_name"] for c in resp.json()["digital_channels"]]
+        assert names == ["BRK_A"]
+
+    def test_analog_channel_name_passed_as_digital_is_silently_omitted(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+
+        resp = _cursor_values(
+            client, "ws-1", source_id,
+            digital_channel_names=["BRK_A", "VA"], cursor_a_time=0.005, cursor_b_time=None,
+        )
+
+        assert resp.status_code == 200, resp.text
+        names = [c["channel_name"] for c in resp.json()["digital_channels"]]
+        assert names == ["BRK_A"]

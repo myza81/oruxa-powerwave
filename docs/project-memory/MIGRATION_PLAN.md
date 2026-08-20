@@ -8648,6 +8648,167 @@ owner UAT after this push.
 
 ---
 
+## Phase 4C2 — Digital A/B Cursor State (2026-08-20)
+
+### Scope
+
+Extends Phase 4C1's A/B cursor channel values to digital channels: every
+displayed digital channel now shows its recorded state (0/1) at Cursor A
+and Cursor B, as compact inline "A:0 B:1" badges appended to the existing
+Channel cell -- deliberately NOT a full-width Cur A/Cur B table column
+like analog's (owner's explicit instruction). Scope exclusions:
+transition count between A/B, duration-HIGH between A/B, a
+sequence-of-events table, normal/abnormal interpretation, RMS, angle,
+delta angle, calculated analog measurements, cross-source
+synchronization.
+
+### Investigation: how digital channels are actually stored
+
+Before implementing, inspected `app.providers.comtrade._build_dataframe`
+and `extract_digital_waveform` directly (per the task's own explicit
+instruction to check this before choosing a sample-vs-transition
+lookup strategy). Confirmed: digital channels live in the SAME dense,
+per-sample `waveform_data` DataFrame as analog channels, sharing the
+identical `"time"` column -- `int8` values (0/1), one column per digital
+channel. `extract_digital_waveform`'s own sparse transition list
+(`DigitalTransition`) is DERIVED from this dense array via `np.diff` at
+request time, purely for compact wire-transfer of the full-record
+digital waveform to the frontend chart -- it is a display-oriented
+representation of the same underlying full-resolution data, not a second
+source of truth. This means digital cursor state can reuse the EXACT
+SAME `_nearest_sample_index()` nearest-actual-sample search Phase 4C1
+already built for analog, with zero need for a second
+transition-interval-search algorithm.
+
+### Exact-transition-timestamp rule
+
+A cursor landing exactly ON a transition's own timestamp reads the NEW
+state beginning at that timestamp (e.g. transition 0 -> 1 at t=0.500,
+cursor=0.500 -> reads 1). This falls out for free from the nearest-sample
+read: the recorded sample AT a transition's own timestamp already holds
+the new state by construction (the transition is defined as "the first
+sample where the value differs from the previous sample" -- see
+`_extract_digital_channels`/`_build_dataframe`), so no special-casing was
+needed in `extract_cursor_values()` beyond the existing nearest-sample
+search. Verified with dedicated tests using a 0.01s-step dense fixture
+(0 until 0.5, 1 from 0.5 until 1.0, 0 from 1.0 onward) against the task's
+own worked examples: 0.49->0, 0.50->1, 0.75->1, 1.00->0, 1.20->0.
+
+### Backend (`backend/`)
+
+- `app/services/waveform_service.py`: `extract_cursor_values()` extended
+  to accept `digital_channel_names` alongside the renamed
+  `analog_channel_names` (was `channel_names` -- clean rename for
+  symmetry/type clarity, internal-only API, no back-compat shim needed
+  per this project's own convention), and to resolve digital state
+  from the SAME two already-computed nearest-sample indices used for
+  analog -- one source's request costs exactly one pair of index lookups
+  regardless of how many channels of either kind are requested. New
+  `DigitalChannelCursorState` dataclass (`channel_name`, `a_state`,
+  `b_state` -- plain `int | None`, no `unit` field, deliberately distinct
+  shape from `ChannelCursorValues`).
+- `app/schemas/cursor_values.py`: `CursorValuesRequest` gained
+  `digital_channel_names: list[str] = []`; `CursorValuesOut` gained
+  `digital_channels: list[DigitalChannelCursorStateOut]`.
+- `app/api/v1/sources.py`: same route (`POST .../cursor-values`), updated
+  docstring; no new endpoint (Option A from the task's own "extend
+  existing endpoint vs. dedicated endpoint" choice -- chosen because both
+  channel kinds share the identical time-lookup mechanism, so a second
+  endpoint would only duplicate that logic).
+- Unknown/wrong-kind digital channel names are silently skipped (not
+  raised), symmetric with analog's own established precedent.
+
+### Sidebar UI (`frontend/index.html`)
+
+- `digitalChannelNameCellHtml(sourceId, channel)` (now takes `sourceId`)
+  appends `wwDigitalCurBadgeHtml(sourceId, channel.name)` inside the
+  existing `.channel-name-cell` flex row -- `.digital-cur-badges` gets
+  `margin-left: auto`, pushing it to the row's right edge without
+  touching `.channel-name-cell`'s own shared CSS (which analog's cell
+  also uses). No new `<td>`, no new table column, no header label added
+  to the digital `<thead>` -- `renderDigitalGroup()`'s own
+  `renderChannelTable()` call is otherwise unchanged (still just the one
+  "Channel" column).
+- Neutral badge styling only (`--surface-tint`/`--panel-border`/
+  `--text-dim` for the "A:"/"B:" label, `--text` for the state digit) --
+  deliberately never `--ok`/`--error`, since digital semantics vary by
+  signal and 0/1 must never visually imply healthy/alarm (owner's
+  explicit instruction).
+- Hidden-row opacity (25%/55% hover, unchanged CSS) already cascades to
+  the badges automatically; the badge TEXT itself independently reads
+  "–"/"–" for a hidden channel via `wwDigitalCurStateText()`'s own
+  `wwIsDigitalChannelVisible()` gate -- never relies on opacity alone to
+  hide a stale value (same defense-in-depth contract as analog's
+  `wwCurValueText()`).
+
+### Frontend state / batching
+
+- New `ww.digitalCursorValues` (`Map<"sourceId::channelName", {aState,
+  bState}>`) -- a DELIBERATELY separate Map from `ww.cursorValues`
+  (analog), never sharing key space, so an analog `0.0` and a digital `0`
+  can never collide even though both reuse the identical
+  `wwChannelKey()` shape.
+- `wwFetchCursorValuesForSource(sourceId)` (Phase 4C1's own function)
+  extended to gather BOTH `wwDisplayedAnalogChannelNamesForSource()` and
+  the new `wwDisplayedDigitalChannelNamesForSource()`, sending both in
+  ONE POST body (`analog_channel_names`/`digital_channel_names`) -- a
+  source with both kinds displayed costs exactly one request, never two.
+  No-op only when BOTH lists are empty.
+- Hooked into digital's own existing "core mutation" functions
+  (`wwAddDigitalChannels()` -- fetch on newly-shown channels;
+  `wwRemoveDigitalChannelByKey()`/`wwRemoveDigitalChannelsByKeys()` --
+  clear+re-render badges on hide, individual and group-batched;
+  `wwRemoveChannelsForSource()`'s own digital branch -- clear on full
+  source removal), mirroring Phase 4C1's analog hook pattern exactly, no
+  new hook points invented.
+- Mode OFF/individual cursor closed (`wwCursorValuesHandleModeDisabled()`/
+  `wwCursorValuesHandleCursorClosed()`, both pre-existing Phase 4C1
+  functions) extended to also clear/redraw digital state -- ONE shared
+  per-source generation counter already protects both kinds (they are
+  always fetched together), so no second stale-response mechanism was
+  needed.
+- Drag: no second throttle -- `wwScheduleCursorValuesRefresh()` (Phase
+  4C1's existing ~50ms leading+trailing throttle) already calls the
+  now-combined `wwFetchAllCursorValues()`, so digital state rides the
+  exact same coalesced cadence as analog, with the same guaranteed final
+  `pointerup` settle.
+
+### Tests
+
+Backend: 19 new tests -- 12 service-level (`TestDigitalStaticState`,
+`TestDigitalTransitions` incl. the exact-transition-timestamp rule on
+both rising and falling edges, `TestDigitalOutsideBounds`,
+`TestDigitalBatchedWithAnalog`, `TestDigitalUnknownChannelHandling`,
+`TestDigitalSourceIsolation`, `TestDigitalClassificationPreservation`
+incl. a normal_state=1/state=1 non-inversion test) + 7 API-level
+(`TestDigitalValidRequests` using synth_ascii's own real `BRK_A`/`BRK_B`
+channels -- hand-verified exact-transition anchor at t=0.005s,
+`TestDigitalBoundsAndUnknownChannels`). Full backend suite: 374/374
+passing (355 prior + 19 new), no regressions.
+
+Frontend: new `phase4c2_check.mjs` (24 checks) covering sidebar structure
+(no new table column), all gating conditions, 100-channel batch
+efficiency, combined analog+digital single-request batching, cross-source
+non-collision, drag-throttle reuse (including dragging across a real
+state transition), layout-mode/Absolute-Elapsed independence,
+classification-group preservation, source-switch/Start-New-Workspace
+clearing, zero-channels no-request behavior, error handling, and analog
+(Phase 4C1) preservation. Full frontend regression suite reconfirmed at
+exactly the established 18-failure baseline -- no regressions from this
+phase's changes (verified both by direct count and by re-running
+`phase4c1_check.mjs`'s own 26 checks, all still passing, after updating
+its mock to the renamed request field).
+
+### Decision
+
+Recorded as
+[DEC-040's own second addendum](DECISIONS.md#dec-040--ab-cursor-channel-values-are-computed-from-authoritative-full-resolution-source-data-at-the-nearest-actual-sample-agnostic-to-channel-semantics-phase-4c1)
+-- the same core authority principle extended to a second channel kind,
+not a new decision number, since the underlying rule is identical (only
+channel kind and value type differ).
+
+---
+
 ## Phase 4C1 — A/B Cursor Channel Values (Cur A / Cur B) (2026-08-20)
 
 ### Scope

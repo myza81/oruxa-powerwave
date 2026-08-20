@@ -184,7 +184,9 @@ class CursorPointResult:
 
 @dataclass(slots=True)
 class ChannelCursorValues:
-    """One analog channel's instantaneous value at cursor A/B (Phase 4C1).
+    """One analog channel's recorded Y-axis value at cursor A/B (Phase 4C1;
+    terminology corrected by DEC-040's addendum -- this is a generic
+    channel value, not an instantaneous-only assumption).
 
     `a_value`/`b_value` are `None` exactly when the corresponding cursor
     itself is `None` (not supplied) or fell outside this source's bounds
@@ -198,19 +200,39 @@ class ChannelCursorValues:
 
 
 @dataclass(slots=True)
+class DigitalChannelCursorState:
+    """One digital channel's recorded state (0/1) at cursor A/B (Phase 4C2).
+
+    `a_state`/`b_state` are `None` exactly when the corresponding cursor
+    itself is `None` or fell outside this source's bounds -- never a
+    fabricated/clamped state. Deliberately a separate dataclass from
+    `ChannelCursorValues` (no `unit`, `int` not `float`) -- see
+    extract_cursor_values's own docstring for why digital state reuses
+    the SAME nearest-sample indices as analog rather than a second
+    transition-search algorithm.
+    """
+
+    channel_name: str
+    a_state: int | None
+    b_state: int | None
+
+
+@dataclass(slots=True)
 class CursorValuesResult:
-    """A whole source's instantaneous A/B measurement batch (Phase 4C1).
+    """A whole source's A/B cursor measurement batch (Phase 4C1 analog +
+    Phase 4C2 digital).
 
     See app.schemas.cursor_values for the wire shape and
     extract_cursor_values's own docstring for the full engineering-rule
     rationale (full-resolution source data, nearest actual sample, one
-    index lookup shared by every requested channel).
+    index lookup shared by every requested channel of EITHER kind).
     """
 
     source_id: str
     cursor_a: CursorPointResult | None
     cursor_b: CursorPointResult | None
     channels: list[ChannelCursorValues]
+    digital_channels: list[DigitalChannelCursorState]
 
 
 def _nearest_sample_index(time_full: np.ndarray, requested_time: float | None) -> int | None:
@@ -255,28 +277,46 @@ def _nearest_sample_index(time_full: np.ndarray, requested_time: float | None) -
 def extract_cursor_values(
     active: ActiveSource,
     *,
-    channel_names: list[str],
+    analog_channel_names: list[str],
+    digital_channel_names: list[str],
     cursor_a_time: float | None,
     cursor_b_time: float | None,
 ) -> CursorValuesResult:
-    """Instantaneous analog values at cursor A/B, from full-resolution source data (Phase 4C1).
+    """Recorded channel values/states at cursor A/B, from full-resolution
+    source data (Phase 4C1 analog, Phase 4C2 digital).
 
-    Engineering authority (section 2, DEC-040): ALWAYS reads
-    `active.record.waveform_data` directly -- the same authoritative,
-    never-mutated, full-resolution record `extract_waveform_range` itself
-    reads (DEC-019) -- never a display/downsampled representation. This is
-    a read-only analysis; `active.record`/`active.metadata` are never
-    mutated (section 40).
+    Engineering authority (section 2, DEC-040; Phase 4C2 section 3):
+    ALWAYS reads `active.record.waveform_data` directly -- the same
+    authoritative, never-mutated, full-resolution record
+    `extract_waveform_range` itself reads (DEC-019) -- never a display/
+    downsampled representation. This is a read-only analysis;
+    `active.record`/`active.metadata` are never mutated (section 40).
 
-    Batching shape (section 10): the source's own shared "time" column is
-    searched ONCE per cursor (`_nearest_sample_index`, at most two calls
-    total regardless of how many channels are requested), then every
-    requested channel just indexes its own values array at those two
-    already-resolved indices -- O(2 log n + n_channels), never
-    O(n_channels log n).
+    Digital state reuses the SAME nearest-sample lookup as analog, not a
+    separate transition-interval search (Phase 4C2 section 4/26):
+    `extract_digital_waveform`'s sparse transition list is itself DERIVED
+    (via `np.diff`) from this exact same dense per-sample `waveform_data`
+    column, sharing the identical "time" array analog channels use -- so
+    the transition list is a display-oriented representation of the same
+    underlying full-resolution data, not a second source of truth. Reading
+    `waveform_data[digital_name]` at the nearest-sample index therefore
+    both IS the full-resolution authority and naturally satisfies the
+    exact-transition-timestamp rule (Phase 4C2 section 6: "state at T =
+    the NEW state beginning at T") for free -- the recorded sample AT a
+    transition's own timestamp already holds the new state by
+    construction (see `_extract_digital_channels`/`_build_dataframe` in
+    `app.providers.comtrade`), so no special-casing is needed here.
 
-    Unknown/non-analog channel names are silently skipped (not raised) --
-    a deliberate, documented departure from
+    Batching shape (section 10; Phase 4C2 section 16/17): the source's own
+    shared "time" column is searched ONCE per cursor
+    (`_nearest_sample_index`, at most two calls total regardless of how
+    many channels of EITHER kind are requested), then every requested
+    channel -- analog or digital -- just indexes its own values array at
+    those two already-resolved indices -- O(2 log n + n_channels), never
+    O(n_channels log n), and never a second index computation for digital.
+
+    Unknown/wrong-kind channel names (in either list) are silently skipped
+    (not raised) -- a deliberate, documented departure from
     `extract_digital_waveform`/`get_source_digital_waveform`'s own
     all-or-nothing batch behaviour, chosen because this endpoint backs a
     live-dragging UI where one stale/renamed channel must never blank out
@@ -291,9 +331,10 @@ def extract_cursor_values(
     b_index = _nearest_sample_index(time_full, cursor_b_time)
 
     unit_by_name = {channel.name: channel.unit for channel in active.metadata.analog_channels}
+    digital_names = {channel.name for channel in active.metadata.digital_channels}
 
     channels: list[ChannelCursorValues] = []
-    for name in channel_names:
+    for name in analog_channel_names:
         unit = unit_by_name.get(name)
         if unit is None:
             continue
@@ -301,6 +342,15 @@ def extract_cursor_values(
         a_value = float(values_full[a_index]) if a_index is not None else None
         b_value = float(values_full[b_index]) if b_index is not None else None
         channels.append(ChannelCursorValues(channel_name=name, unit=unit, a_value=a_value, b_value=b_value))
+
+    digital_channels: list[DigitalChannelCursorState] = []
+    for name in digital_channel_names:
+        if name not in digital_names:
+            continue
+        values_full = waveform_data[name].to_numpy()
+        a_state = int(values_full[a_index]) if a_index is not None else None
+        b_state = int(values_full[b_index]) if b_index is not None else None
+        digital_channels.append(DigitalChannelCursorState(channel_name=name, a_state=a_state, b_state=b_state))
 
     cursor_a = (
         CursorPointResult(
@@ -324,6 +374,7 @@ def extract_cursor_values(
         cursor_a=cursor_a,
         cursor_b=cursor_b,
         channels=channels,
+        digital_channels=digital_channels,
     )
 
 

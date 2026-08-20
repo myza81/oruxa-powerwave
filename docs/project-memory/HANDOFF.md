@@ -8,6 +8,94 @@ Last updated: **2026-08-20**
 
 ## What was most recently done
 
+**Phase 4C2 — Digital A/B Cursor State.** Full detail:
+[MIGRATION_PLAN.md — Phase 4C2 Record](MIGRATION_PLAN.md#phase-4c2--digital-ab-cursor-state-2026-08-20),
+[DECISIONS.md — DEC-040's second addendum](DECISIONS.md#dec-040--ab-cursor-channel-values-are-computed-from-authoritative-full-resolution-source-data-at-the-nearest-actual-sample-agnostic-to-channel-semantics-phase-4c1).
+
+**Owner direction**: extend Phase 4C1's A/B cursor channel values to
+digital channels -- every displayed digital channel shows its recorded
+state (0/1) at Cursor A/B, as compact inline "A:0 B:1" badges (Detego-
+style) appended to the existing Channel cell, explicitly NOT a full-width
+Cur A/Cur B table column like analog's own.
+
+**Investigation first, per the task's own explicit instruction**:
+inspected `app.providers.comtrade._build_dataframe`/
+`extract_digital_waveform` before choosing an implementation. Confirmed
+digital channels live in the SAME dense, per-sample `waveform_data`
+DataFrame as analog, sharing the identical `"time"` column --
+`extract_digital_waveform`'s own sparse transition list is DERIVED
+(`np.diff`) from that same dense array for compact wire transfer, not a
+second source of truth. This meant digital state could reuse Phase 4C1's
+existing `_nearest_sample_index()` unchanged, with NO separate
+transition-interval-search algorithm needed -- and the owner's own
+exact-transition-timestamp rule ("state at T = the NEW state beginning at
+T") falls out for free from a plain nearest-sample read, since the
+recorded sample AT a transition's own timestamp already holds the new
+state by construction.
+
+**Backend**: same endpoint (`POST .../sources/{source_id}/cursor-values`,
+no new route) -- `extract_cursor_values()` extended to accept
+`digital_channel_names` alongside the renamed `analog_channel_names` (was
+`channel_names`, a clean rename for symmetry/type clarity -- internal-only
+API, no back-compat shim per this project's own convention), resolving
+BOTH kinds from the SAME two already-computed nearest-sample indices per
+source. New `DigitalChannelCursorState` dataclass/
+`DigitalChannelCursorStateOut` schema (plain `int | None`, no `unit`).
+19 new tests (12 service-level incl. the exact-transition-timestamp rule
+on both rising/falling edges, static-state/bounds/multi-source-isolation/
+classification-preservation coverage; 7 API-level using synth_ascii's own
+real `BRK_A`/`BRK_B` channels, hand-verified anchor at t=0.005s); full
+suite 374/374 passing.
+
+**Frontend**: new `ww.digitalCursorValues` -- a DELIBERATELY separate Map
+from analog's `ww.cursorValues` (never shared key space, so an analog
+`0.0` and digital `0` can never collide despite reusing the identical
+`wwChannelKey()` shape). `wwFetchCursorValuesForSource()` (Phase 4C1's
+own function) now gathers both displayed analog AND digital channel
+names for a source and sends them in ONE combined request -- a source
+with both kinds displayed still costs exactly one request. Hooked into
+digital's own existing "core mutation" functions
+(`wwAddDigitalChannels()`/`wwRemoveDigitalChannelByKey()`/
+`wwRemoveDigitalChannelsByKeys()`/`wwRemoveChannelsForSource()`'s digital
+branch), mirroring Phase 4C1's analog hook pattern exactly -- no new hook
+points invented. Mode OFF/individual cursor closed/drag throttling/
+stale-response protection all REUSE Phase 4C1's existing shared
+mechanisms (`wwCursorValuesHandleModeDisabled()`/
+`wwCursorValuesHandleCursorClosed()`/`wwScheduleCursorValuesRefresh()`/
+the per-source generation counter) -- extended to also touch digital
+state, never a second parallel mechanism. Badges: `digitalChannelNameCellHtml()`
+appends `wwDigitalCurBadgeHtml()` inside the existing `.channel-name-cell`
+flex row (`margin-left: auto` pushes it right) -- no new `<td>`, no new
+digital table column. Neutral styling only (`--surface-tint`/
+`--panel-border`/`--text-dim`, never `--ok`/`--error` -- digital
+semantics vary by signal, 0/1 must never imply healthy/alarm).
+Triggered/Never Triggered/Spare classification (DEC-034) completely
+unread/unaffected.
+
+**Verification**: new `phase4c2_check.mjs` (24 checks) covering sidebar
+structure (confirmed no new table column), all gating conditions,
+100-channel batch efficiency, combined analog+digital single-request
+batching, cross-source non-collision (via the pure `wwDigitalCurStateText()`
+gating function, since selecting a source replaces the sidebar's rendered
+rows with that source's own channels only -- DOM row lookups alone can't
+verify cross-source cache isolation), drag-throttle reuse (dragging
+across a real 0->1 transition, verified against an analog panel's
+geometry since cursor dragging needs a rendered Plotly surface to project
+pixel position from, per DEC-039), layout-mode/Absolute-Elapsed
+independence, classification-group preservation, source-switch/Start-New-
+Workspace clearing, zero-channels no-request behavior, error handling,
+and full Phase 4C1 (analog) preservation. Full frontend regression suite
+reconfirmed at exactly the established 18-failure baseline; Phase 4C1's
+own `phase4c1_check.mjs` (26 checks) still passes fully after updating
+its mock to the renamed request field (`channel_names` ->
+`analog_channel_names`, `digital_channels: []` added to every mocked
+response).
+
+**Not yet done**: commit/push, CI/automatic DEV deployment verification,
+and owner UAT of this phase specifically.
+
+## What was done in the prior session (Phase 4C1 — A/B Cursor Channel Values (Cur A / Cur B))
+
 **Phase 4C1 — A/B Cursor Channel Values (Cur A / Cur B).** Full
 detail:
 [MIGRATION_PLAN.md — Phase 4C1 Record](MIGRATION_PLAN.md#phase-4c1--ab-cursor-channel-values-cur-a--cur-b-2026-08-20),
@@ -99,11 +187,20 @@ pre-existing Phase 4A-UAT4/UAT5 column-count assertions were updated in
 place to expect the new 4-column analog table — this phase's own
 intended change, not a regression).
 
-**Not yet done**: commit/push (six local commits, `9080aa9`..`7b14e4f`
-for Phase 4B through UAT3, are already confirmed pushed/CI-green/DEV-
-deployed at `7b14e4f` — see the prior-session note below; only this
-Phase 4C1 work itself remains uncommitted), CI/automatic DEV deployment
-verification of the Phase 4C1 commit specifically, and owner UAT.
+**Update (Phase 4C2 session, 2026-08-20)**: Phase 4C1 was committed and
+pushed as two commits -- `3da102f` ("feat: add instantaneous A B cursor
+values") and `b7245d8` (the terminology-clarification docs follow-up).
+Both confirmed CI-green and DEV-deployed (backend `/health` `git_sha` and
+frontend `buildVersion` both matched `b7245d8` exactly at verification
+time). The line below is superseded by this update, retained for the
+historical record of what was true when originally written.
+
+**Not yet done** *(as originally written, now superseded above)*:
+commit/push (six local commits, `9080aa9`..`7b14e4f` for Phase 4B through
+UAT3, are already confirmed pushed/CI-green/DEV-deployed at `7b14e4f` —
+see the prior-session note below; only this Phase 4C1 work itself remains
+uncommitted), CI/automatic DEV deployment verification of the Phase 4C1
+commit specifically, and owner UAT.
 
 ## What was done in the prior session (Phase 4B — A/B Time Measurement Cursors, incl. cosmetic refinement + UAT1/UAT2/UAT3)
 

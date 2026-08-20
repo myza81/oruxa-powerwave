@@ -272,22 +272,27 @@ def get_source_cursor_values(
     body: CursorValuesRequest,
     registry: WorkspaceRegistry = Depends(get_workspace_registry),
 ) -> CursorValuesOut:
-    """Phase 4C1 batched A/B instantaneous-value endpoint.
+    """Batched A/B cursor-measurement endpoint (Phase 4C1 analog, Phase
+    4C2 digital).
 
-    One request per source (never per channel -- section 8/9): every
-    channel in `body.channel_names` is resolved against the SAME two
+    One request per source (never per channel -- section 8/9; Phase 4C2
+    section 16/17): every channel in `body.analog_channel_names` and
+    `body.digital_channel_names` is resolved against the SAME two
     already-computed nearest-sample indices (see
-    app.services.waveform_service.extract_cursor_values's own docstring).
-    POST (not GET) because the request body naturally carries a channel
-    list alongside two independent optional cursor times -- the same
-    shape choice this project already made for multipart uploads, just
-    JSON here since there is no file involved.
+    app.services.waveform_service.extract_cursor_values's own docstring)
+    -- a source with both analog and digital channels displayed still
+    costs exactly one request, one pair of index lookups, covering both
+    kinds together. POST (not GET) because the request body naturally
+    carries channel lists alongside two independent optional cursor
+    times -- the same shape choice this project already made for
+    multipart uploads, just JSON here since there is no file involved.
     """
     workspace_id = _validate_workspace_id(workspace_id)
     active = _get_or_404(registry, workspace_id, source_id)
     result = extract_cursor_values(
         active,
-        channel_names=body.channel_names,
+        analog_channel_names=body.analog_channel_names,
+        digital_channel_names=body.digital_channel_names,
         cursor_a_time=body.cursor_a_time,
         cursor_b_time=body.cursor_b_time,
     )

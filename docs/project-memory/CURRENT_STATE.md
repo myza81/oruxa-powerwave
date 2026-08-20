@@ -1658,6 +1658,50 @@ column-count assertions were updated in place to expect the new 4-column
 analog table, since the extra columns are this phase's own intended
 change).
 
+`[FACT]` **Phase 4C2 — Digital A/B cursor state** (2026-08-20) — see
+[MIGRATION_PLAN.md — Phase 4C2](MIGRATION_PLAN.md#phase-4c2--digital-ab-cursor-state-2026-08-20)
+and
+[DEC-040's second addendum](DECISIONS.md#dec-040--ab-cursor-channel-values-are-computed-from-authoritative-full-resolution-source-data-at-the-nearest-actual-sample-agnostic-to-channel-semantics-phase-4c1).
+Extends Phase 4C1's A/B cursor channel values to digital channels: every
+displayed digital channel now shows its recorded state (0/1) at Cursor A
+and Cursor B as compact inline "A:0 B:1" badges appended to the existing
+Channel cell — deliberately NOT a full-width Cur A/Cur B column like
+analog's own (owner's explicit instruction). Investigation confirmed
+digital channels are stored the SAME way analog channels are — a dense,
+per-sample column in the shared `waveform_data` DataFrame, sharing the
+same `"time"` array — so digital state reuses the exact same
+`_nearest_sample_index()` nearest-actual-sample search Phase 4C1 already
+built, with no separate transition-interval-search algorithm;
+`extract_digital_waveform`'s own sparse transition list is a DERIVED,
+display-oriented representation of that same dense data, not a second
+source of truth. The exact-transition-timestamp rule ("state at T = the
+NEW state beginning at T") falls out for free from this — no
+special-casing needed. Backend: `POST .../sources/{source_id}/cursor-values`
+(same endpoint, not a new one) extended with `digital_channel_names`
+alongside the renamed `analog_channel_names` (was `channel_names` — a
+clean rename, internal-only API); one source's request still costs
+exactly one pair of resolved indices regardless of channel kind mix.
+Frontend: new `ww.digitalCursorValues` (a deliberately SEPARATE Map from
+analog's `ww.cursorValues` — never a shared key space, so an analog
+`0.0` and digital `0` can never collide); `wwFetchCursorValuesForSource()`
+now sends analog AND digital channel names together in ONE request per
+source; hooked into digital's own existing "core mutation" functions
+(`wwAddDigitalChannels()`/`wwRemoveDigitalChannelByKey()`/
+`wwRemoveDigitalChannelsByKeys()`/`wwRemoveChannelsForSource()`'s digital
+branch) mirroring Phase 4C1's analog hook pattern exactly; mode OFF/
+individual cursor closed/drag throttling all reuse Phase 4C1's existing
+shared mechanisms — no second throttle, no second stale-response
+protection. Neutral badge styling only (no red/green, no alarm/healthy
+implication — digital semantics vary by signal); Triggered/Never
+Triggered/Spare classification (DEC-034) is completely unread/unaffected
+by this measurement. Backend: 19 new tests (12 service-level including
+the exact-transition-timestamp rule on both edges, 7 API-level using
+synth_ascii's own real BRK_A/BRK_B digital channels), full suite 374/374
+passing. Frontend: new `phase4c2_check.mjs` (24 checks); full frontend
+regression suite reconfirmed at exactly the established 18-failure
+baseline, and Phase 4C1's own `phase4c1_check.mjs` (26 checks) still
+passes fully after updating its mock to the renamed request field.
+
 ## Completed foundation work
 
 `[FACT]`, verified against the repository on 2026-08-15:

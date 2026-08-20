@@ -824,6 +824,39 @@
         }
         .cur-value { color: var(--text); }
 
+        /* Phase 4C2 (section 11/12): compact inline "A:0 B:1" digital
+           cursor-state badges -- NOT a table column (owner's explicit
+           instruction), pushed to the right edge of the existing
+           .channel-name-cell flex row via margin-left:auto so the row
+           reads "● NAME ....... A:0 B:1", matching the Detego-style
+           reference. Neutral styling only (--surface-tint/--panel-border/
+           --text-dim), deliberately never --ok/--error -- digital
+           semantics vary by signal, so 0/1 must never visually imply
+           healthy/alarm (section 12's own explicit instruction). */
+        .digital-cur-badges {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-left: auto;
+            padding-left: 8px;
+            flex-shrink: 0;
+        }
+        .digital-cur-badge {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 2px;
+            font-size: 0.68rem;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+            color: var(--text-dim);
+            background: var(--surface-tint);
+            border: 1px solid var(--panel-border);
+            border-radius: 4px;
+            padding: 2px 5px;
+            white-space: nowrap;
+        }
+        .digital-cur-state { color: var(--text); font-weight: 600; }
+
         /* Phase 4A-UAT4/UAT5: the analog channel browser is the primary
            waveform legend for Grouped/Custom (section 2/3) -- replaces
            the removed .waveform-proto-link column above and the
@@ -3829,7 +3862,7 @@
                         groupToggleButtonHtml("digital", DIGITAL_GROUP_LABELS[group]) +
                         '</summary>';
                     body += '<div class="group-body">' + renderChannelTable(sorted, [
-                        ["Channel", (c) => digitalChannelNameCellHtml(c), { raw: true }],
+                        ["Channel", (c) => digitalChannelNameCellHtml(source.source_id, c), { raw: true }],
                     ], null, (c) => digitalChannelRowAttrs(source, c, timebase)) + '</div>';
                     body += '</details>';
                 }
@@ -3973,10 +4006,18 @@
         // channels have no unit/phase to fold in (unlike analog's own
         // Name+Unit combination), so this is simpler than
         // analogChannelNameCellHtml() by construction, not by omission.
-        function digitalChannelNameCellHtml(channel) {
+        //
+        // Phase 4C2 (section 11): the compact "A:0 B:1" cursor-state
+        // badges are appended INSIDE this same cell (`.digital-cur-badges`
+        // gets `margin-left: auto` inside this flex row, pushing it to
+        // the far right) -- deliberately NOT a second table column, per
+        // the owner's own explicit "do not create full-width Cur A / Cur
+        // B columns for digital channels" instruction.
+        function digitalChannelNameCellHtml(sourceId, channel) {
             return '<span class="channel-name-cell">' +
                 '<span class="channel-color-dot channel-color-dot--neutral" aria-hidden="true"></span>' +
                 '<span class="channel-name-text">' + escapeHtml(channel.name) + '</span>' +
+                wwDigitalCurBadgeHtml(sourceId, channel.name) +
                 '</span>';
         }
 
@@ -4639,15 +4680,26 @@
             // aSampleTime, bSampleTime} -- derived measurement state ONLY
             // (section 34): the engineering authority for CURSOR TIME
             // remains ww.measurementCursors exclusively; this map is
-            // purely a cache of the backend's last-known instantaneous
-            // values at those times, for the currently-displayed analog
-            // channels of whichever sources are involved. A hidden
+            // purely a cache of the backend's last-known recorded
+            // channel values at those times, for the currently-displayed
+            // analog channels of whichever sources are involved. A hidden
             // channel or a closed/disabled cursor is never computed from
             // here directly -- wwCurValueText() always re-checks the
             // CURRENT visibility/enabled state at render time, so a stale
             // entry lingering here (e.g. for a channel hidden without an
             // explicit cache purge) can never be shown as though current.
             cursorValues: new Map(),
+            // Phase 4C2: digital's own equivalent, "sourceId::channelName"
+            // -> {aState, bState} (plain 0/1/null) -- a DELIBERATELY
+            // separate Map from ww.cursorValues (never the same map/key
+            // space as analog's float values, section 31 of the Phase 4C2
+            // task: "avoid collisions between analog value: 0.0 and
+            // digital state: 0"), even though both reuse the identical
+            // wwChannelKey(sourceId, channelName) key SHAPE. Same
+            // gating/defense-in-depth contract as cursorValues --
+            // wwDigitalCurStateText() always re-checks cursor mode/cursor
+            // visibility/wwIsDigitalChannelVisible() at render time.
+            digitalCursorValues: new Map(),
         };
 
         function wwFiniteNumber(value) {
@@ -6566,14 +6618,30 @@
             // aria-pressed/label), same reason the analog add path ends
             // with this same call.
             wwSyncChannelBrowserDisplayState();
+            // Phase 4C2 (section 20/21): newly-shown digital channels need
+            // their own A/B state populated -- one batched request per
+            // touched source (mirrors wwAddSelectedChannels()'s own
+            // analog hook exactly).
+            if (ww.measurementCursors.enabled) {
+                for (const sourceId of bySource.keys()) wwFetchCursorValuesForSource(sourceId);
+            }
             wwRefreshWorkspaceBounds();
         }
 
         function wwRemoveDigitalChannelByKey(key) {
+            const entry = ww.digitalDisplayed.get(key);
             if (ww.digitalDisplayed.delete(key)) {
                 wwRebuildDigitalChart();
                 wwUpdateEmptyState();
                 wwSyncChannelBrowserDisplayState();
+                // Phase 4C2 (section 21): hiding a digital channel
+                // immediately reverts its own A/B badges to "–" -- there
+                // is nothing left to measure, just clear the cache entry
+                // and re-render this one row's own two badge cells.
+                if (entry) {
+                    wwClearDigitalCursorValuesForChannels(entry.sourceId, [entry.channelName]);
+                    wwUpdateDigitalCursorBadgesForChannels(entry.sourceId, [entry.channelName]);
+                }
                 wwRefreshWorkspaceBounds();
             }
         }
@@ -6586,13 +6654,27 @@
         // exactly once for the whole group instead of once per channel.
         function wwRemoveDigitalChannelsByKeys(keys) {
             let removedAny = false;
+            const removedBySource = new Map(); // Phase 4C2: sourceId -> [channelName, ...]
             for (const key of keys) {
-                if (ww.digitalDisplayed.delete(key)) removedAny = true;
+                const entry = ww.digitalDisplayed.get(key);
+                if (!entry) continue;
+                if (ww.digitalDisplayed.delete(key)) {
+                    removedAny = true;
+                    if (!removedBySource.has(entry.sourceId)) removedBySource.set(entry.sourceId, []);
+                    removedBySource.get(entry.sourceId).push(entry.channelName);
+                }
             }
             if (removedAny) {
                 wwRebuildDigitalChart();
                 wwUpdateEmptyState();
                 wwSyncChannelBrowserDisplayState();
+                // Phase 4C2 (section 20): group "Hide all" reverts every
+                // removed channel's A/B badges to "–" in this same batch
+                // -- never a stale value left behind.
+                for (const [sourceId, channelNames] of removedBySource) {
+                    wwClearDigitalCursorValuesForChannels(sourceId, channelNames);
+                    wwUpdateDigitalCursorBadgesForChannels(sourceId, channelNames);
+                }
                 wwRefreshWorkspaceBounds();
             }
         }
@@ -6615,16 +6697,22 @@
             // "this source is no longer part of the analysis," never a
             // partial removal.
             let removedAnyDigital = false;
+            const removedDigitalNames = []; // Phase 4C2
             for (const [key, entry] of ww.digitalDisplayed) {
                 if (entry.sourceId === sourceId) {
                     ww.digitalDisplayed.delete(key);
                     removedAnyDigital = true;
+                    removedDigitalNames.push(entry.channelName);
                 }
             }
             if (removedAnyDigital) {
                 wwRebuildDigitalChart();
                 wwUpdateEmptyState();
                 wwSyncChannelBrowserDisplayState();
+                // Phase 4C2 (section 32): a fully-removed source's digital
+                // A/B state must never linger -- clear it here too, same
+                // as the analog side above (wwRemoveChannel()'s own hook).
+                wwClearDigitalCursorValuesForChannels(sourceId, removedDigitalNames);
             }
             ww.sourceBounds.delete(sourceId);
             wwRefreshWorkspaceBounds();
@@ -7411,10 +7499,13 @@
             ww.measurementCursors.a = { visible: true, time: null };
             ww.measurementCursors.b = { visible: true, time: null };
             // Phase 4C1 (section 35): "Start New Workspace" is one of the
-            // explicit clear points for cached instantaneous values too --
-            // never let a previous recording's Cur A/Cur B numbers persist
-            // into a brand-new workspace.
+            // explicit clear points for cached channel values too -- never
+            // let a previous recording's Cur A/Cur B numbers persist into
+            // a brand-new workspace.
             ww.cursorValues.clear();
+            // Phase 4C2 (section 32): same clear point for digital A/B
+            // states.
+            ww.digitalCursorValues.clear();
         }
 
         // ==================================================================
@@ -7532,29 +7623,124 @@
             for (const name of channelNames) ww.cursorValues.delete(wwChannelKey(sourceId, name));
         }
 
+        // ==================================================================
+        // Phase 4C2: digital A/B cursor state (extension of DEC-040)
+        //
+        // Digital state reuses the EXACT SAME backend batched endpoint and
+        // the exact same per-source nearest-sample indices as analog
+        // (app.services.waveform_service.extract_cursor_values) -- see
+        // that function's own docstring for why digital channels need no
+        // separate transition-search algorithm: they live in the same
+        // full-resolution, shared-"time" source data analog channels do.
+        // Compact inline "A:0 B:1" badges (never a full Cur A/Cur B
+        // column, section 11), rendered inline in the existing digital
+        // Channel cell -- see wwDigitalCurBadgeHtml()/
+        // digitalChannelNameCellHtml().
+        // ==================================================================
+
+        // Mirrors wwCurValueText()'s exact gating contract (section 8/9/
+        // 10 of the Phase 4C2 task): mode off, that cursor closed/absent,
+        // or the channel itself hidden all force "–", regardless of cache
+        // contents. Returns the PLAIN state text ("0"/"1"), never a
+        // formatted/decorated string -- wwDigitalCurBadgeHtml() adds the
+        // "A:"/"B:" labels.
+        function wwDigitalCurStateText(sourceId, channelName, kind) {
+            if (!ww.measurementCursors.enabled) return "—";
+            const cursor = ww.measurementCursors[kind];
+            if (!cursor || !cursor.visible || !Number.isFinite(cursor.time)) return "—";
+            if (!wwIsDigitalChannelVisible(sourceId, channelName)) return "—";
+            const entry = ww.digitalCursorValues.get(wwChannelKey(sourceId, channelName));
+            if (!entry) return "—";
+            const state = kind === "a" ? entry.aState : entry.bState;
+            return (state === null || state === undefined) ? "—" : String(state);
+        }
+
+        // Section 11/12: compact inline "A:0 B:1" badges -- neutral
+        // styling (no red/green, no alarm/healthy implication, section
+        // 12's own explicit instruction: digital semantics vary by
+        // signal), rendered directly inside the existing Channel cell
+        // (see digitalChannelNameCellHtml()) rather than as a second
+        // full-width table column.
+        function wwDigitalCurBadgeHtml(sourceId, channelName) {
+            return '<span class="digital-cur-badges">' +
+                '<span class="digital-cur-badge">A:<span class="digital-cur-state digital-cur-state--a">' +
+                escapeHtml(wwDigitalCurStateText(sourceId, channelName, "a")) + '</span></span>' +
+                '<span class="digital-cur-badge">B:<span class="digital-cur-state digital-cur-state--b">' +
+                escapeHtml(wwDigitalCurStateText(sourceId, channelName, "b")) + '</span></span>' +
+                '</span>';
+        }
+
+        // Targeted live update, digital's own equivalent of
+        // wwUpdateCursorValueCellsForChannels().
+        function wwUpdateDigitalCursorBadgesForChannels(sourceId, channelNames) {
+            for (const name of channelNames) {
+                const row = document.querySelector(
+                    'tr.channel-row--toggle[data-channel-kind="digital"][data-source-id="' +
+                    CSS.escape(sourceId) + '"][data-channel-name="' + CSS.escape(name) + '"]'
+                );
+                if (!row) continue;
+                const aCell = row.querySelector(".digital-cur-state--a");
+                const bCell = row.querySelector(".digital-cur-state--b");
+                if (aCell) aCell.textContent = wwDigitalCurStateText(sourceId, name, "a");
+                if (bCell) bCell.textContent = wwDigitalCurStateText(sourceId, name, "b");
+            }
+        }
+
+        // Whole-sidebar sweep, digital's own equivalent of
+        // wwUpdateAllCursorValueCells() -- used for mode OFF/individual
+        // cursor closed, where every rendered digital row can change at
+        // once.
+        function wwUpdateAllDigitalCursorBadges() {
+            const rows = document.querySelectorAll('tr.channel-row--toggle[data-channel-kind="digital"]');
+            for (const row of rows) {
+                const sourceId = row.dataset.sourceId;
+                const name = row.dataset.channelName;
+                const aCell = row.querySelector(".digital-cur-state--a");
+                const bCell = row.querySelector(".digital-cur-state--b");
+                if (aCell) aCell.textContent = wwDigitalCurStateText(sourceId, name, "a");
+                if (bCell) bCell.textContent = wwDigitalCurStateText(sourceId, name, "b");
+            }
+        }
+
+        function wwClearDigitalCursorValuesForChannels(sourceId, channelNames) {
+            for (const name of channelNames) ww.digitalCursorValues.delete(wwChannelKey(sourceId, name));
+        }
+
         // Section 35: cursor mode OFF clears the whole cache (not just the
         // display) and invalidates every in-flight request's generation
         // (below) so a slow response that lands AFTER the user disabled
-        // cursor mode can never silently repopulate it.
+        // cursor mode can never silently repopulate it. Phase 4C2:
+        // extended to also clear digital state -- ONE shared generation
+        // counter per source already guards both analog and digital
+        // (they are fetched together, see wwFetchCursorValuesForSource()),
+        // so only the cache-clear + redraw calls needed doubling here.
         function wwCursorValuesHandleModeDisabled() {
             ww.cursorValues.clear();
+            ww.digitalCursorValues.clear();
             for (const sourceId of wwCursorValuesGeneration.keys()) {
                 wwCursorValuesGeneration.set(sourceId, (wwCursorValuesGeneration.get(sourceId) || 0) + 1);
             }
             wwUpdateAllCursorValueCells();
+            wwUpdateAllDigitalCursorBadges();
         }
 
         // Section 16/35: closing A (or B) individually clears only THAT
         // cursor's own values from every cached entry -- the other
         // cursor's own numbers are untouched, matching
         // wwSetMeasurementCursorVisible()'s own "never touch the other
-        // cursor" contract exactly.
+        // cursor" contract exactly. Phase 4C2: same treatment for digital
+        // state.
         function wwCursorValuesHandleCursorClosed(kind) {
             for (const entry of ww.cursorValues.values()) {
                 if (kind === "a") entry.aValue = null;
                 else entry.bValue = null;
             }
+            for (const entry of ww.digitalCursorValues.values()) {
+                if (kind === "a") entry.aState = null;
+                else entry.bState = null;
+            }
             wwUpdateAllCursorValueCells();
+            wwUpdateAllDigitalCursorBadges();
         }
 
         function wwDisplayedAnalogSourceIds() {
@@ -7571,6 +7757,24 @@
             return names;
         }
 
+        // Phase 4C2 digital equivalents of the two helpers immediately
+        // above -- ww.digitalDisplayed is a completely separate
+        // visibility authority from ww.displayed (DEC-035/Phase 4A-UAT8),
+        // so this is a genuinely separate lookup, not a shared one.
+        function wwDisplayedDigitalSourceIds() {
+            const ids = new Set();
+            for (const entry of ww.digitalDisplayed.values()) ids.add(entry.sourceId);
+            return ids;
+        }
+
+        function wwDisplayedDigitalChannelNamesForSource(sourceId) {
+            const names = [];
+            for (const entry of ww.digitalDisplayed.values()) {
+                if (entry.sourceId === sourceId) names.push(entry.channelName);
+            }
+            return names;
+        }
+
         // Section 23: one monotonically increasing generation number per
         // source -- a response (or a network error) is only applied if it
         // is still the LATEST outstanding request for that source at the
@@ -7580,17 +7784,21 @@
         const wwCursorValuesGeneration = new Map();
 
         // One batched request for one source's currently-displayed analog
-        // channels (section 8/9/10/32) -- never one request per channel,
+        // AND digital channels TOGETHER (Phase 4C2 section 15/18:
+        // "coordinated per source" -- one request, one pair of resolved
+        // indices, covering both kinds) -- never one request per channel,
         // never combining two sources' channel lists into a single
         // request (each source's own full-resolution time array is
         // authoritative only for itself, section 4/33). A no-op, zero-
-        // request call whenever cursor mode is off, nothing is displayed
-        // for this source, or both cursors are absent (section 15/16/53) --
-        // the three conditions this whole feature must never fetch under.
+        // request call whenever cursor mode is off, NOTHING (of either
+        // kind) is displayed for this source, or both cursors are absent
+        // (section 15/16/53) -- the three conditions this whole feature
+        // must never fetch under.
         async function wwFetchCursorValuesForSource(sourceId) {
             if (!ww.measurementCursors.enabled) return;
-            const channelNames = wwDisplayedAnalogChannelNamesForSource(sourceId);
-            if (channelNames.length === 0) return;
+            const analogNames = wwDisplayedAnalogChannelNamesForSource(sourceId);
+            const digitalNames = wwDisplayedDigitalChannelNamesForSource(sourceId);
+            if (analogNames.length === 0 && digitalNames.length === 0) return;
 
             const cursors = ww.measurementCursors;
             const aTime = cursors.a.visible && Number.isFinite(cursors.a.time) ? cursors.a.time : null;
@@ -7608,24 +7816,34 @@
                     {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ channel_names: channelNames, cursor_a_time: aTime, cursor_b_time: bTime }),
+                        body: JSON.stringify({
+                            analog_channel_names: analogNames,
+                            digital_channel_names: digitalNames,
+                            cursor_a_time: aTime,
+                            cursor_b_time: bTime,
+                        }),
                     }
                 );
                 if (wwCursorValuesGeneration.get(sourceId) !== generation) return; // superseded while in flight
                 if (!response.ok) {
-                    // Section 38: never fabricate a value on failure --
-                    // clear whatever might be cached for these channels so
-                    // the sidebar honestly falls back to "—" instead of
-                    // silently keeping an old (now unverifiable) number.
-                    wwClearCursorValuesForChannels(sourceId, channelNames);
-                    wwUpdateCursorValueCellsForChannels(sourceId, channelNames);
+                    // Section 38 (Phase 4C1)/30 (Phase 4C2): never
+                    // fabricate a value/state on failure -- clear whatever
+                    // might be cached for these channels so the sidebar
+                    // honestly falls back to "—" instead of silently
+                    // keeping an old (now unverifiable) number/state.
+                    wwClearCursorValuesForChannels(sourceId, analogNames);
+                    wwUpdateCursorValueCellsForChannels(sourceId, analogNames);
+                    wwClearDigitalCursorValuesForChannels(sourceId, digitalNames);
+                    wwUpdateDigitalCursorBadgesForChannels(sourceId, digitalNames);
                     return;
                 }
                 body = await response.json();
             } catch (error) {
                 if (wwCursorValuesGeneration.get(sourceId) !== generation) return;
-                wwClearCursorValuesForChannels(sourceId, channelNames);
-                wwUpdateCursorValueCellsForChannels(sourceId, channelNames);
+                wwClearCursorValuesForChannels(sourceId, analogNames);
+                wwUpdateCursorValueCellsForChannels(sourceId, analogNames);
+                wwClearDigitalCursorValuesForChannels(sourceId, digitalNames);
+                wwUpdateDigitalCursorBadgesForChannels(sourceId, digitalNames);
                 return;
             }
 
@@ -7638,17 +7856,26 @@
                     bSampleTime: body.cursor_b ? body.cursor_b.sample_time : null,
                 });
             }
-            wwUpdateCursorValueCellsForChannels(sourceId, channelNames);
+            for (const channel of body.digital_channels) {
+                ww.digitalCursorValues.set(wwChannelKey(sourceId, channel.channel_name), {
+                    aState: channel.a_state,
+                    bState: channel.b_state,
+                });
+            }
+            wwUpdateCursorValueCellsForChannels(sourceId, analogNames);
+            wwUpdateDigitalCursorBadgesForChannels(sourceId, digitalNames);
         }
 
-        // Section 32: every source with at least one displayed analog
-        // channel gets its OWN batched request -- never merged across
-        // sources. Called on: cursor mode enabled, a channel becomes
-        // newly displayed (single row or group Show all), and the
-        // throttled/final drag paths below.
+        // Section 32 (Phase 4C1)/17 (Phase 4C2): every source with at
+        // least one displayed analog OR digital channel gets its OWN
+        // batched request -- never merged across sources. Called on:
+        // cursor mode enabled, a channel becomes newly displayed (single
+        // row or group Show all, either kind), and the throttled/final
+        // drag paths below.
         function wwFetchAllCursorValues() {
             if (!ww.measurementCursors.enabled) return;
-            for (const sourceId of wwDisplayedAnalogSourceIds()) wwFetchCursorValuesForSource(sourceId);
+            const sourceIds = new Set([...wwDisplayedAnalogSourceIds(), ...wwDisplayedDigitalSourceIds()]);
+            for (const sourceId of sourceIds) wwFetchCursorValuesForSource(sourceId);
         }
 
         // Section 22: a leading+trailing throttle (~50ms, inside the

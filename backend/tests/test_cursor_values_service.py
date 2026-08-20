@@ -133,7 +133,7 @@ class TestTieBehaviour:
 
     def test_result_earlier_sample_value_is_20(self):
         active = _worked_example_source()
-        result = extract_cursor_values(active, channel_names=["VA"], cursor_a_time=0.15, cursor_b_time=None)
+        result = extract_cursor_values(active, analog_channel_names=["VA"], digital_channel_names=[], cursor_a_time=0.15, cursor_b_time=None)
         assert result.channels[0].a_value == pytest.approx(20.0)
 
 
@@ -143,13 +143,13 @@ class TestBoundsBehaviour:
 
     def test_cursor_before_source_start_returns_none(self):
         active = _worked_example_source()
-        result = extract_cursor_values(active, channel_names=["VA"], cursor_a_time=-1.0, cursor_b_time=None)
+        result = extract_cursor_values(active, analog_channel_names=["VA"], digital_channel_names=[], cursor_a_time=-1.0, cursor_b_time=None)
         assert result.cursor_a.sample_time is None
         assert result.channels[0].a_value is None
 
     def test_cursor_after_source_end_returns_none(self):
         active = _worked_example_source()
-        result = extract_cursor_values(active, channel_names=["VA"], cursor_a_time=10.0, cursor_b_time=None)
+        result = extract_cursor_values(active, analog_channel_names=["VA"], digital_channel_names=[], cursor_a_time=10.0, cursor_b_time=None)
         assert result.cursor_a.sample_time is None
         assert result.channels[0].a_value is None
         # requested_time itself is preserved even when out of bounds -- the
@@ -158,7 +158,7 @@ class TestBoundsBehaviour:
 
     def test_cursor_exactly_at_bounds_is_in_bounds(self):
         active = _worked_example_source()
-        result = extract_cursor_values(active, channel_names=["VA"], cursor_a_time=0.3, cursor_b_time=None)
+        result = extract_cursor_values(active, analog_channel_names=["VA"], digital_channel_names=[], cursor_a_time=0.3, cursor_b_time=None)
         assert result.cursor_a.sample_time == pytest.approx(0.3)
         assert result.channels[0].a_value == pytest.approx(40.0)
 
@@ -196,7 +196,7 @@ class TestFullResolutionAuthority:
         # not a coincidentally-identical one.
         assert cursor_time not in range_result.time.tolist()
 
-        result = extract_cursor_values(active, channel_names=["VA"], cursor_a_time=cursor_time, cursor_b_time=None)
+        result = extract_cursor_values(active, analog_channel_names=["VA"], digital_channel_names=[], cursor_a_time=cursor_time, cursor_b_time=None)
 
         true_idx = _nearest_sample_index(time, cursor_time)
         assert result.channels[0].a_value == pytest.approx(float(values[true_idx]))
@@ -223,9 +223,9 @@ class TestMultiRateSources:
         )
 
         cursor_time = 0.50013
-        fine_result = extract_cursor_values(fine, channel_names=["VA"], cursor_a_time=cursor_time, cursor_b_time=None)
+        fine_result = extract_cursor_values(fine, analog_channel_names=["VA"], digital_channel_names=[], cursor_a_time=cursor_time, cursor_b_time=None)
         coarse_result = extract_cursor_values(
-            coarse, channel_names=["VA"], cursor_a_time=cursor_time, cursor_b_time=None
+            coarse, analog_channel_names=["VA"], digital_channel_names=[], cursor_a_time=cursor_time, cursor_b_time=None
         )
 
         # Fine source: nearest sample of 0.50013*5000=2500.65 -> index 2501 (0.5002s)
@@ -251,7 +251,7 @@ class TestBatchedIndexReuse:
             },
         )
         result = extract_cursor_values(
-            active, channel_names=["VA", "VB", "IA"], cursor_a_time=0.14, cursor_b_time=0.18
+            active, analog_channel_names=["VA", "VB", "IA"], digital_channel_names=[], cursor_a_time=0.14, cursor_b_time=0.18
         )
         assert len(result.channels) == 3
         by_name = {c.channel_name: c for c in result.channels}
@@ -274,7 +274,7 @@ class TestUnknownChannelHandling:
     def test_unknown_channel_name_is_omitted_not_raised(self):
         active = _worked_example_source()
         result = extract_cursor_values(
-            active, channel_names=["VA", "DOES_NOT_EXIST"], cursor_a_time=0.1, cursor_b_time=None
+            active, analog_channel_names=["VA", "DOES_NOT_EXIST"], digital_channel_names=[], cursor_a_time=0.1, cursor_b_time=None
         )
         assert len(result.channels) == 1
         assert result.channels[0].channel_name == "VA"
@@ -286,7 +286,7 @@ class TestUnknownChannelHandling:
             digital={"BRK_A": np.array([0, 0, 1, 1], dtype=np.int8)},
         )
         result = extract_cursor_values(
-            active, channel_names=["VA", "BRK_A"], cursor_a_time=0.1, cursor_b_time=None
+            active, analog_channel_names=["VA", "BRK_A"], digital_channel_names=[], cursor_a_time=0.1, cursor_b_time=None
         )
         assert len(result.channels) == 1
         assert result.channels[0].channel_name == "VA"
@@ -295,7 +295,7 @@ class TestUnknownChannelHandling:
 class TestBothCursorsIndependentlyOptional:
     def test_only_cursor_a_supplied(self):
         active = _worked_example_source()
-        result = extract_cursor_values(active, channel_names=["VA"], cursor_a_time=0.1, cursor_b_time=None)
+        result = extract_cursor_values(active, analog_channel_names=["VA"], digital_channel_names=[], cursor_a_time=0.1, cursor_b_time=None)
         assert result.cursor_a is not None
         assert result.cursor_b is None
         assert result.channels[0].a_value == pytest.approx(20.0)
@@ -303,7 +303,7 @@ class TestBothCursorsIndependentlyOptional:
 
     def test_only_cursor_b_supplied(self):
         active = _worked_example_source()
-        result = extract_cursor_values(active, channel_names=["VA"], cursor_a_time=None, cursor_b_time=0.2)
+        result = extract_cursor_values(active, analog_channel_names=["VA"], digital_channel_names=[], cursor_a_time=None, cursor_b_time=0.2)
         assert result.cursor_a is None
         assert result.cursor_b is not None
         assert result.channels[0].a_value is None
@@ -311,7 +311,7 @@ class TestBothCursorsIndependentlyOptional:
 
     def test_neither_cursor_supplied_still_returns_channels_with_null_values(self):
         active = _worked_example_source()
-        result = extract_cursor_values(active, channel_names=["VA"], cursor_a_time=None, cursor_b_time=None)
+        result = extract_cursor_values(active, analog_channel_names=["VA"], digital_channel_names=[], cursor_a_time=None, cursor_b_time=None)
         assert result.cursor_a is None
         assert result.cursor_b is None
         assert result.channels[0].a_value is None
@@ -324,6 +324,226 @@ class TestNoMutation:
     def test_original_waveform_data_is_unchanged_after_repeated_calls(self):
         active = _worked_example_source()
         before = active.record.waveform_data.copy(deep=True)
-        extract_cursor_values(active, channel_names=["VA"], cursor_a_time=0.14, cursor_b_time=0.18)
-        extract_cursor_values(active, channel_names=["VA"], cursor_a_time=0.29, cursor_b_time=0.01)
+        extract_cursor_values(active, analog_channel_names=["VA"], digital_channel_names=[], cursor_a_time=0.14, cursor_b_time=0.18)
+        extract_cursor_values(active, analog_channel_names=["VA"], digital_channel_names=[], cursor_a_time=0.29, cursor_b_time=0.01)
         pd.testing.assert_frame_equal(active.record.waveform_data, before)
+
+
+# ============================================================================
+# Phase 4C2 -- digital A/B cursor state. Digital channels live in the SAME
+# waveform_data DataFrame, sharing the SAME "time" column as analog
+# channels (confirmed via app.providers.comtrade._build_dataframe) -- so
+# every test below exercises the identical _nearest_sample_index() path,
+# just reading a digital column and asserting an int state instead of a
+# float value.
+# ============================================================================
+
+
+class TestDigitalStaticState:
+    """Section 35 -- deterministic fixture: times 0.0/0.1/0.2/0.3, digital
+    states 0/0/1/1. Every cursor point lands exactly on a real sample."""
+
+    def _fixture(self) -> ActiveSource:
+        return _active_source(
+            time=np.array([0.0, 0.1, 0.2, 0.3]),
+            channels={},
+            digital={"BRK": np.array([0, 0, 1, 1], dtype=np.int8)},
+        )
+
+    def test_each_exact_sample_returns_its_own_recorded_state(self):
+        active = self._fixture()
+        for t, expected in [(0.0, 0), (0.1, 0), (0.2, 1), (0.3, 1)]:
+            result = extract_cursor_values(
+                active, analog_channel_names=[], digital_channel_names=["BRK"],
+                cursor_a_time=t, cursor_b_time=None,
+            )
+            assert result.digital_channels[0].a_state == expected, f"t={t}"
+
+    def test_state_is_plain_int_not_float_or_bool(self):
+        active = self._fixture()
+        result = extract_cursor_values(
+            active, analog_channel_names=[], digital_channel_names=["BRK"],
+            cursor_a_time=0.2, cursor_b_time=None,
+        )
+        state = result.digital_channels[0].a_state
+        assert type(state) is int
+        assert state == 1
+
+
+class TestDigitalTransitions:
+    """Section 36 -- sparse transitions interpreted correctly: 0 until
+    0.5, 1 from 0.5 until 1.0, 0 from 1.0 onward. Built as a dense
+    per-sample array (0.01s step) since that is how digital channels are
+    ACTUALLY retained internally (see extract_cursor_values's own
+    docstring) -- not a second, transition-interval-search
+    implementation. Section 6's exact-transition-timestamp rule ("state
+    at T = the NEW state beginning at T") falls out for free: the
+    recorded sample AT t=0.50 already holds the new state 1, and AT
+    t=1.00 already holds the new (falling-edge) state 0, by construction
+    of how the source data itself is built."""
+
+    def _fixture(self) -> ActiveSource:
+        time = np.arange(151, dtype=np.float64) * 0.01  # 0.00 .. 1.50
+        state = np.where((time >= 0.5) & (time < 1.0), 1, 0).astype(np.int8)
+        return _active_source(time=time, channels={}, digital={"BRK": state})
+
+    def test_worked_examples_from_the_task_spec(self):
+        active = self._fixture()
+        for t, expected in [(0.49, 0), (0.50, 1), (0.75, 1), (1.00, 0), (1.20, 0)]:
+            result = extract_cursor_values(
+                active, analog_channel_names=[], digital_channel_names=["BRK"],
+                cursor_a_time=t, cursor_b_time=None,
+            )
+            assert result.digital_channels[0].a_state == expected, f"t={t}"
+
+    def test_rising_edge_exact_timestamp_reads_the_new_state(self):
+        """Section 6, explicit: cursor exactly AT a rising transition
+        (0 -> 1 at t=0.500) reads 1, the NEW state, never the old one."""
+        active = self._fixture()
+        result = extract_cursor_values(
+            active, analog_channel_names=[], digital_channel_names=["BRK"],
+            cursor_a_time=0.500, cursor_b_time=None,
+        )
+        assert result.digital_channels[0].a_state == 1
+
+    def test_falling_edge_exact_timestamp_reads_the_new_state(self):
+        """Same rule, falling edge (1 -> 0 at t=1.000) reads 0."""
+        active = self._fixture()
+        result = extract_cursor_values(
+            active, analog_channel_names=[], digital_channel_names=["BRK"],
+            cursor_a_time=1.000, cursor_b_time=None,
+        )
+        assert result.digital_channels[0].a_state == 0
+
+
+class TestDigitalOutsideBounds:
+    """Section 37 -- cursor time outside this source's own bounds returns
+    `None`, NEVER the last/first recorded state."""
+
+    def test_cursor_beyond_source_end_returns_none_not_last_state(self):
+        active = _active_source(
+            time=np.array([0.0, 0.5, 1.0]),
+            channels={},
+            digital={"BRK": np.array([0, 1, 0], dtype=np.int8)},
+        )
+        result = extract_cursor_values(
+            active, analog_channel_names=[], digital_channel_names=["BRK"],
+            cursor_a_time=None, cursor_b_time=1.5,
+        )
+        assert result.digital_channels[0].b_state is None
+        assert result.cursor_b.sample_time is None
+
+
+class TestDigitalBatchedWithAnalog:
+    """Section 16/17 -- a single request covering BOTH analog and digital
+    channels for one source shares the SAME two resolved indices; never a
+    second index computation for digital."""
+
+    def test_analog_and_digital_channels_share_the_same_resolved_indices(self):
+        time = np.array([0.0, 0.1, 0.2, 0.3])
+        active = _active_source(
+            time=time,
+            channels={"VA": np.array([10.0, 20.0, 30.0, 40.0])},
+            digital={"BRK": np.array([0, 0, 1, 1], dtype=np.int8)},
+        )
+        result = extract_cursor_values(
+            active, analog_channel_names=["VA"], digital_channel_names=["BRK"],
+            cursor_a_time=0.14, cursor_b_time=0.18,
+        )
+        # cursor_a=0.14 -> nearest index 1 (t=0.1); cursor_b=0.18 -> nearest index 2 (t=0.2)
+        assert result.channels[0].a_value == pytest.approx(20.0)
+        assert result.channels[0].b_value == pytest.approx(30.0)
+        assert result.digital_channels[0].a_state == 0
+        assert result.digital_channels[0].b_state == 1
+
+
+class TestDigitalUnknownChannelHandling:
+    """Unknown/wrong-kind digital channel names are silently skipped, not
+    raised -- symmetric with TestUnknownChannelHandling's analog case."""
+
+    def test_unknown_digital_channel_name_is_omitted_not_raised(self):
+        active = _active_source(
+            time=np.array([0.0, 0.1]), channels={}, digital={"BRK": np.array([0, 1], dtype=np.int8)},
+        )
+        result = extract_cursor_values(
+            active, analog_channel_names=[], digital_channel_names=["BRK", "DOES_NOT_EXIST"],
+            cursor_a_time=0.1, cursor_b_time=None,
+        )
+        assert len(result.digital_channels) == 1
+        assert result.digital_channels[0].channel_name == "BRK"
+
+    def test_analog_channel_name_passed_as_digital_is_omitted_not_raised(self):
+        active = _active_source(
+            time=np.array([0.0, 0.1]),
+            channels={"VA": np.array([10.0, 20.0])},
+            digital={"BRK": np.array([0, 1], dtype=np.int8)},
+        )
+        result = extract_cursor_values(
+            active, analog_channel_names=[], digital_channel_names=["VA", "BRK"],
+            cursor_a_time=0.1, cursor_b_time=None,
+        )
+        assert len(result.digital_channels) == 1
+        assert result.digital_channels[0].channel_name == "BRK"
+
+
+class TestDigitalSourceIsolation:
+    """Section 45 -- two sources with the SAME digital channel name but
+    DIFFERENT recorded states never collide; each source's own time array
+    and own state array are looked up completely independently."""
+
+    def test_same_channel_name_two_sources_different_states_no_collision(self):
+        source_a = _active_source(
+            source_id="src-a", time=np.array([0.0, 0.1]), channels={},
+            digital={"TRIP": np.array([0, 0], dtype=np.int8)},
+        )
+        source_b = _active_source(
+            source_id="src-b", time=np.array([0.0, 0.1]), channels={},
+            digital={"TRIP": np.array([1, 1], dtype=np.int8)},
+        )
+
+        result_a = extract_cursor_values(
+            source_a, analog_channel_names=[], digital_channel_names=["TRIP"],
+            cursor_a_time=0.1, cursor_b_time=None,
+        )
+        result_b = extract_cursor_values(
+            source_b, analog_channel_names=[], digital_channel_names=["TRIP"],
+            cursor_a_time=0.1, cursor_b_time=None,
+        )
+
+        assert result_a.source_id == "src-a"
+        assert result_b.source_id == "src-b"
+        assert result_a.digital_channels[0].a_state == 0
+        assert result_b.digital_channels[0].a_state == 1
+
+
+class TestDigitalClassificationPreservation:
+    """Section 46/28 -- cursor measurement never reads/depends on/mutates
+    `normal_state` or `classification`; both are untouched by the call."""
+
+    def test_classification_and_normal_state_unchanged_after_call(self):
+        active = _active_source(
+            time=np.array([0.0, 0.1]), channels={}, digital={"BRK": np.array([0, 1], dtype=np.int8)},
+        )
+        before = (active.metadata.digital_channels[0].classification, active.metadata.digital_channels[0].normal_state)
+        extract_cursor_values(
+            active, analog_channel_names=[], digital_channel_names=["BRK"],
+            cursor_a_time=0.1, cursor_b_time=None,
+        )
+        after = (active.metadata.digital_channels[0].classification, active.metadata.digital_channels[0].normal_state)
+        assert before == after
+
+    def test_state_1_is_returned_regardless_of_configured_normal_state(self):
+        """Section 28: a channel configured with normal_state=1 whose
+        recorded value is 1 must still report a_state=1 -- never inverted
+        or reinterpreted relative to what "normal" means for that
+        channel."""
+        now_time = np.array([0.0, 0.1])
+        active = _active_source(time=now_time, channels={}, digital={"BRK": np.array([1, 1], dtype=np.int8)})
+        # Directly override normal_state to 1 post-construction -- proves
+        # the extraction path never reads it either way.
+        active.metadata.digital_channels[0].normal_state = 1
+        result = extract_cursor_values(
+            active, analog_channel_names=[], digital_channel_names=["BRK"],
+            cursor_a_time=0.0, cursor_b_time=None,
+        )
+        assert result.digital_channels[0].a_state == 1
