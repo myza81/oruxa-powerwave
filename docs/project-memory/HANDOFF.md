@@ -8,21 +8,30 @@ Last updated: **2026-08-20**
 
 ## What was most recently done
 
-**Phase 4C1 — Instantaneous A/B Cursor Values (Cur A / Cur B).** Full
+**Phase 4C1 — A/B Cursor Channel Values (Cur A / Cur B).** Full
 detail:
-[MIGRATION_PLAN.md — Phase 4C1 Record](MIGRATION_PLAN.md#phase-4c1--instantaneous-ab-cursor-values-cur-a--cur-b-2026-08-20),
-[DECISIONS.md — DEC-040](DECISIONS.md#dec-040--cursor-instantaneous-values-are-computed-from-authoritative-full-resolution-source-data-at-the-nearest-actual-sample-displaydownsampled-waveform-points-are-never-measurement-authority-phase-4c1).
+[MIGRATION_PLAN.md — Phase 4C1 Record](MIGRATION_PLAN.md#phase-4c1--ab-cursor-channel-values-cur-a--cur-b-2026-08-20),
+[DECISIONS.md — DEC-040](DECISIONS.md#dec-040--ab-cursor-channel-values-are-computed-from-authoritative-full-resolution-source-data-at-the-nearest-actual-sample-agnostic-to-channel-semantics-phase-4c1).
 
 **Owner direction**: the first VALUE measurement built on the DEC-039
-A/B cursor-time overlay — show each displayed analog channel's
-instantaneous Y-axis value at Cursor A and Cursor B in the Channels
-sidebar, as compact "Cur A"/"Cur B" columns. Explicitly instantaneous
-only (RMS, angle, delta angle, ΔY, interpolation, on-canvas annotations,
-digital-at-cursor, cross-source sync, resampling, and phasor calculation
-all deliberately deferred). Hard engineering-integrity rule from the
-task spec: values must always come from the authoritative full-resolution
-source data at the nearest ACTUAL sample — never from a Plotly trace,
-a downsampled/peak-preserving display representation, or interpolation.
+A/B cursor-time overlay — show each displayed analog channel's recorded
+Y-axis value at Cursor A and Cursor B in the Channels sidebar, as compact
+"Cur A"/"Cur B" columns. **Same-day owner clarification**: the original
+"Instantaneous Cursor Values" working title was too restrictive -- Cur
+A/B is a GENERIC channel Y-axis value, agnostic to what the channel
+represents (instantaneous, RMS, frequency, power, etc. -- it simply
+reads that channel's own recorded sample). A dedicated code audit
+confirmed this was already the actual behavior; only terminology/docs
+were corrected, no production code changed (see the DEC-040 addendum).
+Explicitly out of scope this phase: CALCULATED RMS/angle (deriving a new
+value from an instantaneous waveform, as opposed to reading a
+already-RMS channel's own recorded value), delta angle, ΔY,
+interpolation, on-canvas annotations, digital-at-cursor, cross-source
+sync, resampling, and phasor calculation, all deliberately deferred.
+Hard engineering-integrity rule from the task spec: values must always
+come from the authoritative full-resolution source data at the nearest
+ACTUAL sample — never from a Plotly trace, a downsampled/peak-preserving
+display representation, or interpolation.
 
 **Backend** (new): `extract_cursor_values()` +
 `CursorPointResult`/`ChannelCursorValues`/`CursorValuesResult`

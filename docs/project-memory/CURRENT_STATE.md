@@ -1607,15 +1607,21 @@ observe real paint/compositing, so only the lifecycle gap (scroll now
 re-syncs geometry) and the performance contract are verified here —
 real-browser owner UAT remains authoritative for the visual symptom.
 
-`[FACT]` **Phase 4C1 — Instantaneous A/B cursor values (Cur A / Cur B)**
+`[FACT]` **Phase 4C1 — A/B cursor channel values (Cur A / Cur B)**
 (2026-08-20) — see
-[MIGRATION_PLAN.md — Phase 4C1](MIGRATION_PLAN.md#phase-4c1--instantaneous-ab-cursor-values-cur-a--cur-b-2026-08-20)
+[MIGRATION_PLAN.md — Phase 4C1](MIGRATION_PLAN.md#phase-4c1--ab-cursor-channel-values-cur-a--cur-b-2026-08-20)
 and
-[DEC-040](DECISIONS.md#dec-040--cursor-instantaneous-values-are-computed-from-authoritative-full-resolution-source-data-at-the-nearest-actual-sample-displaydownsampled-waveform-points-are-never-measurement-authority-phase-4c1).
+[DEC-040](DECISIONS.md#dec-040--ab-cursor-channel-values-are-computed-from-authoritative-full-resolution-source-data-at-the-nearest-actual-sample-agnostic-to-channel-semantics-phase-4c1).
 The first VALUE measurement built on the DEC-039 cursor-time overlay: the
 Channels sidebar's analog table gained two new compact columns, "Cur A"
-and "Cur B", showing each displayed channel's instantaneous value at
-cursor A/B. Values are always computed backend-side
+and "Cur B", showing each displayed channel's recorded value at cursor
+A/B — a generic channel Y-axis value, agnostic to whether the channel
+represents an instantaneous waveform, RMS, frequency, power, or anything
+else (same-day owner clarification of this phase's original
+"Instantaneous Cursor Values" working title; a code audit confirmed the
+implementation never branched on `engineering_type`, so no production
+code changed, only terminology/docs — see the DEC-040 addendum). Values
+are always computed backend-side
 (`extract_cursor_values()`, `app/services/waveform_service.py`) from the
 source's true full-resolution `waveform_data` at the nearest actual
 sample (binary search, documented earlier-sample tie-break, never

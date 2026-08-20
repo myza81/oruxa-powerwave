@@ -3329,17 +3329,21 @@ performance contract every other recompute hook already honors. See
 
 ---
 
-## DEC-040 — Cursor instantaneous values are computed from authoritative full-resolution source data at the nearest actual sample; display/downsampled waveform points are never measurement authority (Phase 4C1)
+## DEC-040 — A/B cursor channel values are computed from authoritative full-resolution source data at the nearest actual sample, agnostic to channel semantics (Phase 4C1)
 
 Date: 2026-08-20
 Status: Approved
 Source: explicit project-owner task specification opening Phase 4C1
 ("Instantaneous Cursor Values, Cur A / Cur B"), the first VALUE
 measurement feature built on top of DEC-039's cursor-TIME architecture.
+**Terminology amended by explicit owner clarification, same day — see the
+addendum at the end of this entry: "instantaneous" in the original task
+title was shorthand for "the recorded value at this instant," not a
+claim that every analog channel represents an instantaneous waveform.**
 
 Decision:
 
-Cur A/Cur B — the instantaneous Y-axis value of every displayed analog
+Cur A/Cur B — the recorded Y-axis value of every displayed analog
 channel at the shared workspace cursor times `ww.measurementCursors.a/b.time`
 (DEC-039) — are always computed backend-side from the SAME full-resolution
 `DisturbanceRecord.waveform_data` the record was parsed with, read at the
@@ -3351,6 +3355,20 @@ downsampled/reduced/rendered representation `extract_waveform_range`
 Display resolution and measurement resolution are two independent
 concerns from this decision forward — a chart may legitimately show a
 reduced envelope while Cur A/B still reports the true underlying sample.
+
+**Cur A/B is agnostic to what a channel's recorded values actually
+represent.** It always returns whatever that channel's own recorded
+sample is at the nearest actual time — nothing about the extraction path
+assumes the channel is an instantaneous waveform. A channel recorded as
+instantaneous voltage/current yields the instantaneous value at that
+sample; a channel already recorded as RMS voltage/current, frequency,
+power, or ROCOF yields THAT recorded value at that sample, unchanged —
+Cur A/B never re-derives, re-computes, or re-interprets a value from a
+different channel type. Confirmed by code audit (see addendum): neither
+`extract_cursor_values()` nor any frontend cursor-value code path
+branches on `engineering_type`/`engineeringType` at all — the same
+nearest-sample lookup is applied uniformly to every displayed analog
+channel regardless of what it physically represents.
 
 Concretely:
 
@@ -3464,11 +3482,45 @@ Impact:
 - Does NOT alter DEC-039's cursor-time architecture or state shape in any
   way — `ww.measurementCursors` is read-only from this feature's
   perspective.
-- Explicitly NOT implemented this phase (deferred): RMS A/B, angle A/B,
-  delta angle, amplitude delta (ΔY), interpolation options, on-canvas value
-  annotations, digital state at cursor, cross-source time synchronization,
-  resampling, phasor calculation.
-- See [MIGRATION_PLAN.md — Phase 4C1](MIGRATION_PLAN.md#phase-4c1--instantaneous-ab-cursor-values-cur-a--cur-b-2026-08-20).
+- Explicitly NOT implemented this phase (deferred): CALCULATED RMS A/B
+  (deriving an RMS value from an instantaneous waveform channel via some
+  window/algorithm — a separate derived-measurement feature requiring an
+  explicitly defined calculation, distinct from Cur A/B simply reading a
+  channel that is ALREADY recorded as RMS, which this phase already
+  supports per the addendum below), angle A/B, delta angle, amplitude
+  delta (ΔY), interpolation options, on-canvas value annotations, digital
+  state at cursor, cross-source time synchronization, resampling, phasor
+  calculation.
+- See [MIGRATION_PLAN.md — Phase 4C1](MIGRATION_PLAN.md#phase-4c1--ab-cursor-channel-values-cur-a--cur-b-2026-08-20).
+
+**Addendum (2026-08-20, owner terminology clarification, same day as
+initial implementation)**: the owner clarified that "Instantaneous Cursor
+Values," this phase's original working title, was too restrictive a name
+for what was actually built. Cur A/Cur B are GENERIC CHANNEL Y-AXIS
+VALUES at cursor A/B — the recorded value of whatever channel is
+selected, at the nearest actual sample — never an assumption that every
+analog channel represents an instantaneous waveform. Examples the owner
+gave directly: an instantaneous-voltage channel's Cur A/B is the recorded
+instantaneous voltage; an RMS-voltage channel's Cur A/B is the recorded
+RMS voltage (not a re-derivation); a frequency channel's Cur A/B is the
+recorded frequency; a power channel's Cur A/B is the recorded power — in
+every case, Cur A/B is simply "whatever this channel's own recorded
+sample is at this time," with zero interpretation of what that number
+physically represents. A dedicated code audit at this same clarification
+(grep across `backend/app/services/waveform_service.py`,
+`backend/app/api/v1/sources.py`, `backend/app/schemas/cursor_values.py`,
+and every cursor-value function in `frontend/index.html`) confirmed **no
+functional change was required** — `extract_cursor_values()` and its
+frontend callers never reference `engineering_type`/`engineeringType`
+anywhere; the nearest-sample lookup already applies uniformly to any
+analog channel by name, regardless of what it represents. This addendum
+is a terminology/documentation correction only: the heading above, the
+Decision section's "recorded Y-axis value... agnostic to channel
+semantics" language, and this note are the amendment; no production code
+in `backend/` or `frontend/` changed as a result. UI labels remain
+exactly "Cur A"/"Cur B", unchanged. Calculated RMS/angle/phasor
+measurements (deriving a new value from an instantaneous waveform) remain
+explicitly out of scope, per the bullet immediately above.
 
 ---
 

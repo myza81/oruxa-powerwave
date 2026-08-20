@@ -8648,17 +8648,21 @@ owner UAT after this push.
 
 ---
 
-## Phase 4C1 — Instantaneous A/B Cursor Values (Cur A / Cur B) (2026-08-20)
+## Phase 4C1 — A/B Cursor Channel Values (Cur A / Cur B) (2026-08-20)
 
 ### Scope
 
 Extends the DEC-039 A/B time measurement cursors with the first VALUE
 measurement: the Channels sidebar now shows each displayed analog
-channel's instantaneous Y-axis value at Cursor A and Cursor B, in two new
-compact "Cur A"/"Cur B" columns. Instantaneous values only -- RMS, angle,
-delta angle, amplitude delta, interpolation, on-canvas annotations,
-digital state at cursor, cross-source synchronization, resampling, and
-phasor calculation are all explicitly deferred to a future phase.
+channel's recorded Y-axis value at Cursor A and Cursor B, in two new
+compact "Cur A"/"Cur B" columns. Cur A/B is agnostic to what a channel's
+recorded values represent (instantaneous, RMS, frequency, power, ROCOF,
+etc. -- it simply reads that channel's own recorded sample; see the
+"owner terminology clarification" note below). Explicitly out of scope
+this phase: CALCULATED RMS/angle (deriving a new value from an
+instantaneous waveform), delta angle, amplitude delta, interpolation,
+on-canvas annotations, digital state at cursor, cross-source
+synchronization, resampling, and phasor calculation.
 
 ### Engineering authority
 
@@ -8670,6 +8674,21 @@ Each source's own native time array is searched independently (no shared/
 assumed sample-rate math across sources). A cursor time outside a given
 source's own valid bounds returns no value for that source (never
 clamped to the boundary).
+
+**Owner terminology clarification (same day)**: this phase's original
+working title, "Instantaneous Cursor Values," was too restrictive. Cur
+A/B are GENERIC CHANNEL Y-AXIS VALUES at cursor A/B -- the recorded value
+of whatever channel is selected, at the nearest actual sample -- never an
+assumption that every analog channel represents an instantaneous
+waveform. A channel already recorded as RMS voltage/current, frequency,
+or power yields THAT recorded value unchanged; Cur A/B never
+re-interprets it. A dedicated code audit (grep across every cursor-value
+function in both `backend/` and `frontend/index.html` for
+`engineering_type`/`engineeringType`) confirmed the implementation was
+already generic -- no functional code change was required, only this
+terminology correction. See
+[DECISIONS.md — DEC-040's own addendum](DECISIONS.md#dec-040--ab-cursor-channel-values-are-computed-from-authoritative-full-resolution-source-data-at-the-nearest-actual-sample-agnostic-to-channel-semantics-phase-4c1)
+for the full record.
 
 ### Backend (`backend/`)
 
@@ -8756,7 +8775,7 @@ intended change, not a regression).
 ### Decision
 
 Recorded as a new decision,
-[DEC-040](DECISIONS.md#dec-040--cursor-instantaneous-values-are-computed-from-authoritative-full-resolution-source-data-at-the-nearest-actual-sample-displaydownsampled-waveform-points-are-never-measurement-authority-phase-4c1)
+[DEC-040](DECISIONS.md#dec-040--ab-cursor-channel-values-are-computed-from-authoritative-full-resolution-source-data-at-the-nearest-actual-sample-agnostic-to-channel-semantics-phase-4c1)
 -- the first VALUE measurement built on DEC-039's cursor-time
 architecture, which it extends by reference and does not alter.
 
