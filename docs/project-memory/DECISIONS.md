@@ -685,6 +685,12 @@ source_id)` (DEC-012, unchanged). This full-resolution data:
   Arrow/Protobuf/custom binary transport was introduced this phase (see
   Impact below for when to revisit).
 
+**Update (2026-08-20) — see [DEC-041](#dec-041--waveform-reduction-is-an-overview-rendering-optimization-with-a-10000-sample-full-resolution-display-threshold):**
+the reduced-vs-full decision is no longer governed by `point_budget`
+alone. `point_budget` remains the budget for reduced overview responses,
+but requested ranges containing `<= 10,000` original samples per channel
+are now returned sample-for-sample for display.
+
 Reason:
 Phase 1's `import_service.py` discarded the parsed `DisturbanceRecord`
 after extracting metadata, so no code path existed to answer "what are
@@ -3611,6 +3617,65 @@ Impact:
   normal/abnormal interpretation, RMS, angle, delta angle, calculated
   analog measurements, or cross-source synchronization.
 - See [MIGRATION_PLAN.md — Phase 4C2](MIGRATION_PLAN.md#phase-4c2--digital-ab-cursor-state-2026-08-20).
+
+---
+
+## DEC-041 — Waveform reduction is an overview rendering optimization with a 10,000-sample full-resolution display threshold
+
+Date: 2026-08-20
+Status: Approved
+Source: explicit project-owner approval after the waveform zoom-resolution
+investigation.
+
+Decision:
+
+Waveform reduction is an overview rendering optimization only. For requested
+ranges containing `<= 10,000` original samples per analog channel, Oruxa
+Powerwave returns the complete original sample sequence for display. Ranges
+above that threshold continue to use the existing peak-preserving min/max
+display reduction.
+
+The frontend's requested `point_budget` is now adaptive for reduced ranges:
+`point_budget = clamp(plot_width_px * 4, 4000, 20000)`, where
+`plot_width_px` is the actual shared Plotly plotting-domain width, not the
+browser/window width. The backend owns the exact sample-count decision because
+only the backend knows the clipped source-slice count authoritatively.
+
+Reason:
+
+Owner UAT of analog zoom raised an engineering-integrity concern: a 5 kHz
+recording zoomed to roughly one second contains about 5,001 source samples,
+which is a manageable event interval and should be displayed as the actual
+recorded waveform, not as a sparse 4,000-point envelope. Broad overviews may
+still be reduced for payload/render performance, but once the engineer zooms
+into a manageable interval, the chart should transition to full source
+resolution automatically.
+
+Impact:
+
+- `DisturbanceRecord.waveform_data` remains the full-resolution backend
+  authority; it is not mutated, replaced, or cached as a display
+  representation.
+- `extract_waveform_range()` now bypasses reduction at or below the named
+  `FULL_RESOLUTION_DISPLAY_THRESHOLD = 10_000`, regardless of a lower request
+  `point_budget`.
+- Above that threshold, the backend still returns
+  `representation="min_max_envelope"` and caps the effective reduction budget
+  by the threshold so an unusually wide plot cannot turn an overview range
+  back into an unrestricted full-sample transfer.
+- `representation` remains truthful: `full_resolution` means sample-for-sample
+  source arrays; `min_max_envelope` means display-reduced output.
+- Frontend zoom/pan/source-bounds/time-mode/cursor/digital-transition
+  architecture is unchanged. Absolute/Elapsed remains presentation-only over
+  elapsed request ranges. Cur A/B and digital measurement values still read
+  full-resolution source data independently from display traces.
+- Payload implication: one visible channel can now receive up to 10,000 exact
+  samples for manageable ranges; 20 visible analog channels can therefore
+  receive up to about 200,000 exact points for the same viewport; many
+  displayed channels remain bounded by the 20,000 requested-budget cap and the
+  backend's 10,000 full-resolution threshold rather than switching to
+  unbounded full-record transfer.
+- See [MIGRATION_PLAN.md — Waveform Adaptive Resolution](MIGRATION_PLAN.md#waveform-adaptive-resolution-2026-08-20).
 
 ---
 

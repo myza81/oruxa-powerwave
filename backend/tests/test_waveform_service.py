@@ -21,6 +21,7 @@ from app.domain.source import ActiveSource, AnalogChannelSummary, DigitalChannel
 from app.domain.timing import SamplingInformation, TimingInformation
 from app.services.errors import ChannelNotAnalogError, ChannelNotFoundError, InvalidTimeRangeError
 from app.services.waveform_service import (
+    FULL_RESOLUTION_DISPLAY_THRESHOLD,
     REPRESENTATION_FULL_RESOLUTION,
     REPRESENTATION_MIN_MAX_ENVELOPE,
     extract_waveform_range,
@@ -210,27 +211,105 @@ class TestChannelIdentity:
 
 
 class TestPointBudgetSemantics:
-    def test_budget_greater_than_or_equal_to_sample_count_returns_full_resolution(self):
+    def test_threshold_covering_sample_count_returns_full_resolution(self):
         active = _active_source(n=500, rate_hz=1000.0)
 
         result = extract_waveform_range(
-            active, channel_name="VA", start_time=None, end_time=None, point_budget=500
+            active, channel_name="VA", start_time=None, end_time=None, point_budget=100
         )
 
         assert result.representation == REPRESENTATION_FULL_RESOLUTION
         assert result.original_sample_count == 500
         assert len(result.time) == 500
 
-    def test_budget_smaller_than_sample_count_returns_display_representation(self):
-        active = _active_source(n=5000, rate_hz=1000.0)
+    def test_sample_count_above_threshold_returns_display_representation(self):
+        active = _active_source(n=20_000, rate_hz=1000.0)
 
         result = extract_waveform_range(
             active, channel_name="VA", start_time=None, end_time=None, point_budget=100
         )
 
         assert result.representation == REPRESENTATION_MIN_MAX_ENVELOPE
-        assert result.original_sample_count == 5000
-        assert len(result.time) < 5000
+        assert result.original_sample_count == 20_000
+        assert len(result.time) < 20_000
+
+    def test_threshold_caps_large_display_budget_for_overview_ranges(self):
+        active = _active_source(n=15_001, rate_hz=5000.0)
+
+        result = extract_waveform_range(
+            active, channel_name="VA", start_time=None, end_time=None, point_budget=20_000
+        )
+
+        assert result.representation == REPRESENTATION_MIN_MAX_ENVELOPE
+        assert result.original_sample_count == 15_001
+        assert len(result.time) <= FULL_RESOLUTION_DISPLAY_THRESHOLD + 2
+
+
+class TestAdaptiveResolutionFiveKhzExamples:
+    def test_seven_second_overview_is_reduced(self):
+        active = _active_source(n=35_001, rate_hz=5000.0)
+
+        result = extract_waveform_range(
+            active, channel_name="VA", start_time=0.0, end_time=7.0, point_budget=4000
+        )
+
+        assert result.original_sample_count == 35_001
+        assert result.representation == REPRESENTATION_MIN_MAX_ENVELOPE
+        assert len(result.time) < result.original_sample_count
+        assert result.time[0] == pytest.approx(active.record.waveform_data["time"].iloc[0])
+        assert result.time[-1] == pytest.approx(active.record.waveform_data["time"].iloc[-1])
+
+    def test_three_second_window_is_reduced(self):
+        active = _active_source(n=35_001, rate_hz=5000.0)
+
+        result = extract_waveform_range(
+            active, channel_name="VA", start_time=2.0, end_time=5.0, point_budget=4800
+        )
+
+        assert result.original_sample_count == 15_001
+        assert result.representation == REPRESENTATION_MIN_MAX_ENVELOPE
+        assert len(result.time) < result.original_sample_count
+
+    def test_one_second_window_returns_all_original_samples_even_above_point_budget(self):
+        active = _active_source(n=35_001, rate_hz=5000.0)
+
+        result = extract_waveform_range(
+            active, channel_name="VA", start_time=2.0, end_time=3.0, point_budget=4000
+        )
+
+        expected = active.record.waveform_data.iloc[10_000:15_001]
+        assert result.original_sample_count == 5_001
+        assert result.representation == REPRESENTATION_FULL_RESOLUTION
+        np.testing.assert_array_equal(result.time, expected["time"].to_numpy())
+        np.testing.assert_array_equal(result.values, expected["VA"].to_numpy())
+
+    def test_hundred_millisecond_window_returns_exact_source_slice(self):
+        active = _active_source(n=35_001, rate_hz=5000.0)
+
+        result = extract_waveform_range(
+            active, channel_name="VA", start_time=2.0, end_time=2.1, point_budget=4000
+        )
+
+        expected = active.record.waveform_data.iloc[10_000:10_501]
+        assert result.original_sample_count == 501
+        assert result.representation == REPRESENTATION_FULL_RESOLUTION
+        np.testing.assert_array_equal(result.time, expected["time"].to_numpy())
+        np.testing.assert_array_equal(result.values, expected["VA"].to_numpy())
+
+    def test_twenty_and_five_millisecond_windows_return_full_resolution(self):
+        active = _active_source(n=35_001, rate_hz=5000.0)
+
+        twenty_ms = extract_waveform_range(
+            active, channel_name="VA", start_time=2.0, end_time=2.02, point_budget=4000
+        )
+        five_ms = extract_waveform_range(
+            active, channel_name="VA", start_time=2.0, end_time=2.005, point_budget=4000
+        )
+
+        assert twenty_ms.original_sample_count == 101
+        assert twenty_ms.representation == REPRESENTATION_FULL_RESOLUTION
+        assert five_ms.original_sample_count == 26
+        assert five_ms.representation == REPRESENTATION_FULL_RESOLUTION
 
 
 class TestZoomFidelity:

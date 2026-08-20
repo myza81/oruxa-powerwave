@@ -10,9 +10,9 @@ Owns the boundary the project's Phase 2 design settled on
             |   record; never mutates it -- see DisturbanceRecord's and
             |   ActiveSource's own docstrings)
             `-- display preparation (only when the extracted range has
-                more raw samples than the requested point_budget) --
-                app.domain.waveform_reduction's min/max envelope, never
-                "decimation" (see that module's terminology note)
+                more raw samples than FULL_RESOLUTION_DISPLAY_THRESHOLD)
+                -- app.domain.waveform_reduction's min/max envelope,
+                never "decimation" (see that module's terminology note)
 
 The output of this module (`WaveformRangeResult`) is always a *display
 representation* when reduction was applied, and is explicitly labelled as
@@ -42,6 +42,13 @@ from app.services.errors import (
 #: as a reasonable default, not because the *algorithm* it was paired with
 #: there is being reused (it isn't -- see app.domain.waveform_reduction).
 DEFAULT_POINT_BUDGET = 4000
+
+#: Waveform reduction is an overview rendering optimization only. Once a
+#: requested analog range is small enough to inspect directly, the display
+#: must receive the exact recorded sample sequence even if the caller's
+#: display budget is lower. Approved after the waveform zoom-resolution
+#: investigation (DEC-041).
+FULL_RESOLUTION_DISPLAY_THRESHOLD = 10_000
 
 REPRESENTATION_FULL_RESOLUTION = "full_resolution"
 REPRESENTATION_MIN_MAX_ENVELOPE = "min_max_envelope"
@@ -103,14 +110,16 @@ def extract_waveform_range(
     both therefore returns the entire record. Boundary-inclusive at both
     ends (a sample exactly at `start_time` or `end_time` is included).
 
-    Point-budget semantics: if the number of raw samples actually inside
-    the resolved range is <= `point_budget`, the full-resolution range is
-    returned unchanged (`representation="full_resolution"`) -- no
-    reduction is ever applied when none is needed, so a sufficiently
-    narrow request always exposes true full-resolution samples. Otherwise
-    a peak-preserving min/max envelope is built
-    (`representation="min_max_envelope"`, see
-    app.domain.waveform_reduction) -- never plain stride sampling.
+    Display-resolution semantics: if the number of raw samples actually
+    inside the resolved range is <= `FULL_RESOLUTION_DISPLAY_THRESHOLD`,
+    the full-resolution range is returned unchanged
+    (`representation="full_resolution"`) -- no reduction is ever applied
+    to a manageable event interval. Otherwise a peak-preserving min/max
+    envelope is built (`representation="min_max_envelope"`, see
+    app.domain.waveform_reduction) using the caller's `point_budget` as a
+    display budget, capped by the full-resolution threshold so a very wide
+    display cannot turn an overview range back into an unrestricted full
+    sample transfer.
 
     Never mutates `active.record.waveform_data`. Raises
     app.services.errors.ChannelNotFoundError / ChannelNotAnalogError /
@@ -147,12 +156,13 @@ def extract_waveform_range(
         out_time = clipped_time
         out_values = clipped_values
         representation = REPRESENTATION_FULL_RESOLUTION
-    elif original_sample_count <= point_budget:
+    elif original_sample_count <= FULL_RESOLUTION_DISPLAY_THRESHOLD:
         out_time = clipped_time
         out_values = clipped_values
         representation = REPRESENTATION_FULL_RESOLUTION
     else:
-        out_time, out_values = build_min_max_envelope(clipped_time, clipped_values, point_budget)
+        reduction_budget = min(point_budget, FULL_RESOLUTION_DISPLAY_THRESHOLD)
+        out_time, out_values = build_min_max_envelope(clipped_time, clipped_values, reduction_budget)
         representation = REPRESENTATION_MIN_MAX_ENVELOPE
 
     return WaveformRangeResult(

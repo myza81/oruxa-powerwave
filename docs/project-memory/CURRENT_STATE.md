@@ -4,7 +4,20 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-20** (Phase 4B-UAT3, on top of Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B, Phase 4A-UAT9, and Phase 4A-UAT10).
+Last meaningful update: **2026-08-20** (Waveform Adaptive Resolution, on top of Phase 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B, Phase 4A-UAT9, and Phase 4A-UAT10).
+
+`[DECISION]` **Waveform Adaptive Resolution — DEC-041** (2026-08-20):
+waveform reduction is now explicitly an overview rendering optimization only.
+For requested analog ranges containing `<= 10,000` original samples per
+channel, Oruxa Powerwave returns the complete original sample sequence for
+display. Above that threshold, the existing peak-preserving min/max envelope is
+still used. The frontend request budget for reduced ranges is pixel-aware
+(`plot_width_px * 4`, clamped `4000..20000`) and based on the actual Plotly
+plot-domain width, not browser width. Backend full-resolution authority,
+sourceBounds/workspaceBounds/viewport, Cur A/B value authority, digital cursor
+state, digital transition rendering, and COMTRADE parsing are unchanged. See
+[DECISIONS.md — DEC-041](DECISIONS.md#dec-041--waveform-reduction-is-an-overview-rendering-optimization-with-a-10000-sample-full-resolution-display-threshold)
+and [MIGRATION_PLAN.md — Waveform Adaptive Resolution](MIGRATION_PLAN.md#waveform-adaptive-resolution-2026-08-20).
 
 ## Development phase
 

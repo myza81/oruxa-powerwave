@@ -8648,6 +8648,86 @@ owner UAT after this push.
 
 ---
 
+## Waveform Adaptive Resolution (2026-08-20)
+
+### Scope
+
+Implements the owner-approved follow-up from the waveform zoom-resolution
+investigation: analog display reduction remains allowed for broad overviews,
+but manageable zoomed event intervals now return the actual source samples
+for display.
+
+### Approved rule
+
+Recorded as [DEC-041](DECISIONS.md#dec-041--waveform-reduction-is-an-overview-rendering-optimization-with-a-10000-sample-full-resolution-display-threshold):
+
+> Waveform reduction is an overview rendering optimization only. For requested
+> ranges containing `<= 10,000` original samples per channel, Oruxa Powerwave
+> returns the complete original sample sequence for display.
+
+### Backend implementation
+
+`app.services.waveform_service.extract_waveform_range()` still clips the
+authoritative `active.record.waveform_data` by the requested elapsed
+`start_time`/`end_time` first. It now compares the exact clipped sample count
+against the named `FULL_RESOLUTION_DISPLAY_THRESHOLD = 10_000`.
+
+- `original_sample_count == 0` or `<= 10,000`: return the clipped arrays
+  unchanged with `representation="full_resolution"`.
+- `original_sample_count > 10,000`: return the existing peak-preserving
+  `min_max_envelope` display representation.
+- For above-threshold ranges, the effective reduction budget is capped by the
+  same threshold so a large pixel budget cannot accidentally make an overview
+  range a full-sample transfer again.
+
+The backend authority, COMTRADE parsing, source bounds, cursor values, and
+digital measurement paths were not changed.
+
+### Frontend implementation
+
+`frontend/index.html` replaces the old fixed `WW_POINT_BUDGET = 4000` with
+named adaptive constants:
+
+- `WW_POINT_BUDGET_MIN = 4000`
+- `WW_POINT_BUDGET_MAX = 20000`
+- `WW_POINT_BUDGET_PER_PIXEL = 4`
+
+Each analog channel fetch now sends a panel-specific `point_budget` calculated
+from the actual Plotly plotting-domain width (`_fullLayout.xaxis._length`)
+when available, with a chart-element-width-minus-panel-margins fallback for a
+newly-created panel before Plotly has painted. Browser/window width is not
+used. Width changes alone do not trigger waveform requests; the next genuine
+channel load or zoom/pan request uses the current budget.
+
+### Expected 5 kHz behavior
+
+At 5 kHz with a 7.0 s inclusive synthetic source:
+
+- 7.0 s / 35,001 samples: reduced overview.
+- 3.0 s / 15,001 samples: reduced.
+- 1.0 s / 5,001 samples: full resolution, sample-for-sample.
+- 100 ms / 501 samples: full resolution, sample-for-sample.
+- 20 ms / 101 samples: full resolution.
+- 5 ms / 26 samples: full resolution.
+
+### Verification
+
+Focused regression run:
+
+```bash
+pytest backend/tests/test_waveform_service.py backend/tests/test_waveform_reduction.py backend/tests/test_cursor_values_service.py backend/tests/test_frontend_source_bounds.py backend/tests/test_frontend_waveform_adaptive_resolution.py
+```
+
+Result: 82 passed.
+
+Permanent coverage added for the 5 kHz examples, full-resolution
+sample-for-sample equality, threshold-capped overview reduction, pixel-aware
+frontend budget constants/clamping, use of Plotly plot-domain width, zoom
+elapsed-range request semantics, and existing Cur A/B full-resolution
+independence.
+
+---
+
 ## Phase 4C2 — Digital A/B Cursor State (2026-08-20)
 
 ### Scope

@@ -8,6 +8,41 @@ Last updated: **2026-08-20**
 
 ## What was most recently done
 
+**Waveform Adaptive Resolution.** Full detail:
+[MIGRATION_PLAN.md — Waveform Adaptive Resolution](MIGRATION_PLAN.md#waveform-adaptive-resolution-2026-08-20),
+[DECISIONS.md — DEC-041](DECISIONS.md#dec-041--waveform-reduction-is-an-overview-rendering-optimization-with-a-10000-sample-full-resolution-display-threshold).
+
+Owner approved the zoom-resolution follow-up after the analysis-only
+investigation. Implemented the rule: waveform reduction is an overview
+rendering optimization only; requested analog ranges containing `<= 10,000`
+original samples per channel now return the complete original sample sequence
+for display. Ranges above that threshold remain peak-preserving min/max
+display representations. The backend owns the exact sample-count threshold via
+`FULL_RESOLUTION_DISPLAY_THRESHOLD = 10_000`; frontend request budgets for
+reduced ranges are now pixel-aware (`plot_width_px * 4`, clamped
+`4000..20000`) using actual Plotly plot-domain width when available, not
+browser/window width.
+
+Expected 5 kHz behavior is now covered permanently: 7.0 s / 35,001 samples
+and 3.0 s / 15,001 samples are reduced; 1.0 s / 5,001 samples, 100 ms / 501
+samples, 20 ms / 101 samples, and 5 ms / 26 samples are full-resolution.
+Backend full-resolution authority, sourceBounds/workspaceBounds/viewport,
+Absolute/Elapsed elapsed-range semantics, Cur A/B value authority, digital
+cursor state, digital transition rendering, and COMTRADE parsing were not
+changed. Focused verification at implementation time:
+`backend/tests/test_waveform_service.py`,
+`backend/tests/test_waveform_reduction.py`,
+`backend/tests/test_cursor_values_service.py`,
+`backend/tests/test_frontend_source_bounds.py`, and
+`backend/tests/test_frontend_waveform_adaptive_resolution.py` — 82/82
+passing.
+
+Full in-repo verification for this pass: backend `pytest` 385/385 passing;
+committed frontend/static regression subset `pytest backend/tests/test_frontend_*.py`
+35/35 passing; `git diff --check` clean before commit.
+
+## What was done in the prior session (Phase 4C2 — Digital A/B Cursor State)
+
 **Phase 4C2 — Digital A/B Cursor State.** Full detail:
 [MIGRATION_PLAN.md — Phase 4C2 Record](MIGRATION_PLAN.md#phase-4c2--digital-ab-cursor-state-2026-08-20),
 [DECISIONS.md — DEC-040's second addendum](DECISIONS.md#dec-040--ab-cursor-channel-values-are-computed-from-authoritative-full-resolution-source-data-at-the-nearest-actual-sample-agnostic-to-channel-semantics-phase-4c1).

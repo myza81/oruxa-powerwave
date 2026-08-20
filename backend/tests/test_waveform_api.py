@@ -213,7 +213,7 @@ class TestPointBudgetBoundary:
 
         assert resp.json()["representation"] == "full_resolution"
 
-    def test_point_budget_below_the_fixture_size_returns_display_representation(
+    def test_small_fixture_returns_full_resolution_even_below_point_budget(
         self, client, comtrade_fixtures_dir
     ):
         source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
@@ -224,8 +224,8 @@ class TestPointBudgetBoundary:
         )
 
         body = resp.json()
-        assert body["representation"] == "min_max_envelope"
-        assert body["returned_point_count"] < body["original_sample_count"]
+        assert body["representation"] == "full_resolution"
+        assert body["returned_point_count"] == body["original_sample_count"]
 
 
 class TestLifecycleCleanupReleasesWaveformData:

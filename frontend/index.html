@@ -4479,7 +4479,13 @@
         // (panel count does not by itself demand a smaller per-channel
         // budget, since every panel shares the same horizontal pixel
         // width -- see the Phase 2C design record's own reasoning).
-        const WW_POINT_BUDGET = 4000;
+        // Adaptive-resolution update: ranges over the backend's
+        // full-resolution threshold are still display-reduced, but that
+        // reduction budget now follows the actual plot domain width
+        // instead of staying fixed at 4000 points on every zoom.
+        const WW_POINT_BUDGET_MIN = 4000;
+        const WW_POINT_BUDGET_MAX = 20000;
+        const WW_POINT_BUDGET_PER_PIXEL = 4;
 
         // Phase 2C-C2: panel height constraints. Minimum keeps a resized
         // panel usable -- wwBuildLayout()'s own fixed top+bottom margins
@@ -5200,7 +5206,34 @@
         // channel, generalized here to N channels each guarding their own
         // fetch lifecycle independently).
         // ------------------------------------------------------------------
-        async function wwFetchChannelRange(channelEntry, startTime, endTime) {
+        function wwClampPointBudget(value) {
+            const rounded = Math.round(Number(value));
+            if (!Number.isFinite(rounded)) return WW_POINT_BUDGET_MIN;
+            return Math.max(WW_POINT_BUDGET_MIN, Math.min(WW_POINT_BUDGET_MAX, rounded));
+        }
+
+        function wwPanelPlotWidth(panel) {
+            const chartEl = panel && panel.chartEl;
+            if (!chartEl) return null;
+
+            const fl = chartEl._fullLayout;
+            const plotlyWidth = fl && fl.xaxis ? fl.xaxis._length : null;
+            if (Number.isFinite(plotlyWidth) && plotlyWidth > 0) return plotlyWidth;
+
+            const rect = chartEl.getBoundingClientRect();
+            if (rect && Number.isFinite(rect.width) && rect.width > 0) {
+                return Math.max(1, rect.width - WW_PANEL_MARGIN.l - WW_PANEL_MARGIN.r);
+            }
+            return null;
+        }
+
+        function wwPointBudgetForPanel(panel) {
+            const plotWidth = wwPanelPlotWidth(panel);
+            if (!Number.isFinite(plotWidth) || plotWidth <= 0) return WW_POINT_BUDGET_MIN;
+            return wwClampPointBudget(plotWidth * WW_POINT_BUDGET_PER_PIXEL);
+        }
+
+        async function wwFetchChannelRange(channelEntry, startTime, endTime, pointBudget) {
             if (channelEntry.abortController) channelEntry.abortController.abort();
             const controller = new AbortController();
             channelEntry.abortController = controller;
@@ -5214,7 +5247,7 @@
             url.searchParams.set("channel_name", channelEntry.channelName);
             if (startTime !== null && startTime !== undefined) url.searchParams.set("start_time", startTime);
             if (endTime !== null && endTime !== undefined) url.searchParams.set("end_time", endTime);
-            url.searchParams.set("point_budget", String(WW_POINT_BUDGET));
+            url.searchParams.set("point_budget", String(pointBudget));
 
             const response = await fetch(url.toString(), { signal: controller.signal });
             if (seq !== channelEntry.requestSeq) return { superseded: true };
@@ -5267,7 +5300,7 @@
 
             let result;
             try {
-                result = await wwFetchChannelRange(channelEntry, startTime, endTime);
+                result = await wwFetchChannelRange(channelEntry, startTime, endTime, wwPointBudgetForPanel(panel));
             } catch (error) {
                 if (error.name === "AbortError") return;
                 wwSetLoading(panel, false);

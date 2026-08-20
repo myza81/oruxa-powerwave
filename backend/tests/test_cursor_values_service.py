@@ -170,12 +170,13 @@ class TestFullResolutionAuthority:
     WOULD be reduced by the display waveform endpoint."""
 
     def test_cursor_value_matches_full_resolution_even_when_display_range_is_reduced(self):
-        # 10,000 samples -- request a tiny point_budget so
+        # More than the display full-resolution threshold -- request a
+        # tiny point_budget so
         # extract_waveform_range is FORCED to build a min/max envelope
         # (a real reduced display representation), then confirm the
         # cursor's own value still comes from the true raw sample, not
         # from any point that envelope kept.
-        n = 10_000
+        n = 20_000
         time = np.arange(n, dtype=np.float64) / 10_000.0  # 0.0 .. 0.9999
         # A distinctive, non-monotonic signal so the envelope's kept
         # min/max points are very unlikely to coincide with an arbitrary

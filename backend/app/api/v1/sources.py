@@ -7,8 +7,8 @@ get, delete, channels) never return waveform arrays, exactly as Phase 1
 established. The Phase 2A addition, GET .../waveform, is the one
 deliberate exception -- and even there, the response is always bounded
 (full-resolution only when the requested range's raw sample count is
-already <= the request's point_budget; a peak-preserving display
-representation otherwise) -- see app.services.waveform_service.
+already <= the full-resolution display threshold; a peak-preserving
+display representation otherwise) -- see app.services.waveform_service.
 
 Upload interaction note (docs/project-memory/MIGRATION_PLAN.md Sec 16,
 this phase's UAT candidate list): this endpoint takes two explicit named
@@ -35,6 +35,7 @@ from app.services.errors import ImportServiceError
 from app.services.import_service import import_comtrade_source
 from app.services.waveform_service import (
     DEFAULT_POINT_BUDGET,
+    FULL_RESOLUTION_DISPLAY_THRESHOLD,
     extract_cursor_values,
     extract_digital_waveform,
     extract_waveform_range,
@@ -183,9 +184,10 @@ def get_source_waveform(
         gt=0,
         description=(
             "Display-response budget, not an engineering-resolution setting. "
-            "If the requested range has <= point_budget raw samples, the full-resolution "
-            "range is returned unchanged; otherwise a peak-preserving min/max envelope is "
-            "returned instead -- see app.domain.waveform_reduction."
+            f"If the requested range has <= {FULL_RESOLUTION_DISPLAY_THRESHOLD} raw samples, "
+            "the full-resolution range is returned unchanged; otherwise a peak-preserving "
+            "min/max envelope is returned using the requested budget -- see "
+            "app.domain.waveform_reduction."
         ),
     ),
     registry: WorkspaceRegistry = Depends(get_workspace_registry),
