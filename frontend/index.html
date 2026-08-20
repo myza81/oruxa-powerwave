@@ -2012,7 +2012,6 @@
                             <button type="button" id="timeModeAbsoluteBtn" aria-pressed="true">Absolute Time</button>
                             <button type="button" id="timeModeElapsedBtn" aria-pressed="false">Elapsed Time</button>
                         </div>
-                        <span class="hint" id="wwTimeModeContext" hidden></span>
                         <button class="secondary" type="button" id="wwResetViewBtn">Reset Time View</button>
                         <button class="secondary" type="button" id="wwAutoscaleBtn">Autoscale Y</button>
                         <!-- Phase 4B: A/B time measurement cursors -- a mode
@@ -5034,10 +5033,10 @@
         }
 
         // Section 12: Absolute mode keeps each panel's own axis title
-        // empty -- the shared "<date> · Record time" context label (see
-        // wwUpdateTimeModeContext()) already carries that context once,
-        // rather than repeating it as a title on every panel. Elapsed
-        // mode keeps the existing "Time (s)" title, unchanged.
+        // empty -- the date-typed X axis already shows full date/time
+        // context on its own ticks, so a redundant title would only
+        // repeat it on every panel. Elapsed mode keeps the existing
+        // "Time (s)" title, unchanged.
         function wwTimeAxisTitle() {
             return ww.timeMode === "absolute" ? "" : "Time (s)";
         }
@@ -6880,8 +6879,9 @@
         // aligned/sized/themed, no CSS centering math to duplicate --
         // just one more Plotly layout property, the same one already
         // proven correct on every panel. No date is shown in the ruler at
-        // all anymore (section 5/6) -- only the toolbar's own
-        // #wwTimeModeContext still carries it (wwUpdateTimeModeContext()).
+        // all anymore (section 5/6) -- Absolute mode's own date-typed X
+        // axis (analog panels, the ruler, and the digital chart alike)
+        // is the one place date context now appears, via its own ticks.
         function wwSyncStickyRuler() {
             const wrapEl = document.getElementById("wwStickyRuler");
             const chartEl = document.getElementById("wwStickyRulerChart");
@@ -6973,35 +6973,12 @@
                     "xaxis.hoverformat": hoverformat,
                 });
             }
-            wwUpdateTimeModeContext();
             // Phase 4B: every path that reaches this function already
             // changed the viewport, the displayed-channel set, or the time
             // mode -- all three can move where a cursor's engineering time
             // now projects to on screen, so this is one of the hook points
             // that keeps the overlay's pixel positions in sync (section 17).
             wwUpdateCursorOverlay();
-        }
-
-        // Phase 2C-C3: the shared "<date> · Record time" label (section
-        // 12) -- shown once, above the panels, instead of repeating date
-        // context on every tick/panel. Hidden entirely outside Absolute
-        // mode or when no displayed channel has a trustworthy recording-
-        // start timestamp.
-        // Phase 2C-C4B (correction): the sticky ruler no longer shows any
-        // date text at all (section 5/6 of that task) -- this toolbar
-        // label is now the ONLY place the date-context text appears;
-        // unchanged from Phase 2C-C3's own original wording/behavior.
-        function wwUpdateTimeModeContext() {
-            const el = document.getElementById("wwTimeModeContext");
-            const originMs = ww.timeMode === "absolute" ? wwWorkspaceRecordingStartMs() : null;
-            if (originMs === null) {
-                if (el) el.hidden = true;
-                return;
-            }
-            const d = new Date(originMs);
-            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-            const dateText = d.getUTCDate() + " " + months[d.getUTCMonth()] + " " + d.getUTCFullYear();
-            if (el) { el.textContent = dateText + " · Record time"; el.hidden = false; }
         }
 
         // ==================================================================
@@ -7117,7 +7094,7 @@
         // UTC formatter every other Absolute-mode surface already uses --
         // never a second timestamp implementation), trimmed to its
         // "HH:MM:SS.mmm" tail for status-bar compactness (the date portion
-        // is already shown once, via #wwTimeModeContext, elsewhere). Falls
+        // is already visible on the Absolute-mode date axis itself). Falls
         // back to elapsed formatting if no trustworthy recording origin
         // exists yet, same fallback wwElapsedToPlotlyX() itself already
         // uses.
@@ -8081,8 +8058,6 @@
             if (elapsedBtn) elapsedBtn.disabled = available.indexOf("elapsed") === -1;
             if (available.indexOf(ww.timeMode) === -1) {
                 wwSetTimeMode(available[0] || "elapsed");
-            } else {
-                wwUpdateTimeModeContext();
             }
         }
 
@@ -8100,7 +8075,6 @@
             ww.timeMode = mode;
             document.getElementById("timeModeAbsoluteBtn").setAttribute("aria-pressed", String(mode === "absolute"));
             document.getElementById("timeModeElapsedBtn").setAttribute("aria-pressed", String(mode === "elapsed"));
-            wwUpdateTimeModeContext();
 
             const tickFormat = wwTimeAxisTickFormat();
             const xrange = ww.viewport ? [wwElapsedToPlotlyX(ww.viewport.start), wwElapsedToPlotlyX(ww.viewport.end)] : undefined;
