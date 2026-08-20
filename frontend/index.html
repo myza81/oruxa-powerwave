@@ -4833,22 +4833,14 @@
         // ==================================================================
         // Phase 2C-C3: COMTRADE Absolute/Elapsed time-axis representation
         //
-        // Architecture (section 8): the shared authoritative viewport
-        // (ww.viewport, bounded by derived ww.workspaceBounds) and every waveform API request
-        // ALWAYS stay in the existing native coordinate system -- elapsed
-        // seconds on the source's own time axis, exactly as
-        // app.services.waveform_service already documents and exactly as
-        // this app used, unlabeled, before this phase. Nothing about the
-        // API contract, the fetch/refetch pipeline, or the zoom/pan
-        // debounce mechanism changes. ONLY the Plotly-facing presentation
-        // (trace x-values, axis type/range/tick formatting, hover text)
-        // is transformed for Absolute mode -- and back again, at the one
-        // other boundary that needs it: reading a user's zoom/pan gesture
-        // back OUT of Plotly's own relayout event into elapsed seconds
-        // before it reaches the existing broadcast/fetch pipeline. See
-        // wwElapsedToPlotlyX()/wwPlotlyXToElapsed(), the two functions
-        // that ARE this boundary; nothing else in the app needs to know
-        // which mode is active.
+        // Architecture (section 8, refined by the 2026-08-20 sub-ms
+        // precision fix): the shared authoritative viewport (ww.viewport,
+        // bounded by derived ww.workspaceBounds), every waveform API
+        // request, AND every Plotly engineering X coordinate ALWAYS stay in
+        // elapsed seconds on the source's own time axis. Absolute/Elapsed
+        // changes presentation only: tick labels, hover text, and cursor
+        // readouts. It never changes sample spacing, waveform geometry, or
+        // zoom/pan semantics.
         //
         // Timezone handling (section 11, the most important constraint
         // here): COMTRADE's start_time/trigger_time are backend-verified
@@ -4860,14 +4852,13 @@
         // (environment-dependent, unpredictable), which would silently
         // misrepresent the recording's own wall-clock time depending on
         // where the app happens to be running -- exactly what section 11
-        // forbids. Every timestamp in this module is therefore handled as
-        // plain NUMERIC components (via Date.UTC()/getUTC*() exclusively,
-        // and via Plotly's own native "YYYY-MM-DD HH:MM:SS.ffffff"
-        // date-string format, which Plotly treats literally with no
-        // timezone conversion) -- never through a Date object's LOCAL
-        // getters/parsing, so the numbers shown always exactly reproduce
-        // the backend's own naive numbers regardless of the browser's own
-        // timezone.
+        // forbids. Timestamp labels in this module are therefore handled as
+        // plain NUMERIC components (via Date.UTC()/getUTC*() exclusively)
+        // -- never through a Date object's LOCAL getters/parsing, so the
+        // numbers shown always exactly reproduce the backend's own naive
+        // numbers regardless of the browser's own timezone. Absolute labels
+        // still use UTC getters for plain component formatting, but Plotly
+        // sample coordinates never use Date objects or date strings.
         // ==================================================================
 
         // Parses "YYYY-MM-DDTHH:MM:SS[.ffffff]" (also tolerates a space in
@@ -4886,16 +4877,56 @@
             return Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s), ms);
         }
 
-        // The inverse of wwParseNaiveTimestamp -- formats an internal
-        // UTC-anchored millisecond value into Plotly's own native date-axis
-        // string format, using UTC getters exclusively (see this section's
-        // own header comment for why).
-        function wwFormatPlotlyDateString(ms) {
-            const d = new Date(ms);
-            const pad = (n, len) => String(n).padStart(len || 2, "0");
-            return d.getUTCFullYear() + "-" + pad(d.getUTCMonth() + 1) + "-" + pad(d.getUTCDate()) +
-                " " + pad(d.getUTCHours()) + ":" + pad(d.getUTCMinutes()) + ":" + pad(d.getUTCSeconds()) +
-                "." + pad(d.getUTCMilliseconds(), 3);
+        function wwPadNumber(n, len) {
+            return String(n).padStart(len || 2, "0");
+        }
+
+        function wwVisibleSpanSeconds() {
+            if (ww.viewport && Number.isFinite(ww.viewport.start) && Number.isFinite(ww.viewport.end)) {
+                return Math.abs(ww.viewport.end - ww.viewport.start);
+            }
+            if (ww.workspaceBounds && Number.isFinite(ww.workspaceBounds.start) && Number.isFinite(ww.workspaceBounds.end)) {
+                return Math.abs(ww.workspaceBounds.end - ww.workspaceBounds.start);
+            }
+            return 1;
+        }
+
+        function wwAbsoluteFractionDigits(spanSeconds) {
+            if (spanSeconds > 0 && spanSeconds < 0.01) return 5;
+            if (spanSeconds > 0 && spanSeconds < 0.1) return 4;
+            if (spanSeconds > 0 && spanSeconds < 2) return 3;
+            return 0;
+        }
+
+        function wwFormatAbsoluteElapsedTime(elapsedSeconds, opts) {
+            if (!Number.isFinite(elapsedSeconds)) return "—";
+            const originMs = wwWorkspaceRecordingStartMs();
+            if (originMs === null) return wwFormatCursorDuration(elapsedSeconds);
+
+            opts = opts || {};
+            const spanSeconds = Number.isFinite(opts.spanSeconds) ? opts.spanSeconds : wwVisibleSpanSeconds();
+            const digits = Number.isInteger(opts.fractionDigits)
+                ? Math.max(0, Math.min(6, opts.fractionDigits))
+                : wwAbsoluteFractionDigits(spanSeconds);
+            const scale = Math.pow(10, digits);
+            let totalSeconds = originMs / 1000 + elapsedSeconds;
+            if (digits > 0) totalSeconds = Math.round(totalSeconds * scale) / scale;
+            else totalSeconds = Math.round(totalSeconds);
+
+            let wholeSeconds = Math.floor(totalSeconds);
+            let fracUnits = digits > 0 ? Math.round((totalSeconds - wholeSeconds) * scale) : 0;
+            if (fracUnits >= scale) {
+                wholeSeconds += 1;
+                fracUnits = 0;
+            }
+
+            const d = new Date(wholeSeconds * 1000);
+            const time = wwPadNumber(d.getUTCHours()) + ":" + wwPadNumber(d.getUTCMinutes()) + ":" +
+                wwPadNumber(d.getUTCSeconds()) + (digits > 0 ? "." + wwPadNumber(fracUnits, digits) : "");
+            if (opts.includeDate || spanSeconds >= 3600) {
+                return d.getUTCFullYear() + "-" + wwPadNumber(d.getUTCMonth() + 1) + "-" + wwPadNumber(d.getUTCDate()) + " " + time;
+            }
+            return time;
         }
 
         // Phase 2C-C3 (section 24): which time modes are valid for ONE
@@ -4969,65 +5000,70 @@
             return null;
         }
 
-        // elapsed seconds (the ONE authoritative coordinate system) -> a
-        // value Plotly's own x-axis can plot directly. In Elapsed mode (or
-        // when no trustworthy origin exists), this is the identity
-        // function -- Plotly gets exactly the same numbers it always did,
-        // unchanged from before this phase.
+        // elapsed seconds (the ONE authoritative coordinate system) -> the
+        // value Plotly's own x-axis plots directly. Refined by the sub-ms
+        // precision fix: this is ALWAYS identity, in both Absolute and
+        // Elapsed modes. Absolute is presentation only.
         function wwElapsedToPlotlyX(elapsedSeconds) {
-            if (ww.timeMode === "absolute") {
-                const originMs = wwWorkspaceRecordingStartMs();
-                if (originMs !== null) return wwFormatPlotlyDateString(originMs + elapsedSeconds * 1000);
-            }
             return elapsedSeconds;
         }
 
-        // The inverse: a value Plotly reports back (via a plotly_relayout
-        // event, after a user's zoom/pan gesture) -> elapsed seconds, the
-        // coordinate system ww.viewport and the waveform API both always
-        // use regardless of ww.timeMode. Plotly reports date-axis range
-        // boundaries in the SAME native date-string format it was given,
-        // so this is parsed the same naive, timezone-free way as the
-        // origin itself (wwParseNaiveTimestamp already tolerates Plotly's
-        // own "YYYY-MM-DD HH:MM:SS.ffffff" spacing).
+        // The inverse is also identity because Plotly relayout events now
+        // report elapsed numeric seconds in every time mode.
         function wwPlotlyXToElapsed(x) {
-            if (ww.timeMode === "absolute") {
-                const originMs = wwWorkspaceRecordingStartMs();
-                if (originMs !== null) {
-                    const parsed = wwParseNaiveTimestamp(String(x));
-                    if (parsed !== null) return (parsed - originMs) / 1000;
-                }
-            }
             return Number(x);
         }
 
-        // Section 12/14: adaptive tick precision using ONLY Plotly's own
-        // native tickformatstops mechanism (an official, documented Plotly
-        // config option for exactly "different formatting at different
-        // zoom levels") -- no custom tick-generation logic. Absolute mode
-        // uses d3 UTC-style time-format specs against the date axis
-        // (Plotly's date axes are UTC-consistent by default -- see this
-        // section's own header comment); Elapsed mode adapts DECIMAL
-        // PRECISION on the existing seconds axis (unchanged unit, deeper
-        // zoom shows more fractional digits) rather than switching units
-        // (ms/s/min) -- a deliberate, honestly-documented simplification:
-        // full unit-switching would need the axis TITLE to change
-        // dynamically with zoom, which is materially more complex than
-        // this task's own cost/benefit guidance favors (section 14 itself
-        // only says a cleaner unit "may" be appropriate, not required).
-        function wwTimeAxisTickFormat() {
+        function wwNiceTickStep(spanSeconds, targetTickCount) {
+            if (!(spanSeconds > 0)) return 1;
+            const raw = spanSeconds / Math.max(1, targetTickCount || 7);
+            const power = Math.pow(10, Math.floor(Math.log10(raw)));
+            const unit = raw / power;
+            const multiplier = unit <= 1 ? 1 : unit <= 2 ? 2 : unit <= 2.5 ? 2.5 : unit <= 5 ? 5 : 10;
+            return multiplier * power;
+        }
+
+        function wwTickValuesForRange(start, end, targetTickCount) {
+            const lo = Math.min(Number(start), Number(end));
+            const hi = Math.max(Number(start), Number(end));
+            if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo === hi) return [];
+            const step = wwNiceTickStep(hi - lo, targetTickCount);
+            const first = Math.ceil(lo / step) * step;
+            const values = [];
+            for (let v = first; v <= hi + step * 1e-9 && values.length < 20; v += step) {
+                values.push(Number(v.toFixed(12)));
+            }
+            return values.length ? values : [Number(((lo + hi) / 2).toFixed(12))];
+        }
+
+        function wwAbsoluteTickLabelsForRange(start, end) {
+            const span = Math.abs(Number(end) - Number(start));
+            const tickvals = wwTickValuesForRange(start, end, 7);
+            return {
+                tickmode: "array",
+                tickvals,
+                ticktext: tickvals.map((v) => wwFormatAbsoluteElapsedTime(v, { spanSeconds: span })),
+                tickformatstops: [],
+                tickformat: "",
+                hoverformat: ".6f",
+            };
+        }
+
+        // Section 12/14: Elapsed panel axes keep Plotly's native adaptive
+        // tickformatstops on a numeric seconds axis. Absolute axes now also
+        // stay numeric seconds, but use custom tick text so labels show
+        // recording_start + elapsed without feeding millisecond date strings
+        // back into waveform geometry.
+        function wwTimeAxisTickFormat(startTime, endTime) {
             if (ww.timeMode === "absolute") {
-                return {
-                    tickformatstops: [
-                        { dtickrange: [null, 1000], value: "%H:%M:%S.%L" },
-                        { dtickrange: [1000, 60000], value: "%H:%M:%S" },
-                        { dtickrange: [60000, 3600000], value: "%H:%M" },
-                        { dtickrange: [3600000, null], value: "%b %d, %H:%M" },
-                    ],
-                    hoverformat: "%H:%M:%S.%L",
-                };
+                const start = Number.isFinite(startTime) ? startTime : (ww.viewport && ww.viewport.start);
+                const end = Number.isFinite(endTime) ? endTime : (ww.viewport && ww.viewport.end);
+                if (Number.isFinite(start) && Number.isFinite(end)) return wwAbsoluteTickLabelsForRange(start, end);
             }
             return {
+                tickmode: "auto",
+                tickvals: null,
+                ticktext: null,
                 tickformatstops: [
                     { dtickrange: [null, 0.01], value: ".4~f" },
                     { dtickrange: [0.01, 1], value: ".3~f" },
@@ -5038,11 +5074,23 @@
             };
         }
 
+        function wwTimeAxisRelayout(startTime, endTime) {
+            const tickFormat = wwTimeAxisTickFormat(startTime, endTime);
+            return {
+                "xaxis.type": "linear",
+                "xaxis.range": [wwElapsedToPlotlyX(startTime), wwElapsedToPlotlyX(endTime)],
+                "xaxis.tickmode": tickFormat.tickmode,
+                "xaxis.tickvals": tickFormat.tickvals,
+                "xaxis.ticktext": tickFormat.ticktext,
+                "xaxis.tickformatstops": tickFormat.tickformatstops,
+                "xaxis.tickformat": tickFormat.tickformat,
+                "xaxis.hoverformat": tickFormat.hoverformat,
+            };
+        }
+
         // Section 12: Absolute mode keeps each panel's own axis title
-        // empty -- the date-typed X axis already shows full date/time
-        // context on its own ticks, so a redundant title would only
-        // repeat it on every panel. Elapsed mode keeps the existing
-        // "Time (s)" title, unchanged.
+        // empty -- Absolute tick labels already show clock-time context.
+        // Elapsed mode keeps the existing "Time (s)" title, unchanged.
         function wwTimeAxisTitle() {
             return ww.timeMode === "absolute" ? "" : "Time (s)";
         }
@@ -5334,7 +5382,12 @@
                     // must render in whichever time mode is CURRENTLY
                     // active, same transform wwBuildTrace applies at
                     // initial creation.
-                    Plotly.restyle(panel.chartEl, { x: [body.time.map(wwElapsedToPlotlyX)], y: [body.values] }, [idx]);
+                    Plotly.restyle(panel.chartEl, {
+                        x: [body.time.map(wwElapsedToPlotlyX)],
+                        y: [body.values],
+                        customdata: [wwTraceCustomData(channelEntry)],
+                        hovertemplate: [wwTraceHoverTemplate(channelEntry)],
+                    }, [idx]);
                 }
             }
         }
@@ -5427,18 +5480,28 @@
             });
         }
 
-        // Phase 2C-C3: x values are transformed per the CURRENT ww.timeMode
-        // (wwElapsedToPlotlyX) -- channel.time itself (the raw elapsed
-        // array as fetched) is never mutated, only read; a mode switch is
-        // always reversible with no data loss (see wwSetTimeMode). The
-        // hover template is mode-aware too: Plotly's own `|` date-format
-        // pipe syntax for a date-typed x (no custom formatting logic).
+        function wwTraceCustomData(channel) {
+            if (ww.timeMode !== "absolute") return null;
+            const span = wwVisibleSpanSeconds();
+            return (channel.time || []).map((t) => wwFormatAbsoluteElapsedTime(t, { spanSeconds: span }));
+        }
+
+        function wwTraceHoverTemplate(channel) {
+            const xFormat = ww.timeMode === "absolute" ? "%{customdata}" : "%{x:.6f}s";
+            return xFormat + ": %{y}" + (channel.unit ? " " + channel.unit : "") +
+                "<extra>" + escapeHtml(channel.channelName) + "</extra>";
+        }
+
+        // Phase 2C-C3, refined by the sub-ms precision fix: x values are
+        // always numeric elapsed seconds. A mode switch is presentation-only:
+        // hover/customdata and tick labels update, but trace geometry does
+        // not.
         function wwBuildTrace(channel) {
             const xValues = (channel.time || []).map(wwElapsedToPlotlyX);
-            const xHoverFormat = ww.timeMode === "absolute" ? "%{x|%H:%M:%S.%L}" : "%{x:.6f}s";
             return {
                 x: xValues,
                 y: channel.values || [],
+                customdata: wwTraceCustomData(channel),
                 type: "scattergl",
                 mode: "lines",
                 // shape: "linear" (Plotly's own default), explicitly NOT
@@ -5446,8 +5509,7 @@
                 // unchanged from Phase 2B.
                 line: { shape: "linear", width: 1.5, color: channel.color },
                 name: channel.channelName,
-                hovertemplate: xHoverFormat + ": %{y}" + (channel.unit ? " " + channel.unit : "") +
-                    "<extra>" + escapeHtml(channel.channelName) + "</extra>",
+                hovertemplate: wwTraceHoverTemplate(channel),
                 // Phase 4A-UAT7: a stable "sourceId::channelName" identity
                 // (the same wwChannelKey() convention used everywhere
                 // else), carried purely as trace metadata -- Plotly's own
@@ -5464,7 +5526,7 @@
         function wwBuildLayout(panel, colors) {
             const unit = panel.channels.length ? panel.channels[0].unit : "";
             const xrange = ww.viewport ? [wwElapsedToPlotlyX(ww.viewport.start), wwElapsedToPlotlyX(ww.viewport.end)] : undefined;
-            const tickFormat = wwTimeAxisTickFormat();
+            const tickFormat = wwTimeAxisTickFormat(ww.viewport && ww.viewport.start, ww.viewport && ww.viewport.end);
             // Crosshair config identical to waveform-prototype.html's own
             // (DEC-022/DEC-023, unchanged): thin, dashed, theme-driven,
             // sample-snapped. Each panel's spikes are independent --
@@ -5476,12 +5538,7 @@
                 font: { color: colors.text, size: 11 },
                 margin: { l: WW_PANEL_MARGIN.l, r: WW_PANEL_MARGIN.r, t: 10, b: 34 },
                 xaxis: Object.assign({
-                    // Phase 2C-C3: "date" for Absolute mode (native Plotly
-                    // date axis -- adaptive tick spacing/formatting comes
-                    // from Plotly itself, not custom logic); default
-                    // (linear) for Elapsed, unchanged from before this
-                    // phase.
-                    type: ww.timeMode === "absolute" ? "date" : undefined,
+                    type: "linear",
                     title: wwTimeAxisTitle(), gridcolor: colors.grid, zeroline: false, range: xrange,
                     showspikes: true, spikemode: "across", spikesnap: "data",
                     spikethickness: 0.35, spikedash: "3px,2px", spikecolor: colors.spike,
@@ -5739,12 +5796,10 @@
                 const x0 = eventData["xaxis.range[0]"];
                 const x1 = eventData["xaxis.range[1]"];
                 if (x0 !== undefined && x1 !== undefined) {
-                    // Phase 2C-C3: in Absolute mode, Plotly reports a
-                    // date-typed range here, not elapsed seconds -- convert
-                    // back through the SAME boundary function
-                    // wwElapsedToPlotlyX uses (in reverse), so everything
-                    // downstream of this point (broadcast, fetch, viewport
-                    // state) never has to know which mode is active.
+                    // Plotly reports elapsed numeric seconds in both time
+                    // modes. Keep the boundary helper for one named
+                    // conversion point, but it is intentionally identity
+                    // after the sub-ms precision fix.
                     wwBroadcastViewportDebounced(wwPlotlyXToElapsed(x0), wwPlotlyXToElapsed(x1));
                     return;
                 }
@@ -5776,7 +5831,7 @@
             ww.viewport = { start: startTime, end: endTime };
             for (const panel of ww.panels) {
                 panel.suppressNext = true;
-                Plotly.relayout(panel.chartEl, { "xaxis.range": [wwElapsedToPlotlyX(startTime), wwElapsedToPlotlyX(endTime)] });
+                Plotly.relayout(panel.chartEl, wwTimeAxisRelayout(startTime, endTime));
             }
             // Phase 2C-C4 (section 9/10): this one function is the sole
             // place ww.viewport ever changes (zoom, pan, AND Reset Time
@@ -6507,7 +6562,7 @@
                 // fix (see this function's own header comment).
                 margin: { l: WW_PANEL_MARGIN.l, r: WW_PANEL_MARGIN.r, t: 6, b: 6 },
                 xaxis: {
-                    type: ww.timeMode === "absolute" ? "date" : undefined,
+                    type: "linear",
                     range: xrange,
                     showticklabels: false,
                     showgrid: false, zeroline: false, fixedrange: true,
@@ -6827,39 +6882,26 @@
         }
 
         // Phase 2C-C4A: ONE shared decision for the sticky ruler's
-        // Elapsed-mode display unit -- both its title AND its own tick
-        // values are derived from this single function, so "title says
-        // ms" can never disagree with "ticks show seconds" (section 4).
-        // Presentation-only: it rescales ONLY the ruler's own independent
-        // numeric x-axis domain by a constant factor -- the ruler carries
-        // zero trace data and has never shared a Plotly instance with any
-        // real panel (see wwSyncStickyRuler()'s own comment), so this
-        // never touches wwElapsedToPlotlyX(), wwBuildTrace(), any real
-        // waveform panel's own axis, or ww.viewport itself. This is the
-        // same category of presentation-only transform Absolute mode's
-        // date-string conversion already established in Phase 2C-C3 --
-        // the physical viewport never changes representation, only what
-        // a Plotly x-axis is told to display. A uniform multiplicative
-        // rescale of both the range and Plotly's own "nice round tick
-        // value" choices is scale-covariant (the 1-2-5 nice-number
-        // heuristic picks proportionally equivalent steps regardless of
-        // the constant multiplier applied to the whole domain), so this
-        // does not shift WHERE ticks land relative to the shared
-        // viewport -- see this phase's own report for the honest caveat
-        // that this specific claim was reasoned through, not visually
-        // confirmed in a real browser (no browser is available in this
-        // sandbox).
-        //
-        // A simple 3-tier span-based decision -- deliberately NOT the
-        // panels' own 4-tier decimal-PRECISION bands in
-        // wwTimeAxisTickFormat() (dtickrange-keyed, which stay byte-for-
-        // byte unchanged and keep using raw seconds always -- this task's
-        // own scope is the ruler's title/presentation, not a Grouped/
-        // Custom panel-axis redesign, section 20).
+        // Elapsed-mode display unit. Refined by the sub-ms precision fix:
+        // the ruler's coordinate domain now remains elapsed seconds too;
+        // only tick TEXT is scaled to ms/s/min.
         function wwStickyRulerElapsedUnit(spanSeconds) {
             if (spanSeconds < 1) return { scale: 1000, tickformat: ",.1f", title: "Time (ms)" };
             if (spanSeconds < 60) return { scale: 1, tickformat: ".3~f", title: "Time (s)" };
             return { scale: 1 / 60, tickformat: ".2~f", title: "Time (min)" };
+        }
+
+        function wwRulerTickLabelsForRange(start, end, unit) {
+            const tickvals = wwTickValuesForRange(start, end, 7);
+            const digits = unit.scale === 1000 ? 1 : 3;
+            return {
+                tickmode: "array",
+                tickvals,
+                ticktext: tickvals.map((v) => Number((v * unit.scale).toFixed(digits)).toString()),
+                tickformatstops: [],
+                tickformat: "",
+                hoverformat: ".6f",
+            };
         }
 
         // Phase 2C-C4: ONE Oruxa-owned shared time-axis strip for the
@@ -6911,10 +6953,9 @@
         // second, hand-positioned DOM title: no separate element to keep
         // aligned/sized/themed, no CSS centering math to duplicate --
         // just one more Plotly layout property, the same one already
-        // proven correct on every panel. No date is shown in the ruler at
-        // all anymore (section 5/6) -- Absolute mode's own date-typed X
-        // axis (analog panels, the ruler, and the digital chart alike)
-        // is the one place date context now appears, via its own ticks.
+        // proven correct on every panel. No separate date line is shown in
+        // the ruler at all anymore (section 5/6); Absolute mode's tick text
+        // is the one place clock-time context now appears.
         function wwSyncStickyRuler() {
             const wrapEl = document.getElementById("wwStickyRuler");
             const chartEl = document.getElementById("wwStickyRulerChart");
@@ -6924,36 +6965,25 @@
             wrapEl.hidden = !hasChannels;
             if (!hasChannels) return; // section 17: no unnecessary ruler when empty
 
-            // Absolute mode reuses wwTimeAxisTickFormat() exactly as
-            // Phase 2C-C4 already did (unchanged), with a fixed "Record
-            // Time" title (capital T, section 6) -- never a per-unit
-            // label, since Absolute is a timestamp representation, not an
-            // elapsed unit scale. Elapsed mode derives BOTH its range
-            // rescale AND its title from wwStickyRulerElapsedUnit(),
-            // reading the CURRENT visible span fresh every call -- so a
-            // zoom/pan that changes the chosen unit (section 12) is
-            // picked up automatically the next time this function runs,
-            // with no separate wiring needed beyond the existing call
-            // sites (wwApplyAndFetchViewport/wwSetTimeMode) already used.
-            let xrange, tickformatstops, tickformat, hoverformat, title;
+            // Absolute/Elapsed both use the same numeric elapsed range.
+            // Only tick labels/title differ.
+            const start = ww.viewport && ww.viewport.start;
+            const end = ww.viewport && ww.viewport.end;
+            const xrange = ww.viewport
+                ? [wwElapsedToPlotlyX(start), wwElapsedToPlotlyX(end)]
+                : undefined;
+            let tickPresentation, title;
             if (ww.timeMode === "absolute") {
-                const tf = wwTimeAxisTickFormat();
-                xrange = ww.viewport
-                    ? [wwElapsedToPlotlyX(ww.viewport.start), wwElapsedToPlotlyX(ww.viewport.end)]
-                    : undefined;
-                tickformatstops = tf.tickformatstops;
-                tickformat = "";
-                hoverformat = tf.hoverformat;
+                tickPresentation = Number.isFinite(start) && Number.isFinite(end)
+                    ? wwAbsoluteTickLabelsForRange(start, end)
+                    : wwTimeAxisTickFormat(start, end);
                 title = "Record Time";
             } else {
-                const spanSeconds = ww.viewport ? Math.abs(ww.viewport.end - ww.viewport.start) : 1;
+                const spanSeconds = ww.viewport ? Math.abs(end - start) : 1;
                 const unit = wwStickyRulerElapsedUnit(spanSeconds);
-                xrange = ww.viewport
-                    ? [ww.viewport.start * unit.scale, ww.viewport.end * unit.scale]
-                    : undefined;
-                tickformatstops = [];
-                tickformat = unit.tickformat;
-                hoverformat = unit.tickformat;
+                tickPresentation = Number.isFinite(start) && Number.isFinite(end)
+                    ? wwRulerTickLabelsForRange(start, end, unit)
+                    : wwTimeAxisTickFormat(start, end);
                 title = unit.title;
             }
 
@@ -6974,12 +7004,17 @@
                     plot_bgcolor: "transparent",
                     font: { color: colors.text, size: 10 },
                     xaxis: {
-                        type: ww.timeMode === "absolute" ? "date" : undefined,
+                        type: "linear",
                         range: xrange,
                         title: title,
                         gridcolor: colors.grid, zeroline: false, showgrid: false,
                         ticks: "outside", tickcolor: colors.grid, ticklen: 4,
-                        tickformatstops: tickformatstops, tickformat: tickformat, hoverformat: hoverformat,
+                        tickmode: tickPresentation.tickmode,
+                        tickvals: tickPresentation.tickvals,
+                        ticktext: tickPresentation.ticktext,
+                        tickformatstops: tickPresentation.tickformatstops,
+                        tickformat: tickPresentation.tickformat,
+                        hoverformat: tickPresentation.hoverformat,
                     },
                     // No Y data ever -- this instance exists purely to
                     // render the shared X axis (section 3/25).
@@ -6998,12 +7033,15 @@
                 ww.rulerReady = true;
             } else {
                 Plotly.relayout(chartEl, {
-                    "xaxis.type": ww.timeMode === "absolute" ? "date" : "linear",
+                    "xaxis.type": "linear",
                     "xaxis.range": xrange,
                     "xaxis.title": title,
-                    "xaxis.tickformatstops": tickformatstops,
-                    "xaxis.tickformat": tickformat,
-                    "xaxis.hoverformat": hoverformat,
+                    "xaxis.tickmode": tickPresentation.tickmode,
+                    "xaxis.tickvals": tickPresentation.tickvals,
+                    "xaxis.ticktext": tickPresentation.ticktext,
+                    "xaxis.tickformatstops": tickPresentation.tickformatstops,
+                    "xaxis.tickformat": tickPresentation.tickformat,
+                    "xaxis.hoverformat": tickPresentation.hoverformat,
                 });
             }
             // Phase 4B: every path that reaches this function already
@@ -7123,22 +7161,14 @@
 
         // A/B's own point-in-time display (section 18/20): Elapsed mode is
         // just wwFormatCursorDuration() on the raw engineering value.
-        // Absolute mode reuses wwFormatPlotlyDateString() (the SAME naive-
-        // UTC formatter every other Absolute-mode surface already uses --
-        // never a second timestamp implementation), trimmed to its
-        // "HH:MM:SS.mmm" tail for status-bar compactness (the date portion
-        // is already visible on the Absolute-mode date axis itself). Falls
-        // back to elapsed formatting if no trustworthy recording origin
-        // exists yet, same fallback wwElapsedToPlotlyX() itself already
-        // uses.
+        // Absolute mode formats the cursor's elapsed engineering time as
+        // recording_start + elapsed, but never changes the cursor authority
+        // itself. The visible precision follows the current viewport so deep
+        // zooms can show sub-ms positions.
         function wwFormatCursorPointTime(elapsedSeconds) {
             if (!Number.isFinite(elapsedSeconds)) return "—";
             if (ww.timeMode === "absolute") {
-                const originMs = wwWorkspaceRecordingStartMs();
-                if (originMs !== null) {
-                    const full = wwFormatPlotlyDateString(originMs + elapsedSeconds * 1000);
-                    return full.slice(full.indexOf(" ") + 1);
-                }
+                return wwFormatAbsoluteElapsedTime(elapsedSeconds, { spanSeconds: wwVisibleSpanSeconds() });
             }
             return wwFormatCursorDuration(elapsedSeconds);
         }
@@ -8109,22 +8139,14 @@
             document.getElementById("timeModeAbsoluteBtn").setAttribute("aria-pressed", String(mode === "absolute"));
             document.getElementById("timeModeElapsedBtn").setAttribute("aria-pressed", String(mode === "elapsed"));
 
-            const tickFormat = wwTimeAxisTickFormat();
-            const xrange = ww.viewport ? [wwElapsedToPlotlyX(ww.viewport.start), wwElapsedToPlotlyX(ww.viewport.end)] : undefined;
-            const xHoverFormat = mode === "absolute" ? "%{x|%H:%M:%S.%L}" : "%{x:.6f}s";
-
             for (const panel of ww.panels) {
                 if (!panel.plotlyReady) continue;
-                // Re-derive each already-loaded channel's x values/hover
-                // format for the new mode -- zero network requests
-                // (section 9), same channel.time/.values array reused
-                // unmutated.
+                // Re-derive presentation only. Trace x/y arrays remain the
+                // same elapsed numeric coordinates and values.
                 panel.channels.forEach((channel, idx) => {
-                    const xValues = (channel.time || []).map(wwElapsedToPlotlyX);
                     Plotly.restyle(panel.chartEl, {
-                        x: [xValues],
-                        hovertemplate: [xHoverFormat + ": %{y}" + (channel.unit ? " " + channel.unit : "") +
-                            "<extra>" + escapeHtml(channel.channelName) + "</extra>"],
+                        customdata: [wwTraceCustomData(channel)],
+                        hovertemplate: [wwTraceHoverTemplate(channel)],
                     }, [idx]);
                 });
                 // suppressNext: this relayout sets xaxis.range
@@ -8135,26 +8157,18 @@
                 // violate (section 9), using the SAME established pattern
                 // wwApplyAndFetchViewport already relies on.
                 panel.suppressNext = true;
-                Plotly.relayout(panel.chartEl, {
-                    "xaxis.type": mode === "absolute" ? "date" : "linear",
-                    "xaxis.range": xrange,
-                    "xaxis.tickformatstops": tickFormat.tickformatstops,
-                    "xaxis.hoverformat": tickFormat.hoverformat,
-                    // Grouped/Custom panels get their title corrected here
-                    // directly -- wwApplyTimeAxisChrome() below no-ops for
-                    // those modes (it only ever touches Separate-mode
-                    // lanes). In Separate mode this gets immediately
-                    // overridden per-lane (bottom lane only) by that same
-                    // call, which is the intended final state.
-                    "xaxis.title": wwTimeAxisTitle(),
-                });
+                const relayout = ww.viewport ? wwTimeAxisRelayout(ww.viewport.start, ww.viewport.end) : { "xaxis.type": "linear" };
+                // Grouped/Custom panels get their title corrected here
+                // directly -- wwApplyTimeAxisChrome() below no-ops for
+                // those modes (it only ever touches Separate-mode lanes).
+                relayout["xaxis.title"] = wwTimeAxisTitle();
+                Plotly.relayout(panel.chartEl, relayout);
             }
             wwApplyTimeAxisChrome();
             // Phase 2C-C4 (section 6): the sticky ruler must update
             // immediately on a mode switch too, same as every panel above
-            // -- calls the same wwTimeAxisTickFormat()/wwElapsedToPlotlyX()
-            // functions used just above, so the ruler is guaranteed to
-            // agree with what every panel now shows.
+            // -- calls the same elapsed-coordinate presentation helpers used
+            // above, so the ruler agrees with every panel.
             wwSyncStickyRuler();
             // Phase 4A (section 32): digital presentation must switch
             // Absolute/Elapsed consistently with analog and the shared

@@ -4,7 +4,20 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-20** (Waveform Adaptive Resolution, on top of Phase 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B, Phase 4A-UAT9, and Phase 4A-UAT10).
+Last meaningful update: **2026-08-20** (Waveform Time-Axis Sub-ms Precision, on top of Waveform Adaptive Resolution, Phase 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B, Phase 4A-UAT9, and Phase 4A-UAT10).
+
+`[DECISION]` **Waveform Time-Axis Sub-ms Precision — DEC-042**
+(2026-08-20): Absolute and Elapsed modes now share one numeric elapsed
+engineering X coordinate all the way into Plotly. Absolute Time is
+presentation-only: tick labels, hover labels, and A/B cursor readouts format
+`recording_start + elapsed`, while waveform sample coordinates, digital
+transition positions, the sticky ruler domain, `sourceBounds`,
+`workspaceBounds`, `viewport`, zoom/pan relayout values, and backend request
+times all remain elapsed floating-point seconds. This corrects the proven
+5 kHz Absolute-mode precision loss where date-string Plotly coordinates
+collapsed five 0.2 ms samples into each 1 ms x bucket. See
+[DECISIONS.md — DEC-042](DECISIONS.md#dec-042--absolute-and-elapsed-waveform-modes-share-numeric-elapsed-plotly-x-coordinates)
+and [MIGRATION_PLAN.md — Waveform Time-Axis Sub-ms Precision](MIGRATION_PLAN.md#waveform-time-axis-sub-ms-precision-2026-08-20).
 
 `[DECISION]` **Waveform Adaptive Resolution — DEC-041** (2026-08-20):
 waveform reduction is now explicitly an overview rendering optimization only.

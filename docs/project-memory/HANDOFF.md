@@ -8,6 +8,47 @@ Last updated: **2026-08-20**
 
 ## What was most recently done
 
+**Waveform Time-Axis Sub-ms Precision.** Full detail:
+[MIGRATION_PLAN.md — Waveform Time-Axis Sub-ms Precision](MIGRATION_PLAN.md#waveform-time-axis-sub-ms-precision-2026-08-20),
+[DECISIONS.md — DEC-042](DECISIONS.md#dec-042--absolute-and-elapsed-waveform-modes-share-numeric-elapsed-plotly-x-coordinates).
+
+Owner approved the follow-up from the Absolute-Time precision investigation.
+The problem was proven frontend-only: adaptive resolution and backend range
+extraction already returned full-resolution data for the observed 5 kHz
+deep-zoom range, but Absolute mode converted elapsed samples into
+millisecond-formatted date strings before Plotly received them. At 5 kHz, that
+collapsed five 0.2 ms samples into each 1 ms X coordinate while keeping
+distinct Y values, producing stepped/vertical geometry.
+
+Implemented the approved model: Absolute and Elapsed modes now share numeric
+elapsed Plotly X coordinates. `wwElapsedToPlotlyX()` and
+`wwPlotlyXToElapsed()` are identity helpers; panel and digital axes are linear
+numeric elapsed seconds in both modes; `wwSetTimeMode()` updates
+hover/customdata and axis presentation only, with no trace X/Y rewrite and no
+waveform refetch; Absolute ticks/hover/cursor labels format
+`recording_start + elapsed` with viewport-aware sub-ms precision; the sticky
+ruler keeps the same elapsed coordinate domain and changes labels/title only.
+Backend requests, sourceBounds/workspaceBounds/viewport, adaptive resolution,
+digital transitions, Cur A/B values, and cross-source semantics are unchanged.
+
+Focused verification for this pass:
+`backend/tests/test_waveform_service.py`,
+`backend/tests/test_waveform_reduction.py`,
+`backend/tests/test_cursor_values_service.py`,
+`backend/tests/test_cursor_values_api.py`,
+`backend/tests/test_frontend_source_bounds.py`,
+`backend/tests/test_frontend_waveform_adaptive_resolution.py`, and
+`backend/tests/test_frontend_absolute_time_precision.py` — 106/106 passing.
+
+Permanent coverage added in
+`backend/tests/test_frontend_absolute_time_precision.py` for identity
+coordinate conversion, no date-axis/date-string Plotly coordinates, no trace
+geometry rewrite on mode switch, 5 kHz 76/76 unique-X preservation,
+sub-millisecond Absolute label precision tiers, and sticky-ruler numeric-domain
+behavior.
+
+## What was done in the prior session
+
 **Waveform Adaptive Resolution.** Full detail:
 [MIGRATION_PLAN.md — Waveform Adaptive Resolution](MIGRATION_PLAN.md#waveform-adaptive-resolution-2026-08-20),
 [DECISIONS.md — DEC-041](DECISIONS.md#dec-041--waveform-reduction-is-an-overview-rendering-optimization-with-a-10000-sample-full-resolution-display-threshold).

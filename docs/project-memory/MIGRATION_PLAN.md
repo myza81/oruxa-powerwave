@@ -8648,6 +8648,98 @@ owner UAT after this push.
 
 ---
 
+---
+
+## Waveform Time-Axis Sub-ms Precision (2026-08-20)
+
+### Scope
+
+Implements the owner-approved follow-up from the Absolute-Time waveform
+precision investigation. The fix is frontend-only and changes the Absolute
+time-axis representation from "date strings as Plotly X coordinates" to
+"numeric elapsed Plotly X coordinates with Absolute labels."
+
+Recorded as [DEC-042](DECISIONS.md#dec-042--absolute-and-elapsed-waveform-modes-share-numeric-elapsed-plotly-x-coordinates).
+
+### Problem proven
+
+Adaptive resolution was already correct after DEC-041. A 5 kHz source zoomed
+to 14 ms returns 71 original samples and a 15 ms range returns 76 original
+samples, both as `representation="full_resolution"`. Backend responses are
+mode-agnostic because the waveform API always receives elapsed `start_time` and
+`end_time`.
+
+The remaining owner-observed stair-step in Absolute mode was caused by the old
+frontend conversion:
+
+```text
+elapsed seconds -> JavaScript Date / millisecond date string -> Plotly date X
+```
+
+At 5 kHz, sample spacing is 0.2 ms, so five samples can collapse into each
+1 ms Absolute X coordinate even though their Y values remain distinct.
+
+### Implementation
+
+`frontend/index.html` now keeps Plotly waveform coordinates numeric and elapsed
+in both modes:
+
+- `wwElapsedToPlotlyX()` returns the elapsed value unchanged.
+- `wwPlotlyXToElapsed()` returns `Number(x)`.
+- Analog trace `x` arrays are the backend `body.time[]` elapsed floats in both
+  Absolute and Elapsed modes.
+- `wwSetTimeMode()` updates hover/customdata and axis presentation only; it
+  does not rewrite trace X/Y arrays and does not refetch waveforms.
+- Absolute hover text uses per-point `customdata` formatted as
+  `recording_start + elapsed`.
+- Absolute tick labels are generated from numeric elapsed tick positions.
+- The sticky ruler no longer rescales its coordinate domain or switches to a
+  date axis; it uses elapsed seconds in both modes and changes tick text/title
+  only.
+- Digital transition positions remain elapsed numeric values. Absolute mode
+  does not change digital geometry, state-at-cursor, or vertical alignment.
+- A/B cursor state and projection remain elapsed floating-point seconds; only
+  the Absolute readout formatter changes.
+
+### Precision behavior
+
+Absolute presentation uses viewport-aware fractional precision:
+
+- broad ranges: whole seconds where sufficient;
+- sub-2 s ranges: milliseconds;
+- sub-100 ms ranges: four fractional second digits, enough to distinguish
+  0.2 ms samples;
+- sub-10 ms ranges: five fractional second digits.
+
+For the 5 kHz regression case, a 15 ms range now preserves:
+
+```text
+76 source points -> 76 unique Elapsed Plotly X values
+76 source points -> 76 unique Absolute Plotly X values
+```
+
+Absolute and Elapsed waveform geometry are therefore sample-for-sample
+identical; only tick labels, hover labels, and cursor time text differ.
+
+### Verification
+
+Focused regression run:
+
+```bash
+pytest backend/tests/test_waveform_service.py backend/tests/test_waveform_reduction.py backend/tests/test_cursor_values_service.py backend/tests/test_cursor_values_api.py backend/tests/test_frontend_source_bounds.py backend/tests/test_frontend_waveform_adaptive_resolution.py backend/tests/test_frontend_absolute_time_precision.py
+```
+
+Result: 106 passed.
+
+Permanent coverage added in
+`backend/tests/test_frontend_absolute_time_precision.py` for identity
+coordinate conversion, no date-axis/date-string Plotly coordinates, no trace
+geometry rewrite on mode switch, 5 kHz 76/76 unique-X preservation,
+sub-millisecond Absolute label precision tiers, and sticky-ruler numeric-domain
+behavior.
+
+---
+
 ## Waveform Adaptive Resolution (2026-08-20)
 
 ### Scope

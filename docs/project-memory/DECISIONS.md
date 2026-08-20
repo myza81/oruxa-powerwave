@@ -1836,6 +1836,12 @@ Impact:
   No backend file changed. See
   [MIGRATION_PLAN.md — Phase 2C-C3 Record](MIGRATION_PLAN.md#phase-2c-c3--comtrade-time-axis-modes-2026-08-15).
 
+**Update (2026-08-20) — see [DEC-042](#dec-042--absolute-and-elapsed-waveform-modes-share-numeric-elapsed-plotly-x-coordinates):**
+the decision's elapsed-authority rule remains correct, but the original
+implementation detail that converted Absolute-mode Plotly X coordinates into
+date strings is superseded. Plotly now receives numeric elapsed seconds in
+both Absolute and Elapsed modes; Absolute Time changes labels only.
+
 ---
 
 ## DEC-030 — Sticky shared waveform time-axis ruler, implemented as a lightweight trace-less Plotly instance (Phase 2C-C4)
@@ -3676,6 +3682,71 @@ Impact:
   backend's 10,000 full-resolution threshold rather than switching to
   unbounded full-record transfer.
 - See [MIGRATION_PLAN.md — Waveform Adaptive Resolution](MIGRATION_PLAN.md#waveform-adaptive-resolution-2026-08-20).
+
+---
+
+## DEC-042 — Absolute and Elapsed waveform modes share numeric elapsed Plotly X coordinates
+
+Date: 2026-08-20
+Status: Approved
+Source: explicit project-owner approval after the Absolute-Time waveform
+precision investigation.
+
+Decision:
+
+Absolute and Elapsed waveform modes share one numeric elapsed engineering X
+coordinate from backend response through Plotly rendering. Time mode is
+presentation-only:
+
+- Elapsed mode labels and hover text display elapsed time.
+- Absolute mode labels, hover text, and A/B cursor readouts display
+  `recording_start + elapsed`.
+- Analog trace `x`, digital transition positions, sticky-ruler coordinates,
+  `sourceBounds`, `workspaceBounds`, `viewport`, zoom/pan relayout values, and
+  backend `start_time`/`end_time` request parameters remain elapsed
+  floating-point seconds.
+
+Reason:
+
+The owner observed that a 5 kHz waveform, zoomed to roughly 14-15 ms, stayed
+smooth in Elapsed mode but became visibly stepped in Absolute mode. The
+analysis proved adaptive resolution and backend range extraction were already
+correct: a 14 ms 5 kHz range returns 71/71 full-resolution samples and a
+15 ms range returns 76/76 full-resolution samples. The precision loss happened
+only in the frontend Absolute presentation path: high-resolution elapsed
+seconds were converted to millisecond-formatted date strings before Plotly
+received them. At 5 kHz, five 0.2 ms samples can therefore collapse onto one
+millisecond X coordinate while retaining distinct Y values, producing the
+stepped/vertical geometry reported in UAT.
+
+Alternatives considered:
+
+Continuing to use Plotly date axes/date strings for Absolute mode (rejected:
+the current JavaScript `Date`/formatted-string path is millisecond-granular and
+cannot preserve 0.2 ms sample spacing); numeric epoch milliseconds (rejected:
+still invites millisecond-oriented date-axis behavior and would split the
+engineering coordinate model); adding an Absolute source-bounds/viewport model
+(rejected: DEC-021/DEC-037 require one elapsed viewport authority); redesigning
+timezone or multi-source alignment semantics (rejected as out of scope).
+
+Impact:
+
+- `frontend/index.html`: `wwElapsedToPlotlyX()` and `wwPlotlyXToElapsed()` are
+  identity helpers; panel and digital Plotly axes are always linear numeric
+  elapsed seconds; `wwSetTimeMode()` no longer rewrites trace X/Y arrays;
+  Absolute hover uses per-point `customdata`; Absolute tick labels are generated
+  from elapsed tick coordinates and `wwWorkspaceRecordingStartMs()`; the sticky
+  ruler keeps the same elapsed coordinate domain in both modes; A/B cursor
+  geometry remains elapsed and only its Absolute text formatter changes.
+- `backend/tests/test_frontend_absolute_time_precision.py`: permanent static
+  regressions cover identity coordinate conversion, no date-axis/date-string
+  Plotly coordinates, no geometry rewrite on mode switch, 5 kHz 76/76 unique-X
+  preservation, sub-ms precision tiers, and numeric-domain sticky ruler
+  behavior.
+- No backend behavior, waveform reduction policy, COMTRADE parsing,
+  source-aware bounds, digital transitions, Cur A/B values, or cross-source
+  synchronization semantics changed.
+- See [MIGRATION_PLAN.md — Waveform Time-Axis Sub-ms Precision](MIGRATION_PLAN.md#waveform-time-axis-sub-ms-precision-2026-08-20).
 
 ---
 
