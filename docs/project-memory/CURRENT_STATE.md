@@ -1607,6 +1607,51 @@ observe real paint/compositing, so only the lifecycle gap (scroll now
 re-syncs geometry) and the performance contract are verified here —
 real-browser owner UAT remains authoritative for the visual symptom.
 
+`[FACT]` **Phase 4C1 — Instantaneous A/B cursor values (Cur A / Cur B)**
+(2026-08-20) — see
+[MIGRATION_PLAN.md — Phase 4C1](MIGRATION_PLAN.md#phase-4c1--instantaneous-ab-cursor-values-cur-a--cur-b-2026-08-20)
+and
+[DEC-040](DECISIONS.md#dec-040--cursor-instantaneous-values-are-computed-from-authoritative-full-resolution-source-data-at-the-nearest-actual-sample-displaydownsampled-waveform-points-are-never-measurement-authority-phase-4c1).
+The first VALUE measurement built on the DEC-039 cursor-time overlay: the
+Channels sidebar's analog table gained two new compact columns, "Cur A"
+and "Cur B", showing each displayed channel's instantaneous value at
+cursor A/B. Values are always computed backend-side
+(`extract_cursor_values()`, `app/services/waveform_service.py`) from the
+source's true full-resolution `waveform_data` at the nearest actual
+sample (binary search, documented earlier-sample tie-break, never
+interpolated, never clamped across a source's own bounds) — never from a
+Plotly trace or a downsampled display representation, so a chart can show
+a reduced envelope while Cur A/B still reports the real underlying
+sample. One new batched endpoint, `POST
+.../sources/{source_id}/cursor-values` (`app/api/v1/sources.py`,
+`app/schemas/cursor_values.py`) — always one request per source covering
+every currently-displayed analog channel for it, never one request per
+channel. Frontend: new `ww.cursorValues` cache (pure derived state,
+`ww.measurementCursors` from DEC-039 remains the one cursor-time
+authority); `wwCurValueText()` is the single gating function every render
+path uses, forcing "—" whenever cursor mode is off, that cursor is
+closed, or the channel is hidden; live dragging is throttled (~50ms
+leading+trailing) with per-source generation-counter stale-response
+protection and one guaranteed unthrottled request on `pointerup`; hooked
+into the existing channel-visibility "core mutation" functions
+(`wwAddSelectedChannels()`/`wwRemoveChannel()`/`wwRemoveChannelsByKeys()`)
+so individual toggles and group Show-all/Hide-all both get correct
+batched fetch/clear behavior with no separate hook needed. Digital
+sidebar unchanged — no Cur A/B columns added to digital channels this
+phase. RMS, angle, delta angle, ΔY, interpolation, on-canvas annotations,
+cross-source synchronization, resampling, and phasor calculation are all
+explicitly deferred. Backend: 27 new tests (18 service-level + 9
+API-level), full suite 355/355 passing. Frontend: new `phase4c1_check.mjs`
+(26 checks, covering formatting, all four gating conditions, batching,
+multi-source identity/bounds, drag throttling/stale-response protection,
+layout-mode independence, Absolute/Elapsed and zoom/pan non-refetch,
+source-switch and Start New Workspace clearing, and digital
+non-interference); full frontend regression suite reconfirmed at exactly
+the established 18-failure baseline (two pre-existing Phase 4A-UAT4/UAT5
+column-count assertions were updated in place to expect the new 4-column
+analog table, since the extra columns are this phase's own intended
+change).
+
 ## Completed foundation work
 
 `[FACT]`, verified against the repository on 2026-08-15:

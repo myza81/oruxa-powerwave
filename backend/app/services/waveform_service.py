@@ -169,6 +169,165 @@ def extract_waveform_range(
 
 
 @dataclass(slots=True)
+class CursorPointResult:
+    """One cursor's own resolution against a source's true time bounds.
+
+    `sample_time` is `None` exactly when `requested_time` fell outside this
+    source's own `[time[0], time[-1]]` bounds (section 12 -- never
+    clamped/pretended-in-bounds; a source that ends before the requested
+    cursor time simply has no measurement there).
+    """
+
+    requested_time: float
+    sample_time: float | None
+
+
+@dataclass(slots=True)
+class ChannelCursorValues:
+    """One analog channel's instantaneous value at cursor A/B (Phase 4C1).
+
+    `a_value`/`b_value` are `None` exactly when the corresponding cursor
+    itself is `None` (not supplied) or fell outside this source's bounds
+    -- never a fabricated/clamped value.
+    """
+
+    channel_name: str
+    unit: str
+    a_value: float | None
+    b_value: float | None
+
+
+@dataclass(slots=True)
+class CursorValuesResult:
+    """A whole source's instantaneous A/B measurement batch (Phase 4C1).
+
+    See app.schemas.cursor_values for the wire shape and
+    extract_cursor_values's own docstring for the full engineering-rule
+    rationale (full-resolution source data, nearest actual sample, one
+    index lookup shared by every requested channel).
+    """
+
+    source_id: str
+    cursor_a: CursorPointResult | None
+    cursor_b: CursorPointResult | None
+    channels: list[ChannelCursorValues]
+
+
+def _nearest_sample_index(time_full: np.ndarray, requested_time: float | None) -> int | None:
+    """Nearest-actual-sample index into `time_full` for one cursor time.
+
+    Section 3/11: never interpolates, never derives an index via
+    `round(time * nominal_rate)` -- COMTRADE may be multi-rate and a
+    nominal rate is not necessarily authoritative for every sample, so
+    this always searches the source's own real time array
+    (`np.searchsorted`, O(log n), never a full linear scan -- section 10).
+
+    Section 12: returns `None` (never clamped) when `requested_time` is
+    `None`, the array is empty, or `requested_time` falls outside this
+    source's own `[time_full[0], time_full[-1]]` bounds.
+
+    Section 42 (tie behaviour, deliberately documented): when
+    `requested_time` is exactly equidistant between two neighbouring
+    samples, the EARLIER sample wins -- chosen so a measurement never
+    reads a moment that has not "happened yet" relative to the requested
+    time, consistent with `numpy.searchsorted(..., side="left")`'s own
+    convention of preferring the lower insertion point for exact/ambiguous
+    matches, reused here rather than a second convention.
+    """
+    if requested_time is None or time_full.size == 0:
+        return None
+    if requested_time < time_full[0] or requested_time > time_full[-1]:
+        return None
+
+    idx = int(np.searchsorted(time_full, requested_time, side="left"))
+    if idx <= 0:
+        return 0
+    if idx >= time_full.size:
+        return int(time_full.size - 1)
+
+    before = time_full[idx - 1]
+    after = time_full[idx]
+    if (requested_time - before) <= (after - requested_time):
+        return idx - 1
+    return idx
+
+
+def extract_cursor_values(
+    active: ActiveSource,
+    *,
+    channel_names: list[str],
+    cursor_a_time: float | None,
+    cursor_b_time: float | None,
+) -> CursorValuesResult:
+    """Instantaneous analog values at cursor A/B, from full-resolution source data (Phase 4C1).
+
+    Engineering authority (section 2, DEC-040): ALWAYS reads
+    `active.record.waveform_data` directly -- the same authoritative,
+    never-mutated, full-resolution record `extract_waveform_range` itself
+    reads (DEC-019) -- never a display/downsampled representation. This is
+    a read-only analysis; `active.record`/`active.metadata` are never
+    mutated (section 40).
+
+    Batching shape (section 10): the source's own shared "time" column is
+    searched ONCE per cursor (`_nearest_sample_index`, at most two calls
+    total regardless of how many channels are requested), then every
+    requested channel just indexes its own values array at those two
+    already-resolved indices -- O(2 log n + n_channels), never
+    O(n_channels log n).
+
+    Unknown/non-analog channel names are silently skipped (not raised) --
+    a deliberate, documented departure from
+    `extract_digital_waveform`/`get_source_digital_waveform`'s own
+    all-or-nothing batch behaviour, chosen because this endpoint backs a
+    live-dragging UI where one stale/renamed channel must never blank out
+    every other channel's otherwise-valid measurement (section 38: "do not
+    break waveform rendering... do not show fabricated values" -- omission
+    is the correct degradation, not a hard failure).
+    """
+    waveform_data = active.record.waveform_data
+    time_full = waveform_data["time"].to_numpy()
+
+    a_index = _nearest_sample_index(time_full, cursor_a_time)
+    b_index = _nearest_sample_index(time_full, cursor_b_time)
+
+    unit_by_name = {channel.name: channel.unit for channel in active.metadata.analog_channels}
+
+    channels: list[ChannelCursorValues] = []
+    for name in channel_names:
+        unit = unit_by_name.get(name)
+        if unit is None:
+            continue
+        values_full = waveform_data[name].to_numpy()
+        a_value = float(values_full[a_index]) if a_index is not None else None
+        b_value = float(values_full[b_index]) if b_index is not None else None
+        channels.append(ChannelCursorValues(channel_name=name, unit=unit, a_value=a_value, b_value=b_value))
+
+    cursor_a = (
+        CursorPointResult(
+            requested_time=cursor_a_time,
+            sample_time=float(time_full[a_index]) if a_index is not None else None,
+        )
+        if cursor_a_time is not None
+        else None
+    )
+    cursor_b = (
+        CursorPointResult(
+            requested_time=cursor_b_time,
+            sample_time=float(time_full[b_index]) if b_index is not None else None,
+        )
+        if cursor_b_time is not None
+        else None
+    )
+
+    return CursorValuesResult(
+        source_id=active.metadata.source_id,
+        cursor_a=cursor_a,
+        cursor_b=cursor_b,
+        channels=channels,
+    )
+
+
+@dataclass(slots=True)
 class DigitalTransition:
     time: float
     state: int

@@ -8648,6 +8648,120 @@ owner UAT after this push.
 
 ---
 
+## Phase 4C1 — Instantaneous A/B Cursor Values (Cur A / Cur B) (2026-08-20)
+
+### Scope
+
+Extends the DEC-039 A/B time measurement cursors with the first VALUE
+measurement: the Channels sidebar now shows each displayed analog
+channel's instantaneous Y-axis value at Cursor A and Cursor B, in two new
+compact "Cur A"/"Cur B" columns. Instantaneous values only -- RMS, angle,
+delta angle, amplitude delta, interpolation, on-canvas annotations,
+digital state at cursor, cross-source synchronization, resampling, and
+phasor calculation are all explicitly deferred to a future phase.
+
+### Engineering authority
+
+Cur A/B are always read from the authoritative full-resolution
+`DisturbanceRecord.waveform_data` at the NEAREST ACTUAL SAMPLE to the
+cursor's engineering time -- never from a Plotly trace, a downsampled/
+peak-preserving display representation, or interpolation between samples.
+Each source's own native time array is searched independently (no shared/
+assumed sample-rate math across sources). A cursor time outside a given
+source's own valid bounds returns no value for that source (never
+clamped to the boundary).
+
+### Backend (`backend/`)
+
+- `app/services/waveform_service.py`: new `extract_cursor_values()` plus
+  `CursorPointResult`/`ChannelCursorValues`/`CursorValuesResult`
+  dataclasses and `_nearest_sample_index()` (binary-search nearest-sample
+  with an earlier-sample tie-break, documented and tested).
+- `app/schemas/cursor_values.py` (new): `CursorValuesRequest`/
+  `CursorValuesOut` wire shapes.
+- `app/api/v1/sources.py`: new `POST
+  /api/v1/workspaces/{workspace_id}/sources/{source_id}/cursor-values` --
+  one batched request per source (channel list + both cursor times in one
+  body), never one request per channel. Unknown/non-analog channel names
+  are silently omitted from the response (a deliberate departure from
+  `extract_digital_waveform`'s all-or-nothing precedent, justified by
+  live-dragging reliability).
+
+### Frontend (`frontend/index.html`)
+
+- New cache `ww.cursorValues` (`Map<"sourceId::channelName", {aValue,
+  bValue, aSampleTime, bSampleTime}>`) -- pure derived state;
+  `ww.measurementCursors` (DEC-039) remains the one cursor-TIME authority,
+  only ever read from here.
+- `wwFormatEngineeringValue()`: adaptive formatting (1 decimal for
+  |value| >= 1, 3 decimals for |value| in [0.001, 1), exponential below
+  that) -- matches every owner-supplied worked example exactly.
+- `wwCurValueText()`: the single gating+formatting authority every render
+  path goes through -- returns "—" whenever cursor mode is off, that
+  specific cursor is closed/absent, or the channel itself is hidden,
+  regardless of cache contents.
+- Sidebar analog table extended from Channel/Phase to Channel/Phase/Cur
+  A/Cur B (`renderChannelTable()` now accepts an optional per-column
+  `className` for the new columns' compact/right-aligned/tabular-nums
+  styling). Digital sidebar unchanged -- no Cur A/B columns added there.
+- Batching: `wwFetchCursorValuesForSource()`/`wwFetchAllCursorValues()`
+  issue exactly one POST per source with every currently-DISPLAYED analog
+  channel for that source (respecting DEC-038's default-hidden policy --
+  a hidden channel is never fetched). Hooked into the existing "core
+  mutation" functions (`wwAddSelectedChannels()`, `wwRemoveChannel()`,
+  `wwRemoveChannelsByKeys()`) so both individual row toggles and group
+  Show-all/Hide-all (`wwToggleChannelGroupDisplay()`) get correct
+  batched behavior for free, with no separate group-specific hook needed.
+- Live drag: `wwScheduleCursorValuesRefresh()` is a leading+trailing
+  throttle (~50ms) coalescing rapid pointermoves into far fewer backend
+  requests, while the visual cursor line itself still moves at full
+  pointermove speed (unchanged from DEC-039, unthrottled). `pointerup`
+  always issues one final, unthrottled request for the exact settled
+  position. A per-source monotonically increasing generation counter
+  (`wwCursorValuesGeneration`) discards any response that is no longer
+  the latest outstanding request for that source.
+- Clear points: cursor mode disabled
+  (`wwCursorValuesHandleModeDisabled()`), an individual cursor closed
+  (`wwCursorValuesHandleCursorClosed()`), a channel hidden
+  (`wwClearCursorValuesForChannels()` from both the single-channel and
+  batched-removal paths), source switch/reinit
+  (`wwReinitCursorsForNewViewport()`), and Start New Workspace
+  (`wwResetMeasurementCursors()`) -- never let a previous source's or a
+  hidden channel's values leak into what is currently rendered.
+
+### Tests
+
+Backend: 18 new tests in `test_cursor_values_service.py` (nearest-sample
+search, documented tie-break, bounds behaviour, a dedicated full-
+resolution-authority test proving a reduced-envelope display point can
+differ from the true value used for measurement, multi-rate sources,
+batched-index reuse, unknown-channel handling) + 9 new tests in
+`test_cursor_values_api.py` (end-to-end upload -> cursor-values flow,
+source-identity non-collision). Full backend suite: 355/355 passing (328
+prior + 27 new), no regressions.
+
+Frontend: new `phase4c1_check.mjs` (26 checks) covering numeric
+formatting, all four gating conditions, batching (including a 20-channel
+group Show-all producing exactly one request), source identity/bounds
+across two sources, drag throttling and stale-response protection,
+layout-mode independence (Grouped/Separate/Custom report identical
+values), Absolute/Elapsed and zoom/pan non-refetch, source-switch and
+Start New Workspace clearing, zero-channels no-request behavior, error
+handling, and digital-sidebar non-interference. Full frontend regression
+suite reconfirmed at exactly the established 18-failure baseline (two
+older Phase 4A-UAT4/UAT5 assertions were updated in place to expect the
+now-4-column analog table, since the extra columns are this phase's own
+intended change, not a regression).
+
+### Decision
+
+Recorded as a new decision,
+[DEC-040](DECISIONS.md#dec-040--cursor-instantaneous-values-are-computed-from-authoritative-full-resolution-source-data-at-the-nearest-actual-sample-displaydownsampled-waveform-points-are-never-measurement-authority-phase-4c1)
+-- the first VALUE measurement built on DEC-039's cursor-time
+architecture, which it extends by reference and does not alter.
+
+---
+
 ## Phase 4B-UAT3 — Fix A/B Main Cursor Lines Disappearing After Vertical Scroll (2026-08-20)
 
 ### Owner confirmed: the previous fix did not resolve the bug

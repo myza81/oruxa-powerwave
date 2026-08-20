@@ -8,6 +8,96 @@ Last updated: **2026-08-20**
 
 ## What was most recently done
 
+**Phase 4C1 — Instantaneous A/B Cursor Values (Cur A / Cur B).** Full
+detail:
+[MIGRATION_PLAN.md — Phase 4C1 Record](MIGRATION_PLAN.md#phase-4c1--instantaneous-ab-cursor-values-cur-a--cur-b-2026-08-20),
+[DECISIONS.md — DEC-040](DECISIONS.md#dec-040--cursor-instantaneous-values-are-computed-from-authoritative-full-resolution-source-data-at-the-nearest-actual-sample-displaydownsampled-waveform-points-are-never-measurement-authority-phase-4c1).
+
+**Owner direction**: the first VALUE measurement built on the DEC-039
+A/B cursor-time overlay — show each displayed analog channel's
+instantaneous Y-axis value at Cursor A and Cursor B in the Channels
+sidebar, as compact "Cur A"/"Cur B" columns. Explicitly instantaneous
+only (RMS, angle, delta angle, ΔY, interpolation, on-canvas annotations,
+digital-at-cursor, cross-source sync, resampling, and phasor calculation
+all deliberately deferred). Hard engineering-integrity rule from the
+task spec: values must always come from the authoritative full-resolution
+source data at the nearest ACTUAL sample — never from a Plotly trace,
+a downsampled/peak-preserving display representation, or interpolation.
+
+**Backend** (new): `extract_cursor_values()` +
+`CursorPointResult`/`ChannelCursorValues`/`CursorValuesResult`
+(`app/services/waveform_service.py`) with `_nearest_sample_index()`
+(binary-search nearest-sample, documented earlier-sample tie-break,
+bounds check before the search — a cursor time outside a source's own
+bounds returns `null`, never clamped). New
+`app/schemas/cursor_values.py`. New batched route,
+`POST /api/v1/workspaces/{workspace_id}/sources/{source_id}/cursor-values`
+(`app/api/v1/sources.py`) — one request per source, both cursors' nearest
+indices computed once and reused across every requested channel; unknown/
+non-analog channel names are silently skipped (a deliberate departure
+from `extract_digital_waveform`'s all-or-nothing precedent, for
+live-dragging reliability). 27 new backend tests (18 service-level
+covering nearest-sample/tie-break/bounds/multi-rate/full-resolution-
+authority, 9 API-level covering the real upload→cursor-values flow and
+source-identity non-collision); full suite 355/355 passing.
+
+**Frontend** (`frontend/index.html` only): new `ww.cursorValues` cache
+(`Map<"sourceId::channelName", {aValue, bValue, aSampleTime,
+bSampleTime}>`) — pure derived state; `ww.measurementCursors` (DEC-039)
+remains the one cursor-TIME authority, only ever read here.
+`wwCurValueText()` is the single gating+formatting function every render
+path goes through (mode off / that cursor closed / channel hidden all
+force "—" regardless of cache contents — defense in depth).
+`wwFormatEngineeringValue()` gives adaptive formatting (1 decimal for
+|value| >= 1, 3 decimals for [0.001, 1), exponential below that) matching
+every owner-supplied worked example exactly. Sidebar analog table
+extended Channel/Phase -> Channel/Phase/Cur A/Cur B
+(`renderChannelTable()` gained an optional per-column `className`).
+Batching: `wwFetchCursorValuesForSource()`/`wwFetchAllCursorValues()`
+issue exactly one POST per source for every currently-displayed analog
+channel — hooked into the existing "core mutation" functions
+(`wwAddSelectedChannels()`, `wwRemoveChannel()`,
+`wwRemoveChannelsByKeys()`) so both individual row toggles and group
+Show-all/Hide-all get correct batched behavior with no extra hook needed.
+Live drag: `wwScheduleCursorValuesRefresh()` is a leading+trailing
+~50ms throttle coalescing rapid pointermoves into far fewer backend
+requests (the visual line itself stays unthrottled, per DEC-039);
+`pointerup` always issues one final unthrottled request; a per-source
+generation counter discards stale in-flight responses. Clear points:
+mode disabled, individual cursor closed, channel hidden (single or
+batched-group removal), source switch/reinit, and Start New Workspace —
+never let a stale/previous-source value leak into what's rendered.
+Digital sidebar deliberately unchanged (no Cur A/B columns there this
+phase).
+
+**Verification**: new `phase4c1_check.mjs` (26 checks, scratch
+convention) covering numeric formatting, all four gating conditions
+(mode off/cursor closed/channel hidden/both), batching (20-channel group
+Show-all -> exactly one request), source identity and bounds across two
+sources (no collision, no cross-source clamping), drag throttling and
+stale-response protection, layout-mode independence
+(Grouped/Separate/Custom identical values), Absolute/Elapsed and
+zoom/pan non-refetch, source-switch and Start New Workspace clearing,
+zero-channels no-request behavior, request failure handling, and
+digital-sidebar non-interference. `CSS.escape()` (used by the new
+targeted-cell-update code) is a real, universally-supported browser API
+that jsdom simply does not implement -- a `window.CSS.escape` polyfill
+was added to every scratchpad harness's `buildDom()` (test-only, no
+production code change) once this surfaced as `ReferenceError: CSS is
+not defined` across several older suites. Full frontend regression suite
+reconfirmed at exactly the established 18-failure baseline (two
+pre-existing Phase 4A-UAT4/UAT5 column-count assertions were updated in
+place to expect the new 4-column analog table — this phase's own
+intended change, not a regression).
+
+**Not yet done**: commit/push (six local commits, `9080aa9`..`7b14e4f`
+for Phase 4B through UAT3, are already confirmed pushed/CI-green/DEV-
+deployed at `7b14e4f` — see the prior-session note below; only this
+Phase 4C1 work itself remains uncommitted), CI/automatic DEV deployment
+verification of the Phase 4C1 commit specifically, and owner UAT.
+
+## What was done in the prior session (Phase 4B — A/B Time Measurement Cursors, incl. cosmetic refinement + UAT1/UAT2/UAT3)
+
 **Phase 4B — A/B Time Measurement Cursors.** Full detail:
 [MIGRATION_PLAN.md — Phase 4B Record](MIGRATION_PLAN.md#phase-4b--ab-time-measurement-cursors-2026-08-19),
 [DECISIONS.md — DEC-039](DECISIONS.md#dec-039--ab-time-measurement-cursors-are-one-workspace-level-dom-overlay-over-the-shared-elapsed-time-domain-never-a-per-panel-plotly-shape-phase-4b).
@@ -274,8 +364,20 @@ visual symptom itself. Full frontend regression suite reconfirmed at
 exactly the established 18-failure baseline; backend 328/328 unchanged
 (no backend file touched).
 
-**Not yet done**: commit/push, CI/automatic DEV deployment verification,
-and owner real-browser UAT of this fix specifically.
+**Update (Phase 4C1 session, 2026-08-20)**: confirmed via `git fetch` over
+HTTPS (SSH auth still fails in this sandbox), the public GitHub Actions
+API, and a live `curl` of `/health` that this fix WAS already committed
+and pushed as `7b14e4f`, CI succeeded, and automatic DEV deployment
+succeeded and is live (`git_sha` starting `7b14e4f6...` confirmed at
+`https://api.dev.powerwave.oruxa.uk/health`). The line below is
+superseded by this update — retained for the historical record of what
+was true at the moment this entry was originally written. Owner
+real-browser UAT status for this specific fix remains unconfirmed either
+way.
+
+**Not yet done** *(as originally written, now superseded above)*:
+commit/push, CI/automatic DEV deployment verification, and owner
+real-browser UAT of this fix specifically.
 
 ## What was done in the prior session (Phase 4A-UAT10 — Source-Aware Time Bounds)
 

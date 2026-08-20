@@ -27,6 +27,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Upl
 
 from app.config import Settings
 from app.domain.source import ActiveSource
+from app.schemas.cursor_values import CursorValuesOut, CursorValuesRequest
 from app.schemas.digital_waveform import DigitalWaveformBatchOut, DigitalWaveformOut
 from app.schemas.source import ErrorOut, SourceChannelsOut, SourceSummaryOut
 from app.schemas.waveform import WaveformRangeOut
@@ -34,6 +35,7 @@ from app.services.errors import ImportServiceError
 from app.services.import_service import import_comtrade_source
 from app.services.waveform_service import (
     DEFAULT_POINT_BUDGET,
+    extract_cursor_values,
     extract_digital_waveform,
     extract_waveform_range,
 )
@@ -261,6 +263,35 @@ def get_source_digital_waveform(
             raise _http_error(exc) from exc
         results.append(DigitalWaveformOut.from_result(result))
     return DigitalWaveformBatchOut(channels=results)
+
+
+@router.post("/{source_id}/cursor-values", response_model=CursorValuesOut)
+def get_source_cursor_values(
+    workspace_id: str,
+    source_id: str,
+    body: CursorValuesRequest,
+    registry: WorkspaceRegistry = Depends(get_workspace_registry),
+) -> CursorValuesOut:
+    """Phase 4C1 batched A/B instantaneous-value endpoint.
+
+    One request per source (never per channel -- section 8/9): every
+    channel in `body.channel_names` is resolved against the SAME two
+    already-computed nearest-sample indices (see
+    app.services.waveform_service.extract_cursor_values's own docstring).
+    POST (not GET) because the request body naturally carries a channel
+    list alongside two independent optional cursor times -- the same
+    shape choice this project already made for multipart uploads, just
+    JSON here since there is no file involved.
+    """
+    workspace_id = _validate_workspace_id(workspace_id)
+    active = _get_or_404(registry, workspace_id, source_id)
+    result = extract_cursor_values(
+        active,
+        channel_names=body.channel_names,
+        cursor_a_time=body.cursor_a_time,
+        cursor_b_time=body.cursor_b_time,
+    )
+    return CursorValuesOut.from_result(result)
 
 
 @router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT)

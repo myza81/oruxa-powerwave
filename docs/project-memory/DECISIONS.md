@@ -3329,6 +3329,149 @@ performance contract every other recompute hook already honors. See
 
 ---
 
+## DEC-040 — Cursor instantaneous values are computed from authoritative full-resolution source data at the nearest actual sample; display/downsampled waveform points are never measurement authority (Phase 4C1)
+
+Date: 2026-08-20
+Status: Approved
+Source: explicit project-owner task specification opening Phase 4C1
+("Instantaneous Cursor Values, Cur A / Cur B"), the first VALUE
+measurement feature built on top of DEC-039's cursor-TIME architecture.
+
+Decision:
+
+Cur A/Cur B — the instantaneous Y-axis value of every displayed analog
+channel at the shared workspace cursor times `ww.measurementCursors.a/b.time`
+(DEC-039) — are always computed backend-side from the SAME full-resolution
+`DisturbanceRecord.waveform_data` the record was parsed with, read at the
+NEAREST ACTUAL SAMPLE to the requested cursor time (never interpolated,
+never a `round(time * nominal_rate)` index guess, never taken from a
+Plotly trace, a peak-preserving min/max envelope point, or any other
+downsampled/reduced/rendered representation `extract_waveform_range`
+(DEC's own Phase 2A precedent) may have produced for DISPLAY purposes).
+Display resolution and measurement resolution are two independent
+concerns from this decision forward — a chart may legitimately show a
+reduced envelope while Cur A/B still reports the true underlying sample.
+
+Concretely:
+
+- **Backend authority, batched per source**: one new service function,
+  `extract_cursor_values()` (`app/services/waveform_service.py`), and one
+  new batched endpoint, `POST .../sources/{source_id}/cursor-values`
+  (`app/api/v1/sources.py`, `app/schemas/cursor_values.py`) — never one
+  request per channel. For a given source, both cursors' nearest-sample
+  indices are computed ONCE via `np.searchsorted`-based
+  `_nearest_sample_index()` against that source's own shared `time` column,
+  then every requested channel reads its value at those same two indices.
+  Values are read directly from `waveform_data[name].to_numpy()`, which is
+  already scale/offset-applied at COMTRADE parse time — no further
+  transform.
+- **Nearest-sample tie-break**: on an exact tie between two adjacent
+  samples, the EARLIER sample wins (`<=` comparison, documented in
+  `_nearest_sample_index()`'s own docstring and covered by
+  `TestTieBehaviour` in `backend/tests/test_cursor_values_service.py`).
+- **Bounds, never clamped**: a cursor time outside a given source's own
+  valid time bounds returns `sample_time: null` / value `null` for THAT
+  source — even if another source in the same multi-source workspace has a
+  valid sample at that same elapsed time. A source is never asked to
+  pretend a boundary sample belongs to a cursor time it doesn't actually
+  reach.
+- **Multi-source / multi-rate safety**: each source's own native time
+  array is authoritative only for itself — a batch request is always
+  scoped to one source; two sources are never combined into one lookup,
+  and same-named channels from different sources are keyed by
+  `source_id + channel_name`, never display name alone (frontend
+  `wwChannelKey()`/backend route path parameter).
+- **Frontend cache, not authority**: `ww.cursorValues` (a
+  `Map<"sourceId::channelName", {aValue, bValue, aSampleTime, bSampleTime}>`)
+  is a pure derived cache. `ww.measurementCursors` (DEC-039) remains the
+  one cursor-TIME authority; this decision only adds a VALUE layer read
+  from it, never restructures it. `wwCurValueText()` is the single
+  gating+formatting function every render path goes through — mode
+  disabled, a specific cursor closed/absent, or the channel hidden all
+  independently force "—", regardless of cache contents (defense in
+  depth, not reliant on the cache being actively purged in every case).
+- **Never floods the network**: a leading+trailing throttle
+  (`wwScheduleCursorValuesRefresh()`, ~50ms) coalesces live-drag
+  pointermoves into far fewer backend requests than raw pointer events,
+  while the visual cursor line itself still moves at full pointermove
+  speed (unthrottled, DOM/CSS only, per DEC-039). `pointerup` always
+  issues one final, unthrottled request for the exact settled position.
+  A monotonically increasing per-source generation counter discards any
+  response that is no longer the latest outstanding request for that
+  source, so a fast drag can never let a stale response overwrite a newer
+  cursor position's values.
+- **Hidden-channel discipline preserved**: a hidden channel's value is
+  never fetched just because it exists in the sidebar (DEC-038's
+  default-hidden performance policy extends naturally to this feature) —
+  only currently-DISPLAYED analog channels are ever included in a batch
+  request.
+
+Reason:
+
+This is the first VALUE (as opposed to time-position) measurement built on
+the DEC-039 cursor architecture, and it establishes the engineering
+integrity rule every future measurement (RMS, angle, delta-amplitude,
+phasor) must also follow: a number an engineer reads off this tool must
+always trace back to a real recorded sample, never to whatever the chart
+happened to render for display efficiency at the current zoom level. That
+distinction is invisible in the UI (both look like "the value at this
+time") but is a correctness-critical implementation detail worth recording
+as a decision, not leaving as an unstated implementation detail future
+work could silently violate by reusing a display-path helper for
+convenience.
+
+Alternatives considered:
+
+- **Reading the value directly from the already-rendered Plotly trace at
+  the nearest visible point** — rejected: a zoomed-out or long recording
+  is displayed via `extract_waveform_range`'s peak-preserving min/max
+  envelope (Phase 2A), whose points are display-optimized extrema, not
+  necessarily the sample nearest the cursor's actual time. This is exactly
+  the failure mode `TestFullResolutionAuthority` in
+  `test_cursor_values_service.py` was written to catch: a reduced-envelope
+  point can differ from the true full-resolution sample at the same
+  nominal time.
+- **Linear interpolation between the two nearest samples** — rejected per
+  the owner's explicit "nearest actual sample, no interpolation" rule: an
+  interpolated value is a synthetic number that was never actually
+  recorded, unacceptable for engineering measurement even though it would
+  look smoother while dragging.
+- **One request per channel** — rejected: a source with dozens of
+  displayed channels (or a group "Show all") would multiply into dozens of
+  simultaneous requests during live dragging; the batched, source-scoped
+  endpoint was chosen specifically so N displayed channels always cost
+  exactly one request.
+
+Impact:
+
+- Backend: new `extract_cursor_values()` + supporting dataclasses in
+  `app/services/waveform_service.py`; new
+  `app/schemas/cursor_values.py`; new route in `app/api/v1/sources.py`.
+  18 + 9 new tests (`test_cursor_values_service.py`,
+  `test_cursor_values_api.py`), full suite 355/355 passing, no
+  regressions.
+- Frontend (`frontend/index.html` only): new `ww.cursorValues` cache;
+  `wwFormatEngineeringValue()`, `wwCurValueText()`,
+  `wwCurValueCellHtml()`, `wwUpdateCursorValueCellsForChannels()`,
+  `wwUpdateAllCursorValueCells()`, `wwClearCursorValuesForChannels()`,
+  `wwCursorValuesHandleModeDisabled()`, `wwCursorValuesHandleCursorClosed()`,
+  `wwFetchCursorValuesForSource()`, `wwFetchAllCursorValues()`,
+  `wwScheduleCursorValuesRefresh()`; sidebar analog table extended from
+  Channel/Phase to Channel/Phase/Cur A/Cur B (`renderChannelTable()` now
+  accepts an optional per-column `className`). Digital sidebar
+  deliberately unchanged — no Cur A/B columns added to digital channels
+  this phase.
+- Does NOT alter DEC-039's cursor-time architecture or state shape in any
+  way — `ww.measurementCursors` is read-only from this feature's
+  perspective.
+- Explicitly NOT implemented this phase (deferred): RMS A/B, angle A/B,
+  delta angle, amplitude delta (ΔY), interpolation options, on-canvas value
+  annotations, digital state at cursor, cross-source time synchronization,
+  resampling, phasor calculation.
+- See [MIGRATION_PLAN.md — Phase 4C1](MIGRATION_PLAN.md#phase-4c1--instantaneous-ab-cursor-values-cur-a--cur-b-2026-08-20).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or
