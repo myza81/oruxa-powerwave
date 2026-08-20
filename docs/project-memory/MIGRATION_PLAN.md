@@ -8648,6 +8648,131 @@ owner UAT after this push.
 
 ---
 
+## Phase 4B-UAT3 — Fix A/B Main Cursor Lines Disappearing After Vertical Scroll (2026-08-20)
+
+### Owner confirmed: the previous fix did not resolve the bug
+
+Owner real-browser UAT of Phase 4B-UAT2 below found its `offsetTop`
+geometry fix necessary but **not sufficient**. Stated plainly, not
+hidden: this phase is a correction of an incomplete prior fix, not a
+brand-new independent bug.
+
+**Precise owner evidence**: with cursor mode already ON and a tall
+(Separate-mode, many-channel) waveform stack, scrolling deep into the
+canvas made the MAIN vertical lines (through the analog/digital panels)
+disappear -- while the sticky A/B labels and the ruler's own A/B segments
+(both driven by entirely separate rendering paths from the main overlay)
+stayed correctly visible throughout. Toggling cursor mode OFF then ON
+reliably restored the lines immediately.
+
+### Reproduction (followed exactly)
+
+1. Open a recording with enough analog channels to require substantial
+   vertical scrolling in Separate mode.
+2. Display all of them (Separate mode, many single-channel lanes).
+3. Enable A/B -- both main lines correctly cross every panel.
+4. Scroll `#activeViewArea` substantially downward.
+5. Main lines disappear; sticky labels and ruler segments remain correct.
+6. Toggle cursor mode OFF then ON -- main lines return immediately.
+
+### Root-cause reasoning
+
+Scrolling triggers NO application code by design (no scroll listener
+existed before this phase) -- the DOM/CSS state (every line/range
+element's `style.left`/`style.height`/`hidden`) is therefore
+byte-identical immediately before and after the user scrolls; nothing
+programmatically changes it. The ONE thing the OFF-then-ON toggle does
+differently from mere scrolling is re-invoke `wwUpdateCursorOverlay()`,
+which reassigns those same style properties -- including cases where the
+newly-computed value is numerically IDENTICAL to what was already there.
+
+Given the DOM geometry was very likely already correct (Phase 4B-UAT2's
+own `offsetTop`-based height fix is retained here, unchanged, and
+confirmed still correct -- see the "still eliminated" note below), the
+most consistent explanation is that the browser was not reliably
+repainting this `overflow: hidden`, absolutely-positioned overlay as its
+scrolling ancestor (`#activeViewArea`) moved, until a genuine style
+reassignment forced a fresh style/layout/paint pass for that element.
+**This sandbox has no real browser available** to directly confirm the
+exact paint/compositing mechanism via `document.elementFromPoint()` or
+DevTools stacking-context inspection (both explicitly requested
+diagnostics) -- this reasoning is disclosed as the best-supported
+analysis from the available evidence, not a directly observed fact.
+
+### Confirmed: Phase 4B-UAT2's geometry fix was NOT reverted
+
+Re-inspected per this task's own explicit instruction. `overlayEl.style.height`
+is still computed from `rulerWrapEl.offsetTop`, never from
+`rulerWrapEl.getBoundingClientRect().top` (the disproven, sticky-affected
+source). This remains correct and necessary -- it is retained unchanged;
+this phase adds a second, independent fix on top of it rather than
+replacing it.
+
+### Fix: a proven, targeted scroll-triggered refresh
+
+A `scroll` listener on `#activeViewArea` (the real scroll container),
+rAF-coalesced exactly like the pre-existing
+`wwScheduleResizeAllVisiblePlots()` (`window resize`), re-invokes the
+SAME, already-proven `wwUpdateCursorOverlay()` pass -- the ONE action
+already proven (by the OFF/ON toggle itself) to restore the lines,
+regardless of the precise underlying browser mechanism. New
+`wwScheduleCursorOverlayRefresh()`: an early return whenever
+`ww.measurementCursors.enabled` is false (ordinary scrolling with cursors
+off costs nothing extra), otherwise schedules at most one
+`wwUpdateCursorOverlay()` call per animation frame. Wired via
+`document.getElementById("activeViewArea").addEventListener("scroll",
+wwScheduleCursorOverlayRefresh, { passive: true })`.
+
+This is a deliberate, evidence-driven exception to the original "prefer
+CSS sticky, avoid a scroll listener" preference from Phase 4B-UAT1 --
+explicitly authorized by the owner once real-browser evidence
+(the OFF/ON behavior) proved CSS alone insufficient. `wwUpdateCursorOverlay()`
+itself remains cheap (a handful of `getBoundingClientRect()`/`offsetTop`
+reads and `style`/`textContent` writes) -- never a Plotly call, waveform
+fetch, or panel rebuild -- so this stays within the same performance
+contract every other recompute hook already honors, even at native
+scroll-event frequency.
+
+### Range band / ruler / sticky labels
+
+The A-B range band lives inside the same `#wwCursorOverlay` container as
+the lines, so it is fixed by the exact same change, with no separate code
+path. The ruler segment (`#wwCursorRulerOverlay`, inside the sticky
+`#wwStickyRuler`) and the sticky label layer (`#wwCursorLabelLayer`,
+`position: sticky`) were never part of the buggy lifecycle -- both
+already worked correctly throughout scrolling, per the owner's own
+evidence, and neither needed any change.
+
+### Tests
+
+`phase4b_check.mjs` extended to 45 checks (from 43): the one test whose
+premise ("no scroll listener exists") is now the OPPOSITE of the correct,
+owner-authorized behavior was rewritten (not deleted) to confirm the
+listener exists, is rAF-coalesced, and stays within its performance
+contract (no engineering-time change, no Plotly call of any kind, no
+waveform fetch); a new test confirms the refresh is a genuine no-op while
+cursor mode is disabled; a new test proves the actual LIFECYCLE gap this
+phase closes, by changing the mocked ruler geometry after cursor mode is
+already enabled (simulating geometry that becomes stale without a
+toggle) and confirming a bare `scroll` event alone -- with no OFF/ON --
+picks up the new value. **Explicitly disclosed limitation**: jsdom has no
+real layout/paint/compositing engine, so this suite cannot observe the
+actual real-browser symptom (a paint-staleness question, not a DOM-state
+one) -- only the lifecycle gap and the performance contract are
+genuinely verifiable here; real-browser owner UAT remains authoritative
+for the visual symptom itself. Full frontend regression suite
+reconfirmed at exactly the established 18-failure baseline. Backend:
+328/328 passed, unchanged (no backend file touched).
+
+### Decision
+
+Recorded as a fourth addendum to
+[DEC-039](DECISIONS.md#dec-039--ab-time-measurement-cursors-are-one-workspace-level-dom-overlay-over-the-shared-elapsed-time-domain-never-a-per-panel-plotly-shape-phase-4b)
+-- a corrective bug fix within the already-approved overlay architecture,
+not a new decision.
+
+---
+
 ## Phase 4B-UAT2 — Cursor Range Fill + Full-Scroll Line Continuity Fix (2026-08-20)
 
 ### Owner-reported bugs

@@ -207,8 +207,75 @@ height, and horizontal positioning remaining unaffected. Full frontend
 regression suite reconfirmed at exactly the established 18-failure
 baseline; backend 328/328 unchanged (no backend file touched).
 
+**Committed, pushed, deployed** as `839fa43`; CI succeeded; automatic DEV
+deployment verified live at that exact SHA. **Owner real-browser UAT then
+found this fix was necessary but NOT sufficient** -- see the Phase
+4B-UAT3 entry immediately below, which is the current, complete state.
+This is stated plainly, not hidden.
+
+**Phase 4B-UAT3 (2026-08-20) — the real fix for the scroll-visibility
+bug**: see
+[MIGRATION_PLAN.md — Phase 4B-UAT3 Record](MIGRATION_PLAN.md#phase-4b-uat3--fix-ab-main-cursor-lines-disappearing-after-vertical-scroll-2026-08-20)
+(fourth addendum to DEC-039, not a new decision). **Precise owner
+evidence**: with cursor mode already ON in a tall (Separate-mode,
+many-channel) waveform stack, scrolling deep into the canvas made the
+MAIN vertical lines disappear while the sticky A/B labels and the ruler's
+own A/B segments (both separate rendering paths) stayed correctly
+visible throughout -- and toggling cursor mode OFF then ON reliably
+restored the lines immediately.
+
+**Root-cause reasoning**: scrolling triggers no application code by
+design (no scroll listener existed before this phase), so the DOM/CSS
+state is byte-identical immediately before and after a scroll -- nothing
+programmatically changes it. The ONE thing OFF→ON does differently is
+re-invoke `wwUpdateCursorOverlay()`, reassigning every line/range
+element's `style.left`/`style.height` even where the value is numerically
+unchanged. Given the DOM geometry was very likely already correct
+(Phase 4B-UAT2's `offsetTop` fix is retained here, unchanged, confirmed
+still correct -- re-inspected specifically to make sure it hadn't been
+silently reverted), the most consistent explanation is that the browser
+was not reliably repainting this `overflow: hidden`, absolutely-
+positioned overlay as its scrolling ancestor moved, until a genuine style
+reassignment forced a fresh paint. **No real browser was available in
+this sandbox** to directly confirm the exact paint/compositing mechanism
+(`document.elementFromPoint()`, DevTools stacking-context inspection --
+both explicitly requested diagnostics were not possible here); this is
+disclosed as the best-supported reasoned analysis, not a directly
+observed fact.
+
+**Fix**: a `scroll` listener on `#activeViewArea` (the real scroll
+container), rAF-coalesced exactly like the pre-existing window-resize
+handler, re-invokes the SAME already-proven `wwUpdateCursorOverlay()`
+pass. New `wwScheduleCursorOverlayRefresh()` early-returns whenever
+`ww.measurementCursors.enabled` is false (ordinary scrolling with
+cursors off costs nothing extra). This is a deliberate, owner-authorized
+exception to Phase 4B-UAT1's original "prefer CSS sticky, avoid a scroll
+listener" preference -- explicitly permitted once real-browser evidence
+proved CSS alone insufficient. `wwUpdateCursorOverlay()` itself remains
+cheap (a handful of geometry reads and style/textContent writes) -- never
+a Plotly call, waveform fetch, or panel rebuild. The range band (same
+container as the lines) is fixed by the same change with no separate
+code path; the ruler segment and sticky labels were never part of the
+buggy lifecycle and needed no change.
+
+**Verification**: `phase4b_check.mjs` extended to 45 checks (from 43) --
+the one test whose premise ("no scroll listener exists") is now the
+OPPOSITE of the correct, owner-authorized behavior was rewritten (not
+deleted) to confirm the listener exists, is rAF-coalesced, and stays
+within its performance contract; a new test confirms the refresh is a
+genuine no-op while cursor mode is disabled; a new test proves the actual
+lifecycle gap this phase closes by changing mocked ruler geometry AFTER
+cursor mode is already enabled and confirming a bare `scroll` event alone
+(no OFF/ON) picks up the new value. **Explicitly disclosed limitation**:
+jsdom has no real layout/paint/compositing engine, so this suite cannot
+observe the actual real-browser symptom (a paint-staleness question, not
+a DOM-state one) -- real-browser owner UAT remains authoritative for the
+visual symptom itself. Full frontend regression suite reconfirmed at
+exactly the established 18-failure baseline; backend 328/328 unchanged
+(no backend file touched).
+
 **Not yet done**: commit/push, CI/automatic DEV deployment verification,
-and owner real-browser UAT of this bug fix specifically.
+and owner real-browser UAT of this fix specifically.
 
 ## What was done in the prior session (Phase 4A-UAT10 — Source-Aware Time Bounds)
 

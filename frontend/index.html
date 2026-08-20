@@ -7182,6 +7182,53 @@
             }
         }
 
+        // Phase 4B-UAT3 bug fix: the owner's own real-browser evidence
+        // proved this is necessary -- with cursor mode already ON, the
+        // main lines (through the analog/digital panels) could go visually
+        // stale/invisible after scrolling `#activeViewArea` deep into a
+        // tall (e.g. Separate-mode, many-channel) waveform stack, while
+        // the sticky labels and the ruler segment (both driven by
+        // completely separate rendering paths -- CSS `position: sticky`
+        // and #wwStickyRuler's own sticky containing block, respectively)
+        // stayed correct throughout. Toggling the toolbar mode OFF then ON
+        // reliably restored the lines immediately -- the ONE thing that
+        // action does differently from mere scrolling is re-run this exact
+        // function, reassigning every line/range element's `style.left`/
+        // `style.height` (even where the numeric value is unchanged from
+        // before). That reassignment is what a real browser needs to
+        // guarantee a fresh style/layout/paint pass for this
+        // `overflow: hidden`, absolutely-positioned overlay -- UAT2's own
+        // geometry fix (`rulerWrapEl.offsetTop`, confirmed still correct
+        // and NOT reverted here, see that function's own comment above)
+        // was necessary but insufficient on its own, because nothing was
+        // ever re-invoking it as the user scrolled with no other trigger
+        // firing. Rather than guess further at exactly which browser
+        // paint/compositing quirk is responsible without a real browser to
+        // inspect (none is available in this sandbox), this reuses the
+        // ONE PROVEN fix (re-running wwUpdateCursorOverlay()) as the
+        // scroll-triggered remedy too -- matching this task's own explicit
+        // instruction that a lightweight scroll synchronization is
+        // acceptable once runtime evidence (the OFF/ON behavior itself)
+        // shows CSS alone is not sufficient. rAF-coalesced exactly like
+        // wwScheduleResizeAllVisiblePlots() above (raw `scroll` events can
+        // fire far faster than the display can usefully redraw); a no-op,
+        // cheap early return whenever cursor mode isn't even enabled, so
+        // ordinary scrolling with cursors off costs nothing extra.
+        // wwUpdateCursorOverlay() itself is already documented as cheap
+        // (a handful of getBoundingClientRect() reads and style/
+        // textContent writes, never a Plotly call, waveform fetch, or
+        // panel rebuild), so this stays well within section 21's
+        // performance requirement even at native scroll-event frequency.
+        let wwCursorScrollRafId = null;
+        function wwScheduleCursorOverlayRefresh() {
+            if (!ww.measurementCursors.enabled) return;
+            if (wwCursorScrollRafId !== null) return;
+            wwCursorScrollRafId = requestAnimationFrame(() => {
+                wwCursorScrollRafId = null;
+                wwUpdateCursorOverlay();
+            });
+        }
+
         // Section 5: A = viewport.start + width/3, B = viewport.start +
         // 2*width/3. Only ever called when there is no prior position to
         // preserve -- see wwToggleMeasurementCursors()'s own comment.
@@ -8089,6 +8136,14 @@
         // this case too, at negligible cost (rAF-coalesced, and a no-op
         // resize is cheap/idempotent).
         window.addEventListener("resize", wwScheduleResizeAllVisiblePlots);
+
+        // Phase 4B-UAT3: keeps the A/B cursor overlay's main lines/range
+        // band correctly rendered while the user scrolls #activeViewArea
+        // (the real scroll container -- see that ID's own CSS comment) --
+        // see wwScheduleCursorOverlayRefresh()'s own comment for the full
+        // root-cause reasoning. `{ passive: true }` since this listener
+        // never calls preventDefault() and must not block native scrolling.
+        document.getElementById("activeViewArea").addEventListener("scroll", wwScheduleCursorOverlayRefresh, { passive: true });
 
         // Phase 2C-A: central Powerwave toolbar + theme integration.
         document.getElementById("dragModeZoomBtn").addEventListener("click", () => wwSetDragMode("zoom"));

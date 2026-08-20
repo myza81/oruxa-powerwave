@@ -3286,6 +3286,47 @@ band, living inside the same now-correctly-sized overlay, is fixed by the
 same change. See
 [MIGRATION_PLAN.md — Phase 4B-UAT2 Record](MIGRATION_PLAN.md#phase-4b-uat2--cursor-range-fill--full-scroll-line-continuity-fix-2026-08-20).
 
+**Addendum 4 (2026-08-20, Phase 4B-UAT3 — Addendum 3's geometry fix did
+NOT fully resolve the real-browser defect)**: owner real-browser UAT of
+Addendum 3 confirmed the `offsetTop` geometry fix was necessary but
+**not sufficient**. Precise evidence: with cursor mode already ON and a
+tall (Separate-mode, many-channel) stack, scrolling deep into the
+waveform made the MAIN vertical lines (through the analog/digital panels)
+disappear, while the sticky A/B labels and the ruler's own A/B segments —
+both driven by entirely separate rendering paths — stayed correctly
+visible throughout. Toggling cursor mode OFF then ON reliably restored
+the lines immediately. This is stated plainly, not hidden: Addendum 3's
+own diagnosis (a stale/incorrect overlay *height*) was real and is
+retained (still fixed, still correct, not reverted), but it was not the
+complete explanation for the owner's actual reported symptom.
+
+Root-cause reasoning: since scrolling alone triggers NO code in this
+application (by design, no scroll listener existed before this
+addendum), and the OFF→ON toggle's only meaningfully different action is
+re-invoking `wwUpdateCursorOverlay()` (reassigning every line/range
+element's `style.left`/`style.height`, even where the numeric value is
+unchanged) — the DOM geometry itself was very likely already correct
+after scrolling, but the browser was not reliably repainting this
+`overflow: hidden`, absolutely-positioned overlay as its scrolling
+ancestor moved, until a style reassignment forced a fresh style/layout/
+paint pass. No real browser was available in this sandbox to directly
+confirm the exact paint/compositing mechanism (e.g. via
+`document.elementFromPoint()` or DevTools stacking-context inspection,
+both explicitly requested); this is disclosed as reasoned analysis from
+the available evidence, not a directly observed fact.
+
+Fix: a `scroll` listener on `#activeViewArea` (the real scroll
+container), rAF-coalesced exactly like the existing
+`wwScheduleResizeAllVisiblePlots()`, re-invokes the same, already-proven
+`wwUpdateCursorOverlay()` pass — a deliberate, evidence-driven exception
+to the original "prefer CSS sticky, avoid a scroll listener" preference,
+explicitly authorized once real-browser evidence showed CSS alone was
+insufficient. The listener is a no-op whenever cursor mode is disabled,
+and only ever performs cheap DOM/CSS geometry writes — never a Plotly
+call, waveform fetch, or panel rebuild — staying within the same
+performance contract every other recompute hook already honors. See
+[MIGRATION_PLAN.md — Phase 4B-UAT3 Record](MIGRATION_PLAN.md#phase-4b-uat3--fix-ab-main-cursor-lines-disappearing-after-vertical-scroll-2026-08-20).
+
 ---
 
 ## How to add a decision

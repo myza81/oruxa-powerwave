@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-20** (Phase 4B-UAT2, on top of Phase 4B-UAT1, Phase 4B, Phase 4A-UAT9, and Phase 4A-UAT10).
+Last meaningful update: **2026-08-20** (Phase 4B-UAT3, on top of Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B, Phase 4A-UAT9, and Phase 4A-UAT10).
 
 ## Development phase
 
@@ -1567,10 +1567,45 @@ on-screen paint position diverges from its true scroll-content position
 once pinned. Fixed by reading `rulerWrapEl.offsetTop` instead — a stable
 layout metric immune to scroll position and to sticky's paint-time
 displacement. The A-B range band, living inside the same corrected
-overlay, is fixed by the same change; no scroll listener was added.
+overlay, is fixed by the same change. **This geometry fix, on its own,
+turned out to be necessary but not sufficient — see the Phase 4B-UAT3
+fact immediately below, which is the current, complete state.**
 `phase4b_check.mjs` extended to 43 checks (from 37); full frontend suite
 still exactly the established 18-failure baseline; backend 328/328
 unchanged.
+
+`[FACT]` **Phase 4B-UAT3 — fix for A/B main cursor lines disappearing
+after vertical scroll (Phase 4B-UAT2 alone did not fully resolve this)**
+(2026-08-20) — see
+[MIGRATION_PLAN.md — Phase 4B-UAT3 Record](MIGRATION_PLAN.md#phase-4b-uat3--fix-ab-main-cursor-lines-disappearing-after-vertical-scroll-2026-08-20)
+(fourth addendum to DEC-039, not its own decision). Owner real-browser
+UAT of Phase 4B-UAT2 found its `offsetTop` geometry fix necessary but not
+sufficient: with cursor mode already ON in a tall (Separate-mode,
+many-channel) stack, scrolling deep into the waveform made the MAIN
+vertical lines disappear while the sticky A/B labels and the ruler's own
+A/B segments (separate rendering paths) stayed correct — and toggling
+cursor mode OFF then ON reliably restored the lines immediately. Since
+scrolling alone triggers no application code by design, and OFF→ON's only
+meaningfully different action is re-invoking `wwUpdateCursorOverlay()`
+(reassigning line/range `style.left`/`style.height`, even where the
+numeric value is unchanged), the most consistent explanation is a browser
+paint/compositing staleness for this `overflow: hidden`,
+absolutely-positioned overlay as its scrolling ancestor moves — not a DOM
+geometry error (Phase 4B-UAT2's `offsetTop` fix is retained, unchanged,
+and confirmed still correct). No real browser was available in this
+sandbox to directly confirm the exact paint mechanism; this is disclosed
+as reasoned analysis, not an observed fact. Fix: a `scroll` listener on
+`#activeViewArea`, rAF-coalesced like the existing window-resize handler,
+re-invokes the same proven `wwUpdateCursorOverlay()` pass — a deliberate,
+owner-authorized exception to the original "prefer CSS sticky, no scroll
+listener" preference, gated to a no-op whenever cursor mode is disabled,
+performing only cheap DOM/CSS writes (never Plotly, never a waveform
+fetch). `phase4b_check.mjs` extended to 45 checks (from 43); full
+frontend suite still exactly the established 18-failure baseline; backend
+328/328 unchanged. **Known test limitation, disclosed**: jsdom cannot
+observe real paint/compositing, so only the lifecycle gap (scroll now
+re-syncs geometry) and the performance contract are verified here —
+real-browser owner UAT remains authoritative for the visual symptom.
 
 ## Completed foundation work
 
