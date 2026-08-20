@@ -3254,6 +3254,38 @@ was added — this is CSS `position: sticky` only, per the owner's own
 explicit preference. See
 [MIGRATION_PLAN.md — Phase 4B-UAT1 Record](MIGRATION_PLAN.md#phase-4b-uat1--stronger-range-highlight--sticky-cursor-labels-2026-08-19).
 
+**Addendum 3 (2026-08-20, Phase 4B-UAT2 — bug fixes)**: two confirmed bugs
+in Addendum 2's own work, fixed (not redesigned). (1) Owner reported
+DevTools showed `--cursor-range-fill` as undefined. Investigation
+confirmed the source declaration (both themes) and the live-deployed
+`theme.css` were byte-correct and reachable via real CSS cascade
+(`getComputedStyle(...).getPropertyValue("--cursor-range-fill")`,
+re-verified with a jsdom test exercising the real cascade engine, not
+source-text matching) — no code-level cascade/scope/typo bug was found.
+The best-supported explanation is browser-side caching of a pre-Addendum-2
+copy of `theme.css` (no cache-busting exists on that static asset
+reference); fixing that is a deployment/infra change outside this bug
+fix's own scope and was NOT made unilaterally — flagged to the owner as a
+possible follow-up. In the same pass, the range-fill alpha was also
+changed to the owner's now-final target, 0.08 (having gone
+0.05 → 0.20 → 0.08 across three UAT rounds). (2) Owner reported the
+vertical cursor lines disappearing further down a tall (e.g. Separate
+mode, many lanes) waveform stack while the sticky labels stayed correct.
+Root cause: the overlay's height was computed as
+`rulerRect.getBoundingClientRect().top - sectionRect.getBoundingClientRect().top`
+— both VIEWPORT-relative, and `#wwStickyRuler` is `position: sticky`,
+whose `getBoundingClientRect()` reflects its current on-screen (possibly
+pinned) paint position rather than its true position in the scroll
+content. Fixed by reading `rulerWrapEl.offsetTop` instead — a stable
+layout metric, by definition unaffected by scroll position or by
+`position: sticky`'s paint-time displacement, since `.workspace-section`
+is confirmed to be `#wwStickyRuler`'s `offsetParent`. No scroll listener
+was added; the existing recompute hooks (viewport/layout/resize changes)
+remain sufficient since `offsetTop` doesn't change with scroll. The range
+band, living inside the same now-correctly-sized overlay, is fixed by the
+same change. See
+[MIGRATION_PLAN.md — Phase 4B-UAT2 Record](MIGRATION_PLAN.md#phase-4b-uat2--cursor-range-fill--full-scroll-line-continuity-fix-2026-08-20).
+
 ---
 
 ## How to add a decision

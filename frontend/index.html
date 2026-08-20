@@ -7081,9 +7081,36 @@
             // further"; the ruler's OWN segment, drawn by
             // #wwCursorRulerOverlay above, covers the remaining "down
             // through the ruler" requirement).
+            //
+            // Phase 4B-UAT2 bug fix: this used to be
+            // `rulerRect.top - sectionRect.top`, both from
+            // getBoundingClientRect() -- VIEWPORT-relative coordinates.
+            // #wwStickyRuler is `position: sticky`, which repaints the
+            // ruler at a constant on-screen position once "stuck," while
+            // #viewWaveform's own getBoundingClientRect().top keeps
+            // changing as the page scrolls -- so a height computed from
+            // that pair while (or shortly after) the ruler is in its stuck
+            // state does not reliably reproduce the ruler's TRUE position
+            // in the scroll content, and the resulting stale/incorrect
+            // overlay height silently truncated the line/range-band
+            // overlay (clipped by this element's own `overflow: hidden`)
+            // partway down a tall waveform stack -- exactly the owner's
+            // reported "lines disappear further down" bug. Fixed by
+            // reading `rulerWrapEl.offsetTop` instead: offsetTop reflects
+            // an element's position in NORMAL LAYOUT FLOW relative to its
+            // offsetParent (here, #viewWaveform itself, the nearest
+            // `position: relative` ancestor -- confirmed the DOM parent of
+            // both #wwCursorOverlay and #wwStickyRuler) and is, by
+            // definition, UNAFFECTED by scroll position or by
+            // `position: sticky`'s paint-time displacement -- the same
+            // "stable layout metric, not a live/scrolled one" fix this
+            // bug's own investigation confirmed is necessary. rulerRect
+            // itself is still needed below for the ruler segment's own
+            // HORIZONTAL (left) positioning, where its CURRENT on-screen
+            // (possibly-stuck) position is exactly what's wanted.
             const sectionRect = workspaceSectionEl.getBoundingClientRect();
             const rulerRect = rulerWrapEl.getBoundingClientRect();
-            overlayEl.style.height = Math.max(0, rulerRect.top - sectionRect.top) + "px";
+            overlayEl.style.height = Math.max(0, rulerWrapEl.offsetTop) + "px";
 
             for (const kind of ["a", "b"]) {
                 const cursor = cursors[kind];

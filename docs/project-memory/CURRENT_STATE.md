@@ -4,7 +4,7 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-19** (Phase 4B-UAT1, on top of Phase 4B, Phase 4A-UAT9, and Phase 4A-UAT10).
+Last meaningful update: **2026-08-20** (Phase 4B-UAT2, on top of Phase 4B-UAT1, Phase 4B, Phase 4A-UAT9, and Phase 4A-UAT10).
 
 ## Development phase
 
@@ -1522,9 +1522,9 @@ Phase 4B-UAT1 fact immediately below for the current value.
 labels** (2026-08-19) — see
 [MIGRATION_PLAN.md — Phase 4B-UAT1 Record](MIGRATION_PLAN.md#phase-4b-uat1--stronger-range-highlight--sticky-cursor-labels-2026-08-19)
 (second addendum to DEC-039, not its own decision). `--cursor-range-fill`
-raised from ~5% to **~20% alpha** (Light `rgba(53,104,212,0.20)` / Dark
-`rgba(79,141,253,0.20)`) — this is the current value; the 0.05 figure in
-the paragraph above is superseded. The A/B label pills ("[A ×]"/"[B ×]")
+raised from ~5% to ~20% alpha at the time — **superseded again, see the
+Phase 4B-UAT2 fact below for the current 0.08 value and a fixed bug that
+initially made this token appear undefined in DevTools**. The A/B label pills ("[A ×]"/"[B ×]")
 are now `position: sticky`, staying visible near the top of the visible
 waveform viewport while scrolling a tall waveform stack — the vertical
 cursor lines themselves remain full-height and non-sticky, unchanged
@@ -1542,6 +1542,35 @@ pointer-capture/live-update path, now wired to both
 added — CSS `position: sticky` only. `phase4b_check.mjs` extended to 37
 checks (from 29); full frontend suite still exactly the established
 18-failure baseline; backend 328/328 unchanged.
+
+`[FACT]` **Phase 4B-UAT2 — cursor range-fill + full-scroll line
+continuity bug fixes** (2026-08-20) — see
+[MIGRATION_PLAN.md — Phase 4B-UAT2 Record](MIGRATION_PLAN.md#phase-4b-uat2--cursor-range-fill--full-scroll-line-continuity-fix-2026-08-20)
+(third addendum to DEC-039, not its own decision). Two owner-confirmed
+bugs in Phase 4B-UAT1's own work, fixed. **Bug 1** — DevTools showed
+`--cursor-range-fill` as undefined. Investigation found the source
+declaration and the live-deployed `theme.css` were both byte-correct
+(re-verified via a jsdom test exercising the real CSS cascade engine,
+`getComputedStyle(realElement).getPropertyValue(...)`, not source-text
+matching) — no code-level bug found; the best-supported explanation is
+browser-side caching of a stale pre-Phase-4B-cosmetic-refinement copy of
+`theme.css` (no cache-busting exists on that static asset reference),
+flagged to the owner as an out-of-scope possible follow-up rather than
+fixed unilaterally. `--cursor-range-fill` is now, current value,
+**`rgba(53,104,212,0.08)` (Light) / `rgba(79,141,253,0.08)` (Dark)** — the
+owner's final acceptance target after three rounds (0.05 → 0.20 → 0.08).
+**Bug 2** — cursor lines disappeared further down a tall (e.g. Separate
+mode) waveform stack while sticky labels stayed correct. Root cause: the
+overlay height was computed from two `getBoundingClientRect()` values
+(viewport-relative), and `#wwStickyRuler`'s (`position: sticky`) current
+on-screen paint position diverges from its true scroll-content position
+once pinned. Fixed by reading `rulerWrapEl.offsetTop` instead — a stable
+layout metric immune to scroll position and to sticky's paint-time
+displacement. The A-B range band, living inside the same corrected
+overlay, is fixed by the same change; no scroll listener was added.
+`phase4b_check.mjs` extended to 43 checks (from 37); full frontend suite
+still exactly the established 18-failure baseline; backend 328/328
+unchanged.
 
 ## Completed foundation work
 

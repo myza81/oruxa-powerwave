@@ -8648,6 +8648,139 @@ owner UAT after this push.
 
 ---
 
+## Phase 4B-UAT2 — Cursor Range Fill + Full-Scroll Line Continuity Fix (2026-08-20)
+
+### Owner-reported bugs
+
+Two confirmed bugs in Phase 4B-UAT1's own work below, fixed -- not
+redesigned. (1) DevTools showed `--cursor-range-fill` as undefined,
+so the 20% blue A-B range fill was not visible at all. (2) The sticky
+A/B labels correctly stayed visible while scrolling down a tall waveform
+stack, but the vertical cursor LINES disappeared further down the same
+stack -- violating the core requirement that A/B span the complete
+waveform (analog + digital + ruler) throughout vertical scrolling.
+
+**Owner mid-task clarification**: while this fix was in progress, the
+range-fill opacity target changed from 20% to a final 8% (`rgba(53, 104,
+212, 0.08)` Light / `rgba(79, 141, 253, 0.08)` Dark) -- applied in the
+same pass as the undefined-variable investigation below.
+
+### Bug 1 investigation and fix (`--cursor-range-fill` undefined)
+
+Checked, in order: the `:root`/`:root[data-theme="dark"]` declarations in
+`theme.css` (both present, both syntactically correct, no typo); whether
+`index.html`'s own inline `:root { --button-font-size-compact: ... }`
+block (a genuine, pre-existing, unrelated page-specific token -- see
+DEC-023's own history) could shadow/reset the theme.css declaration (it
+cannot -- CSS custom properties are declared independently per property
+name; a `:root` rule that doesn't mention a given property never resets
+it, regardless of cascade/source order); the `data-theme` selector
+mechanism against `theme.js`'s actual `setAttribute("data-theme", ...)`
+call (confirmed matching); and the `.ww-cursor-range`/
+`.ww-cursor-ruler-range` rules' own `background: var(--cursor-range-fill)`
+consumption (confirmed correct, unchanged since Phase 4B's own cosmetic
+refinement). The live DEV-deployed `theme.css` was fetched directly
+(`curl https://dev.powerwave.oruxa.uk/theme.css`) and found byte-correct,
+containing the token at both declarations. No code-level declaration,
+cascade, scope, or consumption bug was found.
+
+Given the source and the deployed artifact are both provably correct, the
+best-supported explanation for a real user's DevTools showing "undefined"
+is browser-side caching of a stale, pre-Phase-4B-cosmetic-refinement copy
+of `theme.css` -- that static asset reference (`<link rel="stylesheet"
+href="theme.css">`) carries no cache-busting mechanism, and the server
+sets no explicit `Cache-Control` header (confirmed via `curl -I`, only
+`ETag`/`Last-Modified` passive validators are present), so a browser that
+loaded the app once before `--cursor-range-fill` existed could plausibly
+continue serving that cached copy via heuristic freshness on later
+navigations, even though index.html itself (a separate resource, and one
+the owner's own concurrent report confirms was fresh, since the
+Phase 4B-UAT1 sticky-label behavior it introduced was already working
+correctly) had already updated. **This is a real, but genuinely
+out-of-scope-for-this-bug-fix, deployment/caching gap** -- flagged to the
+owner as a possible follow-up rather than fixed unilaterally (a
+cache-busting mechanism would need to touch the shared
+`docker-entrypoint.d/10-powerwave-config.sh` entrypoint and/or nginx
+config, affecting every static asset and both HTML pages, well beyond
+this one CSS token).
+
+What WAS changed in this pass: `--cursor-range-fill`'s alpha value, to
+the owner's now-final target of 0.08 (`theme.css`, both themes) --
+unrelated to the "undefined" investigation itself, just the concurrent
+opacity-target correction. Verified via a jsdom test that exercises the
+REAL CSS cascade engine end-to-end
+(`getComputedStyle(realElement).getPropertyValue("--cursor-range-fill")`
+on the actual `.ww-cursor-range`/`.ww-cursor-ruler-range` elements the
+feature builds, toggling `data-theme` between calls) rather than
+source-text regex matching alone -- the strongest verification available
+without a real browser.
+
+### Bug 2 root cause and fix (lines disappearing during deep scroll)
+
+`wwUpdateCursorOverlay()`'s overlay-height computation was
+`rulerRect.top - sectionRect.top`, both from `getBoundingClientRect()` --
+VIEWPORT-relative coordinates. `#wwStickyRuler` is `position: sticky`,
+which repaints the ruler at a roughly constant on-screen position once
+"stuck," decoupling `rulerRect.top` from the ruler's TRUE position in the
+scroll content, while `sectionRect.top` (`.workspace-section`'s own
+viewport-relative top) keeps changing with scroll -- a height computed
+from that pair is not a reliable stand-in for the true content height
+once/while the ruler's paint position and its true document-flow position
+diverge, silently under- or over-sizing the `overflow: hidden` overlay
+and clipping the lines/range-band partway down a tall stack.
+
+Fixed by reading `rulerWrapEl.offsetTop` instead of
+`rulerWrapEl.getBoundingClientRect().top` for the height computation --
+`offsetTop` reflects an element's position in NORMAL LAYOUT FLOW relative
+to its `offsetParent`, a value that is, by CSS specification, unaffected
+by scroll position and unaffected by `position: sticky`'s paint-time
+displacement (sticky positioning is a compositing-time adjustment; it
+never changes the element's underlying layout box). `.workspace-section`
+(`#viewWaveform`, `position: relative`) is confirmed to be
+`#wwStickyRuler`'s `offsetParent` (its direct parent, and the nearest
+positioned ancestor) -- the same reference frame `#wwCursorOverlay`'s own
+`top: 0` already uses, so no other coordinate needed changing.
+`rulerRect` (`getBoundingClientRect()`) is still used, unchanged, for the
+ruler SEGMENT's own horizontal positioning (`#wwCursorRulerOverlay`,
+inside the sticky ruler, where the CURRENT on-screen position is exactly
+what's wanted). No scroll listener was added -- `offsetTop` does not
+change with scroll, so the existing recompute hooks
+(`wwSyncStickyRuler()`/`wwRebuildLayout()`/`wwResizeAllVisiblePlots()`/
+`wwRebuildDigitalChart()`) remain sufficient, matching this task's own
+"prefer structural/CSS geometry... do not add an expensive scroll
+listener" requirement. The A-B range band, living inside the same
+now-correctly-sized `#wwCursorOverlay`, is fixed by the same change with
+no separate code path.
+
+### Tests
+
+`phase4b_check.mjs` extended to 43 checks (from 37): the stale 0.20-alpha
+assertion updated to 0.08 (an intentional value change); new checks cover
+`getComputedStyle` resolving `--cursor-range-fill` to the correct,
+theme-distinct, non-empty value on the real `.ww-cursor-range`/
+`.ww-cursor-ruler-range` elements; the overlay height using the ruler's
+stable `offsetTop` rather than its live/sticky-affected
+`getBoundingClientRect().top` (a new `wireCursorGeometry()` fixture knob
+lets the test independently control the ruler's "current on-screen
+position" vs. "true content position," reproducing the exact bug
+scenario -- the old formula would have produced 460px where the fixed one
+correctly produces 2000px/3500px/2400px across the new checks); overlay
+height stability across a dispatched `scroll` event; the range band
+sharing the same corrected height/container as the lines; and horizontal
+(X) positioning of lines/labels/ruler segment remaining unaffected by the
+height fix. Full frontend regression suite reconfirmed at exactly the
+established 18-failure baseline. Backend: 328/328 passed, unchanged (no
+backend file touched).
+
+### Decision
+
+Recorded as a third addendum to
+[DEC-039](DECISIONS.md#dec-039--ab-time-measurement-cursors-are-one-workspace-level-dom-overlay-over-the-shared-elapsed-time-domain-never-a-per-panel-plotly-shape-phase-4b)
+-- bug fixes within the already-approved overlay architecture, not a new
+decision.
+
+---
+
 ## Phase 4B-UAT1 — Stronger Range Highlight + Sticky Cursor Labels (2026-08-19)
 
 ### Owner-approved scope

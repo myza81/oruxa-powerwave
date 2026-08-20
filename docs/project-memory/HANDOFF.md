@@ -4,7 +4,7 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-08-19**
+Last updated: **2026-08-20**
 
 ## What was most recently done
 
@@ -156,8 +156,59 @@ layer's z-index/the line's still-full-height CSS. Full frontend
 regression suite reconfirmed at exactly the established 18-failure
 baseline; backend 328/328 unchanged (no backend file touched).
 
+**Fully completed.** Committed and pushed as `fdde0c3`; CI succeeded;
+automatic DEV deployment verified live at that exact SHA.
+
+**Phase 4B-UAT2 (2026-08-20) — bug fixes**: owner real-browser UAT of the
+above found two bugs -- see
+[MIGRATION_PLAN.md — Phase 4B-UAT2 Record](MIGRATION_PLAN.md#phase-4b-uat2--cursor-range-fill--full-scroll-line-continuity-fix-2026-08-20)
+(third addendum to DEC-039, not a new decision). **Bug 1**: DevTools
+showed `--cursor-range-fill` as undefined. Both the source declaration
+and the LIVE deployed `theme.css` (fetched directly via `curl`) were
+confirmed byte-correct; a jsdom test exercising the real CSS cascade
+engine (`getComputedStyle` on the actual `.ww-cursor-range` element, not
+source-text matching) confirms the token resolves correctly in both
+themes. No code-level bug was found -- the best-supported explanation is
+browser-side caching of a stale copy of `theme.css` (that static asset
+has no cache-busting mechanism, and the server sets no explicit
+`Cache-Control`); **this caching gap is real but was deliberately left
+unfixed**, since resolving it would mean editing the shared
+`docker-entrypoint.d/10-powerwave-config.sh` entrypoint and/or nginx
+config -- a deployment-wide change affecting every static asset and both
+HTML pages, outside this bug-fix's own scope, and flagged to the owner as
+a possible follow-up rather than made unilaterally. In the same pass,
+`--cursor-range-fill`'s alpha was set to the owner's final target, 0.08
+(Light `rgba(53,104,212,0.08)` / Dark `rgba(79,141,253,0.08)`), having
+gone 0.05 -> 0.20 -> 0.08 across three UAT rounds. **Bug 2**: the vertical
+cursor lines disappeared further down a tall (e.g. Separate mode)
+waveform stack while the sticky labels remained correctly visible. Root
+cause: the overlay's height was computed as
+`rulerRect.getBoundingClientRect().top - sectionRect.getBoundingClientRect().top`
+-- both viewport-relative, and `#wwStickyRuler`'s `position: sticky`
+paint-time position (once pinned) diverges from its true position in the
+scroll content. Fixed by reading `rulerWrapEl.offsetTop` instead -- a
+stable layout metric immune to both scroll position and sticky's
+paint-time displacement, using `.workspace-section` (confirmed
+`#wwStickyRuler`'s `offsetParent`) as the reference frame -- the same one
+`#wwCursorOverlay`'s own `top: 0` already uses. No scroll listener was
+added; the existing content/layout recompute hooks remain sufficient
+since `offsetTop` doesn't change with scroll. The range band, living
+inside the same corrected overlay, is fixed by the same change.
+
+**Verification**: `phase4b_check.mjs` extended to 43 checks (from 37) --
+the stale 0.20-alpha assertion updated to 0.08; new checks cover
+`getComputedStyle` resolving the token correctly in both themes on the
+real elements, the overlay height using the ruler's stable `offsetTop`
+rather than its live/sticky-affected `getBoundingClientRect().top` (a new
+test-fixture knob independently controls "current on-screen position" vs.
+"true content position" to reproduce the exact bug), height stability
+across a dispatched `scroll` event, the range band sharing the corrected
+height, and horizontal positioning remaining unaffected. Full frontend
+regression suite reconfirmed at exactly the established 18-failure
+baseline; backend 328/328 unchanged (no backend file touched).
+
 **Not yet done**: commit/push, CI/automatic DEV deployment verification,
-and owner real-browser UAT of this refinement specifically.
+and owner real-browser UAT of this bug fix specifically.
 
 ## What was done in the prior session (Phase 4A-UAT10 — Source-Aware Time Bounds)
 
