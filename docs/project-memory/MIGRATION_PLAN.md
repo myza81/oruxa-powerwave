@@ -8650,6 +8650,281 @@ owner UAT after this push.
 
 ---
 
+## Phase 4D — Precision Step Zoom + Icon Toolbar Refinement (2026-08-20)
+
+### Scope
+
+Two related, owner-approved refinements to the waveform toolbar, riding
+together since both touch the same markup: (1) precise stepped Zoom
+In/Zoom Out controls for X and Y, without adding four permanent X+/X-/
+Y+/Y- buttons; (2) converting the toolbar's major text-labeled controls
+to a compact, professional, SVG icon-primary language. Engineering
+semantics of every EXISTING control (drag-based Zoom/Pan, Reset Time
+View, Autoscale Y, Absolute/Elapsed, A/B cursors, Grouped/Separate/
+Custom, Clear Workspace) are explicitly unchanged -- this phase adds
+precision and appearance, never redesigns behavior.
+
+### Pre-work investigation: two intervening sessions had already landed
+
+Before touching anything, per the mandatory startup sequence, discovered
+(via `git log`) that two commits had landed on `main` since the last
+Phase 4C2 session, neither authored in this session: `cfdfb3a`
+("Improve waveform zoom display resolution", DEC-041 -- the 10,000-sample
+full-resolution display threshold + pixel-adaptive point_budget) and
+`915111c` ("fix: preserve sub-ms waveform precision in absolute time",
+DEC-042 -- Absolute/Elapsed now share one numeric elapsed Plotly X
+coordinate; `wwElapsedToPlotlyX()`/`wwPlotlyXToElapsed()` are now identity
+functions, `wwSetTimeMode()` no longer rewrites trace geometry). Both were
+read in full (DECISIONS.md DEC-041/DEC-042, their own MIGRATION_PLAN.md
+records) before any Phase 4D code was written, since the X step-zoom
+work explicitly needed to reuse -- not reinvent or accidentally bypass --
+the CURRENT adaptive-resolution fetch path and numeric-coordinate model,
+not the pre-DEC-041/042 one this agent last worked against.
+
+**Also discovered while establishing the frontend regression baseline**:
+the previously-tracked "18-failure baseline" (established across Phase
+4A/4B/4C sessions) was stale -- the two intervening commits' own
+architecture changes (numeric-coordinate Plotly axes, adaptive resolution)
+broke several OLDER verification scripts' assumptions (date-typed axis
+checks, date-string X-coordinate checks) that predate DEC-041/DEC-042.
+Re-measured directly against current `main` before writing any Phase 4D
+code: the TRUE current baseline is **33 pre-existing failures across 14
+files** (`phase2cb1/cb2/cb3/cb3a_check.mjs`, `phase2cc2/cc3/cc4/cc4a_check.mjs`,
+`phase3a_check.mjs`, `phase3auat1/auat3_check.mjs`, `phase3b_check.mjs`,
+`phase3buat3/buat4_check.mjs`, `phase4b_check.mjs`) -- none caused by this
+phase, all pre-existing artifacts of the DEC-041/DEC-042 session's own
+architecture changes to older, unrelated test files. This is the baseline
+verified against below, not the stale "18" figure -- see this record's
+own Tests section for the full accounting, including the two
+`phase4b_check.mjs`/mock-related fixes applied along the way (a silently
+crash-truncated file, unrelated to Phase 4D, fixed so the suite genuinely
+executes to completion) and the exactly two test files whose STRICT
+assertions became stale specifically because of Phase 4D's own new,
+intended behavior (updated, not treated as regressions).
+
+### Step zoom architecture: one split button per action, not four buttons
+
+Two new controls, Zoom In and Zoom Out, each a compact split button: a
+main icon that performs whichever axis (X or Y) was last chosen for that
+specific action, plus a small dropdown trigger opening a 2-item axis menu
+("Horizontal (X)" / "Vertical (Y)"). Choosing an axis from the dropdown
+both remembers the preference AND performs that exact step immediately
+(the user just explicitly asked for it -- treating the click as
+selection-only would be the surprising outcome, not the safe one);
+every subsequent main-icon click then repeats that same axis with zero
+further dropdown interaction. `ww.zoomStepAxis = { in: "x", out: "x" }`
+remembers the two actions' preferences SEPARATELY (the owner task's own
+primary recommendation over one shared axis) -- defaulting both to X
+(precise time-window inspection is the most common case).
+
+### X zoom: workspace-global, ~20% step, workspace-bounds clamp
+
+`wwStepZoomX(direction)`: reads the CURRENT `ww.viewport`, computes
+`newSpan = span * 0.8` (Zoom In) or `span * 1.25` (Zoom Out) around the
+UNCHANGED midpoint, then calls the exact same `wwApplyAndFetchViewport()`
+every other X-viewport-changing path already uses (drag-zoom, pan, Reset
+Time View) -- this is what guarantees every analog panel, the digital
+region, and the shared sticky ruler move together, and that DEC-041's
+adaptive-resolution range fetch genuinely re-runs for the new range
+rather than a bare Plotly relayout of stale trace data. Zoom Out is
+bounded by a NEW dedicated clamp, `wwClampZoomWindowToWorkspace()` --
+deliberately separate from the pre-existing `wwClampRangeToWorkspace()`
+(unchanged, still used by drag-zoom/pan broadcast) because that helper's
+independent-endpoint clamping would asymmetrically truncate a Zoom-Out
+step's SPAN whenever the window sits near one edge of the workspace; the
+new clamp instead SHIFTS the window to preserve the exact requested span
+whenever it still fits within `ww.workspaceBounds`, falling back to the
+full workspace bounds only once the requested span can no longer fit at
+all. At full workspace range, Zoom Out is a genuine no-op (no refetch)
+and the button reads `disabled` (only when the remembered axis for "out"
+is X; a Y preference has no comparable hard limit). A `WW_MIN_X_SPAN_SECONDS
+= 1e-6` floor exists purely to stop pathological zero/negative-span
+underflow after an extreme number of clicks -- not a practical inspection
+limit (real COMTRADE sample spacing is essentially never below 1
+microsecond).
+
+### Y zoom: active-panel-local only
+
+`wwStepZoomY(direction)` operates on exactly ONE panel -- whichever
+`wwActivePanel()` currently resolves to -- never every panel globally
+(owner's explicit rationale: distinct engineering panels need independent
+vertical inspection). Reads the panel's CURRENTLY RESOLVED Y range from
+Plotly's own `_fullLayout.yaxis.range` (not `layout.yaxis.range`, which
+can be `undefined` while still auto-ranging -- the same `_fullLayout`
+precedent `wwPanelPlotWidth()` already established for reading Plotly's
+resolved geometry), applies the identical 0.8/1.25 stepping math around
+the current Y midpoint, then writes an explicit `yaxis.range` back via
+`Plotly.relayout()` with `yaxis.autorange: false` -- taking the panel out
+of autorange, exactly "manual range as appropriate." A `WW_MIN_Y_SPAN =
+1e-9` epsilon floor prevents span collapse the same way the X floor does.
+
+### Active panel: click (not hover) establishes authority
+
+New state `ww.activePanelGroupKey` -- stores the active panel's STABLE
+`groupKey` (the same key namespace `ww.panelHeights`/`ww.customGroups`
+already use), never a raw panel object reference, because
+`wwRebuildLayout()` fully discards and recreates every panel object on
+every Grouped/Separate/Custom switch (pre-existing, unchanged behavior).
+`wwActivePanel()` is the ONE resolver every call site reads through --
+self-healing by design: if the remembered key no longer matches any
+CURRENT panel, it falls back to the first/primary panel and adopts that
+panel's key as the new active one, so the fallback itself becomes sticky
+rather than re-triggering on every subsequent read. This means a layout
+switch, or the active panel's last channel being removed, can never leave
+Y step zoom targeting a destroyed/purged Plotly instance. Click
+authority is wired on the panel HEADER specifically (`.ww-panel-header`,
+now `tabindex="0" role="button"` with Enter/Space keyboard support) --
+not the whole panel card -- so it never intercepts a Plotly box-zoom/pan
+drag gesture, a legend-chip click, or the resize handle's own
+pointer-capture drag. Visual feedback is deliberately understated: one
+additive CSS class, `.ww-panel--active`, tinting only the panel's own
+border (`border-color: var(--accent-dim)`) -- no background fill, no
+shadow, no large selection state.
+
+### Icon toolbar: reuses the existing `.shell-nav-icon` visual language
+
+Every major control (Box Zoom, Pan, Zoom In/Out, Absolute Time, Elapsed
+Time, Reset Time View, Autoscale Y, A/B Time Cursors, Grouped/Separate/
+Custom Layout, Clear Workspace) is now an inline SVG icon with a
+`title`/`aria-label` tooltip pair, instead of a text label. Per the
+task's own explicit "inspect for an existing icon pattern first"
+instruction, found and reused `#mainSidebarMenu`'s `.shell-nav-icon`
+convention verbatim: `viewBox="0 0 18 18"`, `stroke="currentColor"`,
+`fill="none"`, `stroke-width: 1.5`, round linecap/linejoin -- so the
+app's navigation rail and waveform toolbar now read as ONE icon family,
+not two visual languages, and no external icon library was introduced.
+Concepts used: Box Zoom/Zoom In/Zoom Out share one magnifier-glass base
+(matching the existing Tools nav icon's own magnifier), with a `+`/`-`
+added inside the lens for the two step actions; Pan is a minimal open-hand
+glyph; Absolute Time is a clock face, Elapsed Time a stopwatch (same
+circle-body family, distinguished by the stopwatch's crown stub), rendered
+as a segmented `.theme-toggle` pair so they read as mutually-exclusive
+modes, not independent commands; Reset Time View and Autoscale Y are a
+matched horizontal/vertical "axis with outward arrows" pair (fit-to-extent,
+never a generic circular refresh icon), visually distinct from each other
+by axis orientation; A/B Time Cursors is two vertical lines with small
+solid `<text>` "A"/"B" glyphs INSIDE the SVG (the one deliberate exception
+to "no text," per the task's own explicit allowance, readable at 18px
+since they use `fill="currentColor"` rather than an outlined stroke);
+Grouped/Separate/Custom are a filled-panel-with-two-traces / three-stacked-
+lanes / asymmetric-grid-with-adjustment-tick trio; Clear Workspace is an
+eraser wedge (deliberately not a trash icon -- clears the DISPLAYED
+workspace, never deletes the imported source recording). The X/Y axis
+menu items reuse the same horizontal/vertical arrow shapes as Reset Time
+View/Autoscale Y (SVG, not Unicode arrows, matching the rest of the
+toolbar). Toolbar controls are grouped into Navigation / Zoom step / Time
+/ View / Measurement / Layout / Workspace clusters via thin
+`.ww-toolbar-sep` hairline separators, instead of one undifferentiated
+row of icons.
+
+### Accessibility
+
+Every icon-only control keeps both a non-empty `title` and `aria-label`
+(never forces memorizing an icon). The split-button dropdowns use
+`role="menu"`/`role="menuitemradio"` with `aria-checked` reflecting the
+current axis selection; keyboard support: Tab reaches the main action
+then the trigger (natural DOM order, no tabindex tricks needed), Enter/
+Space activates either (native `<button>` behavior), opening a menu moves
+focus to its first item so Tab can reach both X/Y items directly, Escape
+closes the menu and returns focus to the trigger, and a `focusout`
+listener closes the menu if keyboard focus leaves the split button
+entirely. Mouse users additionally get click-outside-to-close and
+"opening one split button's menu closes the other's."
+
+### Adaptive resolution (DEC-041) -- confirmed genuinely reused, not bypassed
+
+X step zoom's only contribution is the new `[start, end]` math; the
+actual fetch/render lifecycle is 100% the pre-existing
+`wwApplyAndFetchViewport()` -> `wwRefetchAllChannels()` ->
+`wwLoadChannelRange()` -> `wwFetchChannelRange()` chain, meaning
+DEC-041's own threshold/adaptive-point-budget logic
+(`FULL_RESOLUTION_DISPLAY_THRESHOLD`/`WW_POINT_BUDGET_MIN/MAX/PER_PIXEL`)
+applies automatically and unmodified. Verified directly: zooming into a
+sub-10,000-sample interval switches a channel's own `representation` to
+`full_resolution`; a broad overview range still returns
+`min_max_envelope`, capped by the plot-width-adaptive `point_budget`
+DEC-041 already established.
+
+### A/B cursors
+
+X step zoom never touches `ww.measurementCursors.a.time`/`.b.time` --
+only the shared viewport moves, so cursor engineering time (and
+therefore Cur A/B analog values and digital A/B states, both keyed on
+cursor TIME, not pixel position) is provably unchanged; only the
+cursor's on-screen pixel projection updates, via the SAME
+`wwUpdateCursorOverlay()` hook `wwApplyAndFetchViewport()` already calls
+for every other viewport change.
+
+### Layout modes
+
+Grouped/Separate/Custom all resolve `wwActivePanel()` the same generic
+way -- "whichever panel object currently exists and was last clicked" --
+since a Grouped "Voltage" panel, a Separate "src::VA" lane, and a Custom
+group panel are all just `ww.panels` entries with their own stable
+`groupKey`; no per-mode special-casing was needed. Verified a full
+Grouped -> Separate -> Custom -> Grouped cycle never leaves the active
+panel pointing at a purged Plotly instance, and that a Y step zoom
+immediately after a layout switch operates on a real, currently-rendered
+panel without throwing.
+
+### Tests
+
+New `phase4d_check.mjs` (38 checks): X step math + workspace clamp +
+edge-shift-preserves-span behavior + 5-in/5-out round-trip + min-span
+floor; X global synchronization (panels + A/B cursor time unchanged);
+adaptive-resolution representation switching verified against a
+purpose-built 10 kHz-equivalent source fixture (a 1s range = exactly the
+10,000-sample threshold, a 5s range well past it); active-panel
+click/keyboard selection + visual class; Y step zoom isolation between
+two panels, active-panel redirection, min-span floor; layout-mode
+active-panel remapping; Autoscale Y still hitting every panel (not just
+the active one); icon-toolbar text removal (with the A/B cursor icon's
+own in-SVG glyphs as the one documented exception) + title/aria-label
+presence + shared viewBox family; existing mode-state `aria-pressed`
+preservation for Box Zoom/Pan, Absolute/Elapsed, Grouped/Separate/Custom,
+A/B cursors; the full split-button dropdown lifecycle (select-and-act,
+remembered-per-action axis, checkmark sync, Escape, click-outside,
+mutual-exclusivity between the two split buttons).
+
+Two PRE-EXISTING tests needed updating because Phase 4D's own intended
+changes made their strict assertions stale (not regressions -- confirmed
+via direct `git stash` comparison against the unmodified `main` baseline
+both before and after each fix): `phase2cc1_check.mjs`'s "Custom button"
+check asserted literal `textContent === "Custom"` (now an icon -- updated
+to check `title`/`aria-label` instead); `phase2cb3a_check.mjs`'s DOM
+check asserted literal `className === "ww-panel"` (the first panel now
+also carries the additive `ww-panel--active` class by default -- updated
+to `classList.contains("ww-panel")`, the robust form of the same check).
+Also fixed, while establishing the true baseline: `phase4b_check.mjs` had
+been silently crash-truncating after only 2 checks since the earlier
+Phase 4C1 session (an unguarded `/cursor-values` mock gap, unrelated to
+Phase 4D) -- patched with a minimal non-crashing mock so its own 45
+Phase-4B checks genuinely execute again (44 pass; the one remaining
+failure, an Absolute-mode cursor-readout format assertion, is a
+DEC-042-era pre-existing mismatch, confirmed via the same stash
+comparison to predate this phase entirely -- left untouched as out of
+scope).
+
+Full frontend regression suite reconfirmed at exactly the TRUE 33-failure
+baseline (same 14 files, same per-file counts, verified both before and
+after every fix above via direct `git stash` comparison against
+unmodified `main`) -- zero net regressions from Phase 4D. Phase 4C1's own
+`phase4c1_check.mjs` (26 checks) and Phase 4C2's own `phase4c2_check.mjs`
+(24 checks) both still pass in full, confirming section 45's "do not
+change engineering behavior of existing tools" for the measurement
+system specifically. Backend: 393/393 passing, unchanged (no backend file
+touched this phase).
+
+### Decision
+
+Recorded as a new decision,
+[DEC-043](DECISIONS.md#dec-043--precision-step-zoom-x-step-is-workspace-global-y-step-is-active-panel-local-waveform-toolbar-is-icon-primary)
+-- establishes the X-global/Y-active-panel-local step-zoom split and the
+icon-first toolbar language as durable architecture, extending DEC-021/
+DEC-039/DEC-041/DEC-042 by reference without altering any of them.
+
+---
+
 ## Waveform Time-Axis Sub-ms Precision (2026-08-20)
 
 ### Scope

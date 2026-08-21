@@ -4,7 +4,30 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-20** (Waveform Time-Axis Sub-ms Precision, on top of Waveform Adaptive Resolution, Phase 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B, Phase 4A-UAT9, and Phase 4A-UAT10).
+Last meaningful update: **2026-08-20** (Phase 4D — Precision Step Zoom + Icon Toolbar Refinement, on top of Waveform Time-Axis Sub-ms Precision, Waveform Adaptive Resolution, Phase 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B, Phase 4A-UAT9, and Phase 4A-UAT10).
+
+`[DECISION]` **Precision Step Zoom + Icon Toolbar Refinement — DEC-043**
+(2026-08-20): two new split-button controls, Zoom In and Zoom Out, add
+precise ~20% step zoom for X and Y without four permanent X+/X-/Y+/Y-
+buttons. X step zoom is workspace-global (reuses `ww.viewport`/
+`ww.workspaceBounds` and the exact same `wwApplyAndFetchViewport()`
+authority every other X-viewport change already uses, so DEC-041's
+adaptive-resolution fetch genuinely re-runs -- never a bare Plotly
+relayout of stale data -- and every panel/the digital region/the ruler
+move together while A/B cursor engineering time stays exactly unchanged).
+Y step zoom is ACTIVE-PANEL-LOCAL only -- a new `wwActivePanel()` concept
+(click, not hover, establishes authority; a subtle border-accent shows
+which panel; self-heals across a Grouped/Separate/Custom layout switch so
+it can never target a destroyed panel). Autoscale Y is unchanged, still
+global across every panel. Separately, the waveform toolbar's major
+controls (Box Zoom, Pan, Zoom In/Out, Absolute/Elapsed, Reset Time View,
+Autoscale Y, A/B Cursors, Grouped/Separate/Custom, Clear Workspace) are
+now SVG icon-primary with title/aria-label tooltips, reusing
+`#mainSidebarMenu`'s existing `.shell-nav-icon` visual language rather
+than a new one or an external icon library. No backend change; no
+engineering-behavior change to any pre-existing control. See
+[DECISIONS.md — DEC-043](DECISIONS.md#dec-043--precision-step-zoom-x-step-is-workspace-global-y-step-is-active-panel-local-waveform-toolbar-is-icon-primary)
+and [MIGRATION_PLAN.md — Phase 4D](MIGRATION_PLAN.md#phase-4d--precision-step-zoom--icon-toolbar-refinement-2026-08-20).
 
 `[DECISION]` **Waveform Time-Axis Sub-ms Precision — DEC-042**
 (2026-08-20): Absolute and Elapsed modes now share one numeric elapsed

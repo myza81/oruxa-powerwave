@@ -8,6 +8,109 @@ Last updated: **2026-08-20**
 
 ## What was most recently done
 
+**Phase 4D — Precision Step Zoom + Icon Toolbar Refinement.** Full detail:
+[MIGRATION_PLAN.md — Phase 4D Record](MIGRATION_PLAN.md#phase-4d--precision-step-zoom--icon-toolbar-refinement-2026-08-20),
+[DECISIONS.md — DEC-043](DECISIONS.md#dec-043--precision-step-zoom-x-step-is-workspace-global-y-step-is-active-panel-local-waveform-toolbar-is-icon-primary).
+
+**Pre-work finding, important for the next session**: two commits had
+landed on `main` since the last Phase 4C2 session, authored elsewhere,
+not by this session -- `cfdfb3a` (DEC-041, waveform adaptive resolution)
+and `915111c` (DEC-042, sub-ms Absolute-time precision -- Plotly X
+coordinates are now numeric elapsed seconds in BOTH time modes,
+`wwElapsedToPlotlyX()`/`wwPlotlyXToElapsed()` are now identity
+functions). Both were read in full before writing any Phase 4D code.
+Also discovered while establishing the regression baseline: the
+previously-tracked "18-failure" figure was stale -- those two commits'
+own architecture changes broke several OLDER verification scripts'
+pre-DEC-041/042 assumptions. **The TRUE current baseline, verified
+directly against `main` before this phase started, is 33 failures across
+14 files** (`phase2cb1/cb2/cb3/cb3a`, `phase2cc2/cc3/cc4/cc4a`, `phase3a`,
+`phase3auat1/auat3`, `phase3b`, `phase3buat3/buat4`, `phase4b`) -- treat
+33, not 18, as the baseline to preserve going forward.
+
+**Owner direction**: (1) add precise ~20% step Zoom In/Zoom Out for X and
+Y as two split buttons (never four permanent X+/X-/Y+/Y- buttons); (2)
+convert the toolbar's major text controls to SVG icons. No engineering
+behavior of any existing control changed.
+
+**X step zoom** (`wwStepZoomX()`): workspace-global -- reuses
+`ww.viewport`/`ww.workspaceBounds` and the exact same
+`wwApplyAndFetchViewport()` authority every other X-viewport change
+already uses, so DEC-041's adaptive-resolution fetch genuinely re-runs
+(verified: a sub-10,000-sample zoom switches a channel's own
+`representation` to `full_resolution`; a broad range stays
+`min_max_envelope`) -- never a bare Plotly relayout of stale data. Every
+panel/digital/ruler move together; A/B cursor engineering time is
+provably unchanged (only pixel projection moves). Zoom Out uses a NEW
+dedicated clamp, `wwClampZoomWindowToWorkspace()` (deliberately separate
+from the pre-existing `wwClampRangeToWorkspace()`, unchanged, still used
+by drag-zoom/pan) that SHIFTS the window to preserve the requested span
+near a workspace edge instead of asymmetrically truncating it; becomes a
+genuine no-op (no refetch, button `disabled`) at full workspace range.
+
+**Y step zoom** (`wwStepZoomY()`): ACTIVE-PANEL-LOCAL only -- new
+`wwActivePanel()`/`ww.activePanelGroupKey` concept. Click (not hover) on
+a panel's HEADER establishes authority; a subtle `.ww-panel--active`
+border-accent shows which one; self-heals across a Grouped/Separate/
+Custom layout switch (falls back to the first current panel when the
+remembered key no longer matches any live panel) so it can never target
+a destroyed/purged Plotly instance. Reads/writes Plotly's own resolved
+`_fullLayout.yaxis.range` directly, taking the panel out of autorange.
+Autoscale Y is UNCHANGED, still global across every panel (the one action
+that restores autorange).
+
+**Split-button dropdown**: `ww.zoomStepAxis = {in: "x", out: "x"}` --
+remembered SEPARATELY per action (owner's own primary recommendation over
+a shared axis). Choosing an axis from the dropdown menu both remembers it
+AND performs that exact step immediately; every later main-icon click
+repeats the same axis with zero further dropdown interaction. Full
+keyboard support (Tab/Enter/Escape/focusout-closes) and click-outside/
+mutual-exclusivity between the two split buttons' own menus.
+
+**Icon toolbar**: reused the EXISTING `#mainSidebarMenu` `.shell-nav-icon`
+visual language verbatim (`viewBox="0 0 18 18"`, `stroke="currentColor"`,
+`fill="none"`, 1.5 stroke-width, round linecap/join) -- no external icon
+library introduced. Every icon-only control keeps `title`+`aria-label`.
+Box Zoom/Zoom In/Zoom Out share one magnifier base (+/- added inside the
+lens for the two step actions); Pan is a minimal open-hand glyph;
+Absolute/Elapsed are a clock/stopwatch segmented pair; Reset Time
+View/Autoscale Y are a matched horizontal/vertical fit-to-extent arrow
+pair; A/B Time Cursors is two lines with small in-SVG "A"/"B" `<text>`
+glyphs (the one deliberate text exception, task-permitted); Grouped/
+Separate/Custom are a filled-panel-with-traces / stacked-lanes /
+asymmetric-grid trio; Clear Workspace is an eraser (not a trash icon).
+Grouped into Navigation/Zoom step/Time/View/Measurement/Layout/Workspace
+clusters via thin `.ww-toolbar-sep` separators.
+
+**Tests**: new `phase4d_check.mjs` (38 checks) covering X step math +
+clamp + round-trip + min-span floor, X global sync, adaptive-resolution
+representation switching, active-panel click/keyboard selection, Y step
+isolation between panels + active-panel redirection + min-span floor,
+layout-mode active-panel remapping (never a destroyed panel), Autoscale Y
+still global, icon-toolbar text removal + tooltip/aria-label presence,
+existing mode-state preservation, and the full split-button dropdown
+lifecycle. Two pre-existing tests were updated because Phase 4D's own
+intended changes made their STRICT assertions stale (not regressions,
+confirmed via `git stash` comparison both ways): `phase2cc1_check.mjs`'s
+`textContent === "Custom"` check (now checks title/aria-label) and
+`phase2cb3a_check.mjs`'s `className === "ww-panel"` check (now
+`classList.contains`, since the active panel now also carries
+`ww-panel--active`). Also fixed a pre-existing, unrelated gap discovered
+along the way: `phase4b_check.mjs` had been silently crash-truncating
+after 2 checks since the Phase 4C1 session (a missing `/cursor-values`
+mock) -- patched so its own 45 checks genuinely run again (44 pass; the
+one remaining failure is a DEC-042-era pre-existing mismatch, confirmed
+via stash comparison to predate Phase 4D, left untouched as out of
+scope). Full frontend suite reconfirmed at exactly the TRUE 33-failure
+baseline (zero net regressions); `phase4c1_check.mjs` (26) and
+`phase4c2_check.mjs` (24) both still pass in full. Backend: 393/393,
+unchanged (no backend file touched).
+
+**Not yet done**: commit/push, CI/automatic DEV deployment verification,
+and owner UAT of this phase specifically.
+
+## What was done in the prior session (Waveform Time-Axis Sub-ms Precision)
+
 **Waveform Time-Axis Sub-ms Precision.** Full detail:
 [MIGRATION_PLAN.md — Waveform Time-Axis Sub-ms Precision](MIGRATION_PLAN.md#waveform-time-axis-sub-ms-precision-2026-08-20),
 [DECISIONS.md — DEC-042](DECISIONS.md#dec-042--absolute-and-elapsed-waveform-modes-share-numeric-elapsed-plotly-x-coordinates).

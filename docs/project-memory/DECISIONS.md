@@ -3750,6 +3750,133 @@ Impact:
 
 ---
 
+## DEC-043 — Precision step zoom: X step is workspace-global, Y step is active-panel-local; waveform toolbar is icon-primary
+
+Date: 2026-08-20
+Status: Approved
+Source: explicit project-owner task specification for Phase 4D
+("Precision Step Zoom + Icon Toolbar Refinement").
+
+Decision:
+
+**X step zoom is workspace-global; Y step zoom is active-panel-local.**
+
+Two new step-zoom actions, Zoom In and Zoom Out, are added as one split
+button EACH (never four permanent X+/X-/Y+/Y- buttons) — a main icon
+that repeats whichever axis (X or Y) was last chosen for that action, plus
+a small dropdown to choose the axis. Both use the same +/-20% stepping
+rule (new span = current span × 0.8 for Zoom In, × 1.25 for Zoom Out,
+current midpoint held fixed), applied to two structurally different
+targets:
+
+- **X**: reuses `ww.viewport`/`ww.workspaceBounds` exactly as drag-zoom/
+  pan/Reset Time View already do, via the SAME `wwApplyAndFetchViewport()`
+  authority — every analog panel, the digital region, the shared ruler,
+  and A/B cursor projection move together, and the normal adaptive-
+  resolution range fetch (DEC-041) runs again for the new range. Zoom Out
+  is bounded by `ww.workspaceBounds` (shifting the window to preserve the
+  requested span when it still fits, never silently truncating it) and
+  becomes a genuine no-op — no refetch, button reads disabled — once the
+  viewport already covers the full workspace.
+- **Y**: applies ONLY to a newly-introduced ACTIVE waveform panel concept
+  (`ww.activePanelGroupKey`, resolved via `wwActivePanel()`) — never every
+  panel globally. The most recently CLICKED panel (its header specifically,
+  not hover — hover alone would be ambiguous while using toolbar controls)
+  becomes active, shown via a subtle border-accent only
+  (`.ww-panel--active`). Reads/writes `Plotly`'s own resolved
+  `_fullLayout.yaxis.range` directly on that one panel, taking it out of
+  autorange — Autoscale Y (unchanged, still global across every panel) is
+  the one action that restores automatic scaling. Works identically in
+  Grouped (active GROUP panel), Separate (active per-channel LANE), and
+  Custom (active CUSTOM GROUP panel) — the same generic panel-click model
+  applies regardless of mode, since a "panel" already means whichever of
+  those three things is currently on screen. A layout-mode switch fully
+  discards and recreates every panel object (pre-existing behavior,
+  unchanged) — `wwActivePanel()` self-heals by falling back to the first
+  current panel whenever the remembered key no longer matches, so Y step
+  zoom can never operate on a destroyed/purged Plotly instance.
+
+**The waveform toolbar is icon-primary.** Every major control (Box Zoom,
+Pan, the two new Zoom In/Out split buttons, Absolute Time, Elapsed Time,
+Reset Time View, Autoscale Y, A/B Time Cursors, Grouped/Separate/Custom
+Layout, Clear Workspace) is now an SVG icon with a `title`/`aria-label`
+tooltip pair instead of a text label — reusing the EXACT SAME
+`viewBox="0 0 18 18"`/`stroke="currentColor"`/`fill="none"` convention
+`#mainSidebarMenu`'s `.shell-nav-icon` already established, so the app's
+navigation rail and waveform toolbar read as one icon family rather than
+two visual languages. Grouped into Navigation / Zoom step / Time / View /
+Measurement / Layout / Workspace clusters via thin `.ww-toolbar-sep`
+separators. No engineering behavior of any existing control changed by
+this — only its rendered content and (for the two new actions) precision.
+
+Reason:
+
+Drag-based zoom/pan already worked correctly but offered no way to take
+one small, exact, repeatable step — an engineer inspecting a specific
+transient often wants "narrow the window by about 20% around what I'm
+already looking at," repeatably, without a mouse-precision drag each
+time. Y-axis vertical inspection is inherently per-signal (different
+engineering panels carry unrelated magnitudes), so a global Y step would
+either do nothing useful for most panels or require re-deriving a
+combined scale — an explicit active-panel concept was needed regardless
+of the icon-toolbar work, and the owner approved scoping it to exactly
+one panel at a time rather than inventing a multi-select model. The icon
+conversion was requested separately, purely as a toolbar usability/
+appearance refinement, riding along in the same phase because both touch
+the same toolbar markup.
+
+Alternatives considered:
+
+- **Four permanent X+/X-/Y+/Y- toolbar buttons** — rejected per the
+  owner's own explicit instruction: doubles the visible control count for
+  a capability two split buttons already cover cleanly.
+- **One shared remembered axis for both Zoom In and Zoom Out** — rejected
+  in favor of remembering them separately (the task's own primary
+  recommendation): sharing risked a surprising cross-action jump (e.g.
+  choosing Y for Zoom In silently redirecting a later Zoom Out click too).
+- **Y step zoom applied globally to every panel** — rejected per the
+  owner's own explicit instruction (section 9 of the task spec): distinct
+  engineering panels legitimately need independent vertical inspection.
+- **Hover-based active-panel selection** — rejected per the owner's own
+  explicit instruction: ambiguous the moment the pointer is over a
+  toolbar control instead of any panel, exactly when a Y step click
+  happens.
+- **A large/heavy external icon library** — rejected: the project already
+  had an established lightweight inline-SVG icon convention
+  (`.shell-nav-icon`); reusing it kept the toolbar in the same visual
+  family for free and avoided an unnecessary dependency (task's own
+  explicit "do not add a heavy icon dependency unnecessarily" instruction).
+
+Impact:
+
+- `frontend/index.html` only — no backend change; X step zoom reuses the
+  existing `GET .../waveform` endpoint and DEC-041's adaptive-resolution
+  policy completely unmodified.
+- New state: `ww.activePanelGroupKey`, `ww.zoomStepAxis` (`{in, out}`,
+  both default `"x"`). New functions: `wwActivePanel()`,
+  `wwSetActivePanel()`, `wwSyncActivePanelVisual()`,
+  `wwWireActivePanelSelection()`, `wwClampZoomWindowToWorkspace()`,
+  `wwStepZoomX()`, `wwStepZoomY()`, `wwPerformZoomStep()`,
+  `wwSetZoomStepAxis()`, `wwSyncZoomStepControls()`,
+  `wwWireZoomStepSplitButtons()`. New CSS: `.ww-icon`/`.ww-icon-btn`/
+  `.ww-icon-group`/`.ww-split-btn`(+`-main`/`-trigger`/`-menu`/
+  `-menu-item`)/`.ww-toolbar-sep`/`.ww-panel--active`.
+  `digitalChannelNameCellHtml()`/`renderDigitalGroup()` (Phase 4C2) and
+  every existing toolbar button `id` are otherwise unchanged.
+- Does NOT alter DEC-021 (workspace-level navigation), DEC-034 (digital
+  classification), DEC-037 (source-aware bounds), DEC-039 (A/B cursor
+  architecture), DEC-040 (Cur A/B measurement authority), DEC-041
+  (adaptive resolution), or DEC-042 (numeric elapsed Plotly coordinates)
+  in any way — X step zoom is a new CALLER of the exact same authoritative
+  paths those decisions already established, never a parallel one.
+- Explicitly NOT implemented: configurable zoom percentage, new keyboard
+  shortcuts beyond the split-button dropdown's own Tab/Enter/Escape,
+  wheel-step customization, RMS/angle/synchronization, toolbar
+  personalization/reordering, or migration to an external icon library.
+- See [MIGRATION_PLAN.md — Phase 4D](MIGRATION_PLAN.md#phase-4d--precision-step-zoom--icon-toolbar-refinement-2026-08-20).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

@@ -1293,6 +1293,157 @@
         }
         .ww-toolbar[hidden] { display: none; }
         .toolbar-spacer { flex: 1; }
+
+        /* Phase 4D (section 17-19): the waveform toolbar's own icon
+           system -- reuses the EXACT SAME viewBox="0 0 18 18"/
+           stroke="currentColor"/fill="none" convention
+           #mainSidebarMenu's .shell-nav-icon already established (see
+           that class's own CSS comment), so every icon in the app --
+           navigation rail and waveform toolbar alike -- reads as one
+           family (section 19), never a second visual language. ~18px
+           icon inside a ~34px button (section 17's own size guidance).
+           `gap: 6px` between an icon and its own label text is unused
+           here (icon-only controls, section 17) but kept for the rare
+           case a future control pairs the two. */
+        .ww-icon {
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+        }
+        .ww-icon svg {
+            width: 18px;
+            height: 18px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.5;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .ww-caret { width: 10px; height: 10px; }
+        .ww-caret svg { width: 10px; height: 10px; }
+
+        /* Standalone icon buttons (Reset Time View / Autoscale Y / A/B
+           Cursors / Clear Workspace / each split-button's own main+
+           trigger halves) -- same border/radius/hover/focus language as
+           the pre-existing button.secondary, just icon-sized instead of
+           text-padded. */
+        .ww-icon-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            background: transparent;
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            color: var(--text-dim);
+            cursor: pointer;
+        }
+        .ww-icon-btn:hover { color: var(--text); background: var(--hover-tint); }
+        .ww-icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+        .ww-icon-btn[aria-pressed="true"] {
+            background: var(--accent-wash-soft);
+            color: var(--accent);
+            border-color: var(--accent-dim);
+        }
+        .ww-icon-btn:disabled { opacity: 0.4; cursor: not-allowed; background: transparent; }
+
+        /* Segmented icon groups (Box Zoom/Pan, Absolute/Elapsed,
+           Grouped/Separate/Custom) -- same .theme-toggle wrapper/
+           active-state behavior every one of these already had as text
+           buttons (section 44: preserve existing active-state feedback),
+           just icon-sized cells instead of text padding. */
+        .theme-toggle.ww-icon-group button {
+            width: 34px;
+            height: 34px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Thin, subtle group separators (section 33) -- a hairline, not a
+           heavy divider, so related icon clusters (Navigation / Zoom step
+           / Time / View / Measurement / Layout / Workspace) read as
+           distinct groups without breaking the toolbar into a
+           disconnected row of boxes. */
+        .ww-toolbar-sep {
+            width: 1px;
+            align-self: stretch;
+            margin: 2px 2px;
+            background: var(--panel-border);
+        }
+
+        /* Phase 4D (section 2/3/35): the Zoom In/Zoom Out split button --
+           a main step action plus a small dropdown trigger for choosing
+           X/Y, styled as one visually joined control (shared border,
+           divider between the two halves) rather than two independent
+           buttons floating next to each other. */
+        .ww-split-btn {
+            position: relative;
+            display: inline-flex;
+            align-items: stretch;
+        }
+        .ww-split-btn-main {
+            border-top-right-radius: 0;
+            border-bottom-right-radius: 0;
+            border-right: none;
+        }
+        .ww-split-btn-trigger {
+            width: 18px;
+            border-top-left-radius: 0;
+            border-bottom-left-radius: 0;
+        }
+        .ww-split-menu {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            z-index: 20;
+            min-width: 150px;
+            padding: 4px;
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+        }
+        .ww-split-menu[hidden] { display: none; }
+        .ww-split-menu-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            text-align: left;
+            background: transparent;
+            border: none;
+            border-radius: calc(var(--radius) - 2px);
+            padding: 6px 8px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--text);
+            cursor: pointer;
+        }
+        .ww-split-menu-item .ww-icon { color: var(--text-dim); }
+        .ww-split-menu-item:hover, .ww-split-menu-item:focus-visible {
+            background: var(--hover-tint);
+            outline: none;
+        }
+        .ww-split-menu-item[aria-checked="true"] { color: var(--accent); font-weight: 700; }
+        .ww-split-menu-item[aria-checked="true"] .ww-icon { color: var(--accent); }
+
+        /* Phase 4D (section 11): the active Y-zoom panel's own subtle,
+           understated visual cue -- an accent border tint only, no
+           background fill, no shadow -- deliberately restrained per that
+           section's own explicit "do not create a large or distracting
+           selection state" instruction. */
+        .ww-panel--active { border-color: var(--accent-dim); }
+        .ww-panel-header { cursor: pointer; border-radius: calc(var(--radius) - 2px); }
+        .ww-panel-header:hover { background: var(--hover-tint); }
+        .ww-panel-header:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
         .ww-panel {
             background: var(--panel);
             border: 1px solid var(--panel-border);
@@ -2003,21 +2154,109 @@
                          every displayed panel at once. Native per-panel
                          Plotly modebars are disabled (see wwInitPanelPlot)
                          -- this is the only navigation surface. -->
+                    <!-- Phase 4D: icon-primary toolbar (DEC-043) -- every
+                         control below keeps its exact prior engineering
+                         behavior (section 45: this phase changes
+                         appearance/precision, never semantics); only the
+                         VISIBLE content changed from text labels to SVG
+                         icons (section 17-19, reusing the SAME viewBox="0
+                         0 18 18"/stroke="currentColor"/fill="none"
+                         convention #mainSidebarMenu's .shell-nav-icon
+                         already established -- see .ww-icon's own CSS
+                         comment). Every icon-only control keeps a
+                         title/aria-label pair (section 34) so no function
+                         requires memorizing an icon. Grouped into
+                         Navigation / Zoom step / Time / View / Measurement
+                         / Layout / Workspace clusters via .ww-toolbar-sep
+                         thin dividers (section 33) instead of one
+                         undifferentiated wall of icons. -->
                     <div class="ww-toolbar" id="wwToolbar" hidden>
-                        <div class="theme-toggle" id="dragModeToggle" role="group" aria-label="Drag mode">
-                            <button type="button" id="dragModeZoomBtn" aria-pressed="true">Zoom</button>
-                            <button type="button" id="dragModePanBtn" aria-pressed="false">Pan</button>
+                        <div class="theme-toggle ww-icon-group" id="dragModeToggle" role="group" aria-label="Drag mode">
+                            <button type="button" id="dragModeZoomBtn" aria-pressed="true" title="Box Zoom" aria-label="Box Zoom">
+                                <span class="ww-icon"><svg viewBox="0 0 18 18"><circle cx="7.5" cy="7.5" r="4.5"/><line x1="10.8" y1="10.8" x2="15.5" y2="15.5"/></svg></span>
+                            </button>
+                            <button type="button" id="dragModePanBtn" aria-pressed="false" title="Pan" aria-label="Pan">
+                                <span class="ww-icon"><svg viewBox="0 0 18 18">
+                                    <path d="M5 10V4.6a1.2 1.2 0 0 1 2.4 0V9"/>
+                                    <path d="M7.4 9V3.9a1.2 1.2 0 0 1 2.4 0V9"/>
+                                    <path d="M9.8 9V4.3a1.2 1.2 0 0 1 2.4 0V10"/>
+                                    <path d="M12.2 10V6.4a1.1 1.1 0 0 1 2.2 0v4.1c0 2.8-2 5-4.7 5-1.8 0-3-.6-3.9-1.9L4 10.4c-.4-.6-.2-1.3.4-1.6.6-.3 1.3 0 1.6.6L7 10.6"/>
+                                </svg></span>
+                            </button>
                         </div>
-                        <div class="theme-toggle" id="timeModeToggle" role="group" aria-label="Time axis mode">
-                            <button type="button" id="timeModeAbsoluteBtn" aria-pressed="true">Absolute Time</button>
-                            <button type="button" id="timeModeElapsedBtn" aria-pressed="false">Elapsed Time</button>
+
+                        <!-- Phase 4D (section 2/3): precision step zoom --
+                             ONE split button per action (never four
+                             permanent X+/X-/Y+/Y- buttons, section 2's own
+                             explicit instruction). Main icon performs
+                             whichever axis was last chosen (default X,
+                             section 4); the small trigger opens a 2-item
+                             axis menu. See wwWireZoomStepSplitButtons()
+                             for the interaction wiring and
+                             wwSyncZoomStepControls() for the
+                             tooltip/aria-label/checkmark/disabled-state
+                             sync. -->
+                        <div class="ww-split-btn" id="wwZoomInSplit">
+                            <button type="button" class="ww-icon-btn ww-split-btn-main" id="wwZoomInBtn" title="Zoom In — X axis" aria-label="Zoom In — X axis">
+                                <span class="ww-icon"><svg viewBox="0 0 18 18"><circle cx="7.5" cy="7.5" r="4.5"/><line x1="10.8" y1="10.8" x2="15.5" y2="15.5"/><line x1="7.5" y1="5.3" x2="7.5" y2="9.7"/><line x1="5.3" y1="7.5" x2="9.7" y2="7.5"/></svg></span>
+                            </button>
+                            <button type="button" class="ww-icon-btn ww-split-btn-trigger" id="wwZoomInMenuBtn" aria-haspopup="menu" aria-expanded="false" title="Choose Zoom In axis" aria-label="Choose Zoom In axis">
+                                <span class="ww-icon ww-caret"><svg viewBox="0 0 18 18"><polyline points="4,6.5 9,11.5 14,6.5" stroke-width="1.6"/></svg></span>
+                            </button>
+                            <div class="ww-split-menu" id="wwZoomInMenu" role="menu" aria-label="Zoom In axis" hidden>
+                                <button type="button" class="ww-split-menu-item" role="menuitemradio" data-axis="x" aria-checked="true">
+                                    <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="3" y1="9" x2="15" y2="9"/><polyline points="5,6.5 2.5,9 5,11.5"/><polyline points="13,6.5 15.5,9 13,11.5"/></svg></span>
+                                    Horizontal (X)
+                                </button>
+                                <button type="button" class="ww-split-menu-item" role="menuitemradio" data-axis="y" aria-checked="false">
+                                    <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="9" y1="3" x2="9" y2="15"/><polyline points="6.5,5 9,2.5 11.5,5"/><polyline points="6.5,13 9,15.5 11.5,13"/></svg></span>
+                                    Vertical (Y)
+                                </button>
+                            </div>
                         </div>
-                        <button class="secondary" type="button" id="wwResetViewBtn">Reset Time View</button>
-                        <button class="secondary" type="button" id="wwAutoscaleBtn">Autoscale Y</button>
+                        <div class="ww-split-btn" id="wwZoomOutSplit">
+                            <button type="button" class="ww-icon-btn ww-split-btn-main" id="wwZoomOutBtn" title="Zoom Out — X axis" aria-label="Zoom Out — X axis">
+                                <span class="ww-icon"><svg viewBox="0 0 18 18"><circle cx="7.5" cy="7.5" r="4.5"/><line x1="10.8" y1="10.8" x2="15.5" y2="15.5"/><line x1="5.3" y1="7.5" x2="9.7" y2="7.5"/></svg></span>
+                            </button>
+                            <button type="button" class="ww-icon-btn ww-split-btn-trigger" id="wwZoomOutMenuBtn" aria-haspopup="menu" aria-expanded="false" title="Choose Zoom Out axis" aria-label="Choose Zoom Out axis">
+                                <span class="ww-icon ww-caret"><svg viewBox="0 0 18 18"><polyline points="4,6.5 9,11.5 14,6.5" stroke-width="1.6"/></svg></span>
+                            </button>
+                            <div class="ww-split-menu" id="wwZoomOutMenu" role="menu" aria-label="Zoom Out axis" hidden>
+                                <button type="button" class="ww-split-menu-item" role="menuitemradio" data-axis="x" aria-checked="true">
+                                    <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="3" y1="9" x2="15" y2="9"/><polyline points="5,6.5 2.5,9 5,11.5"/><polyline points="13,6.5 15.5,9 13,11.5"/></svg></span>
+                                    Horizontal (X)
+                                </button>
+                                <button type="button" class="ww-split-menu-item" role="menuitemradio" data-axis="y" aria-checked="false">
+                                    <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="9" y1="3" x2="9" y2="15"/><polyline points="6.5,5 9,2.5 11.5,5"/><polyline points="6.5,13 9,15.5 11.5,13"/></svg></span>
+                                    Vertical (Y)
+                                </button>
+                            </div>
+                        </div>
+
+                        <span class="ww-toolbar-sep" aria-hidden="true"></span>
+
+                        <div class="theme-toggle ww-icon-group" id="timeModeToggle" role="group" aria-label="Time axis mode">
+                            <button type="button" id="timeModeAbsoluteBtn" aria-pressed="true" title="Absolute Time" aria-label="Absolute Time">
+                                <span class="ww-icon"><svg viewBox="0 0 18 18"><circle cx="9" cy="9" r="6.5"/><line x1="9" y1="9" x2="9" y2="5"/><line x1="9" y1="9" x2="12" y2="10.5"/></svg></span>
+                            </button>
+                            <button type="button" id="timeModeElapsedBtn" aria-pressed="false" title="Elapsed Time" aria-label="Elapsed Time">
+                                <span class="ww-icon"><svg viewBox="0 0 18 18"><circle cx="9" cy="10" r="6"/><line x1="9" y1="10" x2="9" y2="6.5"/><line x1="9" y1="10" x2="11.5" y2="11.5"/><line x1="7" y1="2" x2="11" y2="2"/><line x1="9" y1="2" x2="9" y2="4"/></svg></span>
+                            </button>
+                        </div>
+
+                        <span class="ww-toolbar-sep" aria-hidden="true"></span>
+
+                        <button class="ww-icon-btn" type="button" id="wwResetViewBtn" title="Reset Time View" aria-label="Reset Time View">
+                            <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="3" y1="9" x2="15" y2="9"/><polyline points="5.5,6.5 3,9 5.5,11.5"/><polyline points="12.5,6.5 15,9 12.5,11.5"/></svg></span>
+                        </button>
+                        <button class="ww-icon-btn" type="button" id="wwAutoscaleBtn" title="Autoscale Y" aria-label="Autoscale Y">
+                            <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="9" y1="3" x2="9" y2="15"/><polyline points="6.5,5.5 9,3 11.5,5.5"/><polyline points="6.5,12.5 9,15 11.5,12.5"/></svg></span>
+                        </button>
+
+                        <span class="ww-toolbar-sep" aria-hidden="true"></span>
+
                         <!-- Phase 4B: A/B time measurement cursors -- a mode
-                             toggle, same visual language as every other
-                             `.secondary` toolbar button (not a new button
-                             style). aria-pressed carries the on/off state
+                             toggle. aria-pressed carries the on/off state
                              (section 41 -- must not rely on cursor
                              visibility several screens below); title/
                              aria-label give the same accessible name. Lives
@@ -2027,15 +2266,26 @@
                              Reset Time View already do -- see
                              wwToggleMeasurementCursors()'s own comment for
                              why this is deliberate, not an oversight. -->
-                        <button class="secondary" type="button" id="wwCursorModeBtn" aria-pressed="false" title="A/B time cursors">Cursors A/B</button>
+                        <button class="ww-icon-btn" type="button" id="wwCursorModeBtn" aria-pressed="false" title="A/B Time Cursors" aria-label="A/B Time Cursors">
+                            <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="6" y1="2.5" x2="6" y2="15.5" stroke-width="1.3"/><line x1="12" y1="2.5" x2="12" y2="15.5" stroke-width="1.3"/><text x="6" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="currentColor" font-weight="700">A</text><text x="12" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="currentColor" font-weight="700">B</text></svg></span>
+                        </button>
                         <div class="toolbar-spacer"></div>
-                        <div class="theme-toggle" id="layoutModeToggle" role="group" aria-label="Waveform layout">
-                            <button type="button" id="layoutModeGroupedBtn" aria-pressed="true">Grouped</button>
-                            <button type="button" id="layoutModeSeparateBtn" aria-pressed="false">Separate</button>
-                            <button type="button" id="layoutModeCustomBtn" aria-pressed="false">Custom</button>
+                        <div class="theme-toggle ww-icon-group" id="layoutModeToggle" role="group" aria-label="Waveform layout">
+                            <button type="button" id="layoutModeGroupedBtn" aria-pressed="true" title="Grouped Layout" aria-label="Grouped Layout">
+                                <span class="ww-icon"><svg viewBox="0 0 18 18"><rect x="2.5" y="3" width="13" height="12" rx="1.5"/><polyline points="4,11 6,8 8,11.5 10,7.5 12,10.5 14,9" stroke-width="1.1"/><polyline points="4,7 6,10 8,6.5 10,10.5 12,7 14,11" stroke-width="1.1"/></svg></span>
+                            </button>
+                            <button type="button" id="layoutModeSeparateBtn" aria-pressed="false" title="Separate Layout" aria-label="Separate Layout">
+                                <span class="ww-icon"><svg viewBox="0 0 18 18"><rect x="2.5" y="2.5" width="13" height="3.6" rx="0.8"/><rect x="2.5" y="7.2" width="13" height="3.6" rx="0.8"/><rect x="2.5" y="11.9" width="13" height="3.6" rx="0.8"/></svg></span>
+                            </button>
+                            <button type="button" id="layoutModeCustomBtn" aria-pressed="false" title="Custom Layout" aria-label="Custom Layout">
+                                <span class="ww-icon"><svg viewBox="0 0 18 18"><rect x="2.5" y="2.5" width="6" height="6" rx="1"/><rect x="9.5" y="2.5" width="6" height="6" rx="1"/><rect x="2.5" y="9.5" width="13" height="6" rx="1"/><line x1="12.5" y1="12" x2="12.5" y2="13.5" stroke-width="1.1"/></svg></span>
+                            </button>
                         </div>
                         <button class="secondary" type="button" id="editChannelGroupsBtn" hidden>Edit Channel Groups</button>
-                        <button class="secondary" type="button" id="clearWorkspaceBtn" hidden>Clear workspace</button>
+                        <span class="ww-toolbar-sep" aria-hidden="true"></span>
+                        <button class="ww-icon-btn" type="button" id="clearWorkspaceBtn" hidden title="Clear Workspace" aria-label="Clear Workspace">
+                            <span class="ww-icon"><svg viewBox="0 0 18 18"><path d="M4 12.5 10.5 6a1.4 1.4 0 0 1 2 0l2 2a1.4 1.4 0 0 1 0 2L8 16.5H4.5a.5.5 0 0 1-.5-.5z"/><line x1="7" y1="9.5" x2="12" y2="14.5"/></svg></span>
+                        </button>
                     </div>
 
                     <!-- Active View Area (section 11/13): holds whichever
@@ -4487,6 +4737,33 @@
         const WW_POINT_BUDGET_MAX = 20000;
         const WW_POINT_BUDGET_PER_PIXEL = 4;
 
+        // Phase 4D (section 6/12): precision step-zoom factors -- owner-
+        // agreed ~20% step. Zoom In multiplies the current span by 0.8
+        // (shrinks it, i.e. zooms in); Zoom Out multiplies by 1.25 (the
+        // exact inverse ratio: 0.8 * 1.25 === 1, so N zoom-ins followed by
+        // N zoom-outs returns exactly to the starting span, modulo
+        // workspace-bounds clamping and floating-point tolerance -- see
+        // section 39's own repeated-click verification). Shared by both
+        // the X (workspace-global) and Y (active-panel-local) step-zoom
+        // paths -- one stepping rule, not two.
+        const WW_ZOOM_STEP_IN_FACTOR = 0.8;
+        const WW_ZOOM_STEP_OUT_FACTOR = 1.25;
+        // Section 40: NOT a UX-imposed "you can't zoom in further" limit --
+        // COMTRADE sample spacing in real recordings is essentially never
+        // below 1 microsecond (even a 1 MHz recording -- far beyond
+        // typical protection-relay sampling rates -- spaces samples 1us
+        // apart), so this floor exists purely to stop a span from
+        // underflowing to zero/negative after an extreme number of
+        // repeated clicks, never to stop an engineer from reaching real
+        // per-sample resolution.
+        const WW_MIN_X_SPAN_SECONDS = 1e-6;
+        // Section 41: same purpose for Y -- an epsilon floor against
+        // literal zero/negative span, not a practical inspection limit.
+        // 0.8^N shrinks a span of even a modest engineering magnitude
+        // (say, 100) below this floor only after roughly 190 consecutive
+        // clicks, far beyond any real interactive use.
+        const WW_MIN_Y_SPAN = 1e-9;
+
         // Phase 2C-C2: panel height constraints. Minimum keeps a resized
         // panel usable -- wwBuildLayout()'s own fixed top+bottom margins
         // (t:10, b:34) already consume 44px regardless of panel height, so
@@ -4705,6 +4982,29 @@
             // wwDigitalCurStateText() always re-checks cursor mode/cursor
             // visibility/wwIsDigitalChannelVisible() at render time.
             digitalCursorValues: new Map(),
+            // Phase 4D: the ACTIVE waveform panel for Y step zoom (section
+            // 9/10) -- stored as the panel's own stable `groupKey` (same
+            // key namespace as ww.panelHeights/ww.customGroups), never a
+            // raw panel object reference, because wwRebuildLayout() fully
+            // discards and recreates every panel object on every
+            // Grouped/Separate/Custom switch (see that function's own
+            // comment) -- a stored object reference would silently go
+            // stale. wwActivePanel() resolves this key against the
+            // CURRENT ww.panels list every time it's read, with a
+            // self-healing fallback to the first panel -- see its own
+            // comment for why this needs no separate rebuild-time hook.
+            activePanelGroupKey: null,
+            // Phase 4D (section 4): the last-selected axis for each step
+            // action, remembered SEPARATELY for Zoom In vs. Zoom Out (the
+            // task's own primary recommendation over one shared axis --
+            // sharing risked a surprising cross-action jump, e.g.
+            // selecting Y for Zoom In silently redirecting a later Zoom
+            // Out click too). Defaults to "x" per section 4's own
+            // explicit preference (precise time-window inspection is the
+            // most common case). Never reset by wwClearWorkspace() --
+            // a viewing preference, same lifecycle class as
+            // ww.layoutMode/ww.dragMode/ww.timeMode above.
+            zoomStepAxis: { in: "x", out: "x" },
         };
 
         function wwFiniteNumber(value) {
@@ -4782,6 +5082,52 @@
             );
         }
 
+        // Phase 4D (section 7): a deliberately SEPARATE clamp from
+        // wwClampRangeToWorkspace() above -- that helper clamps each
+        // endpoint independently, which is correct for its own callers
+        // (drag-zoom/pan broadcast, unchanged, section 45) but would
+        // asymmetrically truncate a Zoom-Out step's SPAN whenever the
+        // window's center sits close to one edge of the workspace (e.g.
+        // zooming out from a window already near the record start would
+        // clip the left side while barely touching the right, silently
+        // shrinking the requested step instead of "preserving as much
+        // center intent as practical," section 7's own explicit wording).
+        // This version instead SHIFTS the window to fit fully inside
+        // workspace bounds whenever the requested span itself is <= the
+        // full workspace span -- preserving the exact requested SPAN
+        // (the actual "zoom out" content) even if that means the window's
+        // center moves slightly toward the interior. Only once the
+        // requested span can no longer fit at all does it fall back to
+        // the full workspace bounds outright.
+        function wwClampZoomWindowToWorkspace(start, end) {
+            if (!ww.workspaceBounds) return wwNormalizeBounds(start, end);
+            const bounds = ww.workspaceBounds;
+            const requestedSpan = end - start;
+            if (requestedSpan >= bounds.end - bounds.start) {
+                return { start: bounds.start, end: bounds.end };
+            }
+            let newStart = start;
+            let newEnd = end;
+            if (newStart < bounds.start) {
+                const shift = bounds.start - newStart;
+                newStart += shift;
+                newEnd += shift;
+            }
+            if (newEnd > bounds.end) {
+                const shift = newEnd - bounds.end;
+                newEnd -= shift;
+                newStart -= shift;
+            }
+            // Defensive final clamp -- covers only the pathological case
+            // where requestedSpan is within float epsilon of the full
+            // workspace span, where the two shifts above could otherwise
+            // leave a sliver outside bounds.
+            return wwNormalizeBounds(
+                Math.max(newStart, bounds.start),
+                Math.min(newEnd, bounds.end)
+            );
+        }
+
         async function wwRefreshWorkspaceBounds(options) {
             options = options || {};
             const next = wwDeriveWorkspaceBounds();
@@ -4809,6 +5155,7 @@
                     ww.measurementCursors.enabled = false;
                     wwUpdateCursorOverlay();
                 }
+                wwSyncZoomStepControls();
                 return;
             }
 
@@ -4820,6 +5167,7 @@
                 if (isFreshViewport) wwReinitCursorsForNewViewport();
                 wwSyncStickyRuler();
                 wwRebuildDigitalChart();
+                wwSyncZoomStepControls();
                 return;
             }
 
@@ -5424,7 +5772,10 @@
             container.className = "ww-panel";
             container.dataset.panelId = panel.id;
             container.innerHTML =
-                '<div class="ww-panel-header"><span class="ww-panel-label">' + escapeHtml(panel.label) + '</span></div>' +
+                '<div class="ww-panel-header" tabindex="0" role="button" ' +
+                    'aria-label="Set ' + escapeHtml(panel.label) + ' as the active panel for Y step zoom" ' +
+                    'title="Click to make this the active Y-zoom panel">' +
+                    '<span class="ww-panel-label">' + escapeHtml(panel.label) + '</span></div>' +
                 '<div class="ww-legend"></div>' +
                 '<div class="ww-chart-wrap">' +
                     '<div class="ww-chart"></div>' +
@@ -5436,6 +5787,7 @@
 
             document.getElementById("wwPanels").appendChild(container);
             panel.containerEl = container;
+            panel.headerEl = container.querySelector(".ww-panel-header");
             panel.legendEl = container.querySelector(".ww-legend");
             panel.chartEl = container.querySelector(".ww-chart");
             panel.loadingEl = container.querySelector(".ww-chart-loading");
@@ -5444,6 +5796,80 @@
 
             panel.chartEl.style.height = panel.height + "px";
             wwWireResizeHandle(panel);
+            // Phase 4D (section 10): click establishes which panel Y step
+            // zoom operates on -- deliberately NOT hover-based (section 10's
+            // own explicit instruction: hover-only would be ambiguous while
+            // using toolbar controls, since the pointer is over the toolbar,
+            // not any panel, at the moment of the actual click).
+            wwWireActivePanelSelection(panel);
+        }
+
+        // ------------------------------------------------------------------
+        // Phase 4D: active Y-zoom panel
+        // ------------------------------------------------------------------
+
+        // The ONE resolver every Y-step-zoom/active-visual call site reads
+        // through -- self-healing by design (section 15): if
+        // ww.activePanelGroupKey no longer matches any CURRENT panel (a
+        // layout-mode switch just discarded and rebuilt every panel
+        // object, or the previously-active panel's channel was removed),
+        // this falls back to the first/primary panel and adopts ITS
+        // groupKey as the new active key, so the fallback itself becomes
+        // sticky rather than re-triggering on every subsequent call.
+        // Returns undefined when zero panels are displayed. No separate
+        // "rebuild happened" hook is needed anywhere else in the codebase
+        // because every caller already goes through this resolver instead
+        // of reading ww.activePanelGroupKey directly.
+        function wwActivePanel() {
+            if (ww.panels.length === 0) return undefined;
+            let panel = ww.panels.find((p) => p.groupKey === ww.activePanelGroupKey);
+            if (!panel) {
+                panel = ww.panels[0];
+                ww.activePanelGroupKey = panel.groupKey;
+            }
+            return panel;
+        }
+
+        // Section 11: a subtle, understated visual cue only -- toggles one
+        // CSS class (.ww-panel--active, border/accent only, see its own
+        // CSS comment) across every currently-rendered panel container to
+        // match whatever wwActivePanel() currently resolves to. Cheap
+        // enough to call after any event that could change which panel is
+        // active OR which panels exist at all (click selection, layout
+        // rebuild, channel add/remove) -- never a per-panel diff, just a
+        // flat re-sync every time.
+        function wwSyncActivePanelVisual() {
+            const active = wwActivePanel();
+            for (const panel of ww.panels) {
+                if (panel.containerEl) panel.containerEl.classList.toggle("ww-panel--active", panel === active);
+            }
+        }
+
+        function wwSetActivePanel(panel) {
+            if (!panel) return;
+            ww.activePanelGroupKey = panel.groupKey;
+            wwSyncActivePanelVisual();
+        }
+
+        // Section 10: click (not hover) establishes active-panel authority.
+        // Wired on the panel HEADER specifically -- not the whole card --
+        // so this never intercepts a Plotly box-zoom/pan drag gesture
+        // inside the chart area, a legend-chip click, or the resize
+        // handle's own pointer-capture drag; the header is a small,
+        // clearly-bounded target uninvolved in any of those. Keyboard
+        // users can Tab to the header (tabindex="0", role="button" set in
+        // wwCreatePanelDom) and press Enter/Space, same activation keys
+        // every other row/button control in this file already honors.
+        function wwWireActivePanelSelection(panel) {
+            const header = panel.headerEl;
+            if (!header) return;
+            header.addEventListener("click", () => wwSetActivePanel(panel));
+            header.addEventListener("keydown", (event) => {
+                if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+                    event.preventDefault();
+                    wwSetActivePanel(panel);
+                }
+            });
         }
 
         // Phase 4A-UAT4 (owner clarification): Separate-mode-ONLY now --
@@ -5848,6 +6274,11 @@
             // re-fetching for a viewport change, see
             // extract_digital_waveform's own docstring).
             wwRebuildDigitalChart();
+            // Phase 4D (section 7): re-evaluate the Zoom Out disabled
+            // state for the new viewport -- this is the one call site
+            // every X viewport change (drag-zoom, pan, Reset Time View,
+            // AND step zoom) already funnels through.
+            wwSyncZoomStepControls();
             await wwRefetchAllChannels(startTime, endTime);
         }
 
@@ -5882,6 +6313,238 @@
             for (const panel of ww.panels) {
                 Plotly.relayout(panel.chartEl, { "yaxis.autorange": true });
             }
+        }
+
+        // ------------------------------------------------------------------
+        // Phase 4D: precision step zoom (DEC-043)
+        //
+        // "X step zoom is workspace-global; Y step zoom is active-panel-
+        // local" -- see wwStepZoomX()/wwStepZoomY() below. Both share the
+        // same +/-20% stepping factors (WW_ZOOM_STEP_IN_FACTOR/
+        // WW_ZOOM_STEP_OUT_FACTOR) and the same "keep the current midpoint
+        // fixed" math; only the axis, the state they read/write, and the
+        // bounds they respect differ.
+        // ------------------------------------------------------------------
+
+        // Section 5/6/8: workspace-global, keeps the CURRENT viewport
+        // midpoint fixed, and -- critically -- reuses
+        // wwApplyAndFetchViewport() exactly like drag-zoom/pan/Reset Time
+        // View already do, never a direct Plotly relayout of stale trace
+        // data. That single call site is what guarantees every analog
+        // panel, the digital region, and the shared ruler all move
+        // together (section 47), and that the normal adaptive-resolution
+        // range fetch runs again for the new range (section 48) -- this
+        // function contributes ONLY the new [start, end] math, nothing
+        // about how that range then gets fetched/rendered.
+        async function wwStepZoomX(direction) {
+            if (!ww.viewport) return;
+            const span = ww.viewport.end - ww.viewport.start;
+            if (!Number.isFinite(span) || span <= 0) return;
+            const center = (ww.viewport.start + ww.viewport.end) / 2;
+            const factor = direction === "in" ? WW_ZOOM_STEP_IN_FACTOR : WW_ZOOM_STEP_OUT_FACTOR;
+            let newSpan = span * factor;
+            if (direction === "in") newSpan = Math.max(newSpan, WW_MIN_X_SPAN_SECONDS);
+            let next = { start: center - newSpan / 2, end: center + newSpan / 2 };
+            if (direction === "out") {
+                // Section 7: a smart window clamp that preserves the
+                // requested SPAN (shifting the window instead of
+                // asymmetrically truncating it) whenever the span itself
+                // still fits inside the workspace -- see
+                // wwClampZoomWindowToWorkspace()'s own comment.
+                const clamped = wwClampZoomWindowToWorkspace(next.start, next.end);
+                if (!clamped) return;
+                next = clamped;
+                // Section 7: already at (or beyond) full workspace range --
+                // a genuine no-op, never an unnecessary refetch.
+                if (wwBoundsEqual(next, ww.viewport)) return;
+            } else {
+                // Zoom In's new span is always a strict subset of the
+                // current viewport (center fixed, span only shrinks), and
+                // the current viewport is already known-in-bounds by
+                // invariant -- no clamp needed, just a sanity normalize.
+                const normalized = wwNormalizeBounds(next.start, next.end);
+                if (!normalized) return;
+                next = normalized;
+            }
+            clearTimeout(ww.viewportDebounceTimer);
+            await wwApplyAndFetchViewport(next.start, next.end);
+        }
+
+        // Section 9/10/12/13: ACTIVE-PANEL-LOCAL, not workspace-global --
+        // a deliberate contrast with wwStepZoomX() above (DEC-043's own
+        // "X step zoom is workspace-global; Y step zoom is
+        // active-panel-local" rule). Reads the panel's own CURRENTLY
+        // RESOLVED Y range from Plotly's `_fullLayout` (the real range in
+        // effect whether it got there via autorange or a previous manual
+        // step -- `layout.yaxis.range` alone can be undefined while still
+        // auto-ranging, see wwPanelPlotWidth()'s own established
+        // `_fullLayout` precedent for reading Plotly's resolved geometry
+        // rather than its raw input layout), then writes an explicit new
+        // range back -- taking the panel out of autorange, exactly
+        // "manual range as appropriate" per section 14 (Autoscale Y
+        // remains the one action that restores autorange, untouched here).
+        function wwStepZoomY(direction) {
+            const panel = wwActivePanel();
+            if (!panel || !panel.plotlyReady || !panel.chartEl) return;
+            const fl = panel.chartEl._fullLayout;
+            const currentRange = fl && fl.yaxis ? fl.yaxis.range : null;
+            if (!currentRange || currentRange.length !== 2) return;
+            const lo = Number(currentRange[0]);
+            const hi = Number(currentRange[1]);
+            if (!Number.isFinite(lo) || !Number.isFinite(hi)) return;
+            const span = hi - lo;
+            if (!Number.isFinite(span) || span === 0) return;
+            const center = (lo + hi) / 2;
+            const factor = direction === "in" ? WW_ZOOM_STEP_IN_FACTOR : WW_ZOOM_STEP_OUT_FACTOR;
+            // Section 41: epsilon floor against a collapsing-to-zero span,
+            // applied to the ABSOLUTE span so it works identically for an
+            // inverted (hi < lo) axis, which Plotly permits.
+            const sign = span < 0 ? -1 : 1;
+            let newSpan = Math.abs(span) * factor;
+            if (direction === "in") newSpan = Math.max(newSpan, WW_MIN_Y_SPAN);
+            newSpan *= sign;
+            Plotly.relayout(panel.chartEl, {
+                "yaxis.range": [center - newSpan / 2, center + newSpan / 2],
+                "yaxis.autorange": false,
+            });
+        }
+
+        // Section 3/4/37: the ONE function every main Zoom In/Zoom Out
+        // toolbar click calls -- dispatches to X or Y based on whichever
+        // axis was last chosen for THIS action (see ww.zoomStepAxis),
+        // remembered separately for "in" vs. "out".
+        function wwPerformZoomStep(action) {
+            const axis = ww.zoomStepAxis[action] === "y" ? "y" : "x";
+            if (axis === "y") wwStepZoomY(action);
+            else wwStepZoomX(action);
+        }
+
+        // Section 3/37: choosing an axis from the split-button's dropdown
+        // BOTH remembers the preference AND performs that exact step
+        // immediately -- the user just explicitly asked for "Zoom In -> Y"
+        // (or "Out -> X"), so treating the click as selection-only with no
+        // visible effect would be the surprising outcome (section 37: "do
+        // not surprise the user"), not the safe one. Every subsequent
+        // click of the main icon then repeats the SAME axis with no menu
+        // needed (section 4's own minimum bar).
+        function wwSetZoomStepAxis(action, axis) {
+            ww.zoomStepAxis[action] = axis === "y" ? "y" : "x";
+            wwSyncZoomStepControls();
+            wwPerformZoomStep(action);
+        }
+
+        // Keeps the split-buttons' tooltips/aria-labels/menu checkmarks
+        // and the Zoom-Out-at-full-range disabled state all in sync.
+        // Called after every axis-preference change and every viewport/
+        // workspace-bounds change (section 7's own "or visually disabled
+        // if appropriate").
+        function wwSyncZoomStepControls() {
+            for (const action of ["in", "out"]) {
+                const axis = ww.zoomStepAxis[action] === "y" ? "y" : "x";
+                const axisLabel = axis === "y" ? "Y axis" : "X axis";
+                const actionLabel = action === "in" ? "Zoom In" : "Zoom Out";
+                const mainBtn = document.getElementById(action === "in" ? "wwZoomInBtn" : "wwZoomOutBtn");
+                if (mainBtn) {
+                    const label = actionLabel + " — " + axisLabel;
+                    mainBtn.title = label;
+                    mainBtn.setAttribute("aria-label", label);
+                }
+                const menu = document.getElementById(action === "in" ? "wwZoomInMenu" : "wwZoomOutMenu");
+                if (menu) {
+                    for (const item of menu.querySelectorAll(".ww-split-menu-item")) {
+                        item.setAttribute("aria-checked", String(item.dataset.axis === axis));
+                    }
+                }
+            }
+            // Section 7: Zoom Out reads as unavailable once the current
+            // viewport already covers the full workspace AND the user's
+            // remembered preference for "out" is X (a Y-axis preference
+            // has no comparable hard limit, so it stays enabled).
+            const outBtn = document.getElementById("wwZoomOutBtn");
+            if (outBtn) {
+                const atFullRange = !!(ww.viewport && ww.workspaceBounds && wwBoundsEqual(ww.viewport, ww.workspaceBounds));
+                outBtn.disabled = ww.zoomStepAxis.out !== "y" && atFullRange;
+            }
+        }
+
+        // Section 35: split-button/dropdown accessibility -- Tab reaches
+        // the main action, then the trigger (natural DOM order, no
+        // tabindex tricks needed); Enter/Space activates either (native
+        // <button> behavior); opening the menu moves focus to its first
+        // item so keyboard users can Tab between the two X/Y items
+        // directly; Escape closes the menu and returns focus to the
+        // trigger; a click anywhere outside an open menu closes it too
+        // (standard dropdown convention, not itself a keyboard
+        // requirement but expected mouse behavior).
+        function wwWireZoomStepSplitButtons() {
+            for (const action of ["in", "out"]) {
+                const wrapId = action === "in" ? "wwZoomInSplit" : "wwZoomOutSplit";
+                const mainId = action === "in" ? "wwZoomInBtn" : "wwZoomOutBtn";
+                const triggerId = action === "in" ? "wwZoomInMenuBtn" : "wwZoomOutMenuBtn";
+                const menuId = action === "in" ? "wwZoomInMenu" : "wwZoomOutMenu";
+                const wrap = document.getElementById(wrapId);
+                const mainBtn = document.getElementById(mainId);
+                const triggerBtn = document.getElementById(triggerId);
+                const menu = document.getElementById(menuId);
+                if (!wrap || !mainBtn || !triggerBtn || !menu) continue;
+
+                function closeMenu() {
+                    menu.hidden = true;
+                    triggerBtn.setAttribute("aria-expanded", "false");
+                }
+                function openMenu() {
+                    // Only one split-button menu open at a time.
+                    for (const otherMenu of document.querySelectorAll(".ww-split-menu")) {
+                        otherMenu.hidden = true;
+                    }
+                    for (const otherTrigger of document.querySelectorAll('.ww-split-btn-trigger[aria-expanded="true"]')) {
+                        otherTrigger.setAttribute("aria-expanded", "false");
+                    }
+                    menu.hidden = false;
+                    triggerBtn.setAttribute("aria-expanded", "true");
+                    const firstItem = menu.querySelector(".ww-split-menu-item");
+                    if (firstItem) firstItem.focus();
+                }
+
+                mainBtn.addEventListener("click", () => wwPerformZoomStep(action));
+                triggerBtn.addEventListener("click", (event) => {
+                    event.stopPropagation();
+                    if (menu.hidden) openMenu(); else closeMenu();
+                });
+                for (const item of menu.querySelectorAll(".ww-split-menu-item")) {
+                    item.addEventListener("click", () => {
+                        wwSetZoomStepAxis(action, item.dataset.axis);
+                        closeMenu();
+                        triggerBtn.focus();
+                    });
+                }
+                menu.addEventListener("keydown", (event) => {
+                    if (event.key !== "Escape") return;
+                    event.preventDefault();
+                    closeMenu();
+                    triggerBtn.focus();
+                });
+                // Closes the menu if keyboard focus leaves the split
+                // button entirely (e.g. Tab past the last menu item onto
+                // the next toolbar control) -- relatedTarget is null for
+                // some non-keyboard blur causes, in which case this
+                // safely no-ops rather than risk closing on every blur.
+                wrap.addEventListener("focusout", (event) => {
+                    if (event.relatedTarget && !wrap.contains(event.relatedTarget)) closeMenu();
+                });
+            }
+
+            // Click anywhere outside every split button closes any open menu.
+            document.addEventListener("click", (event) => {
+                for (const openMenu of document.querySelectorAll(".ww-split-menu:not([hidden])")) {
+                    const wrap = openMenu.closest(".ww-split-btn");
+                    if (wrap && !wrap.contains(event.target)) {
+                        openMenu.hidden = true;
+                        const trigger = wrap.querySelector(".ww-split-btn-trigger");
+                        if (trigger) trigger.setAttribute("aria-expanded", "false");
+                    }
+                }
+            });
         }
 
         // Zoom/Pan toolbar buttons -- set every panel's dragmode together;
@@ -6079,6 +6742,12 @@
             // its dots/remove-controls in sync with the just-updated
             // displayed set.
             wwSyncChannelBrowserDisplayState();
+            // Phase 4D (section 11): if this batch created the workspace's
+            // very first panel(s), wwActivePanel()'s own fallback needs a
+            // visible sync pass so the lone panel reads as active
+            // immediately, matching section 11's "if only one panel
+            // exists, it may naturally be active."
+            wwSyncActivePanelVisual();
             // Phase 4C1 (section 14/29): every channel just added is now
             // visible -- if cursor mode is on, its Cur A/Cur B needs a
             // real value instead of the "—" wwCurValueText() already
@@ -6133,6 +6802,12 @@
             // re-render this one row's own two cells.
             wwClearCursorValuesForChannels(channel.sourceId, [channel.channelName]);
             wwUpdateCursorValueCellsForChannels(channel.sourceId, [channel.channelName]);
+            // Phase 4D (section 15): if the just-removed panel WAS the
+            // active Y-zoom panel, wwActivePanel()'s own fallback needs a
+            // visible sync so a different panel reads as active right
+            // away, rather than only self-healing the next time something
+            // else happens to call it.
+            wwSyncActivePanelVisual();
             wwRefreshWorkspaceBounds();
         }
 
@@ -8282,6 +8957,16 @@
             // projection needs recomputing here, since every panel's own
             // plotting-area geometry was just torn down and rebuilt above.
             wwUpdateCursorOverlay();
+            // Phase 4D (section 15): every panel object above this line is
+            // BRAND NEW -- ww.activePanelGroupKey may no longer name any of
+            // them (e.g. a Separate-mode per-channel groupKey has no
+            // counterpart in Grouped mode). wwSyncActivePanelVisual() calls
+            // wwActivePanel() internally, which already falls back to the
+            // first panel and adopts its groupKey when the old one no
+            // longer matches -- this call is what makes that fallback
+            // visible immediately after a layout switch, rather than only
+            // on the next unrelated re-render.
+            wwSyncActivePanelVisual();
         }
 
         // Phase 4A-UAT7 (DEC-035): a lightweight, on-demand console
@@ -8780,6 +9465,12 @@
         // Phase 4B: A/B time measurement cursors.
         document.getElementById("wwCursorModeBtn").addEventListener("click", wwToggleMeasurementCursors);
         wwWireCursorDrag();
+        // Phase 4D: precision step zoom split buttons + initial tooltip/
+        // checkmark sync (X is the default axis for both actions, matches
+        // the HTML's own static title="...— X axis" text until the first
+        // real viewport exists).
+        wwWireZoomStepSplitButtons();
+        wwSyncZoomStepControls();
         document.addEventListener("powerwave:theme-change", wwApplyTheme);
 
         // Phase 2C-B1/C1: Grouped/Separate/Custom layout mode.
