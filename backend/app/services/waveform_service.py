@@ -389,6 +389,75 @@ def extract_cursor_values(
 
 
 @dataclass(slots=True)
+class AnnotationAnchorResult:
+    """Phase 4F: one authoritative full-resolution sample anchor for a
+    Callout annotation (DEC-045; see app.schemas.annotation_anchor for the
+    wire shape).
+
+    Resolved ONCE, at Callout creation time only -- the frontend's own
+    stored `sample_index`/`elapsed_seconds`/`value` become the
+    annotation's authoritative engineering anchor from that point on and
+    are never re-resolved against this service again (no backend call
+    during drag/zoom/pan -- section 55 of the Phase 4F task).
+    """
+
+    source_id: str
+    channel_name: str
+    unit: str
+    sample_index: int
+    elapsed_seconds: float
+    value: float
+
+
+def resolve_annotation_anchor(
+    active: ActiveSource,
+    *,
+    channel_name: str,
+    approximate_elapsed_seconds: float,
+) -> AnnotationAnchorResult:
+    """Resolve a Callout annotation's anchor to the nearest ACTUAL
+    full-resolution recorded sample on one analog channel (Phase 4F,
+    DEC-045).
+
+    Deliberately reuses, rather than reimplements, the two pieces of
+    logic this exact task already established elsewhere:
+    `_resolve_analog_channel` (the SAME analog-only validation
+    `extract_waveform_range` uses -- raises `ChannelNotFoundError` for an
+    unknown channel, `ChannelNotAnalogError` for a real but digital one)
+    and `_nearest_sample_index` (the SAME nearest-sample/earlier-sample-
+    on-tie rule `extract_cursor_values` already uses for A/B). There is no
+    second nearest-sample definition anywhere in this codebase.
+
+    Raises `InvalidTimeRangeError` if `approximate_elapsed_seconds` falls
+    outside this source's own recorded `[time[0], time[-1]]` bounds --
+    deliberately never clamped to a boundary sample, matching
+    `_nearest_sample_index`'s own "never clamped" contract: a Callout
+    anchor is either a genuine recorded sample or a clean rejection, never
+    an approximate/silent fallback (section 66 of the Phase 4F task).
+    """
+    unit = _resolve_analog_channel(active, channel_name)
+    waveform_data = active.record.waveform_data
+    time_full = waveform_data["time"].to_numpy()
+    values_full = waveform_data[channel_name].to_numpy()
+
+    index = _nearest_sample_index(time_full, approximate_elapsed_seconds)
+    if index is None:
+        raise InvalidTimeRangeError(
+            f"approximate_elapsed_seconds ({approximate_elapsed_seconds}) is outside "
+            "this source's own recorded time bounds."
+        )
+
+    return AnnotationAnchorResult(
+        source_id=active.metadata.source_id,
+        channel_name=channel_name,
+        unit=unit,
+        sample_index=index,
+        elapsed_seconds=float(time_full[index]),
+        value=float(values_full[index]),
+    )
+
+
+@dataclass(slots=True)
 class DigitalTransition:
     time: float
     state: int

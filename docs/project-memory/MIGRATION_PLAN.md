@@ -8650,6 +8650,296 @@ owner UAT after this push.
 
 ---
 
+## Phase 4F — Analog Waveform Callout Annotation (2026-08-21)
+
+### Scope
+
+The second annotation type (DEC-044's own generic framework, extended
+per its own "future type" design goal): `type: "callout"`, a
+waveform/data-anchored annotation, in contrast to `text_note`'s
+workspace-content anchoring. Analog channels only this phase. Explicitly
+excluded: digital Callout, RMS/phasor/peak/delta/event-marker annotation
+types, cross-channel annotation, rich text/Markdown, callout import/
+export, permanent database persistence, draggable/re-anchorable anchor,
+elbow/auto-routed connectors, and auto-scroll/pan-to-annotation
+navigation.
+
+### Engineering model: full-resolution sample authority
+
+A Callout's anchor is `{sourceId, channelName, sampleIndex,
+anchorElapsedSeconds, anchorValue, unit}`, resolved ONCE at creation
+time against the source's own authoritative full-resolution
+`active.record.waveform_data` -- never the displayed/possibly-reduced
+Plotly trace, never interpolated, never derived from raw pointer-X or
+visual pixel geometry. Same engineering-integrity principle DEC-040
+already established for A/B cursor measurements, reusing (not
+reimplementing) that exact nearest-sample logic:
+`backend/app/services/waveform_service.py`'s `_nearest_sample_index()`
+(binary search via `np.searchsorted`, earlier-sample-on-exact-tie) and
+`_resolve_analog_channel()` (analog-only validation, raises
+`ChannelNotFoundError`/`ChannelNotAnalogError`) are both called directly
+by the new `resolve_annotation_anchor()` function, not duplicated.
+
+### Creation UX: Annotate -> Callout -> trace click
+
+The Annotate dropdown's SAME data-driven `.ww-split-menu-item[data-annotation-type]`
+loop that already wires Text Note (section 70) wires Callout for free --
+a second `<button data-annotation-type="callout">`, zero new menu event
+architecture. Selecting it enters the SAME `ww.annotationPlacementType`
+one-shot placement mode; Escape cancels it exactly like Text Note's own.
+
+Callout creation is NOT routed through the existing generic
+`wwAnnotationPlacementClickHandler()` (document-level click listener) --
+that handler explicitly no-ops for `type === "callout"`, since only a
+real Plotly `plotly_click` event (Plotly's own internal event system,
+independent of native DOM `click` bubbling/capturing) can identify WHICH
+trace was clicked. `wwWireAnalogPanelClick(panel)` wires a
+`plotly_click` listener on every analog panel's `chartEl` (called from
+`wwInitPanelPlot()`, unconditionally -- panels are always torn down and
+recreated with a fresh `chartEl` on a layout-mode switch, never reused in
+place, so there is no double-wiring risk unlike the digital chart's own
+persistent `chartEl`, which needs its own `ww.digitalClickWired` guard
+for exactly that reason); it no-ops instantly unless placement mode is
+`"callout"`, so normal Plotly click/zoom/pan is completely unaffected
+outside it.
+
+### Trace identity: Grouped/Separate/Custom
+
+Every trace already carries a stable `"sourceId::channelName"` `meta`
+field (`wwBuildTrace()`, an existing Phase 4A-UAT7 convention) --
+`wwWireAnalogPanelClick()` reads `eventData.points[0].data.meta` and
+matches it against `panel.channels` to resolve the EXACT clicked
+channel, never curveNumber alone (not guaranteed stable across
+rerenders) and never "the first trace in the panel" (Grouped/Custom
+panels may hold several channels; a Separate-mode lane is the
+single-channel case of the exact same mechanism). Verified directly:
+clicking channel B on a 2-trace Grouped panel attaches to B, not A or a
+group default.
+
+### Anchor resolution: backend/service path
+
+`POST /api/v1/workspaces/{workspace_id}/sources/{source_id}/annotation-anchor`
+(`app/api/v1/sources.py`), request `{channel_name,
+approximate_elapsed_seconds}`, response `{source_id, channel_name, unit,
+sample_index, elapsed_seconds, value}` (`app/schemas/annotation_anchor.py`).
+Deliberately NOT an overload of `.../cursor-values` (that endpoint's own
+contract -- "value at an EXISTING cursor time for N channels" -- is a
+different question from "resolve and return sample IDENTITY for one
+channel at one approximate time"); a small, focused endpoint reusing the
+same underlying nearest-sample function is cleaner. Deliberately NOT a
+persistent annotation backend -- this endpoint is called exactly ONCE per
+Callout, at creation time, and answers nothing else. Frontend call site:
+`wwCreateCalloutFromClick()`, which also implements section 67's stale-
+response protection (captures `ww.epoch`/`currentWorkspaceId()` before
+the request, discards the response if either changed by the time it
+resolves) and section 66's "no partial Callout on failure" (a failed/
+network-error resolution creates nothing, shows a concise error via the
+existing per-panel `wwShowError()`, never an approximate fallback).
+
+### Callout payload
+
+`Annotation.data` for `callout`: `{text, sourceId, channelName,
+sampleIndex, anchorElapsedSeconds, anchorValue, unit, boxOffset: {x, y}}`.
+`Annotation.position` itself stays an unused `{x: 0, y: 0}` placeholder
+for `callout` (the top-level generic shape is unchanged; Callout's real
+screen position is entirely derived, never stored as a raw position).
+Absolute timestamp is never stored as separate engineering authority --
+it stays derived as recording start + `anchorElapsedSeconds`, the
+project's own existing convention, computed on demand (Annotation List
+presentation only) via the SAME `wwFormatAbsoluteElapsedTime()` A/B
+cursors already use.
+
+### Rendering: box/connector/marker architecture
+
+One generic render pass, `wwRenderAnnotations()` (section 52 -- never a
+second annotation rendering system), extended with an `isCallout` branch
+alongside the existing `text_note` one. The box (`.ww-annotation--callout`,
+same semantic surface family as Text Note, distinguished by a small
+anchor glyph in its header) is a genuine DOM child of the SAME
+`#wwAnnotationOverlayMain` Text Note boxes already live in -- native
+main-workspace scroll-following for free (Phase 4E-UAT's own core fix,
+fully preserved). The connector line + anchor marker render in a NEW,
+lightweight SVG layer, `#wwCalloutConnectorLayer` (`position: absolute;
+inset: 0; overflow: visible; pointer-events: none;`), added as a DOM
+child of `#activeViewArea` immediately before the annotation overlay in
+source order -- deliberately no `z-index` on it, so plain "auto"
+stacking already keeps it visually behind every z-indexed `.ww-annotation`
+box with zero bookkeeping. Deliberately NOT Plotly shapes (section 54):
+a Plotly-shape-based connector would need a rebuild/restyle on every
+drag/zoom/pan, violating the "zero Plotly calls during reprojection"
+performance requirement (section 55/88) -- plain SVG attribute writes
+(`x1`/`y1`/`x2`/`y2`/`cx`/`cy`) are cheap and precise instead.
+`wwCalloutRectEdgePoint()` computes the connector's box-side endpoint as
+the intersection of a ray from the box's own center toward the anchor
+with the box's rectangular border (section 21's own "center/nearest-edge
+implementation is acceptable" -- deliberately not more elaborate).
+
+### Box dragging: anchor-relative offset, fixed anchor
+
+`wwWireCalloutBoxDrag()` is a genuinely different drag model from Text
+Note's own `wwWireAnnotationDrag()` (content-position-clamped), not a
+parameterization of it -- dragging updates ONLY `data.boxOffset`
+(`boxLeft/Top - anchorContent.x/y` at drag-end), computed via the SAME
+`grabOffsetX/Y` technique (pointer's fixed screen-pixel offset from the
+box's own corner, captured once at drag-start) Text Note already
+established. The anchor's engineering identity is verified UNTOUCHED by
+a drag (source/channel/sampleIndex/anchorElapsedSeconds/anchorValue all
+byte-identical before/after), and the drag path is verified to issue
+ZERO backend requests, ZERO `Plotly.newPlot`, ZERO `Plotly.relayout`,
+and ZERO `Plotly.restyle` calls (section 79/88) -- only annotation
+overlay/SVG geometry and state change.
+
+### Zoom/Pan/Y-scaling: reprojection, not re-resolution
+
+The anchor's projected X pixel reuses `wwCursorTimeToPixelX()`, the SAME
+shared X-projection authority A/B cursors already use (one X-conversion
+authority, project-wide). A NEW `wwCalloutValueToPixelY(panel, value)`
+builds the equivalent Y authority per-panel, from that panel's own live
+`_fullLayout.yaxis.range`/`_offset`/`_length` -- mirroring
+`wwCursorTimeToPixelX()`'s own X-axis technique exactly, just per-panel
+instead of shared (Y ranges are independent per panel; X viewport is
+shared workspace-wide). Reprojection is triggered by reusing the EXACT
+SAME trigger surface `wwUpdateCursorOverlay()` already reacts to (X
+viewport change via `wwRebuildDigitalChart()`, resize, layout-mode
+switch, digital-region height change, scroll via
+`wwScheduleCursorOverlayRefresh()`) -- `wwRenderAnnotations()` is now
+called FIRST, unconditionally, inside `wwUpdateCursorOverlay()`, so none
+of that function's own cursor-specific early returns (cursor mode off,
+nothing rendered yet) can skip Callout reprojection, which has nothing
+to do with A/B cursor state. A NEW branch was added specifically for
+Y-range changes, since A/B cursors (pure vertical lines) never needed
+one: `wwWirePanelRelayout()`'s existing `plotly_relayout` listener now
+also checks `eventData["yaxis.range[0]"]`/`["yaxis.autorange"]` (fired
+identically whether the user drag-zooms the Y axis directly, or
+`wwStepZoomY()`/`wwAutoscaleY()` call `Plotly.relayout()`
+programmatically -- Plotly's own relayout event does not distinguish the
+two) and calls `wwRenderAnnotations()` when either fires. Verified
+directly: `anchorValue` itself never changes on a Y-zoom/autoscale; only
+the marker's projected pixel Y does.
+
+### Absolute/Elapsed: confirmed presentation-only
+
+`anchorElapsedSeconds` is always numeric elapsed seconds (the ONE
+authoritative coordinate system, matching `ww.viewport`'s own
+convention, per DEC-042). Switching Absolute <-> Elapsed touches NONE of
+`sourceId`/`channelName`/`sampleIndex`/`anchorElapsedSeconds`/
+`anchorValue`/waveform geometry -- verified directly, `annotation.data`
+byte-identical before/after. Only the Annotation List's own time
+presentation (via `wwAnnotationMetaLine()`) switches between
+`wwFormatAbsoluteElapsedTime()` and `wwFormatCursorDuration()`.
+
+### Adaptive resolution: anchor bypasses display reduction
+
+Verified directly with a broad viewport whose displayed waveform uses
+`min_max_envelope` (well above `FULL_RESOLUTION_DISPLAY_THRESHOLD`): the
+resolved anchor's `anchorElapsedSeconds` is confirmed to be a time value
+NOT present in the reduced n=50-point displayed trace's own x-values --
+the anchor genuinely comes from the full-resolution source, independent
+of whatever the Plotly trace currently happens to show. This is
+CORRECT, not a bug: the visual anchor position is rendered from the
+engineering time/value through the panel's own axes, regardless of
+which points the displayed trace array happens to contain.
+
+### Visibility rules
+
+- **Anchor outside the current X viewport** (section 35): hidden from
+  canvas (`el.style.display = "none"` on the box, the connector/marker
+  group hidden the same way), annotation stays in `ww.annotations`/the
+  Annotation List, reappears the instant the viewport includes it again.
+- **Anchor value outside the panel's current Y range** (section 36):
+  same hidden/reappear treatment -- computed by
+  `wwCalloutValueToPixelY()` returning `null` when the value's fraction
+  of the current range falls outside `[0, 1]`, never pinned to the
+  Y-axis boundary.
+- **Anchored channel hidden** (section 37): same treatment, driven
+  entirely by `ww.displayed.get(wwChannelKey(...))` returning `undefined`
+  -- no separate "channel visibility" bookkeeping needed, since this Map
+  is already the ONE authoritative "is this channel currently displayed,
+  and on which panel" lookup every layout-mode rebuild keeps current.
+
+### Layout-mode changes
+
+`wwRebuildLayout()` (Grouped/Separate/Custom switch) already ended with
+`wwUpdateCursorOverlay()` before this phase -- since that function now
+calls `wwRenderAnnotations()` first and unconditionally, EVERY layout
+switch automatically reprojects every Callout onto its channel's new
+current panel, with zero additional call sites needed. Verified: no
+duplicate box/connector/marker appears after Grouped -> Separate ->
+Grouped.
+
+### Annotation List
+
+`wwAnnotationCategoryLabel()` needed no change (the existing generic
+`String(annotation.type).toUpperCase()` fallback already produces
+"CALLOUT" correctly). `wwAnnotationSummary()` gained a `callout` branch
+(text preview, "(empty callout)" when blank, mirroring Text Note's own
+"(empty note)"). A NEW `wwAnnotationMetaLine()` is the ONE dispatch point
+for Callout's own extra channel/time/value line (section 42/43) -- empty
+string for `text_note`, so the drawer row structure itself needed only
+one small additive change (an optional `.ww-annotation-list-item-meta`
+div), not a redesign. Selection/delete reuse the exact same generic
+paths every other annotation already uses.
+
+### Coexistence with Text Note
+
+Verified directly: 2 Text Notes + 3 Callouts coexist in `ww.annotations`
+(count = 5), the drawer renders all 5 rows with correct
+category/preview/meta-line per type, and deleting one type never
+disturbs the other.
+
+### Workspace lifecycle / source removal
+
+Clear Workspace (display-only) preserves Callouts, matching DEC-044's
+own established semantics -- confirmed unchanged, no special-casing
+needed since the generic `ww.annotations` authority doesn't distinguish
+types for this path. Start New Workspace clears all annotation types via
+the same existing `ww.annotations.clear()` call. Source removal is the
+ONE Callout-specific lifecycle rule: `wwRemoveChannelsForSource()` now
+also calls a new `wwRemoveCalloutsForSource(sourceId)`, which deletes
+(not merely hides) every Callout anchored to that source -- its sample
+no longer exists server-side once the source is gone, and no other
+source is ever silently substituted for a same-named channel (section
+57's own explicit "do not silently rebind" instruction).
+
+### Performance
+
+Verified directly (section 88): a box drag issues zero waveform API
+calls, zero cursor-value API calls, and zero `Plotly.newPlot`/
+`Plotly.relayout`/`Plotly.restyle` calls -- only annotation overlay/SVG
+geometry and `data.boxOffset` state change. Anchor resolution itself
+(the one real backend call) happens exactly once, at creation.
+
+### Tests
+
+New `phase4f_check.mjs` -- an extended jsdom harness adding per-panel
+`_fullLayout.yaxis` geometry (`range`/`_offset`/`_length`, updated by a
+`Plotly.relayout` mock that also fires a realistic `plotly_relayout`
+`eventData` back, mirroring several existing Phase 2C-B/C test files'
+own established pattern for this), a `POST .../annotation-anchor` fetch
+mock backed by a deliberately finer-grained (901-sample) "full-
+resolution" dataset than the existing coarse (50-point) `/waveform`
+display mock, and a `triggerPlotlyClick()` helper simulating a real
+Plotly `plotly_click` event. 23/23 checks passing, covering the task's
+own required list (sections 71-88: anchor resolution + tie-break,
+reduced-display independence, Grouped/Separate/Custom exact-trace
+identity, zoom/pan/Y-zoom/Absolute-Elapsed anchor invariance, box drag
+performance/offset-only semantics, out-of-viewport/hidden-channel
+visibility, layout-mode reprojection with no duplicates, multi-type
+coexistence, source removal, workspace lifecycle, safe text, and pointer
+isolation) plus placement-mode/menu basics. `phase4e_check.mjs`'s own
+"Annotate dropdown" test updated (1 item -> 2, Text Note first) to match
+the new menu, its remaining 36 checks unaffected. Full frontend suite
+reconfirmed at exactly the true 33-failure baseline across the same 14
+pre-existing files (zero net new regressions). Backend: 19 new tests
+(`test_annotation_anchor_service.py`, `test_annotation_anchor_api.py`,
+reusing the established `_active_source()`/COMTRADE-fixture-upload
+patterns from `test_cursor_values_service.py`/`test_cursor_values_api.py`),
+412/412 passing (393 prior + 19 new), zero regressions.
+
+### Decision
+
+See [DECISIONS.md — DEC-045](DECISIONS.md#dec-045--callout-is-a-waveform-anchored-annotation-type-analog-only-this-phase-with-a-fixed-engineering-anchor-and-a-movable-presentation-box).
+
 ## Phase 4E-UAT2 — Free Text Notes Restricted to Main Waveform Workspace (2026-08-21)
 
 ### Scope

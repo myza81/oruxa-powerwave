@@ -4186,6 +4186,157 @@ Impact:
 
 ---
 
+## DEC-045 — Callout is a waveform-anchored annotation type, analog only this phase, with a fixed engineering anchor and a movable presentation box
+
+Date: 2026-08-21
+Status: Approved
+Source: explicit owner-approved direction for Phase 4F ("Analog Waveform
+Callout Annotation").
+
+Decision:
+
+Oruxa Powerwave's SECOND annotation type, `type: "callout"`, reusing the
+EXACT SAME generic framework DEC-044 established (`ww.annotations` remains
+the sole state authority — no parallel Callout registry) rather than a
+purpose-built callout subsystem:
+
+> Callout annotations are analog waveform/data-anchored annotations. The
+> anchor snaps once at creation to the nearest authoritative full-
+> resolution recorded sample for the clicked source/channel. Anchor
+> engineering identity remains fixed through zoom, pan, time-mode
+> changes, adaptive display reduction, and layout changes. The Callout
+> box is presentation-only and may be dragged relative to the fixed
+> anchor.
+
+- **Fundamentally different anchoring model from Text Note**: DEC-044's
+  `text_note` is workspace-content-anchored (a `#activeViewArea`
+  content-pixel position, immune to zoom/pan). `callout` is
+  waveform/data-anchored — it consists of one authoritative analog
+  sample anchor, one editable floating text box, one connector line, and
+  one anchor marker. `Annotation.data` for `callout` is
+  `{text, sourceId, channelName, sampleIndex, anchorElapsedSeconds,
+  anchorValue, unit, boxOffset: {x, y}}` — `anchorElapsedSeconds`/
+  `anchorValue` are the fixed engineering anchor (never Absolute
+  timestamp, which stays derived as recording start + elapsed, per the
+  project's own existing convention); `boxOffset` is a screen-independent
+  pixel offset from the anchor's own current projection (preferred over
+  a fixed content-anchored box position specifically so the label stays
+  spatially near its anchor through zoom/pan instead of drifting into an
+  unrelated position with an ever-lengthening connector).
+- **Analog only this phase** — digital Callout, RMS/phasor/peak/delta/
+  event-marker annotation types, cross-channel annotation, rich text/
+  Markdown, callout import/export, and permanent database persistence
+  are all explicitly out of scope (see Impact).
+- **Anchor resolution authority**: snaps to the nearest ACTUAL full-
+  resolution recorded sample — never the displayed (possibly min/max-
+  envelope-reduced) Plotly trace, never interpolated, never raw pointer-X
+  alone. Reuses the EXACT nearest-sample/earlier-sample-on-tie logic
+  `.../cursor-values` (DEC-040) already established, via a new backend
+  service function (`resolve_annotation_anchor`) and a new endpoint
+  (`POST .../sources/{source_id}/annotation-anchor`) — deliberately not a
+  second nearest-sample definition, and deliberately not a persistent
+  annotation backend (this endpoint answers ONE question: "what is the
+  nearest real sample to this approximate time, on this channel," called
+  exactly once per Callout, at creation time only).
+- **Trace identity resolution**: clicking a Grouped/Custom panel with
+  multiple traces, or a Separate-mode lane, resolves the EXACT clicked
+  channel via each trace's own stable `"sourceId::channelName"` `meta`
+  field (already stamped on every trace by `wwBuildTrace()`, an existing
+  Phase 4A-UAT7 convention) — never curveNumber alone, never "the first
+  trace in the panel."
+- **Anchor is fixed after creation; the box alone is draggable**: no
+  re-anchoring/move-anchor capability this phase (a future "Move Anchor"
+  is a separate design). Dragging the box updates ONLY `data.boxOffset`
+  — never the anchor, never a backend call, never a Plotly rebuild.
+- **Reprojection, not re-resolution**: the anchor's screen position is
+  recomputed on every relevant geometry change (X viewport, Y range,
+  panel layout, resize, scroll, channel visibility) via the SAME shared
+  X-projection authority (`wwCursorTimeToPixelX`) A/B cursors already use
+  plus a new per-panel Y-projection authority built the same way from
+  that panel's own live Plotly `_fullLayout.yaxis` — never a second
+  backend round trip.
+- **Visibility, not deletion, for a currently-unprojectable anchor**: a
+  Callout whose anchor is outside the current X viewport, outside the
+  panel's current Y range, or whose channel is not currently displayed,
+  is hidden from canvas (box/connector/marker) but stays fully intact in
+  `ww.annotations` and the Annotation List — reappearing the moment it
+  becomes projectable again.
+- **Source removal deletes its Callouts outright** (not merely hides
+  them) — their anchor no longer exists server-side once the source is
+  removed, and no other source is ever silently substituted for a
+  same-named channel.
+
+Reason:
+
+Detego-benchmark-informed (per the project's own Detego Benchmark
+Principle, DEC-020) but an independent Oruxa implementation: a data-
+anchored callout is standard waveform-analysis tooling, and the owner's
+own explicit requirement (full-resolution sample authority, never a
+reduced/approximate anchor) mirrors the SAME engineering-integrity bar
+DEC-040 already set for A/B cursor measurements — reusing that exact
+nearest-sample logic keeps the codebase with ONE nearest-sample
+definition, not two that could silently drift apart.
+
+Alternatives considered:
+
+- **A separate Callout-specific annotation subsystem** (own Map, own
+  drawer, own render pass) — rejected per the owner's own explicit
+  instruction; `ww.annotations` remains the one authority, with
+  `wwRenderAnnotations()` dispatching on `annotation.type` (section 52 of
+  the task) exactly as DEC-044 already established for a future type.
+- **Storing the box at a fixed content-anchored position** (like Text
+  Note) instead of an anchor-relative offset — rejected: a zoom/pan would
+  move the anchor while the box stayed put, producing an arbitrarily long
+  or nonsensical connector; the anchor-relative `boxOffset` model keeps
+  the engineer's chosen spatial relationship stable instead.
+- **Reusing/overloading `.../cursor-values` for anchor resolution** —
+  rejected as an awkward semantic overload (that endpoint's own contract
+  is "value at an EXISTING cursor time for N channels," not "resolve and
+  return sample IDENTITY for one channel at one approximate time"); a
+  small, focused `.../annotation-anchor` endpoint reusing the SAME
+  underlying nearest-sample function is cleaner without duplicating logic.
+- **Plotly shapes/annotations for the connector and marker** — rejected
+  (section 54 of the task): would require a Plotly rebuild/restyle on
+  every drag/zoom/pan, violating the "zero Plotly calls during
+  reprojection" performance requirement; a lightweight SVG layer
+  (`#wwCalloutConnectorLayer`), a genuine DOM child of the same
+  content-anchored overlay `.ww-annotation` boxes already live in, gives
+  precise geometry with plain style/attribute writes instead.
+
+Impact:
+
+- Backend: `app/services/waveform_service.py` (`AnnotationAnchorResult`,
+  `resolve_annotation_anchor`, reusing `_resolve_analog_channel`/
+  `_nearest_sample_index`), `app/schemas/annotation_anchor.py` (new),
+  `app/api/v1/sources.py` (`POST .../annotation-anchor`). No new
+  persistent storage; `WorkspaceRegistry`'s existing in-memory
+  `ActiveSource` retention is the only "backend state" touched, read-only.
+- Frontend: `frontend/index.html` (Annotate menu's second item; the
+  `plotly_click`-based placement path, wired per analog panel via
+  `wwWireAnalogPanelClick()`; `wwRenderAnnotations()` extended to
+  dispatch box/connector/marker geometry for `callout`; a new
+  `#wwCalloutConnectorLayer` SVG; `wwWireCalloutBoxDrag()`, a genuinely
+  different drag model from Text Note's own `wwWireAnnotationDrag()`;
+  reprojection hooked into the SAME trigger surface
+  `wwUpdateCursorOverlay()` and `wwWirePanelRelayout()`'s Y-range branch
+  already react to, plus the 3 channel-visibility call sites and source
+  removal), `frontend/theme.css` (`--annotation-callout-accent`, Light +
+  Dark).
+- Does NOT change DEC-044's own Text Note behavior, DEC-040 (A/B cursor
+  architecture — Callout is fully independent of it, never reads/writes
+  `ww.measurementCursors`), DEC-041/042 (adaptive resolution, numeric
+  elapsed coordinates — Callout's anchor deliberately bypasses adaptive
+  reduction, reading full-resolution data directly), or DEC-043 (step
+  zoom/icon toolbar).
+- Explicitly NOT implemented this phase: digital Callout, draggable/
+  re-anchorable anchor, RMS/phasor/peak/delta/event-marker annotation
+  types, cross-channel annotation, rich text/Markdown, callout import/
+  export, permanent database persistence, elbow/auto-routed connectors,
+  auto-scroll-to-annotation navigation from the Annotation List.
+- See [MIGRATION_PLAN.md — Phase 4F](MIGRATION_PLAN.md#phase-4f--analog-waveform-callout-annotation-2026-08-21).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

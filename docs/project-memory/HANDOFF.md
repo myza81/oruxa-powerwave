@@ -8,14 +8,111 @@ Last updated: **2026-08-21**
 
 ## What was most recently done
 
-**Phase 4E-UAT2 — Free Text Notes restricted to the main waveform
-workspace, + a same-day annotation surface color refinement.** Owner UAT
-finding on the Phase 4E-UAT scroll-anchoring fix below: placing/dragging
-notes over the left Workspace Sidebar was hard to control, since the
-sidebar is its own interaction-heavy region (scrolling, resizing, channel
-toggles). Owner decision: remove sidebar placement for `text_note`
-entirely -- a deliberate UX simplification, not a temporary workaround.
-Full detail:
+**Phase 4F — Analog Waveform Callout Annotation (DEC-045).** Owner-
+approved direction: the second annotation type, `type: "callout"`,
+reusing DEC-044's exact generic framework (`ww.annotations` remains the
+sole state authority, no parallel Callout registry). Unlike `text_note`
+(workspace-content-anchored), a Callout is waveform/data-anchored: one
+authoritative analog sample anchor, one editable floating text box, one
+connector line, one anchor marker. Full detail:
+[DECISIONS.md — DEC-045](DECISIONS.md#dec-045--callout-is-a-waveform-anchored-annotation-type-analog-only-this-phase-with-a-fixed-engineering-anchor-and-a-movable-presentation-box).
+
+**Creation UX**: `Annotate -> Callout` enters the same one-shot placement
+mode Text Note already established; the next click on an analog trace
+resolves the exact clicked source/channel (via each trace's own stable
+`"sourceId::channelName"` `meta` field, never curveNumber alone --
+verified correct for Grouped multi-trace panels, Separate lanes, and
+Custom-equivalent multi-trace panels), then resolves the nearest
+ACTUAL full-resolution recorded sample server-side, exactly once, via a
+new focused endpoint (`POST .../sources/{source_id}/annotation-anchor`)
+that reuses -- never reimplements -- the exact nearest-sample/tie-break
+logic `.../cursor-values` (DEC-040) already established. A failed
+resolution creates nothing (no approximate fallback, a concise error
+only); a successful one enters immediate edit, exactly like Text Note.
+
+**Anchor is fixed after creation; only the label box is draggable.** The
+resolved `{sampleIndex, anchorElapsedSeconds, anchorValue, unit}` never
+changes afterward -- confirmed directly unchanged across zoom, pan, Y
+zoom/autoscale, and Absolute/Elapsed switching. Only the anchor's
+PROJECTED screen position is recomputed on those triggers (reprojection,
+never re-resolution, never a second backend call): X reuses the exact
+shared `wwCursorTimeToPixelX()` authority A/B cursors already use; a new
+per-panel `wwCalloutValueToPixelY()` mirrors that same technique for Y,
+reading each panel's own live Plotly `_fullLayout.yaxis`. Reprojection
+piggybacks on the EXACT same trigger surface `wwUpdateCursorOverlay()`
+already reacts to (now calling `wwRenderAnnotations()` first,
+unconditionally, so none of that function's own cursor-specific early
+returns can skip it), plus a new Y-range branch in
+`wwWirePanelRelayout()`'s existing relayout listener (Y zoom/autoscale
+never touched X before, so A/B cursors never needed this branch) and 3
+new channel-visibility call sites (add/remove/batch-remove channels).
+Dragging the box updates ONLY a screen-independent `data.boxOffset` from
+the anchor's own current projection (so the label tracks the anchor
+through zoom/pan instead of drifting into an unrelated position with an
+ever-lengthening connector) -- verified directly to cause ZERO backend
+requests and ZERO `Plotly.newPlot`/`relayout`/`restyle` calls.
+
+**Rendering**: the box lives in the SAME `#wwAnnotationOverlayMain` Text
+Note boxes already occupy (native main-workspace scroll-following
+preserved for free); the connector line + anchor marker render in a NEW
+lightweight SVG layer, `#wwCalloutConnectorLayer`, deliberately NOT
+Plotly shapes (would force a rebuild on every drag/zoom/pan). A new
+`--annotation-callout-accent` token (amber family, distinct from A/B
+cursor blue/red and from the note surface itself) colors both.
+
+**Visibility, not deletion, when currently unprojectable**: a Callout
+whose anchor is outside the X viewport, outside the panel's current Y
+range, or whose channel isn't displayed, is hidden from canvas but stays
+fully intact in `ww.annotations`/the Annotation List -- reappearing the
+moment it becomes projectable again. Verified for all three cases, plus
+layout-mode switching (Grouped/Separate/Custom, no duplicate boxes) and
+Text Note/Callout coexistence (2 notes + 3 callouts, count=5, drawer
+renders all 5 correctly with Callout's own channel/time/value metadata
+line).
+
+**Source removal deletes its Callouts outright** (not merely hides them)
+-- their anchor no longer exists server-side once the source is gone,
+and no other source is ever silently substituted for a same-named
+channel. Clear Workspace/Start New Workspace lifecycle otherwise
+unchanged from DEC-044's own established semantics.
+
+**Backend**: `resolve_annotation_anchor()` (new,
+`app/services/waveform_service.py`) reuses `_resolve_analog_channel()`/
+`_nearest_sample_index()` directly rather than duplicating either; new
+schema `app/schemas/annotation_anchor.py`; new route in
+`app/api/v1/sources.py`. No new persistent storage.
+
+**Pre-existing unrelated uncommitted change found and preserved**:
+`frontend/theme.css`'s `--accent` token (`#3568d4` -> `#c1d5ff`) was
+already modified, uncommitted, in the working tree at this task's own
+mandatory startup step -- left completely untouched, not staged, not
+committed, per explicit instruction; this Phase 4F commit stages only
+the specific new/changed hunks it actually needed.
+
+**Tests**: new `phase4f_check.mjs` (23/23 passing) covering the task's
+own required list (anchor resolution + tie-break, reduced-display
+independence, Grouped/Separate/Custom exact-trace identity, zoom/pan/
+Y-zoom/Absolute-Elapsed anchor invariance, box-drag performance/offset-
+only semantics, visibility rules, layout-mode reprojection, multi-type
+coexistence, source removal, workspace lifecycle, safe text, pointer
+isolation) plus placement-mode/menu basics; `phase4e_check.mjs`'s own
+"Annotate dropdown" test updated for the new 2-item menu (36 -> 37
+checks, all passing). Full frontend suite reconfirmed at exactly the
+true 33-failure baseline across the same 14 pre-existing files (zero net
+new regressions). Backend: 19 new tests, 412/412 passing (393 prior + 19
+new), zero regressions.
+
+**Not yet done**: commit/push, CI/automatic DEV deployment verification,
+and owner UAT of this phase specifically.
+
+## What was done in the prior session (Phase 4E-UAT2 — Free Text Notes restricted to the main waveform workspace, + a same-day annotation surface color refinement)
+
+Owner UAT finding on the Phase 4E-UAT scroll-anchoring fix below:
+placing/dragging notes over the left Workspace Sidebar was hard to
+control, since the sidebar is its own interaction-heavy region
+(scrolling, resizing, channel toggles). Owner decision: remove sidebar
+placement for `text_note` entirely -- a deliberate UX simplification,
+not a temporary workaround. Full detail:
 [DECISIONS.md — DEC-044 addendum](DECISIONS.md#addendum-2026-08-21-refinement--free-text-notes-restricted-to-the-main-waveform-workspace-phase-4e-uat2).
 
 **What changed**: `text_note` may now be placed and dragged ONLY inside

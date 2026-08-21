@@ -1471,6 +1471,32 @@
             pointer-events: none; /* section 8: empty space never intercepts Plotly/sidebar/toolbar interaction */
             z-index: 15;
         }
+        /* Phase 4F (DEC-045): same positioning rationale as
+           .ww-annotation-overlay directly above -- a content-anchored SVG
+           layer, not a Plotly shape. Deliberately no `z-index` (see this
+           element's own HTML comment): plain "auto" stacking already
+           keeps it visually behind every z-indexed `.ww-annotation--callout`
+           box with zero bookkeeping. */
+        .ww-callout-connector-layer {
+            position: absolute;
+            inset: 0;
+            overflow: visible;
+            pointer-events: none;
+        }
+        .ww-callout-connector {
+            stroke: var(--annotation-callout-accent);
+            stroke-width: 1.25;
+        }
+        .ww-callout-anchor-marker {
+            fill: var(--annotation-bg, var(--panel));
+            stroke: var(--annotation-callout-accent);
+            stroke-width: 1.5;
+        }
+        /* Section 64: selected Callout gets a SLIGHTLY stronger marker,
+           never a bright glow -- same restrained precedent as
+           .ww-annotation--selected below. */
+        .ww-callout-connector-group--selected .ww-callout-connector { stroke-width: 1.75; }
+        .ww-callout-connector-group--selected .ww-callout-anchor-marker { stroke-width: 2.25; }
         .ww-annotation {
             position: absolute;
             min-width: 160px;
@@ -1509,6 +1535,17 @@
             user-select: none;
         }
         .ww-annotation-header:active { cursor: grabbing; }
+        /* Section 19: the ONE visual distinction a Callout's header adds
+           over Text Note's -- a small anchor glyph, same size family as
+           every other `.ww-icon`, colored with the Callout's own accent
+           (never A/B blue/red) so a Callout reads as "attached to
+           something" at a glance without a heavier redesign. */
+        .ww-callout-glyph {
+            display: inline-flex;
+            margin-right: 4px;
+            color: var(--annotation-callout-accent);
+        }
+        .ww-callout-glyph svg { width: 10px; height: 10px; vertical-align: -1px; }
         .ww-annotation-body {
             flex: 1 1 auto;
             padding: 8px 10px 10px;
@@ -1639,6 +1676,14 @@
             line-clamp: 3;
             -webkit-box-orient: vertical;
             overflow: hidden;
+        }
+        /* Phase 4F (DEC-045): Callout's own channel/time/value line
+           (section 42) -- deliberately dimmer/smaller than the preview
+           text above it, same visual tier as .ww-annotation-list-item-category. */
+        .ww-annotation-list-item-meta {
+            font-size: 0.64rem;
+            color: var(--text-dim);
+            margin-top: 2px;
         }
         .ww-annotation-delete-btn { flex: 0 0 auto; width: 28px; height: 28px; }
         .ww-annotation-delete-btn .ww-icon, .ww-annotation-delete-btn .ww-icon svg { width: 15px; height: 15px; }
@@ -2508,6 +2553,16 @@
                                     <span class="ww-icon"><svg viewBox="0 0 18 18"><rect x="2.5" y="3" width="13" height="12" rx="1.5"/><line x1="5" y1="6.5" x2="13" y2="6.5" stroke-width="1.1"/><line x1="5" y1="9" x2="13" y2="9" stroke-width="1.1"/><line x1="5" y1="11.5" x2="10" y2="11.5" stroke-width="1.1"/></svg></span>
                                     Text Note
                                 </button>
+                                <!-- Phase 4F (DEC-045): the second annotation type --
+                                     a data-anchored Callout, not a workspace-content-
+                                     anchored note. Wired for free by the SAME generic
+                                     "one .ww-split-menu-item per data-annotation-type"
+                                     loop as Text Note above (section 70) -- no new menu
+                                     event architecture. -->
+                                <button type="button" class="ww-split-menu-item" role="menuitem" data-annotation-type="callout" aria-pressed="false">
+                                    <span class="ww-icon"><svg viewBox="0 0 18 18"><circle cx="6" cy="12" r="1.6"/><line x1="7.3" y1="10.8" x2="12" y2="5" stroke-width="1.1"/><rect x="9" y="2.5" width="7" height="4.5" rx="1" stroke-width="1.1"/></svg></span>
+                                    Callout
+                                </button>
                             </div>
                         </div>
                         <button class="ww-icon-btn" type="button" id="wwAnnotationListBtn" aria-pressed="false" aria-expanded="false" title="Annotations" aria-label="Annotations">
@@ -2670,6 +2725,25 @@
                              individual `.ww-annotation` note intercepts
                              anything. See wwRenderAnnotations()/
                              wwAnnotationRegionEl(). -->
+                        <!-- Phase 4F (DEC-045): Callout connector lines +
+                             anchor markers -- a lightweight SVG layer
+                             (section 54), deliberately NOT Plotly shapes
+                             (never rebuilt on drag/zoom/pan) and
+                             deliberately NOT part of any Plotly figure.
+                             A DOM child of the SAME overlay as the
+                             `.ww-annotation` boxes (content-anchored
+                             identically, native scroll-following for
+                             free), painted BEFORE them in source order so
+                             normal stacking (auto z-index) keeps every
+                             connector/marker visually BEHIND every
+                             z-indexed callout box with no extra z-index
+                             bookkeeping. `overflow: visible` (never
+                             `hidden`), `pointer-events: none` on the root
+                             -- an invisible connector/marker hit area must
+                             never block Plotly zoom/pan/A-B-cursor drag
+                             (section 49). See
+                             wwUpdateCalloutConnectorGeometry(). -->
+                        <svg id="wwCalloutConnectorLayer" class="ww-callout-connector-layer" aria-hidden="true"></svg>
                         <div id="wwAnnotationOverlayMain" class="ww-annotation-overlay" aria-hidden="true"></div>
                     </div>
                 </main>
@@ -5294,31 +5368,46 @@
             zoomStepAxis: { in: "x", out: "x" },
             // Phase 4E (DEC-044) + Phase 4E-UAT scroll-anchoring addendum:
             // the generic annotation authority --
-            // "sourceId::channelName"-style per-channel state this is NOT;
-            // annotations belong to the WHOLE current workspace/session,
-            // never to one channel/panel/layout-mode. Map<id, Annotation>,
-            // where an Annotation is `{id, type, workspaceId, region,
-            // position: {x, y}, createdAt, zIndex, data}` -- `region` is
-            // `"sidebar" | "main"` (which scroll container owns this
-            // note) and `position` is a RAW CONTENT-PIXEL offset from
-            // that region's own scrollable content origin, NOT a
-            // normalized 0..1 viewport fraction (see
-            // wwAnnotationRegionEl()/wwClampAnnotationContentPosition()),
-            // never waveform/data-anchored (section 6: this first annotation
-            // type is a FLOATING work-area note, deliberately independent
-            // of zoom/pan/Absolute-Elapsed/A-B cursors). `type` is
-            // "text_note" this phase; `data` is a type-specific payload
-            // (`{text}` for text_note) so a future type (e.g.
-            // "callout_note") can carry its own fields --
-            // renderAnnotations()/renderAnnotationList() dispatch on
-            // `type`, never hard-wired to text_note's own DOM shape only.
+            // "sourceId::channelName"-style per-channel state this is NOT
+            // at the MAP level; annotations belong to the WHOLE current
+            // workspace/session, never to one channel/panel/layout-mode
+            // (an individual CALLOUT annotation's own `data` may of course
+            // carry a sourceId/channelName -- see below). Map<id,
+            // Annotation>, where an Annotation is `{id, type, workspaceId,
+            // region, position: {x, y}, createdAt, zIndex, data}` --
+            // `region` is `"main"` for every type so far (Phase 4E-UAT2:
+            // Text Note's own sidebar placement was removed; kept generic
+            // for a possible future type with its own placement rule) and
+            // `position` is a RAW CONTENT-PIXEL offset from
+            // #activeViewArea's own scrollable content origin -- used by
+            // `text_note` only; `callout` (Phase 4F, DEC-045) instead
+            // derives its own screen position from `data.anchorElapsedSeconds`/
+            // `data.anchorValue` (a FIXED, backend-resolved full-resolution
+            // sample, never re-resolved after creation) reprojected
+            // through whichever panel currently renders `data.channelName`,
+            // plus `data.boxOffset` for the movable label box -- see
+            // wwCalloutAnchorContentPosition()/wwRenderAnnotations(). Two
+            // types this phase: `text_note` (`data: {text}`, workspace-
+            // content-anchored, independent of zoom/pan/Absolute-Elapsed/
+            // A-B cursors) and `callout` (`data: {text, sourceId,
+            // channelName, sampleIndex, anchorElapsedSeconds, anchorValue,
+            // unit, boxOffset}`, waveform/data-anchored -- its anchor
+            // tracks zoom/pan/Y-range/layout changes via reprojection,
+            // never a backend re-resolution). wwRenderAnnotations()/
+            // wwRenderAnnotationList() dispatch on `type`, never hard-
+            // wired to one type's own DOM shape only.
             // Cleared ONLY by "Start New Workspace" (a genuinely new
             // workspace_id, see wwClearWorkspace()'s own
             // options.resetSourceBounds branch) -- NEVER by the plain
             // "Clear workspace" button, which is display-only and keeps
             // the same session/source context (same precedent already
             // established for ww.measurementCursors via
-            // wwResetMeasurementCursors()).
+            // wwResetMeasurementCursors()). A Callout's own source is
+            // ALSO an exception to "never cleared otherwise": removing
+            // that specific source deletes ITS Callouts outright (section
+            // 57, see wwRemoveCalloutsForSource()) -- their anchor no
+            // longer exists server-side, unlike Text Note which has no
+            // source dependency to lose.
             annotations: new Map(),
             // The one currently-selected annotation id (or null) -- drives
             // the note's own border highlight AND the matching drawer
@@ -6324,6 +6413,10 @@
             Plotly.newPlot(panel.chartEl, traces, layout, config);
             panel.plotlyReady = true;
             wwWirePanelRelayout(panel);
+            // Phase 4F (DEC-045): Callout placement -- see
+            // wwWireAnalogPanelClick()'s own comment for why this is safe
+            // to wire unconditionally on every (always-fresh) chartEl.
+            wwWireAnalogPanelClick(panel);
         }
 
         // Phase 2C-C2A investigation finding: the browser cannot paint a
@@ -6568,6 +6661,18 @@
                 }
                 if (eventData["xaxis.autorange"] === true) {
                     wwResetTimeView();
+                    return;
+                }
+                // Phase 4F (section 26/56): a Y-range change -- manual
+                // Y-axis drag-zoom, Autoscale Y, or Y step zoom's own
+                // `Plotly.relayout()` call (which fires this SAME event,
+                // programmatic or not) -- never touches ww.viewport (X and
+                // Y are fully independent), so A/B cursors (X-only) never
+                // needed this branch. A Callout anchored to THIS panel
+                // does need reprojecting: `anchorValue` itself never
+                // changes, only its projected pixel Y.
+                if (eventData["yaxis.range[0]"] !== undefined || eventData["yaxis.autorange"] === true) {
+                    wwRenderAnnotations();
                 }
             });
         }
@@ -7104,7 +7209,31 @@
                 const text = ((annotation.data && annotation.data.text) || "").trim();
                 return text.length > 0 ? text : "(empty note)";
             }
+            if (annotation.type === "callout") {
+                const text = ((annotation.data && annotation.data.text) || "").trim();
+                return text.length > 0 ? text : "(empty callout)";
+            }
             return "Annotation";
+        }
+
+        // Section 42/43: the Annotation List's ONE extra metadata line for
+        // types that carry a real engineering anchor -- empty string for
+        // text_note (nothing to show). Uses ONLY actual available
+        // metadata (section 42's own explicit "do not invent units if
+        // unavailable"); time presentation follows the CURRENT time mode
+        // via the SAME wwFormatAbsoluteElapsedTime()/wwFormatCursorDuration()
+        // authority A/B cursors already use (section 43) -- reading it
+        // here never mutates the stored anchor.
+        function wwAnnotationMetaLine(annotation) {
+            if (annotation.type !== "callout") return "";
+            const data = annotation.data || {};
+            const time = ww.timeMode === "absolute"
+                ? wwFormatAbsoluteElapsedTime(data.anchorElapsedSeconds)
+                : wwFormatCursorDuration(data.anchorElapsedSeconds);
+            const value = Number.isFinite(data.anchorValue)
+                ? data.anchorValue.toFixed(3) + (data.unit ? " " + data.unit : "")
+                : "—";
+            return (data.channelName || "—") + " · " + time + " · " + value;
         }
 
         function wwAnnotationNoteBodyHtml() {
@@ -7112,6 +7241,19 @@
             // assigned via .textContent afterward (section 48: never
             // interpolated into an HTML string).
             return '<div class="ww-annotation-header">Note</div>' +
+                '<div class="ww-annotation-body" tabindex="0"></div>';
+        }
+
+        // Section 19: visually related to Text Note (same header/body
+        // structure, same semantic surface family) but with a small
+        // anchor glyph distinguishing it. Structural markup only -- see
+        // wwAnnotationNoteBodyHtml()'s own comment on why user text is
+        // never interpolated here.
+        function wwCalloutBodyHtml() {
+            return '<div class="ww-annotation-header ww-annotation-header--callout">' +
+                    '<span class="ww-callout-glyph" aria-hidden="true"><svg viewBox="0 0 18 18"><circle cx="6" cy="12" r="2"/><line x1="7.6" y1="10.4" x2="13" y2="5" stroke-width="1.3"/></svg></span>' +
+                    'Callout' +
+                '</div>' +
                 '<div class="ww-annotation-body" tabindex="0"></div>';
         }
 
@@ -7183,11 +7325,98 @@
             wwWireAnnotationDrag(el, bodyEl, id);
         }
 
+        // Section 29-32/34: a Callout's box is a PRESENTATION object
+        // relative to its own fixed anchor, never a content-anchored
+        // position like Text Note's own `annotation.position` -- so this
+        // is a genuinely different drag model, not a parameterization of
+        // wwWireAnnotationDrag() above. Anchor identity (source/channel/
+        // sampleIndex/anchorElapsedSeconds/anchorValue) is NEVER touched
+        // here (section 32/33) -- only `data.boxOffset` changes, and
+        // there is no backend call, no Plotly rebuild (section 55/79).
+        function wwWireCalloutBoxDrag(el, handleEl, id) {
+            if (!handleEl) return;
+            let dragging = false;
+            let grabOffsetX = 0, grabOffsetY = 0;
+
+            handleEl.addEventListener("pointerdown", (event) => {
+                if (el.dataset.editing === "true") return;
+                if (event.button !== undefined && event.button !== 0) return;
+                event.stopPropagation();
+                wwSelectAnnotation(id);
+                dragging = true;
+                const rect = el.getBoundingClientRect();
+                grabOffsetX = event.clientX - rect.left;
+                grabOffsetY = event.clientY - rect.top;
+                if (handleEl.setPointerCapture) {
+                    try { handleEl.setPointerCapture(event.pointerId); } catch (error) { /* not attached to a real layout yet */ }
+                }
+            });
+            handleEl.addEventListener("pointermove", (event) => {
+                if (!dragging) return;
+                const annotation = ww.annotations.get(id);
+                if (!annotation) return;
+                const regionEl = document.getElementById("activeViewArea");
+                if (!regionEl) return;
+                const regionRect = regionEl.getBoundingClientRect();
+                const boxLeft = (event.clientX - grabOffsetX) - regionRect.left + regionEl.scrollLeft;
+                const boxTop = (event.clientY - grabOffsetY) - regionRect.top + regionEl.scrollTop;
+                el.style.left = boxLeft + "px";
+                el.style.top = boxTop + "px";
+                // Live connector/marker update while dragging -- cheap
+                // (style/attribute writes only), same "container leads"
+                // principle already established for panel-height drag.
+                const anchorContent = wwCalloutAnchorContentPosition(annotation);
+                if (anchorContent) {
+                    wwUpdateCalloutConnectorGeometry(
+                        document.getElementById("wwCalloutConnectorLayer"), id, anchorContent,
+                        boxLeft, boxTop, el.offsetWidth || 200, el.offsetHeight || 80,
+                        ww.annotationSelectedId === id
+                    );
+                }
+            });
+            function endDrag(event) {
+                if (!dragging) return;
+                dragging = false;
+                const annotation = ww.annotations.get(id);
+                const anchorContent = annotation ? wwCalloutAnchorContentPosition(annotation) : null;
+                if (anchorContent) {
+                    const boxLeft = parseFloat(el.style.left) || 0;
+                    const boxTop = parseFloat(el.style.top) || 0;
+                    wwUpdateAnnotation(id, {
+                        data: { boxOffset: { x: boxLeft - anchorContent.x, y: boxTop - anchorContent.y } },
+                    });
+                }
+                if (handleEl.releasePointerCapture && event && event.pointerId !== undefined) {
+                    try { handleEl.releasePointerCapture(event.pointerId); } catch (error) { /* already released */ }
+                }
+            }
+            handleEl.addEventListener("pointerup", endDrag);
+            handleEl.addEventListener("pointercancel", endDrag);
+        }
+
+        function wwWireCalloutBodyInteractions(el, bodyEl, id) {
+            bodyEl.addEventListener("dblclick", (event) => {
+                event.stopPropagation();
+                wwBeginAnnotationEdit(id);
+            });
+            wwWireCalloutBoxDrag(el, bodyEl, id);
+        }
+
+        // Section 52: the ONE place that dispatches drag/body-interaction
+        // wiring by `annotation.type` -- a future type adds a branch here,
+        // never a second wwRenderAnnotations()-level rewrite.
         function wwWireAnnotationNote(el, id) {
+            const annotation = ww.annotations.get(id);
+            const isCallout = !!annotation && annotation.type === "callout";
             const header = el.querySelector(".ww-annotation-header");
             const body = el.querySelector(".ww-annotation-body");
-            wwWireAnnotationDrag(el, header, id);
-            if (body) wwWireAnnotationBodyInteractions(el, body, id);
+            if (isCallout) {
+                wwWireCalloutBoxDrag(el, header, id);
+                if (body) wwWireCalloutBodyInteractions(el, body, id);
+            } else {
+                wwWireAnnotationDrag(el, header, id);
+                if (body) wwWireAnnotationBodyInteractions(el, body, id);
+            }
         }
 
         // Section 12/14: enters edit mode -- swaps the read-only body div
@@ -7231,7 +7460,9 @@
             freshBody.tabIndex = 0;
             if (textarea) textarea.replaceWith(freshBody);
             else el.appendChild(freshBody);
-            wwWireAnnotationBodyInteractions(el, freshBody, id);
+            const annotation = ww.annotations.get(id);
+            if (annotation && annotation.type === "callout") wwWireCalloutBodyInteractions(el, freshBody, id);
+            else wwWireAnnotationBodyInteractions(el, freshBody, id);
 
             if (save && newText !== null) {
                 wwUpdateAnnotation(id, { data: { text: newText } });
@@ -7240,11 +7471,154 @@
             }
         }
 
+        // ------------------------------------------------------------------
+        // Phase 4F (DEC-045): Callout anchor projection.
+        //
+        // The anchor's ENGINEERING identity (source/channel/sampleIndex/
+        // anchorElapsedSeconds/anchorValue) is resolved exactly ONCE, at
+        // creation time, via POST .../annotation-anchor (section 55/61) --
+        // everything below is PURE reprojection: turning that fixed
+        // engineering point into a live screen position through whatever
+        // panel currently renders its channel, using the SAME single X
+        // authority (wwCursorTimeToPixelX(), section 5) every other
+        // shared-viewport feature already uses, plus a new per-panel Y
+        // authority (section 23/26) built the same way from that panel's
+        // own live `_fullLayout.yaxis`. No backend call, no Plotly call,
+        // ever happens in this section (section 55/88).
+        // ------------------------------------------------------------------
+
+        // Engineering Y value -> page-absolute pixel Y, using ONE
+        // specific panel's own CURRENTLY RESOLVED Y range/geometry
+        // (mirrors wwCursorTimeToPixelX()'s own X-axis technique, see
+        // that function's own comment). Returns null when the panel
+        // hasn't rendered a real plotting area yet, OR when `value` falls
+        // outside the panel's current Y range (section 36: hidden, never
+        // pinned to the boundary).
+        function wwCalloutValueToPixelY(panel, value) {
+            if (!panel || !panel.plotlyReady || !panel.chartEl || !Number.isFinite(value)) return null;
+            const fl = panel.chartEl._fullLayout;
+            const range = fl && fl.yaxis ? fl.yaxis.range : null;
+            const offset = fl && fl.yaxis ? fl.yaxis._offset : null;
+            const length = fl && fl.yaxis ? fl.yaxis._length : null;
+            if (!range || range.length !== 2 || !Number.isFinite(offset) || !Number.isFinite(length) || length <= 0) return null;
+            const lo = Math.min(range[0], range[1]);
+            const hi = Math.max(range[0], range[1]);
+            if (!(hi > lo)) return null;
+            const frac = (value - lo) / (hi - lo);
+            if (frac < 0 || frac > 1) return null;
+            const rect = panel.chartEl.getBoundingClientRect();
+            if (rect.width === 0 && rect.height === 0) return null; // detached/hidden
+            // Y pixels increase downward; a larger data value sits nearer
+            // the TOP of the plotting area (offset), never the bottom.
+            return rect.top + offset + (1 - frac) * length;
+        }
+
+        // Section 37/38/39: the ONE authoritative "is this Callout's
+        // channel currently displayed, and on which panel" lookup --
+        // reuses ww.displayed (the SAME Map every layout-mode rebuild
+        // already keeps current, see wwRebuildLayout()'s own comment) so
+        // there is no second, potentially-stale channel/panel index to
+        // maintain. Returns page-absolute {pageX, pageY} or null when the
+        // channel isn't displayed, its panel hasn't rendered, the anchor
+        // time is outside ww.viewport (section 35), or the anchor value
+        // is outside the panel's current Y range (section 36) -- any one
+        // of these means "hidden from canvas, still in state/list."
+        function wwCalloutAnchorPagePosition(annotation) {
+            const data = annotation.data || {};
+            const entry = ww.displayed.get(wwChannelKey(data.sourceId, data.channelName));
+            if (!entry || !entry.panel || !entry.panel.plotlyReady) return null;
+            if (!ww.viewport || !Number.isFinite(data.anchorElapsedSeconds)) return null;
+            const inViewport = data.anchorElapsedSeconds >= ww.viewport.start && data.anchorElapsedSeconds <= ww.viewport.end;
+            if (!inViewport) return null;
+            const pageX = wwCursorTimeToPixelX(data.anchorElapsedSeconds);
+            if (pageX === null) return null;
+            const pageY = wwCalloutValueToPixelY(entry.panel, data.anchorValue);
+            if (pageY === null) return null;
+            return { pageX: pageX, pageY: pageY };
+        }
+
+        // Page-absolute anchor position -> #activeViewArea CONTENT-relative
+        // position -- the SAME conversion Text Note placement/drag already
+        // uses (module comment's own `contentY = pointerY - regionViewportTop
+        // + scrollTop` model), so a Callout box/connector/marker scrolls
+        // natively with main-workspace content exactly like a Text Note
+        // does (section 50).
+        function wwCalloutAnchorContentPosition(annotation) {
+            const pagePos = wwCalloutAnchorPagePosition(annotation);
+            if (!pagePos) return null;
+            const regionEl = document.getElementById("activeViewArea");
+            if (!regionEl) return null;
+            const regionRect = regionEl.getBoundingClientRect();
+            return {
+                x: pagePos.pageX - regionRect.left + regionEl.scrollLeft,
+                y: pagePos.pageY - regionRect.top + regionEl.scrollTop,
+            };
+        }
+
+        // Section 21: the connector's box-side endpoint -- the point where
+        // a ray from the box's own center toward the anchor crosses the
+        // box's rectangular border. A center/nearest-edge implementation,
+        // deliberately not more elaborate (section 21's own "do not
+        // over-engineer").
+        function wwCalloutRectEdgePoint(boxLeft, boxTop, boxWidth, boxHeight, targetX, targetY) {
+            const cx = boxLeft + boxWidth / 2;
+            const cy = boxTop + boxHeight / 2;
+            const dx = targetX - cx;
+            const dy = targetY - cy;
+            if (dx === 0 && dy === 0) return { x: cx, y: cy };
+            const hw = boxWidth / 2 || 1;
+            const hh = boxHeight / 2 || 1;
+            const scaleX = dx !== 0 ? hw / Math.abs(dx) : Infinity;
+            const scaleY = dy !== 0 ? hh / Math.abs(dy) : Infinity;
+            const scale = Math.min(scaleX, scaleY, 1); // never project past the target itself
+            return { x: cx + dx * scale, y: cy + dy * scale };
+        }
+
+        // Creates (once) or updates one Callout's own connector line +
+        // anchor marker, as a `<g>` inside #wwCalloutConnectorLayer,
+        // keyed by annotation id exactly like `.ww-annotation` divs are
+        // (section 45: deleting the annotation removes this the same
+        // generic way, via the "seen" sweep below -- no separate cleanup
+        // state).
+        function wwUpdateCalloutConnectorGeometry(connectorLayer, id, anchorContent, boxLeft, boxTop, boxWidth, boxHeight, selected) {
+            if (!connectorLayer) return;
+            const edge = wwCalloutRectEdgePoint(boxLeft, boxTop, boxWidth, boxHeight, anchorContent.x, anchorContent.y);
+            let group = connectorLayer.querySelector('[data-annotation-id="' + CSS.escape(id) + '"]');
+            if (!group) {
+                group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                group.dataset.annotationId = id;
+                group.innerHTML =
+                    '<line class="ww-callout-connector"></line>' +
+                    '<circle class="ww-callout-anchor-marker" r="4"></circle>';
+                connectorLayer.appendChild(group);
+            }
+            group.style.display = "";
+            const line = group.querySelector(".ww-callout-connector");
+            const marker = group.querySelector(".ww-callout-anchor-marker");
+            line.setAttribute("x1", String(edge.x));
+            line.setAttribute("y1", String(edge.y));
+            line.setAttribute("x2", String(anchorContent.x));
+            line.setAttribute("y2", String(anchorContent.y));
+            marker.setAttribute("cx", String(anchorContent.x));
+            marker.setAttribute("cy", String(anchorContent.y));
+            group.classList.toggle("ww-callout-connector-group--selected", !!selected);
+        }
+
+        function wwHideCalloutConnector(connectorLayer, id) {
+            if (!connectorLayer) return;
+            const group = connectorLayer.querySelector('[data-annotation-id="' + CSS.escape(id) + '"]');
+            if (group) group.style.display = "none";
+        }
+
         // Section 19: called on annotation create/update/select AND
         // whenever workspace geometry resizes (see wwResizeAllVisiblePlots())
         // -- NEVER on zoom/pan/Absolute-Elapsed/layout-mode switch, none
-        // of which call this (confirming, by absence, that those paths
-        // cannot move a note -- section 6/36/38).
+        // of which call this for TEXT NOTE's own sake (section 6/36/38 --
+        // still true for text_note). Phase 4F: this is ALSO the ONE
+        // generic render pass Callout uses (section 52 -- never a second
+        // annotation rendering system), which DOES need to run on zoom/
+        // pan/Y-range/layout changes; see wwUpdateCursorOverlay()'s own
+        // comment for where those extra calls live.
         function wwRenderAnnotations() {
             // Section 39/UAT-resize: re-clamping every note within its
             // region's CURRENT scrollWidth/scrollHeight on every render
@@ -7254,18 +7628,20 @@
             const overlay = wwAnnotationOverlayEl("main");
             const regionEl = wwAnnotationRegionEl("main");
             if (!overlay || !regionEl) return;
+            const connectorLayer = document.getElementById("wwCalloutConnectorLayer");
             const seen = new Set();
 
             for (const annotation of ww.annotations.values()) {
-                // Phase 4E-UAT2: text_note is main-workspace-only now. A
-                // session that still holds an annotation created under the
-                // earlier region-aware fix with region="sidebar" (the
-                // sidebar overlay it belonged to no longer exists in the
-                // DOM) is coerced to "main" here rather than crashing or
-                // disappearing -- session-local state only, no migration
-                // system beyond this.
+                // Phase 4E-UAT2: text_note (and, from Phase 4F on, callout
+                // too) is main-workspace-only. A session that still holds
+                // an annotation created under the earlier region-aware fix
+                // with region="sidebar" (the sidebar overlay it belonged
+                // to no longer exists in the DOM) is coerced to "main"
+                // here rather than crashing or disappearing -- session-
+                // local state only, no migration system beyond this.
                 if (annotation.region !== "main") annotation.region = "main";
                 seen.add(annotation.id);
+                const isCallout = annotation.type === "callout";
 
                 let el = overlay.querySelector('.ww-annotation[data-annotation-id="' + CSS.escape(annotation.id) + '"]');
                 if (!el) {
@@ -7273,20 +7649,47 @@
                     el.className = "ww-annotation ww-annotation--" + annotation.type;
                     el.dataset.annotationId = annotation.id;
                     el.dataset.editing = "false";
-                    el.innerHTML = annotation.type === "text_note" ? wwAnnotationNoteBodyHtml() : "";
+                    el.innerHTML = isCallout ? wwCalloutBodyHtml() : (annotation.type === "text_note" ? wwAnnotationNoteBodyHtml() : "");
                     overlay.appendChild(el);
                     wwWireAnnotationNote(el, annotation.id);
                 }
                 el.classList.toggle("ww-annotation--selected", ww.annotationSelectedId === annotation.id);
                 el.style.zIndex = String(annotation.zIndex);
 
-                const noteWidth = el.offsetWidth || 160;
-                const noteHeight = el.offsetHeight || 60;
-                const clamped = wwClampAnnotationContentPosition(annotation.position.x, annotation.position.y, noteWidth, noteHeight, regionEl);
-                el.style.left = clamped.x + "px";
-                el.style.top = clamped.y + "px";
+                if (isCallout) {
+                    const anchorContent = wwCalloutAnchorContentPosition(annotation);
+                    if (!anchorContent) {
+                        // Section 35/36/37: anchor currently unprojectable
+                        // (out of X viewport, out of the panel's Y range,
+                        // or its channel isn't displayed) -- hide the box
+                        // AND its connector/marker, but the annotation
+                        // itself stays fully intact in ww.annotations/the
+                        // Annotation List.
+                        el.style.display = "none";
+                        wwHideCalloutConnector(connectorLayer, annotation.id);
+                    } else {
+                        el.style.display = "";
+                        const boxOffset = (annotation.data && annotation.data.boxOffset) || { x: 80, y: -60 };
+                        const boxLeft = anchorContent.x + boxOffset.x;
+                        const boxTop = anchorContent.y + boxOffset.y;
+                        el.style.left = boxLeft + "px";
+                        el.style.top = boxTop + "px";
+                        wwUpdateCalloutConnectorGeometry(
+                            connectorLayer, annotation.id, anchorContent, boxLeft, boxTop,
+                            el.offsetWidth || 200, el.offsetHeight || 80,
+                            ww.annotationSelectedId === annotation.id
+                        );
+                    }
+                } else {
+                    el.style.display = "";
+                    const noteWidth = el.offsetWidth || 160;
+                    const noteHeight = el.offsetHeight || 60;
+                    const clamped = wwClampAnnotationContentPosition(annotation.position.x, annotation.position.y, noteWidth, noteHeight, regionEl);
+                    el.style.left = clamped.x + "px";
+                    el.style.top = clamped.y + "px";
+                }
 
-                if (el.dataset.editing !== "true" && annotation.type === "text_note") {
+                if (el.dataset.editing !== "true" && (annotation.type === "text_note" || isCallout)) {
                     const body = el.querySelector(".ww-annotation-body");
                     if (body) {
                         const text = (annotation.data && annotation.data.text) || "";
@@ -7299,6 +7702,11 @@
 
             for (const el of Array.from(overlay.querySelectorAll(".ww-annotation"))) {
                 if (!seen.has(el.dataset.annotationId)) el.remove();
+            }
+            if (connectorLayer) {
+                for (const group of Array.from(connectorLayer.children)) {
+                    if (!seen.has(group.dataset.annotationId)) group.remove();
+                }
             }
         }
 
@@ -7352,6 +7760,18 @@
                 preview.textContent = summary; // textContent -- safe, never innerHTML (section 48)
                 main.appendChild(category);
                 main.appendChild(preview);
+                // Section 42/43: Callout's own extra metadata line
+                // (channel/time/value) -- wwAnnotationMetaLine() is the
+                // ONE dispatch point (empty string for text_note), so this
+                // stays generic even though only one type populates it
+                // today.
+                const metaLine = wwAnnotationMetaLine(annotation);
+                if (metaLine) {
+                    const meta = document.createElement("div");
+                    meta.className = "ww-annotation-list-item-meta";
+                    meta.textContent = metaLine; // textContent -- safe, never innerHTML (section 48)
+                    main.appendChild(meta);
+                }
 
                 const shortPreview = summary.length > 40 ? summary.slice(0, 40) + "…" : summary;
                 const deleteBtn = document.createElement("button");
@@ -7440,6 +7860,16 @@
         function wwAnnotationPlacementClickHandler(event) {
             const type = ww.annotationPlacementType;
             if (!type) return;
+            // Phase 4F (section 13/14): Callout creation happens entirely
+            // through each analog panel's own `plotly_click` handler (see
+            // wwWireAnalogPanelClick()) -- ONLY that handler can resolve
+            // which exact TRACE/channel was clicked (section 8/9/10/11),
+            // which this generic document-level click listener cannot.
+            // Plotly's `plotly_click` is a separate, Plotly-internal event
+            // system (not native DOM `click` bubbling), so both listeners
+            // see the same user click independently -- this early return
+            // is what stops the generic path from ALSO creating something.
+            if (type === "callout") return;
             const toolbarEl = document.getElementById("wwToolbar");
             if (toolbarEl && toolbarEl.contains(event.target)) return;
             const mainAreaEl = document.getElementById("activeViewArea");
@@ -7465,6 +7895,108 @@
             wwExitAnnotationPlacementMode();
             // Section 12: enter edit mode immediately -- the user should
             // not have to find another control before typing.
+            wwBeginAnnotationEdit(annotation.id);
+        }
+
+        // ------------------------------------------------------------------
+        // Phase 4F (DEC-045): Callout placement -- click-on-trace creation.
+        // ------------------------------------------------------------------
+
+        // Section 8-11/13: wired once per analog panel from wwInitPanelPlot()
+        // (a FRESH `chartEl` every time -- panels are always torn down and
+        // recreated on a layout-mode switch, never reused in place, so
+        // there is no double-wiring risk on the SAME element, unlike the
+        // digital chart's own persistent chartEl, which needs its own
+        // `ww.digitalClickWired` guard for exactly that reason). A no-op
+        // instantly unless Callout placement mode is active -- normal
+        // Plotly click/zoom/pan is completely unaffected outside it
+        // (section 14).
+        function wwWireAnalogPanelClick(panel) {
+            panel.chartEl.on("plotly_click", (eventData) => {
+                if (ww.annotationPlacementType !== "callout") return;
+                if (!eventData || !eventData.points || !eventData.points.length) return;
+                const point = eventData.points[0];
+                const trace = point.data;
+                // Section 39: trace identity via the SAME stable
+                // "sourceId::channelName" `meta` field wwBuildTrace()
+                // already stamps on every trace -- never curveNumber alone
+                // (not guaranteed stable across rerenders) and never "the
+                // first trace in the panel" (section 8/9: Grouped/Custom
+                // panels may hold several channels).
+                const channel = panel.channels.find((c) => wwChannelKey(c.sourceId, c.channelName) === (trace && trace.meta));
+                if (!channel) return;
+                const approximateElapsedSeconds = wwPlotlyXToElapsed(point.x);
+                // Section 13/68: Callout mode is one-shot -- exits on the
+                // FIRST valid trace click regardless of whether anchor
+                // resolution then succeeds, so a slow/failed request can
+                // never be double-fired by a second click landing while
+                // the first is still in flight.
+                wwExitAnnotationPlacementMode();
+                wwCreateCalloutFromClick(panel, channel, approximateElapsedSeconds);
+            });
+        }
+
+        // Section 15/16/61/66/67: resolves the ONE authoritative
+        // full-resolution sample anchor for a Callout, then creates it.
+        // Called exactly once per Callout, here, never again afterward
+        // (section 55) -- the resolved sample_index/elapsed_seconds/value
+        // become the annotation's own fixed engineering anchor from this
+        // point on.
+        async function wwCreateCalloutFromClick(panel, channel, approximateElapsedSeconds) {
+            const workspaceId = currentWorkspaceId();
+            const epochAtStart = ww.epoch;
+            const sourceId = channel.sourceId;
+            const channelName = channel.channelName;
+
+            let response;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
+                    "/sources/" + encodeURIComponent(sourceId) + "/annotation-anchor",
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            channel_name: channelName,
+                            approximate_elapsed_seconds: approximateElapsedSeconds,
+                        }),
+                    }
+                );
+            } catch (error) {
+                wwShowError(panel, "Could not create callout: could not reach the backend.");
+                return;
+            }
+            // Section 67: reject a stale response -- the workspace may
+            // have changed (Start New Workspace / this source removed)
+            // while the request was in flight. Never create a Callout in
+            // the wrong workspace.
+            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+
+            let body = null;
+            try { body = await response.json(); } catch (error) { /* handled by !response.ok below */ }
+            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+
+            if (!response.ok || !body) {
+                // Section 66: never create a partial/approximate Callout
+                // on a failed resolution -- a concise error only.
+                const message = (body && body.detail && body.detail.message) || "Could not resolve the anchor point.";
+                wwShowError(panel, "Could not create callout: " + message);
+                return;
+            }
+
+            const annotation = wwCreateAnnotation("callout", "main", { x: 0, y: 0 }, {
+                text: "",
+                sourceId: body.source_id,
+                channelName: body.channel_name,
+                sampleIndex: body.sample_index,
+                anchorElapsedSeconds: body.elapsed_seconds,
+                anchorValue: body.value,
+                unit: body.unit,
+                // Section 62: a sensible default that avoids covering the
+                // clicked waveform point -- never elaborate auto-placement.
+                boxOffset: { x: 80, y: -60 },
+            });
+            // Section 18: immediate edit, exactly like Text Note.
             wwBeginAnnotationEdit(annotation.id);
         }
 
@@ -7655,6 +8187,10 @@
                 for (const sourceId of touchedSources) wwFetchCursorValuesForSource(sourceId);
             }
             wwRefreshWorkspaceBounds();
+            // Phase 4F (section 37/56): a Callout anchored to a channel
+            // that just BECAME displayed needs to reappear on canvas
+            // immediately, not wait for an unrelated zoom/pan/resize.
+            wwRenderAnnotations();
         }
 
         function wwRemoveChannelByKey(key) {
@@ -7704,6 +8240,10 @@
             // else happens to call it.
             wwSyncActivePanelVisual();
             wwRefreshWorkspaceBounds();
+            // Phase 4F (section 37/56): any Callout anchored to the
+            // just-hidden channel must disappear from canvas immediately
+            // (it stays in ww.annotations/the Annotation List).
+            wwRenderAnnotations();
         }
 
         function wwRemovePanelDom(panel) {
@@ -7776,6 +8316,10 @@
                 wwUpdateCursorValueCellsForChannels(sourceId, channelNames);
             }
             wwRefreshWorkspaceBounds();
+            // Phase 4F (section 37/56): same as wwRemoveChannel()'s own
+            // hook -- any Callout anchored to a channel in this batch must
+            // disappear from canvas immediately.
+            wwRenderAnnotations();
         }
 
         // ==================================================================
@@ -8373,6 +8917,37 @@
             }
             ww.sourceBounds.delete(sourceId);
             wwRefreshWorkspaceBounds();
+            // Phase 4F (section 57): a Callout anchored to a REMOVED
+            // source's channel is deleted outright, not merely hidden --
+            // its target sample no longer exists server-side, so there is
+            // nothing left to reproject it against, and no other source
+            // is silently substituted (never rebind to a same-named
+            // channel on a different source). This is called from
+            // wwRemoveChannel() above too (the per-channel path), but
+            // that only clears channels currently DISPLAYED -- a Callout
+            // whose channel was never re-displayed after this source was
+            // selected would otherwise survive; this sweep is the
+            // authoritative one, keyed on sourceId directly.
+            wwRemoveCalloutsForSource(sourceId);
+        }
+
+        // Phase 4F (section 57): deletes every Callout anchored to
+        // `sourceId` -- reuses the SAME generic ww.annotations.delete()
+        // path wwDeleteAnnotation() itself uses, just batched (never a
+        // second annotation-removal mechanism).
+        function wwRemoveCalloutsForSource(sourceId) {
+            let removedAny = false;
+            for (const [id, annotation] of ww.annotations) {
+                if (annotation.type === "callout" && annotation.data && annotation.data.sourceId === sourceId) {
+                    ww.annotations.delete(id);
+                    if (ww.annotationSelectedId === id) ww.annotationSelectedId = null;
+                    removedAny = true;
+                }
+            }
+            if (removedAny) {
+                wwRenderAnnotations();
+                wwRenderAnnotationList();
+            }
         }
 
         // "Clear workspace" button and "Start new workspace" hook (section
@@ -8822,6 +9397,19 @@
         // yet, which is the intentional, honest state (there is genuinely
         // nothing to draw a line across).
         function wwUpdateCursorOverlay() {
+            // Phase 4F (section 56): every trigger this function already
+            // reacts to (X viewport change via wwRebuildDigitalChart(),
+            // resize, layout-mode switch, digital-region height change,
+            // scroll via wwScheduleCursorOverlayRefresh()) is ALSO exactly
+            // the trigger surface Callout anchors need reprojected on --
+            // reusing this ONE existing hook point rather than fanning the
+            // same ~15 call sites out a second time. Placed FIRST,
+            // unconditionally, so none of this function's OWN cursor-
+            // specific early returns below (cursor mode off, nothing
+            // rendered yet) can skip it -- Callout reprojection has
+            // nothing to do with A/B cursor state.
+            wwRenderAnnotations();
+
             const overlayEl = document.getElementById("wwCursorOverlay");
             const rulerOverlayEl = document.getElementById("wwCursorRulerOverlay");
             const labelLayerEl = document.getElementById("wwCursorLabelLayer");

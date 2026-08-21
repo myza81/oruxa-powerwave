@@ -27,6 +27,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Upl
 
 from app.config import Settings
 from app.domain.source import ActiveSource
+from app.schemas.annotation_anchor import AnnotationAnchorOut, AnnotationAnchorRequest
 from app.schemas.cursor_values import CursorValuesOut, CursorValuesRequest
 from app.schemas.digital_waveform import DigitalWaveformBatchOut, DigitalWaveformOut
 from app.schemas.source import ErrorOut, SourceChannelsOut, SourceSummaryOut
@@ -39,6 +40,7 @@ from app.services.waveform_service import (
     extract_cursor_values,
     extract_digital_waveform,
     extract_waveform_range,
+    resolve_annotation_anchor,
 )
 from app.services.workspace_registry import WorkspaceRegistry
 
@@ -299,6 +301,46 @@ def get_source_cursor_values(
         cursor_b_time=body.cursor_b_time,
     )
     return CursorValuesOut.from_result(result)
+
+
+@router.post("/{source_id}/annotation-anchor", response_model=AnnotationAnchorOut)
+def resolve_source_annotation_anchor(
+    workspace_id: str,
+    source_id: str,
+    body: AnnotationAnchorRequest,
+    registry: WorkspaceRegistry = Depends(get_workspace_registry),
+) -> AnnotationAnchorOut:
+    """Phase 4F Callout annotation anchor resolution (DEC-045).
+
+    Resolves ONE authoritative full-resolution sample anchor for one
+    analog channel -- called exactly ONCE, at Callout creation time; the
+    frontend never calls this again for the same Callout (no re-
+    resolution on drag/zoom/pan/box-move, see
+    app.services.waveform_service.resolve_annotation_anchor's own
+    docstring). Reuses the exact same analog-channel validation and
+    nearest-sample/tie-break logic `.../cursor-values` already uses --
+    deliberately not a second nearest-sample implementation. Analog
+    channels only this phase (`channel_not_analog` for a digital name,
+    matching GET .../waveform's own existing analog-only contract).
+    """
+    workspace_id = _validate_workspace_id(workspace_id)
+    active = _get_or_404(registry, workspace_id, source_id)
+    try:
+        result = resolve_annotation_anchor(
+            active,
+            channel_name=body.channel_name,
+            approximate_elapsed_seconds=body.approximate_elapsed_seconds,
+        )
+    except ImportServiceError as exc:
+        logger.info(
+            "Annotation anchor request rejected (%s) for workspace %s source %s: %s",
+            exc.code,
+            workspace_id,
+            source_id,
+            exc.message,
+        )
+        raise _http_error(exc) from exc
+    return AnnotationAnchorOut.from_result(result)
 
 
 @router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT)

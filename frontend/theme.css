@@ -85,6 +85,14 @@
        with waveform trace colors or the A/B cursor blue/red. */
     --annotation-bg: #dfe7fb;
     --annotation-border: #a0dce3;
+
+    /* Phase 4F (DEC-045): Callout's own connector/anchor-marker accent --
+       a distinct hue family from --accent (A/B cursor "A"/blue),
+       --error (A/B cursor "B"/red), AND --annotation-bg/-border (the
+       note surface itself), so a Callout marker reads clearly against
+       any of them rather than blending in or being mistaken for a
+       measurement cursor. */
+    --annotation-callout-accent: #b56a0f;
 }
 
 :root[data-theme="dark"] {
@@ -130,6 +138,12 @@
        --text and distinct from --panel/--waveform-surface. */
     --annotation-bg: #2b2416;
     --annotation-border: #4a3f26;
+
+    /* Phase 4F (DEC-045): same rationale as Light's own
+       --annotation-callout-accent above -- brightened toward --text for
+       dark-surface contrast, same amber family so it reads as "the same
+       marker" across themes. */
+    --annotation-callout-accent: #e0a344;
 }
 
 /* Phase 3B-UAT9: slim, borderless scrollbars -- one shared rule set for
