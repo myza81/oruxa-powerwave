@@ -8648,6 +8648,145 @@ owner UAT after this push.
 
 ---
 
+## Phase 5A-UAT5 — Calculated Waveform Panels Grouped by Engineering Type (2026-08-21)
+
+### Scope
+
+Owner observation: the Waveform sidebar was already correctly grouped
+(Phase 5A-UAT4) as "Calculated Channels > Voltage/Current/Power/...",
+but the actual WAVEFORM PANELS in Grouped mode still combined every
+calculated channel into one generic "Calculated" panel regardless of
+type. Requirement: calculated channels must be separated into distinct
+Grouped-mode panels by engineering type ("Calculated - Voltage",
+"Calculated - Current", etc.), never merged with the original recorded
+Analog panels of the same type.
+
+### Investigation (confirmed before any change)
+
+Traced the exact path: `wwAddSelectedChannels()` (initial add) and
+`wwRebuildLayout()` (every layout-mode switch's own regroup pass) both
+call `wwPanelGroupKeyFor(channel)` to find-or-create the panel a channel
+belongs to. For Grouped mode, that function returned
+`channel.engineeringType || "Undefined"`. For a calculated channel,
+`channel.engineeringType` is set from `wwCalculatedChannelMeta(calc)`,
+which -- confirmed by direct inspection -- hardcodes `engineeringType:
+"Calculated"` for every calculated channel regardless of its own real
+inherited type (a deliberate Phase 5A-UAT4 choice, at the time, to keep
+sidebar grouping from affecting panel placement). This is the exact
+root cause the owner's own report anticipated.
+
+### Fix
+
+Added a calculated-specific branch to `wwPanelGroupKeyFor()` and its
+sibling `wwPanelLabelFor()` -- checked only within the Grouped-mode
+fallthrough, after the existing Separate/Custom branches, which are
+completely untouched:
+
+```
+wwIsCalculatedSourceId(channel.sourceId)
+  -> group key:   "calc:" + wwCalculatedEngineeringTypeFor(channel.sourceId)
+  -> display title: "Calculated - " + wwCalculatedEngineeringTypeFor(channel.sourceId)
+```
+
+`wwCalculatedEngineeringTypeFor(calculatedChannelId)` is a new, small
+helper reading `ww.calculatedChannels.get(id).engineering_type`
+directly -- the SAME backend-authoritative field
+`derive_engineering_type()` (Phase 5A-UAT4) computes -- never inferred
+from the calculated channel's own user-editable name, never re-derived
+from unit in the frontend, never read from the sidebar DOM. Missing/
+unrecognized falls back to `"Undefined"`, matching every other
+consultation of this field. One small, surgical change to the ONE
+generic resolver (per the task's own explicit preference) -- no
+scattered special cases anywhere else, since every panel-forming/
+regrouping code path already funnels through these two functions.
+
+### Resulting hierarchy (example)
+
+```
+Voltage                    <- recorded VA/VB/VC
+Current                    <- recorded IA
+Calculated - Voltage       <- calculated V_SUM, ABS_VA
+Calculated - Current       <- calculated NEG_IA
+Calculated - Power         <- calculated P_TOTAL
+```
+
+Recorded and calculated channels of the SAME type are always two
+distinct panels -- verified directly, never merged.
+
+### Grouped mode
+
+Multiple calculated channels of the same type share exactly one panel;
+different types get separate panels; a type panel exists exactly when
+at least one of its members is currently visible (`ww.displayed`
+remains the sole authority -- created on first-visible, removed on
+last-hidden/deleted, exactly like every other panel's existing
+lifecycle, no new rule introduced). Calculated-from-calculated (e.g.
+`Scaled` derived from `Sum`, both Voltage) lands in the same
+`Calculated - Voltage` panel as any other Voltage-classified calculated
+channel, since it inherits the SAME `engineering_type` field.
+
+### Separate / Custom modes
+
+Untouched -- their own branches in `wwPanelGroupKeyFor()`/
+`wwPanelLabelFor()` are checked FIRST and return before the new
+calculated-type logic is ever reached. Separate: each calculated channel
+still gets its own single-channel panel, verified directly. Custom: the
+existing solo-panel key convention (`"custom-solo:" + wwChannelKey(...)`)
+is completely unchanged for an unassigned calculated channel, verified
+directly.
+
+### A/B, Peak, Callout, Absolute/Elapsed
+
+All unaffected by construction: channel identity (`sourceId`/
+`channelName`) never changes when a channel moves between panels during
+a mode switch, so `ww.cursorValues`/`ww.annotations`/`ww.sourceTiming`
+(via `reference_source_id`) all continue to resolve correctly regardless
+of which panel currently holds the trace. Verified directly: A/B cursor
+values remain correct after regrouping into per-type panels; a Callout
+survives a full Grouped -> Separate -> Grouped round trip still attached
+to the correct calculated channel; Elapsed/Absolute switching with two
+calculated-type panels visible produces zero additional network fetch
+(DEC-042's presentation-only model, and the Phase 5A UAT Absolute Time
+fix's own `ww.sourceTiming` inheritance, both untouched).
+
+### Tests
+
+Extended `phase5a_check.mjs` with 11 new checks: two same-type
+calculated channels sharing exactly one panel, three different types
+landing in three separate panels, a recorded and a calculated channel of
+the same type confirmed as two genuinely distinct panels, hiding the
+last trace in a type panel removing it cleanly (no stale panel),
+`Undefined` classification landing in its own `Calculated - Undefined`
+panel (never a generic `Calculated` one), Separate-mode regression,
+Custom-mode regression, a full 5-step mode-switching sequence
+(Grouped->Separate->Grouped->Custom->Grouped) with zero duplicate/stale
+panels or lost traces/visibility, Absolute/Elapsed switching with zero
+extra fetch, A/B regression, and Callout-attachment regression across a
+mode round trip -- **84/84 passing** in the file overall (73 prior
+unchanged). Full frontend suite reconfirmed at the true 33-failure
+baseline across the same 15 pre-existing files (zero net new
+regressions; `phase4c1_check.mjs`/`phase4c2_check.mjs`/
+`phase4f_check.mjs`/`phase4g_check.mjs` individually reconfirmed
+passing). Backend untouched, full suite green (`git status --short
+backend/` empty throughout -- this is a frontend-only panel-grouping
+fix, no calculation math/input-availability/dependency logic touched).
+
+### Decision
+
+No new decision. See the "Update" note appended to
+[DECISIONS.md — DEC-047](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations)
+(an explicit clarification of Grouped-mode panel behavior, not a new
+architectural decision).
+
+### Files changed
+
+`frontend/index.html` only -- `wwPanelGroupKeyFor()`/`wwPanelLabelFor()`
+gained a calculated-specific Grouped-mode branch, new
+`wwCalculatedEngineeringTypeFor()` helper, two stale comments corrected
+for accuracy. No backend files touched.
+
+---
+
 ## Phase 5A-UAT4 — Calculated Channel Type Subgroups (2026-08-21)
 
 ### Scope

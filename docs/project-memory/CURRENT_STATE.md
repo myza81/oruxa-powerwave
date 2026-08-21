@@ -4,8 +4,9 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-21** (Phase 5A-UAT4 — Calculated
-Channel Type Subgroups, on top of Phase 5A UAT — Absolute Time
+Last meaningful update: **2026-08-21** (Phase 5A-UAT5 — Calculated
+Waveform Panels Grouped by Engineering Type, on top of Phase 5A-UAT4 —
+Calculated Channel Type Subgroups, Phase 5A UAT — Absolute Time
 after adding a calculated channel, Phase 5A-UAT3 —
 Calculated Channel Input Availability, Phase 5A-UAT2 — Standard A/B
 Measurements for Calculated Channels, Phase 5A-UAT —
@@ -189,10 +190,21 @@ from the user-editable channel name; classification never blocks or
 alters a calculation, only the existing unit/time-alignment guardrails
 do that (unchanged). Reuses the existing `app.domain.
 channel_classification.classify_analog_channel()` authority for real
-source channels — no second classification engine. Deliberately does
-NOT touch `wwPanelGroupKeyFor()`'s own Grouped-mode panel-placement key
-(still hardcoded `"Calculated"`) — sidebar grouping is presentation
-only, Grouped/Separate/Custom/A-B/Peak/Callout are all unchanged. See
+source channels — no second classification engine. At the time (Phase
+5A-UAT4), this deliberately did NOT touch `wwPanelGroupKeyFor()`'s own
+Grouped-mode panel-placement key (kept hardcoded `"Calculated"`) —
+sidebar grouping was presentation only.
+**Superseded same day by Phase 5A-UAT5** (a separate, later owner
+requirement, not a correction of the above): Grouped-mode waveform
+PANELS are now also split by the same inherited engineering type —
+`wwPanelGroupKeyFor()`/`wwPanelLabelFor()` gained a calculated-specific
+branch producing `"calc:" + type"` panel keys / `"Calculated - " +
+type` titles, reading `ww.calculatedChannels.get(id).engineering_type`
+directly (never re-deriving it). Recorded and calculated channels of
+the same type remain two distinct panels, never merged. Separate/Custom
+modes, A/B, Peak, Callout, and Absolute/Elapsed are all confirmed
+unaffected (channel identity never changes when a channel moves between
+panels). See
 [DECISIONS.md — DEC-047](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations)
 (including all its 2026-08-21 Update notes) and
 [MIGRATION_PLAN.md — Phase 5A](MIGRATION_PLAN.md#phase-5a--calculated-channels--basic-signal-builder-2026-08-21)
@@ -201,7 +213,8 @@ only, Grouped/Separate/Custom/A-B/Peak/Callout are all unchanged. See
 / [Phase 5A-UAT2 — Standard A/B Measurements](MIGRATION_PLAN.md#phase-5a-uat2--standard-ab-measurements-for-calculated-channels-2026-08-21)
 / [Phase 5A-UAT3 — Input Availability](MIGRATION_PLAN.md#phase-5a-uat3--calculated-channel-input-availability-2026-08-21)
 / [Phase 5A UAT — Absolute Time](MIGRATION_PLAN.md#phase-5a-uat--absolute-time-after-adding-a-calculated-channel-2026-08-21)
-/ [Phase 5A-UAT4 — Type Subgroups](MIGRATION_PLAN.md#phase-5a-uat4--calculated-channel-type-subgroups-2026-08-21).
+/ [Phase 5A-UAT4 — Type Subgroups](MIGRATION_PLAN.md#phase-5a-uat4--calculated-channel-type-subgroups-2026-08-21)
+/ [Phase 5A-UAT5 — Waveform Panel Type Grouping](MIGRATION_PLAN.md#phase-5a-uat5--calculated-waveform-panels-grouped-by-engineering-type-2026-08-21).
 
 `[DECISION]` **Dynamic Maximum/Minimum Peak Annotation — DEC-046**
 (2026-08-21; **persistent placement guidance ribbon, addendum,

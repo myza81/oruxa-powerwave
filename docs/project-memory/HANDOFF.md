@@ -8,6 +8,61 @@ Last updated: **2026-08-21**
 
 ## What was most recently done
 
+**Phase 5A-UAT5 — Calculated Waveform Panels Grouped by Engineering
+Type.** Owner observation: the Waveform sidebar was already correctly
+grouped (Phase 5A-UAT4) by engineering type, but the actual WAVEFORM
+PANELS in Grouped mode still combined every calculated channel into one
+generic "Calculated" panel. No new decision -- an "Update" note appended
+to DEC-047. Full detail:
+[DECISIONS.md — DEC-047 Update note](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations),
+[MIGRATION_PLAN.md — Phase 5A-UAT5](MIGRATION_PLAN.md#phase-5a-uat5--calculated-waveform-panels-grouped-by-engineering-type-2026-08-21).
+
+**Root cause, confirmed by direct trace**: `wwPanelGroupKeyFor(channel)`
+-- the ONE function every panel creation/reconciliation path already
+funnels through -- returned `channel.engineeringType || "Undefined"`
+for Grouped mode, and every calculated channel's own `engineeringType`
+was (deliberately, per Phase 5A-UAT4) the hardcoded string
+`"Calculated"`. Every calculated channel, regardless of its real
+inherited type, collapsed into one shared panel.
+
+**Fix**: a calculated-specific branch added to `wwPanelGroupKeyFor()`
+and `wwPanelLabelFor()`, checked only inside the Grouped-mode
+fallthrough (Separate/Custom branches untouched) --
+`wwIsCalculatedSourceId(channel.sourceId)` routes to a new
+`wwCalculatedEngineeringTypeFor()`, reading
+`ww.calculatedChannels.get(id).engineering_type` directly (the SAME
+backend-authoritative field Phase 5A-UAT4 introduced) -- never inferred
+from the channel's own name, never re-derived from unit, never read
+from the sidebar DOM. Group key `"calc:" + type`, display title
+`"Calculated - " + type`. One small, surgical change to the generic
+resolver -- no scattered special cases elsewhere.
+
+**Confirmed unaffected**: Separate mode (each calculated channel still
+its own panel), Custom mode (existing solo-panel key convention
+untouched), A/B cursor values, Callout attachment across a mode round
+trip, and Absolute/Elapsed switching (zero extra fetch) -- channel
+identity never changes when a channel moves between panels, so
+`ww.cursorValues`/`ww.annotations`/`ww.sourceTiming` all keep resolving
+correctly regardless of which panel currently holds the trace.
+
+**Tests**: extended `phase5a_check.mjs` with 11 new checks (same-type
+sharing one panel, different types in separate panels, recorded vs.
+calculated of the same type staying distinct, empty-panel cleanup on
+last-hide, Undefined classification's own dedicated panel, Separate/
+Custom regressions, a full 5-step mode-switching sequence, Absolute/
+Elapsed regression, A/B regression, Callout-attachment regression) --
+**84/84 passing** in the file overall (73 prior unchanged). Full
+frontend suite reconfirmed at the true 33-failure baseline (zero net
+new regressions). Backend untouched, full suite green (no backend files
+touched).
+
+**Not yet done** (as of this section being written): commit/push,
+CI/automatic DEV deployment verification, and owner UAT of this feature
+specifically -- see the final report delivered alongside this update for
+whether those have since completed.
+
+## What was done in the prior session (Phase 5A-UAT4 — Calculated Channel Type Subgroups)
+
 **Phase 5A-UAT4 — Calculated Channel Type Subgroups.** Owner-approved
 clarification: on the main Waveform page, calculated channels remain
 under their own top-level "Calculated Channels" group (never merged

@@ -6486,11 +6486,39 @@
         // The "custom-solo:" prefix keeps an unassigned channel's own key
         // distinct from any real custom group's "custom:" id, so the two
         // can never collide.
+        // Phase 5A-UAT5 (DEC-047 clarification): Grouped mode's own
+        // authority for a calculated channel's REAL engineering type --
+        // deliberately NOT `channel.engineeringType` (that field stays
+        // hardcoded `"Calculated"`, see wwCalculatedChannelMeta()'s own
+        // comment: it still drives nothing else and is left alone). Reads
+        // `ww.calculatedChannels` -- the backend-authoritative
+        // `CalculatedChannel.engineering_type` introduced in Phase
+        // 5A-UAT4 -- directly, never inferred from the channel's own
+        // (user-editable) name, never re-derived from unit, never read
+        // from the sidebar DOM. A channel not found (already removed) or
+        // missing/unrecognized type conservatively falls back to
+        // "Undefined", same as everywhere else this field is consulted.
+        function wwCalculatedEngineeringTypeFor(calculatedChannelId) {
+            const calc = ww.calculatedChannels.get(calculatedChannelId);
+            return (calc && calc.engineering_type) || "Undefined";
+        }
+
         function wwPanelGroupKeyFor(channel) {
             if (ww.layoutMode === "separate") return wwChannelKey(channel.sourceId, channel.channelName);
             if (ww.layoutMode === "custom") {
                 const group = wwCustomGroupFor(channel);
                 return group ? ("custom:" + group.id) : ("custom-solo:" + wwChannelKey(channel.sourceId, channel.channelName));
+            }
+            // Phase 5A-UAT5: Grouped mode only -- calculated channels get
+            // their OWN panel per engineering type ("calc:Voltage"),
+            // stable and distinct from a real analog channel's own plain
+            // "Voltage" key, so the two origins can never collide into one
+            // panel (section 3's own explicit requirement) regardless of
+            // how many real/calculated types happen to share the same
+            // name. Separate/Custom are unaffected -- checked above,
+            // never reached by a calculated channel in those modes.
+            if (wwIsCalculatedSourceId(channel.sourceId)) {
+                return "calc:" + wwCalculatedEngineeringTypeFor(channel.sourceId);
             }
             return channel.engineeringType || "Undefined";
         }
@@ -6505,6 +6533,13 @@
             if (ww.layoutMode === "custom") {
                 const group = wwCustomGroupFor(channel);
                 return group ? group.label : channel.channelName;
+            }
+            // Phase 5A-UAT5: mirrors wwPanelGroupKeyFor()'s own calculated
+            // branch immediately above -- "Calculated - <Type>", the
+            // owner's own exact requested title, never a longer technical
+            // name.
+            if (wwIsCalculatedSourceId(channel.sourceId)) {
+                return "Calculated - " + wwCalculatedEngineeringTypeFor(channel.sourceId);
             }
             return channel.engineeringType || "Undefined";
         }
@@ -10864,17 +10899,18 @@
 
         function wwCalculatedChannelMeta(calc) {
             const timing = wwSourceTimingAuthority(calc.reference_source_id);
-            // Section 68: its own "Calculated Channels" classification,
-            // never Voltage/Current automatic inference. This
-            // `engineeringType` feeds wwPanelGroupKeyFor()'s own Grouped-
-            // mode PANEL placement ONLY -- deliberately kept hardcoded
-            // "Calculated" (Phase 5A-UAT4 section 18: sidebar grouping
-            // must never change plotting/panel-grouping behavior).
-            // Distinct from `calc.engineering_type` (the real backend-
-            // inherited classification, e.g. Voltage/Current) used
-            // ONLY by wwRenderCalculatedChannelsSidebarSection()'s own
-            // sidebar subgrouping -- two separate, deliberately
-            // independent concerns sharing a similar name.
+            // Section 68: this `engineeringType` field is kept hardcoded
+            // "Calculated" for historical/defensive reasons (never
+            // Voltage/Current automatic inference here), but as of Phase
+            // 5A-UAT5 it is NO LONGER what drives Grouped-mode panel
+            // placement for a calculated channel -- wwPanelGroupKeyFor()/
+            // wwPanelLabelFor() now special-case `wwIsCalculatedSourceId()`
+            // and look up the REAL inherited type via
+            // wwCalculatedEngineeringTypeFor() (reading `calc.engineering_type`
+            // from ww.calculatedChannels directly) instead, producing
+            // "Calculated - Voltage"/"Calculated - Current"/etc. panels.
+            // This field is only ever actually read as a fallback for
+            // REAL analog channels now; still harmless to carry here.
             return {
                 sourceId: calc.id, sourceName: "Calculated Channels", channelName: calc.name,
                 unit: calc.unit, engineeringType: "Calculated",
@@ -10998,12 +11034,18 @@
         // Channels already uses (section 12: no invented categories). A
         // type with zero current calculated channels renders no subgroup
         // at all (section 13, matching renderAnalogGroup()'s own
-        // "only present types" convention). This sidebar grouping is
-        // PURELY presentational -- it never touches wwPanelGroupKeyFor()/
-        // Grouped-mode panel placement (wwCalculatedChannelMeta() still
-        // deliberately reports its own separate "Calculated" panel-
-        // grouping key, untouched -- section 18: no separate rendering
-        // pipeline by engineering type).
+        // "only present types" convention). This sidebar rendering
+        // function itself never touches wwPanelGroupKeyFor()/panel
+        // placement directly -- both independently read the SAME
+        // `calc.engineering_type` authority from `ww.calculatedChannels`,
+        // rather than one deriving from the other, so they can never
+        // drift out of sync. (Phase 5A-UAT4 originally kept Grouped-mode
+        // panel placement deliberately separate/hardcoded "Calculated";
+        // Phase 5A-UAT5 -- an explicit, separate owner requirement --
+        // later aligned it to split by type too, "Calculated - Voltage"/
+        // "Calculated - Current"/etc., via wwPanelGroupKeyFor()'s own
+        // dedicated calculated-channel branch, never by reading this
+        // sidebar's own DOM or duplicating the classification.)
         //
         // Each subgroup's own table is still built via the SAME
         // renderChannelTable()/analogChannelNameCellHtml()/
