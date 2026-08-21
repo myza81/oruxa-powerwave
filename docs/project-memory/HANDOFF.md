@@ -8,6 +8,69 @@ Last updated: **2026-08-21**
 
 ## What was most recently done
 
+**Phase 5A-UAT3 — Calculated Channel Input Availability.**
+Owner-approved clarification: Calculated Channels can now use ALL
+available analog channels (source and calculated) from the active
+workspace, regardless of whether those channels are currently visible
+on the main Waveform page. Waveform visibility is presentation state
+only and is never an engineering eligibility criterion. No new decision
+-- an "Update" note appended to DEC-047. Full detail:
+[DECISIONS.md — DEC-047 Update note](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations),
+[MIGRATION_PLAN.md — Phase 5A-UAT3](MIGRATION_PLAN.md#phase-5a-uat3--calculated-channel-input-availability-2026-08-21).
+
+**Root cause: `wwCcAvailableCandidates()` read from `ww.channelMeta`**,
+a Map scoped, per its own original comment, to "every analog channel
+the engineer has brought into this workspace's Waveform at least once"
+-- populated solely by `wwAddSelectedChannels()`, i.e. only on first
+DISPLAY. A source channel never individually toggled visible was
+therefore absent from the picker even though its own SOURCE had already
+been opened and its full channel list was already known to the backend.
+Not a backend gap -- confirmed by inspection that the backend's own
+`ChannelRef` validation never depended on visibility at all; no backend
+files touched.
+
+**Fix**: a new `ww.sourceChannelInventory` (`sourceId -> {sourceId,
+sourceName, analogChannels}`), populated directly from the SAME `GET
+.../sources/{id}/channels` response `selectSource()` already fetches
+for the Channel Browser -- zero new network calls -- covering every
+analog channel of every source opened this session, independent of
+display history. `wwCcAvailableCandidates()` now reads from this
+inventory instead of `ww.channelMeta`, which is left completely
+untouched (still used, unmodified, by the unrelated Custom Groups chip
+editor). Lifecycle mirrors `ww.sourceBounds`: deleted per-source on
+source removal, cleared entirely only by Start New Workspace --
+deliberately NOT cleared by plain "Clear workspace" (unlike
+`ww.channelMeta`/`ww.channelColors`), since that button is display-only
+and keeps the still-selected source fully loaded; clearing the
+inventory there would have silently reintroduced the same bug. The
+existing client-side same-source candidate-disable heuristic needed no
+change (it already compares `referenceSourceId`, unaffected by where
+candidates come from) -- real unit/time-alignment compatibility remains
+entirely backend-enforced, unchanged. The picker's single flat group
+was split into one optgroup per source, matching the owner's preferred
+"Source 1 / Source 2 / Calculated Channels" structure.
+
+**Tests**: extended `phase5a_check.mjs` with 11 new checks (hidden-
+channel Reverse Polarity/Absolute Value/Multiply-by-Constant, N-input
+Addition/Subtraction with hidden inputs, a hidden calculated channel
+remaining available as a further input, an incompatible hidden
+cross-source channel still correctly disabled, hide-all/show-all
+leaving the candidate inventory unchanged, source removal dropping
+exactly that source's own candidates, waveform-preview regression, A/B-
+sidebar regression, and per-source grouping) -- **65/65 passing** in the
+file overall (53 prior unchanged). Full frontend suite reconfirmed at
+the true 33-failure baseline (zero net new regressions -- `phase2cc*`'s
+own pre-existing failures individually re-inspected and confirmed
+unrelated to `ww.channelMeta`/Custom Groups). Backend untouched,
+519/519 unchanged (no backend files touched).
+
+**Not yet done** (as of this section being written): commit/push,
+CI/automatic DEV deployment verification, and owner UAT of this feature
+specifically -- see the final report delivered alongside this update for
+whether those have since completed.
+
+## What was done in the prior session (Phase 5A-UAT2 — Standard A/B Measurements for Calculated Channels)
+
 **Phase 5A-UAT2 — Standard A/B Measurements for Calculated Channels.**
 On the main Waveform page, the Calculated Channels sidebar group now
 shows Cur A / Cur B measurement columns identical to real Analog

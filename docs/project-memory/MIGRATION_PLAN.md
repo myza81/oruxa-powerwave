@@ -8648,6 +8648,181 @@ owner UAT after this push.
 
 ---
 
+## Phase 5A-UAT3 — Calculated Channel Input Availability (2026-08-21)
+
+### Scope
+
+Owner-approved clarification: Calculated Channels must be able to use
+ALL available analog channels from the active workspace/source
+inventory, regardless of whether those channels are currently visible
+on the main Waveform page. Waveform visibility is presentation state
+only and must never control whether a recorded analog channel (or an
+existing calculated channel) is eligible as a calculation input. This
+applies to original/source analog channels and to calculated channels
+used as inputs to later calculations alike.
+
+### Investigation / root cause
+
+Traced `wwCcAvailableCandidates()` (the Signal Builder's own candidate-
+list authority) directly: it read from `ww.channelMeta`, a Map
+deliberately scoped, per its own pre-existing Phase 5A comment, to
+"every analog channel the engineer has brought into this workspace's
+Waveform **at least once**" -- populated SOLELY by
+`wwAddSelectedChannels()`, i.e. only the moment a channel is first
+DISPLAYED. A source channel never individually toggled visible was
+therefore simply absent from the picker, even though its own SOURCE had
+already been opened and its full channel list was already known to the
+backend -- confirming the bug is exactly what was expected:
+calculated-input availability was coupled to Waveform display history,
+not to the authoritative source/workspace inventory. Not a backend gap:
+the backend's `ChannelRef` validation already accepts any valid source/
+calculated channel id regardless of visibility (visibility is not
+backend state at all) -- confirmed by inspection before any change was
+made; no backend files were touched, per this task's own "only touch
+backend if an authoritative inventory API is missing" instruction (the
+existing `GET .../sources/{id}/channels` endpoint already provides
+everything needed).
+
+### Required separation of concerns (now established)
+
+SOURCE/WORKSPACE ANALOG INVENTORY -> determines whether a channel
+exists and can be considered for calculation. WAVEFORM VISIBILITY ->
+determines only whether that channel is currently plotted. These are
+now genuinely independent: a new `ww.sourceChannelInventory` (`sourceId
+-> {sourceId, sourceName, analogChannels}`) is the sole authority for
+the first; `ww.displayed` remains the sole authority for the second, as
+before, and is never consulted by the calculated-channel builder at
+all.
+
+### Input inventory authority
+
+`ww.sourceChannelInventory` is populated directly from the SAME `GET
+.../sources/{id}/channels` response `selectSource()` already fetches
+for the Channel Browser -- zero new network calls in the common case --
+covering EVERY analog channel of a source the engineer has opened this
+session, independent of which individual channels were ever toggled
+visible, hidden via "Hide all," or hidden individually.
+`wwCcAvailableCandidates()` now reads from this inventory instead of
+`ww.channelMeta`. `ww.channelMeta` itself is left completely untouched
+-- still used, unmodified, by the unrelated Custom Groups chip editor
+(`groupsHtml` rendering), which has its own, deliberately different,
+"survives hide, describes a possibly-hidden group member" purpose.
+
+### Visibility separation (confirmed by test)
+
+A hidden (never-displayed) source channel is now a fully eligible
+calculation input, and selecting it as an input never auto-displays it,
+never adds it to `ww.displayed`, never changes Grouped/Separate/Custom,
+viewport, or its sidebar eye state -- calculation input selection and
+waveform display remain genuinely separate concerns, verified directly:
+creating `-VA` from a VA that was never shown leaves `ww.displayed`
+untouched and VA still hidden afterward.
+
+### Calculated-as-input
+
+An existing calculated channel that is itself hidden (its own default
+state per DEC-038, or explicitly hidden afterward) remains fully
+available as an input to a further calculation -- `Scaled Sum = Sum x
+0.5` succeeds correctly even while `Sum` itself stays hidden, verified
+directly against the mock backend's own authoritative stored array.
+
+### Compatibility filtering (unchanged)
+
+All existing Phase 5A engineering guardrails remain mandatory and
+untouched: multi-input operands still require the same authoritative
+synchronized sample-time axis (no interpolation/resampling/time-shift/
+crop-to-overlap/equal-sample-count-or-rate shortcut) and compatible
+units, enforced server-side exactly as before. The client-side
+"same-source" candidate-disable heuristic
+(`wwCcCandidateOptionsHtml()`) needed no change -- it already compares
+`referenceSourceId` against the first-chosen input, unaffected by where
+the candidate list itself comes from; a hidden, cross-source,
+time-incompatible channel is still correctly shown-but-disabled after a
+first input is chosen, and an attempt to force-combine it anyway is
+still rejected by the backend, belt-and-braces, verified directly.
+
+### Unary / N-input operations (verified by test)
+
+Reverse Polarity, Absolute Value, and Multiply by Constant all succeed
+from a channel that has never been displayed, producing the correct
+full-resolution result. N-input Addition succeeds with only one of
+three inputs visible; N-input ordered Subtraction succeeds with ALL
+inputs hidden -- in every case the hidden channels remain hidden
+afterward, and results match hand-computed expectations against the
+authoritative full-resolution arrays.
+
+### Source lifecycle
+
+Removing a source drops exactly that source's own channels from the
+candidate inventory (`ww.sourceChannelInventory.delete(sourceId)` inside
+`performRemoveSource()`) -- no stale options; other sources' own
+candidates are unaffected. "Start New Workspace" clears the inventory
+entirely (mirrors `ww.sourceBounds`'s own scoping: "every old source was
+just released server-side"). The plain "Clear workspace" button
+deliberately does NOT clear it (unlike `ww.channelMeta`/
+`ww.channelColors`, which it already clears unconditionally) -- Clear is
+display-only and keeps the still-selected source fully loaded, so
+wiping its known channel list there would have silently reintroduced
+the exact visibility-coupling bug this fix removes.
+
+### UX: per-source grouping
+
+The picker's single flat "Source Analog Channels" optgroup was split
+into one optgroup per source (labelled by that source's own station
+name), matching the owner's own preferred "Source 1 / Source 2 /
+Calculated Channels" structure -- the smallest change that keeps a now
+potentially much larger candidate list navigable, without a
+disproportionate nested-by-engineering-type rewrite (a native
+`<select>` has no second grouping level to exploit for that, and the
+task's own guidance was explicit not to over-invest here).
+
+### Regressions confirmed unaffected
+
+The Calculated Channels waveform preview (Phase 5A-UAT) still follows
+its own, separate visibility authority (`ww.displayed`) unchanged --
+verified directly that a channel newly eligible as a candidate does NOT
+leak into the preview merely by being creatable; it still only appears
+once explicitly toggled visible, exactly as before. The Cur A/Cur B
+sidebar presentation (Phase 5A-UAT2) is unaffected, verified directly.
+
+### Tests
+
+Extended `phase5a_check.mjs` with 11 new checks (hidden-channel unary
+x3, hidden-input N-addition, all-hidden N-subtraction, hidden
+calculated-channel-as-input, incompatible hidden cross-source channel
+still correctly disabled, hide-all/show-all leaving the candidate
+inventory unchanged, source removal dropping exactly that source's
+candidates, waveform-preview regression, A/B-sidebar regression, and
+per-source optgroup grouping) -- **65/65 passing** in the file overall
+(53 prior unchanged, zero pre-existing test's own expected behavior
+changed). Full frontend suite reconfirmed at the true 33-failure
+baseline across the same 15 pre-existing files (zero net new
+regressions -- `phase2cc*`'s own pre-existing failures individually
+re-inspected and confirmed unrelated: still failing for the SAME
+pre-existing Absolute/Elapsed time-mode reasons as before, not
+`ww.channelMeta`/Custom Groups, which this change never touched;
+`phase4c1_check.mjs`/`phase4c2_check.mjs`/`phase4f_check.mjs`/
+`phase4g_check.mjs` individually reconfirmed passing). Backend
+untouched, 519/519 passing (`git status --short backend/` empty
+throughout).
+
+### Decision
+
+No new decision. See the "Update" note appended to
+[DECISIONS.md — DEC-047](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations)
+(an explicit clarification of existing intent, not a new architectural
+decision).
+
+### Files changed
+
+`frontend/index.html` only -- new `ww.sourceChannelInventory` field,
+populated in `selectSource()`, cleaned up in `performRemoveSource()`
+and `wwClearWorkspace()`'s Start-New-Workspace branch;
+`wwCcAvailableCandidates()` rewritten to read from it with per-source
+optgroup grouping. No backend files touched.
+
+---
+
 ## Phase 5A-UAT2 — Standard A/B Measurements for Calculated Channels (2026-08-21)
 
 ### Scope

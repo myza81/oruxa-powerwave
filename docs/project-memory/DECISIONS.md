@@ -5233,6 +5233,82 @@ backend files touched — the existing `/calculated-channels/cursor-values`
 endpoint needed no changes). See
 [MIGRATION_PLAN.md — Phase 5A-UAT2](MIGRATION_PLAN.md#phase-5a-uat2--standard-ab-measurements-for-calculated-channels-2026-08-21).
 
+**Update (2026-08-21, same day, owner-approved clarification — no new
+decision entry)**: **Calculated-channel input availability is
+independent of Waveform visibility.** All valid analog source channels
+and calculated analog channels in the active workspace may be used as
+calculation inputs even when hidden from the waveform. Visibility is
+presentation state only and is never an engineering eligibility
+criterion. This clarifies (does not alter) the original DEC-047 text —
+nothing about the five operations, the time-alignment guardrail, unit
+compatibility, dependency tracking, or full-resolution authority
+changed.
+
+Root cause of the pre-clarification gap: `wwCcAvailableCandidates()`
+(the Signal Builder's own input-picker candidate list) read from
+`ww.channelMeta` — a Map deliberately scoped, per its own original
+Phase 5A comment, to "every analog channel the engineer has brought
+into this workspace's Waveform **at least once**" (populated solely by
+`wwAddSelectedChannels()`, i.e. only on first DISPLAY). A source
+channel never individually toggled visible — even though its SOURCE had
+been opened and its full channel list was already known to the backend
+— was simply absent from the picker, silently coupling calculation
+eligibility to display history. Not a backend gap: the backend's own
+`ChannelRef` validation already accepts any valid source/calculated
+channel id regardless of visibility (visibility is not backend state at
+all) — confirmed by investigation before any change was made, per this
+clarification's own explicit "only touch backend if an authoritative
+inventory API is missing" instruction. No backend files were touched.
+
+Fixed with a new `ww.sourceChannelInventory` (`sourceId -> {sourceId,
+sourceName, analogChannels}`), populated directly from the SAME `GET
+.../sources/{id}/channels` response `selectSource()` already fetches
+for the Channel Browser (zero new network calls in the common case) —
+covering EVERY analog channel of a source the engineer has opened this
+session, independent of which individual channels were ever toggled
+visible. `wwCcAvailableCandidates()` now reads from this inventory
+instead of `ww.channelMeta` (which is left completely untouched --
+still used, unmodified, by the unrelated Custom Groups chip editor).
+Same lifecycle as the existing `ww.sourceBounds`: deleted per-source on
+source removal (`performRemoveSource()`), cleared entirely only by
+"Start New Workspace" — deliberately NOT cleared by the plain "Clear
+workspace" button (unlike `ww.channelMeta`/`ww.channelColors`, which
+that button already clears unconditionally): plain Clear is
+display-only and keeps the still-selected source fully loaded, so
+wiping its known channel list there would have silently reintroduced
+the same visibility-coupling bug this fix removes. The client-side
+"same-source" candidate-disable heuristic (`wwCcCandidateOptionsHtml()`,
+already documented as a UX shortcut only, never the real compatibility
+authority) needed no change — it already compares
+`referenceSourceId`, unaffected by where the candidate list itself
+comes from; the backend remains the sole real unit/time-alignment
+authority, exactly as before. The picker's own single flat "Source
+Analog Channels" optgroup was split into one optgroup per source
+(labelled by that source's own station name) to keep a now-larger,
+multi-source candidate list navigable — the smallest change matching
+the owner's own preferred "Source 1 / Source 2 / Calculated Channels"
+structure without a disproportionate nested-grouping rewrite (a native
+`<select>` has no second grouping level to exploit for engineering-type
+sub-groups). Extended `phase5a_check.mjs` with 11 new checks: Reverse
+Polarity/Absolute Value/Multiply-by-Constant from a never-displayed
+channel, N-input Addition/Subtraction with some or all inputs hidden, a
+hidden calculated channel remaining available as a further input, an
+incompatible hidden cross-source channel still correctly disabled by
+the picker (compatibility, not visibility), hiding/re-showing every
+analog channel leaving the candidate inventory unchanged, source
+removal dropping exactly that source's own candidates, the waveform
+preview's own unrelated visibility authority confirmed unaffected, the
+A/B sidebar presentation confirmed unaffected, and the per-source
+optgroup grouping — **65/65 passing** in the file overall (53 prior
+unchanged, zero pre-existing test's behavior changed). Full frontend
+suite reconfirmed at the true 33-failure baseline (zero net new
+regressions, `phase2cc*`'s own pre-existing failures independently
+confirmed unrelated to `ww.channelMeta`/Custom Groups, still failing
+for the SAME pre-existing Absolute/Elapsed time-mode reasons as before;
+`phase4c1`/`phase4c2`/`phase4f`/`phase4g` individually reconfirmed
+passing). Backend untouched, 519/519 passing. See
+[MIGRATION_PLAN.md — Phase 5A-UAT3](MIGRATION_PLAN.md#phase-5a-uat3--calculated-channel-input-availability-2026-08-21).
+
 ---
 
 ## How to add a decision

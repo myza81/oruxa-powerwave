@@ -4,8 +4,9 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-21** (Phase 5A-UAT2 — Standard A/B
-Measurements for Calculated Channels, on top of Phase 5A-UAT —
+Last meaningful update: **2026-08-21** (Phase 5A-UAT3 — Calculated
+Channel Input Availability, on top of Phase 5A-UAT2 — Standard A/B
+Measurements for Calculated Channels, Phase 5A-UAT —
 Calculated Channel Waveform Preview, Phase 5A UAT Fix — Page
 Navigation Isolation, Phase 5A — Calculated Channels /
 Basic Signal Builder, Phase 4G-UAT Bug Fix — Guidance
@@ -139,13 +140,36 @@ Cur A/Cur B live-update sweeps, no new update plumbing written. One
 small related bug fixed in the same change: the sidebar section's
 zero-channels early return now clears its own body (matching
 `wwRenderCalculatedChannelManagerList()`'s own sibling convention) so no
-stale row lingers after the last calculated channel is deleted. See
+stale row lingers after the last calculated channel is deleted.
+**Input Availability (2026-08-21, same day, owner-approved
+clarification)**: calculated-channel input availability is now
+independent of Waveform visibility — all valid analog source channels
+and calculated analog channels in the active workspace may be used as
+calculation inputs even when hidden from the waveform, never previously
+displayed at all, or hidden via "Hide all." Root cause:
+`wwCcAvailableCandidates()` read from `ww.channelMeta`, scoped to
+"channels displayed at least once" — a channel never individually
+toggled visible was absent from the picker even though its source had
+already been opened. Fixed with a new `ww.sourceChannelInventory`
+(populated from the SAME `GET .../sources/{id}/channels` response
+`selectSource()` already fetches, zero new network calls), covering
+every analog channel of every source opened this session regardless of
+display history; `ww.channelMeta` itself is untouched, still used by
+the unrelated Custom Groups editor. Not a backend gap — the backend's
+own `ChannelRef` validation never depended on visibility at all; no
+backend files touched. The picker's single flat group was split into
+one optgroup per source, matching the owner's preferred "Source 1 /
+Source 2 / Calculated Channels" structure. All existing engineering
+guardrails (time-alignment, unit compatibility, dependency tracking)
+are completely unchanged — only candidate-list *availability* changed,
+never validation. See
 [DECISIONS.md — DEC-047](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations)
-(including all three of its 2026-08-21 Update notes) and
+(including all four of its 2026-08-21 Update notes) and
 [MIGRATION_PLAN.md — Phase 5A](MIGRATION_PLAN.md#phase-5a--calculated-channels--basic-signal-builder-2026-08-21)
 / [Phase 5A UAT Fix](MIGRATION_PLAN.md#phase-5a-uat-fix--page-navigation-isolation-2026-08-21)
 / [Phase 5A-UAT — Waveform Preview](MIGRATION_PLAN.md#phase-5a-uat--calculated-channel-waveform-preview-2026-08-21)
-/ [Phase 5A-UAT2 — Standard A/B Measurements](MIGRATION_PLAN.md#phase-5a-uat2--standard-ab-measurements-for-calculated-channels-2026-08-21).
+/ [Phase 5A-UAT2 — Standard A/B Measurements](MIGRATION_PLAN.md#phase-5a-uat2--standard-ab-measurements-for-calculated-channels-2026-08-21)
+/ [Phase 5A-UAT3 — Input Availability](MIGRATION_PLAN.md#phase-5a-uat3--calculated-channel-input-availability-2026-08-21).
 
 `[DECISION]` **Dynamic Maximum/Minimum Peak Annotation — DEC-046**
 (2026-08-21; **persistent placement guidance ribbon, addendum,

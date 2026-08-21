@@ -691,7 +691,7 @@
             background: var(--panel);
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
-            padding: 10px 5px;
+            padding: 10px 10px;
         }
 
         section.panel h2 {
@@ -769,7 +769,7 @@
         #pageCalculatedChannels[hidden] { display: none; }
         .ww-cc-subtitle { margin: -8px 0 0; color: var(--text-dim); font-size: 0.85rem; }
         .ww-cc-panel { padding: 16px; }
-        .ww-cc-panel h3 { margin: 0 0 12px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
+        .ww-cc-panel h3 { margin: 0 0 12px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
 
         .ww-cc-operation-cards { display: flex; flex-wrap: wrap; gap: 10px; }
         .ww-cc-operation-card {
@@ -790,7 +790,7 @@
         }
         .ww-cc-operation-card:hover { border-color: var(--accent-dim); }
         .ww-cc-operation-card[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-wash-soft); }
-        .ww-cc-operation-card-name { font-size: 0.85rem; font-weight: 600; }
+        .ww-cc-operation-card-name { font-size: 0.7rem; font-weight: 600; }
         .ww-cc-operation-card-arity { font-size: 0.72rem; color: var(--text-dim); }
 
         .ww-cc-field { margin-top: 12px; }
@@ -802,7 +802,7 @@
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
             padding: 7px 10px;
-            font-size: 0.85rem;
+            font-size: 0.7rem;
             color: var(--text);
         }
         .ww-cc-field input:focus { outline: none; border-color: var(--accent-dim); }
@@ -814,7 +814,7 @@
             border-radius: var(--radius);
             background: var(--bg);
             border: 1px solid var(--panel-border);
-            font-size: 0.8rem;
+            font-size: 0.7rem;
             color: var(--text-dim);
             font-family: ui-monospace, "SF Mono", Consolas, monospace;
         }
@@ -828,7 +828,7 @@
             background: var(--bg);
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
-            font-size: 0.82rem;
+            font-size: 0.7rem;
         }
         .ww-cc-input-row-index { flex: 0 0 auto; color: var(--text-dim); min-width: 1.2em; }
         .ww-cc-input-row-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -845,10 +845,10 @@
         }
         .ww-cc-list-row:hover { background: var(--hover-tint); }
         .ww-cc-list-row-main { flex: 1 1 auto; min-width: 0; }
-        .ww-cc-list-row-name { font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; gap: 6px; }
-        .ww-cc-list-row-summary { font-size: 0.75rem; color: var(--text-dim); margin-top: 2px; }
+        .ww-cc-list-row-name { font-size: 0.7rem; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+        .ww-cc-list-row-summary { font-size: 0.7rem; color: var(--text-dim); margin-top: 2px; }
         .ww-cc-list-row-controls { flex: 0 0 auto; display: flex; gap: 2px; }
-        .ww-cc-list-row-error { flex-basis: 100%; color: var(--error); font-size: 0.75rem; margin-top: 4px; }
+        .ww-cc-list-row-error { flex-basis: 100%; color: var(--error); font-size: 0.7rem; margin-top: 4px; }
 
         /* Phase 5A-UAT: the preview chart's own container. Deliberately
            NO `display` property here -- height/sizing only -- so this
@@ -4650,6 +4650,10 @@
                 selectedSourceId = null;
                 renderChannels(null);
             }
+            // Phase 5A-UAT3 (section 12): this source is gone -- its
+            // channels must disappear from the Calculated Channels
+            // candidate inventory too, never linger as a stale option.
+            ww.sourceChannelInventory.delete(sourceId);
             // Stale-banner fix: only clear the success/import message if it
             // actually describes the source just removed.
             if (lastImportedSourceId === sourceId) {
@@ -4717,6 +4721,17 @@
                 }
                 const data = await response.json();
                 renderChannels(data);
+                // Phase 5A-UAT3 (DEC-047 clarification): cache this
+                // source's COMPLETE analog-channel inventory for the
+                // Calculated Channels builder -- independent of which
+                // individual rows the engineer goes on to toggle visible.
+                // Reuses the response already fetched for the Channel
+                // Browser above; no extra request. See
+                // ww.sourceChannelInventory's own comment.
+                ww.sourceChannelInventory.set(sourceId, {
+                    sourceId, sourceName: data.source.station_name,
+                    analogChannels: data.analog_channels,
+                });
                 // Phase 4A-UAT10: opening/selecting a source establishes
                 // that source's true elapsed bounds immediately from the
                 // backend timebase metadata, even with zero channels visible.
@@ -5649,6 +5664,25 @@
             // wwIsAnalogChannelVisible()); this map is metadata only, never
             // consulted to decide whether a channel is currently shown.
             channelMeta: new Map(),
+            // Phase 5A-UAT3 (DEC-047 clarification): sourceId -> {sourceId,
+            // sourceName, analogChannels: AnalogChannelOut[]} -- the
+            // AUTHORITATIVE complete analog-channel inventory for every
+            // source the engineer has opened (selectSource()) this
+            // session, independent of ww.displayed/ww.channelMeta.
+            // Populated directly from the SAME GET .../sources/{id}/channels
+            // response selectSource() already fetches for the Channel
+            // Browser (zero new network calls in the common case) --
+            // covers every channel of that source, not only ones
+            // individually toggled visible at least once (ww.channelMeta's
+            // own, deliberately narrower, scope). This is the sole
+            // candidate-input authority for the Calculated Channels
+            // builder (wwCcAvailableCandidates()) -- waveform display
+            // state (ww.displayed) is never consulted there; visibility
+            // is presentation state only, never an engineering eligibility
+            // criterion. Same lifecycle as ww.channelMeta: survives
+            // hide/Clear-workspace, deleted per-source on source removal,
+            // cleared entirely only by Start New Workspace.
+            sourceChannelInventory: new Map(),
             // Phase 5A (DEC-047): the workspace's own calculated-channel
             // registry mirror -- id -> {id, name, unit, operation, inputs,
             // parameters, dependencyIds, referenceSourceId, sampleCount,
@@ -10386,24 +10420,34 @@
             wwCcBuilder.nameEditedByUser = false;
         }
 
-        // Section 39: Source Analog Channels (from ww.channelMeta -- every
-        // analog channel the engineer has brought into this workspace's
-        // Waveform at least once this session; section 58's own smallest-
-        // clean-abstraction preference over eagerly fetching every
-        // channel of every imported source up front) + existing
-        // Calculated Channels, grouped, never mixed with digital channels
-        // (ww.channelMeta is analog-only by construction -- populated
-        // solely by wwAddSelectedChannels()).
+        // Phase 5A-UAT3 (DEC-047 clarification, section 14): the ONE
+        // authority for "which analog channels can be used as a
+        // calculated-channel input" -- deliberately reads
+        // ww.sourceChannelInventory (every analog channel of every source
+        // opened this session, full stop) rather than ww.displayed or
+        // ww.channelMeta's own narrower "brought into Waveform at least
+        // once" scope. Waveform visibility is presentation state only and
+        // must never gate engineering eligibility (the owner's own
+        // explicit product rule) -- a channel the engineer has never
+        // toggled visible, hidden via "Hide all," or hidden individually
+        // is exactly as eligible here as one currently plotted. Grouped
+        // by source (one optgroup per source, "Source 1"/"Source 2"/...
+        // in the task's own preferred structure) + existing Calculated
+        // Channels, never mixed with digital channels (digital channels
+        // are never valid calculation inputs at all, unrelated to this
+        // fix).
         function wwCcAvailableCandidates() {
             const candidates = [];
-            for (const meta of ww.channelMeta.values()) {
-                candidates.push({
-                    kind: "source", sourceId: meta.sourceId, channelName: meta.channelName,
-                    calculatedChannelId: null, referenceSourceId: meta.sourceId,
-                    shortLabel: meta.channelName,
-                    pickerLabel: (meta.sourceName ? meta.sourceName + " — " : "") + meta.channelName,
-                    unit: meta.unit || "", group: "Source Analog Channels",
-                });
+            for (const inventory of ww.sourceChannelInventory.values()) {
+                for (const ch of inventory.analogChannels) {
+                    candidates.push({
+                        kind: "source", sourceId: inventory.sourceId, channelName: ch.name,
+                        calculatedChannelId: null, referenceSourceId: inventory.sourceId,
+                        shortLabel: ch.name,
+                        pickerLabel: (inventory.sourceName ? inventory.sourceName + " — " : "") + ch.name,
+                        unit: ch.unit || "", group: inventory.sourceName || inventory.sourceId,
+                    });
+                }
             }
             for (const calc of ww.calculatedChannels.values()) {
                 candidates.push({
@@ -11201,6 +11245,21 @@
                 ww.sourceBounds.clear();
                 ww.workspaceBounds = null;
                 ww.viewport = null;
+                // Phase 5A-UAT3: same scoping as ww.sourceBounds directly
+                // above -- "Start New Workspace" is the one place every
+                // source's own analog-channel inventory is dropped ("every
+                // old source was just released server-side," this
+                // function's own top comment). Deliberately NOT cleared by
+                // the plain "Clear workspace" branch below (unlike
+                // ww.channelMeta/ww.channelColors, which that branch DOES
+                // clear unconditionally) -- plain Clear is display-only and
+                // keeps the still-selected source fully loaded, so wiping
+                // its known channel list here would wrongly make the
+                // Calculated Channels builder forget channels that are
+                // still perfectly valid calculation inputs, defeating the
+                // entire point of this fix (visibility/display state must
+                // never gate input availability).
+                ww.sourceChannelInventory.clear();
                 // Phase 4B (section 24): "Start New Workspace" is the one
                 // place cursor state resets completely -- the plain "Clear
                 // workspace" branch below deliberately does NOT call this
