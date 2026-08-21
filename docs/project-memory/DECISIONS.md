@@ -4503,6 +4503,186 @@ Impact:
   break semantics, or any other Callout lifecycle rule.
 - See [MIGRATION_PLAN.md — Phase 4F-UAT2](MIGRATION_PLAN.md#phase-4f-uat2--free-2d-callout-anchor-drag-preview-2026-08-21).
 
+## DEC-046 — Maximum/Minimum Peak annotations are generic recorded-channel measurements over the current visible X viewport, dynamically recalculated on genuine X-viewport changes
+
+Date: 2026-08-21
+Status: Approved
+Source: explicit owner-approved direction for Phase 4G ("Dynamic Maximum /
+Minimum Peak Annotation").
+
+Decision:
+
+Oruxa Powerwave's THIRD and FOURTH annotation types, `type: "peak_max"`
+and `type: "peak_min"`, reusing the EXACT SAME generic framework DEC-044/
+DEC-045 established (`ww.annotations` remains the sole state authority —
+no parallel Peak registry):
+
+> Maximum Peak (+Peak) and Minimum Peak (-Peak) are generic recorded
+> analog channel annotations calculated from authoritative full-resolution
+> source samples within the current visible X viewport. Channel identity
+> is fixed after creation, but peak sample/time/value are dynamic and are
+> recalculated whenever the X viewport changes. Exact ties select the
+> earliest sample. Peak anchors are calculated/non-draggable; label boxes
+> are movable. Y-range changes and Absolute/Elapsed presentation changes
+> do not trigger recalculation.
+
+- **Generic recorded-channel semantics, no waveform-type assumption**: a
+  +Peak/-Peak is the maximum/minimum of whatever a channel's own recorded
+  Y-axis values are — MW, kV, Hz, pu, instantaneous voltage, RMS, or any
+  other recorded analog quantity. No Peak-to-Peak type this phase.
+- **Live viewport measurement, not a one-time snapshot** (the key
+  difference from Callout, DEC-045, whose anchor is fixed forever after
+  creation): the search interval is always the CURRENT `ww.viewport` —
+  never the whole recording, never the reduced/adaptive display
+  representation, never an A/B cursor interval. `Annotation.data` for
+  `peak_max`/`peak_min` is `{sourceId, channelName, mode, sampleIndex,
+  peakElapsedSeconds, peakValue, unit, available, boxOffset: {x, y}}` —
+  `sourceId`/`channelName`/`mode`/`boxOffset` are STABLE for the
+  annotation's lifetime; `sampleIndex`/`peakElapsedSeconds`/`peakValue`/
+  `unit`/`available` are DYNAMIC, recalculated in place (same annotation
+  id, never a new one) whenever the X viewport genuinely changes (zoom,
+  pan, step zoom, Reset Time View) — reusing the ONE existing call site
+  every such change already funnels through, `wwApplyAndFetchViewport()`.
+  Y-range changes, Autoscale Y, Absolute/Elapsed presentation switching,
+  and box drags never trigger recalculation (they don't change the search
+  interval).
+- **Full-resolution authority, boundary-inclusive range clipping**: a new
+  backend service function (`resolve_peak_value`) reads
+  `active.record.waveform_data` directly — the SAME authoritative record
+  `resolve_annotation_anchor`/`extract_waveform_range` already read —
+  never the reduced display envelope, clipped to the requested interval
+  via the SAME `np.searchsorted` technique already established, further
+  narrowed to the channel's own recorded bounds when the viewport extends
+  beyond them (never fabricating samples).
+- **Earliest-tie rule**: exact ties select the EARLIEST sample — satisfied
+  for free by `numpy.argmax`/`argmin`'s own documented first-occurrence
+  behaviour on ties, not a second hand-rolled tie-break implementation.
+- **Non-finite samples are ignored, never selected**: `np.isfinite`
+  masking before the max/min search; if every sample in the interval is
+  non-finite (or the intersection is empty), the result is
+  `available: false` — never a fabricated/NaN peak.
+- **Batched per source, one request per viewport change** — a NEW,
+  separate endpoint, `POST .../sources/{source_id}/peak-values`, accepting
+  a list of `{channel_name, mode}` pairs plus one shared
+  `start_time`/`end_time`, mirroring `.../cursor-values`' own established
+  per-source batching (never one request per annotation, never merging two
+  sources' requests together). Deliberately a NEW endpoint, not an awkward
+  overload of `.../annotation-anchor` (peak semantics — dynamic,
+  viewport-scoped, batched — are genuinely distinct from Callout's
+  one-shot fixed-anchor resolution).
+- **Unavailable, not deleted, when a viewport has no valid sample**: a
+  per-item `available: false` in the batch response (never failing the
+  whole batch for one bad/out-of-range channel) preserves the
+  annotation's identity in `ww.annotations`/the Annotation List, hides its
+  canvas representation, and is replaced by a fresh valid result the
+  moment a later viewport change resolves one again.
+- **Peak anchor is calculated and NOT draggable** (the key interaction
+  difference from Callout's own now-movable anchor, DEC-045's addenda):
+  the SAME shared connector/marker geometry engine
+  (`wwUpdateCalloutConnectorGeometry()`, extended with an `isPeak` flag)
+  renders both types, but the global anchor-drag pointer handler now
+  checks `annotation.type === "callout"` before starting any drag preview
+  — a Peak's hit circle presents no grab cursor and is not hit-testable at
+  all (`pointer-events: none`). The label BOX remains fully draggable,
+  identical mechanics to Callout's own `wwWireCalloutBoxDrag()` (offset-
+  only, never touches the anchor, never calls the backend).
+- **Trace identity resolution**: identical mechanism to Callout — each
+  trace's own stable `"sourceId::channelName"` `meta` field, never
+  curveNumber alone; unlike Callout, the CLICKED X position is irrelevant
+  to a Peak's own value (only the clicked trace's channel identity
+  matters — the search interval is always the current viewport).
+- **Source removal deletes its Peak annotations outright**, generalizing
+  the SAME sweep DEC-045 already established for Callout
+  (`wwRemoveAnchoredAnnotationsForSource()`, renamed from its Callout-only
+  predecessor to cover both waveform-anchored types) — no rebinding by
+  same channel name on a different source.
+- **Distinct accent, not alarm red or A/B cursor colors**: a new shared
+  `--annotation-peak-accent` token (muted teal-green, both themes) —
+  deliberately not `--error` (A/B cursor "B"/red — section 25's own
+  explicit "do not use alarm red just because it is a maximum/minimum"),
+  not `--accent` (A/B cursor "A"/blue), and not Callout's own amber. The
+  `+Peak`/`-Peak` label prefix and header glyph (filled triangle, apex
+  up/down), not color, is what distinguishes maximum from minimum.
+
+Reason:
+
+The owner's own explicit direction: Peak annotations must be GENERIC
+recorded-channel measurements (never an instantaneous-voltage-only or
+similar type-specific assumption), and must be LIVE viewport measurements
+(recalculating as the engineer zooms/pans), unlike Callout's deliberately
+fixed anchor — this is the fundamental behavioral difference driving most
+of the design above. Reusing Callout's shared geometry/rendering
+infrastructure (per the task's own explicit "do not duplicate an entirely
+separate geometry engine" instruction) keeps the codebase with ONE
+anchored-annotation projection system, dispatching by type only where the
+two genuinely differ (interaction — draggable vs. not; and engineering
+authority — fixed vs. dynamically recalculated).
+
+Alternatives considered:
+
+- **One request per annotation, always** — rejected as the default
+  design; a source-scoped BATCH request (mirroring `.../cursor-values`)
+  was chosen from the outset per the task's own "preferred scalable
+  design" guidance, since a workspace can reasonably hold several active
+  Peak annotations on one source.
+- **Overloading `.../annotation-anchor` for Peak resolution too** —
+  rejected: that endpoint's own contract (single fixed sample identity at
+  an approximate time) doesn't fit Peak's genuinely different shape
+  (a channel/mode pair resolved over an INTERVAL, batched, called
+  repeatedly for the SAME annotation's lifetime) — a small, focused new
+  endpoint stays clearer than forcing two different semantics through one
+  contract.
+- **Failing the whole batch when one channel is unavailable** — rejected:
+  would blank out every other channel's otherwise-valid peak in the same
+  request; a per-item `available` flag (section 12/67 of the task)
+  preserves independence, matching `extract_cursor_values`' own
+  established per-channel resilience philosophy.
+- **Making the Peak anchor draggable like Callout's** — rejected outright
+  per explicit owner instruction (section 21); a Peak's position is
+  entirely a function of viewport + source data, never a user override.
+- **Persisting recalculation results even through a channel-hidden
+  state (skip recalculation while hidden, resolve only on re-show)** —
+  rejected in favor of the simpler, more consistent policy actually
+  implemented: recalculation runs on every genuine viewport commit
+  REGARDLESS of the annotation's channel's current display visibility (the
+  backend computation is cheap array-index work, independent of Plotly);
+  visibility only gates whether the already-current result is PROJECTED
+  onto canvas. This guarantees a re-shown channel's Peak is always current
+  for the present viewport with zero extra "on-show recalculate" logic.
+
+Impact:
+
+- Backend: `app/services/waveform_service.py` (`PeakValueResult`,
+  `resolve_peak_value`, reusing `_resolve_analog_channel`), a new
+  `app/schemas/peak_value.py`, `app/api/v1/sources.py`
+  (`POST .../peak-values`). No new persistent storage.
+- Frontend: `frontend/index.html` (2 new Annotate menu items; `plotly_click`
+  extended in `wwWireAnalogPanelClick()` to dispatch peak creation;
+  `wwCreatePeakFromClick()`, `wwRecalculatePeakAnnotationsForSource()`,
+  `wwRecalculateAllPeakAnnotations()` — hooked into the ONE
+  `wwApplyAndFetchViewport()` call site; `wwAnchoredAnnotationContentPosition()`/
+  `wwAnchoredAnnotationPagePosition()`/`wwAnchorValueToPixelY()` generalized
+  from their Callout-only predecessors to serve both types via 2 small
+  type-dispatching getters; `wwUpdateCalloutConnectorGeometry()` extended
+  with an `isPeak` parameter; `wwRemoveAnchoredAnnotationsForSource()`
+  renamed/extended from its Callout-only predecessor; `wwPeakBodyHtml()`,
+  `wwPeakValueLineText()`, `wwPeakLabelLines()`), `frontend/theme.css`
+  (`--annotation-peak-accent`, Light + Dark).
+- Does NOT change DEC-044's Text Note behavior, DEC-045's Callout behavior
+  (creation, anchor-drag, box-drag all unchanged — Peak shares rendering
+  infrastructure but never its own request/state), DEC-040/041/042
+  (A/B cursors, adaptive resolution, numeric elapsed coordinates), or
+  DEC-043 (step zoom/icon toolbar) — Peak recalculation reuses the step
+  zoom/Reset Time View call sites read-only, adding no new synchronization
+  loop.
+- Explicitly NOT implemented this phase: peak-to-peak, RMS-from-waveform/
+  cycle-RMS calculation, phasor angle, delta measurement, event marker,
+  cross-channel peak, digital peak, peak anchor dragging, automatic A/B
+  placement at peaks, a whole-record/current-window toggle, a custom peak
+  search interval independent of the viewport, annotation import/export,
+  permanent database persistence.
+- See [MIGRATION_PLAN.md — Phase 4G](MIGRATION_PLAN.md#phase-4g--dynamic-maximum--minimum-peak-annotation-2026-08-21).
+
 ---
 
 ## How to add a decision

@@ -457,6 +457,125 @@ def resolve_annotation_anchor(
     )
 
 
+PEAK_MODE_MAX = "max"
+PEAK_MODE_MIN = "min"
+
+
+@dataclass(slots=True)
+class PeakValueResult:
+    """Phase 4G: one Maximum/Minimum Peak annotation's dynamic measurement
+    (DEC-046) -- the maximum or minimum RECORDED sample value of one analog
+    channel within one requested time interval (the engineer's current
+    visible X viewport, resolved by the caller -- this function has no
+    concept of "viewport", only a start/end time it is given).
+
+    `available` is `False` exactly when the requested `[start_time,
+    end_time]` interval, clipped to this source's own recorded bounds,
+    contains zero FINITE samples for this channel (either the intersection
+    itself is empty, or every sample in it is NaN/inf -- section 14/38 of
+    the Phase 4G task: a peak annotation must never resolve to a
+    fabricated/non-finite value). When `available` is `False` every other
+    field is `None` -- the caller (the annotation's own frontend state)
+    keeps the annotation's existing identity but must not render a stale
+    value as if it were current for this interval (section 67).
+    """
+
+    channel_name: str
+    mode: str
+    available: bool
+    sample_index: int | None
+    elapsed_seconds: float | None
+    value: float | None
+    unit: str | None
+
+
+def resolve_peak_value(
+    active: ActiveSource,
+    *,
+    channel_name: str,
+    mode: str,
+    start_time: float,
+    end_time: float,
+) -> PeakValueResult:
+    """Resolve one analog channel's maximum or minimum RECORDED sample
+    value within `[start_time, end_time]` (Phase 4G, DEC-046).
+
+    Generic recorded-channel semantics (section 7): this is the maximum/
+    minimum of whatever this channel's own recorded Y-axis values are --
+    MW, kV, Hz, pu, instantaneous voltage, RMS, anything -- never a
+    waveform-type-specific assumption.
+
+    Full-resolution authority (section 8/70): always reads
+    `active.record.waveform_data` directly, the SAME authoritative,
+    never-mutated, full-resolution record `extract_waveform_range` and
+    `resolve_annotation_anchor` already read -- never the reduced display
+    envelope, regardless of how many samples fall in the requested
+    interval.
+
+    Range clipping (section 11): boundary-inclusive, via the SAME
+    `np.searchsorted` technique `extract_waveform_range` already
+    established -- the requested interval is clipped to this channel's own
+    recorded time bounds; a viewport that extends beyond this source's
+    duration is silently narrowed to the valid intersection, never
+    fabricating samples outside it.
+
+    Tie rule (section 13, DEC-046): exact ties select the EARLIEST sample.
+    Reuses `numpy.argmax`/`argmin`'s own documented behaviour of returning
+    the FIRST occurrence's index among tied values -- not a second,
+    hand-rolled tie-break implementation.
+
+    NaN/non-finite handling (section 14, documented per that section's
+    explicit instruction): non-finite samples (`NaN`/`+inf`/`-inf`) are
+    masked out via `np.isfinite` before the max/min search, so a single bad
+    sample can never win or shift a tie. If every sample in the clipped
+    interval is non-finite (or the interval is empty), `available=False` is
+    returned -- never a fabricated peak.
+
+    Raises `ChannelNotFoundError`/`ChannelNotAnalogError` (via the SAME
+    `_resolve_analog_channel` every other analog endpoint already uses) --
+    NOT wrapped here; the caller (the batched API endpoint) decides whether
+    one bad channel request should fail its whole batch or just that one
+    item (section 12's per-annotation "unavailable" semantics favour the
+    latter).
+    """
+    unit = _resolve_analog_channel(active, channel_name)
+    waveform_data = active.record.waveform_data
+    time_full = waveform_data["time"].to_numpy()
+    values_full = waveform_data[channel_name].to_numpy()
+
+    lo = int(np.searchsorted(time_full, start_time, side="left"))
+    hi = int(np.searchsorted(time_full, end_time, side="right"))
+    clipped_time = time_full[lo:hi]
+    clipped_values = values_full[lo:hi]
+
+    finite_mask = np.isfinite(clipped_values)
+    if not np.any(finite_mask):
+        return PeakValueResult(
+            channel_name=channel_name,
+            mode=mode,
+            available=False,
+            sample_index=None,
+            elapsed_seconds=None,
+            value=None,
+            unit=None,
+        )
+
+    finite_values = clipped_values[finite_mask]
+    finite_positions = np.nonzero(finite_mask)[0]
+    local_idx = int(np.argmax(finite_values)) if mode == PEAK_MODE_MAX else int(np.argmin(finite_values))
+    full_idx = lo + int(finite_positions[local_idx])
+
+    return PeakValueResult(
+        channel_name=channel_name,
+        mode=mode,
+        available=True,
+        sample_index=full_idx,
+        elapsed_seconds=float(time_full[full_idx]),
+        value=float(values_full[full_idx]),
+        unit=unit,
+    )
+
+
 @dataclass(slots=True)
 class DigitalTransition:
     time: float

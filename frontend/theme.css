@@ -93,6 +93,18 @@
        any of them rather than blending in or being mistaken for a
        measurement cursor. */
     --annotation-callout-accent: #b56a0f;
+
+    /* Phase 4G (DEC-046): +Peak/-Peak's own connector/anchor-marker
+       accent -- a distinct hue family from --accent (A/B cursor "A"/blue),
+       --error (A/B cursor "B"/red), --annotation-callout-accent
+       (Callout's own amber), AND --annotation-bg/-border, so a Peak
+       marker reads clearly against any of them. A muted teal-green,
+       deliberately not alarm red (section 25's own "do not use alarm red
+       just because it is a maximum/minimum") and not the A/B cursor
+       colors (section 25's explicit prohibition) -- one shared accent for
+       BOTH +Peak and -Peak; the label prefix/glyph, not color, is what
+       distinguishes maximum from minimum. */
+    --annotation-peak-accent: #2f8f6f;
 }
 
 :root[data-theme="dark"] {
@@ -144,6 +156,12 @@
        dark-surface contrast, same amber family so it reads as "the same
        marker" across themes. */
     --annotation-callout-accent: #e0a344;
+
+    /* Phase 4G (DEC-046): same rationale as Light's own
+       --annotation-peak-accent above -- brightened toward --text for
+       dark-surface contrast, same teal-green family so it reads as "the
+       same marker" across themes. */
+    --annotation-peak-accent: #5fc9a0;
 }
 
 /* Phase 3B-UAT9: slim, borderless scrollbars -- one shared rule set for

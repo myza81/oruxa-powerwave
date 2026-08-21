@@ -8,6 +8,99 @@ Last updated: **2026-08-21**
 
 ## What was most recently done
 
+**Phase 4G — Dynamic Maximum/Minimum Peak Annotation (DEC-046).**
+Owner-approved direction on top of Phase 4F-UAT2 below: two new generic
+recorded-analog-channel annotation types, `+Peak`/`-Peak`. Full detail:
+[DECISIONS.md — DEC-046](DECISIONS.md#dec-046--maximumminimum-peak-annotations-are-generic-recorded-channel-measurements-over-the-current-visible-x-viewport-dynamically-recalculated-on-genuine-x-viewport-changes).
+
+**The key difference from Callout (Phase 4F)**: a Peak is a LIVE
+viewport measurement, not a one-shot fixed anchor. `Annotate -> Maximum
+Peak (+Peak)`/`Minimum Peak (-Peak)` -> click an analog trace -> the
+clicked TRACE resolves channel identity (same stable
+`"sourceId::channelName"` `meta` mechanism Callout uses), but the
+click's own X position is irrelevant -- the value is always calculated
+over the CURRENT `ww.viewport`. Whenever the X viewport genuinely
+changes (zoom, pan, step zoom, Reset Time View -- all funneled through
+the one existing `wwApplyAndFetchViewport()` call site), every active
+Peak annotation is recalculated IN PLACE (same annotation id, `createdAt`
+unchanged) via a new batched-per-source endpoint,
+`POST .../sources/{source_id}/peak-values`. Y-range changes, Autoscale
+Y, Absolute/Elapsed switching, and Peak box drags never trigger
+recalculation -- verified directly (zero new requests in each case).
+
+**Full-resolution authority, tie rule, NaN handling**: a new backend
+`resolve_peak_value()` reads `active.record.waveform_data` directly (the
+same authoritative source Callout's own anchor resolution reads),
+boundary-inclusive range-clips via the same `np.searchsorted` technique
+`extract_waveform_range` already uses, masks non-finite samples via
+`np.isfinite` before the max/min search (an interval with zero finite
+samples resolves to `available: false`), and relies on
+`numpy.argmax`/`argmin`'s own first-occurrence-on-tie behaviour for the
+owner's required earliest-sample tie rule -- no second nearest-sample or
+tie-break definition anywhere in the codebase.
+
+**Rendering reuses Callout's shared geometry engine, not a second
+implementation**: `wwAnchoredAnnotationContentPosition()`/
+`wwAnchoredAnnotationPagePosition()`/`wwAnchorValueToPixelY()`
+(generalized from their Callout-only predecessors via two small
+type-dispatching getters) and `wwUpdateCalloutConnectorGeometry()`
+(extended with an `isPeak` flag) serve both `callout` and
+`peak_max`/`peak_min`. **The Peak anchor marker is calculated and
+deliberately NOT draggable** (the opposite of Callout's own now-movable
+anchor) -- the shared anchor-drag pointerdown handler now checks
+`annotation.type === "callout"` before starting any preview, and a
+Peak's own hit circle is non-hit-testable with no grab cursor. The label
+BOX remains fully draggable via the identical `wwWireCalloutBoxDrag()`
+mechanics (offset-only, never touches the anchor/backend/recalculation).
+The canvas label is a system-computed two-line `.textContent`-only
+rendering (`"+Peak: 230.4 MW"` / `"t = 219.400 ms"`) -- never
+`.innerHTML`, never user-editable (no `text` field, no textarea path).
+A new `--annotation-peak-accent` token (muted teal-green, both themes)
+and a filled-triangle header glyph distinguish it, deliberately avoiding
+alarm red and A/B cursor blue/red.
+
+**Visibility/unavailable/source-removal**: an unprojectable anchor, or a
+viewport with no valid sample for the channel (`available: false`), is
+hidden from canvas but stays fully intact in `ww.annotations`/the
+Annotation List -- recalculation always runs on every genuine viewport
+commit regardless of the channel's current display visibility, so a
+re-shown channel's Peak is already current by construction. Source
+removal deletes that source's Peak annotations outright, extending
+DEC-045's own sweep (`wwRemoveAnchoredAnnotationsForSource()`, renamed/
+generalized from its Callout-only predecessor). Stale-response
+protection reuses the same per-source generation-counter pattern
+`wwCursorValuesGeneration` already established, plus a per-annotation
+`ww.annotations.has(id)` check for deletion-mid-flight.
+
+**No Peak-to-Peak this phase** (explicitly out of scope), nor RMS-from-
+waveform/cycle-RMS, phasor angle, delta measurement, event marker,
+cross-channel peak, digital peak, peak anchor dragging, automatic A/B
+placement at peaks, a whole-record/current-window toggle, a custom
+search interval independent of the viewport, annotation import/export,
+or permanent database persistence.
+
+**Tests**: new `phase4g_check.mjs`, **37/37 passing** -- menu presence/
+order/no-Peak-to-Peak, exact trace identity, viewport-only search
+interval, full-resolution authority, earliest-tie regression, dynamic
+recalculation on zoom/pan/step-zoom/Reset-Time-View, zero recalculation
+on Y-zoom/Autoscale/Absolute-Elapsed/box-drag, stale-viewport-response
+rejection, deletion-mid-flight discard, unavailable-for-viewport
+handling, hidden-channel/re-show/layout-mode behavior, non-draggable-
+marker + draggable-box, multi-type/multi-source coexistence with
+one-batched-request-per-source, source removal, workspace lifecycle, and
+safe rendering. One pre-existing `phase4e_check.mjs` assertion (menu
+item count) updated in place from 2 to 4 items -- the expected
+consequence of this phase's own menu additions, not a regression. Full
+frontend suite reconfirmed at exactly the true 33-failure baseline
+across the same pre-existing files (zero net new regressions). Backend:
+**436/436 passing** (24 new -- `test_peak_value_service.py`,
+`test_peak_value_api.py` -- + 412 previously existing, unmodified).
+
+**Not yet done**: commit/push, CI/automatic DEV deployment verification,
+and owner UAT of this phase specifically.
+
+## What was done in the prior session (Phase 4F-UAT2 — Free 2D Callout Anchor Drag Preview, DEC-045 addendum #2)
+
 **Phase 4F-UAT2 — Free 2D Callout Anchor Drag Preview (DEC-045 addendum
 #2).** Owner UAT direction on top of Phase 4F-UAT below: "Engineering
 outcome: PASS. User experience: FAIL" -- dragging the anchor marker

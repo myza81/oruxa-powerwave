@@ -8650,6 +8650,205 @@ owner UAT after this push.
 
 ---
 
+## Phase 4G — Dynamic Maximum / Minimum Peak Annotation (2026-08-21)
+
+### Scope
+
+Owner-approved direction: the third and fourth annotation types,
+`type: "peak_max"`/`type: "peak_min"` (`+Peak`/`-Peak`), generic recorded-
+analog-channel measurements (never instantaneous-voltage/RMS/power/
+frequency-specific) calculated over the engineer's CURRENT VISIBLE X
+VIEWPORT and dynamically RECALCULATED whenever that viewport genuinely
+changes. No Peak-to-Peak this phase.
+
+### Creation UX
+
+`Annotate -> Maximum Peak (+Peak)` (or `Minimum Peak (-Peak)`) enters
+one-shot placement mode; the next valid click on an analog trace resolves
+the exact clicked channel via its trace's own stable
+`"sourceId::channelName"` `meta` field (the SAME mechanism Callout already
+established, DEC-045) and immediately calculates that channel's max/min
+over `ww.viewport`. Unlike Callout, the click's own X position is
+irrelevant to the result -- only channel identity matters. A viewport with
+no valid (finite) samples for the clicked channel shows a concise error
+and creates nothing (never a partial/broken annotation).
+
+### Search interval: current visible X viewport
+
+Always `ww.viewport.start`/`ww.viewport.end` -- never the whole
+recording, never an A/B cursor interval, never the (possibly reduced)
+displayed Plotly trace. At full-record view this naturally covers the
+whole visible record.
+
+### Dynamic recalculation
+
+Hooked into the ONE existing call site every genuine X-viewport change
+already funnels through, `wwApplyAndFetchViewport()` (zoom, pan, step
+zoom via `wwStepZoomX()`, and Reset Time View via `wwResetTimeView()`
+all reach it) -- a new `wwRecalculateAllPeakAnnotations(startTime,
+endTime)` groups every active +Peak/-Peak annotation by its own
+`sourceId` and fires exactly ONE batched `POST .../peak-values` request
+per distinct source, updating each affected annotation's SAME id in
+place (never a new annotation, never reordering the Annotation List --
+`createdAt` is untouched). Y-range changes (Y step zoom, Autoscale Y),
+Absolute/Elapsed presentation switching, and Peak box drags never call
+this function at all -- verified directly via before/after
+`peak-values` request counts (zero in every case).
+
+### Full-resolution authority
+
+A new backend service function, `resolve_peak_value()`
+(`app/services/waveform_service.py`), reads
+`active.record.waveform_data` directly -- the SAME authoritative record
+`resolve_annotation_anchor`/`extract_waveform_range` already read --
+never the reduced `min_max_envelope` display representation, regardless
+of how many samples fall in the requested interval. Boundary-inclusive
+range clipping via the SAME `np.searchsorted` technique
+`extract_waveform_range` already established; the requested interval is
+narrowed to the channel's own recorded time bounds when the viewport
+extends beyond them (never fabricating samples). Non-finite samples
+(`NaN`/`inf`) are masked out via `np.isfinite` before the max/min search
+-- if every sample in the interval is non-finite (or the intersection is
+empty), the result is `available: false`, never a fabricated peak.
+
+### Tie rule
+
+Exact ties select the EARLIEST sample -- satisfied for free by
+`numpy.argmax`/`argmin`'s own documented first-occurrence-on-tie
+behaviour, not a second hand-rolled implementation. Verified against the
+task's own regression fixtures: `[1, 5, 3, 5, 2]` -> max value 5 at
+index 1 (the first 5); `[-2, -7, -3, -7]` -> min value -7 at index 1.
+
+### Peak payload
+
+Stable for the annotation's lifetime: `id`, `type`, `workspaceId`,
+`sourceId`, `channelName`, `mode` (`"max"`/`"min"`), `boxOffset`.
+Dynamic, recalculated in place: `sampleIndex`, `peakElapsedSeconds`,
+`peakValue`, `unit`, `available`. No `text` field -- section 27's own
+explicit "do not turn the computed value lines into arbitrary editable
+text" -- a Peak never enters `wwBeginAnnotationEdit()`'s textarea path
+(no dblclick listener is ever wired for it).
+
+### Rendering
+
+Reuses Callout's shared connector/marker/box geometry engine rather than
+a second implementation (section 24 of the task): `wwAnchoredAnnotationContentPosition()`/
+`wwAnchoredAnnotationPagePosition()`/`wwAnchorValueToPixelY()` (renamed,
+generalized from their Callout-only predecessors via two small
+type-dispatching getters, `wwAnchoredAnnotationTime()`/
+`wwAnchoredAnnotationValue()`) and `wwUpdateCalloutConnectorGeometry()`
+(extended with an `isPeak` parameter) serve BOTH `callout` and
+`peak_max`/`peak_min` identically. The canvas label shows a two-line
+system-computed text (`"+Peak: 230.4 MW"` / `"t = 219.400 ms"`, or the
+Absolute-mode clock-time equivalent via the SAME
+`wwFormatAbsoluteElapsedTime()`/`wwFormatCursorDuration()` authority
+Callout's own Annotation List meta-line already uses), rendered via
+`.textContent` into two dedicated child elements
+(`.ww-peak-value-line`/`.ww-peak-time-line`), never `.innerHTML`. A small
+filled-triangle header glyph (apex up for +Peak, apex down for -Peak) and
+a new shared `--annotation-peak-accent` token (muted teal-green, both
+themes -- deliberately not alarm red, not A/B cursor blue/red, not
+Callout's own amber) give it a recognizable but restrained identity.
+
+### Label dragging: movable box, fixed calculated marker
+
+The label box is fully draggable via the SAME `wwWireCalloutBoxDrag()`
+Callout's own box already uses (offset-only, never touches the anchor,
+never calls the backend, never triggers recalculation) -- verified
+directly. The anchor MARKER itself is deliberately non-draggable, the
+key interaction difference from Callout's own now-movable anchor
+(DEC-045's addenda): the global anchor-drag pointerdown handler
+(`wwWireCalloutAnchorDrag()`'s `onPointerDown()`) now checks
+`annotation.type === "callout"` before starting any drag preview, and a
+Peak's own hit circle is `pointer-events: none` with a `cursor: default`
+CSS override -- no draggable affordance at all, verified by attempting a
+drag on it and confirming zero state change and zero backend call.
+
+### Visibility
+
+An anchor currently unprojectable (outside the X viewport, outside the
+panel's current Y range, or its channel not displayed) is hidden from
+canvas exactly like Callout's own (box + connector + marker), staying
+fully intact in `ww.annotations`/the Annotation List. A viewport with no
+valid sample for the channel marks the annotation `available: false`
+(same hidden-from-canvas treatment, preserved identity) rather than
+deleting it -- the next viewport change with a valid intersection
+restores it automatically. Hiding/re-showing the anchored channel never
+needs a separate "recalculate on show" code path: recalculation always
+runs on every genuine viewport commit regardless of current display
+visibility (the backend computation is independent of Plotly), so a
+re-shown channel's Peak is already current for the present viewport by
+construction -- a deliberate, documented policy choice (DEC-046's own
+"Alternatives considered"). Layout-mode switches (Grouped/Separate/
+Custom) preserve the same annotation id and reproject against whichever
+panel currently renders its channel, verified directly (no duplicate
+marker).
+
+### Source removal / workspace lifecycle
+
+Removing a source deletes its Peak annotations outright (extends the
+SAME sweep DEC-045 established for Callout,
+`wwRemoveAnchoredAnnotationsForSource()`, renamed/generalized from its
+Callout-only predecessor `wwRemoveCalloutsForSource()`) -- no rebinding
+by same channel name on a different source. "Clear workspace" preserves
+Peak annotations (display-only, matching every other annotation type's
+established semantics); "Start new workspace" clears them along with
+every other type.
+
+### Stale-response protection
+
+A per-source generation counter (`wwPeakValuesGeneration`, the SAME
+pattern `wwCursorValuesGeneration` already established for A/B cursor
+values) ensures a slower earlier-viewport batch response can never
+overwrite a faster later-viewport one; a per-annotation
+`ww.annotations.has(id)` re-check before applying each batch item's
+result discards updates for an annotation deleted while its request was
+in flight (verified directly for both cases).
+
+### Performance
+
+Recalculation is fire-and-forget from `wwApplyAndFetchViewport()` --
+never awaited, so it cannot delay the existing waveform-refetch
+lifecycle. Multiple Peak annotations on ONE source share exactly ONE
+batched request per viewport change (verified directly: 3 annotations on
+one source -> 1 request, 3 channel/mode pairs in its body), never one
+request per annotation. Zero Plotly rebuilds, zero waveform refetches,
+zero cursor-value requests, and zero `ww.measurementCursors` reads/writes
+from any Peak code path -- confirmed by test.
+
+### Existing annotations unaffected
+
+Text Note and Callout behavior (including Callout's own movable anchor
+and free 2D drag preview, Phase 4F-UAT/4F-UAT2) are completely
+unchanged -- confirmed by re-running `phase4f_check.mjs` unmodified
+(46/46 still passing) alongside the new Phase 4G suite.
+
+### Tests
+
+New `phase4g_check.mjs`: **37/37 passing** -- menu presence/order/no-
+Peak-to-Peak, exact trace identity, viewport-only search interval
+(click-X-irrelevant + narrower-viewport-returns-local-not-global-
+extremum), full-resolution authority, earliest-tie regression, dynamic
+recalculation on zoom/pan/step-zoom/Reset-Time-View (same annotation id,
+`createdAt` unchanged), zero recalculation on Y-zoom/Autoscale/Absolute-
+Elapsed/box-drag, stale-viewport-response rejection, deletion-mid-flight
+discard, unavailable-for-viewport handling, hidden-channel/re-show/
+layout-mode behavior, non-draggable-marker + draggable-box, multi-type
+and multi-source coexistence with one-batched-request-per-source, source
+removal, workspace lifecycle, and safe `.textContent`-only rendering.
+One pre-existing `phase4e_check.mjs` assertion (`Annotate menu has
+exactly 2 items`) was updated in place to `4` -- the EXPECTED consequence
+of this phase's own required menu additions, not a regression (same
+precedent as Phase 2C-C3's own outdated-assertion updates). Full frontend
+suite reconfirmed at exactly the true 33-failure baseline across the same
+pre-existing files (zero net new regressions). Backend: **436/436
+passing** (24 new -- `test_peak_value_service.py`,
+`test_peak_value_api.py` -- + 412 previously existing, unmodified).
+
+### Decision
+
+See [DECISIONS.md — DEC-046](DECISIONS.md#dec-046--maximumminimum-peak-annotations-are-generic-recorded-channel-measurements-over-the-current-visible-x-viewport-dynamically-recalculated-on-genuine-x-viewport-changes).
+
 ## Phase 4F-UAT2 — Free 2D Callout Anchor Drag Preview (2026-08-21)
 
 ### Scope

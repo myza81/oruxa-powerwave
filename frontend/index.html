@@ -1535,6 +1535,24 @@
         .ww-callout-connector-group--anchor-dragging .ww-callout-connector {
             opacity: 0.82;
         }
+        /* Phase 4G (DEC-046): +Peak/-Peak reuses this exact connector/
+           marker geometry (section 24 -- no separate geometry engine),
+           swapping only the accent color and disabling anchor-marker
+           interactivity -- see below and wwUpdateCalloutConnectorGeometry()'s
+           own `isPeak` parameter. */
+        .ww-callout-connector-group--peak .ww-callout-connector,
+        .ww-callout-connector-group--peak .ww-callout-anchor-marker {
+            stroke: var(--annotation-peak-accent);
+        }
+        /* Section 21/57/82: a +Peak/-Peak anchor is CALCULATED, never
+           user-movable -- unlike Callout, its hit circle is neither
+           hit-testable nor grab-cursored, so it presents no draggable
+           affordance at all (selection remains available via the box,
+           section 22). */
+        .ww-callout-connector-group--peak .ww-callout-anchor-hit {
+            pointer-events: none;
+            cursor: default;
+        }
         .ww-annotation {
             position: absolute;
             min-width: 160px;
@@ -1584,6 +1602,30 @@
             color: var(--annotation-callout-accent);
         }
         .ww-callout-glyph svg { width: 10px; height: 10px; vertical-align: -1px; }
+        /* Phase 4G (section 25, DEC-046): +Peak/-Peak's own header glyph
+           -- same size family/positioning as .ww-callout-glyph above, the
+           Peak accent color (never Callout's amber, never A/B blue/red). */
+        .ww-peak-glyph {
+            display: inline-flex;
+            margin-right: 4px;
+            color: var(--annotation-peak-accent);
+        }
+        .ww-peak-glyph svg { width: 10px; height: 10px; vertical-align: -1px; fill: currentColor; }
+        /* Section 20/26: the two-line system-computed measurement -- the
+           value line is the primary reading (slightly heavier), the time
+           line is secondary (dimmer, smaller), mirroring the ASCII
+           mockup's own visual hierarchy without any extra markup beyond
+           the two divs wwPeakBodyHtml() already creates. */
+        .ww-peak-value-line {
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+        .ww-peak-time-line {
+            margin-top: 2px;
+            font-size: 0.68rem;
+            color: var(--text-dim);
+        }
         .ww-annotation-body {
             flex: 1 1 auto;
             padding: 8px 10px 10px;
@@ -2600,6 +2642,21 @@
                                 <button type="button" class="ww-split-menu-item" role="menuitem" data-annotation-type="callout" aria-pressed="false">
                                     <span class="ww-icon"><svg viewBox="0 0 18 18"><circle cx="6" cy="12" r="1.6"/><line x1="7.3" y1="10.8" x2="12" y2="5" stroke-width="1.1"/><rect x="9" y="2.5" width="7" height="4.5" rx="1" stroke-width="1.1"/></svg></span>
                                     Callout
+                                </button>
+                                <!-- Phase 4G (DEC-046): the third/fourth annotation
+                                     types -- generic recorded-channel Maximum/Minimum
+                                     Peak, waveform-anchored like Callout but with a
+                                     CALCULATED, non-draggable anchor (section 21).
+                                     Same generic menu loop as Text Note/Callout above
+                                     -- no new menu event architecture. No Peak-to-Peak
+                                     item (explicitly out of scope, section 90). -->
+                                <button type="button" class="ww-split-menu-item" role="menuitem" data-annotation-type="peak_max" aria-pressed="false">
+                                    <span class="ww-icon"><svg viewBox="0 0 18 18"><polyline points="2.5,13 6,9.5 9,12 15.5,4" stroke-width="1.3"/><polyline points="11.5,4 15.5,4 15.5,8" stroke-width="1.3"/></svg></span>
+                                    Maximum Peak (+Peak)
+                                </button>
+                                <button type="button" class="ww-split-menu-item" role="menuitem" data-annotation-type="peak_min" aria-pressed="false">
+                                    <span class="ww-icon"><svg viewBox="0 0 18 18"><polyline points="2.5,5 6,8.5 9,6 15.5,14" stroke-width="1.3"/><polyline points="15.5,10 15.5,14 11.5,14" stroke-width="1.3"/></svg></span>
+                                    Minimum Peak (-Peak)
                                 </button>
                             </div>
                         </div>
@@ -5424,7 +5481,7 @@
             // sample, never re-resolved after creation) reprojected
             // through whichever panel currently renders `data.channelName`,
             // plus `data.boxOffset` for the movable label box -- see
-            // wwCalloutAnchorContentPosition()/wwRenderAnnotations(). Two
+            // wwAnchoredAnnotationContentPosition()/wwRenderAnnotations(). Two
             // types this phase: `text_note` (`data: {text}`, workspace-
             // content-anchored, independent of zoom/pan/Absolute-Elapsed/
             // A-B cursors) and `callout` (`data: {text, sourceId,
@@ -5440,11 +5497,13 @@
             // "Clear workspace" button, which is display-only and keeps
             // the same session/source context (same precedent already
             // established for ww.measurementCursors via
-            // wwResetMeasurementCursors()). A Callout's own source is
-            // ALSO an exception to "never cleared otherwise": removing
-            // that specific source deletes ITS Callouts outright (section
-            // 57, see wwRemoveCalloutsForSource()) -- their anchor no
-            // longer exists server-side, unlike Text Note which has no
+            // wwResetMeasurementCursors()). A Callout's (Phase 4F) or
+            // +Peak/-Peak's (Phase 4G) own source is ALSO an exception to
+            // "never cleared otherwise": removing that specific source
+            // deletes ITS waveform-anchored annotations outright (section
+            // 57/46, see wwRemoveAnchoredAnnotationsForSource()) -- their
+            // anchor/search interval no longer exists server-side, unlike
+            // Text Note which has no
             // source dependency to lose.
             annotations: new Map(),
             // The one currently-selected annotation id (or null) -- drives
@@ -6759,6 +6818,23 @@
             // every X viewport change (drag-zoom, pan, Reset Time View,
             // AND step zoom) already funnels through.
             wwSyncZoomStepControls();
+            // Phase 4G (section 31/32/36/37/38, DEC-046): this is the ONE
+            // call site every genuine X viewport change (drag-zoom, pan,
+            // step zoom, AND Reset Time View) already funnels through --
+            // so it is also the single, correct hook for recalculating
+            // every active +Peak/-Peak annotation's dynamic
+            // sampleIndex/peakElapsedSeconds/peakValue against the NEW
+            // interval. Deliberately NOT awaited: an annotation
+            // measurement request must never delay/gate the waveform
+            // fetch below (section 71) -- it resolves independently,
+            // updating each affected annotation's SAME id in place
+            // (section 19/30) once its own batched response lands, with
+            // its own stale-response protection (see
+            // wwRecalculatePeakAnnotationsForSource()'s own comment).
+            // Y-range changes, Absolute/Elapsed, and box drags never call
+            // this function at all (section 6/39/40/55) -- only this one
+            // committed-viewport call site does.
+            wwRecalculateAllPeakAnnotations(startTime, endTime);
             await wwRefetchAllChannels(startTime, endTime);
         }
 
@@ -7237,9 +7313,34 @@
         // here, never a drawer/render rewrite.
         // ------------------------------------------------------------------
 
+        function wwIsPeakType(type) {
+            return type === "peak_max" || type === "peak_min";
+        }
+
         function wwAnnotationCategoryLabel(annotation) {
             if (annotation.type === "text_note") return "NOTE";
+            if (annotation.type === "peak_max") return "+PEAK";
+            if (annotation.type === "peak_min") return "-PEAK";
             return String(annotation.type || "").toUpperCase();
+        }
+
+        // Phase 4G (section 26/61, DEC-046): the ONE computed "+Peak: <value>
+        // <unit>" / "-Peak: <value> <unit>" line, reused by BOTH the
+        // Annotation List summary (below) and the canvas label's own first
+        // line (wwPeakLabelLines()) -- never two independently-drifting
+        // formatters. Reuses wwFormatEngineeringValue() (the existing
+        // general-purpose Y-axis-magnitude formatter, section 61's own
+        // "no floating-point noise" requirement) rather than inventing a
+        // second one. "Unavailable for current view" (section 12/67) when
+        // the current viewport has no valid sample for this channel --
+        // never a stale prior value presented as current.
+        function wwPeakValueLineText(annotation) {
+            const data = annotation.data || {};
+            const prefix = annotation.type === "peak_max" ? "+Peak" : "-Peak";
+            if (!data.available) return prefix + ": Unavailable for current view";
+            const valueText = wwFormatEngineeringValue(data.peakValue);
+            const unitText = data.unit ? " " + data.unit : "";
+            return prefix + ": " + valueText + unitText;
         }
 
         function wwAnnotationSummary(annotation) {
@@ -7251,27 +7352,52 @@
                 const text = ((annotation.data && annotation.data.text) || "").trim();
                 return text.length > 0 ? text : "(empty callout)";
             }
+            if (wwIsPeakType(annotation.type)) return wwPeakValueLineText(annotation);
             return "Annotation";
         }
 
-        // Section 42/43: the Annotation List's ONE extra metadata line for
-        // types that carry a real engineering anchor -- empty string for
-        // text_note (nothing to show). Uses ONLY actual available
-        // metadata (section 42's own explicit "do not invent units if
-        // unavailable"); time presentation follows the CURRENT time mode
-        // via the SAME wwFormatAbsoluteElapsedTime()/wwFormatCursorDuration()
-        // authority A/B cursors already use (section 43) -- reading it
-        // here never mutates the stored anchor.
+        // Section 42/43 (Phase 4F) + section 29/30 (Phase 4G): the
+        // Annotation List's ONE extra metadata line for types that carry a
+        // real engineering anchor -- empty string for text_note (nothing
+        // to show). Uses ONLY actual available metadata (section 42's own
+        // explicit "do not invent units if unavailable"); time
+        // presentation follows the CURRENT time mode via the SAME
+        // wwFormatAbsoluteElapsedTime()/wwFormatCursorDuration() authority
+        // A/B cursors already use (section 28/43) -- reading it here never
+        // mutates the stored anchor/peak.
         function wwAnnotationMetaLine(annotation) {
-            if (annotation.type !== "callout") return "";
             const data = annotation.data || {};
+            if (annotation.type === "callout") {
+                const time = ww.timeMode === "absolute"
+                    ? wwFormatAbsoluteElapsedTime(data.anchorElapsedSeconds)
+                    : wwFormatCursorDuration(data.anchorElapsedSeconds);
+                const value = Number.isFinite(data.anchorValue)
+                    ? data.anchorValue.toFixed(3) + (data.unit ? " " + data.unit : "")
+                    : "—";
+                return (data.channelName || "—") + " · " + time + " · " + value;
+            }
+            if (wwIsPeakType(annotation.type)) {
+                if (!data.available) return (data.channelName || "—") + " · Unavailable for current view";
+                const time = ww.timeMode === "absolute"
+                    ? wwFormatAbsoluteElapsedTime(data.peakElapsedSeconds)
+                    : wwFormatCursorDuration(data.peakElapsedSeconds);
+                return (data.channelName || "—") + " · t = " + time;
+            }
+            return "";
+        }
+
+        // Phase 4G (section 20/26, DEC-046): the two-line canvas label --
+        // "+Peak: 230.4 MW" / "t = 219.400 ms" -- reusing
+        // wwPeakValueLineText() above for line 1, never a second value
+        // formatter.
+        function wwPeakLabelLines(annotation) {
+            const data = annotation.data || {};
+            const line1 = wwPeakValueLineText(annotation);
+            if (!data.available) return { line1: line1, line2: "" };
             const time = ww.timeMode === "absolute"
-                ? wwFormatAbsoluteElapsedTime(data.anchorElapsedSeconds)
-                : wwFormatCursorDuration(data.anchorElapsedSeconds);
-            const value = Number.isFinite(data.anchorValue)
-                ? data.anchorValue.toFixed(3) + (data.unit ? " " + data.unit : "")
-                : "—";
-            return (data.channelName || "—") + " · " + time + " · " + value;
+                ? wwFormatAbsoluteElapsedTime(data.peakElapsedSeconds)
+                : wwFormatCursorDuration(data.peakElapsedSeconds);
+            return { line1: line1, line2: "t = " + time };
         }
 
         function wwAnnotationNoteBodyHtml() {
@@ -7293,6 +7419,31 @@
                     'Callout' +
                 '</div>' +
                 '<div class="ww-annotation-body" tabindex="0"></div>';
+        }
+
+        // Phase 4G (section 25/26, DEC-046): +Peak/-Peak's own body --
+        // NOT text-editable (section 27 -- no textarea is ever wired for
+        // this type, see wwWireAnnotationNote()'s own dispatch below), a
+        // fixed two-line system-computed measurement instead
+        // (.ww-peak-value-line/.ww-peak-time-line, populated via
+        // .textContent only in wwRenderAnnotations(), never innerHTML --
+        // section 87). A small filled triangle glyph (apex up for +Peak,
+        // apex down for -Peak) is the "small peak-oriented marker/icon"
+        // section 25 asks for -- structural/static markup only, safe as
+        // innerHTML (no user data involved), same precedent as
+        // wwCalloutBodyHtml()'s own glyph above.
+        function wwPeakBodyHtml(type) {
+            const isMax = type === "peak_max";
+            const label = isMax ? "+Peak" : "-Peak";
+            const glyphPath = isMax ? "M9 4 L14 12 L4 12 Z" : "M9 14 L4 6 L14 6 Z";
+            return '<div class="ww-annotation-header ww-annotation-header--peak">' +
+                    '<span class="ww-peak-glyph" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="' + glyphPath + '"/></svg></span>' +
+                    label +
+                '</div>' +
+                '<div class="ww-annotation-body ww-peak-body" tabindex="0">' +
+                    '<div class="ww-peak-value-line"></div>' +
+                    '<div class="ww-peak-time-line"></div>' +
+                '</div>';
         }
 
         // ------------------------------------------------------------------
@@ -7403,7 +7554,7 @@
                 // Live connector/marker update while dragging -- cheap
                 // (style/attribute writes only), same "container leads"
                 // principle already established for panel-height drag.
-                const anchorContent = wwCalloutAnchorContentPosition(annotation);
+                const anchorContent = wwAnchoredAnnotationContentPosition(annotation);
                 if (anchorContent) {
                     wwUpdateCalloutConnectorGeometry(
                         document.getElementById("wwCalloutConnectorLayer"), id, anchorContent,
@@ -7416,7 +7567,7 @@
                 if (!dragging) return;
                 dragging = false;
                 const annotation = ww.annotations.get(id);
-                const anchorContent = annotation ? wwCalloutAnchorContentPosition(annotation) : null;
+                const anchorContent = annotation ? wwAnchoredAnnotationContentPosition(annotation) : null;
                 if (anchorContent) {
                     const boxLeft = parseFloat(el.style.left) || 0;
                     const boxTop = parseFloat(el.style.top) || 0;
@@ -7440,17 +7591,35 @@
             wwWireCalloutBoxDrag(el, bodyEl, id);
         }
 
-        // Section 52: the ONE place that dispatches drag/body-interaction
-        // wiring by `annotation.type` -- a future type adds a branch here,
-        // never a second wwRenderAnnotations()-level rewrite.
+        // Phase 4G (section 22/27, DEC-046): +Peak/-Peak's own box is
+        // draggable EXACTLY like Callout's (reuses wwWireCalloutBoxDrag()
+        // unmodified -- it already only ever touches `data.boxOffset` via
+        // the generic wwAnchoredAnnotationContentPosition() this phase
+        // extended, never a Peak's sourceId/channelName/sampleIndex/
+        // peakElapsedSeconds/peakValue/mode), but deliberately WITHOUT
+        // wwWireCalloutBodyInteractions()'s own dblclick-to-edit listener
+        // -- a Peak's value/time lines are system-computed, never
+        // arbitrary editable text (section 27).
+        function wwWirePeakBodyInteractions(el, bodyEl, id) {
+            wwWireCalloutBoxDrag(el, bodyEl, id);
+        }
+
+        // Section 52 (Phase 4F) + section 24 (Phase 4G): the ONE place
+        // that dispatches drag/body-interaction wiring by `annotation.type`
+        // -- a future type adds a branch here, never a second
+        // wwRenderAnnotations()-level rewrite.
         function wwWireAnnotationNote(el, id) {
             const annotation = ww.annotations.get(id);
             const isCallout = !!annotation && annotation.type === "callout";
+            const isPeak = !!annotation && wwIsPeakType(annotation.type);
             const header = el.querySelector(".ww-annotation-header");
             const body = el.querySelector(".ww-annotation-body");
             if (isCallout) {
                 wwWireCalloutBoxDrag(el, header, id);
                 if (body) wwWireCalloutBodyInteractions(el, body, id);
+            } else if (isPeak) {
+                wwWireCalloutBoxDrag(el, header, id);
+                if (body) wwWirePeakBodyInteractions(el, body, id);
             } else {
                 wwWireAnnotationDrag(el, header, id);
                 if (body) wwWireAnnotationBodyInteractions(el, body, id);
@@ -7525,14 +7694,39 @@
         // ever happens in this section (section 55/88).
         // ------------------------------------------------------------------
 
+        // Phase 4G (DEC-046): the two fields that make an annotation
+        // "waveform-anchored" (Callout OR +Peak/-Peak) differ by field
+        // name per type -- Callout's `anchorElapsedSeconds`/`anchorValue`
+        // vs. Peak's `peakElapsedSeconds`/`peakValue` -- but the geometry
+        // that turns either pair into a screen position is identical.
+        // These two small getters are the ONE place that dispatches on
+        // type for this purpose, so the shared projection code below
+        // (originally Callout-only, Phase 4F) never needed to be
+        // duplicated for Peak -- see section 24 of the Phase 4G task
+        // ("reuse Callout rendering infrastructure... do not duplicate an
+        // entirely separate geometry engine").
+        function wwAnchoredAnnotationTime(annotation) {
+            const data = annotation.data || {};
+            if (annotation.type === "callout") return data.anchorElapsedSeconds;
+            if (annotation.type === "peak_max" || annotation.type === "peak_min") return data.peakElapsedSeconds;
+            return null;
+        }
+
+        function wwAnchoredAnnotationValue(annotation) {
+            const data = annotation.data || {};
+            if (annotation.type === "callout") return data.anchorValue;
+            if (annotation.type === "peak_max" || annotation.type === "peak_min") return data.peakValue;
+            return null;
+        }
+
         // Engineering Y value -> page-absolute pixel Y, using ONE
         // specific panel's own CURRENTLY RESOLVED Y range/geometry
         // (mirrors wwCursorTimeToPixelX()'s own X-axis technique, see
         // that function's own comment). Returns null when the panel
         // hasn't rendered a real plotting area yet, OR when `value` falls
-        // outside the panel's current Y range (section 36: hidden, never
-        // pinned to the boundary).
-        function wwCalloutValueToPixelY(panel, value) {
+        // outside the panel's current Y range (section 36/41: hidden,
+        // never pinned to the boundary).
+        function wwAnchorValueToPixelY(panel, value) {
             if (!panel || !panel.plotlyReady || !panel.chartEl || !Number.isFinite(value)) return null;
             const fl = panel.chartEl._fullLayout;
             const range = fl && fl.yaxis ? fl.yaxis.range : null;
@@ -7551,26 +7745,32 @@
             return rect.top + offset + (1 - frac) * length;
         }
 
-        // Section 37/38/39: the ONE authoritative "is this Callout's
-        // channel currently displayed, and on which panel" lookup --
-        // reuses ww.displayed (the SAME Map every layout-mode rebuild
-        // already keeps current, see wwRebuildLayout()'s own comment) so
-        // there is no second, potentially-stale channel/panel index to
-        // maintain. Returns page-absolute {pageX, pageY} or null when the
-        // channel isn't displayed, its panel hasn't rendered, the anchor
-        // time is outside ww.viewport (section 35), or the anchor value
-        // is outside the panel's current Y range (section 36) -- any one
-        // of these means "hidden from canvas, still in state/list."
-        function wwCalloutAnchorPagePosition(annotation) {
+        // Section 37/38/39 (Phase 4F) + section 44/45 (Phase 4G): the ONE
+        // authoritative "is this annotation's channel currently displayed,
+        // and on which panel" lookup -- reuses ww.displayed (the SAME Map
+        // every layout-mode rebuild already keeps current, see
+        // wwRebuildLayout()'s own comment) so there is no second,
+        // potentially-stale channel/panel index to maintain, and no
+        // binding to a destroyed panel DOM across a layout switch. Returns
+        // page-absolute {pageX, pageY} or null when the channel isn't
+        // displayed, its panel hasn't rendered, the anchor/peak time is
+        // outside ww.viewport (section 35/41 Callout; naturally true for a
+        // freshly-recalculated Peak, whose search interval IS the
+        // viewport), or the value is outside the panel's current Y range
+        // (section 36/41) -- any one of these means "hidden from canvas,
+        // still in state/list."
+        function wwAnchoredAnnotationPagePosition(annotation) {
             const data = annotation.data || {};
             const entry = ww.displayed.get(wwChannelKey(data.sourceId, data.channelName));
             if (!entry || !entry.panel || !entry.panel.plotlyReady) return null;
-            if (!ww.viewport || !Number.isFinite(data.anchorElapsedSeconds)) return null;
-            const inViewport = data.anchorElapsedSeconds >= ww.viewport.start && data.anchorElapsedSeconds <= ww.viewport.end;
+            const time = wwAnchoredAnnotationTime(annotation);
+            const value = wwAnchoredAnnotationValue(annotation);
+            if (!ww.viewport || !Number.isFinite(time)) return null;
+            const inViewport = time >= ww.viewport.start && time <= ww.viewport.end;
             if (!inViewport) return null;
-            const pageX = wwCursorTimeToPixelX(data.anchorElapsedSeconds);
+            const pageX = wwCursorTimeToPixelX(time);
             if (pageX === null) return null;
-            const pageY = wwCalloutValueToPixelY(entry.panel, data.anchorValue);
+            const pageY = wwAnchorValueToPixelY(entry.panel, value);
             if (pageY === null) return null;
             return { pageX: pageX, pageY: pageY };
         }
@@ -7578,11 +7778,11 @@
         // Page-absolute anchor position -> #activeViewArea CONTENT-relative
         // position -- the SAME conversion Text Note placement/drag already
         // uses (module comment's own `contentY = pointerY - regionViewportTop
-        // + scrollTop` model), so a Callout box/connector/marker scrolls
-        // natively with main-workspace content exactly like a Text Note
-        // does (section 50).
-        function wwCalloutAnchorContentPosition(annotation) {
-            const pagePos = wwCalloutAnchorPagePosition(annotation);
+        // + scrollTop` model), so a Callout/Peak box/connector/marker
+        // scrolls natively with main-workspace content exactly like a Text
+        // Note does (section 45).
+        function wwAnchoredAnnotationContentPosition(annotation) {
+            const pagePos = wwAnchoredAnnotationPagePosition(annotation);
             if (!pagePos) return null;
             const regionEl = document.getElementById("activeViewArea");
             if (!regionEl) return null;
@@ -7618,7 +7818,7 @@
         // (section 45: deleting the annotation removes this the same
         // generic way, via the "seen" sweep below -- no separate cleanup
         // state).
-        function wwUpdateCalloutConnectorGeometry(connectorLayer, id, anchorContent, boxLeft, boxTop, boxWidth, boxHeight, selected, dragging) {
+        function wwUpdateCalloutConnectorGeometry(connectorLayer, id, anchorContent, boxLeft, boxTop, boxWidth, boxHeight, selected, dragging, isPeak) {
             if (!connectorLayer) return;
             const edge = wwCalloutRectEdgePoint(boxLeft, boxTop, boxWidth, boxHeight, anchorContent.x, anchorContent.y);
             let group = connectorLayer.querySelector('[data-annotation-id="' + CSS.escape(id) + '"]');
@@ -7656,6 +7856,7 @@
             }
             group.classList.toggle("ww-callout-connector-group--selected", !!selected);
             group.classList.toggle("ww-callout-connector-group--anchor-dragging", !!dragging);
+            group.classList.toggle("ww-callout-connector-group--peak", !!isPeak);
         }
 
         function wwHideCalloutConnector(connectorLayer, id) {
@@ -7922,7 +8123,17 @@
                 if (!hit) return; // section 5: outside the hit target, normal waveform behavior is untouched
                 if (event.button !== undefined && event.button !== 0) return;
                 const id = hit.getAttribute("data-callout-anchor-hit");
-                if (!ww.annotations.has(id)) return;
+                const annotation = ww.annotations.get(id);
+                if (!annotation) return;
+                // Phase 4G (section 21/24/57/82, DEC-046): the connector
+                // layer's hit-target circle is stamped for EVERY
+                // waveform-anchored annotation type (Callout AND +Peak/
+                // -Peak, section 24's shared geometry engine) -- but only
+                // Callout's anchor is draggable. A +Peak/-Peak marker is
+                // CALCULATED, never user-movable; this ONE type check is
+                // the entire dispatch-by-type boundary (no separate,
+                // parallel "peak marker interaction" module needed).
+                if (annotation.type !== "callout") return;
                 event.preventDefault();
                 event.stopPropagation(); // never reach a document-level "click outside deselects" listener, and never Plotly/A-B-cursor beneath (section 5/27)
                 wwSelectAnnotation(id); // section 25
@@ -7978,6 +8189,15 @@
                 if (annotation.region !== "main") annotation.region = "main";
                 seen.add(annotation.id);
                 const isCallout = annotation.type === "callout";
+                const isPeak = wwIsPeakType(annotation.type);
+                // Phase 4G (section 24, DEC-046): Callout AND +Peak/-Peak
+                // are both "waveform-anchored" -- one authoritative sample
+                // anchor, one draggable box, one shared connector/marker
+                // (wwAnchoredAnnotationContentPosition() dispatches the
+                // engineering time/value fields by type; everything below
+                // this point is pure shared geometry, section 24's own
+                // "do not duplicate a geometry engine").
+                const isAnchored = isCallout || isPeak;
 
                 let el = overlay.querySelector('.ww-annotation[data-annotation-id="' + CSS.escape(annotation.id) + '"]');
                 if (!el) {
@@ -7985,21 +8205,25 @@
                     el.className = "ww-annotation ww-annotation--" + annotation.type;
                     el.dataset.annotationId = annotation.id;
                     el.dataset.editing = "false";
-                    el.innerHTML = isCallout ? wwCalloutBodyHtml() : (annotation.type === "text_note" ? wwAnnotationNoteBodyHtml() : "");
+                    el.innerHTML = isCallout ? wwCalloutBodyHtml()
+                        : isPeak ? wwPeakBodyHtml(annotation.type)
+                        : annotation.type === "text_note" ? wwAnnotationNoteBodyHtml()
+                        : "";
                     overlay.appendChild(el);
                     wwWireAnnotationNote(el, annotation.id);
                 }
                 el.classList.toggle("ww-annotation--selected", ww.annotationSelectedId === annotation.id);
                 el.style.zIndex = String(annotation.zIndex);
 
-                if (isCallout) {
-                    const anchorContent = wwCalloutAnchorContentPosition(annotation);
+                if (isAnchored) {
+                    const anchorContent = wwAnchoredAnnotationContentPosition(annotation);
                     if (!anchorContent) {
-                        // Section 35/36/37: anchor currently unprojectable
-                        // (out of X viewport, out of the panel's Y range,
-                        // or its channel isn't displayed) -- hide the box
-                        // AND its connector/marker, but the annotation
-                        // itself stays fully intact in ww.annotations/the
+                        // Section 35/36/37 (Callout) + section 41/42
+                        // (Peak): anchor currently unprojectable (out of X
+                        // viewport, out of the panel's Y range, or its
+                        // channel isn't displayed) -- hide the box AND its
+                        // connector/marker, but the annotation itself
+                        // stays fully intact in ww.annotations/the
                         // Annotation List.
                         el.style.display = "none";
                         wwHideCalloutConnector(connectorLayer, annotation.id);
@@ -8013,7 +8237,9 @@
                         wwUpdateCalloutConnectorGeometry(
                             connectorLayer, annotation.id, anchorContent, boxLeft, boxTop,
                             el.offsetWidth || 200, el.offsetHeight || 80,
-                            ww.annotationSelectedId === annotation.id
+                            ww.annotationSelectedId === annotation.id,
+                            false,
+                            isPeak
                         );
                     }
                 } else {
@@ -8033,6 +8259,15 @@
                         body.textContent = isEmpty ? "Click to add text" : text; // textContent only -- never innerHTML (section 48)
                         body.classList.toggle("ww-annotation-body--placeholder", isEmpty);
                     }
+                }
+                if (isPeak) {
+                    // Section 26/87: system-computed text only, .textContent
+                    // only -- never innerHTML, never user-editable.
+                    const lines = wwPeakLabelLines(annotation);
+                    const valueLineEl = el.querySelector(".ww-peak-value-line");
+                    const timeLineEl = el.querySelector(".ww-peak-time-line");
+                    if (valueLineEl) valueLineEl.textContent = lines.line1;
+                    if (timeLineEl) timeLineEl.textContent = lines.line2;
                 }
             }
 
@@ -8196,8 +8431,9 @@
         function wwAnnotationPlacementClickHandler(event) {
             const type = ww.annotationPlacementType;
             if (!type) return;
-            // Phase 4F (section 13/14): Callout creation happens entirely
-            // through each analog panel's own `plotly_click` handler (see
+            // Phase 4F (section 13/14) + Phase 4G (section 15/16): Callout
+            // AND +Peak/-Peak creation all happen entirely through each
+            // analog panel's own `plotly_click` handler (see
             // wwWireAnalogPanelClick()) -- ONLY that handler can resolve
             // which exact TRACE/channel was clicked (section 8/9/10/11),
             // which this generic document-level click listener cannot.
@@ -8205,7 +8441,7 @@
             // system (not native DOM `click` bubbling), so both listeners
             // see the same user click independently -- this early return
             // is what stops the generic path from ALSO creating something.
-            if (type === "callout") return;
+            if (type === "callout" || wwIsPeakType(type)) return;
             const toolbarEl = document.getElementById("wwToolbar");
             if (toolbarEl && toolbarEl.contains(event.target)) return;
             const mainAreaEl = document.getElementById("activeViewArea");
@@ -8249,26 +8485,37 @@
         // (section 14).
         function wwWireAnalogPanelClick(panel) {
             panel.chartEl.on("plotly_click", (eventData) => {
-                if (ww.annotationPlacementType !== "callout") return;
+                const type = ww.annotationPlacementType;
+                if (type !== "callout" && !wwIsPeakType(type)) return;
                 if (!eventData || !eventData.points || !eventData.points.length) return;
                 const point = eventData.points[0];
                 const trace = point.data;
-                // Section 39: trace identity via the SAME stable
-                // "sourceId::channelName" `meta` field wwBuildTrace()
-                // already stamps on every trace -- never curveNumber alone
-                // (not guaranteed stable across rerenders) and never "the
-                // first trace in the panel" (section 8/9: Grouped/Custom
-                // panels may hold several channels).
+                // Section 39 (Callout) + section 15/73 (Peak): trace
+                // identity via the SAME stable "sourceId::channelName"
+                // `meta` field wwBuildTrace() already stamps on every
+                // trace -- never curveNumber alone (not guaranteed stable
+                // across rerenders) and never "the first trace in the
+                // panel" (section 8/9: Grouped/Custom panels may hold
+                // several channels).
                 const channel = panel.channels.find((c) => wwChannelKey(c.sourceId, c.channelName) === (trace && trace.meta));
                 if (!channel) return;
-                const approximateElapsedSeconds = wwPlotlyXToElapsed(point.x);
-                // Section 13/68: Callout mode is one-shot -- exits on the
-                // FIRST valid trace click regardless of whether anchor
-                // resolution then succeeds, so a slow/failed request can
-                // never be double-fired by a second click landing while
-                // the first is still in flight.
+                // Section 13/68 (Callout) + section 16 (Peak): one-shot --
+                // exits on the FIRST valid trace click regardless of
+                // whether resolution then succeeds, so a slow/failed
+                // request can never be double-fired by a second click
+                // landing while the first is still in flight.
                 wwExitAnnotationPlacementMode();
-                wwCreateCalloutFromClick(panel, channel, approximateElapsedSeconds);
+                if (type === "callout") {
+                    const approximateElapsedSeconds = wwPlotlyXToElapsed(point.x);
+                    wwCreateCalloutFromClick(panel, channel, approximateElapsedSeconds);
+                } else {
+                    // Section 3/4: unlike Callout, the CLICKED X position is
+                    // irrelevant to a Peak's own value -- only the clicked
+                    // TRACE (channel identity) matters; the search interval
+                    // is always the CURRENT visible X viewport, never the
+                    // click position.
+                    wwCreatePeakFromClick(panel, channel, type === "peak_max" ? "max" : "min");
+                }
             });
         }
 
@@ -8334,6 +8581,214 @@
             });
             // Section 18: immediate edit, exactly like Text Note.
             wwBeginAnnotationEdit(annotation.id);
+        }
+
+        // ------------------------------------------------------------------
+        // Phase 4G (DEC-046): +Peak/-Peak placement -- click-on-trace
+        // creation (identical trace-resolution mechanics to Callout above),
+        // then LIVE viewport-driven recalculation for the annotation's
+        // whole lifetime (unlike Callout, whose anchor is fixed after
+        // creation).
+        // ------------------------------------------------------------------
+
+        // Section 3/4: unlike wwCreateCalloutFromClick(), the click's own X
+        // position is never used as engineering input -- only the clicked
+        // TRACE resolves channel identity; the search interval is always
+        // the CURRENT ww.viewport (section 4/75), never the click position
+        // or the whole record.
+        async function wwCreatePeakFromClick(panel, channel, mode) {
+            if (!ww.viewport) return;
+            const type = mode === "max" ? "peak_max" : "peak_min";
+            const workspaceId = currentWorkspaceId();
+            const epochAtStart = ww.epoch;
+            const sourceId = channel.sourceId;
+            const channelName = channel.channelName;
+            const startTime = ww.viewport.start;
+            const endTime = ww.viewport.end;
+
+            let response;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
+                    "/sources/" + encodeURIComponent(sourceId) + "/peak-values",
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            requests: [{ channel_name: channelName, mode: mode }],
+                            start_time: startTime,
+                            end_time: endTime,
+                        }),
+                    }
+                );
+            } catch (error) {
+                wwShowError(panel, "Could not create " + (mode === "max" ? "+Peak" : "-Peak") + ": could not reach the backend.");
+                return;
+            }
+            // Section 35: reject a stale response -- the workspace may
+            // have changed (Start New Workspace / this source removed)
+            // while the request was in flight. Never create a Peak
+            // annotation in the wrong workspace.
+            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+
+            let body = null;
+            try { body = await response.json(); } catch (error) { /* handled by !response.ok below */ }
+            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+
+            const result = body && Array.isArray(body.results) ? body.results[0] : null;
+            if (!response.ok || !result) {
+                const message = (body && body.detail && body.detail.message) || "Could not resolve a peak value.";
+                wwShowError(panel, "Could not create " + (mode === "max" ? "+Peak" : "-Peak") + ": " + message);
+                return;
+            }
+            if (!result.available) {
+                // Section 12: never create a broken/partial peak
+                // annotation when the current viewport has no valid
+                // sample for this channel -- concise feedback only.
+                wwShowError(panel, "Could not create " + (mode === "max" ? "+Peak" : "-Peak") +
+                    ": no valid samples for " + channelName + " in the current visible range.");
+                return;
+            }
+
+            // Section 18/19/27: stable identity (sourceId/channelName/
+            // mode/boxOffset) alongside the dynamic measurement fields --
+            // NO `text` field (section 27: never arbitrary editable text),
+            // `available: true` since this is a just-succeeded resolution.
+            wwCreateAnnotation(type, "main", { x: 0, y: 0 }, {
+                sourceId: sourceId,
+                channelName: channelName,
+                mode: mode,
+                sampleIndex: result.sample_index,
+                peakElapsedSeconds: result.elapsed_seconds,
+                peakValue: result.value,
+                unit: result.unit,
+                available: true,
+                // Section 23: same sensible default Callout already uses --
+                // avoids covering the clicked waveform point.
+                boxOffset: { x: 80, y: -60 },
+            });
+            // Section 27: no immediate edit mode -- a Peak's value/time
+            // lines are system-computed, never user-editable text.
+        }
+
+        // Section 33/34: one monotonically increasing generation number
+        // PER SOURCE (the SAME stale-response pattern
+        // wwCursorValuesGeneration already established) -- a response is
+        // only applied if it is still the LATEST outstanding peak-values
+        // request for that source at the time it resolves; a slower
+        // earlier-viewport response arriving after a faster later-viewport
+        // response is discarded (section 78).
+        const wwPeakValuesGeneration = new Map();
+
+        // Batched per source (section 33/34): every active +Peak/-Peak
+        // annotation anchored to ONE source is resolved together, in ONE
+        // request, for the CURRENT shared interval -- never one request
+        // per annotation, and never merging two sources' channel lists
+        // into a single request (each source's own full-resolution time
+        // array is authoritative only for itself, mirroring
+        // wwFetchCursorValuesForSource()'s own established rationale).
+        async function wwRecalculatePeakAnnotationsForSource(sourceId, startTime, endTime) {
+            const items = [];
+            for (const annotation of ww.annotations.values()) {
+                if (!wwIsPeakType(annotation.type)) continue;
+                const data = annotation.data || {};
+                if (data.sourceId !== sourceId) continue;
+                items.push(annotation);
+            }
+            if (items.length === 0) return;
+
+            const workspaceId = currentWorkspaceId();
+            const epochAtStart = ww.epoch;
+            const generation = (wwPeakValuesGeneration.get(sourceId) || 0) + 1;
+            wwPeakValuesGeneration.set(sourceId, generation);
+
+            const requests = items.map((annotation) => ({
+                channel_name: annotation.data.channelName,
+                mode: annotation.data.mode,
+            }));
+
+            let response;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
+                    "/sources/" + encodeURIComponent(sourceId) + "/peak-values",
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ requests: requests, start_time: startTime, end_time: endTime }),
+                    }
+                );
+            } catch (error) {
+                // Section 68: a transient network failure during a routine
+                // recalculation leaves each annotation's last-known value
+                // in place rather than clearing it -- the NEXT viewport
+                // change (or the engineer retrying) will resolve it again;
+                // only a FAILED CREATION (above) is treated as a hard
+                // error, since nothing valid has ever been shown yet there.
+                return;
+            }
+            if (wwPeakValuesGeneration.get(sourceId) !== generation) return; // superseded while in flight
+            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+
+            let body = null;
+            try { body = await response.json(); } catch (error) { /* handled below */ }
+            if (wwPeakValuesGeneration.get(sourceId) !== generation) return; // re-checked after the second await
+            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+            if (!response.ok || !body || !Array.isArray(body.results)) return;
+
+            // Section 33's own alignment contract: `results[i]` corresponds
+            // to `requests[i]`/`items[i]` -- the backend never reorders or
+            // drops batch items (see resolve_source_peak_values()'s own
+            // per-item try/except, which always appends exactly one result
+            // per request).
+            for (let i = 0; i < items.length; i++) {
+                const annotation = items[i];
+                // Section 35: this SPECIFIC annotation may have been
+                // deleted (or its source removed, which deletes it too --
+                // section 46) while this request was in flight; skip it,
+                // never resurrect it.
+                if (!ww.annotations.has(annotation.id)) continue;
+                const result = body.results[i];
+                if (!result) continue;
+                if (!result.available) {
+                    // Section 12/67: preserve the annotation's identity in
+                    // state/list, but mark it unavailable so the render
+                    // path stops presenting the LAST valid value as
+                    // current for this new interval.
+                    wwUpdateAnnotation(annotation.id, { data: { available: false } });
+                    continue;
+                }
+                // Section 19: update the SAME annotation id in place --
+                // never a new annotation, never reordering the list
+                // (createdAt is untouched by wwUpdateAnnotation()).
+                wwUpdateAnnotation(annotation.id, {
+                    data: {
+                        available: true,
+                        sampleIndex: result.sample_index,
+                        peakElapsedSeconds: result.elapsed_seconds,
+                        peakValue: result.value,
+                        unit: result.unit,
+                    },
+                });
+            }
+        }
+
+        // Section 31: the ONE dispatcher wwApplyAndFetchViewport() calls --
+        // groups every active +Peak/-Peak annotation by its own sourceId
+        // (section 59: cross-channel/cross-source annotations update
+        // independently, never contaminating each other) and fires one
+        // batched request per distinct source (never merged, never one
+        // request per annotation).
+        function wwRecalculateAllPeakAnnotations(startTime, endTime) {
+            const sourceIds = new Set();
+            for (const annotation of ww.annotations.values()) {
+                if (!wwIsPeakType(annotation.type)) continue;
+                const data = annotation.data || {};
+                if (data.sourceId) sourceIds.add(data.sourceId);
+            }
+            for (const sourceId of sourceIds) {
+                wwRecalculatePeakAnnotationsForSource(sourceId, startTime, endTime);
+            }
         }
 
         function wwAnnotationPlacementKeydownHandler(event) {
@@ -9253,28 +9708,33 @@
             }
             ww.sourceBounds.delete(sourceId);
             wwRefreshWorkspaceBounds();
-            // Phase 4F (section 57): a Callout anchored to a REMOVED
-            // source's channel is deleted outright, not merely hidden --
-            // its target sample no longer exists server-side, so there is
-            // nothing left to reproject it against, and no other source
+            // Phase 4F (section 57) + Phase 4G (section 46): a Callout OR
+            // +Peak/-Peak anchored to a REMOVED source's channel is
+            // deleted outright, not merely hidden -- its target
+            // sample(s) no longer exist server-side, so there is nothing
+            // left to reproject/recalculate against, and no other source
             // is silently substituted (never rebind to a same-named
-            // channel on a different source). This is called from
+            // channel on a different source, section 46's own "no
+            // rebinding by same channel name"). This is called from
             // wwRemoveChannel() above too (the per-channel path), but
-            // that only clears channels currently DISPLAYED -- a Callout
-            // whose channel was never re-displayed after this source was
-            // selected would otherwise survive; this sweep is the
-            // authoritative one, keyed on sourceId directly.
-            wwRemoveCalloutsForSource(sourceId);
+            // that only clears channels currently DISPLAYED -- an
+            // annotation whose channel was never re-displayed after this
+            // source was selected would otherwise survive; this sweep is
+            // the authoritative one, keyed on sourceId directly.
+            wwRemoveAnchoredAnnotationsForSource(sourceId);
         }
 
-        // Phase 4F (section 57): deletes every Callout anchored to
-        // `sourceId` -- reuses the SAME generic ww.annotations.delete()
+        // Phase 4F (section 57) + Phase 4G (section 46): deletes every
+        // waveform-anchored annotation (Callout AND +Peak/-Peak) anchored
+        // to `sourceId` -- reuses the SAME generic ww.annotations.delete()
         // path wwDeleteAnnotation() itself uses, just batched (never a
-        // second annotation-removal mechanism).
-        function wwRemoveCalloutsForSource(sourceId) {
+        // second annotation-removal mechanism, never a type-specific
+        // duplicate of this sweep).
+        function wwRemoveAnchoredAnnotationsForSource(sourceId) {
             let removedAny = false;
             for (const [id, annotation] of ww.annotations) {
-                if (annotation.type === "callout" && annotation.data && annotation.data.sourceId === sourceId) {
+                const isAnchored = annotation.type === "callout" || wwIsPeakType(annotation.type);
+                if (isAnchored && annotation.data && annotation.data.sourceId === sourceId) {
                     ww.annotations.delete(id);
                     if (ww.annotationSelectedId === id) ww.annotationSelectedId = null;
                     removedAny = true;

@@ -30,9 +30,10 @@ from app.domain.source import ActiveSource
 from app.schemas.annotation_anchor import AnnotationAnchorOut, AnnotationAnchorRequest
 from app.schemas.cursor_values import CursorValuesOut, CursorValuesRequest
 from app.schemas.digital_waveform import DigitalWaveformBatchOut, DigitalWaveformOut
+from app.schemas.peak_value import PeakValueBatchOut, PeakValueBatchRequest, PeakValueResultOut
 from app.schemas.source import ErrorOut, SourceChannelsOut, SourceSummaryOut
 from app.schemas.waveform import WaveformRangeOut
-from app.services.errors import ImportServiceError
+from app.services.errors import ImportServiceError, InvalidTimeRangeError
 from app.services.import_service import import_comtrade_source
 from app.services.waveform_service import (
     DEFAULT_POINT_BUDGET,
@@ -41,6 +42,7 @@ from app.services.waveform_service import (
     extract_digital_waveform,
     extract_waveform_range,
     resolve_annotation_anchor,
+    resolve_peak_value,
 )
 from app.services.workspace_registry import WorkspaceRegistry
 
@@ -341,6 +343,93 @@ def resolve_source_annotation_anchor(
         )
         raise _http_error(exc) from exc
     return AnnotationAnchorOut.from_result(result)
+
+
+@router.post("/{source_id}/peak-values", response_model=PeakValueBatchOut)
+def resolve_source_peak_values(
+    workspace_id: str,
+    source_id: str,
+    body: PeakValueBatchRequest,
+    registry: WorkspaceRegistry = Depends(get_workspace_registry),
+) -> PeakValueBatchOut:
+    """Phase 4G Maximum/Minimum Peak annotation resolution (DEC-046).
+
+    Batched per source (one request, every requested channel/mode pair for
+    ONE shared time interval -- section 33/34): called once at each +Peak/
+    -Peak's creation (a single-item batch), and again, for every active
+    dynamic peak annotation anchored to this source together, whenever the
+    engineer's X viewport genuinely changes (zoom/pan/step-zoom/Reset Time
+    View -- never on Y-range, Absolute/Elapsed, or box-drag, section 6/39/
+    40/55, enforced entirely on the frontend side that calls this).
+
+    `start_time`/`end_time` are the current visible X viewport -- never the
+    whole recording (section 4/75).
+
+    Deliberately one item at a time internally (never a second batch-level
+    nearest-extremum algorithm): each requested channel/mode pair is
+    resolved via `resolve_peak_value`, reusing the SAME analog-channel
+    validation `resolve_annotation_anchor`/`extract_waveform_range` already
+    use. An unknown/digital channel name in ONE item degrades that ONE
+    result to `available=False` rather than failing the whole batch
+    (section 12/67 -- one stale/renamed channel must never blank out every
+    other channel's otherwise-valid peak) -- the SAME resilience philosophy
+    `extract_cursor_values` already documents for its own per-channel
+    lookups, just surfaced as an explicit `available` flag here rather than
+    silent omission, since each item's position in the response list must
+    stay aligned with the request for the frontend to update the right
+    annotation.
+
+    `start_time > end_time` for the whole batch's shared interval IS a
+    genuine client error (`invalid_time_range`, 400) -- this is the one
+    thing that fails the whole request, since every item in the batch
+    shares the identical interval.
+    """
+    workspace_id = _validate_workspace_id(workspace_id)
+    active = _get_or_404(registry, workspace_id, source_id)
+    if body.start_time > body.end_time:
+        raise _http_error(
+            InvalidTimeRangeError(f"start_time ({body.start_time}) must not be greater than end_time ({body.end_time}).")
+        )
+
+    results: list[PeakValueResultOut] = []
+    for item in body.requests:
+        try:
+            result = resolve_peak_value(
+                active,
+                channel_name=item.channel_name,
+                mode=item.mode,
+                start_time=body.start_time,
+                end_time=body.end_time,
+            )
+        except ImportServiceError as exc:
+            logger.info(
+                "Peak value request item rejected (%s) for workspace %s source %s channel %s: %s",
+                exc.code,
+                workspace_id,
+                source_id,
+                item.channel_name,
+                exc.message,
+            )
+            results.append(
+                PeakValueResultOut(
+                    channel_name=item.channel_name,
+                    mode=item.mode,
+                    available=False,
+                    sample_index=None,
+                    elapsed_seconds=None,
+                    value=None,
+                    unit=None,
+                )
+            )
+            continue
+        results.append(PeakValueResultOut.from_result(result))
+
+    return PeakValueBatchOut(
+        source_id=source_id,
+        start_time=body.start_time,
+        end_time=body.end_time,
+        results=results,
+    )
 
 
 @router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
