@@ -1497,6 +1497,35 @@
            .ww-annotation--selected below. */
         .ww-callout-connector-group--selected .ww-callout-connector { stroke-width: 1.75; }
         .ww-callout-connector-group--selected .ww-callout-anchor-marker { stroke-width: 2.25; }
+        /* Phase 4F-UAT (movable anchor): section 4 -- a genuinely larger
+           invisible pointer hit target (~16px diameter, `r="8"`, set by
+           wwUpdateCalloutConnectorGeometry()) sits OVER the small ~8px
+           visible marker, without changing the marker's own visual size
+           (section 4's own explicit "do not make the engineering marker
+           visually oversized"). `pointer-events: all` overrides the
+           connector layer's own `pointer-events: none` for JUST this one
+           element -- everywhere else in the layer remains transparent to
+           the waveform/A-B-cursor hit-testing beneath it (section 26/27:
+           deterministic priority via normal DOM hit-testing -- the
+           topmost element under the pointer wins, and nothing else here
+           is ever hit-testable). */
+        .ww-callout-anchor-hit {
+            fill: transparent;
+            pointer-events: all;
+            cursor: grab;
+        }
+        .ww-callout-anchor-hit:active { cursor: grabbing; }
+        /* Section 4: "obvious but subtle hover affordance" -- the visible
+           marker grows very slightly (a pure CSS presentation-attribute
+           transition, no JS) on hover of the (otherwise invisible) hit
+           target sitting on top of it. */
+        .ww-callout-connector-group:hover .ww-callout-anchor-marker { r: 4.5; }
+        /* Section 35: while a drag is actively in progress -- a slightly
+           stronger ring, same restrained tier as the selected state
+           above, never a glow/animation. */
+        .ww-callout-connector-group--anchor-dragging .ww-callout-anchor-marker {
+            stroke-width: 2.5;
+        }
         .ww-annotation {
             position: absolute;
             min-width: 160px;
@@ -7580,34 +7609,291 @@
         // (section 45: deleting the annotation removes this the same
         // generic way, via the "seen" sweep below -- no separate cleanup
         // state).
-        function wwUpdateCalloutConnectorGeometry(connectorLayer, id, anchorContent, boxLeft, boxTop, boxWidth, boxHeight, selected) {
+        function wwUpdateCalloutConnectorGeometry(connectorLayer, id, anchorContent, boxLeft, boxTop, boxWidth, boxHeight, selected, dragging) {
             if (!connectorLayer) return;
             const edge = wwCalloutRectEdgePoint(boxLeft, boxTop, boxWidth, boxHeight, anchorContent.x, anchorContent.y);
             let group = connectorLayer.querySelector('[data-annotation-id="' + CSS.escape(id) + '"]');
             if (!group) {
                 group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                group.classList.add("ww-callout-connector-group");
                 group.dataset.annotationId = id;
+                // Phase 4F-UAT (movable anchor, section 4/5): the hit
+                // target is a SEPARATE, larger, invisible circle laid
+                // OVER the small visible marker -- see this class's own
+                // CSS comment for why `pointer-events: all` here is safe
+                // (nothing else in this layer is ever hit-testable).
+                // `data-callout-anchor-hit` is the SAME delegation
+                // convention `data-cursor-drag` already established for
+                // A/B cursor dragging (wwWireCursorDrag()).
                 group.innerHTML =
                     '<line class="ww-callout-connector"></line>' +
-                    '<circle class="ww-callout-anchor-marker" r="4"></circle>';
+                    '<circle class="ww-callout-anchor-marker" r="4"></circle>' +
+                    '<circle class="ww-callout-anchor-hit" r="8" data-callout-anchor-hit="' + id + '"></circle>';
                 connectorLayer.appendChild(group);
             }
             group.style.display = "";
             const line = group.querySelector(".ww-callout-connector");
             const marker = group.querySelector(".ww-callout-anchor-marker");
+            const hit = group.querySelector(".ww-callout-anchor-hit");
             line.setAttribute("x1", String(edge.x));
             line.setAttribute("y1", String(edge.y));
             line.setAttribute("x2", String(anchorContent.x));
             line.setAttribute("y2", String(anchorContent.y));
             marker.setAttribute("cx", String(anchorContent.x));
             marker.setAttribute("cy", String(anchorContent.y));
+            if (hit) {
+                hit.setAttribute("cx", String(anchorContent.x));
+                hit.setAttribute("cy", String(anchorContent.y));
+            }
             group.classList.toggle("ww-callout-connector-group--selected", !!selected);
+            group.classList.toggle("ww-callout-connector-group--anchor-dragging", !!dragging);
         }
 
         function wwHideCalloutConnector(connectorLayer, id) {
             if (!connectorLayer) return;
             const group = connectorLayer.querySelector('[data-annotation-id="' + CSS.escape(id) + '"]');
             if (group) group.style.display = "none";
+        }
+
+        // Section 15: authoritative anchor resolution, reused verbatim
+        // from creation (wwCreateCalloutFromClick()'s own request/error/
+        // stale-response shape) -- NOT a second implementation. Only
+        // called ONCE, on pointerup, never during the drag itself
+        // (section 8/28/50). `sourceId`/`channelName` are the Callout's
+        // EXISTING, unchanged identity (section 2/9) -- never taken from
+        // anywhere else.
+        async function wwResolveCalloutAnchorMove(id, sourceId, channelName, approximateElapsedSeconds) {
+            const workspaceId = currentWorkspaceId();
+            const epochAtStart = ww.epoch;
+            const entry = ww.displayed.get(wwChannelKey(sourceId, channelName));
+            const panel = entry ? entry.panel : null;
+
+            // Section 14: also respect the SPECIFIC anchored source's own
+            // native bounds -- ww.viewport (already applied by
+            // wwCursorPixelXToTime()'s own clamp, section 13) may span
+            // multiple sources; one source's own recorded range can be
+            // narrower than the shared viewport.
+            const sourceBounds = ww.sourceBounds.get(sourceId);
+            const requestedTime = sourceBounds
+                ? Math.max(sourceBounds.start, Math.min(sourceBounds.end, approximateElapsedSeconds))
+                : approximateElapsedSeconds;
+
+            let response;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
+                    "/sources/" + encodeURIComponent(sourceId) + "/annotation-anchor",
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ channel_name: channelName, approximate_elapsed_seconds: requestedTime }),
+                    }
+                );
+            } catch (error) {
+                if (panel) wwShowError(panel, "Could not move callout: could not reach the backend.");
+                wwRenderAnnotations(); // section 10: restore the unchanged authoritative anchor
+                return;
+            }
+            // Section 29/31: reject a stale response -- the workspace may
+            // have changed, OR this specific Callout was deleted, while
+            // the request was in flight. Never resurrect/update a stale
+            // or deleted annotation.
+            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId || !ww.annotations.has(id)) return;
+
+            let body = null;
+            try { body = await response.json(); } catch (error) { /* handled by !response.ok below */ }
+            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId || !ww.annotations.has(id)) return;
+
+            if (!response.ok || !body) {
+                // Section 10: never leave the Callout at the approximate
+                // preview location on a failed resolution -- restore the
+                // original (untouched) authoritative anchor and show a
+                // concise error.
+                const message = (body && body.detail && body.detail.message) || "Could not resolve the anchor point.";
+                if (panel) wwShowError(panel, "Could not move callout: " + message);
+                wwRenderAnnotations();
+                return;
+            }
+
+            // Section 9: source/channel identity is NEVER taken from the
+            // response -- only sampleIndex/anchorElapsedSeconds/
+            // anchorValue/unit are committed, exactly the same fields
+            // wwCreateCalloutFromClick() itself sets from a fresh
+            // resolution. boxOffset (section 11) and everything else in
+            // `data` is untouched by this patch's own generic merge.
+            wwUpdateAnnotation(id, {
+                data: {
+                    sampleIndex: body.sample_index,
+                    anchorElapsedSeconds: body.elapsed_seconds,
+                    anchorValue: body.value,
+                    unit: body.unit,
+                },
+            });
+        }
+
+        // ------------------------------------------------------------------
+        // Phase 4F-UAT (movable anchor, DEC-045 addendum): dragging the
+        // visible anchor marker moves a Callout's engineering anchor
+        // along its own FIXED source/channel (section 2/3 -- identity is
+        // never touched here; cross-channel re-anchoring is explicitly
+        // out of scope). Wired ONCE via event delegation on
+        // #wwCalloutConnectorLayer -- the SAME pattern wwWireCursorDrag()
+        // already established for A/B cursor dragging on
+        // #wwCursorOverlay -- so every current AND future Callout is
+        // draggable with zero per-annotation wiring.
+        // ------------------------------------------------------------------
+        function wwWireCalloutAnchorDrag() {
+            const connectorLayer = document.getElementById("wwCalloutConnectorLayer");
+            if (!connectorLayer) return;
+
+            let draggingId = null;
+            let dragMetrics = null;
+            let dragTarget = null;
+
+            // Section 6/7/15: pointer X only -> a PREVIEW screen position,
+            // never written to annotation.data. anchorValue is
+            // deliberately untouched here -- the marker's Y stays pinned
+            // to the panel's projection of the CURRENT (still-
+            // authoritative) anchorValue while only X follows the
+            // pointer, so the preview never fabricates an engineering Y
+            // reading; pointer Y is never read at all during this drag.
+            function livePreviewUpdate(id, previewElapsedSeconds) {
+                const annotation = ww.annotations.get(id);
+                if (!annotation) return;
+                const entry = ww.displayed.get(wwChannelKey(annotation.data.sourceId, annotation.data.channelName));
+                if (!entry || !entry.panel) return;
+                const pageX = wwCursorTimeToPixelX(previewElapsedSeconds);
+                const pageY = wwCalloutValueToPixelY(entry.panel, annotation.data.anchorValue);
+                const regionEl = document.getElementById("activeViewArea");
+                if (pageX === null || pageY === null || !regionEl) return;
+                const regionRect = regionEl.getBoundingClientRect();
+                const anchorContent = {
+                    x: pageX - regionRect.left + regionEl.scrollLeft,
+                    y: pageY - regionRect.top + regionEl.scrollTop,
+                };
+                // Section 11: preserve the EXISTING boxOffset -- the box
+                // follows the preview anchor by the same stored relative
+                // offset, never reset.
+                const el = document.querySelector('.ww-annotation[data-annotation-id="' + CSS.escape(id) + '"]');
+                const boxOffset = (annotation.data && annotation.data.boxOffset) || { x: 80, y: -60 };
+                const boxLeft = anchorContent.x + boxOffset.x;
+                const boxTop = anchorContent.y + boxOffset.y;
+                if (el) {
+                    el.style.left = boxLeft + "px";
+                    el.style.top = boxTop + "px";
+                }
+                wwUpdateCalloutConnectorGeometry(
+                    connectorLayer, id, anchorContent, boxLeft, boxTop,
+                    (el && el.offsetWidth) || 200, (el && el.offsetHeight) || 80,
+                    true, true
+                );
+            }
+
+            function stopListening(target) {
+                target.removeEventListener("pointermove", onPointerMove);
+                target.removeEventListener("pointerup", onPointerUp);
+                target.removeEventListener("pointercancel", onPointerCancel);
+                document.removeEventListener("keydown", onDragKeydown, true);
+            }
+
+            function releaseCapture(target, event) {
+                if (target.hasPointerCapture && event && event.pointerId !== undefined && target.hasPointerCapture(event.pointerId)) {
+                    try { target.releasePointerCapture(event.pointerId); } catch (error) { /* already released */ }
+                }
+            }
+
+            function onPointerMove(event) {
+                if (!draggingId || !dragMetrics) return;
+                // Section 13: wwCursorPixelXToTime() already clamps to the
+                // current ww.viewport -- exactly "clamp preview to the
+                // current viewport edge," reused rather than reimplemented.
+                const time = wwCursorPixelXToTime(event.clientX, dragMetrics);
+                if (time === null) return;
+                livePreviewUpdate(draggingId, time);
+            }
+
+            // Section 10/30/31: restores the CURRENT (unchanged, still-
+            // authoritative) annotation.data by simply re-rendering --
+            // safe and correct because the live preview above NEVER wrote
+            // to annotation.data, so there is nothing to actually "undo"
+            // beyond redrawing from the truth that was never touched.
+            function restoreAuthoritativeAnchor() {
+                wwRenderAnnotations();
+            }
+
+            function onDragKeydown(event) {
+                if (event.key !== "Escape" || !draggingId) return;
+                event.preventDefault();
+                const target = dragTarget;
+                draggingId = null;
+                dragMetrics = null;
+                dragTarget = null;
+                if (target) stopListening(target);
+                restoreAuthoritativeAnchor(); // section 30: no backend call
+            }
+
+            function onPointerCancel(event) {
+                if (!draggingId) return;
+                const target = dragTarget;
+                draggingId = null;
+                dragMetrics = null;
+                dragTarget = null;
+                if (target) {
+                    stopListening(target);
+                    releaseCapture(target, event);
+                }
+                restoreAuthoritativeAnchor(); // section 30: pointercancel restores safely too
+            }
+
+            async function onPointerUp(event) {
+                if (!draggingId || !dragMetrics) return;
+                const id = draggingId;
+                const target = dragTarget;
+                const time = wwCursorPixelXToTime(event.clientX, dragMetrics);
+                draggingId = null;
+                dragMetrics = null;
+                dragTarget = null;
+                if (target) {
+                    stopListening(target);
+                    releaseCapture(target, event);
+                }
+                const annotation = ww.annotations.get(id);
+                if (!annotation || time === null) {
+                    restoreAuthoritativeAnchor();
+                    return;
+                }
+                // Section 8/28: exactly ONE backend request, here, on
+                // release -- never during pointermove.
+                await wwResolveCalloutAnchorMove(id, annotation.data.sourceId, annotation.data.channelName, time);
+            }
+
+            function onPointerDown(event) {
+                const hit = event.target.closest("[data-callout-anchor-hit]");
+                if (!hit) return; // section 5: outside the hit target, normal waveform behavior is untouched
+                if (event.button !== undefined && event.button !== 0) return;
+                const id = hit.getAttribute("data-callout-anchor-hit");
+                if (!ww.annotations.has(id)) return;
+                event.preventDefault();
+                event.stopPropagation(); // never reach a document-level "click outside deselects" listener, and never Plotly/A-B-cursor beneath (section 5/27)
+                wwSelectAnnotation(id); // section 25
+                dragMetrics = wwCursorPlotMetrics();
+                if (!dragMetrics) return;
+                draggingId = id;
+                dragTarget = hit;
+                if (hit.setPointerCapture) {
+                    try { hit.setPointerCapture(event.pointerId); } catch (error) { /* not attached to a real layout yet */ }
+                }
+                hit.addEventListener("pointermove", onPointerMove);
+                hit.addEventListener("pointerup", onPointerUp);
+                hit.addEventListener("pointercancel", onPointerCancel);
+                // Section 30: Escape cancels the drag -- capture phase,
+                // the same convention wwAnnotationPlacementKeydownHandler()
+                // already uses, so it fires before anything else could
+                // consume the key.
+                document.addEventListener("keydown", onDragKeydown, true);
+            }
+
+            connectorLayer.addEventListener("pointerdown", onPointerDown);
         }
 
         // Section 19: called on annotation create/update/select AND
@@ -10964,6 +11250,10 @@
         // Phase 4B: A/B time measurement cursors.
         document.getElementById("wwCursorModeBtn").addEventListener("click", wwToggleMeasurementCursors);
         wwWireCursorDrag();
+        // Phase 4F-UAT (DEC-045 addendum): Callout anchor dragging --
+        // wired once, delegated, same convention as wwWireCursorDrag()
+        // immediately above.
+        wwWireCalloutAnchorDrag();
         // Phase 4D: precision step zoom split buttons + initial tooltip/
         // checkmark sync (X is the default axis for both actions, matches
         // the HTML's own static title="...— X axis" text until the first

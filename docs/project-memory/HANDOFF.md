@@ -8,8 +8,94 @@ Last updated: **2026-08-21**
 
 ## What was most recently done
 
-**Phase 4F — Analog Waveform Callout Annotation (DEC-045).** Owner-
-approved direction: the second annotation type, `type: "callout"`,
+**Phase 4F-UAT — Movable Callout Anchor (DEC-045 addendum).** Owner UAT
+direction on top of Phase 4F below: the Callout anchor MARKER itself is
+now draggable (previously only the label box was). Full detail:
+[DECISIONS.md — DEC-045 addendum](DECISIONS.md#addendum-2026-08-21-refinement--callout-anchors-became-movable-same-channel-only-phase-4f-uat).
+
+**Movement model**: same-channel only -- dragging moves the anchor to a
+different sample on its OWN existing `sourceId`/`channelName`, never a
+different channel, even when the pointer visually crosses another trace
+in a Grouped/Custom panel. Verified directly (dragging channel B's
+anchor through channel A's own screen space still resolves against B's
+own recorded data). Cross-channel re-anchoring remains explicitly out of
+scope, deferred to a possible future "Change Anchor Channel" design.
+
+**Drag preview is frontend-only**: `wwWireCalloutAnchorDrag()` is wired
+ONCE via event delegation on `#wwCalloutConnectorLayer` (the exact same
+delegation convention `wwWireCursorDrag()` already established for A/B
+cursors), so every current and future Callout is draggable with zero
+per-annotation wiring. During the drag, pointer X maps to an approximate
+elapsed time via `wwCursorPixelXToTime()` (reused, not reimplemented --
+already clamps to `ww.viewport`), moving the marker/connector/box as a
+pure visual preview; `annotation.data` is never written to during this
+phase. Pointer Y is deliberately never read -- the preview Y stays
+pinned to the panel's own projection of the CURRENT (still-authoritative)
+`anchorValue`, so the preview can never fabricate an engineering reading.
+`boxOffset` is preserved throughout (the box tracks the preview anchor
+by its existing relative offset, never reset).
+
+**Authoritative snap on release**: exactly ONE `POST .../annotation-anchor`
+request fires, on `pointerup`, reusing the creation path's own request/
+error/stale-response handling verbatim -- not a second implementation.
+Additionally clamps against the anchored source's own `ww.sourceBounds`.
+Verified directly: many `pointermove` events cause zero requests; exactly
+one fires on release. On success, only `sampleIndex`/
+`anchorElapsedSeconds`/`anchorValue`/`unit` are committed --
+`sourceId`/`channelName`/`boxOffset` are untouched (verified byte-
+identical before/after).
+
+**Failure/cancel restores the original anchor exactly** -- trivially
+correct, since the preview never mutated `annotation.data` in the first
+place, so "restoring" is just `wwRenderAnnotations()` reading the
+never-touched truth again. Verified for a forced backend failure, an
+Escape keypress mid-drag (zero backend calls), and `pointercancel`.
+
+**A/B cursor and Plotly coexistence confirmed isolated**: the anchor hit
+target lives in a completely separate DOM subtree from both Plotly's own
+canvas and A/B cursor's own hit targets -- structurally unreachable from
+either, and where hit areas could visually overlap, ordinary browser
+pointer-event hit-testing already provides deterministic priority with
+zero extra conflict-resolution code (the connector layer stays
+`pointer-events: none` everywhere except a small ~16px circle directly
+over each anchor marker). Verified directly: A/B cursor dragging still
+works identically, Callout anchor dragging never touches
+`ww.measurementCursors`, and normal Plotly pan/zoom still works with a
+Callout anchor present.
+
+**No backend change was needed** -- the existing `.../annotation-anchor`
+endpoint (Phase 4F) already accepted an arbitrary
+`approximate_elapsed_seconds`, so the same endpoint serves both creation
+and anchor-move requests.
+
+**Pre-existing unrelated theme.css concern, re-checked and found
+resolved**: the `--accent` edit flagged in the two prior sessions was
+found FULLY committed-and-reverted by the owner (`f1354f4` then
+`1653a97`, both already on `main`) -- the working tree was genuinely
+clean at this task's own mandatory startup step; no preserve-and-exclude
+staging was needed this time.
+
+**Tests**: extended `phase4f_check.mjs` with a
+`dragCalloutAnchorThroughTimes()` helper (targets exact elapsed times via
+the app's own `wwCursorTimeToPixelX()`, not guessed pixel offsets) and
+controllable delay/forced-failure hooks on the anchor-resolution fetch
+mock. 16 new checks covering the task's own required list (same-channel
+authority, nearest-full-resolution-sample, reduced-display independence,
+one-backend-request-on-release, field-level before/after verification,
+failed-resolution restoration, Escape cancellation, Absolute/Elapsed
+equivalence, Annotation List refresh, box-drag isolation, A/B cursor
+isolation, Plotly pan/zoom isolation, and workspace-lifecycle-during-
+drag for Start New Workspace/source removal/Callout deletion) --
+**39/39 passing** in the file overall. Full frontend suite reconfirmed at
+exactly the true 33-failure baseline across the same 14 pre-existing
+files (zero net new regressions). Backend: untouched, 412/412 unchanged.
+
+**Not yet done**: commit/push, CI/automatic DEV deployment verification,
+and owner UAT of this refinement specifically.
+
+## What was done in the prior session (Phase 4F — Analog Waveform Callout Annotation, DEC-045)
+
+Owner-approved direction: the second annotation type, `type: "callout"`,
 reusing DEC-044's exact generic framework (`ww.annotations` remains the
 sole state authority, no parallel Callout registry). Unlike `text_note`
 (workspace-content-anchored), a Callout is waveform/data-anchored: one

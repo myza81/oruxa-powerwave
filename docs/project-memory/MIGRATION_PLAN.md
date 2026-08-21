@@ -8650,6 +8650,163 @@ owner UAT after this push.
 
 ---
 
+## Phase 4F-UAT — Movable Callout Anchor (2026-08-21)
+
+### Scope
+
+Owner UAT direction on top of Phase 4F below: make the Callout ANCHOR
+POINT itself draggable (previously only the label box was). The
+engineering-integrity rule from DEC-045 stays fully intact: an anchor
+must always resolve to an actual full-resolution recorded sample -- this
+refinement does not turn it into a free arbitrary X/Y point. Same-
+channel only this phase: dragging may move the anchor to a different
+sample on its OWN existing source/channel, never a different channel
+(cross-channel re-anchoring is explicitly out of scope, deferred to a
+possible future "Change Anchor Channel" interaction).
+
+### Movement model: same-channel re-anchoring
+
+`sourceId`/`channelName` are read from the existing annotation and
+passed UNCHANGED into the resolution request -- the drag interaction has
+no code path that could ever substitute a different channel, even when
+the pointer visually crosses another trace in a Grouped/Custom panel
+(section 19/20/21 of the task). Verified directly: dragging a Callout
+anchored to channel B through channel A's own screen space and releasing
+still resolves against channel B's own recorded data.
+
+### Drag preview: frontend-only
+
+`wwWireCalloutAnchorDrag()` is wired ONCE via event delegation on
+`#wwCalloutConnectorLayer` (`pointerdown` -> `event.target.closest("[data-callout-anchor-hit]")`),
+the exact same delegation convention `wwWireCursorDrag()` already
+established for A/B cursor dragging on `#wwCursorOverlay` -- so every
+current and future Callout is draggable with zero per-annotation wiring.
+During `pointermove`, pointer X maps to an approximate elapsed time via
+`wwCursorPixelXToTime()` (reused, not reimplemented -- it already clamps
+to the current `ww.viewport`, exactly the "clamp preview to current
+viewport edge" section 13 asks for) and repositions the marker/
+connector/box as a PURE visual preview: `annotation.data` is never
+written to during this phase. Pointer Y is deliberately never read
+(section 6/15) -- the marker's preview Y stays pinned to the panel's own
+projection of the CURRENT (still-authoritative) `anchorValue`, so the
+preview can never fabricate an engineering reading; only X moves during
+preview, matching section 7's own "move the anchor preview horizontally
+with the pointer" instruction literally. `boxOffset` is read and applied
+unchanged throughout (section 11) -- the box tracks the preview anchor
+by its existing relative offset, never reset.
+
+### Authoritative snap: one backend request on release
+
+`wwResolveCalloutAnchorMove()` fires exactly once, on `pointerup`, reusing
+the EXACT request/error/stale-response shape `wwCreateCalloutFromClick()`
+(Phase 4F's own creation path) already established -- not a second
+implementation. Additionally clamps the requested time against the
+anchored source's own `ww.sourceBounds` entry (section 14 -- `ww.viewport`
+can span multiple sources; one source's own recorded range may be
+narrower). Verified directly: many `pointermove` events during a drag
+cause ZERO `.../annotation-anchor` requests; exactly ONE fires on
+`pointerup`.
+
+### Engineering state: fields changed vs. preserved
+
+On success, ONLY `sampleIndex`/`anchorElapsedSeconds`/`anchorValue`/`unit`
+are committed via `wwUpdateAnnotation()`'s existing generic `data` merge
+-- `sourceId`/`channelName`/`boxOffset` are read from the response/patch
+but never overwritten by it (the response is never even asked for
+`source_id`/`channel_name` values to write back). Verified directly:
+`sourceId`/`channelName`/`boxOffset` byte-identical before/after a
+successful move; `sampleIndex`/`anchorElapsedSeconds`/`anchorValue` all
+changed to the newly resolved sample.
+
+### Box/connector: offset preservation, snap-on-release
+
+The box's stored `boxOffset` is read, never reset, throughout the drag
+(section 11) -- confirmed unchanged after a successful move. During the
+drag the connector follows the temporary preview anchor; the instant a
+successful resolution commits, the SAME generic `wwRenderAnnotations()`
+pass (triggered by `wwUpdateAnnotation()`) redraws the connector/marker
+from the NEW authoritative anchor position, which is section 12's own
+"After pointerup: connector snaps to the newly resolved authoritative
+sample" -- no special-cased snap code needed beyond the existing generic
+render pass already reacting to a `data` update.
+
+### Failure/cancel: full restoration semantics
+
+Because the preview never wrote to `annotation.data`, "restoring the
+original anchor" on failure, Escape, or `pointercancel` is simply calling
+`wwRenderAnnotations()` again -- there is no snapshot to restore FROM,
+since nothing was ever mutated to begin with. Verified for all three
+paths: a forced-failure response, an Escape keypress mid-drag (capture-
+phase `keydown` listener, the same convention
+`wwAnnotationPlacementKeydownHandler()` already uses), and `pointercancel`
+all leave `annotation.data` byte-identical to its pre-drag value, and
+Escape additionally issues zero backend calls.
+
+### A/B cursor and Plotly interaction: confirmed isolation
+
+The anchor's hit target is a SEPARATE DOM element/subtree
+(`#wwCalloutConnectorLayer`, a child of `#activeViewArea`) from both
+Plotly's own chart canvas and A/B cursor's own hit targets
+(`#wwCursorOverlay`/`#wwCursorLabelLayer`) -- structurally, a pointerdown
+on the Callout hit target can never reach Plotly's internal handlers
+(they are not ancestors of the hit target) or vice versa. Where the two
+overlays' hit areas could visually coincide on screen, ordinary browser
+pointer-event hit-testing (topmost hit-testable element wins) already
+provides deterministic priority (section 26) with no extra conflict-
+resolution code -- the connector layer's `pointer-events: none` root
+with a `pointer-events: all` override only on the small (~16px) hit
+circle means every other pixel in the layer is transparent to whatever
+is beneath it. Verified directly: A/B cursor dragging still works
+identically after a Callout anchor drag, Callout anchor dragging never
+touches `ww.measurementCursors`, and normal Plotly pan/zoom (via
+`plotly_relayout`) still works with a Callout anchor present.
+
+### Annotation List: metadata refresh
+
+`wwAnnotationMetaLine()` already reads `annotation.data` live (Phase 4F's
+own existing design) -- a successful anchor move is reflected immediately
+with no extra code, confirmed directly: the drawer row's channel/time/
+value line updates to the new resolved values, no duplicate row appears.
+
+### Performance
+
+Confirmed directly (section 50): anchor drag preview causes zero Plotly
+calls, zero waveform refetch, zero cursor-value requests, and zero
+`.../annotation-anchor` requests until `pointerup` -- only SVG attribute
+writes and a handful of style writes, matching the same performance bar
+Phase 4F's own box-drag path already established.
+
+### Tests
+
+Extended `phase4f_check.mjs` with a `dragCalloutAnchorThroughTimes()`
+helper (drives the anchor hit target through a sequence of elapsed-time
+targets converted to page pixels via the app's own
+`wwCursorTimeToPixelX()`, so tests target exact engineering times rather
+than guessed pixel offsets) and controllable delay/forced-failure hooks
+on the `/annotation-anchor` fetch mock (for the stale-response and
+failure-restoration tests). 16 new checks (sections 37-49, including a
+3-way split of section 49's workspace-lifecycle-during-drag scenario)
+-- **39/39 passing** in the file overall. Full frontend suite reconfirmed
+at exactly the true 33-failure baseline across the same 14 pre-existing
+files (zero net new regressions). Backend: untouched, 412/412 unchanged
+(no backend file needed for this refinement -- the existing
+`.../annotation-anchor` endpoint already accepted an arbitrary
+`approximate_elapsed_seconds`, so no new route/schema was needed).
+
+### Existing unrelated working-tree edit
+
+Re-inspected at this task's own mandatory startup step: the
+`--accent` edit flagged in the two prior sessions was found FULLY
+RESOLVED -- the owner committed it (`f1354f4`) and then reverted it back
+to its original value in a follow-up commit (`1653a97`), both already on
+`main` before this task began. The working tree was genuinely clean at
+startup; no preserve-and-exclude staging was needed this time.
+
+### Decision
+
+See [DECISIONS.md — DEC-045 addendum (refinement)](DECISIONS.md#addendum-2026-08-21-refinement--callout-anchors-became-movable-same-channel-only-phase-4f-uat)
+(a refinement of DEC-045, not a new major decision).
+
 ## Phase 4F — Analog Waveform Callout Annotation (2026-08-21)
 
 ### Scope

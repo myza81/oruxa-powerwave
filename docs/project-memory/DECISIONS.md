@@ -4335,6 +4335,100 @@ Impact:
   auto-scroll-to-annotation navigation from the Annotation List.
 - See [MIGRATION_PLAN.md — Phase 4F](MIGRATION_PLAN.md#phase-4f--analog-waveform-callout-annotation-2026-08-21).
 
+### ADDENDUM (2026-08-21, refinement) — Callout anchors became movable, same-channel only (Phase 4F-UAT)
+
+Status: Approved
+Source: owner-approved direction following Phase 4F UAT ("Movable Analog
+Callout Anchor").
+
+Supersedes DEC-045's own Impact bullet listing "draggable/re-anchorable
+anchor" as explicitly not implemented -- that line is left as-is above
+(historical record of the original decision, not rewritten); this
+addendum records the refinement on top of it:
+
+> Callout anchors became user-movable following owner UAT. Anchor
+> movement is restricted to the Callout's existing source/channel.
+> During drag, pointer X is only a presentation preview; on release the
+> anchor is re-resolved to the nearest authoritative full-resolution
+> recorded sample. Source/channel identity remains unchanged. Cross-
+> channel re-anchoring is not implemented.
+
+Decision:
+
+- The anchor marker itself (not just the label box) is now draggable, via
+  a larger (~16px) invisible hit target laid over the small (~8px)
+  visible marker -- the marker's own visual size is unchanged.
+- **Same-channel only**: dragging can move the anchor to a different
+  sample on its OWN existing `sourceId`/`channelName`, never to a
+  different channel, even when the pointer visually crosses another
+  trace in a Grouped/Custom panel. Cross-channel re-anchoring would
+  create real engineering ambiguity in exactly that scenario and is
+  deliberately deferred to a possible future "Change Anchor Channel"
+  interaction, not built now.
+- **Preview, then authoritative snap**: during the drag, pointer X maps
+  to an approximate elapsed time (via the SAME `wwCursorPixelXToTime()`
+  authority A/B cursor dragging already uses, which already clamps to
+  the current `ww.viewport`) and moves the marker/connector/box as a
+  purely visual preview -- `annotation.data` is never written to during
+  this phase, and pointer Y is never read at all (the marker's preview Y
+  stays pinned to the CURRENT authoritative `anchorValue`'s own
+  projection, since engineering Y must always come from a real recorded
+  sample, never the pointer). Exactly ONE backend request
+  (`POST .../annotation-anchor`, the SAME endpoint and nearest-sample
+  logic DEC-045 already established) fires on pointer release, reusing
+  the existing source's own bounds as an additional clamp. On success,
+  only `sampleIndex`/`anchorElapsedSeconds`/`anchorValue`/`unit` are
+  committed -- `sourceId`/`channelName`/`boxOffset` are untouched. On
+  failure, Escape, or `pointercancel`, the original authoritative anchor
+  is restored by simply re-rendering from the never-touched
+  `annotation.data` (there is nothing to "undo" a snapshot for, since
+  nothing was written during the preview).
+- **Stale-response protection reused verbatim**: workspace epoch/id
+  checks plus a live `ww.annotations.has(id)` check (new, for "the
+  Callout itself was deleted mid-request") guard the resolution
+  response, matching the exact pattern DEC-045's own creation path
+  already established.
+
+Reason:
+
+The owner's own explicit engineering-integrity rule from DEC-045 itself
+("a Callout anchor must always resolve to an actual full-resolution
+recorded sample") extends naturally to a MOVED anchor -- the only
+addition needed was routing a drag interaction through the exact same
+authoritative resolution path already built for creation, never a
+second, looser one.
+
+Alternatives considered:
+
+- **Allow cross-channel re-anchoring now** (drag onto a different trace
+  entirely) -- rejected: Grouped/Custom panels may contain multiple
+  traces close together or crossing, and silently reassigning a Callout
+  to whichever trace the pointer happens to be nearest at release would
+  create real ambiguity about which channel's data a Callout actually
+  represents. Deferred to a separate future design.
+- **Resolve on every pointermove** -- rejected on both engineering and
+  performance grounds: it would flood the backend with requests during a
+  single drag gesture and make the visible marker briefly show
+  potentially-stale intermediate resolutions; a frontend-only preview
+  plus one resolution on release is both cheaper and always shows either
+  a clearly-provisional preview or a fully authoritative result, never
+  something in between presented as authoritative.
+
+Impact:
+
+- `frontend/index.html` only. New: `wwWireCalloutAnchorDrag()` (event
+  delegation on `#wwCalloutConnectorLayer`, the same convention
+  `wwWireCursorDrag()` established for A/B cursors), `wwResolveCalloutAnchorMove()`
+  (reuses the creation path's own request/error/stale-response shape).
+  `wwUpdateCalloutConnectorGeometry()` extended with an invisible hit-
+  target circle and a `dragging` visual-state parameter.
+- `frontend/theme.css`: no new tokens -- reuses `--annotation-callout-accent`.
+- Does not change DEC-044 (Text Note), DEC-045's own creation path,
+  trace-identity resolution, rendering architecture, or any other
+  Callout lifecycle rule (visibility, source removal, workspace
+  lifecycle) established by the original decision above.
+- See [MIGRATION_PLAN.md — Phase 4F-UAT](MIGRATION_PLAN.md#phase-4f-uat--movable-callout-anchor-2026-08-21).
+
 ---
 
 ## How to add a decision

@@ -4,16 +4,17 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-21** (Phase 4F — Analog Waveform
-Callout Annotation, on top of Phase 4E-UAT2 — Free Text Notes restricted
-to the main waveform workspace, Phase 4E-UAT — Annotation Scroll
-Anchoring fix, Phase 4E — Annotation Framework + Free Text Note, Phase
-4D — Precision Step Zoom + Icon Toolbar Refinement, Waveform Time-Axis
-Sub-ms Precision, Waveform Adaptive Resolution, Phase 4C2, Phase 4C1,
-Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B, Phase 4A-UAT9, and
-Phase 4A-UAT10).
+Last meaningful update: **2026-08-21** (Phase 4F-UAT — Movable Callout
+Anchor, on top of Phase 4F — Analog Waveform Callout Annotation, Phase
+4E-UAT2 — Free Text Notes restricted to the main waveform workspace,
+Phase 4E-UAT — Annotation Scroll Anchoring fix, Phase 4E — Annotation
+Framework + Free Text Note, Phase 4D — Precision Step Zoom + Icon
+Toolbar Refinement, Waveform Time-Axis Sub-ms Precision, Waveform
+Adaptive Resolution, Phase 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2,
+Phase 4B-UAT1, Phase 4B, Phase 4A-UAT9, and Phase 4A-UAT10).
 
-`[DECISION]` **Analog Waveform Callout — DEC-045** (2026-08-21): Oruxa
+`[DECISION]` **Analog Waveform Callout — DEC-045** (2026-08-21; **anchor
+became user-movable, same-channel only, addendum, 2026-08-21**): Oruxa
 Powerwave's SECOND annotation type, `type: "callout"`, reusing DEC-044's
 exact generic framework (`ww.annotations` remains the sole authority, no
 parallel Callout state). Unlike `text_note` (workspace-content-anchored),
@@ -26,22 +27,36 @@ clicked channel via each trace's own stable `"sourceId::channelName"`
 `meta` field, never curveNumber alone. The clicked approximate elapsed
 time is resolved SERVER-SIDE, exactly once, to the nearest ACTUAL
 full-resolution recorded sample -- `POST .../sources/{source_id}/annotation-anchor`,
-a new focused endpoint reusing the EXACT nearest-sample/tie-break logic
+a focused endpoint reusing the EXACT nearest-sample/tie-break logic
 `.../cursor-values` (DEC-040) already established (never a second
 nearest-sample definition, never the displayed/possibly-reduced Plotly
 trace, never interpolated). The resolved `{sampleIndex,
-anchorElapsedSeconds, anchorValue, unit}` becomes the Callout's FIXED
-engineering anchor -- unchanged by zoom, pan, Y-range changes,
-Absolute/Elapsed switching, adaptive display reduction, or Grouped/
-Separate/Custom layout changes; only its PROJECTED screen position is
-recomputed on those triggers, via the same shared X-projection authority
-(`wwCursorTimeToPixelX`) A/B cursors already use plus a new per-panel
+anchorElapsedSeconds, anchorValue, unit}` is the Callout's engineering
+anchor -- unchanged by zoom, pan, Y-range changes, Absolute/Elapsed
+switching, adaptive display reduction, or Grouped/Separate/Custom layout
+changes; only its PROJECTED screen position is recomputed on those
+triggers, via the same shared X-projection authority
+(`wwCursorTimeToPixelX`) A/B cursors already use plus a per-panel
 Y-projection authority built from that panel's own live Plotly
-`_fullLayout.yaxis`. The label box is presentation-only and independently
-draggable via a screen-independent `data.boxOffset` from the anchor's own
-current projection (so the box tracks the anchor through zoom/pan rather
-than drifting into an unrelated position) -- dragging it never touches the
-anchor, never calls the backend, never rebuilds Plotly. A connector line +
+`_fullLayout.yaxis`. **The anchor marker itself is now draggable too
+(owner UAT refinement)**: dragging it moves the anchor to a different
+sample on its OWN existing source/channel ONLY -- never a different
+channel, even when the pointer visually crosses another trace in a
+Grouped/Custom panel (cross-channel re-anchoring is explicitly out of
+scope). During the drag, pointer X is a frontend-only visual preview
+(`annotation.data` untouched, pointer Y never read -- the preview Y
+stays pinned to the current authoritative `anchorValue`'s own
+projection); exactly ONE `.../annotation-anchor` request fires on
+release, reusing the creation path's own request/error/stale-response
+handling verbatim. A failed resolution, Escape, or `pointercancel`
+restores the original anchor exactly (trivial, since the preview never
+wrote to `annotation.data` in the first place). The label box remains
+presentation-only and independently draggable via a screen-independent
+`data.boxOffset` from the anchor's own current projection (so the box
+tracks the anchor through zoom/pan rather than drifting into an
+unrelated position, and this offset is preserved through an anchor move
+too) -- dragging the box never touches the anchor, never calls the
+backend, never rebuilds Plotly. A connector line +
 anchor marker render in a lightweight SVG layer
 (`#wwCalloutConnectorLayer`, a genuine DOM child of the same
 content-anchored overlay the `.ww-annotation` boxes already live in) --
@@ -59,9 +74,12 @@ persistence are all explicitly out of scope). Lifecycle otherwise
 identical to Text Note: Clear Workspace preserves, Start New Workspace
 clears, XSS-safe `.textContent` rendering, centralized deletion via the
 Annotation List (which shows Callout's own channel/time/value metadata
-line, section 42). See
+line, section 42, refreshed immediately after an anchor move too). No
+backend change was needed for the anchor-move refinement -- the
+existing `.../annotation-anchor` endpoint already accepted an arbitrary
+`approximate_elapsed_seconds`. See
 [DECISIONS.md — DEC-045](DECISIONS.md#dec-045--callout-is-a-waveform-anchored-annotation-type-analog-only-this-phase-with-a-fixed-engineering-anchor-and-a-movable-presentation-box)
-and
+(including its 2026-08-21 movable-anchor addendum) and
 [MIGRATION_PLAN.md — Phase 4F](MIGRATION_PLAN.md#phase-4f--analog-waveform-callout-annotation-2026-08-21).
 
 `[DECISION]` **Annotation Framework + Free Text Note — DEC-044**
