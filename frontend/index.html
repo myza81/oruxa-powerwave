@@ -861,8 +861,19 @@
            give this element an explicit `display` value, a matching
            `#wwCcPreviewChart[hidden] { display: none; }` override MUST be
            added in the same change (see #pageCalculatedChannels[hidden]
-           above for why). */
+           above for why). Phase 5A-UAT6: this class is now reused per
+           TYPE panel (#wwCcPreviewPanels can hold several), never a
+           single fixed id any more -- the rule itself is unchanged,
+           still deliberately display-property-free for the same reason. */
         .ww-cc-preview-chart { width: 100%; height: 320px; }
+        /* Phase 5A-UAT6: the wrapper for one type panel (title + its own
+           chart) and its own container. Same deliberate omission as
+           .ww-cc-preview-chart above -- NO `display` property on either,
+           so #wwCcPreviewPanels[hidden] is governed entirely by the UA
+           stylesheet, no author-CSS override needed at all. */
+        .ww-cc-preview-panel { margin-bottom: 20px; }
+        .ww-cc-preview-panel:last-child { margin-bottom: 0; }
+        .ww-cc-preview-panel-title { font-size: 0.75rem; font-weight: 600; color: var(--text-dim); margin: 0 0 8px; }
 
         /* Phase 3B-UAT3: a single shared reference for the app's compact/
            secondary button text size, instead of each compact button
@@ -3205,17 +3216,26 @@
                     <div id="wwCcListBody"><p class="empty-state">No calculated channels yet.</p></div>
                 </section>
 
-                <!-- Phase 5A-UAT: a lightweight, STANDALONE waveform
-                     preview -- a completely separate Plotly instance from
-                     ww.panels/the main Waveform page (never wired into
-                     ww.viewport/layout mode/A-B cursors/annotations, per
-                     the task's own explicit isolation requirement).
-                     Visibility authority is the SAME ww.displayed Map the
-                     manager list's own eye icon and the main Waveform
-                     page already use -- no second, conflicting visible-
-                     state. Deliberately no `display` CSS property on
+                <!-- Phase 5A-UAT (extended Phase 5A-UAT6): a lightweight,
+                     STANDALONE waveform preview -- completely separate
+                     Plotly instances from ww.panels/the main Waveform page
+                     (never wired into ww.viewport/layout mode/A-B
+                     cursors/annotations, per the task's own explicit
+                     isolation requirement). Visibility authority is the
+                     SAME ww.displayed Map the manager list's own eye icon
+                     and the main Waveform page already use -- no second,
+                     conflicting visible-state. Phase 5A-UAT6: now renders
+                     ONE lightweight Plotly panel PER engineering type
+                     among the currently visible calculated channels
+                     (mirrors the main Waveform page's own Grouped-mode
+                     "Calculated - <Type>" panel split, Phase 5A-UAT5 --
+                     but a completely independent rendering pipeline, per
+                     that task's own explicit "keep rendering state
+                     independent" instruction) -- #wwCcPreviewPanels is
+                     populated entirely by wwCcRenderWaveformPreview()
+                     itself. Deliberately no `display` CSS property on
                      either child below (see wwCcPreviewEmpty/
-                     wwCcPreviewChart's own CSS comment) -- the exact
+                     .ww-cc-preview-chart's own CSS comment) -- the exact
                      precedent that already keeps `.empty-state`/
                      `#wwCcBuilderPanel`'s own `hidden` toggling bug-free
                      elsewhere on this same page, avoiding a repeat of the
@@ -3223,7 +3243,7 @@
                 <section class="panel ww-cc-panel">
                     <h3>Waveform Preview</h3>
                     <p class="empty-state" id="wwCcPreviewEmpty">No calculated channels selected for preview.</p>
-                    <div class="ww-cc-preview-chart" id="wwCcPreviewChart" hidden></div>
+                    <div id="wwCcPreviewPanels" hidden></div>
                 </section>
             </section>
 
@@ -11109,21 +11129,42 @@
                 '<div class="group-body">' + subgroupsHtml + '</div></details>';
         }
 
-        // Phase 5A-UAT: Calculated Channels waveform preview -- a
-        // lightweight, STANDALONE Plotly chart living only on this page,
-        // never wired into ww.panels/ww.viewport/layout mode/A-B
-        // cursors/annotations (guardrail 3: never wire this into the main
-        // Waveform page). Visibility authority is wwIsAnalogChannelVisible()
-        // -- the SAME ww.displayed-backed authority the sidebar section
-        // above and the main Waveform page already use for every analog
-        // channel, calculated or real -- so there is no second, conflicting
+        // Phase 5A-UAT (extended Phase 5A-UAT6): Calculated Channels
+        // waveform preview -- lightweight, STANDALONE Plotly charts living
+        // only on this page, never wired into ww.panels/ww.viewport/
+        // layout mode/A-B cursors/annotations (guardrail 3: never wire
+        // this into the main Waveform page -- section 19/26 of the
+        // Phase 5A-UAT6 task: keep rendering state independent of the
+        // main Waveform's own Grouped-mode panels, sharing only the
+        // engineering-type metadata/ordering/naming). Visibility
+        // authority is wwIsAnalogChannelVisible() -- the SAME
+        // ww.displayed-backed authority the sidebar section above and the
+        // main Waveform page already use for every analog channel,
+        // calculated or real -- so there is no second, conflicting
         // visibility state (guardrail 2). Data authority is the existing
         // Phase 5A GET .../calculated-channels/{id}/waveform endpoint --
-        // never recomputed from Plotly traces (requirement 5). Called from
-        // wwRenderCalculatedChannelsPage() (page-open / post-creation /
-        // Start New Workspace), wwToggleCalculatedChannelDisplay()
+        // never recomputed from Plotly traces, never plotted from the
+        // main Waveform's own traces (requirement 5/11 of Phase 5A-UAT6).
+        // Called from wwRenderCalculatedChannelsPage() (page-open /
+        // post-creation / Start New Workspace), wwToggleCalculatedChannelDisplay()
         // (visibility toggle), and wwCcDeleteChannel() (delete).
-        const wwCcPreview = { ready: false, generation: 0 };
+        //
+        // Phase 5A-UAT6: one lightweight Plotly panel PER engineering
+        // type among the currently visible calculated channels (never
+        // recorded analog channels -- this preview is calculated-only,
+        // section 2), ordered by the SAME ANALOG_GROUP_ORDER the Waveform
+        // sidebar/main-panel grouping already use, titled "Calculated -
+        // <Type>" -- the exact same naming as the main Waveform page's
+        // own Grouped-mode panels (section 6/18), read from the SAME
+        // `calc.engineering_type` authority (never inferred from name/
+        // unit/DOM). `panelsByType`: type -> {containerEl, chartEl,
+        // ready} -- existing DOM/Plotly instances are REUSED (Plotly.react())
+        // across re-renders for a type that persists, and only
+        // created/torn down (Plotly.purge() + DOM removal) when a type's
+        // presence actually changes, so a render never leaks a duplicate
+        // chart/resize listener and never needs a full teardown+rebuild
+        // just to update trace data (section 15/16).
+        const wwCcPreview = { panelsByType: new Map(), generation: 0 };
 
         function wwCcPreviewVisibleChannels() {
             return Array.from(ww.calculatedChannels.values()).filter((c) => wwIsAnalogChannelVisible(c.id, c.name));
@@ -11147,16 +11188,40 @@
             }
         }
 
+        // Phase 5A-UAT6: purges and detaches every currently-tracked type
+        // panel -- used both for the "nothing visible" empty state and as
+        // the cleanup step for any type that drops out between renders.
+        function wwCcPreviewPurgeAllPanels() {
+            for (const panel of wwCcPreview.panelsByType.values()) {
+                if (window.Plotly) Plotly.purge(panel.chartEl);
+                panel.containerEl.remove();
+            }
+            wwCcPreview.panelsByType.clear();
+        }
+
+        function wwCcCreatePreviewPanelDom(type) {
+            const containerEl = document.createElement("div");
+            containerEl.className = "ww-cc-preview-panel";
+            containerEl.dataset.previewType = type;
+            const titleEl = document.createElement("h4");
+            titleEl.className = "ww-cc-preview-panel-title";
+            titleEl.textContent = "Calculated - " + type;
+            const chartEl = document.createElement("div");
+            chartEl.className = "ww-cc-preview-chart";
+            containerEl.appendChild(titleEl);
+            containerEl.appendChild(chartEl);
+            return { containerEl, chartEl, ready: false };
+        }
+
         async function wwCcRenderWaveformPreview() {
-            const containerEl = document.getElementById("wwCcPreviewChart");
+            const panelsEl = document.getElementById("wwCcPreviewPanels");
             const emptyEl = document.getElementById("wwCcPreviewEmpty");
-            if (!containerEl) return; // not on this page's DOM yet -- safe no-op, mirrors wwRenderCalculatedChannelsPage()'s own guard
+            if (!panelsEl) return; // not on this page's DOM yet -- safe no-op, mirrors wwRenderCalculatedChannelsPage()'s own guard
 
             const visible = wwCcPreviewVisibleChannels();
             if (visible.length === 0) {
-                if (wwCcPreview.ready && window.Plotly) Plotly.purge(containerEl);
-                wwCcPreview.ready = false;
-                containerEl.hidden = true;
+                wwCcPreviewPurgeAllPanels();
+                panelsEl.hidden = true;
                 if (emptyEl) emptyEl.hidden = false;
                 return;
             }
@@ -11166,50 +11231,98 @@
             // elsewhere in this file: a rapid sequence of visibility toggles
             // can't let an earlier response overwrite a later one.
             const generation = ++wwCcPreview.generation;
+            // Section 12: fetch each VISIBLE channel's waveform exactly
+            // ONCE, then group the results by type -- never a separate
+            // fetch per type panel for a channel that's already been
+            // fetched.
             const bodies = await Promise.all(visible.map(wwCcFetchPreviewWaveform));
             if (generation !== wwCcPreview.generation) return;
 
-            containerEl.hidden = false;
-            if (emptyEl) emptyEl.hidden = true;
-
-            const traces = [];
+            const byType = new Map();
             for (let i = 0; i < visible.length; i++) {
                 const body = bodies[i];
                 if (!body) continue;
-                traces.push({
+                const calc = visible[i];
+                const type = calc.engineering_type || "Undefined";
+                if (!byType.has(type)) byType.set(type, []);
+                byType.get(type).push({ calc, body });
+            }
+            const orderedTypes = ANALOG_GROUP_ORDER.filter((t) => byType.has(t))
+                .concat([...byType.keys()].filter((t) => !ANALOG_GROUP_ORDER.includes(t)));
+
+            if (orderedTypes.length === 0) {
+                // Every visible channel's own fetch failed -- same
+                // conservative empty-state fallback as before, never a
+                // partially-rendered/broken panel.
+                wwCcPreviewPurgeAllPanels();
+                panelsEl.hidden = true;
+                if (emptyEl) emptyEl.hidden = false;
+                return;
+            }
+
+            // Section 15: tear down exactly the panels for types that are
+            // no longer present -- a type still present keeps its own
+            // existing Plotly instance/DOM node (updated via Plotly.react()
+            // below), never destroyed and recreated just to refresh data.
+            for (const [type, panel] of Array.from(wwCcPreview.panelsByType.entries())) {
+                if (!byType.has(type)) {
+                    if (window.Plotly) Plotly.purge(panel.chartEl);
+                    panel.containerEl.remove();
+                    wwCcPreview.panelsByType.delete(type);
+                }
+            }
+
+            panelsEl.hidden = false;
+            if (emptyEl) emptyEl.hidden = true;
+
+            const colors = wwThemeColors();
+            for (const type of orderedTypes) {
+                let panel = wwCcPreview.panelsByType.get(type);
+                if (!panel) {
+                    panel = wwCcCreatePreviewPanelDom(type);
+                    wwCcPreview.panelsByType.set(type, panel);
+                }
+                // appendChild on an already-attached node MOVES it into
+                // the correct position (a cheap DOM re-parent, not a
+                // remove+recreate) -- this is what keeps ordered_types'
+                // own ANALOG_GROUP_ORDER sequence correct across renders
+                // without ever tearing down a still-present type's chart.
+                panelsEl.appendChild(panel.containerEl);
+
+                const entries = byType.get(type);
+                const traces = entries.map(({ calc, body }) => ({
                     x: body.time,
                     y: body.values,
                     mode: "lines",
                     type: "scatter",
                     name: body.name + (body.unit ? " (" + body.unit + ")" : ""),
-                    line: { color: wwColorForChannel(visible[i].id, visible[i].name), width: 1.5 },
-                });
-            }
+                    line: { color: wwColorForChannel(calc.id, calc.name), width: 1.5 },
+                }));
+                const layout = {
+                    margin: { t: 10, r: 10, b: 36, l: 50 },
+                    xaxis: { title: "Time (s)" },
+                    yaxis: { title: "" },
+                    showlegend: true,
+                    legend: { orientation: "h" },
+                    autosize: true,
+                    paper_bgcolor: colors.surface,
+                    plot_bgcolor: colors.surface,
+                    font: { color: colors.text },
+                };
+                // Native Plotly modebar/pan/zoom ONLY -- no custom
+                // Powerwave toolbar (requirement 9 / guardrail 4).
+                // Explicit true, not a bare omission, so this reads as
+                // intentional against the main panels' own
+                // displayModeBar: false precedent.
+                const config = { responsive: true, displayModeBar: true };
 
-            const colors = wwThemeColors();
-            const layout = {
-                margin: { t: 10, r: 10, b: 36, l: 50 },
-                xaxis: { title: "Time (s)" },
-                yaxis: { title: "" },
-                showlegend: true,
-                legend: { orientation: "h" },
-                autosize: true,
-                paper_bgcolor: colors.surface,
-                plot_bgcolor: colors.surface,
-                font: { color: colors.text },
-            };
-            // Native Plotly modebar/pan/zoom ONLY -- no custom Powerwave
-            // toolbar (requirement 3 / guardrail 4). Explicit true, not a
-            // bare omission, so this reads as intentional against the main
-            // panels' own displayModeBar: false precedent.
-            const config = { responsive: true, displayModeBar: true };
-
-            if (!window.Plotly) return;
-            if (!wwCcPreview.ready) {
-                Plotly.newPlot(containerEl, traces, layout, config);
-                wwCcPreview.ready = true;
-            } else {
-                Plotly.react(containerEl, traces, layout, config);
+                if (!window.Plotly) continue;
+                if (!panel.ready) {
+                    Plotly.newPlot(panel.chartEl, traces, layout, config);
+                    panel.ready = true;
+                } else {
+                    Plotly.react(panel.chartEl, traces, layout, config);
+                }
             }
         }
 

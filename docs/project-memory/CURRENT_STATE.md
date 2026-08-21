@@ -4,8 +4,9 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-21** (Phase 5A-UAT5 — Calculated
-Waveform Panels Grouped by Engineering Type, on top of Phase 5A-UAT4 —
+Last meaningful update: **2026-08-21** (Phase 5A-UAT6 — Calculated
+Channels Preview Panels by Engineering Type, on top of Phase 5A-UAT5 —
+Calculated Waveform Panels Grouped by Engineering Type, Phase 5A-UAT4 —
 Calculated Channel Type Subgroups, Phase 5A UAT — Absolute Time
 after adding a calculated channel, Phase 5A-UAT3 —
 Calculated Channel Input Availability, Phase 5A-UAT2 — Standard A/B
@@ -204,7 +205,23 @@ directly (never re-deriving it). Recorded and calculated channels of
 the same type remain two distinct panels, never merged. Separate/Custom
 modes, A/B, Peak, Callout, and Absolute/Elapsed are all confirmed
 unaffected (channel identity never changes when a channel moves between
-panels). See
+panels).
+**Preview Type Panels (2026-08-21, same day, owner-approved
+clarification)**: the Calculated Channels page's own lightweight
+Waveform Preview now follows the same separation -- `#wwCcPreviewChart`
+(one shared chart) replaced by `#wwCcPreviewPanels` (one panel per
+engineering type among visible calculated channels, same
+`calc.engineering_type`/`ANALOG_GROUP_ORDER`/`"Calculated - <Type>"`
+naming as the main Waveform page's own Grouped-mode panels). The
+preview remains calculated-only (never recorded analog channels), its
+own visibility authority (`wwCcPreviewVisibleChannels()`) is unchanged,
+each visible channel is still fetched exactly once regardless of how
+many type panels the results span, and a type panel's own Plotly
+instance is REUSED across renders (`Plotly.react()`) rather than
+torn down and rebuilt, purged only when its last member is hidden/
+deleted. Rendering state is deliberately independent from the main
+Waveform page's own `ww.panels` -- only classification metadata/
+ordering/naming is shared, never an actual Plotly instance. See
 [DECISIONS.md — DEC-047](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations)
 (including all its 2026-08-21 Update notes) and
 [MIGRATION_PLAN.md — Phase 5A](MIGRATION_PLAN.md#phase-5a--calculated-channels--basic-signal-builder-2026-08-21)
@@ -214,7 +231,8 @@ panels). See
 / [Phase 5A-UAT3 — Input Availability](MIGRATION_PLAN.md#phase-5a-uat3--calculated-channel-input-availability-2026-08-21)
 / [Phase 5A UAT — Absolute Time](MIGRATION_PLAN.md#phase-5a-uat--absolute-time-after-adding-a-calculated-channel-2026-08-21)
 / [Phase 5A-UAT4 — Type Subgroups](MIGRATION_PLAN.md#phase-5a-uat4--calculated-channel-type-subgroups-2026-08-21)
-/ [Phase 5A-UAT5 — Waveform Panel Type Grouping](MIGRATION_PLAN.md#phase-5a-uat5--calculated-waveform-panels-grouped-by-engineering-type-2026-08-21).
+/ [Phase 5A-UAT5 — Waveform Panel Type Grouping](MIGRATION_PLAN.md#phase-5a-uat5--calculated-waveform-panels-grouped-by-engineering-type-2026-08-21)
+/ [Phase 5A-UAT6 — Preview Panel Type Grouping](MIGRATION_PLAN.md#phase-5a-uat6--calculated-channels-preview-panels-by-engineering-type-2026-08-21).
 
 `[DECISION]` **Dynamic Maximum/Minimum Peak Annotation — DEC-046**
 (2026-08-21; **persistent placement guidance ribbon, addendum,

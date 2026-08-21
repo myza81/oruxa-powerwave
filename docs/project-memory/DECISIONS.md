@@ -5523,6 +5523,80 @@ passing). Backend untouched, full suite green (no backend files
 changed — this is a frontend-only panel-grouping fix). See
 [MIGRATION_PLAN.md — Phase 5A-UAT5](MIGRATION_PLAN.md#phase-5a-uat5--calculated-waveform-panels-grouped-by-engineering-type-2026-08-21).
 
+**Update (2026-08-21, same day, owner-approved clarification -- no new
+decision entry)**: **The Calculated Channels page's lightweight
+Waveform Preview follows the same engineering-type separation as
+Grouped mode on the main Waveform page. Visible calculated channels are
+rendered in separate lightweight Plotly preview panels such as
+Calculated - Voltage, Calculated - Current, and Calculated - Power.
+Preview rendering remains independent from the main Waveform state and
+uses only native Plotly controls.**
+
+The prior single `#wwCcPreviewChart` element (Phase 5A-UAT, extended
+Phase 5A-UAT2) overlaid every visible calculated channel into one
+Plotly chart regardless of engineering type. Replaced with
+`#wwCcPreviewPanels`, populated at render time by
+`wwCcRenderWaveformPreview()` with ONE lightweight Plotly panel per
+engineering type currently represented among visible calculated
+channels -- using the exact SAME `calc.engineering_type` authority,
+`ANALOG_GROUP_ORDER` ordering, and `"Calculated - <Type>"` naming
+already established for the main Waveform page's own Grouped-mode
+panels (the Update immediately above) -- never re-inferred from name/
+unit/DOM, and never sharing an actual Plotly instance or state with the
+main Waveform page (deliberately independent rendering, per the task's
+own explicit "keep rendering state independent" instruction; only the
+classification metadata/ordering/naming conventions are shared).
+
+Visibility authority is completely unchanged: `wwCcPreviewVisibleChannels()`
+(`wwIsAnalogChannelVisible()` over `ww.calculatedChannels`) still governs
+which channels participate -- no new preview-specific visibility state.
+The preview contains ONLY calculated channels, never recorded analog
+channels, even when a recorded channel of the same type is also
+displayed on the main Waveform page (verified directly). Data authority
+is unchanged: the existing `GET .../calculated-channels/{id}/waveform`
+endpoint, fetched exactly once per visible channel regardless of how
+many type panels exist (section 12's own explicit "aim for: visible
+channels -> fetch each once -> group by type -> render panels" -- never
+a duplicate fetch per panel) -- results are grouped by type client-side
+AFTER fetching, never recomputed or re-fetched per panel.
+
+Panel lifecycle is now per-type rather than global: a new
+`panelsByType` map (`type -> {containerEl, chartEl, ready}`) tracks each
+type's own DOM/Plotly instance across renders -- a type panel already
+present on the page is REUSED (`Plotly.react()` updates its data in
+place; `appendChild()` on the already-attached container cheaply
+re-parents it into the correct `ANALOG_GROUP_ORDER` position without
+destroying it) rather than torn down and rebuilt on every render; a
+type panel is only ever actually purged (`Plotly.purge()` + DOM
+removal) when its last member becomes hidden/deleted, matching the
+task's own explicit "no stale canvas/duplicate charts/stale legends"
+requirement and avoiding any listener-leak risk from repeatedly
+recreating the same still-present chart. The X-axis/timing convention,
+theme handling (`wwThemeColors()`), and native-Plotly-only interaction
+(`displayModeBar: true`, no custom toolbar) are all completely
+unchanged from the original single-chart preview -- this task is panel
+separation only, deliberately not coupled to DEC-042's Absolute/Elapsed
+main-waveform controls.
+
+Extended `phase5a_check.mjs` with 8 new checks (two same-type channels
+sharing one panel, three different types in three separate panels with
+`ANALOG_GROUP_ORDER` ordering verified independent of toggle order,
+hiding the last member of one type removing only that panel while a
+still-present type's own chart instance is proven never torn down/
+recreated, `Undefined` classification's own dedicated panel, calculated-
+from-calculated landing in the same panel, a single-visible-type
+regression, confirmation that preview rendering never touches
+`ww.panels`/the main Waveform page's own Grouped-mode state, and
+confirmation that a recorded analog channel of the same type never
+appears in a calculated-only preview panel) plus rewrote 9 pre-existing
+preview tests to the new multi-panel DOM structure (same assertions,
+new selectors) -- **92/92 passing** in the file overall (84 prior,
+9 rewritten + 8 new). Full frontend suite reconfirmed at the true
+33-failure baseline (zero net new regressions). Backend untouched
+(no backend files changed -- this is a frontend-only preview-rendering
+change). See
+[MIGRATION_PLAN.md — Phase 5A-UAT6](MIGRATION_PLAN.md#phase-5a-uat6--calculated-channels-preview-panels-by-engineering-type-2026-08-21).
+
 ---
 
 ## How to add a decision
