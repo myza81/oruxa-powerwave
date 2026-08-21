@@ -29,6 +29,17 @@ def test_source_bounds_come_from_backend_elapsed_timebase_metadata():
     assert "wwRememberSourceBoundsFromChannelsData(data)" in source
 
 
+def test_source_timing_comes_from_backend_absolute_timebase_metadata():
+    source = _source()
+
+    assert "sourceTiming: new Map()" in source
+    assert "function wwRememberSourceTimingFromChannelsData(data)" in source
+    assert "const recordingStartTime = timebase.start_time || null" in source
+    assert "recordingStartMs: wwParseNaiveTimestamp(recordingStartTime)" in source
+    assert "timingReference: timebase.timing_reference || null" in source
+    assert "wwRememberSourceTimingFromChannelsData(data)" in source
+
+
 def test_opening_source_establishes_bounds_before_any_channel_fetch():
     source = _source()
     open_idx = source.index("wwRememberSourceBoundsFromChannelsData(data)")
@@ -79,3 +90,12 @@ def test_display_only_clear_preserves_selected_source_bounds():
     assert "if (options.resetSourceBounds)" in clear_body
     assert "ww.sourceBounds.clear()" in clear_body
     assert "ww.workspaceBounds = wwDeriveWorkspaceBounds()" in clear_body
+
+
+def test_start_new_workspace_clears_source_timing_with_source_bounds():
+    source = _source()
+    clear_idx = source.index("function wwClearWorkspace(options)")
+    clear_body = source[clear_idx : source.index("// Phase 2C-C1", clear_idx)]
+
+    assert "ww.sourceBounds.clear()" in clear_body
+    assert "ww.sourceTiming.clear()" in clear_body

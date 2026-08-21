@@ -9131,6 +9131,59 @@ No new decision. See the "Update" note appended to
 [DECISIONS.md — DEC-047](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations)
 (a bug fix to that decision's own implementation, not a new decision).
 
+## Phase 5A UAT — Absolute Time after adding a calculated channel (2026-08-21)
+
+### Scope
+
+Owner UAT regression: in the main Waveform workspace, Absolute Time
+worked for a normal source channel, then stopped being selectable after
+adding a calculated channel. The requested investigation had to prove
+whether the problem was a calculated-channel timing eligibility issue,
+a trace rendering issue, or an unintended Absolute/Elapsed refetch or
+X/Y rewrite.
+
+### Investigation / root cause
+
+Headless browser reproduction against `frontend/index.html` proved the
+failure path. With only the real source channel displayed,
+`wwAvailableTimeModes()` returned `["absolute", "elapsed"]` and
+`wwSetTimeMode("absolute")` worked. After adding a calculated channel,
+`wwCalculatedChannelMeta()` supplied `recordingStartTime: null` and
+`timingReference: null`; `wwAddSelectedChannels()` parsed those into a
+null `recordingStartMs`, and `wwTimeModesForChannel()` therefore
+returned only `["elapsed"]` for the calculated trace. The workspace-wide
+intersection in `wwAvailableTimeModes()` then correctly disabled
+Absolute for the whole visible workspace. Plotly trace X arrays stayed
+numeric elapsed seconds, and switching time modes did not fetch or
+rewrite X/Y data.
+
+### Fix
+
+Added `ww.sourceTiming`, populated from the same
+`GET .../sources/{id}/channels` timebase response that already feeds
+`ww.sourceBounds`. Calculated channels still use their own `calc-*` id
+as display identity, but `wwCalculatedChannelMeta()` now inherits
+`recordingStartTime` and `timingReference` through
+`calc.reference_source_id`, the real timing authority established by
+DEC-047. `wwParticipatingSourceIds()` also resolves displayed
+calculated channels through that same reference source for workspace
+bounds, so a view containing only calculated traces remains grounded in
+the original recording's elapsed extent. Source removal and Start New
+Workspace clear `ww.sourceTiming` with the matching source/inventory
+lifecycle; plain Clear remains display-only.
+
+### Verification
+
+Static regression tests cover the source timing cache, calculated
+metadata inheritance, reference-source bounds resolution, and DEC-042's
+"mode switch does not rewrite trace geometry" invariant. A browser
+probe confirmed that after adding a calculated channel,
+`wwAvailableTimeModes()` remains `["absolute", "elapsed"]`,
+Absolute can be selected again, calculated channel
+`timingReference` is `absolute`, participating source ids resolve to
+the real source, and elapsed/absolute mode switching triggers no
+additional waveform fetch.
+
 ## Phase 5A — Calculated Channels / Basic Signal Builder (2026-08-21)
 
 ### Scope

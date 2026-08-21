@@ -4654,6 +4654,7 @@
             // channels must disappear from the Calculated Channels
             // candidate inventory too, never linger as a stale option.
             ww.sourceChannelInventory.delete(sourceId);
+            ww.sourceTiming.delete(sourceId);
             // Stale-banner fix: only clear the success/import message if it
             // actually describes the source just removed.
             if (lastImportedSourceId === sourceId) {
@@ -4732,6 +4733,7 @@
                     sourceId, sourceName: data.source.station_name,
                     analogChannels: data.analog_channels,
                 });
+                wwRememberSourceTimingFromChannelsData(data);
                 // Phase 4A-UAT10: opening/selecting a source establishes
                 // that source's true elapsed bounds immediately from the
                 // backend timebase metadata, even with zero channels visible.
@@ -5683,6 +5685,14 @@
             // hide/Clear-workspace, deleted per-source on source removal,
             // cleared entirely only by Start New Workspace.
             sourceChannelInventory: new Map(),
+            // Phase 5A-UAT (DEC-047): source_id -> {recordingStartTime,
+            // recordingStartMs, timingReference}. This is the frontend's
+            // timing-authority mirror for each real source opened this
+            // session, populated from the same /channels timebase response
+            // as sourceBounds. Calculated channels keep their pseudo-source
+            // display identity (calc-*) but inherit Absolute/Elapsed
+            // eligibility from their reference_source_id here.
+            sourceTiming: new Map(),
             // Phase 5A (DEC-047): the workspace's own calculated-channel
             // registry mirror -- id -> {id, name, unit, operation, inputs,
             // parameters, dependencyIds, referenceSourceId, sampleCount,
@@ -5979,11 +5989,38 @@
             return wwRememberSourceBounds(data.source.source_id, wwSourceBoundsFromTimebase(data.timebase));
         }
 
+        function wwRememberSourceTimingFromChannelsData(data) {
+            if (!data || !data.source) return;
+            const timebase = data.timebase || {};
+            const recordingStartTime = timebase.start_time || null;
+            ww.sourceTiming.set(data.source.source_id, {
+                recordingStartTime,
+                recordingStartMs: wwParseNaiveTimestamp(recordingStartTime),
+                timingReference: timebase.timing_reference || null,
+            });
+        }
+
+        function wwSourceTimingAuthority(sourceId) {
+            return ww.sourceTiming.get(sourceId) || {
+                recordingStartTime: null,
+                recordingStartMs: null,
+                timingReference: null,
+            };
+        }
+
+        function wwTimingSourceIdForDisplaySourceId(sourceId) {
+            if (!wwIsCalculatedSourceId(sourceId)) return sourceId;
+            const calc = ww.calculatedChannels.get(sourceId);
+            return (calc && calc.reference_source_id) || sourceId;
+        }
+
         function wwParticipatingSourceIds() {
             const ids = new Set();
             if (selectedSourceId && ww.sourceBounds.has(selectedSourceId)) ids.add(selectedSourceId);
             for (const { channel } of ww.displayed.values()) {
-                if (channel && ww.sourceBounds.has(channel.sourceId)) ids.add(channel.sourceId);
+                if (!channel) continue;
+                const timingSourceId = wwTimingSourceIdForDisplaySourceId(channel.sourceId);
+                if (ww.sourceBounds.has(timingSourceId)) ids.add(timingSourceId);
             }
             for (const entry of ww.digitalDisplayed.values()) {
                 if (entry && ww.sourceBounds.has(entry.sourceId)) ids.add(entry.sourceId);
@@ -10813,6 +10850,7 @@
         // ------------------------------------------------------------------
 
         function wwCalculatedChannelMeta(calc) {
+            const timing = wwSourceTimingAuthority(calc.reference_source_id);
             // Section 68: its own "Calculated Channels" classification,
             // never Voltage/Current automatic inference -- engineeringType
             // here is display-only metadata, not read by any grouping
@@ -10821,7 +10859,8 @@
             return {
                 sourceId: calc.id, sourceName: "Calculated Channels", channelName: calc.name,
                 unit: calc.unit, engineeringType: "Calculated",
-                recordingStartTime: null, timingReference: null,
+                recordingStartTime: timing.recordingStartTime,
+                timingReference: timing.timingReference,
             };
         }
 
@@ -11260,6 +11299,7 @@
                 // entire point of this fix (visibility/display state must
                 // never gate input availability).
                 ww.sourceChannelInventory.clear();
+                ww.sourceTiming.clear();
                 // Phase 4B (section 24): "Start New Workspace" is the one
                 // place cursor state resets completely -- the plain "Clear
                 // workspace" branch below deliberately does NOT call this

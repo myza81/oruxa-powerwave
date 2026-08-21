@@ -4,8 +4,9 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-21** (Phase 5A-UAT3 — Calculated
-Channel Input Availability, on top of Phase 5A-UAT2 — Standard A/B
+Last meaningful update: **2026-08-21** (Phase 5A UAT — Absolute Time
+after adding a calculated channel, on top of Phase 5A-UAT3 —
+Calculated Channel Input Availability, Phase 5A-UAT2 — Standard A/B
 Measurements for Calculated Channels, Phase 5A-UAT —
 Calculated Channel Waveform Preview, Phase 5A UAT Fix — Page
 Navigation Isolation, Phase 5A — Calculated Channels /
@@ -87,7 +88,14 @@ preserving reduction) is reused via two small pure helpers
 `waveform_service.py`'s own existing source-channel functions — one
 reduction algorithm, one peak-search algorithm in the whole codebase,
 verified zero behavior change for the existing source-channel paths.
-Default-hidden on creation (DEC-038, unchanged). Immutable after
+Default-hidden on creation (DEC-038, unchanged). A 2026-08-21 UAT fix
+keeps Absolute Time available after a calculated channel is added:
+calculated traces still use their own `calc-*` pseudo-source id for
+display/layout/annotation identity, but inherit `recordingStartTime`
+and `timingReference` through `reference_source_id`; workspace bounds
+also resolve calculated traces through that reference source. This
+preserves DEC-042: Absolute/Elapsed is presentation-only and does not
+refetch or rewrite trace X/Y data. Immutable after
 creation (create another rather than editing); delete is dependency-
 aware (BLOCKED, never a silent cascade, while another calculated
 channel depends on it). Source removal cascades transitively; "Clear
@@ -164,12 +172,13 @@ guardrails (time-alignment, unit compatibility, dependency tracking)
 are completely unchanged — only candidate-list *availability* changed,
 never validation. See
 [DECISIONS.md — DEC-047](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations)
-(including all four of its 2026-08-21 Update notes) and
+(including its 2026-08-21 Update notes) and
 [MIGRATION_PLAN.md — Phase 5A](MIGRATION_PLAN.md#phase-5a--calculated-channels--basic-signal-builder-2026-08-21)
 / [Phase 5A UAT Fix](MIGRATION_PLAN.md#phase-5a-uat-fix--page-navigation-isolation-2026-08-21)
 / [Phase 5A-UAT — Waveform Preview](MIGRATION_PLAN.md#phase-5a-uat--calculated-channel-waveform-preview-2026-08-21)
 / [Phase 5A-UAT2 — Standard A/B Measurements](MIGRATION_PLAN.md#phase-5a-uat2--standard-ab-measurements-for-calculated-channels-2026-08-21)
-/ [Phase 5A-UAT3 — Input Availability](MIGRATION_PLAN.md#phase-5a-uat3--calculated-channel-input-availability-2026-08-21).
+/ [Phase 5A-UAT3 — Input Availability](MIGRATION_PLAN.md#phase-5a-uat3--calculated-channel-input-availability-2026-08-21)
+/ [Phase 5A UAT — Absolute Time](MIGRATION_PLAN.md#phase-5a-uat--absolute-time-after-adding-a-calculated-channel-2026-08-21).
 
 `[DECISION]` **Dynamic Maximum/Minimum Peak Annotation — DEC-046**
 (2026-08-21; **persistent placement guidance ribbon, addendum,

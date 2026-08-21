@@ -5309,6 +5309,43 @@ for the SAME pre-existing Absolute/Elapsed time-mode reasons as before;
 passing). Backend untouched, 519/519 passing. See
 [MIGRATION_PLAN.md — Phase 5A-UAT3](MIGRATION_PLAN.md#phase-5a-uat3--calculated-channel-input-availability-2026-08-21).
 
+Update note (2026-08-21, Phase 5A UAT — Absolute Time after adding a
+calculated channel):
+
+No new decision. This is a correction to DEC-047's own
+`reference_source_id` implementation and preserves DEC-042's
+presentation-only Absolute/Elapsed model.
+
+Owner UAT found that adding a calculated channel to an Absolute-capable
+recording made the Absolute Time toolbar option become unavailable.
+Root cause was frontend timing eligibility, not rendering or a backend
+calculation problem: `wwCalculatedChannelMeta()` gave calculated
+channels `recordingStartTime: null` and `timingReference: null` even
+though DEC-047 says their inherited sample-time array is grounded by
+`reference_source_id`. `wwAvailableTimeModes()` correctly intersects
+capabilities across displayed analog-like channels, so the single
+null-timed calculated trace legitimately removed `absolute` from the
+available mode set.
+
+Fixed by caching each opened real source's absolute timing metadata in
+`ww.sourceTiming`, populated from the same `/sources/{id}/channels`
+timebase response that already populates source bounds. Calculated
+channels keep their pseudo-source display identity (`calc-*`) for
+`wwAddSelectedChannels()`/`ww.displayed`/colors/layout/annotations, but
+their `recordingStartTime` and `timingReference` now inherit from
+`calc.reference_source_id`. Workspace bounds likewise resolve a
+displayed calculated channel through its reference source, so an
+only-calculated view remains grounded in the real recording's elapsed
+extent. If the reference source's timing is unknown, the fallback stays
+conservative: Absolute is not invented.
+
+`wwSetTimeMode()` remains unchanged in principle: it does not fetch
+waveform data and does not rewrite trace X/Y arrays; Absolute/Elapsed
+still changes labels, hover text, cursor readouts, and axis
+presentation only.
+
+See [MIGRATION_PLAN.md — Phase 5A UAT Absolute Time](MIGRATION_PLAN.md#phase-5a-uat--absolute-time-after-adding-a-calculated-channel-2026-08-21).
+
 ---
 
 ## How to add a decision

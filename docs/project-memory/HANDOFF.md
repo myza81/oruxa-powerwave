@@ -8,6 +8,37 @@ Last updated: **2026-08-21**
 
 ## What was most recently done
 
+**Phase 5A UAT — Absolute Time after adding a calculated channel.**
+Bug fix to DEC-047's frontend implementation, preserving DEC-042.
+Owner UAT found that Absolute Time stopped being selectable after a
+calculated channel was displayed. Root cause was not Plotly rendering,
+not a backend calculation issue, and not a time-mode refetch: calculated
+channel metadata was being added to `ww.displayed` with
+`recordingStartTime: null` and `timingReference: null`, so
+`wwAvailableTimeModes()` correctly intersected the workspace down to
+Elapsed only.
+
+**Fix**: `ww.sourceTiming` now caches real source timing metadata from
+the same `/sources/{id}/channels` timebase response as `ww.sourceBounds`.
+Calculated channels keep their `calc-*` pseudo-source id for
+display/layout/annotation identity, but `wwCalculatedChannelMeta()`
+inherits `recordingStartTime` and `timingReference` through
+`reference_source_id`. `wwParticipatingSourceIds()` also resolves
+calculated traces through that reference source for workspace bounds,
+so only-calculated views stay grounded in the original recording.
+Source removal and Start New Workspace clear the timing cache with the
+same lifecycle as source inventory/bounds; plain Clear remains
+display-only.
+
+**Verified**: targeted static tests pass; a headless browser probe
+confirmed `wwAvailableTimeModes()` remains `["absolute", "elapsed"]`
+after adding a calculated channel, Absolute can be selected again,
+the calculated trace's `timingReference` is `absolute`, participating
+source ids resolve to the real source, and elapsed/absolute mode
+switches trigger no additional waveform fetch. Full detail:
+[DECISIONS.md — DEC-047 Update note](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations),
+[MIGRATION_PLAN.md — Phase 5A UAT Absolute Time](MIGRATION_PLAN.md#phase-5a-uat--absolute-time-after-adding-a-calculated-channel-2026-08-21).
+
 **Phase 5A-UAT3 — Calculated Channel Input Availability.**
 Owner-approved clarification: Calculated Channels can now use ALL
 available analog channels (source and calculated) from the active
