@@ -76,6 +76,15 @@
        neutral scale," not an arbitrary accent. */
     --scrollbar-thumb: rgba(27, 35, 51, 0.18);
     --scrollbar-thumb-hover: rgba(27, 35, 51, 0.32);
+
+    /* Phase 4E-UAT3: Free Text Note's own semantic surface -- previously
+       reused --panel/--panel-border, which visually blended the note into
+       waveform panels sitting right behind it. A subtle warm cream "paper
+       note" surface, deliberately far short of a saturated yellow
+       sticky-note look, distinguishes it at a glance without competing
+       with waveform trace colors or the A/B cursor blue/red. */
+    --annotation-bg: #fbf3df;
+    --annotation-border: #e3d3a0;
 }
 
 :root[data-theme="dark"] {
@@ -114,6 +123,13 @@
 
     --scrollbar-thumb: rgba(255, 255, 255, 0.16);
     --scrollbar-thumb-hover: rgba(255, 255, 255, 0.28);
+
+    /* Phase 4E-UAT3: same rationale as Light's own --annotation-bg/
+       --annotation-border above -- a muted warm dark surface, deliberately
+       far short of a bright yellow/brown block, still readable against
+       --text and distinct from --panel/--waveform-surface. */
+    --annotation-bg: #2b2416;
+    --annotation-border: #4a3f26;
 }
 
 /* Phase 3B-UAT9: slim, borderless scrollbars -- one shared rule set for

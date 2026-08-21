@@ -1475,8 +1475,12 @@
             position: absolute;
             min-width: 160px;
             max-width: 320px;
-            background: var(--panel);
-            border: 1px solid var(--panel-border);
+            /* Phase 4E-UAT3: own semantic surface, not --panel/
+               --panel-border -- see theme.css's own comment for why (a
+               note used to visually blend into the waveform panel behind
+               it). */
+            background: var(--annotation-bg);
+            border: 1px solid var(--annotation-border);
             border-radius: var(--radius);
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12); /* section 13: subtle, never a "giant shadow" */
             pointer-events: auto; /* the ONE thing inside the overlay that IS interactive */
@@ -1492,7 +1496,7 @@
             letter-spacing: 0.02em;
             text-transform: uppercase;
             color: var(--text-dim);
-            border-bottom: 1px solid var(--panel-border);
+            border-bottom: 1px solid var(--annotation-border);
             cursor: grab;
             user-select: none;
         }
