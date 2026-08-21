@@ -4,17 +4,19 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-21** (Phase 4F-UAT — Movable Callout
-Anchor, on top of Phase 4F — Analog Waveform Callout Annotation, Phase
-4E-UAT2 — Free Text Notes restricted to the main waveform workspace,
-Phase 4E-UAT — Annotation Scroll Anchoring fix, Phase 4E — Annotation
-Framework + Free Text Note, Phase 4D — Precision Step Zoom + Icon
-Toolbar Refinement, Waveform Time-Axis Sub-ms Precision, Waveform
-Adaptive Resolution, Phase 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2,
-Phase 4B-UAT1, Phase 4B, Phase 4A-UAT9, and Phase 4A-UAT10).
+Last meaningful update: **2026-08-21** (Phase 4F-UAT2 — Free 2D Callout
+Anchor Drag Preview, on top of Phase 4F-UAT — Movable Callout Anchor,
+Phase 4F — Analog Waveform Callout Annotation, Phase 4E-UAT2 — Free Text
+Notes restricted to the main waveform workspace, Phase 4E-UAT —
+Annotation Scroll Anchoring fix, Phase 4E — Annotation Framework + Free
+Text Note, Phase 4D — Precision Step Zoom + Icon Toolbar Refinement,
+Waveform Time-Axis Sub-ms Precision, Waveform Adaptive Resolution, Phase
+4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B,
+Phase 4A-UAT9, and Phase 4A-UAT10).
 
-`[DECISION]` **Analog Waveform Callout — DEC-045** (2026-08-21; **anchor
-became user-movable, same-channel only, addendum, 2026-08-21**): Oruxa
+`[DECISION]` **Analog Waveform Callout — DEC-045** (2026-08-21; anchor
+became user-movable, same-channel only, addendum, 2026-08-21; **drag
+preview became free 2D, addendum, 2026-08-21**): Oruxa
 Powerwave's SECOND annotation type, `type: "callout"`, reusing DEC-044's
 exact generic framework (`ww.annotations` remains the sole authority, no
 parallel Callout state). Unlike `text_note` (workspace-content-anchored),
@@ -43,12 +45,20 @@ Y-projection authority built from that panel's own live Plotly
 sample on its OWN existing source/channel ONLY -- never a different
 channel, even when the pointer visually crosses another trace in a
 Grouped/Custom panel (cross-channel re-anchoring is explicitly out of
-scope). During the drag, pointer X is a frontend-only visual preview
-(`annotation.data` untouched, pointer Y never read -- the preview Y
-stays pinned to the current authoritative `anchorValue`'s own
-projection); exactly ONE `.../annotation-anchor` request fires on
-release, reusing the creation path's own request/error/stale-response
-handling verbatim. A failed resolution, Escape, or `pointercancel`
+scope). During the drag, the preview marker follows the pointer FREELY
+in both X and Y (owner UAT refinement: the original horizontal-only
+preview -- X drove the marker, Y stayed pinned to the current
+`anchorValue`'s own projection -- felt constrained "like dragging along
+a rail" even though the final result was already correct) --
+`annotation.data` stays untouched throughout the preview either way.
+Final resolution reads ONLY `event.clientX` (via the existing
+`wwCursorPixelXToTime()`); pointer Y is NEVER read at release, so it can
+never become engineering value authority regardless of how freely the
+preview itself moves. Exactly ONE `.../annotation-anchor` request fires
+on release, reusing the creation path's own request/error/stale-response
+handling verbatim; the marker then visibly SNAPS from its free preview
+position to the real resolved waveform sample. A failed resolution,
+Escape, or `pointercancel`
 restores the original anchor exactly (trivial, since the preview never
 wrote to `annotation.data` in the first place). The label box remains
 presentation-only and independently draggable via a screen-independent
@@ -75,11 +85,13 @@ identical to Text Note: Clear Workspace preserves, Start New Workspace
 clears, XSS-safe `.textContent` rendering, centralized deletion via the
 Annotation List (which shows Callout's own channel/time/value metadata
 line, section 42, refreshed immediately after an anchor move too). No
-backend change was needed for the anchor-move refinement -- the
-existing `.../annotation-anchor` endpoint already accepted an arbitrary
-`approximate_elapsed_seconds`. See
+backend change was needed for the anchor-move refinement, or for making
+its drag preview free 2D -- the existing `.../annotation-anchor`
+endpoint already accepted an arbitrary `approximate_elapsed_seconds` and
+never read a Y value at all. See
 [DECISIONS.md — DEC-045](DECISIONS.md#dec-045--callout-is-a-waveform-anchored-annotation-type-analog-only-this-phase-with-a-fixed-engineering-anchor-and-a-movable-presentation-box)
-(including its 2026-08-21 movable-anchor addendum) and
+(including both its 2026-08-21 addenda -- movable anchor, then free 2D
+drag preview) and
 [MIGRATION_PLAN.md — Phase 4F](MIGRATION_PLAN.md#phase-4f--analog-waveform-callout-annotation-2026-08-21).
 
 `[DECISION]` **Annotation Framework + Free Text Note — DEC-044**

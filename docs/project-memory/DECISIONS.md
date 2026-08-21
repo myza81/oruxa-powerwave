@@ -4429,6 +4429,80 @@ Impact:
   lifecycle) established by the original decision above.
 - See [MIGRATION_PLAN.md — Phase 4F-UAT](MIGRATION_PLAN.md#phase-4f-uat--movable-callout-anchor-2026-08-21).
 
+### ADDENDUM (2026-08-21, refinement) — Anchor drag preview became free 2D (Phase 4F-UAT2)
+
+Status: Approved
+Source: owner UAT result on the movable-anchor addendum directly above --
+"Engineering outcome: PASS. User experience: FAIL" (constraining the
+preview marker to horizontal-only movement felt like dragging along a
+rail, even though the final snap was already correct).
+
+> Anchor drag preview became free 2D following owner UAT. Pointer X and
+> Y both control temporary visual preview, but only pointer X
+> participates in authoritative re-anchoring. Pointer Y never becomes
+> engineering value authority; on release the anchor snaps to the
+> nearest full-resolution sample on the existing source/channel.
+
+Decision:
+
+- During drag, the preview marker/connector/box now follow the pointer
+  FREELY in both X and Y (previously: X followed the pointer, Y stayed
+  pinned to the current authoritative `anchorValue`'s own projection).
+  Purely a presentation change -- `annotation.data` is still never
+  written to during the preview (unchanged from the addendum above).
+- **Final resolution is completely unchanged**: `onPointerUp()` still
+  reads `event.clientX` alone (via `wwCursorPixelXToTime()`) to derive
+  the approximate elapsed time sent to `POST .../annotation-anchor`;
+  `event.clientY` is never read there, at any point. The backend's
+  resolved `value` (a real recorded sample) becomes the new
+  `anchorValue` -- never anything derived from where the pointer
+  happened to be vertically.
+- Preview X/Y are each clamped to "sensible bounds" for pure visual
+  containment (X to the shared plot X domain, Y to the anchored
+  channel's own current panel rect) -- never used as, or conflated
+  with, engineering authority.
+- Added a subtle translucency to the existing "stronger ring while
+  dragging" visual state, so the free-floating preview reads as visibly
+  provisional right up until it snaps to the authoritative sample on
+  release.
+
+Reason:
+
+The underlying engineering model (DEC-045 itself, and the same-channel-
+only movable-anchor addendum above) was already correct and did not
+need to change -- only the PRESENTATION of the drag felt wrong. Since
+pointer Y was already discarded before any engineering decision was
+made, letting it drive the VISUAL preview costs nothing to correctness:
+the exact same `onPointerUp()` code path, unmodified, still ignores it.
+
+Alternatives considered:
+
+- **Keep Y pinned to the current value's projection, only smooth the
+  transition** -- rejected: this was the exact behavior the owner
+  explicitly reported as feeling constrained ("like dragging along a
+  rail"); a smoother transition would not address the root complaint
+  that the marker didn't follow the mouse.
+- **Let released Y somehow influence the resolved sample** (e.g. as a
+  tie-breaker or secondary signal) -- rejected outright per the task's
+  own explicit instruction and DEC-045's own engineering-integrity rule:
+  `anchorValue` must always come from an actual recorded sample on the
+  channel's own real waveform, never from where the pointer happened to
+  be released vertically.
+
+Impact:
+
+- `frontend/index.html` only. `wwWireCalloutAnchorDrag()`'s own
+  `livePreviewUpdate()` simplified to take an already-resolved
+  `{previewPageX, previewPageY}` pair instead of deriving Y from
+  `wwCalloutValueToPixelY()`+the current `anchorValue`; a new
+  `clampPreviewPoint()` helper provides the X/Y visual bounds.
+  `onPointerUp()` itself is textually unchanged (still X-only).
+  `frontend/theme.css`: no new tokens.
+- Does not change DEC-045's own creation path, the same-channel
+  restriction, the `/annotation-anchor` endpoint, nearest-sample/tie-
+  break semantics, or any other Callout lifecycle rule.
+- See [MIGRATION_PLAN.md — Phase 4F-UAT2](MIGRATION_PLAN.md#phase-4f-uat2--free-2d-callout-anchor-drag-preview-2026-08-21).
+
 ---
 
 ## How to add a decision

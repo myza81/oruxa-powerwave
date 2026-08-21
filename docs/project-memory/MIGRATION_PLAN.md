@@ -8650,6 +8650,144 @@ owner UAT after this push.
 
 ---
 
+## Phase 4F-UAT2 — Free 2D Callout Anchor Drag Preview (2026-08-21)
+
+### Scope
+
+Owner UAT result on the movable-anchor refinement directly below:
+"Engineering outcome: PASS. User experience: FAIL." Constraining the
+preview marker to horizontal-only movement (pointer X drove the
+preview, pointer Y stayed pinned to the current anchorValue's own
+projection) felt like dragging along a rail even though the final snap
+was already correct. This refinement changes ONLY the drag PREVIEW's
+own presentation -- the engineering model (DEC-045, and the same-
+channel-only movable-anchor addendum) is completely unchanged.
+
+### Previous UX issue
+
+`livePreviewUpdate()` computed the preview Y from
+`wwCalloutValueToPixelY(panel, annotation.data.anchorValue)` -- the
+CURRENT, still-authoritative value's own projection -- rather than from
+the pointer. Visually, the marker only ever moved left/right; a
+vertical mouse movement had zero visible effect until release.
+
+### New preview behavior: free X/Y visual drag
+
+`onPointerMove()` now computes a clamped `{x, y}` page-pixel point
+directly from `event.clientX`/`event.clientY` (via a new
+`clampPreviewPoint()` helper) and passes BOTH into `livePreviewUpdate()`,
+which no longer touches `wwCalloutValueToPixelY()`/`anchorValue` at all
+during the preview -- it simply converts the given page point to
+content coordinates and positions the marker/connector/box there.
+Verified directly: an X-only pointermove changes the marker's `cx` and
+leaves `cy` unchanged; a Y-only pointermove changes `cy` and leaves `cx`
+unchanged; a diagonal pointermove changes both.
+
+### Engineering authority: X-only final resolution, Y preview-only
+
+`onPointerUp()` is textually UNCHANGED from the movable-anchor
+refinement below -- it still reads `event.clientX` alone (via the
+existing `wwCursorPixelXToTime()`, which already clamps to
+`ww.viewport`) to derive the approximate elapsed time sent to
+`POST .../annotation-anchor`; `event.clientY` is never read there, at
+any point, before or after this refinement. Verified directly with a
+wide diagonal drag (Y swinging from well above to well below the panel,
+finishing back near the target X): the resolved `sampleIndex`/
+`anchorElapsedSeconds`/`anchorValue` exactly match the nearest full-
+resolution sample at the target elapsed time, completely independent of
+where the pointer's Y excursion went.
+
+### Snap behavior
+
+Because `onPointerUp()` is unchanged, the "snap" itself is unchanged
+too: once the backend resolves the real sample, `wwUpdateAnnotation()`
+commits `sampleIndex`/`anchorElapsedSeconds`/`anchorValue`/`unit` and
+the SAME generic `wwRenderAnnotations()` pass redraws the marker at its
+TRUE projected position (X from `wwCursorTimeToPixelX()`, Y from
+`wwCalloutValueToPixelY()` against the newly-committed `anchorValue`) --
+this is the visible "snap from free position to exact waveform sample"
+the task's own section 5 describes as desirable feedback, achieved with
+zero new snap-specific code (the existing render pass already produces
+it as a side effect of committing the new anchor).
+
+### Box/connector
+
+`boxOffset` is read and applied exactly as before -- unaffected by this
+refinement (the box still follows whatever anchor position
+`livePreviewUpdate()`/the post-snap render pass computes, by the same
+stored relative offset). The connector's own `x2`/`y2` endpoint is
+verified to equal the marker's own `cx`/`cy` at every step of a
+multi-move drag, both during the free preview and after the snap.
+
+### Bounds
+
+`clampPreviewPoint()` clamps X to the shared plot X domain
+(`dragMetrics`, the exact same bounds `wwCursorPixelXToTime()` itself
+uses) and Y to the anchored channel's own CURRENT panel rect
+(`panel.chartEl.getBoundingClientRect()`) -- purely a visual containment
+measure so the marker never wanders permanently off-canvas; neither
+clamp is engineering authority, and the clamped Y is never read by
+`onPointerUp()` at all.
+
+### Same-channel visual meaning
+
+Unchanged: the free preview may temporarily appear away from the actual
+waveform trace during drag (expected/intentional), and on release it
+snaps back onto the SAME channel's real waveform -- the same-channel
+restriction from the movable-anchor addendum is untouched by this
+refinement (no new code path could ever substitute a different
+channel).
+
+### Failure/cancel
+
+Unchanged behavior, reconfirmed: because the preview never writes to
+`annotation.data` (true both before and after this refinement -- only
+WHERE the preview visually sits changed, not WHETHER it's written to
+state), a forced backend failure, Escape mid-drag, or `pointercancel`
+all still restore the original authoritative anchor exactly by simply
+re-rendering from the untouched truth.
+
+### Visual feedback
+
+Added a subtle translucency (`opacity: 0.82`) to the marker and
+connector while the drag-active visual state is applied, on top of the
+already-existing stronger ring -- distinguishes the free-floating
+preview as visibly provisional. No animation/transition added; the
+snap-to-authoritative-position on release remains immediate, per the
+task's own explicit "prefer immediate snap first" preference.
+
+### Interaction isolation
+
+Unaffected -- the anchor hit target, A/B cursor hit targets, Plotly's
+own canvas, and the Callout box's own drag handle remain four
+structurally separate interaction surfaces; this refinement only
+changed what happens once the anchor hit target's own drag is already
+in progress.
+
+### Tests
+
+Extended `phase4f_check.mjs` with atomic `pointerDownOn()`/
+`pointerMoveOn()`/`pointerUpOn()` helpers (allowing a single test to
+inspect marker/connector state BETWEEN moves within one unreleased
+drag) plus 7 new checks: X-only preview movement, Y-only preview
+movement, diagonal preview movement, authoritative-state-untouched-
+during-preview, connector-follows-preview-at-every-step, the drag-active
+visual state's own presence/clearing, and a wide-diagonal-drag
+end-to-end resolution check (same channel, preserved boxOffset, value
+from the real recorded sample, never from pointer Y) -- **46/46 passing**
+in the file overall (39 prior + 7 new). Full frontend suite reconfirmed
+at exactly the true 33-failure baseline across the same 14 pre-existing
+files (zero net new regressions). Backend: untouched, 412/412 unchanged
+(no backend change needed -- the existing endpoint already accepted an
+arbitrary approximate elapsed time and never read a Y value in the
+first place).
+
+### Decision
+
+See [DECISIONS.md — DEC-045 addendum (refinement)](DECISIONS.md#addendum-2026-08-21-refinement--anchor-drag-preview-became-free-2d-phase-4f-uat2)
+(a refinement of DEC-045's own movable-anchor addendum, not a new major
+decision).
+
 ## Phase 4F-UAT — Movable Callout Anchor (2026-08-21)
 
 ### Scope

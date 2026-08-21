@@ -8,6 +8,75 @@ Last updated: **2026-08-21**
 
 ## What was most recently done
 
+**Phase 4F-UAT2 — Free 2D Callout Anchor Drag Preview (DEC-045 addendum
+#2).** Owner UAT direction on top of Phase 4F-UAT below: "Engineering
+outcome: PASS. User experience: FAIL" -- dragging the anchor marker
+upward/downward felt constrained to a horizontal rail (Y was pinned to
+the current `anchorValue`'s own projection during preview), even though
+the final snap was already correct. Full detail:
+[DECISIONS.md — DEC-045 addendum #2](DECISIONS.md#addendum-2026-08-21-refinement--anchor-drag-preview-became-free-2d-phase-4f-uat2).
+
+**Preview now follows the pointer freely in both X and Y** -- purely a
+presentation change. `livePreviewUpdate()` was rewritten to take the
+already-resolved page-pixel coordinates directly
+(`previewPageX`/`previewPageY`) instead of internally reprojecting a
+single elapsed-time value; the marker, connector, and box (via its
+existing `boxOffset`) all follow the free preview point. A new
+`clampPreviewPoint()` helper clamps the VISUAL preview only -- X to
+`dragMetrics.plotLeftPage`/`plotWidth` (the same bounds
+`wwCursorPixelXToTime()` already applies internally), Y to the anchored
+channel's own current panel rect via `ww.displayed` -- so the marker can
+never visually disappear off-canvas, but this clamped Y is presentation
+only and never reaches engineering state.
+
+**Engineering authority is completely unchanged.** `onPointerUp()` is
+textually unchanged from Phase 4F-UAT: it still reads `event.clientX`
+only, via the same `wwCursorPixelXToTime()`, and calls the same
+`wwResolveCalloutAnchorMove()` -- `event.clientY` is never consulted, at
+any point, during release. `annotation.data` is never written to during
+`pointermove` either way (verified: authoritative `sampleIndex`/
+`anchorElapsedSeconds`/`anchorValue`/`sourceId`/`channelName`/
+`boxOffset` all byte-identical throughout a wide diagonal preview drag).
+Same-channel-only resolution, the nearest-full-resolution-sample
+backend authority, the `/annotation-anchor` endpoint, and the
+deterministic tie-break rule are all untouched -- no backend file was
+modified this phase.
+
+**Snap behavior**: on release, the marker visibly snaps from its free
+preview position to the real resolved waveform sample -- verified via a
+test that drags through Y positions spanning most of the mocked panel's
+height (60 → 230 → 60) while holding the final X constant, and asserts
+the resolved `anchorValue` exactly equals the recorded sample at that
+elapsed time, never a value derived from pointer Y.
+
+**Visual feedback**: the existing `.ww-callout-connector-group--anchor-
+dragging` stronger-ring rule gained `opacity: 0.82` on both the marker
+and the connector line during an active drag, so the free-floating
+preview reads as a provisional unit distinct from the settled/selected
+state -- no glow, no animation, cleared immediately on release.
+
+**Failure/cancel restores the original anchor exactly** -- same
+trivially-correct mechanism as Phase 4F-UAT (the preview never mutated
+`annotation.data`, so restoring is just re-rendering from the
+never-touched truth). Verified for forced backend failure, Escape
+mid-drag (zero backend calls), and `pointercancel`.
+
+**Tests**: extended `phase4f_check.mjs` with 7 new checks (X-only preview
+moves X only, Y-only preview moves Y only, diagonal preview moves both,
+authoritative data untouched throughout, connector tracks the free
+preview marker at every step, active-drag visual state present during
+drag and cleared after release, and a combined wide-diagonal-drag test
+proving final resolution uses X alone) -- **46/46 passing** in the file
+overall (39 prior Phase 4F/4F-UAT checks unchanged). Full frontend suite
+reconfirmed at exactly the true 33-failure baseline across the same 14
+pre-existing files (zero net new regressions). Backend: untouched,
+412/412 unchanged.
+
+**Not yet done**: commit/push, CI/automatic DEV deployment verification,
+and owner UAT of this refinement specifically.
+
+## What was done in the prior session (Phase 4F-UAT — Movable Callout Anchor, DEC-045 addendum)
+
 **Phase 4F-UAT — Movable Callout Anchor (DEC-045 addendum).** Owner UAT
 direction on top of Phase 4F below: the Callout anchor MARKER itself is
 now draggable (previously only the label box was). Full detail:

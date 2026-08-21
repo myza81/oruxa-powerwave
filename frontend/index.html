@@ -1520,11 +1520,20 @@
            transition, no JS) on hover of the (otherwise invisible) hit
            target sitting on top of it. */
         .ww-callout-connector-group:hover .ww-callout-anchor-marker { r: 4.5; }
-        /* Section 35: while a drag is actively in progress -- a slightly
-           stronger ring, same restrained tier as the selected state
-           above, never a glow/animation. */
+        /* Section 12/35 (Phase 4F-UAT2): while a drag is actively in
+           progress -- a slightly stronger ring PLUS a touch of
+           translucency (the marker is a free-floating PREVIEW here, not
+           yet a settled anchor -- distinguishable from the selected
+           state's own full-opacity stronger border above), never a
+           glow/animation, and never so faint it reads as disabled. The
+           connector line gets the same restrained translucency so the
+           whole preview reads as one provisional unit. */
         .ww-callout-connector-group--anchor-dragging .ww-callout-anchor-marker {
             stroke-width: 2.5;
+            opacity: 0.82;
+        }
+        .ww-callout-connector-group--anchor-dragging .ww-callout-connector {
+            opacity: 0.82;
         }
         .ww-annotation {
             position: absolute;
@@ -7732,15 +7741,31 @@
         }
 
         // ------------------------------------------------------------------
-        // Phase 4F-UAT (movable anchor, DEC-045 addendum): dragging the
-        // visible anchor marker moves a Callout's engineering anchor
-        // along its own FIXED source/channel (section 2/3 -- identity is
-        // never touched here; cross-channel re-anchoring is explicitly
-        // out of scope). Wired ONCE via event delegation on
+        // Phase 4F-UAT (movable anchor, DEC-045 addendum) + Phase 4F-UAT2
+        // (free 2D preview, same addendum, refined): dragging the visible
+        // anchor marker moves a Callout's engineering anchor along its
+        // own FIXED source/channel (section 2/3 -- identity is never
+        // touched here; cross-channel re-anchoring is explicitly out of
+        // scope). Wired ONCE via event delegation on
         // #wwCalloutConnectorLayer -- the SAME pattern wwWireCursorDrag()
         // already established for A/B cursor dragging on
         // #wwCursorOverlay -- so every current AND future Callout is
         // draggable with zero per-annotation wiring.
+        //
+        // UAT2 refinement: the owner's own hands-on feedback on the first
+        // cut was "engineering outcome PASS, UX FAIL" -- constraining the
+        // preview marker to horizontal-only movement (X follows the
+        // pointer, Y stayed pinned to the current anchorValue's own
+        // projection) felt like dragging along a rail, even though the
+        // final snap was already correct. The preview now follows the
+        // pointer FREELY in both X and Y (onPointerMove()/
+        // livePreviewUpdate() below) -- pure presentation, still never
+        // written to annotation.data. Final resolution (onPointerUp())
+        // is UNCHANGED: X alone (via wwCursorPixelXToTime()) determines
+        // the approximate elapsed time sent to POST .../annotation-anchor;
+        // `event.clientY` is never read there. Pointer Y therefore never
+        // becomes engineering authority at any point -- only a temporary
+        // visual position during the drag itself.
         // ------------------------------------------------------------------
         function wwWireCalloutAnchorDrag() {
             const connectorLayer = document.getElementById("wwCalloutConnectorLayer");
@@ -7750,28 +7775,27 @@
             let dragMetrics = null;
             let dragTarget = null;
 
-            // Section 6/7/15: pointer X only -> a PREVIEW screen position,
-            // never written to annotation.data. anchorValue is
-            // deliberately untouched here -- the marker's Y stays pinned
-            // to the panel's projection of the CURRENT (still-
-            // authoritative) anchorValue while only X follows the
-            // pointer, so the preview never fabricates an engineering Y
-            // reading; pointer Y is never read at all during this drag.
-            function livePreviewUpdate(id, previewElapsedSeconds) {
+            // Phase 4F-UAT2 (free 2D preview, DEC-045 addendum): the
+            // preview marker follows the pointer FREELY in both X and Y
+            // (section 2/5) -- a pure presentation concern, never written
+            // to annotation.data (section 3). `previewPageX`/`previewPageY`
+            // are already-clamped page-pixel coordinates (see
+            // onPointerMove()'s own clamp, section 8) -- this function
+            // does nothing engineering-authoritative; it never derives an
+            // elapsed time or reads/writes anchorValue at all. Pointer Y
+            // is used ONLY here, for the visual preview -- never at
+            // pointerup (see onPointerUp(), which reads X alone).
+            function livePreviewUpdate(id, previewPageX, previewPageY) {
                 const annotation = ww.annotations.get(id);
                 if (!annotation) return;
-                const entry = ww.displayed.get(wwChannelKey(annotation.data.sourceId, annotation.data.channelName));
-                if (!entry || !entry.panel) return;
-                const pageX = wwCursorTimeToPixelX(previewElapsedSeconds);
-                const pageY = wwCalloutValueToPixelY(entry.panel, annotation.data.anchorValue);
                 const regionEl = document.getElementById("activeViewArea");
-                if (pageX === null || pageY === null || !regionEl) return;
+                if (!regionEl) return;
                 const regionRect = regionEl.getBoundingClientRect();
                 const anchorContent = {
-                    x: pageX - regionRect.left + regionEl.scrollLeft,
-                    y: pageY - regionRect.top + regionEl.scrollTop,
+                    x: previewPageX - regionRect.left + regionEl.scrollLeft,
+                    y: previewPageY - regionRect.top + regionEl.scrollTop,
                 };
-                // Section 11: preserve the EXISTING boxOffset -- the box
+                // Section 7: preserve the EXISTING boxOffset -- the box
                 // follows the preview anchor by the same stored relative
                 // offset, never reset.
                 const el = document.querySelector('.ww-annotation[data-annotation-id="' + CSS.escape(id) + '"]');
@@ -7802,14 +7826,32 @@
                 }
             }
 
+            // Section 8: clamps a page-pixel X/Y to "sensible panel/
+            // workspace bounds" -- X to the shared plot X domain
+            // (`dragMetrics`, the SAME bounds wwCursorPixelXToTime() itself
+            // clamps to), Y to the anchored channel's own CURRENT panel
+            // rect. Purely a visual bound so the marker never wanders
+            // permanently off-canvas (section 8's own "do not let marker
+            // disappear permanently outside usable canvas") -- never
+            // engineering authority (section 8's own explicit "do not use
+            // clamped preview Y as engineering value").
+            function clampPreviewPoint(id, clientX, clientY) {
+                const clampedX = Math.max(dragMetrics.plotLeftPage, Math.min(dragMetrics.plotLeftPage + dragMetrics.plotWidth, clientX));
+                const annotation = ww.annotations.get(id);
+                const entry = annotation ? ww.displayed.get(wwChannelKey(annotation.data.sourceId, annotation.data.channelName)) : null;
+                const panelRect = entry && entry.panel && entry.panel.chartEl ? entry.panel.chartEl.getBoundingClientRect() : null;
+                const clampedY = panelRect ? Math.max(panelRect.top, Math.min(panelRect.bottom, clientY)) : clientY;
+                return { x: clampedX, y: clampedY };
+            }
+
             function onPointerMove(event) {
                 if (!draggingId || !dragMetrics) return;
-                // Section 13: wwCursorPixelXToTime() already clamps to the
-                // current ww.viewport -- exactly "clamp preview to the
-                // current viewport edge," reused rather than reimplemented.
-                const time = wwCursorPixelXToTime(event.clientX, dragMetrics);
-                if (time === null) return;
-                livePreviewUpdate(draggingId, time);
+                // Section 2/5: free 2D preview -- both pointer X and Y
+                // drive the VISUAL preview position directly (clamped to
+                // sensible bounds, section 8), unlike the final
+                // resolution below (onPointerUp()), which reads X only.
+                const point = clampPreviewPoint(draggingId, event.clientX, event.clientY);
+                livePreviewUpdate(draggingId, point.x, point.y);
             }
 
             // Section 10/30/31: restores the CURRENT (unchanged, still-
@@ -7849,6 +7891,11 @@
                 if (!draggingId || !dragMetrics) return;
                 const id = draggingId;
                 const target = dragTarget;
+                // Section 4/9: the free 2D preview above used BOTH pointer
+                // axes, but final resolution reads X ONLY --
+                // `event.clientY` is never consulted here, at any point.
+                // `wwCursorPixelXToTime()` already clamps internally to
+                // the current ww.viewport.
                 const time = wwCursorPixelXToTime(event.clientX, dragMetrics);
                 draggingId = null;
                 dragMetrics = null;
@@ -7863,7 +7910,10 @@
                     return;
                 }
                 // Section 8/28: exactly ONE backend request, here, on
-                // release -- never during pointermove.
+                // release -- never during pointermove. The backend's own
+                // resolved `value` (never pointer Y) becomes the new
+                // anchorValue -- see wwResolveCalloutAnchorMove()'s own
+                // comment.
                 await wwResolveCalloutAnchorMove(id, annotation.data.sourceId, annotation.data.channelName, time);
             }
 
