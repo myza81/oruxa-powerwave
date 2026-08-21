@@ -83,8 +83,8 @@
        note" surface, deliberately far short of a saturated yellow
        sticky-note look, distinguishes it at a glance without competing
        with waveform trace colors or the A/B cursor blue/red. */
-    --annotation-bg: #fbf3df;
-    --annotation-border: #e3d3a0;
+    --annotation-bg: #dfe7fb;
+    --annotation-border: #a0dce3;
 }
 
 :root[data-theme="dark"] {
