@@ -1475,12 +1475,20 @@
             position: absolute;
             min-width: 160px;
             max-width: 320px;
-            /* Phase 4E-UAT3: own semantic surface, not --panel/
+            /* Phase 4E-UAT3/UAT4: own semantic surface, not --panel/
                --panel-border -- see theme.css's own comment for why (a
                note used to visually blend into the waveform panel behind
-               it). */
-            background: var(--annotation-bg);
-            border: 1px solid var(--annotation-border);
+               it). --annotation-bg/--annotation-border are declared in
+               the SAME :root/:root[data-theme="dark"] scope as every
+               other working token here (--panel, --radius, etc.) --
+               confirmed correct by direct inspection, not assumed. The
+               `var(x, fallback)` second argument is defensive CSS only
+               (falls back to the generic panel surface if this file is
+               ever loaded without theme.css, e.g. a stale cached copy
+               predating this token) -- it is NOT the primary fix; the
+               tokens themselves are already correctly scoped. */
+            background: var(--annotation-bg, var(--panel));
+            border: 1px solid var(--annotation-border, var(--panel-border));
             border-radius: var(--radius);
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12); /* section 13: subtle, never a "giant shadow" */
             pointer-events: auto; /* the ONE thing inside the overlay that IS interactive */
@@ -1496,7 +1504,7 @@
             letter-spacing: 0.02em;
             text-transform: uppercase;
             color: var(--text-dim);
-            border-bottom: 1px solid var(--annotation-border);
+            border-bottom: 1px solid var(--annotation-border, var(--panel-border));
             cursor: grab;
             user-select: none;
         }
