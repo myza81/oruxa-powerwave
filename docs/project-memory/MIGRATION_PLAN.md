@@ -8650,6 +8650,127 @@ owner UAT after this push.
 
 ---
 
+---
+
+## Phase 5A-UAT — Calculated Channel Waveform Preview (2026-08-21)
+
+### Scope
+
+Owner-requested addition: a lightweight **Waveform Preview** panel on
+the Calculated Channels page, sitting below the existing Calculated
+Channels manager list -- explicitly NOT the full Waveform workspace,
+only a simple preview chart using native Plotly interaction tools. No
+new decision entry -- a straightforward extension, documented as an
+"Update" note on DEC-047 (see below).
+
+### Design approach
+
+Every authority the preview depends on is one DEC-047 already
+established -- nothing new was introduced:
+
+- **Visibility**: `wwIsAnalogChannelVisible(sourceId, channelName)`
+  reading `ww.displayed` -- the SAME single authority the manager
+  list's own eye icon and the Waveform sidebar group already share. No
+  second, conflicting visibility state.
+- **Data**: the existing `GET .../calculated-channels/{id}/waveform`
+  endpoint (already built by Phase 5A) -- no new backend work at all.
+  Plotted values/times come directly from that authoritative response,
+  never re-derived from Plotly's own trace objects.
+- **Color**: the existing `wwColorForChannel()` -- visually consistent
+  with the main Waveform page's own channel colors.
+- **Theme**: the existing `wwThemeColors()`.
+
+A completely standalone Plotly instance (`#wwCcPreviewChart`) -- never
+added to `ww.panels`, never touching `ww.viewport`/layout mode/A-B
+cursor state/annotations. Native Plotly modebar/pan/zoom only
+(`displayModeBar: true`, explicit rather than a bare omission -- the
+opposite of the main panels' own `displayModeBar: false` convention,
+since Powerwave's centralized toolbar deliberately does not extend to
+this preview). No custom Powerwave toolbar of any kind.
+
+### Rendering strategy
+
+Full rebuild on every change: refetch data for every currently-visible
+calculated channel, then `Plotly.newPlot()` on first render /
+`Plotly.react()` on every subsequent one -- rather than incremental
+trace add/remove diffing. Simpler and adequately efficient for a
+small-channel-count Phase 1 preview, matching the task's own "do not
+overengineer caching unless necessary" instruction. Guarded by a
+monotonic generation counter (the same stale-response idiom already
+used by `wwCursorValuesGeneration`/`wwPeakValuesGeneration`/
+`ww.annotationPlacementGeneration`) so a rapid sequence of visibility
+toggles can never let an earlier fetch overwrite a later one.
+
+### Lifecycle wiring
+
+Called from the exact same 3 sites that already refresh the manager
+list -- `wwRenderCalculatedChannelsPage()` (page-open/post-creation/
+Start New Workspace), `wwToggleCalculatedChannelDisplay()` (visibility
+toggle), and `wwCcDeleteChannel()`'s success branch (delete) -- so the
+preview's own lifecycle (create/delete/toggle/Start New Workspace/Clear
+Workspace) exactly mirrors the manager list's own established behavior.
+No new rule invented for Clear Workspace: the plain "Clear workspace"
+button clears `ww.displayed` (same as every other channel) but
+preserves calculated-channel definitions, same established policy;
+"Start New Workspace" clears both, same as the manager list.
+
+### Page isolation
+
+Proactively avoided a FOURTH occurrence of the `[hidden]`-CSS-cascade
+bug this session had already hit three times (the annotation guidance
+ribbon, `#pageCalculatedChannels` page-stacking): the new
+`.ww-cc-preview-chart` CSS class deliberately declares NO `display`
+property at all -- matching `.empty-state`/`.ww-cc-panel`'s own existing
+safe pattern already used elsewhere on this same page -- so there is
+nothing in author CSS to override the UA stylesheet's own
+`[hidden] { display: none }` rule. If a future change ever needs to
+give this element an explicit `display` value, a matching
+`#wwCcPreviewChart[hidden] { display: none; }` override must be added
+in the same change.
+
+### Tests
+
+Extended `phase5a_check.mjs` with 14 new checks: panel placement below
+the manager list section with the correct default empty-state message;
+a newly created channel stays out of the preview until made visible
+(matches DEC-038's own default-hidden policy); visibility toggle both
+directions (shows/hides, purges the chart when it goes back to empty);
+delete removes a visible channel from the preview; multiple visible
+channels plotted together with distinct colors sourced from
+`wwColorForChannel()`; plotted `x`/`y` arrays match the authoritative
+calculated-channel array exactly (never re-derived from traces); native
+`displayModeBar: true` Plotly config; non-interference with the main
+Waveform page's own panel count/viewport (confirming the ONE expected,
+pre-existing side effect -- toggling visibility legitimately adds the
+channel to the shared `ww.panels` via the SAME reused authority -- while
+the pre-existing real channel's own panel stays undisturbed, never
+duplicated); a structural regression guard confirming
+`.ww-cc-preview-chart` still carries no `display` property and
+`#pageCalculatedChannels[hidden]` is still present; and Start New
+Workspace / plain Clear Workspace lifecycle behavior -- **44/44
+passing** in the file overall (32 prior unchanged). Full frontend suite
+reconfirmed at the true 33-failure baseline across the same 15
+pre-existing files (zero net new regressions). Backend untouched,
+519/519 passing (no backend files changed).
+
+### Decision
+
+No new decision. See the "Update" note appended to
+[DECISIONS.md — DEC-047](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations)
+(a straightforward extension of that decision's own implementation, not
+a new architectural decision).
+
+### Files changed
+
+`frontend/index.html` only -- new HTML section + CSS rule inside
+`#pageCalculatedChannels`, plus `wwCcPreview` state and its three
+helper functions (`wwCcPreviewVisibleChannels()`,
+`wwCcFetchPreviewWaveform()`, `wwCcRenderWaveformPreview()`), plus one
+trailing call added to each of the 3 existing lifecycle functions named
+above. No backend files touched.
+
+---
+
 ## Phase 5A UAT Fix — Page Navigation Isolation (2026-08-21)
 
 ### Scope

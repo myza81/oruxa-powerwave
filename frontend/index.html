@@ -848,6 +848,20 @@
         .ww-cc-list-row-controls { flex: 0 0 auto; display: flex; gap: 2px; }
         .ww-cc-list-row-error { flex-basis: 100%; color: var(--error); font-size: 0.75rem; margin-top: 4px; }
 
+        /* Phase 5A-UAT: the preview chart's own container. Deliberately
+           NO `display` property here -- height/sizing only -- so this
+           element's own `hidden` attribute is governed entirely by the
+           UA stylesheet's uncontested `[hidden] { display: none }` rule,
+           with nothing in author CSS to override it (the same
+           reasoning that already keeps .empty-state/#wwCcBuilderPanel's
+           own hidden-toggling correct elsewhere on this page -- see this
+           element's own HTML comment). If a future change ever needs to
+           give this element an explicit `display` value, a matching
+           `#wwCcPreviewChart[hidden] { display: none; }` override MUST be
+           added in the same change (see #pageCalculatedChannels[hidden]
+           above for why). */
+        .ww-cc-preview-chart { width: 100%; height: 320px; }
+
         /* Phase 3B-UAT3: a single shared reference for the app's compact/
            secondary button text size, instead of each compact button
            class declaring its own near-duplicate literal value
@@ -3177,6 +3191,27 @@
                 <section class="panel ww-cc-panel">
                     <h3>Calculated Channels <span class="count-badge" id="wwCcListCount">(0)</span></h3>
                     <div id="wwCcListBody"><p class="empty-state">No calculated channels yet.</p></div>
+                </section>
+
+                <!-- Phase 5A-UAT: a lightweight, STANDALONE waveform
+                     preview -- a completely separate Plotly instance from
+                     ww.panels/the main Waveform page (never wired into
+                     ww.viewport/layout mode/A-B cursors/annotations, per
+                     the task's own explicit isolation requirement).
+                     Visibility authority is the SAME ww.displayed Map the
+                     manager list's own eye icon and the main Waveform
+                     page already use -- no second, conflicting visible-
+                     state. Deliberately no `display` CSS property on
+                     either child below (see wwCcPreviewEmpty/
+                     wwCcPreviewChart's own CSS comment) -- the exact
+                     precedent that already keeps `.empty-state`/
+                     `#wwCcBuilderPanel`'s own `hidden` toggling bug-free
+                     elsewhere on this same page, avoiding a repeat of the
+                     [hidden]-cascade bug this page already had once. -->
+                <section class="panel ww-cc-panel">
+                    <h3>Waveform Preview</h3>
+                    <p class="empty-state" id="wwCcPreviewEmpty">No calculated channels selected for preview.</p>
+                    <div class="ww-cc-preview-chart" id="wwCcPreviewChart" hidden></div>
                 </section>
             </section>
 
@@ -10715,6 +10750,11 @@
                 builderPanel.hidden = true;
             }
             wwRenderCalculatedChannelManagerList();
+            // Phase 5A-UAT: covers page-open, post-creation, and Start New
+            // Workspace (the three call sites of this function) -- see
+            // wwCcRenderWaveformPreview()'s own comment for the other two
+            // (visibility toggle, delete).
+            wwCcRenderWaveformPreview();
         }
 
         // ------------------------------------------------------------------
@@ -10742,6 +10782,7 @@
             else wwAddSelectedChannels([wwCalculatedChannelMeta(calc)]);
             wwRenderCalculatedChannelsSidebarSection();
             wwRenderCalculatedChannelManagerList();
+            wwCcRenderWaveformPreview();
         }
 
         function wwRemoveCalculatedChannelDisplayIfShown(calculatedChannelId) {
@@ -10774,6 +10815,110 @@
             }
             html += '</tbody></table></div>';
             bodyEl.innerHTML = html;
+        }
+
+        // Phase 5A-UAT: Calculated Channels waveform preview -- a
+        // lightweight, STANDALONE Plotly chart living only on this page,
+        // never wired into ww.panels/ww.viewport/layout mode/A-B
+        // cursors/annotations (guardrail 3: never wire this into the main
+        // Waveform page). Visibility authority is wwIsAnalogChannelVisible()
+        // -- the SAME ww.displayed-backed authority the sidebar section
+        // above and the main Waveform page already use for every analog
+        // channel, calculated or real -- so there is no second, conflicting
+        // visibility state (guardrail 2). Data authority is the existing
+        // Phase 5A GET .../calculated-channels/{id}/waveform endpoint --
+        // never recomputed from Plotly traces (requirement 5). Called from
+        // wwRenderCalculatedChannelsPage() (page-open / post-creation /
+        // Start New Workspace), wwToggleCalculatedChannelDisplay()
+        // (visibility toggle), and wwCcDeleteChannel() (delete).
+        const wwCcPreview = { ready: false, generation: 0 };
+
+        function wwCcPreviewVisibleChannels() {
+            return Array.from(ww.calculatedChannels.values()).filter((c) => wwIsAnalogChannelVisible(c.id, c.name));
+        }
+
+        async function wwCcFetchPreviewWaveform(calc) {
+            const url = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                "/calculated-channels/" + encodeURIComponent(calc.id) + "/waveform" +
+                "?point_budget=2000"; // fixed, simple budget -- a lightweight preview, not tied to a live panel width
+            let response;
+            try {
+                response = await fetch(url);
+            } catch (error) {
+                return null;
+            }
+            if (!response.ok) return null;
+            try {
+                return await response.json();
+            } catch (error) {
+                return null;
+            }
+        }
+
+        async function wwCcRenderWaveformPreview() {
+            const containerEl = document.getElementById("wwCcPreviewChart");
+            const emptyEl = document.getElementById("wwCcPreviewEmpty");
+            if (!containerEl) return; // not on this page's DOM yet -- safe no-op, mirrors wwRenderCalculatedChannelsPage()'s own guard
+
+            const visible = wwCcPreviewVisibleChannels();
+            if (visible.length === 0) {
+                if (wwCcPreview.ready && window.Plotly) Plotly.purge(containerEl);
+                wwCcPreview.ready = false;
+                containerEl.hidden = true;
+                if (emptyEl) emptyEl.hidden = false;
+                return;
+            }
+
+            // Stale-response guard -- same idiom as wwCursorValuesGeneration /
+            // wwPeakValuesGeneration / ww.annotationPlacementGeneration
+            // elsewhere in this file: a rapid sequence of visibility toggles
+            // can't let an earlier response overwrite a later one.
+            const generation = ++wwCcPreview.generation;
+            const bodies = await Promise.all(visible.map(wwCcFetchPreviewWaveform));
+            if (generation !== wwCcPreview.generation) return;
+
+            containerEl.hidden = false;
+            if (emptyEl) emptyEl.hidden = true;
+
+            const traces = [];
+            for (let i = 0; i < visible.length; i++) {
+                const body = bodies[i];
+                if (!body) continue;
+                traces.push({
+                    x: body.time,
+                    y: body.values,
+                    mode: "lines",
+                    type: "scatter",
+                    name: body.name + (body.unit ? " (" + body.unit + ")" : ""),
+                    line: { color: wwColorForChannel(visible[i].id, visible[i].name), width: 1.5 },
+                });
+            }
+
+            const colors = wwThemeColors();
+            const layout = {
+                margin: { t: 10, r: 10, b: 36, l: 50 },
+                xaxis: { title: "Time (s)" },
+                yaxis: { title: "" },
+                showlegend: true,
+                legend: { orientation: "h" },
+                autosize: true,
+                paper_bgcolor: colors.surface,
+                plot_bgcolor: colors.surface,
+                font: { color: colors.text },
+            };
+            // Native Plotly modebar/pan/zoom ONLY -- no custom Powerwave
+            // toolbar (requirement 3 / guardrail 4). Explicit true, not a
+            // bare omission, so this reads as intentional against the main
+            // panels' own displayModeBar: false precedent.
+            const config = { responsive: true, displayModeBar: true };
+
+            if (!window.Plotly) return;
+            if (!wwCcPreview.ready) {
+                Plotly.newPlot(containerEl, traces, layout, config);
+                wwCcPreview.ready = true;
+            } else {
+                Plotly.react(containerEl, traces, layout, config);
+            }
         }
 
         // ------------------------------------------------------------------
@@ -10888,6 +11033,7 @@
                 wwRemoveCalculatedChannelDisplayIfShown(calculatedChannelId);
                 wwRenderCalculatedChannelsSidebarSection();
                 wwRenderCalculatedChannelManagerList();
+                wwCcRenderWaveformPreview();
                 return;
             }
             let body = null;

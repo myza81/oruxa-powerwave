@@ -5109,6 +5109,62 @@ input list) survives a round trip through Waveform and back —
 frontend suite reconfirmed at the true 33-failure baseline; backend
 untouched, 519/519 unchanged.
 
+**Update (2026-08-21, same day, straightforward extension — no new
+decision entry)**: owner-requested addition of a lightweight **Waveform
+Preview** panel to the Calculated Channels page, sitting below the
+existing Calculated Channels manager list. Not a new architectural
+decision — every authority it depends on is one already established by
+this same DEC-047: **visibility** is `wwIsAnalogChannelVisible(sourceId,
+channelName)` reading `ww.displayed` — the SAME single authority the
+manager list's own eye icon and the Waveform sidebar group already
+share (no second, conflicting visibility state introduced); **data** is
+the existing `GET .../calculated-channels/{id}/waveform` endpoint (no
+new backend work — the full-resolution-or-reduced pipeline this phase
+already built was already sufficient); **color** is the existing
+`wwColorForChannel()` (visually consistent with the main Waveform
+page); **theme** is the existing `wwThemeColors()`. A completely
+standalone Plotly instance (`#wwCcPreviewChart`) — never added to
+`ww.panels`, never touching `ww.viewport`/layout mode/A-B cursor state/
+annotations — with native Plotly modebar/pan/zoom only
+(`displayModeBar: true`, explicit rather than a bare omission, the
+opposite of the main panels' own `displayModeBar: false` convention,
+since Powerwave's own centralized toolbar deliberately does not extend
+to this preview). Rendering strategy is a full rebuild on every change
+(refetch all currently-visible calculated channels, `Plotly.newPlot()`
+on first render / `Plotly.react()` after) rather than incremental trace
+diffing — simpler and adequately efficient for a small-channel-count
+Phase 1 preview, matching the task's own "do not overengineer caching
+unless necessary" instruction — guarded by a monotonic generation
+counter (the same stale-response idiom already used by
+`wwCursorValuesGeneration`/`wwPeakValuesGeneration`/
+`ww.annotationPlacementGeneration`) so a rapid sequence of visibility
+toggles can never let an earlier fetch overwrite a later one. Called
+from the exact same 3 sites that already refresh the manager list
+(`wwRenderCalculatedChannelsPage()` — page-open/post-creation/Start New
+Workspace; `wwToggleCalculatedChannelDisplay()`; `wwCcDeleteChannel()`'s
+success branch) — so its own lifecycle (create/delete/toggle/Start New
+Workspace/Clear Workspace) exactly mirrors the manager list's own
+established behavior with no new rule invented. Proactively avoided a
+FOURTH occurrence of the `[hidden]`-CSS-cascade bug this session had
+already hit three times (guidance ribbon, `#pageCalculatedChannels`
+page-stacking): the new `.ww-cc-preview-chart` CSS class deliberately
+declares no `display` property at all (matching `.empty-state`/
+`.ww-cc-panel`'s own existing safe pattern elsewhere on this same page),
+so there is nothing in author CSS to override the UA stylesheet's own
+`[hidden] { display: none }` rule. Extended `phase5a_check.mjs` with 14
+new checks covering panel placement, default-hidden-on-creation
+(reusing DEC-038), visibility toggle both directions, delete, multiple
+channels with distinct colors sourced from the real authoritative
+calculated-channel arrays (never re-derived from Plotly traces), native
+`displayModeBar: true` config, non-interference with the main Waveform
+page's own panels/viewport, page-navigation isolation (including a
+structural regression guard that `.ww-cc-preview-chart` still carries no
+`display` property), and Start New Workspace / plain Clear Workspace
+lifecycle behavior — **44/44 passing** in the file overall (32 prior
+unchanged). Full frontend suite reconfirmed at the true 33-failure
+baseline; backend untouched, 519/519 unchanged. See
+[MIGRATION_PLAN.md — Phase 5A-UAT](MIGRATION_PLAN.md#phase-5a-uat--calculated-channel-waveform-preview-2026-08-21).
+
 ---
 
 ## How to add a decision

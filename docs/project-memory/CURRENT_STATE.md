@@ -4,8 +4,9 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-21** (Phase 5A UAT Fix — Page
-Navigation Isolation, on top of Phase 5A — Calculated Channels /
+Last meaningful update: **2026-08-21** (Phase 5A-UAT — Calculated
+Channel Waveform Preview, on top of Phase 5A UAT Fix — Page
+Navigation Isolation, Phase 5A — Calculated Channels /
 Basic Signal Builder, Phase 4G-UAT Bug Fix — Guidance
 Dismissal, Phase 4G-UAT — Persistent Annotation Placement
 Guidance Ribbon, Phase 4G — Dynamic Maximum/Minimum Peak Annotation,
@@ -101,11 +102,30 @@ hidden — the SAME CSS-cascade bug class as the guidance-ribbon fix
 rule by origin alone; `shellSetCurrentPage()` itself was already
 correctly toggling `.hidden`). Fixed with
 `#pageCalculatedChannels[hidden] { display: none; }`, the same pattern
-`#pageRecordings`/`#workspaceRow` already use. See
+`#pageRecordings`/`#workspaceRow` already use. **Waveform Preview
+(2026-08-21, same day, straightforward extension)**: a lightweight
+**Waveform Preview** panel now sits below the manager list on the same
+page -- a completely standalone Plotly instance
+(`#wwCcPreviewChart`), never added to `ww.panels`/`ww.viewport`/layout
+mode/A-B cursors/annotations, with native Plotly modebar/pan/zoom only
+(no custom Powerwave toolbar). Reuses every existing DEC-047 authority
+rather than introducing anything new: visibility is
+`wwIsAnalogChannelVisible()` (the SAME `ww.displayed`-backed authority
+the manager list's own eye icon and the Waveform sidebar group already
+share), data is the existing `GET .../calculated-channels/{id}/waveform`
+endpoint (no new backend work), color is `wwColorForChannel()`, theme is
+`wwThemeColors()`. Wired into the same 3 lifecycle call sites that
+already refresh the manager list, so create/delete/toggle/Start New
+Workspace/Clear Workspace all behave identically to the manager list's
+own established behavior -- no new rule invented. The new
+`.ww-cc-preview-chart` CSS class deliberately declares no `display`
+property (proactively avoiding a fourth occurrence of the
+`[hidden]`-cascade bug this session already hit three times). See
 [DECISIONS.md — DEC-047](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations)
-(including its 2026-08-21 Update note) and
+(including both its 2026-08-21 Update notes) and
 [MIGRATION_PLAN.md — Phase 5A](MIGRATION_PLAN.md#phase-5a--calculated-channels--basic-signal-builder-2026-08-21)
-/ [Phase 5A UAT Fix](MIGRATION_PLAN.md#phase-5a-uat-fix--page-navigation-isolation-2026-08-21).
+/ [Phase 5A UAT Fix](MIGRATION_PLAN.md#phase-5a-uat-fix--page-navigation-isolation-2026-08-21)
+/ [Phase 5A-UAT — Waveform Preview](MIGRATION_PLAN.md#phase-5a-uat--calculated-channel-waveform-preview-2026-08-21).
 
 `[DECISION]` **Dynamic Maximum/Minimum Peak Annotation — DEC-046**
 (2026-08-21; **persistent placement guidance ribbon, addendum,
