@@ -8650,6 +8650,259 @@ owner UAT after this push.
 
 ---
 
+## Phase 5A — Calculated Channels / Basic Signal Builder (2026-08-21)
+
+### Scope
+
+Owner-approved direction: Oruxa Powerwave's first mathematical signal-
+derivation system, NOT an annotation tool -- a new main-sidebar page
+below Table, both a Signal Builder and a Calculated Channel Manager.
+Phase 1 supports exactly five basic arithmetic operations (Reverse
+Polarity, Absolute Value, Multiply by Constant, N-input Addition,
+ordered N-input Subtraction); RMS and every advanced calculation are
+explicitly deferred.
+
+### Navigation
+
+A new enabled main-sidebar item, `Calculated Channels`, immediately
+below `Table`. Uses the SAME `shellSetCurrentPage()` "hide, don't
+destroy" mechanism Waveform/Recordings already established -- navigating
+away and back never loses builder state, refetches the registry, or
+disturbs waveform state (viewport/displayed channels/layout mode all
+verified unchanged across a round trip).
+
+### Signal Builder
+
+One page: operation cards (five, no RMS) -> a dynamic configuration
+panel (fields shown depend on the selected operation's own arity) ->
+Signal Name/Unit -> Create. Never a formula text parser (section 74) --
+structured operation forms only.
+
+### Supported operations
+
+Reverse Polarity (`y=-x`), Absolute Value (`y=|x|`), Multiply by
+Constant (`y=k*x`, dimensionless `k`, output unit unchanged), N-input
+Addition (`y=x1+x2+...+xN`), ordered N-input Subtraction
+(`y=x1-x2-...-xN`, explicitly left-associative).
+
+### N-input model
+
+Addition/Subtraction take an ORDERED LIST of 2-or-more inputs -- never a
+hard-coded 2-channel model. Add/remove/reorder (up/down) controls;
+duplicate inputs explicitly allowed (`A+A` valid, never silently
+deduplicated, section 41).
+
+### Ordered subtraction
+
+Input order is preserved end to end -- builder state, expression
+preview, and the stored definition's own `inputs` array all agree.
+Reordering (verified: A-B-C -> A-C-B) updates the preview immediately
+and the eventual created channel's own `inputs` order matches exactly.
+
+### Full-resolution authority
+
+Every operation evaluates against `active.record.waveform_data`
+directly (never Plotly trace arrays / the reduced display envelope).
+Eager evaluation at creation (section 46) -- computed once, retained
+server-side in a new workspace-scoped `CalculatedChannelRegistry`
+(mirrors `WorkspaceRegistry`'s own shape/locking policy), never
+re-evaluated on a later request. `_clip_and_reduce()`/`_peak_in_range()`
+were extracted from `waveform_service.py`'s own existing source-channel
+functions into shared, pure, array-level helpers -- reused by BOTH the
+existing source-channel endpoints (verified zero behavior change via the
+full pre-existing backend suite before any new test was added) and the
+new calculated-channel service, so there is exactly one reduction
+algorithm and one peak-search algorithm in the codebase.
+
+### Compatibility rules (the owner's own explicit time-alignment guardrail)
+
+Same-source channels are provably aligned WITHOUT array comparison --
+verified directly against the actual domain model: one
+`DisturbanceRecord` has exactly one shared `waveform_data["time"]`
+pandas column for every one of its analog channels. Different-source
+channels are rejected UNLESS their true ABSOLUTE instants
+(`source.start_time + elapsed`, not raw elapsed arrays -- two
+independently-triggered recordings can trivially share identical
+elapsed arrays without representing the same physical instant) are
+proven identical within a deliberately tight `1e-9` second tolerance.
+Equal sample count or equal sampling rate alone are explicitly
+insufficient. No interpolation/resampling/time-shifting/crop-to-overlap
+is ever performed -- an unproven pair is rejected outright with a plain-
+language message. Units: multi-input operands' unit strings must be
+identical (no dimensional conversion layer); all-missing allowed
+(blank output unit), mixed known/missing rejected.
+
+### Calculated channel model
+
+`ChannelRef {kind: "source"|"calculated", source_id?, channel_name?,
+calculated_channel_id?}` -- one structured reference type, reused for
+builder inputs, stored dependencies, and resolution. `CalculatedChannel
+{id, workspace_id, name, unit, operation, inputs, parameters,
+dependency_ids, reference_source_id, time, values, created_at}` --
+`reference_source_id` is the real source that ultimately grounds a
+channel's own (inherited, never modified) time array, propagated
+transitively through arbitrarily deep calculated-from-calculated chains
+-- what lets both timebase-compatibility checking and source-removal
+cascade collapse to a simple identity/filter check rather than a graph
+walk.
+
+### Calculated-from-calculated
+
+Supported from Phase 1 (section 22): a calculated channel is selectable
+as input to a further calculation immediately, subject to the same
+compatibility rules. Verified: `Sum = A+B`, `Scaled = Sum*2`,
+`AbsScaled = abs(Scaled)` all produce correct full-resolution values.
+Explicit `dependency_ids` (direct only, never flattened) + a generic,
+independently-testable `would_create_cycle()` reachability guard
+(structurally unreachable via the real one-shot creation API today --
+calculated channels are immutable and every dependency must already
+exist -- but implemented and tested against a hand-constructed graph as
+defense in depth per the task's own explicit instruction).
+
+### Waveform integration
+
+A calculated channel is treated as an analog-like PSEUDO-SOURCE channel
+everywhere in the existing rendering/layout/annotation machinery
+(section 53/58): its own server-generated id (`"calc-" + <hex>`) is used
+AS `sourceId`, its own name AS `channelName` -- so
+`wwAddSelectedChannels()`/`wwRemoveChannelByKey()`/`ww.displayed`/
+`ww.channelColors`/Grouped-Separate-Custom/the Annotation List's own
+`sourceId`+`channelName` fields all work COMPLETELY UNCHANGED, zero new
+branching. A new "Calculated Channels" group in the Workspace Sidebar
+(workspace-scoped, always rendered regardless of which source is
+selected) mirrors the analog channel row's own toggle convention.
+Default-hidden on creation (DEC-038, unchanged policy). ONE visibility
+authority (section 52): the manager's own eye icon and the sidebar row
+both read/write the SAME `ww.displayed` -- verified directly, toggling
+from either side updates the other.
+
+### A/B values
+
+New batched `POST .../calculated-channels/cursor-values` (workspace-
+scoped, mirrors `.../cursor-values`' own per-source batching shape),
+reusing `_nearest_sample_index()` directly. Verified: nearest full-
+resolution calculated sample, matching hand-computed expected values.
+
+### +Peak/-Peak
+
+New batched `POST .../calculated-channels/peak-values`, reusing
+`_peak_in_range()` directly -- same earliest-tie/non-finite-masking
+behaviour as source channels. Dynamic viewport recalculation (Phase 4G's
+own `wwRecalculateAllPeakAnnotations()`) already naturally covers
+calculated channels once `wwRecalculatePeakAnnotationsForSource()`'s own
+fetch dispatches correctly -- verified directly (peak value changes
+after a viewport change).
+
+### Callout
+
+Included THIS phase (the task's own "SHOULD" tier) -- a new
+`POST .../calculated-channels/{id}/annotation-anchor`, reusing
+`_nearest_sample_index()` directly, extending the exact same dispatch
+pattern the other endpoints already needed. Turned out to be the same
+small increment as A/B and Peak, not a disproportionate refactor, so it
+was not deferred. Verified: Callout anchors to the correct calculated
+full-resolution sample.
+
+### Adaptive resolution
+
+Calculated-channel display range extraction reuses `_clip_and_reduce()`
+directly -- verified: a >10,000-sample calculated channel returns
+`min_max_envelope` for a broad view and `full_resolution` for a deep
+zoom, exactly the same threshold/behaviour as a source channel.
+
+### Delete/dependency lifecycle
+
+Immutable after creation (section 47, no edit-in-place). Delete is
+dependency-aware -- BLOCKED (never a silent cascade) while another
+calculated channel still depends on it, with a concise inline message
+naming the dependent(s) (verified directly: delete `Sum` while `Scaled`
+depends on it is rejected; delete succeeds once `Scaled` is removed
+first).
+
+### Source removal
+
+Removing a source removes every calculated channel grounded on it,
+directly or transitively, via a flat `reference_source_id` filter (no
+graph walk) -- both backend (`DELETE .../sources/{id}` now cascades) and
+frontend (`performRemoveSource()` reconciles its own
+`ww.calculatedChannels` mirror + cleans up any now-invalid display
+state) verified directly.
+
+### Workspace lifecycle
+
+"Clear workspace" (display-only) preserves calculated-channel
+DEFINITIONS -- same established policy as every other workspace-scoped
+collection. "Start New Workspace" clears them completely through the
+SAME `DELETE /api/v1/workspaces/{id}` call already used for that purpose
+-- that endpoint's own pre-existing docstring had explicitly anticipated
+calculated channels as a future workspace-owned resource needing exactly
+this one lifecycle hook. Verified both directly.
+
+### Original recording immutability
+
+Verified directly: creating a calculated channel never mutates a
+source's own `waveform_data` array (DEC-009/DEC-015 preserved).
+
+### Performance/memory
+
+Eager evaluation means one array-transform pass per creation (O(n) in
+the largest input's own sample count for all five operations); N-input
+Addition/Subtraction is O(n*N), a single pass per input, never a
+per-sample nested loop. Calculated channels retain their own
+full-resolution arrays server-side for the life of the workspace
+(acceptable for Phase 1, same policy as `ActiveSource.record` already
+established) -- no premature disk persistence introduced.
+
+### The one deliberate structural shortcut (reported, not silent)
+
+Network-request dispatch (source endpoints vs. `/calculated-channels/...`)
+is one small helper, `wwIsCalculatedSourceId()`, checking a `"calc-"` id
+prefix -- chosen over threading a fully structured `ChannelRef` type
+through the ENTIRE existing frontend call graph, which section 58 of the
+task explicitly warned against as disproportionate for this phase.
+Confined to exactly the request-URL/shape dispatch points; the
+rendering/layout/state layer never needed to know the difference.
+
+### Scope trim (reported)
+
+The Signal Builder's input picker is scoped to `ww.channelMeta`
+(channels already brought into this workspace's Waveform this session)
+plus existing calculated channels, rather than eagerly fetching every
+channel of every imported source up front -- a deliberate, smallest-
+clean-abstraction Phase 1 choice (section 58).
+
+### Tests
+
+Backend: 3 new test files -- `test_calculated_channel_domain.py` (63
+pure-function tests: the 5 evaluation functions, unit compatibility, the
+full time-alignment guardrail matrix A-H from the owner's own follow-up
+message, cycle detection), `test_calculated_channel_service.py`
+(service-layer tests against synthetic `ActiveSource` fixtures --
+creation/validation/dependency-chains/delete-blocking/source-removal-
+cascade/immutability/display-cursor-peak-anchor pipelines),
+`test_calculated_channel_api.py` (20 end-to-end API tests via a real
+COMTRADE upload). **83 new backend tests, 519/519 passing overall**
+(436 previously existing, unmodified, confirmed via a pre-change
+baseline run before any new test was added). Frontend: new
+`phase5a_check.mjs`, **26/26 passing** -- navigation, operation cards,
+dynamic forms, N-input add/remove/reorder + expression preview,
+subtraction reordering, validation (arity/units/timebase), manager list,
+Waveform sidebar group + default-hidden + shared visibility authority,
+Grouped/Separate/Custom, A/B values, +Peak/-Peak dynamic recalculation,
+Callout, adaptive resolution, calculated-from-calculated dependencies,
+dependency-blocked delete, source-removal cascade, Start New Workspace/
+Clear Workspace lifecycle, and original-source immutability. One
+pre-existing `phase3buat8_check.mjs` assertion (enabled main-sidebar
+item list) updated in place to include the new nav item -- the expected
+consequence of this phase's own navigation requirement, not a
+regression (same precedent as Phase 4G's own menu-count update). Full
+frontend suite reconfirmed at exactly the true 33-failure baseline
+across the same pre-existing files (zero net new regressions).
+
+### Decision
+
+See [DECISIONS.md — DEC-047](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations).
+
 ## Phase 4G-UAT Bug Fix — Guidance Dismissal (2026-08-21)
 
 ### Scope

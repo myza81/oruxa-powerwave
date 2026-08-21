@@ -8,6 +8,125 @@ Last updated: **2026-08-21**
 
 ## What was most recently done
 
+**Phase 5A — Calculated Channels / Basic Signal Builder (DEC-047).**
+Owner-approved direction: Oruxa Powerwave's first mathematical signal-
+derivation system, NOT an annotation tool -- a new main-sidebar page
+(`Calculated Channels`, immediately below `Table`), both a Signal
+Builder and a Calculated Channel Manager on one page. Full detail:
+[DECISIONS.md — DEC-047](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations).
+
+**Five basic operations only** (no RMS, not even a disabled card):
+Reverse Polarity (`y=-x`), Absolute Value (`y=|x|`), Multiply by
+Constant (`y=k*x`, dimensionless `k`), N-input Addition
+(`y=x1+x2+...+xN`, 2+ inputs, never hard-coded to 2), and ordered
+N-input Subtraction (`y=x1-x2-...-xN`, explicitly left-associative,
+order preserved end to end via add/remove/up-down-reorder controls).
+Duplicate inputs explicitly allowed (`A+A` valid, never deduplicated).
+
+**Full-resolution authority, eager evaluation**: every operation
+evaluates against `active.record.waveform_data` directly (or another
+calculated channel's own already-evaluated result), ONCE at creation --
+retained server-side in a new workspace-scoped
+`CalculatedChannelRegistry` (mirrors `WorkspaceRegistry`'s own shape/
+locking policy), never re-evaluated later, never touching Plotly trace
+arrays or the reduced display envelope. `_clip_and_reduce()`/
+`_peak_in_range()` were extracted from `waveform_service.py`'s own
+EXISTING source-channel functions into shared pure array-level helpers
+-- reused by both the pre-existing source-channel endpoints (verified
+zero behavior change via the full backend suite before any new test was
+added) and the new calculated-channel service, so there is exactly ONE
+reduction algorithm and ONE peak-search algorithm in the codebase.
+
+**The owner's own explicit time-alignment guardrail is a hard
+engineering rule** (a mid-turn correction that meaningfully tightened
+the original "compatible time base" wording): multi-input operations
+require every operand to be PROVEN to share the same authoritative
+synchronized sample-time axis -- same-source channels are provably
+aligned WITHOUT array comparison (verified directly: one
+`DisturbanceRecord` has exactly one shared `waveform_data["time"]`
+column per source, no per-channel time array exists anywhere in this
+codebase's model); different-source channels are rejected UNLESS their
+TRUE ABSOLUTE instants (`source.start_time + elapsed`, never raw
+elapsed arrays -- two independently-triggered recordings can trivially
+share identical elapsed arrays without representing the same physical
+instant) are proven identical within a deliberately tight `1e-9`-second
+tolerance. Equal sample count/sampling rate ALONE are explicitly
+insufficient. No interpolation/resampling/time-shifting/crop-to-overlap
+is ever performed -- an unproven pair is rejected outright.
+
+**Calculated-from-calculated is supported from Phase 1**: verified
+`Sum=A+B`, `Scaled=Sum*2`, `AbsScaled=abs(Scaled)` all produce correct
+full-resolution values. Every calculated channel carries a
+`reference_source_id` (propagated transitively) that lets BOTH
+timebase-compatibility checking AND source-removal cascade collapse to
+a simple identity/filter check, never a graph walk. Explicit
+`dependency_ids` + a generic, independently-testable
+`would_create_cycle()` reachability guard (structurally unreachable via
+the real immutable, one-shot creation API today, but implemented and
+tested against a hand-constructed graph as defense in depth, per the
+task's own explicit instruction).
+
+**Treated as an analog-like PSEUDO-SOURCE channel everywhere in the
+existing rendering/layout/annotation machinery** -- its own server-
+generated id (`"calc-" + <hex>`) is used AS `sourceId`, its own name AS
+`channelName`, so `wwAddSelectedChannels()`/`ww.displayed`/
+`ww.channelColors`/Grouped-Separate-Custom/the Annotation List's own
+`sourceId`+`channelName` fields all work COMPLETELY UNCHANGED, zero new
+branching. The ONE reported structural shortcut: `wwIsCalculatedSourceId()`,
+a single `"calc-"`-prefix dispatch helper at the small set of network-
+request call sites (waveform/cursor-values/peak-values/Callout) that
+route to a new `/calculated-channels/...` endpoint family -- chosen over
+threading a fully generic `ChannelRef` type through the ENTIRE existing
+frontend call graph, which the task's own section 58 explicitly warned
+against as disproportionate refactor scope. A/B cursor values, +Peak/
+-Peak (full dynamic viewport recalculation reused unmodified), and
+Callout (the task's own "SHOULD" tier -- included, not deferred, since
+it required the same small increment as the others) all verified
+working identically to a real source channel; adaptive resolution
+verified (min_max_envelope for a >10,000-sample broad view,
+full_resolution on deep zoom).
+
+**Lifecycle**: default-hidden on creation (DEC-038, unchanged).
+Immutable after creation (create another rather than editing); delete
+is dependency-aware (BLOCKED, never silent cascade, with a message
+naming the dependent(s)). Source removal cascades transitively (a flat
+`reference_source_id` filter, both backend and frontend verified). Plain
+"Clear workspace" preserves calculated-channel DEFINITIONS
+(display-only, same established policy as every other workspace-scoped
+collection); "Start New Workspace" clears them completely through the
+SAME `DELETE /api/v1/workspaces/{id}` call already used for that purpose
+(anticipated by that endpoint's own pre-existing docstring -- "any
+future workspace-owned resource... has one lifecycle hook to plug
+into"). No permanent database/cloud persistence. Original recording
+immutability verified directly (creating a calculated channel never
+mutates a source's own `waveform_data`).
+
+**Tests**: backend -- 3 new test files, **83 new tests, 519/519 passing
+overall** (436 previously existing, unmodified, confirmed via a
+pre-change baseline run before any new test was added):
+`test_calculated_channel_domain.py` (63 pure-function tests including
+the full time-alignment guardrail matrix A-H from the owner's own
+follow-up message), `test_calculated_channel_service.py` (service-layer
+tests against synthetic fixtures), `test_calculated_channel_api.py` (20
+end-to-end API tests via a real COMTRADE upload). Frontend -- new
+`phase5a_check.mjs`, **26/26 passing** (navigation, operations, dynamic
+forms, N-input add/remove/reorder + expression preview, subtraction
+reordering, validation, manager list, Waveform sidebar group +
+default-hidden + shared visibility authority, Grouped/Separate/Custom,
+A/B values, +Peak/-Peak, Callout, adaptive resolution,
+calculated-from-calculated, dependency-blocked delete, source-removal
+cascade, workspace lifecycle, original-source immutability). One
+pre-existing `phase3buat8_check.mjs` assertion (enabled main-sidebar
+item list) updated in place -- the expected consequence of the new nav
+item, not a regression (same precedent as Phase 4G's own menu-count
+update). Full frontend suite reconfirmed at exactly the true
+33-failure baseline (zero net new regressions).
+
+**Not yet done**: commit/push, CI/automatic DEV deployment verification,
+and owner UAT of this phase specifically.
+
+## What was done in the prior session (Phase 4G-UAT Bug Fix — Guidance Dismissal)
+
 **Phase 4G-UAT Bug Fix — Guidance Dismissal.** Owner UAT on the ribbon
 below found two symptoms: it did not disappear after a successful
 +Peak/-Peak creation, and separately, Escape did not dismiss it either.

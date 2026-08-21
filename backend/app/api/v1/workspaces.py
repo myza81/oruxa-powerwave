@@ -19,6 +19,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.schemas.source import ErrorOut
+from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.workspace_registry import WorkspaceRegistry
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
@@ -26,6 +27,10 @@ router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
 
 def get_workspace_registry(request: Request) -> WorkspaceRegistry:
     return request.app.state.workspace_registry
+
+
+def get_calculated_channel_registry(request: Request) -> CalculatedChannelRegistry:
+    return request.app.state.calculated_channel_registry
 
 
 def _validate_workspace_id(workspace_id: str) -> str:
@@ -44,6 +49,7 @@ def _validate_workspace_id(workspace_id: str) -> str:
 def delete_workspace(
     workspace_id: str,
     registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
 ) -> None:
     """Release every source this workspace owns.
 
@@ -53,6 +59,12 @@ def delete_workspace(
     uploaded under it), so there is no meaningful "workspace not found"
     error to raise here. Deleting nothing is a successful no-op, matching
     standard idempotent-DELETE semantics.
+
+    Phase 5A (DEC-047, section 66): this is the "one lifecycle hook to
+    plug into" this module's own docstring already anticipated -- Start
+    New Workspace also releases every calculated channel this workspace
+    owns, via the same idempotent pattern.
     """
     workspace_id = _validate_workspace_id(workspace_id)
     registry.remove_workspace(workspace_id)
+    calc_registry.remove_workspace(workspace_id)

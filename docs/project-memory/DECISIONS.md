@@ -4820,6 +4820,260 @@ busy-flag invariants, and Text Note/Callout Escape regressions) —
 **66/66 passing** in the file overall. Full frontend suite reconfirmed at
 the true 33-failure baseline; backend untouched, 436/436 unchanged.
 
+## DEC-047 — Calculated Channels are workspace-scoped derived analog channels from authoritative full-resolution inputs, requiring proven synchronized sample-time alignment for multi-input operations
+
+Date: 2026-08-21
+Status: Approved
+Source: explicit owner-approved direction for Phase 5A ("Calculated
+Channels / Basic Signal Builder"), tightened mid-implementation by an
+explicit owner time-alignment guardrail message.
+
+Decision:
+
+Oruxa Powerwave's first mathematical signal-derivation system — NOT an
+annotation tool. A new main-sidebar page, "Calculated Channels" (placed
+immediately below Table), is both a Signal Builder and a Calculated
+Channel Manager on one page:
+
+> Calculated Channels are workspace-scoped derived analog channels
+> generated from authoritative full-resolution analog/calculated inputs.
+> Phase 5A supports Reverse Polarity, Absolute Value, Multiply by
+> Constant, N-input Addition, and ordered N-input Subtraction.
+> Multi-input operations require compatible units and a compatible
+> authoritative time base; no interpolation/resampling is performed.
+> Calculated channels may depend on other calculated channels, with
+> explicit dependency tracking and cycle prevention. Original recording
+> data remains immutable.
+
+> Multi-input calculated channels are permitted only when every operand
+> is proven to share the same authoritative synchronized sample-time
+> axis. Equal sample count, equal sampling rate, or visual overlap alone
+> are insufficient. Phase 5A does not interpolate, resample, time-shift,
+> crop-to-overlap, or otherwise align incompatible inputs.
+
+- **Five basic operations only** (section 6/71/72): Reverse Polarity
+  (`y = -x`), Absolute Value (`y = |x|`), Multiply by Constant
+  (`y = k*x`, `k` dimensionless — output unit unchanged), N-input
+  Addition (`y = x1+x2+...+xN`, `N>=2`), and ordered N-input Subtraction
+  (`y = x1-x2-...-xN`, `N>=2`, explicitly left-associative, order
+  preserved end to end). RMS, sequence/power/frequency/impedance/
+  differential/protection calculations, min/max-across-channels,
+  derivative/integration/filtering, and a free-form formula parser are
+  ALL explicitly out of scope this phase — not even a disabled RMS card
+  is shown.
+- **Generic operation-descriptor architecture, never hard-coded to
+  "Channel A/Channel B"** (section 7/8): unary operations take exactly 1
+  input; Addition/Subtraction take 2-or-more ORDERED inputs (an explicit
+  list with add/remove/reorder controls, never an arbitrary 2-channel
+  model). Duplicate inputs are explicitly allowed (`A+A`/`A-A` are
+  mathematically valid, never silently deduplicated).
+- **Full-resolution authority, non-negotiable** (section 15/48/49): every
+  operation evaluates against `active.record.waveform_data` directly (or
+  another calculated channel's own already-evaluated full-resolution
+  result) — never Plotly trace arrays, the `min_max_envelope` display
+  representation, or any other reduced/browser-rendered samples. Eager
+  evaluation at creation time (section 46) — computed ONCE, retained
+  server-side in a workspace-scoped in-memory registry exactly like
+  `ActiveSource.record` retains a source's own arrays; never
+  re-evaluated on a later waveform/cursor/peak/annotation-anchor
+  request.
+- **The owner's explicit time-alignment guardrail is a hard engineering
+  rule, tightened mid-implementation**: same-source channels are
+  provably aligned WITHOUT array comparison (verified directly against
+  the actual domain model: one `DisturbanceRecord` has exactly one
+  shared `waveform_data["time"]` pandas column for every one of its
+  analog channels — no per-channel time array exists anywhere in this
+  codebase's source model). Different-source channels are rejected
+  UNLESS their true ABSOLUTE instants (`source.start_time + elapsed`, not
+  raw elapsed arrays, which two independently-triggered recordings could
+  trivially share by coincidence) are proven identical within a
+  deliberately tight tolerance (`1e-9` seconds — sub-microsecond, far
+  tighter than any realistic sample spacing). Equal sample count or
+  equal nominal sampling rate are explicitly, deliberately insufficient
+  and never used as a shortcut. No interpolation, resampling, time-
+  shifting, or crop-to-overlap is ever performed to make an otherwise-
+  incompatible pair usable — an unproven pair is rejected outright, with
+  a plain-language message ("These channels cannot be combined because
+  their sample times are not aligned.").
+- **Unit compatibility** (section 32/33): multi-input operands' unit
+  strings must be identical (no dimensional conversion layer exists or
+  is introduced) — all-missing is allowed (blank output unit); a mixture
+  of known and missing is rejected. Multiply-by-constant's `k` is always
+  dimensionless (section 29) — output unit is simply the input's own,
+  unchanged.
+- **Calculated-from-calculated is supported from Phase 1** (section 22):
+  a calculated channel may be selected as an input to a further
+  calculation immediately, subject to the SAME timebase/unit
+  compatibility rules. Every calculated channel carries a
+  `reference_source_id` — the real source that ultimately grounds its
+  own (inherited, never modified by any of the 5 operations) time array
+  — inherited transitively through arbitrarily deep chains, which is
+  what lets both timebase-compatibility checking AND source-removal
+  cascade collapse to a simple identity/filter check rather than a graph
+  walk at every call site.
+- **Explicit dependency tracking + cycle prevention** (section 23/24):
+  each calculated channel stores its own DIRECT `dependency_ids`
+  (never flattened away). A generic, independently-testable
+  `would_create_cycle()` reachability check guards every creation —
+  structurally unreachable via the real one-shot creation API today
+  (calculated channels are immutable after creation and every referenced
+  dependency must already exist before the new id is even minted), but
+  implemented as defense in depth per the task's own explicit
+  instruction, and unit-tested directly against a hand-constructed graph
+  since the real API cannot produce a genuine cycle to test against.
+- **Immutable after creation** (section 47): no edit-in-place this
+  phase — create another calculated channel for a different formula.
+  Delete is dependency-aware (section 25/63): BLOCKED, never a silent
+  cascade, while another calculated channel still depends on it, with a
+  concise message naming the dependent(s).
+- **Source removal cascades transitively** (section 64): removing a
+  source removes every calculated channel grounded on it, directly or
+  transitively, via the SAME `reference_source_id` filter described
+  above — no separate graph-walk implementation.
+- **Workspace/session-scoped only** (section 17/65/66): calculated
+  channels persist across Waveform &lt;-&gt; Calculated Channels &lt;-&gt;
+  Recordings navigation (same workspace, same "hide, don't destroy"
+  shell-page mechanism Waveform/Recordings already use — zero
+  destruction, zero refetch on ordinary navigation), across Grouped/
+  Separate/Custom, Absolute/Elapsed, and zoom/pan. The plain "Clear
+  workspace" button is display-only and preserves calculated-channel
+  DEFINITIONS (same established policy as every other workspace-scoped
+  collection). "Start New Workspace" clears them completely, backend and
+  frontend both, through the SAME `DELETE /api/v1/workspaces/{id}`
+  endpoint call already used for that purpose (that endpoint's own
+  existing docstring had explicitly anticipated calculated channels as a
+  future workspace-owned resource needing exactly this one lifecycle
+  hook). No permanent database/cloud persistence is introduced.
+- **Treated as analog-like PSEUDO-SOURCE channels everywhere in the
+  existing rendering/layout/annotation machinery** (section 53/57/58):
+  a calculated channel's own server-generated id (`"calc-" + <uuid
+  hex>`) is used AS `sourceId`, its own display name AS `channelName` --
+  so `wwAddSelectedChannels()`/`wwRemoveChannelByKey()`/`ww.displayed`/
+  `ww.channelColors`/Grouped-Separate-Custom/the Annotation List's own
+  `sourceId`+`channelName` fields all work COMPLETELY UNCHANGED, with
+  zero new branching in any of them (never a second, parallel
+  renderer). Waveform display, visibility (ONE authority — the manager's
+  own eye icon and the Waveform sidebar's own row both drive/read the
+  SAME `ww.displayed`), Grouped/Separate/Custom, and A/B cursor
+  values/+Peak/-Peak all work identically to a real source channel.
+  Default-hidden on creation (DEC-038's own existing policy, unchanged).
+  Callout is ALSO included this phase (the task's own "SHOULD" tier) —
+  extending the existing `/annotation-anchor` pattern to a calculated
+  channel turned out to require the SAME small increment as A/B and
+  Peak, not a disproportionate refactor, so it was not deferred.
+- **The one deliberate structural shortcut, reported per section 58's
+  own explicit instruction rather than silently taken**: dispatching a
+  network request to the calculated-channel endpoint family
+  (`/calculated-channels/...`) instead of the source endpoint family
+  (`/sources/{id}/...`) is done via ONE small helper,
+  `wwIsCalculatedSourceId(sourceId)`, checking the id's own
+  `"calc-"` prefix — a lighter-weight mechanism than introducing a fully
+  structured `ChannelRef` type (section 57's own suggestion) throughout
+  the ENTIRE existing frontend call graph, which section 58 explicitly
+  warned against as disproportionate ("do not turn Phase 5A into a
+  massive refactor of every existing analog API unless necessary").
+  Confined to exactly the request-URL/request-shape dispatch points
+  (waveform fetch, cursor-values fetch, peak-values fetch/recalculation,
+  Callout creation/anchor-move) — the rendering/layout/state layer never
+  needed to know the difference at all.
+- **The Signal Builder's own input picker is scoped to `ww.channelMeta`**
+  (channels the engineer has already brought into this workspace's
+  Waveform at least once this session) plus existing calculated channels
+  — a deliberate, reported Phase 1 scope trim (section 58) rather than
+  eagerly fetching every channel of every imported source up front.
+  After a first input is chosen for a multi-input operation, candidates
+  from a different `reference_source_id` are shown DISABLED (never
+  silently hidden) in the picker (section 13) — a client-side UX
+  shortcut only; the backend remains the sole compatibility authority
+  regardless of what the picker allows.
+
+Reason:
+
+The owner's own explicit requirement: calculated channels must be
+first-class, full-resolution-authoritative analog channels usable
+everywhere a real channel is (section 12), while never compromising the
+engineering-integrity guarantee that a calculation only ever combines
+samples that genuinely represent the same physical instant. Reusing the
+existing waveform/cursor/peak/annotation-anchor pipelines (never a
+parallel implementation) keeps this addition proportionate to the rest
+of the codebase's own established conventions.
+
+Alternatives considered:
+
+- **A fully structured `ChannelRef` type threaded through every existing
+  analog code path** (section 57's own suggestion) — rejected for THIS
+  phase per section 58's own explicit "do not turn this into a massive
+  refactor" instruction; the pseudo-source-id approach achieves the same
+  practical generality (calculated channels participate in every
+  existing analog tool unmodified) with a small, contained,
+  well-documented shortcut instead.
+- **Comparing raw elapsed-time arrays for cross-source alignment** —
+  rejected outright per the owner's own explicit correction: two
+  independently-triggered recordings can trivially share identical
+  elapsed arrays (e.g. both starting at `t=0` at the same rate) without
+  representing the same physical instants at all; only true ABSOLUTE
+  instants (`start_time + elapsed`) are compared.
+- **A loose/generous timing tolerance** — rejected; a `1e-9` second
+  tolerance absorbs only genuine floating-point representation noise,
+  never a real timing difference, per the owner's own explicit "do not
+  use a loose tolerance" instruction.
+- **Silently deduplicating a repeated input channel** (`A+A`) — rejected
+  per the task's own explicit instruction; mathematically valid,
+  reproducible, and the owner's own recommended default.
+- **Eagerly fetching every channel of every imported source for the
+  input picker** — rejected as disproportionate scope for Phase 1;
+  `ww.channelMeta` (already-known channels) is the smallest clean
+  abstraction that keeps the builder useful without a new "list every
+  channel in every source" subsystem.
+- **Cascading delete when a dependent exists** — rejected for Phase 1
+  per the task's own explicit preference; blocking is simpler and safer,
+  with a clear, actionable message.
+
+Impact:
+
+- Backend (new): `app/domain/calculated_channel.py` (`ChannelRef`,
+  `CalculatedChannel`, the five evaluation functions, `units_compatible`,
+  `timebases_aligned`, `would_create_cycle`), `app/services/
+  calculated_channel_registry.py` (workspace-scoped in-memory registry,
+  mirrors `WorkspaceRegistry`'s own shape), `app/services/
+  calculated_channel_service.py` (creation orchestration, delete,
+  source-removal cascade, display/cursor/peak/annotation-anchor
+  pipelines), `app/schemas/calculated_channel.py`, `app/api/v1/
+  calculated_channels.py` (new router,
+  `/api/v1/workspaces/{id}/calculated-channels...`).
+- Backend (modified): `app/services/waveform_service.py` (`_clip_and_reduce`/
+  `_peak_in_range` extracted as shared pure array-level helpers, reused
+  by BOTH the existing source-channel functions and the new calculated-
+  channel service — verified zero behavior change via the full existing
+  test suite before adding any new tests), `app/services/errors.py` (9
+  new error codes), `app/main.py` (new registry + router wiring),
+  `app/api/v1/workspaces.py` (`DELETE /workspaces/{id}` also clears the
+  calculated-channel registry), `app/api/v1/sources.py` (`DELETE
+  /sources/{id}` also cascades calculated-channel removal).
+- Frontend: `frontend/index.html` only — new main-sidebar nav item + page
+  (Signal Builder + Manager), new Workspace Sidebar "Calculated Channels"
+  group, `ww.calculatedChannels` metadata mirror, `wwIsCalculatedSourceId()`
+  dispatch at the waveform/cursor-values/peak-values/Callout-creation/
+  Callout-anchor-move network-call sites, `wwClearWorkspace()`/
+  `performRemoveSource()` lifecycle hooks. No changes to
+  `ww.displayed`/`ww.channelMeta`/`wwColorForChannel()`/
+  `wwAddSelectedChannels()`/`wwRemoveChannelByKey()`/panel/layout code —
+  all reused completely unmodified.
+- Does not change DEC-019 (full-resolution authority — extended, not
+  altered), DEC-038 (default-hidden — reused as-is), DEC-040/044/045/046
+  (A/B cursors, annotations, Callout, Peak — their own engineering rules
+  are unchanged; calculated channels simply became eligible inputs to
+  all of them), or DEC-015/009 (original-file/source immutability —
+  verified directly by test that creating a calculated channel never
+  mutates a source's own `waveform_data`).
+- Explicitly NOT implemented this phase: RMS (any variant), peak-to-peak,
+  a free-form formula editor, interpolation/resampling/cross-source
+  synchronization, sequence/power/frequency/impedance/differential/
+  protection calculations, permanent database/cloud persistence, editing
+  a calculated-channel definition after creation, and calculated-channel
+  export/import/templates.
+- See [MIGRATION_PLAN.md — Phase 5A](MIGRATION_PLAN.md#phase-5a--calculated-channels--basic-signal-builder-2026-08-21).
+
 ---
 
 ## How to add a decision

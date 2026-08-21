@@ -97,3 +97,75 @@ class ChannelNotDigitalError(ImportServiceError):
     """
 
     code = "channel_not_digital"
+
+
+# ---- Phase 5A: Calculated Channels (DEC-047) ----
+
+
+class CalculatedChannelNotFoundError(ImportServiceError):
+    """Requested calculated_channel_id does not exist in this workspace."""
+
+    code = "calculated_channel_not_found"
+
+
+class InvalidOperationArityError(ImportServiceError):
+    """Wrong number of inputs for the requested operation (section 7/8)."""
+
+    code = "invalid_operation_arity"
+
+
+class InvalidConstantError(ImportServiceError):
+    """Multiply-by-constant's own `constant` parameter is missing/non-finite (section 28/83)."""
+
+    code = "invalid_constant"
+
+
+class IncompatibleUnitError(ImportServiceError):
+    """Multi-input operation's operands do not share a compatible unit (section 32/33)."""
+
+    code = "incompatible_unit"
+
+
+class IncompatibleTimeBaseError(ImportServiceError):
+    """Multi-input operation's operands are not proven to share one authoritative
+    synchronized sample-time axis (section 19-21 of Phase 5A, tightened by the
+    owner's explicit time-alignment guardrail) -- never resolved via
+    interpolation/resampling/cropping, only accepted or rejected outright."""
+
+    code = "incompatible_time_base"
+
+
+class DuplicateCalculatedChannelNameError(ImportServiceError):
+    """A calculated channel with this display name already exists in the workspace (section 35)."""
+
+    code = "duplicate_calculated_channel_name"
+
+
+class InvalidCalculatedChannelNameError(ImportServiceError):
+    """Calculated-channel name is empty/whitespace-only/too long (section 35)."""
+
+    code = "invalid_calculated_channel_name"
+
+
+class CalculatedChannelHasDependentsError(ImportServiceError):
+    """Attempted to delete a calculated channel that another calculated
+    channel still depends on (section 25/63) -- deletion is blocked, never
+    a silent cascade, in Phase 5A."""
+
+    code = "calculated_channel_has_dependents"
+
+
+class CyclicDependencyError(ImportServiceError):
+    """A calculated channel's own dependency graph would contain a cycle
+    (section 24/85) -- structurally unreachable via the one-shot creation
+    API today (calculated channels are immutable and every referenced
+    dependency must already exist), but validated defensively anyway."""
+
+    code = "cyclic_dependency"
+
+
+class InvalidCalculatedOperationError(ImportServiceError):
+    """Requested operation is not one of the Phase 5A-supported operations
+    (e.g. RMS, explicitly deferred -- section 71)."""
+
+    code = "invalid_calculated_operation"

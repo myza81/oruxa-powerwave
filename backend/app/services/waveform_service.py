@@ -89,6 +89,59 @@ def _resolve_analog_channel(active: ActiveSource, channel_name: str) -> str:
     raise ChannelNotFoundError(f"No channel named '{channel_name}' on this source.")
 
 
+def _clip_and_reduce(
+    time_full: np.ndarray,
+    values_full: np.ndarray,
+    *,
+    start_time: float | None,
+    end_time: float | None,
+    point_budget: int,
+) -> tuple[float, float, int, str, np.ndarray, np.ndarray]:
+    """Pure array-level core of `extract_waveform_range` (Phase 5A extraction,
+    DEC-047): boundary-inclusive clip + adaptive-resolution reduction,
+    with no knowledge of WHOSE arrays these are -- a real source channel's,
+    or (Phase 5A) a calculated channel's full-resolution result. This is
+    the ONE place the full-resolution-threshold/min-max-envelope decision
+    is made; `extract_waveform_range` (below) and
+    `app.services.calculated_channel_service`'s own display-range
+    extraction both call this directly rather than each re-implementing
+    the clip+reduce decision (section 48/49 of the Phase 5A task: "reuse
+    the established waveform display pipeline... never build a completely
+    separate mechanism").
+
+    Returns `(effective_start, effective_end, original_sample_count,
+    representation, out_time, out_values)`.
+    """
+    effective_start = float(start_time) if start_time is not None else float(time_full[0])
+    effective_end = float(end_time) if end_time is not None else float(time_full[-1])
+
+    # Boundary-inclusive clip. searchsorted requires ascending order, which
+    # every COMTRADE record's "time" column satisfies by construction (see
+    # app.providers.comtrade) -- not re-validated here, consistent with
+    # this function trusting its own authoritative record, the same way
+    # app.domain.disturbance_record's own methods do.
+    lo = int(np.searchsorted(time_full, effective_start, side="left"))
+    hi = int(np.searchsorted(time_full, effective_end, side="right"))
+    clipped_time = time_full[lo:hi]
+    clipped_values = values_full[lo:hi]
+    original_sample_count = int(clipped_time.shape[0])
+
+    if original_sample_count == 0:
+        out_time = clipped_time
+        out_values = clipped_values
+        representation = REPRESENTATION_FULL_RESOLUTION
+    elif original_sample_count <= FULL_RESOLUTION_DISPLAY_THRESHOLD:
+        out_time = clipped_time
+        out_values = clipped_values
+        representation = REPRESENTATION_FULL_RESOLUTION
+    else:
+        reduction_budget = min(point_budget, FULL_RESOLUTION_DISPLAY_THRESHOLD)
+        out_time, out_values = build_min_max_envelope(clipped_time, clipped_values, reduction_budget)
+        representation = REPRESENTATION_MIN_MAX_ENVELOPE
+
+    return effective_start, effective_end, original_sample_count, representation, out_time, out_values
+
+
 def extract_waveform_range(
     active: ActiveSource,
     *,
@@ -138,32 +191,9 @@ def extract_waveform_range(
     time_full = waveform_data["time"].to_numpy()
     values_full = waveform_data[channel_name].to_numpy()
 
-    effective_start = float(start_time) if start_time is not None else float(time_full[0])
-    effective_end = float(end_time) if end_time is not None else float(time_full[-1])
-
-    # Boundary-inclusive clip. searchsorted requires ascending order, which
-    # every COMTRADE record's "time" column satisfies by construction (see
-    # app.providers.comtrade) -- not re-validated here, consistent with
-    # this function trusting its own authoritative record, the same way
-    # app.domain.disturbance_record's own methods do.
-    lo = int(np.searchsorted(time_full, effective_start, side="left"))
-    hi = int(np.searchsorted(time_full, effective_end, side="right"))
-    clipped_time = time_full[lo:hi]
-    clipped_values = values_full[lo:hi]
-    original_sample_count = int(clipped_time.shape[0])
-
-    if original_sample_count == 0:
-        out_time = clipped_time
-        out_values = clipped_values
-        representation = REPRESENTATION_FULL_RESOLUTION
-    elif original_sample_count <= FULL_RESOLUTION_DISPLAY_THRESHOLD:
-        out_time = clipped_time
-        out_values = clipped_values
-        representation = REPRESENTATION_FULL_RESOLUTION
-    else:
-        reduction_budget = min(point_budget, FULL_RESOLUTION_DISPLAY_THRESHOLD)
-        out_time, out_values = build_min_max_envelope(clipped_time, clipped_values, reduction_budget)
-        representation = REPRESENTATION_MIN_MAX_ENVELOPE
+    effective_start, effective_end, original_sample_count, representation, out_time, out_values = _clip_and_reduce(
+        time_full, values_full, start_time=start_time, end_time=end_time, point_budget=point_budget
+    )
 
     return WaveformRangeResult(
         source_id=active.metadata.source_id,
@@ -489,6 +519,43 @@ class PeakValueResult:
     unit: str | None
 
 
+def _peak_in_range(
+    time_full: np.ndarray,
+    values_full: np.ndarray,
+    *,
+    mode: str,
+    start_time: float,
+    end_time: float,
+) -> tuple[bool, int | None, float | None, float | None]:
+    """Pure array-level core of `resolve_peak_value` (Phase 5A extraction,
+    DEC-047): boundary-inclusive clip, non-finite masking, earliest-tie
+    argmax/argmin -- no knowledge of WHOSE arrays these are. Reused by
+    `resolve_peak_value` (below, source channels) AND
+    `app.services.calculated_channel_service`'s own calculated-channel
+    peak resolution, so there is exactly ONE peak-search implementation in
+    the codebase, never two that could silently drift apart.
+
+    Returns `(available, sample_index, elapsed_seconds, value)` --
+    `sample_index` indexes into the ORIGINAL (unclipped) `time_full`/
+    `values_full` arrays, matching `resolve_peak_value`'s own established
+    contract.
+    """
+    lo = int(np.searchsorted(time_full, start_time, side="left"))
+    hi = int(np.searchsorted(time_full, end_time, side="right"))
+    clipped_values = values_full[lo:hi]
+
+    finite_mask = np.isfinite(clipped_values)
+    if not np.any(finite_mask):
+        return False, None, None, None
+
+    finite_values = clipped_values[finite_mask]
+    finite_positions = np.nonzero(finite_mask)[0]
+    local_idx = int(np.argmax(finite_values)) if mode == PEAK_MODE_MAX else int(np.argmin(finite_values))
+    full_idx = lo + int(finite_positions[local_idx])
+
+    return True, full_idx, float(time_full[full_idx]), float(values_full[full_idx])
+
+
 def resolve_peak_value(
     active: ActiveSource,
     *,
@@ -543,36 +610,18 @@ def resolve_peak_value(
     time_full = waveform_data["time"].to_numpy()
     values_full = waveform_data[channel_name].to_numpy()
 
-    lo = int(np.searchsorted(time_full, start_time, side="left"))
-    hi = int(np.searchsorted(time_full, end_time, side="right"))
-    clipped_time = time_full[lo:hi]
-    clipped_values = values_full[lo:hi]
-
-    finite_mask = np.isfinite(clipped_values)
-    if not np.any(finite_mask):
-        return PeakValueResult(
-            channel_name=channel_name,
-            mode=mode,
-            available=False,
-            sample_index=None,
-            elapsed_seconds=None,
-            value=None,
-            unit=None,
-        )
-
-    finite_values = clipped_values[finite_mask]
-    finite_positions = np.nonzero(finite_mask)[0]
-    local_idx = int(np.argmax(finite_values)) if mode == PEAK_MODE_MAX else int(np.argmin(finite_values))
-    full_idx = lo + int(finite_positions[local_idx])
+    available, sample_index, elapsed_seconds, value = _peak_in_range(
+        time_full, values_full, mode=mode, start_time=start_time, end_time=end_time
+    )
 
     return PeakValueResult(
         channel_name=channel_name,
         mode=mode,
-        available=True,
-        sample_index=full_idx,
-        elapsed_seconds=float(time_full[full_idx]),
-        value=float(values_full[full_idx]),
-        unit=unit,
+        available=available,
+        sample_index=sample_index,
+        elapsed_seconds=elapsed_seconds,
+        value=value,
+        unit=unit if available else None,
     )
 
 

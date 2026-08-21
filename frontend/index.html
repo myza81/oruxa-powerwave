@@ -742,6 +742,94 @@
         .hint.warn { color: var(--warn); }
         .hint.error { color: var(--error); }
 
+        /* Phase 5A (DEC-047): Calculated Channels page. Reuses
+           section.panel/.recordings-header/.hint.error/.count-badge/
+           <label> unmodified -- only the page's own layout/operation-
+           card/list-row presentation is new here. */
+        #pageCalculatedChannels { display: flex; flex-direction: column; gap: 16px; padding: 20px 24px; overflow-y: auto; height: 100%; box-sizing: border-box; }
+        .ww-cc-subtitle { margin: -8px 0 0; color: var(--text-dim); font-size: 0.85rem; }
+        .ww-cc-panel { padding: 16px; }
+        .ww-cc-panel h3 { margin: 0 0 12px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
+
+        .ww-cc-operation-cards { display: flex; flex-wrap: wrap; gap: 10px; }
+        .ww-cc-operation-card {
+            flex: 1 1 160px;
+            min-width: 150px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 4px;
+            padding: 12px 14px;
+            background: var(--bg);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            color: var(--text);
+            cursor: pointer;
+            text-align: left;
+            font: inherit;
+        }
+        .ww-cc-operation-card:hover { border-color: var(--accent-dim); }
+        .ww-cc-operation-card[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-wash-soft); }
+        .ww-cc-operation-card-name { font-size: 0.85rem; font-weight: 600; }
+        .ww-cc-operation-card-arity { font-size: 0.72rem; color: var(--text-dim); }
+
+        .ww-cc-field { margin-top: 12px; }
+        .ww-cc-field span { display: block; margin-bottom: 4px; }
+        .ww-cc-field input {
+            width: 100%;
+            box-sizing: border-box;
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 7px 10px;
+            font-size: 0.85rem;
+            color: var(--text);
+        }
+        .ww-cc-field input:focus { outline: none; border-color: var(--accent-dim); }
+        .ww-cc-field input[readonly] { color: var(--text-dim); }
+
+        .ww-cc-expression-preview {
+            margin: 10px 0 0;
+            padding: 6px 10px;
+            border-radius: var(--radius);
+            background: var(--bg);
+            border: 1px solid var(--panel-border);
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            font-family: ui-monospace, "SF Mono", Consolas, monospace;
+        }
+
+        .ww-cc-input-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+        .ww-cc-input-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            background: var(--bg);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            font-size: 0.82rem;
+        }
+        .ww-cc-input-row-index { flex: 0 0 auto; color: var(--text-dim); min-width: 1.2em; }
+        .ww-cc-input-row-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ww-cc-input-row-controls { flex: 0 0 auto; display: flex; gap: 2px; }
+        .ww-cc-add-input-row { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+        .ww-cc-add-input-row select { flex: 1 1 auto; }
+
+        .ww-cc-list-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: var(--radius);
+        }
+        .ww-cc-list-row:hover { background: var(--hover-tint); }
+        .ww-cc-list-row-main { flex: 1 1 auto; min-width: 0; }
+        .ww-cc-list-row-name { font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+        .ww-cc-list-row-summary { font-size: 0.75rem; color: var(--text-dim); margin-top: 2px; }
+        .ww-cc-list-row-controls { flex: 0 0 auto; display: flex; gap: 2px; }
+        .ww-cc-list-row-error { flex-basis: 100%; color: var(--error); font-size: 0.75rem; margin-top: 4px; }
+
         /* Phase 3B-UAT3: a single shared reference for the app's compact/
            secondary button text size, instead of each compact button
            class declaring its own near-duplicate literal value
@@ -2458,6 +2546,18 @@
                     <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><rect x="2" y="3" width="14" height="12" rx="1"/><line x1="2" y1="8" x2="16" y2="8"/><line x1="7" y1="3" x2="7" y2="15"/></svg></span>
                     <span class="shell-nav-label">Table</span>
                 </button>
+                <!-- Phase 5A (DEC-047): Calculated Channels -- a
+                     mathematical signal-derivation system, NOT an
+                     annotation tool, placed immediately below Table per
+                     the owner's explicit direction. Same
+                     shellSetCurrentPage() "hide, don't destroy" mechanism
+                     Waveform/Recordings already use, so navigating away
+                     and back never loses builder state or refetches the
+                     calculated-channel registry. -->
+                <button type="button" class="shell-nav-item" id="mainNavCalculatedChannelsBtn" title="Calculated Channels">
+                    <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><path d="M3 3h5v5H3z"/><circle cx="13.5" cy="5.5" r="2.5"/><path d="M4.5 15 8 9M13.5 9v6M11 12h5"/></svg></span>
+                    <span class="shell-nav-label">Calculated Channels</span>
+                </button>
                 <button type="button" class="shell-nav-item" disabled title="Tools -- coming soon">
                     <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><circle cx="6" cy="6" r="3"/><line x1="8.1" y1="8.1" x2="15" y2="15"/></svg></span>
                     <span class="shell-nav-label">Tools</span>
@@ -2526,6 +2626,27 @@
                         <div id="channelsPanel">
                             <p class="empty-state">Select a recording from Recordings to see its channels here.</p>
                         </div>
+                    </section>
+
+                    <!-- Phase 5A (DEC-047): a dedicated, WORKSPACE-scoped
+                         group (section 50/52) -- unlike the Channels panel
+                         above (one selected source at a time), a
+                         calculated channel is not owned by any single
+                         source, so this section is always rendered
+                         regardless of which source is currently selected,
+                         populated from ww.calculatedChannels directly (see
+                         wwRenderCalculatedChannelsSidebarSection()). Reuses
+                         the EXACT same `channel-row--toggle`/aria-pressed
+                         row-as-button convention analogChannelRowAttrs()
+                         already established (section 52: ONE visibility
+                         authority, ww.displayed -- never a second
+                         calculated-only visible-state). Hidden entirely
+                         when there are no calculated channels yet (never
+                         an empty, always-visible section cluttering the
+                         sidebar). -->
+                    <section class="panel" id="calculatedChannelsSidebarSection" aria-labelledby="calculated-channels-sidebar-heading" hidden>
+                        <h2 id="calculated-channels-sidebar-heading">Calculated Channels</h2>
+                        <div id="calculatedChannelsSidebarBody"></div>
                     </section>
                     <!-- Phase 4E-UAT2 (owner UAT decision): Free Text Notes
                          are main-workspace-only -- the sidebar-owned
@@ -2990,6 +3111,55 @@
                     <p>No recordings loaded in this session.</p>
                     <button type="button" id="recordingsEmptyUploadBtn">Upload New</button>
                 </div>
+            </section>
+
+            <!-- Phase 5A (DEC-047): Calculated Channels -- a sibling of
+                 Workspace Row/Recordings, toggled via shellSetCurrentPage()
+                 exactly like them (same "hide, don't destroy" pattern --
+                 navigating away and back never loses builder state or
+                 refetches ww.calculatedChannels). Both a Signal Builder AND
+                 a Calculated Channel Manager on one page (section 4) --
+                 deliberately not split across two pages, and deliberately
+                 not folded into the Waveform sidebar (section 4's own
+                 explicit "do not put the entire builder inside the
+                 Waveform sidebar"). Hidden by default -- Recordings remains
+                 the fresh-entry page. -->
+            <section id="pageCalculatedChannels" aria-label="Calculated Channels" hidden>
+                <div class="recordings-header">
+                    <h2>Calculated Channels</h2>
+                </div>
+                <p class="ww-cc-subtitle">Create derived analog signals from available channels.</p>
+
+                <section class="panel ww-cc-panel">
+                    <h3>Basic Operations</h3>
+                    <!-- Section 6/36/37: ONLY the five Phase 5A-supported
+                         operations -- no RMS card, enabled or disabled
+                         (section 71's own explicit "do not even add an
+                         enabled RMS card"), no Sequence/Power/Frequency/
+                         Protection/Impedance/Differential placeholders. -->
+                    <div class="ww-cc-operation-cards" id="wwCcOperationCards" role="group" aria-label="Choose an operation"></div>
+                </section>
+
+                <section class="panel ww-cc-panel" id="wwCcBuilderPanel" hidden>
+                    <h3 id="wwCcBuilderTitle">Selected Operation</h3>
+                    <div id="wwCcBuilderFields"></div>
+                    <p class="ww-cc-expression-preview" id="wwCcExpressionPreview" hidden></p>
+                    <label class="ww-cc-field">
+                        <span>Signal Name</span>
+                        <input type="text" id="wwCcNameInput" maxlength="120" placeholder="Signal name" autocomplete="off">
+                    </label>
+                    <label class="ww-cc-field">
+                        <span>Unit</span>
+                        <input type="text" id="wwCcUnitDisplay" readonly tabindex="-1" placeholder="—">
+                    </label>
+                    <p class="hint error" id="wwCcError" hidden role="alert"></p>
+                    <button type="button" id="wwCcCreateBtn" disabled>Create Channel</button>
+                </section>
+
+                <section class="panel ww-cc-panel">
+                    <h3>Calculated Channels <span class="count-badge" id="wwCcListCount">(0)</span></h3>
+                    <div id="wwCcListBody"><p class="empty-state">No calculated channels yet.</p></div>
+                </section>
             </section>
 
             <!-- Bottom Status Bar (section 17/18): a sibling of
@@ -3460,12 +3630,17 @@
         // reads/writes `ww` directly -- see the App Shell section's own
         // header comment. ----
         function shellSetCurrentPage(page) {
-            if (page !== "waveform" && page !== "recordings") return;
+            // Phase 5A: a THIRD first-class page, "calculated-channels" --
+            // same "hide, don't destroy" mechanism as Waveform/Recordings
+            // (below), so navigating away and back never loses builder
+            // state/refetches the registry (section 89 of the task).
+            if (page !== "waveform" && page !== "recordings" && page !== "calculated-channels") return;
             const wasWaveform = shell.currentPage === "waveform";
             shell.currentPage = page;
 
             document.getElementById("workspaceRow").hidden = page !== "waveform";
             document.getElementById("pageRecordings").hidden = page !== "recordings";
+            document.getElementById("pageCalculatedChannels").hidden = page !== "calculated-channels";
             // Phase 3B-UAT8 fix: the active-state CSS rule
             // (`.shell-nav-item[aria-current="page"]`) always expected
             // the token "page" (the ARIA APG convention for a current
@@ -3478,6 +3653,7 @@
             // convention -- not aria-current="false").
             setShellNavCurrent("mainNavWaveformBtn", page === "waveform");
             setShellNavCurrent("mainNavRecordingsBtn", page === "recordings");
+            setShellNavCurrent("mainNavCalculatedChannelsBtn", page === "calculated-channels");
 
             // The Waveform/Table/Split selector and the (responsive-only)
             // "Sources" drawer toggle are both scoped to the waveform
@@ -3509,6 +3685,16 @@
                 // refreshSourceList() already makes) -- never waveform
                 // data, never a plot rebuild (section 32).
                 refreshAllSourceViews();
+            }
+            if (page === "calculated-channels") {
+                // Cheap re-render from already-held state (ww.calculatedChannels/
+                // ww.channelMeta) -- never refetches the registry (it stays
+                // current via wwCreateCalculatedChannel()/wwDeleteCalculatedChannel()'s
+                // own direct updates), so the input picker/manager list are
+                // simply refreshed to reflect anything that changed while
+                // this page was last hidden (e.g. a channel added/removed
+                // in Waveform).
+                wwRenderCalculatedChannelsPage();
             }
         }
 
@@ -4424,6 +4610,13 @@
             // row itself won't be re-rendered anyway, but a future
             // recording could never coincidentally reuse this source_id).
             recordingsExpandedDetails.delete(sourceId);
+            // Phase 5A (section 64): the backend already cascade-deleted
+            // every calculated channel grounded (directly or
+            // transitively) on this source -- reconcile the frontend's own
+            // mirror/display state against the now-authoritative list
+            // rather than re-deriving the cascade client-side a second
+            // time (never a second graph-walk implementation).
+            await wwReconcileCalculatedChannelsAfterRemoval();
             // Section 18: keeps the Recordings page and the Waveform
             // source state consistent regardless of which page is
             // currently active.
@@ -5398,6 +5591,23 @@
             // wwIsAnalogChannelVisible()); this map is metadata only, never
             // consulted to decide whether a channel is currently shown.
             channelMeta: new Map(),
+            // Phase 5A (DEC-047): the workspace's own calculated-channel
+            // registry mirror -- id -> {id, name, unit, operation, inputs,
+            // parameters, dependencyIds, referenceSourceId, sampleCount,
+            // createdAt}, kept in sync with the backend's own
+            // CalculatedChannelRegistry by wwFetchCalculatedChannels()/
+            // wwCreateCalculatedChannel()/wwDeleteCalculatedChannel()
+            // directly (never re-fetched just to reflect a create/delete
+            // this session already knows about). NEVER stores the full-
+            // resolution time/values arrays themselves -- those stay
+            // server-side; this is metadata only, exactly like
+            // ww.channelMeta for real source channels. Cleared ONLY by
+            // "Start New Workspace" (wwClearWorkspace's own
+            // resetSourceBounds branch), never by the plain "Clear
+            // workspace" button (section 65: display-only, same
+            // established policy as every other workspace-scoped
+            // collection here).
+            calculatedChannels: new Map(),
             panelSeq: 0,
             viewportDebounceTimer: null,
             // Incremented by wwClearWorkspace() -- guards against an
@@ -6087,6 +6297,28 @@
             return sourceId + "::" + channelName;
         }
 
+        // ------------------------------------------------------------------
+        // Phase 5A (DEC-047): Calculated Channels are treated as analog-like
+        // pseudo-source channels everywhere in the existing panel/layout/
+        // annotation machinery (section 53/58 of the task -- "do not
+        // special-case them as a separate renderer... prefer the smallest
+        // clean abstraction"): a calculated channel's own server-generated
+        // id (`"calc-" + <hex>`) is used AS `sourceId`, and its own display
+        // name is used AS `channelName`, so wwChannelKey()/ww.displayed/
+        // ww.channelMeta/wwColorForChannel()/wwAddSelectedChannels()/
+        // wwRemoveChannelByKey()/Grouped-Separate-Custom/the Annotation
+        // List's own sourceId+channelName fields all work UNCHANGED,
+        // with zero new branching in any of them. The ONLY places that
+        // need to know the difference are the network-request builders
+        // below (a calculated channel is served by a different backend
+        // endpoint family, /calculated-channels/... instead of
+        // /sources/{id}/...) -- this ONE helper is the single dispatch
+        // point every one of those call sites checks, rather than a
+        // scattered ad hoc string check at each of them.
+        function wwIsCalculatedSourceId(sourceId) {
+            return typeof sourceId === "string" && sourceId.indexOf("calc-") === 0;
+        }
+
         // Phase 2C-C1: looks up which of ww.customGroups (if any) currently
         // claims this channel. Returns null for an unassigned channel --
         // callers apply the documented auto-solo rule themselves (see
@@ -6263,11 +6495,25 @@
             const seq = (channelEntry.requestSeq || 0) + 1;
             channelEntry.requestSeq = seq;
 
+            // Phase 5A: a calculated channel's own waveform range lives
+            // under /calculated-channels/{id}/waveform (no `channel_name`
+            // query param -- a calculated channel IS its own one-array
+            // identity, unlike a source which serves many channels).
+            // Reuses the exact same start_time/end_time/point_budget
+            // contract, response shape (time/values/representation/
+            // original_sample_count), and adaptive-resolution reduction
+            // pipeline (app.services.calculated_channel_service's own
+            // `extract_calculated_waveform_range`, section 48/49) -- so
+            // everything below this point (restyle, representation
+            // tracking) needs zero changes for either channel kind.
+            const isCalculated = wwIsCalculatedSourceId(channelEntry.sourceId);
             const url = new URL(
                 apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
-                "/sources/" + encodeURIComponent(channelEntry.sourceId) + "/waveform"
+                (isCalculated
+                    ? "/calculated-channels/" + encodeURIComponent(channelEntry.sourceId) + "/waveform"
+                    : "/sources/" + encodeURIComponent(channelEntry.sourceId) + "/waveform")
             );
-            url.searchParams.set("channel_name", channelEntry.channelName);
+            if (!isCalculated) url.searchParams.set("channel_name", channelEntry.channelName);
             if (startTime !== null && startTime !== undefined) url.searchParams.set("start_time", startTime);
             if (endTime !== null && endTime !== undefined) url.searchParams.set("end_time", endTime);
             url.searchParams.set("point_budget", String(pointBudget));
@@ -7999,15 +8245,25 @@
                 ? Math.max(sourceBounds.start, Math.min(sourceBounds.end, approximateElapsedSeconds))
                 : approximateElapsedSeconds;
 
+            // Phase 5A (section 56): same dispatch as creation -- a
+            // calculated channel's anchor moves through
+            // /calculated-channels/{id}/annotation-anchor.
+            const isCalculated = wwIsCalculatedSourceId(sourceId);
             let response;
             try {
                 response = await fetch(
                     apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
-                    "/sources/" + encodeURIComponent(sourceId) + "/annotation-anchor",
+                    (isCalculated
+                        ? "/calculated-channels/" + encodeURIComponent(sourceId) + "/annotation-anchor"
+                        : "/sources/" + encodeURIComponent(sourceId) + "/annotation-anchor"),
                     {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ channel_name: channelName, approximate_elapsed_seconds: requestedTime }),
+                        body: JSON.stringify(
+                            isCalculated
+                                ? { approximate_elapsed_seconds: requestedTime }
+                                : { channel_name: channelName, approximate_elapsed_seconds: requestedTime }
+                        ),
                     }
                 );
             } catch (error) {
@@ -8657,18 +8913,32 @@
             const sourceId = channel.sourceId;
             const channelName = channel.channelName;
 
+            // Phase 5A (section 56): a calculated channel's own anchor
+            // resolution lives under /calculated-channels/{id}/annotation-
+            // anchor -- same nearest-sample contract, no `channel_name` in
+            // the body (a calculated channel is its own one-array
+            // identity). The response only needs to carry the resolved
+            // SAMPLE (sample_index/elapsed_seconds/value/unit) -- sourceId/
+            // channelName below are always taken from the already-known
+            // `channel` the user actually clicked, never echoed back from
+            // the response, so both channel kinds share this exact same
+            // reading code.
+            const isCalculated = wwIsCalculatedSourceId(sourceId);
             let response;
             try {
                 response = await fetch(
                     apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
-                    "/sources/" + encodeURIComponent(sourceId) + "/annotation-anchor",
+                    (isCalculated
+                        ? "/calculated-channels/" + encodeURIComponent(sourceId) + "/annotation-anchor"
+                        : "/sources/" + encodeURIComponent(sourceId) + "/annotation-anchor"),
                     {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            channel_name: channelName,
-                            approximate_elapsed_seconds: approximateElapsedSeconds,
-                        }),
+                        body: JSON.stringify(
+                            isCalculated
+                                ? { approximate_elapsed_seconds: approximateElapsedSeconds }
+                                : { channel_name: channelName, approximate_elapsed_seconds: approximateElapsedSeconds }
+                        ),
                     }
                 );
             } catch (error) {
@@ -8695,8 +8965,8 @@
 
             const annotation = wwCreateAnnotation("callout", "main", { x: 0, y: 0 }, {
                 text: "",
-                sourceId: body.source_id,
-                channelName: body.channel_name,
+                sourceId: sourceId,
+                channelName: channelName,
                 sampleIndex: body.sample_index,
                 anchorElapsedSeconds: body.elapsed_seconds,
                 anchorValue: body.value,
@@ -8750,18 +9020,31 @@
             // above) is the only guard against a second concurrent
             // request while this one is in flight. Always cleared via
             // `finally`, regardless of which return path below is taken.
+            // Phase 5A (section 55): a calculated channel's own peak batch
+            // lives under /calculated-channels/peak-values (workspace-
+            // scoped, not per-source -- see
+            // app.api.v1.calculated_channels's own module docstring for
+            // why), with `calculated_channel_id` instead of `channel_name`
+            // identifying each batch item.
+            const isCalculated = wwIsCalculatedSourceId(sourceId);
             ww.annotationPlacementBusy = true;
             try {
                 let response;
                 try {
                     response = await fetch(
                         apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
-                        "/sources/" + encodeURIComponent(sourceId) + "/peak-values",
+                        (isCalculated
+                            ? "/calculated-channels/peak-values"
+                            : "/sources/" + encodeURIComponent(sourceId) + "/peak-values"),
                         {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
-                                requests: [{ channel_name: channelName, mode: mode }],
+                                requests: [
+                                    isCalculated
+                                        ? { calculated_channel_id: sourceId, mode: mode }
+                                        : { channel_name: channelName, mode: mode },
+                                ],
                                 start_time: startTime,
                                 end_time: endTime,
                             }),
@@ -8870,16 +9153,24 @@
             const generation = (wwPeakValuesGeneration.get(sourceId) || 0) + 1;
             wwPeakValuesGeneration.set(sourceId, generation);
 
-            const requests = items.map((annotation) => ({
-                channel_name: annotation.data.channelName,
-                mode: annotation.data.mode,
-            }));
+            // Phase 5A (section 55): same per-source-id batching, just
+            // routed to /calculated-channels/peak-values (workspace-
+            // scoped) when `sourceId` is actually a calculated channel's
+            // own id -- see wwCreatePeakFromClick()'s own matching comment.
+            const isCalculated = wwIsCalculatedSourceId(sourceId);
+            const requests = items.map((annotation) => (
+                isCalculated
+                    ? { calculated_channel_id: sourceId, mode: annotation.data.mode }
+                    : { channel_name: annotation.data.channelName, mode: annotation.data.mode }
+            ));
 
             let response;
             try {
                 response = await fetch(
                     apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
-                    "/sources/" + encodeURIComponent(sourceId) + "/peak-values",
+                    (isCalculated
+                        ? "/calculated-channels/peak-values"
+                        : "/sources/" + encodeURIComponent(sourceId) + "/peak-values"),
                     {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -9993,6 +10284,679 @@
             }
         }
 
+        // ------------------------------------------------------------------
+        // Phase 5A (DEC-047): Calculated Channels -- Signal Builder +
+        // Manager (both on one page, section 4) + Waveform sidebar
+        // integration. A calculated channel is treated as an analog-like
+        // PSEUDO-SOURCE channel everywhere else in this file (see
+        // wwIsCalculatedSourceId()'s own comment) -- its own server-
+        // generated id is used as `sourceId`, its own display name as
+        // `channelName`, so wwAddSelectedChannels()/wwRemoveChannelByKey()/
+        // ww.displayed/ww.channelColors/Grouped-Separate-Custom/the
+        // Annotation List's own sourceId+channelName fields all work
+        // completely unchanged. This section owns only: the builder's own
+        // transient UI state, the ww.calculatedChannels metadata mirror,
+        // and the small set of network calls the backend's
+        // /calculated-channels endpoints need (waveform/cursor/peak/
+        // annotation-anchor dispatch already lives inline at each of
+        // those existing call sites, see wwIsCalculatedSourceId()).
+        // ------------------------------------------------------------------
+
+        const WW_CC_OPERATIONS = {
+            reverse_polarity: { label: "Reverse Polarity", arity: "unary", arityLabel: "1 input", glyph: "−x" },
+            absolute_value: { label: "Absolute Value", arity: "unary", arityLabel: "1 input", glyph: "|x|" },
+            multiply_constant: { label: "Multiply by Constant", arity: "unary", arityLabel: "1 input + constant", glyph: "k·x" },
+            addition: { label: "Addition", arity: "multi", arityLabel: "2+ inputs", glyph: "x₁+x₂" },
+            subtraction: { label: "Subtraction", arity: "multi", arityLabel: "2+ ordered inputs", glyph: "x₁−x₂" },
+        };
+        const WW_CC_OPERATION_ORDER = ["reverse_polarity", "absolute_value", "multiply_constant", "addition", "subtraction"];
+
+        // Transient Signal Builder state -- deliberately NOT part of `ww`
+        // (mirrors `shell`'s own separation from waveform-domain state):
+        // this is page-local UI state for the form currently being
+        // composed, reset on every successful create (section 47:
+        // calculated channels are immutable after creation, so there is
+        // no "edit" state to preserve here either).
+        const wwCcBuilder = { operation: null, inputs: [], constant: "", name: "", nameEditedByUser: false };
+        const wwCcListErrors = new Map(); // calculatedChannelId -> inline delete-error message, cleared on next successful action
+
+        function wwCcResetBuilder() {
+            wwCcBuilder.operation = null;
+            wwCcBuilder.inputs = [];
+            wwCcBuilder.constant = "";
+            wwCcBuilder.name = "";
+            wwCcBuilder.nameEditedByUser = false;
+        }
+
+        // Section 39: Source Analog Channels (from ww.channelMeta -- every
+        // analog channel the engineer has brought into this workspace's
+        // Waveform at least once this session; section 58's own smallest-
+        // clean-abstraction preference over eagerly fetching every
+        // channel of every imported source up front) + existing
+        // Calculated Channels, grouped, never mixed with digital channels
+        // (ww.channelMeta is analog-only by construction -- populated
+        // solely by wwAddSelectedChannels()).
+        function wwCcAvailableCandidates() {
+            const candidates = [];
+            for (const meta of ww.channelMeta.values()) {
+                candidates.push({
+                    kind: "source", sourceId: meta.sourceId, channelName: meta.channelName,
+                    calculatedChannelId: null, referenceSourceId: meta.sourceId,
+                    shortLabel: meta.channelName,
+                    pickerLabel: (meta.sourceName ? meta.sourceName + " — " : "") + meta.channelName,
+                    unit: meta.unit || "", group: "Source Analog Channels",
+                });
+            }
+            for (const calc of ww.calculatedChannels.values()) {
+                candidates.push({
+                    kind: "calculated", sourceId: null, channelName: null,
+                    calculatedChannelId: calc.id, referenceSourceId: calc.reference_source_id,
+                    shortLabel: calc.name, pickerLabel: calc.name,
+                    unit: calc.unit || "", group: "Calculated Channels",
+                });
+            }
+            return candidates;
+        }
+
+        function wwCcInputDisplayName(inputRef) {
+            if (inputRef.kind === "source") return inputRef.channel_name;
+            const dep = ww.calculatedChannels.get(inputRef.calculated_channel_id);
+            return dep ? dep.name : "(deleted)";
+        }
+
+        // Section 61: a readable definition, never internal ids.
+        function wwCcOperationSummaryText(calc) {
+            const meta = WW_CC_OPERATIONS[calc.operation];
+            const label = meta ? meta.label : calc.operation;
+            const names = calc.inputs.map(wwCcInputDisplayName);
+            if (calc.operation === "multiply_constant") {
+                const k = calc.parameters && Number.isFinite(calc.parameters.constant) ? calc.parameters.constant : "?";
+                return label + " (" + names[0] + " × " + k + ")";
+            }
+            if (calc.operation === "addition") return label + " (" + names.join(" + ") + ")";
+            if (calc.operation === "subtraction") return label + " (" + names.join(" − ") + ")";
+            return label + " (" + names[0] + ")";
+        }
+
+        function wwCcComputeSuggestedName() {
+            const b = wwCcBuilder;
+            if (!b.operation || b.inputs.length === 0) return "";
+            const labels = b.inputs.map((i) => i.shortLabel);
+            let joined;
+            if (b.operation === "reverse_polarity") joined = "-" + labels[0];
+            else if (b.operation === "absolute_value") joined = "Abs(" + labels[0] + ")";
+            else if (b.operation === "multiply_constant") joined = (b.constant === "" ? "k" : b.constant) + " × " + labels[0];
+            else if (b.operation === "addition") joined = labels.join(" + ");
+            else joined = labels.join(" − ");
+            // Section 34: "if expression is too long, generate a concise
+            // fallback" -- first input's name + a count, rather than an
+            // unbounded, unreadable concatenation.
+            if (joined.length > 60 && (b.operation === "addition" || b.operation === "subtraction")) {
+                return labels[0] + (b.operation === "addition" ? " + " : " − ") + "… (" + labels.length + ")";
+            }
+            return joined;
+        }
+
+        function wwCcComputeExpressionPreview() {
+            const b = wwCcBuilder;
+            if (!b.operation || b.inputs.length === 0) return "";
+            const labels = b.inputs.map((i) => i.shortLabel);
+            if (b.operation === "reverse_polarity") return "Result = −" + labels[0];
+            if (b.operation === "absolute_value") return "Result = |" + labels[0] + "|";
+            if (b.operation === "multiply_constant") return "Result = " + (b.constant === "" ? "k" : b.constant) + " × " + labels[0];
+            if (b.operation === "addition") return "Result = " + labels.join(" + ");
+            if (b.operation === "subtraction") return "Result = " + labels.join(" − ");
+            return "";
+        }
+
+        // Client-side pre-check ONLY (section 44): mirrors the backend's
+        // own rules closely enough to disable Create / show a useful
+        // inline reason before a round trip, but the backend
+        // (app.services.calculated_channel_service.create_calculated_channel)
+        // remains the sole authority -- this never blocks a request the
+        // backend would actually accept, and a request this considers
+        // "valid" can still be legitimately rejected server-side (e.g. a
+        // duplicate name created concurrently in another tab).
+        function wwCcValidateBuilder() {
+            const b = wwCcBuilder;
+            const errors = [];
+            if (!b.operation) {
+                errors.push("Choose an operation.");
+                return { valid: false, errors };
+            }
+            const meta = WW_CC_OPERATIONS[b.operation];
+            if (meta.arity === "unary") {
+                if (b.inputs.length !== 1) errors.push("Select exactly 1 input channel.");
+            } else if (b.inputs.length < 2) {
+                errors.push("Select at least 2 input channels.");
+            }
+            if (b.operation === "multiply_constant") {
+                const n = Number(b.constant);
+                if (b.constant === "" || !Number.isFinite(n)) errors.push("Constant must be a finite number.");
+            }
+            if (meta.arity === "multi" && b.inputs.length >= 2) {
+                const units = b.inputs.map((i) => i.unit || "");
+                const known = units.filter((u) => u);
+                if (known.length > 0 && known.length !== units.length) errors.push("All channels must use the same unit.");
+                else if (known.length > 0 && new Set(known).size !== 1) errors.push("All channels must use the same unit.");
+                const refs = new Set(b.inputs.map((i) => i.referenceSourceId));
+                if (refs.size > 1) errors.push("These channels cannot be combined because their sample times are not aligned.");
+            }
+            const trimmedName = b.name.trim();
+            if (!trimmedName) errors.push("Enter a signal name.");
+            else if (Array.from(ww.calculatedChannels.values()).some((c) => c.name === trimmedName)) {
+                errors.push("A calculated channel with this name already exists.");
+            }
+            return { valid: errors.length === 0, errors };
+        }
+
+        // ------------------------------------------------------------------
+        // Rendering
+        // ------------------------------------------------------------------
+
+        function wwCcRenderOperationCards() {
+            const container = document.getElementById("wwCcOperationCards");
+            if (!container) return;
+            let html = "";
+            for (const operation of WW_CC_OPERATION_ORDER) {
+                const meta = WW_CC_OPERATIONS[operation];
+                const pressed = wwCcBuilder.operation === operation;
+                html += '<button type="button" class="ww-cc-operation-card" data-operation="' + operation + '" aria-pressed="' + pressed + '">' +
+                    '<span class="ww-cc-operation-card-name">' + escapeHtml(meta.label) + '</span>' +
+                    '<span class="ww-cc-operation-card-arity">' + escapeHtml(meta.arityLabel) + '</span>' +
+                    '</button>';
+            }
+            container.innerHTML = html;
+        }
+
+        function wwCcCandidateOptionsHtml(selectedFilterReferenceId) {
+            const candidates = wwCcAvailableCandidates();
+            const groups = new Map();
+            for (const c of candidates) {
+                if (!groups.has(c.group)) groups.set(c.group, []);
+                groups.get(c.group).push(c);
+            }
+            let html = '<option value="">Choose a channel…</option>';
+            for (const [group, list] of groups) {
+                html += '<optgroup label="' + escapeHtml(group) + '">';
+                for (const c of list) {
+                    const key = c.kind + "::" + (c.kind === "source" ? c.sourceId + "::" + c.channelName : c.calculatedChannelId);
+                    // Section 13: once a first input is chosen for a
+                    // multi-input op, candidates from a DIFFERENT
+                    // reference timebase are disabled (never silently
+                    // hidden -- still visible so the engineer understands
+                    // why) rather than letting a long invalid list build
+                    // up before rejecting only at the very end.
+                    const incompatible = selectedFilterReferenceId && c.referenceSourceId !== selectedFilterReferenceId;
+                    html += '<option value="' + escapeHtml(key) + '"' + (incompatible ? " disabled" : "") + '>' +
+                        escapeHtml(c.pickerLabel) + (c.unit ? " (" + escapeHtml(c.unit) + ")" : "") +
+                        (incompatible ? " — incompatible time base" : "") +
+                        '</option>';
+                }
+                html += '</optgroup>';
+            }
+            return html;
+        }
+
+        function wwCcCandidateFromKey(key) {
+            const candidates = wwCcAvailableCandidates();
+            for (const c of candidates) {
+                const k = c.kind + "::" + (c.kind === "source" ? c.sourceId + "::" + c.channelName : c.calculatedChannelId);
+                if (k === key) return c;
+            }
+            return null;
+        }
+
+        function wwCcRenderBuilderFields() {
+            const fieldsEl = document.getElementById("wwCcBuilderFields");
+            const titleEl = document.getElementById("wwCcBuilderTitle");
+            if (!fieldsEl || !wwCcBuilder.operation) return;
+            const meta = WW_CC_OPERATIONS[wwCcBuilder.operation];
+            titleEl.textContent = meta.label;
+            const firstRef = wwCcBuilder.inputs.length > 0 ? wwCcBuilder.inputs[0].referenceSourceId : null;
+
+            if (meta.arity === "unary") {
+                const current = wwCcBuilder.inputs[0];
+                let html = '<label class="ww-cc-field"><span>Input Channel</span>' +
+                    '<select id="wwCcUnaryInputSelect">' + wwCcCandidateOptionsHtml(null) + '</select></label>';
+                if (wwCcBuilder.operation === "multiply_constant") {
+                    html += '<label class="ww-cc-field"><span>Constant</span>' +
+                        '<input type="text" inputmode="decimal" id="wwCcConstantInput" placeholder="e.g. -2.5" value="' +
+                        escapeHtml(String(wwCcBuilder.constant)) + '"></label>';
+                }
+                fieldsEl.innerHTML = html;
+                const select = document.getElementById("wwCcUnaryInputSelect");
+                if (select && current) {
+                    const key = current.kind + "::" + (current.kind === "source" ? current.sourceId + "::" + current.channelName : current.calculatedChannelId);
+                    select.value = key;
+                }
+            } else {
+                let html = '<ol class="ww-cc-input-list" id="wwCcInputList">';
+                wwCcBuilder.inputs.forEach((input, index) => {
+                    html += '<li class="ww-cc-input-row" data-index="' + index + '">' +
+                        '<span class="ww-cc-input-row-index">' + (index + 1) + '.</span>' +
+                        '<span class="ww-cc-input-row-label">' + escapeHtml(input.pickerLabel) + (input.unit ? " (" + escapeHtml(input.unit) + ")" : "") + '</span>' +
+                        '<span class="ww-cc-input-row-controls">' +
+                            '<button type="button" class="ww-icon-btn" data-action="move-up" data-index="' + index + '" ' + (index === 0 ? "disabled" : "") + ' aria-label="Move up" title="Move up">&uarr;</button>' +
+                            '<button type="button" class="ww-icon-btn" data-action="move-down" data-index="' + index + '" ' + (index === wwCcBuilder.inputs.length - 1 ? "disabled" : "") + ' aria-label="Move down" title="Move down">&darr;</button>' +
+                            '<button type="button" class="ww-icon-btn" data-action="remove" data-index="' + index + '" aria-label="Remove" title="Remove">&times;</button>' +
+                        '</span>' +
+                    '</li>';
+                });
+                html += '</ol>' +
+                    '<div class="ww-cc-add-input-row">' +
+                        '<select id="wwCcAddInputSelect">' + wwCcCandidateOptionsHtml(firstRef) + '</select>' +
+                        '<button type="button" class="secondary" id="wwCcAddInputBtn">+ Add Channel</button>' +
+                    '</div>';
+                fieldsEl.innerHTML = html;
+            }
+        }
+
+        function wwCcRenderExpressionPreview() {
+            const el = document.getElementById("wwCcExpressionPreview");
+            if (!el) return;
+            const text = wwCcComputeExpressionPreview();
+            el.textContent = text;
+            el.hidden = !text;
+        }
+
+        function wwCcSyncNameAndUnitFields() {
+            const nameInput = document.getElementById("wwCcNameInput");
+            const unitInput = document.getElementById("wwCcUnitDisplay");
+            if (!nameInput || !unitInput) return;
+            if (!wwCcBuilder.nameEditedByUser) {
+                wwCcBuilder.name = wwCcComputeSuggestedName();
+                nameInput.value = wwCcBuilder.name;
+            }
+            const units = wwCcBuilder.inputs.map((i) => i.unit || "");
+            const known = units.filter((u) => u);
+            if (wwCcBuilder.inputs.length === 0) unitInput.value = "";
+            else if (known.length === 0) unitInput.value = "(none)";
+            else if (known.length !== units.length || new Set(known).size !== 1) unitInput.value = "(incompatible)";
+            else unitInput.value = known[0];
+        }
+
+        function wwCcSyncCreateButtonState() {
+            const btn = document.getElementById("wwCcCreateBtn");
+            const errorEl = document.getElementById("wwCcError");
+            if (!btn) return;
+            const { valid } = wwCcValidateBuilder();
+            btn.disabled = !valid;
+            if (valid && errorEl) errorEl.hidden = true;
+        }
+
+        function wwCcSelectOperation(operation) {
+            if (!WW_CC_OPERATIONS[operation]) return;
+            wwCcBuilder.operation = operation;
+            wwCcBuilder.inputs = [];
+            wwCcBuilder.constant = "";
+            wwCcBuilder.nameEditedByUser = false;
+            wwCcBuilder.name = "";
+            document.getElementById("wwCcBuilderPanel").hidden = false;
+            wwCcRenderOperationCards();
+            wwCcRenderBuilderFields();
+            wwCcRenderExpressionPreview();
+            wwCcSyncNameAndUnitFields();
+            wwCcSyncCreateButtonState();
+        }
+
+        function wwCcAddInputByKey(key) {
+            if (!key) return;
+            const candidate = wwCcCandidateFromKey(key);
+            if (!candidate) return;
+            const meta = WW_CC_OPERATIONS[wwCcBuilder.operation];
+            if (meta.arity === "unary") {
+                wwCcBuilder.inputs = [candidate]; // section 8: unary is always exactly 1 -- replace, never append
+            } else {
+                // Section 41: duplicates are explicitly allowed (A+A is
+                // mathematically valid) -- never silently deduplicated.
+                wwCcBuilder.inputs.push(candidate);
+            }
+            wwCcRenderBuilderFields();
+            wwCcRenderExpressionPreview();
+            wwCcSyncNameAndUnitFields();
+            wwCcSyncCreateButtonState();
+        }
+
+        function wwCcRemoveInput(index) {
+            wwCcBuilder.inputs.splice(index, 1);
+            wwCcRenderBuilderFields();
+            wwCcRenderExpressionPreview();
+            wwCcSyncNameAndUnitFields();
+            wwCcSyncCreateButtonState();
+        }
+
+        function wwCcMoveInput(index, direction) {
+            const target = index + direction;
+            if (target < 0 || target >= wwCcBuilder.inputs.length) return;
+            const items = wwCcBuilder.inputs;
+            const tmp = items[index];
+            items[index] = items[target];
+            items[target] = tmp;
+            wwCcRenderBuilderFields();
+            wwCcRenderExpressionPreview();
+            wwCcSyncNameAndUnitFields();
+        }
+
+        function wwCcEyeIconSvg(visible) {
+            return visible
+                ? '<span class="ww-icon"><svg viewBox="0 0 18 18"><path d="M1.5 9S4.5 3.5 9 3.5 16.5 9 16.5 9 13.5 14.5 9 14.5 1.5 9 1.5 9Z"/><circle cx="9" cy="9" r="2.3"/></svg></span>'
+                : '<span class="ww-icon"><svg viewBox="0 0 18 18"><path d="M1.5 9S4.5 3.5 9 3.5 16.5 9 16.5 9 13.5 14.5 9 14.5 1.5 9 1.5 9Z"/><circle cx="9" cy="9" r="2.3"/><line x1="2.5" y1="15.5" x2="15.5" y2="2.5" stroke-width="1.3"/></svg></span>';
+        }
+
+        function wwCcTrashIconSvg() {
+            return '<span class="ww-icon"><svg viewBox="0 0 18 18"><path d="M4 5h10M7.5 5V3.5a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1V5M6 5v9a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V5"/><line x1="7.5" y1="8" x2="7.5" y2="12"/><line x1="10.5" y1="8" x2="10.5" y2="12"/></svg></span>';
+        }
+
+        function wwRenderCalculatedChannelManagerList() {
+            const countEl = document.getElementById("wwCcListCount");
+            const bodyEl = document.getElementById("wwCcListBody");
+            if (!bodyEl) return;
+            const channels = Array.from(ww.calculatedChannels.values()).sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+            if (countEl) countEl.textContent = "(" + channels.length + ")";
+            if (channels.length === 0) {
+                bodyEl.innerHTML = '<p class="empty-state">No calculated channels yet.</p>';
+                return;
+            }
+            let html = "";
+            for (const calc of channels) {
+                const isVisible = wwIsAnalogChannelVisible(calc.id, calc.name);
+                const color = wwColorForChannel(calc.id, calc.name);
+                const label = calc.unit ? calc.name + " (" + calc.unit + ")" : calc.name;
+                const error = wwCcListErrors.get(calc.id);
+                html += '<div class="ww-cc-list-row" data-calculated-channel-id="' + escapeHtml(calc.id) + '">' +
+                    '<span class="channel-color-dot" style="background:' + escapeHtml(color) + '" aria-hidden="true"></span>' +
+                    '<div class="ww-cc-list-row-main">' +
+                        '<div class="ww-cc-list-row-name">' + escapeHtml(label) + '</div>' +
+                        '<div class="ww-cc-list-row-summary">' + escapeHtml(wwCcOperationSummaryText(calc)) + '</div>' +
+                        (error ? '<div class="ww-cc-list-row-error">' + escapeHtml(error) + '</div>' : '') +
+                    '</div>' +
+                    '<div class="ww-cc-list-row-controls">' +
+                        '<button type="button" class="ww-icon-btn" data-action="toggle-visibility" aria-pressed="' + isVisible + '" ' +
+                            'title="' + (isVisible ? "Hide" : "Show") + '" aria-label="' + (isVisible ? "Hide " : "Show ") + escapeHtml(calc.name) + '">' +
+                            wwCcEyeIconSvg(isVisible) + '</button>' +
+                        '<button type="button" class="ww-icon-btn" data-action="delete" title="Delete" aria-label="Delete ' + escapeHtml(calc.name) + '">' +
+                            wwCcTrashIconSvg() + '</button>' +
+                    '</div>' +
+                '</div>';
+            }
+            bodyEl.innerHTML = html;
+        }
+
+        function wwRenderCalculatedChannelsPage() {
+            if (!document.getElementById("wwCcOperationCards")) return;
+            wwCcRenderOperationCards();
+            const builderPanel = document.getElementById("wwCcBuilderPanel");
+            if (wwCcBuilder.operation) {
+                builderPanel.hidden = false;
+                wwCcRenderBuilderFields();
+                wwCcRenderExpressionPreview();
+                wwCcSyncNameAndUnitFields();
+                wwCcSyncCreateButtonState();
+            } else {
+                builderPanel.hidden = true;
+            }
+            wwRenderCalculatedChannelManagerList();
+        }
+
+        // ------------------------------------------------------------------
+        // Waveform sidebar integration (section 50/52) -- a workspace-
+        // scoped group, always rendered regardless of which source is
+        // currently selected in the Channels panel above it.
+        // ------------------------------------------------------------------
+
+        function wwCalculatedChannelMeta(calc) {
+            // Section 68: its own "Calculated Channels" classification,
+            // never Voltage/Current automatic inference -- engineeringType
+            // here is display-only metadata, not read by any grouping
+            // logic this phase (Grouped/Separate/Custom group by panel
+            // membership, unaffected either way).
+            return {
+                sourceId: calc.id, sourceName: "Calculated Channels", channelName: calc.name,
+                unit: calc.unit, engineeringType: "Calculated",
+                recordingStartTime: null, timingReference: null,
+            };
+        }
+
+        function wwToggleCalculatedChannelDisplay(calc) {
+            const key = wwChannelKey(calc.id, calc.name);
+            if (ww.displayed.has(key)) wwRemoveChannelByKey(key);
+            else wwAddSelectedChannels([wwCalculatedChannelMeta(calc)]);
+            wwRenderCalculatedChannelsSidebarSection();
+            wwRenderCalculatedChannelManagerList();
+        }
+
+        function wwRemoveCalculatedChannelDisplayIfShown(calculatedChannelId) {
+            const prefix = calculatedChannelId + "::";
+            for (const key of Array.from(ww.displayed.keys())) {
+                if (key.indexOf(prefix) === 0) {
+                    wwRemoveChannelByKey(key);
+                    return;
+                }
+            }
+        }
+
+        function wwRenderCalculatedChannelsSidebarSection() {
+            const sectionEl = document.getElementById("calculatedChannelsSidebarSection");
+            const bodyEl = document.getElementById("calculatedChannelsSidebarBody");
+            if (!sectionEl || !bodyEl) return;
+            const channels = Array.from(ww.calculatedChannels.values());
+            sectionEl.hidden = channels.length === 0;
+            if (channels.length === 0) return;
+            let html = '<div class="subgroup-list"><table class="channel-table"><tbody>';
+            for (const calc of channels.sort((a, b) => (a.name < b.name ? -1 : 1))) {
+                const isDisplayed = wwIsAnalogChannelVisible(calc.id, calc.name);
+                const label = (isDisplayed ? "Hide " : "Show ") + calc.name;
+                html += '<tr class="channel-row--toggle' + (isDisplayed ? "" : " channel-row--hidden") + '"' +
+                    ' tabindex="0" role="button" aria-pressed="' + isDisplayed + '"' +
+                    ' data-calculated-channel-id="' + escapeHtml(calc.id) + '"' +
+                    ' aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '">' +
+                    '<td>' + analogChannelNameCellHtml({ source_id: calc.id }, { name: calc.name, unit: calc.unit }) + '</td>' +
+                    '</tr>';
+            }
+            html += '</tbody></table></div>';
+            bodyEl.innerHTML = html;
+        }
+
+        // ------------------------------------------------------------------
+        // Network calls
+        // ------------------------------------------------------------------
+
+        async function wwFetchCalculatedChannels() {
+            let response;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/calculated-channels"
+                );
+            } catch (error) {
+                return;
+            }
+            if (!response.ok) return;
+            let body = null;
+            try { body = await response.json(); } catch (error) { return; }
+            if (!Array.isArray(body)) return;
+            ww.calculatedChannels.clear();
+            for (const channel of body) ww.calculatedChannels.set(channel.id, channel);
+            wwRenderCalculatedChannelsSidebarSection();
+            wwRenderCalculatedChannelsPage();
+        }
+
+        // Section 64: called after a source is removed -- the backend
+        // already cascade-deleted every calculated channel grounded on
+        // it; reconciling against the now-authoritative list (rather than
+        // re-deriving the cascade client-side) also cleans up display
+        // state for anything that was shown.
+        async function wwReconcileCalculatedChannelsAfterRemoval() {
+            const before = new Set(ww.calculatedChannels.keys());
+            await wwFetchCalculatedChannels();
+            for (const id of before) {
+                if (!ww.calculatedChannels.has(id)) wwRemoveCalculatedChannelDisplayIfShown(id);
+            }
+        }
+
+        // Section 43/44: validates, sends the definition, and (only on
+        // success) updates the registry mirror + both UIs immediately --
+        // no workspace reload.
+        async function wwCcCreateChannel() {
+            const { valid, errors } = wwCcValidateBuilder();
+            const errorEl = document.getElementById("wwCcError");
+            if (!valid) {
+                if (errorEl) { errorEl.textContent = errors[0]; errorEl.hidden = false; }
+                return;
+            }
+            if (errorEl) errorEl.hidden = true;
+            const createBtn = document.getElementById("wwCcCreateBtn");
+            if (createBtn) createBtn.disabled = true;
+
+            const inputsPayload = wwCcBuilder.inputs.map((i) => (
+                i.kind === "source"
+                    ? { kind: "source", source_id: i.sourceId, channel_name: i.channelName }
+                    : { kind: "calculated", calculated_channel_id: i.calculatedChannelId }
+            ));
+            const parameters = wwCcBuilder.operation === "multiply_constant" ? { constant: Number(wwCcBuilder.constant) } : {};
+
+            let response;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/calculated-channels",
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            name: wwCcBuilder.name.trim(), operation: wwCcBuilder.operation,
+                            inputs: inputsPayload, parameters: parameters,
+                        }),
+                    }
+                );
+            } catch (error) {
+                if (errorEl) { errorEl.textContent = "Could not reach the backend."; errorEl.hidden = false; }
+                wwCcSyncCreateButtonState();
+                return;
+            }
+            let body = null;
+            try { body = await response.json(); } catch (error) { /* handled below */ }
+            if (!response.ok || !body) {
+                const message = (body && body.detail && body.detail.message) || "Could not create this calculated channel.";
+                if (errorEl) { errorEl.textContent = message; errorEl.hidden = false; }
+                wwCcSyncCreateButtonState();
+                return;
+            }
+
+            ww.calculatedChannels.set(body.id, body);
+            wwCcResetBuilder();
+            wwRenderCalculatedChannelsPage();
+            wwRenderCalculatedChannelsSidebarSection();
+        }
+
+        // Section 25/62/63: dependency-aware -- a blocked delete shows the
+        // backend's own concise reason inline on that row, never a
+        // silent cascade.
+        async function wwCcDeleteChannel(calculatedChannelId) {
+            let response;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                    "/calculated-channels/" + encodeURIComponent(calculatedChannelId),
+                    { method: "DELETE" }
+                );
+            } catch (error) {
+                wwCcListErrors.set(calculatedChannelId, "Could not reach the backend.");
+                wwRenderCalculatedChannelManagerList();
+                return;
+            }
+            if (response.status === 204) {
+                ww.calculatedChannels.delete(calculatedChannelId);
+                wwCcListErrors.delete(calculatedChannelId);
+                wwRemoveCalculatedChannelDisplayIfShown(calculatedChannelId);
+                wwRenderCalculatedChannelsSidebarSection();
+                wwRenderCalculatedChannelManagerList();
+                return;
+            }
+            let body = null;
+            try { body = await response.json(); } catch (error) { /* handled below */ }
+            const message = (body && body.detail && body.detail.message) || "Could not delete this calculated channel.";
+            wwCcListErrors.set(calculatedChannelId, message);
+            wwRenderCalculatedChannelManagerList();
+        }
+
+        // ------------------------------------------------------------------
+        // Wiring
+        // ------------------------------------------------------------------
+
+        document.getElementById("wwCcOperationCards").addEventListener("click", (event) => {
+            const card = event.target.closest(".ww-cc-operation-card");
+            if (!card) return;
+            wwCcSelectOperation(card.dataset.operation);
+        });
+
+        document.getElementById("wwCcBuilderFields").addEventListener("change", (event) => {
+            if (event.target.id === "wwCcUnaryInputSelect") {
+                wwCcAddInputByKey(event.target.value);
+            } else if (event.target.id === "wwCcConstantInput") {
+                wwCcBuilder.constant = event.target.value;
+                wwCcSyncNameAndUnitFields();
+                wwCcSyncCreateButtonState();
+            }
+        });
+        document.getElementById("wwCcBuilderFields").addEventListener("input", (event) => {
+            if (event.target.id === "wwCcConstantInput") {
+                wwCcBuilder.constant = event.target.value;
+                wwCcSyncNameAndUnitFields();
+                wwCcSyncCreateButtonState();
+            }
+        });
+        document.getElementById("wwCcBuilderFields").addEventListener("click", (event) => {
+            if (event.target.id === "wwCcAddInputBtn") {
+                const select = document.getElementById("wwCcAddInputSelect");
+                if (select && select.value) {
+                    wwCcAddInputByKey(select.value);
+                    select.value = "";
+                }
+                return;
+            }
+            const actionBtn = event.target.closest("button[data-action]");
+            if (!actionBtn) return;
+            const index = Number(actionBtn.dataset.index);
+            if (actionBtn.dataset.action === "remove") wwCcRemoveInput(index);
+            else if (actionBtn.dataset.action === "move-up") wwCcMoveInput(index, -1);
+            else if (actionBtn.dataset.action === "move-down") wwCcMoveInput(index, 1);
+            wwCcSyncCreateButtonState();
+        });
+
+        document.getElementById("wwCcNameInput").addEventListener("input", (event) => {
+            wwCcBuilder.nameEditedByUser = true;
+            wwCcBuilder.name = event.target.value;
+            wwCcSyncCreateButtonState();
+        });
+
+        document.getElementById("wwCcCreateBtn").addEventListener("click", wwCcCreateChannel);
+
+        document.getElementById("wwCcListBody").addEventListener("click", (event) => {
+            const row = event.target.closest("[data-calculated-channel-id]");
+            if (!row) return;
+            const id = row.dataset.calculatedChannelId;
+            const calc = ww.calculatedChannels.get(id);
+            const actionBtn = event.target.closest("button[data-action]");
+            if (!actionBtn || !calc) return;
+            if (actionBtn.dataset.action === "toggle-visibility") wwToggleCalculatedChannelDisplay(calc);
+            else if (actionBtn.dataset.action === "delete") wwCcDeleteChannel(id);
+        });
+
+        function wwCalculatedChannelsSidebarRowClickHandler(event) {
+            const row = event.target.closest("tr[data-calculated-channel-id]");
+            if (!row) return;
+            const calc = ww.calculatedChannels.get(row.dataset.calculatedChannelId);
+            if (calc) wwToggleCalculatedChannelDisplay(calc);
+        }
+        document.getElementById("calculatedChannelsSidebarBody").addEventListener("click", wwCalculatedChannelsSidebarRowClickHandler);
+        document.getElementById("calculatedChannelsSidebarBody").addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            const row = event.target.closest("tr[data-calculated-channel-id]");
+            if (!row || event.target !== row) return;
+            event.preventDefault();
+            wwCalculatedChannelsSidebarRowClickHandler(event);
+        });
+
         // "Clear workspace" button and "Start new workspace" hook (section
         // 14/16) -- removes every displayed panel/channel. The toolbar
         // action is display-only and keeps source bounds for the still-
@@ -10035,6 +10999,15 @@
                 wwSetAnnotationDrawerOpen(false);
                 wwRenderAnnotations();
                 wwRenderAnnotationList();
+                // Phase 5A (section 66): "Start New Workspace" clears
+                // calculated channels too -- the backend side is already
+                // handled by this SAME DELETE /api/v1/workspaces/{id} call
+                // (see app.api.v1.workspaces.delete_workspace's own Phase
+                // 5A extension); this just keeps the frontend's own
+                // mirror/UI in sync with that.
+                ww.calculatedChannels.clear();
+                wwRenderCalculatedChannelsSidebarSection();
+                wwRenderCalculatedChannelsPage();
             } else {
                 ww.workspaceBounds = wwDeriveWorkspaceBounds();
                 ww.viewport = ww.workspaceBounds ? { start: ww.workspaceBounds.start, end: ww.workspaceBounds.end } : null;
@@ -11065,20 +12038,33 @@
             const generation = (wwCursorValuesGeneration.get(sourceId) || 0) + 1;
             wwCursorValuesGeneration.set(sourceId, generation);
 
+            // Phase 5A (section 54): a calculated channel's own A/B values
+            // live under the workspace-scoped /calculated-channels/cursor-
+            // values -- digitalNames is always empty for a calculated
+            // pseudo-source (calculated channels are analog-only), so this
+            // never needs a digital branch.
+            const isCalculated = wwIsCalculatedSourceId(sourceId);
+
             let body = null;
             try {
                 const response = await fetch(
                     apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
-                    "/sources/" + encodeURIComponent(sourceId) + "/cursor-values",
+                    (isCalculated
+                        ? "/calculated-channels/cursor-values"
+                        : "/sources/" + encodeURIComponent(sourceId) + "/cursor-values"),
                     {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            analog_channel_names: analogNames,
-                            digital_channel_names: digitalNames,
-                            cursor_a_time: aTime,
-                            cursor_b_time: bTime,
-                        }),
+                        body: JSON.stringify(
+                            isCalculated
+                                ? { calculated_channel_ids: [sourceId], cursor_a_time: aTime, cursor_b_time: bTime }
+                                : {
+                                    analog_channel_names: analogNames,
+                                    digital_channel_names: digitalNames,
+                                    cursor_a_time: aTime,
+                                    cursor_b_time: bTime,
+                                }
+                        ),
                     }
                 );
                 if (wwCursorValuesGeneration.get(sourceId) !== generation) return; // superseded while in flight
@@ -11105,6 +12091,25 @@
             }
 
             if (wwCursorValuesGeneration.get(sourceId) !== generation) return; // re-checked after the await
+            if (isCalculated) {
+                // Section 54: exactly one item, this pseudo-source's own
+                // calculated channel -- keyed by the SAME wwChannelKey()
+                // every real channel uses. `aSampleTime`/`bSampleTime` are
+                // intentionally omitted (`null`) for this phase's
+                // calculated-channel batch schema -- the resolved VALUE is
+                // exact and correct either way; only the secondary
+                // resolved-sample-time echo some UI surfaces show is
+                // narrower here, a deliberate, documented Phase 5A scope
+                // trim (section 58: smallest clean abstraction).
+                for (const channel of body.channels) {
+                    ww.cursorValues.set(wwChannelKey(sourceId, channel.name), {
+                        aValue: channel.a_value, bValue: channel.b_value,
+                        aSampleTime: null, bSampleTime: null,
+                    });
+                }
+                wwUpdateCursorValueCellsForChannels(sourceId, analogNames);
+                return;
+            }
             for (const channel of body.channels) {
                 ww.cursorValues.set(wwChannelKey(sourceId, channel.channel_name), {
                     aValue: channel.a_value,
@@ -11897,6 +12902,14 @@
         // branch, replacing the old unconditional trailing call at the
         // end of Init (see below) so there is only ONE fetch, not two.
         shellSetCurrentPage("recordings");
+        // Phase 5A: one Init-time fetch of the workspace's own calculated-
+        // channel registry (mirrors the Recordings list fetch immediately
+        // above) -- kept in sync incrementally after this by
+        // wwCcCreateChannel()/wwCcDeleteChannel()/wwReconcileCalculatedChannelsAfterRemoval()/
+        // "Start New Workspace", never re-fetched on ordinary page
+        // navigation (see shellSetCurrentPage()'s own "calculated-
+        // channels" branch).
+        wwFetchCalculatedChannels();
         shellSetMainSidebarExpanded(shellLoadMainSidebarExpanded());
         document.getElementById("mainSidebarToggleBtn").addEventListener("click", () => {
             shellSetMainSidebarExpanded(!shell.mainSidebarExpanded);
@@ -11925,6 +12938,7 @@
             shellSetActiveView("waveform");
         });
         document.getElementById("mainNavRecordingsBtn").addEventListener("click", () => shellSetCurrentPage("recordings"));
+        document.getElementById("mainNavCalculatedChannelsBtn").addEventListener("click", () => shellSetCurrentPage("calculated-channels"));
         // "Settings" is real (flips the existing Light/Dark preference) --
         // the sole theme entry point in this shell (Phase 3A-UAT2: the
         // Global Header's own duplicate #themeToggle was removed).

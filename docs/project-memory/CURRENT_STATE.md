@@ -4,8 +4,9 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-21** (Phase 4G-UAT Bug Fix — Guidance
-Dismissal, on top of Phase 4G-UAT — Persistent Annotation Placement
+Last meaningful update: **2026-08-21** (Phase 5A — Calculated Channels /
+Basic Signal Builder, on top of Phase 4G-UAT Bug Fix — Guidance
+Dismissal, Phase 4G-UAT — Persistent Annotation Placement
 Guidance Ribbon, Phase 4G — Dynamic Maximum/Minimum Peak Annotation,
 Phase 4F-UAT2 — Free 2D Callout Anchor Drag Preview, Phase 4F-UAT —
 Movable Callout Anchor,
@@ -16,6 +17,85 @@ Text Note, Phase 4D — Precision Step Zoom + Icon Toolbar Refinement,
 Waveform Time-Axis Sub-ms Precision, Waveform Adaptive Resolution, Phase
 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B,
 Phase 4A-UAT9, and Phase 4A-UAT10).
+
+`[DECISION]` **Calculated Channels / Basic Signal Builder — DEC-047**
+(2026-08-21): Oruxa Powerwave's first mathematical signal-derivation
+system, NOT an annotation tool — a new main-sidebar page (`Calculated
+Channels`, immediately below `Table`), both a Signal Builder and a
+Calculated Channel Manager. Phase 1 supports exactly five basic
+operations: Reverse Polarity (`y=-x`), Absolute Value (`y=|x|`),
+Multiply by Constant (`y=k*x`, dimensionless `k`), N-input Addition
+(`y=x1+x2+...+xN`), and ordered N-input Subtraction
+(`y=x1-x2-...-xN`, explicitly left-associative, order preserved end to
+end) — RMS and every advanced calculation (sequence/power/frequency/
+impedance/differential/protection) are explicitly deferred, not even a
+disabled RMS card is shown. **Full-resolution authority is
+non-negotiable**: every operation evaluates against
+`active.record.waveform_data` directly (or another calculated channel's
+own already-evaluated result), eagerly, once, at creation — retained
+server-side in a new workspace-scoped `CalculatedChannelRegistry`
+(mirrors `WorkspaceRegistry`'s own shape), never Plotly trace arrays or
+the reduced display envelope, never re-evaluated later.
+**The owner's own explicit time-alignment guardrail is a hard rule,
+tightened mid-implementation**: multi-input operations require every
+operand to be PROVEN to share the same authoritative synchronized
+sample-time axis — same-source channels are provably aligned without
+array comparison (one `DisturbanceRecord` has exactly one shared
+`waveform_data["time"]` column per source, verified directly against
+the domain model, not assumed); different-source channels are rejected
+UNLESS their true ABSOLUTE instants (`source.start_time + elapsed`, NOT
+raw elapsed arrays, which two independently-triggered recordings could
+trivially share by coincidence) are proven identical within a
+deliberately tight `1e-9`-second tolerance. Equal sample count or
+equal sampling rate ALONE are explicitly, deliberately insufficient.
+No interpolation/resampling/time-shifting/crop-to-overlap is ever
+performed — an unproven pair is rejected outright with a plain-language
+message. Units must match exactly (no dimensional conversion layer).
+**Calculated-from-calculated is supported from Phase 1**: a calculated
+channel may be an input to a further calculation, subject to the same
+rules — every calculated channel carries a `reference_source_id`
+(the real source ultimately grounding its own inherited time array,
+propagated transitively) that lets both timebase-checking and
+source-removal cascade collapse to a simple identity/filter check,
+never a graph walk; a generic, independently-testable
+`would_create_cycle()` guard is implemented as defense in depth (real
+cycles are structurally unreachable via the immutable, one-shot
+creation API). **A calculated channel is treated as an analog-like
+PSEUDO-SOURCE channel everywhere in the existing rendering/layout/
+annotation machinery**: its own server-generated id (`"calc-" + <hex>`)
+is used AS `sourceId`, its own name AS `channelName`, so
+`wwAddSelectedChannels()`/`ww.displayed`/`ww.channelColors`/Grouped-
+Separate-Custom/the Annotation List's own `sourceId`+`channelName`
+fields all work COMPLETELY UNCHANGED — the only new code is
+`wwIsCalculatedSourceId()`, a single dispatch helper at the small set of
+network-request call sites (waveform/cursor-values/peak-values/
+Callout) that route to a new `/calculated-channels/...` endpoint family
+instead of `/sources/{id}/...` — a deliberate, reported structural
+shortcut over threading a fully generic `ChannelRef` type through the
+entire existing call graph (explicitly avoided as disproportionate
+refactor scope for this phase). A/B cursor values, +Peak/-Peak (with
+full dynamic viewport recalculation), and Callout (the task's own
+"SHOULD" tier — included, not deferred, since it required the same
+small increment as the others) all work identically to a real source
+channel; adaptive resolution (full-resolution-threshold + peak-
+preserving reduction) is reused via two small pure helpers
+(`_clip_and_reduce()`/`_peak_in_range()`) extracted from
+`waveform_service.py`'s own existing source-channel functions — one
+reduction algorithm, one peak-search algorithm in the whole codebase,
+verified zero behavior change for the existing source-channel paths.
+Default-hidden on creation (DEC-038, unchanged). Immutable after
+creation (create another rather than editing); delete is dependency-
+aware (BLOCKED, never a silent cascade, while another calculated
+channel depends on it). Source removal cascades transitively; "Clear
+workspace" preserves definitions (display-only, same established
+policy as every other workspace-scoped collection); "Start New
+Workspace" clears them completely through the SAME
+`DELETE /api/v1/workspaces/{id}` call already used for that purpose
+(anticipated by that endpoint's own pre-existing docstring). No
+permanent database/cloud persistence. See
+[DECISIONS.md — DEC-047](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations)
+and
+[MIGRATION_PLAN.md — Phase 5A](MIGRATION_PLAN.md#phase-5a--calculated-channels--basic-signal-builder-2026-08-21).
 
 `[DECISION]` **Dynamic Maximum/Minimum Peak Annotation — DEC-046**
 (2026-08-21; **persistent placement guidance ribbon, addendum,

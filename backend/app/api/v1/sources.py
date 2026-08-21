@@ -33,6 +33,8 @@ from app.schemas.digital_waveform import DigitalWaveformBatchOut, DigitalWavefor
 from app.schemas.peak_value import PeakValueBatchOut, PeakValueBatchRequest, PeakValueResultOut
 from app.schemas.source import ErrorOut, SourceChannelsOut, SourceSummaryOut
 from app.schemas.waveform import WaveformRangeOut
+from app.services.calculated_channel_registry import CalculatedChannelRegistry
+from app.services.calculated_channel_service import remove_calculated_channels_for_source
 from app.services.errors import ImportServiceError, InvalidTimeRangeError
 from app.services.import_service import import_comtrade_source
 from app.services.waveform_service import (
@@ -69,6 +71,10 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
 
 def get_settings_dep(request: Request) -> Settings:
     return request.app.state.settings
+
+
+def get_calculated_channel_registry(request: Request) -> CalculatedChannelRegistry:
+    return request.app.state.calculated_channel_registry
 
 
 def get_workspace_registry(request: Request) -> WorkspaceRegistry:
@@ -437,7 +443,14 @@ def delete_source(
     workspace_id: str,
     source_id: str,
     registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
 ) -> None:
+    """Phase 5A (DEC-047, section 64): removing a source also removes
+    every calculated channel grounded on it, directly or transitively --
+    see remove_calculated_channels_for_source's own docstring for why a
+    flat filter on `reference_source_id` is sufficient (no separate graph
+    walk needed)."""
     workspace_id = _validate_workspace_id(workspace_id)
     _get_or_404(registry, workspace_id, source_id)
     registry.remove(workspace_id, source_id)
+    remove_calculated_channels_for_source(workspace_id=workspace_id, source_id=source_id, calc_registry=calc_registry)
