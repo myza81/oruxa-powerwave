@@ -2266,8 +2266,20 @@
                              Reset Time View already do -- see
                              wwToggleMeasurementCursors()'s own comment for
                              why this is deliberate, not an oversight. -->
+                        <!-- Cosmetic refinement (same phase, owner follow-up):
+                             the A/B line + letter colors below deliberately
+                             reuse var(--accent)/var(--error) -- the EXACT
+                             SAME tokens .ww-cursor-line--a/--b already use
+                             for the real waveform cursor lines (see that
+                             CSS rule's own comment) -- not new/duplicated
+                             color values, so this icon stays theme-correct
+                             in Light/Dark for free and can never drift out
+                             of sync with the real cursor colors. Everything
+                             else in this icon (button chrome, hover/active/
+                             disabled states, stroke-width) remains
+                             currentColor-driven, unchanged. -->
                         <button class="ww-icon-btn" type="button" id="wwCursorModeBtn" aria-pressed="false" title="A/B Time Cursors" aria-label="A/B Time Cursors">
-                            <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="6" y1="2.5" x2="6" y2="15.5" stroke-width="1.3"/><line x1="12" y1="2.5" x2="12" y2="15.5" stroke-width="1.3"/><text x="6" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="currentColor" font-weight="700">A</text><text x="12" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="currentColor" font-weight="700">B</text></svg></span>
+                            <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="6" y1="2.5" x2="6" y2="15.5" stroke-width="1.3" stroke="var(--accent)"/><line x1="12" y1="2.5" x2="12" y2="15.5" stroke-width="1.3" stroke="var(--error)"/><text x="6" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="var(--accent)" font-weight="700">A</text><text x="12" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="var(--error)" font-weight="700">B</text></svg></span>
                         </button>
                         <div class="toolbar-spacer"></div>
                         <div class="theme-toggle ww-icon-group" id="layoutModeToggle" role="group" aria-label="Waveform layout">
