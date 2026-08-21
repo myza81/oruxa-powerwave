@@ -8,6 +8,64 @@ Last updated: **2026-08-21**
 
 ## What was most recently done
 
+**Phase 5A-UAT4 — Calculated Channel Type Subgroups.** Owner-approved
+clarification: on the main Waveform page, calculated channels remain
+under their own top-level "Calculated Channels" group (never merged
+into the real Analog Channels groups), but now with nested engineering-
+type subgroups (Voltage/Current/Power/Frequency/ROCOF/Undefined) mirror-
+ing the Analog Channels hierarchy. No new decision -- an "Update" note
+appended to DEC-047. Full detail:
+[DECISIONS.md — DEC-047 Update note](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations),
+[MIGRATION_PLAN.md — Phase 5A-UAT4](MIGRATION_PLAN.md#phase-5a-uat4--calculated-channel-type-subgroups-2026-08-21).
+
+**Classification authority**: `CalculatedChannel` had no classification
+field before this change. Source analog channels are classified by the
+existing `app.domain.channel_classification.classify_analog_channel()`
+(unrelated, unchanged, three-tier: explicit metadata, recognized unit,
+else `Undefined`). This change adds a NEW inherited field,
+`CalculatedChannel.engineering_type`, computed by a new pure function,
+`derive_engineering_type(input_types)`: every input must share the same
+KNOWN type for it to be inherited, else `Undefined` -- ONE rule covering
+unary (trivially one input) and multi-input (2+ inputs must agree)
+identically, with calculated-from-calculated propagating for free (an
+input passes its own already-derived type back through the same
+function -- verified transitively through a two-level chain). Never
+guessed from the user-editable channel name. Classification never
+blocks or alters a calculation -- the existing unit-compatibility and
+time-alignment guardrails (completely unchanged) remain the sole
+eligibility authority.
+
+**Sidebar**: `#calculatedChannelsSidebarSection` is now itself a
+collapsible `<details class="channel-group">` (same visual language as
+Analog/Digital Channels), containing nested per-type `<details
+class="channel-subgroup">` blocks ordered by the same `ANALOG_GROUP_ORDER`
+Analog Channels already use. Absent types render no subgroup. Each
+subgroup's own table still uses the SAME `renderChannelTable()`/
+`wwCurValueCellHtml()` machinery Phase 5A-UAT2 established -- the Cur A/
+Cur B fix is fully preserved. New parent + per-subgroup Show all/Hide
+all buttons reuse the existing `.group-toggle-btn` visual language and
+`ww.displayed` as the sole visibility authority -- no second visibility
+state.
+
+**Deliberately unchanged**: `wwPanelGroupKeyFor()`'s own Grouped-mode
+panel-placement key stays hardcoded `"Calculated"` -- sidebar grouping
+is presentation-only and never touches Grouped/Separate/Custom/A-B/
+Peak/Callout, verified directly by the full existing regression suite.
+
+**Tests**: extended `phase5a_check.mjs` with 8 new checks -- **73/73
+passing** in the file overall (65 prior unchanged). New backend tests
+(`TestDeriveEngineeringType`, `TestEngineeringTypeInheritance`, plus one
+additive API assertion) -- full backend suite green. Full frontend
+suite reconfirmed at the true 33-failure baseline (zero net new
+regressions).
+
+**Not yet done** (as of this section being written): commit/push,
+CI/automatic DEV deployment verification, and owner UAT of this feature
+specifically -- see the final report delivered alongside this update for
+whether those have since completed.
+
+## What was done in the prior session (Phase 5A UAT — Absolute Time after adding a calculated channel)
+
 **Phase 5A UAT — Absolute Time after adding a calculated channel.**
 Bug fix to DEC-047's frontend implementation, preserving DEC-042.
 Owner UAT found that Absolute Time stopped being selectable after a

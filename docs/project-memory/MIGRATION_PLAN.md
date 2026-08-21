@@ -8648,6 +8648,148 @@ owner UAT after this push.
 
 ---
 
+## Phase 5A-UAT4 — Calculated Channel Type Subgroups (2026-08-21)
+
+### Scope
+
+Owner-approved behavior: on the main Waveform page, calculated channels
+must remain under their own top-level "Calculated Channels" group,
+never merged into the original Analog Channels groups -- but WITHIN
+that group, add engineering-type subgroups (Voltage/Current/Power/
+Frequency/ROCOF/Undefined) mirroring the Analog Channels hierarchy, so
+both "this signal is calculated" and "this signal represents Voltage/
+Current/etc." are visible at once.
+
+### Current classification authority (investigated first, per this
+task's own explicit instruction)
+
+`CalculatedChannel` had NO classification field of any kind before this
+change (confirmed by direct inspection of
+`app.domain.calculated_channel`). Source analog channels are classified
+by the existing `app.domain.channel_classification.classify_analog_channel()`
+(three tiers: explicit `parameter_type` metadata, recognized unit, else
+`Undefined` -- never a naming-pattern guess), computed once at import
+time and stored on `AnalogChannelSummary.engineering_type`
+(`app/services/import_service.py`). This is the ONLY classification
+authority in the codebase; this task adds an INHERITANCE rule on top of
+it, never a second classification engine.
+
+### Backend: inherited classification
+
+New `CalculatedChannel.engineering_type` field (additive) and a new pure
+domain function, `app.domain.calculated_channel.derive_engineering_type
+(input_types: list[str]) -> str`: every input must share the exact same
+KNOWN (non-`Undefined`) type for that type to be inherited; an empty
+list, any `Undefined` input, or a genuine mismatch all conservatively
+yield `Undefined`. ONE rule, not five -- it covers unary (Reverse
+Polarity/Absolute Value/Multiply by Constant: trivially one input, so
+"the common type" IS that input's own type) and multi-input (Addition/
+Subtraction: 2+ inputs must genuinely agree) identically, with no
+per-operation branching. `_resolve_input()` in
+`calculated_channel_service.py` now also resolves each input's own
+`engineering_type` (a real source channel's `AnalogChannelSummary.
+engineering_type`, or another calculated channel's own already-derived
+`engineering_type`) -- the latter is the ENTIRE transitive-propagation
+mechanism for calculated-from-calculated, no separate graph walk needed.
+`create_calculated_channel()` computes `derive_engineering_type([r.
+engineering_type for r in resolved])` and stores it -- classification
+never blocks or alters the calculation itself; the existing unit-
+compatibility and time-alignment guardrails (completely unchanged)
+remain the sole eligibility authority. `CalculatedChannelOut` gained the
+additive `engineering_type` field.
+
+### Frontend: sidebar hierarchy
+
+`#calculatedChannelsSidebarSection` (the Waveform sidebar's Calculated
+Channels group) is now itself a collapsible `<details class="channel-
+group" data-group="calculated">` -- the SAME nested-group visual
+language Analog/Digital Channels already use, no new sidebar pattern --
+containing nested per-type `<details class="channel-subgroup">` blocks
+ordered by the EXACT SAME `ANALOG_GROUP_ORDER` Analog Channels already
+use. A type with zero current calculated channels renders no subgroup
+at all (matches `renderAnalogGroup()`'s own "only present types"
+convention). Each subgroup's own table is still built via the SAME
+`renderChannelTable()`/`analogChannelNameCellHtml()`/
+`wwCurValueCellHtml()` Phase 5A-UAT2 already established -- the Cur A/
+Cur B presentation is completely preserved, just rendered once per
+subgroup instead of once for the whole flat list. New parent
+("Calculated Channels") and per-subgroup Show all/Hide all buttons
+reuse the same `.group-toggle-btn` visual language as Analog/Digital's
+own subgroup buttons; a new `wwToggleCalculatedChannelGroupDisplay()`
+reads scope directly from `ww.calculatedChannels` (never a DOM row
+scan) and builds metas via the SAME `wwCalculatedChannelMeta()` a
+single-channel toggle already uses -- `ww.displayed` remains the sole
+visibility authority throughout, no second visibility state introduced.
+
+### Deliberately unchanged: Grouped-mode panel placement
+
+`wwPanelGroupKeyFor()`'s own Grouped-mode grouping key
+(`wwCalculatedChannelMeta().engineeringType`, hardcoded `"Calculated"`)
+is UNTOUCHED -- calculated channels continue to land in their own
+dedicated "Calculated" panel in Grouped mode, exactly as before. Only
+the sidebar's own presentational tree structure changed; no separate
+rendering pipeline by engineering type was created. Grouped/Separate/
+Custom/A-B/Peak/Callout are all unaffected, verified directly by the
+full existing calculated-channel regression suite passing unchanged.
+
+### Optional manager-page addition
+
+Manager-page rows (per this task's own "if trivial" allowance) now
+append the inherited type to their existing operation-summary line
+(e.g. "Addition (VA + VB) · Voltage") -- no new row, no new CSS class,
+no redesign of the builder/manager page.
+
+### Tests
+
+Extended `phase5a_check.mjs` with 8 new checks: top-level group stays
+distinct from Analog Channels (no calculated row leaks into the Analog
+Channels group), Voltage/Current/Power/Undefined calculated channels
+each land in the correct subgroup with `ANALOG_GROUP_ORDER` ordering
+preserved, no empty subgroups for absent types, A/B measurements work
+correctly inside a subgroup, parent Show all/Hide all reaches every
+subgroup while a subgroup's own button affects only that subgroup, a
+newly created channel appears under the correct subgroup immediately
+with no reload, deleting the last channel of a type removes that
+subgroup cleanly with no stale row, and subgroup placement has zero
+dependency on source-channel visibility (a calculated channel built from
+a never-displayed source channel is still classified and grouped
+correctly) -- **73/73 passing** in the file overall (65 prior
+unchanged). New backend tests: `TestDeriveEngineeringType` (pure
+function, `test_calculated_channel_domain.py`, covering single/matching/
+mismatched/`Undefined`/empty input sets) and
+`TestEngineeringTypeInheritance` (full create-flow via
+`create_calculated_channel()`, including a verified two-level
+calculated-from-calculated transitive-propagation chain,
+`test_calculated_channel_service.py`), plus one additive API-response
+field assertion (`test_calculated_channel_api.py`) -- full backend suite
+green (no existing test broken by the additive field). Full frontend
+suite reconfirmed at the true 33-failure baseline across the same 15
+pre-existing files (zero net new regressions; `phase4c1_check.mjs`/
+`phase4c2_check.mjs`/`phase4f_check.mjs`/`phase4g_check.mjs` individually
+reconfirmed passing).
+
+### Decision
+
+No new decision. See the "Update" note appended to
+[DECISIONS.md — DEC-047](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations)
+(an explicit clarification, not a new architectural decision).
+
+### Files changed
+
+Backend: `app/domain/calculated_channel.py` (new `engineering_type`
+field + `derive_engineering_type()`), `app/services/
+calculated_channel_service.py` (`_ResolvedInput.engineering_type`,
+`_resolve_input()`, `create_calculated_channel()`), `app/schemas/
+calculated_channel.py` (additive `CalculatedChannelOut.engineering_type`).
+Frontend: `frontend/index.html` only -- sidebar HTML restructured into a
+collapsible group + subgroups, `wwRenderCalculatedChannelsSidebarSection()`
+rewritten, new `calculatedGroupToggleButtonHtml()`/
+`wwToggleCalculatedChannelGroupDisplay()`, one-line manager-list summary
+addition. No changes to `wwPanelGroupKeyFor()`/Grouped-mode panel logic,
+time-alignment guardrails, or unit-compatibility rules.
+
+---
+
 ## Phase 5A-UAT3 — Calculated Channel Input Availability (2026-08-21)
 
 ### Scope

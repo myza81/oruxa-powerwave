@@ -4,8 +4,9 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-21** (Phase 5A UAT — Absolute Time
-after adding a calculated channel, on top of Phase 5A-UAT3 —
+Last meaningful update: **2026-08-21** (Phase 5A-UAT4 — Calculated
+Channel Type Subgroups, on top of Phase 5A UAT — Absolute Time
+after adding a calculated channel, Phase 5A-UAT3 —
 Calculated Channel Input Availability, Phase 5A-UAT2 — Standard A/B
 Measurements for Calculated Channels, Phase 5A-UAT —
 Calculated Channel Waveform Preview, Phase 5A UAT Fix — Page
@@ -170,15 +171,37 @@ one optgroup per source, matching the owner's preferred "Source 1 /
 Source 2 / Calculated Channels" structure. All existing engineering
 guardrails (time-alignment, unit compatibility, dependency tracking)
 are completely unchanged — only candidate-list *availability* changed,
-never validation. See
+never validation.
+**Type Subgroups (2026-08-21, same day, owner-approved clarification)**:
+the Waveform sidebar's "Calculated Channels" group is now itself a
+collapsible group (like Analog/Digital Channels) containing nested
+per-engineering-type subgroups (Voltage/Current/Power/Frequency/ROCOF/
+Undefined, same `ANALOG_GROUP_ORDER` Analog Channels already use) —
+never merged into the real Analog Channels groups. Classification is a
+NEW backend-inherited field, `CalculatedChannel.engineering_type`
+(additive), computed by `app.domain.calculated_channel.
+derive_engineering_type()`: every input must share the same KNOWN type
+for it to be inherited, else `Undefined` — one rule covering unary and
+multi-input operations identically, propagating correctly through
+calculated-from-calculated chains (a calculated input passes its own
+already-derived type back through the same function). Never guessed
+from the user-editable channel name; classification never blocks or
+alters a calculation, only the existing unit/time-alignment guardrails
+do that (unchanged). Reuses the existing `app.domain.
+channel_classification.classify_analog_channel()` authority for real
+source channels — no second classification engine. Deliberately does
+NOT touch `wwPanelGroupKeyFor()`'s own Grouped-mode panel-placement key
+(still hardcoded `"Calculated"`) — sidebar grouping is presentation
+only, Grouped/Separate/Custom/A-B/Peak/Callout are all unchanged. See
 [DECISIONS.md — DEC-047](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations)
-(including its 2026-08-21 Update notes) and
+(including all its 2026-08-21 Update notes) and
 [MIGRATION_PLAN.md — Phase 5A](MIGRATION_PLAN.md#phase-5a--calculated-channels--basic-signal-builder-2026-08-21)
 / [Phase 5A UAT Fix](MIGRATION_PLAN.md#phase-5a-uat-fix--page-navigation-isolation-2026-08-21)
 / [Phase 5A-UAT — Waveform Preview](MIGRATION_PLAN.md#phase-5a-uat--calculated-channel-waveform-preview-2026-08-21)
 / [Phase 5A-UAT2 — Standard A/B Measurements](MIGRATION_PLAN.md#phase-5a-uat2--standard-ab-measurements-for-calculated-channels-2026-08-21)
 / [Phase 5A-UAT3 — Input Availability](MIGRATION_PLAN.md#phase-5a-uat3--calculated-channel-input-availability-2026-08-21)
-/ [Phase 5A UAT — Absolute Time](MIGRATION_PLAN.md#phase-5a-uat--absolute-time-after-adding-a-calculated-channel-2026-08-21).
+/ [Phase 5A UAT — Absolute Time](MIGRATION_PLAN.md#phase-5a-uat--absolute-time-after-adding-a-calculated-channel-2026-08-21)
+/ [Phase 5A-UAT4 — Type Subgroups](MIGRATION_PLAN.md#phase-5a-uat4--calculated-channel-type-subgroups-2026-08-21).
 
 `[DECISION]` **Dynamic Maximum/Minimum Peak Annotation — DEC-046**
 (2026-08-21; **persistent placement guidance ribbon, addendum,
