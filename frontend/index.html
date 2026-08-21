@@ -252,6 +252,13 @@
             flex: 0 0 auto;
             width: 320px;
             overflow-y: auto;
+            /* Phase 4E-UAT (scroll-anchoring fix): this region's own
+               scroll container IS the positioning context for its
+               sidebar-owned annotation notes (#wwAnnotationOverlaySidebar
+               is a DOM child of this element) -- so a note's absolute
+               top/left is native content-relative and needs zero manual
+               scroll-offset math; see wwRenderAnnotations(). */
+            position: relative;
             /* Phase 3B-UAT11: no hard divider directly against the
                scrollbar edge. Desktop separation is provided by the
                adjacent resize handle's centered divider instead. */
@@ -298,6 +305,14 @@
             min-height: 0;
             overflow-y: auto;
             padding: 0;
+            /* Phase 4E-UAT (scroll-anchoring fix): same reasoning as
+               #workspaceSidebar's own comment above -- this is the
+               positioning context for #wwAnnotationOverlayMain. Does NOT
+               change positioning for #viewWaveform's own content (already
+               `position: relative` itself, so CSS's "nearest positioned
+               ancestor" resolution for anything anchored to it stops
+               there first, unaffected by this). */
+            position: relative;
         }
         .shell-view-placeholder {
             padding: 48px 24px;
@@ -1444,16 +1459,22 @@
         .ww-panel-header:hover { background: var(--hover-tint); }
         .ww-panel-header:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-        /* Phase 4E (DEC-044): the annotation overlay + floating notes.
-           #workspaceRow is the stable, non-scrolling positioning context
-           (see wwAnnotationWorkAreaRect()'s own comment for why notes are
-           anchored to this frame rather than following #workspaceSidebar's/
-           #activeViewArea's own independent internal scroll). */
-        #workspaceRow { position: relative; }
+        /* Phase 4E (DEC-044) + Phase 4E-UAT scroll-anchoring fix: the
+           annotation overlay + floating notes. Each region (sidebar/main)
+           gets its OWN overlay, rendered as a DOM child of that region's
+           own scroll container (#workspaceSidebar/#activeViewArea, both
+           now `position: relative` -- see their own CSS comments), NOT a
+           single shared overlay anchored to the stable, non-scrolling
+           #workspaceRow. `overflow: visible` (never `hidden`) is
+           deliberate: it lets a note positioned beyond the overlay's own
+           box extend its region's native "scrollable overflow" area, so
+           the region's existing `overflow-y: auto` scrolls the note
+           correctly with ZERO manual scroll-offset compensation in JS --
+           see wwRenderAnnotations()/wwAnnotationRegionEl(). */
         .ww-annotation-overlay {
             position: absolute;
             inset: 0;
-            overflow: hidden; /* section 49: never a page-level horizontal/vertical expansion */
+            overflow: visible;
             pointer-events: none; /* section 8: empty space never intercepts Plotly/sidebar/toolbar interaction */
             z-index: 15;
         }
@@ -1610,6 +1631,7 @@
             overflow-wrap: break-word;
             display: -webkit-box;
             -webkit-line-clamp: 3;
+            line-clamp: 3;
             -webkit-box-orient: vertical;
             overflow: hidden;
         }
@@ -2313,6 +2335,19 @@
                             <p class="empty-state">Select a recording from Recordings to see its channels here.</p>
                         </div>
                     </section>
+
+                    <!-- Phase 4E-UAT (scroll-anchoring fix): sidebar-owned
+                         annotation notes. A DOM child of #workspaceSidebar
+                         ITSELF (not a sibling-level overlay spanning
+                         #workspaceRow) so native scrolling carries these
+                         notes with sidebar content with no manual JS
+                         scroll-offset math. Empty space stays
+                         pointer-events:none (section 8) -- every sidebar
+                         control still works normally through it; only an
+                         individual `.ww-annotation` note intercepts
+                         anything. See wwRenderAnnotations()/
+                         wwAnnotationRegionEl(). -->
+                    <div id="wwAnnotationOverlaySidebar" class="ww-annotation-overlay" aria-hidden="true"></div>
                 </aside>
 
                 <div class="shell-split-handle" id="workspaceSplitHandle" role="separator" aria-orientation="vertical" aria-label="Resize Workspace Sidebar" tabindex="-1"></div>
@@ -2622,25 +2657,25 @@
                             <h3>Split view</h3>
                             <p>Not implemented yet -- this shell slot is reserved for a future Waveform &harr; Table split.</p>
                         </section>
+
+                        <!-- Phase 4E-UAT (scroll-anchoring fix): main-
+                             workspace-owned annotation notes. A DOM child
+                             of #activeViewArea ITSELF -- #activeViewArea and
+                             #wwToolbar are SIBLINGS under #mainWorkspace, so
+                             this overlay can structurally never cover the
+                             toolbar's own footprint; no toolbar-rect
+                             clamping code is needed. Native scrolling
+                             carries these notes with main-workspace content
+                             with no manual JS scroll-offset math. Empty
+                             space stays pointer-events:none (section 8) --
+                             Plotly zoom/pan and A/B cursor drag still work
+                             completely normally through it; only an
+                             individual `.ww-annotation` note intercepts
+                             anything. See wwRenderAnnotations()/
+                             wwAnnotationRegionEl(). -->
+                        <div id="wwAnnotationOverlayMain" class="ww-annotation-overlay" aria-hidden="true"></div>
                     </div>
                 </main>
-
-                <!-- Phase 4E (DEC-044): the ONE annotation overlay, spanning
-                     the full #workspaceRow viewport (sidebar + main
-                     workspace including the toolbar's own footprint --
-                     never rendered INTO, see wwAnnotationPlacementClickHandler()'s
-                     explicit toolbar exclusion and wwClampAnnotationPixelPosition()'s
-                     toolbar-avoidance clamp, both of which key off #wwToolbar's
-                     own live rect rather than a CSS cutout, since the
-                     toolbar wraps to a taller height at narrow widths and a
-                     static clip-path would need constant recomputation).
-                     Empty overlay space is pointer-events:none (section 8)
-                     -- Plotly zoom/pan, A/B cursor drag, and every sidebar
-                     control work completely normally through it; only an
-                     individual `.ww-annotation` note (pointer-events:auto,
-                     set in CSS regardless of this ancestor) intercepts
-                     anything. See wwRenderAnnotations()/wwAnnotationWorkAreaRect(). -->
-                <div id="wwAnnotationOverlay" class="ww-annotation-overlay" aria-hidden="true"></div>
             </div>
 
             <!-- Recordings page (Phase 3B): a sibling of Workspace Row,
@@ -5260,15 +5295,19 @@
             // a viewing preference, same lifecycle class as
             // ww.layoutMode/ww.dragMode/ww.timeMode above.
             zoomStepAxis: { in: "x", out: "x" },
-            // Phase 4E (DEC-044): the generic annotation authority --
+            // Phase 4E (DEC-044) + Phase 4E-UAT scroll-anchoring addendum:
+            // the generic annotation authority --
             // "sourceId::channelName"-style per-channel state this is NOT;
             // annotations belong to the WHOLE current workspace/session,
             // never to one channel/panel/layout-mode. Map<id, Annotation>,
-            // where an Annotation is `{id, type, workspaceId, position:
-            // {x, y}, createdAt, zIndex, data}` -- `position` is
-            // NORMALIZED (0..1) relative to the stable #workspaceRow
-            // viewport frame (see wwAnnotationWorkAreaRect()), never
-            // waveform/data-anchored (section 6: this first annotation
+            // where an Annotation is `{id, type, workspaceId, region,
+            // position: {x, y}, createdAt, zIndex, data}` -- `region` is
+            // `"sidebar" | "main"` (which scroll container owns this
+            // note) and `position` is a RAW CONTENT-PIXEL offset from
+            // that region's own scrollable content origin, NOT a
+            // normalized 0..1 viewport fraction (see
+            // wwAnnotationRegionEl()/wwClampAnnotationContentPosition()),
+            // never waveform/data-anchored (section 6: this first annotation
             // type is a FLOATING work-area note, deliberately independent
             // of zoom/pan/Absolute-Elapsed/A-B cursors). `type` is
             // "text_note" this phase; `data` is a type-specific payload
@@ -6394,10 +6433,12 @@
             // through here -- one more hook point so the cursor overlay's
             // pixel projection never goes stale after any of them.
             wwUpdateCursorOverlay();
-            // Phase 4E (section 19): the SAME "workspace geometry changed"
-            // signal repositions every annotation note from its stable
-            // normalized coordinates -- never from zoom/pan/Absolute-
-            // Elapsed/layout-mode switch, none of which call this function.
+            // Phase 4E (section 19) + Phase 4E-UAT: the SAME "workspace
+            // geometry changed" signal re-clamps every annotation note
+            // within its OWN region's current scrollable content bounds
+            // (never proportionally rescaling the stored raw position) --
+            // never from zoom/pan/Absolute-Elapsed/layout-mode switch,
+            // none of which call this function.
             wwRenderAnnotations();
         }
 
@@ -6899,49 +6940,38 @@
 
         // ==================================================================
         // Phase 4E: generic annotation framework + Free Text Note (DEC-044)
+        // Phase 4E-UAT: region-aware content-scroll anchoring (DEC-044
+        // addendum)
         //
         // ww.annotations is the ONE authority (section 41) -- every note's
         // DOM element, every drawer row, and the toolbar count badge are
         // all DERIVED from it via wwRenderAnnotations()/
         // wwRenderAnnotationList(), never a second competing state.
         //
-        // Position model (section 6/17): normalized (0..1) relative to
-        // #workspaceRow's own STABLE bounding rect -- never waveform/data-
-        // anchored, never relative to a Plotly panel/trace. Deliberately
-        // NOT following #workspaceSidebar's/#activeViewArea's own
-        // independent internal `overflow-y: auto` scroll (a documented,
-        // reasoned scope decision -- see this phase's own MIGRATION_PLAN.md
-        // record for the full tradeoff analysis: those two containers
-        // scroll independently, and true native scroll-following for both
-        // while preserving ONE shared coordinate system for seamless
-        // cross-region dragging, section 32, would require either dynamic
-        // DOM re-parenting between two different scroll containers mid-
-        // drag or manual scrollTop-tracking duplicating native scroll
-        // mechanics -- both meaningfully more complex and harder to verify
-        // correctness of in this sandboxed environment than the chosen
-        // "anchored to the row's own stable viewport" model, which still
-        // fully satisfies workspace/session persistence and cross-region
-        // dragging with one simple coordinate system).
+        // Position model (UAT fix, supersedes the original 0..1-relative-
+        // to-#workspaceRow model): each annotation carries its own
+        // `region` ("sidebar" | "main") plus a RAW CONTENT-PIXEL
+        // `position: {x, y}` measured from its region's own scrollable
+        // content origin (i.e. `scrollLeft`/`scrollTop`-relative, not
+        // viewport-relative) -- NOT normalized 0..1. Raw pixels were
+        // chosen over normalizing-by-scrollHeight because the region's
+        // content height can change for reasons unrelated to the note
+        // (e.g. channels shown/hidden elsewhere in the same scrollable
+        // region); a normalized fraction would then silently map to a
+        // different absolute offset and the note would appear to jump --
+        // scroll correctness beats normalized-viewport elegance here.
+        // Each region's own overlay (#wwAnnotationOverlaySidebar/
+        // #wwAnnotationOverlayMain) is a genuine DOM CHILD of that
+        // region's own scroll container, so a note's `left`/`top` are
+        // native content coordinates and the browser's own scrolling
+        // carries the note with zero manual scroll-offset math in JS --
+        // see wwRenderAnnotations()/wwAnnotationRegionEl(). This also
+        // means toolbar exclusion is now structural, not computed:
+        // #activeViewArea and #wwToolbar are SIBLINGS under
+        // #mainWorkspace, so a note that is a DOM child of
+        // #activeViewArea can never occupy the toolbar's screen space --
+        // no toolbar-rect clamping code is needed anymore.
         // ==================================================================
-
-        function wwClamp01(value) {
-            if (!Number.isFinite(value)) return 0;
-            return Math.max(0, Math.min(1, value));
-        }
-
-        function wwAnnotationWorkAreaRect() {
-            const rowEl = document.getElementById("workspaceRow");
-            if (!rowEl) return null;
-            const rect = rowEl.getBoundingClientRect();
-            if (!rect || rect.width <= 0 || rect.height <= 0) return null;
-            return rect;
-        }
-
-        function wwAnnotationToolbarRect() {
-            const toolbarEl = document.getElementById("wwToolbar");
-            if (!toolbarEl || toolbarEl.hidden) return null;
-            return toolbarEl.getBoundingClientRect();
-        }
 
         function wwAnnotationId() {
             if (window.crypto && typeof window.crypto.randomUUID === "function") {
@@ -6950,24 +6980,64 @@
             return "ann-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
         }
 
-        // Section 7/18: keeps a note's top-left corner inside
-        // `workAreaRect`, and additionally never lets it overlap
-        // `toolbarRect` (the toolbar is never part of the permitted
-        // analysis area) -- shared by placement, drag, and render/resize
-        // repositioning so there is exactly one clamping rule, not three.
-        function wwClampAnnotationPixelPosition(left, top, noteWidth, noteHeight, workAreaRect, toolbarRect) {
-            let clampedLeft = Math.max(0, Math.min(left, Math.max(0, workAreaRect.width - noteWidth)));
-            let clampedTop = Math.max(0, Math.min(top, Math.max(0, workAreaRect.height - noteHeight)));
-            if (toolbarRect) {
-                const toolbarLeftRel = toolbarRect.left - workAreaRect.left;
-                const toolbarRightRel = toolbarRect.right - workAreaRect.left;
-                const toolbarBottomRel = toolbarRect.bottom - workAreaRect.top;
-                const overlapsX = clampedLeft < toolbarRightRel && (clampedLeft + noteWidth) > toolbarLeftRel;
-                if (overlapsX && clampedTop < toolbarBottomRel) {
-                    clampedTop = Math.max(0, Math.min(toolbarBottomRel, workAreaRect.height - noteHeight));
+        // Returns the DOM element that scrolls (and owns the content
+        // coordinate space) for a given annotation region.
+        function wwAnnotationRegionEl(region) {
+            if (region === "sidebar") return document.getElementById("workspaceSidebar");
+            if (region === "main") return document.getElementById("activeViewArea");
+            return null;
+        }
+
+        // Returns the region-specific overlay DOM element that hosts that
+        // region's annotation notes as real children.
+        function wwAnnotationOverlayEl(region) {
+            if (region === "sidebar") return document.getElementById("wwAnnotationOverlaySidebar");
+            if (region === "main") return document.getElementById("wwAnnotationOverlayMain");
+            return null;
+        }
+
+        // Section 32 (cross-region drag): classifies a live pointer
+        // position (viewport/client coordinates) into the region whose
+        // container it currently sits over. Returns null when the pointer
+        // is over neither region (e.g. the toolbar) -- callers should
+        // then keep the annotation's CURRENT region unchanged for that
+        // frame rather than snapping into invalid space.
+        function wwDetermineAnnotationRegion(clientX, clientY) {
+            const sidebarEl = document.getElementById("workspaceSidebar");
+            if (sidebarEl) {
+                const rect = sidebarEl.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0 &&
+                    clientX >= rect.left && clientX <= rect.right &&
+                    clientY >= rect.top && clientY <= rect.bottom) {
+                    return "sidebar";
                 }
             }
-            return { left: clampedLeft, top: clampedTop };
+            const mainEl = document.getElementById("activeViewArea");
+            if (mainEl) {
+                const rect = mainEl.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0 &&
+                    clientX >= rect.left && clientX <= rect.right &&
+                    clientY >= rect.top && clientY <= rect.bottom) {
+                    return "main";
+                }
+            }
+            return null;
+        }
+
+        // Keeps a note's top-left corner inside its OWN region's current
+        // scrollable content bounds (`scrollWidth`/`scrollHeight`, which
+        // cover the full scrollable area, not just the visible viewport)
+        // -- shared by placement, drag, and render/resize repositioning so
+        // there is exactly one clamping rule, not three. No toolbar
+        // parameter: see the module comment above for why that exclusion
+        // is now structural instead of computed.
+        function wwClampAnnotationContentPosition(x, y, noteWidth, noteHeight, regionEl) {
+            const maxX = Math.max(0, (regionEl ? regionEl.scrollWidth : noteWidth) - noteWidth);
+            const maxY = Math.max(0, (regionEl ? regionEl.scrollHeight : noteHeight) - noteHeight);
+            return {
+                x: Math.max(0, Math.min(x, maxX)),
+                y: Math.max(0, Math.min(y, maxY)),
+            };
         }
 
         // ------------------------------------------------------------------
@@ -6975,14 +7045,15 @@
         // never scattered direct ww.annotations/DOM mutation elsewhere.
         // ------------------------------------------------------------------
 
-        function wwCreateAnnotation(type, position, data) {
+        function wwCreateAnnotation(type, region, position, data) {
             const id = wwAnnotationId();
             ww.annotationZCounter += 1;
             const annotation = {
                 id: id,
                 type: type,
                 workspaceId: currentWorkspaceId(),
-                position: { x: wwClamp01(position.x), y: wwClamp01(position.y) },
+                region: region,
+                position: { x: position.x, y: position.y },
                 createdAt: Date.now(),
                 zIndex: ww.annotationZCounter,
                 data: data || {},
@@ -6999,7 +7070,7 @@
             for (const key in patch) {
                 if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
                 if (key === "data") annotation.data = Object.assign({}, annotation.data, patch.data);
-                else if (key === "position") annotation.position = { x: wwClamp01(patch.position.x), y: wwClamp01(patch.position.y) };
+                else if (key === "position") annotation.position = { x: patch.position.x, y: patch.position.y };
                 else annotation[key] = patch[key];
             }
             wwRenderAnnotations();
@@ -7069,45 +7140,73 @@
         function wwWireAnnotationDrag(el, handleEl, id) {
             if (!handleEl) return;
             let dragging = false;
-            let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+            let grabOffsetX = 0, grabOffsetY = 0;
+            let liveRegion = null;
 
             handleEl.addEventListener("pointerdown", (event) => {
                 if (el.dataset.editing === "true") return; // never drag while the textarea owns this element (section 16)
                 if (event.button !== undefined && event.button !== 0) return;
                 event.stopPropagation(); // never let this reach the document-level "click outside deselects" listener
+                const annotation = ww.annotations.get(id);
+                if (!annotation) return;
                 wwSelectAnnotation(id);
                 dragging = true;
-                startX = event.clientX;
-                startY = event.clientY;
-                startLeft = el.offsetLeft;
-                startTop = el.offsetTop;
+                liveRegion = annotation.region;
+                // grabOffset: the pointer's fixed SCREEN-pixel offset from
+                // the note's own top-left corner, captured once. Unlike a
+                // delta-from-drag-start model (which breaks once
+                // `offsetParent` changes mid-drag via cross-region
+                // reparenting below), this stays correct across a reparent
+                // since it never reads `offsetLeft`/`offsetTop` again.
+                const rect = el.getBoundingClientRect();
+                grabOffsetX = event.clientX - rect.left;
+                grabOffsetY = event.clientY - rect.top;
                 if (handleEl.setPointerCapture) {
                     try { handleEl.setPointerCapture(event.pointerId); } catch (error) { /* not attached to a real layout yet */ }
                 }
             });
             handleEl.addEventListener("pointermove", (event) => {
                 if (!dragging) return;
-                const workAreaRect = wwAnnotationWorkAreaRect();
-                if (!workAreaRect) return;
-                const toolbarRect = wwAnnotationToolbarRect();
-                const deltaX = event.clientX - startX;
-                const deltaY = event.clientY - startY;
+                // Section 32: cross-region drag -- reparent into the
+                // destination region's own overlay the instant the
+                // pointer crosses a region boundary, then immediately
+                // recompute left/top in the NEW region's content-
+                // coordinate space using the SAME pointer position, so
+                // there is no visible jump. `setPointerCapture` keeps
+                // targeting `handleEl` correctly across the reparent since
+                // it never leaves the document. A pointer over NEITHER
+                // region (e.g. the toolbar) freezes the region for this
+                // frame instead of losing the note or snapping into
+                // invalid space -- the toolbar is structurally never a
+                // valid drop target since it isn't a descendant of either
+                // region overlay.
+                const targetRegion = wwDetermineAnnotationRegion(event.clientX, event.clientY) || liveRegion;
+                if (targetRegion !== liveRegion) {
+                    const overlayEl = wwAnnotationOverlayEl(targetRegion);
+                    if (overlayEl) {
+                        overlayEl.appendChild(el);
+                        liveRegion = targetRegion;
+                    }
+                }
+                const regionEl = wwAnnotationRegionEl(liveRegion);
+                if (!regionEl) return;
+                const regionRect = regionEl.getBoundingClientRect();
                 const noteWidth = el.offsetWidth || 160;
                 const noteHeight = el.offsetHeight || 60;
-                const clamped = wwClampAnnotationPixelPosition(
-                    startLeft + deltaX, startTop + deltaY, noteWidth, noteHeight, workAreaRect, toolbarRect
-                );
-                el.style.left = clamped.left + "px";
-                el.style.top = clamped.top + "px";
+                const rawX = (event.clientX - grabOffsetX) - regionRect.left + regionEl.scrollLeft;
+                const rawY = (event.clientY - grabOffsetY) - regionRect.top + regionEl.scrollTop;
+                const clamped = wwClampAnnotationContentPosition(rawX, rawY, noteWidth, noteHeight, regionEl);
+                el.style.left = clamped.x + "px";
+                el.style.top = clamped.y + "px";
             });
             function endDrag(event) {
                 if (!dragging) return;
                 dragging = false;
-                const workAreaRect = wwAnnotationWorkAreaRect();
-                if (workAreaRect) {
-                    const x = parseFloat(el.style.left) / workAreaRect.width;
-                    const y = parseFloat(el.style.top) / workAreaRect.height;
-                    wwUpdateAnnotation(id, { position: { x: x, y: y } });
+                if (liveRegion) {
+                    wwUpdateAnnotation(id, {
+                        region: liveRegion,
+                        position: { x: parseFloat(el.style.left) || 0, y: parseFloat(el.style.top) || 0 },
+                    });
                 }
                 if (handleEl.releasePointerCapture && event && event.pointerId !== undefined) {
                     try { handleEl.releasePointerCapture(event.pointerId); } catch (error) { /* already released */ }
@@ -7188,15 +7287,32 @@
         // of which call this (confirming, by absence, that those paths
         // cannot move a note -- section 6/36/38).
         function wwRenderAnnotations() {
-            const overlay = document.getElementById("wwAnnotationOverlay");
-            if (!overlay) return;
-            const workAreaRect = wwAnnotationWorkAreaRect();
-            const toolbarRect = wwAnnotationToolbarRect();
+            // Section 39/UAT-resize: two independent overlays, each a DOM
+            // child of its own region's scroll container. Re-clamping
+            // every note within its region's CURRENT scrollWidth/
+            // scrollHeight on every render (never proportionally
+            // rescaling the stored raw position) is the resize safety
+            // net -- reused for free via the existing
+            // wwResizeAllVisiblePlots() -> wwRenderAnnotations() hook.
+            const seenByOverlay = { sidebar: new Set(), main: new Set() };
 
-            const seen = new Set();
             for (const annotation of ww.annotations.values()) {
-                seen.add(annotation.id);
+                const region = annotation.region === "sidebar" ? "sidebar" : "main";
+                const overlay = wwAnnotationOverlayEl(region);
+                const regionEl = wwAnnotationRegionEl(region);
+                if (!overlay || !regionEl) continue;
+                seenByOverlay[region].add(annotation.id);
+
                 let el = overlay.querySelector('.ww-annotation[data-annotation-id="' + CSS.escape(annotation.id) + '"]');
+                if (!el) {
+                    // May already exist under the OTHER region's overlay if
+                    // `region` changed via a path other than the drag
+                    // handler's own live reparenting -- move it rather than
+                    // creating a duplicate DOM node.
+                    const otherOverlay = wwAnnotationOverlayEl(region === "sidebar" ? "main" : "sidebar");
+                    el = otherOverlay && otherOverlay.querySelector('.ww-annotation[data-annotation-id="' + CSS.escape(annotation.id) + '"]');
+                    if (el) overlay.appendChild(el);
+                }
                 if (!el) {
                     el = document.createElement("div");
                     el.className = "ww-annotation ww-annotation--" + annotation.type;
@@ -7209,15 +7325,11 @@
                 el.classList.toggle("ww-annotation--selected", ww.annotationSelectedId === annotation.id);
                 el.style.zIndex = String(annotation.zIndex);
 
-                if (workAreaRect) {
-                    const noteWidth = el.offsetWidth || 160;
-                    const noteHeight = el.offsetHeight || 60;
-                    const rawLeft = annotation.position.x * workAreaRect.width;
-                    const rawTop = annotation.position.y * workAreaRect.height;
-                    const clamped = wwClampAnnotationPixelPosition(rawLeft, rawTop, noteWidth, noteHeight, workAreaRect, toolbarRect);
-                    el.style.left = clamped.left + "px";
-                    el.style.top = clamped.top + "px";
-                }
+                const noteWidth = el.offsetWidth || 160;
+                const noteHeight = el.offsetHeight || 60;
+                const clamped = wwClampAnnotationContentPosition(annotation.position.x, annotation.position.y, noteWidth, noteHeight, regionEl);
+                el.style.left = clamped.x + "px";
+                el.style.top = clamped.y + "px";
 
                 if (el.dataset.editing !== "true" && annotation.type === "text_note") {
                     const body = el.querySelector(".ww-annotation-body");
@@ -7230,8 +7342,13 @@
                 }
             }
 
-            for (const el of Array.from(overlay.querySelectorAll(".ww-annotation"))) {
-                if (!seen.has(el.dataset.annotationId)) el.remove();
+            for (const region of ["sidebar", "main"]) {
+                const overlay = wwAnnotationOverlayEl(region);
+                if (!overlay) continue;
+                const seen = seenByOverlay[region];
+                for (const el of Array.from(overlay.querySelectorAll(".ww-annotation"))) {
+                    if (!seen.has(el.dataset.annotationId)) el.remove();
+                }
             }
         }
 
@@ -7378,24 +7495,23 @@
             const insideMain = !!(mainAreaEl && mainAreaEl.contains(event.target));
             if (!insideSidebar && !insideMain) return; // section 7: only the permitted analysis area
 
-            const workAreaRect = wwAnnotationWorkAreaRect();
-            if (!workAreaRect) return;
+            const region = insideSidebar ? "sidebar" : "main";
+            const regionEl = insideSidebar ? sidebarEl : mainAreaEl;
+            const regionRect = regionEl.getBoundingClientRect();
             event.preventDefault();
             event.stopPropagation();
 
             const noteWidth = 200; // matches .ww-annotation's own min-width, used only for this initial centering estimate
             const noteHeight = 80;
-            const toolbarRect = wwAnnotationToolbarRect();
-            const clamped = wwClampAnnotationPixelPosition(
-                event.clientX - workAreaRect.left - noteWidth / 2,
-                event.clientY - workAreaRect.top - noteHeight / 2,
-                noteWidth, noteHeight, workAreaRect, toolbarRect
-            );
+            // Content-relative: pointer position minus the region's own
+            // viewport-top-left, PLUS its current scroll offset -- see the
+            // module comment's `contentY = pointerY - regionViewportTop +
+            // scrollTop` model.
+            const rawX = (event.clientX - regionRect.left + regionEl.scrollLeft) - noteWidth / 2;
+            const rawY = (event.clientY - regionRect.top + regionEl.scrollTop) - noteHeight / 2;
+            const clamped = wwClampAnnotationContentPosition(rawX, rawY, noteWidth, noteHeight, regionEl);
 
-            const annotation = wwCreateAnnotation(type, {
-                x: clamped.left / workAreaRect.width,
-                y: clamped.top / workAreaRect.height,
-            }, { text: "" });
+            const annotation = wwCreateAnnotation(type, region, { x: clamped.x, y: clamped.y }, { text: "" });
 
             wwExitAnnotationPlacementMode();
             // Section 12: enter edit mode immediately -- the user should

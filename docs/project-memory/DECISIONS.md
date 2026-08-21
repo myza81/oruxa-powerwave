@@ -4020,6 +4020,78 @@ Impact:
   image annotations, or a "Clear All Annotations" action.
 - See [MIGRATION_PLAN.md — Phase 4E](MIGRATION_PLAN.md#phase-4e--annotation-framework--free-text-note-2026-08-20).
 
+### ADDENDUM (2026-08-21) — Region-aware content-scroll anchoring (Phase 4E-UAT)
+
+Status: Approved
+Source: owner UAT finding — floating Text Notes stayed visually FIXED
+while the left Workspace Sidebar or the main waveform area was scrolled,
+instead of moving with the content they were placed beside.
+
+Supersedes DEC-044's own "Alternatives considered" entry that rejected
+true native scroll-following in favor of a `#workspaceRow`-relative
+stable-viewport model. That tradeoff is now reversed:
+
+> Floating Text Notes are region-aware content annotations. They are not
+> fixed to the workspace viewport. Sidebar-owned notes scroll with sidebar
+> content; main-workspace notes scroll with main content. Cross-region
+> drag transfers coordinate ownership.
+
+Decision:
+
+- Each `Annotation` now additionally carries a `region: "sidebar" |
+  "main"` field. `position: {x, y}` is no longer normalized 0..1 against
+  `#workspaceRow` — it is a RAW CONTENT-PIXEL offset from the owning
+  region's own scrollable content origin (`#workspaceSidebar`'s or
+  `#activeViewArea`'s own `scrollLeft`/`scrollTop`-relative space).
+- Two region-specific overlays (`#wwAnnotationOverlaySidebar`,
+  `#wwAnnotationOverlayMain`) replace the single `#wwAnnotationOverlay`,
+  each a genuine DOM CHILD of its own region's scroll container (both now
+  `position: relative`). This lets a note's absolute `left`/`top` extend
+  that region's native CSS "scrollable overflow" area, so the browser's
+  own scrolling carries the note correctly with ZERO manual JS
+  scroll-offset compensation — the "true native scroll-following" DEC-044
+  evaluated and declined is now achieved without the dynamic re-parenting
+  complexity DEC-044 was worried about, because that re-parenting is now
+  needed ONLY at the moment a drag crosses a region boundary (see below),
+  not continuously.
+- Toolbar exclusion is now STRUCTURAL rather than computed:
+  `#activeViewArea` and `#wwToolbar` are siblings under `#mainWorkspace`,
+  so a note that is a DOM child of `#activeViewArea` can never occupy the
+  toolbar's screen space. The old `wwAnnotationToolbarRect()`/toolbar-rect
+  clamping code is removed.
+- Cross-region dragging (Option C) is preserved: a live pointer-position
+  check (`wwDetermineAnnotationRegion()`) reparents the note's DOM element
+  into the destination region's own overlay the instant the pointer
+  crosses a region boundary, updates `annotation.region`, and recomputes
+  its position in the new region's content-coordinate space using the
+  same pointer position — no visible jump.
+- Resize behavior: notes are RE-CLAMPED within their region's current
+  `scrollWidth`/`scrollHeight` on every render (reusing the existing
+  `wwResizeAllVisiblePlots()` → `wwRenderAnnotations()` hook) — never
+  proportionally rescaled. Raw content-pixel storage was chosen over
+  normalizing-by-scrollHeight because the region's content height can
+  change for reasons unrelated to the note (e.g. channels shown/hidden
+  elsewhere in the same scrollable region); scroll correctness was
+  prioritized over normalized-viewport elegance.
+- Auto-scroll while dragging near a region's edge remains explicitly OUT
+  OF SCOPE, same exclusion as DEC-044's own original scope list.
+
+Impact:
+
+- `frontend/index.html` only. Removed: `wwAnnotationWorkAreaRect()`,
+  `wwAnnotationToolbarRect()`, `wwClampAnnotationPixelPosition()`,
+  `wwClamp01()`. Added: `wwAnnotationRegionEl()`, `wwAnnotationOverlayEl()`,
+  `wwDetermineAnnotationRegion()`, `wwClampAnnotationContentPosition()`.
+  Rewritten: `wwCreateAnnotation()` (new `region` parameter),
+  `wwUpdateAnnotation()` (no longer clamps `position` to 0..1),
+  `wwRenderAnnotations()`, `wwWireAnnotationDrag()`,
+  `wwAnnotationPlacementClickHandler()`.
+- Does not change annotation lifecycle semantics (Clear Workspace
+  preserves, Start New Workspace clears), the Annotation List's own
+  rendering, XSS-safe text handling, or pointer isolation — only the
+  position/region model and its two rendering surfaces.
+- See [MIGRATION_PLAN.md — Phase 4E-UAT](MIGRATION_PLAN.md#phase-4e-uat--annotation-scroll-anchoring-fix-2026-08-21).
+
 ---
 
 ## How to add a decision

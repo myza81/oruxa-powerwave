@@ -4,11 +4,116 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-08-20**
+Last updated: **2026-08-21**
 
 ## What was most recently done
 
-**Phase 4E — Annotation Framework + Free Text Note.** Full detail:
+**Phase 4E-UAT — Annotation Scroll Anchoring fix.** Owner UAT finding on
+Phase 4E: floating Text Notes stayed visually FIXED while
+`#workspaceSidebar`/`#activeViewArea` were scrolled, instead of moving
+with the content they were placed beside. Full detail:
+[DECISIONS.md — DEC-044 addendum](DECISIONS.md#addendum-2026-08-21--region-aware-content-scroll-anchoring-phase-4e-uat).
+
+**Root cause (confirmed via direct DOM/CSS inspection before editing, per
+the task's own mandatory step)**: annotation position was normalized
+against `#workspaceRow`'s own STABLE bounding rect, while
+`#workspaceSidebar` and `#activeViewArea` each scroll independently
+(`overflow-y: auto`) — so content moved underneath a note that stayed
+fixed relative to the row.
+
+**Fix**: replaced the one shared viewport coordinate system with
+REGION-AWARE CONTENT coordinates. Each annotation now carries
+`region: "sidebar" | "main"` plus a RAW CONTENT-PIXEL `position: {x, y}`
+measured from that region's own scrollable content origin. Two overlays
+(`#wwAnnotationOverlaySidebar`, `#wwAnnotationOverlayMain`) replace the
+single `#wwAnnotationOverlay`, each a genuine DOM CHILD of its own
+region's scroll container (`#workspaceSidebar`/`#activeViewArea`, both
+now `position: relative`; the overlay's own `overflow: hidden` was
+changed to `overflow: visible` so a note positioned beyond the overlay's
+own box still extends the region's native scrollable-overflow area
+instead of being clipped). Result: native browser scrolling carries a
+note with its region's content with ZERO manual JS scroll-offset
+compensation — no scroll listener was added.
+
+**Cross-region dragging (Option C)** still works both directions:
+`wwDetermineAnnotationRegion(clientX, clientY)` classifies the live
+pointer position against both regions' own `getBoundingClientRect()` on
+every `pointermove`; crossing a boundary reparents the note's DOM element
+into the destination overlay, updates `region`, and recomputes its
+position in the new region's content-coordinate space from a
+`grabOffsetX`/`grabOffsetY` captured once at drag-start (not a
+delta-from-drag-start model, which would break once `offsetParent`
+changes mid-drag) — no visible jump. A pointer over neither region (e.g.
+the toolbar) freezes the note's region for that frame rather than losing
+it or snapping into invalid space.
+
+**Toolbar exclusion is now structural**, not computed: `#activeViewArea`
+and `#wwToolbar` are siblings under `#mainWorkspace`, so a note that is a
+DOM child of `#activeViewArea` can never occupy the toolbar's screen
+space. `wwAnnotationToolbarRect()`/`wwAnnotationWorkAreaRect()`/
+`wwClampAnnotationPixelPosition()`/`wwClamp01()` were removed entirely.
+
+**Resize**: notes are RE-CLAMPED within their region's current
+`scrollWidth`/`scrollHeight` on every render (reusing the existing
+`wwResizeAllVisiblePlots()` → `wwRenderAnnotations()` hook), never
+proportionally rescaled — raw content-pixel storage was chosen over
+normalizing-by-scrollHeight specifically so a note never jumps when the
+region's content height changes for an unrelated reason (e.g. channels
+shown/hidden elsewhere in the same region). Matches the task's own stated
+preference: scroll correctness over normalized-viewport elegance.
+
+**Unchanged**: lifecycle (Clear Workspace preserves, Start New Workspace
+clears), Annotation List rendering/selection/delete, XSS-safe
+`.textContent` rendering, pointer isolation (`pointer-events: none` on
+each overlay's empty space, `auto` on individual notes), Absolute/
+Elapsed and Grouped/Separate/Custom independence. Auto-scroll while
+dragging near a region's edge remains explicitly out of scope.
+
+**Tests**: reconfirmed the TRUE baseline directly against `main` before
+starting (33 pre-existing failures across the same 14 files, not the
+stale "18"). Rewrote `phase4e_check.mjs`'s position-model assumptions and
+added new checks for sidebar/main scroll anchoring, independent scroll
+between regions, horizontal scroll, cross-region drag both directions
+(region/DOM-parent transfer, no coordinate jump, frozen-region-over-
+toolbar), resize re-clamp without proportional rescale (including after a
+scroll), delete/edit/drawer-selection after a scroll, and both region
+overlays' pointer transparency — 39/39 passing. Full frontend suite
+reconfirmed at exactly the true 33-failure baseline (zero net new
+regressions); `phase4d_check.mjs` (38), `phase4b_check.mjs` (44/45,
+unchanged pre-existing failure), `phase4c1_check.mjs` (26),
+`phase4c2_check.mjs` (24) all still pass in full. Backend: 393/393,
+unchanged (no backend file touched).
+
+**chrome-extension://invalid investigation (owner-reported, alongside
+this fix)**: owner saw `HEAD chrome-extension://invalid/ net::ERR_FAILED`
+in the browser console during UAT. Exhaustive static-analysis search of
+the entire canonical frontend found: zero occurrences of the literal
+string `chrome-extension` anywhere in `frontend/index.html` or any
+`frontend/*.js`/`*.css`; zero `XMLHttpRequest` usage; the one `new URL(`
+call site and all 9 `fetch(` call sites are backend-API-scoped via
+`apiBaseUrl()`, which can never produce an extension-scheme URL; only 4
+static same-origin `src=`/`href=` references in the whole document with
+zero dynamic JS assignment; the `<head>` block has no favicon/manifest/
+icon reference that could trigger an independent resource probe. The
+console error's own cited line is `event.stopPropagation()` inside the
+annotation-edit textarea's `keydown` handler — unrelated to any
+network/URL code. Conclusion: Oruxa application code is NOT responsible;
+this bears the well-known signature of a browser-extension/devtools
+artifact (an extension's own content script running with an invalidated
+runtime context). **No Oruxa code was changed to suppress it**, per the
+task's own explicit instruction. Live incognito-vs-normal-browser
+reproduction (the investigation's own step 4) could not be performed —
+no browser automation capability exists in this sandboxed CLI
+environment; the owner should verify seeing this in a clean profile with
+extensions disabled, since only they have the browser session where it
+was observed.
+
+**Not yet done**: commit/push, CI/automatic DEV deployment verification,
+and owner UAT of this fix specifically.
+
+## What was done in the prior session (Phase 4E — Annotation Framework + Free Text Note)
+
+Full detail:
 [MIGRATION_PLAN.md — Phase 4E Record](MIGRATION_PLAN.md#phase-4e--annotation-framework--free-text-note-2026-08-20),
 [DECISIONS.md — DEC-044](DECISIONS.md#dec-044--generic-annotation-framework-first-type-is-a-workspace-scoped-work-area-relative-free-text-note).
 

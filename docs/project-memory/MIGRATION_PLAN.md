@@ -8650,6 +8650,174 @@ owner UAT after this push.
 
 ---
 
+## Phase 4E-UAT — Annotation Scroll Anchoring Fix (2026-08-21)
+
+### Scope
+
+Owner UAT finding on Phase 4E: floating Text Notes stayed visually FIXED
+while `#workspaceSidebar`/`#activeViewArea` were scrolled, instead of
+moving with the content they were placed beside. Scoped fix only —
+Text Note remains floating/non-waveform-time/non-channel/non-Y-value-
+anchored; no callout/anchoring UI, no auto-scroll-while-dragging, no
+import/export, no database persistence, no new annotation type.
+
+### Root cause (confirmed via direct DOM/CSS inspection before editing)
+
+Position was normalized (0..1) against `#workspaceRow`'s own STABLE
+bounding rect, per Phase 4E's own recorded architecture decision above.
+`#workspaceSidebar` and `#activeViewArea` each scroll independently
+(`overflow-y: auto`, confirmed again directly) while `#workspaceRow`
+itself never scrolls — so content moved underneath a note that stayed
+fixed relative to the row. This is exactly the tradeoff Phase 4E's own
+"Scroll-following, a documented tradeoff" section flagged for owner UAT;
+this record supersedes that tradeoff, not silently overwrites it.
+
+### New position model: region-aware content coordinates
+
+Every annotation now carries `region: "sidebar" | "main"` plus a RAW
+CONTENT-PIXEL `position: {x, y}` measured from that region's own
+scrollable content origin (`regionEl.scrollLeft`/`scrollTop`-relative),
+replacing the normalized-0..1-against-`#workspaceRow` model entirely.
+Raw pixels (not normalized-by-scrollHeight) were chosen because the
+region's content height can change for reasons unrelated to the note
+(e.g. channels shown/hidden elsewhere in the same scrollable region); a
+normalized fraction would then silently remap to a different absolute
+offset and the note would appear to jump on an unrelated content change
+— scroll correctness was prioritized over normalized-viewport elegance,
+per the task's own explicit preference.
+
+Two region-specific overlays (`#wwAnnotationOverlaySidebar`,
+`#wwAnnotationOverlayMain`) replace the single `#wwAnnotationOverlay`,
+each a genuine DOM CHILD of its own region's scroll container
+(`#workspaceSidebar`/`#activeViewArea`, both now `position: relative`).
+The overlay's own CSS changed from `overflow: hidden` to
+`overflow: visible` — this was the one open implementation detail this
+fix had to resolve: `overflow: hidden` on the overlay would clip a note
+positioned beyond the overlay's own (viewport-sized) box, exactly the
+"off-screen until scrolled into view" case a note needs to support;
+`overflow: visible` lets the note's box still count toward its region's
+native CSS scrollable-overflow computation without being clipped. Result:
+native browser scrolling carries a note with its region's content with
+ZERO manual JS scroll-offset compensation — no scroll listener exists
+for this at all, deliberately, so there is nothing to keep in sync.
+
+This also makes toolbar exclusion STRUCTURAL instead of computed:
+`#activeViewArea` and `#wwToolbar` are siblings under `#mainWorkspace`
+(re-confirmed directly), so a note that is a DOM child of
+`#activeViewArea` can never occupy the toolbar's screen space regardless
+of the toolbar's own wrap height. `wwAnnotationToolbarRect()`,
+`wwAnnotationWorkAreaRect()`, `wwClampAnnotationPixelPosition()`, and
+`wwClamp01()` were removed; the toolbar-click-target check in
+`wwAnnotationPlacementClickHandler()` (event.target inside `#wwToolbar`)
+is unchanged and still the first, explicit guard.
+
+### Cross-region dragging (Option C) — now genuinely native, not a shared-frame simplification
+
+Phase 4E's own record noted true scroll-following would need "dynamically
+re-parenting a note's DOM element between the two independently-scrolling
+containers mid-drag" and judged that too complex to verify at the time.
+This fix implements exactly that, scoped to the moment a drag crosses a
+region boundary (not continuously): `wwDetermineAnnotationRegion(clientX,
+clientY)` classifies the live pointer position against both regions' own
+`getBoundingClientRect()` on every `pointermove`. Crossing a boundary
+`appendChild`s the note's DOM element into the destination region's own
+overlay, updates `annotation.region`, and immediately recomputes its
+position in the new region's content-coordinate space — using a
+`grabOffsetX`/`grabOffsetY` captured ONCE at drag-start via
+`el.getBoundingClientRect()` (the pointer's fixed screen-pixel offset
+from the note's own top-left corner), not a delta-from-drag-start model.
+The delta model was rejected because it reads `el.offsetLeft`/`offsetTop`
+at drag-start and adds a running delta — correct only while `offsetParent`
+stays the same, which a mid-drag reparent breaks; `grabOffset` never
+re-reads `offsetLeft`/`offsetTop`, so it stays correct across the
+reparent. `setPointerCapture` was confirmed to keep targeting the
+captured handle element correctly after `appendChild` moves it elsewhere
+in the DOM, as long as it stays in the document, so the reparent never
+interrupts the drag gesture. A pointer over NEITHER region (e.g. the
+toolbar) freezes the note's region for that frame instead of losing it or
+snapping into invalid space — the toolbar is structurally never a valid
+drop target since it is not a descendant of either region overlay, so no
+toolbar-specific freeze logic was needed beyond this.
+
+### Resize: re-clamp only, never proportional rescale
+
+`wwRenderAnnotations()` re-clamps every note within its region's CURRENT
+`scrollWidth`/`scrollHeight` on every call (reusing the existing
+`wwResizeAllVisiblePlots()` → `wwRenderAnnotations()` hook, unchanged),
+but never proportionally rescales the STORED raw position. This is a
+render-time safety net only: shrinking a region temporarily re-clamps a
+note's rendered position; growing it back restores the original stored
+position exactly, with no data loss — the same precedent already
+established for A/B cursor state.
+
+### Pointer isolation, lifecycle, security — unaffected
+
+Each overlay keeps `pointer-events: none` on its own empty space and
+`auto` on individual `.ww-annotation` notes — re-verified with both
+overlays present (Plotly relayout handler and a sidebar row toggle both
+still fire normally). Lifecycle (Clear Workspace preserves annotations,
+Start New Workspace clears them), the Annotation List's own rendering/
+selection/delete, and `.textContent`-only XSS-safe text rendering are all
+untouched by this fix — `region` is internal state, not a new
+user-facing concept, and none of these paths needed to become
+region-aware.
+
+### Tests
+
+Reconfirmed the TRUE baseline directly against `main` before starting (33
+pre-existing failures across the same 14 files, not the stale "18").
+Rewrote `phase4e_check.mjs`'s position-model assumptions (region +
+content-pixel, not normalized 0..1) and added new coverage: sidebar/main
+scroll anchoring (a note's rendered position is provably unaffected by
+its OWN region's `scrollTop`/`scrollLeft` change, with zero app-code
+scroll listener involved), independent scroll (scrolling one region never
+moves the other's notes), horizontal scroll (the same content-relative
+model, exercised even though neither region has real horizontal overflow
+in the shipped app today), cross-region drag both directions (region/DOM-
+parent transfer, no coordinate jump, frozen-region when the pointer is
+over neither region), resize re-clamp without proportional rescale
+(including after a scroll, proving the clamp keys off content bounds, not
+scroll offset), delete/edit/drawer-selection after a scroll, and both
+region overlays' pointer transparency — 39/39 passing. Full frontend
+suite reconfirmed at exactly the true 33-failure baseline (zero net new
+regressions); `phase4d_check.mjs` (38), `phase4b_check.mjs` (44/45,
+unchanged pre-existing failure), `phase4c1_check.mjs` (26),
+`phase4c2_check.mjs` (24) all still pass in full. Backend: 393/393,
+unchanged (no backend file touched).
+
+### chrome-extension://invalid investigation (owner-reported alongside this fix)
+
+Owner saw `HEAD chrome-extension://invalid/ net::ERR_FAILED` in the
+browser console during UAT, with an explicit instruction not to assume
+it belongs to the application. Exhaustive static-analysis search of the
+entire canonical frontend: zero occurrences of the literal string
+`chrome-extension` anywhere in `frontend/index.html` or any
+`frontend/*.js`/`*.css`; zero `XMLHttpRequest` usage anywhere; the one
+`new URL(` call site and all 9 `fetch(` call sites are backend-API-scoped
+via `apiBaseUrl()`, which can only ever return an `http(s)://` string;
+only 4 static same-origin `src=`/`href=` references in the whole
+document, zero dynamic JS assignment; the `<head>` block has no favicon/
+manifest/icon reference that could trigger an independent resource probe.
+The console error's own cited line is `event.stopPropagation()` inside
+the annotation-edit textarea's `keydown` handler (`wwBeginAnnotationEdit()`)
+— unrelated to any network/URL code. Conclusion: Oruxa application code
+is NOT responsible; this bears the well-known signature of a
+browser-extension/devtools artifact. No Oruxa code was changed to
+suppress it, per the task's own explicit instruction not to introduce
+speculative workarounds for external browser-extension behavior. Live
+incognito-vs-normal-browser reproduction could not be performed — no
+browser automation capability exists in this sandboxed CLI environment;
+disclosed as a limitation, with the recommendation that the owner verify
+in a clean profile with extensions disabled since only they have the
+browser session where it was observed.
+
+### Decision
+
+See [DECISIONS.md — DEC-044 addendum](DECISIONS.md#addendum-2026-08-21--region-aware-content-scroll-anchoring-phase-4e-uat)
+(a refinement of DEC-044, not a new major decision — the annotation
+framework itself, its record shape's non-position fields, its lifecycle,
+and its Annotation List are all unchanged).
+
 ## Phase 4E — Annotation Framework + Free Text Note (2026-08-20)
 
 ### Scope
