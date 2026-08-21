@@ -8648,6 +8648,158 @@ owner UAT after this push.
 
 ---
 
+## Phase 5A-UAT7 — Calculated Preview Dark Mode Fix (2026-08-21)
+
+### Scope
+
+Owner UAT bug: the Calculated Channels page's new type-separated
+Waveform Preview panels (Phase 5A-UAT6) rendered with a white/light
+Plotly paper and plot area even while the surrounding Oruxa page was in
+Dark mode -- axes/grid/legend also still styled for light mode. A
+frontend theme-integration bug, not a redesign.
+
+### Root cause (confirmed by direct trace before any change)
+
+Two related gaps:
+
+1. `wwCcRenderWaveformPreview()`'s own layout object set `paper_bgcolor`/
+   `plot_bgcolor`/`font.color` from `wwThemeColors()` but never set
+   `xaxis.gridcolor`/`yaxis.gridcolor`/zeroline color at all -- Plotly
+   does not auto-derive axis/grid chrome from the background color, so
+   those elements silently used Plotly's own light-mode default
+   regardless of theme.
+2. `wwApplyTheme()` -- the ONE existing `powerwave:theme-change`
+   handler, which already re-themes the main Waveform panels/sticky
+   ruler/digital chart via `Plotly.relayout()` -- never touched the
+   Calculated Channels preview's own Plotly instances at all. A panel
+   already open when the user toggled Light<->Dark simply never got
+   re-colored; the preview only ever picked up the CURRENT theme when a
+   channel add/remove/delete happened to trigger a fresh
+   `wwCcRenderWaveformPreview()` call. A further compounding detail:
+   `wwApplyTheme()`'s own `if (ww.panels.length === 0) return;` guard
+   used to exit the WHOLE function (skipping even the ruler) whenever
+   the main Waveform page had zero panels -- exactly the state the
+   owner's own repro produces (Calculated Channels page open, nothing
+   shown on the main Waveform).
+
+### Theme authority (reused, not duplicated)
+
+`wwThemeColors()` -- the SAME shared helper the main Waveform panel's
+own `wwBuildLayout()` already uses, reading live CSS custom properties
+(`--waveform-surface`/`--text`/`--panel-border`) via `getComputedStyle`
+-- is the sole theme-token source for both the main panels and the
+preview. No second, invented dark-mode palette was created.
+
+### Fix
+
+1. The preview's own initial layout now also sets `xaxis.gridcolor`/
+   `yaxis.gridcolor`/`xaxis.zerolinecolor`/`yaxis.zerolinecolor` from
+   `colors.grid` -- the exact same token the main panel's own
+   `wwBuildLayout()` already uses for its own gridcolor. Axis tick-
+   label/title/legend text needed no separate override -- Plotly's own
+   standard inheritance already cascades the top-level `layout.font.color`
+   to axis and legend text (confirmed directly: light mode already
+   rendered those correctly even before this fix).
+2. `wwApplyTheme()`'s own early-return now guards only the main-panel
+   relayout loop, never the whole function. A new block iterates
+   `wwCcPreview.panelsByType.values()` and applies the exact same
+   `Plotly.relayout()`-only re-theme the main panels already receive
+   (`paper_bgcolor`/`plot_bgcolor`/`font.color`/`xaxis.gridcolor`/
+   `yaxis.gridcolor`/`xaxis.zerolinecolor`/`yaxis.zerolinecolor`) --
+   never `Plotly.newPlot`/`Plotly.react`, so no trace data is touched
+   and no waveform re-fetch is ever triggered by a theme switch.
+
+This keeps ONE shared theme-application entry point for the whole app
+(already also covering the digital chart and sticky ruler) rather than
+a second, competing "theme changed" handler. The preview and main
+Waveform page's own rendering STATE remain completely independent
+(verified directly: no `"Calculated - <Type>"` string ever appears as a
+`ww.panels` groupKey) -- only the theme-token values and the relayout
+mechanism are shared, per the task's own explicit "share theme
+configuration only" instruction.
+
+### Live theme switching
+
+Verified directly with `window.PowerwaveTheme.setTheme()` (the real
+theme-toggle API): an existing preview panel created while Light is
+re-themed IMMEDIATELY on a Light->Dark switch via `Plotly.relayout`,
+with no page reload, no channel hide/show, and no navigation away and
+back required. The reverse Dark->Light direction is likewise immediate.
+
+### Multiple panels
+
+Verified directly: with Calculated - Voltage/Current/Power all open
+simultaneously, a single theme switch re-themes all three panels, not
+only the first one created.
+
+### Data/network behavior
+
+Verified directly: a theme switch (either direction) triggers zero
+additional network fetches -- the exact same cached trace data is kept,
+only a new theme-aware layout is applied via `Plotly.relayout`.
+
+### Main Waveform regression
+
+Verified directly: the main Waveform page's own panels still re-theme
+correctly on a Light/Dark switch, unchanged, even while a calculated
+preview panel simultaneously exists and is also being re-themed in the
+same event.
+
+### Modebar
+
+Verified directly: a theme switch never calls `Plotly.newPlot`/
+`Plotly.react` on an already-existing panel (relayout only), so the
+panel's own native modebar/config from its original creation is never
+recreated or disabled by a theme change.
+
+### Tests
+
+Extended `phase5a_check.mjs` with 10 new checks, using
+`window.PowerwaveTheme.setTheme()` against jsdom's own `getComputedStyle`
+resolution of the actual shipped `theme.css` -- genuine computed hex-
+value verification (`#ffffff`/`#161d2e` etc.), not a source-text pattern
+match: Light mode resolves the exact light tokens, Dark mode (panel
+created while already dark) resolves the exact dark tokens and is
+proven genuinely distinct from light, multiple simultaneous type panels
+all resolve from the same helper, Light->Dark and Dark->Light live
+switching of an already-existing panel, zero network fetches from a
+theme switch, all 3 type panels updating on one switch, modebar config
+surviving a theme switch, and the main Waveform page's own theme
+behavior confirmed unchanged -- **101/101 passing** in the file overall
+(92 prior unchanged). Full frontend suite reconfirmed at the true
+33-failure baseline across the same 15 pre-existing files (zero net new
+regressions). Backend untouched (`git status --short backend/` empty
+throughout -- this is a frontend-only theme-integration fix).
+
+### Browser verification
+
+No headless Chrome/Puppeteer is available in this sandbox; jsdom's own
+CSS engine against the REAL shipped `theme.css` was used instead to
+resolve actual computed custom-property values (`getComputedStyle(...).
+getPropertyValue(...)`) for both `[data-theme="dark"]` and the light
+default, and those exact resolved hex values were asserted directly
+against the Plotly layout/relayout calls the mock captured -- genuine
+computed-value verification, not a source-text-only check. Flagged for
+owner UAT (a real-browser visual check) per the task's own "do a real
+browser/headless-rendered verification if available" instruction.
+
+### Decision
+
+No new decision. See the "Update" note appended to
+[DECISIONS.md — DEC-047](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations)
+(a UAT bug fix to the existing preview feature, not a new architectural
+decision).
+
+### Files changed
+
+`frontend/index.html` only -- `wwCcRenderWaveformPreview()`'s own
+layout object gained `gridcolor`/`zerolinecolor` keys; `wwApplyTheme()`
+restructured so its early-return no longer skips the ruler/preview
+re-theme, and extended with a new block re-theming
+`wwCcPreview.panelsByType`. No backend files touched.
+
+---
+
 ## Phase 5A-UAT6 — Calculated Channels Preview Panels by Engineering Type (2026-08-21)
 
 ### Scope

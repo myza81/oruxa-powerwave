@@ -8,6 +8,66 @@ Last updated: **2026-08-21**
 
 ## What was most recently done
 
+**Phase 5A-UAT7 — Calculated Preview Dark Mode Fix.** Owner UAT bug:
+the Calculated Channels page's new type-separated Waveform Preview
+panels (Phase 5A-UAT6) rendered with a white/light Plotly paper and
+plot area even while the surrounding Oruxa page was in Dark mode. No
+new decision -- an "Update" note appended to DEC-047. Full detail:
+[DECISIONS.md — DEC-047 Update note](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations),
+[MIGRATION_PLAN.md — Phase 5A-UAT7](MIGRATION_PLAN.md#phase-5a-uat7--calculated-preview-dark-mode-fix-2026-08-21).
+
+**Root cause, confirmed by direct trace, two related gaps**: (1) the
+preview's own layout object never set `xaxis.gridcolor`/
+`yaxis.gridcolor`/zeroline color at all -- Plotly does not auto-derive
+axis/grid chrome from the background color. (2) `wwApplyTheme()` -- the
+app's ONE shared `powerwave:theme-change` handler, which already
+re-themes the main Waveform panels/ruler/digital chart -- never touched
+the preview's own Plotly instances, so an already-open panel simply
+never got re-colored on a live theme switch. A further compounding
+detail: `wwApplyTheme()`'s own `if (ww.panels.length === 0) return;`
+guard used to skip the WHOLE function (even the ruler) whenever the
+main Waveform page had zero panels -- exactly the state the owner's own
+repro produces.
+
+**Fix**: the preview's initial layout now also sets `xaxis.gridcolor`/
+`yaxis.gridcolor`/zeroline color from `wwThemeColors().grid` -- the
+SAME token the main panel already uses (axis tick/legend text needed no
+separate override; Plotly's own inheritance already cascades
+`layout.font.color`). `wwApplyTheme()`'s early-return now guards only
+the main-panel loop, and a new block re-themes
+`wwCcPreview.panelsByType` via `Plotly.relayout()` only -- never
+`newPlot`/`react`, so no waveform re-fetch. One shared theme-
+application entry point for the whole app, no second competing
+handler; preview and main-page rendering STATE remain fully
+independent, only theme tokens/mechanism are shared.
+
+**Verified directly** (via `window.PowerwaveTheme.setTheme()` against
+jsdom's real `getComputedStyle` resolution of the actual shipped
+`theme.css` -- genuine computed hex-value checks, not source-text
+matching): Light->Dark and Dark->Light both re-theme an already-open
+panel immediately with no reload/re-toggle/navigation; all simultaneous
+type panels update on one switch; zero network fetches from a theme
+switch; modebar/config survive (relayout never recreates the chart);
+main Waveform page's own theme behavior unchanged even with a preview
+panel coexisting.
+
+**Tests**: extended `phase5a_check.mjs` with 10 new checks -- **101/101
+passing** in the file overall (92 prior unchanged). Full frontend suite
+reconfirmed at the true 33-failure baseline. Backend untouched (no
+backend files touched).
+
+**Browser verification**: no headless Chrome/Puppeteer available in
+this sandbox; jsdom's own CSS engine against the real `theme.css` was
+used to resolve genuine computed custom-property values instead --
+flagged for owner UAT (a real-browser visual check).
+
+**Not yet done** (as of this section being written): commit/push,
+CI/automatic DEV deployment verification, and owner UAT of this fix
+specifically -- see the final report delivered alongside this update for
+whether those have since completed.
+
+## What was done in the prior session (Phase 5A-UAT6 — Calculated Channels Preview Panels by Engineering Type)
+
 **Phase 5A-UAT6 — Calculated Channels Preview Panels by Engineering
 Type.** Owner requirement, extending the same-day Phase 5A-UAT5 work:
 the Calculated Channels page's own lightweight Waveform Preview

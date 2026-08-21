@@ -4,8 +4,9 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-21** (Phase 5A-UAT6 — Calculated
-Channels Preview Panels by Engineering Type, on top of Phase 5A-UAT5 —
+Last meaningful update: **2026-08-21** (Phase 5A-UAT7 — Calculated
+Preview Dark Mode Fix, on top of Phase 5A-UAT6 — Calculated
+Channels Preview Panels by Engineering Type, Phase 5A-UAT5 —
 Calculated Waveform Panels Grouped by Engineering Type, Phase 5A-UAT4 —
 Calculated Channel Type Subgroups, Phase 5A UAT — Absolute Time
 after adding a calculated channel, Phase 5A-UAT3 —
@@ -221,7 +222,27 @@ instance is REUSED across renders (`Plotly.react()`) rather than
 torn down and rebuilt, purged only when its last member is hidden/
 deleted. Rendering state is deliberately independent from the main
 Waveform page's own `ww.panels` -- only classification metadata/
-ordering/naming is shared, never an actual Plotly instance. See
+ordering/naming is shared, never an actual Plotly instance.
+**Dark Mode Fix (2026-08-21, same day, UAT bug fix)**: owner UAT found
+the preview's Plotly panels rendering with a white/light paper and plot
+area even in Dark mode. Root cause: the preview's own layout never set
+`xaxis.gridcolor`/`yaxis.gridcolor`/zeroline color, and `wwApplyTheme()`
+(the app's ONE shared `powerwave:theme-change` handler) never touched
+the preview's own Plotly instances at all -- an already-open panel
+simply never got re-colored on a live Light/Dark switch. Fixed by
+adding the missing gridcolor/zeroline keys (reusing the SAME
+`wwThemeColors().grid` token the main panel already uses) and extending
+`wwApplyTheme()` with a `Plotly.relayout()`-only re-theme of
+`wwCcPreview.panelsByType` (never `newPlot`/`react`, so no waveform
+re-fetch); also fixed `wwApplyTheme()`'s own early-return, which used to
+skip the ruler/preview re-theme entirely whenever the main Waveform page
+had zero panels -- exactly the state the bug reproduces in. Verified
+directly (via jsdom's real `getComputedStyle` resolution of the actual
+shipped `theme.css`, not source-text matching) that Light->Dark and
+Dark->Light both re-theme an already-existing panel immediately, all
+simultaneous type panels update together, zero network fetches result
+from a theme switch, and the main Waveform page's own theme behavior is
+unchanged. See
 [DECISIONS.md — DEC-047](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations)
 (including all its 2026-08-21 Update notes) and
 [MIGRATION_PLAN.md — Phase 5A](MIGRATION_PLAN.md#phase-5a--calculated-channels--basic-signal-builder-2026-08-21)
@@ -232,7 +253,8 @@ ordering/naming is shared, never an actual Plotly instance. See
 / [Phase 5A UAT — Absolute Time](MIGRATION_PLAN.md#phase-5a-uat--absolute-time-after-adding-a-calculated-channel-2026-08-21)
 / [Phase 5A-UAT4 — Type Subgroups](MIGRATION_PLAN.md#phase-5a-uat4--calculated-channel-type-subgroups-2026-08-21)
 / [Phase 5A-UAT5 — Waveform Panel Type Grouping](MIGRATION_PLAN.md#phase-5a-uat5--calculated-waveform-panels-grouped-by-engineering-type-2026-08-21)
-/ [Phase 5A-UAT6 — Preview Panel Type Grouping](MIGRATION_PLAN.md#phase-5a-uat6--calculated-channels-preview-panels-by-engineering-type-2026-08-21).
+/ [Phase 5A-UAT6 — Preview Panel Type Grouping](MIGRATION_PLAN.md#phase-5a-uat6--calculated-channels-preview-panels-by-engineering-type-2026-08-21)
+/ [Phase 5A-UAT7 — Preview Dark Mode Fix](MIGRATION_PLAN.md#phase-5a-uat7--calculated-preview-dark-mode-fix-2026-08-21).
 
 `[DECISION]` **Dynamic Maximum/Minimum Peak Annotation — DEC-046**
 (2026-08-21; **persistent placement guidance ribbon, addendum,

@@ -11298,10 +11298,28 @@
                     name: body.name + (body.unit ? " (" + body.unit + ")" : ""),
                     line: { color: wwColorForChannel(calc.id, calc.name), width: 1.5 },
                 }));
+                // Phase 5A-UAT7: theme-aware axis/grid/zeroline colors,
+                // reusing the SAME wwThemeColors()/`colors.grid` token the
+                // main Waveform panel's own wwBuildLayout() already uses
+                // for `xaxis.gridcolor`/`yaxis.gridcolor` (section 5/6 --
+                // no second, invented dark-mode palette). Tick label/axis-
+                // title color is NOT set per-axis -- Plotly's own standard
+                // inheritance already cascades the top-level `font.color`
+                // to axis tick/title text and the legend (verified
+                // directly: no separate `legend.font`/`xaxis.color`
+                // override existed even before this fix, and light mode
+                // already rendered correctly), so re-applying `font.color`
+                // alone is sufficient for all of those on every theme
+                // change -- no more properties than the main panel's own
+                // wwApplyTheme() relayout call touches. `zeroline` was
+                // already Plotly's own default (`true`) here -- only its
+                // COLOR was never made theme-aware, which is why it
+                // rendered using Plotly's own light-mode default (~black)
+                // even against a dark paper.
                 const layout = {
                     margin: { t: 10, r: 10, b: 36, l: 50 },
-                    xaxis: { title: "Time (s)" },
-                    yaxis: { title: "" },
+                    xaxis: { title: "Time (s)", gridcolor: colors.grid, zerolinecolor: colors.grid },
+                    yaxis: { title: "", gridcolor: colors.grid, zerolinecolor: colors.grid },
                     showlegend: true,
                     legend: { orientation: "h" },
                     autosize: true,
@@ -13222,19 +13240,29 @@
             // displayed with zero analog channels displayed) -- checked
             // and handled before the analog-only early return below.
             if (ww.digitalDisplayed.size > 0) wwRebuildDigitalChart();
-            if (ww.panels.length === 0) return;
+            // Phase 5A-UAT7: `colors` (and the Calculated Channels preview
+            // re-theme below) must be computed/run regardless of whether
+            // the MAIN Waveform page currently has any panels -- the owner's
+            // own reported bug reproduces with zero main-page panels
+            // (Calculated Channels page open, nothing shown on Waveform),
+            // and the old `if (ww.panels.length === 0) return;` here used
+            // to bail out of the ENTIRE function before ever reaching the
+            // preview (or even the ruler) in exactly that case. The early
+            // return now guards only the main-panel loop itself.
             const colors = wwThemeColors();
-            for (const panel of ww.panels) {
-                if (!panel.plotlyReady) continue;
-                Plotly.relayout(panel.chartEl, {
-                    paper_bgcolor: colors.surface,
-                    plot_bgcolor: colors.surface,
-                    "font.color": colors.text,
-                    "xaxis.gridcolor": colors.grid,
-                    "yaxis.gridcolor": colors.grid,
-                    "xaxis.spikecolor": colors.spike,
-                    "yaxis.spikecolor": colors.spike,
-                });
+            if (ww.panels.length > 0) {
+                for (const panel of ww.panels) {
+                    if (!panel.plotlyReady) continue;
+                    Plotly.relayout(panel.chartEl, {
+                        paper_bgcolor: colors.surface,
+                        plot_bgcolor: colors.surface,
+                        "font.color": colors.text,
+                        "xaxis.gridcolor": colors.grid,
+                        "yaxis.gridcolor": colors.grid,
+                        "xaxis.spikecolor": colors.spike,
+                        "yaxis.spikecolor": colors.spike,
+                    });
+                }
             }
             // Phase 2C-C4 (section 23): the sticky ruler re-colors its
             // font/tick color the same way -- paper/plot background stay
@@ -13253,6 +13281,34 @@
                         "xaxis.tickcolor": colors.grid,
                     });
                 }
+            }
+            // Phase 5A-UAT7: the Calculated Channels page's own lightweight
+            // waveform preview (completely independent Plotly instances,
+            // Phase 5A-UAT6) was never re-themed on a live Light/Dark
+            // switch at all -- this is the SAME shared `powerwave:theme-
+            // change` entry point already re-theming the main panels/
+            // ruler/digital chart above, just extended to also reach
+            // `wwCcPreview.panelsByType`'s own chart elements, via
+            // Plotly.relayout only (never Plotly.newPlot/react -- no
+            // waveform refetch, no trace-data change, matching the exact
+            // same "relayout only" contract the main panels already use
+            // immediately above). Reuses the SAME `colors` object (one
+            // wwThemeColors() call for the whole theme-change event, never
+            // a second, separately-computed palette) and the exact same
+            // gridcolor/zerolinecolor token wwCcRenderWaveformPreview()'s
+            // own initial layout already uses, so the two can never drift
+            // out of sync with each other.
+            for (const panel of wwCcPreview.panelsByType.values()) {
+                if (!panel.ready) continue;
+                Plotly.relayout(panel.chartEl, {
+                    paper_bgcolor: colors.surface,
+                    plot_bgcolor: colors.surface,
+                    "font.color": colors.text,
+                    "xaxis.gridcolor": colors.grid,
+                    "yaxis.gridcolor": colors.grid,
+                    "xaxis.zerolinecolor": colors.grid,
+                    "yaxis.zerolinecolor": colors.grid,
+                });
             }
         }
 
