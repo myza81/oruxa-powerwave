@@ -8,6 +8,122 @@ Last updated: **2026-08-20**
 
 ## What was most recently done
 
+**Phase 4E — Annotation Framework + Free Text Note.** Full detail:
+[MIGRATION_PLAN.md — Phase 4E Record](MIGRATION_PLAN.md#phase-4e--annotation-framework--free-text-note-2026-08-20),
+[DECISIONS.md — DEC-044](DECISIONS.md#dec-044--generic-annotation-framework-first-type-is-a-workspace-scoped-work-area-relative-free-text-note).
+
+**Small cosmetic follow-up landed between Phase 4D and this phase, same
+day**: commit `42c5f2c` ("ui: match cursor icon to A/B colors") -- the
+A/B Time Cursors toolbar icon's two lines/letters now use
+`var(--accent)`/`var(--error)`, the SAME tokens the real waveform cursor
+lines already use, instead of generic `currentColor`. No functional
+change; not separately documented beyond this note and its own commit
+message (a narrowly-scoped owner request with no governance-doc
+requirement attached).
+
+**Owner direction (Phase 4E)**: the first annotation capability -- a
+GENERIC framework (future types: callout notes, event/channel markers,
+delta/RMS/peak/amplitude stamps), with only `text_note` implemented this
+phase. `Annotate -> Text Note` enters one-shot placement mode; one click
+in the permitted analysis area creates a note, which enters edit mode
+immediately; notes are draggable, editable, and deletable (centrally,
+via a new Annotation List drawer).
+
+**DOM investigation before implementing (per the task's own mandatory
+step)**: found the toolbar and the Workspace Sidebar occupy the SAME
+vertical band (toolbar is only the top strip of the `#mainWorkspace`
+column, beside the sidebar) -- resolved by checking `#wwToolbar`'s own
+live rect at click/drag time rather than a CSS clip-path (the toolbar's
+height isn't fixed, it wraps at narrow widths per Phase 4D's own
+`flex-wrap`). Also found `#workspaceSidebar` and `#activeViewArea` are
+TWO INDEPENDENTLY-scrolling containers (`overflow-y: auto` on both,
+confirmed via their own CSS) -- this created real tension between the
+task's "preferred" scroll-following behavior and its "seamlessly
+draggable between sidebar and main area" requirement (which wants ONE
+shared coordinate system). Resolved as a documented, disclosed tradeoff
+(see below), not a silent shortcut.
+
+**Placement area: Option C (sidebar + main area, never the toolbar) WAS
+achieved** -- one overlay (`#wwAnnotationOverlay`, a child of
+`#workspaceRow`) plus an explicit toolbar-rect-exclusion check (not a
+geometric cutout) in the placement-click handler and the shared drag/
+render clamp function. A note drags seamlessly between the sidebar and
+main area with zero special-casing, since both share one coordinate
+system.
+
+**Position model**: normalized `{x, y}` (0..1) relative to
+`#workspaceRow`'s own STABLE (never-scrolling) bounding rect --
+deliberately NOT waveform/data-anchored (zoom/pan/Absolute-Elapsed/
+Grouped-Separate-Custom never move a note; that's reserved for a future
+`callout_note` type). **Documented limitation, flagged for owner UAT**:
+notes do NOT scroll with `#workspaceSidebar`'s/`#activeViewArea`'s own
+internal content -- true scroll-following was evaluated and found to
+need either mid-drag DOM re-parenting between two different scroll
+containers or manual dual-`scrollTop` tracking, both meaningfully more
+complex than verifiable without live-browser testing in this sandboxed
+environment. The chosen model still fully satisfies workspace/session
+persistence and cross-region dragging with one simple coordinate system.
+
+**Text Note**: `wwBeginAnnotationEdit()`/`wwEndAnnotationEdit()` swap the
+read-only body `<div>` for a `<textarea>` in place -- single click
+selects/brings-to-front (monotonic `zIndex` counter), double-click on
+the body edits, blur commits, Escape reverts (never Enter-as-save, so
+multiline notes work naturally). Dragging wired on the header (always)
+and body (only while not editing), mirroring the project's own
+established `wwWireResizeHandle()` pointer-capture pattern; the active
+textarea itself never initiates a drag. Text wraps (`pre-wrap` +
+`break-word`) inside a 160-320px note, no giant shadow, no bright
+palette.
+
+**Annotation List drawer**: a right-side `position: fixed` OVERLAY (never
+consumes/reflows `#workspaceRow`'s own width, so it can never distort
+normalized positions) -- no existing right-drawer precedent in this
+codebase, so this is new, using the same theme tokens as every other
+panel. Fully generic: `wwAnnotationCategoryLabel()`/
+`wwAnnotationSummary()` dispatch on `annotation.type`, never hard-wired
+to `text_note`'s own shape -- a future type needs one more dropdown menu
+item plus a branch in those two functions, nothing else. Newest-first
+ordering (deliberate, documented). Delete is centralized there (trash
+icon, appropriate since it genuinely deletes) with no confirmation
+dialog and no permanent × on the floating note itself, both per the
+owner's own explicit instructions.
+
+**Lifecycle**: annotations are PRESERVED by the plain "Clear workspace"
+button (confirmed via direct inspection of `wwClearWorkspace()`'s
+existing code -- it already preserves A/B cursor state via the same
+`if (options.resetSourceBounds)` branch, for the identical "still the
+same session/source context" reasoning; annotations follow that exact
+precedent) and CLEARED only by "Start New Workspace" (confirmed to
+rotate `WORKSPACE_STORAGE_KEY` to a genuinely new UUID before calling
+`wwClearWorkspace({resetSourceBounds:true})`).
+
+**Security**: text renders via `.textContent` only, never `.innerHTML`
+with user text interpolated -- verified directly that
+`<script>...</script><b>hello</b>` entered as note text renders as inert
+plain text in both the note and the drawer preview, no execution.
+
+**Tests**: determined the TRUE current baseline directly against `main`
+before starting (unchanged from Phase 4D's own verified 33 failures
+across 14 pre-existing files, not the stale "18"). New
+`phase4e_check.mjs` (28 checks) covering placement mode + Escape cancel +
+toolbar/outside-click rejection + sidebar placement, multiple notes,
+edit sync, drag + bounds/toolbar clamping, resize repositioning, delete,
+mode/navigation persistence, Clear-Workspace-preserves vs.
+Start-New-Workspace-clears, pointer isolation (Plotly relayout handler
+and sidebar row toggle both still fire normally with the overlay
+present), XSS-safe rendering, and drawer open/close/order/selection.
+Full frontend suite reconfirmed at exactly the true 33-failure baseline
+(zero net regressions); `phase4b_check.mjs` (44/45, unchanged
+pre-existing), `phase4c1_check.mjs` (26), `phase4c2_check.mjs` (24), and
+`phase4d_check.mjs` (38) all still pass in full. Backend: 393/393,
+unchanged (no backend file touched).
+
+**Not yet done**: commit/push, CI/automatic DEV deployment verification,
+and owner UAT of this phase specifically (including the disclosed
+scroll-following limitation above).
+
+## What was done in the prior session (Phase 4D — Precision Step Zoom + Icon Toolbar Refinement)
+
 **Phase 4D — Precision Step Zoom + Icon Toolbar Refinement.** Full detail:
 [MIGRATION_PLAN.md — Phase 4D Record](MIGRATION_PLAN.md#phase-4d--precision-step-zoom--icon-toolbar-refinement-2026-08-20),
 [DECISIONS.md — DEC-043](DECISIONS.md#dec-043--precision-step-zoom-x-step-is-workspace-global-y-step-is-active-panel-local-waveform-toolbar-is-icon-primary).

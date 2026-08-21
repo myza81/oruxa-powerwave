@@ -1444,6 +1444,178 @@
         .ww-panel-header:hover { background: var(--hover-tint); }
         .ww-panel-header:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+        /* Phase 4E (DEC-044): the annotation overlay + floating notes.
+           #workspaceRow is the stable, non-scrolling positioning context
+           (see wwAnnotationWorkAreaRect()'s own comment for why notes are
+           anchored to this frame rather than following #workspaceSidebar's/
+           #activeViewArea's own independent internal scroll). */
+        #workspaceRow { position: relative; }
+        .ww-annotation-overlay {
+            position: absolute;
+            inset: 0;
+            overflow: hidden; /* section 49: never a page-level horizontal/vertical expansion */
+            pointer-events: none; /* section 8: empty space never intercepts Plotly/sidebar/toolbar interaction */
+            z-index: 15;
+        }
+        .ww-annotation {
+            position: absolute;
+            min-width: 160px;
+            max-width: 320px;
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12); /* section 13: subtle, never a "giant shadow" */
+            pointer-events: auto; /* the ONE thing inside the overlay that IS interactive */
+            display: flex;
+            flex-direction: column;
+        }
+        .ww-annotation--selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-wash-soft), 0 2px 6px rgba(0, 0, 0, 0.12); }
+        .ww-annotation-header {
+            flex: 0 0 auto;
+            padding: 5px 10px;
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            border-bottom: 1px solid var(--panel-border);
+            cursor: grab;
+            user-select: none;
+        }
+        .ww-annotation-header:active { cursor: grabbing; }
+        .ww-annotation-body {
+            flex: 1 1 auto;
+            padding: 8px 10px 10px;
+            font-size: 0.82rem;
+            line-height: 1.4;
+            color: var(--text);
+            white-space: pre-wrap;
+            overflow-wrap: break-word; /* section 49: long words wrap, never overflow */
+            cursor: grab;
+            min-height: 1.4em;
+        }
+        .ww-annotation-body:active { cursor: grabbing; }
+        .ww-annotation-body--placeholder { color: var(--text-dim); font-style: italic; }
+        .ww-annotation-textarea {
+            flex: 1 1 auto;
+            margin: 8px 10px 10px;
+            padding: 0;
+            border: none;
+            outline: none;
+            resize: none;
+            background: transparent;
+            color: var(--text);
+            font: inherit;
+            font-size: 0.82rem;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+            min-height: 3.5em;
+        }
+        /* Section 10/46: subtle placement-mode cursor over the two
+           permitted analysis containers -- the toolbar itself is
+           deliberately never included (it is not a valid placement
+           target, see wwAnnotationPlacementClickHandler()). */
+        body.ww-annotation-placing #workspaceSidebar,
+        body.ww-annotation-placing #activeViewArea {
+            cursor: crosshair;
+        }
+        .ww-annotation-count-badge {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            min-width: 14px;
+            height: 14px;
+            padding: 0 3px;
+            border-radius: 999px;
+            background: var(--accent);
+            color: #fff;
+            font-size: 0.6rem;
+            font-weight: 700;
+            line-height: 14px;
+            text-align: center;
+        }
+        .ww-icon-btn { position: relative; } /* anchors .ww-annotation-count-badge on the Annotations button */
+
+        /* Right-side annotation drawer -- an overlay (position: fixed),
+           never consumes/reflows #workspaceRow's own width (section 30). */
+        .ww-annotation-drawer {
+            position: fixed;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: 320px;
+            max-width: 90vw;
+            background: var(--panel);
+            border-left: 1px solid var(--panel-border);
+            box-shadow: -4px 0 16px rgba(0, 0, 0, 0.15);
+            display: flex;
+            flex-direction: column;
+            transform: translateX(100%);
+            transition: transform 0.15s ease;
+            z-index: 40;
+        }
+        .ww-annotation-drawer--open { transform: translateX(0); }
+        .ww-annotation-drawer-header {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--panel-border);
+        }
+        .ww-annotation-drawer-header h3 { margin: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; }
+        .ww-annotation-drawer-count {
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: var(--text-dim);
+            background: var(--surface-tint);
+            border-radius: 999px;
+            padding: 1px 7px;
+        }
+        .ww-annotation-drawer-close {
+            appearance: none;
+            border: none;
+            background: transparent;
+            color: var(--text-dim);
+            font-size: 1.2rem;
+            line-height: 1;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: var(--radius);
+        }
+        .ww-annotation-drawer-close:hover { color: var(--text); background: var(--hover-tint); }
+        .ww-annotation-drawer-body { flex: 1 1 auto; overflow-y: auto; padding: 8px; }
+        .ww-annotation-list-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 8px 8px;
+            border-radius: var(--radius);
+            cursor: pointer;
+        }
+        .ww-annotation-list-item:hover { background: var(--hover-tint); }
+        .ww-annotation-list-item--selected { background: var(--accent-wash-soft); }
+        .ww-annotation-list-item-main { flex: 1 1 auto; min-width: 0; }
+        .ww-annotation-list-item-category {
+            font-size: 0.64rem;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+            color: var(--text-dim);
+        }
+        .ww-annotation-list-item-preview {
+            font-size: 0.82rem;
+            color: var(--text);
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .ww-annotation-delete-btn { flex: 0 0 auto; width: 28px; height: 28px; }
+        .ww-annotation-delete-btn .ww-icon, .ww-annotation-delete-btn .ww-icon svg { width: 15px; height: 15px; }
+
         .ww-panel {
             background: var(--panel);
             border: 1px solid var(--panel-border);
@@ -2281,6 +2453,36 @@
                         <button class="ww-icon-btn" type="button" id="wwCursorModeBtn" aria-pressed="false" title="A/B Time Cursors" aria-label="A/B Time Cursors">
                             <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="6" y1="2.5" x2="6" y2="15.5" stroke-width="1.3" stroke="var(--accent)"/><line x1="12" y1="2.5" x2="12" y2="15.5" stroke-width="1.3" stroke="var(--error)"/><text x="6" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="var(--accent)" font-weight="700">A</text><text x="12" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="var(--error)" font-weight="700">B</text></svg></span>
                         </button>
+
+                        <span class="ww-toolbar-sep" aria-hidden="true"></span>
+
+                        <!-- Phase 4E (DEC-044): the generic annotation
+                             framework's first UI surface. "Annotate" is a
+                             plain dropdown (not a Phase 4D split-button --
+                             there is no sensible "repeat last annotation
+                             type" default action to give a main icon,
+                             unlike Zoom In/Out's X/Y axis memory), opening
+                             a menu that currently holds only "Text Note"
+                             but is structured (one .ww-split-menu-item per
+                             annotation type, each carrying its own
+                             data-annotation-type) so a future type is one
+                             more menu item, never a menu redesign. -->
+                        <div class="ww-split-btn" id="wwAnnotateSplit">
+                            <button type="button" class="ww-icon-btn" id="wwAnnotateBtn" aria-haspopup="menu" aria-expanded="false" aria-pressed="false" title="Annotate" aria-label="Annotate">
+                                <span class="ww-icon"><svg viewBox="0 0 18 18"><rect x="2.5" y="3" width="10" height="8.5" rx="1.5"/><line x1="4.7" y1="6" x2="9.3" y2="6" stroke-width="1.1"/><line x1="4.7" y1="8.3" x2="7.7" y2="8.3" stroke-width="1.1"/><line x1="14" y1="10" x2="14" y2="15.5" stroke-width="1.4"/><line x1="11.25" y1="12.75" x2="16.75" y2="12.75" stroke-width="1.4"/></svg></span>
+                            </button>
+                            <div class="ww-split-menu" id="wwAnnotateMenu" role="menu" aria-label="Annotation type" hidden>
+                                <button type="button" class="ww-split-menu-item" role="menuitem" data-annotation-type="text_note" aria-pressed="false">
+                                    <span class="ww-icon"><svg viewBox="0 0 18 18"><rect x="2.5" y="3" width="13" height="12" rx="1.5"/><line x1="5" y1="6.5" x2="13" y2="6.5" stroke-width="1.1"/><line x1="5" y1="9" x2="13" y2="9" stroke-width="1.1"/><line x1="5" y1="11.5" x2="10" y2="11.5" stroke-width="1.1"/></svg></span>
+                                    Text Note
+                                </button>
+                            </div>
+                        </div>
+                        <button class="ww-icon-btn" type="button" id="wwAnnotationListBtn" aria-pressed="false" aria-expanded="false" title="Annotations" aria-label="Annotations">
+                            <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="3" y1="4.5" x2="15" y2="4.5" stroke-width="1.4"/><line x1="3" y1="9" x2="15" y2="9" stroke-width="1.4"/><line x1="3" y1="13.5" x2="11" y2="13.5" stroke-width="1.4"/></svg></span>
+                            <span class="ww-annotation-count-badge" id="wwAnnotationCountBadge" hidden>0</span>
+                        </button>
+
                         <div class="toolbar-spacer"></div>
                         <div class="theme-toggle ww-icon-group" id="layoutModeToggle" role="group" aria-label="Waveform layout">
                             <button type="button" id="layoutModeGroupedBtn" aria-pressed="true" title="Grouped Layout" aria-label="Grouped Layout">
@@ -2422,6 +2624,23 @@
                         </section>
                     </div>
                 </main>
+
+                <!-- Phase 4E (DEC-044): the ONE annotation overlay, spanning
+                     the full #workspaceRow viewport (sidebar + main
+                     workspace including the toolbar's own footprint --
+                     never rendered INTO, see wwAnnotationPlacementClickHandler()'s
+                     explicit toolbar exclusion and wwClampAnnotationPixelPosition()'s
+                     toolbar-avoidance clamp, both of which key off #wwToolbar's
+                     own live rect rather than a CSS cutout, since the
+                     toolbar wraps to a taller height at narrow widths and a
+                     static clip-path would need constant recomputation).
+                     Empty overlay space is pointer-events:none (section 8)
+                     -- Plotly zoom/pan, A/B cursor drag, and every sidebar
+                     control work completely normally through it; only an
+                     individual `.ww-annotation` note (pointer-events:auto,
+                     set in CSS regardless of this ancestor) intercepts
+                     anything. See wwRenderAnnotations()/wwAnnotationWorkAreaRect(). -->
+                <div id="wwAnnotationOverlay" class="ww-annotation-overlay" aria-hidden="true"></div>
             </div>
 
             <!-- Recordings page (Phase 3B): a sibling of Workspace Row,
@@ -2583,6 +2802,30 @@
                 <button type="button" class="secondary" id="groupEditorCancelBtn">Cancel</button>
                 <button type="button" id="groupEditorApplyBtn">Apply</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Phase 4E (DEC-044): the generic Annotation List drawer -- a
+         right-side OVERLAY panel (position: fixed, never consumes/
+         reflows #workspaceRow's own width, so opening/closing it can
+         never distort the normalized annotation positions that width
+         would otherwise affect -- section 30's own explicit concern).
+         No existing right-side drawer pattern existed in this codebase
+         to reuse (the Detego reference is UI/UX inspiration only, no
+         branding/colors/wording copied -- section 54); this is a new,
+         minimal one using the SAME theme tokens/border/radius language
+         as every other panel. Body content is entirely DERIVED from
+         ww.annotations by wwRenderAnnotationList() -- never a second,
+         competing list state -- and is generic across annotation TYPES
+         (wwAnnotationCategoryLabel()/wwAnnotationSummary() dispatch on
+         `annotation.type`), not hard-wired to text_note's own shape. -->
+    <div class="ww-annotation-drawer" id="wwAnnotationDrawer" aria-hidden="true">
+        <div class="ww-annotation-drawer-header">
+            <h3>Annotations <span class="ww-annotation-drawer-count" id="wwAnnotationDrawerCount">0</span></h3>
+            <button type="button" class="ww-annotation-drawer-close" id="wwAnnotationDrawerCloseBtn" aria-label="Close annotations">&times;</button>
+        </div>
+        <div class="ww-annotation-drawer-body" id="wwAnnotationListBody">
+            <p class="empty-state">No annotations yet.</p>
         </div>
     </div>
 
@@ -5017,6 +5260,45 @@
             // a viewing preference, same lifecycle class as
             // ww.layoutMode/ww.dragMode/ww.timeMode above.
             zoomStepAxis: { in: "x", out: "x" },
+            // Phase 4E (DEC-044): the generic annotation authority --
+            // "sourceId::channelName"-style per-channel state this is NOT;
+            // annotations belong to the WHOLE current workspace/session,
+            // never to one channel/panel/layout-mode. Map<id, Annotation>,
+            // where an Annotation is `{id, type, workspaceId, position:
+            // {x, y}, createdAt, zIndex, data}` -- `position` is
+            // NORMALIZED (0..1) relative to the stable #workspaceRow
+            // viewport frame (see wwAnnotationWorkAreaRect()), never
+            // waveform/data-anchored (section 6: this first annotation
+            // type is a FLOATING work-area note, deliberately independent
+            // of zoom/pan/Absolute-Elapsed/A-B cursors). `type` is
+            // "text_note" this phase; `data` is a type-specific payload
+            // (`{text}` for text_note) so a future type (e.g.
+            // "callout_note") can carry its own fields --
+            // renderAnnotations()/renderAnnotationList() dispatch on
+            // `type`, never hard-wired to text_note's own DOM shape only.
+            // Cleared ONLY by "Start New Workspace" (a genuinely new
+            // workspace_id, see wwClearWorkspace()'s own
+            // options.resetSourceBounds branch) -- NEVER by the plain
+            // "Clear workspace" button, which is display-only and keeps
+            // the same session/source context (same precedent already
+            // established for ww.measurementCursors via
+            // wwResetMeasurementCursors()).
+            annotations: new Map(),
+            // The one currently-selected annotation id (or null) -- drives
+            // the note's own border highlight AND the matching drawer
+            // row's highlight from the SAME state, never two competing
+            // "selected" flags.
+            annotationSelectedId: null,
+            // null when not placing; otherwise the annotation `type`
+            // about to be created on the next valid click (this phase:
+            // only ever "text_note"). See wwEnterAnnotationPlacementMode()/
+            // wwExitAnnotationPlacementMode().
+            annotationPlacementType: null,
+            // Monotonically increasing -- gives each newly-selected/
+            // dragged annotation a fresh, always-highest z-index (simple
+            // deterministic bring-to-front, section 21: no complex layers
+            // UI).
+            annotationZCounter: 1,
         };
 
         function wwFiniteNumber(value) {
@@ -6112,6 +6394,11 @@
             // through here -- one more hook point so the cursor overlay's
             // pixel projection never goes stale after any of them.
             wwUpdateCursorOverlay();
+            // Phase 4E (section 19): the SAME "workspace geometry changed"
+            // signal repositions every annotation note from its stable
+            // normalized coordinates -- never from zoom/pan/Absolute-
+            // Elapsed/layout-mode switch, none of which call this function.
+            wwRenderAnnotations();
         }
 
         // Coalesces potentially-rapid-fire callers (a real browser window
@@ -6608,6 +6895,537 @@
             }
             document.getElementById("dragModeZoomBtn").setAttribute("aria-pressed", String(mode === "zoom"));
             document.getElementById("dragModePanBtn").setAttribute("aria-pressed", String(mode === "pan"));
+        }
+
+        // ==================================================================
+        // Phase 4E: generic annotation framework + Free Text Note (DEC-044)
+        //
+        // ww.annotations is the ONE authority (section 41) -- every note's
+        // DOM element, every drawer row, and the toolbar count badge are
+        // all DERIVED from it via wwRenderAnnotations()/
+        // wwRenderAnnotationList(), never a second competing state.
+        //
+        // Position model (section 6/17): normalized (0..1) relative to
+        // #workspaceRow's own STABLE bounding rect -- never waveform/data-
+        // anchored, never relative to a Plotly panel/trace. Deliberately
+        // NOT following #workspaceSidebar's/#activeViewArea's own
+        // independent internal `overflow-y: auto` scroll (a documented,
+        // reasoned scope decision -- see this phase's own MIGRATION_PLAN.md
+        // record for the full tradeoff analysis: those two containers
+        // scroll independently, and true native scroll-following for both
+        // while preserving ONE shared coordinate system for seamless
+        // cross-region dragging, section 32, would require either dynamic
+        // DOM re-parenting between two different scroll containers mid-
+        // drag or manual scrollTop-tracking duplicating native scroll
+        // mechanics -- both meaningfully more complex and harder to verify
+        // correctness of in this sandboxed environment than the chosen
+        // "anchored to the row's own stable viewport" model, which still
+        // fully satisfies workspace/session persistence and cross-region
+        // dragging with one simple coordinate system).
+        // ==================================================================
+
+        function wwClamp01(value) {
+            if (!Number.isFinite(value)) return 0;
+            return Math.max(0, Math.min(1, value));
+        }
+
+        function wwAnnotationWorkAreaRect() {
+            const rowEl = document.getElementById("workspaceRow");
+            if (!rowEl) return null;
+            const rect = rowEl.getBoundingClientRect();
+            if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+            return rect;
+        }
+
+        function wwAnnotationToolbarRect() {
+            const toolbarEl = document.getElementById("wwToolbar");
+            if (!toolbarEl || toolbarEl.hidden) return null;
+            return toolbarEl.getBoundingClientRect();
+        }
+
+        function wwAnnotationId() {
+            if (window.crypto && typeof window.crypto.randomUUID === "function") {
+                return "ann-" + window.crypto.randomUUID();
+            }
+            return "ann-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+        }
+
+        // Section 7/18: keeps a note's top-left corner inside
+        // `workAreaRect`, and additionally never lets it overlap
+        // `toolbarRect` (the toolbar is never part of the permitted
+        // analysis area) -- shared by placement, drag, and render/resize
+        // repositioning so there is exactly one clamping rule, not three.
+        function wwClampAnnotationPixelPosition(left, top, noteWidth, noteHeight, workAreaRect, toolbarRect) {
+            let clampedLeft = Math.max(0, Math.min(left, Math.max(0, workAreaRect.width - noteWidth)));
+            let clampedTop = Math.max(0, Math.min(top, Math.max(0, workAreaRect.height - noteHeight)));
+            if (toolbarRect) {
+                const toolbarLeftRel = toolbarRect.left - workAreaRect.left;
+                const toolbarRightRel = toolbarRect.right - workAreaRect.left;
+                const toolbarBottomRel = toolbarRect.bottom - workAreaRect.top;
+                const overlapsX = clampedLeft < toolbarRightRel && (clampedLeft + noteWidth) > toolbarLeftRel;
+                if (overlapsX && clampedTop < toolbarBottomRel) {
+                    clampedTop = Math.max(0, Math.min(toolbarBottomRel, workAreaRect.height - noteHeight));
+                }
+            }
+            return { left: clampedLeft, top: clampedTop };
+        }
+
+        // ------------------------------------------------------------------
+        // Generic annotation state mutation (section 43) -- centralized,
+        // never scattered direct ww.annotations/DOM mutation elsewhere.
+        // ------------------------------------------------------------------
+
+        function wwCreateAnnotation(type, position, data) {
+            const id = wwAnnotationId();
+            ww.annotationZCounter += 1;
+            const annotation = {
+                id: id,
+                type: type,
+                workspaceId: currentWorkspaceId(),
+                position: { x: wwClamp01(position.x), y: wwClamp01(position.y) },
+                createdAt: Date.now(),
+                zIndex: ww.annotationZCounter,
+                data: data || {},
+            };
+            ww.annotations.set(id, annotation);
+            wwRenderAnnotations();
+            wwRenderAnnotationList();
+            return annotation;
+        }
+
+        function wwUpdateAnnotation(id, patch) {
+            const annotation = ww.annotations.get(id);
+            if (!annotation || !patch) return;
+            for (const key in patch) {
+                if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
+                if (key === "data") annotation.data = Object.assign({}, annotation.data, patch.data);
+                else if (key === "position") annotation.position = { x: wwClamp01(patch.position.x), y: wwClamp01(patch.position.y) };
+                else annotation[key] = patch[key];
+            }
+            wwRenderAnnotations();
+            wwRenderAnnotationList();
+        }
+
+        function wwDeleteAnnotation(id) {
+            if (!ww.annotations.delete(id)) return;
+            if (ww.annotationSelectedId === id) ww.annotationSelectedId = null;
+            const el = document.querySelector('.ww-annotation[data-annotation-id="' + CSS.escape(id) + '"]');
+            if (el) el.remove();
+            wwRenderAnnotationList();
+        }
+
+        function wwSelectAnnotation(id) {
+            ww.annotationSelectedId = id || null;
+            if (id) {
+                const annotation = ww.annotations.get(id);
+                if (annotation) {
+                    ww.annotationZCounter += 1;
+                    annotation.zIndex = ww.annotationZCounter;
+                }
+            }
+            wwRenderAnnotations();
+            wwRenderAnnotationList();
+        }
+
+        function wwSelectAnnotationAndReveal(id) {
+            wwSelectAnnotation(id);
+            const el = document.querySelector('.ww-annotation[data-annotation-id="' + CSS.escape(id) + '"]');
+            if (el && typeof el.scrollIntoView === "function") {
+                el.scrollIntoView({ block: "nearest", inline: "nearest" });
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // Per-type presentation helpers -- the ONLY place that dispatches
+        // on `annotation.type` (section 25): a future type adds a branch
+        // here, never a drawer/render rewrite.
+        // ------------------------------------------------------------------
+
+        function wwAnnotationCategoryLabel(annotation) {
+            if (annotation.type === "text_note") return "NOTE";
+            return String(annotation.type || "").toUpperCase();
+        }
+
+        function wwAnnotationSummary(annotation) {
+            if (annotation.type === "text_note") {
+                const text = ((annotation.data && annotation.data.text) || "").trim();
+                return text.length > 0 ? text : "(empty note)";
+            }
+            return "Annotation";
+        }
+
+        function wwAnnotationNoteBodyHtml() {
+            // Structural markup only -- the actual user TEXT is always
+            // assigned via .textContent afterward (section 48: never
+            // interpolated into an HTML string).
+            return '<div class="ww-annotation-header">Note</div>' +
+                '<div class="ww-annotation-body" tabindex="0"></div>';
+        }
+
+        // ------------------------------------------------------------------
+        // Note DOM: creation, drag, edit
+        // ------------------------------------------------------------------
+
+        function wwWireAnnotationDrag(el, handleEl, id) {
+            if (!handleEl) return;
+            let dragging = false;
+            let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+
+            handleEl.addEventListener("pointerdown", (event) => {
+                if (el.dataset.editing === "true") return; // never drag while the textarea owns this element (section 16)
+                if (event.button !== undefined && event.button !== 0) return;
+                event.stopPropagation(); // never let this reach the document-level "click outside deselects" listener
+                wwSelectAnnotation(id);
+                dragging = true;
+                startX = event.clientX;
+                startY = event.clientY;
+                startLeft = el.offsetLeft;
+                startTop = el.offsetTop;
+                if (handleEl.setPointerCapture) {
+                    try { handleEl.setPointerCapture(event.pointerId); } catch (error) { /* not attached to a real layout yet */ }
+                }
+            });
+            handleEl.addEventListener("pointermove", (event) => {
+                if (!dragging) return;
+                const workAreaRect = wwAnnotationWorkAreaRect();
+                if (!workAreaRect) return;
+                const toolbarRect = wwAnnotationToolbarRect();
+                const deltaX = event.clientX - startX;
+                const deltaY = event.clientY - startY;
+                const noteWidth = el.offsetWidth || 160;
+                const noteHeight = el.offsetHeight || 60;
+                const clamped = wwClampAnnotationPixelPosition(
+                    startLeft + deltaX, startTop + deltaY, noteWidth, noteHeight, workAreaRect, toolbarRect
+                );
+                el.style.left = clamped.left + "px";
+                el.style.top = clamped.top + "px";
+            });
+            function endDrag(event) {
+                if (!dragging) return;
+                dragging = false;
+                const workAreaRect = wwAnnotationWorkAreaRect();
+                if (workAreaRect) {
+                    const x = parseFloat(el.style.left) / workAreaRect.width;
+                    const y = parseFloat(el.style.top) / workAreaRect.height;
+                    wwUpdateAnnotation(id, { position: { x: x, y: y } });
+                }
+                if (handleEl.releasePointerCapture && event && event.pointerId !== undefined) {
+                    try { handleEl.releasePointerCapture(event.pointerId); } catch (error) { /* already released */ }
+                }
+            }
+            handleEl.addEventListener("pointerup", endDrag);
+            handleEl.addEventListener("pointercancel", endDrag);
+        }
+
+        function wwWireAnnotationBodyInteractions(el, bodyEl, id) {
+            bodyEl.addEventListener("dblclick", (event) => {
+                event.stopPropagation();
+                wwBeginAnnotationEdit(id);
+            });
+            wwWireAnnotationDrag(el, bodyEl, id);
+        }
+
+        function wwWireAnnotationNote(el, id) {
+            const header = el.querySelector(".ww-annotation-header");
+            const body = el.querySelector(".ww-annotation-body");
+            wwWireAnnotationDrag(el, header, id);
+            if (body) wwWireAnnotationBodyInteractions(el, body, id);
+        }
+
+        // Section 12/14: enters edit mode -- swaps the read-only body div
+        // for a <textarea> in place. Enter inserts a newline (textarea's
+        // own native behavior, never intercepted); blur commits; Escape
+        // cancels (reverts to the pre-edit text, section 14's own "do not
+        // use Enter as save" + "Escape cancels" requirements).
+        function wwBeginAnnotationEdit(id) {
+            const el = document.querySelector('.ww-annotation[data-annotation-id="' + CSS.escape(id) + '"]');
+            const annotation = ww.annotations.get(id);
+            if (!el || !annotation || el.dataset.editing === "true") return;
+            const body = el.querySelector(".ww-annotation-body");
+            if (!body) return;
+            wwSelectAnnotation(id);
+            el.dataset.editing = "true";
+            const textarea = document.createElement("textarea");
+            textarea.className = "ww-annotation-textarea";
+            textarea.value = (annotation.data && annotation.data.text) || "";
+            body.replaceWith(textarea);
+            textarea.focus();
+            textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+            textarea.addEventListener("blur", () => wwEndAnnotationEdit(id, true));
+            textarea.addEventListener("keydown", (event) => {
+                event.stopPropagation(); // never let a keystroke reach the placement-mode Escape handler
+                if (event.key === "Escape") {
+                    event.preventDefault();
+                    wwEndAnnotationEdit(id, false);
+                }
+            });
+            textarea.addEventListener("pointerdown", (event) => event.stopPropagation()); // never initiates drag
+        }
+
+        function wwEndAnnotationEdit(id, save) {
+            const el = document.querySelector('.ww-annotation[data-annotation-id="' + CSS.escape(id) + '"]');
+            if (!el || el.dataset.editing !== "true") return;
+            const textarea = el.querySelector(".ww-annotation-textarea");
+            const newText = textarea ? textarea.value : null;
+            el.dataset.editing = "false";
+            const freshBody = document.createElement("div");
+            freshBody.className = "ww-annotation-body";
+            freshBody.tabIndex = 0;
+            if (textarea) textarea.replaceWith(freshBody);
+            else el.appendChild(freshBody);
+            wwWireAnnotationBodyInteractions(el, freshBody, id);
+
+            if (save && newText !== null) {
+                wwUpdateAnnotation(id, { data: { text: newText } });
+            } else {
+                wwRenderAnnotations(); // repopulate freshBody with the UNCHANGED (pre-edit) text
+            }
+        }
+
+        // Section 19: called on annotation create/update/select AND
+        // whenever workspace geometry resizes (see wwResizeAllVisiblePlots())
+        // -- NEVER on zoom/pan/Absolute-Elapsed/layout-mode switch, none
+        // of which call this (confirming, by absence, that those paths
+        // cannot move a note -- section 6/36/38).
+        function wwRenderAnnotations() {
+            const overlay = document.getElementById("wwAnnotationOverlay");
+            if (!overlay) return;
+            const workAreaRect = wwAnnotationWorkAreaRect();
+            const toolbarRect = wwAnnotationToolbarRect();
+
+            const seen = new Set();
+            for (const annotation of ww.annotations.values()) {
+                seen.add(annotation.id);
+                let el = overlay.querySelector('.ww-annotation[data-annotation-id="' + CSS.escape(annotation.id) + '"]');
+                if (!el) {
+                    el = document.createElement("div");
+                    el.className = "ww-annotation ww-annotation--" + annotation.type;
+                    el.dataset.annotationId = annotation.id;
+                    el.dataset.editing = "false";
+                    el.innerHTML = annotation.type === "text_note" ? wwAnnotationNoteBodyHtml() : "";
+                    overlay.appendChild(el);
+                    wwWireAnnotationNote(el, annotation.id);
+                }
+                el.classList.toggle("ww-annotation--selected", ww.annotationSelectedId === annotation.id);
+                el.style.zIndex = String(annotation.zIndex);
+
+                if (workAreaRect) {
+                    const noteWidth = el.offsetWidth || 160;
+                    const noteHeight = el.offsetHeight || 60;
+                    const rawLeft = annotation.position.x * workAreaRect.width;
+                    const rawTop = annotation.position.y * workAreaRect.height;
+                    const clamped = wwClampAnnotationPixelPosition(rawLeft, rawTop, noteWidth, noteHeight, workAreaRect, toolbarRect);
+                    el.style.left = clamped.left + "px";
+                    el.style.top = clamped.top + "px";
+                }
+
+                if (el.dataset.editing !== "true" && annotation.type === "text_note") {
+                    const body = el.querySelector(".ww-annotation-body");
+                    if (body) {
+                        const text = (annotation.data && annotation.data.text) || "";
+                        const isEmpty = text.length === 0;
+                        body.textContent = isEmpty ? "Click to add text" : text; // textContent only -- never innerHTML (section 48)
+                        body.classList.toggle("ww-annotation-body--placeholder", isEmpty);
+                    }
+                }
+            }
+
+            for (const el of Array.from(overlay.querySelectorAll(".ww-annotation"))) {
+                if (!seen.has(el.dataset.annotationId)) el.remove();
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // Annotation List drawer (section 22/24/25) -- generic across
+        // annotation types; the ONLY per-type dispatch is
+        // wwAnnotationCategoryLabel()/wwAnnotationSummary() above.
+        // ------------------------------------------------------------------
+
+        function wwRenderAnnotationList() {
+            const listEl = document.getElementById("wwAnnotationListBody");
+            const drawerCountEl = document.getElementById("wwAnnotationDrawerCount");
+            const badgeEl = document.getElementById("wwAnnotationCountBadge");
+            // Section 68: newest-first, deliberately chosen so a just-
+            // created note is always at the top -- stable across
+            // rerenders since it sorts by the immutable createdAt field,
+            // never insertion order/array index.
+            const all = Array.from(ww.annotations.values()).sort((a, b) => b.createdAt - a.createdAt);
+
+            if (drawerCountEl) drawerCountEl.textContent = String(all.length);
+            if (badgeEl) {
+                badgeEl.hidden = all.length === 0;
+                badgeEl.textContent = String(all.length);
+            }
+
+            if (!listEl) return;
+            listEl.innerHTML = "";
+            if (all.length === 0) {
+                const empty = document.createElement("p");
+                empty.className = "empty-state";
+                empty.textContent = "No annotations yet.";
+                listEl.appendChild(empty);
+                return;
+            }
+            for (const annotation of all) {
+                const row = document.createElement("div");
+                row.className = "ww-annotation-list-item";
+                row.dataset.annotationId = annotation.id;
+                row.tabIndex = 0;
+                row.setAttribute("role", "button");
+                if (ww.annotationSelectedId === annotation.id) row.classList.add("ww-annotation-list-item--selected");
+
+                const main = document.createElement("div");
+                main.className = "ww-annotation-list-item-main";
+                const category = document.createElement("div");
+                category.className = "ww-annotation-list-item-category";
+                category.textContent = wwAnnotationCategoryLabel(annotation);
+                const preview = document.createElement("div");
+                preview.className = "ww-annotation-list-item-preview";
+                const summary = wwAnnotationSummary(annotation);
+                preview.textContent = summary; // textContent -- safe, never innerHTML (section 48)
+                main.appendChild(category);
+                main.appendChild(preview);
+
+                const shortPreview = summary.length > 40 ? summary.slice(0, 40) + "…" : summary;
+                const deleteBtn = document.createElement("button");
+                deleteBtn.type = "button";
+                deleteBtn.className = "ww-icon-btn ww-annotation-delete-btn";
+                deleteBtn.title = "Delete annotation";
+                deleteBtn.setAttribute("aria-label", "Delete annotation \"" + shortPreview + "\"");
+                const iconSpan = document.createElement("span");
+                iconSpan.className = "ww-icon";
+                iconSpan.innerHTML = '<svg viewBox="0 0 18 18"><path d="M4 5h10M7.5 5V3.5a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1V5M6 5v9a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V5"/><line x1="7.5" y1="8" x2="7.5" y2="12"/><line x1="10.5" y1="8" x2="10.5" y2="12"/></svg>';
+                deleteBtn.appendChild(iconSpan);
+                deleteBtn.addEventListener("click", (event) => {
+                    event.stopPropagation();
+                    wwDeleteAnnotation(annotation.id);
+                });
+
+                row.appendChild(main);
+                row.appendChild(deleteBtn);
+                row.addEventListener("click", () => wwSelectAnnotationAndReveal(annotation.id));
+                row.addEventListener("keydown", (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        wwSelectAnnotationAndReveal(annotation.id);
+                    }
+                });
+                listEl.appendChild(row);
+            }
+        }
+
+        function wwSetAnnotationDrawerOpen(open) {
+            const drawer = document.getElementById("wwAnnotationDrawer");
+            const btn = document.getElementById("wwAnnotationListBtn");
+            if (drawer) {
+                drawer.classList.toggle("ww-annotation-drawer--open", open);
+                drawer.setAttribute("aria-hidden", String(!open));
+            }
+            if (btn) {
+                btn.setAttribute("aria-pressed", String(open));
+                btn.setAttribute("aria-expanded", String(open));
+            }
+            if (open) wwRenderAnnotationList(); // cheap; guarantees freshest state every time it opens
+        }
+
+        function wwToggleAnnotationDrawer() {
+            const drawer = document.getElementById("wwAnnotationDrawer");
+            const isOpen = !!(drawer && drawer.classList.contains("ww-annotation-drawer--open"));
+            wwSetAnnotationDrawerOpen(!isOpen);
+        }
+
+        // ------------------------------------------------------------------
+        // Annotate dropdown + placement mode (section 9/10/11/34/46)
+        // ------------------------------------------------------------------
+
+        function wwSetAnnotateMenuOpen(open) {
+            const menu = document.getElementById("wwAnnotateMenu");
+            const trigger = document.getElementById("wwAnnotateBtn");
+            if (menu) menu.hidden = !open;
+            if (trigger) trigger.setAttribute("aria-expanded", String(open));
+            if (open) {
+                const firstItem = menu && menu.querySelector(".ww-split-menu-item");
+                if (firstItem) firstItem.focus();
+            }
+        }
+
+        function wwToggleAnnotateMenu() {
+            const menu = document.getElementById("wwAnnotateMenu");
+            wwSetAnnotateMenuOpen(!!(menu && menu.hidden));
+        }
+
+        function wwSyncAnnotateButtonActiveState() {
+            const btn = document.getElementById("wwAnnotateBtn");
+            const active = !!ww.annotationPlacementType;
+            if (btn) btn.setAttribute("aria-pressed", String(active));
+            for (const item of document.querySelectorAll("#wwAnnotateMenu .ww-split-menu-item")) {
+                item.setAttribute("aria-pressed", String(active && item.dataset.annotationType === ww.annotationPlacementType));
+            }
+        }
+
+        // Section 11: click on toolbar/dropdown/unrelated UI must NEVER
+        // create a note -- checked BEFORE the "inside sidebar/main area"
+        // test, not merely implied by it, so this stays correct even if a
+        // future toolbar control is nested oddly.
+        function wwAnnotationPlacementClickHandler(event) {
+            const type = ww.annotationPlacementType;
+            if (!type) return;
+            const toolbarEl = document.getElementById("wwToolbar");
+            if (toolbarEl && toolbarEl.contains(event.target)) return;
+            const sidebarEl = document.getElementById("workspaceSidebar");
+            const mainAreaEl = document.getElementById("activeViewArea");
+            const insideSidebar = !!(sidebarEl && sidebarEl.contains(event.target));
+            const insideMain = !!(mainAreaEl && mainAreaEl.contains(event.target));
+            if (!insideSidebar && !insideMain) return; // section 7: only the permitted analysis area
+
+            const workAreaRect = wwAnnotationWorkAreaRect();
+            if (!workAreaRect) return;
+            event.preventDefault();
+            event.stopPropagation();
+
+            const noteWidth = 200; // matches .ww-annotation's own min-width, used only for this initial centering estimate
+            const noteHeight = 80;
+            const toolbarRect = wwAnnotationToolbarRect();
+            const clamped = wwClampAnnotationPixelPosition(
+                event.clientX - workAreaRect.left - noteWidth / 2,
+                event.clientY - workAreaRect.top - noteHeight / 2,
+                noteWidth, noteHeight, workAreaRect, toolbarRect
+            );
+
+            const annotation = wwCreateAnnotation(type, {
+                x: clamped.left / workAreaRect.width,
+                y: clamped.top / workAreaRect.height,
+            }, { text: "" });
+
+            wwExitAnnotationPlacementMode();
+            // Section 12: enter edit mode immediately -- the user should
+            // not have to find another control before typing.
+            wwBeginAnnotationEdit(annotation.id);
+        }
+
+        function wwAnnotationPlacementKeydownHandler(event) {
+            if (event.key === "Escape") {
+                event.preventDefault();
+                wwExitAnnotationPlacementMode();
+            }
+        }
+
+        function wwEnterAnnotationPlacementMode(type) {
+            if (ww.annotationPlacementType === type) return; // already active
+            ww.annotationPlacementType = type;
+            document.body.classList.add("ww-annotation-placing");
+            wwSyncAnnotateButtonActiveState();
+            document.addEventListener("click", wwAnnotationPlacementClickHandler, true);
+            document.addEventListener("keydown", wwAnnotationPlacementKeydownHandler, true);
+        }
+
+        function wwExitAnnotationPlacementMode() {
+            if (!ww.annotationPlacementType) return;
+            ww.annotationPlacementType = null;
+            document.body.classList.remove("ww-annotation-placing");
+            wwSyncAnnotateButtonActiveState();
+            document.removeEventListener("click", wwAnnotationPlacementClickHandler, true);
+            document.removeEventListener("keydown", wwAnnotationPlacementKeydownHandler, true);
         }
 
         // ------------------------------------------------------------------
@@ -7518,6 +8336,22 @@
                 // (it keeps the still-selected source's bounds/viewport,
                 // so existing cursor times stay meaningful).
                 wwResetMeasurementCursors();
+                // Phase 4E (DEC-044, section 40): same policy as cursors
+                // immediately above -- "Start New Workspace" is a
+                // genuinely new workspace_id (see this function's own
+                // caller, which rotates WORKSPACE_STORAGE_KEY before
+                // calling wwClearWorkspace({resetSourceBounds:true})), so
+                // annotations belonging to the OLD workspace are cleared
+                // here. The plain "Clear workspace" branch below
+                // deliberately does NOT touch ww.annotations -- it is
+                // display-only and keeps the same session/source context,
+                // exactly the reasoning already established for cursors.
+                ww.annotations.clear();
+                ww.annotationSelectedId = null;
+                wwExitAnnotationPlacementMode();
+                wwSetAnnotationDrawerOpen(false);
+                wwRenderAnnotations();
+                wwRenderAnnotationList();
             } else {
                 ww.workspaceBounds = wwDeriveWorkspaceBounds();
                 ww.viewport = ww.workspaceBounds ? { start: ww.workspaceBounds.start, end: ww.workspaceBounds.end } : null;
@@ -9484,6 +10318,42 @@
         wwWireZoomStepSplitButtons();
         wwSyncZoomStepControls();
         document.addEventListener("powerwave:theme-change", wwApplyTheme);
+
+        // Phase 4E: generic annotation framework + Free Text Note (DEC-044).
+        document.getElementById("wwAnnotateBtn").addEventListener("click", (event) => {
+            event.stopPropagation();
+            wwToggleAnnotateMenu();
+        });
+        for (const item of document.querySelectorAll("#wwAnnotateMenu .ww-split-menu-item")) {
+            item.addEventListener("click", () => {
+                wwSetAnnotateMenuOpen(false);
+                wwEnterAnnotationPlacementMode(item.dataset.annotationType);
+            });
+        }
+        document.getElementById("wwAnnotationListBtn").addEventListener("click", () => wwToggleAnnotationDrawer());
+        document.getElementById("wwAnnotationDrawerCloseBtn").addEventListener("click", () => wwSetAnnotationDrawerOpen(false));
+        // Click anywhere outside the Annotate menu closes it; click
+        // anywhere outside any annotation note deselects it (section 14:
+        // "click outside commits"/deselects -- committing an in-progress
+        // edit is already handled by the textarea's own native blur event,
+        // which fires before this listener sees the click).
+        document.addEventListener("click", (event) => {
+            const menu = document.getElementById("wwAnnotateMenu");
+            const split = document.getElementById("wwAnnotateSplit");
+            if (menu && !menu.hidden && split && !split.contains(event.target)) {
+                wwSetAnnotateMenuOpen(false);
+            }
+            if (ww.annotationSelectedId && !event.target.closest(".ww-annotation") && !event.target.closest(".ww-annotation-list-item")) {
+                wwSelectAnnotation(null);
+            }
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            const menu = document.getElementById("wwAnnotateMenu");
+            if (menu && !menu.hidden) wwSetAnnotateMenuOpen(false);
+            const drawer = document.getElementById("wwAnnotationDrawer");
+            if (drawer && drawer.classList.contains("ww-annotation-drawer--open")) wwSetAnnotationDrawerOpen(false);
+        });
 
         // Phase 2C-B1/C1: Grouped/Separate/Custom layout mode.
         document.getElementById("layoutModeGroupedBtn").addEventListener("click", () => wwSetLayoutMode("grouped"));

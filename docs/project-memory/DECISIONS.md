@@ -3877,6 +3877,151 @@ Impact:
 
 ---
 
+## DEC-044 — Generic annotation framework; first type is a workspace-scoped, work-area-relative Free Text Note
+
+Date: 2026-08-20
+Status: Approved
+Source: explicit project-owner task specification for Phase 4E
+("Annotation Framework + Free Text Note").
+
+Decision:
+
+Oruxa Powerwave gains a GENERIC annotation framework, with exactly one
+supported annotation type this phase: `text_note`. The framework, not
+just the one type, is the architecture being approved:
+
+- **One authority, one shape**: `ww.annotations` (`Map<id, Annotation>`)
+  is the sole state; every rendered note, every drawer row, and the
+  toolbar count badge are derived from it via
+  `wwRenderAnnotations()`/`wwRenderAnnotationList()`, never a second
+  competing state. An `Annotation` is `{id, type, workspaceId, position:
+  {x, y}, createdAt, zIndex, data}` — `data` is a type-specific payload
+  (`{text}` for `text_note`) so a future type (e.g. `callout_note`) adds
+  its own fields there without restructuring the record shape, and every
+  presentation function that varies by type (`wwAnnotationCategoryLabel()`/
+  `wwAnnotationSummary()`) dispatches on `annotation.type` rather than
+  being hard-wired to `text_note`'s own DOM shape.
+- **Workspace/session-scoped, not data-anchored**: `position` is
+  NORMALIZED (0..1) relative to `#workspaceRow`'s own stable bounding
+  rect — never a waveform time/Y value, never relative to a Plotly panel
+  or trace. This first note type is a deliberately FLOATING work-area
+  note (section 6 of the task): zoom, pan, Absolute/Elapsed, and
+  Grouped/Separate/Custom never move or touch it. A future
+  waveform-anchored type (`callout_note`, with its own `anchorTime`/
+  `anchorChannel`/connector line) is a SEPARATE future phase this
+  decision explicitly does not implement or pre-build fields for.
+- **Placement area (section 7, "Option C")**: the full permitted analysis
+  work area — the left Workspace Sidebar AND the main waveform area
+  (analog panels, digital region, sticky ruler) — but never the toolbar
+  itself. Achieved via ONE overlay (`#wwAnnotationOverlay`, a child of
+  `#workspaceRow`) for rendering, with toolbar exclusion enforced by
+  checking `#wwToolbar`'s own live bounding rect at click-time and during
+  drag clamping — not a CSS clip-path, which would need constant
+  recomputation since the toolbar wraps to a taller height at narrow
+  widths (Phase 4D's own `flex-wrap: wrap`).
+- **Pointer isolation**: the overlay's empty space is `pointer-events:
+  none`; only an individual `.ww-annotation` note is
+  `pointer-events: auto`. Plotly zoom/pan, A/B cursor drag, and every
+  sidebar control are provably unaffected by the overlay's presence.
+- **Lifecycle**: cleared ONLY by "Start New Workspace" (a genuinely new
+  `workspace_id` — see `wwClearWorkspace({resetSourceBounds:true})`'s
+  existing branch, which already resets `ww.measurementCursors` for the
+  identical reason). The plain "Clear workspace" button is DISPLAY-ONLY
+  (removes displayed panels/channels, keeps the same source/session
+  context) and deliberately does NOT touch `ww.annotations` — inspected
+  and confirmed as the correct, already-established precedent (cursors
+  get the exact same treatment) rather than assumed.
+- **Annotation List is generic**, not a text-note-only drawer: it renders
+  `wwAnnotationCategoryLabel()`/`wwAnnotationSummary()` for whatever
+  annotations exist, sorted newest-first (a deliberate, documented
+  ordering choice), with delete centralized there (never a permanent ×
+  on the floating note itself, keeping the canvas clean per the owner's
+  own explicit instruction).
+
+Reason:
+
+The owner's own stated goal was a framework, not a one-off text-note
+feature — future types (callout notes, event/channel markers, delta/RMS/
+peak/amplitude stamps) are explicitly anticipated. Building `type`/`data`-
+based extensibility and a type-dispatching drawer NOW, while implementing
+only `text_note`, avoids a second architecture pass when the next
+annotation type arrives, while staying strictly within this phase's own
+scope exclusions (no callout/anchoring UI or fields built prematurely).
+
+Alternatives considered:
+
+- **A one-off "text note" DOM/state structure** — rejected per the
+  owner's own explicit instruction; would require redesigning the whole
+  feature for the next annotation type.
+- **True native scroll-following** for notes placed over
+  `#workspaceSidebar`/`#activeViewArea` (both independently-scrolling
+  `overflow-y: auto` containers) — evaluated and NOT implemented this
+  phase. Achieving it while preserving section 32's "seamlessly draggable
+  between sidebar and main area" requirement would need either dynamic
+  DOM re-parenting of a note between two different scroll containers
+  mid-drag, or manual `scrollTop` tracking duplicating native scroll
+  mechanics for both containers independently — meaningfully more complex
+  and not verifiable without live-browser testing in this environment.
+  Chose instead to anchor notes to `#workspaceRow`'s own STABLE (never-
+  scrolling) viewport frame: one simple shared coordinate system, full
+  Option C coverage, and provably correct cross-region dragging, at the
+  documented cost of a note not visually scrolling away when its
+  container's internal content is scrolled. Reported as a deliberate,
+  reasoned tradeoff, not a silent fallback — see MIGRATION_PLAN.md's own
+  Phase 4E record for the full analysis.
+- **A permanently-visible delete × on every note** — rejected per the
+  owner's own explicit instruction: deletion is centralized through the
+  Annotation List, keeping the floating note's own canvas appearance
+  clean.
+- **A confirmation dialog before deleting one note** — rejected per the
+  owner's own explicit instruction: unnecessary friction for a small,
+  individually-reversible-by-recreation action; reserved for a possible
+  future "Clear All Annotations" the owner did not ask for this phase.
+- **Backend/database persistence** — rejected as out of scope this phase
+  (section 70): frontend workspace/session state already satisfies the
+  owner-approved persistence requirement (survives view/mode changes and
+  Recordings↔Waveform navigation within the same workspace; cleared on a
+  genuinely new one), matching this project's own existing precedent that
+  session-scoped UI state (cursors, custom groups, panel heights) lives
+  in frontend memory, not a database.
+
+Impact:
+
+- `frontend/index.html` only — no backend endpoint, schema, or database
+  change.
+- New state: `ww.annotations`, `ww.annotationSelectedId`,
+  `ww.annotationPlacementType`, `ww.annotationZCounter`. New functions
+  (non-exhaustive): `wwCreateAnnotation()`/`wwUpdateAnnotation()`/
+  `wwDeleteAnnotation()`/`wwSelectAnnotation()`/`wwRenderAnnotations()`/
+  `wwRenderAnnotationList()`/`wwEnterAnnotationPlacementMode()`/
+  `wwExitAnnotationPlacementMode()`/`wwBeginAnnotationEdit()`/
+  `wwEndAnnotationEdit()`/`wwClampAnnotationPixelPosition()`/
+  `wwAnnotationWorkAreaRect()`. New toolbar controls: Annotate (dropdown,
+  currently one item: Text Note) and Annotations (opens the drawer, shows
+  a count badge). New DOM: `#wwAnnotationOverlay` (child of
+  `#workspaceRow`), `#wwAnnotationDrawer` (a right-side, `position: fixed`
+  overlay panel — never consumes/reflows `#workspaceRow`'s own width, so
+  opening/closing it can never distort normalized annotation positions).
+- Hooked into `wwResizeAllVisiblePlots()` (repositions notes from their
+  unchanged normalized coordinates whenever workspace geometry actually
+  resizes) and `wwClearWorkspace()`'s `resetSourceBounds` branch (clears
+  annotations on a genuinely new workspace) — and deliberately NOT hooked
+  into `wwRebuildLayout()`, `wwSetTimeMode()`, `wwApplyAndFetchViewport()`,
+  or any cursor function, confirming by absence that none of those paths
+  can move/touch/recreate an annotation.
+- Does NOT alter DEC-021 (workspace-level navigation), DEC-034/037/039/040
+  (digital classification, source-aware bounds, cursor architecture, Cur
+  A/B authority), DEC-041/042 (adaptive resolution, numeric elapsed
+  coordinates), or DEC-043 (step zoom/icon toolbar) in any way.
+- Explicitly NOT implemented: callout connector line, waveform-point/
+  time/channel anchoring, delta measurement, event/channel markers, RMS/
+  peak/amplitude stamps, cross-channel delta, import/export, cloud/
+  database persistence, a colors/theme chooser, rich text/Markdown,
+  image annotations, or a "Clear All Annotations" action.
+- See [MIGRATION_PLAN.md — Phase 4E](MIGRATION_PLAN.md#phase-4e--annotation-framework--free-text-note-2026-08-20).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

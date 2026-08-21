@@ -8650,6 +8650,243 @@ owner UAT after this push.
 
 ---
 
+## Phase 4E — Annotation Framework + Free Text Note (2026-08-20)
+
+### Scope
+
+The first annotation capability: a GENERIC framework (`ww.annotations`,
+typed records, a type-dispatching drawer) with exactly one supported
+type implemented this phase, `text_note` — a floating, work-area-relative
+note the engineer places, edits, drags, and deletes. Explicitly excluded:
+callout/data-anchored notes, event/channel markers, delta/RMS/peak/
+amplitude stamps, import/export, and cloud persistence (see DEC-044's own
+exclusion list).
+
+### DOM/architecture investigation before implementing
+
+Read the existing shell structure (`#workArea` -> `#workspaceRow` ->
+[`#workspaceSidebar`, `#mainWorkspace` -> [`#wwToolbar`, `#activeViewArea`]])
+before writing any placement/overlay code. Two structural facts drove
+every subsequent design decision:
+
+1. **The toolbar and the sidebar occupy the SAME vertical band** (the
+   toolbar is only the top strip of the `#mainWorkspace` column, sitting
+   beside the sidebar's own top edge, not below it) -- a naive single
+   rectangle spanning "sidebar top to activeViewArea bottom" would
+   necessarily also cover the toolbar's own screen footprint. Resolved by
+   checking `#wwToolbar`'s own live `getBoundingClientRect()` at
+   placement-click time and during drag clamping, rather than attempting
+   a CSS clip-path cutout -- the toolbar's height is not fixed (Phase
+   4D's own `flex-wrap: wrap` lets it grow at narrow widths), so a static
+   clip-path would need constant, error-prone recomputation; a live
+   rect-containment check is simpler and always correct regardless of
+   toolbar height.
+2. **`#workspaceSidebar` and `#activeViewArea` are two INDEPENDENTLY
+   scrolling containers** (`overflow-y: auto` on both, confirmed by
+   reading their own CSS directly), while `#workspaceRow` itself never
+   scrolls. This created a real tension with section 31's own "preferred"
+   behavior (notes scroll with the analysis content) versus section 32's
+   requirement (a note must be seamlessly draggable between the sidebar
+   and the main area, implying ONE shared coordinate system). Evaluated
+   and documented as a deliberate architecture decision -- see this
+   record's own "Position model" section below and DEC-044's own
+   "Alternatives considered" for the full reasoning; NOT a silent
+   fallback.
+
+### Placement area: Option C achieved
+
+Option C (task section 7: sidebar + main waveform area, excluding global
+nav and the toolbar itself) IS implemented, via one overlay
+(`#wwAnnotationOverlay`, a child of `#workspaceRow`, spanning its full
+bounding rect) combined with an explicit toolbar-exclusion check (not a
+geometric cutout) in both the placement-click handler and the shared
+drag/render clamp function. A note can be placed over, and dragged
+between, the sidebar and the main waveform area with zero special-casing,
+since both live under the same single coordinate system. This was
+evaluated as clean and not architecturally costly (a single overlay +
+one exclusion check, versus e.g. two separate overlay DOM trees with
+their own pointer-event wiring), so Option C was implemented directly
+rather than falling back to a narrower area.
+
+### Position model: work-area-relative, not waveform/data-anchored
+
+Every annotation's `position` is `{x, y}` normalized (0..1) against
+`#workspaceRow`'s own bounding rect at read/write time -- resilient to
+sidebar-resize/window-resize/laptop-width changes (section 17), and
+NEVER derived from `ww.viewport`, a Plotly trace, or any panel geometry
+(section 6 -- this is the floating/non-data-anchored requirement).
+`wwClampAnnotationPixelPosition()` is the ONE shared clamp used by
+placement, live drag, and render/resize repositioning -- it keeps a
+note's top-left corner inside the work area AND deflects it below the
+toolbar's own rectangle if a drag would otherwise push it underneath.
+
+**Scroll-following, a documented tradeoff**: the task's own "preferred"
+behavior (section 31) is for notes to scroll with `#workspaceSidebar`'s/
+`#activeViewArea`'s own internal content. Implementing this correctly
+while also satisfying section 32 (seamless cross-region dragging with
+one coordinate system) was evaluated to require either (a) dynamically
+re-parenting a note's DOM element between the two independently-
+scrolling containers mid-drag, or (b) manually tracking both containers'
+own `scrollTop` and recomputing note position on every scroll event,
+duplicating native scroll mechanics for two containers independently.
+Both add real complexity this sandboxed environment cannot verify
+against a live browser. Chose instead: notes anchor to `#workspaceRow`'s
+own STABLE, never-scrolling viewport frame -- one simple, always-correct
+coordinate system, full Option C placement/dragging, but a note does NOT
+visually scroll away when the user scrolls deep into a tall waveform
+stack or a long channel list. Recorded as a deliberate, disclosed
+architecture decision (DEC-044), not a silent shortcut -- flagged for
+owner UAT specifically (see this record's own Owner UAT list) and
+revisitable in a future phase if true scroll-following is wanted badly
+enough to justify the added complexity.
+
+### Text Note: creation, editing, wrapping, dragging
+
+`Annotate -> Text Note` enters a one-shot placement mode
+(`ww.annotationPlacementType`): a document-level CAPTURE-phase click
+listener validates the click is inside `#workspaceSidebar` or
+`#activeViewArea` and NOT inside `#wwToolbar` before creating a note and
+exiting placement mode automatically (section 10/11) -- Escape cancels
+via a parallel capture-phase keydown listener, both removed the instant
+placement mode ends so they never coexist with normal interaction. A
+newly-placed note enters edit mode immediately (section 12) via
+`wwBeginAnnotationEdit()`, swapping the read-only body `<div>` for a
+`<textarea>` in place. Single click selects (bring-to-front via a
+monotonic `zIndex` counter, section 21); double-click on the body enters
+edit; blur commits; Escape while editing reverts to the pre-edit text
+(`wwEndAnnotationEdit(id, false)`) -- Enter is never treated as save
+(textarea's own native newline behavior is left alone, section 14).
+Dragging is wired on the header (always) and the body (only while NOT
+editing) via `wwWireAnnotationDrag()`, mirroring this project's own
+established pointer-capture drag pattern (`wwWireResizeHandle()`); the
+active `<textarea>` itself never initiates a drag (`stopPropagation()` on
+its own `pointerdown`). Text wraps via `white-space: pre-wrap` +
+`overflow-wrap: break-word` inside a `min-width: 160px` / `max-width:
+320px` note, height grows with content, no giant shadow, no bright
+palette (section 13).
+
+### Annotation List drawer
+
+A right-side, `position: fixed` OVERLAY panel (never consumes/reflows
+`#workspaceRow`'s own width -- chosen specifically so opening/closing it
+can never distort normalized annotation positions, section 30's own
+explicit concern; no existing right-drawer precedent existed in this
+codebase to reuse, so this is a new, minimal one using the same theme
+tokens as every other panel). Body content is entirely DERIVED from
+`ww.annotations` via `wwRenderAnnotationList()` -- generic across
+annotation types (`wwAnnotationCategoryLabel()`/`wwAnnotationSummary()`
+dispatch on `type`, never hard-wired to `text_note`'s own shape), sorted
+newest-first (a deliberate, documented ordering choice, section 68).
+Each row: category label ("NOTE"), text preview (line-clamped), and a
+delete button (trash icon -- appropriate here, since this genuinely
+deletes the annotation, unlike Clear Workspace's own eraser icon).
+Clicking a row selects the matching note (border highlight on both the
+note and the row, from the SAME `ww.annotationSelectedId`) and calls the
+note's own `scrollIntoView({block: "nearest"})` if it exists (standard
+DOM API, correctly handles whichever scrolling ancestor currently
+contains it). Delete is immediate, no confirmation dialog (section 28 --
+a small, individually-reversible-by-recreation action; reserved for a
+possible future "Clear All," not implemented).
+
+### Pointer isolation
+
+`.ww-annotation-overlay { pointer-events: none; }` with `.ww-annotation {
+pointer-events: auto; }` -- the standard, well-established CSS technique
+for "empty overlay space passes clicks through, but specific children
+remain interactive." Verified directly: a Plotly panel's own
+`plotly_relayout` handler still fires correctly with the overlay present
+and a note elsewhere on screen; a channel sidebar row's own toggle click
+still works normally.
+
+### Mode/navigation persistence
+
+Annotation state is untouched by `wwRebuildLayout()` (Grouped/Separate/
+Custom), `wwSetTimeMode()` (Absolute/Elapsed), or any X/Y step-zoom/pan/
+Reset-Time-View path -- confirmed both by code inspection (none of those
+functions read/write `ww.annotations`) and by direct test (position
+JSON-stable across a full Grouped -> Separate -> Custom -> Grouped cycle,
+an Absolute <-> Elapsed round-trip, and a zoom-then-pan sequence).
+Recordings -> Waveform -> Recordings -> Waveform navigation within the
+same workspace was not separately re-tested with a full page-navigation
+harness this phase (out of proportion to add for this task), but is
+architecturally guaranteed by construction: `ww.annotations` lives on the
+same persistent `ww` object every other session-scoped state
+(`ww.customGroups`/`ww.panelHeights`/`ww.channelColors`) already survives
+that exact navigation with, and Phase 4E adds no annotation-clearing
+call anywhere in the Waveform<->Recordings page-switch path.
+
+### Workspace lifecycle: Clear Workspace vs. Start New Workspace
+
+Inspected `wwClearWorkspace(options)` directly rather than assuming:
+confirmed it is ALREADY a single function serving both actions, and that
+the plain "Clear workspace" toolbar button (no `resetSourceBounds`)
+already preserves `ww.measurementCursors` (cursor time/state) via the
+SAME `if (options.resetSourceBounds)` branch annotations were added to --
+an existing, direct precedent for "survives display-clear, cleared only
+on a genuinely new workspace." Annotations follow that exact same
+branch: PRESERVED by the plain Clear Workspace button (display-only,
+same source/session context), CLEARED only when `resetSourceBounds` is
+true (Start New Workspace, which rotates `WORKSPACE_STORAGE_KEY` to a new
+UUID before calling this function -- a genuinely new `workspace_id`).
+
+### Security
+
+Annotation text is rendered via `.textContent` assignment exclusively --
+never `.innerHTML` with user text interpolated. Verified directly:
+entering `<script>window.__xssFired = true;</script><b>hello</b>` as note
+text renders as inert literal text (no `<script>`/`<b>` element is ever
+parsed into the DOM, no script execution occurs) in both the floating
+note's own body AND the drawer's preview.
+
+### Future extensibility
+
+A future `callout_note` (or any other type) needs: (1) one more
+`.ww-split-menu-item` in the Annotate dropdown with its own
+`data-annotation-type`; (2) a branch in
+`wwAnnotationCategoryLabel()`/`wwAnnotationSummary()` for its own
+category/preview text; (3) its own `data` payload shape (e.g.
+`{anchorTime, anchorChannel, text}`) stored under the SAME generic
+`Annotation.data` field, never a parallel record type; (4) its own note-
+body renderer if its DOM differs from `text_note`'s. No change to
+`ww.annotations`'s own shape, `wwCreateAnnotation()`/`wwUpdateAnnotation()`/
+`wwDeleteAnnotation()`, the drawer's list-rendering loop, or the overlay/
+pointer-isolation architecture would be needed -- confirming the
+framework goal (section 3) was met, not just the one type.
+
+### Tests
+
+Determined the TRUE current baseline directly against `main` (not the
+stale "18" figure retired during the Phase 4D session) before making any
+change: unchanged from Phase 4D's own verified 33 failures across 14
+pre-existing files. New `phase4e_check.mjs` (28 checks) covering: Annotate
+dropdown contents + placement-mode entry/exit + Escape cancel + toolbar-
+click/outside-click rejection + sidebar placement (Option C); multiple
+notes with unique ids/independent state/drawer membership; edit (canvas/
+state/drawer sync, Escape-reverts, Enter-is-not-save); drag (normalized
+position update, work-area + toolbar-avoidance clamping); resize
+(normalized position preserved, pixel position recalculated); delete
+(state/canvas/drawer/count, other notes untouched); mode persistence
+(layout/Absolute-Elapsed/zoom-pan); Clear Workspace preserves vs. Start
+New Workspace clears; pointer isolation (Plotly relayout handler and
+sidebar row toggle both still fire correctly with the overlay present);
+XSS-safe text rendering; and the drawer's own open/close, stable
+newest-first ordering with no duplicate rows on rerender, and row-click
+selection. Full frontend regression suite reconfirmed at exactly the
+true 33-failure baseline (zero net regressions); `phase4b_check.mjs` (44/45,
+unchanged pre-existing), `phase4c1_check.mjs` (26), `phase4c2_check.mjs`
+(24), and `phase4d_check.mjs` (38) all still pass in full. Backend:
+393/393, unchanged (no backend file touched this phase).
+
+### Decision
+
+Recorded as a new decision,
+[DEC-044](DECISIONS.md#dec-044--generic-annotation-framework-first-type-is-a-workspace-scoped-work-area-relative-free-text-note)
+-- the generic annotation framework and its first type, `text_note`,
+extending DEC-021/DEC-039 by reference (workspace-level navigation, one
+overlay not per-panel state) without altering either.
+
+---
+
 ## Phase 4D — Precision Step Zoom + Icon Toolbar Refinement (2026-08-20)
 
 ### Scope
