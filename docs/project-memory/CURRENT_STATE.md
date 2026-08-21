@@ -4,8 +4,9 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-21** (Phase 5A-UAT — Calculated
-Channel Waveform Preview, on top of Phase 5A UAT Fix — Page
+Last meaningful update: **2026-08-21** (Phase 5A-UAT2 — Standard A/B
+Measurements for Calculated Channels, on top of Phase 5A-UAT —
+Calculated Channel Waveform Preview, Phase 5A UAT Fix — Page
 Navigation Isolation, Phase 5A — Calculated Channels /
 Basic Signal Builder, Phase 4G-UAT Bug Fix — Guidance
 Dismissal, Phase 4G-UAT — Persistent Annotation Placement
@@ -120,12 +121,31 @@ Workspace/Clear Workspace all behave identically to the manager list's
 own established behavior -- no new rule invented. The new
 `.ww-cc-preview-chart` CSS class deliberately declares no `display`
 property (proactively avoiding a fourth occurrence of the
-`[hidden]`-cascade bug this session already hit three times). See
+`[hidden]`-cascade bug this session already hit three times).
+**Standard A/B Measurements (2026-08-21, same day, frontend consistency
+fix)**: the main Waveform page's own Calculated Channels sidebar group
+now shows Cur A / Cur B columns identical to real Analog Channel rows —
+previously a purely presentational gap (`wwRenderCalculatedChannelsSidebarSection()`
+built its own bespoke, unstyled `<tr>` markup instead of reusing
+`renderChannelTable()`), never a backend or data-authority gap (the
+`/calculated-channels/cursor-values` endpoint and its frontend dispatch
+were already fully wired). Fixed by reusing `renderChannelTable()`/
+`analogChannelNameCellHtml()`/`wwCurValueCellHtml()` verbatim (all
+already fully generic), plus a new `calculatedChannelRowAttrs()` that
+tags each row with the SAME `data-channel-kind="analog"`/
+`data-source-id`/`data-channel-name` triad real analog rows carry — so
+these rows are picked up, entirely for free, by the EXISTING generic
+Cur A/Cur B live-update sweeps, no new update plumbing written. One
+small related bug fixed in the same change: the sidebar section's
+zero-channels early return now clears its own body (matching
+`wwRenderCalculatedChannelManagerList()`'s own sibling convention) so no
+stale row lingers after the last calculated channel is deleted. See
 [DECISIONS.md — DEC-047](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations)
-(including both its 2026-08-21 Update notes) and
+(including all three of its 2026-08-21 Update notes) and
 [MIGRATION_PLAN.md — Phase 5A](MIGRATION_PLAN.md#phase-5a--calculated-channels--basic-signal-builder-2026-08-21)
 / [Phase 5A UAT Fix](MIGRATION_PLAN.md#phase-5a-uat-fix--page-navigation-isolation-2026-08-21)
-/ [Phase 5A-UAT — Waveform Preview](MIGRATION_PLAN.md#phase-5a-uat--calculated-channel-waveform-preview-2026-08-21).
+/ [Phase 5A-UAT — Waveform Preview](MIGRATION_PLAN.md#phase-5a-uat--calculated-channel-waveform-preview-2026-08-21)
+/ [Phase 5A-UAT2 — Standard A/B Measurements](MIGRATION_PLAN.md#phase-5a-uat2--standard-ab-measurements-for-calculated-channels-2026-08-21).
 
 `[DECISION]` **Dynamic Maximum/Minimum Peak Annotation — DEC-046**
 (2026-08-21; **persistent placement guidance ribbon, addendum,

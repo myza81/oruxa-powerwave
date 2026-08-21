@@ -8,6 +8,76 @@ Last updated: **2026-08-21**
 
 ## What was most recently done
 
+**Phase 5A-UAT2 — Standard A/B Measurements for Calculated Channels.**
+On the main Waveform page, the Calculated Channels sidebar group now
+shows Cur A / Cur B measurement columns identical to real Analog
+Channel rows -- a frontend consistency fix, no calculation mathematics
+touched. No new decision -- an "Update" note appended to DEC-047. Full
+detail:
+[DECISIONS.md — DEC-047 Update note](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations),
+[MIGRATION_PLAN.md — Phase 5A-UAT2](MIGRATION_PLAN.md#phase-5a-uat2--standard-ab-measurements-for-calculated-channels-2026-08-21).
+
+**Root cause: purely presentational, never a data/backend gap.** The
+Phase 5A `/calculated-channels/cursor-values` endpoint and its frontend
+dispatch (`wwFetchCursorValuesForSource()`'s `isCalculated` branch,
+`wwFetchAllCursorValues()`'s source-id-driven fan-out over
+`ww.displayed`) were already fully wired and already correctly
+populating `ww.cursorValues` for calculated channels -- proven directly
+by the pre-existing, unchanged A/B cursor test (`[99]`).
+`wwRenderCalculatedChannelsSidebarSection()` simply built its own
+bespoke, entirely unstyled `<tr>` markup (a lone name cell, wrapped in
+a `class="channel-table"` with no CSS rule anywhere in the stylesheet)
+instead of reusing `renderChannelTable()`, the SAME generic table
+builder real analog rows already use for their own Channel/Phase/Cur A/
+Cur B columns.
+
+**Fix**: `wwRenderCalculatedChannelsSidebarSection()` now calls
+`renderChannelTable()` with `[Channel, Cur A, Cur B]` (no Phase --
+calculated channels carry none), reusing `analogChannelNameCellHtml()`/
+`wwCurValueCellHtml()`/`wwCurValueText()` verbatim -- all were already
+fully generic (keyed by `sourceId`/`channelName`, gated by the SAME
+`wwIsAnalogChannelVisible()`/`ww.measurementCursors` authority). A new
+`calculatedChannelRowAttrs()` mirrors `analogChannelRowAttrs()`'s shape
+and additionally tags each row with `data-channel-kind="analog"`/
+`data-source-id`/`data-channel-name` -- the SAME triad real analog rows
+carry -- so calculated-channel rows are picked up, entirely for free,
+by the EXISTING generic Cur A/Cur B live-update sweeps
+(`wwUpdateCursorValueCellsForChannels()`/`wwUpdateAllCursorValueCells()`)
+that already drive cursor-drag/cursor-move/mode-toggle updates for real
+channels -- **no new update plumbing was written for calculated
+channels at all**. Verified safe against the shared `data-channel-kind`
+attribute's other consumer (`setupChannelRowToggles()`'s click
+dispatch, delegated on `#channelGroups` only, a different DOM subtree).
+The sidebar's own pre-existing dedicated click handler
+(`wwCalculatedChannelsSidebarRowClickHandler`) is unchanged.
+
+**One small related bug fixed in the same change**: the sidebar
+section's zero-channels early return used to skip clearing
+`bodyEl.innerHTML`, leaving the last channel's stale `<tr>` in the DOM
+(invisible only because the ancestor `<section>` itself was hidden) --
+discovered by this task's own "delete -> row disappears cleanly"
+acceptance check. Now matches `wwRenderCalculatedChannelManagerList()`'s
+own sibling convention (already clears its body at zero).
+
+**Tests**: extended `phase5a_check.mjs` with 10 new checks (A/B-off em
+dash parity, A/B-on values matching the authoritative array via the
+nearest-sample rule, moving A/moving B independently, calculated-from-
+calculated, out-of-range em dash, delete removing the row entirely,
+Grouped/Separate/Custom producing no duplicate/stale rows, and a
+structural guard for `table.channels`/3 columns) -- **53/53 passing**
+in the file overall (44 prior unchanged). Full frontend suite
+reconfirmed at the true 33-failure baseline (zero net new regressions,
+`phase4c1`/`phase4c2`/`phase4f`/`phase4g` individually reconfirmed
+passing). Backend untouched, 519/519 unchanged (no backend files
+touched).
+
+**Not yet done** (as of this section being written): commit/push,
+CI/automatic DEV deployment verification, and owner UAT of this feature
+specifically -- see the final report delivered alongside this update for
+whether those have since completed.
+
+## What was done in the prior session (Phase 5A-UAT — Calculated Channel Waveform Preview)
+
 **Phase 5A-UAT — Calculated Channel Waveform Preview.** Owner-requested
 addition of a lightweight **Waveform Preview** panel to the Calculated
 Channels page, sitting below the existing manager list -- explicitly

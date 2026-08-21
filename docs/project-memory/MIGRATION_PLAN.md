@@ -8648,7 +8648,133 @@ owner UAT after this push.
 
 ---
 
----
+## Phase 5A-UAT2 — Standard A/B Measurements for Calculated Channels (2026-08-21)
+
+### Scope
+
+Owner UAT: on the main Waveform page, the Calculated Channels sidebar
+group showed no Cur A / Cur B measurement columns at all, unlike real
+Analog Channel rows -- calculated channels are analog-like engineering
+channels and should use the identical standard measurement design.
+Frontend presentation/integration only; no calculation mathematics,
+time-alignment guardrails, dependency model, adaptive resolution, Peak,
+or Callout code touched.
+
+### Investigation / root cause
+
+Not a missing backend binding. The Phase 5A
+`/calculated-channels/cursor-values` endpoint and its frontend dispatch
+(`wwFetchCursorValuesForSource()`'s own `isCalculated` branch,
+`wwFetchAllCursorValues()`/`wwScheduleCursorValuesRefresh()`'s
+source-id-driven fan-out over `ww.displayed`) were already fully wired
+and already correctly populating `ww.cursorValues` for calculated
+channels -- proven directly by the pre-existing A/B cursor test
+(`[99]`), unchanged and still passing. The gap was purely a row-
+template/separate-rendering-function difference:
+`wwRenderCalculatedChannelsSidebarSection()` hand-built its own bespoke
+`<tr>` markup -- a single name `<td>`, wrapped in `class="channel-table"`,
+a class with NO CSS rule anywhere in the stylesheet (completely
+unstyled) -- instead of reusing `renderChannelTable()`, the SAME generic
+table builder `renderAnalogGroup()` already uses to produce the real
+Channel Browser's own Channel/Phase/Cur A/Cur B columns.
+`wwCurValueCellHtml()`/`wwCurValueText()` themselves were already fully
+generic (keyed by `sourceId`/`channelName` via `wwChannelKey()`, gated
+by the SAME `wwIsAnalogChannelVisible()`/`ww.measurementCursors`
+authority every analog cell already uses) -- they had simply never been
+called with a calculated channel's own id/name.
+
+### UI standardization
+
+`wwRenderCalculatedChannelsSidebarSection()` now calls
+`renderChannelTable()` with `[Channel, Cur A, Cur B]` columns (no
+"Phase" column -- calculated channels carry no phase field in DEC-047's
+own schema, an honest omission, not a layout shortcut), reusing
+`analogChannelNameCellHtml()` and `wwCurValueCellHtml()` verbatim. The
+rendered table now carries `class="channels"` -- the real, theme-token-
+driven analog sidebar style (`var(--text)`/`var(--panel-border)`/
+`var(--text-dim)`, `font-size: 0.7rem` -- already exactly the recently-
+approved work-area sidebar typography, inherited automatically, no new
+rule written) -- not a second, invented visual pattern.
+
+### Shared row design (section 15)
+
+A new `calculatedChannelRowAttrs(calc)` mirrors `analogChannelRowAttrs()`'s
+shape (class/tabindex/role/aria-pressed/aria-label/title) and
+additionally tags each row with `data-channel-kind="analog"`/
+`data-source-id`/`data-channel-name` -- the SAME triad real analog rows
+already carry. This makes calculated-channel rows citizens of the
+EXISTING generic Cur A/Cur B live-update sweeps
+(`wwUpdateCursorValueCellsForChannels()`/`wwUpdateAllCursorValueCells()`,
+both global `document.querySelectorAll` queries, not scoped to the
+Channel Browser) that already drive cursor-drag/cursor-move/mode-toggle
+updates for real channels -- **no new update plumbing was written for
+calculated channels at all**. Verified safe: the only other consumer of
+`data-channel-kind` (`setupChannelRowToggles()`'s click dispatch) is
+delegated on `#channelGroups` specifically, a different DOM subtree
+from `#calculatedChannelsSidebarBody`, so it never sees these rows; the
+sidebar's own pre-existing dedicated click handler
+(`wwCalculatedChannelsSidebarRowClickHandler`, keyed off
+`data-calculated-channel-id`) is unchanged and still owns the toggle
+interaction.
+
+### Related small fix
+
+`wwRenderCalculatedChannelsSidebarSection()`'s zero-channels early
+return used to skip clearing `bodyEl.innerHTML`, leaving the last
+channel's stale `<tr>` in the DOM (invisible only because the ancestor
+`<section>` itself was hidden) -- discovered by this task's own
+"delete -> measurement row disappears cleanly" acceptance check.
+Inconsistent with `wwRenderCalculatedChannelManagerList()`'s own sibling
+convention two functions away (already replaces its body with the
+empty-state paragraph at zero); now matches it.
+
+### Measurement authority / cursor authority / formatting
+
+Unchanged from Phase 5A: full-resolution authoritative calculated
+arrays via the SAME nearest-sample rule; ONE shared workspace-global
+`ww.measurementCursors` state (no separate calculated-channel cursor
+position); `wwFormatEngineeringValue()` (unchanged) for precision;
+out-of-range renders as em dash (`—`), never fabricated/extrapolated --
+identical to real analog channels, verified directly by test.
+
+### Calculated-from-calculated
+
+Verified directly: a channel derived from another calculated channel
+(`Scaled = Sum x 0.5`, `Sum = VA + VB`) shows correct Cur A and Cur B,
+computed from ITS OWN authoritative stored array (already Phase 5A's
+own eager-evaluation guarantee -- no new evaluation code needed).
+
+### Tests
+
+Extended `phase5a_check.mjs` with 10 new checks: A/B-off em dash parity
+with analog, A/B-on values matching the authoritative array via the
+nearest-sample rule, moving A/moving B independently (each leaves the
+other cursor's own cell untouched), calculated-from-calculated,
+out-of-range em dash, delete removing the row entirely (not just
+blanking it), Grouped/Separate/Custom producing exactly one row per
+channel with no duplicate/stale rows, and a structural guard confirming
+`table.channels`/exactly 3 columns -- **53/53 passing** in the file
+overall (44 prior unchanged). Full frontend suite reconfirmed at the
+true 33-failure baseline across the same 15 pre-existing files (zero
+net new regressions, including `phase4c1_check.mjs`/
+`phase4c2_check.mjs`'s own A/B cursor coverage, `phase4f_check.mjs`'s
+Callout coverage, and `phase4g_check.mjs`'s Peak coverage, all
+individually reconfirmed passing). Backend untouched, 519/519 passing
+(no backend files changed -- `git status --short backend/` empty
+throughout).
+
+### Decision
+
+No new decision. See the "Update" note appended to
+[DECISIONS.md — DEC-047](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations)
+(a frontend consistency fix, not a new architectural decision).
+
+### Files changed
+
+`frontend/index.html` only -- `wwRenderCalculatedChannelsSidebarSection()`
+rewritten to reuse `renderChannelTable()`, new
+`calculatedChannelRowAttrs()` helper, one small related bug fix (empty-
+state body clearing). No backend files touched.
 
 ---
 

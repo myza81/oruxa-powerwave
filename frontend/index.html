@@ -10800,26 +10800,81 @@
             }
         }
 
+        // Phase 5A-UAT2 (section 15's own explicit "shared row design"
+        // instruction): mirrors analogChannelRowAttrs() exactly in shape
+        // (class/tabindex/role/aria-pressed/aria-label/title), adding
+        // `data-channel-kind="analog"` + `data-source-id` +
+        // `data-channel-name` -- the SAME triad real analog rows carry --
+        // so this row is picked up, completely for free, by the EXACT
+        // SAME generic Cur A/Cur B live-update sweeps
+        // (wwUpdateCursorValueCellsForChannels()/wwUpdateAllCursorValueCells(),
+        // both global `document.querySelectorAll` queries, not scoped to
+        // `#channelGroups`) real analog rows already use for cursor-drag/
+        // cursor-move/mode-toggle updates -- no new update plumbing
+        // written for calculated channels. Safe: the OTHER consumer of
+        // `data-channel-kind` (setupChannelRowToggles()'s click dispatch)
+        // is delegated on `#channelGroups` specifically, a different DOM
+        // subtree from `#calculatedChannelsSidebarBody`, so it never sees
+        // this row. `data-calculated-channel-id` is kept alongside for
+        // this sidebar's own existing dedicated click handler
+        // (wwCalculatedChannelsSidebarRowClickHandler), unaffected.
+        function calculatedChannelRowAttrs(calc) {
+            const isDisplayed = wwIsAnalogChannelVisible(calc.id, calc.name);
+            const label = (isDisplayed ? "Hide " : "Show ") + calc.name;
+            return ' class="channel-row--toggle' + (isDisplayed ? "" : " channel-row--hidden") + '"' +
+                ' tabindex="0" role="button" aria-pressed="' + isDisplayed + '"' +
+                ' data-channel-kind="analog"' +
+                ' data-source-id="' + escapeHtml(calc.id) + '"' +
+                ' data-channel-name="' + escapeHtml(calc.name) + '"' +
+                ' data-calculated-channel-id="' + escapeHtml(calc.id) + '"' +
+                ' aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '"';
+        }
+
+        // Phase 5A-UAT2: now built via the SAME renderChannelTable()/
+        // analogChannelNameCellHtml()/wwCurValueCellHtml() analog rows use
+        // (class="channels", the actual existing analog sidebar styling --
+        // the previous bespoke `class="channel-table"` markup carried no
+        // CSS of its own at all, and rendered only a bare name cell, no
+        // Cur A/Cur B). wwCurValueCellHtml()/wwCurValueText() were already
+        // fully generic (keyed by sourceId/channelName via wwChannelKey(),
+        // gated by the SAME wwIsAnalogChannelVisible()/
+        // ww.measurementCursors authority every analog cell already uses)
+        // -- calling them with a calculated channel's own id/name is the
+        // ENTIRE fix; no new measurement-formatting/gating logic exists
+        // here. No "Phase" column (calculated channels carry no phase
+        // field in DEC-047's own schema -- an honest omission, not a
+        // layout shortcut).
         function wwRenderCalculatedChannelsSidebarSection() {
             const sectionEl = document.getElementById("calculatedChannelsSidebarSection");
             const bodyEl = document.getElementById("calculatedChannelsSidebarBody");
             if (!sectionEl || !bodyEl) return;
             const channels = Array.from(ww.calculatedChannels.values());
             sectionEl.hidden = channels.length === 0;
-            if (channels.length === 0) return;
-            let html = '<div class="subgroup-list"><table class="channel-table"><tbody>';
-            for (const calc of channels.sort((a, b) => (a.name < b.name ? -1 : 1))) {
-                const isDisplayed = wwIsAnalogChannelVisible(calc.id, calc.name);
-                const label = (isDisplayed ? "Hide " : "Show ") + calc.name;
-                html += '<tr class="channel-row--toggle' + (isDisplayed ? "" : " channel-row--hidden") + '"' +
-                    ' tabindex="0" role="button" aria-pressed="' + isDisplayed + '"' +
-                    ' data-calculated-channel-id="' + escapeHtml(calc.id) + '"' +
-                    ' aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '">' +
-                    '<td>' + analogChannelNameCellHtml({ source_id: calc.id }, { name: calc.name, unit: calc.unit }) + '</td>' +
-                    '</tr>';
+            if (channels.length === 0) {
+                // Small pre-existing-bug fix, discovered by this task's own
+                // "delete -> measurement row disappears cleanly" acceptance
+                // check: this early return used to skip clearing bodyEl,
+                // leaving the last channel's stale <tr> (with its now-
+                // orphaned Cur A/Cur B cells) sitting in the DOM,
+                // invisible only because the ancestor <section> itself was
+                // hidden -- inconsistent with
+                // wwRenderCalculatedChannelManagerList()'s own sibling
+                // convention two functions away, which already replaces
+                // its body with the empty-state paragraph at zero. No
+                // functional/visual difference for today's user (the
+                // section was already hidden), but a genuine stale-DOM
+                // correctness gap once a row can carry live-updating Cur
+                // A/B cells that a later generic sweep could otherwise
+                // still find.
+                bodyEl.innerHTML = "";
+                return;
             }
-            html += '</tbody></table></div>';
-            bodyEl.innerHTML = html;
+            const sorted = channels.slice().sort((a, b) => (a.name < b.name ? -1 : 1));
+            bodyEl.innerHTML = '<div class="subgroup-list">' + renderChannelTable(sorted, [
+                ["Channel", (c) => analogChannelNameCellHtml({ source_id: c.id }, c), { raw: true }],
+                ["Cur A", (c) => wwCurValueCellHtml(c.id, c.name, "a"), { raw: true, className: "cur-value-col" }],
+                ["Cur B", (c) => wwCurValueCellHtml(c.id, c.name, "b"), { raw: true, className: "cur-value-col" }],
+            ], null, (c) => calculatedChannelRowAttrs(c)) + '</div>';
         }
 
         // Phase 5A-UAT: Calculated Channels waveform preview -- a
