@@ -8650,6 +8650,198 @@ owner UAT after this push.
 
 ---
 
+## Phase 4E-UAT2 — Free Text Notes Restricted to Main Waveform Workspace (2026-08-21)
+
+### Scope
+
+Owner UAT finding on the Phase 4E-UAT scroll-anchoring fix below: placing
+and dragging Free Text Notes over the left Workspace Sidebar was
+difficult to control, since the sidebar is its own interaction-heavy
+region (independent scrolling, resizing, channel-visibility toggles).
+Owner decision: remove sidebar placement support for `text_note`
+entirely -- a deliberate UX simplification, not a temporary workaround.
+Explicitly NOT a redesign of the generic annotation framework: `ww.
+annotations`, ids, types, the Annotation List, editing, dragging,
+deleting, and workspace/session persistence are all unchanged.
+
+### Placement scope: main waveform workspace only
+
+`text_note` may be placed, and dragged, ONLY inside `#activeViewArea` --
+analog waveform panels, the digital waveform region, the shared sticky
+ruler, and usable empty waveform workspace, all part of the same main
+scrollable container. Excluded: the left Workspace Sidebar, the toolbar,
+the Annotation List drawer, and any other page chrome.
+`wwAnnotationPlacementClickHandler()`'s own toolbar-then-main containment
+checks were simplified to a single "inside `#activeViewArea`" test; a
+click over the sidebar is now a no-op exactly like a click over the
+toolbar already was (placement mode stays active, not cancelled).
+
+### Position model: simplified to one region
+
+Every `Annotation` still carries a `region` field (kept generic -- see
+"Future annotation types" below), but `text_note` now has exactly one
+valid value, `"main"`. `position: {x, y}` is a RAW CONTENT-PIXEL offset
+from `#activeViewArea`'s own scrollable content origin, unchanged from
+the prior fix's own model, just with the sidebar branch removed.
+
+### Dragging: main-only, boundary clamp, no reparenting
+
+Existing notes remain fully draggable, but only within
+`#activeViewArea`'s own scrollable content bounds.
+`wwClampAnnotationContentPosition()` -- already the shared clamp for
+placement, drag, and resize -- is the ENTIRE mechanism: dragging the
+pointer toward (or into) the sidebar simply produces a raw content
+position outside `#activeViewArea`'s own `[0, scrollWidth]`/
+`[0, scrollHeight]` bounds, which the existing clamp pins back to the
+region's own edge. No new boundary-detection code was needed. Confirmed
+by direct test: dragging a note's pointer deep into the sidebar's own
+screen-space coordinates leaves the note's stored `position.x` clamped
+to `0` (the region's own left content edge) and its DOM element still a
+child of `#wwAnnotationOverlayMain` -- never reparented.
+`wwWireAnnotationDrag()` dropped its `liveRegion`/mid-drag-reparenting
+logic entirely; the `grabOffsetX`/`grabOffsetY` technique itself (capturing
+the pointer's fixed offset from the note's own corner at drag-start, so
+the note doesn't jump to align its corner with the pointer on the first
+move) was KEPT, since it is not region-switching logic -- just a general
+drag-smoothness technique with a single remaining consumer.
+
+### Removed complexity (not merely disabled)
+
+Per the owner's own explicit instruction to avoid dead code for a
+capability that was removed:
+
+- `#wwAnnotationOverlaySidebar` -- the DOM element itself deleted from
+  `frontend/index.html`, not emptied/hidden.
+- `wwDetermineAnnotationRegion()` -- the cross-region pointer
+  classification helper -- deleted (had exactly one caller, the drag
+  handler's own region-switching branch, also deleted).
+- The sidebar branches of `wwAnnotationRegionEl()`/`wwAnnotationOverlayEl()`
+  -- both now resolve only `"main"`, returning `null` for anything else.
+  Kept as functions (not inlined) since a future annotation type may add
+  its own region back.
+- `#workspaceSidebar`'s `position: relative` declaration -- it existed
+  ONLY to be the positioning context for the now-deleted sidebar overlay;
+  reverted to the base rule with no `position` set, matching pre-Phase-4E
+  behavior.
+- The placement-mode crosshair cursor rule's sidebar selector --
+  `body.ww-annotation-placing #workspaceSidebar` removed, leaving only
+  `#activeViewArea`.
+- `wwRenderAnnotations()`'s dual-overlay/`seenByOverlay` bookkeeping and
+  its "note might exist under the OTHER region's overlay" fallback --
+  collapsed to a single overlay, single `seen` set.
+
+### Existing notes: safe handling, no migration system
+
+A workspace/session created under the prior region-aware fix could still
+hold an annotation with `region: "sidebar"` in `ww.annotations` (frontend
+in-memory/session state, no backend persistence -- see DEC-044's own
+Impact section). Rather than crash (the sidebar overlay it referenced no
+longer exists in the DOM) or silently disappear (never re-attached to any
+overlay), `wwRenderAnnotations()` coerces `annotation.region` to `"main"`
+the moment it is next rendered, then renders it normally into
+`#wwAnnotationOverlayMain` at its existing raw `{x, y}` (clamped, like
+every other note, to `#activeViewArea`'s own current bounds). This is
+deliberately NOT a data-migration system -- it is a one-line render-time
+correction sufficient for frontend session-local state, matching the
+project's own existing precedent that this state never needs a database
+migration path.
+
+### Annotation model: region kept generic, dead machinery removed
+
+Per the task's own explicit framing: `Annotation.region` remains useful
+for a FUTURE annotation type that might need its own placement rule (a
+callout/data-anchored type is expected to be waveform-area based but will
+be designed separately, per the task's own note -- this refinement does
+NOT assume every future type is main-only). What was removed is the
+MACHINERY that existed solely because `text_note` used to support two
+regions: cross-region classification, mid-drag reparenting, and the
+dual-overlay render path. If and when a second annotation type needs a
+different placement rule, that machinery (or a purpose-built version of
+it) can be reintroduced scoped to that type, rather than kept dormant now
+on the chance it might be needed.
+
+### Sidebar interaction: fully unaffected
+
+Verified directly, with Text Note placement mode left ACTIVE (not merely
+inactive) during the check: channel row click/toggle, and a plain
+`scrollTop` write on `#workspaceSidebar`, both behave exactly as they did
+before Phase 4E existed. Sidebar resizing and Show All/Hide All are
+untouched code paths (never referenced by any annotation function, before
+or after this change) and were not directly exercised beyond this.
+
+### Main scroll anchoring: preserved
+
+The Phase 4E-UAT fix's own core mechanism -- a note is a genuine DOM
+child of `#activeViewArea`, so native browser scrolling carries it with
+zero manual JS scroll-offset compensation -- is completely unchanged for
+the one remaining region. Re-verified: a note's `style.top` is
+byte-identical before and after `#activeViewArea.scrollTop` changes, and
+also byte-identical when `#workspaceSidebar.scrollTop` changes instead
+(independence, now trivially true since the sidebar owns no notes at
+all).
+
+### Resize
+
+`wwResizeAllVisiblePlots()` -> `wwRenderAnnotations()` re-clamps every
+note within `#activeViewArea`'s current `scrollWidth`/`scrollHeight` on
+every call, unchanged from the prior fix -- notes can never move into the
+sidebar via a resize, since `wwAnnotationRegionEl("main")` is the only
+region a note is ever rendered against.
+
+### Annotation List / editing / workspace lifecycle
+
+No redesign to any of: newest-first ordering, count badge, selection,
+delete, text preview, generic future-type dispatch (Annotation List);
+immediate edit-on-creation, double-click re-edit, multiline, wrapping,
+safe `.textContent` rendering, Escape-cancels behavior (editing); Clear
+Workspace preserves / Start New Workspace clears, Recordings ->
+Waveform -> back retains annotations in the same workspace, Grouped/
+Separate/Custom and Absolute/Elapsed independence (workspace lifecycle).
+All re-verified by the updated test suite below.
+
+### Tests
+
+Rewrote `phase4e_check.mjs`'s placement/drag tests for the main-only
+model. Removed tests whose only purpose was sidebar note creation,
+sidebar scroll anchoring, and sidebar<->main cross-region transfer (both
+directions), since that behavior is no longer a requirement. Added the
+task's own required coverage (A-O): placement in main succeeds (A),
+placement in sidebar does nothing and leaves placement mode active (B),
+placement on the toolbar does nothing (C), a main note scrolls with main
+content (D), sidebar scroll does not affect the note (E), drag stays
+inside main (F), drag toward the sidebar clamps at the boundary with no
+reparenting (G), resize keeps a note reachable without moving it into the
+sidebar (H), edit works after scrolling (I), delete from the Annotation
+List works (J), multiple notes work (K), mode switches preserve notes
+(L), Start New Workspace clears (M), Clear Workspace preserves (N), and
+the pointer-transparent empty overlay still allows Plotly interactions
+with the sidebar overlay confirmed gone entirely (O) -- 36/36 passing.
+Full frontend suite reconfirmed at exactly the true 33-failure baseline
+across the same 14 pre-existing files (zero net new regressions);
+`phase4d_check.mjs` (38), `phase4b_check.mjs` (44/45, unchanged
+pre-existing failure), `phase4c1_check.mjs` (26), `phase4c2_check.mjs`
+(24) all still pass in full. Backend: 393/393, unchanged (no backend file
+touched).
+
+### Same-day visual refinement (separately requested, folded into this record)
+
+The note's own `background`/`border` switched from `--panel`/
+`--panel-border` to new semantic `--annotation-bg`/`--annotation-border`
+tokens added to `theme.css` -- a subtle warm cream surface in Light
+(`#fbf3df` bg / `#e3d3a0` border), a muted warm dark surface in Dark
+(`#2b2416` bg / `#4a3f26` border), deliberately short of a bright
+saturated yellow/brown "sticky note" look and never reusing the A/B
+cursor blue/red or any waveform trace color. Border radius, box-shadow,
+min/max width, drag/edit behavior, the Annotation List, and the existing
+accent-colored `.ww-annotation--selected` border/glow are all unchanged.
+Verified via `getComputedStyle()` in both themes (own token, differs from
+`--panel`, differs between Light and Dark).
+
+### Decision
+
+See [DECISIONS.md — DEC-044 addendum (refinement)](DECISIONS.md#addendum-2026-08-21-refinement--free-text-notes-restricted-to-the-main-waveform-workspace-phase-4e-uat2)
+(a refinement of DEC-044's own prior addendum, not a new major decision).
+
 ## Phase 4E-UAT — Annotation Scroll Anchoring Fix (2026-08-21)
 
 ### Scope

@@ -4,54 +4,76 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-21** (Phase 4E-UAT — Annotation Scroll Anchoring fix, on top of Phase 4E — Annotation Framework + Free Text Note, Phase 4D — Precision Step Zoom + Icon Toolbar Refinement, Waveform Time-Axis Sub-ms Precision, Waveform Adaptive Resolution, Phase 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B, Phase 4A-UAT9, and Phase 4A-UAT10).
+Last meaningful update: **2026-08-21** (Phase 4E-UAT2 — Free Text Notes
+restricted to the main waveform workspace, on top of Phase 4E-UAT —
+Annotation Scroll Anchoring fix, Phase 4E — Annotation Framework + Free
+Text Note, Phase 4D — Precision Step Zoom + Icon Toolbar Refinement,
+Waveform Time-Axis Sub-ms Precision, Waveform Adaptive Resolution, Phase
+4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B,
+Phase 4A-UAT9, and Phase 4A-UAT10).
 
-`[DECISION]` **Annotation Framework + Free Text Note — DEC-044** (2026-08-20,
-region-aware scroll anchoring added 2026-08-21): Oruxa Powerwave's first
-annotation capability. A GENERIC framework (`ww.annotations`, `{id, type,
-workspaceId, region, position, createdAt, zIndex, data}` records, a
-type-dispatching Annotation List drawer) with exactly one type
-implemented, `text_note` -- a floating note the engineer places via
-`Annotate -> Text Note` (one-shot placement mode, click anywhere in the
-permitted analysis area -- the left Workspace Sidebar AND the main
-waveform area, "Option C," but never the toolbar itself), edits inline
-(double-click to edit, blur commits, Escape reverts, multiline via a
-`<textarea>`), and drags freely within that same area, INCLUDING across
-the sidebar/main boundary. Each note carries its own `region: "sidebar" |
-"main"` and a RAW CONTENT-PIXEL `position: {x, y}` measured from that
-region's own scrollable content origin (`#workspaceSidebar`'s/
-`#activeViewArea`'s own `scrollLeft`/`scrollTop` space) -- NOT normalized
-0..1 against `#workspaceRow`. **Notes are region-aware content
-annotations, not fixed to the workspace viewport**: sidebar-owned notes
-scroll natively with sidebar content, main-workspace notes scroll
-natively with main content, via two separate overlays
-(`#wwAnnotationOverlaySidebar`/`#wwAnnotationOverlayMain`) that are each a
-genuine DOM child of their own scroll container -- zero manual JS
-scroll-offset compensation. Cross-region dragging reparents the note's
-DOM element and updates `region` live, mid-drag, with no visible jump.
-Toolbar exclusion is structural (the main overlay is a sibling of
-`#wwToolbar`, never a container of it), not a computed toolbar-rect clamp.
-Resize re-clamps each note within its region's current
-`scrollWidth`/`scrollHeight` on every render, never proportionally
-rescaling the stored position. Deliberately NOT waveform/data-anchored
-(zoom/pan/Absolute-Elapsed/Grouped-Separate-Custom never move it; a
-future `callout_note` type with real time/channel anchoring is a separate
-later phase). Annotations belong to the current workspace/session:
-preserved by the plain "Clear workspace" button (display-only, confirmed
-via direct inspection of `wwClearWorkspace()`'s existing
-`resetSourceBounds` branch -- the exact same branch that already
-preserves A/B cursor state for the identical reason), cleared only by
-"Start New Workspace" (a genuinely new `workspace_id`). The Annotation
-List is a right-side overlay drawer (never consumes/reflows workspace
-width) showing every annotation newest-first with a delete button per row
-(centralized deletion, no permanent × on the floating note itself) and a
-toolbar count badge. Pointer isolation via `pointer-events: none` on each
-overlay's empty space and `auto` on individual notes -- Plotly zoom/pan,
-A/B cursor drag, and sidebar controls are unaffected. Text renders via
-`.textContent` only, never `.innerHTML` -- verified XSS-safe. No backend
-change. See
+`[DECISION]` **Annotation Framework + Free Text Note — DEC-044**
+(2026-08-20; region-aware scroll anchoring added 2026-08-21; **placement
+restricted to the main waveform workspace, refinement, 2026-08-21**):
+Oruxa Powerwave's first annotation capability. A GENERIC framework
+(`ww.annotations`, `{id, type, workspaceId, region, position, createdAt,
+zIndex, data}` records, a type-dispatching Annotation List drawer) with
+exactly one type implemented, `text_note` -- a floating note the engineer
+places via `Annotate -> Text Note` (one-shot placement mode, click
+anywhere inside `#activeViewArea` -- analog panels, digital region,
+shared ruler, empty waveform workspace), edits inline (double-click to
+edit, blur commits, Escape reverts, multiline via a `<textarea>`), and
+drags freely within that same area. **Owner UAT refinement (2026-08-21)**:
+placement and dragging in the left Workspace Sidebar were REMOVED --
+hands-on UAT of the region-aware scroll-anchoring fix found the sidebar's
+own scrolling/resizing/channel-toggle interactions made precise
+placement/dragging there unreliable. A click over the sidebar or the
+toolbar while placement mode is active is a no-op (mode stays active);
+dragging toward the sidebar clamps cleanly at `#activeViewArea`'s own
+left content boundary via the same bounds check used for every other
+edge. `region` remains a generic per-annotation field (kept for a
+possible future annotation type with its own placement rule), but
+`"main"` is `text_note`'s only valid value now -- the sidebar-only
+overlay DOM, cross-region pointer classification, and mid-drag
+reparenting that existed solely to support `text_note`'s prior sidebar
+placement were removed entirely, not left dormant. A note carries a RAW
+CONTENT-PIXEL `position: {x, y}` measured from `#activeViewArea`'s own
+scrollable content origin (`scrollLeft`/`scrollTop` space) -- NOT
+normalized 0..1 against `#workspaceRow`. **Notes remain region-aware
+content annotations, not fixed to the workspace viewport**: a note
+scrolls natively with `#activeViewArea`'s own content via
+`#wwAnnotationOverlayMain`, a genuine DOM child of that scroll container
+-- zero manual JS scroll-offset compensation. Toolbar exclusion is
+structural (the overlay is a sibling of `#wwToolbar`, never a container
+of it), not a computed toolbar-rect clamp. Resize re-clamps each note
+within `#activeViewArea`'s current `scrollWidth`/`scrollHeight` on every
+render, never proportionally rescaling the stored position. An annotation
+carrying a stale `region: "sidebar"` from before this refinement (the
+sidebar overlay it belonged to no longer exists) is coerced to `"main"`
+the next time it renders, rather than crashing or disappearing.
+Deliberately NOT waveform/data-anchored (zoom/pan/Absolute-Elapsed/
+Grouped-Separate-Custom never move it; a future `callout_note` type with
+real time/channel anchoring is a separate later phase). Annotations
+belong to the current workspace/session: preserved by the plain "Clear
+workspace" button (display-only, confirmed via direct inspection of
+`wwClearWorkspace()`'s existing `resetSourceBounds` branch -- the exact
+same branch that already preserves A/B cursor state for the identical
+reason), cleared only by "Start New Workspace" (a genuinely new
+`workspace_id`). The Annotation List is a right-side overlay drawer
+(never consumes/reflows workspace width) showing every annotation
+newest-first with a delete button per row (centralized deletion, no
+permanent × on the floating note itself) and a toolbar count badge.
+Pointer isolation via `pointer-events: none` on the overlay's empty space
+and `auto` on individual notes -- Plotly zoom/pan, A/B cursor drag, and
+sidebar controls are unaffected. Text renders via `.textContent` only,
+never `.innerHTML` -- verified XSS-safe. **Visual refinement (2026-08-21,
+same day)**: the note's own surface now uses semantic `--annotation-bg`/
+`--annotation-border` tokens (a subtle warm cream in Light, a muted warm
+dark surface in Dark) instead of `--panel`/`--panel-border`, so it no
+longer visually blends into the waveform panel behind it; no A/B cursor
+or waveform trace colors used. No backend change. See
 [DECISIONS.md — DEC-044](DECISIONS.md#dec-044--generic-annotation-framework-first-type-is-a-workspace-scoped-work-area-relative-free-text-note)
-(including its 2026-08-21 scroll-anchoring addendum) and
+(including both its 2026-08-21 addenda) and
 [MIGRATION_PLAN.md — Phase 4E](MIGRATION_PLAN.md#phase-4e--annotation-framework--free-text-note-2026-08-20).
 
 `[DECISION]` **Precision Step Zoom + Icon Toolbar Refinement — DEC-043**

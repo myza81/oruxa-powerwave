@@ -4092,6 +4092,98 @@ Impact:
   position/region model and its two rendering surfaces.
 - See [MIGRATION_PLAN.md — Phase 4E-UAT](MIGRATION_PLAN.md#phase-4e-uat--annotation-scroll-anchoring-fix-2026-08-21).
 
+### ADDENDUM (2026-08-21, refinement) — Free Text Notes restricted to the main waveform workspace (Phase 4E-UAT2)
+
+Status: Approved
+Source: owner UAT finding on the region-aware scroll-anchoring fix above —
+placing and dragging notes over the left sidebar was difficult to
+control because the sidebar is its own interaction-heavy region
+(scrolling, resizing, channel toggles).
+
+Supersedes the immediately preceding ADDENDUM's "Option C" placement
+scope (sidebar + main area) for `text_note` specifically. This is a
+deliberate UX simplification, not a temporary workaround:
+
+> Following owner UAT, Free Text Notes are restricted to the main
+> waveform workspace. Sidebar placement and cross-region dragging were
+> removed because the sidebar is an interaction-heavy control region and
+> did not provide precise note placement. Main-workspace notes remain
+> content-scroll anchored.
+
+Decision:
+
+- `text_note` may be placed, and dragged, ONLY inside `#activeViewArea`
+  (analog panels, digital region, shared ruler, empty waveform workspace)
+  — never the Workspace Sidebar, the toolbar, the Annotation List drawer,
+  or any other page chrome. A click over the sidebar while placement mode
+  is active is a no-op (placement mode stays active, same as a click over
+  the toolbar), not a cancel.
+- `region` remains a generic field on `Annotation` (kept for a possible
+  future annotation type with its own placement rule — DEC-044's own
+  extensibility goal), but `"main"` is the only valid value for
+  `text_note`. The DEAD complexity that existed ONLY to support
+  `text_note`'s sidebar placement is removed entirely, not left dormant:
+  the sidebar-owned overlay DOM (`#wwAnnotationOverlaySidebar`),
+  `wwDetermineAnnotationRegion()` (cross-region pointer classification),
+  mid-drag reparenting, and the region-switching branch of
+  `wwWireAnnotationDrag()`/`wwRenderAnnotations()` are all gone.
+- Dragging a note toward the sidebar clamps cleanly at
+  `#activeViewArea`'s own left content boundary — the SAME
+  `wwClampAnnotationContentPosition()` bounds check already used for
+  every other edge does this for free; no new boundary-detection code was
+  needed.
+- Content-scroll anchoring (the prior addendum's own core fix) is fully
+  preserved for the one remaining region: a main-workspace note still
+  scrolls natively with `#activeViewArea`'s own content, with zero manual
+  JS scroll-offset compensation.
+- Existing session state: an annotation created under the prior
+  region-aware fix with `region: "sidebar"` (the sidebar overlay it
+  belonged to no longer exists in the DOM) is coerced to `region: "main"`
+  the next time it renders, rather than crashing or disappearing — a
+  render-time safety net, not a migration system, matching this
+  project's own "session-local frontend state, not a database" precedent
+  for annotations.
+
+Reason:
+
+Direct owner hands-on UAT found the sidebar's own scrolling/resizing/
+channel-toggle interactions made precise note placement and dragging
+there unreliable, outweighing the "whole permitted analysis area" breadth
+the original Option C decision valued. Removing the sidebar-specific
+code paths (rather than merely disabling them) avoids leaving dead
+complexity behind for a capability the owner explicitly does not want —
+consistent with this project's own "avoid unnecessary complexity"
+convention elsewhere in the codebase.
+
+Alternatives considered:
+
+- **Keep sidebar placement but improve its precision** (e.g. a
+  placement-lock or snap-to-grid) — rejected; the owner's own decision
+  was to remove sidebar placement outright, not to make it more precise.
+- **Delete the generic `region` field entirely** — rejected; DEC-044's
+  own stated goal is a framework for FUTURE annotation types, and a
+  future type may need its own placement rule (e.g. a callout/
+  data-anchored type is expected to be waveform-area based but will be
+  designed separately, per the task's own explicit note) — keeping
+  `region` as a per-annotation field is cheap and avoids re-adding it
+  later, while the sidebar-specific MACHINERY (overlay, cross-region
+  classification, reparenting) that had no other consumer was removed.
+
+Impact:
+
+- `frontend/index.html`/`frontend/theme.css` only. Removed:
+  `#wwAnnotationOverlaySidebar` (HTML), `wwDetermineAnnotationRegion()`,
+  the sidebar branches of `wwAnnotationRegionEl()`/`wwAnnotationOverlayEl()`,
+  `#workspaceSidebar`'s annotation-only `position: relative`, the
+  sidebar-targeting placement-mode cursor rule. Simplified:
+  `wwWireAnnotationDrag()` (no `liveRegion`/reparenting), `wwRenderAnnotations()`
+  (one overlay, one region, plus the sidebar→main coercion above),
+  `wwAnnotationPlacementClickHandler()` (main-only target check).
+- Does not change the generic annotation framework, record shape (beyond
+  `region`'s narrowed valid-value set for `text_note`), lifecycle,
+  Annotation List, editing, or XSS-safe rendering.
+- See [MIGRATION_PLAN.md — Phase 4E-UAT2](MIGRATION_PLAN.md#phase-4e-uat2--free-text-notes-restricted-to-main-waveform-workspace-2026-08-21).
+
 ---
 
 ## How to add a decision
