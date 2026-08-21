@@ -8650,6 +8650,82 @@ owner UAT after this push.
 
 ---
 
+## Phase 4G-UAT Bug Fix — Guidance Dismissal (2026-08-21)
+
+### Scope
+
+Owner UAT on the ribbon below found two symptoms: it did not disappear
+after a successful +Peak/-Peak creation, and it did not disappear on
+Escape either. No new decision entry -- an "Update" note was appended to
+DEC-046's addendum instead (see below).
+
+### Root cause
+
+Identical for both symptoms, and NOT a state/lifecycle bug: a CSS-
+cascade bug. `.ww-annotation-guidance { display: flex; }` (author CSS)
+beats the UA stylesheet's own `[hidden] { display: none }` rule by
+ORIGIN alone (author declarations always outrank user-agent declarations
+in the normal cascade, regardless of selector specificity or source
+order) -- so `wwUpdateAnnotationPlacementGuidance()`'s own `el.hidden =
+true` had zero visible effect, even though `ww.annotationPlacementType`
+was already correctly `null` on both paths (confirmed directly, not
+inferred). This is the SAME class of bug already caught and fixed
+elsewhere in this file for `#workspaceRow[hidden]`/
+`.shell-status-item[hidden]`/`#pageRecordings[hidden]`/
+`.ww-toolbar[hidden]` -- this new ribbon simply hadn't received the same
+treatment when it was first added. jsdom cannot render CSS cascade, so
+no jsdom-based assertion against the DOM `hidden` property (which was
+already correct) could ever have caught this.
+
+### Fix
+
+One line: `.ww-annotation-guidance[hidden] { display: none; }`.
+
+### A second, genuine race found while investigating Escape
+
+A Peak creation request already in flight when Escape (or a switch to a
+different tool, or even re-entering the SAME tool after Escape) fired
+could still resolve successfully afterward and silently create an
+annotation from a placement session the engineer had already left. Fixed
+with a new monotonic `ww.annotationPlacementGeneration` counter, bumped
+on every genuine placement-mode transition (fresh entry/tool switch,
+exit via success or Escape -- deliberately NOT on a same-tool reselect
+no-op) and captured by `wwCreatePeakFromClick()` at its own start; a
+stale/superseded request's eventual result -- success OR failure -- is
+now discarded silently before touching any state or showing any error
+toast, mirroring the SAME staleness-guard pattern already established
+for `ww.epoch` (workspace resets) and `wwPeakValuesGeneration` (per-
+source recalculation). Verified directly: cancelling an in-flight
+request via Escape, then releasing it, creates nothing; a fresh SAME-
+tool session started immediately afterward is not blocked by the old
+request's own busy state and completes normally on its own.
+
+### Tests
+
+Extended `phase4g_check.mjs` with 13 new checks: a structural regression
+guard asserting the `.ww-annotation-guidance[hidden]` CSS override rule
+is actually present in the shipped stylesheet source (the only
+meaningful regression guard for a jsdom-invisible CSS-cascade bug), the
+full asynchronous successful-+Peak-creation path (never calling
+`wwExitAnnotationPlacementMode()` directly -- exercising the real
+request-completion path only), -Peak Escape, invalid-click-then-Escape,
+API-failure-then-Escape, Escape-during-an-in-flight-request (ribbon
+hides immediately, stale success creates nothing), a same-tool retry
+succeeding normally after an Escape-cancelled request, Annotate toolbar
+active-state + `annotationPlacementBusy` invariants on Escape, and
+Text Note/Callout Escape regressions (confirming the fix is Peak-
+specific where it needed to be and did not disturb their own established
+one-shot behavior) -- **66/66 passing** in the file overall (56 prior
+Phase 4G/4G-UAT checks unchanged). Full frontend suite reconfirmed at
+exactly the true 33-failure baseline across the same pre-existing files
+(zero net new regressions). Backend: untouched, 436/436 unchanged.
+
+### Decision
+
+No new decision. See the "Update" note appended to
+[DECISIONS.md — DEC-046's Phase 4G-UAT addendum](DECISIONS.md#addendum-2026-08-21-refinement--persistent-annotation-placement-guidance-ribbon-phase-4g-uat)
+(a bug fix to that addendum's own implementation, not a new decision).
+
 ## Phase 4G-UAT — Persistent Annotation Placement Guidance Ribbon (2026-08-21)
 
 ### Scope

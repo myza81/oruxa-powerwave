@@ -327,6 +327,24 @@
             font-size: 0.78rem;
             line-height: 1.35;
         }
+        /* Bug fix (2026-08-21, Phase 4G-UAT): author CSS's `display: flex`
+           above beats the UA stylesheet's default `[hidden] { display:
+           none }` rule by ORIGIN alone (author always wins over UA,
+           regardless of specificity or source order) -- the SAME class of
+           bug already caught and fixed for #workspaceRow[hidden]/
+           .shell-status-item[hidden]/#pageRecordings[hidden]/
+           .ww-toolbar[hidden] elsewhere in this file. Without this
+           override, `wwUpdateAnnotationPlacementGuidance()`'s own
+           `el.hidden = true` (on successful Peak creation AND on Escape --
+           both funnel through this exact function) correctly nulled
+           `ww.annotationPlacementType` and set the `hidden` attribute, but
+           had ZERO visible effect: the ribbon stayed on screen regardless.
+           This was a pure CSS-cascade bug, not a state/lifecycle bug --
+           `ww.annotationPlacementType` was already correctly `null` in
+           both cases (confirmed directly; jsdom-based tests never caught
+           this since jsdom does not compute CSS cascade/rendering at all,
+           only the DOM `hidden` IDL property, which was already correct). */
+        .ww-annotation-guidance[hidden] { display: none; }
         .ww-annotation-guidance-icon {
             flex: 0 0 auto;
             display: inline-flex;
@@ -5594,6 +5612,21 @@
             // timing) without ever double-firing a second concurrent
             // request from a second click.
             annotationPlacementBusy: false,
+            // Bug fix (2026-08-21, Phase 4G-UAT follow-up): monotonically
+            // increasing on every genuine placement-mode TRANSITION
+            // (entering a fresh session -- including switching tools --
+            // and exiting, via success OR Escape; NEVER on a same-tool
+            // reselect no-op). Captured by wwCreatePeakFromClick() at its
+            // own start; if the generation has moved on by the time an
+            // in-flight request resolves, that request's own session was
+            // cancelled/superseded (Escape, or a new placement session
+            // started before the old request finished) -- its result is
+            // discarded outright, creating NOTHING, even on a genuinely
+            // successful backend response. The SAME staleness-guard
+            // pattern already established for ww.epoch (workspace resets)
+            // and wwPeakValuesGeneration (per-source recalculation),
+            // applied here to the placement-session lifecycle itself.
+            annotationPlacementGeneration: 0,
             // Monotonically increasing -- gives each newly-selected/
             // dragged annotation a fresh, always-highest z-index (simple
             // deterministic bring-to-front, section 21: no complex layers
@@ -8694,10 +8727,22 @@
             const type = mode === "max" ? "peak_max" : "peak_min";
             const workspaceId = currentWorkspaceId();
             const epochAtStart = ww.epoch;
+            // Bug fix (2026-08-21, Phase 4G-UAT follow-up): captured once,
+            // here -- if the placement SESSION has moved on (Escape
+            // cancelled it, or a new session started) by the time this
+            // request resolves, the response is discarded entirely
+            // (silently, no error toast, no annotation) -- see
+            // wwPlacementSessionStale() below.
+            const placementGenerationAtStart = ww.annotationPlacementGeneration;
             const sourceId = channel.sourceId;
             const channelName = channel.channelName;
             const startTime = ww.viewport.start;
             const endTime = ww.viewport.end;
+
+            function wwPlacementSessionStale() {
+                return epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId ||
+                    ww.annotationPlacementGeneration !== placementGenerationAtStart;
+            }
 
             // Phase 4G-UAT (section 10/17): placement mode -- and its
             // guidance ribbon -- stays active across this whole request;
@@ -8723,6 +8768,10 @@
                         }
                     );
                 } catch (error) {
+                    // Bug fix: a cancelled/superseded session never shows a
+                    // stale error toast for an attempt the user already
+                    // walked away from.
+                    if (wwPlacementSessionStale()) return;
                     // Section 17/31: keep placement mode (and its ribbon)
                     // active on a network failure so the engineer can
                     // simply try again -- never a silent dead end.
@@ -8730,14 +8779,16 @@
                     return;
                 }
                 // Section 35: reject a stale response -- the workspace may
-                // have changed (Start New Workspace / this source removed)
-                // while the request was in flight. Never create a Peak
-                // annotation in the wrong workspace.
-                if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+                // have changed (Start New Workspace / this source removed),
+                // OR the placement session may have ended (Escape / a new
+                // session started) while the request was in flight. Never
+                // create a Peak annotation for the wrong workspace or a
+                // session the user already left.
+                if (wwPlacementSessionStale()) return;
 
                 let body = null;
                 try { body = await response.json(); } catch (error) { /* handled by !response.ok below */ }
-                if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+                if (wwPlacementSessionStale()) return;
 
                 const result = body && Array.isArray(body.results) ? body.results[0] : null;
                 if (!response.ok || !result) {
@@ -8775,11 +8826,14 @@
                 // Section 27: no immediate edit mode -- a Peak's value/time
                 // lines are system-computed, never user-editable text.
                 // Section 10/17: ONLY a successful creation completes
-                // placement mode -- but only if this request's own type is
-                // still the active one (the engineer may have switched to
-                // a different tool while this request was in flight; never
-                // exit a DIFFERENT tool's now-active placement mode here).
-                if (ww.annotationPlacementType === type) wwExitAnnotationPlacementMode();
+                // placement mode. The `wwPlacementSessionStale()` check
+                // just above already guarantees `ww.annotationPlacementType`
+                // still equals `type` at this exact point (nothing async
+                // runs between that check and here, so nothing could have
+                // changed it) -- an unconditional exit is therefore
+                // correct, never accidentally exiting a DIFFERENT session's
+                // now-active placement mode.
+                wwExitAnnotationPlacementMode();
             } finally {
                 ww.annotationPlacementBusy = false;
             }
@@ -8923,6 +8977,12 @@
             // type -- a fresh placement session never inherits a stale
             // "busy" state from a different type.
             ww.annotationPlacementBusy = false;
+            // Bug fix: a genuine new placement SESSION (fresh selection or
+            // a switch from a different tool -- never the same-tool no-op
+            // above) invalidates any request still in flight from the
+            // PREVIOUS session -- see wwCreatePeakFromClick()'s own
+            // generation check.
+            ww.annotationPlacementGeneration += 1;
             document.body.classList.add("ww-annotation-placing");
             wwSyncAnnotateButtonActiveState();
             wwUpdateAnnotationPlacementGuidance();
@@ -8934,6 +8994,10 @@
             if (!ww.annotationPlacementType) return;
             ww.annotationPlacementType = null;
             ww.annotationPlacementBusy = false;
+            // Bug fix: Escape (or any other exit) also invalidates a
+            // request still in flight -- its eventual result must create
+            // nothing (see wwCreatePeakFromClick()'s own generation check).
+            ww.annotationPlacementGeneration += 1;
             document.body.classList.remove("ww-annotation-placing");
             wwSyncAnnotateButtonActiveState();
             wwUpdateAnnotationPlacementGuidance();

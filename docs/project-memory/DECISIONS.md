@@ -4786,6 +4786,40 @@ Impact:
   addendum is a UX/completion-timing refinement only.
 - See [MIGRATION_PLAN.md — Phase 4G-UAT](MIGRATION_PLAN.md#phase-4g-uat--persistent-annotation-placement-guidance-ribbon-2026-08-21).
 
+**Update (2026-08-21, same day, bug fix — no new decision entry)**: owner
+UAT on the ribbon above found it visually did not disappear after a
+successful Peak creation, and separately that Escape did not visually
+dismiss it either. Root cause (identical for both symptoms): a CSS-cascade
+bug, not a state bug — `.ww-annotation-guidance { display: flex; }`
+(author CSS) beat the UA stylesheet's own `[hidden] { display: none }`
+rule by ORIGIN alone, so `wwUpdateAnnotationPlacementGuidance()`'s own
+`el.hidden = true` (already correctly reached on both the successful-
+creation path and the Escape path — confirmed directly, `ww.annotation
+PlacementType` was already `null` in both cases) had zero visible effect.
+Fixed with one line, `.ww-annotation-guidance[hidden] { display: none;
+}`, the SAME already-established pattern this codebase uses for
+`#workspaceRow[hidden]`/`.shell-status-item[hidden]`/`#pageRecordings[hidden]`/
+`.ww-toolbar[hidden]`. While investigating the Escape case specifically, a
+second, genuine (non-CSS) race was found and fixed: a Peak creation
+request already in flight when Escape (or any new placement session) was
+initiated could still resolve successfully afterward and create an
+annotation from a session the engineer had already left. Fixed with a new
+monotonic `ww.annotationPlacementGeneration` counter, bumped on every
+genuine placement-mode transition (entering fresh/switching tools,
+exiting via success or Escape — never a same-tool reselect no-op) and
+checked by `wwCreatePeakFromClick()` before creating anything; a stale/
+superseded request's result — success or failure — is now discarded
+silently, with zero UI side effect for a session the user already
+abandoned. `frontend/index.html` only; no backend change; extended
+`phase4g_check.mjs` with 13 new checks (a structural regression guard for
+the CSS `[hidden]` override rule itself, the full async successful-
+creation path, -Peak Escape, invalid-click-then-Escape, API-failure-then-
+Escape, Escape-during-an-in-flight-request with stale-result discard, a
+same-tool retry after an Escape-cancelled request, toolbar-active-state +
+busy-flag invariants, and Text Note/Callout Escape regressions) —
+**66/66 passing** in the file overall. Full frontend suite reconfirmed at
+the true 33-failure baseline; backend untouched, 436/436 unchanged.
+
 ---
 
 ## How to add a decision

@@ -8,6 +8,64 @@ Last updated: **2026-08-21**
 
 ## What was most recently done
 
+**Phase 4G-UAT Bug Fix — Guidance Dismissal.** Owner UAT on the ribbon
+below found two symptoms: it did not disappear after a successful
++Peak/-Peak creation, and separately, Escape did not dismiss it either.
+No new decision -- an "Update" note appended to DEC-046's own addendum.
+Full detail:
+[DECISIONS.md — DEC-046 addendum Update note](DECISIONS.md#addendum-2026-08-21-refinement--persistent-annotation-placement-guidance-ribbon-phase-4g-uat).
+
+**Root cause (identical for both symptoms): a CSS-cascade bug, not a
+state/lifecycle bug.** `.ww-annotation-guidance { display: flex; }`
+(author CSS) beats the UA stylesheet's own `[hidden] { display: none }`
+rule by ORIGIN alone (author always outranks UA in the normal cascade,
+regardless of specificity or source order) -- so
+`wwUpdateAnnotationPlacementGuidance()`'s own `el.hidden = true` had
+ZERO visible effect, even though `ww.annotationPlacementType` was
+already correctly `null` on both the successful-creation path AND the
+Escape path (confirmed directly, not inferred -- traced the exact
+success-path line where `wwExitAnnotationPlacementMode()` was reached,
+and the Escape handler's own call to it). This is the SAME class of bug
+this codebase already caught and fixed for `#workspaceRow[hidden]`/
+`.shell-status-item[hidden]`/`#pageRecordings[hidden]`/`.ww-toolbar[hidden]`
+-- the new ribbon simply hadn't received the same treatment. **Fixed with
+one line**: `.ww-annotation-guidance[hidden] { display: none; }`.
+
+**A second, genuine (non-CSS) race was found while investigating
+Escape**: a Peak creation request already in flight when Escape (or a
+tool switch, or even re-selecting the SAME tool after Escape) fired
+could still resolve successfully afterward and silently create an
+annotation from a placement session the engineer had already left.
+Fixed with a new monotonic `ww.annotationPlacementGeneration` counter,
+bumped on every genuine placement-mode transition (fresh entry/tool
+switch, exit via success or Escape -- never a same-tool reselect no-op)
+and captured by `wwCreatePeakFromClick()` at its own start; a stale/
+superseded request's result -- success OR failure -- is now discarded
+silently before touching any state or showing any error toast. Same
+staleness-guard pattern already established for `ww.epoch`/
+`wwPeakValuesGeneration`.
+
+**Tests**: extended `phase4g_check.mjs` with 13 new checks -- a
+structural regression guard asserting the CSS `[hidden]` override rule
+is literally present in the shipped stylesheet source (the only
+meaningful guard for a jsdom-invisible CSS-cascade bug -- jsdom does not
+implement CSS cascade/rendering), the full asynchronous successful-
++Peak-creation path (never calling `wwExitAnnotationPlacementMode()`
+directly), -Peak Escape, invalid-click-then-Escape, API-failure-then-
+Escape, Escape-during-an-in-flight-request (ribbon hides immediately,
+stale success creates nothing), a same-tool retry succeeding normally
+after an Escape-cancelled request, toolbar-active-state +
+`annotationPlacementBusy` invariants, and Text Note/Callout Escape
+regressions -- **66/66 passing** in the file overall (56 prior checks
+unchanged). Full frontend suite reconfirmed at exactly the true
+33-failure baseline across the same pre-existing files (zero net new
+regressions). Backend: untouched, 436/436 unchanged.
+
+**Not yet done**: commit/push, CI/automatic DEV deployment verification,
+and owner UAT of this fix specifically.
+
+## What was done in the prior session (Phase 4G-UAT — Persistent Annotation Placement Guidance Ribbon, DEC-046 addendum)
+
 **Phase 4G-UAT — Persistent Annotation Placement Guidance Ribbon (DEC-046
 addendum).** Owner UAT result on Phase 4G below: "Engineering behavior:
 PASS" but no guidance told the engineer what to do after selecting

@@ -4,10 +4,11 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-21** (Phase 4G-UAT — Persistent
-Annotation Placement Guidance Ribbon, on top of Phase 4G — Dynamic
-Maximum/Minimum Peak Annotation, Phase 4F-UAT2 — Free 2D Callout
-Anchor Drag Preview, Phase 4F-UAT — Movable Callout Anchor,
+Last meaningful update: **2026-08-21** (Phase 4G-UAT Bug Fix — Guidance
+Dismissal, on top of Phase 4G-UAT — Persistent Annotation Placement
+Guidance Ribbon, Phase 4G — Dynamic Maximum/Minimum Peak Annotation,
+Phase 4F-UAT2 — Free 2D Callout Anchor Drag Preview, Phase 4F-UAT —
+Movable Callout Anchor,
 Phase 4F — Analog Waveform Callout Annotation, Phase 4E-UAT2 — Free Text
 Notes restricted to the main waveform workspace, Phase 4E-UAT —
 Annotation Scroll Anchoring fix, Phase 4E — Annotation Framework + Free
@@ -109,11 +110,27 @@ failed/no-data result already silently ended guidance; it now exits ONLY
 on a successful creation, guarded by a new `ww.annotationPlacementBusy`
 flag against a second concurrent request while one is in flight. Callout's
 own exit-immediately timing is explicitly UNCHANGED (not redesigned).
-See
+**Bug fix (2026-08-21, same day)**: owner UAT found the ribbon did not
+visually disappear after a successful Peak creation, nor on Escape.
+Root cause for both: a CSS-cascade bug, not a state bug —
+`.ww-annotation-guidance { display: flex; }` (author CSS) beat the UA
+stylesheet's own `[hidden] { display: none }` rule by ORIGIN alone, so
+`el.hidden = true` had zero visible effect even though
+`ww.annotationPlacementType` was already correctly `null` in both cases.
+Fixed with `.ww-annotation-guidance[hidden] { display: none; }` — the
+same already-established pattern this codebase uses for
+`#workspaceRow[hidden]`/`.ww-toolbar[hidden]`/etc. A second, genuine race
+found while investigating Escape (a Peak request already in flight when
+Escape/tool-switch/reselect fired could still silently create an
+annotation afterward) was fixed with a new monotonic
+`ww.annotationPlacementGeneration` counter, checked by
+`wwCreatePeakFromClick()` before creating anything — a stale/superseded
+request's result is now discarded silently. See
 [DECISIONS.md — DEC-046](DECISIONS.md#dec-046--maximumminimum-peak-annotations-are-generic-recorded-channel-measurements-over-the-current-visible-x-viewport-dynamically-recalculated-on-genuine-x-viewport-changes)
-(including its 2026-08-21 addendum) and
+(including its 2026-08-21 addendum and same-day Update note) and
 [MIGRATION_PLAN.md — Phase 4G](MIGRATION_PLAN.md#phase-4g--dynamic-maximum--minimum-peak-annotation-2026-08-21)
-/ [Phase 4G-UAT](MIGRATION_PLAN.md#phase-4g-uat--persistent-annotation-placement-guidance-ribbon-2026-08-21).
+/ [Phase 4G-UAT](MIGRATION_PLAN.md#phase-4g-uat--persistent-annotation-placement-guidance-ribbon-2026-08-21)
+/ [Phase 4G-UAT Bug Fix](MIGRATION_PLAN.md#phase-4g-uat-bug-fix--guidance-dismissal-2026-08-21).
 
 `[DECISION]` **Analog Waveform Callout — DEC-045** (2026-08-21; anchor
 became user-movable, same-channel only, addendum, 2026-08-21; **drag
