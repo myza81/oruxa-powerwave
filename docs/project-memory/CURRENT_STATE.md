@@ -4,8 +4,9 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-21** (Phase 4G — Dynamic Maximum/
-Minimum Peak Annotation, on top of Phase 4F-UAT2 — Free 2D Callout
+Last meaningful update: **2026-08-21** (Phase 4G-UAT — Persistent
+Annotation Placement Guidance Ribbon, on top of Phase 4G — Dynamic
+Maximum/Minimum Peak Annotation, Phase 4F-UAT2 — Free 2D Callout
 Anchor Drag Preview, Phase 4F-UAT — Movable Callout Anchor,
 Phase 4F — Analog Waveform Callout Annotation, Phase 4E-UAT2 — Free Text
 Notes restricted to the main waveform workspace, Phase 4E-UAT —
@@ -16,7 +17,8 @@ Waveform Time-Axis Sub-ms Precision, Waveform Adaptive Resolution, Phase
 Phase 4A-UAT9, and Phase 4A-UAT10).
 
 `[DECISION]` **Dynamic Maximum/Minimum Peak Annotation — DEC-046**
-(2026-08-21): Oruxa Powerwave's THIRD and FOURTH annotation types,
+(2026-08-21; **persistent placement guidance ribbon, addendum,
+2026-08-21**): Oruxa Powerwave's THIRD and FOURTH annotation types,
 `type: "peak_max"`/`type: "peak_min"` (`+Peak`/`-Peak`), reusing DEC-044/
 DEC-045's exact generic framework. Generic recorded-analog-channel
 semantics (never instantaneous-voltage/RMS/power/frequency-specific) —
@@ -89,10 +91,29 @@ RMS-from-waveform/cycle-RMS, phasor angle, delta measurement, event
 marker, cross-channel peak, digital peak, peak anchor dragging, automatic
 A/B placement at peaks, a whole-record/current-window toggle, a custom
 search interval independent of the viewport, annotation import/export, or
-permanent database persistence. See
+permanent database persistence. **Owner UAT refinement (2026-08-21, same
+day)**: engineering behavior passed, but nothing told the engineer what
+to do after selecting a Peak tool. A persistent placement-guidance
+ribbon (`#wwAnnotationGuidance`, a normal-layout sibling row between the
+waveform toolbar and `#activeViewArea` — never an overlay) is now driven
+entirely by `ww.annotationPlacementType` via one generic
+`WW_ANNOTATION_PLACEMENT_GUIDANCE` map + `wwUpdateAnnotationPlacementGuidance()`,
+called only from `wwEnterAnnotationPlacementMode()`/
+`wwExitAnnotationPlacementMode()` — never per-render, no auto-dismiss
+timer, `role="status"`. Mandatory for `peak_max`/`peak_min`; also enabled
+for `text_note`/`callout` since the same map covered them cleanly.
+**Peak's own placement-mode completion timing was corrected as part of
+this fix**: it previously exited immediately on any valid trace click
+(inherited from Callout's own established one-shot pattern), meaning a
+failed/no-data result already silently ended guidance; it now exits ONLY
+on a successful creation, guarded by a new `ww.annotationPlacementBusy`
+flag against a second concurrent request while one is in flight. Callout's
+own exit-immediately timing is explicitly UNCHANGED (not redesigned).
+See
 [DECISIONS.md — DEC-046](DECISIONS.md#dec-046--maximumminimum-peak-annotations-are-generic-recorded-channel-measurements-over-the-current-visible-x-viewport-dynamically-recalculated-on-genuine-x-viewport-changes)
-and
-[MIGRATION_PLAN.md — Phase 4G](MIGRATION_PLAN.md#phase-4g--dynamic-maximum--minimum-peak-annotation-2026-08-21).
+(including its 2026-08-21 addendum) and
+[MIGRATION_PLAN.md — Phase 4G](MIGRATION_PLAN.md#phase-4g--dynamic-maximum--minimum-peak-annotation-2026-08-21)
+/ [Phase 4G-UAT](MIGRATION_PLAN.md#phase-4g-uat--persistent-annotation-placement-guidance-ribbon-2026-08-21).
 
 `[DECISION]` **Analog Waveform Callout — DEC-045** (2026-08-21; anchor
 became user-movable, same-channel only, addendum, 2026-08-21; **drag

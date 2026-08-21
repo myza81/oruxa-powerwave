@@ -307,6 +307,50 @@
                there first, unaffected by this). */
             position: relative;
         }
+        /* Phase 4G-UAT (DEC-046 addendum): persistent annotation-
+           placement guidance ribbon -- a compact, normal-flow row
+           (never absolute/fixed, section 6/20 of the task: no overlay,
+           no modal, never intercepts Plotly). Reuses existing semantic
+           tokens only (--accent-wash-soft/--panel-border/--text/
+           --text-dim/--radius) -- no new theme tokens needed, and
+           deliberately never --error/red (section 7/22: informational,
+           not an alarm). */
+        .ww-annotation-guidance {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 14px;
+            background: var(--accent-wash-soft);
+            border-bottom: 1px solid var(--panel-border);
+            color: var(--text);
+            font-size: 0.78rem;
+            line-height: 1.35;
+        }
+        .ww-annotation-guidance-icon {
+            flex: 0 0 auto;
+            display: inline-flex;
+            color: var(--accent);
+        }
+        .ww-annotation-guidance-icon svg { width: 14px; height: 14px; }
+        .ww-annotation-guidance-text {
+            flex: 1 1 auto;
+            min-width: 0;
+            /* Section 21: wraps gracefully on a narrow/laptop width rather
+               than forcing a fixed/minimum width or causing horizontal
+               page overflow. */
+            overflow-wrap: break-word;
+        }
+        .ww-annotation-guidance-esc {
+            flex: 0 0 auto;
+            padding: 1px 7px;
+            border: 1px solid var(--panel-border);
+            border-radius: 4px;
+            font-size: 0.68rem;
+            font-weight: 600;
+            color: var(--text-dim);
+            background: var(--panel);
+        }
         .shell-view-placeholder {
             padding: 48px 24px;
             text-align: center;
@@ -2682,6 +2726,30 @@
                         <button class="ww-icon-btn" type="button" id="clearWorkspaceBtn" hidden title="Clear Workspace" aria-label="Clear Workspace">
                             <span class="ww-icon"><svg viewBox="0 0 18 18"><path d="M4 12.5 10.5 6a1.4 1.4 0 0 1 2 0l2 2a1.4 1.4 0 0 1 0 2L8 16.5H4.5a.5.5 0 0 1-.5-.5z"/><line x1="7" y1="9.5" x2="12" y2="14.5"/></svg></span>
                         </button>
+                    </div>
+
+                    <!-- Phase 4G-UAT (DEC-046 addendum): persistent
+                         annotation-placement guidance ribbon. A normal
+                         layout row (never `position: absolute/fixed`),
+                         a genuine sibling between the toolbar and the
+                         waveform area -- it can never overlay/intercept
+                         Plotly, sidebar, or toolbar pointer events simply
+                         because it never occupies the same screen space
+                         as any of them. `role="status"` (implicit
+                         `aria-live="polite"`): informational, not an
+                         alert -- shown/hidden/updated ONLY from
+                         wwUpdateAnnotationPlacementGuidance(), itself
+                         called ONLY on the two placement-mode state
+                         transitions (never per-render), so assistive tech
+                         is not re-announced on every waveform redraw.
+                         hidden by default; no auto-dismiss timer exists
+                         anywhere in this file for it (section 9/33 of the
+                         task: persistent until placement mode itself
+                         ends). -->
+                    <div class="ww-annotation-guidance" id="wwAnnotationGuidance" role="status" hidden>
+                        <span class="ww-annotation-guidance-icon" id="wwAnnotationGuidanceIcon" aria-hidden="true"></span>
+                        <span class="ww-annotation-guidance-text" id="wwAnnotationGuidanceText"></span>
+                        <span class="ww-annotation-guidance-esc" aria-hidden="true">Esc</span>
                     </div>
 
                     <!-- Active View Area (section 11/13): holds whichever
@@ -5512,10 +5580,20 @@
             // "selected" flags.
             annotationSelectedId: null,
             // null when not placing; otherwise the annotation `type`
-            // about to be created on the next valid click (this phase:
-            // only ever "text_note"). See wwEnterAnnotationPlacementMode()/
-            // wwExitAnnotationPlacementMode().
+            // about to be created on the next valid click (text_note,
+            // callout, peak_max, peak_min). See wwEnterAnnotationPlacementMode()/
+            // wwExitAnnotationPlacementMode(), and
+            // wwUpdateAnnotationPlacementGuidance() (Phase 4G-UAT) for the
+            // persistent guidance ribbon this state alone drives.
             annotationPlacementType: null,
+            // Phase 4G-UAT (section 10/17): true only while a Peak
+            // creation request for the CURRENT placement type is in
+            // flight -- the one-request-at-a-time guard that lets
+            // placement mode stay active across a failed/no-data
+            // resolution (unlike Callout's own still-immediate-exit
+            // timing) without ever double-firing a second concurrent
+            // request from a second click.
+            annotationPlacementBusy: false,
             // Monotonically increasing -- gives each newly-selected/
             // dragged annotation a fresh, always-highest z-index (simple
             // deterministic bring-to-front, section 21: no complex layers
@@ -8499,16 +8577,31 @@
                 // several channels).
                 const channel = panel.channels.find((c) => wwChannelKey(c.sourceId, c.channelName) === (trace && trace.meta));
                 if (!channel) return;
-                // Section 13/68 (Callout) + section 16 (Peak): one-shot --
-                // exits on the FIRST valid trace click regardless of
-                // whether resolution then succeeds, so a slow/failed
-                // request can never be double-fired by a second click
-                // landing while the first is still in flight.
-                wwExitAnnotationPlacementMode();
                 if (type === "callout") {
+                    // Section 13/68 of the Phase 4F task: one-shot --
+                    // exits on the FIRST valid trace click regardless of
+                    // whether resolution then succeeds, so a slow/failed
+                    // request can never be double-fired by a second click
+                    // landing while the first is still in flight. This
+                    // Callout-specific timing is UNCHANGED by the Phase
+                    // 4G-UAT guidance-ribbon refinement (section 5 of that
+                    // task: Callout's own engineering behavior is not
+                    // redesigned).
+                    wwExitAnnotationPlacementMode();
                     const approximateElapsedSeconds = wwPlotlyXToElapsed(point.x);
                     wwCreateCalloutFromClick(panel, channel, approximateElapsedSeconds);
                 } else {
+                    // Phase 4G-UAT (section 10/17): unlike Callout, Peak
+                    // placement mode stays ACTIVE across the click -- it
+                    // exits only once wwCreatePeakFromClick() itself
+                    // reaches a successful creation, so a failed/no-data
+                    // resolution leaves the guidance ribbon visible and
+                    // lets the engineer try again. `ww.annotationPlacementBusy`
+                    // (checked here, set/cleared inside
+                    // wwCreatePeakFromClick()) is the one-request-at-a-time
+                    // guard that replaces the old "exit immediately"
+                    // double-fire protection for this longer-lived window.
+                    if (ww.annotationPlacementBusy) return;
                     // Section 3/4: unlike Callout, the CLICKED X position is
                     // irrelevant to a Peak's own value -- only the clicked
                     // TRACE (channel identity) matters; the search interval
@@ -8606,69 +8699,90 @@
             const startTime = ww.viewport.start;
             const endTime = ww.viewport.end;
 
-            let response;
+            // Phase 4G-UAT (section 10/17): placement mode -- and its
+            // guidance ribbon -- stays active across this whole request;
+            // `annotationPlacementBusy` (checked by the click handler
+            // above) is the only guard against a second concurrent
+            // request while this one is in flight. Always cleared via
+            // `finally`, regardless of which return path below is taken.
+            ww.annotationPlacementBusy = true;
             try {
-                response = await fetch(
-                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
-                    "/sources/" + encodeURIComponent(sourceId) + "/peak-values",
-                    {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            requests: [{ channel_name: channelName, mode: mode }],
-                            start_time: startTime,
-                            end_time: endTime,
-                        }),
-                    }
-                );
-            } catch (error) {
-                wwShowError(panel, "Could not create " + (mode === "max" ? "+Peak" : "-Peak") + ": could not reach the backend.");
-                return;
-            }
-            // Section 35: reject a stale response -- the workspace may
-            // have changed (Start New Workspace / this source removed)
-            // while the request was in flight. Never create a Peak
-            // annotation in the wrong workspace.
-            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+                let response;
+                try {
+                    response = await fetch(
+                        apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) +
+                        "/sources/" + encodeURIComponent(sourceId) + "/peak-values",
+                        {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                requests: [{ channel_name: channelName, mode: mode }],
+                                start_time: startTime,
+                                end_time: endTime,
+                            }),
+                        }
+                    );
+                } catch (error) {
+                    // Section 17/31: keep placement mode (and its ribbon)
+                    // active on a network failure so the engineer can
+                    // simply try again -- never a silent dead end.
+                    wwShowError(panel, "Could not create " + (mode === "max" ? "+Peak" : "-Peak") + ": could not reach the backend.");
+                    return;
+                }
+                // Section 35: reject a stale response -- the workspace may
+                // have changed (Start New Workspace / this source removed)
+                // while the request was in flight. Never create a Peak
+                // annotation in the wrong workspace.
+                if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
 
-            let body = null;
-            try { body = await response.json(); } catch (error) { /* handled by !response.ok below */ }
-            if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
+                let body = null;
+                try { body = await response.json(); } catch (error) { /* handled by !response.ok below */ }
+                if (epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId) return;
 
-            const result = body && Array.isArray(body.results) ? body.results[0] : null;
-            if (!response.ok || !result) {
-                const message = (body && body.detail && body.detail.message) || "Could not resolve a peak value.";
-                wwShowError(panel, "Could not create " + (mode === "max" ? "+Peak" : "-Peak") + ": " + message);
-                return;
-            }
-            if (!result.available) {
-                // Section 12: never create a broken/partial peak
-                // annotation when the current viewport has no valid
-                // sample for this channel -- concise feedback only.
-                wwShowError(panel, "Could not create " + (mode === "max" ? "+Peak" : "-Peak") +
-                    ": no valid samples for " + channelName + " in the current visible range.");
-                return;
-            }
+                const result = body && Array.isArray(body.results) ? body.results[0] : null;
+                if (!response.ok || !result) {
+                    const message = (body && body.detail && body.detail.message) || "Could not resolve a peak value.";
+                    wwShowError(panel, "Could not create " + (mode === "max" ? "+Peak" : "-Peak") + ": " + message);
+                    return;
+                }
+                if (!result.available) {
+                    // Section 12: never create a broken/partial peak
+                    // annotation when the current viewport has no valid
+                    // sample for this channel -- concise feedback only,
+                    // placement mode stays active (section 17).
+                    wwShowError(panel, "Could not create " + (mode === "max" ? "+Peak" : "-Peak") +
+                        ": no valid samples for " + channelName + " in the current visible range.");
+                    return;
+                }
 
-            // Section 18/19/27: stable identity (sourceId/channelName/
-            // mode/boxOffset) alongside the dynamic measurement fields --
-            // NO `text` field (section 27: never arbitrary editable text),
-            // `available: true` since this is a just-succeeded resolution.
-            wwCreateAnnotation(type, "main", { x: 0, y: 0 }, {
-                sourceId: sourceId,
-                channelName: channelName,
-                mode: mode,
-                sampleIndex: result.sample_index,
-                peakElapsedSeconds: result.elapsed_seconds,
-                peakValue: result.value,
-                unit: result.unit,
-                available: true,
-                // Section 23: same sensible default Callout already uses --
-                // avoids covering the clicked waveform point.
-                boxOffset: { x: 80, y: -60 },
-            });
-            // Section 27: no immediate edit mode -- a Peak's value/time
-            // lines are system-computed, never user-editable text.
+                // Section 18/19/27: stable identity (sourceId/channelName/
+                // mode/boxOffset) alongside the dynamic measurement fields --
+                // NO `text` field (section 27: never arbitrary editable text),
+                // `available: true` since this is a just-succeeded resolution.
+                wwCreateAnnotation(type, "main", { x: 0, y: 0 }, {
+                    sourceId: sourceId,
+                    channelName: channelName,
+                    mode: mode,
+                    sampleIndex: result.sample_index,
+                    peakElapsedSeconds: result.elapsed_seconds,
+                    peakValue: result.value,
+                    unit: result.unit,
+                    available: true,
+                    // Section 23: same sensible default Callout already uses --
+                    // avoids covering the clicked waveform point.
+                    boxOffset: { x: 80, y: -60 },
+                });
+                // Section 27: no immediate edit mode -- a Peak's value/time
+                // lines are system-computed, never user-editable text.
+                // Section 10/17: ONLY a successful creation completes
+                // placement mode -- but only if this request's own type is
+                // still the active one (the engineer may have switched to
+                // a different tool while this request was in flight; never
+                // exit a DIFFERENT tool's now-active placement mode here).
+                if (ww.annotationPlacementType === type) wwExitAnnotationPlacementMode();
+            } finally {
+                ww.annotationPlacementBusy = false;
+            }
         }
 
         // Section 33/34: one monotonically increasing generation number
@@ -8799,10 +8913,19 @@
         }
 
         function wwEnterAnnotationPlacementMode(type) {
+            // Section 13 of the Phase 4G-UAT task: reselecting the SAME
+            // already-active tool is a no-op -- never re-renders/
+            // duplicates the guidance ribbon.
             if (ww.annotationPlacementType === type) return; // already active
             ww.annotationPlacementType = type;
+            // Section 12: switching tools mid-flight abandons any
+            // in-flight request's own busy-guard for its (now inactive)
+            // type -- a fresh placement session never inherits a stale
+            // "busy" state from a different type.
+            ww.annotationPlacementBusy = false;
             document.body.classList.add("ww-annotation-placing");
             wwSyncAnnotateButtonActiveState();
+            wwUpdateAnnotationPlacementGuidance();
             document.addEventListener("click", wwAnnotationPlacementClickHandler, true);
             document.addEventListener("keydown", wwAnnotationPlacementKeydownHandler, true);
         }
@@ -8810,10 +8933,70 @@
         function wwExitAnnotationPlacementMode() {
             if (!ww.annotationPlacementType) return;
             ww.annotationPlacementType = null;
+            ww.annotationPlacementBusy = false;
             document.body.classList.remove("ww-annotation-placing");
             wwSyncAnnotateButtonActiveState();
+            wwUpdateAnnotationPlacementGuidance();
             document.removeEventListener("click", wwAnnotationPlacementClickHandler, true);
             document.removeEventListener("keydown", wwAnnotationPlacementKeydownHandler, true);
+        }
+
+        // ------------------------------------------------------------------
+        // Phase 4G-UAT (DEC-046 addendum): persistent placement-guidance
+        // ribbon -- ONE generic component driven entirely by
+        // `ww.annotationPlacementType` (the SAME single authority
+        // wwEnterAnnotationPlacementMode()/wwExitAnnotationPlacementMode()
+        // already are), never a second competing state or a per-type timer.
+        // Extending to a future annotation type is one more map entry
+        // here, never a new scattered if/else across handlers.
+        // ------------------------------------------------------------------
+        const WW_ANNOTATION_PLACEMENT_GUIDANCE = {
+            text_note: {
+                icon: '<svg viewBox="0 0 18 18"><rect x="2.5" y="3" width="13" height="12" rx="1.5"/><line x1="5" y1="6.5" x2="13" y2="6.5" stroke-width="1.1"/><line x1="5" y1="9" x2="13" y2="9" stroke-width="1.1"/><line x1="5" y1="11.5" x2="10" y2="11.5" stroke-width="1.1"/></svg>',
+                message: "Text Note active — click in the waveform workspace to place a note.",
+            },
+            callout: {
+                icon: '<svg viewBox="0 0 18 18"><circle cx="6" cy="12" r="1.6"/><line x1="7.3" y1="10.8" x2="12" y2="5" stroke-width="1.1"/><rect x="9" y="2.5" width="7" height="4.5" rx="1" stroke-width="1.1"/></svg>',
+                message: "Callout active — click an analog waveform trace to place a callout.",
+            },
+            peak_max: {
+                icon: '<svg viewBox="0 0 18 18"><polyline points="2.5,13 6,9.5 9,12 15.5,4" stroke-width="1.3"/><polyline points="11.5,4 15.5,4 15.5,8" stroke-width="1.3"/></svg>',
+                message: "Maximum Peak active — click an analog waveform channel to find the maximum in the current view.",
+            },
+            peak_min: {
+                icon: '<svg viewBox="0 0 18 18"><polyline points="2.5,5 6,8.5 9,6 15.5,14" stroke-width="1.3"/><polyline points="15.5,10 15.5,14 11.5,14" stroke-width="1.3"/></svg>',
+                message: "Minimum Peak active — click an analog waveform channel to find the minimum in the current view.",
+            },
+        };
+
+        function wwAnnotationPlacementGuidance(type) {
+            return WW_ANNOTATION_PLACEMENT_GUIDANCE[type] || null;
+        }
+
+        // The ONE place that shows/hides/updates the ribbon -- called only
+        // from the two placement-mode state transitions above (never on
+        // every render, section 23's own "avoid repeatedly announcing it"
+        // -- there is nothing to re-announce between them since the text
+        // cannot change without a transition happening here first) and
+        // from a tool switch (wwEnterAnnotationPlacementMode() again, with
+        // a different type, updates the SAME element in place -- never a
+        // second ribbon).
+        function wwUpdateAnnotationPlacementGuidance() {
+            const el = document.getElementById("wwAnnotationGuidance");
+            if (!el) return;
+            const guidance = ww.annotationPlacementType ? wwAnnotationPlacementGuidance(ww.annotationPlacementType) : null;
+            if (!guidance) {
+                el.hidden = true;
+                return;
+            }
+            const iconEl = document.getElementById("wwAnnotationGuidanceIcon");
+            const textEl = document.getElementById("wwAnnotationGuidanceText");
+            // Static, hardcoded glyph markup only (never user data) --
+            // same innerHTML-is-safe precedent as wwCalloutBodyHtml()'s
+            // own header glyph.
+            if (iconEl) iconEl.innerHTML = guidance.icon;
+            if (textEl) textEl.textContent = guidance.message + " Press Esc to cancel."; // .textContent only
+            el.hidden = false;
         }
 
         // ------------------------------------------------------------------

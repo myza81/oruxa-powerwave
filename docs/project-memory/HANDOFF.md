@@ -8,6 +8,65 @@ Last updated: **2026-08-21**
 
 ## What was most recently done
 
+**Phase 4G-UAT — Persistent Annotation Placement Guidance Ribbon (DEC-046
+addendum).** Owner UAT result on Phase 4G below: "Engineering behavior:
+PASS" but no guidance told the engineer what to do after selecting
+Maximum Peak/Minimum Peak. Full detail:
+[DECISIONS.md — DEC-046 addendum](DECISIONS.md#addendum-2026-08-21-refinement--persistent-annotation-placement-guidance-ribbon-phase-4g-uat).
+
+**One generic ribbon, driven entirely by `ww.annotationPlacementType`**
+(the SAME single authority `wwEnterAnnotationPlacementMode()`/
+`wwExitAnnotationPlacementMode()` already are) -- a new
+`WW_ANNOTATION_PLACEMENT_GUIDANCE` map (`{icon, message}` per type) plus
+`wwAnnotationPlacementGuidance(type)`/`wwUpdateAnnotationPlacementGuidance()`,
+called ONLY from those two existing state-transition functions, never
+per-render, never a second competing state or timer. **Mandatory for
+`peak_max`/`peak_min`**; also enabled for `text_note`/`callout` since the
+same generic map covered them cleanly with zero extra branching.
+
+**Ribbon (`#wwAnnotationGuidance`) is a normal-layout sibling row**
+between the waveform toolbar and `#activeViewArea` -- never `position:
+absolute/fixed`, so it structurally cannot overlay/intercept Plotly, the
+sidebar, or the toolbar. `role="status"`, updated only on state
+transitions (never re-announced on ordinary re-renders). No auto-dismiss
+timer anywhere -- persistence is a direct, single-authority consequence
+of `ww.annotationPlacementType` alone.
+
+**Peak's own placement-mode completion timing was corrected** (the one
+engineering-adjacent change this refinement required): it previously
+exited immediately on any valid trace click (inherited from Callout's
+own established one-shot pattern via `wwWireAnalogPanelClick()`), so a
+failed/no-data result already silently ended guidance with no way to
+retry without reselecting the tool. `wwCreatePeakFromClick()` now exits
+placement mode ONLY on a successful creation; a new
+`ww.annotationPlacementBusy` flag (`try/finally`-guaranteed) guards
+against a second concurrent request while one is already in flight.
+**Callout's own exit-immediately timing is explicitly UNCHANGED** --
+this task's own section 5 scoped Callout's guidance as optional, and its
+engineering behavior was never redesigned.
+
+**Tests**: extended `phase4g_check.mjs` with 19 new checks (Maximum/
+Minimum Peak guidance content and Esc hint, no ribbon before placement
+mode, invalid clicks never dismiss, successful creation hides the
+ribbon, Escape hides it, API-failure and no-data-unavailable both keep
+mode/ribbon active with zero annotations created, a failed attempt
+retries successfully afterward, tool switching updates one ribbon in
+place with no stale text, re-select-same-tool no-op, dropdown toggling
+doesn't dismiss, toolbar active state + ribbon coexist, no-timeout
+across many ticks/renders, dynamic recalculation never re-shows the
+ribbon, `role="status"` present, a concurrent second click during an
+in-flight request is ignored, a Callout-timing regression check, and
+optional Text Note/Callout guidance) -- **56/56 passing** in the file
+overall (37 prior Phase 4G checks unchanged). Full frontend suite
+reconfirmed at exactly the true 33-failure baseline across the same
+pre-existing files (zero net new regressions). Backend: untouched,
+436/436 unchanged.
+
+**Not yet done**: commit/push, CI/automatic DEV deployment verification,
+and owner UAT of this refinement specifically.
+
+## What was done in the prior session (Phase 4G — Dynamic Maximum/Minimum Peak Annotation, DEC-046)
+
 **Phase 4G — Dynamic Maximum/Minimum Peak Annotation (DEC-046).**
 Owner-approved direction on top of Phase 4F-UAT2 below: two new generic
 recorded-analog-channel annotation types, `+Peak`/`-Peak`. Full detail:

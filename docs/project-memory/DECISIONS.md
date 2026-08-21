@@ -4683,6 +4683,109 @@ Impact:
   permanent database persistence.
 - See [MIGRATION_PLAN.md — Phase 4G](MIGRATION_PLAN.md#phase-4g--dynamic-maximum--minimum-peak-annotation-2026-08-21).
 
+### ADDENDUM (2026-08-21, refinement) — Persistent annotation placement guidance ribbon (Phase 4G-UAT)
+
+Status: Approved
+Source: owner UAT result on Phase 4G directly above — "Engineering
+behavior: PASS" but "after the user selects Maximum Peak or Minimum Peak
+from the Annotate dropdown, there is no clear guidance telling them what
+to do next."
+
+> Annotation placement modes that require a subsequent user action
+> provide persistent inline guidance while active. For +Peak/-Peak, the
+> guidance instructs the user to click an analog waveform channel and
+> remains until successful selection or Escape cancellation. Invalid
+> clicks do not dismiss the active placement mode.
+
+Decision:
+
+- **One generic ribbon, driven entirely by `ww.annotationPlacementType`**
+  (the SAME single authority `wwEnterAnnotationPlacementMode()`/
+  `wwExitAnnotationPlacementMode()` already are) — a new
+  `WW_ANNOTATION_PLACEMENT_GUIDANCE` map (`{icon, message}` per type) plus
+  `wwAnnotationPlacementGuidance(type)`/
+  `wwUpdateAnnotationPlacementGuidance()`, called ONLY from the two
+  existing state-transition functions, never per-render and never a
+  second competing state or timer.
+- **Mandatory for `peak_max`/`peak_min`** (the owner's explicit
+  requirement); **also enabled for `text_note`/`callout`** — the same
+  generic map covers them with no extra branching, and the task's own
+  section 5 invited this "if extremely straightforward and clearly
+  generic," which it was.
+- **A normal-layout sibling row**, `#wwAnnotationGuidance`, placed between
+  the waveform toolbar and `#activeViewArea` — never `position:
+  absolute/fixed`, so it structurally cannot overlay/intercept Plotly,
+  the channel sidebar, or the toolbar (section 6/20); it simply narrows
+  the waveform area's own available height by one compact row while
+  visible.
+- **Peak's own completion timing changed to match the ribbon's semantics
+  (section 10/17 of the task)**: unlike Callout, whose established
+  one-shot "exit immediately on click, regardless of outcome" timing
+  (Phase 4F) is UNCHANGED, `wwCreatePeakFromClick()` now exits placement
+  mode ONLY upon reaching a successful creation — a failed request, a
+  no-valid-samples (`available: false`) result, or a network error all
+  leave placement mode (and the ribbon) active so the engineer can retry
+  immediately, without reselecting the tool. A new `ww.annotationPlacementBusy`
+  flag (set/cleared via `try/finally` around the whole request) is the
+  one-request-at-a-time guard this longer-lived active window now needs —
+  a second click while a Peak request is in flight is silently ignored,
+  never a duplicate concurrent request.
+- **No auto-dismiss timer anywhere** — the ribbon's only visibility
+  authority is `ww.annotationPlacementType`; verified directly (many
+  ticks/re-renders while mode stays active, ribbon never disappears).
+- **Accessibility**: `role="status"` (implicit `aria-live="polite"`) —
+  informational, never an aggressive alert — updated only on the two
+  state transitions, so assistive tech is never re-announced on ordinary
+  waveform re-renders (zoom/pan/recalculation).
+- **Styling reuses existing semantic tokens only** (`--accent-wash-soft`,
+  `--panel-border`, `--text`, `--text-dim`, `--accent`, `--radius`) — no
+  new theme tokens, no red/alarm styling.
+
+Reason:
+
+The owner's own explicit UAT finding: engineering behavior was correct,
+but the UX left the engineer with no indication of what a just-selected
+tool expected next. A persistent, generic, placement-mode-driven ribbon
+closes that gap for every current (and future) annotation type with one
+small, reusable mechanism rather than a scattered per-type banner.
+
+Alternatives considered:
+
+- **A toast/notification framework** — rejected per the task's own
+  explicit scope exclusion; a single always-in-place ribbon element is
+  sufficient and simpler.
+- **Auto-dismiss after a fixed delay** — rejected outright; the owner's
+  own explicit requirement is persistence until successful completion or
+  Escape, with no drifting timer-based state.
+- **Keeping Callout's exit-immediately timing for Peak too** (simpler,
+  no new busy-flag) — rejected: it would make the new ribbon
+  disappear the instant the engineer clicks, even on a failed/no-data
+  result, defeating the entire purpose of "so user may try again"
+  (section 17's own explicit instruction).
+- **A close/dismiss "X" on the ribbon** — rejected per the task's own
+  explicit scope exclusion (a user-dismissable close that leaves
+  placement mode active would desynchronize the ribbon from the single
+  state authority it is meant to mirror exactly).
+
+Impact:
+
+- `frontend/index.html` only. New: `#wwAnnotationGuidance` markup (a
+  sibling between `#wwToolbar` and `#activeViewArea`), its CSS,
+  `WW_ANNOTATION_PLACEMENT_GUIDANCE`, `wwAnnotationPlacementGuidance()`,
+  `wwUpdateAnnotationPlacementGuidance()`, `ww.annotationPlacementBusy`.
+  Modified: `wwEnterAnnotationPlacementMode()`/
+  `wwExitAnnotationPlacementMode()` (call the new guidance updater;
+  reset the busy flag on entry), `wwWireAnalogPanelClick()` (Peak no
+  longer exits mode before dispatching creation; Callout's own timing
+  untouched), `wwCreatePeakFromClick()` (busy-flag guard,
+  exit-only-on-success). No backend change.
+- Does not change DEC-044's Text Note engineering behavior, DEC-045's
+  Callout engineering behavior (its own placement-mode exit timing is
+  explicitly, deliberately unchanged), or DEC-046's own Peak
+  calculation/recalculation/tie-rule/full-resolution semantics — this
+  addendum is a UX/completion-timing refinement only.
+- See [MIGRATION_PLAN.md — Phase 4G-UAT](MIGRATION_PLAN.md#phase-4g-uat--persistent-annotation-placement-guidance-ribbon-2026-08-21).
+
 ---
 
 ## How to add a decision

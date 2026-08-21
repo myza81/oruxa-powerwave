@@ -8650,6 +8650,150 @@ owner UAT after this push.
 
 ---
 
+## Phase 4G-UAT — Persistent Annotation Placement Guidance Ribbon (2026-08-21)
+
+### Scope
+
+Owner UAT result on Phase 4G directly below: "Engineering behavior:
+PASS" but no guidance told the engineer what to do after selecting
+Maximum Peak/Minimum Peak from the Annotate dropdown. This refinement
+adds a persistent inline guidance ribbon, mandatory for `peak_max`/
+`peak_min`, and also (the task's own "if extremely straightforward and
+clearly generic" invitation) enabled for `text_note`/`callout`.
+
+### Guidance architecture
+
+One generic component, driven entirely by the SAME single authority
+`wwEnterAnnotationPlacementMode()`/`wwExitAnnotationPlacementMode()`
+already are (`ww.annotationPlacementType`) -- a new
+`WW_ANNOTATION_PLACEMENT_GUIDANCE` map (`{icon, message}` per type),
+`wwAnnotationPlacementGuidance(type)`, and
+`wwUpdateAnnotationPlacementGuidance()`, called ONLY from those two
+existing state-transition functions -- never per-render, never a second
+competing state or timer. Extending to a future annotation type is one
+more map entry, never scattered per-type banner code.
+
+### Maximum Peak
+
+"Maximum Peak active — click an analog waveform channel to find the
+maximum in the current view. Press Esc to cancel." Shown the instant
+`peak_max` placement mode is entered.
+
+### Minimum Peak
+
+"Minimum Peak active — click an analog waveform channel to find the
+minimum in the current view. Press Esc to cancel."
+
+### Text Note / Callout (optional, enabled)
+
+"Text Note active — click in the waveform workspace to place a note.
+Press Esc to cancel." / "Callout active — click an analog waveform trace
+to place a callout. Press Esc to cancel." Enabled because the same
+generic map already covered them cleanly with zero extra branching.
+
+### Persistence
+
+No auto-dismiss timer anywhere in the file -- the ribbon's only
+visibility authority is `ww.annotationPlacementType`; verified directly
+across many ticks/re-renders while mode stays active.
+
+### Invalid clicks
+
+Sidebar, toolbar, digital region, and empty-waveform-area clicks all
+leave placement mode -- and the ribbon -- untouched; verified directly
+for +Peak.
+
+### Peak completion-timing correction (engineering-adjacent fix required by the task)
+
+Callout's own established one-shot "exit placement mode immediately on
+click, regardless of outcome" timing (Phase 4F) is UNCHANGED. Peak's own
+timing was corrected: `wwCreatePeakFromClick()` previously relied on
+`wwWireAnalogPanelClick()` exiting mode BEFORE the async request even
+started (inherited from Callout's own pattern) -- meaning a failed/no-
+data Peak result already left the user with no active tool and no
+guidance. Now Peak placement mode exits ONLY on a successful creation;
+a failed request, a no-valid-samples result, or a network error all keep
+placement mode (and the ribbon) active so the engineer can simply click
+again. A new `ww.annotationPlacementBusy` flag (set/cleared via
+`try/finally` around the whole request) guards against a second
+concurrent request while one is already in flight -- the SAME "no
+double-fire" protection Callout's own comment originally described,
+adapted to Peak's now longer-lived active window. Verified directly: a
+forced API failure and a no-data (out-of-bounds viewport) result both
+leave mode active and the ribbon visible with zero annotation created;
+retrying the SAME click afterward succeeds normally; a second click
+while a request is in flight produces zero additional backend requests
+and never a duplicate annotation.
+
+### Tool switching / re-select
+
+Switching from +Peak to -Peak updates the SAME ribbon element in place
+(never a duplicate, never stale Maximum Peak text left behind) --
+verified directly, including confirming exactly one
+`#wwAnnotationGuidance` element exists at all times. Reselecting the
+already-active tool is the pre-existing no-op
+(`wwEnterAnnotationPlacementMode()`'s own early return), so the ribbon
+is untouched, never re-rendered.
+
+### Escape
+
+Unchanged, reconfirmed: cancels placement mode, removes the toolbar
+active state, hides the ribbon, creates nothing.
+
+### Annotate dropdown
+
+Opening/closing the dropdown while a placement mode is active never
+dismisses it -- verified directly (toggling the dropdown twice while
++Peak is active leaves mode and the ribbon untouched).
+
+### Dynamic recalculation is unrelated
+
+Verified directly: after a successful Peak creation (ribbon dismissed),
+subsequent zoom/pan viewport changes recalculate the annotation
+normally, and the ribbon never reappears -- it is scoped entirely to
+initial channel-selection placement mode, never touched by
+`wwRecalculateAllPeakAnnotations()`.
+
+### Layout / accessibility / theme
+
+A normal-flow sibling row (`#wwAnnotationGuidance`) between the waveform
+toolbar and `#activeViewArea` -- never `position: absolute/fixed`, so it
+cannot overlay/intercept Plotly, the sidebar, or the toolbar (confirmed
+by construction: it occupies distinct layout space, not overlapping
+screen space with any of them). `role="status"` (informational, never an
+aggressive alert), updated only on the two state transitions so
+assistive tech isn't re-announced on ordinary waveform re-renders. Text
+wraps via `overflow-wrap: break-word` rather than forcing a fixed width.
+Styling reuses existing semantic tokens only (`--accent-wash-soft`,
+`--panel-border`, `--text`, `--text-dim`, `--accent`, `--radius`) -- no
+new theme tokens, no red/alarm styling, both themes covered by
+construction (no theme-specific hardcoded colors).
+
+### Tests
+
+Extended `phase4g_check.mjs` with 19 new checks (Maximum/Minimum Peak
+guidance content, ribbon absent before any placement mode, invalid
+clicks never dismiss, successful creation hides the ribbon, Escape
+hides it, API-failure and no-data-unavailable both keep mode/ribbon
+active with zero annotations created, a failed attempt's SAME mode
+successfully retries afterward, tool switching updates one ribbon in
+place, re-select-same-tool no-op, dropdown toggling doesn't dismiss,
+toolbar active state + ribbon coexist, no-timeout across many
+ticks/renders, dynamic recalculation never re-shows the ribbon,
+`role="status"` present, a concurrent second click during an in-flight
+request is ignored, a regression check confirming Callout's own
+exit-immediately timing is unchanged, and optional Text Note/Callout
+guidance) -- **56/56 passing** in the file overall (37 prior Phase 4G
+checks unchanged). Full frontend suite reconfirmed at exactly the true
+33-failure baseline across the same pre-existing files (zero net new
+regressions). Backend: untouched, 436/436 unchanged (no backend file
+touched this refinement).
+
+### Decision
+
+See [DECISIONS.md — DEC-046 addendum](DECISIONS.md#addendum-2026-08-21-refinement--persistent-annotation-placement-guidance-ribbon-phase-4g-uat)
+(a refinement of DEC-046, not a new major decision).
+
 ## Phase 4G — Dynamic Maximum / Minimum Peak Annotation (2026-08-21)
 
 ### Scope
