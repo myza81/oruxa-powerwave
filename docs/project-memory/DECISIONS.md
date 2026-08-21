@@ -5074,6 +5074,41 @@ Impact:
   export/import/templates.
 - See [MIGRATION_PLAN.md — Phase 5A](MIGRATION_PLAN.md#phase-5a--calculated-channels--basic-signal-builder-2026-08-21).
 
+**Update (2026-08-21, same day, bug fix — no new decision entry)**: owner
+UAT found the Recording Events page (and, separately, Waveform) showing
+the Calculated Channels page STACKED underneath it at the same time.
+Root cause: the SAME CSS-cascade bug class already caught and fixed once
+this session for the annotation placement guidance ribbon —
+`#pageCalculatedChannels { display: flex; }` (author CSS) beat the UA
+stylesheet's own `[hidden] { display: none }` rule by ORIGIN alone.
+`shellSetCurrentPage()` — the sole navigation authority, confirmed by
+direct trace to correctly toggle `.hidden` on all three page containers
+(`workspaceRow`/`pageRecordings`/`pageCalculatedChannels`) and all three
+nav buttons' own `aria-current` in one exclusive pass — was never wrong;
+`#pageCalculatedChannels.hidden` was already `true` whenever a different
+page was selected, but that had zero visible effect. `#pageRecordings`
+itself already carried its own `[hidden]` override from when IT was
+first added; `#pageCalculatedChannels` simply never received the same
+treatment when this session added it. DOM nesting was independently
+confirmed correct (`#pageCalculatedChannels` is a genuine sibling
+`<section>`, not nested inside `#pageRecordings`) — ruling out a missing/
+misplaced closing tag as a contributing cause. Fixed with one line,
+`#pageCalculatedChannels[hidden] { display: none; }`, the same
+established pattern already used for `#workspaceRow[hidden]`/
+`#pageRecordings[hidden]`/`.ww-annotation-guidance[hidden]`. Extended
+`phase5a_check.mjs` with 6 new checks: a structural regression guard
+confirming the `[hidden]` override rule is present in the shipped
+stylesheet (verified directly to fail without the fix and pass with it —
+jsdom cannot render CSS cascade, so this is the only check capable of
+catching a regression here), an exactly-one-page-visible +
+exactly-one-nav-item-active assertion for each of the three real pages,
+a rapid-switching sequence across all three, and a hide-don't-destroy
+check confirming in-progress builder state (selected operation + partial
+input list) survives a round trip through Waveform and back —
+**32/32 passing** in the file overall (26 prior unchanged). Full
+frontend suite reconfirmed at the true 33-failure baseline; backend
+untouched, 519/519 unchanged.
+
 ---
 
 ## How to add a decision

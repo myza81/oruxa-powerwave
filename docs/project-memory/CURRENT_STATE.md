@@ -4,8 +4,9 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-21** (Phase 5A — Calculated Channels /
-Basic Signal Builder, on top of Phase 4G-UAT Bug Fix — Guidance
+Last meaningful update: **2026-08-21** (Phase 5A UAT Fix — Page
+Navigation Isolation, on top of Phase 5A — Calculated Channels /
+Basic Signal Builder, Phase 4G-UAT Bug Fix — Guidance
 Dismissal, Phase 4G-UAT — Persistent Annotation Placement
 Guidance Ribbon, Phase 4G — Dynamic Maximum/Minimum Peak Annotation,
 Phase 4F-UAT2 — Free 2D Callout Anchor Drag Preview, Phase 4F-UAT —
@@ -92,10 +93,19 @@ policy as every other workspace-scoped collection); "Start New
 Workspace" clears them completely through the SAME
 `DELETE /api/v1/workspaces/{id}` call already used for that purpose
 (anticipated by that endpoint's own pre-existing docstring). No
-permanent database/cloud persistence. See
+permanent database/cloud persistence. **Bug fix (2026-08-21, same
+day)**: owner UAT found the Calculated Channels page rendering STACKED
+underneath Recording Events (and separately Waveform) instead of being
+hidden — the SAME CSS-cascade bug class as the guidance-ribbon fix
+(`#pageCalculatedChannels { display: flex; }` beat the UA `[hidden]`
+rule by origin alone; `shellSetCurrentPage()` itself was already
+correctly toggling `.hidden`). Fixed with
+`#pageCalculatedChannels[hidden] { display: none; }`, the same pattern
+`#pageRecordings`/`#workspaceRow` already use. See
 [DECISIONS.md — DEC-047](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations)
-and
-[MIGRATION_PLAN.md — Phase 5A](MIGRATION_PLAN.md#phase-5a--calculated-channels--basic-signal-builder-2026-08-21).
+(including its 2026-08-21 Update note) and
+[MIGRATION_PLAN.md — Phase 5A](MIGRATION_PLAN.md#phase-5a--calculated-channels--basic-signal-builder-2026-08-21)
+/ [Phase 5A UAT Fix](MIGRATION_PLAN.md#phase-5a-uat-fix--page-navigation-isolation-2026-08-21).
 
 `[DECISION]` **Dynamic Maximum/Minimum Peak Annotation — DEC-046**
 (2026-08-21; **persistent placement guidance ribbon, addendum,

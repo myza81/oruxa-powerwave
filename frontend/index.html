@@ -747,6 +747,24 @@
            <label> unmodified -- only the page's own layout/operation-
            card/list-row presentation is new here. */
         #pageCalculatedChannels { display: flex; flex-direction: column; gap: 16px; padding: 20px 24px; overflow-y: auto; height: 100%; box-sizing: border-box; }
+        /* Bug fix (2026-08-21, Phase 5A UAT): the SAME class of bug
+           already caught and fixed for #workspaceRow[hidden]/
+           #pageRecordings[hidden]/.shell-status-item[hidden]/
+           .ww-annotation-guidance[hidden] elsewhere in this file --
+           author CSS's own `display: flex` above beats the UA
+           stylesheet's default `[hidden] { display: none }` rule by
+           ORIGIN alone, regardless of specificity or source order. This
+           override was missing when the page was first added, so
+           shellSetCurrentPage()'s own `pageCalculatedChannels.hidden =
+           page !== "calculated-channels"` was already correctly toggling
+           the `hidden` ATTRIBUTE on every navigation (confirmed directly
+           -- the state was never wrong), but it had ZERO visible effect:
+           the page stayed rendered underneath whichever OTHER page
+           (Recordings, Waveform) was actually selected, exactly matching
+           the owner's own screenshot. #pageRecordings itself already had
+           this exact override (line 394 above) from when IT was first
+           added -- this page simply never received the same treatment. */
+        #pageCalculatedChannels[hidden] { display: none; }
         .ww-cc-subtitle { margin: -8px 0 0; color: var(--text-dim); font-size: 0.85rem; }
         .ww-cc-panel { padding: 16px; }
         .ww-cc-panel h3 { margin: 0 0 12px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }

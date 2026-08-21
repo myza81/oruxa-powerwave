@@ -8,6 +8,54 @@ Last updated: **2026-08-21**
 
 ## What was most recently done
 
+**Phase 5A UAT Fix — Page Navigation Isolation.** Owner UAT on the page
+below found Recording Events (and separately Waveform) showing the
+Calculated Channels page STACKED underneath it. No new decision -- an
+"Update" note appended to DEC-047. Full detail:
+[DECISIONS.md — DEC-047 Update note](DECISIONS.md#dec-047--calculated-channels-are-workspace-scoped-derived-analog-channels-from-authoritative-full-resolution-inputs-requiring-proven-synchronized-sample-time-alignment-for-multi-input-operations).
+
+**Root cause: the SAME CSS-cascade bug class already caught and fixed
+once this session for the annotation placement guidance ribbon.**
+`#pageCalculatedChannels { display: flex; }` (author CSS) beat the UA
+stylesheet's own `[hidden] { display: none }` rule by ORIGIN alone.
+`shellSetCurrentPage()` -- confirmed by direct trace to be the SOLE
+navigation authority, correctly toggling `.hidden` on all three page
+containers (`workspaceRow`/`pageRecordings`/`pageCalculatedChannels`)
+and all three nav buttons' own `aria-current` in one exclusive pass --
+was NEVER wrong; `#pageCalculatedChannels.hidden` was already `true`
+whenever a different page was active, but that had zero visible effect.
+`#pageRecordings` itself already carried its own `[hidden]` override
+from when it was first added (Phase 3B); the new Calculated Channels
+page simply never received the same treatment when this session added
+it. **DOM nesting was independently inspected and confirmed correct**
+(`#pageCalculatedChannels` is a genuine sibling `<section>`, never
+nested inside `#pageRecordings`) -- ruling out a missing/misplaced
+closing tag as a contributing cause.
+
+**Fixed with one line**: `#pageCalculatedChannels[hidden] { display:
+none; }`, the same established pattern already used for
+`#workspaceRow[hidden]`/`#pageRecordings[hidden]`/
+`.ww-annotation-guidance[hidden]`.
+
+**Tests**: extended `phase5a_check.mjs` with 6 new checks -- a
+structural regression guard confirming the `[hidden]` override rule is
+present in the shipped stylesheet (verified directly to FAIL without
+the fix and PASS with it -- jsdom cannot render CSS cascade, so this is
+the only check capable of catching a regression of this specific kind),
+an exactly-one-page-visible + exactly-one-nav-item-active assertion for
+each of the three real pages, a rapid-switching sequence across all
+three, and a hide-don't-destroy check confirming in-progress builder
+state (selected operation + partial input list) survives a round trip
+through Waveform and back -- **32/32 passing** in the file overall (26
+prior unchanged). Full frontend suite reconfirmed at exactly the true
+33-failure baseline (zero net new regressions). Backend untouched,
+519/519 unchanged.
+
+**Not yet done**: commit/push, CI/automatic DEV deployment verification,
+and owner UAT of this fix specifically.
+
+## What was done in the prior session (Phase 5A — Calculated Channels / Basic Signal Builder, DEC-047)
+
 **Phase 5A — Calculated Channels / Basic Signal Builder (DEC-047).**
 Owner-approved direction: Oruxa Powerwave's first mathematical signal-
 derivation system, NOT an annotation tool -- a new main-sidebar page
