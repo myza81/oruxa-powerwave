@@ -252,6 +252,7 @@
             flex: 0 0 auto;
             width: 320px;
             overflow-y: auto;
+            font-size: 0.7rem;
             /* Phase 3B-UAT11: no hard divider directly against the
                scrollbar edge. Desktop separation is provided by the
                adjacent resize handle's centered divider instead. */
@@ -701,6 +702,7 @@
             margin: 0 0 14px;
             padding: 0 10px;
         }
+        #workspaceSidebar section.panel h2 { font-size: 0.7rem; }
 
         .field { margin-bottom: 14px; }
 
@@ -951,7 +953,7 @@
             border-bottom: 1px solid var(--panel-border);
         }
         .active-recording h2 {
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             text-transform: uppercase;
             letter-spacing: 0.04em;
             color: var(--text-dim);
@@ -965,9 +967,9 @@
            overflow-wrap alone is sufficient; max-width:100% is kept as
            the same defensive belt-and-braces cap used everywhere else
            this containment pattern appears. */
-        .active-recording-name { font-size: 0.75rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; max-width: 100%; }
+        .active-recording-name { font-size: 0.7rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; max-width: 100%; }
         .active-recording-meta { font-size: 0.7rem; color: var(--text-dim); margin-top: 2px; }
-        .active-recording .empty-state { padding: 0; text-align: left; font-size: 0.75rem; }
+        .active-recording .empty-state { padding: 0; text-align: left; font-size: 0.7rem; }
 
         .empty-state {
             color: var(--text-dim);
@@ -975,6 +977,7 @@
             padding: 20px 4px;
             text-align: center;
         }
+        #workspaceSidebar .empty-state { font-size: 0.7rem; }
 
         table.channels {
             width: 100%;
@@ -1035,7 +1038,7 @@
             display: inline-flex;
             align-items: baseline;
             gap: 2px;
-            font-size: 0.68rem;
+            font-size: 0.7rem;
             line-height: 1;
             font-variant-numeric: tabular-nums;
             color: var(--text-dim);
@@ -1152,6 +1155,7 @@
             font-size: 0.75rem;
             color: var(--text);
         }
+        #workspaceSidebar input[type="search"] { font-size: 0.7rem; }
         input[type="search"]:focus {
             outline: none;
             border-color: var(--accent-dim);
@@ -1159,7 +1163,7 @@
         #channelSearchCount {
             white-space: nowrap;
             color: var(--text-dim);
-            font-size: 0.78rem;
+            font-size: 0.7rem;
         }
 
         /* Collapsible channel groups (native <details>/<summary> --
@@ -1177,7 +1181,7 @@
             cursor: pointer;
             padding: 10px 14px;
             font-weight: 600;
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             display: flex;
             align-items: center;
             gap: 8px;
@@ -1192,12 +1196,14 @@
             color: var(--text-dim);
             font-size: 0.75rem;
         }
+        #workspaceSidebar .chevron { font-size: 0.7rem; }
         details[open] > summary .chevron { transform: rotate(90deg); }
         .count-badge {
             font-weight: 500;
             color: var(--text-dim);
             font-size: 0.78rem;
         }
+        #workspaceSidebar .count-badge { font-size: 0.7rem; }
         /* Phase 4A-UAT9: the per-group "Show all"/"Hide all" toggle --
            compact, visually subordinate to the group name/count (section
            22: "avoid large full-size buttons... visually subordinate to
@@ -1249,7 +1255,7 @@
         details.channel-subgroup:first-child { border-top: none; }
         details.channel-subgroup summary {
             padding: 8px 0;
-            font-size: 0.75rem;
+            font-size: 0.7rem;
         }
         details.channel-subgroup .group-body { padding: 0 0 10px; }
         tr[hidden] { display: none; }
