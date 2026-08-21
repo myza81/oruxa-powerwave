@@ -90,6 +90,13 @@ class CalculatedChannelOut(BaseModel):
     reference_source_id: str
     sample_count: int
     created_at: datetime
+    # Phase 5A-UAT4 (DEC-047 clarification): additive field -- the
+    # inherited engineering classification (app.domain.
+    # channel_classification.KNOWN_CATEGORIES), used by the Waveform
+    # sidebar to subgroup Calculated Channels the same way Analog
+    # Channels are subgrouped. Every pre-existing field/consumer is
+    # unchanged.
+    engineering_type: str
 
     @classmethod
     def from_domain(cls, channel: CalculatedChannel) -> "CalculatedChannelOut":
@@ -105,6 +112,7 @@ class CalculatedChannelOut(BaseModel):
             reference_source_id=channel.reference_source_id,
             sample_count=int(channel.time.shape[0]),
             created_at=channel.created_at,
+            engineering_type=channel.engineering_type,
         )
 
 

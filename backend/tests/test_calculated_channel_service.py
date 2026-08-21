@@ -57,9 +57,15 @@ def _active_source(
     units: dict[str, str] | None = None,
     start_time: datetime | None = BASE_START,
     digital: dict[str, np.ndarray] | None = None,
+    # Phase 5A-UAT4: per-channel engineering_type override, defaulting to
+    # "Voltage" (this fixture's own pre-existing, unconditional default)
+    # so every pre-existing call site is completely unaffected -- only
+    # tests that explicitly need a different classification pass this.
+    engineering_types: dict[str, str] | None = None,
 ) -> ActiveSource:
     units = units or {}
     digital = digital or {}
+    engineering_types = engineering_types or {}
     col_data = {"time": time, **channels}
     col_data.update(digital)
 
@@ -83,7 +89,10 @@ def _active_source(
         elapsed_end_seconds=float(time[-1]) if len(time) else 0.0,
         sampling_rates=(1.0,), samples_per_rate=(len(time),),
         analog_channels=[
-            AnalogChannelSummary(name=name, index=i, unit=units.get(name, "V"), engineering_type="Voltage")
+            AnalogChannelSummary(
+                name=name, index=i, unit=units.get(name, "V"),
+                engineering_type=engineering_types.get(name, "Voltage"),
+            )
             for i, name in enumerate(channels)
         ],
         digital_channels=[
@@ -602,3 +611,177 @@ class TestCalculatedWaveformCursorPeakAnchor:
         channel = self._sum_channel(source_registry, calc_registry, n=100)
         result = resolve_calculated_annotation_anchor(channel, approximate_elapsed_seconds=999.0)
         assert result is None
+
+
+class TestEngineeringTypeInheritance:
+    """Phase 5A-UAT4 (DEC-047 clarification): a calculated channel's own
+    engineering_type is inherited from its input(s), never guessed from
+    the (user-editable) output name. Sections 23/24/25 of the owner's
+    task."""
+
+    def test_reverse_polarity_inherits_input_type(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1]), channels={"VA": np.array([1.0, 2.0])},
+            engineering_types={"VA": "Voltage"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert channel.engineering_type == "Voltage"
+
+    def test_absolute_value_inherits_input_type(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1]), channels={"IA": np.array([-1.0, 2.0])},
+            engineering_types={"IA": "Current"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="Abs(IA)", operation=OP_ABSOLUTE_VALUE,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="IA")],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert channel.engineering_type == "Current"
+
+    def test_multiply_constant_inherits_input_type(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1]), channels={"P": np.array([1.0, 2.0])},
+            engineering_types={"P": "Power"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="Px0.5", operation=OP_MULTIPLY_CONSTANT,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="P")],
+            parameters={"constant": 0.5}, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert channel.engineering_type == "Power"
+
+    def test_unary_operations_preserve_undefined_input_type(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0]), channels={"CH1": np.array([1.0])},
+            engineering_types={"CH1": "Undefined"},
+        ))
+        for name, op in [("-CH1", OP_REVERSE_POLARITY), ("Abs(CH1)", OP_ABSOLUTE_VALUE)]:
+            channel = create_calculated_channel(
+                workspace_id=WS, name=name, operation=op,
+                inputs=[ChannelRef(kind="source", source_id="src1", channel_name="CH1")],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            )
+            assert channel.engineering_type == "Undefined"
+
+    def test_addition_inherits_common_type(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1]),
+            channels={"VA": np.array([1.0, 2.0]), "VB": np.array([3.0, 4.0]), "VC": np.array([5.0, 6.0])},
+            units={"VA": "kV", "VB": "kV", "VC": "kV"},
+            engineering_types={"VA": "Voltage", "VB": "Voltage", "VC": "Voltage"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="SumABC", operation=OP_ADDITION,
+            inputs=[
+                ChannelRef(kind="source", source_id="src1", channel_name="VA"),
+                ChannelRef(kind="source", source_id="src1", channel_name="VB"),
+                ChannelRef(kind="source", source_id="src1", channel_name="VC"),
+            ],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert channel.engineering_type == "Voltage"
+
+    def test_subtraction_inherits_common_type(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1]),
+            channels={"IA": np.array([1.0, 2.0]), "IB": np.array([3.0, 4.0]), "IC": np.array([5.0, 6.0])},
+            units={"IA": "A", "IB": "A", "IC": "A"},
+            engineering_types={"IA": "Current", "IB": "Current", "IC": "Current"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="SubABC", operation=OP_SUBTRACTION,
+            inputs=[
+                ChannelRef(kind="source", source_id="src1", channel_name="IA"),
+                ChannelRef(kind="source", source_id="src1", channel_name="IB"),
+                ChannelRef(kind="source", source_id="src1", channel_name="IC"),
+            ],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert channel.engineering_type == "Current"
+
+    def test_addition_of_two_power_inputs(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0]),
+            channels={"P1": np.array([1.0]), "P2": np.array([2.0])},
+            units={"P1": "W", "P2": "W"},
+            engineering_types={"P1": "Power", "P2": "Power"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="Ptotal", operation=OP_ADDITION,
+            inputs=[
+                ChannelRef(kind="source", source_id="src1", channel_name="P1"),
+                ChannelRef(kind="source", source_id="src1", channel_name="P2"),
+            ],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert channel.engineering_type == "Power"
+
+    def test_addition_falls_back_to_undefined_when_any_input_type_unknown(self, registries):
+        # Section 7/24: units are otherwise valid (both "V"), but one
+        # input's own type is Undefined -- the conservative result is
+        # Undefined, never a guess, and the calculation itself still
+        # succeeds (classification never blocks eligibility).
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0]),
+            channels={"VA": np.array([1.0]), "CH1": np.array([2.0])},
+            units={"VA": "V", "CH1": "V"},
+            engineering_types={"VA": "Voltage", "CH1": "Undefined"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="Mixed", operation=OP_ADDITION,
+            inputs=[
+                ChannelRef(kind="source", source_id="src1", channel_name="VA"),
+                ChannelRef(kind="source", source_id="src1", channel_name="CH1"),
+            ],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert channel.engineering_type == "Undefined"
+        assert channel.values.tolist() == [3.0], "classification never blocked or altered the calculation itself"
+
+    def test_calculated_from_calculated_propagates_type_transitively(self, registries):
+        # Section 25: Sum = VA+VB (Voltage) -> Scaled = Sum*0.5 (Voltage)
+        # -> AbsScaled = abs(Scaled) (Voltage), verified through TWO
+        # levels of calculated-from-calculated.
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1]),
+            channels={"VA": np.array([1.0, 2.0]), "VB": np.array([3.0, 4.0])},
+            units={"VA": "kV", "VB": "kV"},
+            engineering_types={"VA": "Voltage", "VB": "Voltage"},
+        ))
+        sum_channel = create_calculated_channel(
+            workspace_id=WS, name="Sum", operation=OP_ADDITION,
+            inputs=[
+                ChannelRef(kind="source", source_id="src1", channel_name="VA"),
+                ChannelRef(kind="source", source_id="src1", channel_name="VB"),
+            ],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert sum_channel.engineering_type == "Voltage"
+
+        scaled_channel = create_calculated_channel(
+            workspace_id=WS, name="Scaled", operation=OP_MULTIPLY_CONSTANT,
+            inputs=[ChannelRef(kind="calculated", calculated_channel_id=sum_channel.id)],
+            parameters={"constant": 0.5}, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert scaled_channel.engineering_type == "Voltage"
+
+        abs_scaled_channel = create_calculated_channel(
+            workspace_id=WS, name="AbsScaled", operation=OP_ABSOLUTE_VALUE,
+            inputs=[ChannelRef(kind="calculated", calculated_channel_id=scaled_channel.id)],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert abs_scaled_channel.engineering_type == "Voltage"

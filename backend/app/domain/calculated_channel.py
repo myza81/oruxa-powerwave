@@ -25,6 +25,8 @@ from datetime import datetime
 
 import numpy as np
 
+from app.domain.channel_classification import UNDEFINED
+
 OP_REVERSE_POLARITY = "reverse_polarity"
 OP_ABSOLUTE_VALUE = "absolute_value"
 OP_MULTIPLY_CONSTANT = "multiply_constant"
@@ -116,6 +118,11 @@ class CalculatedChannel:
     time: np.ndarray
     values: np.ndarray
     created_at: datetime
+    # Phase 5A-UAT4 (DEC-047 clarification): the inherited engineering
+    # classification (app.domain.channel_classification.KNOWN_CATEGORIES),
+    # computed once at creation time by derive_engineering_type() below --
+    # never re-derived from this channel's own (user-editable) `name`.
+    engineering_type: str = UNDEFINED
 
 
 def evaluate_reverse_polarity(values: np.ndarray) -> np.ndarray:
@@ -166,6 +173,43 @@ def units_compatible(units: list[str | None]) -> bool:
     if not known:
         return True
     return len(known) == len(units) and len(set(known)) == 1
+
+
+def derive_engineering_type(input_types: list[str]) -> str:
+    """Phase 5A-UAT4: the inherited engineering-classification rule for
+    every current Phase 5A operation. Deliberately ONE rule, not five --
+    it happens to cover Reverse Polarity/Absolute Value/Multiply by
+    Constant (exactly one input, so "the common type" trivially IS that
+    input's own type) and Addition/Subtraction (2+ inputs, common type
+    required) identically, with no per-operation branching needed.
+
+    Never guesses from a calculated channel's own (user-editable) `name`
+    -- the owner's own explicit requirement. Reuses
+    app.domain.channel_classification.UNDEFINED as the one shared
+    "not confidently known" sentinel, never a second/local definition of
+    the same idea; a calculated-from-calculated channel is classified by
+    passing its own already-derived `engineering_type` back into this
+    function as one of its inputs, so the inheritance rule composes
+    correctly through arbitrarily deep chains with no separate
+    transitive-propagation logic required.
+
+    Conservative by construction (mirrors classify_analog_channel's own
+    "never guess" philosophy): every input must share the exact same
+    KNOWN (non-UNDEFINED) type for that type to be inherited; an empty
+    list, any UNDEFINED input, or a genuine mismatch (e.g. Voltage
+    combined with Current -- unreachable today since units_compatible()
+    already rejects that pairing for multi-input operations before this
+    is even called, but never assumed here) all conservatively yield
+    UNDEFINED rather than a guess.
+    """
+    if not input_types:
+        return UNDEFINED
+    first = input_types[0]
+    if first == UNDEFINED:
+        return UNDEFINED
+    if all(t == first for t in input_types):
+        return first
+    return UNDEFINED
 
 
 def timebases_aligned(

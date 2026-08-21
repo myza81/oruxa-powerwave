@@ -58,6 +58,9 @@ class TestCreateBasicOperations:
         assert body["operation"] == "reverse_polarity"
         assert body["unit"] == "V"
         assert body["sample_count"] == 40
+        # Phase 5A-UAT4: additive field -- VA's own "V" unit classifies
+        # as Voltage (app.domain.channel_classification), inherited here.
+        assert body["engineering_type"] == "Voltage"
 
     def test_absolute_value(self, client, comtrade_fixtures_dir):
         source_id = _upload(client, "ws-1", comtrade_fixtures_dir)

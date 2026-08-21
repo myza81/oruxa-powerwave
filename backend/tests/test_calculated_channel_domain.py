@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from app.domain.calculated_channel import (
+    derive_engineering_type,
     evaluate_absolute_value,
     evaluate_addition,
     evaluate_multiply_constant,
@@ -18,6 +19,7 @@ from app.domain.calculated_channel import (
     units_compatible,
     would_create_cycle,
 )
+from app.domain.channel_classification import UNDEFINED
 
 
 class TestReversePolarity:
@@ -216,3 +218,32 @@ class TestCycleDetection:
 
     def test_self_reference_detected(self):
         assert would_create_cycle({}, "calc_x", ["calc_x"]) is True
+
+
+class TestDeriveEngineeringType:
+    """Phase 5A-UAT4: the ONE inherited-classification rule, shared by
+    every unary (trivially one-element list) and multi-input (2+ element
+    list) operation alike -- never a per-operation branch."""
+
+    def test_single_known_type_is_returned(self):
+        # Covers Reverse Polarity/Absolute Value/Multiply by Constant.
+        assert derive_engineering_type(["Voltage"]) == "Voltage"
+        assert derive_engineering_type(["Current"]) == "Current"
+        assert derive_engineering_type(["Power"]) == "Power"
+
+    def test_single_undefined_type_stays_undefined(self):
+        assert derive_engineering_type([UNDEFINED]) == UNDEFINED
+
+    def test_matching_multi_input_types_are_inherited(self):
+        assert derive_engineering_type(["Voltage", "Voltage", "Voltage"]) == "Voltage"
+        assert derive_engineering_type(["Current", "Current"]) == "Current"
+
+    def test_mismatched_multi_input_types_fall_back_to_undefined(self):
+        assert derive_engineering_type(["Voltage", "Current"]) == UNDEFINED
+
+    def test_any_undefined_input_forces_undefined_result(self):
+        assert derive_engineering_type(["Voltage", UNDEFINED]) == UNDEFINED
+        assert derive_engineering_type([UNDEFINED, "Voltage"]) == UNDEFINED
+
+    def test_empty_input_list_is_undefined(self):
+        assert derive_engineering_type([]) == UNDEFINED

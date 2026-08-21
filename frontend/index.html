@@ -1529,8 +1529,8 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 34px;
-            height: 34px;
+            width: 28px;
+            height: 28px;
             padding: 0;
             background: transparent;
             border: 1px solid var(--panel-border);
@@ -2681,8 +2681,15 @@
                          when there are no calculated channels yet (never
                          an empty, always-visible section cluttering the
                          sidebar). -->
-                    <section class="panel" id="calculatedChannelsSidebarSection" aria-labelledby="calculated-channels-sidebar-heading" hidden>
-                        <h2 id="calculated-channels-sidebar-heading">Calculated Channels</h2>
+                    <!-- Phase 5A-UAT4: "Calculated Channels" is now itself a
+                         collapsible <details class="channel-group"> (same
+                         pattern as Analog/Digital Channels), rendered
+                         entirely inside #calculatedChannelsSidebarBody by
+                         wwRenderCalculatedChannelsSidebarSection() --
+                         hence no static heading here any more; aria-label
+                         keeps this section identifiable even in the brief
+                         window before any content exists. -->
+                    <section class="panel" id="calculatedChannelsSidebarSection" aria-label="Calculated Channels" hidden>
                         <div id="calculatedChannelsSidebarBody"></div>
                     </section>
                     <!-- Phase 4E-UAT2 (owner UAT decision): Free Text Notes
@@ -10807,7 +10814,13 @@
                     '<span class="channel-color-dot" style="background:' + escapeHtml(color) + '" aria-hidden="true"></span>' +
                     '<div class="ww-cc-list-row-main">' +
                         '<div class="ww-cc-list-row-name">' + escapeHtml(label) + '</div>' +
-                        '<div class="ww-cc-list-row-summary">' + escapeHtml(wwCcOperationSummaryText(calc)) + '</div>' +
+                        // Phase 5A-UAT4 (section 19, optional/trivial):
+                        // the inherited engineering classification
+                        // appended to the existing operation summary line
+                        // -- e.g. "Addition (VA + VB) · Voltage" -- no new
+                        // row, no new CSS class, matching the task's own
+                        // "optional... do not expand scope" guidance.
+                        '<div class="ww-cc-list-row-summary">' + escapeHtml(wwCcOperationSummaryText(calc) + " · " + (calc.engineering_type || "Undefined")) + '</div>' +
                         (error ? '<div class="ww-cc-list-row-error">' + escapeHtml(error) + '</div>' : '') +
                     '</div>' +
                     '<div class="ww-cc-list-row-controls">' +
@@ -10852,10 +10865,16 @@
         function wwCalculatedChannelMeta(calc) {
             const timing = wwSourceTimingAuthority(calc.reference_source_id);
             // Section 68: its own "Calculated Channels" classification,
-            // never Voltage/Current automatic inference -- engineeringType
-            // here is display-only metadata, not read by any grouping
-            // logic this phase (Grouped/Separate/Custom group by panel
-            // membership, unaffected either way).
+            // never Voltage/Current automatic inference. This
+            // `engineeringType` feeds wwPanelGroupKeyFor()'s own Grouped-
+            // mode PANEL placement ONLY -- deliberately kept hardcoded
+            // "Calculated" (Phase 5A-UAT4 section 18: sidebar grouping
+            // must never change plotting/panel-grouping behavior).
+            // Distinct from `calc.engineering_type` (the real backend-
+            // inherited classification, e.g. Voltage/Current) used
+            // ONLY by wwRenderCalculatedChannelsSidebarSection()'s own
+            // sidebar subgrouping -- two separate, deliberately
+            // independent concerns sharing a similar name.
             return {
                 sourceId: calc.id, sourceName: "Calculated Channels", channelName: calc.name,
                 unit: calc.unit, engineeringType: "Calculated",
@@ -10913,20 +10932,89 @@
                 ' aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '"';
         }
 
-        // Phase 5A-UAT2: now built via the SAME renderChannelTable()/
-        // analogChannelNameCellHtml()/wwCurValueCellHtml() analog rows use
-        // (class="channels", the actual existing analog sidebar styling --
-        // the previous bespoke `class="channel-table"` markup carried no
-        // CSS of its own at all, and rendered only a bare name cell, no
-        // Cur A/Cur B). wwCurValueCellHtml()/wwCurValueText() were already
-        // fully generic (keyed by sourceId/channelName via wwChannelKey(),
-        // gated by the SAME wwIsAnalogChannelVisible()/
-        // ww.measurementCursors authority every analog cell already uses)
-        // -- calling them with a calculated channel's own id/name is the
-        // ENTIRE fix; no new measurement-formatting/gating logic exists
-        // here. No "Phase" column (calculated channels carry no phase
-        // field in DEC-047's own schema -- an honest omission, not a
-        // layout shortcut).
+        // Phase 5A-UAT4 (section 14/15): Calculated Channels' own Show
+        // all/Hide all -- same visual language as groupToggleButtonHtml()
+        // (Analog/Digital's own `.group-toggle-btn`), but this section
+        // does a full innerHTML rebuild on every relevant change (its
+        // own established pattern since Phase 5A) rather than a targeted
+        // sync pass, so the button's initial Show all/Hide all text and
+        // aria-pressed are computed DIRECTLY from ww.displayed at render
+        // time instead of a separate post-render sync step.
+        // `scopeAttr` is either `"*"` (the top-level "Calculated
+        // Channels" button, across every subgroup) or an exact
+        // engineering-type string (one subgroup's own button) --
+        // wwToggleCalculatedChannelGroupDisplay() reads it back to decide
+        // which channels are in scope, never a DOM row scan.
+        function calculatedGroupToggleButtonHtml(scopeAttr, groupLabel, channels) {
+            const allVisible = channels.length > 0 && channels.every((c) => wwIsAnalogChannelVisible(c.id, c.name));
+            const label = (allVisible ? "Hide all " : "Show all ") + groupLabel + " channels";
+            return ' <button type="button" class="group-toggle-btn" data-calculated-scope="' + escapeHtml(scopeAttr) + '"' +
+                ' aria-pressed="' + allVisible + '"' +
+                ' aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '">' +
+                (allVisible ? "Hide all" : "Show all") + '</button>';
+        }
+
+        // Phase 5A-UAT4: the click handler for both the top-level and
+        // per-subgroup Calculated Channels toggle buttons above. Mirrors
+        // wwToggleChannelGroupDisplay()'s own show-all-or-hide-all shape,
+        // but scoped by engineering_type (read from ww.calculatedChannels
+        // directly, never a DOM row scan) rather than by DOM ancestry,
+        // and builds metas via wwCalculatedChannelMeta() -- the SAME
+        // function wwToggleCalculatedChannelDisplay() already uses for a
+        // single channel -- rather than analogMetaFromRow() (a real
+        // analog row's dataset shape, which calculated rows never carry).
+        // Never a new visibility state: ww.displayed remains the sole
+        // authority, exactly like every other calculated-channel toggle
+        // path.
+        async function wwToggleCalculatedChannelGroupDisplay(scopeAttr) {
+            const all = Array.from(ww.calculatedChannels.values());
+            const channels = scopeAttr === "*" ? all : all.filter((c) => (c.engineering_type || "Undefined") === scopeAttr);
+            if (channels.length === 0) return;
+            const allVisible = channels.every((c) => wwIsAnalogChannelVisible(c.id, c.name));
+
+            if (allVisible) {
+                wwRemoveChannelsByKeys(channels.map((c) => wwChannelKey(c.id, c.name)));
+            } else {
+                const toShow = channels.filter((c) => !wwIsAnalogChannelVisible(c.id, c.name));
+                await wwAddSelectedChannels(toShow.map(wwCalculatedChannelMeta));
+            }
+            wwRenderCalculatedChannelsSidebarSection();
+            wwRenderCalculatedChannelManagerList();
+            wwCcRenderWaveformPreview();
+        }
+
+        // Phase 5A-UAT4 (DEC-047 clarification): "Calculated Channels"
+        // remains ONE top-level collapsible group (never merged into the
+        // real Analog Channels groups above it -- the owner's own
+        // explicit requirement), now itself a <details class="channel-
+        // group"> exactly like Analog/Digital Channels, containing nested
+        // per-engineering-type <details class="channel-subgroup"> blocks
+        // -- the SAME nested-group visual language, not a new pattern.
+        // Grouped by `calc.engineering_type` (backend-authoritative,
+        // inherited from input metadata/operation semantics -- see
+        // app.domain.calculated_channel.derive_engineering_type() --
+        // NEVER guessed from the channel's own user-editable name), using
+        // the EXACT SAME ANALOG_GROUP_ORDER ordering/category set Analog
+        // Channels already uses (section 12: no invented categories). A
+        // type with zero current calculated channels renders no subgroup
+        // at all (section 13, matching renderAnalogGroup()'s own
+        // "only present types" convention). This sidebar grouping is
+        // PURELY presentational -- it never touches wwPanelGroupKeyFor()/
+        // Grouped-mode panel placement (wwCalculatedChannelMeta() still
+        // deliberately reports its own separate "Calculated" panel-
+        // grouping key, untouched -- section 18: no separate rendering
+        // pipeline by engineering type).
+        //
+        // Each subgroup's own table is still built via the SAME
+        // renderChannelTable()/analogChannelNameCellHtml()/
+        // wwCurValueCellHtml() analog rows use (class="channels", the
+        // actual existing analog sidebar styling) -- Phase 5A-UAT2's own
+        // A/B presentation fix is completely preserved, just now rendered
+        // once per subgroup instead of once for the whole flat list.
+        // wwCurValueCellHtml()/wwCurValueText() were already fully
+        // generic; calling them with a calculated channel's own id/name
+        // remains the entire mechanism. No "Phase" column (calculated
+        // channels carry no phase field in DEC-047's own schema).
         function wwRenderCalculatedChannelsSidebarSection() {
             const sectionEl = document.getElementById("calculatedChannelsSidebarSection");
             const bodyEl = document.getElementById("calculatedChannelsSidebarBody");
@@ -10934,30 +11022,49 @@
             const channels = Array.from(ww.calculatedChannels.values());
             sectionEl.hidden = channels.length === 0;
             if (channels.length === 0) {
-                // Small pre-existing-bug fix, discovered by this task's own
-                // "delete -> measurement row disappears cleanly" acceptance
-                // check: this early return used to skip clearing bodyEl,
-                // leaving the last channel's stale <tr> (with its now-
-                // orphaned Cur A/Cur B cells) sitting in the DOM,
-                // invisible only because the ancestor <section> itself was
-                // hidden -- inconsistent with
-                // wwRenderCalculatedChannelManagerList()'s own sibling
-                // convention two functions away, which already replaces
-                // its body with the empty-state paragraph at zero. No
-                // functional/visual difference for today's user (the
-                // section was already hidden), but a genuine stale-DOM
-                // correctness gap once a row can carry live-updating Cur
-                // A/B cells that a later generic sweep could otherwise
-                // still find.
+                // Small pre-existing-bug fix (Phase 5A-UAT2): this early
+                // return used to skip clearing bodyEl, leaving the last
+                // channel's stale markup sitting in the DOM, invisible
+                // only because the ancestor <section> itself was hidden.
                 bodyEl.innerHTML = "";
                 return;
             }
-            const sorted = channels.slice().sort((a, b) => (a.name < b.name ? -1 : 1));
-            bodyEl.innerHTML = '<div class="subgroup-list">' + renderChannelTable(sorted, [
-                ["Channel", (c) => analogChannelNameCellHtml({ source_id: c.id }, c), { raw: true }],
-                ["Cur A", (c) => wwCurValueCellHtml(c.id, c.name, "a"), { raw: true, className: "cur-value-col" }],
-                ["Cur B", (c) => wwCurValueCellHtml(c.id, c.name, "b"), { raw: true, className: "cur-value-col" }],
-            ], null, (c) => calculatedChannelRowAttrs(c)) + '</div>';
+
+            // Section 21: a calculated channel created before this field
+            // existed (or any other missing/unrecognized value) safely
+            // falls back to Undefined -- never crashes the renderer.
+            const byType = new Map();
+            for (const calc of channels) {
+                const type = calc.engineering_type || "Undefined";
+                if (!byType.has(type)) byType.set(type, []);
+                byType.get(type).push(calc);
+            }
+            const orderedTypes = ANALOG_GROUP_ORDER.filter((t) => byType.has(t))
+                .concat([...byType.keys()].filter((t) => !ANALOG_GROUP_ORDER.includes(t)));
+
+            let subgroupsHtml = '<div class="subgroup-list">';
+            for (const type of orderedTypes) {
+                const group = byType.get(type).sort((a, b) => (a.name < b.name ? -1 : 1));
+                subgroupsHtml += '<details class="channel-subgroup" open data-subgroup="' + escapeHtml(type) + '">';
+                subgroupsHtml += '<summary><span class="chevron">&#9656;</span>' + escapeHtml(type) +
+                    ' <span class="count-badge">(' + group.length + ')</span>' +
+                    calculatedGroupToggleButtonHtml(type, type, group) +
+                    '</summary>';
+                subgroupsHtml += '<div class="group-body">' + renderChannelTable(group, [
+                    ["Channel", (c) => analogChannelNameCellHtml({ source_id: c.id }, c), { raw: true }],
+                    ["Cur A", (c) => wwCurValueCellHtml(c.id, c.name, "a"), { raw: true, className: "cur-value-col" }],
+                    ["Cur B", (c) => wwCurValueCellHtml(c.id, c.name, "b"), { raw: true, className: "cur-value-col" }],
+                ], null, (c) => calculatedChannelRowAttrs(c)) + '</div>';
+                subgroupsHtml += '</details>';
+            }
+            subgroupsHtml += '</div>';
+
+            bodyEl.innerHTML = '<details class="channel-group" open data-group="calculated">' +
+                '<summary><span class="chevron">&#9656;</span>Calculated Channels ' +
+                '<span class="count-badge">(' + channels.length + ')</span>' +
+                calculatedGroupToggleButtonHtml("*", "Calculated Channels", channels) +
+                '</summary>' +
+                '<div class="group-body">' + subgroupsHtml + '</div></details>';
         }
 
         // Phase 5A-UAT: Calculated Channels waveform preview -- a
@@ -11255,7 +11362,26 @@
             const calc = ww.calculatedChannels.get(row.dataset.calculatedChannelId);
             if (calc) wwToggleCalculatedChannelDisplay(calc);
         }
-        document.getElementById("calculatedChannelsSidebarBody").addEventListener("click", wwCalculatedChannelsSidebarRowClickHandler);
+        document.getElementById("calculatedChannelsSidebarBody").addEventListener("click", (event) => {
+            // Phase 5A-UAT4 (section 14/15): the top-level "Calculated
+            // Channels" and per-type subgroup Show all/Hide all buttons --
+            // checked BEFORE the row handler below, same order
+            // setupChannelRowToggles() already established for the analog
+            // Channel Browser's own group-toggle button (it lives inside
+            // <summary>, structurally outside any row, so the row check
+            // alone would already ignore it -- checking first just keeps
+            // the "which control was this" logic in one obvious place).
+            // preventDefault()/stopPropagation() stop the native <details>
+            // from ALSO toggling open/closed from this same click.
+            const groupBtn = event.target.closest(".group-toggle-btn[data-calculated-scope]");
+            if (groupBtn) {
+                event.preventDefault();
+                event.stopPropagation();
+                wwToggleCalculatedChannelGroupDisplay(groupBtn.dataset.calculatedScope);
+                return;
+            }
+            wwCalculatedChannelsSidebarRowClickHandler(event);
+        });
         document.getElementById("calculatedChannelsSidebarBody").addEventListener("keydown", (event) => {
             if (event.key !== "Enter" && event.key !== " ") return;
             const row = event.target.closest("tr[data-calculated-channel-id]");

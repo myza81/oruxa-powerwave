@@ -35,6 +35,7 @@ from app.domain.calculated_channel import (
     UNARY_OPERATIONS,
     CalculatedChannel,
     ChannelRef,
+    derive_engineering_type,
     evaluate_absolute_value,
     evaluate_addition,
     evaluate_multiply_constant,
@@ -44,6 +45,7 @@ from app.domain.calculated_channel import (
     units_compatible,
     would_create_cycle,
 )
+from app.domain.channel_classification import UNDEFINED
 from app.domain.source import ActiveSource
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.errors import (
@@ -82,6 +84,13 @@ class _ResolvedInput:
     unit: str
     reference_source_id: str
     start_epoch: float | None
+    # Phase 5A-UAT4: the input's own already-known engineering
+    # classification -- a real source channel's `AnalogChannelSummary.
+    # engineering_type` (computed once at import time by
+    # classify_analog_channel), or another calculated channel's own
+    # already-derived `engineering_type`. Feeds derive_engineering_type()
+    # in create_calculated_channel() below.
+    engineering_type: str
 
 
 def _source_start_epoch(active: ActiveSource) -> float | None:
@@ -109,12 +118,21 @@ def _resolve_input(
         if active is None:
             raise SourceNotFoundError(f"No source '{ref.source_id}' in workspace '{workspace_id}'.")
         unit = _resolve_analog_channel(active, ref.channel_name)  # raises ChannelNotFoundError/ChannelNotAnalogError
+        # Phase 5A-UAT4: the channel was just confirmed to exist by
+        # _resolve_analog_channel() above, so this always finds a match --
+        # reuses that same AnalogChannelSummary the Channel Browser API
+        # already serves, never a second classification pass.
+        engineering_type = next(
+            (ch.engineering_type for ch in active.metadata.analog_channels if ch.name == ref.channel_name),
+            UNDEFINED,
+        )
         waveform_data = active.record.waveform_data
         time = waveform_data["time"].to_numpy()
         values = waveform_data[ref.channel_name].to_numpy()
         return _ResolvedInput(
             time=time, values=values, unit=unit,
             reference_source_id=ref.source_id, start_epoch=_source_start_epoch(active),
+            engineering_type=engineering_type,
         )
 
     calc = calc_registry.get(workspace_id, ref.calculated_channel_id)
@@ -132,6 +150,11 @@ def _resolve_input(
     return _ResolvedInput(
         time=calc.time, values=calc.values, unit=calc.unit,
         reference_source_id=calc.reference_source_id, start_epoch=start_epoch,
+        # Phase 5A-UAT4: a calculated-from-calculated input passes its own
+        # already-derived engineering_type back through
+        # derive_engineering_type() -- this is the entire transitive-
+        # propagation mechanism, no separate graph walk needed.
+        engineering_type=calc.engineering_type,
     )
 
 
@@ -198,6 +221,13 @@ def create_calculated_channel(
     else:
         output_unit = resolved[0].unit
 
+    # Phase 5A-UAT4: classification/grouping only -- never a second
+    # eligibility gate. derive_engineering_type() already conservatively
+    # falls back to UNDEFINED for a mixed/unknown set; this never blocks
+    # or alters the unit/timebase checks above, which remain the sole
+    # calculation-eligibility authority.
+    output_engineering_type = derive_engineering_type([r.engineering_type for r in resolved])
+
     constant: float | None = None
     if operation == OP_MULTIPLY_CONSTANT:
         raw_constant = parameters.get("constant") if parameters else None
@@ -235,6 +265,7 @@ def create_calculated_channel(
         time=first.time,
         values=values,
         created_at=_utc_now(),
+        engineering_type=output_engineering_type,
     )
     calc_registry.add(channel)
     return channel
