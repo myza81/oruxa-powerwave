@@ -6302,6 +6302,114 @@ unconfigured, Start New Workspace clears both). See
 
 ---
 
+## DEC-050 — Per-Unit measurement model is clarified to be measurement-group-aware; the currently deployed source-bound model (DEC-049) is not the final target
+
+Date: 2026-08-22
+Status: Approved — product/engineering direction; **implementation
+pending**. This decision authorizes documentation and a canonical
+specification only; it does not authorize any code change.
+Source: explicit owner-supplied clarification of Per-Unit requirements,
+following further reflection after DEC-049's source-bound redesign
+shipped and passed initial UAT.
+
+Decision:
+
+The source-bound model DEC-049 describes (`source_id → one PU
+configuration`, applied to every eligible Voltage/Current channel of
+that source) is **not the final target** for any recording whose
+channels span more than one electrical measurement context — which the
+owner has clarified is common, not an edge case, for disturbance
+recorders installed at multi-voltage-level substations (e.g. a
+275/132 kV site recording bus voltages, line currents, and an interbus
+transformer's HV and LV currents all in one COMTRADE file).
+
+The authoritative future direction is:
+
+```text
+source
+→ measurement groups
+→ group-specific base configuration
+```
+
+replacing the current:
+
+```text
+source
+→ one Vbase
+→ one Ibase
+```
+
+The full engineering/product specification for this target — the
+Measurement Group concept, per-group Voltage/Current base handling,
+voltage-reference interpretation rules, the open review item on
+phase-to-ground PU voltage mathematics, calculated-channel implications,
+identity model, and known deficiencies in the current implementation —
+is recorded in
+[PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md), which
+this decision designates **authoritative** for all future Per-Unit work
+and is deliberately **not duplicated here**.
+
+Reason:
+
+DEC-049's source-bound model was itself an owner-approved simplification
+of an even more complex profile-based design, adopted because the
+profile-based workflow was "too complicated for the engineer." That
+simplification correctly solved the *workflow* complexity problem, but
+in doing so collapsed the base configuration to one-per-source — which
+is only valid for a source whose channels all belong to a single
+electrical measurement context. The owner has since clarified that this
+is not a safe assumption for real disturbance recordings at multi-level
+substations, and that the underlying data model — not just the UI —
+needs to support multiple measurement groups per source, each with its
+own base.
+
+Separately, an explicit code-level review performed while assembling
+[PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) (§8 of
+that document) confirmed a genuine mismatch between the currently
+deployed Voltage per-unit division and the clarified requirement that a
+healthy phase-to-ground measurement on a nominal 275 kV system should
+read ≈1.0 pu when 275 kV LL is entered as the base — the current code
+divides directly by the raw entered Vbase with no reference-aware
+adjustment. This is recorded as an open review item, not resolved by
+this decision.
+
+Alternatives considered:
+
+- **Treat DEC-049 as sufficient and defer the multi-group requirement
+  indefinitely** — rejected; the owner was explicit that a single
+  source spanning multiple voltage levels is a normal case for this
+  application's actual users (substation disturbance recordings), not a
+  rare exception worth permanently ignoring.
+- **Silently extend the current source-bound code to approximate
+  grouping without a canonical specification** — rejected; per the
+  owner's explicit instruction, this pass is documentation and
+  agent-coordination only, specifically so that Claude and Codex share
+  one understanding before any implementation begins, rather than each
+  independently guessing at the shape of "groups."
+- **Rewrite DEC-049's own history to describe the target model as
+  already decided that way** — rejected; DEC-049 remains an accurate
+  record of what was actually approved and built at the time. This
+  decision supersedes DEC-049's *scope* (it is no longer considered the
+  final target), not DEC-049's *history*.
+
+Impact:
+
+**No application code, frontend code, or backend test was modified by
+this decision.** New:
+[PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) (the
+canonical specification, now authoritative for all future Per-Unit
+work). Updated: [CURRENT_STATE.md](CURRENT_STATE.md) (PU implementation
+work is paused pending alignment),
+[MIGRATION_PLAN.md](MIGRATION_PLAN.md) (a new planned migration phase,
+stages only, not implementation steps), [HANDOFF.md](HANDOFF.md) (next
+session must read the canonical document and perform an independent
+architecture/code review before continuing any PU implementation),
+[AGENTS.md](../../AGENTS.md) and [CLAUDE.md](../../CLAUDE.md) (explicit
+pointer to the canonical document for PU-related work). See
+[MIGRATION_PLAN.md — Phase 6](MIGRATION_PLAN.md#phase-6--per-unit-measurement-model-alignment-documentation-only-2026-08-22).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

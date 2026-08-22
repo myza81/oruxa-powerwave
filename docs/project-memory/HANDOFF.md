@@ -8,6 +8,60 @@ Last updated: **2026-08-22**
 
 ## What was most recently done
 
+**Phase 6 — Per-Unit Measurement Model Alignment (documentation and
+agent-coordination only).** Before any further Per-Unit implementation
+continues, the owner clarified that a single COMTRADE/CSV source may
+legitimately contain multiple electrical measurement contexts (multiple
+voltage levels, multiple current groups with different equipment
+ratings) — a case the currently deployed DEC-049 source-bound model
+(`source_id → one PU configuration`) cannot represent. **No application
+code, frontend code, or backend test was modified this pass.**
+
+**What was created**: a new canonical specification,
+[PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md), now
+**authoritative** for all Per-Unit/Voltage-Base/Current-Base/
+measurement-grouping/voltage-reference-detection/PU-waveform-display/
+PU-significant-value-reporting/calculated-channel-PU work. It records
+the currently deployed source-bound model (§20 of that document) versus
+the approved target — `source → measurement groups → group-specific
+base configuration` (§21) — as two clearly separated sections, and
+flags one genuine architectural mismatch confirmed by direct code
+review of `backend/app/domain/per_unit.py`: a Voltage channel's own
+per-unit division uses the raw entered Vbase with no adjustment for the
+channel's own voltage reference, so a healthy phase-to-ground
+measurement on a nominal 275 kV system reads ≈0.577 pu today, not the
+required ≈1.0 pu — recorded as an `[OPEN]` review item (§8 of that
+document), explicitly **not resolved or fixed this pass** per the
+owner's own instruction not to "fix" the current implementation during
+a documentation-only task.
+
+**What was updated**: [DECISIONS.md](DECISIONS.md) (new DEC-050 — the
+target direction is approved product/engineering direction,
+**implementation pending**; DEC-049's own history is preserved
+unchanged, not rewritten), [MIGRATION_PLAN.md](MIGRATION_PLAN.md) (new
+Phase 6 entry, this section, plus a 7-stage planned/pending-approval
+future migration outline — sequencing only, no implementation steps),
+[CURRENT_STATE.md](CURRENT_STATE.md) (concise DEC-050 summary, linking
+out to the canonical document rather than duplicating it),
+[AGENTS.md](../../AGENTS.md) and [CLAUDE.md](../../CLAUDE.md) (an
+explicit pointer to the canonical document before any PU-related work,
+mirroring the existing PRODUCT_REFERENCES.md cross-reference pattern).
+
+**Next step — explicitly authorized, and the ONLY thing authorized next
+for Per-Unit**: an **independent architecture/code review against
+[PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md)** — a gap
+analysis, not implementation. **Do not continue extending the current
+source-wide Per-Unit model** (adding fields, endpoints, or UI to the
+existing `source_id → one PU configuration` shape) until that review
+happens and the owner has made further decisions, particularly on the
+§8 voltage-math open item, which must not be resolved unilaterally.
+
+Committed as one isolated documentation-only commit; see this task's own
+final report for the exact commit hash, git-diff verification, and
+push/CI status.
+
+## What was done in the prior session (Phase 5C-UAT — Source-Bound Per-Unit Redesign, DEC-049 addendum)
+
 **Phase 5C-UAT — Source-Bound Per-Unit Redesign (DEC-049 addendum).**
 Owner UAT on the Phase 5C profile-based workflow (below) found it too
 complex — creating a named profile and manually assigning channels to
@@ -6814,6 +6868,18 @@ checks for this Phase 3B pass. **Production was not touched.**
 
 ## What remains unresolved
 
+- `[OPEN]`, **Per-Unit measurement model — the current source-bound
+  implementation (DEC-049) is confirmed insufficient for a source
+  spanning multiple electrical measurement contexts, and a genuine
+  Voltage per-unit division mismatch has been confirmed by direct code
+  review** (a phase-to-ground measurement reads against the raw entered
+  Vbase with no reference-aware adjustment). See
+  [PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) (the
+  now-authoritative specification) and
+  [DECISIONS.md — DEC-050](DECISIONS.md#dec-050--per-unit-measurement-model-is-clarified-to-be-measurement-group-aware-the-currently-deployed-source-bound-model-dec-049-is-not-the-final-target).
+  **Do not continue extending the current source-wide model** — the
+  next authorized step is an independent architecture/code review
+  against that document, not implementation.
 - `[OPEN]`, **direct vertical drag/reorder of panels and drag-to-overlay/
   group by direct lane dragging are still fully unimplemented and
   undecided** — `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`,
@@ -7304,6 +7370,12 @@ sources actually get imported during a shared-DEV session.
 
 ## Owner approval needed before proceeding?
 
+- **Yes — an independent architecture/code review against
+  [PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) is
+  required before any further Per-Unit implementation work begins**,
+  including before resolving the §8 voltage-math open item. Do not
+  extend the current source-wide Per-Unit model in the meantime — see
+  "What was most recently done" and "What remains unresolved" above.
 - **Yes — Phase 4A (Digital Channels Rendering) specifically needs
   real-browser owner UAT before any further waveform feature work
   (cursor/measurement tools etc.) begins**, per that task's own explicit

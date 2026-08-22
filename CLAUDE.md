@@ -89,6 +89,22 @@ reverse-engineered or copied from Detego's own code/assets.
 Do not reproduce PRODUCT_REFERENCES.md's contents here — read it at the
 source.
 
+## Per-Unit measurement model — mandatory before any Per-Unit work
+
+**Read [docs/project-memory/PER_UNIT_MEASUREMENT_MODEL.md](docs/project-memory/PER_UNIT_MEASUREMENT_MODEL.md)
+before making any change related to Per-Unit, Voltage Base, Current
+Base, measurement grouping, voltage-reference detection, PU waveform
+display, PU significant-value reporting, or calculated-channel PU
+behaviour.** That document is authoritative for this feature area (see
+[DECISIONS.md — DEC-050](docs/project-memory/DECISIONS.md#dec-050--per-unit-measurement-model-is-clarified-to-be-measurement-group-aware-the-currently-deployed-source-bound-model-dec-049-is-not-the-final-target)) —
+do not reproduce its contents here.
+
+If code, tests, or older DEC-049 material conflict with that document,
+do not silently choose one — report the conflict and obtain owner
+approval before implementation. Existing behaviour is not automatically
+correct merely because it is already implemented or already covered by
+passing tests.
+
 ## Change governance
 
 Before modifying an existing function, workflow, architecture or behaviour that

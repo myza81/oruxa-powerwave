@@ -8648,6 +8648,70 @@ owner UAT after this push.
 
 ---
 
+## Phase 6 — Per-Unit Measurement Model Alignment (documentation only) (2026-08-22)
+
+### Scope
+
+**Documentation and agent-coordination only — no application code,
+frontend code, or backend test was modified in this phase.** Following
+further owner clarification after DEC-049's source-bound redesign
+shipped, it became clear that a single COMTRADE/CSV source may
+legitimately contain multiple electrical measurement contexts (multiple
+voltage levels, multiple current groups with different equipment
+ratings) — a case the currently deployed `source_id → one PU
+configuration` model cannot represent. Before any further Per-Unit
+implementation continues, this phase establishes one canonical,
+Git-versioned specification so Claude, Codex, and future sessions share
+the same engineering/product understanding, rather than each
+independently reinterpreting ambiguous prior notes.
+
+New canonical specification:
+[PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) — now
+authoritative for all Per-Unit/Voltage-Base/Current-Base/measurement-
+grouping/voltage-reference-detection/PU-display/calculated-channel-PU
+work. Full decision record:
+[DECISIONS.md — DEC-050](DECISIONS.md#dec-050--per-unit-measurement-model-is-clarified-to-be-measurement-group-aware-the-currently-deployed-source-bound-model-dec-049-is-not-the-final-target).
+
+A genuine architectural mismatch was confirmed by direct code review
+while assembling the specification (not merely asserted): the currently
+deployed Voltage per-unit division does not adjust for a channel's own
+voltage reference, so a healthy phase-to-ground measurement on a
+nominal 275 kV system reads ≈0.577 pu today rather than the required
+≈1.0 pu when 275 kV LL is entered as the base. This is recorded as an
+`[OPEN]` review item in the canonical document (§8), not resolved by
+this phase.
+
+### Planned future stages (`[PROPOSAL]`, planned/pending approval — not authorized for implementation yet)
+
+1. Independent architecture/code review against
+   [PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) — the
+   explicit next step after this documentation phase, per
+   [HANDOFF.md](HANDOFF.md). Produces a gap analysis, not code changes.
+2. Measurement-group domain model design (backend) — introducing
+   `measurement_group_id` as a real identity distinct from `source_id`,
+   informed by the review above.
+3. Voltage-group handling — per-group Vbase/Voltage Reference,
+   replacing the source-wide fields.
+4. Current-group/base handling — per-group Current Base (none/derived/
+   direct), replacing the source-wide field; resolving the §8 voltage-
+   math review item as part of this stage, not before.
+5. PU resolution/display integration — extending the existing
+   backend-authoritative `app/domain/per_unit.py` conversion path to
+   resolve per measurement group rather than per source, across all 8
+   existing display/measurement endpoints.
+6. Frontend group-based configuration — extending or replacing the
+   "Manage Per-Unit Bases" modal to configure groups rather than one
+   flat per-source form, per the UI principle in
+   [PER_UNIT_MEASUREMENT_MODEL.md §17](PER_UNIT_MEASUREMENT_MODEL.md).
+7. Migration/UAT — including a defined path for existing configured
+   sources (today's one-config-per-source data) and re-verification of
+   all previously-passing Per-Unit test coverage against the new model.
+
+Each stage requires its own owner approval before implementation begins
+— this list is sequencing only, not an authorization.
+
+---
+
 ## Phase 5C — Global Per-Unit Measurement Mode (2026-08-22)
 
 ### Scope

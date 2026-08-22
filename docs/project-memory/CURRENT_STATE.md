@@ -4,7 +4,8 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-22** (Phase 5C-UAT — Source-Bound
+Last meaningful update: **2026-08-22** (Phase 6 — Per-Unit Measurement
+Model Alignment, documentation only, on top of Phase 5C-UAT — Source-Bound
 Per-Unit Redesign, on top of Phase 5C — Global Per-Unit
 Measurement Mode, on top of Phase 5B-UAT — Clarify RMS
 Parameter UI, on top of Phase 5B — RMS Calculated
@@ -30,6 +31,38 @@ Text Note, Phase 4D — Precision Step Zoom + Icon Toolbar Refinement,
 Waveform Time-Axis Sub-ms Precision, Waveform Adaptive Resolution, Phase
 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B,
 Phase 4A-UAT9, and Phase 4A-UAT10).
+
+`[DECISION]` **Per-Unit Measurement Model Alignment — DEC-050**
+(2026-08-22, documentation and agent-coordination only — **no
+application code, frontend code, or backend test was modified**): the
+currently deployed DEC-049 source-bound model (`source_id → one PU
+configuration`, described in full detail below) is confirmed insufficient
+for a recording whose channels span more than one electrical measurement
+context — a normal case for a disturbance recorder at a multi-voltage-level
+substation (e.g. 275/132 kV bus voltages, line currents, and an interbus
+transformer's HV/LV currents all in one COMTRADE file), not an edge case.
+A new canonical specification,
+[PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md), is now
+**authoritative** for all future Per-Unit/Voltage-Base/Current-Base/
+measurement-grouping/voltage-reference-detection/PU-display/calculated-
+channel-PU work — Claude and Codex must both read it before touching any
+of that surface. It records the approved target direction (`source →
+measurement groups → group-specific base configuration`, replacing
+`source → one Vbase/Ibase`) as **implementation pending**, not built. A
+genuine architectural mismatch was confirmed by direct code review while
+assembling that document: the currently deployed Voltage per-unit
+division does not adjust for a channel's own voltage reference, so a
+healthy phase-to-ground measurement on a nominal 275 kV system reads
+≈0.577 pu today rather than the required ≈1.0 pu when 275 kV LL is
+entered as the base — recorded as an `[OPEN]` review item, not resolved
+by this pass. **Per-Unit implementation work is paused pending an
+independent architecture/code review against the canonical document**
+(the explicit next authorized step — see
+[HANDOFF.md](HANDOFF.md)) — do not extend the current source-wide model
+further until that review and an owner decision complete. See
+[DECISIONS.md — DEC-050](DECISIONS.md#dec-050--per-unit-measurement-model-is-clarified-to-be-measurement-group-aware-the-currently-deployed-source-bound-model-dec-049-is-not-the-final-target)
+and
+[MIGRATION_PLAN.md — Phase 6](MIGRATION_PLAN.md#phase-6--per-unit-measurement-model-alignment-documentation-only-2026-08-22).
 
 `[DECISION]` **Global Per-Unit Measurement Mode — DEC-049** (2026-08-22,
 source-bound redesign same day following owner UAT): a global Waveform-
