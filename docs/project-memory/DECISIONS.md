@@ -6204,6 +6204,102 @@ the assigned_channels/reverse-index invariant after every step),
 `test_frontend_per_unit_mode.py`. See
 [MIGRATION_PLAN.md — Phase 5C](MIGRATION_PLAN.md#phase-5c--global-per-unit-measurement-mode-2026-08-22).
 
+**Update (2026-08-22, same day) — source-bound redesign following owner
+UAT**: initial UAT on the profile-based workflow above found it too
+complex — the engineer had to create a profile, name it, select it, and
+manually assign each ordinary channel to it before Per Unit mode did
+anything. The owner approved a simpler model, changing the mental model
+from "Profile → assignments → channels → bases" to "File/source → base
+values → automatic PU conversion":
+
+- **Every Per-Unit base configuration is now owned 1:1 by a source_id**
+  (`workspace_id` + `source_id`, the existing stable identity — never
+  the filename, which two uploads can legitimately share). There is no
+  separate, independently-created "profile" identity or name any more;
+  `PerUnitBaseProfile.source_id` IS the configuration's own key.
+  `PUT/DELETE .../per-unit/sources/{source_id}` replace the old
+  `/per-unit/profiles` CRUD entirely; `GET .../per-unit/sources` lists
+  every source currently in the workspace (configured or not), so the
+  engineer never has to "create" anything to see their file listed.
+- **Automatic eligible-channel association**: every Voltage/Current
+  channel belonging to a configured source now resolves to that
+  source's own configuration unconditionally — no assignment record, no
+  checklist, no `channel_already_assigned` conflict concept, since a
+  channel's owning source is fixed and can never collide with another
+  source's configuration. This eliminated the entire channel-assignment
+  reverse index for source channels (`PerUnitRegistry.profile_for_channel()`
+  now derives the answer directly from `source_id` + `engineering_type`,
+  with no bookkeeping to keep in sync — the invariant this same decision
+  record used to require is now structurally impossible to violate for
+  source channels).
+- **Canonical base units**: Voltage Base/Apparent Power Base/Direct
+  Current Base are now always kV/MVA/kA respectively — no unit dropdown
+  (the setup UI shows a fixed, non-editable suffix instead), matching
+  the owner's own explicit UI-simplification request. The MEASURED
+  channel's own unit conversion (V/kV, A/kA) is completely unaffected —
+  decision 3/5's own unit-normalization rule for a channel's own
+  declared unit is untouched.
+- **"Voltage Basis" renamed "Voltage Reference"**, with clearer values
+  (Line-to-Ground/Line-to-Line, not "line_to_neutral") and, new this
+  pass, **automatic detection** (`app.domain.voltage_reference`): a
+  small, deterministic, phase-naming pattern matcher (never a
+  probabilistic classifier, never waveform-magnitude analysis — both
+  explicitly deferred by the owner) that inspects a source's own Voltage
+  channel names (VR/VY/VB, VA/VB/VC, VAN et al. → Line-to-Ground;
+  VRY/VYB/VBR, VAB/VBC/VCA, VLL/VBUS et al. → Line-to-Line) and reports
+  either a confident result with its own evidence (the exact channel
+  names that matched, shown verbatim in the UI) or an honest "could not
+  determine automatically" — never a silently invented default.
+  Contradictory evidence within one source is treated as equally
+  inconclusive, never resolved by whichever pattern happened to match
+  first.
+- **Manual override remains fully available**, tracked with the SAME
+  two-axis `mode`/`value` shape this decision record already established
+  for calculated-channel inheritance (`voltage_reference_mode:
+  "auto"|"manual"`, `voltage_reference_override`) — "Return to Auto"
+  reruns the live detection rather than resurrecting a stale manual
+  choice.
+- **Calculated-channel inheritance (decision 6/7) is UNCHANGED** per the
+  owner's own explicit "do not redesign calculated-channel PU
+  behaviour" instruction — `derive_per_unit_profile_id()` and the
+  recompute cascade operate identically; the only difference is that the
+  "profile_id" flowing through them is now always literally a
+  `source_id` (a configuration and its owning source share one identity
+  now), never a separately-generated id.
+- **The proven conversion mathematics are completely unchanged**:
+  `measured / base` for a Voltage channel's own division (still never an
+  automatic √3), and `Ibase = Sbase / (√3 × Vbase_LL)` for Current,
+  where √3 is applied ONLY to normalize a Line-to-Ground Vbase before
+  that division — exactly as before, just with the LL/LG determination
+  now resolved automatically (or manually overridden) instead of coming
+  from a static stored field.
+
+New: `app/domain/voltage_reference.py`. Rewritten:
+`app/domain/per_unit.py` (canonical units, `resolve_effective_voltage_reference()`),
+`app/services/per_unit_registry.py` (source-keyed storage, automatic
+source-channel resolution, calculated-channel assignment retained),
+`app/services/per_unit_service.py`, `app/schemas/per_unit.py`,
+`app/api/v1/per_unit.py` (new `/per-unit/sources` routes). 3 error
+classes retired (`PerUnitProfileNotFoundError`,
+`ChannelAlreadyAssignedError`, `InvalidChannelAssignmentError`) — no
+longer meaningful once assignment conflicts became structurally
+impossible. Frontend (`frontend/index.html` only): the "Manage Per-Unit
+Bases" modal fully redesigned (a source select/list replaces the old
+profile select + channel checklist; a proportional Voltage Base field
+with a fixed unit suffix instead of a cramped-number/wide-dropdown
+layout; the Voltage Reference auto/override/ambiguous-fallback UI;
+three labeled Current Base radio options replacing the old bare
+dropdown) — the toolbar control, every `unit_mode`-carrying fetch call
+site, and the per-unit-status panel-grouping logic were all UNCHANGED by
+this pass (they never depended on the profile-vs-source distinction).
+766 backend tests pass (up from 758; some retired-workflow tests
+replaced, new voltage-reference/source-ownership tests added), 17
+frontend regression checks, and direct Playwright verification of the
+owner's own exact UAT target flow (upload File A, configure it, upload
+File B with the identical filename, confirm it stays independently
+unconfigured, Start New Workspace clears both). See
+[MIGRATION_PLAN.md — Phase 5C-UAT](MIGRATION_PLAN.md#phase-5c-uat--source-bound-per-unit-redesign-2026-08-22).
+
 ---
 
 ## How to add a decision

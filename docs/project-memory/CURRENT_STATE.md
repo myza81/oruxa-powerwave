@@ -4,7 +4,8 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-22** (Phase 5C — Global Per-Unit
+Last meaningful update: **2026-08-22** (Phase 5C-UAT — Source-Bound
+Per-Unit Redesign, on top of Phase 5C — Global Per-Unit
 Measurement Mode, on top of Phase 5B-UAT — Clarify RMS
 Parameter UI, on top of Phase 5B — RMS Calculated
 Channel, on top of Phase 5A-UAT7 — Calculated
@@ -30,77 +31,76 @@ Waveform Time-Axis Sub-ms Precision, Waveform Adaptive Resolution, Phase
 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B,
 Phase 4A-UAT9, and Phase 4A-UAT10).
 
-`[DECISION]` **Global Per-Unit Measurement Mode — DEC-049** (2026-08-22):
-a global Waveform-page presentation mode, Engineering Units vs. Per
-Unit, for Voltage and Current channels only this phase (Power/Frequency/
-etc. unaffected; Power/Reactive-Power/Impedance per-unit explicitly
-deferred pending owner UAT). Backed by workspace-scoped, user-configured
-base profiles (Vbase/Ibase, three-phase Sbase) applied consistently
-across main Waveform panels, A/B cursor values, calculated-channel
-preview, and Peak/Callout display values — engineering arrays remain
-authoritative and immutable throughout; this is a presentation/
-measurement transform only. **Unit mode is pure frontend state**
-(`ww.unitMode`), never persisted server-side, mirroring DEC-042's own
-Absolute/Elapsed precedent. **The backend is the sole conversion
-authority** — one shared `app/domain/per_unit.py` function set, called
-from all 8 existing display/measurement endpoints (never duplicated per
-endpoint, never reimplemented in JS); each response reports
-`not_applicable`/`configured`/`base_required` per channel, converting
-`unit`/values to `"pu"` only when `configured`. **No automatic √3 factor
-is ever applied to a measured channel's own per-unit division** — a
-profile's declared voltage basis (line-to-line/line-to-neutral) is used
-ONLY internally to derive Ibase (`Ibase = Sbase / (√3 × Vbase_LL)`); the
-setup UI states the basis assumption explicitly and persistently, never
-via a hover-only tooltip. **Profile channel assignment is explicit and
-can never silently steal ownership**: a normal `PUT .../profiles/{id}`
-rejects with a structured `channel_already_assigned` conflict unless a
-top-level `reassign_conflicting: bool` is explicitly set (mirrors RMS's
-own `override` pattern, DEC-048) — the setup modal shows a
-conflicting channel's checkbox disabled with an explicit "Move here"
-action, and only a confirmed prompt resubmits with the flag.
-**Calculated-channel per-unit inheritance** is a new, dedicated
-`derive_per_unit_profile_id()` rule (unary operations inherit their
-single input's profile verbatim including `None`; Addition/Subtraction
-inherit only when every input shares the exact same known profile, never
-an arbitrary pick; calculated-from-calculated composes transitively with
-no separate recursive logic). **Inheritance is LIVE, not a one-time
-creation-time snapshot**: a two-axis `{mode: "auto"|"manual",
-profile_id}` record (this design went through 3 owner plan-review
-rounds — a single `provenance` tag was explicitly rejected mid-review
-because it could not distinguish "never yet resolved" from "the user
-deliberately unassigned this," which must never silently re-inherit)
-tracks every channel's own assignment; a recompute cascade re-derives
-every `"auto"` dependent's profile whenever any upstream channel's own
-profile changes (reassignment, unassignment, or profile deletion),
-walking the EXISTING calculated-channel `inputs` list iteratively (no
-new graph structure) and skipping any dependent already in `"manual"`
-mode. Profile deletion clears `profile_id` to `None` while PRESERVING
-each affected channel's own `mode` (`manual + None` = permanently
-unassigned; `auto + None` = still eligible to resolve again later).
-**Invariant enforced by every registry mutation path**:
-`PerUnitBaseProfile.assigned_channels` and the registry's own internal
-reverse index can never diverge — proven directly by tests that
-re-verify this agreement after every step of the owner's own locked A→G
-provenance sequence. Full staged implementation (A-H): backend domain/
-registry/API (Slices A-C, 79 new backend tests) then frontend toolbar
-dropdown + setup modal + panel-grouping/A-B/preview/peak-callout wiring
-(Slices D-G, `frontend/index.html` only, 13 new static regression tests
-+ direct Playwright verification of conversion, panel separation,
-byte-for-byte engineering-mode restoration, the conflict/reassignment
-confirm flow, and Start New Workspace reset), all 758 backend tests
-green with zero regressions. **Known, honestly-flagged UI polish gaps
-for owner UAT** (engineering correctness is unaffected by any of these):
-the reassignment confirm uses a native `window.confirm()` rather than a
-styled modal; the sidebar's own static channel-name "(unit)" label does
-not yet relabel to "(pu)" on a mode switch (main-panel Y-axis/legend/
-hover and the actual A/B values ARE correctly converted); a channel
-added to the display for the first time while Per Unit is already active
-groups by plain type until the next regroup event; the Calculated
-Channels preview panel does not yet carry the same pu/base-required
-panel-separation suffix the main Waveform page has. See
+`[DECISION]` **Global Per-Unit Measurement Mode — DEC-049** (2026-08-22,
+source-bound redesign same day following owner UAT): a global Waveform-
+page presentation mode, Engineering Units vs. Per Unit, for Voltage and
+Current channels only this phase (Power/Frequency/etc. unaffected;
+Power/Reactive-Power/Impedance per-unit explicitly deferred pending
+owner UAT). **The current mental model is "File/source → base values →
+automatic PU conversion," not "Profile → assignments → channels →
+bases"** — an initial profile-based design (create a named profile,
+manually assign channels to it) was built first, UAT'd, and found too
+complex; the owner approved this simpler source-bound replacement the
+same day, and the profile-based workflow no longer exists anywhere in
+the app. Every Per-Unit configuration is now owned 1:1 by a source_id
+(`workspace_id` + `source_id`, the existing stable identity — never a
+filename, which two uploads can legitimately share): `GET/PUT/DELETE
+.../per-unit/sources[/{source_id}]` list every source in the workspace
+(configured or not) and create/replace/clear ONE source's own
+configuration. **Every Voltage/Current channel of a configured source
+uses it automatically** — no assignment step, no channel checklist, no
+reassignment-conflict concept (structurally impossible now, since a
+channel's owning source never changes). Base values are canonical
+(Voltage Base: kV, Apparent Power Base: MVA, Direct Current Base: kA) —
+the setup UI shows a fixed unit suffix, never a dropdown. **Unit mode
+itself is still pure frontend state** (`ww.unitMode`), never persisted
+server-side (DEC-042's own Absolute/Elapsed precedent, unchanged). **The
+backend remains the sole conversion authority** — one shared
+`app/domain/per_unit.py` function set, called from all 8 display/
+measurement endpoints; each response still reports `not_applicable`/
+`configured`/`base_required` per channel. **No automatic √3 factor is
+ever applied to a measured channel's own per-unit division** — a
+source's own declared Voltage Reference (renamed from "Voltage Basis";
+Line-to-Ground/Line-to-Line, not "line-to-neutral") is used ONLY
+internally to derive Ibase (`Ibase = Sbase / (√3 × Vbase_LL)`).
+**Voltage Reference is now auto-detected** by a small, deterministic
+phase-naming pattern matcher (`app.domain.voltage_reference`: VR/VY/VB,
+VA/VB/VC, VAN → Line-to-Ground; VRY/VYB/VBR, VAB/VBC/VCA, VLL/VBUS →
+Line-to-Line — never a probabilistic classifier, never waveform-
+magnitude analysis, both explicitly deferred), always shown plainly
+("Auto: Line-to-Ground / Detected from VR, VY, VB", "Manual: X [Return
+to Auto]", or an honest "Could not determine automatically" requiring
+an explicit pick — never a silently invented default); the engineer can
+always override it (tracked as `{mode: "auto"|"manual", override}`;
+"Return to Auto" reruns the live detection, never resurrects a stale
+manual value). **Calculated-channel per-unit inheritance is UNCHANGED**
+by this redesign (the owner's own explicit "preserve current
+behaviour" instruction): the same `derive_per_unit_profile_id()` rule
+and the same live two-axis `{mode: "auto"|"manual", profile_id}`
+recompute-cascade mechanism from the original design, just with
+`profile_id` now always literally a `source_id` (a configuration and
+its owning source share one identity). Full implementation: backend
+domain/registry/API rewritten around `source_id` as the sole key (3
+now-meaningless error classes retired:
+`PerUnitProfileNotFoundError`/`ChannelAlreadyAssignedError`/
+`InvalidChannelAssignmentError`), frontend "Manage Per-Unit Bases"
+modal fully redesigned (source select replaces profile select + channel
+checklist; proportional Voltage Base/MVA/kA fields with a fixed suffix;
+the Voltage Reference auto/override/ambiguous-fallback UI; three
+labeled Current Base radio options) — the toolbar control and every
+`unit_mode`-carrying fetch call site were unaffected. 766 backend tests
+pass, 17 frontend regression checks pass, zero regressions. **Known
+limitation, explicitly deferred, not silently gapped**: a single source
+whose channels span multiple distinct voltage levels is not supported
+this pass (no multi-level detection/warning system was built — the
+owner's own instruction was not to build one merely for this task).
+Direct Playwright verification confirmed the owner's own exact UAT
+target flow end-to-end, including two uploads sharing an identical
+filename resolving to fully independent configurations. See
 [DECISIONS.md — DEC-049](DECISIONS.md#dec-049--global-per-unit-measurement-mode-workspace-scoped-base-profiles-backend-only-conversion-explicit-reassignment-and-two-axis-modeprofile-calculated-channel-inheritance-provenance)
-and
-[MIGRATION_PLAN.md — Phase 5C](MIGRATION_PLAN.md#phase-5c--global-per-unit-measurement-mode-2026-08-22).
+(including its 2026-08-22 source-bound-redesign Update note) and
+[MIGRATION_PLAN.md — Phase 5C](MIGRATION_PLAN.md#phase-5c--global-per-unit-measurement-mode-2026-08-22)
+/ [Phase 5C-UAT](MIGRATION_PLAN.md#phase-5c-uat--source-bound-per-unit-redesign-2026-08-22).
 
 `[DECISION]` **RMS Calculated Channel — DEC-048** (2026-08-22): Oruxa
 Powerwave's sixth calculated-channel operation, RMS — extending DEC-047's

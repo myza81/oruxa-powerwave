@@ -1,8 +1,12 @@
-"""Wire shapes for the Phase 5C Per-Unit Measurement Mode API (DEC-049).
+"""Wire shapes for the Phase 5C Per-Unit Measurement Mode API (DEC-049;
+source-bound redesign following owner UAT).
 
-Reuses `ChannelRefIn`/`ChannelRefOut` from app.schemas.calculated_channel
-directly (section 57's one structured channel reference, never a second
-wire type for the same identity).
+No `ChannelRefIn`/`assigned_channels`/`reassign_conflicting` any more --
+a configuration is identified by its own owning `source_id` (the URL
+path parameter), and every eligible channel of that source uses it
+automatically. Base values are canonical (Voltage Base: kV, Direct
+Current Base: kA, Apparent Power Base: MVA) -- no unit field, matching
+the owner's own UAT preference for a fixed unit suffix over a dropdown.
 """
 
 from __future__ import annotations
@@ -12,40 +16,20 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from app.domain.per_unit import PerUnitBaseProfile
-from app.schemas.calculated_channel import ChannelRefIn, ChannelRefOut
+from app.services.per_unit_service import SourcePerUnitConfigView
 
 
-class PerUnitProfileBaseFields(BaseModel):
-    """Shared base-configuration fields for create/update requests --
-    `None`/`None` for a value+unit pair is the valid "not yet configured"
-    state; a partially-filled pair (one set, one `None`) is rejected by
-    app.domain.per_unit's own validators at the service layer."""
+class SourcePerUnitConfigUpdateRequest(BaseModel):
+    """Request body for PUT .../per-unit/sources/{source_id}. Full
+    replace, matching every other PUT in this codebase -- there is no
+    partial-update concept."""
 
     voltage_base_value: float | None = None
-    voltage_base_unit: str | None = None
-    voltage_basis: Literal["line_to_line", "line_to_neutral"] = "line_to_line"
-    apparent_power_base_value: float | None = None
-    apparent_power_base_unit: str | None = None
+    voltage_reference_mode: Literal["auto", "manual"] = "auto"
+    voltage_reference_override: Literal["line_to_ground", "line_to_line"] | None = None
     current_base_mode: Literal["none", "derived", "direct"] = "none"
+    apparent_power_base_value: float | None = None
     direct_current_base_value: float | None = None
-    direct_current_base_unit: str | None = None
-
-
-class PerUnitProfileCreateRequest(PerUnitProfileBaseFields):
-    name: str
-
-
-class PerUnitProfileUpdateRequest(PerUnitProfileBaseFields):
-    """Full replace of one profile's base fields + `assigned_channels`
-    (decision 4). `reassign_conflicting` defaults to False -- a normal
-    PUT can never silently steal a channel from another profile; the
-    frontend only resubmits with this set to True after the user
-    explicitly confirms a "Move N channel(s) here?" prompt."""
-
-    name: str
-    assigned_channels: list[ChannelRefIn] = []
-    reassign_conflicting: bool = False
 
 
 class ResolvedCurrentBaseOut(BaseModel):
@@ -53,46 +37,44 @@ class ResolvedCurrentBaseOut(BaseModel):
     unit: str
 
 
-class PerUnitProfileOut(PerUnitProfileBaseFields):
-    id: str
-    workspace_id: str
-    name: str
+class SourcePerUnitConfigOut(BaseModel):
+    source_id: str
+    configured: bool
+    voltage_base_value: float | None
+    voltage_reference_mode: Literal["auto", "manual"]
+    voltage_reference_override: Literal["line_to_ground", "line_to_line"] | None
+    # The LIVE effective reference -- auto-detected from this source's
+    # own current Voltage channel names, or the manual override, per
+    # app.domain.per_unit.resolve_effective_voltage_reference(). `None`
+    # when auto mode cannot determine a confident result (section 7:
+    # never silently invented).
+    effective_voltage_reference: Literal["line_to_ground", "line_to_line"] | None
+    voltage_reference_evidence: list[str]
+    voltage_reference_reason: str
+    current_base_mode: Literal["none", "derived", "direct"]
+    apparent_power_base_value: float | None
+    direct_current_base_value: float | None
     resolved_current_base: ResolvedCurrentBaseOut | None
-    assigned_channels: list[ChannelRefOut]
     created_at: datetime | None
 
     @classmethod
-    def from_domain(cls, profile: PerUnitBaseProfile) -> "PerUnitProfileOut":
-        from app.domain.per_unit import resolve_current_base_amps
-
-        resolved_amps, _reason = resolve_current_base_amps(profile)
+    def from_view(cls, view: SourcePerUnitConfigView) -> "SourcePerUnitConfigOut":
         return cls(
-            id=profile.id,
-            workspace_id=profile.workspace_id,
-            name=profile.name,
-            voltage_base_value=profile.voltage_base_value,
-            voltage_base_unit=profile.voltage_base_unit,
-            voltage_basis=profile.voltage_basis,
-            apparent_power_base_value=profile.apparent_power_base_value,
-            apparent_power_base_unit=profile.apparent_power_base_unit,
-            current_base_mode=profile.current_base_mode,
-            direct_current_base_value=profile.direct_current_base_value,
-            direct_current_base_unit=profile.direct_current_base_unit,
+            source_id=view.source_id,
+            configured=view.configured,
+            voltage_base_value=view.voltage_base_value,
+            voltage_reference_mode=view.voltage_reference_mode,
+            voltage_reference_override=view.voltage_reference_override,
+            effective_voltage_reference=view.effective_voltage_reference,
+            voltage_reference_evidence=view.voltage_reference_evidence,
+            voltage_reference_reason=view.voltage_reference_reason,
+            current_base_mode=view.current_base_mode,
+            apparent_power_base_value=view.apparent_power_base_value,
+            direct_current_base_value=view.direct_current_base_value,
             resolved_current_base=(
-                ResolvedCurrentBaseOut(value=resolved_amps, unit="A") if resolved_amps is not None else None
+                ResolvedCurrentBaseOut(value=view.resolved_current_base_amps, unit="A")
+                if view.resolved_current_base_amps is not None
+                else None
             ),
-            assigned_channels=[ChannelRefOut.from_domain(ref) for ref in profile.assigned_channels],
-            created_at=profile.created_at,
+            created_at=view.created_at,
         )
-
-
-class ChannelAlreadyAssignedConflictOut(BaseModel):
-    channel: ChannelRefOut
-    profile_id: str
-    profile_name: str
-
-
-class ChannelAlreadyAssignedErrorOut(BaseModel):
-    code: Literal["channel_already_assigned"] = "channel_already_assigned"
-    message: str
-    conflicts: list[ChannelAlreadyAssignedConflictOut]

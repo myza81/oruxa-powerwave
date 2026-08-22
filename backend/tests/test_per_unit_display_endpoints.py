@@ -38,18 +38,20 @@ def _upload(client, workspace_id, comtrade_fixtures_dir, stem="synth_ascii"):
 
 
 def _make_profile_with_voltage_base(client, workspace_id, source_id, channel_name="VA", value=275.0, unit="kV"):
-    profile = client.post(f"/api/v1/workspaces/{workspace_id}/per-unit/profiles", json={"name": "P"}).json()
+    # Phase 5C-UAT (source-bound redesign): no separate profile identity
+    # or channel assignment any more -- configuring the SOURCE itself is
+    # sufficient; every eligible Voltage/Current channel of that source
+    # (VA included, regardless of `channel_name` here -- kept as a
+    # parameter only so existing call sites read the same) uses it
+    # automatically. `unit` is accepted for call-site compatibility but
+    # ignored -- Voltage Base is always canonical kV now.
+    del channel_name, unit
     put_resp = client.put(
-        f"/api/v1/workspaces/{workspace_id}/per-unit/profiles/{profile['id']}",
-        json={
-            "name": "P",
-            "voltage_base_value": value,
-            "voltage_base_unit": unit,
-            "assigned_channels": [{"kind": "source", "source_id": source_id, "channel_name": channel_name}],
-        },
+        f"/api/v1/workspaces/{workspace_id}/per-unit/sources/{source_id}",
+        json={"voltage_base_value": value},
     )
     assert put_resp.status_code == 200, put_resp.text
-    return profile["id"]
+    return source_id
 
 
 class TestSourceWaveformPerUnit:

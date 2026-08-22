@@ -26,6 +26,7 @@ import logging
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 
 from app.config import Settings
+from app.domain.channel_classification import VOLTAGE
 from app.domain.source import ActiveSource
 from app.schemas.annotation_anchor import AnnotationAnchorOut, AnnotationAnchorRequest
 from app.schemas.cursor_values import CursorValuesOut, CursorValuesRequest
@@ -33,12 +34,12 @@ from app.schemas.digital_waveform import DigitalWaveformBatchOut, DigitalWavefor
 from app.schemas.peak_value import PeakValueBatchOut, PeakValueBatchRequest, PeakValueResultOut
 from app.schemas.source import ErrorOut, SourceChannelsOut, SourceSummaryOut
 from app.schemas.waveform import WaveformRangeOut
-from app.domain.calculated_channel import ChannelRef
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import remove_calculated_channels_for_source
 from app.services.errors import ImportServiceError, InvalidTimeRangeError
 from app.services.import_service import import_comtrade_source
 from app.services.per_unit_registry import PerUnitRegistry
+from app.services.per_unit_service import delete_source_per_unit_config
 from app.services.waveform_service import (
     DEFAULT_POINT_BUDGET,
     FULL_RESOLUTION_DISPLAY_THRESHOLD,
@@ -87,19 +88,12 @@ def get_per_unit_registry(request: Request) -> PerUnitRegistry:
     return request.app.state.per_unit_registry
 
 
-def _resolve_profile_for_source_channel(
-    per_unit_registry: PerUnitRegistry, workspace_id: str, source_id: str, channel_name: str
-):
-    """Phase 5C (DEC-049): resolves one source channel's own currently
-    assigned profile (or `None`), for the caller to hand into
-    app.services.waveform_service's per-unit-aware functions -- keeps
-    that module registry-agnostic, matching how it already only ever
-    receives pre-resolved domain objects (`ActiveSource`), never a
-    registry itself."""
-    profile_id = per_unit_registry.profile_for_channel(
-        workspace_id, ChannelRef(kind="source", source_id=source_id, channel_name=channel_name)
-    )
-    return per_unit_registry.get(workspace_id, profile_id) if profile_id else None
+def _voltage_channel_names_for_active(active: ActiveSource) -> list[str]:
+    """This source's own full list of Voltage-classified channel names --
+    the input to automatic Voltage Reference detection (only consulted
+    for a CURRENT channel under `current_base_mode == "derived"`, see
+    app.domain.per_unit.resolve_per_unit's own docstring)."""
+    return [ch.name for ch in active.metadata.analog_channels if ch.engineering_type == VOLTAGE]
 
 
 def _validate_workspace_id(workspace_id: str) -> str:
@@ -236,11 +230,7 @@ def get_source_waveform(
     """
     workspace_id = _validate_workspace_id(workspace_id)
     active = _get_or_404(registry, workspace_id, source_id)
-    per_unit_profile = (
-        _resolve_profile_for_source_channel(per_unit_registry, workspace_id, source_id, channel_name)
-        if unit_mode == "per_unit"
-        else None
-    )
+    per_unit_profile = per_unit_registry.get(workspace_id, source_id) if unit_mode == "per_unit" else None
     try:
         result = extract_waveform_range(
             active,
@@ -250,6 +240,7 @@ def get_source_waveform(
             point_budget=point_budget,
             unit_mode=unit_mode,
             per_unit_profile=per_unit_profile,
+            voltage_channel_names=_voltage_channel_names_for_active(active),
         )
     except ImportServiceError as exc:
         logger.info(
@@ -335,14 +326,7 @@ def get_source_cursor_values(
     """
     workspace_id = _validate_workspace_id(workspace_id)
     active = _get_or_404(registry, workspace_id, source_id)
-    per_unit_profiles = (
-        {
-            name: _resolve_profile_for_source_channel(per_unit_registry, workspace_id, source_id, name)
-            for name in body.analog_channel_names
-        }
-        if body.unit_mode == "per_unit"
-        else None
-    )
+    per_unit_profile = per_unit_registry.get(workspace_id, source_id) if body.unit_mode == "per_unit" else None
     result = extract_cursor_values(
         active,
         analog_channel_names=body.analog_channel_names,
@@ -350,7 +334,8 @@ def get_source_cursor_values(
         cursor_a_time=body.cursor_a_time,
         cursor_b_time=body.cursor_b_time,
         unit_mode=body.unit_mode,
-        per_unit_profiles=per_unit_profiles,
+        per_unit_profile=per_unit_profile,
+        voltage_channel_names=_voltage_channel_names_for_active(active),
     )
     return CursorValuesOut.from_result(result)
 
@@ -378,11 +363,7 @@ def resolve_source_annotation_anchor(
     """
     workspace_id = _validate_workspace_id(workspace_id)
     active = _get_or_404(registry, workspace_id, source_id)
-    per_unit_profile = (
-        _resolve_profile_for_source_channel(per_unit_registry, workspace_id, source_id, body.channel_name)
-        if body.unit_mode == "per_unit"
-        else None
-    )
+    per_unit_profile = per_unit_registry.get(workspace_id, source_id) if body.unit_mode == "per_unit" else None
     try:
         result = resolve_annotation_anchor(
             active,
@@ -390,6 +371,7 @@ def resolve_source_annotation_anchor(
             approximate_elapsed_seconds=body.approximate_elapsed_seconds,
             unit_mode=body.unit_mode,
             per_unit_profile=per_unit_profile,
+            voltage_channel_names=_voltage_channel_names_for_active(active),
         )
     except ImportServiceError as exc:
         logger.info(
@@ -450,13 +432,10 @@ def resolve_source_peak_values(
             InvalidTimeRangeError(f"start_time ({body.start_time}) must not be greater than end_time ({body.end_time}).")
         )
 
+    per_unit_profile = per_unit_registry.get(workspace_id, source_id) if body.unit_mode == "per_unit" else None
+    voltage_channel_names = _voltage_channel_names_for_active(active)
     results: list[PeakValueResultOut] = []
     for item in body.requests:
-        per_unit_profile = (
-            _resolve_profile_for_source_channel(per_unit_registry, workspace_id, source_id, item.channel_name)
-            if body.unit_mode == "per_unit"
-            else None
-        )
         try:
             result = resolve_peak_value(
                 active,
@@ -466,6 +445,7 @@ def resolve_source_peak_values(
                 end_time=body.end_time,
                 unit_mode=body.unit_mode,
                 per_unit_profile=per_unit_profile,
+                voltage_channel_names=voltage_channel_names,
             )
         except ImportServiceError as exc:
             logger.info(
@@ -512,21 +492,23 @@ def delete_source(
     flat filter on `reference_source_id` is sufficient (no separate graph
     walk needed).
 
-    Phase 5C (DEC-049): also releases this source's own analog channels'
-    per-unit assignment records (a source channel's assignment is always
-    `mode="manual"`, never inherited -- nothing to cascade for it
-    directly, but `remove_calculated_channels_for_source` below still
-    drives the cascade for any calculated channel this removal deletes).
+    Phase 5C (DEC-049; source-bound redesign): also releases this
+    source's own Per-Unit configuration, if any -- since every eligible
+    channel of this source used it automatically (no per-channel
+    assignment record to separately clean up any more). If a calculated
+    channel was auto-inheriting from it, the recompute cascade reacts
+    here too (on top of the one `remove_calculated_channels_for_source`
+    below drives for any calculated channel this removal itself
+    deletes).
     """
     workspace_id = _validate_workspace_id(workspace_id)
     active = _get_or_404(registry, workspace_id, source_id)
-    channel_names = [ch.name for ch in active.metadata.analog_channels]
     registry.remove(workspace_id, source_id)
     remove_calculated_channels_for_source(
         workspace_id=workspace_id, source_id=source_id, calc_registry=calc_registry,
         per_unit_registry=per_unit_registry,
     )
-    for channel_name in channel_names:
-        per_unit_registry.remove_channel_everywhere(
-            workspace_id, ChannelRef(kind="source", source_id=source_id, channel_name=channel_name)
-        )
+    delete_source_per_unit_config(
+        workspace_id=workspace_id, source_id=source_id,
+        registry=per_unit_registry, source_registry=registry, calc_registry=calc_registry,
+    )

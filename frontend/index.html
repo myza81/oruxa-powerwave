@@ -819,6 +819,36 @@
         .ww-cc-field input[readonly] { color: var(--text-dim); background: var(--bg); cursor: default; }
         .ww-cc-field .hint { margin-top: 4px; }
 
+        /* Phase 5C-UAT (DEC-049 addendum, section 4): a wide numeric
+           field plus a fixed, non-editable unit suffix -- replaces the
+           old cramped-number/wide-dropdown Voltage Base layout. The
+           domain always accepts one canonical unit per field (kV/MVA/
+           kA), so a dropdown here would be a needless extra control,
+           not a genuine choice. Same font-size/height as every other
+           .ww-cc-field input -- no larger typography than the rest of
+           the app. */
+        .ww-pu-value-suffix-group { display: flex; }
+        .ww-pu-value-suffix-group input {
+            flex: 1 1 auto;
+            min-width: 0;
+            border-top-right-radius: 0;
+            border-bottom-right-radius: 0;
+        }
+        .ww-pu-suffix {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            border: 1px solid var(--panel-border);
+            border-left: none;
+            border-top-right-radius: var(--radius);
+            border-bottom-right-radius: var(--radius);
+            background: var(--bg);
+            color: var(--text-dim);
+            font-size: 0.7rem;
+        }
+        .ww-pu-radio-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 0.75rem; font-weight: 400; }
+
         /* Phase 5B UAT (DEC-048 clarification, section 17): a small,
            reusable accessible info-tip -- see wwInfoTipHtml()'s own
            comment for why this exists instead of native `title`. */
@@ -3694,36 +3724,37 @@
          One profile is edited at a time (the <select> below); Apply
          sends a single PUT/POST covering that profile's base fields +
          channel assignment together. -->
+    <!-- Phase 5C-UAT (DEC-049 addendum): "Manage Per-Unit Bases" --
+         source-bound redesign. Owner UAT found the original profile-
+         create/assign workflow too complex; there is no "profile"
+         concept in this UI at all any more -- every loaded recording
+         appears automatically (fetchSourcesList(), the SAME list the
+         Recordings page/Workspace Sidebar already use), and configuring
+         one immediately covers every eligible Voltage/Current channel
+         it owns, with no channel-assignment checklist. -->
     <div class="confirm-overlay" id="perUnitProfilesOverlay" hidden>
         <div class="group-editor-box" role="dialog" aria-modal="true" aria-labelledby="perUnitProfilesTitle">
             <div class="group-editor-header">
                 <h3 id="perUnitProfilesTitle">Manage Per-Unit Bases</h3>
                 <button type="button" class="group-editor-close" id="perUnitProfilesCloseBtn" aria-label="Close">&times;</button>
             </div>
-            <p class="hint">Define Voltage/Current/apparent-power bases and assign channels to
-                them. Per Unit mode divides each assigned channel's measured value by its
-                profile's own base.</p>
+            <p class="hint">Configure the Per-Unit bases for each loaded recording. Every eligible
+                Voltage/Current channel of that recording uses its own configuration
+                automatically.</p>
 
             <label class="ww-cc-field">
-                <span>Profile</span>
-                <select id="perUnitProfileSelect"></select>
+                <span>Recording</span>
+                <select id="perUnitSourceSelect"></select>
             </label>
             <p class="hint error" id="perUnitProfileError" hidden role="alert"></p>
 
             <div id="perUnitProfileFields"></div>
 
-            <div class="group-editor-section">
-                <h4>Assigned Channels</h4>
-                <p class="hint">Only Voltage and Current channels can be assigned to a per-unit
-                    base profile.</p>
-                <div id="perUnitChannelChecklist"></div>
-            </div>
-
             <div class="group-editor-footer">
-                <button type="button" class="secondary" id="perUnitDeleteProfileBtn" hidden>Delete Profile</button>
+                <button type="button" class="secondary" id="perUnitDeleteProfileBtn" hidden>Clear Configuration</button>
                 <span class="toolbar-spacer"></span>
                 <button type="button" class="secondary" id="perUnitProfilesCloseFooterBtn">Close</button>
-                <button type="button" id="perUnitProfilesApplyBtn">Apply</button>
+                <button type="button" id="perUnitProfilesApplyBtn">Save</button>
             </div>
         </div>
     </div>
@@ -6382,12 +6413,14 @@
             // plain Clear Workspace leaves it alone, same policy as
             // ww.layoutMode/ww.dragMode/ww.timeMode above.
             unitMode: "engineering",
-            // Phase 5C: profile_id -> profile object as returned by
-            // GET .../per-unit/profiles (fetched once when a workspace is
-            // opened, refreshed after any Manage Per-Unit Bases Apply/
-            // Delete). Same lifecycle as ww.calculatedChannels -- cleared
-            // only by Start New Workspace.
-            perUnitProfiles: new Map(),
+            // Phase 5C-UAT (DEC-049 addendum): source_id -> configuration
+            // object as returned by GET .../per-unit/sources -- source-
+            // bound, never a separate profile identity (see the "Manage
+            // Per-Unit Bases" modal's own module docstring). Fetched
+            // when the modal opens, refreshed after every Save/Clear
+            // Configuration. Same lifecycle as ww.calculatedChannels --
+            // cleared only by Start New Workspace.
+            perUnitSourceConfigs: new Map(),
         };
 
         function wwFiniteNumber(value) {
@@ -7882,13 +7915,13 @@
         async function wwApplyUnitMode(mode) {
             if (mode !== "engineering" && mode !== "per_unit") return;
             if (ww.unitMode === mode) return;
-            // Section 68's own "zero existing profiles" check (the
-            // caller, below) needs an up-to-date ww.perUnitProfiles
+            // Section 68's own "no source configured yet" check (the
+            // caller, below) needs an up-to-date ww.perUnitSourceConfigs
             // mirror -- fetched here, BEFORE that check, so a workspace
-            // that already has profiles from an earlier session/page-load
-            // is never mistaken for "none yet" merely because this
-            // frontend mirror hadn't been populated yet.
-            if (mode === "per_unit") await wwFetchPerUnitProfiles();
+            // that already has a configured source from an earlier
+            // session/page-load is never mistaken for "none yet" merely
+            // because this frontend mirror hadn't been populated yet.
+            if (mode === "per_unit") await wwFetchPerUnitSourceConfigs();
             ww.unitMode = mode;
             wwSyncUnitModeControls();
             const startTime = ww.viewport ? ww.viewport.start : null;
@@ -7949,34 +7982,26 @@
         }
 
         // ------------------------------------------------------------------
-        // Phase 5C (DEC-049): "Manage Per-Unit Bases" modal
+        // Phase 5C-UAT (DEC-049 addendum): "Manage Per-Unit Bases" modal --
+        // source-bound redesign. No separate "profile" concept exists in
+        // this UI at all: every loaded source appears automatically, and
+        // configuring it immediately covers every eligible Voltage/Current
+        // channel that source owns -- no channel-assignment checklist.
         // ------------------------------------------------------------------
 
-        const PER_UNIT_VOLTAGE_UNITS = ["V", "kV"];
-        const PER_UNIT_CURRENT_UNITS = ["A", "kA"];
-        // Mirrors app.domain.per_unit's own constants -- used ONLY for
-        // this modal's own live "Calculated Current Base" preview
-        // (section 40: "show calculated/derived result visibly" as the
-        // user types, before Apply). Never used to convert an actual
-        // measured channel value anywhere -- decision 2 (backend is the
-        // sole conversion authority) still holds for every displayed
-        // waveform/A-B/preview/peak/callout value; this is cosmetic
-        // preview math only, re-derived authoritatively by the backend's
-        // own `resolved_current_base` the moment this profile is saved.
+        // Mirrors app.domain.voltage_reference's own constants -- used
+        // ONLY for this modal's own live "Calculated Current Base"
+        // preview (section 40: "show calculated/derived result visibly"
+        // as the user types, before Save). Never used to convert an
+        // actual measured channel value anywhere -- decision 2 (backend
+        // is the sole conversion authority) still holds for every
+        // displayed waveform/A-B/preview/peak/callout value; this is
+        // cosmetic preview math only, re-derived authoritatively by the
+        // backend's own `resolved_current_base` the moment this
+        // configuration is saved.
         const PER_UNIT_SQRT_3 = 1.7320508075688772;
-        const PER_UNIT_VOLTAGE_SCALE = { V: 1, kV: 1000 };
-        const PER_UNIT_CURRENT_SCALE = { A: 1, kA: 1000 };
-        const PER_UNIT_APPARENT_POWER_SCALE_MVA = 1000000;
-
-        function wwPerUnitChannelRefKey(ref) {
-            return ref.kind === "source" ? wwChannelKey(ref.source_id, ref.channel_name) : "calc::" + ref.calculated_channel_id;
-        }
-
-        function wwPerUnitChannelRefFromKey(key) {
-            if (key.indexOf("calc::") === 0) return { kind: "calculated", calculated_channel_id: key.slice(6) };
-            const idx = key.indexOf("::");
-            return { kind: "source", source_id: key.slice(0, idx), channel_name: key.slice(idx + 2) };
-        }
+        const PER_UNIT_LINE_TO_GROUND = "line_to_ground";
+        const PER_UNIT_LINE_TO_LINE = "line_to_line";
 
         function wwPerUnitNumberOrNull(raw) {
             if (raw === null || raw === undefined || String(raw).trim() === "") return null;
@@ -7984,38 +8009,71 @@
             return Number.isFinite(n) ? n : null;
         }
 
-        async function wwFetchPerUnitProfiles() {
+        async function wwFetchPerUnitSourceConfigs() {
             let response;
             try {
                 response = await fetch(
-                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/per-unit/profiles"
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/per-unit/sources"
                 );
             } catch (error) {
                 return;
             }
             if (!response.ok) return;
-            const profiles = await response.json();
-            ww.perUnitProfiles = new Map(profiles.map((p) => [p.id, p]));
+            const configs = await response.json();
+            ww.perUnitSourceConfigs = new Map(configs.map((c) => [c.source_id, c]));
         }
 
-        // Working-copy state for the modal, mirroring groupEditorState's
-        // own "discard on Cancel/close, only commit on Apply" model.
-        // `profileId` is `null` while editing "+ New profile" (not yet
-        // created server-side).
+        // Section 1: the label the engineer actually recognizes is the
+        // recording's own display name -- reuses the EXACT SAME
+        // recordingDisplayName()/fetchSourcesList() the Recordings page
+        // and Workspace Sidebar already use (never a second "what is
+        // this file called" convention, and never the filename used as
+        // any kind of persistent identity -- source_id alone is).
+        let wwPerUnitSourcesList = [];
+
+        function wwPerUnitSourceLabel(sourceId) {
+            const source = wwPerUnitSourcesList.find((s) => s.source_id === sourceId);
+            return source ? recordingDisplayName(source) : sourceId;
+        }
+
+        function wwPerUnitSourceSummaryText(config) {
+            if (!config || !config.configured) return "Not configured";
+            const parts = [];
+            if (config.voltage_base_value != null) parts.push(config.voltage_base_value + " kV");
+            if (config.effective_voltage_reference) {
+                const refAbbrev = config.effective_voltage_reference === PER_UNIT_LINE_TO_LINE ? "L-L" : "L-G";
+                parts.push((config.voltage_reference_mode === "manual" ? "Manual " : "Auto ") + refAbbrev);
+            }
+            if (config.resolved_current_base) {
+                parts.push("Ibase " + (config.resolved_current_base.value / 1000).toFixed(2) + " kA");
+            }
+            return parts.length ? parts.join(" · ") : "Configured";
+        }
+
+        // Working-copy state for the modal, mirroring the Custom Groups
+        // editor's own "discard on Cancel/close, only commit on Save"
+        // model. `autoDetection` is captured ONCE when the editor opens
+        // (channel names are static for the session) so toggling
+        // Override/Return-to-Auto within one editing session never
+        // needs a re-fetch -- "Return to Auto" still genuinely reruns
+        // the algorithm's own result, just from an already-fresh read.
         let perUnitEditorState = null;
 
-        function wwPerUnitProfileToEditorState(profile) {
+        function wwPerUnitConfigToEditorState(sourceId, config) {
             return {
-                profileId: profile ? profile.id : null,
-                name: profile ? profile.name : "New profile",
-                voltageBaseValue: profile ? profile.voltage_base_value : null,
-                voltageBaseUnit: profile ? (profile.voltage_base_unit || "kV") : "kV",
-                voltageBasis: profile ? profile.voltage_basis : "line_to_line",
-                apparentPowerBaseValue: profile ? profile.apparent_power_base_value : null,
-                currentBaseMode: profile ? profile.current_base_mode : "none",
-                directCurrentBaseValue: profile ? profile.direct_current_base_value : null,
-                directCurrentBaseUnit: profile ? (profile.direct_current_base_unit || "kA") : "kA",
-                assignedChannelKeys: new Set((profile ? profile.assigned_channels : []).map(wwPerUnitChannelRefKey)),
+                sourceId,
+                voltageBaseValue: config ? config.voltage_base_value : null,
+                voltageReferenceMode: config ? config.voltage_reference_mode : "auto",
+                voltageReferenceOverride: config ? config.voltage_reference_override : null,
+                currentBaseMode: config ? config.current_base_mode : "none",
+                apparentPowerBaseValue: config ? config.apparent_power_base_value : null,
+                directCurrentBaseValue: config ? config.direct_current_base_value : null,
+                configured: !!(config && config.configured),
+                autoDetection: {
+                    reference: config ? config.effective_voltage_reference : null,
+                    evidence: config ? config.voltage_reference_evidence : [],
+                    reason: config ? config.voltage_reference_reason : "no_voltage_channels",
+                },
             };
         }
 
@@ -8023,16 +8081,16 @@
             if (state.currentBaseMode === "direct") {
                 const v = Number(state.directCurrentBaseValue);
                 if (!Number.isFinite(v) || v <= 0) return "—";
-                const amps = v * (PER_UNIT_CURRENT_SCALE[state.directCurrentBaseUnit] || 1);
-                return (amps / 1000).toFixed(4) + " kA";
+                return v.toFixed(4) + " kA";
             }
             if (state.currentBaseMode === "derived") {
                 const vbase = Number(state.voltageBaseValue);
                 const sbase = Number(state.apparentPowerBaseValue);
-                if (!Number.isFinite(vbase) || vbase <= 0 || !Number.isFinite(sbase) || sbase <= 0) return "—";
-                const vbaseVolts = vbase * (PER_UNIT_VOLTAGE_SCALE[state.voltageBaseUnit] || 1);
-                const vbaseLL = state.voltageBasis === "line_to_neutral" ? vbaseVolts * PER_UNIT_SQRT_3 : vbaseVolts;
-                const sbaseVa = sbase * PER_UNIT_APPARENT_POWER_SCALE_MVA;
+                const reference = state.voltageReferenceMode === "manual" ? state.voltageReferenceOverride : state.autoDetection.reference;
+                if (!Number.isFinite(vbase) || vbase <= 0 || !Number.isFinite(sbase) || sbase <= 0 || !reference) return "—";
+                const vbaseVolts = vbase * 1000;
+                const vbaseLL = reference === PER_UNIT_LINE_TO_GROUND ? vbaseVolts * PER_UNIT_SQRT_3 : vbaseVolts;
+                const sbaseVa = sbase * 1_000_000;
                 const amps = sbaseVa / (PER_UNIT_SQRT_3 * vbaseLL);
                 return (amps / 1000).toFixed(4) + " kA";
             }
@@ -8040,10 +8098,14 @@
         }
 
         async function wwOpenPerUnitProfilesModal() {
-            await wwFetchPerUnitProfiles();
-            const first = ww.perUnitProfiles.values().next().value || null;
-            perUnitEditorState = wwPerUnitProfileToEditorState(first);
-            wwRenderPerUnitProfileSelect();
+            const sources = await fetchSourcesList();
+            wwPerUnitSourcesList = sources || [];
+            await wwFetchPerUnitSourceConfigs();
+            const firstSourceId = wwPerUnitSourcesList.length ? wwPerUnitSourcesList[0].source_id : null;
+            perUnitEditorState = firstSourceId
+                ? wwPerUnitConfigToEditorState(firstSourceId, ww.perUnitSourceConfigs.get(firstSourceId))
+                : null;
+            wwRenderPerUnitSourceSelect();
             wwRenderPerUnitProfileEditor();
             document.getElementById("perUnitProfileError").hidden = true;
             document.getElementById("perUnitProfilesOverlay").hidden = false;
@@ -8054,20 +8116,21 @@
             document.getElementById("perUnitProfilesOverlay").hidden = true;
         }
 
-        function wwRenderPerUnitProfileSelect() {
-            const select = document.getElementById("perUnitProfileSelect");
+        function wwRenderPerUnitSourceSelect() {
+            const select = document.getElementById("perUnitSourceSelect");
             let html = "";
-            for (const profile of ww.perUnitProfiles.values()) {
-                html += '<option value="' + escapeHtml(profile.id) + '">' + escapeHtml(profile.name) + '</option>';
+            for (const source of wwPerUnitSourcesList) {
+                const config = ww.perUnitSourceConfigs.get(source.source_id);
+                html += '<option value="' + escapeHtml(source.source_id) + '">' +
+                    escapeHtml(recordingDisplayName(source)) + " — " + escapeHtml(wwPerUnitSourceSummaryText(config)) +
+                    '</option>';
             }
-            html += '<option value="">+ New profile</option>';
-            select.innerHTML = html;
-            select.value = perUnitEditorState.profileId || "";
+            select.innerHTML = html || '<option value="">No recordings loaded yet</option>';
+            select.value = (perUnitEditorState && perUnitEditorState.sourceId) || "";
         }
 
-        function wwPerUnitProfileEditorSelectChange(profileId) {
-            const profile = profileId ? ww.perUnitProfiles.get(profileId) : null;
-            perUnitEditorState = wwPerUnitProfileToEditorState(profile);
+        function wwPerUnitSourceSelectChange(sourceId) {
+            perUnitEditorState = wwPerUnitConfigToEditorState(sourceId, ww.perUnitSourceConfigs.get(sourceId));
             wwRenderPerUnitProfileEditor();
             document.getElementById("perUnitProfileError").hidden = true;
         }
@@ -8077,24 +8140,53 @@
             if (preview) preview.value = wwPerUnitEditorResolvedCurrentBaseText(perUnitEditorState);
         }
 
+        // Section 6-8: renders the Voltage Reference block in one of
+        // three states -- confident auto-detection (with an [Override]
+        // action), an active manual override (with a [Return to Auto]
+        // action), or "could not determine automatically" (a plain
+        // dropdown the engineer must pick from -- never a silent guess).
+        function wwRenderVoltageReferenceBlock(state) {
+            const refLabel = (ref) => (ref === PER_UNIT_LINE_TO_LINE ? "Line-to-Line" : "Line-to-Ground");
+            if (state.voltageReferenceMode === "manual") {
+                return '<div class="ww-cc-field"><span>Voltage Reference ' +
+                    wwInfoTipHtml("Voltage Reference", "Whether Voltage channels of this recording represent line-to-ground or line-to-line measurements. Used only to derive the Current Base below -- never applied automatically to a displayed channel's own per-unit value.") +
+                    '</span><div class="hint">Manual: ' + refLabel(state.voltageReferenceOverride) + '</div>' +
+                    '<select id="perUnitVoltageReferenceOverride">' +
+                    '<option value="' + PER_UNIT_LINE_TO_GROUND + '"' + (state.voltageReferenceOverride === PER_UNIT_LINE_TO_GROUND ? " selected" : "") + '>Line-to-Ground</option>' +
+                    '<option value="' + PER_UNIT_LINE_TO_LINE + '"' + (state.voltageReferenceOverride === PER_UNIT_LINE_TO_LINE ? " selected" : "") + '>Line-to-Line</option>' +
+                    '</select>' +
+                    '<button type="button" class="secondary" id="perUnitReturnToAutoBtn" style="margin-top:6px;">Return to Auto</button>' +
+                    '</div>';
+            }
+            if (state.autoDetection.reference) {
+                const evidence = state.autoDetection.evidence || [];
+                return '<div class="ww-cc-field"><span>Voltage Reference ' +
+                    wwInfoTipHtml("Voltage Reference", "Whether Voltage channels of this recording represent line-to-ground or line-to-line measurements. Used only to derive the Current Base below -- never applied automatically to a displayed channel's own per-unit value.") +
+                    '</span><div class="hint">Auto: ' + refLabel(state.autoDetection.reference) + '</div>' +
+                    (evidence.length ? '<div class="hint">Detected from ' + evidence.map(escapeHtml).join(", ") + '</div>' : '') +
+                    '<button type="button" class="secondary" id="perUnitOverrideReferenceBtn" style="margin-top:6px;">Override</button>' +
+                    '</div>';
+            }
+            // Section 7: no confident result -- never silently invented.
+            return '<div class="ww-cc-field"><span>Voltage Reference ' +
+                wwInfoTipHtml("Voltage Reference", "Whether Voltage channels of this recording represent line-to-ground or line-to-line measurements. Used only to derive the Current Base below -- never applied automatically to a displayed channel's own per-unit value.") +
+                '</span><div class="hint">Could not determine automatically</div>' +
+                '<select id="perUnitVoltageReferenceFallback">' +
+                '<option value="">Select…</option>' +
+                '<option value="' + PER_UNIT_LINE_TO_GROUND + '">Line-to-Ground</option>' +
+                '<option value="' + PER_UNIT_LINE_TO_LINE + '">Line-to-Line</option>' +
+                '</select></div>';
+        }
+
         function wwWirePerUnitProfileFieldsEvents() {
             const state = perUnitEditorState;
-            const nameInput = document.getElementById("perUnitNameInput");
-            if (nameInput) nameInput.addEventListener("input", () => { state.name = nameInput.value; });
-            const modeSelect = document.getElementById("perUnitCurrentBaseMode");
-            if (modeSelect) modeSelect.addEventListener("change", () => {
-                state.currentBaseMode = modeSelect.value;
-                wwRenderPerUnitProfileEditor(); // structural (progressive disclosure) -- a <select> change, never mid-typing
-            });
-            const basisSelect = document.getElementById("perUnitVoltageBasis");
-            if (basisSelect) basisSelect.addEventListener("change", () => {
-                state.voltageBasis = basisSelect.value;
-                wwUpdatePerUnitCalculatedCurrentBasePreview();
-            });
-            const vUnitSelect = document.getElementById("perUnitVoltageBaseUnit");
-            if (vUnitSelect) vUnitSelect.addEventListener("change", () => {
-                state.voltageBaseUnit = vUnitSelect.value;
-                wwUpdatePerUnitCalculatedCurrentBasePreview();
+            const modeRadios = document.querySelectorAll('input[name="perUnitCurrentBaseMode"]');
+            modeRadios.forEach((radio) => {
+                radio.addEventListener("change", () => {
+                    if (!radio.checked) return;
+                    state.currentBaseMode = radio.value;
+                    wwRenderPerUnitProfileEditor(); // structural (progressive disclosure) -- a radio change, never mid-typing
+                });
             });
             const vValueInput = document.getElementById("perUnitVoltageBaseValue");
             if (vValueInput) vValueInput.addEventListener("input", () => {
@@ -8111,175 +8203,115 @@
                 state.directCurrentBaseValue = wwPerUnitNumberOrNull(dValueInput.value);
                 wwUpdatePerUnitCalculatedCurrentBasePreview();
             });
-            const dUnitSelect = document.getElementById("perUnitDirectCurrentBaseUnit");
-            if (dUnitSelect) dUnitSelect.addEventListener("change", () => {
-                state.directCurrentBaseUnit = dUnitSelect.value;
+            const overrideBtn = document.getElementById("perUnitOverrideReferenceBtn");
+            if (overrideBtn) overrideBtn.addEventListener("click", () => {
+                state.voltageReferenceMode = "manual";
+                state.voltageReferenceOverride = state.autoDetection.reference || PER_UNIT_LINE_TO_GROUND;
+                wwRenderPerUnitProfileEditor();
+            });
+            const returnToAutoBtn = document.getElementById("perUnitReturnToAutoBtn");
+            if (returnToAutoBtn) returnToAutoBtn.addEventListener("click", () => {
+                // Section 8: reruns/reapplies the algorithmic result --
+                // never resurrects the previous manual choice invisibly.
+                // `state.autoDetection` itself came straight from the
+                // backend's own live detection when the editor opened.
+                state.voltageReferenceMode = "auto";
+                state.voltageReferenceOverride = null;
+                wwRenderPerUnitProfileEditor();
+            });
+            const overrideSelect = document.getElementById("perUnitVoltageReferenceOverride");
+            if (overrideSelect) overrideSelect.addEventListener("change", () => {
+                state.voltageReferenceOverride = overrideSelect.value;
                 wwUpdatePerUnitCalculatedCurrentBasePreview();
             });
-        }
-
-        function wwPerUnitOwnerProfileFor(channelKey) {
-            for (const profile of ww.perUnitProfiles.values()) {
-                if (profile.id === perUnitEditorState.profileId) continue;
-                for (const ref of profile.assigned_channels) {
-                    if (wwPerUnitChannelRefKey(ref) === channelKey) return profile;
-                }
-            }
-            return null;
-        }
-
-        function wwPerUnitChannelChecklistItemHtml(key, label) {
-            const owner = wwPerUnitOwnerProfileFor(key);
-            const checked = perUnitEditorState.assignedChannelKeys.has(key);
-            // Decision 4: reassignment is a deliberate, SEPARATE action --
-            // a channel owned by a different profile renders with its
-            // checkbox disabled (never toggleable by an ordinary click)
-            // plus an explicit "Move here" action; clicking that adds the
-            // channel to the working copy (flipping the box to checked+
-            // enabled) so Apply's own conflict handling can then prompt
-            // for confirmation and resubmit with reassign_conflicting.
-            const showMoveAction = !!owner && !checked;
-            return '<label class="group-chip' + (showMoveAction ? ' group-chip--hidden' : '') + '" style="display:flex;width:100%;margin-bottom:4px;align-items:center;">' +
-                '<input type="checkbox" data-channel-key="' + escapeHtml(key) + '"' +
-                (checked ? " checked" : "") + (showMoveAction ? " disabled" : "") + '> ' +
-                '<span class="group-chip-label" style="margin-left:6px;">' + escapeHtml(label) + '</span>' +
-                (owner
-                    ? (showMoveAction
-                        ? ' <span class="hint" style="margin-left:6px;">Already assigned to ' + escapeHtml(owner.name) +
-                          ' — <button type="button" class="ww-per-unit-move-btn" data-channel-key="' + escapeHtml(key) +
-                          '" style="background:none;border:none;color:var(--accent);cursor:pointer;text-decoration:underline;padding:0;font:inherit;">Move here</button></span>'
-                        : '')
-                    : '') +
-                '</label>';
-        }
-
-        function wwRenderPerUnitChannelChecklist() {
-            const container = document.getElementById("perUnitChannelChecklist");
-            let html = "";
-            for (const inventory of ww.sourceChannelInventory.values()) {
-                const eligible = inventory.analogChannels.filter(
-                    (ch) => ch.engineering_type === "Voltage" || ch.engineering_type === "Current"
-                );
-                if (eligible.length === 0) continue;
-                html += '<h4 class="ww-cc-drawer-section-title">' + escapeHtml(inventory.sourceName || inventory.sourceId) + '</h4>';
-                for (const ch of eligible) {
-                    const key = wwChannelKey(inventory.sourceId, ch.name);
-                    html += wwPerUnitChannelChecklistItemHtml(key, ch.name + (ch.unit ? " (" + ch.unit + ")" : ""));
-                }
-            }
-            const calcEligible = Array.from(ww.calculatedChannels.values()).filter(
-                (c) => c.engineering_type === "Voltage" || c.engineering_type === "Current"
-            );
-            if (calcEligible.length > 0) {
-                html += '<h4 class="ww-cc-drawer-section-title">Calculated Channels</h4>';
-                for (const calc of calcEligible) {
-                    html += wwPerUnitChannelChecklistItemHtml("calc::" + calc.id, calc.name + (calc.unit ? " (" + calc.unit + ")" : ""));
-                }
-            }
-            container.innerHTML = html || '<p class="hint">No eligible Voltage/Current channels in this workspace yet.</p>';
-            container.querySelectorAll(".ww-per-unit-move-btn").forEach((btn) => {
-                btn.addEventListener("click", () => {
-                    perUnitEditorState.assignedChannelKeys.add(btn.dataset.channelKey);
-                    wwRenderPerUnitChannelChecklist(); // re-render: the box now shows checked+enabled
-                });
-            });
-            container.querySelectorAll("input[type=checkbox][data-channel-key]").forEach((cb) => {
-                cb.addEventListener("change", () => {
-                    const key = cb.dataset.channelKey;
-                    if (cb.checked) perUnitEditorState.assignedChannelKeys.add(key);
-                    else perUnitEditorState.assignedChannelKeys.delete(key);
-                });
+            const fallbackSelect = document.getElementById("perUnitVoltageReferenceFallback");
+            if (fallbackSelect) fallbackSelect.addEventListener("change", () => {
+                if (!fallbackSelect.value) return;
+                state.voltageReferenceMode = "manual";
+                state.voltageReferenceOverride = fallbackSelect.value;
+                wwRenderPerUnitProfileEditor();
             });
         }
 
         function wwRenderPerUnitProfileEditor() {
             const state = perUnitEditorState;
             const fieldsEl = document.getElementById("perUnitProfileFields");
+            if (!state) {
+                fieldsEl.innerHTML = '<p class="hint">Upload a recording to configure its Per-Unit bases.</p>';
+                document.getElementById("perUnitDeleteProfileBtn").hidden = true;
+                return;
+            }
             const showMva = state.currentBaseMode === "derived";
             const showDirect = state.currentBaseMode === "direct";
             fieldsEl.innerHTML =
-                '<label class="ww-cc-field"><span>Profile Name</span>' +
-                '<input type="text" id="perUnitNameInput" value="' + escapeHtml(state.name) + '"></label>' +
+                // Section 4: proportional layout -- a wide numeric field
+                // plus a fixed, non-editable unit suffix (never a
+                // dropdown, since the domain always accepts one
+                // canonical unit per field).
                 '<label class="ww-cc-field"><span>Voltage Base ' +
-                wwInfoTipHtml("Voltage Base", "The rated voltage that a per-unit value of 1.0 represents, for Voltage channels assigned to this profile.") +
-                '</span><div class="ww-cc-inline-fields" style="display:flex;gap:8px;">' +
-                '<input type="number" step="any" id="perUnitVoltageBaseValue" style="flex:1;" value="' +
+                wwInfoTipHtml("Voltage Base", "The rated voltage that a per-unit value of 1.0 represents, for Voltage channels of this recording.") +
+                '</span><div class="ww-pu-value-suffix-group">' +
+                '<input type="number" step="any" id="perUnitVoltageBaseValue" value="' +
                 (state.voltageBaseValue == null ? "" : state.voltageBaseValue) + '" placeholder="e.g. 275">' +
-                '<select id="perUnitVoltageBaseUnit">' +
-                PER_UNIT_VOLTAGE_UNITS.map((u) => '<option value="' + u + '"' + (state.voltageBaseUnit === u ? " selected" : "") + '>' + u + '</option>').join("") +
-                '</select></div></label>' +
-                '<label class="ww-cc-field"><span>Voltage Basis ' +
-                wwInfoTipHtml("Voltage Basis", "Whether the Voltage Base above is a line-to-line or line-to-neutral value. Used only to derive the Current Base below -- never applied automatically to a displayed channel's own per-unit value.") +
-                '</span><select id="perUnitVoltageBasis">' +
-                '<option value="line_to_line"' + (state.voltageBasis === "line_to_line" ? " selected" : "") + '>Line-to-Line</option>' +
-                '<option value="line_to_neutral"' + (state.voltageBasis === "line_to_neutral" ? " selected" : "") + '>Line-to-Neutral</option>' +
-                '</select></label>' +
-                '<p class="hint">Voltage channels assigned to this profile are assumed to use this voltage basis.</p>' +
-                '<label class="ww-cc-field"><span>Current Base Mode</span><select id="perUnitCurrentBaseMode">' +
-                '<option value="none"' + (state.currentBaseMode === "none" ? " selected" : "") + '>None</option>' +
-                '<option value="derived"' + (state.currentBaseMode === "derived" ? " selected" : "") + '>Derived from Voltage + MVA Base</option>' +
-                '<option value="direct"' + (state.currentBaseMode === "direct" ? " selected" : "") + '>Direct Current Base</option>' +
-                '</select></label>' +
+                '<span class="ww-pu-suffix">kV</span></div></label>' +
+
+                wwRenderVoltageReferenceBlock(state) +
+
+                '<div class="ww-cc-field"><span>Current Base</span>' +
+                '<label class="ww-pu-radio-row"><input type="radio" name="perUnitCurrentBaseMode" value="derived"' +
+                (state.currentBaseMode === "derived" ? " checked" : "") + '> Calculate from apparent power</label>' +
+                '<label class="ww-pu-radio-row"><input type="radio" name="perUnitCurrentBaseMode" value="direct"' +
+                (state.currentBaseMode === "direct" ? " checked" : "") + '> Enter current base manually</label>' +
+                '<label class="ww-pu-radio-row"><input type="radio" name="perUnitCurrentBaseMode" value="none"' +
+                (state.currentBaseMode === "none" ? " checked" : "") + '> Voltage only</label>' +
+                '</div>' +
+
                 (showMva
                     ? '<label class="ww-cc-field"><span>Three-Phase MVA Base (Sbase) ' +
                       wwInfoTipHtml("Three-Phase MVA Base", "The total three-phase apparent power base used to derive the Current Base: Ibase = Sbase / (√3 × Vbase LL).") +
-                      '</span><input type="number" step="any" id="perUnitApparentPowerBaseValue" value="' +
-                      (state.apparentPowerBaseValue == null ? "" : state.apparentPowerBaseValue) + '" placeholder="e.g. 500"></label>'
+                      '</span><div class="ww-pu-value-suffix-group">' +
+                      '<input type="number" step="any" id="perUnitApparentPowerBaseValue" value="' +
+                      (state.apparentPowerBaseValue == null ? "" : state.apparentPowerBaseValue) + '" placeholder="e.g. 500">' +
+                      '<span class="ww-pu-suffix">MVA</span></div></label>'
                     : "") +
                 (showDirect
-                    ? '<label class="ww-cc-field"><span>Direct Current Base</span>' +
-                      '<div class="ww-cc-inline-fields" style="display:flex;gap:8px;">' +
-                      '<input type="number" step="any" id="perUnitDirectCurrentBaseValue" style="flex:1;" value="' +
+                    ? '<label class="ww-cc-field"><span>Direct Current Base</span><div class="ww-pu-value-suffix-group">' +
+                      '<input type="number" step="any" id="perUnitDirectCurrentBaseValue" value="' +
                       (state.directCurrentBaseValue == null ? "" : state.directCurrentBaseValue) + '" placeholder="e.g. 1.2">' +
-                      '<select id="perUnitDirectCurrentBaseUnit">' +
-                      PER_UNIT_CURRENT_UNITS.map((u) => '<option value="' + u + '"' + (state.directCurrentBaseUnit === u ? " selected" : "") + '>' + u + '</option>').join("") +
-                      '</select></div></label>'
+                      '<span class="ww-pu-suffix">kA</span></div></label>'
                     : "") +
                 (showMva || showDirect
-                    ? '<label class="ww-cc-field"><span>Calculated Current Base</span>' +
+                    ? '<label class="ww-cc-field"><span>Calculated Ibase</span>' +
                       '<input type="text" id="perUnitCalculatedCurrentBase" readonly tabindex="-1" value="' +
                       wwPerUnitEditorResolvedCurrentBaseText(state) + '"></label>'
                     : "");
 
             wwWirePerUnitProfileFieldsEvents();
-            wwRenderPerUnitChannelChecklist();
-            document.getElementById("perUnitDeleteProfileBtn").hidden = !state.profileId;
+            document.getElementById("perUnitDeleteProfileBtn").hidden = !state.configured;
         }
 
-        async function wwApplyPerUnitProfileEditor(reassignConflicting) {
+        async function wwApplyPerUnitProfileEditor() {
             const state = perUnitEditorState;
+            if (!state) return;
             const errorEl = document.getElementById("perUnitProfileError");
             errorEl.hidden = true;
 
             const body = {
-                name: (state.name || "").trim() || "New profile",
                 voltage_base_value: state.voltageBaseValue,
-                voltage_base_unit: state.voltageBaseValue === null ? null : state.voltageBaseUnit,
-                voltage_basis: state.voltageBasis,
+                voltage_reference_mode: state.voltageReferenceMode,
+                voltage_reference_override: state.voltageReferenceMode === "manual" ? state.voltageReferenceOverride : null,
                 current_base_mode: state.currentBaseMode,
                 apparent_power_base_value: state.currentBaseMode === "derived" ? state.apparentPowerBaseValue : null,
-                apparent_power_base_unit: state.currentBaseMode === "derived" && state.apparentPowerBaseValue !== null ? "MVA" : null,
                 direct_current_base_value: state.currentBaseMode === "direct" ? state.directCurrentBaseValue : null,
-                direct_current_base_unit: state.currentBaseMode === "direct" && state.directCurrentBaseValue !== null ? state.directCurrentBaseUnit : null,
             };
 
-            const isNew = !state.profileId;
             let response;
             try {
-                if (isNew) {
-                    response = await fetch(
-                        apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/per-unit/profiles",
-                        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
-                    );
-                } else {
-                    body.assigned_channels = Array.from(state.assignedChannelKeys).map(wwPerUnitChannelRefFromKey);
-                    body.reassign_conflicting = !!reassignConflicting;
-                    response = await fetch(
-                        apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
-                        "/per-unit/profiles/" + encodeURIComponent(state.profileId),
-                        { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
-                    );
-                }
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                    "/per-unit/sources/" + encodeURIComponent(state.sourceId),
+                    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+                );
             } catch (error) {
                 errorEl.textContent = "Could not reach the backend. Check your connection and try again.";
                 errorEl.hidden = false;
@@ -8289,36 +8321,15 @@
             if (!response.ok) {
                 let detail = {};
                 try { detail = (await response.json()).detail || {}; } catch (error) { /* handled by generic message below */ }
-                if (detail.code === "channel_already_assigned") {
-                    const names = (detail.conflicts || []).map((c) => c.profile_name).join(", ");
-                    if (window.confirm("Move channel(s) currently assigned to " + names + " to this profile instead?")) {
-                        await wwApplyPerUnitProfileEditor(true);
-                        return;
-                    }
-                    return;
-                }
-                errorEl.textContent = detail.message || "Could not save this per-unit base profile.";
+                errorEl.textContent = detail.message || "Could not save this Per-Unit configuration.";
                 errorEl.hidden = false;
                 return;
             }
 
             const saved = await response.json();
-            ww.perUnitProfiles.set(saved.id, saved);
-            if (isNew) {
-                // Decision 4: a brand-new profile always starts with
-                // assigned_channels=[] server-side (it can never
-                // conflict) -- if the user already checked channels for
-                // it before this first save, apply that assignment now
-                // via an immediate follow-up PUT.
-                perUnitEditorState.profileId = saved.id;
-                if (state.assignedChannelKeys.size > 0) {
-                    await wwApplyPerUnitProfileEditor(reassignConflicting);
-                    return;
-                }
-            }
-            await wwFetchPerUnitProfiles();
-            perUnitEditorState = wwPerUnitProfileToEditorState(ww.perUnitProfiles.get(saved.id));
-            wwRenderPerUnitProfileSelect();
+            ww.perUnitSourceConfigs.set(saved.source_id, saved);
+            perUnitEditorState = wwPerUnitConfigToEditorState(saved.source_id, saved);
+            wwRenderPerUnitSourceSelect();
             wwRenderPerUnitProfileEditor();
             wwUpdateUnitModeWarningBadge();
             await wwRefreshDisplayedChannelsForPerUnitChange();
@@ -8326,29 +8337,28 @@
 
         async function wwDeletePerUnitProfileEditor() {
             const state = perUnitEditorState;
-            if (!state.profileId) return;
-            if (!window.confirm("Delete this per-unit base profile? Channels assigned to it will become unassigned.")) return;
+            if (!state || !state.configured) return;
+            if (!window.confirm("Clear this recording's Per-Unit configuration? Its channels will show \"Base required\" until reconfigured.")) return;
             let response;
             try {
                 response = await fetch(
                     apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
-                    "/per-unit/profiles/" + encodeURIComponent(state.profileId),
+                    "/per-unit/sources/" + encodeURIComponent(state.sourceId),
                     { method: "DELETE" }
                 );
             } catch (error) {
                 return;
             }
             if (!response.ok) return;
-            await wwFetchPerUnitProfiles();
-            const next = ww.perUnitProfiles.values().next().value || null;
-            perUnitEditorState = wwPerUnitProfileToEditorState(next);
-            wwRenderPerUnitProfileSelect();
+            await wwFetchPerUnitSourceConfigs();
+            perUnitEditorState = wwPerUnitConfigToEditorState(state.sourceId, ww.perUnitSourceConfigs.get(state.sourceId));
+            wwRenderPerUnitSourceSelect();
             wwRenderPerUnitProfileEditor();
             wwUpdateUnitModeWarningBadge();
             await wwRefreshDisplayedChannelsForPerUnitChange();
         }
 
-        // A base/assignment change can affect the CURRENTLY displayed
+        // A base/reference change can affect the CURRENTLY displayed
         // channels' own resolved per-unit status even without an
         // explicit unit-mode switch -- re-asks the backend exactly like
         // wwApplyUnitMode() does (decision 2: it remains the sole
@@ -8362,6 +8372,7 @@
             wwRebuildLayout();
             wwUpdateUnitModeWarningBadge();
         }
+
 
         // "Reset Time View": restores the full-record X/time range for
         // EVERY panel -- a distinct operation from "Autoscale Y" (DEC-021's
@@ -13253,16 +13264,16 @@
                 wwRenderCalculatedChannelsSidebarSection();
                 wwRenderCalculatedChannelsPage();
                 // Phase 5C (DEC-049): "Start New Workspace" also resets
-                // Unit Mode and clears every per-unit base profile mirror
-                // -- the backend side is already handled by this SAME
-                // DELETE /api/v1/workspaces/{id} call (per_unit_registry.
-                // remove_workspace()); this just keeps the frontend's own
-                // toolbar/state in sync, same policy as
-                // ww.calculatedChannels immediately above. Plain "Clear
-                // workspace" (the else branch below) deliberately leaves
-                // both alone.
+                // Unit Mode and clears every source's own Per-Unit
+                // configuration mirror -- the backend side is already
+                // handled by this SAME DELETE /api/v1/workspaces/{id}
+                // call (per_unit_registry.remove_workspace()); this just
+                // keeps the frontend's own toolbar/state in sync, same
+                // policy as ww.calculatedChannels immediately above.
+                // Plain "Clear workspace" (the else branch below)
+                // deliberately leaves both alone.
                 ww.unitMode = "engineering";
-                ww.perUnitProfiles.clear();
+                ww.perUnitSourceConfigs.clear();
                 wwSyncUnitModeControls();
                 wwUpdateUnitModeWarningBadge();
                 wwClosePerUnitProfilesModal();
@@ -15380,8 +15391,9 @@
             wwSetUnitModeMenuOpen(false);
             await wwApplyUnitMode("per_unit");
             // Section 68: switching to Per Unit for the first time with
-            // zero existing profiles auto-opens the setup modal.
-            if (ww.perUnitProfiles.size === 0) await wwOpenPerUnitProfilesModal();
+            // no source configured yet auto-opens the setup modal.
+            const anyConfigured = Array.from(ww.perUnitSourceConfigs.values()).some((c) => c.configured);
+            if (!anyConfigured) await wwOpenPerUnitProfilesModal();
         });
         document.getElementById("wwManagePerUnitBasesBtn").addEventListener("click", () => {
             wwSetUnitModeMenuOpen(false);
@@ -15403,10 +15415,10 @@
         // Phase 5C: "Manage Per-Unit Bases" modal wiring -- same
         // Apply/Cancel/close/Escape/backdrop-click convention as Custom
         // Groups.
-        document.getElementById("perUnitProfileSelect").addEventListener("change", (event) => {
-            wwPerUnitProfileEditorSelectChange(event.target.value);
+        document.getElementById("perUnitSourceSelect").addEventListener("change", (event) => {
+            wwPerUnitSourceSelectChange(event.target.value);
         });
-        document.getElementById("perUnitProfilesApplyBtn").addEventListener("click", () => wwApplyPerUnitProfileEditor(false));
+        document.getElementById("perUnitProfilesApplyBtn").addEventListener("click", () => wwApplyPerUnitProfileEditor());
         document.getElementById("perUnitDeleteProfileBtn").addEventListener("click", () => wwDeletePerUnitProfileEditor());
         document.getElementById("perUnitProfilesCloseBtn").addEventListener("click", wwClosePerUnitProfilesModal);
         document.getElementById("perUnitProfilesCloseFooterBtn").addEventListener("click", wwClosePerUnitProfilesModal);

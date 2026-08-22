@@ -8,6 +8,104 @@ Last updated: **2026-08-22**
 
 ## What was most recently done
 
+**Phase 5C-UAT — Source-Bound Per-Unit Redesign (DEC-049 addendum).**
+Owner UAT on the Phase 5C profile-based workflow (below) found it too
+complex — creating a named profile and manually assigning channels to
+it before Per Unit mode did anything. Owner-approved simplification:
+"File/source → base values → automatic PU conversion" replaces
+"Profile → assignments → channels → bases." Full detail:
+[DECISIONS.md — DEC-049 Update note](DECISIONS.md#dec-049--global-per-unit-measurement-mode-workspace-scoped-base-profiles-backend-only-conversion-explicit-reassignment-and-two-axis-modeprofile-calculated-channel-inheritance-provenance),
+[MIGRATION_PLAN.md — Phase 5C-UAT](MIGRATION_PLAN.md#phase-5c-uat--source-bound-per-unit-redesign-2026-08-22).
+
+**What changed**: every Per-Unit configuration is now owned 1:1 by
+`source_id` (never a filename, which two uploads can share) — there is
+no separate "profile" identity or channel-assignment step left anywhere
+in the app; every Voltage/Current channel of a configured source uses
+it automatically. `GET/PUT/DELETE .../per-unit/sources[/{source_id}]`
+replaced the old `/per-unit/profiles` CRUD entirely (3 now-meaningless
+error classes retired: `PerUnitProfileNotFoundError`/
+`ChannelAlreadyAssignedError`/`InvalidChannelAssignmentError`). Base
+values are now canonical (kV/MVA/kA, fixed suffix, no unit dropdown).
+"Voltage Basis" was renamed "Voltage Reference" and gained **automatic
+detection** (`app.domain.voltage_reference`, new module): a small,
+deterministic phase-naming pattern matcher (VR/VY/VB, VA/VB/VC, VAN →
+Line-to-Ground; VRY/VYB/VBR, VAB/VBC/VCA, VLL/VBUS → Line-to-Line —
+never a probabilistic classifier, never waveform-magnitude analysis,
+both explicitly deferred by the owner) that always shows its own
+result plainly ("Auto: Line-to-Ground / Detected from VR, VY, VB",
+"Manual: X [Return to Auto]", or an honest "Could not determine
+automatically" — never a silent guess); the engineer can always
+override it, and "Return to Auto" genuinely reruns detection rather
+than resurrecting a stale manual value. Current Base gained clearer
+radio-button labels ("Calculate from apparent power" / "Enter current
+base manually" / "Voltage only") over the same underlying values.
+**Calculated-channel inheritance (decision 6/7) is completely
+UNCHANGED**, per the owner's own explicit "do not redesign calculated-
+channel PU behaviour" instruction — same two-axis `mode`/`profile_id`
+model and recompute cascade, just with `profile_id` now always
+literally a `source_id`. **The proven conversion mathematics are
+completely unchanged**: direct `measured / base` division for Voltage
+(never automatic √3), `Ibase = Sbase / (√3 × Vbase_LL)` for Current,
+with √3 applied only to normalize a Line-to-Ground Vbase before that
+one division.
+
+**Investigation first**: the existing DEC-049 architecture (profile
+persistence, the assignment reverse index, CRUD endpoints, frontend
+profile state, the conversion lookup path, workspace lifecycle,
+`unit_mode` display endpoints, and every profile-assignment-dependent
+test) was traced in full before any code changed, confirming
+`profile_id → source_id` was the smallest clean migration — never a
+"fake profile" abstraction kept alive merely to minimize the diff.
+
+**Backend**: new `app/domain/voltage_reference.py`; `app/domain/
+per_unit.py`, `app/services/per_unit_registry.py`, `app/services/
+per_unit_service.py`, `app/schemas/per_unit.py`, `app/api/v1/
+per_unit.py` all rewritten around `source_id` as the sole key.
+**Frontend** (`frontend/index.html` only): the "Manage Per-Unit Bases"
+modal's HTML+JS fully replaced (source select via the SAME
+`fetchSourcesList()`/`recordingDisplayName()` the Recordings page
+already uses, replacing the profile select + channel checklist;
+`ww.perUnitSourceConfigs` replacing `ww.perUnitProfiles`; new
+`.ww-pu-value-suffix-group`/`.ww-pu-suffix`/`.ww-pu-radio-row` CSS) —
+the toolbar control and every `unit_mode`-carrying fetch call site were
+explicitly UNCHANGED (they never depended on the profile-vs-source
+distinction).
+
+**Tests**: new `test_voltage_reference.py` (14 tests, the owner's own
+exact naming examples); `test_per_unit_domain.py`/`test_per_unit_registry.py`/
+`test_per_unit_api.py`/`test_per_unit_display_endpoints.py`/
+`test_frontend_per_unit_mode.py` rewritten for the source-bound model
+(every conversion-MATH test carried over unchanged, proving the math
+itself was never touched). 766 backend tests pass (up from 758), 17
+frontend regression checks pass, zero regressions.
+
+**Direct Playwright verification** of the owner's own exact UAT target
+flow: upload File A → Manage Per-Unit Bases already lists it → enter
+Vbase → auto-detects Line-to-Ground from VA/VB with evidence shown →
+Override → Manual → Line-to-Line → Return to Auto correctly reruns back
+to Line-to-Ground (not a stale value) → "Calculate from apparent power"
++ 500 MVA → live Ibase preview (0.6061 kA) matches the formula exactly
+→ Save → source summary updates immediately → switch to Per Unit → BOTH
+Voltage channels AND the Current channel convert automatically with
+zero manual assignment (the actual UAT fix, confirmed working) → upload
+File B with the IDENTICAL filename → both listed as independent
+entries by `source_id`, configuring File A leaves File B genuinely
+"Not configured" → Start New Workspace clears both `ww.unitMode` and
+`ww.perUnitSourceConfigs`. Zero console errors throughout.
+
+**Known limitation, explicitly deferred**: a single source whose
+channels span multiple distinct voltage levels is not supported this
+pass — no multi-level detection/warning system was built (the owner's
+own instruction: don't build a major new detection system merely for
+this task). The UI polish gaps already flagged in the prior Phase 5C
+entry below are unaffected by this pass and remain open.
+
+**Not yet done** (as of this section being written): commit/push, CI/
+automatic DEV deployment verification — see the final report delivered
+alongside this update for whether those have since completed.
+
+## What was done in the prior session (Phase 5C — Global Per-Unit Measurement Mode, initial profile-based design)
+
 **Phase 5C — Global Per-Unit Measurement Mode (DEC-049).** Owner-approved
 direction: a global Waveform-page presentation mode, Engineering Units
 vs. Per Unit, for Voltage/Current channels, backed by workspace-scoped

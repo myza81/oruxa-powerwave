@@ -1,8 +1,10 @@
-"""API-level tests for the Phase 5C Per-Unit Base Profile endpoints
-(DEC-049): profile CRUD, base-field validation, decision 4's conflict/
-reassignment rule, and workspace/source/calculated-channel lifecycle
-cleanup wired through the real FastAPI app (not just the registry
-directly -- see test_per_unit_registry.py for that).
+"""API-level tests for the Phase 5C Per-Unit Base configuration endpoints
+(DEC-049; source-bound redesign following owner UAT): source-scoped
+CRUD, base-field validation, automatic eligible-channel association
+(section 2/16 -- no assignment endpoint any more), voltage-reference
+auto-detection/override, and workspace/source/calculated-channel
+lifecycle cleanup, wired through the real FastAPI app (not just the
+registry directly -- see test_per_unit_registry.py for that).
 """
 
 from __future__ import annotations
@@ -38,188 +40,168 @@ def _upload(client, workspace_id, comtrade_fixtures_dir, stem="synth_ascii"):
     return resp.json()["source_id"]
 
 
-def _va_ref(source_id: str) -> dict:
-    return {"kind": "source", "source_id": source_id, "channel_name": "VA"}
+class TestSourceOwnership:
+    """Section 1/2/16: every loaded source appears automatically, and its
+    own configuration applies only to its own channels -- no separate
+    profile identity, no channel-assignment step."""
+
+    def test_every_loaded_source_appears_in_the_list_even_unconfigured(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        listed = client.get("/api/v1/workspaces/ws-1/per-unit/sources").json()
+        assert [s["source_id"] for s in listed] == [source_id]
+        assert listed[0]["configured"] is False
+
+    def test_source_a_configuration_does_not_leak_to_source_b(self, client, comtrade_fixtures_dir):
+        source_a = _upload(client, "ws-1", comtrade_fixtures_dir)
+        source_b = _upload(client, "ws-1", comtrade_fixtures_dir)  # SAME filename, different source_id
+
+        put_a = client.put(
+            f"/api/v1/workspaces/ws-1/per-unit/sources/{source_a}",
+            json={"voltage_base_value": 275.0},
+        )
+        assert put_a.status_code == 200, put_a.text
+
+        listed = {s["source_id"]: s for s in client.get("/api/v1/workspaces/ws-1/per-unit/sources").json()}
+        assert listed[source_a]["configured"] is True
+        assert listed[source_a]["voltage_base_value"] == 275.0
+        assert listed[source_b]["configured"] is False  # untouched, despite the identical filename
+
+    def test_workspace_isolation(self, client, comtrade_fixtures_dir):
+        source_target = _upload(client, "ws-target", comtrade_fixtures_dir)
+        _upload(client, "ws-other", comtrade_fixtures_dir)
+
+        client.put(f"/api/v1/workspaces/ws-target/per-unit/sources/{source_target}", json={"voltage_base_value": 275.0})
+
+        target_listed = client.get("/api/v1/workspaces/ws-target/per-unit/sources").json()
+        other_listed = client.get("/api/v1/workspaces/ws-other/per-unit/sources").json()
+        assert target_listed[0]["configured"] is True
+        assert other_listed[0]["configured"] is False
+
+    def test_put_unknown_source_is_404(self, client):
+        resp = client.put("/api/v1/workspaces/ws-1/per-unit/sources/does-not-exist", json={"voltage_base_value": 275.0})
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["code"] == "source_not_found"
 
 
-def _ia_ref(source_id: str) -> dict:
-    return {"kind": "source", "source_id": source_id, "channel_name": "IA"}
-
-
-class TestProfileCrud:
-    def test_create_then_list(self, client):
-        resp = client.post("/api/v1/workspaces/ws-1/per-unit/profiles", json={"name": "275 kV"})
-        assert resp.status_code == 201, resp.text
-        body = resp.json()
-        assert body["name"] == "275 kV"
-        assert body["assigned_channels"] == []
-        assert body["resolved_current_base"] is None
-
-        listed = client.get("/api/v1/workspaces/ws-1/per-unit/profiles").json()
-        assert [p["id"] for p in listed] == [body["id"]]
-
-    def test_update_base_fields_and_resolved_current_base(self, client):
-        create_resp = client.post("/api/v1/workspaces/ws-1/per-unit/profiles", json={"name": "275 kV"})
-        profile_id = create_resp.json()["id"]
-
-        put_resp = client.put(
-            f"/api/v1/workspaces/ws-1/per-unit/profiles/{profile_id}",
+class TestBaseFieldValidation:
+    def test_valid_voltage_base_and_resolved_current_base(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/per-unit/sources/{source_id}",
             json={
-                "name": "275 kV",
                 "voltage_base_value": 275.0,
-                "voltage_base_unit": "kV",
-                "voltage_basis": "line_to_line",
-                "apparent_power_base_value": 500.0,
-                "apparent_power_base_unit": "MVA",
                 "current_base_mode": "derived",
-                "assigned_channels": [],
+                "apparent_power_base_value": 500.0,
+                "voltage_reference_mode": "manual",
+                "voltage_reference_override": "line_to_line",
             },
         )
-        assert put_resp.status_code == 200, put_resp.text
-        body = put_resp.json()
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
         assert body["resolved_current_base"]["unit"] == "A"
         assert body["resolved_current_base"]["value"] == pytest.approx(500_000_000.0 / (1.7320508075688772 * 275_000.0))
 
-    def test_invalid_partial_voltage_base_is_rejected(self, client):
-        create_resp = client.post("/api/v1/workspaces/ws-1/per-unit/profiles", json={"name": "275 kV"})
-        profile_id = create_resp.json()["id"]
+    def test_negative_voltage_base_is_rejected(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        resp = client.put(f"/api/v1/workspaces/ws-1/per-unit/sources/{source_id}", json={"voltage_base_value": -5.0})
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_per_unit_base"
 
+    def test_manual_reference_mode_requires_an_override_value(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
         resp = client.put(
-            f"/api/v1/workspaces/ws-1/per-unit/profiles/{profile_id}",
-            json={"name": "275 kV", "voltage_base_value": 275.0, "assigned_channels": []},
+            f"/api/v1/workspaces/ws-1/per-unit/sources/{source_id}",
+            json={"voltage_reference_mode": "manual"},
         )
         assert resp.status_code == 400
         assert resp.json()["detail"]["code"] == "invalid_per_unit_base"
 
-    def test_delete_unknown_profile_is_404(self, client):
-        resp = client.delete("/api/v1/workspaces/ws-1/per-unit/profiles/does-not-exist")
-        assert resp.status_code == 404
-        assert resp.json()["detail"]["code"] == "per_unit_profile_not_found"
-
-    def test_assigning_nonexistent_channel_is_rejected(self, client):
-        create_resp = client.post("/api/v1/workspaces/ws-1/per-unit/profiles", json={"name": "275 kV"})
-        profile_id = create_resp.json()["id"]
-
-        resp = client.put(
-            f"/api/v1/workspaces/ws-1/per-unit/profiles/{profile_id}",
-            json={
-                "name": "275 kV",
-                "assigned_channels": [{"kind": "source", "source_id": "no-such-source", "channel_name": "VA"}],
-            },
-        )
-        assert resp.status_code == 400
-        assert resp.json()["detail"]["code"] == "invalid_channel_assignment"
-
-
-class TestChannelAssignmentConflict:
-    def test_reassignment_is_rejected_without_flag_then_succeeds_with_it(
-        self, client, comtrade_fixtures_dir
-    ):
+    def test_canonical_units_only_no_unit_field_needed(self, client, comtrade_fixtures_dir):
+        # Section 4: the request body carries bare numbers -- Voltage
+        # Base is always kV, Apparent Power Base always MVA, Direct
+        # Current Base always kA. No unit field exists in the schema.
         source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
-        profile_a = client.post("/api/v1/workspaces/ws-1/per-unit/profiles", json={"name": "Profile A"}).json()
-        profile_b = client.post("/api/v1/workspaces/ws-1/per-unit/profiles", json={"name": "Profile B"}).json()
-
-        assign_a = client.put(
-            f"/api/v1/workspaces/ws-1/per-unit/profiles/{profile_a['id']}",
-            json={"name": "Profile A", "assigned_channels": [_va_ref(source_id)]},
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/per-unit/sources/{source_id}",
+            json={"voltage_base_value": 275.0, "current_base_mode": "direct", "direct_current_base_value": 1.2},
         )
-        assert assign_a.status_code == 200
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["voltage_base_value"] == 275.0
+        assert resp.json()["direct_current_base_value"] == 1.2
+        assert resp.json()["resolved_current_base"]["value"] == pytest.approx(1200.0)
 
-        conflict_resp = client.put(
-            f"/api/v1/workspaces/ws-1/per-unit/profiles/{profile_b['id']}",
-            json={"name": "Profile B", "assigned_channels": [_va_ref(source_id)]},
+
+class TestVoltageReferenceAutoDetectionOverAPI:
+    def test_auto_detects_line_to_ground_from_va_vb_vc(self, client, comtrade_fixtures_dir):
+        # synth_ascii fixture's own analog channels are VA/VB (phase
+        # field "A"/"B") and IA -- VA/VB alone are recognized single-
+        # phase-to-ground evidence under the naming detector.
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        resp = client.get(f"/api/v1/workspaces/ws-1/per-unit/sources/{source_id}")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["effective_voltage_reference"] == "line_to_ground"
+        assert set(body["voltage_reference_evidence"]) == {"VA", "VB"}
+        assert body["voltage_reference_reason"] == "detected_from_names"
+
+    def test_manual_override_replaces_the_auto_detected_value(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/per-unit/sources/{source_id}",
+            json={"voltage_reference_mode": "manual", "voltage_reference_override": "line_to_line"},
         )
-        assert conflict_resp.status_code == 400
-        detail = conflict_resp.json()["detail"]
-        assert detail["code"] == "channel_already_assigned"
-        assert detail["conflicts"][0]["profile_id"] == profile_a["id"]
-        assert detail["conflicts"][0]["profile_name"] == "Profile A"
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["voltage_reference_mode"] == "manual"
+        assert body["effective_voltage_reference"] == "line_to_line"
+        assert body["voltage_reference_reason"] == "manual_override"
 
-        # Profile A is unaffected by the rejected attempt.
-        still_a = client.get(f"/api/v1/workspaces/ws-1/per-unit/profiles").json()
-        profile_a_now = next(p for p in still_a if p["id"] == profile_a["id"])
-        assert len(profile_a_now["assigned_channels"]) == 1
-
-        move_resp = client.put(
-            f"/api/v1/workspaces/ws-1/per-unit/profiles/{profile_b['id']}",
-            json={"name": "Profile B", "assigned_channels": [_va_ref(source_id)], "reassign_conflicting": True},
+    def test_return_to_auto_reruns_detection_rather_than_keeping_the_manual_value(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        client.put(
+            f"/api/v1/workspaces/ws-1/per-unit/sources/{source_id}",
+            json={"voltage_reference_mode": "manual", "voltage_reference_override": "line_to_line"},
         )
-        assert move_resp.status_code == 200
-        assert len(move_resp.json()["assigned_channels"]) == 1
-
-        after = client.get(f"/api/v1/workspaces/ws-1/per-unit/profiles").json()
-        profile_a_after = next(p for p in after if p["id"] == profile_a["id"])
-        assert profile_a_after["assigned_channels"] == []
+        back_to_auto = client.put(
+            f"/api/v1/workspaces/ws-1/per-unit/sources/{source_id}",
+            json={"voltage_reference_mode": "auto"},
+        )
+        assert back_to_auto.status_code == 200, back_to_auto.text
+        body = back_to_auto.json()
+        assert body["voltage_reference_mode"] == "auto"
+        assert body["effective_voltage_reference"] == "line_to_ground"  # the real detected value, not the old manual one
 
 
 class TestLifecycleCleanup:
-    def test_deleting_a_calculated_channel_removes_its_own_assignment(
-        self, client, comtrade_fixtures_dir
-    ):
+    def test_deleting_a_source_clears_its_own_configuration(self, client, comtrade_fixtures_dir):
         source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
-        profile = client.post("/api/v1/workspaces/ws-1/per-unit/profiles", json={"name": "P"}).json()
-        calc_resp = client.post(
-            "/api/v1/workspaces/ws-1/calculated-channels",
-            json={
-                "name": "-VA", "operation": "reverse_polarity",
-                "inputs": [_va_ref(source_id)], "parameters": {},
-            },
-        )
-        assert calc_resp.status_code == 201, calc_resp.text
-        calc_id = calc_resp.json()["id"]
-
-        assign_resp = client.put(
-            f"/api/v1/workspaces/ws-1/per-unit/profiles/{profile['id']}",
-            json={
-                "name": "P",
-                "assigned_channels": [
-                    _va_ref(source_id),
-                    {"kind": "calculated", "calculated_channel_id": calc_id},
-                ],
-            },
-        )
-        assert assign_resp.status_code == 200
-        assert len(assign_resp.json()["assigned_channels"]) == 2
-
-        delete_resp = client.delete(f"/api/v1/workspaces/ws-1/calculated-channels/{calc_id}")
-        assert delete_resp.status_code == 204
-
-        after = client.get("/api/v1/workspaces/ws-1/per-unit/profiles").json()
-        profile_after = next(p for p in after if p["id"] == profile["id"])
-        assert len(profile_after["assigned_channels"]) == 1
-        assert profile_after["assigned_channels"][0]["channel_name"] == "VA"
-
-    def test_deleting_a_source_removes_its_channels_own_assignments(
-        self, client, comtrade_fixtures_dir
-    ):
-        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
-        profile = client.post("/api/v1/workspaces/ws-1/per-unit/profiles", json={"name": "P"}).json()
-        client.put(
-            f"/api/v1/workspaces/ws-1/per-unit/profiles/{profile['id']}",
-            json={"name": "P", "assigned_channels": [_va_ref(source_id), _ia_ref(source_id)]},
-        )
+        client.put(f"/api/v1/workspaces/ws-1/per-unit/sources/{source_id}", json={"voltage_base_value": 275.0})
 
         assert client.delete(f"/api/v1/workspaces/ws-1/sources/{source_id}").status_code == 204
 
-        after = client.get("/api/v1/workspaces/ws-1/per-unit/profiles").json()
-        profile_after = next(p for p in after if p["id"] == profile["id"])
-        assert profile_after["assigned_channels"] == []
+        assert client.get("/api/v1/workspaces/ws-1/per-unit/sources").json() == []
 
-    def test_deleting_the_workspace_clears_every_profile(self, client, comtrade_fixtures_dir):
+    def test_deleting_the_workspace_clears_every_source_configuration(self, client, comtrade_fixtures_dir):
         source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
-        client.post("/api/v1/workspaces/ws-1/per-unit/profiles", json={"name": "P"})
+        client.put(f"/api/v1/workspaces/ws-1/per-unit/sources/{source_id}", json={"voltage_base_value": 275.0})
 
         assert client.delete("/api/v1/workspaces/ws-1").status_code == 204
 
-        assert client.get("/api/v1/workspaces/ws-1/per-unit/profiles").json() == []
+        assert client.get("/api/v1/workspaces/ws-1/per-unit/sources").json() == []
 
     def test_deleting_the_workspace_does_not_affect_other_workspaces(self, client, comtrade_fixtures_dir):
-        _upload(client, "ws-target", comtrade_fixtures_dir)
-        _upload(client, "ws-other", comtrade_fixtures_dir)
-        client.post("/api/v1/workspaces/ws-target/per-unit/profiles", json={"name": "Target"})
-        client.post("/api/v1/workspaces/ws-other/per-unit/profiles", json={"name": "Other"})
+        source_target = _upload(client, "ws-target", comtrade_fixtures_dir)
+        source_other = _upload(client, "ws-other", comtrade_fixtures_dir)
+        client.put(f"/api/v1/workspaces/ws-target/per-unit/sources/{source_target}", json={"voltage_base_value": 275.0})
+        client.put(f"/api/v1/workspaces/ws-other/per-unit/sources/{source_other}", json={"voltage_base_value": 132.0})
 
         assert client.delete("/api/v1/workspaces/ws-target").status_code == 204
 
-        assert client.get("/api/v1/workspaces/ws-target/per-unit/profiles").json() == []
-        assert len(client.get("/api/v1/workspaces/ws-other/per-unit/profiles").json()) == 1
+        assert client.get("/api/v1/workspaces/ws-target/per-unit/sources").json() == []
+        other_listed = client.get("/api/v1/workspaces/ws-other/per-unit/sources").json()
+        assert other_listed[0]["configured"] is True
+
+    def test_delete_of_an_unconfigured_source_is_idempotent(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        resp = client.delete(f"/api/v1/workspaces/ws-1/per-unit/sources/{source_id}")
+        assert resp.status_code == 204

@@ -207,42 +207,21 @@ class RmsOverrideRequiredError(ImportServiceError):
     code = "rms_override_required"
 
 
-# ---- Phase 5C: Global Per-Unit Measurement Mode (DEC-049) ----
+# ---- Phase 5C: Global Per-Unit Measurement Mode (DEC-049; source-bound
+# redesign following owner UAT -- PerUnitProfileNotFoundError/
+# ChannelAlreadyAssignedError/InvalidChannelAssignmentError were retired
+# with the old profile/channel-assignment workflow: a source-bound
+# configuration has no separate identity to "not find" (PUT upserts by
+# source_id, DELETE is idempotent) and no assignment conflict is
+# possible any more (every eligible channel of a source uses that
+# source's own configuration automatically, never explicitly assigned).
+# ----
 
 
 class InvalidPerUnitBaseError(ImportServiceError):
-    """A submitted voltage/apparent-power/direct-current base value+unit
-    pair is missing, non-finite, non-positive, or in an unrecognized unit
-    (app.domain.per_unit's own validators)."""
+    """A submitted voltage/apparent-power/direct-current base value, or
+    voltage-reference mode/override, is missing, non-finite, non-
+    positive, or not a recognized value (app.domain.per_unit's own
+    validators)."""
 
     code = "invalid_per_unit_base"
-
-
-class PerUnitProfileNotFoundError(ImportServiceError):
-    """Requested per-unit profile_id does not exist in this workspace."""
-
-    code = "per_unit_profile_not_found"
-
-
-class InvalidChannelAssignmentError(ImportServiceError):
-    """A submitted ChannelRef in `assigned_channels` does not resolve to
-    any real source or calculated channel in this workspace."""
-
-    code = "invalid_channel_assignment"
-
-
-class ChannelAlreadyAssignedError(ImportServiceError):
-    """Decision 4: one or more channels submitted to `PUT .../profiles/
-    {id}` are currently owned by a DIFFERENT profile and
-    `reassign_conflicting` was not set -- the entire request is rejected,
-    no partial apply, no silent reassignment. `conflicts` carries the
-    structured detail (`{channel, profile_id, profile_name}` per
-    conflicting channel) the API layer surfaces in the error body so the
-    frontend can render "Already assigned to <profile name>" without a
-    second lookup round trip."""
-
-    code = "channel_already_assigned"
-
-    def __init__(self, message: str, *, conflicts: list[dict] | None = None) -> None:
-        super().__init__(message)
-        self.conflicts = conflicts or []

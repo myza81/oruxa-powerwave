@@ -1,27 +1,29 @@
-"""In-memory, ephemeral, workspace-scoped Per-Unit Base Profile registry
-(Phase 5C, DEC-049).
+"""In-memory, ephemeral, workspace-scoped Per-Unit Base configuration
+registry (Phase 5C, DEC-049; source-bound redesign following owner UAT).
 
 A sibling registry to `WorkspaceRegistry`/`CalculatedChannelRegistry`
-(same `threading` + `dict[(workspace_id, id), T]` shape, same
-`add`/`get`/`list_for_workspace`/`remove_workspace`/`count` surface) --
-see those modules' own docstrings for the shared locking-policy
-rationale, unchanged here.
+(same `threading` + `dict[(workspace_id, id), T]` shape) -- see those
+modules' own docstrings for the shared locking-policy rationale,
+unchanged here. Keyed by `(workspace_id, source_id)` -- a configuration
+IS the source's own configuration, 1:1, never a separately-identified
+"profile" the engineer creates or assigns (owner UAT on the original
+profile-based design found that workflow too complex).
 
-This registry additionally owns the per-channel assignment reverse index
-(decision 7's `ChannelAssignment{mode, profile_id}`) and the
-inheritance-recompute cascade that keeps a calculated channel's
-automatically-inherited profile in sync with its own inputs.
+Every Voltage/Current SOURCE channel automatically resolves to its own
+owning source's configuration -- `profile_for_channel()` computes this
+directly (source_id + engineering_type), with no per-channel assignment
+record to create, store, or keep in sync. This is the single biggest
+simplification over the original design: there is no more reverse
+index/denormalized-list-divergence invariant to maintain for source
+channels at all.
 
-**Invariant, enforced by every mutating method in this module**:
-`PerUnitBaseProfile.assigned_channels` (the list surfaced on
-`PerUnitProfileOut`, per profile) and the internal reverse index
-(`dict[(workspace_id, ChannelRef), ChannelAssignment]`) are two views of
-the exact same ownership fact and must never diverge. Every mutation
-path -- manual assignment, explicit unassignment, confirmed
-reassignment, automatic inherited reassignment, profile deletion, and
-channel removal -- updates both sides atomically, under this registry's
-own lock, in the same call. No method may touch one side without the
-other.
+CALCULATED channels are the one place a per-channel assignment record
+still exists (the owner's own explicit instruction: "Do not redesign
+calculated-channel PU behaviour in this task" -- decision 6/7's
+two-axis `{mode, profile_id}` model and its live recompute-on-parent-
+change cascade are preserved verbatim; only the "profile_id" flowing
+through them is now always literally a `source_id`, since a "profile"
+and a "source's own configuration" are now the same thing).
 """
 
 from __future__ import annotations
@@ -31,259 +33,218 @@ from dataclasses import dataclass
 from typing import Literal
 
 from app.domain.calculated_channel import ChannelRef
+from app.domain.channel_classification import CURRENT, UNDEFINED, VOLTAGE
 from app.domain.per_unit import PerUnitBaseProfile, derive_per_unit_profile_id
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
-from app.services.errors import ChannelAlreadyAssignedError, PerUnitProfileNotFoundError
+from app.services.workspace_registry import WorkspaceRegistry
 
 AssignmentMode = Literal["auto", "manual"]
 
 
 @dataclass(slots=True)
 class ChannelAssignment:
-    """Decision 7's two independent axes. Absence of a record (no key in
-    the reverse index) means "never touched" -- unambiguous for a source
-    channel (which has no `"auto"` state to distinguish from) and only
-    ever true for a calculated channel in the instant before its own
-    creation call initializes this record (see
-    `PerUnitRegistry.set_auto_assignment`'s call site in
-    `create_calculated_channel`) -- never a steady-state a calculated
-    channel is left in afterward."""
+    """Decision 7's two independent axes, scoped to CALCULATED channels
+    only under the source-bound redesign (a source channel has no
+    inheritance concept -- see module docstring). Absence of a record (no
+    key in `_calc_assignments`) means "never touched"; a calculated
+    channel's own record is created the instant it is created and
+    persists for its whole lifetime, never absent again afterward."""
 
     mode: AssignmentMode
-    profile_id: str | None
+    profile_id: str | None  # always a source_id, or None
 
 
 class PerUnitRegistry:
     """Thread-safe, in-memory store of PerUnitBaseProfile keyed by
-    (workspace_id, profile_id), plus the channel-assignment reverse
+    (workspace_id, source_id), plus the calculated-channel assignment
     index described in the module docstring above."""
 
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._profiles: dict[tuple[str, str], PerUnitBaseProfile] = {}
-        self._assignments: dict[tuple[str, ChannelRef], ChannelAssignment] = {}
+        self._calc_assignments: dict[tuple[str, str], ChannelAssignment] = {}
 
     # ------------------------------------------------------------
-    # Profile storage
+    # Source configuration storage
     # ------------------------------------------------------------
 
-    def add(self, profile: PerUnitBaseProfile) -> None:
+    def upsert(self, profile: PerUnitBaseProfile) -> None:
+        """Create-or-replace this source's own configuration entirely --
+        there is no partial-update concept (the API layer always submits
+        the full configuration, mirroring every other PUT in this
+        codebase)."""
         with self._lock:
-            self._profiles[(profile.workspace_id, profile.id)] = profile
+            self._profiles[(profile.workspace_id, profile.source_id)] = profile
 
-    def get(self, workspace_id: str, profile_id: str) -> PerUnitBaseProfile | None:
+    def get(self, workspace_id: str, source_id: str) -> PerUnitBaseProfile | None:
         with self._lock:
-            return self._profiles.get((workspace_id, profile_id))
+            return self._profiles.get((workspace_id, source_id))
 
     def list_for_workspace(self, workspace_id: str) -> list[PerUnitBaseProfile]:
         with self._lock:
-            return [
-                profile for (wid, _pid), profile in self._profiles.items() if wid == workspace_id
-            ]
+            return [profile for (wid, _sid), profile in self._profiles.items() if wid == workspace_id]
+
+    def delete(self, workspace_id: str, source_id: str) -> bool:
+        """Clears this source's own configuration. Idempotent (returns
+        False, not an error, for an unconfigured/unknown source_id) --
+        matching this codebase's own established idempotent-DELETE
+        convention (app.api.v1.workspaces.delete_workspace). The caller
+        (app.services.per_unit_service) runs the recompute cascade,
+        seeded with `source_id`, when this returns True -- any
+        calculated channel auto-inheriting from this source must react."""
+        with self._lock:
+            return self._profiles.pop((workspace_id, source_id), None) is not None
 
     def remove_workspace(self, workspace_id: str) -> int:
-        """"Start New Workspace" counterpart -- releases every profile AND
-        every channel-assignment record owned by `workspace_id`."""
+        """"Start New Workspace" counterpart -- releases every
+        configuration AND every calculated-channel assignment record
+        owned by `workspace_id`."""
         with self._lock:
             profile_keys = [key for key in self._profiles if key[0] == workspace_id]
             for key in profile_keys:
                 del self._profiles[key]
-            assignment_keys = [key for key in self._assignments if key[0] == workspace_id]
+            assignment_keys = [key for key in self._calc_assignments if key[0] == workspace_id]
             for key in assignment_keys:
-                del self._assignments[key]
+                del self._calc_assignments[key]
             return len(profile_keys)
 
     def count(self) -> int:
         with self._lock:
             return len(self._profiles)
 
-    def delete_profile(self, workspace_id: str, profile_id: str) -> list[ChannelRef]:
-        """Delete one profile. Every channel that pointed at it has its
-        `profile_id` cleared to `None` **with `mode` left exactly as it
-        was** (decision 7 -- a manually-assigned channel becomes
-        `manual + None`, permanently unassigned; an auto one becomes
-        `auto + None`, still eligible to resolve again later). Returns
-        the affected `ChannelRef`s so the caller can run the recompute
-        cascade from each of them (a channel whose profile just changed
-        may itself have dependents)."""
-        with self._lock:
-            profile = self._profiles.pop((workspace_id, profile_id), None)
-            if profile is None:
-                raise PerUnitProfileNotFoundError(f"No per-unit profile '{profile_id}' in this workspace.")
-            affected = list(profile.assigned_channels)
-            for ref in affected:
-                key = (workspace_id, ref)
-                existing = self._assignments.get(key)
-                if existing is not None:
-                    self._assignments[key] = ChannelAssignment(mode=existing.mode, profile_id=None)
-            return affected
-
     # ------------------------------------------------------------
-    # Channel assignment reverse index
+    # Per-channel resolution
     # ------------------------------------------------------------
 
-    def profile_for_channel(self, workspace_id: str, channel_ref: ChannelRef) -> str | None:
+    def profile_for_channel(self, workspace_id: str, channel_ref: ChannelRef, engineering_type: str) -> str | None:
+        """The ONE read accessor every display/measurement endpoint and
+        the recompute cascade use. A SOURCE channel resolves
+        automatically -- no assignment record involved at all: eligible
+        (Voltage/Current) channels of a configured source always use
+        that source's own configuration; anything else is `None`. A
+        CALCULATED channel reads its own tracked auto/manual assignment
+        record (decision 7, unchanged)."""
+        if channel_ref.kind == "source":
+            if engineering_type not in (VOLTAGE, CURRENT):
+                return None
+            profile = self.get(workspace_id, channel_ref.source_id)
+            return profile.source_id if profile is not None else None
+        return self.profile_for_calculated_channel(workspace_id, channel_ref.calculated_channel_id)
+
+    # ------------------------------------------------------------
+    # Calculated-channel assignment (decision 6/7, unchanged)
+    # ------------------------------------------------------------
+
+    def profile_for_calculated_channel(self, workspace_id: str, calculated_channel_id: str) -> str | None:
         with self._lock:
-            record = self._assignments.get((workspace_id, channel_ref))
+            record = self._calc_assignments.get((workspace_id, calculated_channel_id))
             return record.profile_id if record is not None else None
 
-    def assignment_mode_for_channel(self, workspace_id: str, channel_ref: ChannelRef) -> AssignmentMode | None:
+    def assignment_mode_for_calculated_channel(self, workspace_id: str, calculated_channel_id: str) -> AssignmentMode | None:
         with self._lock:
-            record = self._assignments.get((workspace_id, channel_ref))
+            record = self._calc_assignments.get((workspace_id, calculated_channel_id))
             return record.mode if record is not None else None
 
-    def _reassign_locked(self, workspace_id: str, channel_ref: ChannelRef, mode: AssignmentMode, profile_id: str | None) -> bool:
-        """Must be called with `self._lock` already held. Updates the
-        reverse index AND both profiles' own `assigned_channels` lists
-        (old owner loses it, new owner gains it) in one place, so the
-        two representations can never diverge (see module docstring).
-        Returns True if the channel's own resolved `profile_id` actually
-        changed."""
-        key = (workspace_id, channel_ref)
-        existing = self._assignments.get(key)
-        old_profile_id = existing.profile_id if existing is not None else None
-
-        if old_profile_id is not None and old_profile_id != profile_id:
-            old_profile = self._profiles.get((workspace_id, old_profile_id))
-            if old_profile is not None and channel_ref in old_profile.assigned_channels:
-                old_profile.assigned_channels.remove(channel_ref)
-
-        if profile_id is not None and profile_id != old_profile_id:
-            new_profile = self._profiles.get((workspace_id, profile_id))
-            if new_profile is not None and channel_ref not in new_profile.assigned_channels:
-                new_profile.assigned_channels.append(channel_ref)
-
-        self._assignments[key] = ChannelAssignment(mode=mode, profile_id=profile_id)
-        return profile_id != old_profile_id
-
-    def set_manual_assignment(self, workspace_id: str, channel_ref: ChannelRef, profile_id: str | None) -> bool:
+    def set_manual_assignment_for_calculated_channel(
+        self, workspace_id: str, calculated_channel_id: str, profile_id: str | None
+    ) -> bool:
         """The ONLY entry point that ever writes `mode="manual"`. Used by
-        `assign_channels()` for every channel explicitly listed (or
-        explicitly omitted) in a profile PUT, and by the setup UI's
-        explicit "unassign this channel" action (`profile_id=None`) --
-        this is what makes `manual + None` reachable, distinct from a
-        record that was simply never created."""
+        the setup UI's explicit assign/unassign action on a calculated
+        channel (out of scope for THIS redesign pass -- preserved as-is
+        per the owner's own "do not redesign calculated-channel PU
+        behaviour" instruction). Returns True if the resolved
+        `profile_id` actually changed."""
         with self._lock:
-            return self._reassign_locked(workspace_id, channel_ref, "manual", profile_id)
-
-    def set_auto_assignment(self, workspace_id: str, channel_ref: ChannelRef, profile_id: str | None) -> bool:
-        """The ONLY entry point that ever writes `mode="auto"`. Used by
-        calculated-channel creation (initializing the record for the
-        first time) and by the recompute cascade below. Callers are
-        responsible for having already confirmed the target is eligible
-        for automatic recomputation (mode `"auto"`, or brand new) --
-        this does not re-check."""
-        with self._lock:
-            return self._reassign_locked(workspace_id, channel_ref, "auto", profile_id)
-
-    def assign_channels(
-        self,
-        workspace_id: str,
-        profile_id: str,
-        channel_refs: list[ChannelRef],
-        *,
-        reassign_conflicting: bool = False,
-    ) -> list[ChannelRef]:
-        """Decision 4's full-replace reconciliation for one profile's own
-        PUT. Computes which of `channel_refs` are currently owned by a
-        *different* profile (regardless of that owner's mode); if any
-        exist and `reassign_conflicting` is False, raises
-        `ChannelAlreadyAssignedError` and mutates nothing. Otherwise,
-        every channel in `channel_refs` is set to manual+this profile,
-        every channel that was previously on this profile but is now
-        omitted is set to manual+None (explicit unassignment -- decision
-        7's rule: touching a channel's assignment in this modal is
-        always a manual act), and the list of every `ChannelRef` whose
-        resolved `profile_id` actually changed is returned, for the
-        caller to drive the recompute cascade.
-        """
-        with self._lock:
-            profile = self._profiles.get((workspace_id, profile_id))
-            if profile is None:
-                raise PerUnitProfileNotFoundError(f"No per-unit profile '{profile_id}' in this workspace.")
-
-            new_set = list(dict.fromkeys(channel_refs))  # de-duplicated, order-preserving
-            conflicts: list[tuple[ChannelRef, str, str]] = []
-            for ref in new_set:
-                owner_id = self.profile_for_channel(workspace_id, ref)
-                if owner_id is not None and owner_id != profile_id:
-                    owner_profile = self._profiles.get((workspace_id, owner_id))
-                    owner_name = owner_profile.name if owner_profile is not None else owner_id
-                    conflicts.append((ref, owner_id, owner_name))
-
-            if conflicts and not reassign_conflicting:
-                raise ChannelAlreadyAssignedError(
-                    "One or more channels are already assigned to a different per-unit base profile.",
-                    conflicts=[
-                        {"channel": ref, "profile_id": owner_id, "profile_name": owner_name}
-                        for ref, owner_id, owner_name in conflicts
-                    ],
-                )
-
-            previously_assigned = set(profile.assigned_channels)
-            to_unassign = previously_assigned - set(new_set)
-
-            changed: list[ChannelRef] = []
-            for ref in to_unassign:
-                if self._reassign_locked(workspace_id, ref, "manual", None):
-                    changed.append(ref)
-            for ref in new_set:
-                if self._reassign_locked(workspace_id, ref, "manual", profile_id):
-                    changed.append(ref)
+            key = (workspace_id, calculated_channel_id)
+            existing = self._calc_assignments.get(key)
+            changed = existing is None or existing.profile_id != profile_id
+            self._calc_assignments[key] = ChannelAssignment(mode="manual", profile_id=profile_id)
             return changed
 
-    def remove_channel_everywhere(self, workspace_id: str, channel_ref: ChannelRef) -> None:
-        """Source/calculated-channel removal lifecycle: deletes the
-        assignment record entirely (not just its `profile_id`) -- the
-        channel itself is gone, so there is nothing left to preserve a
-        mode for. Also strips it out of whichever profile's own
-        `assigned_channels` list currently references it."""
+    def set_auto_assignment_for_calculated_channel(
+        self, workspace_id: str, calculated_channel_id: str, profile_id: str | None
+    ) -> bool:
+        """The ONLY entry point that ever writes `mode="auto"`. Used by
+        calculated-channel creation (initializing the record for the
+        first time) and by the recompute cascade below."""
         with self._lock:
-            key = (workspace_id, channel_ref)
-            existing = self._assignments.pop(key, None)
-            if existing is not None and existing.profile_id is not None:
-                profile = self._profiles.get((workspace_id, existing.profile_id))
-                if profile is not None and channel_ref in profile.assigned_channels:
-                    profile.assigned_channels.remove(channel_ref)
+            key = (workspace_id, calculated_channel_id)
+            existing = self._calc_assignments.get(key)
+            changed = existing is None or existing.profile_id != profile_id
+            self._calc_assignments[key] = ChannelAssignment(mode="auto", profile_id=profile_id)
+            return changed
+
+    def remove_calculated_channel(self, workspace_id: str, calculated_channel_id: str) -> None:
+        """Calculated-channel removal lifecycle: deletes its own
+        assignment record entirely -- the channel itself is gone, so
+        there is nothing left to preserve a mode for."""
+        with self._lock:
+            self._calc_assignments.pop((workspace_id, calculated_channel_id), None)
+
+
+def _engineering_type_for_input(
+    channel_ref: ChannelRef, *, workspace_id: str, source_registry: WorkspaceRegistry, calc_registry: CalculatedChannelRegistry
+) -> str:
+    """Same "look up the already-classified channel" pattern
+    app.services.calculated_channel_service's own `_resolve_input` uses
+    -- deliberately lightweight (no array data touched) since the
+    recompute cascade may walk many calculated channels' own inputs."""
+    if channel_ref.kind == "source":
+        active = source_registry.get(workspace_id, channel_ref.source_id)
+        if active is None:
+            return UNDEFINED
+        matching = next((ch for ch in active.metadata.analog_channels if ch.name == channel_ref.channel_name), None)
+        return matching.engineering_type if matching is not None else UNDEFINED
+    calc = calc_registry.get(workspace_id, channel_ref.calculated_channel_id)
+    return calc.engineering_type if calc is not None else UNDEFINED
 
 
 def recompute_inherited_per_unit_assignments(
     workspace_id: str,
-    changed_channel_refs: list[ChannelRef],
+    changed_ids: list[str],
     *,
     per_unit_registry: PerUnitRegistry,
     calc_registry: CalculatedChannelRegistry,
+    source_registry: WorkspaceRegistry,
 ) -> None:
-    """Decision 7's inheritance cascade, made live rather than a
-    one-time creation-time snapshot. Whenever any channel's resolved
-    `profile_id` changes (a manual reassignment, an explicit
-    unassignment, or a profile deletion clearing everyone who pointed at
-    it), every calculated channel that directly depends on it must react
-    -- unless that dependent's own assignment is `mode="manual"`, which
-    is never auto-changed.
+    """Decision 7's inheritance cascade (unchanged rule, source-bound
+    identities). Whenever any SOURCE's own configuration changes
+    (created/updated/deleted) or any CALCULATED channel's own resolved
+    profile changes, every calculated channel that directly depends on
+    it must react -- unless that dependent's own assignment is
+    `mode="manual"`, which is never auto-changed. `changed_ids` are
+    source_ids and/or calculated_channel_ids (both id spaces are walked
+    identically -- a dependent's `inputs` list already distinguishes
+    which kind each entry is).
 
     An iterative queue (never recursive), using the EXISTING
     `CalculatedChannel.inputs` list as the only graph data needed -- the
     same composition trick `derive_engineering_type()` already relies on
-    for transitive chains, so a change several calculated-from-calculated
-    layers deep still propagates correctly with no separate dependency
-    graph structure.
+    for transitive chains.
     """
-    queue: list[ChannelRef] = list(changed_channel_refs)
+    queue: list[str] = list(changed_ids)
     while queue:
-        changed_ref = queue.pop()
+        changed_id = queue.pop()
         for channel in calc_registry.list_for_workspace(workspace_id):
-            if changed_ref not in channel.inputs:
+            depends_on_changed = any(
+                (inp.kind == "source" and inp.source_id == changed_id)
+                or (inp.kind == "calculated" and inp.calculated_channel_id == changed_id)
+                for inp in channel.inputs
+            )
+            if not depends_on_changed:
                 continue
-            own_ref = ChannelRef(kind="calculated", calculated_channel_id=channel.id)
-            mode = per_unit_registry.assignment_mode_for_channel(workspace_id, own_ref)
+            mode = per_unit_registry.assignment_mode_for_calculated_channel(workspace_id, channel.id)
             if mode == "manual":
                 continue  # decision 7's hard rule: manual is never auto-changed.
             input_profile_ids = [
-                per_unit_registry.profile_for_channel(workspace_id, input_ref) for input_ref in channel.inputs
+                per_unit_registry.profile_for_channel(
+                    workspace_id, inp,
+                    _engineering_type_for_input(inp, workspace_id=workspace_id, source_registry=source_registry, calc_registry=calc_registry),
+                )
+                for inp in channel.inputs
             ]
             new_profile_id = derive_per_unit_profile_id(channel.operation, input_profile_ids)
-            current_profile_id = per_unit_registry.profile_for_channel(workspace_id, own_ref)
+            current_profile_id = per_unit_registry.profile_for_calculated_channel(workspace_id, channel.id)
             if new_profile_id != current_profile_id:
-                per_unit_registry.set_auto_assignment(workspace_id, own_ref, new_profile_id)
-                queue.append(own_ref)
+                per_unit_registry.set_auto_assignment_for_calculated_channel(workspace_id, channel.id, new_profile_id)
+                queue.append(channel.id)

@@ -19,7 +19,6 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from app.domain.calculated_channel import ChannelRef
 from app.schemas.calculated_channel import (
     CalculatedAnnotationAnchorOut,
     CalculatedAnnotationAnchorRequest,
@@ -48,6 +47,7 @@ from app.services.calculated_channel_service import (
 )
 from app.services.errors import ImportServiceError
 from app.services.per_unit_registry import PerUnitRegistry
+from app.services.per_unit_service import voltage_channel_names_for_source
 from app.services.waveform_service import DEFAULT_POINT_BUDGET
 from app.services.workspace_registry import WorkspaceRegistry
 
@@ -94,13 +94,25 @@ def get_per_unit_registry(request: Request) -> PerUnitRegistry:
 def _resolve_profile_for_calculated_channel(
     per_unit_registry: PerUnitRegistry, workspace_id: str, calculated_channel_id: str
 ):
-    """Phase 5C (DEC-049): symmetric with app.api.v1.sources's own
-    `_resolve_profile_for_source_channel` -- resolves one calculated
-    channel's own currently assigned/inherited profile (or `None`)."""
-    profile_id = per_unit_registry.profile_for_channel(
-        workspace_id, ChannelRef(kind="calculated", calculated_channel_id=calculated_channel_id)
-    )
-    return per_unit_registry.get(workspace_id, profile_id) if profile_id else None
+    """Phase 5C (DEC-049; source-bound redesign): resolves one calculated
+    channel's own currently inherited configuration (or `None`) -- the
+    SOURCE whose configuration it inherited from (decision 6/7,
+    unchanged), via the calc-only assignment record."""
+    source_id = per_unit_registry.profile_for_calculated_channel(workspace_id, calculated_channel_id)
+    return per_unit_registry.get(workspace_id, source_id) if source_id else None
+
+
+def _voltage_channel_names_for_profile(source_registry: WorkspaceRegistry, workspace_id: str, profile) -> list[str]:
+    """The Voltage-channel-naming evidence for whichever SOURCE a
+    calculated channel's own inherited configuration actually belongs
+    to -- only consulted for a CURRENT calculated channel under
+    `current_base_mode == "derived"`. Note this is the CONFIGURATION's
+    own `source_id`, not necessarily the calculated channel's own
+    `reference_source_id` (they usually coincide, but decision 6's
+    inheritance composes through calculated-from-calculated chains)."""
+    if profile is None:
+        return []
+    return voltage_channel_names_for_source(source_registry, workspace_id, profile.source_id)
 
 
 def _validate_workspace_id(workspace_id: str) -> str:
@@ -201,6 +213,7 @@ def get_channel_waveform(
     unit_mode: str = "engineering",
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
     per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
 ) -> CalculatedWaveformRangeOut:
     """Section 48/49: reuses the exact same full-resolution-threshold +
     peak-preserving-reduction pipeline GET .../sources/{id}/waveform
@@ -216,6 +229,7 @@ def get_channel_waveform(
     result = extract_calculated_waveform_range(
         channel, start_time=start_time, end_time=end_time, point_budget=point_budget,
         unit_mode=unit_mode, per_unit_profile=per_unit_profile,
+        voltage_channel_names=_voltage_channel_names_for_profile(source_registry, workspace_id, per_unit_profile),
     )
     return CalculatedWaveformRangeOut.from_result(result)
 
@@ -260,6 +274,7 @@ def get_cursor_values(
     body: CalculatedCursorValuesRequest,
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
     per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
 ) -> CalculatedCursorValuesOut:
     """Section 54: A/B cursor values for a batch of calculated channels --
     unknown ids are silently skipped (mirrors extract_cursor_values's own
@@ -269,17 +284,20 @@ def get_cursor_values(
     channels = [
         c for c in (calc_registry.get(workspace_id, cid) for cid in body.calculated_channel_ids) if c is not None
     ]
-    per_unit_profiles = (
-        {
-            c.id: _resolve_profile_for_calculated_channel(per_unit_registry, workspace_id, c.id)
+    per_unit_profiles = None
+    voltage_channel_names_by_id = None
+    if body.unit_mode == "per_unit":
+        per_unit_profiles = {
+            c.id: _resolve_profile_for_calculated_channel(per_unit_registry, workspace_id, c.id) for c in channels
+        }
+        voltage_channel_names_by_id = {
+            c.id: _voltage_channel_names_for_profile(source_registry, workspace_id, per_unit_profiles[c.id])
             for c in channels
         }
-        if body.unit_mode == "per_unit"
-        else None
-    )
     results = extract_calculated_cursor_values(
         channels, cursor_a_time=body.cursor_a_time, cursor_b_time=body.cursor_b_time,
         unit_mode=body.unit_mode, per_unit_profiles=per_unit_profiles,
+        voltage_channel_names_by_id=voltage_channel_names_by_id,
     )
     return CalculatedCursorValuesOut(channels=[CalculatedCursorValuesItemOut.from_result(r) for r in results])
 
@@ -290,6 +308,7 @@ def get_peak_values(
     body: CalculatedPeakBatchRequest,
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
     per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
 ) -> CalculatedPeakBatchOut:
     """Section 55: +Peak/-Peak for a batch of calculated channels, mirroring
     the source-channel .../peak-values batch contract (DEC-046) --
@@ -323,6 +342,7 @@ def get_peak_values(
         result = resolve_calculated_peak_value(
             channel, mode=item.mode, start_time=body.start_time, end_time=body.end_time,
             unit_mode=body.unit_mode, per_unit_profile=per_unit_profile,
+            voltage_channel_names=_voltage_channel_names_for_profile(source_registry, workspace_id, per_unit_profile),
         )
         results.append(CalculatedPeakResultOut.from_result(result))
     return CalculatedPeakBatchOut(start_time=body.start_time, end_time=body.end_time, results=results)
@@ -335,6 +355,7 @@ def resolve_annotation_anchor(
     body: CalculatedAnnotationAnchorRequest,
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
     per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
 ) -> CalculatedAnnotationAnchorOut:
     """Section 56: Callout anchor resolution for a calculated channel --
     reuses the exact same nearest-sample rule
@@ -351,6 +372,7 @@ def resolve_annotation_anchor(
     result = resolve_calculated_annotation_anchor(
         channel, approximate_elapsed_seconds=body.approximate_elapsed_seconds,
         unit_mode=body.unit_mode, per_unit_profile=per_unit_profile,
+        voltage_channel_names=_voltage_channel_names_for_profile(source_registry, workspace_id, per_unit_profile),
     )
     if result is None:
         raise HTTPException(

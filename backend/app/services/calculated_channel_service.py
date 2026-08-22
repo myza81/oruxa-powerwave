@@ -483,11 +483,12 @@ def create_calculated_channel(
         # the product of this same inheritance one level up) composes
         # transitively through derive_per_unit_profile_id() with no
         # separate recursive logic needed.
-        input_profile_ids = [per_unit_registry.profile_for_channel(workspace_id, ref) for ref in inputs]
+        input_profile_ids = [
+            per_unit_registry.profile_for_channel(workspace_id, ref, r.engineering_type)
+            for ref, r in zip(inputs, resolved)
+        ]
         inherited_profile_id = derive_per_unit_profile_id(operation, input_profile_ids)
-        per_unit_registry.set_auto_assignment(
-            workspace_id, ChannelRef(kind="calculated", calculated_channel_id=calc_id), inherited_profile_id
-        )
+        per_unit_registry.set_auto_assignment_for_calculated_channel(workspace_id, calc_id, inherited_profile_id)
 
     return channel
 
@@ -519,9 +520,7 @@ def delete_calculated_channel(
         )
     calc_registry.remove(workspace_id, calculated_channel_id)
     if per_unit_registry is not None:
-        per_unit_registry.remove_channel_everywhere(
-            workspace_id, ChannelRef(kind="calculated", calculated_channel_id=calculated_channel_id)
-        )
+        per_unit_registry.remove_calculated_channel(workspace_id, calculated_channel_id)
 
 
 def remove_calculated_channels_for_source(
@@ -549,9 +548,7 @@ def remove_calculated_channels_for_source(
     for calculated_channel_id in affected:
         calc_registry.remove(workspace_id, calculated_channel_id)
         if per_unit_registry is not None:
-            per_unit_registry.remove_channel_everywhere(
-                workspace_id, ChannelRef(kind="calculated", calculated_channel_id=calculated_channel_id)
-            )
+            per_unit_registry.remove_calculated_channel(workspace_id, calculated_channel_id)
     return affected
 
 
@@ -584,6 +581,7 @@ def extract_calculated_waveform_range(
     point_budget: int = DEFAULT_POINT_BUDGET,
     unit_mode: str = UNIT_MODE_ENGINEERING,
     per_unit_profile: PerUnitBaseProfile | None = None,
+    voltage_channel_names: list[str] | None = None,
 ) -> CalculatedWaveformRangeResult:
     """Display-range extraction for one calculated channel -- calls the
     SAME `_clip_and_reduce()` core the source-channel waveform endpoint
@@ -595,7 +593,7 @@ def extract_calculated_waveform_range(
     unit = channel.unit
     per_unit_status: str | None = None
     if unit_mode == UNIT_MODE_PER_UNIT:
-        resolution = resolve_per_unit(channel.engineering_type, per_unit_profile)
+        resolution = resolve_per_unit(channel.engineering_type, per_unit_profile, voltage_channel_names)
         out_values, unit, per_unit_status = apply_per_unit_to_array(
             out_values, channel.unit, channel.engineering_type, resolution
         )
@@ -630,6 +628,7 @@ def extract_calculated_cursor_values(
     cursor_b_time: float | None,
     unit_mode: str = UNIT_MODE_ENGINEERING,
     per_unit_profiles: dict[str, PerUnitBaseProfile | None] | None = None,
+    voltage_channel_names_by_id: dict[str, list[str]] | None = None,
 ) -> list[CalculatedCursorValues]:
     """A/B cursor values for a batch of calculated channels (section 54) --
     each channel's own full-resolution `time` array is searched
@@ -651,7 +650,8 @@ def extract_calculated_cursor_values(
         per_unit_status: str | None = None
         if unit_mode == UNIT_MODE_PER_UNIT:
             profile = (per_unit_profiles or {}).get(channel.id)
-            resolution = resolve_per_unit(channel.engineering_type, profile)
+            names = (voltage_channel_names_by_id or {}).get(channel.id)
+            resolution = resolve_per_unit(channel.engineering_type, profile, names)
             a_value, unit, per_unit_status = apply_per_unit_to_value(a_value, channel.unit, channel.engineering_type, resolution)
             b_value, unit, per_unit_status = apply_per_unit_to_value(b_value, channel.unit, channel.engineering_type, resolution)
 
@@ -688,6 +688,7 @@ def resolve_calculated_peak_value(
     end_time: float,
     unit_mode: str = UNIT_MODE_ENGINEERING,
     per_unit_profile: PerUnitBaseProfile | None = None,
+    voltage_channel_names: list[str] | None = None,
 ) -> CalculatedPeakResult:
     """+Peak/-Peak for one calculated channel (section 55) -- calls the
     SAME `_peak_in_range()` core (earliest-tie argmax/argmin, non-finite
@@ -698,7 +699,7 @@ def resolve_calculated_peak_value(
     unit = channel.unit if available else None
     per_unit_status: str | None = None
     if available and unit_mode == UNIT_MODE_PER_UNIT:
-        resolution = resolve_per_unit(channel.engineering_type, per_unit_profile)
+        resolution = resolve_per_unit(channel.engineering_type, per_unit_profile, voltage_channel_names)
         value, unit, per_unit_status = apply_per_unit_to_value(value, channel.unit, channel.engineering_type, resolution)
     return CalculatedPeakResult(
         calculated_channel_id=channel.id,
@@ -733,6 +734,7 @@ def resolve_calculated_annotation_anchor(
     approximate_elapsed_seconds: float,
     unit_mode: str = UNIT_MODE_ENGINEERING,
     per_unit_profile: PerUnitBaseProfile | None = None,
+    voltage_channel_names: list[str] | None = None,
 ) -> CalculatedAnnotationAnchorResult | None:
     """Callout anchor resolution for one calculated channel (section 56) --
     reuses `_nearest_sample_index()` directly, the exact same nearest-
@@ -748,7 +750,7 @@ def resolve_calculated_annotation_anchor(
     unit = channel.unit
     per_unit_status: str | None = None
     if unit_mode == UNIT_MODE_PER_UNIT:
-        resolution = resolve_per_unit(channel.engineering_type, per_unit_profile)
+        resolution = resolve_per_unit(channel.engineering_type, per_unit_profile, voltage_channel_names)
         value, unit, per_unit_status = apply_per_unit_to_value(value, channel.unit, channel.engineering_type, resolution)
     return CalculatedAnnotationAnchorResult(
         calculated_channel_id=channel.id,

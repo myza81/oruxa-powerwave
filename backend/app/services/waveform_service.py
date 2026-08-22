@@ -169,6 +169,7 @@ def extract_waveform_range(
     point_budget: int,
     unit_mode: str = UNIT_MODE_ENGINEERING,
     per_unit_profile: PerUnitBaseProfile | None = None,
+    voltage_channel_names: list[str] | None = None,
 ) -> WaveformRangeResult:
     """Extract an exact time range for one analog channel, then prepare it for display.
 
@@ -218,7 +219,7 @@ def extract_waveform_range(
     per_unit_status: str | None = None
     if unit_mode == UNIT_MODE_PER_UNIT:
         engineering_type = _analog_channel_engineering_type(active, channel_name)
-        resolution = resolve_per_unit(engineering_type, per_unit_profile)
+        resolution = resolve_per_unit(engineering_type, per_unit_profile, voltage_channel_names)
         out_values, unit, per_unit_status = apply_per_unit_to_array(out_values, unit, engineering_type, resolution)
 
     return WaveformRangeResult(
@@ -350,7 +351,8 @@ def extract_cursor_values(
     cursor_a_time: float | None,
     cursor_b_time: float | None,
     unit_mode: str = UNIT_MODE_ENGINEERING,
-    per_unit_profiles: dict[str, PerUnitBaseProfile | None] | None = None,
+    per_unit_profile: PerUnitBaseProfile | None = None,
+    voltage_channel_names: list[str] | None = None,
 ) -> CursorValuesResult:
     """Recorded channel values/states at cursor A/B, from full-resolution
     source data (Phase 4C1 analog, Phase 4C2 digital).
@@ -416,8 +418,7 @@ def extract_cursor_values(
         per_unit_status: str | None = None
         if unit_mode == UNIT_MODE_PER_UNIT:
             engineering_type = _analog_channel_engineering_type(active, name)
-            profile = (per_unit_profiles or {}).get(name)
-            resolution = resolve_per_unit(engineering_type, profile)
+            resolution = resolve_per_unit(engineering_type, per_unit_profile, voltage_channel_names)
             a_value, display_unit, per_unit_status = apply_per_unit_to_value(a_value, unit, engineering_type, resolution)
             b_value, display_unit, per_unit_status = apply_per_unit_to_value(b_value, unit, engineering_type, resolution)
 
@@ -492,6 +493,7 @@ def resolve_annotation_anchor(
     approximate_elapsed_seconds: float,
     unit_mode: str = UNIT_MODE_ENGINEERING,
     per_unit_profile: PerUnitBaseProfile | None = None,
+    voltage_channel_names: list[str] | None = None,
 ) -> AnnotationAnchorResult:
     """Resolve a Callout annotation's anchor to the nearest ACTUAL
     full-resolution recorded sample on one analog channel (Phase 4F,
@@ -529,7 +531,7 @@ def resolve_annotation_anchor(
     per_unit_status: str | None = None
     if unit_mode == UNIT_MODE_PER_UNIT:
         engineering_type = _analog_channel_engineering_type(active, channel_name)
-        resolution = resolve_per_unit(engineering_type, per_unit_profile)
+        resolution = resolve_per_unit(engineering_type, per_unit_profile, voltage_channel_names)
         value, unit, per_unit_status = apply_per_unit_to_value(value, unit, engineering_type, resolution)
 
     return AnnotationAnchorResult(
@@ -622,6 +624,7 @@ def resolve_peak_value(
     end_time: float,
     unit_mode: str = UNIT_MODE_ENGINEERING,
     per_unit_profile: PerUnitBaseProfile | None = None,
+    voltage_channel_names: list[str] | None = None,
 ) -> PeakValueResult:
     """Resolve one analog channel's maximum or minimum RECORDED sample
     value within `[start_time, end_time]` (Phase 4G, DEC-046).
@@ -677,7 +680,7 @@ def resolve_peak_value(
     display_unit = unit if available else None
     if available and unit_mode == UNIT_MODE_PER_UNIT:
         engineering_type = _analog_channel_engineering_type(active, channel_name)
-        resolution = resolve_per_unit(engineering_type, per_unit_profile)
+        resolution = resolve_per_unit(engineering_type, per_unit_profile, voltage_channel_names)
         value, display_unit, per_unit_status = apply_per_unit_to_value(value, unit, engineering_type, resolution)
 
     return PeakValueResult(
