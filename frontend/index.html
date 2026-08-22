@@ -821,11 +821,7 @@
 
         /* Phase 5B UAT (DEC-048 clarification, section 17): a small,
            reusable accessible info-tip -- see wwInfoTipHtml()'s own
-           comment for why this exists instead of native `title`. The
-           `.ww-cc-field .ww-info-tip`/`.ww-cc-field .ww-info-tip-bubble`
-           selectors deliberately have higher specificity than the
-           pre-existing `.ww-cc-field span` rule above (which would
-           otherwise force this inline component onto its own block row). */
+           comment for why this exists instead of native `title`. */
         .ww-info-tip { position: relative; display: inline-flex; vertical-align: middle; }
         .ww-cc-field .ww-info-tip { display: inline-flex; margin: 0 0 0 5px; }
         .ww-info-tip-trigger {
@@ -837,21 +833,38 @@
         .ww-info-tip-trigger svg { width: 9px; height: 9px; stroke: currentColor; fill: none; stroke-width: 1.3; stroke-linecap: round; }
         .ww-info-tip-trigger:hover, .ww-info-tip-trigger:focus-visible { color: var(--accent); border-color: var(--accent-dim); }
         .ww-info-tip-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-        .ww-info-tip-bubble {
-            position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+
+        /* Phase 5B UAT Fix: a SINGLE shared, body-level tooltip node
+           (`#wwInfoTipPortal`, markup near the end of <body>), positioned
+           with `position: fixed` and shown/hidden/placed entirely by
+           wwInfoTipShow()/wwInfoTipHide() (event-delegated on `document`
+           for mouse AND keyboard focus). This replaced an earlier inline
+           sibling-bubble design (`position: absolute` next to the
+           trigger) after direct browser measurement proved the actual
+           root cause of the owner's report: `#pageCalculatedChannels`'s
+           own `overflow: auto` clips ANY descendant that visually
+           extends past its scroll box, completely independent of
+           z-index or stacking context (confirmed: neither the tooltip
+           nor the main sidebar had any competing stacking context at
+           all -- raising z-index alone could never have fixed this). A
+           `position: fixed` node reparented to <body> escapes every
+           ancestor's overflow/scroll/transform by construction -- the
+           one case this project's own tooltip-positioning guidance
+           explicitly pre-approved a portal for. */
+        .ww-info-tip-portal {
+            position: fixed;
             width: max-content; max-width: 240px;
             background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);
             color: var(--text); font-size: 0.68rem; line-height: 1.4;
             padding: 8px 10px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
-            opacity: 0; visibility: hidden; pointer-events: none;
-            transition: opacity 0.12s ease;
-            z-index: 30;
+            pointer-events: none;
+            /* One step above this app's own previous highest fixed-layer
+               z-index (.ww-annotation-drawer's 40) -- a considered,
+               documented value on the SAME established scale, never an
+               arbitrary "999999". */
+            z-index: 50;
         }
-        .ww-cc-field .ww-info-tip-bubble { margin: 0; }
-        .ww-info-tip-trigger:hover + .ww-info-tip-bubble,
-        .ww-info-tip-trigger:focus-visible + .ww-info-tip-bubble {
-            opacity: 1; visibility: visible;
-        }
+        .ww-info-tip-portal[hidden] { display: none; }
 
         /* Phase 5B (DEC-048): RMS eligibility status -- categorical copy
            only (section 45), never a numeric confidence value. "Suitable"
