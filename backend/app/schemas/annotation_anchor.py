@@ -31,6 +31,8 @@ class AnnotationAnchorRequest(BaseModel):
 
     channel_name: str
     approximate_elapsed_seconds: float
+    # Phase 5C (DEC-049): "engineering" (default) or "per_unit".
+    unit_mode: str = "engineering"
 
 
 class AnnotationAnchorOut(BaseModel):
@@ -43,6 +45,7 @@ class AnnotationAnchorOut(BaseModel):
     sample_index: int
     elapsed_seconds: float
     value: float
+    per_unit_status: str | None = None
 
     @classmethod
     def from_result(cls, result: AnnotationAnchorResult) -> "AnnotationAnchorOut":
@@ -53,4 +56,5 @@ class AnnotationAnchorOut(BaseModel):
             sample_index=result.sample_index,
             elapsed_seconds=result.elapsed_seconds,
             value=result.value,
+            per_unit_status=result.per_unit_status,
         )

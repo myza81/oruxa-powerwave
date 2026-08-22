@@ -58,6 +58,13 @@ from app.domain.channel_classification import (
     WAVEFORM_FORM_UNKNOWN,
     derive_waveform_form,
 )
+from app.domain.per_unit import (
+    PerUnitBaseProfile,
+    apply_per_unit_to_array,
+    apply_per_unit_to_value,
+    derive_per_unit_profile_id,
+    resolve_per_unit,
+)
 from app.domain.rms_detector import (
     LIKELY_INSTANTANEOUS,
     LIKELY_MAGNITUDE_OR_RMS,
@@ -82,10 +89,13 @@ from app.services.errors import (
     RmsSamplingTooSparseError,
     SourceNotFoundError,
 )
+from app.services.per_unit_registry import PerUnitRegistry
 from app.services.waveform_service import (
     DEFAULT_POINT_BUDGET,
     PEAK_MODE_MAX,
     PEAK_MODE_MIN,
+    UNIT_MODE_ENGINEERING,
+    UNIT_MODE_PER_UNIT,
     _clip_and_reduce,
     _nearest_sample_index,
     _peak_in_range,
@@ -300,6 +310,7 @@ def create_calculated_channel(
     source_registry: WorkspaceRegistry,
     calc_registry: CalculatedChannelRegistry,
     override: bool = False,
+    per_unit_registry: PerUnitRegistry | None = None,
 ) -> CalculatedChannel:
     """Validate, evaluate, and store one new calculated channel.
 
@@ -463,14 +474,37 @@ def create_calculated_channel(
         waveform_form=output_waveform_form,
     )
     calc_registry.add(channel)
+
+    if per_unit_registry is not None:
+        # Decision 6/7 (DEC-049): seed this channel's per-unit assignment
+        # record in mode="auto" at the SAME moment it is created --
+        # never absent afterward for the rest of its life. Each input's
+        # own already-resolved profile (itself possibly `None`, possibly
+        # the product of this same inheritance one level up) composes
+        # transitively through derive_per_unit_profile_id() with no
+        # separate recursive logic needed.
+        input_profile_ids = [per_unit_registry.profile_for_channel(workspace_id, ref) for ref in inputs]
+        inherited_profile_id = derive_per_unit_profile_id(operation, input_profile_ids)
+        per_unit_registry.set_auto_assignment(
+            workspace_id, ChannelRef(kind="calculated", calculated_channel_id=calc_id), inherited_profile_id
+        )
+
     return channel
 
 
 def delete_calculated_channel(
-    *, workspace_id: str, calculated_channel_id: str, calc_registry: CalculatedChannelRegistry
+    *,
+    workspace_id: str,
+    calculated_channel_id: str,
+    calc_registry: CalculatedChannelRegistry,
+    per_unit_registry: PerUnitRegistry | None = None,
 ) -> None:
     """Delete one calculated channel -- BLOCKED (never a silent cascade,
-    section 25/63) if another calculated channel still depends on it."""
+    section 25/63) if another calculated channel still depends on it.
+
+    Phase 5C (DEC-049): also releases this channel's own per-unit
+    assignment record (`per_unit_registry`, optional so existing direct
+    callers/tests that don't care about per-unit are unaffected)."""
     channel = calc_registry.get(workspace_id, calculated_channel_id)
     if channel is None:
         raise CalculatedChannelNotFoundError(f"No calculated channel '{calculated_channel_id}' in this workspace.")
@@ -484,10 +518,18 @@ def delete_calculated_channel(
             f"Cannot delete '{channel.name}' because the following calculated channels depend on it: {names}."
         )
     calc_registry.remove(workspace_id, calculated_channel_id)
+    if per_unit_registry is not None:
+        per_unit_registry.remove_channel_everywhere(
+            workspace_id, ChannelRef(kind="calculated", calculated_channel_id=calculated_channel_id)
+        )
 
 
 def remove_calculated_channels_for_source(
-    *, workspace_id: str, source_id: str, calc_registry: CalculatedChannelRegistry
+    *,
+    workspace_id: str,
+    source_id: str,
+    calc_registry: CalculatedChannelRegistry,
+    per_unit_registry: PerUnitRegistry | None = None,
 ) -> list[str]:
     """Section 64: when a source is removed, every calculated channel
     grounded on it -- directly or transitively -- must go too, never left
@@ -498,10 +540,18 @@ def remove_calculated_channels_for_source(
     no dependency-ordering concern (the entire subtree is removed
     together, so no removed channel can ever still have a live dependent
     afterward). Returns the removed ids, for logging/testing.
+
+    Phase 5C (DEC-049): also releases each removed channel's own
+    per-unit assignment record (optional param, same reason as
+    `delete_calculated_channel` above).
     """
     affected = [c.id for c in calc_registry.list_for_workspace(workspace_id) if c.reference_source_id == source_id]
     for calculated_channel_id in affected:
         calc_registry.remove(workspace_id, calculated_channel_id)
+        if per_unit_registry is not None:
+            per_unit_registry.remove_channel_everywhere(
+                workspace_id, ChannelRef(kind="calculated", calculated_channel_id=calculated_channel_id)
+            )
     return affected
 
 
@@ -523,6 +573,7 @@ class CalculatedWaveformRangeResult:
     representation: str
     time: np.ndarray
     values: np.ndarray
+    per_unit_status: str | None = None
 
 
 def extract_calculated_waveform_range(
@@ -531,6 +582,8 @@ def extract_calculated_waveform_range(
     start_time: float | None,
     end_time: float | None,
     point_budget: int = DEFAULT_POINT_BUDGET,
+    unit_mode: str = UNIT_MODE_ENGINEERING,
+    per_unit_profile: PerUnitBaseProfile | None = None,
 ) -> CalculatedWaveformRangeResult:
     """Display-range extraction for one calculated channel -- calls the
     SAME `_clip_and_reduce()` core the source-channel waveform endpoint
@@ -539,16 +592,24 @@ def extract_calculated_waveform_range(
     effective_start, effective_end, original_sample_count, representation, out_time, out_values = _clip_and_reduce(
         channel.time, channel.values, start_time=start_time, end_time=end_time, point_budget=point_budget
     )
+    unit = channel.unit
+    per_unit_status: str | None = None
+    if unit_mode == UNIT_MODE_PER_UNIT:
+        resolution = resolve_per_unit(channel.engineering_type, per_unit_profile)
+        out_values, unit, per_unit_status = apply_per_unit_to_array(
+            out_values, channel.unit, channel.engineering_type, resolution
+        )
     return CalculatedWaveformRangeResult(
         calculated_channel_id=channel.id,
         name=channel.name,
-        unit=channel.unit,
+        unit=unit,
         start_time=effective_start,
         end_time=effective_end,
         original_sample_count=original_sample_count,
         representation=representation,
         time=out_time,
         values=out_values,
+        per_unit_status=per_unit_status,
     )
 
 
@@ -559,6 +620,7 @@ class CalculatedCursorValues:
     unit: str
     a_value: float | None
     b_value: float | None
+    per_unit_status: str | None = None
 
 
 def extract_calculated_cursor_values(
@@ -566,6 +628,8 @@ def extract_calculated_cursor_values(
     *,
     cursor_a_time: float | None,
     cursor_b_time: float | None,
+    unit_mode: str = UNIT_MODE_ENGINEERING,
+    per_unit_profiles: dict[str, PerUnitBaseProfile | None] | None = None,
 ) -> list[CalculatedCursorValues]:
     """A/B cursor values for a batch of calculated channels (section 54) --
     each channel's own full-resolution `time` array is searched
@@ -580,13 +644,25 @@ def extract_calculated_cursor_values(
     for channel in channels:
         a_index = _nearest_sample_index(channel.time, cursor_a_time)
         b_index = _nearest_sample_index(channel.time, cursor_b_time)
+        a_value = _finite_or_none(channel.values[a_index]) if a_index is not None else None
+        b_value = _finite_or_none(channel.values[b_index]) if b_index is not None else None
+
+        unit = channel.unit
+        per_unit_status: str | None = None
+        if unit_mode == UNIT_MODE_PER_UNIT:
+            profile = (per_unit_profiles or {}).get(channel.id)
+            resolution = resolve_per_unit(channel.engineering_type, profile)
+            a_value, unit, per_unit_status = apply_per_unit_to_value(a_value, channel.unit, channel.engineering_type, resolution)
+            b_value, unit, per_unit_status = apply_per_unit_to_value(b_value, channel.unit, channel.engineering_type, resolution)
+
         results.append(
             CalculatedCursorValues(
                 calculated_channel_id=channel.id,
                 name=channel.name,
-                unit=channel.unit,
-                a_value=_finite_or_none(channel.values[a_index]) if a_index is not None else None,
-                b_value=_finite_or_none(channel.values[b_index]) if b_index is not None else None,
+                unit=unit,
+                a_value=a_value,
+                b_value=b_value,
+                per_unit_status=per_unit_status,
             )
         )
     return results
@@ -601,10 +677,17 @@ class CalculatedPeakResult:
     elapsed_seconds: float | None
     value: float | None
     unit: str | None
+    per_unit_status: str | None = None
 
 
 def resolve_calculated_peak_value(
-    channel: CalculatedChannel, *, mode: str, start_time: float, end_time: float
+    channel: CalculatedChannel,
+    *,
+    mode: str,
+    start_time: float,
+    end_time: float,
+    unit_mode: str = UNIT_MODE_ENGINEERING,
+    per_unit_profile: PerUnitBaseProfile | None = None,
 ) -> CalculatedPeakResult:
     """+Peak/-Peak for one calculated channel (section 55) -- calls the
     SAME `_peak_in_range()` core (earliest-tie argmax/argmin, non-finite
@@ -612,6 +695,11 @@ def resolve_calculated_peak_value(
     available, sample_index, elapsed_seconds, value = _peak_in_range(
         channel.time, channel.values, mode=mode, start_time=start_time, end_time=end_time
     )
+    unit = channel.unit if available else None
+    per_unit_status: str | None = None
+    if available and unit_mode == UNIT_MODE_PER_UNIT:
+        resolution = resolve_per_unit(channel.engineering_type, per_unit_profile)
+        value, unit, per_unit_status = apply_per_unit_to_value(value, channel.unit, channel.engineering_type, resolution)
     return CalculatedPeakResult(
         calculated_channel_id=channel.id,
         mode=mode,
@@ -619,7 +707,8 @@ def resolve_calculated_peak_value(
         sample_index=sample_index,
         elapsed_seconds=elapsed_seconds,
         value=value,
-        unit=channel.unit if available else None,
+        unit=unit,
+        per_unit_status=per_unit_status,
     )
 
 
@@ -635,10 +724,15 @@ class CalculatedAnnotationAnchorResult:
     # elapsed_seconds) is always valid; only the displayed engineering
     # VALUE can be unavailable.
     value: float | None
+    per_unit_status: str | None = None
 
 
 def resolve_calculated_annotation_anchor(
-    channel: CalculatedChannel, *, approximate_elapsed_seconds: float
+    channel: CalculatedChannel,
+    *,
+    approximate_elapsed_seconds: float,
+    unit_mode: str = UNIT_MODE_ENGINEERING,
+    per_unit_profile: PerUnitBaseProfile | None = None,
 ) -> CalculatedAnnotationAnchorResult | None:
     """Callout anchor resolution for one calculated channel (section 56) --
     reuses `_nearest_sample_index()` directly, the exact same nearest-
@@ -650,10 +744,17 @@ def resolve_calculated_annotation_anchor(
     index = _nearest_sample_index(channel.time, approximate_elapsed_seconds)
     if index is None:
         return None
+    value = _finite_or_none(channel.values[index])
+    unit = channel.unit
+    per_unit_status: str | None = None
+    if unit_mode == UNIT_MODE_PER_UNIT:
+        resolution = resolve_per_unit(channel.engineering_type, per_unit_profile)
+        value, unit, per_unit_status = apply_per_unit_to_value(value, channel.unit, channel.engineering_type, resolution)
     return CalculatedAnnotationAnchorResult(
         calculated_channel_id=channel.id,
-        unit=channel.unit,
+        unit=unit,
         sample_index=index,
         elapsed_seconds=float(channel.time[index]),
-        value=_finite_or_none(channel.values[index]),
+        value=value,
+        per_unit_status=per_unit_status,
     )

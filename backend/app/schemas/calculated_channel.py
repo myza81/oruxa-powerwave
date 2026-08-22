@@ -182,6 +182,7 @@ class CalculatedWaveformRangeOut(BaseModel):
     # them.
     time: list[float | None]
     values: list[float | None]
+    per_unit_status: str | None = None
 
     @classmethod
     def from_result(cls, result: CalculatedWaveformRangeResult) -> "CalculatedWaveformRangeOut":
@@ -196,6 +197,7 @@ class CalculatedWaveformRangeOut(BaseModel):
             representation=result.representation,
             time=_sanitize_float_list(result.time),
             values=_sanitize_float_list(result.values),
+            per_unit_status=result.per_unit_status,
         )
 
 
@@ -203,6 +205,8 @@ class CalculatedCursorValuesRequest(BaseModel):
     calculated_channel_ids: list[str]
     cursor_a_time: float | None = None
     cursor_b_time: float | None = None
+    # Phase 5C (DEC-049): "engineering" (default) or "per_unit".
+    unit_mode: str = "engineering"
 
 
 class CalculatedCursorValuesItemOut(BaseModel):
@@ -211,12 +215,14 @@ class CalculatedCursorValuesItemOut(BaseModel):
     unit: str
     a_value: float | None
     b_value: float | None
+    per_unit_status: str | None = None
 
     @classmethod
     def from_result(cls, result: CalculatedCursorValues) -> "CalculatedCursorValuesItemOut":
         return cls(
             calculated_channel_id=result.calculated_channel_id, name=result.name,
             unit=result.unit, a_value=result.a_value, b_value=result.b_value,
+            per_unit_status=result.per_unit_status,
         )
 
 
@@ -233,6 +239,8 @@ class CalculatedPeakBatchRequest(BaseModel):
     requests: list[CalculatedPeakRequestItem]
     start_time: float
     end_time: float
+    # Phase 5C (DEC-049): "engineering" (default) or "per_unit".
+    unit_mode: str = "engineering"
 
 
 class CalculatedPeakResultOut(BaseModel):
@@ -243,6 +251,7 @@ class CalculatedPeakResultOut(BaseModel):
     elapsed_seconds: float | None
     value: float | None
     unit: str | None
+    per_unit_status: str | None = None
 
     @classmethod
     def from_result(cls, result: CalculatedPeakResult) -> "CalculatedPeakResultOut":
@@ -250,6 +259,7 @@ class CalculatedPeakResultOut(BaseModel):
             calculated_channel_id=result.calculated_channel_id, mode=result.mode,
             available=result.available, sample_index=result.sample_index,
             elapsed_seconds=result.elapsed_seconds, value=result.value, unit=result.unit,
+            per_unit_status=result.per_unit_status,
         )
 
 
@@ -261,6 +271,8 @@ class CalculatedPeakBatchOut(BaseModel):
 
 class CalculatedAnnotationAnchorRequest(BaseModel):
     approximate_elapsed_seconds: float
+    # Phase 5C (DEC-049): "engineering" (default) or "per_unit".
+    unit_mode: str = "engineering"
 
 
 class CalculatedAnnotationAnchorOut(BaseModel):
@@ -273,10 +285,12 @@ class CalculatedAnnotationAnchorOut(BaseModel):
     # is always valid, only the displayed value can be unavailable
     # (an RMS channel's warm-up region).
     value: float | None
+    per_unit_status: str | None = None
 
     @classmethod
     def from_result(cls, result: CalculatedAnnotationAnchorResult) -> "CalculatedAnnotationAnchorOut":
         return cls(
             calculated_channel_id=result.calculated_channel_id, unit=result.unit,
             sample_index=result.sample_index, elapsed_seconds=result.elapsed_seconds, value=result.value,
+            per_unit_status=result.per_unit_status,
         )

@@ -39,6 +39,8 @@ class PeakValueBatchRequest(BaseModel):
     requests: list[PeakValueRequestItem]
     start_time: float
     end_time: float
+    # Phase 5C (DEC-049): "engineering" (default) or "per_unit".
+    unit_mode: str = "engineering"
 
 
 class PeakValueResultOut(BaseModel):
@@ -57,6 +59,7 @@ class PeakValueResultOut(BaseModel):
     elapsed_seconds: float | None
     value: float | None
     unit: str | None
+    per_unit_status: str | None = None
 
     @classmethod
     def from_result(cls, result: PeakValueResult) -> "PeakValueResultOut":
@@ -68,6 +71,7 @@ class PeakValueResultOut(BaseModel):
             elapsed_seconds=result.elapsed_seconds,
             value=result.value,
             unit=result.unit,
+            per_unit_status=result.per_unit_status,
         )
 
 

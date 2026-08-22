@@ -952,6 +952,186 @@
         .ww-cc-preview-panel:last-child { margin-bottom: 0; }
         .ww-cc-preview-panel-title { font-size: 0.75rem; font-weight: 600; color: var(--text-dim); margin: 0 0 8px; }
 
+        /* --- Redesign: header action button, table-style manager list,
+           single-selected-channel preview, right-side Signal Builder
+           drawer. Reuses section.panel/.recordings-header/.count-badge/
+           <label>.ww-cc-field/.ww-cc-operation-card*/
+           .ww-cc-expression-preview/.ww-icon-btn/
+           input[type="search"]/.ww-annotation-drawer-close unmodified --
+           only the new layout/table/badge/drawer presentation below. */
+        .ww-cc-list-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+        .ww-cc-list-header h3 { margin: 0; }
+        .ww-cc-search-row { flex: 0 1 220px; min-width: 160px; }
+        .ww-cc-search-row input[type="search"] { width: 100%; box-sizing: border-box; }
+
+        .ww-cc-list-columns {
+            display: grid;
+            grid-template-columns: 14px 1fr 96px 64px 76px;
+            gap: 10px;
+            padding: 0 10px 6px;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            color: var(--text-dim);
+        }
+        .ww-cc-list-columns[hidden] { display: none; }
+        .ww-cc-list-col-actions { text-align: right; }
+
+        /* Table-like row: color dot + name/expression/summary in the main
+           column, classification badge + unit as fixed-width columns,
+           actions on the right -- same .ww-cc-list-row-* classes as
+           before, now a grid instead of a single flex line, and
+           selectable (click anywhere on the row except its own controls). */
+        .ww-cc-list-row {
+            display: grid;
+            grid-template-columns: 14px 1fr 96px 64px 76px;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: var(--radius);
+            cursor: pointer;
+        }
+        .ww-cc-list-row:hover { background: var(--hover-tint); }
+        .ww-cc-list-row--selected, .ww-cc-list-row--selected:hover { background: var(--accent-wash-soft); }
+        .ww-cc-list-row .channel-color-dot { justify-self: center; }
+        .ww-cc-list-row-main { min-width: 0; }
+        .ww-cc-list-row-name { font-size: 0.75rem; font-weight: 600; }
+        .ww-cc-list-row-expr {
+            font-size: 0.68rem;
+            color: var(--text-dim);
+            font-family: ui-monospace, "SF Mono", Consolas, monospace;
+            margin-top: 2px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .ww-cc-list-row-summary { font-size: 0.68rem; color: var(--text-dim); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ww-cc-list-row-error { grid-column: 1 / -1; color: var(--error); font-size: 0.7rem; margin-top: 4px; }
+        .ww-cc-list-row-unit { font-size: 0.72rem; color: var(--text-dim); }
+        .ww-cc-list-row-controls { display: flex; justify-content: flex-end; gap: 2px; position: relative; }
+
+        .ww-cc-type-badge {
+            display: inline-block;
+            padding: 1px 8px;
+            border-radius: 999px;
+            background: var(--surface-tint);
+            color: var(--text-dim);
+            font-size: 0.66rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        /* Per-row "more actions" menu -- a native <details>/<summary>
+           disclosure (no custom open/close JS needed for the toggle
+           itself); closed on outside click / Escape by small shared
+           listeners (see wiring). */
+        .ww-cc-menu { position: relative; }
+        .ww-cc-menu > summary { list-style: none; }
+        .ww-cc-menu > summary::-webkit-details-marker { display: none; }
+        .ww-cc-menu-list {
+            position: absolute;
+            top: calc(100% + 4px);
+            right: 0;
+            min-width: 120px;
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+            padding: 4px;
+            z-index: 5;
+        }
+        .ww-cc-menu-item {
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+            text-align: left;
+            padding: 6px 8px;
+            background: transparent;
+            border: none;
+            border-radius: var(--radius);
+            color: var(--error);
+            font: inherit;
+            font-size: 0.72rem;
+            cursor: pointer;
+        }
+        .ww-cc-menu-item:hover { background: var(--error-wash); }
+
+        .ww-cc-preview-header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .ww-cc-preview-header h3 { margin: 0 0 12px; }
+        .ww-cc-preview-status { font-size: 0.72rem; color: var(--text-dim); }
+        .ww-cc-preview-status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin: 0 5px 0 8px; background: var(--text-dim); }
+        .ww-cc-preview-status-dot--visible { background: var(--ok); }
+
+        .ww-cc-preview-info-strip {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 10px 20px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--panel-border);
+        }
+        .ww-cc-preview-info-strip[hidden] { display: none; }
+        .ww-cc-preview-info-label { display: block; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
+        .ww-cc-preview-info-value { display: block; font-size: 0.75rem; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        /* Shrunk from 320px: the preview typically shows one selected
+           channel now rather than every visible channel split by type, so
+           a smaller chart keeps this section clearly a "preview," not a
+           second full waveform workspace (section 8's own explicit
+           ~200-250px guidance). */
+        .ww-cc-preview-chart { height: 240px; }
+
+        /* Right-side Signal Builder drawer -- same overlay mechanics as
+           .ww-annotation-drawer (position: fixed, translateX, z-index
+           scale). A dedicated backdrop, since this drawer is opened by an
+           explicit primary action (not a toggle icon in a toolbar) and
+           should be dismissable by clicking outside it too. */
+        .ww-cc-drawer-backdrop { position: fixed; inset: 0; background: var(--overlay-backdrop); z-index: 39; }
+        .ww-cc-drawer {
+            position: fixed;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: 400px;
+            max-width: 92vw;
+            background: var(--panel);
+            border-left: 1px solid var(--panel-border);
+            box-shadow: -4px 0 16px rgba(0, 0, 0, 0.15);
+            display: flex;
+            flex-direction: column;
+            transform: translateX(100%);
+            transition: transform 0.15s ease;
+            z-index: 40;
+        }
+        .ww-cc-drawer--open { transform: translateX(0); }
+        .ww-cc-drawer-header {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--panel-border);
+        }
+        .ww-cc-drawer-header h3 { margin: 0; font-size: 0.95rem; }
+        .ww-cc-drawer-body { flex: 1 1 auto; overflow-y: auto; padding: 16px; }
+        .ww-cc-drawer-section { margin-top: 18px; }
+        .ww-cc-drawer-section:first-child { margin-top: 0; }
+        .ww-cc-drawer-section-title { margin: 0 0 10px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
+        .ww-cc-drawer-footer {
+            flex: 0 0 auto;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 14px 16px;
+            border-top: 1px solid var(--panel-border);
+        }
+
+        @media (max-width: 640px) {
+            .ww-cc-drawer { width: 100vw; max-width: 100vw; }
+            .ww-cc-list-columns, .ww-cc-list-row { grid-template-columns: 14px 1fr auto; }
+            .ww-cc-list-col-class, .ww-cc-list-col-unit, .ww-cc-list-row-class, .ww-cc-list-row-unit { display: none; }
+        }
+
         /* Phase 3B-UAT3: a single shared reference for the app's compact/
            secondary button text size, instead of each compact button
            class declaring its own near-duplicate literal value
@@ -1634,6 +1814,14 @@
             border-color: var(--accent-dim);
         }
         .ww-icon-btn:disabled { opacity: 0.4; cursor: not-allowed; background: transparent; }
+
+        /* Phase 5C (DEC-049): the Unit Mode trigger carries a short text
+           label ("ENG"/"PU") instead of an icon -- everything else
+           (border/hover/focus/aria-pressed styling) is inherited from
+           .ww-icon-btn unchanged; only the fixed 28px square width is
+           overridden to fit the text. */
+        .ww-unit-mode-btn { width: auto; padding: 0 8px; gap: 4px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.02em; }
+        .ww-unit-mode-warning { color: var(--error); font-size: 0.85rem; line-height: 1; }
 
         /* Segmented icon groups (Box Zoom/Pan, Absolute/Elapsed,
            Grouped/Separate/Custom) -- same .theme-toggle wrapper/
@@ -2928,6 +3116,38 @@
 
                         <span class="ww-toolbar-sep" aria-hidden="true"></span>
 
+                        <!-- Phase 5C (DEC-049): Unit Mode control -- the
+                             SAME single-trigger .ww-split-menu mechanism
+                             Annotate already established (structurally
+                             cloned, not reinvented). "ENG"/"PU" is a
+                             compact text label on the trigger itself
+                             (section 5's own mockup) since this toggle,
+                             unlike Annotate, has no meaningful icon-only
+                             representation. A warning glyph is toggled on
+                             separately (see wwUpdateUnitModeWarningBadge())
+                             when Per Unit is active and >=1 displayed
+                             eligible channel is Base required. -->
+                        <div class="ww-split-btn" id="wwUnitModeSplit">
+                            <button type="button" class="ww-icon-btn ww-unit-mode-btn" id="wwUnitModeBtn" aria-haspopup="menu" aria-expanded="false" title="Unit Mode" aria-label="Unit Mode">
+                                <span class="ww-unit-mode-label" id="wwUnitModeLabel">ENG</span>
+                                <span class="ww-unit-mode-warning" id="wwUnitModeWarning" hidden aria-hidden="true">&#9888;</span>
+                            </button>
+                            <div class="ww-split-menu" id="wwUnitModeMenu" role="menu" aria-label="Unit Mode" hidden>
+                                <button type="button" class="ww-split-menu-item" role="menuitemradio" data-unit-mode="engineering" aria-checked="true">
+                                    Engineering Units
+                                </button>
+                                <button type="button" class="ww-split-menu-item" role="menuitemradio" data-unit-mode="per_unit" aria-checked="false">
+                                    Per Unit
+                                </button>
+                                <span class="ww-toolbar-sep" aria-hidden="true"></span>
+                                <button type="button" class="ww-split-menu-item" id="wwManagePerUnitBasesBtn">
+                                    Manage Per-Unit Bases&hellip;
+                                </button>
+                            </div>
+                        </div>
+
+                        <span class="ww-toolbar-sep" aria-hidden="true"></span>
+
                         <!-- Phase 4E (DEC-044): the generic annotation
                              framework's first UI surface. "Annotate" is a
                              plain dropdown (not a Phase 4D split-button --
@@ -3258,71 +3478,115 @@
                  the fresh-entry page. -->
             <section id="pageCalculatedChannels" aria-label="Calculated Channels" hidden>
                 <div class="recordings-header">
-                    <h2>Calculated Channels</h2>
+                    <div>
+                        <h2>Calculated Channels</h2>
+                        <p class="ww-cc-subtitle">Create, manage and validate derived analog signals.</p>
+                    </div>
+                    <button type="button" id="wwCcNewChannelBtn" aria-haspopup="true" aria-expanded="false">+ New Channel</button>
                 </div>
-                <p class="ww-cc-subtitle">Create derived analog signals from available channels.</p>
 
                 <section class="panel ww-cc-panel">
-                    <h3>Basic Operations</h3>
-                    <!-- Section 6/36/37: ONLY the five Phase 5A-supported
-                         operations -- no RMS card, enabled or disabled
-                         (section 71's own explicit "do not even add an
-                         enabled RMS card"), no Sequence/Power/Frequency/
-                         Protection/Impedance/Differential placeholders. -->
-                    <div class="ww-cc-operation-cards" id="wwCcOperationCards" role="group" aria-label="Choose an operation"></div>
-                </section>
-
-                <section class="panel ww-cc-panel" id="wwCcBuilderPanel" hidden>
-                    <h3 id="wwCcBuilderTitle">Selected Operation</h3>
-                    <div id="wwCcBuilderFields"></div>
-                    <p class="ww-cc-expression-preview" id="wwCcExpressionPreview" hidden></p>
-                    <label class="ww-cc-field">
-                        <span>Signal Name</span>
-                        <input type="text" id="wwCcNameInput" maxlength="120" placeholder="Signal name" autocomplete="off">
-                    </label>
-                    <label class="ww-cc-field">
-                        <span>Unit</span>
-                        <input type="text" id="wwCcUnitDisplay" readonly tabindex="-1" placeholder="—">
-                    </label>
-                    <p class="hint error" id="wwCcError" hidden role="alert"></p>
-                    <button type="button" id="wwCcCreateBtn" disabled>Create Channel</button>
-                </section>
-
-                <section class="panel ww-cc-panel">
-                    <h3>Calculated Channels <span class="count-badge" id="wwCcListCount">(0)</span></h3>
+                    <div class="ww-cc-list-header">
+                        <h3>Calculated Channels <span class="count-badge" id="wwCcListCount">(0)</span></h3>
+                        <div class="ww-cc-search-row">
+                            <input type="search" id="wwCcSearchInput" placeholder="Search channels…" aria-label="Search calculated channels">
+                        </div>
+                    </div>
+                    <div class="ww-cc-list-columns" id="wwCcListColumns" hidden>
+                        <span></span>
+                        <span>Channel</span>
+                        <span class="ww-cc-list-col-class">Classification</span>
+                        <span class="ww-cc-list-col-unit">Unit</span>
+                        <span class="ww-cc-list-col-actions">Actions</span>
+                    </div>
                     <div id="wwCcListBody"><p class="empty-state">No calculated channels yet.</p></div>
                 </section>
 
-                <!-- Phase 5A-UAT (extended Phase 5A-UAT6): a lightweight,
-                     STANDALONE waveform preview -- completely separate
-                     Plotly instances from ww.panels/the main Waveform page
-                     (never wired into ww.viewport/layout mode/A-B
+                <!-- Phase 5A-UAT (extended Phase 5A-UAT6, redesigned for the
+                     table-list/drawer UI): a lightweight, STANDALONE
+                     waveform preview -- completely separate Plotly
+                     instances from ww.panels/the main Waveform page (never
+                     wired into ww.viewport/layout mode/A-B
                      cursors/annotations, per the task's own explicit
-                     isolation requirement). Visibility authority is the
-                     SAME ww.displayed Map the manager list's own eye icon
-                     and the main Waveform page already use -- no second,
-                     conflicting visible-state. Phase 5A-UAT6: now renders
-                     ONE lightweight Plotly panel PER engineering type
-                     among the currently visible calculated channels
-                     (mirrors the main Waveform page's own Grouped-mode
-                     "Calculated - <Type>" panel split, Phase 5A-UAT5 --
-                     but a completely independent rendering pipeline, per
-                     that task's own explicit "keep rendering state
-                     independent" instruction) -- #wwCcPreviewPanels is
-                     populated entirely by wwCcRenderWaveformPreview()
-                     itself. Deliberately no `display` CSS property on
-                     either child below (see wwCcPreviewEmpty/
-                     .ww-cc-preview-chart's own CSS comment) -- the exact
-                     precedent that already keeps `.empty-state`/
-                     `#wwCcBuilderPanel`'s own `hidden` toggling bug-free
+                     isolation requirement). Redesign: the preview now
+                     follows the manager list's own row SELECTION (a row
+                     click, independent of the eye-icon visibility toggle)
+                     rather than "every currently visible channel" -- see
+                     wwCcPreviewVisibleChannels()'s own updated comment.
+                     #wwCcPreviewPanels is still populated entirely by
+                     wwCcRenderWaveformPreview() itself, still typically
+                     rendering exactly one panel now. Deliberately no
+                     `display` CSS property on either child below (see
+                     wwCcPreviewEmpty/.ww-cc-preview-chart's own CSS
+                     comment) -- the exact precedent that already keeps
+                     `.empty-state`'s own `hidden` toggling bug-free
                      elsewhere on this same page, avoiding a repeat of the
                      [hidden]-cascade bug this page already had once. -->
                 <section class="panel ww-cc-panel">
-                    <h3>Waveform Preview</h3>
-                    <p class="empty-state" id="wwCcPreviewEmpty">No calculated channels selected for preview.</p>
+                    <div class="ww-cc-preview-header">
+                        <h3>Preview</h3>
+                        <div class="ww-cc-preview-status" id="wwCcPreviewStatus"></div>
+                    </div>
+                    <p class="empty-state" id="wwCcPreviewEmpty">Select a calculated channel to preview its waveform.</p>
                     <div id="wwCcPreviewPanels" hidden></div>
+                    <div class="ww-cc-preview-info-strip" id="wwCcPreviewInfoStrip" hidden></div>
                 </section>
             </section>
+
+            <!-- Redesign: right-side Signal Builder drawer, opened via
+                 "+ New Channel" above -- same fixed/translateX/backdrop
+                 mechanics as #wwAnnotationDrawer. Holds the SAME operation
+                 cards / dynamic fields / name / unit / create-button
+                 elements the inline builder used to hold (same ids, so
+                 every existing wwCc* render/event function keeps working
+                 unmodified -- only their DOM location and surrounding
+                 chrome changed). No "Classification" field here: the
+                 backend derives engineering_type automatically from the
+                 chosen inputs at creation time (see
+                 app.domain.calculated_channel.derive_engineering_type()) --
+                 it is not known until after Create, and is not part of the
+                 creation request, so it is shown (as the badge/column
+                 already added to the manager list and Preview info strip
+                 below) only once a channel exists, never as an editable or
+                 pre-computed field in this form. -->
+            <div class="ww-cc-drawer-backdrop" id="wwCcDrawerBackdrop" hidden></div>
+            <aside class="ww-cc-drawer" id="wwCcDrawer" aria-hidden="true" aria-label="Create Calculated Channel">
+                <div class="ww-cc-drawer-header">
+                    <h3>Create Calculated Channel</h3>
+                    <button type="button" class="ww-annotation-drawer-close" id="wwCcDrawerCloseBtn" aria-label="Close">&times;</button>
+                </div>
+                <div class="ww-cc-drawer-body">
+                    <p class="ww-cc-subtitle">Define the operation and inputs to create a new calculated signal.</p>
+                    <section class="ww-cc-drawer-section">
+                        <h4 class="ww-cc-drawer-section-title">Operation</h4>
+                        <!-- Section 6/36/37: ONLY the five Phase 5A-supported
+                             operations -- no RMS card, enabled or disabled
+                             (section 71's own explicit "do not even add an
+                             enabled RMS card"), no Sequence/Power/Frequency/
+                             Protection/Impedance/Differential placeholders. -->
+                        <div class="ww-cc-operation-cards" id="wwCcOperationCards" role="group" aria-label="Choose an operation"></div>
+                    </section>
+
+                    <section class="ww-cc-drawer-section" id="wwCcBuilderPanel" hidden>
+                        <h4 class="ww-cc-drawer-section-title" id="wwCcBuilderTitle">Selected Operation</h4>
+                        <div id="wwCcBuilderFields"></div>
+                        <label class="ww-cc-field">
+                            <span>Output Name</span>
+                            <input type="text" id="wwCcNameInput" maxlength="120" placeholder="Signal name" autocomplete="off">
+                        </label>
+                        <label class="ww-cc-field">
+                            <span>Unit</span>
+                            <input type="text" id="wwCcUnitDisplay" readonly tabindex="-1" placeholder="—">
+                        </label>
+                        <p class="ww-cc-expression-preview" id="wwCcExpressionPreview" hidden></p>
+                        <p class="hint error" id="wwCcError" hidden role="alert"></p>
+                    </section>
+                </div>
+                <div class="ww-cc-drawer-footer">
+                    <button type="button" class="secondary" id="wwCcCancelBtn">Cancel</button>
+                    <button type="button" id="wwCcCreateBtn" disabled>Create Channel</button>
+                </div>
+            </aside>
 
             <!-- Bottom Status Bar (section 17/18): a sibling of
                  Workspace Row inside Work Area -- see the CSS comment
@@ -3420,6 +3684,46 @@
             <div class="group-editor-footer">
                 <button type="button" class="secondary" id="groupEditorCancelBtn">Cancel</button>
                 <button type="button" id="groupEditorApplyBtn">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Phase 5C (DEC-049): "Manage Per-Unit Bases" -- same
+         .confirm-overlay/.group-editor-box shell as Custom Groups above
+         (working-copy-until-Apply state model, same dismissal pattern).
+         One profile is edited at a time (the <select> below); Apply
+         sends a single PUT/POST covering that profile's base fields +
+         channel assignment together. -->
+    <div class="confirm-overlay" id="perUnitProfilesOverlay" hidden>
+        <div class="group-editor-box" role="dialog" aria-modal="true" aria-labelledby="perUnitProfilesTitle">
+            <div class="group-editor-header">
+                <h3 id="perUnitProfilesTitle">Manage Per-Unit Bases</h3>
+                <button type="button" class="group-editor-close" id="perUnitProfilesCloseBtn" aria-label="Close">&times;</button>
+            </div>
+            <p class="hint">Define Voltage/Current/apparent-power bases and assign channels to
+                them. Per Unit mode divides each assigned channel's measured value by its
+                profile's own base.</p>
+
+            <label class="ww-cc-field">
+                <span>Profile</span>
+                <select id="perUnitProfileSelect"></select>
+            </label>
+            <p class="hint error" id="perUnitProfileError" hidden role="alert"></p>
+
+            <div id="perUnitProfileFields"></div>
+
+            <div class="group-editor-section">
+                <h4>Assigned Channels</h4>
+                <p class="hint">Only Voltage and Current channels can be assigned to a per-unit
+                    base profile.</p>
+                <div id="perUnitChannelChecklist"></div>
+            </div>
+
+            <div class="group-editor-footer">
+                <button type="button" class="secondary" id="perUnitDeleteProfileBtn" hidden>Delete Profile</button>
+                <span class="toolbar-spacer"></span>
+                <button type="button" class="secondary" id="perUnitProfilesCloseFooterBtn">Close</button>
+                <button type="button" id="perUnitProfilesApplyBtn">Apply</button>
             </div>
         </div>
     </div>
@@ -6068,6 +6372,22 @@
             // deterministic bring-to-front, section 21: no complex layers
             // UI).
             annotationZCounter: 1,
+            // Phase 5C (DEC-049): the Waveform page's global unit-display
+            // mode -- "engineering" (default) or "per_unit". Pure frontend
+            // presentation state, mirroring DEC-042's own Absolute/Elapsed
+            // precedent: the backend never tracks which mode is active,
+            // it just serves whatever unit_mode a per-request query/body
+            // field asks for. Reset by wwClearWorkspace()'s
+            // resetSourceBounds branch (Start New Workspace) only -- a
+            // plain Clear Workspace leaves it alone, same policy as
+            // ww.layoutMode/ww.dragMode/ww.timeMode above.
+            unitMode: "engineering",
+            // Phase 5C: profile_id -> profile object as returned by
+            // GET .../per-unit/profiles (fetched once when a workspace is
+            // opened, refreshed after any Manage Per-Unit Bases Apply/
+            // Delete). Same lifecycle as ww.calculatedChannels -- cleared
+            // only by Start New Workspace.
+            perUnitProfiles: new Map(),
         };
 
         function wwFiniteNumber(value) {
@@ -6634,10 +6954,27 @@
             // how many real/calculated types happen to share the same
             // name. Separate/Custom are unaffected -- checked above,
             // never reached by a calculated channel in those modes.
+            let baseKey;
             if (wwIsCalculatedSourceId(channel.sourceId)) {
-                return "calc:" + wwCalculatedEngineeringTypeFor(channel.sourceId);
+                baseKey = "calc:" + wwCalculatedEngineeringTypeFor(channel.sourceId);
+            } else {
+                baseKey = channel.engineeringType || "Undefined";
             }
-            return channel.engineeringType || "Undefined";
+            // Phase 5C (DEC-049): never mix pu-converted and engineering-
+            // unit values for an eligible type on one shared axis (section
+            // 27) -- when Per Unit mode is active, a `perUnitStatus`
+            // suffix keeps "configured" channels in their own panel,
+            // separate from any "base_required" channels of the same
+            // type (which keep rendering in engineering units, still
+            // never mixed with a pu-converted sibling). `perUnitStatus`
+            // is only set once this channel's own first fetch under the
+            // current mode has resolved (wwLoadChannelRange) -- until
+            // then it falls through to the plain base key unchanged.
+            if (ww.unitMode === "per_unit") {
+                if (channel.perUnitStatus === "configured") return baseKey + ":pu";
+                if (channel.perUnitStatus === "base_required") return baseKey + ":base_required";
+            }
+            return baseKey;
         }
 
         // Display label only -- distinct from the group key above (two
@@ -6655,10 +6992,20 @@
             // branch immediately above -- "Calculated - <Type>", the
             // owner's own exact requested title, never a longer technical
             // name.
+            let baseLabel;
             if (wwIsCalculatedSourceId(channel.sourceId)) {
-                return "Calculated - " + wwCalculatedEngineeringTypeFor(channel.sourceId);
+                baseLabel = "Calculated - " + wwCalculatedEngineeringTypeFor(channel.sourceId);
+            } else {
+                baseLabel = channel.engineeringType || "Undefined";
             }
-            return channel.engineeringType || "Undefined";
+            // Phase 5C (DEC-049): mirrors wwPanelGroupKeyFor()'s own
+            // per-unit suffix immediately above -- same eligibility
+            // check, display text only.
+            if (ww.unitMode === "per_unit") {
+                if (channel.perUnitStatus === "configured") return baseLabel + " (pu)";
+                if (channel.perUnitStatus === "base_required") return baseLabel + " (Base required)";
+            }
+            return baseLabel;
         }
 
         function wwNextColor() {
@@ -6805,6 +7152,14 @@
             if (startTime !== null && startTime !== undefined) url.searchParams.set("start_time", startTime);
             if (endTime !== null && endTime !== undefined) url.searchParams.set("end_time", endTime);
             url.searchParams.set("point_budget", String(pointBudget));
+            // Phase 5C (DEC-049): the backend is the sole conversion
+            // authority (decision 2) -- this is the ONE place every
+            // displayed channel's waveform fetch asks for per-unit
+            // conversion; switching ww.unitMode re-fetches every
+            // currently-displayed channel's current viewport (see
+            // wwApplyUnitMode() below), never a second, frontend-side
+            // division formula.
+            url.searchParams.set("unit_mode", ww.unitMode);
 
             const response = await fetch(url.toString(), { signal: controller.signal });
             if (seq !== channelEntry.requestSeq) return { superseded: true };
@@ -6883,6 +7238,15 @@
             channelEntry.values = body.values;
             channelEntry.representation = body.representation;
             channelEntry.originalSampleCount = body.original_sample_count;
+            // Phase 5C (DEC-049): the backend already converted `unit`/
+            // `values` together when unit_mode="per_unit" and this
+            // channel resolved "configured" -- store both so every OTHER
+            // reader of channel.unit (legend, hover template, Y-axis
+            // title -- see wwRenderLegend()/wwTraceHoverTemplate()/
+            // wwBuildLayout()) reflects the current mode with zero
+            // separate conversion logic of its own.
+            channelEntry.unit = body.unit;
+            channelEntry.perUnitStatus = body.per_unit_status;
 
             if (!opts.isInitialLoad) {
                 const idx = panel.channels.indexOf(channelEntry);
@@ -6897,6 +7261,15 @@
                         customdata: [wwTraceCustomData(channelEntry)],
                         hovertemplate: [wwTraceHoverTemplate(channelEntry)],
                     }, [idx]);
+                    // Phase 5C: the Y-axis title/legend both read
+                    // channel.unit live -- refresh them here too, since a
+                    // unit-mode switch changes `unit` without changing
+                    // trace geometry (restyle above never touches layout).
+                    // Same "first channel's own unit" rule wwBuildLayout()
+                    // already uses for the axis title at panel-creation
+                    // time -- reused here verbatim, never a second rule.
+                    wwRenderLegend(panel);
+                    Plotly.relayout(panel.chartEl, { "yaxis.title": panel.channels.length ? panel.channels[0].unit : "" });
                 }
             }
         }
@@ -7491,6 +7864,503 @@
                 }
             }
             await Promise.all(jobs);
+        }
+
+        // ------------------------------------------------------------------
+        // Phase 5C (DEC-049): Unit Mode (Engineering / Per Unit)
+        // ------------------------------------------------------------------
+
+        // The ONE place ww.unitMode ever changes -- switching modes
+        // re-fetches every currently displayed channel's CURRENT viewport
+        // (reusing wwRefetchAllChannels(), the same orchestrator Reset
+        // Time View/zoom/pan already use, never a full source/page
+        // reload -- section 59-60), then regroups panels once every
+        // channel's fresh `perUnitStatus` is known (wwPanelGroupKeyFor()'s
+        // own per-unit branch needs that value to decide panel
+        // membership -- see its own comment for why a brand-new mode
+        // can't be reflected until at least one fetch has resolved).
+        async function wwApplyUnitMode(mode) {
+            if (mode !== "engineering" && mode !== "per_unit") return;
+            if (ww.unitMode === mode) return;
+            // Section 68's own "zero existing profiles" check (the
+            // caller, below) needs an up-to-date ww.perUnitProfiles
+            // mirror -- fetched here, BEFORE that check, so a workspace
+            // that already has profiles from an earlier session/page-load
+            // is never mistaken for "none yet" merely because this
+            // frontend mirror hadn't been populated yet.
+            if (mode === "per_unit") await wwFetchPerUnitProfiles();
+            ww.unitMode = mode;
+            wwSyncUnitModeControls();
+            const startTime = ww.viewport ? ww.viewport.start : null;
+            const endTime = ww.viewport ? ww.viewport.end : null;
+            await wwRefetchAllChannels(startTime, endTime);
+            wwRebuildLayout();
+            wwUpdateUnitModeWarningBadge();
+        }
+
+        function wwSyncUnitModeControls() {
+            const label = document.getElementById("wwUnitModeLabel");
+            if (label) label.textContent = ww.unitMode === "per_unit" ? "PU" : "ENG";
+            const btn = document.getElementById("wwUnitModeBtn");
+            if (btn) btn.setAttribute("aria-pressed", String(ww.unitMode === "per_unit"));
+            for (const item of document.querySelectorAll("#wwUnitModeMenu .ww-split-menu-item[data-unit-mode]")) {
+                item.setAttribute("aria-checked", String(item.dataset.unitMode === ww.unitMode));
+            }
+        }
+
+        // Section 66: a subtle warning glyph on the trigger when Per Unit
+        // is active and >=1 currently-displayed eligible channel is Base
+        // required -- scans the SAME ww.displayed channel objects
+        // wwPanelGroupKeyFor() already reads `perUnitStatus` from, no
+        // second eligibility computation.
+        function wwUpdateUnitModeWarningBadge() {
+            const warning = document.getElementById("wwUnitModeWarning");
+            if (!warning) return;
+            if (ww.unitMode !== "per_unit") {
+                warning.hidden = true;
+                return;
+            }
+            let baseRequiredCount = 0;
+            for (const entry of ww.displayed.values()) {
+                if (entry.channel.perUnitStatus === "base_required") baseRequiredCount += 1;
+            }
+            warning.hidden = baseRequiredCount === 0;
+            const btn = document.getElementById("wwUnitModeBtn");
+            if (btn) {
+                btn.setAttribute(
+                    "aria-label",
+                    baseRequiredCount > 0
+                        ? "Unit Mode (" + baseRequiredCount + " channel(s) need a per-unit base)"
+                        : "Unit Mode"
+                );
+            }
+        }
+
+        function wwSetUnitModeMenuOpen(open) {
+            const menu = document.getElementById("wwUnitModeMenu");
+            const trigger = document.getElementById("wwUnitModeBtn");
+            if (menu) menu.hidden = !open;
+            if (trigger) trigger.setAttribute("aria-expanded", String(open));
+        }
+
+        function wwToggleUnitModeMenu() {
+            const menu = document.getElementById("wwUnitModeMenu");
+            wwSetUnitModeMenuOpen(!!(menu && menu.hidden));
+        }
+
+        // ------------------------------------------------------------------
+        // Phase 5C (DEC-049): "Manage Per-Unit Bases" modal
+        // ------------------------------------------------------------------
+
+        const PER_UNIT_VOLTAGE_UNITS = ["V", "kV"];
+        const PER_UNIT_CURRENT_UNITS = ["A", "kA"];
+        // Mirrors app.domain.per_unit's own constants -- used ONLY for
+        // this modal's own live "Calculated Current Base" preview
+        // (section 40: "show calculated/derived result visibly" as the
+        // user types, before Apply). Never used to convert an actual
+        // measured channel value anywhere -- decision 2 (backend is the
+        // sole conversion authority) still holds for every displayed
+        // waveform/A-B/preview/peak/callout value; this is cosmetic
+        // preview math only, re-derived authoritatively by the backend's
+        // own `resolved_current_base` the moment this profile is saved.
+        const PER_UNIT_SQRT_3 = 1.7320508075688772;
+        const PER_UNIT_VOLTAGE_SCALE = { V: 1, kV: 1000 };
+        const PER_UNIT_CURRENT_SCALE = { A: 1, kA: 1000 };
+        const PER_UNIT_APPARENT_POWER_SCALE_MVA = 1000000;
+
+        function wwPerUnitChannelRefKey(ref) {
+            return ref.kind === "source" ? wwChannelKey(ref.source_id, ref.channel_name) : "calc::" + ref.calculated_channel_id;
+        }
+
+        function wwPerUnitChannelRefFromKey(key) {
+            if (key.indexOf("calc::") === 0) return { kind: "calculated", calculated_channel_id: key.slice(6) };
+            const idx = key.indexOf("::");
+            return { kind: "source", source_id: key.slice(0, idx), channel_name: key.slice(idx + 2) };
+        }
+
+        function wwPerUnitNumberOrNull(raw) {
+            if (raw === null || raw === undefined || String(raw).trim() === "") return null;
+            const n = Number(raw);
+            return Number.isFinite(n) ? n : null;
+        }
+
+        async function wwFetchPerUnitProfiles() {
+            let response;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/per-unit/profiles"
+                );
+            } catch (error) {
+                return;
+            }
+            if (!response.ok) return;
+            const profiles = await response.json();
+            ww.perUnitProfiles = new Map(profiles.map((p) => [p.id, p]));
+        }
+
+        // Working-copy state for the modal, mirroring groupEditorState's
+        // own "discard on Cancel/close, only commit on Apply" model.
+        // `profileId` is `null` while editing "+ New profile" (not yet
+        // created server-side).
+        let perUnitEditorState = null;
+
+        function wwPerUnitProfileToEditorState(profile) {
+            return {
+                profileId: profile ? profile.id : null,
+                name: profile ? profile.name : "New profile",
+                voltageBaseValue: profile ? profile.voltage_base_value : null,
+                voltageBaseUnit: profile ? (profile.voltage_base_unit || "kV") : "kV",
+                voltageBasis: profile ? profile.voltage_basis : "line_to_line",
+                apparentPowerBaseValue: profile ? profile.apparent_power_base_value : null,
+                currentBaseMode: profile ? profile.current_base_mode : "none",
+                directCurrentBaseValue: profile ? profile.direct_current_base_value : null,
+                directCurrentBaseUnit: profile ? (profile.direct_current_base_unit || "kA") : "kA",
+                assignedChannelKeys: new Set((profile ? profile.assigned_channels : []).map(wwPerUnitChannelRefKey)),
+            };
+        }
+
+        function wwPerUnitEditorResolvedCurrentBaseText(state) {
+            if (state.currentBaseMode === "direct") {
+                const v = Number(state.directCurrentBaseValue);
+                if (!Number.isFinite(v) || v <= 0) return "—";
+                const amps = v * (PER_UNIT_CURRENT_SCALE[state.directCurrentBaseUnit] || 1);
+                return (amps / 1000).toFixed(4) + " kA";
+            }
+            if (state.currentBaseMode === "derived") {
+                const vbase = Number(state.voltageBaseValue);
+                const sbase = Number(state.apparentPowerBaseValue);
+                if (!Number.isFinite(vbase) || vbase <= 0 || !Number.isFinite(sbase) || sbase <= 0) return "—";
+                const vbaseVolts = vbase * (PER_UNIT_VOLTAGE_SCALE[state.voltageBaseUnit] || 1);
+                const vbaseLL = state.voltageBasis === "line_to_neutral" ? vbaseVolts * PER_UNIT_SQRT_3 : vbaseVolts;
+                const sbaseVa = sbase * PER_UNIT_APPARENT_POWER_SCALE_MVA;
+                const amps = sbaseVa / (PER_UNIT_SQRT_3 * vbaseLL);
+                return (amps / 1000).toFixed(4) + " kA";
+            }
+            return "—";
+        }
+
+        async function wwOpenPerUnitProfilesModal() {
+            await wwFetchPerUnitProfiles();
+            const first = ww.perUnitProfiles.values().next().value || null;
+            perUnitEditorState = wwPerUnitProfileToEditorState(first);
+            wwRenderPerUnitProfileSelect();
+            wwRenderPerUnitProfileEditor();
+            document.getElementById("perUnitProfileError").hidden = true;
+            document.getElementById("perUnitProfilesOverlay").hidden = false;
+        }
+
+        function wwClosePerUnitProfilesModal() {
+            perUnitEditorState = null;
+            document.getElementById("perUnitProfilesOverlay").hidden = true;
+        }
+
+        function wwRenderPerUnitProfileSelect() {
+            const select = document.getElementById("perUnitProfileSelect");
+            let html = "";
+            for (const profile of ww.perUnitProfiles.values()) {
+                html += '<option value="' + escapeHtml(profile.id) + '">' + escapeHtml(profile.name) + '</option>';
+            }
+            html += '<option value="">+ New profile</option>';
+            select.innerHTML = html;
+            select.value = perUnitEditorState.profileId || "";
+        }
+
+        function wwPerUnitProfileEditorSelectChange(profileId) {
+            const profile = profileId ? ww.perUnitProfiles.get(profileId) : null;
+            perUnitEditorState = wwPerUnitProfileToEditorState(profile);
+            wwRenderPerUnitProfileEditor();
+            document.getElementById("perUnitProfileError").hidden = true;
+        }
+
+        function wwUpdatePerUnitCalculatedCurrentBasePreview() {
+            const preview = document.getElementById("perUnitCalculatedCurrentBase");
+            if (preview) preview.value = wwPerUnitEditorResolvedCurrentBaseText(perUnitEditorState);
+        }
+
+        function wwWirePerUnitProfileFieldsEvents() {
+            const state = perUnitEditorState;
+            const nameInput = document.getElementById("perUnitNameInput");
+            if (nameInput) nameInput.addEventListener("input", () => { state.name = nameInput.value; });
+            const modeSelect = document.getElementById("perUnitCurrentBaseMode");
+            if (modeSelect) modeSelect.addEventListener("change", () => {
+                state.currentBaseMode = modeSelect.value;
+                wwRenderPerUnitProfileEditor(); // structural (progressive disclosure) -- a <select> change, never mid-typing
+            });
+            const basisSelect = document.getElementById("perUnitVoltageBasis");
+            if (basisSelect) basisSelect.addEventListener("change", () => {
+                state.voltageBasis = basisSelect.value;
+                wwUpdatePerUnitCalculatedCurrentBasePreview();
+            });
+            const vUnitSelect = document.getElementById("perUnitVoltageBaseUnit");
+            if (vUnitSelect) vUnitSelect.addEventListener("change", () => {
+                state.voltageBaseUnit = vUnitSelect.value;
+                wwUpdatePerUnitCalculatedCurrentBasePreview();
+            });
+            const vValueInput = document.getElementById("perUnitVoltageBaseValue");
+            if (vValueInput) vValueInput.addEventListener("input", () => {
+                state.voltageBaseValue = wwPerUnitNumberOrNull(vValueInput.value);
+                wwUpdatePerUnitCalculatedCurrentBasePreview();
+            });
+            const sValueInput = document.getElementById("perUnitApparentPowerBaseValue");
+            if (sValueInput) sValueInput.addEventListener("input", () => {
+                state.apparentPowerBaseValue = wwPerUnitNumberOrNull(sValueInput.value);
+                wwUpdatePerUnitCalculatedCurrentBasePreview();
+            });
+            const dValueInput = document.getElementById("perUnitDirectCurrentBaseValue");
+            if (dValueInput) dValueInput.addEventListener("input", () => {
+                state.directCurrentBaseValue = wwPerUnitNumberOrNull(dValueInput.value);
+                wwUpdatePerUnitCalculatedCurrentBasePreview();
+            });
+            const dUnitSelect = document.getElementById("perUnitDirectCurrentBaseUnit");
+            if (dUnitSelect) dUnitSelect.addEventListener("change", () => {
+                state.directCurrentBaseUnit = dUnitSelect.value;
+                wwUpdatePerUnitCalculatedCurrentBasePreview();
+            });
+        }
+
+        function wwPerUnitOwnerProfileFor(channelKey) {
+            for (const profile of ww.perUnitProfiles.values()) {
+                if (profile.id === perUnitEditorState.profileId) continue;
+                for (const ref of profile.assigned_channels) {
+                    if (wwPerUnitChannelRefKey(ref) === channelKey) return profile;
+                }
+            }
+            return null;
+        }
+
+        function wwPerUnitChannelChecklistItemHtml(key, label) {
+            const owner = wwPerUnitOwnerProfileFor(key);
+            const checked = perUnitEditorState.assignedChannelKeys.has(key);
+            // Decision 4: reassignment is a deliberate, SEPARATE action --
+            // a channel owned by a different profile renders with its
+            // checkbox disabled (never toggleable by an ordinary click)
+            // plus an explicit "Move here" action; clicking that adds the
+            // channel to the working copy (flipping the box to checked+
+            // enabled) so Apply's own conflict handling can then prompt
+            // for confirmation and resubmit with reassign_conflicting.
+            const showMoveAction = !!owner && !checked;
+            return '<label class="group-chip' + (showMoveAction ? ' group-chip--hidden' : '') + '" style="display:flex;width:100%;margin-bottom:4px;align-items:center;">' +
+                '<input type="checkbox" data-channel-key="' + escapeHtml(key) + '"' +
+                (checked ? " checked" : "") + (showMoveAction ? " disabled" : "") + '> ' +
+                '<span class="group-chip-label" style="margin-left:6px;">' + escapeHtml(label) + '</span>' +
+                (owner
+                    ? (showMoveAction
+                        ? ' <span class="hint" style="margin-left:6px;">Already assigned to ' + escapeHtml(owner.name) +
+                          ' — <button type="button" class="ww-per-unit-move-btn" data-channel-key="' + escapeHtml(key) +
+                          '" style="background:none;border:none;color:var(--accent);cursor:pointer;text-decoration:underline;padding:0;font:inherit;">Move here</button></span>'
+                        : '')
+                    : '') +
+                '</label>';
+        }
+
+        function wwRenderPerUnitChannelChecklist() {
+            const container = document.getElementById("perUnitChannelChecklist");
+            let html = "";
+            for (const inventory of ww.sourceChannelInventory.values()) {
+                const eligible = inventory.analogChannels.filter(
+                    (ch) => ch.engineering_type === "Voltage" || ch.engineering_type === "Current"
+                );
+                if (eligible.length === 0) continue;
+                html += '<h4 class="ww-cc-drawer-section-title">' + escapeHtml(inventory.sourceName || inventory.sourceId) + '</h4>';
+                for (const ch of eligible) {
+                    const key = wwChannelKey(inventory.sourceId, ch.name);
+                    html += wwPerUnitChannelChecklistItemHtml(key, ch.name + (ch.unit ? " (" + ch.unit + ")" : ""));
+                }
+            }
+            const calcEligible = Array.from(ww.calculatedChannels.values()).filter(
+                (c) => c.engineering_type === "Voltage" || c.engineering_type === "Current"
+            );
+            if (calcEligible.length > 0) {
+                html += '<h4 class="ww-cc-drawer-section-title">Calculated Channels</h4>';
+                for (const calc of calcEligible) {
+                    html += wwPerUnitChannelChecklistItemHtml("calc::" + calc.id, calc.name + (calc.unit ? " (" + calc.unit + ")" : ""));
+                }
+            }
+            container.innerHTML = html || '<p class="hint">No eligible Voltage/Current channels in this workspace yet.</p>';
+            container.querySelectorAll(".ww-per-unit-move-btn").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    perUnitEditorState.assignedChannelKeys.add(btn.dataset.channelKey);
+                    wwRenderPerUnitChannelChecklist(); // re-render: the box now shows checked+enabled
+                });
+            });
+            container.querySelectorAll("input[type=checkbox][data-channel-key]").forEach((cb) => {
+                cb.addEventListener("change", () => {
+                    const key = cb.dataset.channelKey;
+                    if (cb.checked) perUnitEditorState.assignedChannelKeys.add(key);
+                    else perUnitEditorState.assignedChannelKeys.delete(key);
+                });
+            });
+        }
+
+        function wwRenderPerUnitProfileEditor() {
+            const state = perUnitEditorState;
+            const fieldsEl = document.getElementById("perUnitProfileFields");
+            const showMva = state.currentBaseMode === "derived";
+            const showDirect = state.currentBaseMode === "direct";
+            fieldsEl.innerHTML =
+                '<label class="ww-cc-field"><span>Profile Name</span>' +
+                '<input type="text" id="perUnitNameInput" value="' + escapeHtml(state.name) + '"></label>' +
+                '<label class="ww-cc-field"><span>Voltage Base ' +
+                wwInfoTipHtml("Voltage Base", "The rated voltage that a per-unit value of 1.0 represents, for Voltage channels assigned to this profile.") +
+                '</span><div class="ww-cc-inline-fields" style="display:flex;gap:8px;">' +
+                '<input type="number" step="any" id="perUnitVoltageBaseValue" style="flex:1;" value="' +
+                (state.voltageBaseValue == null ? "" : state.voltageBaseValue) + '" placeholder="e.g. 275">' +
+                '<select id="perUnitVoltageBaseUnit">' +
+                PER_UNIT_VOLTAGE_UNITS.map((u) => '<option value="' + u + '"' + (state.voltageBaseUnit === u ? " selected" : "") + '>' + u + '</option>').join("") +
+                '</select></div></label>' +
+                '<label class="ww-cc-field"><span>Voltage Basis ' +
+                wwInfoTipHtml("Voltage Basis", "Whether the Voltage Base above is a line-to-line or line-to-neutral value. Used only to derive the Current Base below -- never applied automatically to a displayed channel's own per-unit value.") +
+                '</span><select id="perUnitVoltageBasis">' +
+                '<option value="line_to_line"' + (state.voltageBasis === "line_to_line" ? " selected" : "") + '>Line-to-Line</option>' +
+                '<option value="line_to_neutral"' + (state.voltageBasis === "line_to_neutral" ? " selected" : "") + '>Line-to-Neutral</option>' +
+                '</select></label>' +
+                '<p class="hint">Voltage channels assigned to this profile are assumed to use this voltage basis.</p>' +
+                '<label class="ww-cc-field"><span>Current Base Mode</span><select id="perUnitCurrentBaseMode">' +
+                '<option value="none"' + (state.currentBaseMode === "none" ? " selected" : "") + '>None</option>' +
+                '<option value="derived"' + (state.currentBaseMode === "derived" ? " selected" : "") + '>Derived from Voltage + MVA Base</option>' +
+                '<option value="direct"' + (state.currentBaseMode === "direct" ? " selected" : "") + '>Direct Current Base</option>' +
+                '</select></label>' +
+                (showMva
+                    ? '<label class="ww-cc-field"><span>Three-Phase MVA Base (Sbase) ' +
+                      wwInfoTipHtml("Three-Phase MVA Base", "The total three-phase apparent power base used to derive the Current Base: Ibase = Sbase / (√3 × Vbase LL).") +
+                      '</span><input type="number" step="any" id="perUnitApparentPowerBaseValue" value="' +
+                      (state.apparentPowerBaseValue == null ? "" : state.apparentPowerBaseValue) + '" placeholder="e.g. 500"></label>'
+                    : "") +
+                (showDirect
+                    ? '<label class="ww-cc-field"><span>Direct Current Base</span>' +
+                      '<div class="ww-cc-inline-fields" style="display:flex;gap:8px;">' +
+                      '<input type="number" step="any" id="perUnitDirectCurrentBaseValue" style="flex:1;" value="' +
+                      (state.directCurrentBaseValue == null ? "" : state.directCurrentBaseValue) + '" placeholder="e.g. 1.2">' +
+                      '<select id="perUnitDirectCurrentBaseUnit">' +
+                      PER_UNIT_CURRENT_UNITS.map((u) => '<option value="' + u + '"' + (state.directCurrentBaseUnit === u ? " selected" : "") + '>' + u + '</option>').join("") +
+                      '</select></div></label>'
+                    : "") +
+                (showMva || showDirect
+                    ? '<label class="ww-cc-field"><span>Calculated Current Base</span>' +
+                      '<input type="text" id="perUnitCalculatedCurrentBase" readonly tabindex="-1" value="' +
+                      wwPerUnitEditorResolvedCurrentBaseText(state) + '"></label>'
+                    : "");
+
+            wwWirePerUnitProfileFieldsEvents();
+            wwRenderPerUnitChannelChecklist();
+            document.getElementById("perUnitDeleteProfileBtn").hidden = !state.profileId;
+        }
+
+        async function wwApplyPerUnitProfileEditor(reassignConflicting) {
+            const state = perUnitEditorState;
+            const errorEl = document.getElementById("perUnitProfileError");
+            errorEl.hidden = true;
+
+            const body = {
+                name: (state.name || "").trim() || "New profile",
+                voltage_base_value: state.voltageBaseValue,
+                voltage_base_unit: state.voltageBaseValue === null ? null : state.voltageBaseUnit,
+                voltage_basis: state.voltageBasis,
+                current_base_mode: state.currentBaseMode,
+                apparent_power_base_value: state.currentBaseMode === "derived" ? state.apparentPowerBaseValue : null,
+                apparent_power_base_unit: state.currentBaseMode === "derived" && state.apparentPowerBaseValue !== null ? "MVA" : null,
+                direct_current_base_value: state.currentBaseMode === "direct" ? state.directCurrentBaseValue : null,
+                direct_current_base_unit: state.currentBaseMode === "direct" && state.directCurrentBaseValue !== null ? state.directCurrentBaseUnit : null,
+            };
+
+            const isNew = !state.profileId;
+            let response;
+            try {
+                if (isNew) {
+                    response = await fetch(
+                        apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/per-unit/profiles",
+                        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+                    );
+                } else {
+                    body.assigned_channels = Array.from(state.assignedChannelKeys).map(wwPerUnitChannelRefFromKey);
+                    body.reassign_conflicting = !!reassignConflicting;
+                    response = await fetch(
+                        apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                        "/per-unit/profiles/" + encodeURIComponent(state.profileId),
+                        { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+                    );
+                }
+            } catch (error) {
+                errorEl.textContent = "Could not reach the backend. Check your connection and try again.";
+                errorEl.hidden = false;
+                return;
+            }
+
+            if (!response.ok) {
+                let detail = {};
+                try { detail = (await response.json()).detail || {}; } catch (error) { /* handled by generic message below */ }
+                if (detail.code === "channel_already_assigned") {
+                    const names = (detail.conflicts || []).map((c) => c.profile_name).join(", ");
+                    if (window.confirm("Move channel(s) currently assigned to " + names + " to this profile instead?")) {
+                        await wwApplyPerUnitProfileEditor(true);
+                        return;
+                    }
+                    return;
+                }
+                errorEl.textContent = detail.message || "Could not save this per-unit base profile.";
+                errorEl.hidden = false;
+                return;
+            }
+
+            const saved = await response.json();
+            ww.perUnitProfiles.set(saved.id, saved);
+            if (isNew) {
+                // Decision 4: a brand-new profile always starts with
+                // assigned_channels=[] server-side (it can never
+                // conflict) -- if the user already checked channels for
+                // it before this first save, apply that assignment now
+                // via an immediate follow-up PUT.
+                perUnitEditorState.profileId = saved.id;
+                if (state.assignedChannelKeys.size > 0) {
+                    await wwApplyPerUnitProfileEditor(reassignConflicting);
+                    return;
+                }
+            }
+            await wwFetchPerUnitProfiles();
+            perUnitEditorState = wwPerUnitProfileToEditorState(ww.perUnitProfiles.get(saved.id));
+            wwRenderPerUnitProfileSelect();
+            wwRenderPerUnitProfileEditor();
+            wwUpdateUnitModeWarningBadge();
+            await wwRefreshDisplayedChannelsForPerUnitChange();
+        }
+
+        async function wwDeletePerUnitProfileEditor() {
+            const state = perUnitEditorState;
+            if (!state.profileId) return;
+            if (!window.confirm("Delete this per-unit base profile? Channels assigned to it will become unassigned.")) return;
+            let response;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                    "/per-unit/profiles/" + encodeURIComponent(state.profileId),
+                    { method: "DELETE" }
+                );
+            } catch (error) {
+                return;
+            }
+            if (!response.ok) return;
+            await wwFetchPerUnitProfiles();
+            const next = ww.perUnitProfiles.values().next().value || null;
+            perUnitEditorState = wwPerUnitProfileToEditorState(next);
+            wwRenderPerUnitProfileSelect();
+            wwRenderPerUnitProfileEditor();
+            wwUpdateUnitModeWarningBadge();
+            await wwRefreshDisplayedChannelsForPerUnitChange();
+        }
+
+        // A base/assignment change can affect the CURRENTLY displayed
+        // channels' own resolved per-unit status even without an
+        // explicit unit-mode switch -- re-asks the backend exactly like
+        // wwApplyUnitMode() does (decision 2: it remains the sole
+        // conversion authority), but only while Per Unit mode is
+        // actually active (nothing to refresh in Engineering mode).
+        async function wwRefreshDisplayedChannelsForPerUnitChange() {
+            if (ww.unitMode !== "per_unit") return;
+            const startTime = ww.viewport ? ww.viewport.start : null;
+            const endTime = ww.viewport ? ww.viewport.end : null;
+            await wwRefetchAllChannels(startTime, endTime);
+            wwRebuildLayout();
+            wwUpdateUnitModeWarningBadge();
         }
 
         // "Reset Time View": restores the full-record X/time range for
@@ -8549,8 +9419,8 @@
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify(
                             isCalculated
-                                ? { approximate_elapsed_seconds: requestedTime }
-                                : { channel_name: channelName, approximate_elapsed_seconds: requestedTime }
+                                ? { approximate_elapsed_seconds: requestedTime, unit_mode: ww.unitMode }
+                                : { channel_name: channelName, approximate_elapsed_seconds: requestedTime, unit_mode: ww.unitMode }
                         ),
                     }
                 );
@@ -9224,8 +10094,8 @@
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify(
                             isCalculated
-                                ? { approximate_elapsed_seconds: approximateElapsedSeconds }
-                                : { channel_name: channelName, approximate_elapsed_seconds: approximateElapsedSeconds }
+                                ? { approximate_elapsed_seconds: approximateElapsedSeconds, unit_mode: ww.unitMode }
+                                : { channel_name: channelName, approximate_elapsed_seconds: approximateElapsedSeconds, unit_mode: ww.unitMode }
                         ),
                     }
                 );
@@ -9335,6 +10205,7 @@
                                 ],
                                 start_time: startTime,
                                 end_time: endTime,
+                                unit_mode: ww.unitMode,
                             }),
                         }
                     );
@@ -9462,7 +10333,7 @@
                     {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ requests: requests, start_time: startTime, end_time: endTime }),
+                        body: JSON.stringify({ requests: requests, start_time: startTime, end_time: endTime, unit_mode: ww.unitMode }),
                     }
                 );
             } catch (error) {
@@ -11346,45 +12217,105 @@
                 : '<span class="ww-icon"><svg viewBox="0 0 18 18"><path d="M1.5 9S4.5 3.5 9 3.5 16.5 9 16.5 9 13.5 14.5 9 14.5 1.5 9 1.5 9Z"/><circle cx="9" cy="9" r="2.3"/><line x1="2.5" y1="15.5" x2="15.5" y2="2.5" stroke-width="1.3"/></svg></span>';
         }
 
-        function wwCcTrashIconSvg() {
-            return '<span class="ww-icon"><svg viewBox="0 0 18 18"><path d="M4 5h10M7.5 5V3.5a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1V5M6 5v9a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V5"/><line x1="7.5" y1="8" x2="7.5" y2="12"/><line x1="10.5" y1="8" x2="10.5" y2="12"/></svg></span>';
+        // ------------------------------------------------------------------
+        // Redesign: manager-list search + row selection. Selection is
+        // deliberately separate, page-local UI state (like wwCcBuilder),
+        // never persisted server-side -- it only decides what the Preview
+        // panel below shows, and is independent of a channel's own
+        // eye-icon visibility state (ww.displayed), per the task's own
+        // explicit "treat selection and visibility as separate concepts"
+        // requirement.
+        // ------------------------------------------------------------------
+        let wwCcSelectedCalculatedChannelId = null;
+        let wwCcListSearchQuery = "";
+
+        // A readable math expression for an EXISTING (already-created)
+        // calculated channel -- mirrors wwCcComputeExpressionPreview()'s
+        // own per-operation formatting exactly, but reads a stored `calc`
+        // (backend response shape) instead of the in-progress
+        // `wwCcBuilder` state, since a created channel has no "builder"
+        // any more (immutable after creation, section 47).
+        function wwCcExpressionTextFor(calc) {
+            const names = calc.inputs.map(wwCcInputDisplayName);
+            if (calc.operation === "reverse_polarity") return "-1 × " + names[0];
+            if (calc.operation === "absolute_value") return "|" + names[0] + "|";
+            if (calc.operation === "multiply_constant") {
+                const k = calc.parameters && Number.isFinite(calc.parameters.constant) ? calc.parameters.constant : "?";
+                return k + " × " + names[0];
+            }
+            if (calc.operation === "rms") {
+                const f = calc.parameters && Number.isFinite(calc.parameters.nominal_frequency_hz) ? calc.parameters.nominal_frequency_hz : "?";
+                return "RMS(" + names[0] + ", " + f + " Hz, 1 cycle)";
+            }
+            if (calc.operation === "addition") return names.join(" + ");
+            if (calc.operation === "subtraction") return names.join(" − ");
+            const meta = WW_CC_OPERATIONS[calc.operation];
+            return meta ? meta.label : calc.operation;
+        }
+
+        // Keeps a selection current across create/delete/fetch: falls back
+        // to the first (oldest) channel when nothing is selected yet, or
+        // the previous selection no longer exists.
+        function wwCcEnsureSelection() {
+            if (wwCcSelectedCalculatedChannelId && ww.calculatedChannels.has(wwCcSelectedCalculatedChannelId)) return;
+            const channels = Array.from(ww.calculatedChannels.values()).sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+            wwCcSelectedCalculatedChannelId = channels.length > 0 ? channels[0].id : null;
+        }
+
+        function wwCcSelectChannel(calculatedChannelId) {
+            if (wwCcSelectedCalculatedChannelId === calculatedChannelId) return;
+            wwCcSelectedCalculatedChannelId = calculatedChannelId;
+            wwRenderCalculatedChannelManagerList();
+            wwCcRenderWaveformPreview();
         }
 
         function wwRenderCalculatedChannelManagerList() {
             const countEl = document.getElementById("wwCcListCount");
             const bodyEl = document.getElementById("wwCcListBody");
+            const columnsEl = document.getElementById("wwCcListColumns");
             if (!bodyEl) return;
-            const channels = Array.from(ww.calculatedChannels.values()).sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
-            if (countEl) countEl.textContent = "(" + channels.length + ")";
-            if (channels.length === 0) {
+            const all = Array.from(ww.calculatedChannels.values()).sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+            if (countEl) countEl.textContent = "(" + all.length + ")";
+            if (all.length === 0) {
+                if (columnsEl) columnsEl.hidden = true;
                 bodyEl.innerHTML = '<p class="empty-state">No calculated channels yet.</p>';
+                return;
+            }
+            const query = wwCcListSearchQuery.trim().toLowerCase();
+            const channels = query ? all.filter((c) => c.name.toLowerCase().includes(query)) : all;
+            if (columnsEl) columnsEl.hidden = channels.length === 0;
+            if (channels.length === 0) {
+                bodyEl.innerHTML = '<p class="empty-state">No calculated channels match &ldquo;' + escapeHtml(wwCcListSearchQuery.trim()) + '&rdquo;.</p>';
                 return;
             }
             let html = "";
             for (const calc of channels) {
                 const isVisible = wwIsAnalogChannelVisible(calc.id, calc.name);
                 const color = wwColorForChannel(calc.id, calc.name);
-                const label = calc.unit ? calc.name + " (" + calc.unit + ")" : calc.name;
                 const error = wwCcListErrors.get(calc.id);
-                html += '<div class="ww-cc-list-row" data-calculated-channel-id="' + escapeHtml(calc.id) + '">' +
+                const meta = WW_CC_OPERATIONS[calc.operation];
+                const inputNames = calc.inputs.map(wwCcInputDisplayName).join(", ");
+                const selected = calc.id === wwCcSelectedCalculatedChannelId;
+                html += '<div class="ww-cc-list-row' + (selected ? " ww-cc-list-row--selected" : "") + '" data-calculated-channel-id="' + escapeHtml(calc.id) + '">' +
                     '<span class="channel-color-dot" style="background:' + escapeHtml(color) + '" aria-hidden="true"></span>' +
                     '<div class="ww-cc-list-row-main">' +
-                        '<div class="ww-cc-list-row-name">' + escapeHtml(label) + '</div>' +
-                        // Phase 5A-UAT4 (section 19, optional/trivial):
-                        // the inherited engineering classification
-                        // appended to the existing operation summary line
-                        // -- e.g. "Addition (VA + VB) · Voltage" -- no new
-                        // row, no new CSS class, matching the task's own
-                        // "optional... do not expand scope" guidance.
-                        '<div class="ww-cc-list-row-summary">' + escapeHtml(wwCcOperationSummaryText(calc) + " · " + (calc.engineering_type || "Undefined")) + '</div>' +
+                        '<div class="ww-cc-list-row-name">' + escapeHtml(calc.name) + '</div>' +
+                        '<div class="ww-cc-list-row-expr">' + escapeHtml(wwCcExpressionTextFor(calc)) + '</div>' +
+                        '<div class="ww-cc-list-row-summary">' + escapeHtml((meta ? meta.label : calc.operation) + " · " + inputNames) + '</div>' +
                         (error ? '<div class="ww-cc-list-row-error">' + escapeHtml(error) + '</div>' : '') +
                     '</div>' +
+                    '<div class="ww-cc-list-row-class"><span class="ww-cc-type-badge">' + escapeHtml(calc.engineering_type || "Undefined") + '</span></div>' +
+                    '<div class="ww-cc-list-row-unit">' + escapeHtml(calc.unit || "—") + '</div>' +
                     '<div class="ww-cc-list-row-controls">' +
                         '<button type="button" class="ww-icon-btn" data-action="toggle-visibility" aria-pressed="' + isVisible + '" ' +
                             'title="' + (isVisible ? "Hide" : "Show") + '" aria-label="' + (isVisible ? "Hide " : "Show ") + escapeHtml(calc.name) + '">' +
                             wwCcEyeIconSvg(isVisible) + '</button>' +
-                        '<button type="button" class="ww-icon-btn" data-action="delete" title="Delete" aria-label="Delete ' + escapeHtml(calc.name) + '">' +
-                            wwCcTrashIconSvg() + '</button>' +
+                        '<details class="ww-cc-menu">' +
+                            '<summary class="ww-icon-btn" aria-label="More actions for ' + escapeHtml(calc.name) + '" title="More actions">&#8942;</summary>' +
+                            '<div class="ww-cc-menu-list">' +
+                                '<button type="button" class="ww-cc-menu-item" data-action="delete">Delete</button>' +
+                            '</div>' +
+                        '</details>' +
                     '</div>' +
                 '</div>';
             }
@@ -11404,6 +12335,7 @@
             } else {
                 builderPanel.hidden = true;
             }
+            wwCcEnsureSelection();
             wwRenderCalculatedChannelManagerList();
             // Phase 5A-UAT: covers page-open, post-creation, and Start New
             // Workspace (the three call sites of this function) -- see
@@ -11667,14 +12599,68 @@
         // just to update trace data (section 15/16).
         const wwCcPreview = { panelsByType: new Map(), generation: 0 };
 
+        // Redesign: the preview now reflects the manager list's own row
+        // SELECTION (wwCcSelectChannel()), never the general "every
+        // currently visible channel" set -- selection and visibility are
+        // now separate concepts (section 6 of the task): a channel can be
+        // selected for preview whether or not it is currently shown on
+        // the main Waveform page, and the eye icon's own visibility
+        // toggle no longer gates what this preview shows (only
+        // wwCcRenderPreviewStatusAndInfo()'s status line reports it).
+        // Still returns a 0/1-length array (not a bare value) so every
+        // per-type-panel grouping/reuse/Plotly.react() line below needs
+        // no further changes -- it simply always sees at most one type
+        // now.
         function wwCcPreviewVisibleChannels() {
-            return Array.from(ww.calculatedChannels.values()).filter((c) => wwIsAnalogChannelVisible(c.id, c.name));
+            if (!wwCcSelectedCalculatedChannelId) return [];
+            const calc = ww.calculatedChannels.get(wwCcSelectedCalculatedChannelId);
+            return calc ? [calc] : [];
+        }
+
+        // Preview header ("Selected: <name> • Visible/Hidden") + the
+        // compact info strip under the chart (Expression/Classification/
+        // Unit/Source) -- both built purely from the selected channel's
+        // own already-known static fields, never from the fetched
+        // waveform body, so they render correctly even before/without a
+        // successful fetch.
+        function wwCcRenderPreviewStatusAndInfo(calc) {
+            const statusEl = document.getElementById("wwCcPreviewStatus");
+            const stripEl = document.getElementById("wwCcPreviewInfoStrip");
+            if (statusEl) {
+                if (!calc) {
+                    statusEl.textContent = "";
+                } else {
+                    const isVisible = wwIsAnalogChannelVisible(calc.id, calc.name);
+                    statusEl.innerHTML = "Selected: " + escapeHtml(calc.name) +
+                        '<span class="ww-cc-preview-status-dot' + (isVisible ? " ww-cc-preview-status-dot--visible" : "") + '"></span>' +
+                        (isVisible ? "Visible" : "Hidden");
+                }
+            }
+            if (stripEl) {
+                if (!calc) {
+                    stripEl.hidden = true;
+                    stripEl.innerHTML = "";
+                } else {
+                    const meta = WW_CC_OPERATIONS[calc.operation];
+                    const inputNames = calc.inputs.map(wwCcInputDisplayName).join(", ");
+                    stripEl.innerHTML =
+                        '<div><span class="ww-cc-preview-info-label">Expression</span><span class="ww-cc-preview-info-value">' + escapeHtml(wwCcExpressionTextFor(calc)) + '</span></div>' +
+                        '<div><span class="ww-cc-preview-info-label">Classification</span><span class="ww-cc-preview-info-value">' + escapeHtml(calc.engineering_type || "Undefined") + '</span></div>' +
+                        '<div><span class="ww-cc-preview-info-label">Unit</span><span class="ww-cc-preview-info-value">' + escapeHtml(calc.unit || "—") + '</span></div>' +
+                        '<div><span class="ww-cc-preview-info-label">Source</span><span class="ww-cc-preview-info-value">' + escapeHtml((meta ? meta.label : calc.operation) + " · " + inputNames) + '</span></div>';
+                    stripEl.hidden = false;
+                }
+            }
         }
 
         async function wwCcFetchPreviewWaveform(calc) {
             const url = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
                 "/calculated-channels/" + encodeURIComponent(calc.id) + "/waveform" +
-                "?point_budget=2000"; // fixed, simple budget -- a lightweight preview, not tied to a live panel width
+                "?point_budget=2000" + // fixed, simple budget -- a lightweight preview, not tied to a live panel width
+                // Phase 5C (DEC-049, section 37): the preview follows the
+                // SAME global unit mode as the main Waveform page -- no
+                // independent preview-only toggle.
+                "&unit_mode=" + encodeURIComponent(ww.unitMode);
             let response;
             try {
                 response = await fetch(url);
@@ -11720,6 +12706,13 @@
             if (!panelsEl) return; // not on this page's DOM yet -- safe no-op, mirrors wwRenderCalculatedChannelsPage()'s own guard
 
             const visible = wwCcPreviewVisibleChannels();
+            const selectedCalc = visible[0] || null;
+            wwCcRenderPreviewStatusAndInfo(selectedCalc);
+            if (emptyEl) {
+                emptyEl.textContent = selectedCalc
+                    ? "Could not load a preview for this channel."
+                    : "Select a calculated channel to preview its waveform.";
+            }
             if (visible.length === 0) {
                 wwCcPreviewPurgeAllPanels();
                 panelsEl.hidden = true;
@@ -11937,7 +12930,9 @@
             }
 
             ww.calculatedChannels.set(body.id, body);
+            wwCcSelectedCalculatedChannelId = body.id; // preview the just-created channel immediately
             wwCcResetBuilder();
+            wwSetCcDrawerOpen(false);
             wwRenderCalculatedChannelsPage();
             wwRenderCalculatedChannelsSidebarSection();
         }
@@ -11962,6 +12957,8 @@
                 ww.calculatedChannels.delete(calculatedChannelId);
                 wwCcListErrors.delete(calculatedChannelId);
                 wwRemoveCalculatedChannelDisplayIfShown(calculatedChannelId);
+                if (wwCcSelectedCalculatedChannelId === calculatedChannelId) wwCcSelectedCalculatedChannelId = null;
+                wwCcEnsureSelection();
                 wwRenderCalculatedChannelsSidebarSection();
                 wwRenderCalculatedChannelManagerList();
                 wwCcRenderWaveformPreview();
@@ -11974,9 +12971,61 @@
             wwRenderCalculatedChannelManagerList();
         }
 
+        // Redesign: right-side drawer for the Signal Builder, opened via
+        // the page header's "+ New Channel" button -- same
+        // open/close/backdrop mechanics as wwSetAnnotationDrawerOpen().
+        // Deliberately does NOT call wwRenderCalculatedChannelsPage()/
+        // wwCcRenderWaveformPreview() on open or close: neither the
+        // manager list nor the Preview is affected by the drawer's own
+        // visibility, so re-rendering them here would only cost an
+        // unnecessary waveform re-fetch (section 13's explicit
+        // performance guardrail against extra API calls on drawer
+        // open/close). Resets the builder to a clean slate on every open
+        // (never on close) -- a channel is immutable after creation
+        // (section 47), so there is never in-progress state worth
+        // preserving across opens.
+        function wwSetCcDrawerOpen(open) {
+            const drawer = document.getElementById("wwCcDrawer");
+            const backdrop = document.getElementById("wwCcDrawerBackdrop");
+            const btn = document.getElementById("wwCcNewChannelBtn");
+            if (open) {
+                wwCcResetBuilder();
+                wwCcRenderOperationCards();
+                const builderPanel = document.getElementById("wwCcBuilderPanel");
+                if (builderPanel) builderPanel.hidden = true;
+                const errorEl = document.getElementById("wwCcError");
+                if (errorEl) errorEl.hidden = true;
+            }
+            if (drawer) {
+                drawer.classList.toggle("ww-cc-drawer--open", open);
+                drawer.setAttribute("aria-hidden", String(!open));
+            }
+            if (backdrop) backdrop.hidden = !open;
+            if (btn) btn.setAttribute("aria-expanded", String(open));
+        }
+
         // ------------------------------------------------------------------
         // Wiring
         // ------------------------------------------------------------------
+
+        document.getElementById("wwCcNewChannelBtn").addEventListener("click", () => wwSetCcDrawerOpen(true));
+        document.getElementById("wwCcDrawerCloseBtn").addEventListener("click", () => wwSetCcDrawerOpen(false));
+        document.getElementById("wwCcCancelBtn").addEventListener("click", () => wwSetCcDrawerOpen(false));
+        document.getElementById("wwCcDrawerBackdrop").addEventListener("click", () => wwSetCcDrawerOpen(false));
+
+        document.getElementById("wwCcSearchInput").addEventListener("input", (event) => {
+            wwCcListSearchQuery = event.target.value;
+            wwRenderCalculatedChannelManagerList();
+        });
+
+        // Closes any open per-row "more actions" menu (a native
+        // <details>/<summary>, which does not auto-close on outside click)
+        // whenever a click lands outside it.
+        document.addEventListener("click", (event) => {
+            document.querySelectorAll(".ww-cc-menu[open]").forEach((menu) => {
+                if (!menu.contains(event.target)) menu.removeAttribute("open");
+            });
+        });
 
         document.getElementById("wwCcOperationCards").addEventListener("click", (event) => {
             const card = event.target.closest(".ww-cc-operation-card");
@@ -12052,9 +13101,29 @@
             const id = row.dataset.calculatedChannelId;
             const calc = ww.calculatedChannels.get(id);
             const actionBtn = event.target.closest("button[data-action]");
-            if (!actionBtn || !calc) return;
-            if (actionBtn.dataset.action === "toggle-visibility") wwToggleCalculatedChannelDisplay(calc);
-            else if (actionBtn.dataset.action === "delete") wwCcDeleteChannel(id);
+            if (actionBtn && calc) {
+                if (actionBtn.dataset.action === "toggle-visibility") { wwToggleCalculatedChannelDisplay(calc); return; }
+                if (actionBtn.dataset.action === "delete") {
+                    const menu = row.querySelector(".ww-cc-menu[open]");
+                    if (menu) menu.removeAttribute("open");
+                    wwCcDeleteChannel(id);
+                    return;
+                }
+                return;
+            }
+            // Redesign (section 6): clicking anywhere else on the row --
+            // never the eye icon or the "more actions" menu/its items --
+            // selects it for the Preview panel below, independent of its
+            // own visibility state.
+            if (event.target.closest(".ww-cc-menu")) return; // opening/closing the <details> itself
+            wwCcSelectChannel(id);
+        });
+
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            document.querySelectorAll(".ww-cc-menu[open]").forEach((menu) => menu.removeAttribute("open"));
+            const ccDrawer = document.getElementById("wwCcDrawer");
+            if (ccDrawer && ccDrawer.classList.contains("ww-cc-drawer--open")) wwSetCcDrawerOpen(false);
         });
 
         function wwCalculatedChannelsSidebarRowClickHandler(event) {
@@ -12183,6 +13252,20 @@
                 wwCcListErrors.clear();
                 wwRenderCalculatedChannelsSidebarSection();
                 wwRenderCalculatedChannelsPage();
+                // Phase 5C (DEC-049): "Start New Workspace" also resets
+                // Unit Mode and clears every per-unit base profile mirror
+                // -- the backend side is already handled by this SAME
+                // DELETE /api/v1/workspaces/{id} call (per_unit_registry.
+                // remove_workspace()); this just keeps the frontend's own
+                // toolbar/state in sync, same policy as
+                // ww.calculatedChannels immediately above. Plain "Clear
+                // workspace" (the else branch below) deliberately leaves
+                // both alone.
+                ww.unitMode = "engineering";
+                ww.perUnitProfiles.clear();
+                wwSyncUnitModeControls();
+                wwUpdateUnitModeWarningBadge();
+                wwClosePerUnitProfilesModal();
             } else {
                 ww.workspaceBounds = wwDeriveWorkspaceBounds();
                 ww.viewport = ww.workspaceBounds ? { start: ww.workspaceBounds.start, end: ww.workspaceBounds.end } : null;
@@ -13232,12 +14315,13 @@
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify(
                             isCalculated
-                                ? { calculated_channel_ids: [sourceId], cursor_a_time: aTime, cursor_b_time: bTime }
+                                ? { calculated_channel_ids: [sourceId], cursor_a_time: aTime, cursor_b_time: bTime, unit_mode: ww.unitMode }
                                 : {
                                     analog_channel_names: analogNames,
                                     digital_channel_names: digitalNames,
                                     cursor_a_time: aTime,
                                     cursor_b_time: bTime,
+                                    unit_mode: ww.unitMode,
                                 }
                         ),
                     }
@@ -14280,6 +15364,58 @@
             if (menu && !menu.hidden) wwSetAnnotateMenuOpen(false);
             const drawer = document.getElementById("wwAnnotationDrawer");
             if (drawer && drawer.classList.contains("ww-annotation-drawer--open")) wwSetAnnotationDrawerOpen(false);
+        });
+
+        // Phase 5C (DEC-049): Unit Mode dropdown -- same open/close/
+        // outside-click/Escape conventions as Annotate above.
+        document.getElementById("wwUnitModeBtn").addEventListener("click", (event) => {
+            event.stopPropagation();
+            wwToggleUnitModeMenu();
+        });
+        document.querySelector('#wwUnitModeMenu .ww-split-menu-item[data-unit-mode="engineering"]').addEventListener("click", () => {
+            wwSetUnitModeMenuOpen(false);
+            wwApplyUnitMode("engineering");
+        });
+        document.querySelector('#wwUnitModeMenu .ww-split-menu-item[data-unit-mode="per_unit"]').addEventListener("click", async () => {
+            wwSetUnitModeMenuOpen(false);
+            await wwApplyUnitMode("per_unit");
+            // Section 68: switching to Per Unit for the first time with
+            // zero existing profiles auto-opens the setup modal.
+            if (ww.perUnitProfiles.size === 0) await wwOpenPerUnitProfilesModal();
+        });
+        document.getElementById("wwManagePerUnitBasesBtn").addEventListener("click", () => {
+            wwSetUnitModeMenuOpen(false);
+            wwOpenPerUnitProfilesModal();
+        });
+        document.addEventListener("click", (event) => {
+            const menu = document.getElementById("wwUnitModeMenu");
+            const split = document.getElementById("wwUnitModeSplit");
+            if (menu && !menu.hidden && split && !split.contains(event.target)) {
+                wwSetUnitModeMenuOpen(false);
+            }
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            const menu = document.getElementById("wwUnitModeMenu");
+            if (menu && !menu.hidden) wwSetUnitModeMenuOpen(false);
+        });
+
+        // Phase 5C: "Manage Per-Unit Bases" modal wiring -- same
+        // Apply/Cancel/close/Escape/backdrop-click convention as Custom
+        // Groups.
+        document.getElementById("perUnitProfileSelect").addEventListener("change", (event) => {
+            wwPerUnitProfileEditorSelectChange(event.target.value);
+        });
+        document.getElementById("perUnitProfilesApplyBtn").addEventListener("click", () => wwApplyPerUnitProfileEditor(false));
+        document.getElementById("perUnitDeleteProfileBtn").addEventListener("click", () => wwDeletePerUnitProfileEditor());
+        document.getElementById("perUnitProfilesCloseBtn").addEventListener("click", wwClosePerUnitProfilesModal);
+        document.getElementById("perUnitProfilesCloseFooterBtn").addEventListener("click", wwClosePerUnitProfilesModal);
+        document.getElementById("perUnitProfilesOverlay").addEventListener("click", (event) => {
+            if (event.target.id === "perUnitProfilesOverlay") wwClosePerUnitProfilesModal(); // click on backdrop
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            if (!document.getElementById("perUnitProfilesOverlay").hidden) wwClosePerUnitProfilesModal();
         });
 
         // Phase 2C-B1/C1: Grouped/Separate/Custom layout mode.

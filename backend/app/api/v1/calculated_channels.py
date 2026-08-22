@@ -19,6 +19,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
+from app.domain.calculated_channel import ChannelRef
 from app.schemas.calculated_channel import (
     CalculatedAnnotationAnchorOut,
     CalculatedAnnotationAnchorRequest,
@@ -46,6 +47,7 @@ from app.services.calculated_channel_service import (
     resolve_calculated_peak_value,
 )
 from app.services.errors import ImportServiceError
+from app.services.per_unit_registry import PerUnitRegistry
 from app.services.waveform_service import DEFAULT_POINT_BUDGET
 from app.services.workspace_registry import WorkspaceRegistry
 
@@ -85,6 +87,22 @@ def get_calculated_channel_registry(request: Request) -> CalculatedChannelRegist
     return request.app.state.calculated_channel_registry
 
 
+def get_per_unit_registry(request: Request) -> PerUnitRegistry:
+    return request.app.state.per_unit_registry
+
+
+def _resolve_profile_for_calculated_channel(
+    per_unit_registry: PerUnitRegistry, workspace_id: str, calculated_channel_id: str
+):
+    """Phase 5C (DEC-049): symmetric with app.api.v1.sources's own
+    `_resolve_profile_for_source_channel` -- resolves one calculated
+    channel's own currently assigned/inherited profile (or `None`)."""
+    profile_id = per_unit_registry.profile_for_channel(
+        workspace_id, ChannelRef(kind="calculated", calculated_channel_id=calculated_channel_id)
+    )
+    return per_unit_registry.get(workspace_id, profile_id) if profile_id else None
+
+
 def _validate_workspace_id(workspace_id: str) -> str:
     if not workspace_id or not workspace_id.strip():
         raise HTTPException(
@@ -120,6 +138,7 @@ def create_channel(
     body: CalculatedChannelCreateRequest,
     source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
 ) -> CalculatedChannelOut:
     """Create + eagerly evaluate one calculated channel (section 46: eager
     evaluation at creation, never re-evaluated on later requests -- see
@@ -135,6 +154,7 @@ def create_channel(
             source_registry=source_registry,
             calc_registry=calc_registry,
             override=body.override,
+            per_unit_registry=per_unit_registry,
         )
     except ImportServiceError as exc:
         logger.info("Calculated channel creation rejected (%s) for workspace %s: %s", exc.code, workspace_id, exc.message)
@@ -157,13 +177,15 @@ def delete_channel(
     workspace_id: str,
     calculated_channel_id: str,
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
 ) -> None:
     """Section 25/63: BLOCKED (never a silent cascade) if another
     calculated channel still depends on this one."""
     workspace_id = _validate_workspace_id(workspace_id)
     try:
         delete_calculated_channel(
-            workspace_id=workspace_id, calculated_channel_id=calculated_channel_id, calc_registry=calc_registry
+            workspace_id=workspace_id, calculated_channel_id=calculated_channel_id, calc_registry=calc_registry,
+            per_unit_registry=per_unit_registry,
         )
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
@@ -176,7 +198,9 @@ def get_channel_waveform(
     start_time: float | None = None,
     end_time: float | None = None,
     point_budget: int = DEFAULT_POINT_BUDGET,
+    unit_mode: str = "engineering",
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
 ) -> CalculatedWaveformRangeOut:
     """Section 48/49: reuses the exact same full-resolution-threshold +
     peak-preserving-reduction pipeline GET .../sources/{id}/waveform
@@ -184,8 +208,14 @@ def get_channel_waveform(
     mechanism."""
     workspace_id = _validate_workspace_id(workspace_id)
     channel = _get_channel_or_404(calc_registry, workspace_id, calculated_channel_id)
+    per_unit_profile = (
+        _resolve_profile_for_calculated_channel(per_unit_registry, workspace_id, calculated_channel_id)
+        if unit_mode == "per_unit"
+        else None
+    )
     result = extract_calculated_waveform_range(
-        channel, start_time=start_time, end_time=end_time, point_budget=point_budget
+        channel, start_time=start_time, end_time=end_time, point_budget=point_budget,
+        unit_mode=unit_mode, per_unit_profile=per_unit_profile,
     )
     return CalculatedWaveformRangeOut.from_result(result)
 
@@ -229,6 +259,7 @@ def get_cursor_values(
     workspace_id: str,
     body: CalculatedCursorValuesRequest,
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
 ) -> CalculatedCursorValuesOut:
     """Section 54: A/B cursor values for a batch of calculated channels --
     unknown ids are silently skipped (mirrors extract_cursor_values's own
@@ -238,8 +269,17 @@ def get_cursor_values(
     channels = [
         c for c in (calc_registry.get(workspace_id, cid) for cid in body.calculated_channel_ids) if c is not None
     ]
+    per_unit_profiles = (
+        {
+            c.id: _resolve_profile_for_calculated_channel(per_unit_registry, workspace_id, c.id)
+            for c in channels
+        }
+        if body.unit_mode == "per_unit"
+        else None
+    )
     results = extract_calculated_cursor_values(
-        channels, cursor_a_time=body.cursor_a_time, cursor_b_time=body.cursor_b_time
+        channels, cursor_a_time=body.cursor_a_time, cursor_b_time=body.cursor_b_time,
+        unit_mode=body.unit_mode, per_unit_profiles=per_unit_profiles,
     )
     return CalculatedCursorValuesOut(channels=[CalculatedCursorValuesItemOut.from_result(r) for r in results])
 
@@ -249,6 +289,7 @@ def get_peak_values(
     workspace_id: str,
     body: CalculatedPeakBatchRequest,
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
 ) -> CalculatedPeakBatchOut:
     """Section 55: +Peak/-Peak for a batch of calculated channels, mirroring
     the source-channel .../peak-values batch contract (DEC-046) --
@@ -274,7 +315,15 @@ def get_peak_values(
                 )
             )
             continue
-        result = resolve_calculated_peak_value(channel, mode=item.mode, start_time=body.start_time, end_time=body.end_time)
+        per_unit_profile = (
+            _resolve_profile_for_calculated_channel(per_unit_registry, workspace_id, item.calculated_channel_id)
+            if body.unit_mode == "per_unit"
+            else None
+        )
+        result = resolve_calculated_peak_value(
+            channel, mode=item.mode, start_time=body.start_time, end_time=body.end_time,
+            unit_mode=body.unit_mode, per_unit_profile=per_unit_profile,
+        )
         results.append(CalculatedPeakResultOut.from_result(result))
     return CalculatedPeakBatchOut(start_time=body.start_time, end_time=body.end_time, results=results)
 
@@ -285,6 +334,7 @@ def resolve_annotation_anchor(
     calculated_channel_id: str,
     body: CalculatedAnnotationAnchorRequest,
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
 ) -> CalculatedAnnotationAnchorOut:
     """Section 56: Callout anchor resolution for a calculated channel --
     reuses the exact same nearest-sample rule
@@ -293,7 +343,15 @@ def resolve_annotation_anchor(
     retained full-resolution arrays instead of an ActiveSource."""
     workspace_id = _validate_workspace_id(workspace_id)
     channel = _get_channel_or_404(calc_registry, workspace_id, calculated_channel_id)
-    result = resolve_calculated_annotation_anchor(channel, approximate_elapsed_seconds=body.approximate_elapsed_seconds)
+    per_unit_profile = (
+        _resolve_profile_for_calculated_channel(per_unit_registry, workspace_id, calculated_channel_id)
+        if body.unit_mode == "per_unit"
+        else None
+    )
+    result = resolve_calculated_annotation_anchor(
+        channel, approximate_elapsed_seconds=body.approximate_elapsed_seconds,
+        unit_mode=body.unit_mode, per_unit_profile=per_unit_profile,
+    )
     if result is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

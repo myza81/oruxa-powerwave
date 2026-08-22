@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.schemas.source import ErrorOut
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
+from app.services.per_unit_registry import PerUnitRegistry
 from app.services.workspace_registry import WorkspaceRegistry
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
@@ -31,6 +32,10 @@ def get_workspace_registry(request: Request) -> WorkspaceRegistry:
 
 def get_calculated_channel_registry(request: Request) -> CalculatedChannelRegistry:
     return request.app.state.calculated_channel_registry
+
+
+def get_per_unit_registry(request: Request) -> PerUnitRegistry:
+    return request.app.state.per_unit_registry
 
 
 def _validate_workspace_id(workspace_id: str) -> str:
@@ -50,6 +55,7 @@ def delete_workspace(
     workspace_id: str,
     registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
 ) -> None:
     """Release every source this workspace owns.
 
@@ -64,7 +70,11 @@ def delete_workspace(
     plug into" this module's own docstring already anticipated -- Start
     New Workspace also releases every calculated channel this workspace
     owns, via the same idempotent pattern.
+
+    Phase 5C (DEC-049): also releases every per-unit base profile and
+    channel-assignment record this workspace owns, the same way.
     """
     workspace_id = _validate_workspace_id(workspace_id)
     registry.remove_workspace(workspace_id)
     calc_registry.remove_workspace(workspace_id)
+    per_unit_registry.remove_workspace(workspace_id)

@@ -12,10 +12,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
 from app.api.v1.calculated_channels import router as calculated_channels_v1_router
+from app.api.v1.per_unit import router as per_unit_v1_router
 from app.api.v1.sources import router as sources_v1_router
 from app.api.v1.workspaces import router as workspaces_v1_router
 from app.config import Settings, load_settings
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
+from app.services.per_unit_registry import PerUnitRegistry
 from app.services.workspace_registry import WorkspaceRegistry
 from app.storage import StorageBackend, get_storage
 
@@ -47,6 +49,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # own module docstring for why this is not folded into
         # WorkspaceRegistry itself.
         app.state.calculated_channel_registry = CalculatedChannelRegistry()
+        # Phase 5C (DEC-049): a third sibling in-memory registry, same
+        # structural shape as the two above -- see
+        # app.services.per_unit_registry's own module docstring.
+        app.state.per_unit_registry = PerUnitRegistry()
         yield
 
     app = FastAPI(title="Powerwave API", lifespan=lifespan)
@@ -102,6 +108,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(sources_v1_router)
     app.include_router(workspaces_v1_router)
     app.include_router(calculated_channels_v1_router)
+    app.include_router(per_unit_v1_router)
 
     @app.get("/health")
     def health():

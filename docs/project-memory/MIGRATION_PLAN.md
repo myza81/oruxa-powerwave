@@ -8648,6 +8648,105 @@ owner UAT after this push.
 
 ---
 
+## Phase 5C — Global Per-Unit Measurement Mode (2026-08-22)
+
+### Scope
+
+A global Waveform-page presentation mode — Engineering Units vs. Per
+Unit — for Voltage and Current channels, backed by workspace-scoped,
+user-configured base profiles (Vbase/Ibase/Sbase). Applied consistently
+across main Waveform panels, A/B cursor values, calculated-channel
+preview, and Peak/Callout display values. Engineering arrays remain
+authoritative and immutable throughout — this is a presentation/
+measurement transform only. Full decision record, including the
+owner's three plan-review correction rounds:
+[DECISIONS.md — DEC-049](DECISIONS.md#dec-049--global-per-unit-measurement-mode-workspace-scoped-base-profiles-backend-only-conversion-explicit-reassignment-and-two-axis-modeprofile-calculated-channel-inheritance-provenance)
+(not duplicated here).
+
+### Implementation order (staged, per the owner's own requested slices)
+
+A. `app/domain/per_unit.py` — pure domain model, validators, base
+   derivation (including the Ibase = Sbase / (√3 × Vbase_LL) formula
+   and its LN→LL normalization), `resolve_per_unit()`/
+   `convert_value_to_pu()`/`convert_array_to_pu()`/
+   `apply_per_unit_to_value()`/`apply_per_unit_to_array()`, and
+   `derive_per_unit_profile_id()` (decision 6). 42 new tests.
+B. `app/services/per_unit_registry.py` (`PerUnitRegistry` — the
+   `ChannelAssignment{mode, profile_id}` reverse index, decision 7's two
+   axes, and the co-located `recompute_inherited_per_unit_assignments()`
+   cascade), `app/services/per_unit_service.py` (profile CRUD
+   orchestration + validation), `app/api/v1/per_unit.py`
+   (`GET/POST/PUT/DELETE .../per-unit/profiles`), 4 new error classes,
+   workspace-lifecycle wiring. 18 new registry tests (including the
+   owner's own exact A→G provenance sequence) + 10 API tests.
+C. Extended all 8 existing display/measurement endpoints (source +
+   calculated-channel waveform/cursor-values/peak-values/annotation-
+   anchor) with an optional `unit_mode` parameter, resolving and
+   applying per-unit conversion via the domain functions from Slice A —
+   never a duplicated conversion path per endpoint. 9 new API-level
+   tests, including NaN-safety under conversion (an RMS channel's own
+   warm-up region stays `null` whether or not per-unit mode is active).
+D/E/F/G (frontend, `frontend/index.html` only — no other file touched
+   for these slices): `ww.unitMode`/`ww.perUnitProfiles` state; the Unit
+   Mode toolbar dropdown, structurally cloned from the Annotate
+   split-button pattern (Engineering/Per Unit radio items + "Manage
+   Per-Unit Bases..."); the setup modal, cloned from the Custom Groups
+   editor's working-copy-until-Apply shell (base fields with progressive
+   disclosure for Current Base Mode, a live client-side "Calculated
+   Current Base" preview mirroring the backend formula for display only,
+   and a channel checklist with an explicit disabled-checkbox +
+   "Move here" action for decision 4's reassignment-confirmation flow);
+   `unit_mode` wired into every one of the 8 fetch call sites plus the
+   Calculated Channels preview fetch; `wwPanelGroupKeyFor()`/
+   `wwPanelLabelFor()` gained a per-unit-status suffix (`:pu`/
+   `:base_required`) that keeps a converted channel and an unconverted
+   one of the same type in separate panels — the core "never mix pu and
+   engineering values on one shared axis" guarantee; calculated-channel
+   inheritance wired into `create_calculated_channel()` (backend,
+   folded into Slice B/F together since it touches the same file);
+   lifecycle reset (`ww.unitMode`/`ww.perUnitProfiles` cleared only by
+   Start New Workspace, exactly like `ww.calculatedChannels`).
+H. Full test sweep (758 backend tests, zero regressions) + direct
+   Playwright verification against a real running backend+frontend
+   (create a profile, assign a Voltage channel, switch to Per Unit,
+   confirm conversion + panel separation from an unassigned Current
+   channel, switch back to Engineering and confirm byte-for-byte restored
+   values, exercise the conflict/"Move here"/confirm/reassign flow
+   end-to-end, confirm Start New Workspace resets both) + this
+   documentation update.
+
+### Known gaps for owner UAT (honest, not hidden)
+
+- The reassignment confirmation prompt uses the browser's native
+  `window.confirm()` rather than a custom styled modal-on-modal — matches
+  the required "explicit confirmation before resubmitting" behavior, but
+  is visually plainer than the rest of the app's own dialog language.
+- The Waveform sidebar's own static "channel name (unit)" label
+  (`ww.channelMeta`, set once when a channel is first added) does not
+  currently relabel to "(pu)" when Per Unit mode is switched on — only
+  the main panel's own Y-axis title/legend/hover values do. The A/B
+  cursor VALUES themselves are correctly converted either way.
+- A channel added to the display for the FIRST time while Per Unit mode
+  is already active groups by its plain engineering type until the next
+  regroup event (a later unit-mode toggle or layout-mode switch), since
+  its own `perUnitStatus` is not yet known at the moment panels are
+  first assigned. Never mixes pu/engineering values incorrectly in the
+  meantime — the channel simply hasn't split into its own `:pu`/
+  `:base_required` panel yet.
+- The Calculated Channels preview panel's own grouping-by-type does not
+  yet carry the same `:pu`/`:base_required` panel-separation suffix the
+  main Waveform page has (decision 2's actual VALUE correctness is
+  unaffected — the preview still requests and displays the correctly
+  converted value/unit/status).
+
+None of these affect engineering correctness (the actually displayed/
+measured VALUES are always correct per decision 2) — they are secondary
+UI polish items, flagged here the same way Phase 5B's own first pass
+needed two follow-up UAT rounds before its parameter UI/tooltip
+positioning were fully polished.
+
+---
+
 ## Phase 5B-UAT — Clarify RMS Parameter UI (2026-08-22)
 
 ### Scope

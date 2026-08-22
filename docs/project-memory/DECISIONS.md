@@ -6010,6 +6010,202 @@ method.** Concretely:
 
 ---
 
+## DEC-049 — Global Per-Unit Measurement Mode: workspace-scoped base profiles, backend-only conversion, explicit reassignment, and two-axis (mode/profile) calculated-channel inheritance provenance
+
+Date: 2026-08-22
+Status: Approved
+Source: explicit owner-approved direction for Phase 5C ("Global Per-Unit
+Measurement Mode"), refined through three rounds of plan-review
+corrections before implementation began.
+
+Decision:
+
+Oruxa Powerwave gains a global Waveform-page presentation mode —
+Engineering Units vs. Per Unit — for Voltage and Current channels only
+(Power/Frequency/etc. stay in engineering units this phase; Power/
+Reactive-Power/Impedance per-unit is explicitly deferred until a
+separate owner-approved phase). Seven locked rules:
+
+1. **Unit mode is pure frontend presentation state** (`ww.unitMode`,
+   `"engineering" | "per_unit"`), never persisted server-side — mirrors
+   DEC-042's own Absolute/Elapsed precedent. No `GET/PUT .../mode`
+   endpoint; every display/measurement endpoint instead takes an
+   optional `unit_mode` parameter per request.
+2. **The backend is the sole conversion authority.** One shared
+   `app/domain/per_unit.py` (`resolve_per_unit()`/`convert_value_to_pu()`/
+   `convert_array_to_pu()`/`apply_per_unit_to_value()`/
+   `apply_per_unit_to_array()`) is called from every one of the 8
+   existing display/measurement endpoints (source + calculated-channel
+   waveform/cursor-values/peak-values/annotation-anchor) — never
+   duplicated per endpoint, never reimplemented in JS. Each response
+   reports one of three statuses per channel: `not_applicable`
+   (non-Voltage/Current), `configured` (converted, `unit="pu"`), or
+   `base_required` (eligible, no valid base — engineering value/unit
+   preserved unchanged). Peak/Callout anchor identity (sample index,
+   elapsed time) is never touched by unit mode — only the displayed
+   value converts.
+3. **No per-channel voltage measurement-basis field exists or is
+   needed** — a profile's own declared `voltage_basis` (line-to-line or
+   line-to-neutral) is the single source of truth, stated explicitly and
+   persistently in the setup UI (not a hover-only tooltip): *"Voltage
+   channels assigned to this profile are assumed to use this voltage
+   basis."* A measured voltage channel's own per-unit division is always
+   a direct `measured / base` — **never an automatic √3 factor**. √3 is
+   used **only** internally to normalize a stored line-to-neutral Vbase
+   to line-to-line when deriving Ibase
+   (`Ibase = Sbase / (√3 × Vbase_LL)`); the MVA Base field is explicitly
+   labeled "Three-Phase MVA Base (Sbase)" so this formula's own
+   three-phase assumption is never ambiguous.
+4. **Profile channel assignment is explicit and never silently steals
+   ownership.** `PUT .../profiles/{id}` rejects with a structured
+   `channel_already_assigned` error (naming each conflicting channel and
+   its current profile) unless a top-level `reassign_conflicting: bool =
+   false` field is explicitly set `true` — mirroring RMS's own
+   `override` pattern (DEC-048). The frontend's setup modal shows a
+   conflicting channel's checkbox disabled with an inline "Already
+   assigned to \<profile>" label and a separate, explicit "Move here"
+   action; only an explicit confirm-prompt acceptance resubmits with the
+   flag set.
+5. **Unit normalization is the minimal explicit set**: V/kV for
+   voltage, A/kA for current, MVA for apparent power (case-insensitive).
+   A measured or base unit outside this set is treated as
+   `base_required`-equivalent, never guessed or silently mixed.
+6. **Calculated-channel per-unit profile inheritance** (a new
+   `derive_per_unit_profile_id(operation, input_profile_ids)` in
+   `app/domain/per_unit.py`, structurally parallel to but a SEPARATE
+   function from `derive_engineering_type()`, since the rule genuinely
+   differs): Reverse Polarity/Absolute Value/Multiply by Constant/RMS
+   inherit their single input's own resolved profile verbatim (including
+   `None`); Addition/Subtraction inherit only when every input resolves
+   to the exact same known profile id, otherwise `None` (never an
+   arbitrary pick); a calculated-from-calculated input's own
+   already-resolved profile composes transitively through this same
+   rule, with no separate recursive-propagation logic.
+7. **Two independent axes — `assignment_mode` ("auto" | "manual") ×
+   `profile_id`** — track every channel's own per-unit assignment
+   (`app/services/per_unit_registry.py`'s `ChannelAssignment`). A single
+   `provenance` tag was explicitly rejected during plan review because it
+   cannot distinguish "never yet resolved" from "the user deliberately
+   unassigned this," and the second case must never silently re-inherit
+   later. All four combinations are meaningful and reachable: `auto` +
+   profile = currently inherited; `auto` + `None` = unresolved,
+   eligible to auto-resolve later; `manual` + profile = explicit
+   assignment, never auto-changed; `manual` + `None` = explicit
+   unassignment, permanently exempt from auto-inheritance. Source
+   channels are always `mode="manual"` from the moment first touched (no
+   inheritance concept for them; untouched = no record, unambiguous). A
+   calculated channel's record is created in `mode="auto"` at the SAME
+   instant the channel itself is created (via
+   `derive_per_unit_profile_id()`) and persists for its whole lifetime,
+   never absent again. Any direct user interaction with a calculated
+   channel's own assignment (assign or unassign) switches it to
+   `mode="manual"` permanently. A recompute cascade
+   (`recompute_inherited_per_unit_assignments()`) runs whenever any
+   channel's resolved profile changes (reassignment, unassignment, or
+   profile deletion) — an iterative queue over the EXISTING
+   `CalculatedChannel.inputs` list (no new graph structure), skipping any
+   dependent whose own mode is `"manual"`, recomputing and cascading
+   further for `"auto"` dependents. Profile deletion clears `profile_id`
+   to `None` for every affected channel **while preserving its own
+   `mode`** — a manually-assigned channel becomes `manual + None`
+   (permanently unassigned), an auto one becomes `auto + None` (still
+   eligible to resolve again later) — then the cascade runs from there.
+   Lifecycle cleanup (Start New Workspace, source removal, calculated-
+   channel removal) deletes the assignment record entirely.
+
+**Implementation invariant** (added during final review, before
+implementation began): `PerUnitBaseProfile.assigned_channels` and the
+registry's own internal reverse index must never diverge — every
+mutation path (manual assignment, explicit unassignment, confirmed
+reassignment, automatic inherited reassignment, profile deletion,
+channel removal) updates both representations atomically, in the same
+call, under the registry's own lock. Proven by registry-level tests that
+re-check this agreement after every step of the owner's own locked A→G
+provenance test sequence (see Reason below).
+
+Reason:
+
+The owner reviewed three successive implementation plans before
+approving, each round catching a genuine design gap:
+
+- Round 1: an unguarded profile-reassignment path (silently moving a
+  channel's ownership on an ordinary PUT), an ambiguous voltage-basis
+  treatment (risking an unwanted automatic √3), and an unlocked
+  calculated-channel inheritance rule — all closed by decisions 3/4/6
+  above.
+- Round 2: an inheritance model that snapshotted a calculated channel's
+  profile once at creation and never revisited it — meaning `RMS(VA)`
+  would silently go stale the moment `VA` itself moved to a different
+  profile. Closed by the recompute-cascade half of decision 7.
+- Round 3: the FIRST cascade design used one `provenance` tag
+  (`"manual"`/`"inherited"`), which the owner identified as unable to
+  distinguish a genuinely never-touched channel from one the user
+  explicitly unassigned — the exact case that must NEVER silently
+  re-inherit. Closed by the two-axis `mode`/`profile_id` model, verified
+  against the owner's own exact worked sequence: `RMS(VA)` inherits A →
+  `VA` moves to B, `RMS(VA)` follows → user manually assigns `RMS(VA)`
+  to C → `VA` moves again, `RMS(VA)` stays C → user explicitly unassigns
+  `RMS(VA)` → `VA` moves again, `RMS(VA)` stays `base_required` → delete
+  profile C, `RMS(VA)` becomes `manual + None` and does not
+  unexpectedly re-inherit.
+
+Backend-authoritative conversion (decision 2) follows the same
+"never duplicate engineering logic across layers" principle already
+established for waveform reduction, peak/cursor resolution, and RMS
+itself (DEC-047/DEC-048) — the frontend's job is display, never
+computation.
+
+Alternatives considered:
+
+- **Per-channel measurement-basis metadata** (rejected, decision 3) —
+  no COMTRADE/domain field exists for this today, and inventing one
+  would be speculative; the profile's own declared basis, applied
+  explicitly and only to Ibase derivation, is simpler and sufficient.
+- **Automatic reassignment on channel-conflict** (rejected, decision 4)
+  — silently moving ownership on an ordinary save is exactly the kind of
+  surprising, hard-to-audit behavior the owner's round-1 correction
+  explicitly ruled out.
+- **A single `provenance` tag for inheritance** (rejected, decision 7,
+  round 3) — cannot represent "explicitly unassigned" as a state
+  distinct from "never touched," which is the one case this entire
+  design exists to get right.
+- **Full per-unit support for Power/Reactive-Power/Impedance in this
+  same phase** (rejected/deferred) — the owner's own spec explicitly
+  scoped this phase to Voltage/Current only, pending Phase 5C UAT.
+
+Impact:
+
+New: `app/domain/per_unit.py`, `app/services/per_unit_registry.py`
+(the `PerUnitRegistry` + co-located `recompute_inherited_per_unit_assignments()`),
+`app/api/v1/per_unit.py`, `app/schemas/per_unit.py`,
+`app/services/per_unit_service.py`. Modified: `app/main.py` (third
+sibling registry, wired the same way as `WorkspaceRegistry`/
+`CalculatedChannelRegistry`), `app/api/v1/workspaces.py` (workspace
+lifecycle), `app/api/v1/sources.py` and `app/api/v1/calculated_channels.py`
+(the 8 endpoints gain `unit_mode`, plus per-unit lifecycle cleanup on
+source/calculated-channel removal), `app/services/waveform_service.py`
+and `app/services/calculated_channel_service.py` (per-unit resolution
+wired into every display/measurement result, and the inheritance-seeding
+call at calculated-channel creation time), `app/services/errors.py`
+(4 new error classes). Frontend (`frontend/index.html` only): `ww.unitMode`/
+`ww.perUnitProfiles` state, the Unit Mode toolbar dropdown (cloned from
+the Annotate split-button pattern), the "Manage Per-Unit Bases" modal
+(cloned from the Custom Groups editor's working-copy-until-Apply shell),
+`unit_mode` wired into every one of the 8 fetch call sites plus the
+Calculated Channels preview, and a per-unit-status suffix in
+`wwPanelGroupKeyFor()`/`wwPanelLabelFor()` that keeps a `configured`
+(pu-converted) channel and a `base_required` (engineering-unit) channel
+of the same type in separate panels — the core "never mix pu and
+engineering values on one shared axis" safety guarantee. New/updated
+tests: `test_per_unit_domain.py`, `test_per_unit_registry.py` (including
+the full owner-specified A→G provenance sequence, re-verified against
+the assigned_channels/reverse-index invariant after every step),
+`test_per_unit_api.py`, `test_per_unit_display_endpoints.py`,
+`test_frontend_per_unit_mode.py`. See
+[MIGRATION_PLAN.md — Phase 5C](MIGRATION_PLAN.md#phase-5c--global-per-unit-measurement-mode-2026-08-22).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

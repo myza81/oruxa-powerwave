@@ -8,6 +8,75 @@ Last updated: **2026-08-22**
 
 ## What was most recently done
 
+**Phase 5C — Global Per-Unit Measurement Mode (DEC-049).** Owner-approved
+direction: a global Waveform-page presentation mode, Engineering Units
+vs. Per Unit, for Voltage/Current channels, backed by workspace-scoped
+base profiles (Vbase/Ibase/three-phase Sbase). Full detail:
+[DECISIONS.md — DEC-049](DECISIONS.md#dec-049--global-per-unit-measurement-mode-workspace-scoped-base-profiles-backend-only-conversion-explicit-reassignment-and-two-axis-modeprofile-calculated-channel-inheritance-provenance),
+[MIGRATION_PLAN.md — Phase 5C](MIGRATION_PLAN.md#phase-5c--global-per-unit-measurement-mode-2026-08-22).
+
+**Plan review took three owner correction rounds before any code was
+written** — each caught a genuine design gap, not a nitpick: (1) an
+unguarded profile-reassignment path and an ambiguous voltage-basis
+treatment risking an unwanted automatic √3 factor; (2) a calculated-
+channel inheritance model that only snapshotted once at creation and
+never revisited it, so `RMS(VA)` would silently go stale the moment `VA`
+moved to a different profile; (3) the first fix for that used a single
+`provenance` tag, which the owner identified as unable to distinguish
+"never yet resolved" from "the user deliberately unassigned this" — the
+one case that must never silently re-inherit. The final design uses two
+independent axes, `{mode: "auto"|"manual", profile_id}`, verified
+against the owner's own exact worked A→G sequence.
+
+**Backend (Slices A-C)**: new `app/domain/per_unit.py` (pure conversion
+math, including `Ibase = Sbase / (√3 × Vbase_LL)` and its
+line-to-neutral normalization — √3 is used ONLY there, never on a
+measured channel's own division), `app/services/per_unit_registry.py`
+(`PerUnitRegistry` + the `recompute_inherited_per_unit_assignments()`
+cascade), `app/services/per_unit_service.py`, `app/api/v1/per_unit.py`
+(profile CRUD), 4 new error classes, and an optional `unit_mode`
+parameter added to all 8 existing display/measurement endpoints (source
++ calculated-channel waveform/cursor-values/peak-values/annotation-
+anchor) — one shared conversion function, never duplicated per endpoint.
+A registry-level invariant (`assigned_channels` and the reverse index
+can never diverge) is enforced by every mutation path and proven by
+tests re-checking it after every step of the A→G sequence. 79 new
+backend tests; 758 total, zero regressions.
+
+**Frontend (Slices D-G, `frontend/index.html` only)**: `ww.unitMode`/
+`ww.perUnitProfiles` state; a Unit Mode toolbar dropdown cloned from the
+Annotate split-button pattern; a "Manage Per-Unit Bases" setup modal
+cloned from the Custom Groups editor's working-copy-until-Apply shell
+(with a disabled-checkbox + explicit "Move here" action implementing the
+reassignment-confirmation flow); `unit_mode` wired into every one of the
+8 fetch call sites plus the Calculated Channels preview; a per-unit-
+status suffix in `wwPanelGroupKeyFor()`/`wwPanelLabelFor()` that keeps a
+converted ("pu") channel and an unconverted ("base_required") channel of
+the same type in separate panels, never mixed on one shared axis.
+13 new static regression tests, plus direct Playwright verification
+against a real running backend+frontend: profile creation + assignment,
+conversion correctness, panel separation, byte-for-byte restoration on
+switching back to Engineering, the full conflict/"Move here"/confirm/
+reassign flow, and Start New Workspace resetting both `ww.unitMode` and
+`ww.perUnitProfiles`. Zero console errors throughout.
+
+**Known, honestly-flagged UI polish gaps** (engineering correctness —
+the actual displayed/measured values — is unaffected by any of these;
+see MIGRATION_PLAN.md's Phase 5C entry for the full list): the
+reassignment confirm uses a native `window.confirm()` rather than a
+styled dialog; the sidebar's own static channel-name "(unit)" label
+doesn't relabel to "(pu)" on a mode switch (the actual A/B values ARE
+correctly converted); a channel added to the display for the first time
+while Per Unit is already active groups by plain type until the next
+regroup event; the Calculated Channels preview doesn't yet carry the
+same panel-separation suffix the main Waveform page has.
+
+**Not yet done** (as of this section being written): commit/push, CI/
+automatic DEV deployment verification — see the final report delivered
+alongside this update for whether those have since completed.
+
+## What was done in the prior session (Phase 5B-UAT-series — Parameter UI, Tooltip Positioning, Workspace Lifecycle Fix)
+
 **Workspace Lifecycle UAT Fix — Start New Workspace does not fully
 reset.** Owner UAT: after "Start New Workspace," the Calculated
 Channels/RMS Signal Builder form still showed the previous session's

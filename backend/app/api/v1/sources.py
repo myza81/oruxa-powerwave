@@ -33,10 +33,12 @@ from app.schemas.digital_waveform import DigitalWaveformBatchOut, DigitalWavefor
 from app.schemas.peak_value import PeakValueBatchOut, PeakValueBatchRequest, PeakValueResultOut
 from app.schemas.source import ErrorOut, SourceChannelsOut, SourceSummaryOut
 from app.schemas.waveform import WaveformRangeOut
+from app.domain.calculated_channel import ChannelRef
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import remove_calculated_channels_for_source
 from app.services.errors import ImportServiceError, InvalidTimeRangeError
 from app.services.import_service import import_comtrade_source
+from app.services.per_unit_registry import PerUnitRegistry
 from app.services.waveform_service import (
     DEFAULT_POINT_BUDGET,
     FULL_RESOLUTION_DISPLAY_THRESHOLD,
@@ -79,6 +81,25 @@ def get_calculated_channel_registry(request: Request) -> CalculatedChannelRegist
 
 def get_workspace_registry(request: Request) -> WorkspaceRegistry:
     return request.app.state.workspace_registry
+
+
+def get_per_unit_registry(request: Request) -> PerUnitRegistry:
+    return request.app.state.per_unit_registry
+
+
+def _resolve_profile_for_source_channel(
+    per_unit_registry: PerUnitRegistry, workspace_id: str, source_id: str, channel_name: str
+):
+    """Phase 5C (DEC-049): resolves one source channel's own currently
+    assigned profile (or `None`), for the caller to hand into
+    app.services.waveform_service's per-unit-aware functions -- keeps
+    that module registry-agnostic, matching how it already only ever
+    receives pre-resolved domain objects (`ActiveSource`), never a
+    registry itself."""
+    profile_id = per_unit_registry.profile_for_channel(
+        workspace_id, ChannelRef(kind="source", source_id=source_id, channel_name=channel_name)
+    )
+    return per_unit_registry.get(workspace_id, profile_id) if profile_id else None
 
 
 def _validate_workspace_id(workspace_id: str) -> str:
@@ -200,7 +221,12 @@ def get_source_waveform(
             "app.domain.waveform_reduction."
         ),
     ),
+    unit_mode: str = Query(
+        "engineering",
+        description="Phase 5C (DEC-049): \"engineering\" (default) or \"per_unit\".",
+    ),
     registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
 ) -> WaveformRangeOut:
     """Phase 2A waveform range endpoint -- see docs/project-memory/MIGRATION_PLAN.md's
     Phase 2A implementation record for the full API contract and its rationale.
@@ -210,6 +236,11 @@ def get_source_waveform(
     """
     workspace_id = _validate_workspace_id(workspace_id)
     active = _get_or_404(registry, workspace_id, source_id)
+    per_unit_profile = (
+        _resolve_profile_for_source_channel(per_unit_registry, workspace_id, source_id, channel_name)
+        if unit_mode == "per_unit"
+        else None
+    )
     try:
         result = extract_waveform_range(
             active,
@@ -217,6 +248,8 @@ def get_source_waveform(
             start_time=start_time,
             end_time=end_time,
             point_budget=point_budget,
+            unit_mode=unit_mode,
+            per_unit_profile=per_unit_profile,
         )
     except ImportServiceError as exc:
         logger.info(
@@ -283,6 +316,7 @@ def get_source_cursor_values(
     source_id: str,
     body: CursorValuesRequest,
     registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
 ) -> CursorValuesOut:
     """Batched A/B cursor-measurement endpoint (Phase 4C1 analog, Phase
     4C2 digital).
@@ -301,12 +335,22 @@ def get_source_cursor_values(
     """
     workspace_id = _validate_workspace_id(workspace_id)
     active = _get_or_404(registry, workspace_id, source_id)
+    per_unit_profiles = (
+        {
+            name: _resolve_profile_for_source_channel(per_unit_registry, workspace_id, source_id, name)
+            for name in body.analog_channel_names
+        }
+        if body.unit_mode == "per_unit"
+        else None
+    )
     result = extract_cursor_values(
         active,
         analog_channel_names=body.analog_channel_names,
         digital_channel_names=body.digital_channel_names,
         cursor_a_time=body.cursor_a_time,
         cursor_b_time=body.cursor_b_time,
+        unit_mode=body.unit_mode,
+        per_unit_profiles=per_unit_profiles,
     )
     return CursorValuesOut.from_result(result)
 
@@ -317,6 +361,7 @@ def resolve_source_annotation_anchor(
     source_id: str,
     body: AnnotationAnchorRequest,
     registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
 ) -> AnnotationAnchorOut:
     """Phase 4F Callout annotation anchor resolution (DEC-045).
 
@@ -333,11 +378,18 @@ def resolve_source_annotation_anchor(
     """
     workspace_id = _validate_workspace_id(workspace_id)
     active = _get_or_404(registry, workspace_id, source_id)
+    per_unit_profile = (
+        _resolve_profile_for_source_channel(per_unit_registry, workspace_id, source_id, body.channel_name)
+        if body.unit_mode == "per_unit"
+        else None
+    )
     try:
         result = resolve_annotation_anchor(
             active,
             channel_name=body.channel_name,
             approximate_elapsed_seconds=body.approximate_elapsed_seconds,
+            unit_mode=body.unit_mode,
+            per_unit_profile=per_unit_profile,
         )
     except ImportServiceError as exc:
         logger.info(
@@ -357,6 +409,7 @@ def resolve_source_peak_values(
     source_id: str,
     body: PeakValueBatchRequest,
     registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
 ) -> PeakValueBatchOut:
     """Phase 4G Maximum/Minimum Peak annotation resolution (DEC-046).
 
@@ -399,6 +452,11 @@ def resolve_source_peak_values(
 
     results: list[PeakValueResultOut] = []
     for item in body.requests:
+        per_unit_profile = (
+            _resolve_profile_for_source_channel(per_unit_registry, workspace_id, source_id, item.channel_name)
+            if body.unit_mode == "per_unit"
+            else None
+        )
         try:
             result = resolve_peak_value(
                 active,
@@ -406,6 +464,8 @@ def resolve_source_peak_values(
                 mode=item.mode,
                 start_time=body.start_time,
                 end_time=body.end_time,
+                unit_mode=body.unit_mode,
+                per_unit_profile=per_unit_profile,
             )
         except ImportServiceError as exc:
             logger.info(
@@ -444,13 +504,29 @@ def delete_source(
     source_id: str,
     registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+    per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
 ) -> None:
     """Phase 5A (DEC-047, section 64): removing a source also removes
     every calculated channel grounded on it, directly or transitively --
     see remove_calculated_channels_for_source's own docstring for why a
     flat filter on `reference_source_id` is sufficient (no separate graph
-    walk needed)."""
+    walk needed).
+
+    Phase 5C (DEC-049): also releases this source's own analog channels'
+    per-unit assignment records (a source channel's assignment is always
+    `mode="manual"`, never inherited -- nothing to cascade for it
+    directly, but `remove_calculated_channels_for_source` below still
+    drives the cascade for any calculated channel this removal deletes).
+    """
     workspace_id = _validate_workspace_id(workspace_id)
-    _get_or_404(registry, workspace_id, source_id)
+    active = _get_or_404(registry, workspace_id, source_id)
+    channel_names = [ch.name for ch in active.metadata.analog_channels]
     registry.remove(workspace_id, source_id)
-    remove_calculated_channels_for_source(workspace_id=workspace_id, source_id=source_id, calc_registry=calc_registry)
+    remove_calculated_channels_for_source(
+        workspace_id=workspace_id, source_id=source_id, calc_registry=calc_registry,
+        per_unit_registry=per_unit_registry,
+    )
+    for channel_name in channel_names:
+        per_unit_registry.remove_channel_everywhere(
+            workspace_id, ChannelRef(kind="source", source_id=source_id, channel_name=channel_name)
+        )

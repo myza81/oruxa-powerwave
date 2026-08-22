@@ -46,6 +46,8 @@ class CursorValuesRequest(BaseModel):
     digital_channel_names: list[str] = []
     cursor_a_time: float | None = None
     cursor_b_time: float | None = None
+    # Phase 5C (DEC-049): "engineering" (default) or "per_unit".
+    unit_mode: str = "engineering"
 
 
 class CursorPointOut(BaseModel):
@@ -71,6 +73,7 @@ class ChannelCursorValuesOut(BaseModel):
     unit: str
     a_value: float | None
     b_value: float | None
+    per_unit_status: str | None = None
 
 
 class DigitalChannelCursorStateOut(BaseModel):
@@ -122,6 +125,7 @@ class CursorValuesOut(BaseModel):
                     unit=channel.unit,
                     a_value=channel.a_value,
                     b_value=channel.b_value,
+                    per_unit_status=channel.per_unit_status,
                 )
                 for channel in result.channels
             ],

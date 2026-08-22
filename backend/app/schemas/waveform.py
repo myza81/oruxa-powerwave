@@ -35,6 +35,11 @@ class WaveformRangeOut(BaseModel):
     representation: str
     time: list[float]
     values: list[float]
+    # Phase 5C (DEC-049): `None` when unit_mode="engineering" (per-unit
+    # mode not requested); otherwise "not_applicable"/"configured"/
+    # "base_required" -- `unit`/`values` above are already converted
+    # when this is "configured".
+    per_unit_status: str | None = None
 
     @classmethod
     def from_result(cls, result: WaveformRangeResult) -> "WaveformRangeOut":
@@ -49,4 +54,5 @@ class WaveformRangeOut(BaseModel):
             representation=result.representation,
             time=result.time.tolist(),
             values=result.values.tolist(),
+            per_unit_status=result.per_unit_status,
         )

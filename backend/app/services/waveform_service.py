@@ -26,6 +26,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from app.domain.channel_classification import UNDEFINED
+from app.domain.per_unit import PerUnitBaseProfile, apply_per_unit_to_array, apply_per_unit_to_value, resolve_per_unit
 from app.domain.source import ActiveSource, DigitalChannelSummary
 from app.domain.waveform_reduction import build_min_max_envelope
 from app.services.errors import (
@@ -34,6 +36,17 @@ from app.services.errors import (
     ChannelNotFoundError,
     InvalidTimeRangeError,
 )
+
+UNIT_MODE_ENGINEERING = "engineering"
+UNIT_MODE_PER_UNIT = "per_unit"
+
+
+def _analog_channel_engineering_type(active: ActiveSource, channel_name: str) -> str:
+    """Phase 5C (DEC-049): the same "look up the already-classified
+    AnalogChannelSummary" pattern app.services.calculated_channel_service's
+    own `_resolve_input` uses -- never a second classification pass."""
+    matching = next((ch for ch in active.metadata.analog_channels if ch.name == channel_name), None)
+    return matching.engineering_type if matching is not None else UNDEFINED
 
 #: Starting reference point: `powerwave`'s own live desktop code
 #: (`build_aligned_data`/`decimate_for_display`) uses this exact value at
@@ -67,6 +80,11 @@ class WaveformRangeResult:
     representation: str
     time: np.ndarray
     values: np.ndarray
+    # Phase 5C (DEC-049): `None` when unit_mode="engineering" (the
+    # default -- per-unit mode was never requested for this response).
+    # Otherwise one of app.domain.per_unit's three statuses; `unit`/
+    # `values` above are already converted when this is "configured".
+    per_unit_status: str | None = None
 
 
 def _resolve_analog_channel(active: ActiveSource, channel_name: str) -> str:
@@ -149,6 +167,8 @@ def extract_waveform_range(
     start_time: float | None,
     end_time: float | None,
     point_budget: int,
+    unit_mode: str = UNIT_MODE_ENGINEERING,
+    per_unit_profile: PerUnitBaseProfile | None = None,
 ) -> WaveformRangeResult:
     """Extract an exact time range for one analog channel, then prepare it for display.
 
@@ -195,6 +215,12 @@ def extract_waveform_range(
         time_full, values_full, start_time=start_time, end_time=end_time, point_budget=point_budget
     )
 
+    per_unit_status: str | None = None
+    if unit_mode == UNIT_MODE_PER_UNIT:
+        engineering_type = _analog_channel_engineering_type(active, channel_name)
+        resolution = resolve_per_unit(engineering_type, per_unit_profile)
+        out_values, unit, per_unit_status = apply_per_unit_to_array(out_values, unit, engineering_type, resolution)
+
     return WaveformRangeResult(
         source_id=active.metadata.source_id,
         channel_name=channel_name,
@@ -205,6 +231,7 @@ def extract_waveform_range(
         representation=representation,
         time=out_time,
         values=out_values,
+        per_unit_status=per_unit_status,
     )
 
 
@@ -237,6 +264,7 @@ class ChannelCursorValues:
     unit: str
     a_value: float | None
     b_value: float | None
+    per_unit_status: str | None = None
 
 
 @dataclass(slots=True)
@@ -321,6 +349,8 @@ def extract_cursor_values(
     digital_channel_names: list[str],
     cursor_a_time: float | None,
     cursor_b_time: float | None,
+    unit_mode: str = UNIT_MODE_ENGINEERING,
+    per_unit_profiles: dict[str, PerUnitBaseProfile | None] | None = None,
 ) -> CursorValuesResult:
     """Recorded channel values/states at cursor A/B, from full-resolution
     source data (Phase 4C1 analog, Phase 4C2 digital).
@@ -381,7 +411,22 @@ def extract_cursor_values(
         values_full = waveform_data[name].to_numpy()
         a_value = float(values_full[a_index]) if a_index is not None else None
         b_value = float(values_full[b_index]) if b_index is not None else None
-        channels.append(ChannelCursorValues(channel_name=name, unit=unit, a_value=a_value, b_value=b_value))
+
+        display_unit = unit
+        per_unit_status: str | None = None
+        if unit_mode == UNIT_MODE_PER_UNIT:
+            engineering_type = _analog_channel_engineering_type(active, name)
+            profile = (per_unit_profiles or {}).get(name)
+            resolution = resolve_per_unit(engineering_type, profile)
+            a_value, display_unit, per_unit_status = apply_per_unit_to_value(a_value, unit, engineering_type, resolution)
+            b_value, display_unit, per_unit_status = apply_per_unit_to_value(b_value, unit, engineering_type, resolution)
+
+        channels.append(
+            ChannelCursorValues(
+                channel_name=name, unit=display_unit, a_value=a_value, b_value=b_value,
+                per_unit_status=per_unit_status,
+            )
+        )
 
     digital_channels: list[DigitalChannelCursorState] = []
     for name in digital_channel_names:
@@ -437,6 +482,7 @@ class AnnotationAnchorResult:
     sample_index: int
     elapsed_seconds: float
     value: float
+    per_unit_status: str | None = None
 
 
 def resolve_annotation_anchor(
@@ -444,6 +490,8 @@ def resolve_annotation_anchor(
     *,
     channel_name: str,
     approximate_elapsed_seconds: float,
+    unit_mode: str = UNIT_MODE_ENGINEERING,
+    per_unit_profile: PerUnitBaseProfile | None = None,
 ) -> AnnotationAnchorResult:
     """Resolve a Callout annotation's anchor to the nearest ACTUAL
     full-resolution recorded sample on one analog channel (Phase 4F,
@@ -477,13 +525,21 @@ def resolve_annotation_anchor(
             "this source's own recorded time bounds."
         )
 
+    value = float(values_full[index])
+    per_unit_status: str | None = None
+    if unit_mode == UNIT_MODE_PER_UNIT:
+        engineering_type = _analog_channel_engineering_type(active, channel_name)
+        resolution = resolve_per_unit(engineering_type, per_unit_profile)
+        value, unit, per_unit_status = apply_per_unit_to_value(value, unit, engineering_type, resolution)
+
     return AnnotationAnchorResult(
         source_id=active.metadata.source_id,
         channel_name=channel_name,
         unit=unit,
         sample_index=index,
         elapsed_seconds=float(time_full[index]),
-        value=float(values_full[index]),
+        value=value,
+        per_unit_status=per_unit_status,
     )
 
 
@@ -517,6 +573,7 @@ class PeakValueResult:
     elapsed_seconds: float | None
     value: float | None
     unit: str | None
+    per_unit_status: str | None = None
 
 
 def _peak_in_range(
@@ -563,6 +620,8 @@ def resolve_peak_value(
     mode: str,
     start_time: float,
     end_time: float,
+    unit_mode: str = UNIT_MODE_ENGINEERING,
+    per_unit_profile: PerUnitBaseProfile | None = None,
 ) -> PeakValueResult:
     """Resolve one analog channel's maximum or minimum RECORDED sample
     value within `[start_time, end_time]` (Phase 4G, DEC-046).
@@ -614,6 +673,13 @@ def resolve_peak_value(
         time_full, values_full, mode=mode, start_time=start_time, end_time=end_time
     )
 
+    per_unit_status: str | None = None
+    display_unit = unit if available else None
+    if available and unit_mode == UNIT_MODE_PER_UNIT:
+        engineering_type = _analog_channel_engineering_type(active, channel_name)
+        resolution = resolve_per_unit(engineering_type, per_unit_profile)
+        value, display_unit, per_unit_status = apply_per_unit_to_value(value, unit, engineering_type, resolution)
+
     return PeakValueResult(
         channel_name=channel_name,
         mode=mode,
@@ -621,7 +687,8 @@ def resolve_peak_value(
         sample_index=sample_index,
         elapsed_seconds=elapsed_seconds,
         value=value,
-        unit=unit if available else None,
+        unit=display_unit,
+        per_unit_status=per_unit_status,
     )
 
 
