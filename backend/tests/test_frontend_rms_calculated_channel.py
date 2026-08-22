@@ -128,13 +128,10 @@ def test_add_input_triggers_eligibility_check_for_rms():
     assert "wwCcScheduleRmsEligibilityCheck();" in body
 
 
-def test_render_builder_fields_renders_rms_controls():
+def test_render_builder_fields_delegates_rms_parameters_to_dedicated_function():
     source = _source()
     body = _function_body(source, "function wwCcRenderBuilderFields()", "function wwCcRenderExpressionPreview()")
-    assert "wwCcNominalFrequencyInput" in body
-    assert "wwCcRmsEligibilityStatus" in body
-    assert "wwCcRmsOverrideCheckbox" in body
-    assert "wwCcRmsOverrideRow" in body
+    assert "wwCcRenderRmsParameterFields()" in body
 
 
 def test_create_channel_sends_override_flag_and_rms_parameters():
@@ -157,3 +154,145 @@ def test_create_channel_request_body_always_includes_override_key():
     body = _function_body(source, "async function wwCcCreateChannel()", "async function wwCcDeleteChannel(calculatedChannelId)")
     assert "override: override" in body
     assert "const override = wwCcBuilder.operation === \"rms\" ? !!wwCcBuilder.override : false;" in body
+
+
+# ----------------------------------------------------------------------
+# Phase 5B UAT Enhancement (DEC-048 clarification): parameter-authority UI
+# ----------------------------------------------------------------------
+
+
+def test_source_inventory_caches_nominal_frequency_with_no_new_network_call():
+    source = _source()
+    body = _function_body(source, "ww.sourceChannelInventory.set(sourceId, {", "wwRememberSourceTimingFromChannelsData(data);")
+    assert "nominalFrequency: data.source.nominal_frequency" in body
+
+
+def test_nominal_frequency_authority_resolver_covers_source_and_calculated_inputs():
+    source = _source()
+    body = _function_body(
+        source, "function wwCcResolveNominalFrequencyAuthority(inputCandidate)", "function wwInfoTipHtml(ariaLabel, text)"
+    )
+    assert 'inputCandidate.kind === "source"' in body
+    assert "calc.reference_source_id" in body
+    assert '"metadata"' in body
+    assert '"user"' in body
+    # Section 19: never inferred from engineering_type.
+    assert "engineering_type" not in body
+
+
+def test_builder_state_defaults_nominal_frequency_source_to_user():
+    source = _source()
+    body = _function_body(source, "const wwCcBuilder = {", "const wwCcListErrors")
+    assert 'nominalFrequencySource: "user"' in body
+
+
+def test_reset_and_select_operation_reset_nominal_frequency_source():
+    source = _source()
+    reset_body = _function_body(source, "function wwCcResetBuilder()", "function wwCcResolveNominalFrequencyAuthority")
+    select_op_body = _function_body(source, "function wwCcSelectOperation(operation)", "function wwCcAddInputByKey(key)")
+    assert 'wwCcBuilder.nominalFrequencySource = "user";' in reset_body
+    assert 'wwCcBuilder.nominalFrequencySource = "user";' in select_op_body
+
+
+def test_add_input_refreshes_nominal_frequency_authority():
+    # Section 29: switching input must refresh authority, not just leave a
+    # stale value/source tag from the previous input in place.
+    source = _source()
+    body = _function_body(source, "function wwCcAddInputByKey(key)", "function wwCcRemoveInput(index)")
+    assert "wwCcResolveNominalFrequencyAuthority(candidate)" in body
+    assert 'authority.source === "metadata"' in body
+    assert 'wwCcBuilder.nominalFrequencySource = "metadata";' in body
+    assert 'wwCcBuilder.nominalFrequencySource = "user";' in body
+
+
+def test_info_tip_helper_is_keyboard_and_screen_reader_accessible():
+    source = _source()
+    body = _function_body(source, "function wwInfoTipHtml(ariaLabel, text)", "function wwCcResetRmsEligibility()")
+    assert "<button" in body  # a real, tabbable control -- not a bare <span> or <div>
+    assert "aria-label=" in body
+    assert "aria-describedby=" in body
+    assert 'role="tooltip"' in body
+
+
+def test_info_tip_css_supports_hover_and_keyboard_focus_in_both_themes():
+    source = _source()
+    assert ".ww-info-tip-trigger:hover" in source
+    assert ".ww-info-tip-trigger:focus-visible" in source
+    # Theme-token-based, not hardcoded colors -- correct in Light and Dark
+    # automatically, same convention as every other themed surface here.
+    tooltip_css = source[source.index(".ww-info-tip {") : source.index(".ww-cc-field .ww-info-tip-bubble {") + 200]
+    assert "var(--panel)" in tooltip_css
+    assert "var(--text)" in tooltip_css
+    assert "var(--panel-border)" in tooltip_css
+
+
+def test_rms_parameter_fields_distinguish_all_four_authority_categories():
+    source = _source()
+    body = _function_body(source, "function wwCcRenderRmsParameterFields()", "// ---")
+
+    # Category A/B: Nominal Frequency is EITHER the constrained dropdown
+    # (user-selectable, only 50/60 Hz, never free text) OR a readonly
+    # metadata display -- never both rendered as identical text boxes.
+    assert 'wwCcBuilder.nominalFrequencySource === "metadata"' in body
+    assert "wwCcNominalFrequencySelect" in body
+    assert '<option value="50"' in body
+    assert '<option value="60"' in body
+    assert "From recording metadata" in body
+    assert "Select nominal system frequency" in body
+    assert 'inputmode="decimal"' not in body  # no free-text numeric entry anywhere in this block
+
+    # Category C: Window is always readonly and derived, never editable.
+    assert "readonly tabindex=\"-1\" value=\"1 cycle (" in body
+
+    # Category D: Method is fixed, readonly, never a dropdown -- exactly
+    # one <select> in this whole block (Nominal Frequency's own, only
+    # ever present in "user" mode), never a second one for Method.
+    assert 'value="True RMS"' in body
+    assert body.count("<select") == 1
+
+    # All three (Nominal Frequency, Window, Method) get an info-tip.
+    assert body.count("wwInfoTipHtml(") == 3
+
+
+def test_window_tooltip_explains_automatic_derivation():
+    source = _source()
+    body = _function_body(source, "function wwCcRenderRmsParameterFields()", "// ---")
+    assert "calculated automatically from the nominal frequency" in body
+
+
+def test_method_tooltip_explains_true_rms_in_plain_language():
+    source = _source()
+    body = _function_body(source, "function wwCcRenderRmsParameterFields()", "// ---")
+    assert "DC offset and harmonics are included" in body
+
+
+def test_nominal_frequency_select_change_updates_window_via_full_rerender():
+    source = _source()
+    body = _function_body(source, "wwCcBuilderFields\").addEventListener(\"change\"", "wwCcBuilderFields\").addEventListener(\"input\"")
+    assert 'event.target.id === "wwCcNominalFrequencySelect"' in body
+    assert "wwCcBuilder.nominalFrequency = event.target.value;" in body
+    assert "wwCcRenderBuilderFields();" in body
+    assert "wwCcScheduleRmsEligibilityCheck();" in body
+    # The old free-text input id must be fully retired from event wiring.
+    assert "wwCcNominalFrequencyInput" not in body
+
+
+def test_readonly_fields_get_distinct_visual_treatment_not_just_dimmer_text():
+    # Section 15/16: an automatic field must look different BEFORE
+    # interaction, not merely have a slightly dimmer font color.
+    source = _source()
+    rule = source[source.index('.ww-cc-field input[readonly] {') : source.index("}", source.index('.ww-cc-field input[readonly] {'))]
+    assert "background" in rule
+
+
+def test_guardrails_unchanged_eligibility_and_override_still_wired():
+    # Section 28: this UI restructuring must not regress metadata-first
+    # waveform_form eligibility, the detector fallback, RMS-of-RMS
+    # protection, or the override checkbox.
+    source = _source()
+    eligibility_body = _function_body(source, "async function wwCcCheckRmsEligibility()", "function wwCcRenderRmsEligibilityStatus()")
+    assert "rms-eligibility" in eligibility_body
+    assert "wwCcRmsEligibilityGeneration" in eligibility_body
+    blocks_body = _function_body(source, "function wwCcRmsBlocksCreate()", "function wwCcRenderRmsParameterFields()")
+    assert 'wwCcRmsEligibility.status === "suitable"' in blocks_body
+    assert "wwCcBuilder.override" in blocks_body

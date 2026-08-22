@@ -4,7 +4,8 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-22** (Phase 5B — RMS Calculated
+Last meaningful update: **2026-08-22** (Phase 5B-UAT — Clarify RMS
+Parameter UI, on top of Phase 5B — RMS Calculated
 Channel, on top of Phase 5A-UAT7 — Calculated
 Preview Dark Mode Fix, on top of Phase 5A-UAT6 — Calculated
 Channels Preview Panels by Engineering Type, Phase 5A-UAT5 —
@@ -102,10 +103,30 @@ preview, A/B cursor values, +Peak/-Peak, Callout, and Absolute/Elapsed
 with zero code changes to any of those systems. That same verification
 pass found and fixed one more CSS `[hidden]`-cascade bug (the same
 recurring bug class this project has hit repeatedly) on the new
-"Calculate anyway" override checkbox row. See
+"Calculate anyway" override checkbox row. **UAT refinement (2026-08-22,
+same day)**: owner UAT found the RMS parameter form's Nominal Frequency/
+Window/Method fields visually indistinguishable. Investigation (reported
+before any UI change, per the owner's own requirement) found
+`SourceMetadata.nominal_frequency` already exists for every COMTRADE
+source (parsed from the CFG's own "lf" line, already shown as an
+unhedged fact in the Recordings page) but was never wired into the RMS
+builder. Confirmed with the owner: treat it as trustworthy. Nominal
+Frequency now renders as a locked, readonly "From recording metadata"
+display when the selected input's grounding source has this value, or a
+constrained 50/60 Hz dropdown (never free text) when it does not;
+Window/Method remain read-only and fixed respectively, each now with a
+small accessible info-tip (a new minimal component -- no tooltip
+framework existed in this codebase before). Every read-only field in
+this panel (Unit included) now gets a tinted background, not just
+dimmer text, so automatic fields are visually obvious before any
+interaction. Pure frontend change -- no backend file touched, no RMS
+engineering semantics altered; the eligibility hierarchy, detector,
+RMS-of-RMS protection, and override checkbox were all re-verified
+end-to-end via direct browser testing, not just assumed unaffected. See
 [DECISIONS.md — DEC-048](DECISIONS.md#dec-048--rms-calculated-channels-use-a-trailing-one-cycle-true-rms-calculation-on-authoritative-full-resolution-samples-with-metadata-first-eligibility-and-backend-enforced-override)
-and
-[MIGRATION_PLAN.md — Phase 5B](MIGRATION_PLAN.md#phase-5b--rms-calculated-channel-2026-08-22).
+(including its 2026-08-22 Update note) and
+[MIGRATION_PLAN.md — Phase 5B](MIGRATION_PLAN.md#phase-5b--rms-calculated-channel-2026-08-22)
+/ [Phase 5B-UAT](MIGRATION_PLAN.md#phase-5b-uat--clarify-rms-parameter-ui-2026-08-22).
 
 `[DECISION]` **Calculated Channels / Basic Signal Builder — DEC-047**
 (2026-08-21): Oruxa Powerwave's first mathematical signal-derivation

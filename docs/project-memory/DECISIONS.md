@@ -5944,6 +5944,70 @@ longer a rejected operation — it now asserts a genuinely unsupported
 operation name is still rejected the same way. See
 [MIGRATION_PLAN.md — Phase 5B](MIGRATION_PLAN.md#phase-5b--rms-calculated-channel-2026-08-22).
 
+**Update (2026-08-22, same day, owner UAT refinement — no new decision
+entry)**: owner UAT found the RMS parameter form's Nominal Frequency/
+Window/Method fields visually indistinguishable — all three rendered as
+similar-looking text boxes, giving the engineer no way to tell which
+value was user-supplied, metadata-derived, automatically calculated, or
+a fixed operation definition. **RMS parameter controls now distinguish
+authority explicitly: automatically derived or metadata-backed values
+are read-only; user-supplied controlled engineering parameters use
+constrained selectors rather than free text. The RMS window is always
+derived from nominal frequency, and True RMS remains the fixed Phase 5B
+method.** Concretely:
+
+- **Investigation finding, reported before any UI change (owner's own
+  explicit requirement)**: `SourceMetadata.nominal_frequency` already
+  exists and is already populated for every COMTRADE source, parsed
+  directly from the CFG's own mandatory "lf" (line frequency) field —
+  already shown as an unhedged fact ("Nominal frequency: 50 Hz") in the
+  Recordings page's own detail card. This contradicted the spec's own
+  apparent assumption that no such metadata existed yet. Confirmed with
+  the owner directly: treat it as trustworthy, exactly like every other
+  place in the app already does.
+- **Nominal Frequency** is now Category A (user-selectable) or Category B
+  (metadata-derived), never both rendered identically: when the selected
+  input's own grounding source (resolved through a calculated input's
+  `reference_source_id` when needed, never guessed from
+  `engineering_type`) has a usable `nominal_frequency`, the field renders
+  as a locked, readonly value captioned "From recording metadata"; when
+  it does not (no current COMTRADE source realistically hits this today,
+  but a future provider might), it renders as a constrained `<select>`
+  with exactly two options (50 Hz / 60 Hz, default 50), never free text.
+  Switching the RMS input re-resolves this authority fresh every time —
+  never leaves a stale value or a stale "metadata" label from a
+  previously-selected input.
+- **Window** (Category C, automatically calculated) and **Method**
+  (Category D, fixed operation definition — "True RMS", never a
+  one-item dropdown) were already read-only in the original Phase 5B UI;
+  this pass adds a small accessible info-tip (`ⓘ`) beside all three
+  labels (Nominal Frequency/Window/Method) with concise explanatory text,
+  and makes EVERY read-only field in this panel (Unit included) visually
+  distinct via a tinted background (`--bg`, the page's own background,
+  deliberately different from an editable input's `--panel` background)
+  rather than relying on dimmer text alone — the goal stated plainly by
+  the owner: "editable → obvious interaction, automatic → obvious
+  information."
+- **No existing tooltip framework existed in this codebase** (only
+  native `title`/`aria-label` on icon buttons, which does not reliably
+  support keyboard-focus disclosure or custom Light/Dark styling) — a
+  small, genuinely new but deliberately minimal component was added
+  (`wwInfoTipHtml()`, pure CSS show/hide on `:hover`/`:focus-visible` of
+  a real `<button>`, reusing existing theme tokens), not a tooltip
+  library.
+- **The backend receives no new capability and was not touched at
+  all** — the create request still always carries an explicit
+  `nominal_frequency_hz` regardless of where the value came from
+  (metadata or user selection), the frontend never sends a derived
+  window duration (the backend remains the sole authority, per DEC-048's
+  own existing rule), and no method string is ever submitted (Phase 5B's
+  backend still only implements true RMS). This is a pure frontend
+  parameter-authority/UX clarification — the half-open trailing-window
+  formula, eligibility hierarchy, detector, RMS-of-RMS protection, and
+  full-resolution authority are completely unchanged and were
+  specifically re-verified, not just assumed unaffected. See
+  [MIGRATION_PLAN.md — Phase 5B-UAT](MIGRATION_PLAN.md#phase-5b-uat--clarify-rms-parameter-ui-2026-08-22).
+
 ---
 
 ## How to add a decision

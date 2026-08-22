@@ -8648,6 +8648,142 @@ owner UAT after this push.
 
 ---
 
+## Phase 5B-UAT — Clarify RMS Parameter UI (2026-08-22)
+
+### Scope
+
+Owner UAT feedback on Phase 5B: the RMS parameter form's Nominal
+Frequency/Window/Method fields all looked the same (similar text boxes),
+giving no visual cue for which value was user-supplied, metadata-derived,
+automatically calculated, or a fixed operation definition. A pure
+frontend clarity fix — no RMS engineering semantics touched. Full
+decision record: [DECISIONS.md — DEC-048 Update note](DECISIONS.md#dec-048--rms-calculated-channels-use-a-trailing-one-cycle-true-rms-calculation-on-authoritative-full-resolution-samples-with-metadata-first-eligibility-and-backend-enforced-override)
+(not duplicated here).
+
+### Investigation first (per the task's own explicit requirement)
+
+Traced actual current authority for all five RMS parameters before
+changing anything:
+
+- `nominal_frequency_hz`: previously a hardcoded `"50"` default in
+  `wwCcBuilder`, never read from any metadata.
+- **Found**: `SourceMetadata.nominal_frequency` already exists, parsed
+  directly from COMTRADE's own CFG "lf" line
+  (`app/providers/comtrade.py`), exposed via
+  `GET .../sources/{id}/channels` as `data.source.nominal_frequency`,
+  and already shown as an unhedged fact in the Recordings page's own
+  detail card (`renderRecordingDetails()`, `frontend/index.html`) — not
+  previously wired into the RMS builder at all.
+- Window: always `1 / nominal_frequency_hz`, purely derived, already
+  correctly read-only.
+- Method: always "True RMS", fixed by DEC-048, already correctly
+  read-only.
+- Unit: already inherited from the selected input and already
+  `readonly`.
+- Signal Name: already user-editable, already auto-suggested.
+
+Confirmed with the owner directly (a genuine product-policy question,
+not something the code alone could settle) that the COMTRADE
+`nominal_frequency` finding should be treated as trustworthy metadata —
+consistent with how it's already presented elsewhere in the app.
+
+### Changes
+
+**Frontend only** (`frontend/index.html`), no backend file touched:
+
+- `ww.sourceChannelInventory` now also caches `nominalFrequency` per
+  source (reuses the already-fetched `/channels` response, zero new
+  network calls).
+- New `wwCcResolveNominalFrequencyAuthority(inputCandidate)`: resolves a
+  source input directly, or a calculated-channel input through its own
+  `reference_source_id` (never guessed from `engineering_type`) — returns
+  `{ value, source: "metadata" }` or `{ value: null, source: "user" }`.
+- `wwCcBuilder.nominalFrequencySource` (`"metadata"` | `"user"`) — new
+  state, refreshed on every input change (`wwCcAddInputByKey`), reset on
+  operation switch/builder reset.
+- New `wwCcRenderRmsParameterFields()`: renders Nominal Frequency as
+  either a locked readonly display ("From recording metadata") or a
+  constrained `<select>` (50 Hz / 60 Hz only, default 50, never free
+  text) depending on `nominalFrequencySource`; Window and Method
+  unchanged in behavior, each now carrying an info-tip.
+- New `wwInfoTipHtml()` component + CSS (`.ww-info-tip*`) — a small,
+  reusable, keyboard-and-mouse accessible tooltip (no existing tooltip
+  framework in this codebase to reuse; native `title` does not reliably
+  support keyboard-focus disclosure or custom Light/Dark styling).
+- `.ww-cc-field input[readonly]` now also gets a tinted `--bg` background
+  (not just dimmer text) — applies uniformly to Unit/Window/Method/
+  metadata-mode Nominal Frequency, giving every automatic field in this
+  panel a consistent "sunken/informational" look distinct from editable
+  fields, without a new CSS class per field.
+- The old free-text `#wwCcNominalFrequencyInput` and its `input`/`change`
+  listeners are retired entirely, replaced by `#wwCcNominalFrequencySelect`
+  (only present in "user" mode) with a single `change` listener that
+  re-renders the whole builder-fields block (same established
+  wholesale-re-render convention already used for input selection),
+  keeping Window's derived display and the parameter block's own
+  authority markup in sync in one place.
+- Backend contract unchanged: the create request still always sends an
+  explicit `nominal_frequency_hz` (whatever value is currently in
+  effect, metadata or user-selected), never a window duration, never a
+  method string.
+
+### Guardrails re-verified, not just assumed unaffected
+
+Metadata-first `waveform_form` eligibility, the algorithmic detector
+fallback, RMS-of-RMS blocking, and the "Calculate anyway" override
+checkbox were all re-tested end-to-end after this restructuring (see
+Browser verification below) — all unchanged.
+
+### Direct browser verification
+
+Same approach as Phase 5B's own verification (real `uvicorn` backend +
+statically-served frontend + headless Chromium via Playwright), against
+a synthetic 50 Hz COMTRADE recording:
+
+- Metadata mode (real COMTRADE upload): Nominal Frequency renders as a
+  tinted, readonly "50 Hz" with "From recording metadata" caption; no
+  `<select>` present. Info-tip hover AND keyboard focus both correctly
+  reveal the tooltip bubble with the exact specified wording.
+- User mode (simulated via `ww.sourceChannelInventory` with
+  `nominalFrequency` nulled out, since no current COMTRADE source can
+  actually lack this field): Nominal Frequency renders as an active
+  `<select>` defaulting to 50 Hz; selecting 60 Hz immediately updates
+  Window to "1 cycle (16.67 ms)" and the expression preview to
+  "RMS(VA, 60 Hz, 1 cycle)".
+- Full create round trip (50 Hz, metadata mode) still succeeds.
+- RMS-of-RMS: selecting an existing RMS channel as a new RMS input still
+  immediately (no detector delay) shows the warning and disables Create
+  until "Calculate anyway" is checked, exactly as before.
+- Light/Dark toggle: the tinted-readonly treatment and info-tip styling
+  both re-theme correctly (theme-token-based CSS, no dark-mode-specific
+  code needed).
+- Zero browser console errors across the whole session.
+
+### Tests
+
+`backend/tests/test_frontend_rms_calculated_channel.py`: one
+pre-existing test updated (`wwCcNominalFrequencyInput` no longer exists)
+plus 13 new static source-text checks covering the authority resolver,
+the four-category rendering split, the info-tip's accessibility markup
+and CSS, the retired free-text input, and confirmation the existing
+eligibility/override guardrails are still wired unchanged. Full backend
+suite untouched and re-run (zero regressions — this phase touched no
+backend file).
+
+### Honest limitations
+
+The "user"/dropdown Nominal Frequency path cannot currently be exercised
+by any real upload (every COMTRADE source has a `nominal_frequency`
+value, even if a malformed CFG line falls back to a silent parser
+default of 50.0 — a pre-existing, unrelated behavior, not new to this
+pass). It was verified by deliberately simulating a missing-metadata
+source in the browser session, and is covered structurally by the
+frontend static-text tests; it has no real-world trigger today but is
+architecturally ready for a future provider that genuinely lacks this
+field.
+
+---
+
 ## Phase 5B — RMS Calculated Channel (2026-08-22)
 
 ### Scope

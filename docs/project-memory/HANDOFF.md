@@ -8,6 +8,64 @@ Last updated: **2026-08-22**
 
 ## What was most recently done
 
+**Phase 5B-UAT — Clarify RMS Parameter UI.** Owner UAT feedback on Phase
+5B: the RMS parameter form's Nominal Frequency/Window/Method fields all
+looked like similar text boxes, with no visual cue for parameter
+authority (user-supplied vs. metadata-derived vs. automatically
+calculated vs. fixed). Full detail:
+[DECISIONS.md — DEC-048 Update note](DECISIONS.md#dec-048--rms-calculated-channels-use-a-trailing-one-cycle-true-rms-calculation-on-authoritative-full-resolution-samples-with-metadata-first-eligibility-and-backend-enforced-override),
+[MIGRATION_PLAN.md — Phase 5B-UAT](MIGRATION_PLAN.md#phase-5b-uat--clarify-rms-parameter-ui-2026-08-22).
+
+**Investigation finding, reported before any UI change** (the task's own
+explicit requirement): `SourceMetadata.nominal_frequency` already exists
+for every COMTRADE source (parsed from the CFG's own mandatory "lf"
+line), and is already shown as an unhedged fact in the Recordings page's
+own detail card -- but was never wired into the RMS builder, which just
+hardcoded a `"50"` default. This directly contradicted an assumption in
+the owner's own written task ("Later COMTRADE importer improvements can
+populate a trusted value" implied it didn't exist yet). Confirmed with
+the owner directly before proceeding, since this determined a materially
+different resulting UI for essentially every real COMTRADE recording:
+treat it as trustworthy, consistent with how the app already presents it
+elsewhere.
+
+**Changes, frontend only, no backend file touched**: Nominal Frequency
+now renders as either a locked readonly display ("From recording
+metadata") when the selected input's grounding source has a usable
+value, or a constrained 50/60 Hz `<select>` (never free text, never a
+hardcoded assumption) when it does not -- resolved fresh on every input
+change, including through a calculated-channel input's own
+`reference_source_id` (never guessed from `engineering_type`). Window
+and Method stay read-only/fixed as before. A new small, keyboard-and-
+mouse-accessible info-tip component (`wwInfoTipHtml()`) was added --
+this codebase had no prior tooltip framework, and native `title` alone
+doesn't reliably support keyboard-focus disclosure or Light/Dark custom
+styling. Every read-only field in the panel (Unit included) now gets a
+tinted background, not just dimmer text, so "automatic" fields are
+visually obvious before interaction, not just on click/hover.
+
+**Guardrails re-verified, not just assumed unaffected**: metadata-first
+`waveform_form` eligibility, the detector fallback, RMS-of-RMS blocking,
+and the override checkbox were all re-tested end-to-end in a real
+headless-Chromium session (same Playwright-based approach as Phase 5B's
+own verification) -- all confirmed unchanged. Also verified: the
+"no trustworthy metadata" dropdown path (simulated, since no real
+COMTRADE source can currently lack this field), 60 Hz selection
+immediately updating the Window display, full create round trip, and
+Light/Dark theming of the new tinted/tooltip styling. Zero console
+errors throughout.
+
+**Tests**: `test_frontend_rms_calculated_channel.py` gained 13 new
+static source-text checks (one pre-existing test updated for the
+retired free-text input id); full backend suite re-run and unaffected
+(zero backend files touched this pass).
+
+**Not yet done** (as of this section being written): commit/push,
+CI/automatic DEV deployment verification -- see the final report
+delivered alongside this update for whether those have since completed.
+
+## What was done in the prior session (Phase 5B — RMS Calculated Channel)
+
 **Phase 5B — RMS Calculated Channel.** Owner-approved direction: add
 exactly one new Calculated Channels operation, RMS -- a guarded,
 trailing one-cycle true-RMS derivation, extending DEC-047's Phase 5A

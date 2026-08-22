@@ -807,7 +807,51 @@
             color: var(--text);
         }
         .ww-cc-field input:focus { outline: none; border-color: var(--accent-dim); }
-        .ww-cc-field input[readonly] { color: var(--text-dim); }
+        /* Phase 5B UAT (DEC-048 clarification, section 15/16): an
+           automatic/read-only field must look obviously different from an
+           editable one BEFORE any interaction, not just via a dimmer
+           cursor -- a distinct tinted background (`--bg`, the page's own
+           background, deliberately different from `--panel`'s editable-
+           input background) makes every automatic field in this panel
+           (Unit, Window, Method, and Nominal Frequency when
+           metadata-sourced) read as "sunken/informational" at a glance,
+           consistently, with no new per-field styling needed. */
+        .ww-cc-field input[readonly] { color: var(--text-dim); background: var(--bg); cursor: default; }
+        .ww-cc-field .hint { margin-top: 4px; }
+
+        /* Phase 5B UAT (DEC-048 clarification, section 17): a small,
+           reusable accessible info-tip -- see wwInfoTipHtml()'s own
+           comment for why this exists instead of native `title`. The
+           `.ww-cc-field .ww-info-tip`/`.ww-cc-field .ww-info-tip-bubble`
+           selectors deliberately have higher specificity than the
+           pre-existing `.ww-cc-field span` rule above (which would
+           otherwise force this inline component onto its own block row). */
+        .ww-info-tip { position: relative; display: inline-flex; vertical-align: middle; }
+        .ww-cc-field .ww-info-tip { display: inline-flex; margin: 0 0 0 5px; }
+        .ww-info-tip-trigger {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 14px; height: 14px; padding: 0; border-radius: 50%;
+            background: transparent; border: 1px solid var(--panel-border);
+            color: var(--text-dim); cursor: help;
+        }
+        .ww-info-tip-trigger svg { width: 9px; height: 9px; stroke: currentColor; fill: none; stroke-width: 1.3; stroke-linecap: round; }
+        .ww-info-tip-trigger:hover, .ww-info-tip-trigger:focus-visible { color: var(--accent); border-color: var(--accent-dim); }
+        .ww-info-tip-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+        .ww-info-tip-bubble {
+            position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+            width: max-content; max-width: 240px;
+            background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);
+            color: var(--text); font-size: 0.68rem; line-height: 1.4;
+            padding: 8px 10px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+            opacity: 0; visibility: hidden; pointer-events: none;
+            transition: opacity 0.12s ease;
+            z-index: 30;
+        }
+        .ww-cc-field .ww-info-tip-bubble { margin: 0; }
+        .ww-info-tip-trigger:hover + .ww-info-tip-bubble,
+        .ww-info-tip-trigger:focus-visible + .ww-info-tip-bubble {
+            opacity: 1; visibility: visible;
+        }
 
         /* Phase 5B (DEC-048): RMS eligibility status -- categorical copy
            only (section 45), never a numeric confidence value. "Suitable"
@@ -4779,6 +4823,16 @@
                 ww.sourceChannelInventory.set(sourceId, {
                     sourceId, sourceName: data.source.station_name,
                     analogChannels: data.analog_channels,
+                    // Phase 5B UAT (DEC-048 clarification): the source's own
+                    // declared nominal frequency (COMTRADE CFG's mandatory
+                    // "lf" line, app.domain.source.SourceMetadata.
+                    // nominal_frequency) -- already reused, no new request.
+                    // Already shown unconditionally as an authoritative fact
+                    // in the Recordings page's own detail card (see
+                    // renderRecordingDetails()'s own "Nominal frequency"
+                    // row), so RMS's own Nominal Frequency field treats it
+                    // with the same trust, never re-deriving or guessing it.
+                    nominalFrequency: data.source.nominal_frequency,
                 });
                 wwRememberSourceTimingFromChannelsData(data);
                 // Phase 4A-UAT10: opening/selecting a source establishes
@@ -10544,6 +10598,16 @@
             // over to a different input (section 25/62's own "switch
             // input clears old warning/status immediately" requirement).
             nominalFrequency: "50", override: false,
+            // Phase 5B UAT (DEC-048 clarification): parameter-AUTHORITY
+            // tag, never itself sent to the backend -- "metadata" when the
+            // selected input's own grounding source declares a trustworthy
+            // nominal frequency (see wwCcResolveNominalFrequencyAuthority()),
+            // "user" otherwise (the engineer picks from a constrained 50/60
+            // Hz dropdown, defaulting 50). Drives whether the Nominal
+            // Frequency field renders as a locked, metadata-sourced display
+            // or an active selectable control -- the two must never look
+            // the same (owner's own explicit UAT requirement).
+            nominalFrequencySource: "user",
         };
         const wwCcListErrors = new Map(); // calculatedChannelId -> inline delete-error message, cleared on next successful action
 
@@ -10565,8 +10629,58 @@
             wwCcBuilder.name = "";
             wwCcBuilder.nameEditedByUser = false;
             wwCcBuilder.nominalFrequency = "50";
+            wwCcBuilder.nominalFrequencySource = "user";
             wwCcBuilder.override = false;
             wwCcResetRmsEligibility();
+        }
+
+        // Phase 5B UAT (DEC-048 clarification): the ONE authority for
+        // "does this RMS input's own grounding source declare a
+        // trustworthy nominal frequency" -- a source input resolves
+        // directly via its own cached inventory entry; a calculated-
+        // channel input resolves through its `reference_source_id` (never
+        // guessed from its `engineering_type`, per the owner's own explicit
+        // caution). Returns `{ value: number, source: "metadata" }` when
+        // found, or `{ value: null, source: "user" }` when the grounding
+        // source has no cached entry at all (never invented) -- callers
+        // fall back to the manual dropdown/50 Hz default in that case.
+        function wwCcResolveNominalFrequencyAuthority(inputCandidate) {
+            if (!inputCandidate) return { value: null, source: "user" };
+            let sourceId = null;
+            if (inputCandidate.kind === "source") {
+                sourceId = inputCandidate.sourceId;
+            } else {
+                const calc = ww.calculatedChannels.get(inputCandidate.calculatedChannelId);
+                sourceId = calc ? calc.reference_source_id : null;
+            }
+            const inventory = sourceId ? ww.sourceChannelInventory.get(sourceId) : null;
+            const value = inventory ? inventory.nominalFrequency : null;
+            if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+                return { value, source: "metadata" };
+            }
+            return { value: null, source: "user" };
+        }
+
+        // Phase 5B UAT (DEC-048 clarification, section 17): a small,
+        // reusable accessible info-tip -- this project has no existing
+        // tooltip framework (only native `title`/`aria-label` on icon
+        // buttons), and native `title` alone does not reliably support
+        // keyboard-focus disclosure or custom Light/Dark styling, both
+        // explicit owner requirements here. Deliberately minimal: pure
+        // CSS show/hide on `:hover`/`:focus-visible` of a real, tabbable
+        // `<button>` (no JS state, no positioning library), reusing the
+        // SAME theme tokens (`--panel`/`--panel-border`/`--text`) every
+        // other themed surface in this app already uses -- not a new
+        // framework, just one small new component.
+        let wwInfoTipIdCounter = 0;
+        function wwInfoTipHtml(ariaLabel, text) {
+            const id = "wwInfoTip" + (wwInfoTipIdCounter++);
+            return '<span class="ww-info-tip">' +
+                '<button type="button" class="ww-info-tip-trigger" aria-label="' + escapeHtml(ariaLabel) + '" aria-describedby="' + id + '">' +
+                '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7.2" x2="8" y2="11.3"/><circle cx="8" cy="4.7" r="0.9" fill="currentColor" stroke="none"/></svg>' +
+                '</button>' +
+                '<span class="ww-info-tip-bubble" role="tooltip" id="' + id + '">' + escapeHtml(text) + '</span>' +
+                '</span>';
         }
 
         function wwCcResetRmsEligibility() {
@@ -10852,6 +10966,78 @@
             return !wwCcBuilder.override;
         }
 
+        // Phase 5B UAT (DEC-048 clarification): renders the RMS parameter
+        // block with EXPLICIT authority per field -- distinguishing
+        // user-selectable (Nominal Frequency, when no trustworthy source
+        // metadata exists), metadata-derived (Nominal Frequency, when it
+        // does), automatically-calculated (Window, always derived from
+        // whichever nominal frequency is currently in effect), and fixed
+        // operation definition (Method, always "True RMS" -- Phase 5B's
+        // only supported RMS kind, DEC-048). Never renders all four as
+        // identical free-text boxes (the owner's own UAT complaint this
+        // pass exists to fix). Called from wwCcRenderBuilderFields()'s own
+        // unary branch AND re-invoked wholesale (not patched in place)
+        // whenever nominal frequency changes, matching this file's own
+        // established "re-render the whole fields block" convention for
+        // input-dependent state (see wwCcAddInputByKey()).
+        function wwCcRenderRmsParameterFields() {
+            const freq = Number(wwCcBuilder.nominalFrequency);
+            const windowMs = freq > 0 ? (1000 / freq).toFixed(2) : "?";
+            let html = '<div class="ww-cc-field">' +
+                '<span>Nominal Frequency' +
+                wwInfoTipHtml(
+                    "About Nominal Frequency",
+                    "Nominal frequency sets the duration of the one-cycle RMS window. 50 Hz uses a 20 ms window; 60 Hz uses approximately 16.67 ms."
+                ) +
+                '</span>';
+            if (wwCcBuilder.nominalFrequencySource === "metadata") {
+                // Category B (metadata-derived) -- locked, never
+                // accidentally editable (owner section 3/4): the
+                // recording's own declared system frequency, not a guess.
+                html += '<input type="text" readonly tabindex="-1" value="' + escapeHtml(String(wwCcBuilder.nominalFrequency)) + ' Hz">' +
+                    '<p class="hint">From recording metadata</p>';
+            } else {
+                // Category A (user-selectable) -- a constrained dropdown,
+                // never free text (owner section 3: "Do NOT use free
+                // text"), because no trustworthy source metadata is
+                // available for the currently selected input (or none is
+                // selected yet).
+                html += '<select id="wwCcNominalFrequencySelect">' +
+                    '<option value="50"' + (wwCcBuilder.nominalFrequency === "50" ? " selected" : "") + '>50 Hz</option>' +
+                    '<option value="60"' + (wwCcBuilder.nominalFrequency === "60" ? " selected" : "") + '>60 Hz</option>' +
+                    '</select>' +
+                    '<p class="hint">Select nominal system frequency</p>';
+            }
+            html += '</div>';
+
+            // Category C (automatically calculated) -- never a text box
+            // the engineer could mistake for an input; always read-only,
+            // always re-derived from whichever nominal frequency is
+            // currently in effect above.
+            html += '<div class="ww-cc-field"><span>Window' +
+                wwInfoTipHtml(
+                    "About Window",
+                    "RMS is calculated over one trailing electrical cycle. The window length is calculated automatically from the nominal frequency."
+                ) +
+                '</span><input type="text" readonly tabindex="-1" value="1 cycle (' + windowMs + ' ms)"></div>';
+
+            // Category D (fixed operation definition) -- Phase 5B supports
+            // only True RMS; never a dropdown of one item (owner section
+            // 8), never editable.
+            html += '<div class="ww-cc-field"><span>Method' +
+                wwInfoTipHtml(
+                    "About Method",
+                    "True RMS calculates the effective value using the complete waveform within the one-cycle window. DC offset and harmonics are included."
+                ) +
+                '</span><input type="text" readonly tabindex="-1" value="True RMS"></div>';
+
+            html += '<div class="ww-cc-rms-status" id="wwCcRmsEligibilityStatus" hidden></div>' +
+                '<label class="ww-cc-rms-override-row" id="wwCcRmsOverrideRow" hidden>' +
+                '<input type="checkbox" id="wwCcRmsOverrideCheckbox"' + (wwCcBuilder.override ? " checked" : "") + '>' +
+                '<span>Calculate anyway</span></label>';
+            return html;
+        }
+
         // ------------------------------------------------------------------
         // Rendering
         // ------------------------------------------------------------------
@@ -10928,17 +11114,7 @@
                         escapeHtml(String(wwCcBuilder.constant)) + '"></label>';
                 }
                 if (wwCcBuilder.operation === "rms") {
-                    html += '<label class="ww-cc-field"><span>Nominal Frequency (Hz)</span>' +
-                        '<input type="text" inputmode="decimal" id="wwCcNominalFrequencyInput" placeholder="50" value="' +
-                        escapeHtml(String(wwCcBuilder.nominalFrequency)) + '"></label>' +
-                        '<div class="ww-cc-field"><span>Window</span><input type="text" readonly value="1 cycle (' +
-                        (Number(wwCcBuilder.nominalFrequency) > 0 ? (1000 / Number(wwCcBuilder.nominalFrequency)).toFixed(2) : "?") +
-                        ' ms)"></div>' +
-                        '<div class="ww-cc-field"><span>Method</span><input type="text" readonly value="True RMS"></div>' +
-                        '<div class="ww-cc-rms-status" id="wwCcRmsEligibilityStatus" hidden></div>' +
-                        '<label class="ww-cc-rms-override-row" id="wwCcRmsOverrideRow" hidden>' +
-                        '<input type="checkbox" id="wwCcRmsOverrideCheckbox"' + (wwCcBuilder.override ? " checked" : "") + '>' +
-                        '<span>Calculate anyway</span></label>';
+                    html += wwCcRenderRmsParameterFields();
                 }
                 fieldsEl.innerHTML = html;
                 const select = document.getElementById("wwCcUnaryInputSelect");
@@ -11008,6 +11184,7 @@
             wwCcBuilder.inputs = [];
             wwCcBuilder.constant = "";
             wwCcBuilder.nominalFrequency = "50";
+            wwCcBuilder.nominalFrequencySource = "user";
             wwCcBuilder.override = false;
             wwCcBuilder.nameEditedByUser = false;
             wwCcBuilder.name = "";
@@ -11033,6 +11210,17 @@
                 wwCcBuilder.inputs.push(candidate);
             }
             if (wwCcBuilder.operation === "rms") {
+                // Section 29: switching input must refresh nominal-frequency
+                // AUTHORITY too, never just leave a stale value from the
+                // previous input's own source in place.
+                const authority = wwCcResolveNominalFrequencyAuthority(candidate);
+                if (authority.source === "metadata") {
+                    wwCcBuilder.nominalFrequency = String(authority.value);
+                    wwCcBuilder.nominalFrequencySource = "metadata";
+                } else {
+                    wwCcBuilder.nominalFrequency = "50";
+                    wwCcBuilder.nominalFrequencySource = "user";
+                }
                 wwCcResetRmsEligibility(); // section 62: switching input clears old warning/status immediately
                 wwCcScheduleRmsEligibilityCheck();
             }
@@ -11713,11 +11901,21 @@
                 wwCcBuilder.constant = event.target.value;
                 wwCcSyncNameAndUnitFields();
                 wwCcSyncCreateButtonState();
-            } else if (event.target.id === "wwCcNominalFrequencyInput") {
+            } else if (event.target.id === "wwCcNominalFrequencySelect") {
+                // Section 3/24/25: a constrained dropdown, only ever
+                // rendered when nominalFrequencySource === "user" -- the
+                // metadata-derived display is a plain readonly input with
+                // no listener needed (never user-editable, section 4).
                 wwCcBuilder.nominalFrequency = event.target.value;
                 wwCcResetRmsEligibility();
+                // Section 6/25: Window is DERIVED, not entered -- a full
+                // re-render (not a targeted DOM patch) keeps its displayed
+                // value and the parameter block's own authority markup in
+                // sync in one place, matching this file's established
+                // "re-render the whole fields block on input-dependent
+                // state change" convention (see wwCcAddInputByKey()).
+                wwCcRenderBuilderFields();
                 wwCcRenderExpressionPreview();
-                wwCcRenderRmsEligibilityStatus();
                 wwCcSyncCreateButtonState();
                 wwCcScheduleRmsEligibilityCheck();
             } else if (event.target.id === "wwCcRmsOverrideCheckbox") {
@@ -11730,13 +11928,6 @@
                 wwCcBuilder.constant = event.target.value;
                 wwCcSyncNameAndUnitFields();
                 wwCcSyncCreateButtonState();
-            } else if (event.target.id === "wwCcNominalFrequencyInput") {
-                wwCcBuilder.nominalFrequency = event.target.value;
-                wwCcResetRmsEligibility();
-                wwCcRenderExpressionPreview();
-                wwCcRenderRmsEligibilityStatus();
-                wwCcSyncCreateButtonState();
-                wwCcScheduleRmsEligibilityCheck();
             }
         });
         document.getElementById("wwCcBuilderFields").addEventListener("click", (event) => {
