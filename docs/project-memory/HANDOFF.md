@@ -8,6 +8,35 @@ Last updated: **2026-08-22**
 
 ## What was most recently done
 
+**Phase 5B UAT Fix — RMS Info Tooltip Positioning.** Owner UAT found the
+new RMS info-tips (Nominal Frequency/Window/Method) rendering clipped/
+partially hidden near the app's global header instead of cleanly above
+the form. **Root cause, confirmed by direct browser measurement, not
+guessed**: the tooltip bubble's original design (`position: absolute`
+inline sibling of its trigger) was silently clipped by
+`#pageCalculatedChannels`'s own `overflow: auto` whenever there wasn't
+enough room above the trigger within that scroll container -- NOT a
+z-index or stacking-context problem (verified directly: neither the
+tooltip nor the main sidebar had any competing stacking context at all,
+so a bigger z-index alone could never have fixed this). **Fix**: a
+single shared, body-level tooltip node (`#wwInfoTipPortal`), positioned
+via `position: fixed` with coordinates computed fresh from the
+trigger's own `getBoundingClientRect()` on each show (below-right
+preferred, falling back to above/clamped-horizontal only when genuinely
+out of room) -- escapes every ancestor's overflow/scroll/transform by
+construction, needing no exceptional z-index (uses `50`, one step above
+this app's own previous highest fixed-layer z-index of `40`). Event
+delegation on `document` (mouseover/mouseout/focusin/focusout) replaces
+the old CSS-only `:hover`/`:focus-visible` + sibling-selector approach,
+since RMS parameter fields are wholesale re-rendered on every input/
+frequency change. Hover, keyboard focus, ARIA (`aria-label`/
+`aria-describedby`/`role="tooltip"`), and Light/Dark theming all
+re-verified directly in a real headless-Chromium session after the fix
+(including re-running the exact scrolled reproduction that originally
+caught the bug). Pure frontend fix, no backend file touched, no RMS
+engineering semantics affected. 36/36 frontend regression checks pass
+(6 new/updated for this fix); full backend suite unaffected.
+
 **Phase 5B-UAT — Clarify RMS Parameter UI.** Owner UAT feedback on Phase
 5B: the RMS parameter form's Nominal Frequency/Window/Method fields all
 looked like similar text boxes, with no visual cue for parameter

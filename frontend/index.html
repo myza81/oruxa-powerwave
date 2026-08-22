@@ -3490,6 +3490,16 @@
         </div>
     </div>
 
+    <!-- Phase 5B UAT Fix: a single shared, body-level tooltip node for
+         every `.ww-info-tip-trigger` on the page (currently the RMS
+         parameter form's Nominal Frequency/Window/Method info-tips) --
+         see wwInfoTipShow()/wwInfoTipHide()'s own comment for why this
+         lives here rather than inline next to each trigger (escaping
+         ancestor overflow-clipping, confirmed as the actual root cause
+         of the owner's report). Positioned via `position: fixed` +
+         JS-computed coordinates; starts `hidden`. -->
+    <div class="ww-info-tip-portal" id="wwInfoTipPortal" role="tooltip" hidden></div>
+
     <script src="vendor/plotly/plotly-cartesian.min.js"></script>
     <script>
         // ------------------------------------------------------------------
@@ -10679,22 +10689,89 @@
         // tooltip framework (only native `title`/`aria-label` on icon
         // buttons), and native `title` alone does not reliably support
         // keyboard-focus disclosure or custom Light/Dark styling, both
-        // explicit owner requirements here. Deliberately minimal: pure
-        // CSS show/hide on `:hover`/`:focus-visible` of a real, tabbable
-        // `<button>` (no JS state, no positioning library), reusing the
-        // SAME theme tokens (`--panel`/`--panel-border`/`--text`) every
-        // other themed surface in this app already uses -- not a new
-        // framework, just one small new component.
-        let wwInfoTipIdCounter = 0;
+        // explicit owner requirements here.
+        //
+        // Phase 5B UAT Fix: the tooltip BODY is a single shared,
+        // body-level `#wwInfoTipPortal` node (see wwInfoTipShow()/
+        // wwInfoTipHide() below), not an inline sibling of each trigger
+        // -- an inline `position: absolute` bubble is subject to
+        // overflow-clipping by whichever scrolling ancestor happens to
+        // contain the trigger (confirmed directly: `#pageCalculatedChannels`'s
+        // own `overflow: auto`), which no z-index can fix. Each trigger
+        // just carries its own tooltip text in `data-tooltip-text` and
+        // points `aria-describedby` at the ONE portal id (always correct,
+        // since only one tooltip is ever visible at a time).
         function wwInfoTipHtml(ariaLabel, text) {
-            const id = "wwInfoTip" + (wwInfoTipIdCounter++);
             return '<span class="ww-info-tip">' +
-                '<button type="button" class="ww-info-tip-trigger" aria-label="' + escapeHtml(ariaLabel) + '" aria-describedby="' + id + '">' +
+                '<button type="button" class="ww-info-tip-trigger" aria-label="' + escapeHtml(ariaLabel) + '" aria-describedby="wwInfoTipPortal" data-tooltip-text="' + escapeHtml(text) + '">' +
                 '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7.2" x2="8" y2="11.3"/><circle cx="8" cy="4.7" r="0.9" fill="currentColor" stroke="none"/></svg>' +
                 '</button>' +
-                '<span class="ww-info-tip-bubble" role="tooltip" id="' + id + '">' + escapeHtml(text) + '</span>' +
                 '</span>';
         }
+
+        // Section 6/7 of the tooltip-positioning fix: preferred placement
+        // is below-right of the icon; fall back to opening above (not
+        // enough room below) or clamping horizontally within the
+        // viewport (not enough room to the right) -- two simple
+        // fallbacks, deliberately not a full collision-avoidance engine.
+        // `position: fixed` + coordinates computed fresh from the
+        // trigger's own live `getBoundingClientRect()` on every show is
+        // what makes this immune to ANY ancestor's scroll/overflow/
+        // transform -- the portal node itself never moves in the DOM.
+        function wwInfoTipShow(trigger) {
+            const portal = document.getElementById("wwInfoTipPortal");
+            if (!portal) return;
+            portal.textContent = trigger.getAttribute("data-tooltip-text") || "";
+            portal.hidden = false;
+
+            const triggerRect = trigger.getBoundingClientRect();
+            const portalRect = portal.getBoundingClientRect();
+            const gap = 8;
+            const viewportWidth = document.documentElement.clientWidth;
+            const viewportHeight = document.documentElement.clientHeight;
+
+            let top = triggerRect.bottom + gap;
+            if (top + portalRect.height > viewportHeight - gap) {
+                top = triggerRect.top - portalRect.height - gap; // not enough room below -- open above instead
+            }
+            let left = triggerRect.left;
+            if (left + portalRect.width > viewportWidth - gap) {
+                left = viewportWidth - portalRect.width - gap; // not enough room to the right -- clamp inside the viewport
+            }
+            if (left < gap) left = gap;
+
+            portal.style.top = Math.max(gap, top) + "px";
+            portal.style.left = left + "px";
+        }
+
+        function wwInfoTipHide() {
+            const portal = document.getElementById("wwInfoTipPortal");
+            if (portal) portal.hidden = true;
+        }
+
+        // Delegated on `document` (never per-trigger) since RMS parameter
+        // fields are wholesale re-rendered on every input/frequency
+        // change (see wwCcRenderRmsParameterFields()) -- a per-element
+        // listener would silently stop working the moment its own
+        // trigger button is replaced. `mouseover`/`mouseout`/`focusin`/
+        // `focusout` all bubble, so one listener each here covers every
+        // current and future `.ww-info-tip-trigger` on the page.
+        document.addEventListener("mouseover", (event) => {
+            const trigger = event.target.closest(".ww-info-tip-trigger");
+            if (trigger) wwInfoTipShow(trigger);
+        });
+        document.addEventListener("mouseout", (event) => {
+            const trigger = event.target.closest(".ww-info-tip-trigger");
+            if (trigger) wwInfoTipHide();
+        });
+        document.addEventListener("focusin", (event) => {
+            const trigger = event.target.closest(".ww-info-tip-trigger");
+            if (trigger) wwInfoTipShow(trigger);
+        });
+        document.addEventListener("focusout", (event) => {
+            const trigger = event.target.closest(".ww-info-tip-trigger");
+            if (trigger) wwInfoTipHide();
+        });
 
         function wwCcResetRmsEligibility() {
             wwCcRmsEligibility.status = null;

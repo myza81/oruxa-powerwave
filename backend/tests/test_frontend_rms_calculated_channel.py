@@ -205,25 +205,77 @@ def test_add_input_refreshes_nominal_frequency_authority():
     assert 'wwCcBuilder.nominalFrequencySource = "user";' in body
 
 
-def test_info_tip_helper_is_keyboard_and_screen_reader_accessible():
+def test_info_tip_trigger_is_keyboard_and_screen_reader_accessible():
     source = _source()
-    body = _function_body(source, "function wwInfoTipHtml(ariaLabel, text)", "function wwCcResetRmsEligibility()")
+    body = _function_body(source, "function wwInfoTipHtml(ariaLabel, text)", "function wwInfoTipShow(trigger)")
     assert "<button" in body  # a real, tabbable control -- not a bare <span> or <div>
     assert "aria-label=" in body
-    assert "aria-describedby=" in body
-    assert 'role="tooltip"' in body
+    assert 'aria-describedby="wwInfoTipPortal"' in body
+    assert "data-tooltip-text=" in body
 
 
-def test_info_tip_css_supports_hover_and_keyboard_focus_in_both_themes():
+def test_info_tip_portal_markup_exists_at_body_level():
+    # Phase 5B UAT Fix: the tooltip BODY is a single shared node placed
+    # near the end of <body> (not nested inside any scrolling ancestor),
+    # so it can never be clipped by a page-specific overflow container.
     source = _source()
-    assert ".ww-info-tip-trigger:hover" in source
-    assert ".ww-info-tip-trigger:focus-visible" in source
+    assert 'id="wwInfoTipPortal"' in source
+    assert 'role="tooltip"' in source
+    portal_markup = source[source.index('id="wwInfoTipPortal"') - 60 : source.index('id="wwInfoTipPortal"') + 60]
+    assert "hidden" in portal_markup
+    # Must not be nested inside the Calculated Channels page's own
+    # scrolling container -- the exact root cause this fix addresses.
+    assert source.index('id="wwInfoTipPortal"') > source.index('id="pageCalculatedChannels"')
+    assert source.index('id="wwInfoTipPortal"') < source.index('vendor/plotly/plotly-cartesian.min.js')
+
+
+def test_info_tip_portal_css_is_fixed_positioned_and_theme_token_based():
+    source = _source()
+    css = source[source.index(".ww-info-tip-portal {") : source.index(".ww-info-tip-portal[hidden]") + 60]
+    assert "position: fixed" in css
     # Theme-token-based, not hardcoded colors -- correct in Light and Dark
     # automatically, same convention as every other themed surface here.
-    tooltip_css = source[source.index(".ww-info-tip {") : source.index(".ww-cc-field .ww-info-tip-bubble {") + 200]
-    assert "var(--panel)" in tooltip_css
-    assert "var(--text)" in tooltip_css
-    assert "var(--panel-border)" in tooltip_css
+    assert "var(--panel)" in css
+    assert "var(--text)" in css
+    assert "var(--panel-border)" in css
+    # A considered value on the app's own existing z-index scale (see the
+    # code comment for why 50, not an arbitrary huge number).
+    assert "z-index: 50" in css
+
+
+def test_info_tip_no_longer_relies_on_inline_sibling_bubble():
+    # Regression test for the actual root cause: an inline `position:
+    # absolute` bubble next to each trigger was silently clipped by
+    # #pageCalculatedChannels's own `overflow: auto` -- confirmed via
+    # direct browser measurement, not assumed. The fix must not
+    # reintroduce that structure.
+    source = _source()
+    assert ".ww-info-tip-bubble" not in source
+    assert "ww-info-tip-trigger:hover +" not in source
+
+
+def test_info_tip_show_hide_use_fixed_positioning_computed_from_trigger():
+    source = _source()
+    body = _function_body(source, "function wwInfoTipShow(trigger)", "function wwInfoTipHide()")
+    assert "getBoundingClientRect()" in body
+    assert "portal.style.top" in body
+    assert "portal.style.left" in body
+    assert "portal.hidden = false;" in body
+
+
+def test_info_tip_events_are_delegated_on_document_for_dynamic_triggers():
+    # RMS parameter fields are wholesale re-rendered on every input/
+    # frequency change -- a per-element listener would silently break
+    # the moment its own trigger button is replaced. Delegation on
+    # `document` covers every current and future trigger.
+    source = _source()
+    body = _function_body(source, "document.addEventListener(\"mouseover\"", "function wwCcResetRmsEligibility()")
+    assert 'document.addEventListener("mouseover"' in body
+    assert 'document.addEventListener("mouseout"' in body
+    assert 'document.addEventListener("focusin"' in body
+    assert 'document.addEventListener("focusout"' in body
+    assert "wwInfoTipShow(trigger)" in body
+    assert "wwInfoTipHide()" in body
 
 
 def test_rms_parameter_fields_distinguish_all_four_authority_categories():
