@@ -847,7 +847,157 @@
             color: var(--text-dim);
             font-size: 0.7rem;
         }
-        .ww-pu-radio-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 0.75rem; font-weight: 400; }
+        /* Phase 5C-UAT2 (owner UAT: "simple at first glance, expandable
+           when needed"): the Manage Per-Unit Bases dialog gets its own
+           moderately wider box (never full-screen -- section 12) so
+           option labels/numeric inputs stop wrapping, scoped to THIS
+           dialog alone via a modifier class -- the shared
+           .group-editor-box base (Custom Groups editor, Upload modal)
+           is completely untouched. Header/footer are pinned within the
+           box's own existing scroll region (unchanged max-height/
+           overflow-y) so a long form still scrolls its BODY only,
+           never nested scrollbars, while Save/Cancel and the title stay
+           reachable -- the negative-margin/matching-padding trick
+           compensates for .group-editor-box's own 20px padding so the
+           pinned strip visually reaches the box's own edges. */
+        /* Standard visually-hidden-but-accessible utility -- used where a
+           section heading (e.g. "RECORDING") already visually labels a
+           single field below it, so the field's own inline <span> label
+           would be redundant on-screen but should still name the
+           control for assistive tech. */
+        .ww-visually-hidden-label {
+            position: absolute;
+            width: 1px; height: 1px;
+            padding: 0; margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+        /* Compound selector (never a bare `.ww-pu-dialog`) -- this rule
+           is declared BEFORE `.group-editor-box`'s own base max-width in
+           this stylesheet, so an equal-specificity single-class
+           override here would lose the cascade tie to the later base
+           rule regardless of source position. Two classes on the same
+           selector always wins on specificity alone, independent of
+           declaration order -- confirmed directly against a real
+           rendered instance (a same-specificity override silently had
+           no effect until this fix). */
+        .group-editor-box.ww-pu-dialog { max-width: 640px; }
+        .ww-pu-dialog .group-editor-header {
+            position: sticky;
+            top: -20px;
+            margin: -20px -20px 4px;
+            padding: 20px 20px 4px;
+            background: var(--panel);
+            z-index: 2;
+        }
+        .ww-pu-dialog .group-editor-footer {
+            position: sticky;
+            bottom: -20px;
+            margin: 4px -20px -20px;
+            padding: 12px 20px 20px;
+            background: var(--panel);
+            z-index: 2;
+        }
+
+        /* Section structure (Recording / Voltage Base / Current Base /
+           Advanced) -- a subtle top border + spacing between sections
+           instead of the old single flat vertical stack, and never
+           cards-inside-cards. First section gets neither (nothing to
+           separate it from the header above). */
+        .ww-pu-section { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--panel-border); }
+        /* A modifier, not :first-of-type -- the Advanced Options section
+           is a <details> (a different tag than the plain <div> sections
+           above it), so `:first-of-type` would wrongly match it too
+           (first of ITS OWN tag among its siblings) and strip its own
+           separator from Current Base above it. */
+        .ww-pu-section--first { margin-top: 10px; padding-top: 0; border-top: none; }
+        .ww-pu-section-title {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            color: var(--text-dim);
+            margin: 0 0 10px;
+            font-weight: 600;
+        }
+
+        /* Recording section: the select stays a plain, short label (the
+           recording's own display name only -- never a baked-in summary
+           that forces the native <select> to wrap); the current
+           configuration summary is a separate, always-visible status
+           line underneath (section 2). */
+        .ww-pu-status-line { margin-top: 6px; font-size: 0.72rem; color: var(--text-dim); }
+        .ww-pu-status-line strong { color: var(--text); font-weight: 600; }
+
+        /* Voltage Reference: a concise two-line result plus two small
+           actions -- never the full evidence list inline (section 4/5).
+           `.ww-pu-ref-actions` holds View details/Override side by side,
+           reusing the existing compact "secondary" button language. */
+        .ww-pu-ref-actions { display: flex; gap: 8px; margin-top: 8px; }
+        .ww-pu-ref-actions button { font-size: 0.7rem; padding: 4px 10px; }
+        .ww-pu-detection-details {
+            margin-top: 10px;
+            padding: 10px 12px;
+            background: var(--bg);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+        }
+        .ww-pu-detection-details p { margin: 0 0 6px; font-size: 0.72rem; color: var(--text-dim); }
+        .ww-pu-detection-details p:last-child { margin-bottom: 0; }
+        .ww-pu-evidence-list {
+            margin: 0;
+            padding-left: 18px;
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            max-height: 120px;
+            overflow-y: auto;
+        }
+        .ww-pu-evidence-list li { margin-bottom: 2px; }
+
+        /* Current Base: compact, fully-clickable stacked rows (never a
+           bare radio circle detached from its own label, never an
+           oversized card) -- section 7. The whole <label> already
+           toggles its own wrapped <input>; the border/background swap
+           on the selected row is applied via a class set at render
+           time (not :has(), for broader engine support). */
+        .ww-pu-mode-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 9px;
+            padding: 8px 10px;
+            margin-top: 6px;
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            cursor: pointer;
+        }
+        .ww-pu-mode-row:first-of-type { margin-top: 8px; }
+        .ww-pu-mode-row:hover { background: var(--hover-tint); }
+        .ww-pu-mode-row input[type="radio"] { flex: 0 0 auto; margin: 2px 0 0; }
+        .ww-pu-mode-row--selected { border-color: var(--accent-dim); background: var(--accent-wash-soft); }
+        .ww-pu-mode-row--selected:hover { background: var(--accent-wash-soft); }
+        .ww-pu-mode-row-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .ww-pu-mode-row-text strong { font-size: 0.75rem; font-weight: 600; color: var(--text); }
+        .ww-pu-mode-row-text small { font-size: 0.68rem; color: var(--text-dim); }
+
+        /* Advanced options: the SAME native <details>/<summary> +
+           .chevron convention already established for the Channel
+           Sidebar's own collapsible groups -- summary markers are
+           already globally hidden page-wide, so this needs no new
+           disclosure-triangle CSS at all. */
+        .ww-pu-advanced summary {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            color: var(--text-dim);
+            user-select: none;
+        }
+        .ww-pu-advanced-body { margin-top: 10px; }
 
         /* Phase 5B UAT (DEC-048 clarification, section 17): a small,
            reusable accessible info-tip -- see wwInfoTipHtml()'s own
@@ -3724,16 +3874,19 @@
          One profile is edited at a time (the <select> below); Apply
          sends a single PUT/POST covering that profile's base fields +
          channel assignment together. -->
-    <!-- Phase 5C-UAT (DEC-049 addendum): "Manage Per-Unit Bases" --
-         source-bound redesign. Owner UAT found the original profile-
-         create/assign workflow too complex; there is no "profile"
-         concept in this UI at all any more -- every loaded recording
-         appears automatically (fetchSourcesList(), the SAME list the
-         Recordings page/Workspace Sidebar already use), and configuring
-         one immediately covers every eligible Voltage/Current channel
-         it owns, with no channel-assignment checklist. -->
+    <!-- Phase 5C-UAT2 (owner UAT: "simple at first glance, expandable
+         when needed"): "Manage Per-Unit Bases" -- sectioned redesign of
+         the source-bound modal. Still no "profile" concept anywhere in
+         this UI: every loaded recording appears automatically
+         (fetchSourcesList(), the SAME list the Recordings page/
+         Workspace Sidebar already use), and configuring one immediately
+         covers every eligible Voltage/Current channel it owns, with no
+         channel-assignment checklist -- this pass only restructures the
+         PRESENTATION (sections, progressive disclosure, a wider dialog)
+         of that same source-bound model; see wwRenderPerUnitProfileEditor()
+         for the section-by-section render logic. -->
     <div class="confirm-overlay" id="perUnitProfilesOverlay" hidden>
-        <div class="group-editor-box" role="dialog" aria-modal="true" aria-labelledby="perUnitProfilesTitle">
+        <div class="group-editor-box ww-pu-dialog" role="dialog" aria-modal="true" aria-labelledby="perUnitProfilesTitle">
             <div class="group-editor-header">
                 <h3 id="perUnitProfilesTitle">Manage Per-Unit Bases</h3>
                 <button type="button" class="group-editor-close" id="perUnitProfilesCloseBtn" aria-label="Close">&times;</button>
@@ -3742,10 +3895,14 @@
                 Voltage/Current channel of that recording uses its own configuration
                 automatically.</p>
 
-            <label class="ww-cc-field">
-                <span>Recording</span>
-                <select id="perUnitSourceSelect"></select>
-            </label>
+            <div class="ww-pu-section ww-pu-section--first">
+                <h4 class="ww-pu-section-title">Recording</h4>
+                <label class="ww-cc-field">
+                    <span class="ww-visually-hidden-label">Recording</span>
+                    <select id="perUnitSourceSelect"></select>
+                </label>
+                <div class="ww-pu-status-line" id="perUnitSourceStatus"></div>
+            </div>
             <p class="hint error" id="perUnitProfileError" hidden role="alert"></p>
 
             <div id="perUnitProfileFields"></div>
@@ -3753,7 +3910,7 @@
             <div class="group-editor-footer">
                 <button type="button" class="secondary" id="perUnitDeleteProfileBtn" hidden>Clear Configuration</button>
                 <span class="toolbar-spacer"></span>
-                <button type="button" class="secondary" id="perUnitProfilesCloseFooterBtn">Close</button>
+                <button type="button" class="secondary" id="perUnitProfilesCloseFooterBtn">Cancel</button>
                 <button type="button" id="perUnitProfilesApplyBtn">Save</button>
             </div>
         </div>
@@ -8074,6 +8231,13 @@
                     evidence: config ? config.voltage_reference_evidence : [],
                     reason: config ? config.voltage_reference_reason : "no_voltage_channels",
                 },
+                // Phase 5C-UAT2 (section 5/6): the evidence list is
+                // collapsed by default every time a source is (re)
+                // selected or the modal reopens -- persists across an
+                // in-session re-render caused by any OTHER field edit
+                // (Override/Return to Auto/typing a value), so expanding
+                // it once doesn't collapse again mid-edit.
+                detectionDetailsExpanded: false,
             };
         }
 
@@ -8116,21 +8280,40 @@
             document.getElementById("perUnitProfilesOverlay").hidden = true;
         }
 
+        // Section 2: the <select> shows ONLY the recording's own short
+        // display name -- the previous design baked the whole
+        // configuration summary into each <option>'s own text, which
+        // made a native dropdown wrap/truncate badly. The summary now
+        // lives in a separate, always-visible status line underneath
+        // (wwRenderPerUnitSourceStatusLine()).
         function wwRenderPerUnitSourceSelect() {
             const select = document.getElementById("perUnitSourceSelect");
             let html = "";
             for (const source of wwPerUnitSourcesList) {
-                const config = ww.perUnitSourceConfigs.get(source.source_id);
                 html += '<option value="' + escapeHtml(source.source_id) + '">' +
-                    escapeHtml(recordingDisplayName(source)) + " — " + escapeHtml(wwPerUnitSourceSummaryText(config)) +
-                    '</option>';
+                    escapeHtml(recordingDisplayName(source)) + '</option>';
             }
             select.innerHTML = html || '<option value="">No recordings loaded yet</option>';
             select.value = (perUnitEditorState && perUnitEditorState.sourceId) || "";
+            wwRenderPerUnitSourceStatusLine();
+        }
+
+        function wwRenderPerUnitSourceStatusLine() {
+            const statusEl = document.getElementById("perUnitSourceStatus");
+            if (!statusEl) return;
+            if (!perUnitEditorState) {
+                statusEl.textContent = "";
+                return;
+            }
+            const config = ww.perUnitSourceConfigs.get(perUnitEditorState.sourceId);
+            statusEl.innerHTML = (config && config.configured)
+                ? "<strong>" + escapeHtml(wwPerUnitSourceSummaryText(config)) + "</strong>"
+                : "Status: Not configured";
         }
 
         function wwPerUnitSourceSelectChange(sourceId) {
             perUnitEditorState = wwPerUnitConfigToEditorState(sourceId, ww.perUnitSourceConfigs.get(sourceId));
+            wwRenderPerUnitSourceStatusLine();
             wwRenderPerUnitProfileEditor();
             document.getElementById("perUnitProfileError").hidden = true;
         }
@@ -8140,38 +8323,69 @@
             if (preview) preview.value = wwPerUnitEditorResolvedCurrentBaseText(perUnitEditorState);
         }
 
-        // Section 6-8: renders the Voltage Reference block in one of
-        // three states -- confident auto-detection (with an [Override]
-        // action), an active manual override (with a [Return to Auto]
-        // action), or "could not determine automatically" (a plain
-        // dropdown the engineer must pick from -- never a silent guess).
+        // Section 4-6 (owner UAT2): renders the Voltage Reference block
+        // concisely -- a two-line result plus small View details/
+        // Override actions, NEVER the full evidence list inline (the
+        // owner's own explicit complaint about the previous design).
+        // Three states: confident auto-detection (evidence collapsed
+        // behind "View details" by default, section 5/6), an active
+        // manual override (with a Return to Auto action), or an honest
+        // "automatic detection unavailable" naming the ACTUAL reason
+        // (conflicting evidence vs. no recognizable pattern, section 5's
+        // own worked example) -- never a silently invented default; the
+        // engineer must still be able to pick a reference in that case.
         function wwRenderVoltageReferenceBlock(state) {
             const refLabel = (ref) => (ref === PER_UNIT_LINE_TO_LINE ? "Line-to-Line" : "Line-to-Ground");
+            const infoTip = wwInfoTipHtml(
+                "Voltage Reference",
+                "Whether Voltage channels of this recording represent line-to-ground or line-to-line measurements. Used only to derive the Current Base below -- never applied automatically to a displayed channel's own per-unit value."
+            );
+            const detailsToggleBtn = (evidence) => (
+                evidence.length
+                    ? '<button type="button" class="secondary" id="perUnitToggleDetectionDetailsBtn">' +
+                      (state.detectionDetailsExpanded ? "Hide details" : "View details") + '</button>'
+                    : ''
+            );
+            const detailsPanel = (heading, evidence) => (
+                state.detectionDetailsExpanded && evidence.length
+                    ? '<div class="ww-pu-detection-details"><p>' + heading + '</p><p>Evidence:</p>' +
+                      '<ul class="ww-pu-evidence-list">' + evidence.map((name) => '<li>' + escapeHtml(name) + '</li>').join("") + '</ul></div>'
+                    : ''
+            );
+
             if (state.voltageReferenceMode === "manual") {
-                return '<div class="ww-cc-field"><span>Voltage Reference ' +
-                    wwInfoTipHtml("Voltage Reference", "Whether Voltage channels of this recording represent line-to-ground or line-to-line measurements. Used only to derive the Current Base below -- never applied automatically to a displayed channel's own per-unit value.") +
-                    '</span><div class="hint">Manual: ' + refLabel(state.voltageReferenceOverride) + '</div>' +
+                return '<div class="ww-cc-field"><span>Voltage Reference ' + infoTip + '</span>' +
                     '<select id="perUnitVoltageReferenceOverride">' +
                     '<option value="' + PER_UNIT_LINE_TO_GROUND + '"' + (state.voltageReferenceOverride === PER_UNIT_LINE_TO_GROUND ? " selected" : "") + '>Line-to-Ground</option>' +
                     '<option value="' + PER_UNIT_LINE_TO_LINE + '"' + (state.voltageReferenceOverride === PER_UNIT_LINE_TO_LINE ? " selected" : "") + '>Line-to-Line</option>' +
                     '</select>' +
-                    '<button type="button" class="secondary" id="perUnitReturnToAutoBtn" style="margin-top:6px;">Return to Auto</button>' +
+                    '<div class="hint">Manual override</div>' +
+                    '<div class="ww-pu-ref-actions"><button type="button" class="secondary" id="perUnitReturnToAutoBtn">Return to Auto</button></div>' +
                     '</div>';
             }
+
             if (state.autoDetection.reference) {
                 const evidence = state.autoDetection.evidence || [];
-                return '<div class="ww-cc-field"><span>Voltage Reference ' +
-                    wwInfoTipHtml("Voltage Reference", "Whether Voltage channels of this recording represent line-to-ground or line-to-line measurements. Used only to derive the Current Base below -- never applied automatically to a displayed channel's own per-unit value.") +
-                    '</span><div class="hint">Auto: ' + refLabel(state.autoDetection.reference) + '</div>' +
-                    (evidence.length ? '<div class="hint">Detected from ' + evidence.map(escapeHtml).join(", ") + '</div>' : '') +
-                    '<button type="button" class="secondary" id="perUnitOverrideReferenceBtn" style="margin-top:6px;">Override</button>' +
+                return '<div class="ww-cc-field"><span>Voltage Reference ' + infoTip + '</span>' +
+                    '<div class="hint">Auto: ' + refLabel(state.autoDetection.reference) + '</div>' +
+                    '<div class="hint">Detected automatically from channel naming.</div>' +
+                    '<div class="ww-pu-ref-actions">' + detailsToggleBtn(evidence) +
+                    '<button type="button" class="secondary" id="perUnitOverrideReferenceBtn">Override</button></div>' +
+                    detailsPanel("Detected as " + refLabel(state.autoDetection.reference), evidence) +
                     '</div>';
             }
-            // Section 7: no confident result -- never silently invented.
-            return '<div class="ww-cc-field"><span>Voltage Reference ' +
-                wwInfoTipHtml("Voltage Reference", "Whether Voltage channels of this recording represent line-to-ground or line-to-line measurements. Used only to derive the Current Base below -- never applied automatically to a displayed channel's own per-unit value.") +
-                '</span><div class="hint">Could not determine automatically</div>' +
-                '<select id="perUnitVoltageReferenceFallback">' +
+
+            // No confident result -- the ACTUAL reason is shown plainly.
+            const evidence = state.autoDetection.evidence || [];
+            const reasonText = state.autoDetection.reason === "conflicting_evidence"
+                ? "Conflicting voltage-channel naming was detected."
+                : "No recognizable voltage-channel naming pattern was found.";
+            return '<div class="ww-cc-field"><span>Voltage Reference ' + infoTip + '</span>' +
+                '<div class="hint">Automatic detection unavailable</div>' +
+                '<div class="hint">' + reasonText + '</div>' +
+                (evidence.length ? '<div class="ww-pu-ref-actions">' + detailsToggleBtn(evidence) + '</div>' : '') +
+                detailsPanel("Conflicting evidence", evidence) +
+                '<select id="perUnitVoltageReferenceFallback" style="margin-top:8px;">' +
                 '<option value="">Select…</option>' +
                 '<option value="' + PER_UNIT_LINE_TO_GROUND + '">Line-to-Ground</option>' +
                 '<option value="' + PER_UNIT_LINE_TO_LINE + '">Line-to-Line</option>' +
@@ -8231,8 +8445,21 @@
                 state.voltageReferenceOverride = fallbackSelect.value;
                 wwRenderPerUnitProfileEditor();
             });
+            const toggleDetailsBtn = document.getElementById("perUnitToggleDetectionDetailsBtn");
+            if (toggleDetailsBtn) toggleDetailsBtn.addEventListener("click", () => {
+                state.detectionDetailsExpanded = !state.detectionDetailsExpanded;
+                wwRenderPerUnitProfileEditor();
+            });
         }
 
+        // Owner UAT2's own section structure: Voltage Base (Vbase +
+        // Voltage Reference + its own collapsible detection details),
+        // Current Base (mode selector + only the fields that mode
+        // needs), Advanced Options (a native <details> disclosure --
+        // structurally present now, deliberately empty this pass, so a
+        // future capability has somewhere to go without another modal
+        // redesign; see the owner's own explicit "do not add unapproved
+        // features now" instruction).
         function wwRenderPerUnitProfileEditor() {
             const state = perUnitEditorState;
             const fieldsEl = document.getElementById("perUnitProfileFields");
@@ -8243,48 +8470,83 @@
             }
             const showMva = state.currentBaseMode === "derived";
             const showDirect = state.currentBaseMode === "direct";
+            const showNone = state.currentBaseMode === "none";
+
+            // Section 7: a compact, fully-clickable stacked row -- the
+            // whole <label> already toggles its own wrapped radio input,
+            // so no extra click-delegation JS is needed for "the whole
+            // row is clickable." The selected-row highlight is a class
+            // set here at render time (never :has()), so it works
+            // identically across every supported browser.
+            const currentBaseModeRow = (value, title, description) => {
+                const selected = state.currentBaseMode === value;
+                return '<label class="ww-pu-mode-row' + (selected ? ' ww-pu-mode-row--selected' : '') + '">' +
+                    '<input type="radio" name="perUnitCurrentBaseMode" value="' + value + '"' + (selected ? " checked" : "") + '>' +
+                    '<span class="ww-pu-mode-row-text"><strong>' + title + '</strong><small>' + description + '</small></span>' +
+                    '</label>';
+            };
+
             fieldsEl.innerHTML =
-                // Section 4: proportional layout -- a wide numeric field
-                // plus a fixed, non-editable unit suffix (never a
-                // dropdown, since the domain always accepts one
-                // canonical unit per field).
-                '<label class="ww-cc-field"><span>Voltage Base ' +
-                wwInfoTipHtml("Voltage Base", "The rated voltage that a per-unit value of 1.0 represents, for Voltage channels of this recording.") +
-                '</span><div class="ww-pu-value-suffix-group">' +
-                '<input type="number" step="any" id="perUnitVoltageBaseValue" value="' +
-                (state.voltageBaseValue == null ? "" : state.voltageBaseValue) + '" placeholder="e.g. 275">' +
-                '<span class="ww-pu-suffix">kV</span></div></label>' +
-
-                wwRenderVoltageReferenceBlock(state) +
-
-                '<div class="ww-cc-field"><span>Current Base</span>' +
-                '<label class="ww-pu-radio-row"><input type="radio" name="perUnitCurrentBaseMode" value="derived"' +
-                (state.currentBaseMode === "derived" ? " checked" : "") + '> Calculate from apparent power</label>' +
-                '<label class="ww-pu-radio-row"><input type="radio" name="perUnitCurrentBaseMode" value="direct"' +
-                (state.currentBaseMode === "direct" ? " checked" : "") + '> Enter current base manually</label>' +
-                '<label class="ww-pu-radio-row"><input type="radio" name="perUnitCurrentBaseMode" value="none"' +
-                (state.currentBaseMode === "none" ? " checked" : "") + '> Voltage only</label>' +
+                // Not --first: the static "Recording" section above
+                // (outside #perUnitProfileFields, in the modal's own
+                // HTML shell) already claims that role -- Voltage Base
+                // gets its own top separator, matching the owner's own
+                // mockup (a rule between RECORDING and VOLTAGE BASE).
+                '<div class="ww-pu-section">' +
+                    '<h4 class="ww-pu-section-title">Voltage Base</h4>' +
+                    // Section 3: a wide numeric field plus a fixed,
+                    // non-editable unit suffix (never a dropdown, since
+                    // the domain always accepts one canonical unit).
+                    '<label class="ww-cc-field"><span>Voltage Base ' +
+                    wwInfoTipHtml("Voltage Base", "The rated voltage that a per-unit value of 1.0 represents, for Voltage channels of this recording.") +
+                    '</span><div class="ww-pu-value-suffix-group">' +
+                    '<input type="number" step="any" id="perUnitVoltageBaseValue" value="' +
+                    (state.voltageBaseValue == null ? "" : state.voltageBaseValue) + '" placeholder="e.g. 275">' +
+                    '<span class="ww-pu-suffix">kV</span></div></label>' +
+                    wwRenderVoltageReferenceBlock(state) +
                 '</div>' +
 
-                (showMva
-                    ? '<label class="ww-cc-field"><span>Three-Phase MVA Base (Sbase) ' +
-                      wwInfoTipHtml("Three-Phase MVA Base", "The total three-phase apparent power base used to derive the Current Base: Ibase = Sbase / (√3 × Vbase LL).") +
-                      '</span><div class="ww-pu-value-suffix-group">' +
-                      '<input type="number" step="any" id="perUnitApparentPowerBaseValue" value="' +
-                      (state.apparentPowerBaseValue == null ? "" : state.apparentPowerBaseValue) + '" placeholder="e.g. 500">' +
-                      '<span class="ww-pu-suffix">MVA</span></div></label>'
-                    : "") +
-                (showDirect
-                    ? '<label class="ww-cc-field"><span>Direct Current Base</span><div class="ww-pu-value-suffix-group">' +
-                      '<input type="number" step="any" id="perUnitDirectCurrentBaseValue" value="' +
-                      (state.directCurrentBaseValue == null ? "" : state.directCurrentBaseValue) + '" placeholder="e.g. 1.2">' +
-                      '<span class="ww-pu-suffix">kA</span></div></label>'
-                    : "") +
-                (showMva || showDirect
-                    ? '<label class="ww-cc-field"><span>Calculated Ibase</span>' +
-                      '<input type="text" id="perUnitCalculatedCurrentBase" readonly tabindex="-1" value="' +
-                      wwPerUnitEditorResolvedCurrentBaseText(state) + '"></label>'
-                    : "");
+                '<div class="ww-pu-section">' +
+                    '<h4 class="ww-pu-section-title">Current Base</h4>' +
+                    '<p class="hint">How should current base be defined?</p>' +
+                    currentBaseModeRow("derived", "Calculate from apparent power", "Enter Sbase and Powerwave calculates Ibase.") +
+                    currentBaseModeRow("direct", "Enter current base manually", "Use a known Ibase directly.") +
+                    currentBaseModeRow("none", "No current base", "Voltage channels only.") +
+                    (showMva
+                        ? '<label class="ww-cc-field" style="margin-top:14px;"><span>Apparent Power Base ' +
+                          wwInfoTipHtml("Three-Phase MVA Base", "The total three-phase apparent power base used to derive the Current Base: Ibase = Sbase / (√3 × Vbase LL).") +
+                          '</span><div class="ww-pu-value-suffix-group">' +
+                          '<input type="number" step="any" id="perUnitApparentPowerBaseValue" value="' +
+                          (state.apparentPowerBaseValue == null ? "" : state.apparentPowerBaseValue) + '" placeholder="e.g. 1000">' +
+                          '<span class="ww-pu-suffix">MVA</span></div></label>' +
+                          '<label class="ww-cc-field"><span>Calculated Current Base</span>' +
+                          '<input type="text" id="perUnitCalculatedCurrentBase" readonly tabindex="-1" value="' +
+                          wwPerUnitEditorResolvedCurrentBaseText(state) + '"></label>'
+                        : "") +
+                    (showDirect
+                        ? '<label class="ww-cc-field" style="margin-top:14px;"><span>Current Base</span><div class="ww-pu-value-suffix-group">' +
+                          '<input type="number" step="any" id="perUnitDirectCurrentBaseValue" value="' +
+                          (state.directCurrentBaseValue == null ? "" : state.directCurrentBaseValue) + '" placeholder="e.g. 2.10">' +
+                          '<span class="ww-pu-suffix">kA</span></div></label>'
+                        : "") +
+                    (showNone
+                        ? '<p class="hint" style="margin-top:10px;">Current channels will show "Base required" in Per Unit mode until a current base is configured.</p>'
+                        : "") +
+                '</div>' +
+
+                // Section 10/14: structurally present, deliberately
+                // empty -- a scalable place for future Per-Unit
+                // capabilities without another modal redesign. Reuses
+                // the SAME <details>/.chevron disclosure convention
+                // already established for the Channel Sidebar's own
+                // collapsible groups (summary markers are already
+                // globally hidden page-wide).
+                '<details class="ww-pu-advanced ww-pu-section">' +
+                    '<summary><span class="chevron">&#9656;</span> Advanced options</summary>' +
+                    '<div class="ww-pu-advanced-body">' +
+                    '<p class="hint">No additional Per-Unit options are available for this recording yet.</p>' +
+                    '</div>' +
+                '</details>';
 
             wwWirePerUnitProfileFieldsEvents();
             document.getElementById("perUnitDeleteProfileBtn").hidden = !state.configured;

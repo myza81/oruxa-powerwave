@@ -124,18 +124,58 @@ def test_source_config_save_targets_the_source_scoped_endpoint():
 
 
 def test_voltage_reference_block_covers_auto_manual_and_ambiguous_states():
-    """Section 6-8: three distinct renderings -- confident auto-
-    detection with an Override action, an active manual override with a
-    Return-to-Auto action, and an honest "could not determine" fallback
-    -- never a silently invented default."""
+    """Section 4-6 (owner UAT2): three distinct renderings -- confident
+    auto-detection with a View-details/Override action pair, an active
+    manual override with a Return-to-Auto action, and an honest
+    "automatic detection unavailable" fallback -- never a silently
+    invented default."""
     source = _source()
     body = _function_body(source, "function wwRenderVoltageReferenceBlock(state)", "function wwWirePerUnitProfileFieldsEvents()")
     assert 'state.voltageReferenceMode === "manual"' in body
     assert "Return to Auto" in body
     assert "state.autoDetection.reference" in body
     assert "Override" in body
-    assert "Could not determine automatically" in body
+    assert "Automatic detection unavailable" in body
     assert "perUnitVoltageReferenceFallback" in body
+
+
+def test_voltage_reference_evidence_is_collapsed_behind_view_details():
+    """Section 5 (owner UAT2's own explicit complaint): the full
+    evidence list must never print inline in the normal form -- it is
+    rendered only when `state.detectionDetailsExpanded` is true, behind
+    a dedicated toggle button, never unconditionally."""
+    source = _source()
+    body = _function_body(source, "function wwRenderVoltageReferenceBlock(state)", "function wwWirePerUnitProfileFieldsEvents()")
+    assert "perUnitToggleDetectionDetailsBtn" in body
+    assert "state.detectionDetailsExpanded" in body
+    assert "ww-pu-detection-details" in body
+    assert "ww-pu-evidence-list" in body
+    # The unconditional inline text from the original design must be gone.
+    assert "Detected from ' + evidence" not in body
+
+
+def test_conflicting_or_unrecognized_reference_reasons_are_distinguished():
+    """Section 5's own worked example: "conflicting evidence" and "no
+    recognizable pattern" must be told apart, never collapsed into one
+    generic message."""
+    source = _source()
+    body = _function_body(source, "function wwRenderVoltageReferenceBlock(state)", "function wwWirePerUnitProfileFieldsEvents()")
+    assert "conflicting_evidence" in body
+    assert "Conflicting voltage-channel naming was detected." in body
+    assert "No recognizable voltage-channel naming pattern was found." in body
+
+
+def test_detection_details_toggle_is_wired():
+    source = _source()
+    body = _function_body(source, "function wwWirePerUnitProfileFieldsEvents()", "function wwRenderPerUnitProfileEditor()")
+    toggle_section = body[body.index("perUnitToggleDetectionDetailsBtn") :]
+    assert "state.detectionDetailsExpanded = !state.detectionDetailsExpanded;" in toggle_section
+
+
+def test_detection_details_collapsed_by_default_on_a_fresh_editor_state():
+    source = _source()
+    body = _function_body(source, "function wwPerUnitConfigToEditorState(sourceId, config)", "function wwPerUnitEditorResolvedCurrentBaseText(state)")
+    assert "detectionDetailsExpanded: false," in body
 
 
 def test_return_to_auto_reruns_rather_than_keeps_the_stale_manual_choice():
@@ -158,12 +198,85 @@ def test_voltage_base_field_uses_a_fixed_suffix_not_a_unit_dropdown():
 
 
 def test_current_base_uses_three_labeled_radio_options():
+    """Section 7-8 (owner UAT2): fully-clickable rows, not bare radio
+    buttons -- and "Voltage only" is renamed to "No current base" per
+    the owner's own spec, though the underlying API value (`"none"`)
+    is untouched."""
     source = _source()
     body = _function_body(source, "function wwRenderPerUnitProfileEditor()", "async function wwApplyPerUnitProfileEditor()")
     assert "Calculate from apparent power" in body
     assert "Enter current base manually" in body
-    assert "Voltage only" in body
+    assert "No current base" in body
+    assert "Voltage channels only." in body
     assert 'name="perUnitCurrentBaseMode"' in body
+
+
+def test_current_base_rows_are_fully_clickable_labels_not_bare_radios():
+    """Section 7: the whole row (icon/title/description) must be
+    inside one <label> wrapping the radio -- never a radio floating
+    next to disconnected text."""
+    source = _source()
+    body = _function_body(source, "function wwRenderPerUnitProfileEditor()", "async function wwApplyPerUnitProfileEditor()")
+    assert "ww-pu-mode-row" in body
+    assert "ww-pu-mode-row--selected" in body
+    assert '<label class="ww-pu-mode-row' in body
+
+
+def test_advanced_options_section_exists_as_an_empty_placeholder():
+    """Section 10: a collapsed, structurally-present Advanced Options
+    disclosure -- explicitly NOT populated with any speculative
+    capability (channel overrides, multiple voltage groups, transformer
+    mappings, alternative PU standards, frequency-base config)."""
+    source = _source()
+    body = _function_body(source, "function wwRenderPerUnitProfileEditor()", "async function wwApplyPerUnitProfileEditor()")
+    assert "ww-pu-advanced" in body
+    assert "Advanced options" in body
+    forbidden = [
+        "channel-specific override",
+        "voltage group",
+        "transformer",
+        "alternative PU standard",
+        "frequency base",
+        "frequency-base",
+    ]
+    lowered = body.lower()
+    for phrase in forbidden:
+        assert phrase.lower() not in lowered
+
+
+def test_modal_uses_a_wider_compound_selector_not_the_shared_base_width():
+    """The modal-width fix: a compound `.group-editor-box.ww-pu-dialog`
+    selector (not a bare single-class override) so this dialog widens
+    without affecting the Custom Groups editor or Upload modal, which
+    also use `.group-editor-box`."""
+    source = _source()
+    assert ".group-editor-box.ww-pu-dialog" in source
+    assert 'class="group-editor-box ww-pu-dialog"' in source
+
+
+def test_recording_section_is_the_first_section_not_voltage_base():
+    """Recording is genuinely first in DOM order (in the modal's static
+    HTML shell, ahead of the dynamically-rendered fields) -- it must
+    carry the `--first` modifier, not Voltage Base."""
+    source = _source()
+    shell_start = source.index('id="perUnitProfilesOverlay"')
+    shell_end = source.index('id="perUnitProfileFields"', shell_start)
+    shell = source[shell_start:shell_end]
+    assert "ww-pu-section--first" in shell
+    body = _function_body(source, "function wwRenderPerUnitProfileEditor()", "async function wwApplyPerUnitProfileEditor()")
+    assert "ww-pu-section--first" not in body
+
+
+def test_source_status_line_renders_separately_from_the_select_options():
+    """Section 2: source select options stay clean (just the recording
+    name) -- ownership/configuration status is a separate status line,
+    never baked into the option text."""
+    source = _source()
+    select_body = _function_body(source, "function wwRenderPerUnitSourceSelect()", "function wwPerUnitSourceSelectChange(")
+    assert "recordingDisplayName(source)" in select_body
+    status_body = _function_body(source, "function wwRenderPerUnitSourceStatusLine()", "function wwPerUnitSourceSelectChange(")
+    assert "Not configured" in status_body
+    assert "perUnitSourceStatus" in status_body
 
 
 def test_cursor_peak_and_annotation_anchor_requests_all_carry_unit_mode():
