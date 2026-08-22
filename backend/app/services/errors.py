@@ -165,7 +165,43 @@ class CyclicDependencyError(ImportServiceError):
 
 
 class InvalidCalculatedOperationError(ImportServiceError):
-    """Requested operation is not one of the Phase 5A-supported operations
-    (e.g. RMS, explicitly deferred -- section 71)."""
+    """Requested operation is not one of this project's supported
+    calculated-channel operations."""
 
     code = "invalid_calculated_operation"
+
+
+# ---- Phase 5B: RMS Calculated Channel (DEC-048) ----
+
+
+class InvalidNominalFrequencyError(ImportServiceError):
+    """RMS's own `nominal_frequency_hz` parameter is missing/non-finite/
+    outside the sensible plausibility bound (owner section 30/41)."""
+
+    code = "invalid_nominal_frequency"
+
+
+class RmsRecordingTooShortError(ImportServiceError):
+    """The input recording does not span even one full RMS window, so no
+    output sample could ever be non-NaN (owner section 40) -- rejected
+    outright rather than silently creating an all-NaN channel."""
+
+    code = "rms_recording_too_short"
+
+
+class RmsSamplingTooSparseError(ImportServiceError):
+    """The input's sample spacing is too coarse relative to one RMS window
+    to produce a meaningful one-cycle RMS (owner section 41)."""
+
+    code = "rms_sampling_too_sparse"
+
+
+class RmsOverrideRequiredError(ImportServiceError):
+    """RMS eligibility came back non-`suitable` (trusted metadata already
+    says RMS/magnitude, or the algorithmic detector is uncertain/negative)
+    and the request did not set `override=True` (owner section 14/23/24/
+    43): the backend never silently proceeds, and never trusts a client-
+    supplied eligibility result -- it re-derives eligibility itself here,
+    identically to the dedicated eligibility-check endpoint."""
+
+    code = "rms_override_required"

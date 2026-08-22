@@ -31,10 +31,13 @@ from app.schemas.calculated_channel import (
     CalculatedPeakBatchRequest,
     CalculatedPeakResultOut,
     CalculatedWaveformRangeOut,
+    RmsEligibilityRequest,
+    RmsEligibilityResponse,
 )
 from app.schemas.source import ErrorOut
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import (
+    check_rms_eligibility,
     create_calculated_channel,
     delete_calculated_channel,
     extract_calculated_cursor_values,
@@ -66,6 +69,10 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "cyclic_dependency": status.HTTP_400_BAD_REQUEST,
     "invalid_calculated_operation": status.HTTP_400_BAD_REQUEST,
     "invalid_time_range": status.HTTP_400_BAD_REQUEST,
+    "invalid_nominal_frequency": status.HTTP_400_BAD_REQUEST,
+    "rms_recording_too_short": status.HTTP_400_BAD_REQUEST,
+    "rms_sampling_too_sparse": status.HTTP_400_BAD_REQUEST,
+    "rms_override_required": status.HTTP_400_BAD_REQUEST,
     "internal_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
@@ -127,6 +134,7 @@ def create_channel(
             parameters=body.parameters,
             source_registry=source_registry,
             calc_registry=calc_registry,
+            override=body.override,
         )
     except ImportServiceError as exc:
         logger.info("Calculated channel creation rejected (%s) for workspace %s: %s", exc.code, workspace_id, exc.message)
@@ -180,6 +188,40 @@ def get_channel_waveform(
         channel, start_time=start_time, end_time=end_time, point_budget=point_budget
     )
     return CalculatedWaveformRangeOut.from_result(result)
+
+
+@router.post("/rms-eligibility", response_model=RmsEligibilityResponse)
+def get_rms_eligibility(
+    workspace_id: str,
+    body: RmsEligibilityRequest,
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+    calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
+) -> RmsEligibilityResponse:
+    """A dedicated, stateless, side-effect-free pre-check (Phase 5B,
+    DEC-048) -- the Signal Builder calls this on every input/nominal-
+    frequency change, independent of Create's own error/success state
+    (section 44/62). Mirrors the existing `/cursor-values`/`/peak-values`
+    literal-segment-POST shape rather than a create-dry-run flag, so it
+    never touches `create_calculated_channel()`'s own atomic all-checks-
+    then-write guarantee.
+
+    This is the SAME `check_rms_eligibility()` function
+    `create_calculated_channel()` calls internally at actual creation time
+    -- the backend never trusts a client-supplied eligibility result
+    (section 43), it always re-derives one itself.
+    """
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        eligibility = check_rms_eligibility(
+            workspace_id=workspace_id,
+            input_ref=body.input.to_domain(),
+            nominal_frequency_hz=body.nominal_frequency_hz,
+            source_registry=source_registry,
+            calc_registry=calc_registry,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return RmsEligibilityResponse.from_result(eligibility)
 
 
 @router.post("/cursor-values", response_model=CalculatedCursorValuesOut)

@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
+import numpy as np
 from pydantic import BaseModel, model_validator
 
 from app.services.calculated_channel_service import (
@@ -15,8 +16,17 @@ from app.services.calculated_channel_service import (
     CalculatedCursorValues,
     CalculatedPeakResult,
     CalculatedWaveformRangeResult,
+    RmsEligibility,
 )
 from app.domain.calculated_channel import CalculatedChannel, ChannelRef
+
+
+def _sanitize_float_list(values) -> list[float | None]:
+    """Phase 5B: NaN -> `null`, everything else unchanged. See
+    app.services.calculated_channel_service._finite_or_none's own
+    docstring for why this sanitization exists and why it is applied at
+    this calculated-channel-only serialization boundary."""
+    return [float(v) if np.isfinite(v) else None for v in values]
 
 
 class ChannelRefIn(BaseModel):
@@ -62,15 +72,46 @@ class ChannelRefOut(BaseModel):
 class CalculatedChannelCreateRequest(BaseModel):
     """Request body for POST .../calculated-channels.
 
-    `parameters` is operation-specific -- only `multiply_constant` reads
-    it (`{"constant": <finite number>}`); every other operation ignores
-    it. Section 74: no free-form formula text anywhere in this shape.
+    `parameters` is operation-specific -- `multiply_constant` reads
+    `{"constant": <finite number>}`; `rms` (Phase 5B) reads
+    `{"nominal_frequency_hz": <finite number>}`; every other operation
+    ignores it. Section 74: no free-form formula text anywhere in this
+    shape.
+
+    `override` (Phase 5B, DEC-048) only matters for `rms`: the engineer's
+    explicit "Calculate anyway" acknowledgement when RMS eligibility is
+    not `suitable`. A strongly-typed top-level field, deliberately not
+    buried inside the loosely-typed `parameters` dict -- it is a
+    cross-cutting safety flag the backend must independently validate,
+    never a math parameter. Ignored (never trusted as an eligibility
+    result itself) for every other operation.
     """
 
     name: str
-    operation: Literal["reverse_polarity", "absolute_value", "multiply_constant", "addition", "subtraction"]
+    operation: Literal["reverse_polarity", "absolute_value", "multiply_constant", "addition", "subtraction", "rms"]
     inputs: list[ChannelRefIn]
     parameters: dict = {}
+    override: bool = False
+
+
+class RmsEligibilityRequest(BaseModel):
+    """Request body for POST .../calculated-channels/rms-eligibility --
+    a stateless, side-effect-free pre-check the Signal Builder calls on
+    every input/nominal-frequency change, independent of Create (section
+    44)."""
+
+    input: ChannelRefIn
+    nominal_frequency_hz: float
+
+
+class RmsEligibilityResponse(BaseModel):
+    status: Literal["suitable", "likely_already_rms_or_magnitude", "uncertain"]
+    reason: str
+    override_required: bool
+
+    @classmethod
+    def from_result(cls, result: RmsEligibility) -> "RmsEligibilityResponse":
+        return cls(status=result.status, reason=result.reason, override_required=result.override_required)
 
 
 class CalculatedChannelOut(BaseModel):
@@ -97,6 +138,13 @@ class CalculatedChannelOut(BaseModel):
     # Channels are subgrouped. Every pre-existing field/consumer is
     # unchanged.
     engineering_type: str
+    # Phase 5B (DEC-048): additive field -- this channel's own
+    # waveform-form classification (app.domain.channel_classification.
+    # KNOWN_WAVEFORM_FORMS), computed once at creation by
+    # derive_waveform_form(). An RMS channel is always "rms" here (owner
+    # section 10: "the waveform form should be identifiable as RMS").
+    # Every pre-existing field/consumer is unchanged.
+    waveform_form: str
 
     @classmethod
     def from_domain(cls, channel: CalculatedChannel) -> "CalculatedChannelOut":
@@ -113,6 +161,7 @@ class CalculatedChannelOut(BaseModel):
             sample_count=int(channel.time.shape[0]),
             created_at=channel.created_at,
             engineering_type=channel.engineering_type,
+            waveform_form=channel.waveform_form,
         )
 
 
@@ -125,8 +174,14 @@ class CalculatedWaveformRangeOut(BaseModel):
     original_sample_count: int
     returned_point_count: int
     representation: str
-    time: list[float]
-    values: list[float]
+    # Phase 5B: `float | None` (was `list[float]`) -- an RMS channel's
+    # leading warm-up region is routine, guaranteed NaN in the underlying
+    # numpy array; `null` is what reaches JSON instead (see
+    # _sanitize_float_list's own docstring). Widening only -- every
+    # pre-existing operation never produces NaN, so this is a no-op for
+    # them.
+    time: list[float | None]
+    values: list[float | None]
 
     @classmethod
     def from_result(cls, result: CalculatedWaveformRangeResult) -> "CalculatedWaveformRangeOut":
@@ -139,8 +194,8 @@ class CalculatedWaveformRangeOut(BaseModel):
             original_sample_count=result.original_sample_count,
             returned_point_count=len(result.time),
             representation=result.representation,
-            time=result.time.tolist(),
-            values=result.values.tolist(),
+            time=_sanitize_float_list(result.time),
+            values=_sanitize_float_list(result.values),
         )
 
 
@@ -213,7 +268,11 @@ class CalculatedAnnotationAnchorOut(BaseModel):
     unit: str
     sample_index: int
     elapsed_seconds: float
-    value: float
+    # Phase 5B: `float | None` (was `float`) -- see
+    # CalculatedAnnotationAnchorResult's own docstring; the anchor itself
+    # is always valid, only the displayed value can be unavailable
+    # (an RMS channel's warm-up region).
+    value: float | None
 
     @classmethod
     def from_result(cls, result: CalculatedAnnotationAnchorResult) -> "CalculatedAnnotationAnchorOut":

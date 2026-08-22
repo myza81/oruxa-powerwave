@@ -52,6 +52,36 @@ POWER = "Power"
 # than deriving it from whatever happens to appear in one file.
 KNOWN_CATEGORIES = (VOLTAGE, CURRENT, POWER, FREQUENCY, ROCOF, UNDEFINED)
 
+# Phase 5B (DEC-048): waveform-form metadata -- a SEPARATE taxonomy from
+# engineering_type above. engineering_type answers "what physical quantity
+# is this" (Voltage/Current/...); waveform_form answers "how is this value
+# recorded at each sample" (an instantaneous AC waveform vs. an already-
+# RMS/magnitude quantity vs. unknown). Neither implies the other -- a
+# Voltage channel may be instantaneous OR already RMS; a Frequency channel
+# is virtually never a meaningful RMS input regardless of its (Frequency)
+# engineering_type. This is why RMS eligibility must never be gated purely
+# by engineering_type (owner requirement, section 26/27/63 of the RMS
+# task) -- COMTRADE is not proof of "instantaneous" (section 12).
+#
+# No provider sets this away from UNKNOWN today -- COMTRADE has no such
+# field, and CSV/Excel import does not exist yet (Phase 1.5, dormant, same
+# as engineering_type's own tier 1). The field exists now so a future
+# importer has somewhere trustworthy to write to, per the owner's explicit
+# forward-compatibility requirement (section 11/28) -- this is not a
+# speculative redesign, just one additive optional field, mirroring
+# exactly how `engineering_type` itself was added to `CalculatedChannel`
+# by a Phase 5A addendum before any UI depended on it.
+WAVEFORM_FORM_UNKNOWN = "unknown"
+WAVEFORM_FORM_INSTANTANEOUS = "instantaneous"
+WAVEFORM_FORM_RMS = "rms"
+WAVEFORM_FORM_MAGNITUDE = "magnitude"
+KNOWN_WAVEFORM_FORMS = (
+    WAVEFORM_FORM_INSTANTANEOUS,
+    WAVEFORM_FORM_RMS,
+    WAVEFORM_FORM_MAGNITUDE,
+    WAVEFORM_FORM_UNKNOWN,
+)
+
 # Tier 1: powerwave's own ParameterType values (app/import_wizard/column_mapping.py).
 # "digital", "timestamp" cannot apply to an analog channel and are treated
 # as unrecognized (fall through) rather than mapped to something
@@ -101,3 +131,66 @@ def classify_analog_channel(*, parameter_type: str | None, unit: str | None) -> 
             return _BASE_UNIT_TO_CATEGORY[match.group(1).lower()]
 
     return UNDEFINED
+
+
+#: Calculated-channel operations whose output form is a pass-through of
+#: their single input's own form, unchanged.
+_WAVEFORM_FORM_PASSTHROUGH_OPERATIONS = frozenset({"reverse_polarity", "multiply_constant"})
+#: Multi-input operations use the same "all-known-and-equal else unknown"
+#: rule as derive_engineering_type() -- see the shared helper below.
+_WAVEFORM_FORM_INHERIT_IF_UNANIMOUS_OPERATIONS = frozenset({"addition", "subtraction"})
+
+
+def _unanimous_known_value(values: list[str], unknown: str) -> str:
+    """Shared "all inputs share the same known value, else unknown" rule --
+    used by both derive_engineering_type() (app.domain.calculated_channel)
+    and derive_waveform_form() below for their respective multi-input
+    branches, so the one rule has exactly one implementation."""
+    if not values:
+        return unknown
+    first = values[0]
+    if first == unknown:
+        return unknown
+    if all(v == first for v in values):
+        return first
+    return unknown
+
+
+def derive_waveform_form(operation: str, input_forms: list[str]) -> str:
+    """Phase 5B (DEC-048): the calculated-channel waveform-form propagation
+    rule (owner section 13). Deliberately a SEPARATE function from
+    derive_engineering_type() in app.domain.calculated_channel, not a
+    reuse of it -- unlike engineering_type, where every Phase 5A operation
+    shares one inheritance rule, waveform_form propagation genuinely
+    differs PER OPERATION:
+
+    - reverse_polarity, multiply_constant: pass through the single input's
+      form unchanged (negating or scaling a waveform does not change
+      whether it is instantaneous, RMS, or already a magnitude).
+    - addition, subtraction: inherit only if every input shares the same
+      KNOWN form, else unknown -- same conservative shape as
+      derive_engineering_type(), via the shared `_unanimous_known_value()`
+      helper.
+    - absolute_value: always `unknown` (owner section 13: "prefer unknown
+      unless there is a stronger mathematically-approved rule" -- taking
+      the absolute value of an instantaneous waveform produces something
+      that is no longer usefully "instantaneous" for RMS-eligibility
+      purposes, e.g. it has lost its bipolarity, one of the detector's own
+      indicators).
+    - rms: always `rms`, unconditionally -- the output's waveform form is
+      DEFINED by the operation itself, never inherited from its input
+      (an RMS channel's own output is RMS by construction, regardless of
+      what its input was).
+
+    Never guesses from a channel's own (user-editable) `name`, matching
+    derive_engineering_type()'s own explicit rule.
+    """
+    if operation == "rms":
+        return WAVEFORM_FORM_RMS
+    if operation == "absolute_value":
+        return WAVEFORM_FORM_UNKNOWN
+    if operation in _WAVEFORM_FORM_PASSTHROUGH_OPERATIONS:
+        return input_forms[0] if input_forms else WAVEFORM_FORM_UNKNOWN
+    if operation in _WAVEFORM_FORM_INHERIT_IF_UNANIMOUS_OPERATIONS:
+        return _unanimous_known_value(input_forms, WAVEFORM_FORM_UNKNOWN)
+    return WAVEFORM_FORM_UNKNOWN

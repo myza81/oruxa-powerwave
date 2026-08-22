@@ -791,6 +791,7 @@
         .ww-cc-operation-card:hover { border-color: var(--accent-dim); }
         .ww-cc-operation-card[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-wash-soft); }
         .ww-cc-operation-card-name { font-size: 0.7rem; font-weight: 600; }
+        .ww-cc-operation-card-description { font-size: 0.72rem; color: var(--text-dim); }
         .ww-cc-operation-card-arity { font-size: 0.72rem; color: var(--text-dim); }
 
         .ww-cc-field { margin-top: 12px; }
@@ -807,6 +808,25 @@
         }
         .ww-cc-field input:focus { outline: none; border-color: var(--accent-dim); }
         .ww-cc-field input[readonly] { color: var(--text-dim); }
+
+        /* Phase 5B (DEC-048): RMS eligibility status -- categorical copy
+           only (section 45), never a numeric confidence value. "Suitable"
+           is deliberately non-intrusive (owner section 22); the warning/
+           uncertain states use --error so they read as needing attention
+           without inventing a new semantic color token for this one
+           feature. */
+        .ww-cc-rms-status { margin-top: 8px; font-size: 0.7rem; color: var(--text-dim); }
+        .ww-cc-rms-status-suitable { color: var(--text-dim); }
+        .ww-cc-rms-status-warning { color: var(--error); }
+        .ww-cc-rms-override-row { margin-top: 8px; display: flex; align-items: center; gap: 6px; font-size: 0.7rem; }
+        /* Same CSS-cascade-vs-[hidden] bug class this project has hit
+           repeatedly (#pageCalculatedChannels, .ww-annotation-guidance,
+           etc.): an author `display: flex` rule beats the UA
+           stylesheet's `[hidden] { display: none }` by origin alone, so
+           `el.hidden = true` has no visible effect unless overridden
+           here explicitly. */
+        .ww-cc-rms-override-row[hidden] { display: none; }
+        .ww-cc-rms-override-row input[type="checkbox"] { margin: 0; }
 
         .ww-cc-expression-preview {
             margin: 10px 0 0;
@@ -10497,10 +10517,15 @@
             reverse_polarity: { label: "Reverse Polarity", arity: "unary", arityLabel: "1 input", glyph: "−x" },
             absolute_value: { label: "Absolute Value", arity: "unary", arityLabel: "1 input", glyph: "|x|" },
             multiply_constant: { label: "Multiply by Constant", arity: "unary", arityLabel: "1 input + constant", glyph: "k·x" },
+            // Phase 5B (DEC-048): 1 input + a scalar nominal_frequency
+            // parameter -- the same "1 input + 1 scalar" shape as
+            // multiply_constant, plus an async eligibility check (see
+            // wwCcCheckRmsEligibility()) no other operation needs.
+            rms: { label: "RMS", description: "1-cycle true RMS", arity: "unary", arityLabel: "1 input + nominal frequency", glyph: "RMS(x)" },
             addition: { label: "Addition", arity: "multi", arityLabel: "2+ inputs", glyph: "x₁+x₂" },
             subtraction: { label: "Subtraction", arity: "multi", arityLabel: "2+ ordered inputs", glyph: "x₁−x₂" },
         };
-        const WW_CC_OPERATION_ORDER = ["reverse_polarity", "absolute_value", "multiply_constant", "addition", "subtraction"];
+        const WW_CC_OPERATION_ORDER = ["reverse_polarity", "absolute_value", "multiply_constant", "rms", "addition", "subtraction"];
 
         // Transient Signal Builder state -- deliberately NOT part of `ww`
         // (mirrors `shell`'s own separation from waveform-domain state):
@@ -10508,8 +10533,30 @@
         // composed, reset on every successful create (section 47:
         // calculated channels are immutable after creation, so there is
         // no "edit" state to preserve here either).
-        const wwCcBuilder = { operation: null, inputs: [], constant: "", name: "", nameEditedByUser: false };
+        const wwCcBuilder = {
+            operation: null, inputs: [], constant: "", name: "", nameEditedByUser: false,
+            // Phase 5B (DEC-048): RMS-only fields. `nominalFrequency` is a
+            // string (same convention as `constant`) so an empty/partial
+            // edit is representable without coercing to a number first.
+            // `override` is the engineer's explicit "Calculate anyway"
+            // acknowledgement -- reset to false on every operation/input
+            // change so a stale acknowledgement can never silently carry
+            // over to a different input (section 25/62's own "switch
+            // input clears old warning/status immediately" requirement).
+            nominalFrequency: "50", override: false,
+        };
         const wwCcListErrors = new Map(); // calculatedChannelId -> inline delete-error message, cleared on next successful action
+
+        // Phase 5B: RMS eligibility check state -- deliberately separate
+        // from wwCcBuilder itself (mirrors wwCcPreview's own separation
+        // convention), since it is server-derived, asynchronous, and can
+        // be "loading" or "stale for the current input" independent of
+        // the builder's own synchronous fields. A single global counter
+        // (not a per-key Map like wwCursorValuesGeneration) is sufficient
+        // -- only one Signal Builder session is ever active at a time.
+        const wwCcRmsEligibility = { status: null, reason: "", loading: false, checkedForKey: null };
+        let wwCcRmsEligibilityGeneration = 0;
+        let wwCcRmsEligibilityDebounceTimer = null;
 
         function wwCcResetBuilder() {
             wwCcBuilder.operation = null;
@@ -10517,6 +10564,21 @@
             wwCcBuilder.constant = "";
             wwCcBuilder.name = "";
             wwCcBuilder.nameEditedByUser = false;
+            wwCcBuilder.nominalFrequency = "50";
+            wwCcBuilder.override = false;
+            wwCcResetRmsEligibility();
+        }
+
+        function wwCcResetRmsEligibility() {
+            wwCcRmsEligibility.status = null;
+            wwCcRmsEligibility.reason = "";
+            wwCcRmsEligibility.loading = false;
+            wwCcRmsEligibility.checkedForKey = null;
+            wwCcRmsEligibilityGeneration += 1; // discard any in-flight response
+            if (wwCcRmsEligibilityDebounceTimer) {
+                clearTimeout(wwCcRmsEligibilityDebounceTimer);
+                wwCcRmsEligibilityDebounceTimer = null;
+            }
         }
 
         // Phase 5A-UAT3 (DEC-047 clarification, section 14): the ONE
@@ -10574,6 +10636,11 @@
                 const k = calc.parameters && Number.isFinite(calc.parameters.constant) ? calc.parameters.constant : "?";
                 return label + " (" + names[0] + " × " + k + ")";
             }
+            if (calc.operation === "rms") {
+                const f = calc.parameters && Number.isFinite(calc.parameters.nominal_frequency_hz)
+                    ? calc.parameters.nominal_frequency_hz : "?";
+                return label + " (" + names[0] + ", " + f + " Hz)";
+            }
             if (calc.operation === "addition") return label + " (" + names.join(" + ") + ")";
             if (calc.operation === "subtraction") return label + " (" + names.join(" − ") + ")";
             return label + " (" + names[0] + ")";
@@ -10587,6 +10654,7 @@
             if (b.operation === "reverse_polarity") joined = "-" + labels[0];
             else if (b.operation === "absolute_value") joined = "Abs(" + labels[0] + ")";
             else if (b.operation === "multiply_constant") joined = (b.constant === "" ? "k" : b.constant) + " × " + labels[0];
+            else if (b.operation === "rms") joined = "RMS(" + labels[0] + ")";
             else if (b.operation === "addition") joined = labels.join(" + ");
             else joined = labels.join(" − ");
             // Section 34: "if expression is too long, generate a concise
@@ -10605,6 +10673,10 @@
             if (b.operation === "reverse_polarity") return "Result = −" + labels[0];
             if (b.operation === "absolute_value") return "Result = |" + labels[0] + "|";
             if (b.operation === "multiply_constant") return "Result = " + (b.constant === "" ? "k" : b.constant) + " × " + labels[0];
+            if (b.operation === "rms") {
+                const f = b.nominalFrequency === "" ? "50" : b.nominalFrequency;
+                return "Result = RMS(" + labels[0] + ", " + f + " Hz, 1 cycle)";
+            }
             if (b.operation === "addition") return "Result = " + labels.join(" + ");
             if (b.operation === "subtraction") return "Result = " + labels.join(" − ");
             return "";
@@ -10635,6 +10707,12 @@
                 const n = Number(b.constant);
                 if (b.constant === "" || !Number.isFinite(n)) errors.push("Constant must be a finite number.");
             }
+            if (b.operation === "rms") {
+                const n = Number(b.nominalFrequency);
+                if (b.nominalFrequency === "" || !Number.isFinite(n) || n <= 0) {
+                    errors.push("Nominal frequency must be a positive number.");
+                }
+            }
             if (meta.arity === "multi" && b.inputs.length >= 2) {
                 const units = b.inputs.map((i) => i.unit || "");
                 const known = units.filter((u) => u);
@@ -10652,6 +10730,129 @@
         }
 
         // ------------------------------------------------------------------
+        // RMS eligibility (Phase 5B, DEC-048)
+        // ------------------------------------------------------------------
+
+        // A stable identity for "this exact input + this exact nominal
+        // frequency" -- the cache key that tells wwCcSyncCreateButtonState()
+        // whether the currently-displayed eligibility result is still
+        // current for what the builder actually holds right now, distinct
+        // from wwCcRmsEligibilityGeneration's own separate "was this
+        // specific in-flight request superseded" concern.
+        function wwCcRmsEligibilityKey() {
+            const b = wwCcBuilder;
+            if (!b.inputs[0]) return null;
+            const i = b.inputs[0];
+            const inputKey = i.kind === "source" ? "source::" + i.sourceId + "::" + i.channelName : "calculated::" + i.calculatedChannelId;
+            return inputKey + "::" + b.nominalFrequency;
+        }
+
+        function wwCcScheduleRmsEligibilityCheck() {
+            if (wwCcRmsEligibilityDebounceTimer) clearTimeout(wwCcRmsEligibilityDebounceTimer);
+            wwCcRmsEligibilityDebounceTimer = setTimeout(wwCcCheckRmsEligibility, 400);
+        }
+
+        async function wwCcCheckRmsEligibility() {
+            const b = wwCcBuilder;
+            if (b.operation !== "rms" || !b.inputs[0]) return;
+            const frequency = Number(b.nominalFrequency);
+            if (b.nominalFrequency === "" || !Number.isFinite(frequency) || frequency <= 0) return; // wwCcValidateBuilder's own message already covers this
+            const key = wwCcRmsEligibilityKey();
+
+            wwCcRmsEligibility.loading = true;
+            wwCcRmsEligibility.checkedForKey = null;
+            wwCcRenderRmsEligibilityStatus();
+            wwCcSyncCreateButtonState();
+
+            const generation = (wwCcRmsEligibilityGeneration += 1);
+            const input = b.inputs[0];
+            const inputPayload = input.kind === "source"
+                ? { kind: "source", source_id: input.sourceId, channel_name: input.channelName }
+                : { kind: "calculated", calculated_channel_id: input.calculatedChannelId };
+
+            let response;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/calculated-channels/rms-eligibility",
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ input: inputPayload, nominal_frequency_hz: frequency }),
+                    }
+                );
+            } catch (error) {
+                if (wwCcRmsEligibilityGeneration !== generation) return; // superseded while in flight
+                wwCcRmsEligibility.loading = false;
+                wwCcRmsEligibility.status = "uncertain";
+                wwCcRmsEligibility.reason = "Could not reach the backend to check eligibility.";
+                wwCcRmsEligibility.checkedForKey = key;
+                wwCcRenderRmsEligibilityStatus();
+                wwCcSyncCreateButtonState();
+                return;
+            }
+            if (wwCcRmsEligibilityGeneration !== generation) return; // superseded while in flight
+
+            let body = null;
+            try { body = await response.json(); } catch (error) { /* handled below */ }
+            wwCcRmsEligibility.loading = false;
+            if (!response.ok || !body) {
+                wwCcRmsEligibility.status = "uncertain";
+                wwCcRmsEligibility.reason = "Could not check eligibility for this input.";
+            } else {
+                wwCcRmsEligibility.status = body.status;
+                wwCcRmsEligibility.reason = body.reason;
+            }
+            wwCcRmsEligibility.checkedForKey = key;
+            wwCcRenderRmsEligibilityStatus();
+            wwCcSyncCreateButtonState();
+        }
+
+        // Section 45: categorical copy only -- never a numeric confidence
+        // value. Section 22-24's three fixed outcomes.
+        function wwCcRenderRmsEligibilityStatus() {
+            const el = document.getElementById("wwCcRmsEligibilityStatus");
+            const overrideRow = document.getElementById("wwCcRmsOverrideRow");
+            if (!el) return;
+            if (wwCcBuilder.operation !== "rms" || !wwCcBuilder.inputs[0]) {
+                el.hidden = true;
+                if (overrideRow) overrideRow.hidden = true;
+                return;
+            }
+            el.hidden = false;
+            el.classList.remove("ww-cc-rms-status-suitable", "ww-cc-rms-status-warning");
+            if (wwCcRmsEligibility.loading) {
+                el.textContent = "Checking…";
+            } else if (wwCcRmsEligibility.status === "suitable") {
+                el.textContent = "Input appears suitable for RMS.";
+                el.classList.add("ww-cc-rms-status-suitable");
+            } else if (wwCcRmsEligibility.status === "likely_already_rms_or_magnitude") {
+                el.textContent = wwCcRmsEligibility.reason ||
+                    "This channel appears to already be an RMS or magnitude signal. Applying RMS again may not be meaningful.";
+                el.classList.add("ww-cc-rms-status-warning");
+            } else if (wwCcRmsEligibility.status === "uncertain") {
+                el.textContent = wwCcRmsEligibility.reason ||
+                    "Signal form could not be confirmed. Verify that this is an instantaneous waveform before applying RMS.";
+                el.classList.add("ww-cc-rms-status-warning");
+            } else {
+                el.textContent = "";
+            }
+            const needsOverride = wwCcRmsEligibility.status === "likely_already_rms_or_magnitude" || wwCcRmsEligibility.status === "uncertain";
+            if (overrideRow) overrideRow.hidden = !needsOverride;
+        }
+
+        // Section 62: Create is enabled only when local validation passes
+        // AND (for RMS specifically) the eligibility check is CURRENT for
+        // the exact input+frequency the builder now holds -- never stale,
+        // never mid-flight -- and either suitable or explicitly overridden.
+        function wwCcRmsBlocksCreate() {
+            if (wwCcBuilder.operation !== "rms") return false;
+            if (wwCcRmsEligibility.loading) return true;
+            if (wwCcRmsEligibility.checkedForKey !== wwCcRmsEligibilityKey()) return true;
+            if (wwCcRmsEligibility.status === "suitable") return false;
+            return !wwCcBuilder.override;
+        }
+
+        // ------------------------------------------------------------------
         // Rendering
         // ------------------------------------------------------------------
 
@@ -10664,6 +10865,7 @@
                 const pressed = wwCcBuilder.operation === operation;
                 html += '<button type="button" class="ww-cc-operation-card" data-operation="' + operation + '" aria-pressed="' + pressed + '">' +
                     '<span class="ww-cc-operation-card-name">' + escapeHtml(meta.label) + '</span>' +
+                    (meta.description ? '<span class="ww-cc-operation-card-description">' + escapeHtml(meta.description) + '</span>' : "") +
                     '<span class="ww-cc-operation-card-arity">' + escapeHtml(meta.arityLabel) + '</span>' +
                     '</button>';
             }
@@ -10725,12 +10927,26 @@
                         '<input type="text" inputmode="decimal" id="wwCcConstantInput" placeholder="e.g. -2.5" value="' +
                         escapeHtml(String(wwCcBuilder.constant)) + '"></label>';
                 }
+                if (wwCcBuilder.operation === "rms") {
+                    html += '<label class="ww-cc-field"><span>Nominal Frequency (Hz)</span>' +
+                        '<input type="text" inputmode="decimal" id="wwCcNominalFrequencyInput" placeholder="50" value="' +
+                        escapeHtml(String(wwCcBuilder.nominalFrequency)) + '"></label>' +
+                        '<div class="ww-cc-field"><span>Window</span><input type="text" readonly value="1 cycle (' +
+                        (Number(wwCcBuilder.nominalFrequency) > 0 ? (1000 / Number(wwCcBuilder.nominalFrequency)).toFixed(2) : "?") +
+                        ' ms)"></div>' +
+                        '<div class="ww-cc-field"><span>Method</span><input type="text" readonly value="True RMS"></div>' +
+                        '<div class="ww-cc-rms-status" id="wwCcRmsEligibilityStatus" hidden></div>' +
+                        '<label class="ww-cc-rms-override-row" id="wwCcRmsOverrideRow" hidden>' +
+                        '<input type="checkbox" id="wwCcRmsOverrideCheckbox"' + (wwCcBuilder.override ? " checked" : "") + '>' +
+                        '<span>Calculate anyway</span></label>';
+                }
                 fieldsEl.innerHTML = html;
                 const select = document.getElementById("wwCcUnaryInputSelect");
                 if (select && current) {
                     const key = current.kind + "::" + (current.kind === "source" ? current.sourceId + "::" + current.channelName : current.calculatedChannelId);
                     select.value = key;
                 }
+                if (wwCcBuilder.operation === "rms") wwCcRenderRmsEligibilityStatus();
             } else {
                 let html = '<ol class="ww-cc-input-list" id="wwCcInputList">';
                 wwCcBuilder.inputs.forEach((input, index) => {
@@ -10782,7 +10998,7 @@
             const errorEl = document.getElementById("wwCcError");
             if (!btn) return;
             const { valid } = wwCcValidateBuilder();
-            btn.disabled = !valid;
+            btn.disabled = !valid || wwCcRmsBlocksCreate();
             if (valid && errorEl) errorEl.hidden = true;
         }
 
@@ -10791,8 +11007,11 @@
             wwCcBuilder.operation = operation;
             wwCcBuilder.inputs = [];
             wwCcBuilder.constant = "";
+            wwCcBuilder.nominalFrequency = "50";
+            wwCcBuilder.override = false;
             wwCcBuilder.nameEditedByUser = false;
             wwCcBuilder.name = "";
+            wwCcResetRmsEligibility();
             document.getElementById("wwCcBuilderPanel").hidden = false;
             wwCcRenderOperationCards();
             wwCcRenderBuilderFields();
@@ -10812,6 +11031,10 @@
                 // Section 41: duplicates are explicitly allowed (A+A is
                 // mathematically valid) -- never silently deduplicated.
                 wwCcBuilder.inputs.push(candidate);
+            }
+            if (wwCcBuilder.operation === "rms") {
+                wwCcResetRmsEligibility(); // section 62: switching input clears old warning/status immediately
+                wwCcScheduleRmsEligibilityCheck();
             }
             wwCcRenderBuilderFields();
             wwCcRenderExpressionPreview();
@@ -11386,8 +11609,8 @@
         async function wwCcCreateChannel() {
             const { valid, errors } = wwCcValidateBuilder();
             const errorEl = document.getElementById("wwCcError");
-            if (!valid) {
-                if (errorEl) { errorEl.textContent = errors[0]; errorEl.hidden = false; }
+            if (!valid || wwCcRmsBlocksCreate()) {
+                if (errorEl) { errorEl.textContent = errors[0] || "Resolve the RMS eligibility warning above, or check \"Calculate anyway.\""; errorEl.hidden = false; }
                 return;
             }
             if (errorEl) errorEl.hidden = true;
@@ -11399,7 +11622,14 @@
                     ? { kind: "source", source_id: i.sourceId, channel_name: i.channelName }
                     : { kind: "calculated", calculated_channel_id: i.calculatedChannelId }
             ));
-            const parameters = wwCcBuilder.operation === "multiply_constant" ? { constant: Number(wwCcBuilder.constant) } : {};
+            let parameters = {};
+            if (wwCcBuilder.operation === "multiply_constant") parameters = { constant: Number(wwCcBuilder.constant) };
+            else if (wwCcBuilder.operation === "rms") parameters = { nominal_frequency_hz: Number(wwCcBuilder.nominalFrequency) };
+            // Section 25/43: a strongly-typed top-level flag, not buried in
+            // `parameters` -- the backend independently validates it as a
+            // cross-cutting safety flag, never trusts it as an eligibility
+            // result in itself (it re-derives eligibility server-side).
+            const override = wwCcBuilder.operation === "rms" ? !!wwCcBuilder.override : false;
 
             let response;
             try {
@@ -11410,7 +11640,7 @@
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                             name: wwCcBuilder.name.trim(), operation: wwCcBuilder.operation,
-                            inputs: inputsPayload, parameters: parameters,
+                            inputs: inputsPayload, parameters: parameters, override: override,
                         }),
                     }
                 );
@@ -11483,6 +11713,16 @@
                 wwCcBuilder.constant = event.target.value;
                 wwCcSyncNameAndUnitFields();
                 wwCcSyncCreateButtonState();
+            } else if (event.target.id === "wwCcNominalFrequencyInput") {
+                wwCcBuilder.nominalFrequency = event.target.value;
+                wwCcResetRmsEligibility();
+                wwCcRenderExpressionPreview();
+                wwCcRenderRmsEligibilityStatus();
+                wwCcSyncCreateButtonState();
+                wwCcScheduleRmsEligibilityCheck();
+            } else if (event.target.id === "wwCcRmsOverrideCheckbox") {
+                wwCcBuilder.override = event.target.checked;
+                wwCcSyncCreateButtonState();
             }
         });
         document.getElementById("wwCcBuilderFields").addEventListener("input", (event) => {
@@ -11490,6 +11730,13 @@
                 wwCcBuilder.constant = event.target.value;
                 wwCcSyncNameAndUnitFields();
                 wwCcSyncCreateButtonState();
+            } else if (event.target.id === "wwCcNominalFrequencyInput") {
+                wwCcBuilder.nominalFrequency = event.target.value;
+                wwCcResetRmsEligibility();
+                wwCcRenderExpressionPreview();
+                wwCcRenderRmsEligibilityStatus();
+                wwCcSyncCreateButtonState();
+                wwCcScheduleRmsEligibilityCheck();
             }
         });
         document.getElementById("wwCcBuilderFields").addEventListener("click", (event) => {

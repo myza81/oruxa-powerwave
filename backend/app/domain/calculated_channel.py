@@ -25,21 +25,35 @@ from datetime import datetime
 
 import numpy as np
 
-from app.domain.channel_classification import UNDEFINED
+from app.domain.channel_classification import UNDEFINED, WAVEFORM_FORM_UNKNOWN
 
 OP_REVERSE_POLARITY = "reverse_polarity"
 OP_ABSOLUTE_VALUE = "absolute_value"
 OP_MULTIPLY_CONSTANT = "multiply_constant"
 OP_ADDITION = "addition"
 OP_SUBTRACTION = "subtraction"
+OP_RMS = "rms"
 
 #: Exactly one channel input (Multiply also takes a scalar `constant`
-#: parameter alongside its one channel input -- section 28).
-UNARY_OPERATIONS = frozenset({OP_REVERSE_POLARITY, OP_ABSOLUTE_VALUE, OP_MULTIPLY_CONSTANT})
+#: parameter alongside its one channel input -- section 28). RMS
+#: (Phase 5B, DEC-048) joins this group: exactly one channel input plus a
+#: scalar `nominal_frequency_hz` parameter, the same "1 input + 1 scalar
+#: parameter" shape as Multiply by Constant.
+UNARY_OPERATIONS = frozenset({OP_REVERSE_POLARITY, OP_ABSOLUTE_VALUE, OP_MULTIPLY_CONSTANT, OP_RMS})
 #: Two or more ordered channel inputs (section 8/30/31 -- never hard-coded
 #: to exactly two).
 MULTI_OPERATIONS = frozenset({OP_ADDITION, OP_SUBTRACTION})
 ALL_OPERATIONS = UNARY_OPERATIONS | MULTI_OPERATIONS
+
+#: Phase 5B (DEC-048) RMS parameters -- see evaluate_rms() below. A soft
+#: plausibility bound, NOT a 50/60 Hz whitelist (the owner's spec allows
+#: any sensible nominal frequency, defaulting to 50 Hz).
+MIN_NOMINAL_FREQUENCY_HZ = 1.0
+MAX_NOMINAL_FREQUENCY_HZ = 1000.0
+#: Conservative, explicitly revisitable minimum density for a "one-cycle
+#: RMS" to be meaningful at all (owner section 41: "do not calculate a
+#: misleading RMS from 2-3 points/cycle").
+MIN_SAMPLES_PER_CYCLE = 4
 
 #: Deliberately tight -- section 11 of the owner's time-alignment
 #: guardrail: "do not use a loose tolerance that could incorrectly treat
@@ -123,6 +137,16 @@ class CalculatedChannel:
     # computed once at creation time by derive_engineering_type() below --
     # never re-derived from this channel's own (user-editable) `name`.
     engineering_type: str = UNDEFINED
+    # Phase 5B (DEC-048): this channel's own waveform-form classification
+    # (app.domain.channel_classification.KNOWN_WAVEFORM_FORMS), computed
+    # once at creation time by
+    # app.domain.channel_classification.derive_waveform_form() -- an RMS
+    # channel is always WAVEFORM_FORM_RMS unconditionally (never inherited
+    # from its input); every other operation follows its own propagation
+    # rule (see derive_waveform_form()'s own docstring). This is the
+    # TRUSTED metadata a later RMS-eligibility check reads first, before
+    # ever running the algorithmic detector (owner section 11/14).
+    waveform_form: str = WAVEFORM_FORM_UNKNOWN
 
 
 def evaluate_reverse_polarity(values: np.ndarray) -> np.ndarray:
@@ -158,6 +182,179 @@ def evaluate_subtraction(value_arrays: list[np.ndarray]) -> np.ndarray:
     for arr in value_arrays[1:]:
         out = out - arr
     return out
+
+
+def evaluate_rms(time: np.ndarray, values: np.ndarray, nominal_frequency_hz: float) -> np.ndarray:
+    """Trailing one-cycle TRUE RMS (owner sections 3-9): `RMS(t) =
+    sqrt(mean(x^2))` over the trailing window `[t - window, t]`, where
+    `window = 1 / nominal_frequency_hz`. The ONLY evaluator in this module
+    that reads `time` as well as `values` -- a deliberate, narrow
+    exception to every other evaluator's pure `values -> values` contract,
+    because RMS is inherently a function of elapsed-TIME window
+    membership, never a fixed sample count (section 6/7 -- sample spacing
+    is not guaranteed uniform across a whole source recording; see
+    app.providers.comtrade's own per-row timestamp construction, which
+    means a COMTRADE file's declared multi-rate sections do not force a
+    single fixed samples-per-cycle count).
+
+    Output has the SAME LENGTH as the input, never cycle-boundary
+    downsampled -- see `CalculatedChannel`'s own docstring for why this
+    invariant matters (verbatim `time`/`reference_source_id` inheritance,
+    calculated-from-calculated support). Before a complete trailing window
+    is available (`time[i] - time[0] < window`), the output is NaN
+    (section 8: never a partial/shorter window). A window containing ANY
+    non-finite input sample also outputs NaN for that window (section 39:
+    never silently drop the invalid sample and renormalize over fewer
+    samples -- that would silently change the window's own meaning).
+
+    Two algorithms, chosen automatically by inspecting the actual spacing
+    of `time` (never assumed from `nominal_frequency_hz` alone):
+
+    - **Near-uniform sample spacing** (the common case for one COMTRADE
+      sampling-rate section): a fully vectorized cumulative-sum rolling
+      window, O(N), zero Python-level loop -- satisfying the owner's own
+      explicit efficiency requirement (section 38: "rolling sum of
+      squares... avoid O(N * window_size)").
+    - **Genuinely irregular/multi-rate spacing**: an O(N) two-pointer
+      sliding window. Correct because `time` is always monotonic
+      non-decreasing (COMTRADE per-row timestamps), so the window's own
+      lower bound is itself monotonic non-decreasing as the trailing edge
+      advances -- this is what makes one forward pass sufficient, rather
+      than a per-sample `searchsorted` (a valid, but strictly more
+      expensive, O(N log N) fallback).
+
+    Non-finite samples are tracked as a SEPARATE running/cumulative count,
+    never accumulated into the running sum-of-squares directly: a naive
+    rolling sum that adds a NaN and later "subtracts it back out" is
+    broken (IEEE754 `NaN - NaN = NaN`, so one NaN would poison every
+    subsequent window forever, not just the windows that actually contain
+    it).
+    """
+    n = time.shape[0]
+    out = np.full(n, np.nan, dtype=np.float64)
+    if n == 0:
+        return out
+
+    window = 1.0 / nominal_frequency_hz
+    finite_mask = np.isfinite(values)
+    sq_safe = np.where(finite_mask, values.astype(np.float64) * values.astype(np.float64), 0.0)
+    nonfinite_flag = (~finite_mask).astype(np.int64)
+
+    diffs = np.diff(time) if n >= 2 else np.array([], dtype=np.float64)
+    uniform = n >= 2 and bool(np.allclose(diffs, np.median(diffs), rtol=1e-6, atol=1e-12))
+
+    # A half-open trailing window, `(t[i] - window, t[i]]` -- excluding the
+    # exact left boundary sample, rather than the naively "more inclusive"
+    # closed interval `[t[i] - window, t[i]]`. For UNIFORM spacing where
+    # `window` happens to be an exact multiple of the sample interval
+    # (e.g. exactly 100 samples/cycle at 5 kHz for a 50 Hz window), a
+    # closed interval double-counts one sample: the boundary sample at
+    # `t[i] - window` and the current sample at `t[i]` are exactly one
+    # full period apart and so share the SAME sinusoidal phase, and
+    # including both over-weights that phase as the window slides,
+    # producing a spurious ~1/N ripple in an otherwise-steady sinusoid's
+    # RMS (verified numerically: ripple shrinks linearly as N grows,
+    # confirming a discretization artifact of the closed-interval choice,
+    # not sensor noise). The half-open interval is exactly one full
+    # window's worth of NON-redundant samples (`window / dt` of them,
+    # never `+ 1`) and is bit-for-bit ripple-free for a steady nominal-
+    # frequency sinusoid -- matching both real digital-relay one-cycle
+    # RMS estimator convention and this task's own worked example
+    # (section 6: "~100 samples per 20ms" for 5 kHz, not ~101).
+    #
+    # `_BOUNDARY_EPS` absorbs ordinary floating-point noise in the
+    # boundary comparison itself (`t[i] - window` computed by subtraction
+    # vs. `t[lo]` computed by the time array's own independent
+    # construction can differ by a ULP even when mathematically equal),
+    # which would otherwise make the trim fire inconsistently from one
+    # sample to the next at an exact cycle boundary and reintroduce the
+    # same ripple by a different route.
+    _BOUNDARY_EPS = 1e-9
+
+    if uniform:
+        dt = float(np.median(diffs))
+        window_samples = max(int(round(window / dt)), 1)
+        cumsum_sq = np.concatenate(([0.0], np.cumsum(sq_safe)))
+        cumsum_nonfinite = np.concatenate(([0], np.cumsum(nonfinite_flag)))
+
+        idx = np.arange(n)
+        lo = idx - window_samples + 1
+        lo_clipped = np.clip(lo, 0, n)
+        count = idx - lo_clipped + 1
+        window_sumsq = cumsum_sq[idx + 1] - cumsum_sq[lo_clipped]
+        window_nonfinite = cumsum_nonfinite[idx + 1] - cumsum_nonfinite[lo_clipped]
+
+        # Availability is governed by genuinely ELAPSED history, never by
+        # `window_samples` alone (section 6/7's own "time-based, not
+        # fixed-N" requirement applies even inside this vectorized fast
+        # path) -- `lo >= 0` alone would falsely mark one extra leading
+        # sample "available" a step early (it has `window_samples` samples
+        # accumulated, but they only span `window - dt` of real elapsed
+        # time, one sample short of a genuine full window).
+        time_available = (time - time[0]) >= (window - _BOUNDARY_EPS)
+        available = (lo >= 0) & time_available & (window_nonfinite == 0)
+
+        with np.errstate(invalid="ignore", divide="ignore"):
+            rms_values = np.sqrt(window_sumsq / count)
+        out[available] = rms_values[available]
+        return out
+
+    # Irregular/multi-rate spacing: O(N) two-pointer sliding accumulator.
+    lo = 0
+    running_sumsq = 0.0
+    running_nonfinite = 0
+    t0 = time[0]
+    for i in range(n):
+        while time[lo] <= time[i] - window + _BOUNDARY_EPS:
+            running_sumsq -= sq_safe[lo]
+            running_nonfinite -= nonfinite_flag[lo]
+            lo += 1
+        running_sumsq += sq_safe[i]
+        running_nonfinite += nonfinite_flag[i]
+        if running_nonfinite > 0 or (time[i] - t0) < window - _BOUNDARY_EPS:
+            continue
+        count = i - lo + 1
+        out[i] = np.sqrt(running_sumsq / count)
+    return out
+
+
+def nominal_frequency_valid(nominal_frequency_hz: float) -> bool:
+    """Section 30/41: a sensible numeric plausibility bound -- NOT a
+    50/60 Hz whitelist. `bool` is explicitly rejected even though Python
+    treats it as an `int` subtype (`isinstance(True, int) is True`),
+    since a stray boolean in a JSON payload should never silently pass as
+    a frequency."""
+    return bool(
+        isinstance(nominal_frequency_hz, (int, float))
+        and not isinstance(nominal_frequency_hz, bool)
+        and np.isfinite(nominal_frequency_hz)
+        and MIN_NOMINAL_FREQUENCY_HZ <= nominal_frequency_hz <= MAX_NOMINAL_FREQUENCY_HZ
+    )
+
+
+def rms_recording_long_enough(time: np.ndarray, nominal_frequency_hz: float) -> bool:
+    """Section 40: True only if the recording spans strictly more than one
+    full RMS window -- i.e. at least one output sample would be non-NaN.
+    Creation is rejected outright when this is False, rather than
+    silently producing an all-NaN channel."""
+    if time.shape[0] < 2:
+        return False
+    window = 1.0 / nominal_frequency_hz
+    duration = float(time[-1] - time[0])
+    return duration > window
+
+
+def rms_sampling_dense_enough(time: np.ndarray, nominal_frequency_hz: float) -> bool:
+    """Section 41: True only if the median sample spacing implies at least
+    MIN_SAMPLES_PER_CYCLE samples within one RMS window -- guards against
+    a misleading RMS computed from only 2-3 points per cycle."""
+    if time.shape[0] < 2:
+        return False
+    window = 1.0 / nominal_frequency_hz
+    median_dt = float(np.median(np.diff(time)))
+    if median_dt <= 0:
+        return False
+    return (window / median_dt) >= MIN_SAMPLES_PER_CYCLE
 
 
 def units_compatible(units: list[str | None]) -> bool:

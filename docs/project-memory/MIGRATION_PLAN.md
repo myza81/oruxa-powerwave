@@ -8648,6 +8648,209 @@ owner UAT after this push.
 
 ---
 
+## Phase 5B — RMS Calculated Channel (2026-08-22)
+
+### Scope
+
+Owner-approved direction: add exactly one new Calculated Channels
+operation, RMS — a guarded, engineering-correct trailing one-cycle
+true-RMS derivation for power-system waveforms, explicitly NOT a
+generic "RMS of any series" operator. Extends DEC-047's Phase 5A
+architecture rather than building anything parallel to it. Full
+decision record: [DECISIONS.md — DEC-048](DECISIONS.md#dec-048--rms-calculated-channels-use-a-trailing-one-cycle-true-rms-calculation-on-authoritative-full-resolution-samples-with-metadata-first-eligibility-and-backend-enforced-override)
+(not duplicated here — see that entry for the full rationale, including
+why a closed-interval window was tried and rejected, why `waveform_form`
+is a separate taxonomy from `engineering_type`, and the anti-bypass
+eligibility-enforcement design).
+
+### Domain layer
+
+`app.domain.calculated_channel`: `OP_RMS` (unary — 1 input +
+`nominal_frequency_hz`, same shape as `OP_MULTIPLY_CONSTANT`);
+`evaluate_rms(time, values, nominal_frequency_hz)` (the only evaluator
+that reads `time`); `nominal_frequency_valid`/
+`rms_recording_long_enough`/`rms_sampling_dense_enough` validators;
+`MIN_NOMINAL_FREQUENCY_HZ`/`MAX_NOMINAL_FREQUENCY_HZ`/
+`MIN_SAMPLES_PER_CYCLE` constants. `app.domain.channel_classification`:
+the `waveform_form` taxonomy (`unknown`/`instantaneous`/`rms`/
+`magnitude`) and `derive_waveform_form(operation, input_forms)`. New
+module `app.domain.rms_detector`: `classify_waveform_form()`, the
+5-indicator algorithmic eligibility fallback, numpy-only (no scipy
+dependency added — confirmed against `backend/requirements.txt`).
+
+### Service/API layer
+
+`app.services.calculated_channel_service`: `check_rms_eligibility()`
+(the single eligibility authority, called by both the create path and
+the new endpoint); the `OP_RMS` branch in `create_calculated_channel()`;
+a new `_finite_or_none()` helper plus sanitized cursor/annotation-anchor
+output (see NaN-serialization fix below). `app.services.errors`: 4 new
+error classes (`InvalidNominalFrequencyError`,
+`RmsRecordingTooShortError`, `RmsSamplingTooSparseError`,
+`RmsOverrideRequiredError`). `app.schemas.calculated_channel`:
+`RmsEligibilityRequest`/`RmsEligibilityResponse`, `override` field on
+the create request, `waveform_form` on `CalculatedChannelOut`, `list[float
+| None]` typing on waveform-range/cursor/anchor outputs.
+`app.api.v1.calculated_channels`: new `POST .../rms-eligibility` route
+(mirrors the existing `/cursor-values`/`/peak-values` literal-segment-POST
+shape), 4 new error-code-to-HTTP-status mappings.
+
+### A latent bug found and fixed, not a redesign
+
+FastAPI's default `JSONResponse` calls `json.dumps(..., allow_nan=False)`
+(confirmed via `inspect.getsource` against the installed `starlette`) —
+a raw NaN in a response body 500s the request. Every Phase 5A operation
+happened to never produce NaN from finite input, so this was never
+observed; RMS's leading warm-up region is routine, guaranteed NaN — the
+first operation to make this a normal case. Fixed at the
+calculated-channels-only serialization boundary (waveform range/cursor
+values/annotation anchor all sanitize NaN to `None`/`null`); the shared
+primitives reused by real source channels
+(`_clip_and_reduce`/`_peak_in_range`/`_nearest_sample_index` in
+`waveform_service.py`) are untouched.
+
+### Frontend
+
+Entirely inside the existing `wwCc*` Signal Builder block in
+`frontend/index.html`: an `rms` operation card, a Nominal Frequency
+field (default 50, plus read-only Window/Method display), an async
+debounced (~400 ms) eligibility check with the same generation-counter
+stale-response guard already established for
+`wwCursorValuesGeneration`/`wwPeakValuesGeneration`, a categorical
+eligibility status line (never a numeric confidence value), and a
+"Calculate anyway" checkbox shown only when eligibility is
+non-`suitable`. No changes needed to `wwIsCalculatedSourceId`/
+`wwPanelGroupKeyFor`/`wwPanelLabelFor`/`wwCalculatedEngineeringTypeFor`/
+`ANALOG_GROUP_ORDER`/preview panels/the sidebar section — an RMS channel
+is exactly a `CalculatedChannel` with an inherited `engineering_type`.
+
+One CSS `[hidden]`-cascade bug was found and fixed during direct browser
+verification (the same recurring bug class this project has hit
+several times before): `.ww-cc-rms-override-row { display: flex }`
+beat the UA stylesheet's `[hidden] { display: none }` by origin,
+requiring an explicit `.ww-cc-rms-override-row[hidden] { display: none
+}` override.
+
+### Direct browser verification (not just automated tests)
+
+No project-specific "run" skill exists yet for this repo. Verified by
+launching the real backend (`uvicorn`) and serving the real frontend
+statically (the exact "no-Docker developer machine" scenario
+`frontend/config.js` already documents, default port 8101, matching
+`DEFAULT_CORS_ORIGINS`), then driving it with a real headless Chromium
+via Playwright (installed for this verification; not currently a
+project dependency) against a synthetic ASCII COMTRADE recording
+(5 kHz, 50 Hz sinusoid, 0.5 s):
+
+- RMS operation card renders with its "1-cycle true RMS" description.
+- Selecting an instantaneous-looking Voltage channel (no explicit
+  waveform-form metadata) shows "Input appears suitable for RMS." within
+  the debounce window, Create enabled.
+- Created channel appears correctly named/unit'd, default-hidden (red
+  channel-color dot, closed-eye icon — matches DEC-038), classified
+  `Voltage` (inherited).
+- Toggling it visible renders correctly in the Calculated Channels
+  page's own type-separated preview panel ("Calculated - Voltage").
+- Opening the main Waveform page shows the same channel correctly
+  grouped under a "Calculated Channels -> Voltage" sidebar subgroup and
+  a "Calculated - Voltage" main panel, Absolute time mode active
+  (station-relative timestamps on the X axis), A/B cursors placed by
+  default with correct live values (~70.7 V, matching amplitude/sqrt(2)
+  for a 100 V-amplitude sinusoid) shown in the sidebar's Cur A/Cur B
+  columns — all with zero code changes to any of that machinery.
+- Selecting the newly-created RMS channel as the input to a SECOND RMS
+  operation immediately (no detector delay) shows the RMS-of-RMS
+  warning and disables Create until "Calculate anyway" is checked;
+  checking it enables Create; the resulting `RMS(RMS(VA))` channel is
+  created successfully and listed, still default-hidden.
+- Light/Dark theme toggle re-themes the whole Calculated Channels page
+  (including the preview panel's Plotly chart) correctly.
+- Zero browser console errors across the entire session.
+
+One initially alarming observation during this verification turned out
+to be a false alarm, not a bug: with a perfectly noiseless mathematical
+test sinusoid (exact integer samples/cycle, zero added noise), the
+computed RMS output was correct but so close to numerically constant
+(differing only in the ~12th decimal digit — genuine floating-point
+noise, not a real signal feature) that Plotly's Y-axis autorange zoomed
+in tightly enough to render that floating-point noise as a visible
+"wiggle." Re-running with a small amount of realistic Gaussian noise
+added to the synthetic signal (as any real recording would have)
+produced the expected clean, sensible ~70.7 V RMS trace with natural
+variation. This is a general Plotly cosmetic autorange behavior for
+near-constant series, not specific to RMS or to this phase, and was not
+treated as an implementation defect.
+
+### Tests
+
+Backend: `test_calculated_channel_domain.py` (`TestEvaluateRms` —
+including a brute-force two-pointer-vs-vectorized cross-check and a
+NaN-poisoning-is-localized test; `TestRmsValidators`;
+`TestDeriveWaveformForm`), new `test_rms_detector.py`,
+`test_calculated_channel_service.py` (`TestRmsOperation`,
+`TestRmsEligibility`, `TestNoEngineeringTypeHardFilter` — the
+permanent regression proving `engineering_type` never gates RMS
+eligibility in either direction), `test_calculated_channel_api.py`
+(`TestRmsOperation`, including an explicit
+`test_rms_waveform_response_serializes_nan_as_null_not_crash`
+regression test). Frontend: new
+`test_frontend_rms_calculated_channel.py` (17 static source-text
+regression checks, same `_function_body()`-substring pattern as
+`test_frontend_calculated_channel_time_mode.py`). One pre-existing
+Phase 5A API test was updated, not deleted:
+`test_no_rms_operation_accepted` (which asserted RMS was rejected) is
+now `test_unsupported_operation_rejected`, asserting a genuinely
+unsupported operation name (e.g. `sequence_rms`) is still rejected —
+the underlying "unknown operations are rejected" guarantee is
+unchanged, only which operation name exercises it. Full backend suite
+and all frontend static-text checks pass with zero regressions.
+
+### Honest limitations
+
+Playwright/Chromium were installed into this environment specifically
+for this verification pass and are not (yet) a committed project
+dependency or CI step — this was a manual, one-time verification, not
+an automated browser-test addition to the suite (out of scope for this
+phase; the owner may want a follow-up decision on whether to adopt
+browser-level testing more broadly). +Peak/-Peak and Callout on an RMS
+channel were verified via the shared backend service-layer tests
+(`resolve_calculated_peak_value`/`resolve_calculated_annotation_anchor`
+against a warm-up-only range) and by the unmodified-code architectural
+argument (DEC-048's own reuse rationale), not by a direct browser click
+-- the owner's UAT should still confirm these two interactions visually
+per the checklist below.
+
+### Owner UAT checklist
+
+1. RMS card appears with "1-cycle true RMS" description.
+2. Select a normal instantaneous voltage/current waveform.
+3. Eligibility reports "Input appears suitable for RMS."
+4. Create RMS — succeeds.
+5. Confirm the first incomplete cycle renders as a gap, not a crash or a
+   spike to zero.
+6. Confirm steady sinusoidal RMS magnitude is sensible
+   (amplitude/sqrt(2)).
+7. Show RMS in main Waveform.
+8. Confirm type subgroup/panel are correct ("Calculated - Voltage" etc).
+9. Confirm the Calculated Channels page's own preview is correct.
+10. Confirm Absolute/Elapsed works.
+11. Confirm A/B works.
+12. Confirm +Peak/-Peak works.
+13. Confirm Callout works.
+14. Select the created RMS channel as a new RMS input.
+15. Confirm RMS-of-RMS warning/block appears immediately from metadata.
+16. Select a known RMS/magnitude source channel without explicit
+    metadata.
+17. Confirm the detector warns appropriately.
+18. Test an uncertain/distorted channel and verify the override flow.
+19. Test an Undefined-engineering-type channel that is still an
+    instantaneous waveform.
+20. Confirm it can be used when metadata/detection supports it.
+21. Verify no regression to Reverse/Abs/Multiply/Add/Subtract.
+22. Verify Light/Dark.
+
+---
+
 ## Phase 5A-UAT7 — Calculated Preview Dark Mode Fix (2026-08-21)
 
 ### Scope

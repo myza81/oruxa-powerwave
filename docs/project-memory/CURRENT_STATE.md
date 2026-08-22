@@ -4,7 +4,8 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-21** (Phase 5A-UAT7 — Calculated
+Last meaningful update: **2026-08-22** (Phase 5B — RMS Calculated
+Channel, on top of Phase 5A-UAT7 — Calculated
 Preview Dark Mode Fix, on top of Phase 5A-UAT6 — Calculated
 Channels Preview Panels by Engineering Type, Phase 5A-UAT5 —
 Calculated Waveform Panels Grouped by Engineering Type, Phase 5A-UAT4 —
@@ -26,6 +27,85 @@ Text Note, Phase 4D — Precision Step Zoom + Icon Toolbar Refinement,
 Waveform Time-Axis Sub-ms Precision, Waveform Adaptive Resolution, Phase
 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B,
 Phase 4A-UAT9, and Phase 4A-UAT10).
+
+`[DECISION]` **RMS Calculated Channel — DEC-048** (2026-08-22): Oruxa
+Powerwave's sixth calculated-channel operation, RMS — extending DEC-047's
+Calculated Channels architecture with exactly the one operation that
+phase deferred. A guarded, engineering-correct trailing one-cycle
+true-RMS derivation, never a generic "RMS of any series" operator:
+`RMS(t) = sqrt(mean(x^2))` over `(t - window, t]`, `window = 1 /
+nominal_frequency_hz` (default 50 Hz, any value in `[1, 1000]` Hz
+accepted). TRUE RMS — DC and harmonics included, no fundamental
+extraction. **Full-resolution authority and the `time`-inheritance
+invariant are preserved**: `evaluate_rms()` is the only evaluator that
+reads `time` as well as `values`, but its output is still the SAME
+LENGTH as its input (never cycle-boundary downsampled), which is what
+keeps `reference_source_id`/`timebases_aligned()`'s same-reference fast
+path, `_nearest_sample_index()`, `_peak_in_range()`, and
+`_clip_and_reduce()` all working unmodified, and is what makes
+calculated-from-calculated RMS require no second timebase regime. The
+window boundary is deliberately **half-open** (`(t-window, t]`, not
+`[t-window, t]`) after direct numerical verification showed a closed
+interval double-counts one sample and produces a spurious ripple for a
+steady sinusoid at an exact sample-rate/cycle ratio — the half-open
+definition is bit-for-bit flat regardless of sample rate, matching the
+task's own worked numeric example. Implementation is a vectorized
+`cumsum`-based rolling window for near-uniform sample spacing (the
+common case), falling back to an O(N) two-pointer sliding accumulator
+for genuinely irregular/multi-rate spacing — never a fixed sample count
+assumed from the nominal frequency alone. A window containing any
+non-finite input sample outputs NaN for that window, via a separately
+tracked non-finite count (never accumulating a raw NaN into the running
+sum, which would poison every subsequent window). Output before a full
+window is available is NaN (never a partial/shorter window).
+**Eligibility is metadata-first**: a new, separate `waveform_form`
+taxonomy (`unknown`/`instantaneous`/`rms`/`magnitude`, distinct from
+`engineering_type` — answering "how is each sample recorded" rather
+than "what physical quantity is this") lives on both source channels
+(`AnalogChannelSummary`, default `unknown` — no current provider sets it
+away from that) and calculated channels, propagated per-operation by a
+new `derive_waveform_form()` function. Trusted `instantaneous` metadata
+allows directly; trusted `rms`/`magnitude` metadata blocks by default
+(preventing silent RMS-of-RMS) with NO detector run, since explicit
+metadata needs no algorithmic second-guessing; `unknown` metadata falls
+back to a new lightweight algorithmic detector
+(`app.domain.rms_detector`, five cheap numpy-only indicators combined
+into a transparent vote count, never a fabricated confidence
+percentage) yielding `suitable`/`likely_already_rms_or_magnitude`/
+`uncertain`. **COMTRADE is never assumed to prove "instantaneous," and
+RMS eligibility is never gated by `engineering_type`** (a permanent
+regression test proves both directions: an Undefined-type channel with
+explicit instantaneous metadata is eligible; a Voltage-type channel with
+explicit RMS metadata is not silently eligible) — this is what keeps the
+design compatible with a future CSV/Excel importer. A non-`suitable`
+result requires an explicit `override: bool` on the create request (a
+strongly-typed top-level field, never buried in the operation's
+`parameters`); the backend independently RE-DERIVES eligibility itself
+at creation time via the same shared `check_rms_eligibility()` function
+a new `POST .../rms-eligibility` endpoint also calls — the frontend
+cannot bypass this by crafting a local result. Two hard, never-overridable
+data-quality gates (recording spans more than one window; sample spacing
+implies at least 4 samples/cycle) are checked independently of
+eligibility. **A genuine latent bug was found and fixed, not a
+redesign**: FastAPI's default JSON response rejects raw NaN
+(`allow_nan=False`), which every Phase 5A operation happened to never
+trigger; RMS's routine warm-up-region NaN is the first operation to hit
+this, fixed by sanitizing NaN to `null` at the calculated-channels
+serialization boundary only (waveform range/cursor values/annotation
+anchor), leaving the shared primitives real source channels reuse
+completely untouched. **No special RMS rendering pipeline was needed,
+confirmed by direct browser verification** (a real headless-Chromium
+session against the actual running app, not just automated tests): an
+RMS channel participates in the Waveform sidebar's Calculated Channels
+type-subgroup, Grouped-mode panels, the Calculated Channels page's own
+preview, A/B cursor values, +Peak/-Peak, Callout, and Absolute/Elapsed
+with zero code changes to any of those systems. That same verification
+pass found and fixed one more CSS `[hidden]`-cascade bug (the same
+recurring bug class this project has hit repeatedly) on the new
+"Calculate anyway" override checkbox row. See
+[DECISIONS.md — DEC-048](DECISIONS.md#dec-048--rms-calculated-channels-use-a-trailing-one-cycle-true-rms-calculation-on-authoritative-full-resolution-samples-with-metadata-first-eligibility-and-backend-enforced-override)
+and
+[MIGRATION_PLAN.md — Phase 5B](MIGRATION_PLAN.md#phase-5b--rms-calculated-channel-2026-08-22).
 
 `[DECISION]` **Calculated Channels / Basic Signal Builder — DEC-047**
 (2026-08-21): Oruxa Powerwave's first mathematical signal-derivation

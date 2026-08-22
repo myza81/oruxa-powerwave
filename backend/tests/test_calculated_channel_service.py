@@ -16,8 +16,14 @@ from app.domain.calculated_channel import (
     OP_ADDITION,
     OP_MULTIPLY_CONSTANT,
     OP_REVERSE_POLARITY,
+    OP_RMS,
     OP_SUBTRACTION,
     ChannelRef,
+)
+from app.domain.channel_classification import (
+    WAVEFORM_FORM_INSTANTANEOUS,
+    WAVEFORM_FORM_RMS,
+    WAVEFORM_FORM_UNKNOWN,
 )
 from app.domain.disturbance_record import DisturbanceRecord
 from app.domain.metadata import RecordingMetadata
@@ -25,6 +31,9 @@ from app.domain.source import ActiveSource, AnalogChannelSummary, DigitalChannel
 from app.domain.timing import SamplingInformation, TimingInformation
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import (
+    RMS_STATUS_LIKELY_ALREADY_RMS_OR_MAGNITUDE,
+    RMS_STATUS_SUITABLE,
+    check_rms_eligibility,
     create_calculated_channel,
     delete_calculated_channel,
     extract_calculated_cursor_values,
@@ -40,7 +49,11 @@ from app.services.errors import (
     IncompatibleUnitError,
     InvalidCalculatedChannelNameError,
     InvalidConstantError,
+    InvalidNominalFrequencyError,
     InvalidOperationArityError,
+    RmsOverrideRequiredError,
+    RmsRecordingTooShortError,
+    RmsSamplingTooSparseError,
 )
 from app.services.waveform_service import REPRESENTATION_MIN_MAX_ENVELOPE
 from app.services.workspace_registry import WorkspaceRegistry
@@ -62,10 +75,16 @@ def _active_source(
     # so every pre-existing call site is completely unaffected -- only
     # tests that explicitly need a different classification pass this.
     engineering_types: dict[str, str] | None = None,
+    # Phase 5B: per-channel waveform_form override, defaulting to
+    # WAVEFORM_FORM_UNKNOWN (matching every real provider's current
+    # behavior) -- only RMS-eligibility tests that need explicit trusted
+    # metadata pass this.
+    waveform_forms: dict[str, str] | None = None,
 ) -> ActiveSource:
     units = units or {}
     digital = digital or {}
     engineering_types = engineering_types or {}
+    waveform_forms = waveform_forms or {}
     col_data = {"time": time, **channels}
     col_data.update(digital)
 
@@ -92,6 +111,7 @@ def _active_source(
             AnalogChannelSummary(
                 name=name, index=i, unit=units.get(name, "V"),
                 engineering_type=engineering_types.get(name, "Voltage"),
+                waveform_form=waveform_forms.get(name, WAVEFORM_FORM_UNKNOWN),
             )
             for i, name in enumerate(channels)
         ],
@@ -785,3 +805,283 @@ class TestEngineeringTypeInheritance:
             parameters={}, source_registry=source_registry, calc_registry=calc_registry,
         )
         assert abs_scaled_channel.engineering_type == "Voltage"
+
+
+def _sinusoid_source(source_registry, *, source_id="src1", channel_name="VA", fs=5000.0, f0=50.0,
+                      duration=0.5, unit="kV", waveform_form=WAVEFORM_FORM_UNKNOWN, engineering_type="Voltage"):
+    """A synthetic 50Hz sinusoid, dense/long enough to be both a valid RMS
+    input (>1 window, well above MIN_SAMPLES_PER_CYCLE) and confidently
+    classified `likely_instantaneous` by the algorithmic detector when its
+    waveform_form is left unknown."""
+    n = int(round(fs * duration))
+    time = np.arange(n, dtype=np.float64) / fs
+    values = np.sin(2 * np.pi * f0 * time)
+    _add_source(source_registry, _active_source(
+        source_id=source_id, time=time, channels={channel_name: values},
+        units={channel_name: unit}, waveform_forms={channel_name: waveform_form},
+        engineering_types={channel_name: engineering_type},
+    ))
+    return time, values
+
+
+class TestNoEngineeringTypeHardFilter:
+    """Permanent regression test (owner section 63): RMS eligibility must
+    NEVER be gated by engineering_type -- only by waveform_form metadata
+    and the detector. This is what proves CSV/Excel-compatible behavior
+    (a future importer may know waveform_form without knowing engineering
+    type, or vice versa)."""
+
+    def test_undefined_engineering_type_with_instantaneous_metadata_is_still_eligible(self, registries):
+        source_registry, calc_registry = registries
+        _sinusoid_source(
+            source_registry, waveform_form=WAVEFORM_FORM_INSTANTANEOUS, engineering_type="Undefined",
+        )
+        channel = create_calculated_channel(
+            workspace_id=WS, name="RMS(VA)", operation=OP_RMS,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={"nominal_frequency_hz": 50.0},
+            source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert channel.waveform_form == WAVEFORM_FORM_RMS
+        assert channel.engineering_type == "Undefined"  # unrelated to RMS eligibility, unaffected
+
+    def test_voltage_engineering_type_with_rms_metadata_is_not_silently_eligible(self, registries):
+        source_registry, calc_registry = registries
+        _sinusoid_source(
+            source_registry, waveform_form=WAVEFORM_FORM_RMS, engineering_type="Voltage",
+        )
+        with pytest.raises(RmsOverrideRequiredError):
+            create_calculated_channel(
+                workspace_id=WS, name="RMS(VA)", operation=OP_RMS,
+                inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+                parameters={"nominal_frequency_hz": 50.0},
+                source_registry=source_registry, calc_registry=calc_registry, override=False,
+            )
+
+
+class TestRmsOperation:
+    """Phase 5B (DEC-048): trailing one-cycle true RMS, metadata-first
+    eligibility, and backend-enforced override."""
+
+    def test_creates_rms_channel_when_unknown_form_classified_suitable(self, registries):
+        source_registry, calc_registry = registries
+        _sinusoid_source(source_registry)
+        channel = create_calculated_channel(
+            workspace_id=WS, name="RMS(VA)", operation=OP_RMS,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={"nominal_frequency_hz": 50.0},
+            source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert channel.operation == OP_RMS
+        assert channel.waveform_form == WAVEFORM_FORM_RMS
+        assert channel.parameters == {
+            "nominal_frequency_hz": 50.0, "window_mode": "trailing", "rms_kind": "true_rms",
+        }
+        steady = channel.values[-100:]
+        assert np.all(np.isfinite(steady))
+        assert np.mean(steady) == pytest.approx(1.0 / np.sqrt(2.0), abs=1e-3)
+
+    def test_time_and_reference_source_id_inherited_verbatim(self, registries):
+        source_registry, calc_registry = registries
+        time, _ = _sinusoid_source(source_registry)
+        channel = create_calculated_channel(
+            workspace_id=WS, name="RMS(VA)", operation=OP_RMS,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={"nominal_frequency_hz": 50.0},
+            source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert np.array_equal(channel.time, time)
+        assert channel.reference_source_id == "src1"
+        assert channel.time.shape == channel.values.shape
+
+    def test_explicit_instantaneous_metadata_allows_without_override(self, registries):
+        source_registry, calc_registry = registries
+        _sinusoid_source(source_registry, waveform_form=WAVEFORM_FORM_INSTANTANEOUS)
+        channel = create_calculated_channel(
+            workspace_id=WS, name="RMS(VA)", operation=OP_RMS,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={"nominal_frequency_hz": 50.0},
+            source_registry=source_registry, calc_registry=calc_registry, override=False,
+        )
+        assert channel.waveform_form == WAVEFORM_FORM_RMS
+
+    def test_explicit_rms_metadata_blocks_without_override(self, registries):
+        source_registry, calc_registry = registries
+        _sinusoid_source(source_registry, waveform_form=WAVEFORM_FORM_RMS)
+        with pytest.raises(RmsOverrideRequiredError):
+            create_calculated_channel(
+                workspace_id=WS, name="RMS(RMS(VA))", operation=OP_RMS,
+                inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+                parameters={"nominal_frequency_hz": 50.0},
+                source_registry=source_registry, calc_registry=calc_registry, override=False,
+            )
+
+    def test_explicit_rms_metadata_allowed_with_override(self, registries):
+        source_registry, calc_registry = registries
+        _sinusoid_source(source_registry, waveform_form=WAVEFORM_FORM_RMS)
+        channel = create_calculated_channel(
+            workspace_id=WS, name="RMS(RMS(VA))", operation=OP_RMS,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={"nominal_frequency_hz": 50.0},
+            source_registry=source_registry, calc_registry=calc_registry, override=True,
+        )
+        assert channel.waveform_form == WAVEFORM_FORM_RMS
+
+    def test_rms_of_rms_blocked_then_allowed_with_override(self, registries):
+        # Section 32/51: RMS(VA) is itself waveform_form=rms -- selecting
+        # it again as an RMS input must be immediately blocked from
+        # TRUSTED metadata (no detector re-run), and only proceed with an
+        # explicit override.
+        source_registry, calc_registry = registries
+        _sinusoid_source(source_registry, waveform_form=WAVEFORM_FORM_INSTANTANEOUS)
+        rms_channel = create_calculated_channel(
+            workspace_id=WS, name="RMS(VA)", operation=OP_RMS,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={"nominal_frequency_hz": 50.0},
+            source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert rms_channel.waveform_form == WAVEFORM_FORM_RMS
+
+        with pytest.raises(RmsOverrideRequiredError):
+            create_calculated_channel(
+                workspace_id=WS, name="RMS(RMS(VA))", operation=OP_RMS,
+                inputs=[ChannelRef(kind="calculated", calculated_channel_id=rms_channel.id)],
+                parameters={"nominal_frequency_hz": 50.0},
+                source_registry=source_registry, calc_registry=calc_registry, override=False,
+            )
+
+        doubled = create_calculated_channel(
+            workspace_id=WS, name="RMS(RMS(VA))2", operation=OP_RMS,
+            inputs=[ChannelRef(kind="calculated", calculated_channel_id=rms_channel.id)],
+            parameters={"nominal_frequency_hz": 50.0},
+            source_registry=source_registry, calc_registry=calc_registry, override=True,
+        )
+        assert doubled.waveform_form == WAVEFORM_FORM_RMS
+
+    def test_invalid_nominal_frequency_rejected(self, registries):
+        source_registry, calc_registry = registries
+        _sinusoid_source(source_registry, waveform_form=WAVEFORM_FORM_INSTANTANEOUS)
+        for bad in (float("nan"), 0.0, -50.0, 5000.0, "fifty", None, True):
+            with pytest.raises(InvalidNominalFrequencyError):
+                create_calculated_channel(
+                    workspace_id=WS, name="RMS(VA)", operation=OP_RMS,
+                    inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+                    parameters={"nominal_frequency_hz": bad},
+                    source_registry=source_registry, calc_registry=calc_registry,
+                )
+
+    def test_recording_shorter_than_one_window_rejected(self, registries):
+        source_registry, calc_registry = registries
+        _sinusoid_source(source_registry, waveform_form=WAVEFORM_FORM_INSTANTANEOUS, duration=0.005)
+        with pytest.raises(RmsRecordingTooShortError):
+            create_calculated_channel(
+                workspace_id=WS, name="RMS(VA)", operation=OP_RMS,
+                inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+                parameters={"nominal_frequency_hz": 50.0},
+                source_registry=source_registry, calc_registry=calc_registry,
+            )
+
+    def test_sparse_sampling_rejected(self, registries):
+        source_registry, calc_registry = registries
+        # 100 Hz sampling for a 50 Hz window -- only ~2 samples/cycle.
+        _sinusoid_source(source_registry, waveform_form=WAVEFORM_FORM_INSTANTANEOUS, fs=100.0, duration=1.0)
+        with pytest.raises(RmsSamplingTooSparseError):
+            create_calculated_channel(
+                workspace_id=WS, name="RMS(VA)", operation=OP_RMS,
+                inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+                parameters={"nominal_frequency_hz": 50.0},
+                source_registry=source_registry, calc_registry=calc_registry,
+            )
+
+    def test_short_and_sparse_checks_are_never_overridable(self, registries):
+        # Section 40/41: unlike eligibility, these are hard data-quality
+        # constraints -- override=True must NOT bypass them.
+        source_registry, calc_registry = registries
+        _sinusoid_source(source_registry, waveform_form=WAVEFORM_FORM_INSTANTANEOUS, duration=0.005)
+        with pytest.raises(RmsRecordingTooShortError):
+            create_calculated_channel(
+                workspace_id=WS, name="RMS(VA)", operation=OP_RMS,
+                inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+                parameters={"nominal_frequency_hz": 50.0},
+                source_registry=source_registry, calc_registry=calc_registry, override=True,
+            )
+
+    def test_peak_value_in_warmup_only_range_is_unavailable(self, registries):
+        source_registry, calc_registry = registries
+        _sinusoid_source(source_registry, waveform_form=WAVEFORM_FORM_INSTANTANEOUS)
+        channel = create_calculated_channel(
+            workspace_id=WS, name="RMS(VA)", operation=OP_RMS,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={"nominal_frequency_hz": 50.0},
+            source_registry=source_registry, calc_registry=calc_registry,
+        )
+        # First 100 samples (0..0.0198s) are all warm-up NaN at 5kHz/50Hz.
+        result = resolve_calculated_peak_value(channel, mode="max", start_time=0.0, end_time=0.01)
+        assert result.available is False
+        assert result.value is None
+
+    def test_cursor_value_in_warmup_region_is_none_not_nan(self, registries):
+        # Regression test for the NaN-serialization finding: FastAPI's
+        # default JSONResponse rejects raw NaN (allow_nan=False) -- a
+        # warm-up-region cursor must resolve to None, matching the
+        # existing "cursor outside the recording" contract, never a raw
+        # float("nan") that would 500 the response.
+        source_registry, calc_registry = registries
+        _sinusoid_source(source_registry, waveform_form=WAVEFORM_FORM_INSTANTANEOUS)
+        channel = create_calculated_channel(
+            workspace_id=WS, name="RMS(VA)", operation=OP_RMS,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={"nominal_frequency_hz": 50.0},
+            source_registry=source_registry, calc_registry=calc_registry,
+        )
+        results = extract_calculated_cursor_values([channel], cursor_a_time=0.001, cursor_b_time=0.3)
+        assert results[0].a_value is None
+        assert results[0].b_value is not None
+        assert np.isfinite(results[0].b_value)
+
+    def test_annotation_anchor_value_in_warmup_region_is_none_not_nan(self, registries):
+        source_registry, calc_registry = registries
+        _sinusoid_source(source_registry, waveform_form=WAVEFORM_FORM_INSTANTANEOUS)
+        channel = create_calculated_channel(
+            workspace_id=WS, name="RMS(VA)", operation=OP_RMS,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={"nominal_frequency_hz": 50.0},
+            source_registry=source_registry, calc_registry=calc_registry,
+        )
+        result = resolve_calculated_annotation_anchor(channel, approximate_elapsed_seconds=0.001)
+        assert result is not None
+        assert result.value is None
+        assert result.sample_index is not None
+        assert result.elapsed_seconds is not None
+
+
+class TestRmsEligibility:
+    def test_instantaneous_metadata_is_suitable_without_running_detector(self, registries):
+        source_registry, calc_registry = registries
+        _sinusoid_source(source_registry, waveform_form=WAVEFORM_FORM_INSTANTANEOUS)
+        eligibility = check_rms_eligibility(
+            workspace_id=WS, input_ref=ChannelRef(kind="source", source_id="src1", channel_name="VA"),
+            nominal_frequency_hz=50.0, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert eligibility.status == RMS_STATUS_SUITABLE
+        assert eligibility.override_required is False
+
+    def test_rms_metadata_requires_override(self, registries):
+        source_registry, calc_registry = registries
+        _sinusoid_source(source_registry, waveform_form=WAVEFORM_FORM_RMS)
+        eligibility = check_rms_eligibility(
+            workspace_id=WS, input_ref=ChannelRef(kind="source", source_id="src1", channel_name="VA"),
+            nominal_frequency_hz=50.0, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert eligibility.status == RMS_STATUS_LIKELY_ALREADY_RMS_OR_MAGNITUDE
+        assert eligibility.override_required is True
+
+    def test_unknown_metadata_falls_back_to_detector(self, registries):
+        source_registry, calc_registry = registries
+        _sinusoid_source(source_registry, waveform_form=WAVEFORM_FORM_UNKNOWN)
+        eligibility = check_rms_eligibility(
+            workspace_id=WS, input_ref=ChannelRef(kind="source", source_id="src1", channel_name="VA"),
+            nominal_frequency_hz=50.0, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert eligibility.status == RMS_STATUS_SUITABLE
+        assert eligibility.override_required is False

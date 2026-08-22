@@ -21,6 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from app.domain.channel_classification import WAVEFORM_FORM_UNKNOWN
 from app.domain.disturbance_record import DisturbanceRecord
 
 
@@ -35,6 +36,13 @@ class AnalogChannelSummary:
     offset: float = 0.0
     primary_ratio: float | None = None
     secondary_ratio: float | None = None
+    # Phase 5B (DEC-048): trailing, fully additive field -- no current
+    # provider (COMTRADE is the only one implemented) ever sets this away
+    # from UNKNOWN; exists so a future CSV/Excel importer has somewhere
+    # trustworthy to record "instantaneous"/"rms"/"magnitude" (see
+    # app.domain.channel_classification's own module docstring for the
+    # taxonomy). Zero behavior change to any existing code path.
+    waveform_form: str = WAVEFORM_FORM_UNKNOWN
 
 
 @dataclass(slots=True)

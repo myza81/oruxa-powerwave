@@ -4,9 +4,88 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-08-21**
+Last updated: **2026-08-22**
 
 ## What was most recently done
+
+**Phase 5B — RMS Calculated Channel.** Owner-approved direction: add
+exactly one new Calculated Channels operation, RMS -- a guarded,
+trailing one-cycle true-RMS derivation, extending DEC-047's Phase 5A
+architecture with the one operation that phase explicitly deferred. No
+prior chat/session context on this phase existed anywhere in project
+memory -- this was implemented directly from the owner's own detailed
+Phase 5B task specification. Full detail:
+[DECISIONS.md — DEC-048](DECISIONS.md#dec-048--rms-calculated-channels-use-a-trailing-one-cycle-true-rms-calculation-on-authoritative-full-resolution-samples-with-metadata-first-eligibility-and-backend-enforced-override),
+[MIGRATION_PLAN.md — Phase 5B](MIGRATION_PLAN.md#phase-5b--rms-calculated-channel-2026-08-22).
+
+**Core design**: trailing one-cycle true RMS (`sqrt(mean(x^2))` over a
+HALF-OPEN window `(t-window, t]`, `window = 1/nominal_frequency_hz`,
+default 50 Hz) computed via a vectorized cumsum fast path for uniform
+sampling or an O(N) two-pointer accumulator for irregular/multi-rate
+spacing -- never a fixed sample count. The half-open boundary was
+chosen only after direct numerical verification showed a closed
+interval produces a spurious ripple for a steady sinusoid at an exact
+sample-rate/cycle ratio (confirmed to shrink linearly with sample rate,
+i.e. a genuine discretization artifact); the half-open definition is
+bit-for-bit flat regardless of sample rate. `time`/`reference_source_id`
+inheritance stays VERBATIM (same length output, leading NaN for the
+warm-up region) -- this is what keeps every existing shared primitive
+(`_nearest_sample_index`/`_peak_in_range`/`_clip_and_reduce`/
+`timebases_aligned`'s same-reference fast path) working with zero code
+changes and lets an RMS channel feed a further calculation with no
+second timebase regime.
+
+**Eligibility is metadata-first**: a new `waveform_form` taxonomy
+(separate from `engineering_type`) on both source and calculated
+channels; trusted `instantaneous`/`rms`/`magnitude` metadata is used
+directly (no detector run) when present; `unknown` falls back to a new
+lightweight numpy-only detector (`app.domain.rms_detector`, 5 cheap
+indicators combined into a transparent vote, never a fabricated
+confidence score). A non-`suitable` result requires an explicit,
+backend-re-derived `override` -- the backend never trusts a
+client-supplied eligibility result, closing off a real bypass path a
+naive implementation could have left open. RMS is never gated by
+`engineering_type` in either direction (a permanent regression test
+proves both directions), keeping this compatible with a future
+CSV/Excel importer.
+
+**A genuine latent bug was found and fixed**: FastAPI's default JSON
+response rejects raw NaN (`allow_nan=False`) -- every Phase 5A operation
+happened to never trigger this; RMS's routine warm-up-region NaN is the
+first to. Fixed by sanitizing NaN to `null` at the calculated-channels
+serialization boundary only; source-channel code paths are untouched.
+
+**No special RMS rendering pipeline was needed, confirmed by DIRECT
+BROWSER VERIFICATION** (a real headless-Chromium session via Playwright
+against the actual running backend+frontend, not just automated tests
+-- installed for this pass, not yet a committed project dependency): an
+RMS channel participates in every existing calculated-channel display/
+measurement system (sidebar subgroup, Grouped panel, preview panel, A/B,
+Peak, Callout, Absolute/Elapsed) unmodified. This same verification pass
+found and fixed one more CSS `[hidden]`-cascade bug (the recurring bug
+class this project keeps hitting) on the new override checkbox, and
+also caught a false-alarm cosmetic Plotly autorange artifact on a
+perfectly noiseless test signal (not a real defect -- resolved by
+testing with a more realistic noisy signal instead of chasing it).
+
+**Tests**: full backend pytest suite passes with zero regressions to
+Phase 1-5A coverage; new coverage across `test_calculated_channel_domain.py`,
+new `test_rms_detector.py`, `test_calculated_channel_service.py`,
+`test_calculated_channel_api.py`, and new
+`test_frontend_rms_calculated_channel.py` (17 static source-text
+checks, the established no-browser-runner pattern for this single-file
+frontend). One pre-existing Phase 5A test was updated (not deleted) to
+reflect that `rms` is no longer a rejected operation name.
+
+**Not yet done** (as of this section being written): commit/push,
+CI/automatic DEV deployment verification, and full owner UAT against
+the checklist in MIGRATION_PLAN.md's own Phase 5B section (+Peak/-Peak
+and Callout on an RMS channel were verified at the service-test level
+and by architectural reuse, not by a direct browser click -- flagged
+explicitly for the owner to confirm visually) -- see the final report
+delivered alongside this update for whether those have since completed.
+
+## What was done in the prior session (Phase 5A-UAT7 — Calculated Preview Dark Mode Fix)
 
 **Phase 5A-UAT7 — Calculated Preview Dark Mode Fix.** Owner UAT bug:
 the Calculated Channels page's new type-separated Waveform Preview

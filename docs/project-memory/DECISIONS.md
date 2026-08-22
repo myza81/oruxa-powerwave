@@ -5670,6 +5670,280 @@ true 33-failure baseline (zero net new regressions). Backend untouched
 fix). See
 [MIGRATION_PLAN.md — Phase 5A-UAT7](MIGRATION_PLAN.md#phase-5a-uat7--calculated-preview-dark-mode-fix-2026-08-21).
 
+## DEC-048 — RMS calculated channels use a trailing one-cycle true-RMS calculation on authoritative full-resolution samples, with metadata-first eligibility and backend-enforced override
+
+Date: 2026-08-22
+Status: Approved
+Source: explicit owner-approved direction for Phase 5B ("RMS Calculated
+Channel"), extending DEC-047's Calculated Channels architecture with
+exactly the one operation DEC-047 itself deferred.
+
+Decision:
+
+Oruxa Powerwave's sixth calculated-channel operation, RMS — a guarded,
+engineering-correct power-system waveform RMS derivation, never a
+generic "RMS of any series" operator:
+
+> RMS calculated channels use a trailing one-cycle true-RMS calculation
+> on authoritative full-resolution samples. Nominal frequency is
+> explicit (50 Hz default). RMS eligibility is metadata-first:
+> trustworthy waveform-form metadata is used when available; otherwise
+> Oruxa performs a lightweight waveform-form eligibility analysis and
+> returns categorical suitable / likely magnitude-or-RMS / uncertain
+> results. COMTRADE is not assumed to contain only instantaneous data.
+> The RMS input picker is not hard-filtered solely by engineering type,
+> preserving future CSV/Excel compatibility. Explicit RMS metadata
+> prevents silent RMS-of-RMS; uncertain algorithmic cases require user
+> acknowledgement/override.
+
+- **Mathematical definition**: `RMS(t) = sqrt(mean(x^2))` over a
+  trailing window `[t - window, t]`, `window = 1 / nominal_frequency_hz`
+  (default 50 Hz; any value in `[1, 1000]` Hz accepted, not a 50/60
+  whitelist). TRUE RMS — DC and harmonics are included naturally; no
+  fundamental extraction, no bandpass, no phasor estimation. Stored
+  explicitly on the channel's `parameters`, never an invisibly
+  hard-coded semantic: `nominal_frequency_hz`, `window_mode="trailing"`,
+  `rms_kind="true_rms"`.
+- **Full-resolution authority preserved, `time` inheritance kept
+  verbatim**: `evaluate_rms(time, values, nominal_frequency_hz)` is the
+  ONLY evaluator in `app.domain.calculated_channel` that reads `time` as
+  well as `values` — a deliberate, narrow exception to every other
+  operation's pure `values -> values` contract, because RMS is
+  inherently a function of elapsed-time window membership, not a
+  per-sample transform. Output has the SAME length as the input, never
+  cycle-boundary downsampled — this is what keeps
+  `reference_source_id`/`time` inheritance, `timebases_aligned()`'s
+  same-reference fast path, `_nearest_sample_index()`, `_peak_in_range()`,
+  and `_clip_and_reduce()` all working unmodified, and is what makes
+  "calculated-from-calculated RMS is allowed" require no second timebase
+  regime.
+- **Time-based window, not fixed-N, with a verified-correct half-open
+  boundary**: the window is `(t[i] - window, t[i]]` — half-open,
+  excluding the exact left boundary sample. A closed interval was tried
+  first and rejected: for a source whose window happens to be an exact
+  multiple of the sample interval (e.g. 5 kHz sampling, 50 Hz nominal —
+  exactly 100 samples/cycle), a closed interval double-counts one sample
+  (the boundary and the current sample share the same sinusoidal phase,
+  exactly one period apart), producing a spurious ripple in an otherwise
+  steady sinusoid's RMS that shrinks linearly as sample rate increases —
+  confirmed numerically as a discretization artifact, not signal noise.
+  The half-open definition is bit-for-bit flat for a steady nominal-
+  frequency sinusoid regardless of sample rate, and matches the task's
+  own worked example ("~100 samples per 20 ms" for 5 kHz, not ~101).
+  Implementation is a hybrid: a fully vectorized `cumsum`-based rolling
+  window (O(N), no Python loop) when sample spacing is near-uniform (the
+  common case for one COMTRADE rate section), falling back to an O(N)
+  two-pointer sliding accumulator for genuinely irregular/multi-rate
+  spacing — correct because `time` is always monotonic non-decreasing,
+  so the window's own lower bound is itself monotonic as the trailing
+  edge advances. A small floating-point epsilon guards the boundary
+  comparison in both paths (subtraction-based threshold vs. the time
+  array's own independently-constructed values can differ by a ULP at an
+  exact boundary, which would otherwise reintroduce the same ripple by a
+  different route).
+- **Non-finite handling, exact**: a window containing ANY non-finite
+  input sample outputs NaN for that window — never silently dropped and
+  renormalized over fewer samples. Implemented by tracking a SEPARATE
+  running non-finite count alongside the running sum-of-squares (which
+  itself only ever accumulates `0.0` in place of a non-finite sample's
+  square) — a naive rolling sum that adds a raw NaN and later "subtracts
+  it back out" is broken (`NaN - NaN = NaN` in IEEE754), which would
+  poison every subsequent window forever, not just the ones that
+  actually contain the bad sample.
+- **Beginning-of-record NaN, never a partial window**: before
+  `time[i] - time[0] >= window`, output is NaN. Existing display/
+  measurement code needed one narrow, deliberate fix to handle this
+  safely — see the NaN-serialization bullet below.
+- **`waveform_form` metadata — a new, separate taxonomy from
+  `engineering_type`**: `unknown` / `instantaneous` / `rms` / `magnitude`,
+  added in `app.domain.channel_classification` (sibling to the existing
+  `engineering_type` taxonomy, same module). Added as a trailing,
+  additive, default-`unknown` field on both `AnalogChannelSummary`
+  (source channels — no current provider, i.e. COMTRADE, ever sets it
+  away from `unknown`; exists now so a future CSV/Excel importer has
+  somewhere trustworthy to write to) and `CalculatedChannel`. A NEW
+  operation-aware function, `derive_waveform_form(operation,
+  input_forms)`, propagates it — deliberately NOT a reuse of
+  `derive_engineering_type()`, since unlike engineering type, waveform
+  form propagation genuinely differs per operation: Reverse
+  Polarity/Multiply by Constant pass the input's form through unchanged;
+  Addition/Subtraction inherit only if every input shares the same known
+  form, else unknown (same shape as `derive_engineering_type`'s own
+  rule); Absolute Value always resets to unknown (taking an absolute
+  value discards bipolarity, one of the detector's own indicators);
+  RMS's own output is unconditionally `rms`, defined by the operation
+  itself, never inherited.
+- **Eligibility hierarchy — metadata first, detector fallback, user
+  override last resort**, implemented as ONE shared function,
+  `check_rms_eligibility()`, called identically by a new dedicated
+  `POST .../calculated-channels/rms-eligibility` endpoint AND internally
+  by `create_calculated_channel()`'s own RMS branch — this is what
+  structurally prevents the frontend from bypassing eligibility by
+  crafting a local result: the backend never trusts a client-supplied
+  status, it re-derives eligibility itself at creation time from the
+  same code path.
+  - Trusted `waveform_form = instantaneous` -> `suitable`, no detector
+    run.
+  - Trusted `waveform_form` in `{rms, magnitude}` -> blocked by default
+    (`likely_already_rms_or_magnitude`), no detector run — explicit
+    metadata needs no algorithmic second-guessing.
+  - `waveform_form = unknown` -> the algorithmic detector
+    (`app.domain.rms_detector.classify_waveform_form`) runs on the
+    input's own authoritative data, over a capped representative slice
+    (up to 1 second). Five cheap, numpy-only indicators (bipolarity;
+    zero-crossing regularity; a targeted two-term correlation against
+    `sin(2*pi*f0*t)`/`cos(2*pi*f0*t)`, never a full FFT; one-cycle-vs-
+    half-cycle lag periodicity; raw-vs-trial-RMS smoothness, reusing
+    `evaluate_rms()` itself rather than a second implementation) combine
+    into a transparent VOTE COUNT (never a fabricated precision score —
+    no "87.42% instantaneous" anywhere) yielding one of three categories:
+    `likely_instantaneous` -> `suitable`; `likely_magnitude_or_rms` ->
+    blocked by default; `uncertain` -> blocked by default, override
+    allowed, never a hard block (real disturbance data — heavy DC
+    offset, clipping, a short-but-usable window — must remain usable via
+    deliberate engineer acknowledgement).
+  - A separate `override: bool` field on the create request (top-level,
+    not inside the operation-specific `parameters` dict — a
+    cross-cutting safety flag, independently validated) is REQUIRED
+    (not merely accepted) whenever eligibility is non-`suitable`;
+    creation is rejected with `rms_override_required` otherwise.
+  - Two HARD, NEVER-overridable data-quality gates run independently of
+    eligibility: the recording must span more than one full RMS window
+    (`rms_recording_too_short` otherwise — never silently produce an
+    all-NaN channel), and the median sample spacing must imply at least
+    4 samples per cycle (`rms_sampling_too_sparse` otherwise — never a
+    misleading RMS from 2-3 points/cycle). These are data-quality floors,
+    not judgment calls, so `override=True` does not bypass them.
+- **RMS-of-RMS prevention**: an existing RMS output's own
+  `waveform_form = rms` is exactly the trusted metadata the hierarchy
+  above already handles — selecting it as a new RMS input is
+  immediately blocked from metadata alone, with no detector re-run,
+  matching "no silent RMS-of-RMS."
+- **No engineering-type hard filter, ever** (a permanent regression,
+  proven by dedicated tests both directions): an `Undefined`-
+  engineering-type channel with explicit `instantaneous` waveform-form
+  metadata is fully RMS-eligible; a `Voltage`-engineering-type channel
+  with explicit `rms` waveform-form metadata is NOT silently eligible.
+  `engineering_type` and `waveform_form` are answering two independent
+  questions (what physical quantity vs. how each sample is recorded) and
+  neither implies the other — this is what keeps the design compatible
+  with a future CSV/Excel importer that may know one without the other.
+- **NaN-serialization fix (a genuine, previously-latent correctness
+  bug this phase makes necessary to fix, not a redesign)**: FastAPI's
+  default `JSONResponse` calls `json.dumps(..., allow_nan=False)` —
+  confirmed directly against the installed `starlette` version — so a
+  raw NaN reaching a response body 500s the request. Every Phase 5A
+  operation happened to never produce NaN from finite input, so this
+  was never observed; RMS's leading warm-up region is *routine,
+  guaranteed* NaN, the first operation to make this a normal case.
+  Fixed at the calculated-channels-only serialization boundary:
+  `CalculatedWaveformRangeOut.time`/`.values` are now `list[float |
+  None]` (NaN sanitized to `null`), `extract_calculated_cursor_values()`
+  and `resolve_calculated_annotation_anchor()` now emit `None` instead
+  of a raw NaN float for a non-finite sample. The shared primitives
+  reused by real source channels (`_clip_and_reduce`/`_peak_in_range`/
+  `_nearest_sample_index` in `waveform_service.py`) are untouched — the
+  fix is scoped exactly to the calculated-channels boundary, since
+  source channels have never produced NaN and must not be touched
+  speculatively. On the frontend, Plotly.js natively renders a `null` in
+  a y-array as a gap — this is what makes "no special RMS rendering
+  pipeline" actually achievable, confirmed directly in a real browser
+  (Playwright/Chromium): the warm-up region shows as a genuine gap, not
+  a crash or a spike to zero.
+- **No special RMS rendering pipeline, confirmed by direct browser
+  verification, not just tests**: an RMS channel is exactly a
+  `CalculatedChannel` with an inherited `engineering_type` and a new
+  `waveform_form`. It participates in the Waveform sidebar's Calculated
+  Channels type-subgroup, Grouped-mode panels ("Calculated - Voltage"),
+  the Calculated Channels page's own type-separated preview, A/B cursor
+  values, +Peak/-Peak, Callout, and Absolute/Elapsed with ZERO code
+  changes to any of those systems — verified end-to-end in a real
+  headless-Chromium session (upload a synthetic COMTRADE recording,
+  create RMS(VA), confirm sidebar subgroup + panel + A/B values +
+  RMS-of-RMS block/override flow + Light/Dark theme switch, zero
+  console errors throughout).
+- **UI**: an `rms` operation card ("RMS" / "1-cycle true RMS") in the
+  existing Signal Builder, a Nominal Frequency numeric field (default
+  `50`, any sensible value accepted), read-only Window/Method display
+  fields, a categorical eligibility status line (never a numeric
+  confidence value) that updates on an async, debounced (~400 ms),
+  stale-response-guarded eligibility check (same generation-counter
+  idiom already established for `wwCursorValuesGeneration`/
+  `wwPeakValuesGeneration`), and a "Calculate anyway" checkbox shown
+  only when eligibility is non-`suitable`. Create is enabled only when
+  local validation passes AND the eligibility result is current for the
+  exact input+frequency the builder now holds AND (suitable OR
+  override checked). One new CSS `[hidden]`-cascade bug was found and
+  fixed during direct browser verification (same bug class this project
+  has hit repeatedly): `.ww-cc-rms-override-row { display: flex }`
+  needed an explicit `.ww-cc-rms-override-row[hidden] { display: none }`
+  override to actually hide.
+
+Alternatives considered:
+
+- A length-changing, cycle-boundary-output RMS (shorter than its input,
+  its own new time axis) — rejected: would require a second timebase-
+  compatibility regime alongside `timebases_aligned()`'s existing
+  same-`reference_source_id` fast path, and would break
+  `_nearest_sample_index()`/`_peak_in_range()`/`_clip_and_reduce()`'s
+  shared assumption that `time.shape == values.shape` is a channel's
+  whole world — all for no requirement the owner actually asked for.
+- Folding an eligibility dry-run into `create_calculated_channel()`
+  itself via a preview flag — rejected in favor of a dedicated
+  `POST .../rms-eligibility` endpoint, matching the existing
+  `/cursor-values`/`/peak-values` literal-segment-POST precedent
+  exactly: a dry-run flag would add a second exit path through
+  `create_calculated_channel()`'s own documented atomic
+  all-checks-then-write guarantee for a purely cosmetic reuse win.
+- Reusing `derive_engineering_type()` for `waveform_form` propagation by
+  giving it an operation parameter — rejected: forcing already-shipped,
+  tested code to accept a parameter it doesn't need, just to share one
+  multi-input branch's logic, was judged worse than one small new
+  function with its own clear per-operation table.
+- A closed-interval `[t - window, t]` RMS window (the initial
+  implementation) — rejected after direct numerical verification showed
+  a spurious ripple for steady-state sinusoids at exact sample-rate/
+  cycle ratios; replaced with the half-open definition described above.
+
+Impact:
+
+New: `app.domain.rms_detector` (the eligibility detector, numpy-only, no
+scipy dependency added). Extended: `app.domain.calculated_channel`
+(`OP_RMS`, `evaluate_rms`, `nominal_frequency_valid`,
+`rms_recording_long_enough`, `rms_sampling_dense_enough`, new
+constants), `app.domain.channel_classification` (`waveform_form`
+taxonomy, `derive_waveform_form`), `app.domain.source`
+(`AnalogChannelSummary.waveform_form`), `app.services.
+calculated_channel_service` (`check_rms_eligibility`, `RmsEligibility`,
+the OP_RMS branch in `create_calculated_channel`, NaN-safe cursor/
+annotation-anchor sanitization via a new `_finite_or_none` helper),
+`app.services.errors` (4 new error classes), `app.schemas.
+calculated_channel` (`RmsEligibilityRequest`/`Response`, `override` on
+the create request, `waveform_form` on `CalculatedChannelOut`, NaN-safe
+`list[float | None]` typing), `app.api.v1.calculated_channels` (new
+`POST .../rms-eligibility` route, 4 new error-code mappings). Frontend:
+`frontend/index.html` only, entirely inside the existing `wwCc*` Signal
+Builder block plus one CSS fix — no changes to
+`wwIsCalculatedSourceId`/`wwPanelGroupKeyFor`/`wwPanelLabelFor`/
+`wwCalculatedEngineeringTypeFor`/`ANALOG_GROUP_ORDER`/preview
+panels/the sidebar section. New backend tests:
+`test_calculated_channel_domain.py` (`TestEvaluateRms`,
+`TestRmsValidators`, `TestDeriveWaveformForm`), new
+`test_rms_detector.py`, `test_calculated_channel_service.py`
+(`TestRmsOperation`, `TestRmsEligibility`,
+`TestNoEngineeringTypeHardFilter`), `test_calculated_channel_api.py`
+(`TestRmsOperation`, including an explicit NaN-serialization regression
+test), new `test_frontend_rms_calculated_channel.py`. Explicitly out of
+scope, same as DEC-047's own boundary: fundamental RMS, phasor RMS,
+frequency-tracking/frequency-adaptive RMS, sequence RMS, multi-channel
+RMS, CSV/Excel import changes, a broader metadata redesign, a free
+formula parser, RMS statistics/reporting. All pre-existing Phase 1-5A
+backend tests and frontend static-text regression tests pass unmodified
+except one, which was updated (not deleted) to reflect that `rms` is no
+longer a rejected operation — it now asserts a genuinely unsupported
+operation name is still rejected the same way. See
+[MIGRATION_PLAN.md — Phase 5B](MIGRATION_PLAN.md#phase-5b--rms-calculated-channel-2026-08-22).
+
 ---
 
 ## How to add a decision
