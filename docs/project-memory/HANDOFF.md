@@ -8,6 +8,61 @@ Last updated: **2026-08-22**
 
 ## What was most recently done
 
+**Workspace Lifecycle UAT Fix — Start New Workspace does not fully
+reset.** Owner UAT: after "Start New Workspace," the Calculated
+Channels/RMS Signal Builder form still showed the previous session's
+input/name/unit/eligibility, and the footer workspace id appeared not
+to rotate. **Investigated empirically in a real browser before changing
+anything** (per the task's own explicit "do not guess" / "prove each
+one" requirement), using the exact reproduction steps given:
+
+- **Workspace id rotation: could NOT reproduce as broken.**
+  `resetToNewWorkspace()`'s existing DELETE-then-rotate-then-render-footer
+  sequence, and `currentWorkspaceId()`'s always-fresh
+  `localStorage.getItem()` read, both already work correctly -- proven
+  directly (`before != after`, both the JS variable and the rendered
+  footer text). No frontend/backend change was needed for this half of
+  the report.
+- **Calculated Channels registry / source inventory: also already
+  correct.** `wwClearWorkspace({resetSourceBounds: true})` (called by
+  Start New Workspace) already clears `ww.calculatedChannels` and
+  `ww.sourceChannelInventory` and the backend's own
+  `DELETE /api/v1/workspaces/{id}` already releases both its
+  `WorkspaceRegistry` and `CalculatedChannelRegistry` entries (added new
+  backend regression tests in `test_workspaces_api.py` proving this,
+  since none previously existed for the calculated-channel side).
+- **The actual, confirmed bug**: the Signal Builder's own TRANSIENT form
+  state (`wwCcBuilder`/`wwCcRmsEligibility`) was never reset by Start New
+  Workspace at all, even though `wwClearWorkspace()` already calls
+  `wwRenderCalculatedChannelsPage()` right after clearing the registry --
+  that re-render is driven BY `wwCcBuilder`'s own (never-invalidated)
+  state, so it faithfully redrew the stale session (old input, old
+  suggested name, old "From recording metadata"/"Input appears suitable"
+  copy, Create button still enabled) pointing at a source that branch had
+  just released server-side. Screenshotted directly, reproducing the
+  owner's exact complaint.
+
+**Fix**: one call, `wwCcResetBuilder()` (the SAME function already used
+after every successful channel creation -- not a new one), plus
+`wwCcListErrors.clear()`, added inside `wwClearWorkspace()`'s
+`resetSourceBounds` branch only -- confirmed NOT added to the plain
+"Clear Workspace" branch, preserving that operation's own established
+display-only semantics (re-verified directly: Clear Workspace still
+neither rotates the workspace id nor touches `ww.calculatedChannels`).
+`wwCcResetBuilder()` already internally calls `wwCcResetRmsEligibility()`,
+which bumps the async generation counter -- this was verified to also
+correctly discard a genuinely in-flight RMS eligibility request from the
+old workspace if its response lands after the reset (tested directly:
+selected an input, reset before the debounce even fired, confirmed the
+generation counter advanced and no stale eligibility state leaked into
+the fresh session).
+
+Pure frontend fix, one file (`frontend/index.html`), no backend change.
+New tests: `test_frontend_workspace_reset_calculated_channels.py` (6
+checks) plus 2 new backend tests in `test_workspaces_api.py` for
+calculated-channel registry isolation on workspace delete. Full backend
+and frontend suites re-run, zero regressions.
+
 **Phase 5B UAT Fix — RMS Info Tooltip Positioning.** Owner UAT found the
 new RMS info-tips (Nominal Frequency/Window/Method) rendering clipped/
 partially hidden near the app's global header instead of cleanly above

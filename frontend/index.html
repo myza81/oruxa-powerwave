@@ -12156,6 +12156,31 @@
                 // 5A extension); this just keeps the frontend's own
                 // mirror/UI in sync with that.
                 ww.calculatedChannels.clear();
+                // UAT fix: the Signal Builder's own TRANSIENT form state
+                // (wwCcBuilder/wwCcRmsEligibility) is separate from the
+                // ww.calculatedChannels registry cleared immediately
+                // above, and was never reset here -- an in-progress
+                // builder session (a selected input, a suggested name, an
+                // RMS eligibility verdict, all pointing at a source that
+                // this SAME branch just released server-side) survived a
+                // reset untouched. wwRenderCalculatedChannelsPage() below
+                // re-renders FROM wwCcBuilder's own current state, so
+                // without this call it would faithfully redraw the STALE
+                // session instead of a fresh one (owner UAT: "Calculated
+                // Channels / RMS state remains populated"). Reusing the
+                // EXACT SAME reset function already called after every
+                // successful creation (wwCcCreateChannel()) -- not a new
+                // one -- also collapses the builder panel back to its
+                // initial no-operation-selected state (this project's own
+                // established convention for "a fresh builder session"),
+                // and its own wwCcResetRmsEligibility() call bumps
+                // wwCcRmsEligibilityGeneration, which is what discards a
+                // genuinely in-flight eligibility request from the OLD
+                // workspace if one resolves after this reset (never
+                // overwriting the new, empty session with a stale
+                // response).
+                wwCcResetBuilder();
+                wwCcListErrors.clear();
                 wwRenderCalculatedChannelsSidebarSection();
                 wwRenderCalculatedChannelsPage();
             } else {

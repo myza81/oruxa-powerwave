@@ -125,3 +125,57 @@ class TestWorkspaceDelete:
 
         sources = client.get("/api/v1/workspaces/ws-1/sources").json()
         assert [s["source_id"] for s in sources] == [new_source_id]
+
+    def test_delete_workspace_also_releases_its_calculated_channels(
+        self, client, comtrade_fixtures_dir
+    ):
+        # Regression test for the "Start New Workspace" UAT fix: the
+        # backend side of workspace deletion already handles this (DEC-047
+        # section 66 / app.api.v1.workspaces.delete_workspace's own
+        # CalculatedChannelRegistry.remove_workspace call) -- this proves
+        # it directly rather than assuming the frontend fix alone is
+        # sufficient.
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        create_resp = client.post(
+            "/api/v1/workspaces/ws-1/calculated-channels",
+            json={
+                "name": "-VA",
+                "operation": "reverse_polarity",
+                "inputs": [{"kind": "source", "source_id": source_id, "channel_name": "VA"}],
+                "parameters": {},
+            },
+        )
+        assert create_resp.status_code == 201, create_resp.text
+        calc_id = create_resp.json()["id"]
+        assert client.get("/api/v1/workspaces/ws-1/calculated-channels").json() != []
+
+        resp = client.delete("/api/v1/workspaces/ws-1")
+
+        assert resp.status_code == 204
+        assert client.get("/api/v1/workspaces/ws-1/calculated-channels").json() == []
+        assert (
+            client.get(f"/api/v1/workspaces/ws-1/calculated-channels/{calc_id}/waveform").status_code
+            == 404
+        )
+
+    def test_delete_workspace_does_not_affect_other_workspaces_calculated_channels(
+        self, client, comtrade_fixtures_dir
+    ):
+        target_source_id = _upload(client, "ws-target", comtrade_fixtures_dir)
+        other_source_id = _upload(client, "ws-other", comtrade_fixtures_dir)
+        for workspace_id, source_id in (("ws-target", target_source_id), ("ws-other", other_source_id)):
+            resp = client.post(
+                f"/api/v1/workspaces/{workspace_id}/calculated-channels",
+                json={
+                    "name": "-VA",
+                    "operation": "reverse_polarity",
+                    "inputs": [{"kind": "source", "source_id": source_id, "channel_name": "VA"}],
+                    "parameters": {},
+                },
+            )
+            assert resp.status_code == 201, resp.text
+
+        assert client.delete("/api/v1/workspaces/ws-target").status_code == 204
+
+        assert client.get("/api/v1/workspaces/ws-target/calculated-channels").json() == []
+        assert len(client.get("/api/v1/workspaces/ws-other/calculated-channels").json()) == 1
