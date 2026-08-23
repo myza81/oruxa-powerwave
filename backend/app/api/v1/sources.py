@@ -38,6 +38,8 @@ from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import remove_calculated_channels_for_source
 from app.services.errors import ImportServiceError, InvalidTimeRangeError
 from app.services.import_service import import_comtrade_source
+from app.services.measurement_group_registry import MeasurementGroupRegistry
+from app.services.measurement_group_service import remove_measurement_groups_for_source
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.per_unit_service import delete_source_per_unit_config
 from app.services.waveform_service import (
@@ -86,6 +88,10 @@ def get_workspace_registry(request: Request) -> WorkspaceRegistry:
 
 def get_per_unit_registry(request: Request) -> PerUnitRegistry:
     return request.app.state.per_unit_registry
+
+
+def get_measurement_group_registry(request: Request) -> MeasurementGroupRegistry:
+    return request.app.state.measurement_group_registry
 
 
 def _voltage_channel_names_for_active(active: ActiveSource) -> list[str]:
@@ -485,6 +491,7 @@ def delete_source(
     registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
     per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
+    measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
 ) -> None:
     """Phase 5A (DEC-047, section 64): removing a source also removes
     every calculated channel grounded on it, directly or transitively --
@@ -500,6 +507,11 @@ def delete_source(
     here too (on top of the one `remove_calculated_channels_for_source`
     below drives for any calculated channel this removal itself
     deletes).
+
+    Slice 1 (DEC-050): also releases every measurement group owned by
+    this source -- internal scaffolding, not yet visible through any API
+    response, but a group must never survive as orphaned state once its
+    owning source is gone.
     """
     workspace_id = _validate_workspace_id(workspace_id)
     active = _get_or_404(registry, workspace_id, source_id)
@@ -511,4 +523,7 @@ def delete_source(
     delete_source_per_unit_config(
         workspace_id=workspace_id, source_id=source_id,
         registry=per_unit_registry, source_registry=registry, calc_registry=calc_registry,
+    )
+    remove_measurement_groups_for_source(
+        workspace_id=workspace_id, source_id=source_id, registry=measurement_group_registry,
     )

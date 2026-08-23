@@ -225,3 +225,76 @@ class InvalidPerUnitBaseError(ImportServiceError):
     validators)."""
 
     code = "invalid_per_unit_base"
+
+
+# ---- Slice 1 (DEC-050): Measurement Group domain foundation --
+# internal scaffolding for the future measurement-group-aware Per-Unit
+# redesign (docs/project-memory/PER_UNIT_MEASUREMENT_MODEL.md). Not
+# exposed through any public API endpoint yet -- these are raised only
+# by app.services.measurement_group_service, consumed directly by
+# domain/service tests.
+# ----
+
+
+class MeasurementGroupNotFoundError(ImportServiceError):
+    """Requested measurement_group_id does not exist in this workspace."""
+
+    code = "measurement_group_not_found"
+
+
+class InvalidMeasurementGroupKindError(ImportServiceError):
+    """A submitted group `kind` is not one of the known Slice 1 kinds
+    (`voltage`/`current`)."""
+
+    code = "invalid_measurement_group_kind"
+
+
+class InvalidMeasurementGroupStatusError(ImportServiceError):
+    """A submitted group `status` is not one of the known lifecycle
+    states (`suggested`/`confirmed`/`needs_review`/`manual`)."""
+
+    code = "invalid_measurement_group_status"
+
+
+class UnsupportedChannelReferenceKindError(ImportServiceError):
+    """A `ChannelRef` of kind `"calculated"` was submitted as group
+    membership -- Slice 1 scope restricts measurement-group membership
+    to real source channels only (calculated-channel membership is
+    Slice 7 scope, canonical document section 19)."""
+
+    code = "unsupported_channel_reference_kind"
+
+
+class ChannelWrongSourceError(ImportServiceError):
+    """A submitted channel does not belong to the same source as the
+    measurement group it is being added to (canonical document's
+    same-source invariant)."""
+
+    code = "channel_wrong_source"
+
+
+class ChannelWrongEngineeringTypeError(ImportServiceError):
+    """A submitted channel's engineering type does not match the
+    measurement group's own kind (e.g. a Current channel submitted to a
+    Voltage group)."""
+
+    code = "channel_wrong_engineering_type"
+
+
+class ChannelAlreadyGroupedError(ImportServiceError):
+    """A submitted channel already belongs to a different measurement
+    group in this workspace. Initial Slice 1 policy is to reject this
+    outright -- no explicit reassignment mechanism exists yet (unlike
+    DEC-049's own now-retired channel-assignment-conflict workflow, this
+    is not expected to need one, since group membership is expected to
+    be edited through `update_group_membership`, not by fighting over
+    ownership from a second group)."""
+
+    code = "channel_already_grouped"
+
+
+class DuplicateChannelReferenceError(ImportServiceError):
+    """The same channel reference was submitted more than once within a
+    single measurement group's own membership list."""
+
+    code = "duplicate_channel_reference"

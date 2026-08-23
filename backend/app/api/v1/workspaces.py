@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.schemas.source import ErrorOut
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
+from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.workspace_registry import WorkspaceRegistry
 
@@ -36,6 +37,10 @@ def get_calculated_channel_registry(request: Request) -> CalculatedChannelRegist
 
 def get_per_unit_registry(request: Request) -> PerUnitRegistry:
     return request.app.state.per_unit_registry
+
+
+def get_measurement_group_registry(request: Request) -> MeasurementGroupRegistry:
+    return request.app.state.measurement_group_registry
 
 
 def _validate_workspace_id(workspace_id: str) -> str:
@@ -56,6 +61,7 @@ def delete_workspace(
     registry: WorkspaceRegistry = Depends(get_workspace_registry),
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
     per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
+    measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
 ) -> None:
     """Release every source this workspace owns.
 
@@ -73,8 +79,14 @@ def delete_workspace(
 
     Phase 5C (DEC-049): also releases every per-unit base profile and
     channel-assignment record this workspace owns, the same way.
+
+    Slice 1 (DEC-050): also releases every measurement group this
+    workspace owns -- internal scaffolding, not yet visible through any
+    API response, but its lifecycle must not outlive the workspace it
+    belongs to (workspace isolation).
     """
     workspace_id = _validate_workspace_id(workspace_id)
     registry.remove_workspace(workspace_id)
     calc_registry.remove_workspace(workspace_id)
     per_unit_registry.remove_workspace(workspace_id)
+    measurement_group_registry.remove_workspace(workspace_id)

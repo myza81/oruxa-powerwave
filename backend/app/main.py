@@ -17,6 +17,7 @@ from app.api.v1.sources import router as sources_v1_router
 from app.api.v1.workspaces import router as workspaces_v1_router
 from app.config import Settings, load_settings
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
+from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.workspace_registry import WorkspaceRegistry
 from app.storage import StorageBackend, get_storage
@@ -53,6 +54,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # structural shape as the two above -- see
         # app.services.per_unit_registry's own module docstring.
         app.state.per_unit_registry = PerUnitRegistry()
+        # Slice 1 (DEC-050): a fourth sibling in-memory registry -- internal
+        # scaffolding for the future measurement-group-aware Per-Unit
+        # redesign, not yet wired into any API router. See
+        # app.services.measurement_group_registry's own module docstring.
+        app.state.measurement_group_registry = MeasurementGroupRegistry()
         yield
 
     app = FastAPI(title="Powerwave API", lifespan=lifespan)

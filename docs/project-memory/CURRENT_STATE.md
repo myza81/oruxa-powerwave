@@ -4,8 +4,10 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-23** (Phase 7 — Per-Unit Measurement
-Model Decision Clarification, documentation only, on top of Phase 6 —
+Last meaningful update: **2026-08-23** (Phase 8 — DEC-050 Slice 1:
+Measurement-Group Domain Foundation, internal scaffolding only, on top
+of Phase 7 — Per-Unit Measurement Model Decision Clarification,
+documentation only, on top of Phase 6 —
 Per-Unit Measurement Model Alignment, documentation only, on top of
 Phase 5C-UAT — Source-Bound
 Per-Unit Redesign, on top of Phase 5C — Global Per-Unit
@@ -33,6 +35,32 @@ Text Note, Phase 4D — Precision Step Zoom + Icon Toolbar Refinement,
 Waveform Time-Axis Sub-ms Precision, Waveform Adaptive Resolution, Phase
 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B,
 Phase 4A-UAT9, and Phase 4A-UAT10).
+
+`[FACT]` **DEC-050 Slice 1 implemented (2026-08-23) — Measurement-Group
+Domain Foundation, internal scaffolding only, no user-visible behaviour
+changed.** New `app/domain/measurement_group.py` (`MeasurementGroup`:
+stable `mg-`-prefixed id, `source_id` ownership, `voltage`/`current`
+kind, `channel_refs`, `suggested`/`confirmed`/`needs_review`/`manual`
+lifecycle status — no base configuration, no conversion math),
+`app/services/measurement_group_registry.py` (storage +
+channel-membership reverse index, enforcing "one channel belongs to at
+most one group" atomically on every mutation), and
+`app/services/measurement_group_service.py` (source-existence +
+engineering-type validation, `ImportServiceError` translation). Wired
+as a fourth sibling registry in `app.main`'s lifespan and into the
+EXISTING `DELETE .../sources/{id}` and `DELETE /workspaces/{id}`
+endpoints' own cleanup sequence (no new endpoint, no API contract
+change) so a group can never outlive its owning source/workspace.
+Group membership is source-channels-only in this slice (calculated
+channels are Slice 7 scope). **The currently deployed DEC-049
+source-wide Per-Unit configuration continues to operate completely
+unchanged and coexists deliberately with this new internal
+foundation** — no migration between them has happened. 79 new tests
+(854 total, up from 775), zero regressions. **Slice 2 (automatic
+grouping) remains unauthorized** pending separate, explicit owner
+approval. See
+[MIGRATION_PLAN.md — Phase 8](MIGRATION_PLAN.md#phase-8--dec-050-slice-1-measurement-group-domain-foundation-2026-08-23)
+and [HANDOFF.md](HANDOFF.md).
 
 `[DECISION]` **Per-Unit Measurement Model Decision Clarification — DEC-050
 Update** (2026-08-23, documentation only — **no application code,

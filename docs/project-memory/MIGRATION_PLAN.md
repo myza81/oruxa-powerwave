@@ -8648,6 +8648,71 @@ owner UAT after this push.
 
 ---
 
+## Phase 8 — DEC-050 Slice 1: Measurement-Group Domain Foundation (2026-08-23)
+
+### Scope
+
+**Internal scaffolding only — no user-visible behaviour changed.**
+Implements exactly Slice 1 of the 8-slice sequence Phase 7 recorded:
+`source → MeasurementGroup → channel membership`, with zero group-based
+Per-Unit conversion, no voltage/current PU math changes, no
+voltage-reference detection changes, no auto-grouping heuristic, no
+frontend changes, and no new public API endpoint.
+
+New: `app/domain/measurement_group.py` (the `MeasurementGroup`
+dataclass, `voltage`/`current` kind constants, the
+`suggested`/`confirmed`/`needs_review`/`manual` lifecycle-status
+constants, and pure validators — no base configuration, no conversion
+math); `app/services/measurement_group_registry.py`
+(`MeasurementGroupRegistry`, mirroring `PerUnitRegistry`/
+`CalculatedChannelRegistry`'s own shape, plus a channel-membership
+reverse index enforcing "one channel belongs to at most one group");
+`app/services/measurement_group_service.py` (orchestration:
+source-existence + engineering-type validation via `WorkspaceRegistry`,
+`measurement_group_id` generation, `ImportServiceError` translation).
+New error classes in `app/services/errors.py`
+(`measurement_group_not_found`, `invalid_measurement_group_kind`,
+`invalid_measurement_group_status`, `unsupported_channel_reference_kind`,
+`channel_wrong_source`, `channel_wrong_engineering_type`,
+`channel_already_grouped`, `duplicate_channel_reference`).
+
+The new registry is wired as a fourth sibling in `app.main`'s
+`lifespan()` (same pattern as the other three) and into the EXISTING
+`DELETE /api/v1/workspaces/{id}/sources/{id}` and `DELETE
+/api/v1/workspaces/{id}` endpoints' own cleanup sequence — a
+measurement group must not outlive its owning source or workspace, the
+same lifecycle guarantee every other workspace-owned resource already
+has. No new router, no new endpoint, no change to either endpoint's
+request/response shape or status code.
+
+Group membership is restricted to real source channels only in this
+slice (a `ChannelRef` of kind `"calculated"` is rejected) — extending
+membership to calculated channels is Slice 7 scope.
+
+**The currently deployed DEC-049 source-wide Per-Unit configuration
+continues to operate completely unchanged** — the two concepts coexist
+deliberately, per the canonical document's own section 13 instruction;
+no migration between them happens in this slice.
+
+### Tests
+
+79 new tests across four files (`test_measurement_group_domain.py`,
+`test_measurement_group_registry.py`, `test_measurement_group_service.py`,
+`test_measurement_group_lifecycle_api.py`) covering identity, ownership,
+kind compatibility, duplicate-membership rejection (both within one
+group and across groups), the group↔channel reverse-index invariant
+under every mutation path, CRUD, and source/workspace lifecycle cleanup
+wired through the real running app. Full backend suite (854 tests,
+up from 775) passes with zero regressions.
+
+### Status
+
+**Slice 1 complete. Slice 2 (deterministic automatic grouping) is NOT
+authorized** — it requires its own separate, explicit approval per
+[PER_UNIT_MEASUREMENT_MODEL.md §25](PER_UNIT_MEASUREMENT_MODEL.md).
+
+---
+
 ## Phase 7 — Per-Unit Measurement Model Decision Clarification (documentation only) (2026-08-23)
 
 ### Scope

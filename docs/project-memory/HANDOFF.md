@@ -8,6 +8,90 @@ Last updated: **2026-08-23**
 
 ## What was most recently done
 
+**Phase 8 — DEC-050 Slice 1: Measurement-Group Domain Foundation.**
+Implements exactly Slice 1 of the 8-slice sequence Phase 7 recorded:
+`source → MeasurementGroup → channel membership`, internal scaffolding
+only. **No user-visible behaviour changed; no frontend file touched; no
+voltage/current PU math touched; no voltage-reference detection touched;
+no auto-grouping heuristic built; no new public API endpoint added; no
+existing test file modified (only new test files added).**
+
+**What was created**: `app/domain/measurement_group.py` (the
+`MeasurementGroup` dataclass — stable `"mg-" + uuid4().hex` identity,
+`source_id` ownership, `kind` ∈ {`voltage`, `current`}, `channel_refs`,
+`status` ∈ {`suggested`, `confirmed`, `needs_review`, `manual`} — no
+base configuration and no conversion math live here, deliberately, per
+the canonical document's own Slice 1 scope), `app/services/
+measurement_group_registry.py` (`MeasurementGroupRegistry`, mirroring
+`PerUnitRegistry`/`CalculatedChannelRegistry`'s own shape, plus a
+channel-membership reverse index that enforces "a channel belongs to at
+most one group" atomically on every `add`/`update`/`remove`), and
+`app/services/measurement_group_service.py` (the orchestration layer:
+source-existence + engineering-type validation via `WorkspaceRegistry`,
+`measurement_group_id` generation, translation into new
+`ImportServiceError` subclasses in `app/services/errors.py`
+(`measurement_group_not_found`, `invalid_measurement_group_kind`,
+`invalid_measurement_group_status`,
+`unsupported_channel_reference_kind`, `channel_wrong_source`,
+`channel_wrong_engineering_type`, `channel_already_grouped`,
+`duplicate_channel_reference`)).
+
+**What was wired**: the new registry is a fourth sibling in
+`app.main`'s `lifespan()` (same pattern as the other three), and into
+the EXISTING `DELETE /api/v1/workspaces/{id}/sources/{id}` and `DELETE
+/api/v1/workspaces/{id}` endpoints' own cleanup sequence — a
+measurement group must not outlive its owning source or workspace, the
+same lifecycle guarantee every other workspace-owned resource already
+has. Neither endpoint's request/response shape or status code changed.
+
+**A genuine bug was found and fixed during development, not shipped**:
+`MeasurementGroupRegistry.get()` originally returned the live stored
+object by reference; a caller mutating `group.channel_refs` in place
+before calling `update()` silently corrupted the registry's own
+"previous membership" snapshot needed to correctly diff the reverse
+index, leaving a stale index entry for a channel that had actually been
+removed from a group. Fixed by having every group that crosses the
+registry's boundary (in via `add`/`update`, out via `get`/
+`list_for_workspace`/`list_for_source`) go through a defensive
+shallow-copy helper, `_copy_group()` — a caller's own mutations can
+never again reach the registry's internal state directly. Caught by
+`test_measurement_group_registry.py`'s own
+`test_index_and_group_membership_never_diverge_across_every_mutation`
+test before this reached any other code, not discovered after the fact.
+
+**Group membership is source-channels-only in this slice** — a
+`ChannelRef` of kind `"calculated"` is rejected outright
+(`UnsupportedChannelReferenceKindError`); extending membership (and PU
+inheritance) to calculated channels is explicitly Slice 7 scope.
+
+**The currently deployed DEC-049 source-wide Per-Unit configuration
+continues to operate exactly as before** — completely independent of
+this new internal foundation, coexisting deliberately per the canonical
+document's own section 13. No migration between the two happened, and
+none was authorized for this slice.
+
+**Tests**: 79 new tests across 4 files
+(`test_measurement_group_domain.py`, `test_measurement_group_registry.py`,
+`test_measurement_group_service.py`,
+`test_measurement_group_lifecycle_api.py`) — identity, ownership, kind
+compatibility, duplicate-membership rejection (within one group and
+across groups), the reverse-index invariant under every mutation path,
+CRUD, and source/workspace lifecycle cleanup wired through the real
+running app (not just the registry in isolation). Full backend suite:
+854 tests pass (up from 775), zero regressions — every existing
+DEC-049/RMS/Calculated-Channel/annotation test passed completely
+unchanged.
+
+**Next step — the ONLY thing authorized next for Per-Unit**: nothing is
+pre-authorized. **Slice 2 (deterministic automatic grouping) requires
+its own separate, explicit owner-approved implementation prompt**,
+exactly like Slice 1 did — this phase does not authorize it.
+
+Committed as one isolated commit; see this task's own final report for
+the exact commit hash, git-diff verification, and push status.
+
+## What was done in the prior session (Phase 7 — Per-Unit Measurement Model Decision Clarification, documentation only)
+
 **Phase 7 — Per-Unit Measurement Model Decision Clarification
 (documentation only).** Following Phase 6's canonical specification
 (below), the owner clarified most of what that document had left
@@ -6935,11 +7019,12 @@ checks for this Phase 3B pass. **Production was not touched.**
 
 ## What remains unresolved
 
-- `[OPEN]`, **Per-Unit measurement model — the current source-bound
-  implementation (DEC-049) is confirmed insufficient for a source
-  spanning multiple electrical measurement contexts.** Most previously
-  open questions are now resolved as approved-but-unbuilt decisions
-  (DEC-050's 2026-08-23 update) — see
+- `[OPEN]`, **Per-Unit measurement model — Slice 1 (measurement-group
+  domain foundation) is now implemented** (internal scaffolding only;
+  see "What was most recently done" above), but the current DEC-049
+  source-wide PU CONVERSION remains deployed and unchanged, and is still
+  confirmed insufficient for a source spanning multiple electrical
+  measurement contexts — see
   [PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) (the
   authoritative specification) and
   [DECISIONS.md — DEC-050](DECISIONS.md#dec-050--per-unit-measurement-model-is-clarified-to-be-measurement-group-aware-the-currently-deployed-source-bound-model-dec-049-is-not-the-final-target).
@@ -6949,10 +7034,10 @@ checks for this Phase 3B pass. **Production was not touched.**
   currently overrides explicit single-phase evidence
   (`_classify_one_channel_name()` in `voltage_reference.py`) — both are
   Slice 3 work. **Do not continue extending the current source-wide
-  model** — the only currently authorized next implementation step is
-  **Slice 1 only** (measurement-group domain model + identities +
-  invariants), via a separate, explicit implementation prompt not yet
-  issued. Do not begin Slice 2 or later without further owner approval.
+  conversion model, and do not begin Slice 2 (automatic grouping) or
+  later** without a separate, explicit owner-approved implementation
+  prompt for each slice — Slice 1's own completion does not
+  pre-authorize Slice 2.
 - `[OPEN]`, **direct vertical drag/reorder of panels and drag-to-overlay/
   group by direct lane dragging are still fully unimplemented and
   undecided** — `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`,
@@ -7443,16 +7528,14 @@ sources actually get imported during a shared-DEV session.
 
 ## Owner approval needed before proceeding?
 
-- **Yes — a separate, explicit implementation prompt is required before
-  starting Slice 1 (measurement-group domain model + identities +
-  invariants), and further owner approval is required before any Slice
-  2 or later work.** The remaining open decisions have been clarified
-  (DEC-050's 2026-08-23 update) and Slice 1 is the confirmed next step,
-  but this documentation pass does not itself authorize starting it. Do
-  not extend the current source-wide Per-Unit model in the meantime, and
-  do not silently fix the two confirmed code-level conflicts
-  (`resolve_per_unit()`'s phase adjustment; `voltage_reference.py`'s
-  BUS-priority inversion) — see "What was most recently done" and "What
+- **Yes — Slice 1 is now complete; a separate, explicit implementation
+  prompt is required before starting Slice 2 (deterministic automatic
+  grouping) or any later slice.** Do not extend the current source-wide
+  Per-Unit CONVERSION model in the meantime, and do not silently fix the
+  two confirmed code-level conflicts (`resolve_per_unit()`'s phase
+  adjustment; `voltage_reference.py`'s BUS-priority inversion) — both
+  are Slice 3 work, not to be done ahead of sequence. See "What was most
+  recently done" and "What
   remains unresolved" above.
 - **Yes — Phase 4A (Digital Channels Rendering) specifically needs
   real-browser owner UAT before any further waveform feature work
