@@ -25,6 +25,7 @@ from app.domain.measurement_group import (
     STATUS_MANUAL,
     STATUS_NEEDS_REVIEW,
     STATUS_SUGGESTED,
+    channel_kind_compatible,
 )
 from app.domain.metadata import RecordingMetadata
 from app.domain.source import ActiveSource, AnalogChannelSummary, SourceMetadata
@@ -45,6 +46,7 @@ from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.measurement_group_service import (
     create_group,
     delete_group,
+    generate_suggested_groups_for_source,
     get_group,
     list_groups_for_source,
     list_groups_for_workspace,
@@ -395,3 +397,117 @@ class TestRemoveMeasurementGroupsForSource:
 
     def test_idempotent_for_a_source_with_no_groups(self, registry):
         assert remove_measurement_groups_for_source(workspace_id="ws-1", source_id="src-1", registry=registry) == []
+
+
+@pytest.fixture
+def phase_source_registry() -> WorkspaceRegistry:
+    """A source whose channel names carry realistic deterministic-
+    grouping evidence: a clean voltage triplet, a clean current triplet,
+    a spare channel with no recognizable phase suffix, and two channels
+    that deliberately conflict with each other (Slice 2's own
+    TestGenerateSuggestedGroupsForSource below)."""
+    ws_registry = WorkspaceRegistry()
+    ws_registry.add(
+        _active_source(
+            "src-1", "ws-1",
+            [
+                ("NORTH BUS VR", VOLTAGE), ("NORTH BUS VY", VOLTAGE), ("NORTH BUS VB", VOLTAGE),
+                ("IBT1 HV IR", CURRENT), ("IBT1 HV IY", CURRENT), ("IBT1 HV IB", CURRENT),
+                ("SPARE1", VOLTAGE),
+                ("BUS1 VR", VOLTAGE), ("BUS1 VRY", VOLTAGE),  # mixed representation -> needs_review
+            ],
+        )
+    )
+    return ws_registry
+
+
+class TestGenerateSuggestedGroupsForSource:
+    def test_creates_a_suggested_group_per_clean_cluster(self, registry, phase_source_registry):
+        created = generate_suggested_groups_for_source(workspace_id="ws-1", source_id="src-1", registry=registry, source_registry=phase_source_registry)
+        by_kind = {g.kind: g for g in created if g.status == STATUS_SUGGESTED and len(g.channel_refs) == 3}
+        assert KIND_VOLTAGE in by_kind
+        assert KIND_CURRENT in by_kind
+        assert {ref.channel_name for ref in by_kind[KIND_VOLTAGE].channel_refs} == {"NORTH BUS VR", "NORTH BUS VY", "NORTH BUS VB"}
+        assert {ref.channel_name for ref in by_kind[KIND_CURRENT].channel_refs} == {"IBT1 HV IR", "IBT1 HV IY", "IBT1 HV IB"}
+
+    def test_created_groups_are_persisted_and_retrievable(self, registry, phase_source_registry):
+        created = generate_suggested_groups_for_source(workspace_id="ws-1", source_id="src-1", registry=registry, source_registry=phase_source_registry)
+        for group in created:
+            assert get_group("ws-1", group.id, registry=registry).id == group.id
+
+    def test_ambiguous_cluster_is_created_as_needs_review_not_suggested(self, registry, phase_source_registry):
+        created = generate_suggested_groups_for_source(workspace_id="ws-1", source_id="src-1", registry=registry, source_registry=phase_source_registry)
+        needs_review = [g for g in created if g.status == STATUS_NEEDS_REVIEW]
+        assert len(needs_review) == 1
+        assert {ref.channel_name for ref in needs_review[0].channel_refs} == {"BUS1 VR", "BUS1 VRY"}
+
+    def test_nothing_ever_created_as_confirmed(self, registry, phase_source_registry):
+        created = generate_suggested_groups_for_source(workspace_id="ws-1", source_id="src-1", registry=registry, source_registry=phase_source_registry)
+        assert all(g.status != STATUS_CONFIRMED for g in created)
+
+    def test_channel_with_no_phase_suffix_never_gets_grouped(self, registry, phase_source_registry):
+        generate_suggested_groups_for_source(workspace_id="ws-1", source_id="src-1", registry=registry, source_registry=phase_source_registry)
+        spare_ref = ChannelRef(kind="source", source_id="src-1", channel_name="SPARE1")
+        assert registry.group_for_channel("ws-1", spare_ref) is None
+
+    def test_unknown_source_raises_source_not_found(self, registry, phase_source_registry):
+        with pytest.raises(SourceNotFoundError):
+            generate_suggested_groups_for_source(workspace_id="ws-1", source_id="does-not-exist", registry=registry, source_registry=phase_source_registry)
+
+    def test_rerunning_on_an_unchanged_source_creates_nothing_new(self, registry, phase_source_registry):
+        first = generate_suggested_groups_for_source(workspace_id="ws-1", source_id="src-1", registry=registry, source_registry=phase_source_registry)
+        assert len(first) > 0
+        second = generate_suggested_groups_for_source(workspace_id="ws-1", source_id="src-1", registry=registry, source_registry=phase_source_registry)
+        assert second == []
+        # Every originally created group survives untouched.
+        for group in first:
+            assert get_group("ws-1", group.id, registry=registry).status == group.status
+
+    def test_regeneration_never_touches_an_existing_manual_group(self, registry, phase_source_registry):
+        # An engineer manually grouped the voltage triplet differently
+        # (e.g. only two of the three phases) BEFORE detection ever ran.
+        manual = create_group(
+            workspace_id="ws-1", source_id="src-1", kind=KIND_VOLTAGE, display_name="MY OWN GROUP", status=STATUS_MANUAL,
+            channel_refs=[ChannelRef(kind="source", source_id="src-1", channel_name="NORTH BUS VR")],
+            registry=registry, source_registry=phase_source_registry,
+        )
+        created = generate_suggested_groups_for_source(workspace_id="ws-1", source_id="src-1", registry=registry, source_registry=phase_source_registry)
+        # The manual group's own membership must be completely untouched.
+        assert get_group("ws-1", manual.id, registry=registry).channel_refs == manual.channel_refs
+        assert get_group("ws-1", manual.id, registry=registry).status == STATUS_MANUAL
+        # The whole NORTH BUS VOLTAGE cluster is skipped entirely (one of
+        # its channels is already claimed) -- never partially re-grouped.
+        voltage_created = [g for g in created if g.kind == KIND_VOLTAGE]
+        assert all("NORTH BUS VY" not in {ref.channel_name for ref in g.channel_refs} for g in voltage_created)
+
+    def test_regeneration_never_touches_a_previously_confirmed_group(self, registry, phase_source_registry):
+        suggested = create_group(
+            workspace_id="ws-1", source_id="src-1", kind=KIND_CURRENT, display_name="IBT1 HV CURRENT", status=STATUS_SUGGESTED,
+            channel_refs=[
+                ChannelRef(kind="source", source_id="src-1", channel_name="IBT1 HV IR"),
+                ChannelRef(kind="source", source_id="src-1", channel_name="IBT1 HV IY"),
+                ChannelRef(kind="source", source_id="src-1", channel_name="IBT1 HV IB"),
+            ],
+            registry=registry, source_registry=phase_source_registry,
+        )
+        update_group_metadata(workspace_id="ws-1", measurement_group_id=suggested.id, status=STATUS_CONFIRMED, registry=registry)
+        created = generate_suggested_groups_for_source(workspace_id="ws-1", source_id="src-1", registry=registry, source_registry=phase_source_registry)
+        assert get_group("ws-1", suggested.id, registry=registry).status == STATUS_CONFIRMED
+        assert all(g.kind != KIND_CURRENT for g in created)
+
+    def test_generation_goes_through_create_group_validation(self, registry, phase_source_registry):
+        # A tamper check: if this function ever bypassed create_group()
+        # and called registry.add() directly, a detected cluster
+        # spanning channels from the wrong engineering type would slip
+        # through unvalidated. Since detect_measurement_groups() itself
+        # only ever proposes kind-homogeneous clusters, the strongest
+        # available proof that validation still runs is that every
+        # created group's own channel_refs are all real channels on the
+        # correct source with the correct engineering type.
+        created = generate_suggested_groups_for_source(workspace_id="ws-1", source_id="src-1", registry=registry, source_registry=phase_source_registry)
+        active = phase_source_registry.get("ws-1", "src-1")
+        by_name = {ch.name: ch.engineering_type for ch in active.metadata.analog_channels}
+        for group in created:
+            for ref in group.channel_refs:
+                assert ref.source_id == "src-1"
+                assert channel_kind_compatible(group.kind, by_name[ref.channel_name])

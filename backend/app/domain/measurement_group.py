@@ -16,10 +16,12 @@ implement:
 - any conversion math (`Vbase_phase = Vbase_LL / sqrt(3)`,
   `Ibase = Sbase / (sqrt(3) x Vbase)`) -- that stays entirely inside
   `app.domain.per_unit`, untouched by this module;
-- automatic grouping/detection (Slice 2) -- every `MeasurementGroup` in
-  this slice is created explicitly, by a caller that already knows its
-  own `source_id`/`kind`/`channel_refs`, never by inspecting channel
-  names.
+- automatic grouping/detection itself -- that pure pattern-matching
+  algorithm lives in the separate `app.domain.measurement_group_detection`
+  module (Slice 2), which depends on the constants/functions here
+  (`kind_for_engineering_type()`, the `STATUS_*` constants) but this
+  module never depends on it. A `MeasurementGroup` constructed here has
+  no notion of "how it was discovered" beyond its own `status` field.
 
 The currently deployed DEC-049 source-wide Per-Unit configuration
 (`app.domain.per_unit.PerUnitBaseProfile`, keyed 1:1 by `source_id`)

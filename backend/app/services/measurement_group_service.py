@@ -1,4 +1,4 @@
-"""Measurement Group orchestration layer (Slice 1 of DEC-050's
+"""Measurement Group orchestration layer (Slice 1/2 of DEC-050's
 measurement-group-aware Per-Unit redesign).
 
 Sits above `MeasurementGroupRegistry` exactly the way
@@ -16,6 +16,18 @@ router exists yet (per the task's own explicit instruction not to
 expose a new public API without first reporting why it would be
 necessary; nothing here needed one). Every function is exercised
 directly by `backend/tests/test_measurement_group_*.py`.
+
+Slice 2 adds exactly one new function,
+`generate_suggested_groups_for_source()`, layered on top of the Slice 1
+functions below rather than beside them: it calls the pure
+`app.domain.measurement_group_detection.detect_measurement_groups()`
+algorithm, then persists each still-eligible candidate through
+`create_group()` -- the SAME validated creation path every other caller
+uses, never a direct `registry.add()`. It is a standalone, explicitly-
+callable function with no automatic trigger wired into any existing
+endpoint (e.g. source upload) -- see this function's own docstring for
+why, and canonical document section 15/25 for the broader Slice
+sequencing this defers to.
 """
 
 from __future__ import annotations
@@ -33,6 +45,7 @@ from app.domain.measurement_group import (
     group_kind_valid,
     group_status_valid,
 )
+from app.domain.measurement_group_detection import detect_measurement_groups
 from app.services.errors import (
     ChannelNotFoundError,
     ChannelWrongEngineeringTypeError,
@@ -212,3 +225,63 @@ def remove_measurement_groups_for_source(
     for measurement_group_id in affected:
         registry.remove(workspace_id, measurement_group_id)
     return affected
+
+
+def generate_suggested_groups_for_source(
+    *, workspace_id: str, source_id: str, registry: MeasurementGroupRegistry, source_registry: WorkspaceRegistry
+) -> list[MeasurementGroup]:
+    """Slice 2: runs deterministic automatic detection
+    (`detect_measurement_groups()`) against one source's own Voltage/
+    Current channels and persists each still-eligible candidate as a
+    new `STATUS_SUGGESTED`/`STATUS_NEEDS_REVIEW` measurement group --
+    through `create_group()`, the same validated path every other
+    caller uses, never a direct `registry.add()`.
+
+    **Idempotent and additive-only, never destructive** -- this is what
+    makes "regenerating" safe to call as often as wanted: a detected
+    cluster is skipped ENTIRELY (not partially applied) if even one of
+    its own channels already belongs to ANY existing group, of ANY
+    status (`manual`, `confirmed`, or a `suggested`/`needs_review` group
+    from a prior run). An existing group's own fields/membership are
+    never read, modified, or replaced by this function -- only genuinely
+    still-ungrouped channels ever result in a new group. Returns the
+    newly created groups only (an empty list on a source with nothing
+    new to suggest, including a source that was already fully grouped).
+
+    **No automatic trigger exists for this function** -- it is not
+    called from the source-upload endpoint or anywhere else yet. This
+    is a deliberate Slice 2 scope boundary: wiring it into an existing
+    endpoint's behaviour is deferred to whichever later slice first
+    needs the result to be observable (group-aware PU resolution or the
+    frontend configuration workspace), so this slice changes no
+    existing endpoint's behaviour at all -- exactly like Slice 1's own
+    scope discipline.
+    """
+    active = source_registry.get(workspace_id, source_id)
+    if active is None:
+        raise SourceNotFoundError(f"No source '{source_id}' in this workspace.")
+
+    channels = [(ch.name, ch.engineering_type) for ch in active.metadata.analog_channels]
+    detected_groups = detect_measurement_groups(channels)
+
+    created: list[MeasurementGroup] = []
+    for detected in detected_groups:
+        channel_refs = [
+            ChannelRef(kind="source", source_id=source_id, channel_name=name) for name in detected.channel_names
+        ]
+        already_claimed = any(registry.group_for_channel(workspace_id, ref) is not None for ref in channel_refs)
+        if already_claimed:
+            continue
+        created.append(
+            create_group(
+                workspace_id=workspace_id,
+                source_id=source_id,
+                kind=detected.kind,
+                display_name=detected.display_name,
+                channel_refs=channel_refs,
+                status=detected.status,
+                registry=registry,
+                source_registry=source_registry,
+            )
+        )
+    return created
