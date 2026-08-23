@@ -242,6 +242,25 @@ class MeasurementGroupNotFoundError(ImportServiceError):
     code = "measurement_group_not_found"
 
 
+class MeasurementGroupAlreadyExistsError(ImportServiceError):
+    """`MeasurementGroupRegistry.add()` was called with a
+    (workspace_id, measurement_group_id) pair that already exists.
+    `add()` is create-only -- an existing group's fields/membership can
+    only be changed through `update()`, which already performs
+    validation and de-index/re-index correctly. Raised before any
+    mutation; the existing stored group and its reverse-index entries
+    are left completely untouched (Slice 1 follow-up: the previous
+    behaviour silently overwrote the stored group without releasing its
+    old channel-index entries first, which would have left stale
+    reverse-index entries for any channel present in the old membership
+    but not the new one -- normal service-layer creation always
+    generates a fresh UUID so this was unreachable through ordinary use,
+    but Slice 2's deterministic/suggested grouping must not be allowed
+    to rely on that accident)."""
+
+    code = "measurement_group_already_exists"
+
+
 class InvalidMeasurementGroupKindError(ImportServiceError):
     """A submitted group `kind` is not one of the known Slice 1 kinds
     (`voltage`/`current`)."""

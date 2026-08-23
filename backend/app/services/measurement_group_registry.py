@@ -40,6 +40,19 @@ defensively copied via `_copy_group()`. The registry's own internal
 `self._groups` dict is therefore never the same object a caller holds,
 in either direction.
 
+**`add()` is CREATE-ONLY, never an implicit upsert (Slice 1 follow-up).**
+A caller attempting to `add()` a group whose `(workspace_id, id)` already
+exists is rejected with `MeasurementGroupAlreadyExistsError` before any
+mutation happens -- the existing stored group and its reverse-index
+entries are left completely untouched. This closes a real (though, under
+ordinary UUID-generated-id service usage, unreachable) hazard: silently
+overwriting an existing group via `add()` would replace its stored
+`channel_refs` without first releasing the OLD membership's own
+reverse-index entries, leaving stale `channel -> group_id` entries for
+any channel present in the old membership but absent from the new one.
+Replacing or modifying an existing group must go through `update()`,
+which already performs the correct de-index-then-re-index sequence.
+
 Semantic validation that requires data this registry does not own
 (a channel's own `engineering_type`, whether a `source_id` is real) is
 NOT this registry's job -- that lives in
@@ -59,7 +72,11 @@ from dataclasses import replace
 
 from app.domain.calculated_channel import ChannelRef
 from app.domain.measurement_group import MeasurementGroup
-from app.services.errors import ChannelAlreadyGroupedError, DuplicateChannelReferenceError
+from app.services.errors import (
+    ChannelAlreadyGroupedError,
+    DuplicateChannelReferenceError,
+    MeasurementGroupAlreadyExistsError,
+)
 
 
 def _copy_group(group: MeasurementGroup) -> MeasurementGroup:
@@ -117,18 +134,31 @@ class MeasurementGroupRegistry:
     # ------------------------------------------------------------
 
     def add(self, group: MeasurementGroup) -> None:
-        """Stores a brand-new group. Raises `DuplicateChannelReferenceError`
-        if `group.channel_refs` contains the same reference twice, or
+        """Stores a brand-new group. CREATE-ONLY: raises
+        `MeasurementGroupAlreadyExistsError` if `(workspace_id, id)`
+        already exists -- `add()` is never an implicit upsert (Slice 1
+        follow-up). Also raises `DuplicateChannelReferenceError` if
+        `group.channel_refs` contains the same reference twice, or
         `ChannelAlreadyGroupedError` if any referenced channel already
         belongs to a different group in this workspace -- both are
         defensive re-checks of what the service layer is expected to
         have already validated, never the primary place that validation
-        happens (see module docstring)."""
+        happens (see module docstring). Every check runs BEFORE any
+        mutation, so a rejected `add()` leaves the existing stored group
+        (if any) and the reverse index completely untouched -- to
+        replace or modify an existing group, use `update()`, which
+        already performs the correct de-index/re-index sequence."""
         with self._lock:
+            key = (group.workspace_id, group.id)
+            if key in self._groups:
+                raise MeasurementGroupAlreadyExistsError(
+                    f"Measurement group {group.id!r} already exists in workspace {group.workspace_id!r}; "
+                    "use update() to replace an existing group."
+                )
             self._assert_no_duplicates_within(group.channel_refs)
             self._assert_channels_unclaimed(group.workspace_id, group.channel_refs, owning_group_id=None)
             stored = _copy_group(group)
-            self._groups[(group.workspace_id, group.id)] = stored
+            self._groups[key] = stored
             self._index_channels(stored.workspace_id, stored.id, stored.channel_refs)
 
     def get(self, workspace_id: str, measurement_group_id: str) -> MeasurementGroup | None:

@@ -1,10 +1,11 @@
 """Tests for app.services.measurement_group_registry (Slice 1 of
 DEC-050): identity, storage CRUD, the channel-membership reverse index,
-cross-group duplicate-membership rejection, and workspace/source
-lifecycle -- registry-level only, no WorkspaceRegistry/engineering-type
-validation involved (see test_measurement_group_service.py for that
-layer, and test_measurement_group_domain.py for the pure functions this
-registry itself does not re-implement).
+cross-group duplicate-membership rejection, create-only add() safety,
+and workspace/source lifecycle -- registry-level only, no
+WorkspaceRegistry/engineering-type validation involved (see
+test_measurement_group_service.py for that layer, and
+test_measurement_group_domain.py for the pure functions this registry
+itself does not re-implement).
 """
 
 from __future__ import annotations
@@ -13,7 +14,11 @@ import pytest
 
 from app.domain.calculated_channel import ChannelRef
 from app.domain.measurement_group import KIND_CURRENT, KIND_VOLTAGE, STATUS_MANUAL, MeasurementGroup
-from app.services.errors import ChannelAlreadyGroupedError, DuplicateChannelReferenceError
+from app.services.errors import (
+    ChannelAlreadyGroupedError,
+    DuplicateChannelReferenceError,
+    MeasurementGroupAlreadyExistsError,
+)
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 
 VA = ChannelRef(kind="source", source_id="src-1", channel_name="VA")
@@ -106,6 +111,74 @@ class TestDuplicateMembership:
         registry.add(_group("mg-2", source_id="src-2", channel_refs=[OTHER_SRC_VA]))
         assert registry.group_for_channel("ws-1", VA) == "mg-1"
         assert registry.group_for_channel("ws-1", OTHER_SRC_VA) == "mg-2"
+
+
+class TestAddIsCreateOnly:
+    """Slice 1 follow-up: add() must never behave as an implicit upsert.
+    A second add() under the same (workspace_id, id) is rejected before
+    any mutation -- the existing group's own membership and reverse-
+    index entries must survive completely untouched, and the channels
+    the REJECTED attempt tried to introduce must never be indexed."""
+
+    def test_second_add_under_the_same_id_is_rejected(self):
+        registry = MeasurementGroupRegistry()
+        registry.add(_group("mg-1", channel_refs=[VA, VB]))
+        with pytest.raises(MeasurementGroupAlreadyExistsError):
+            registry.add(_group("mg-1", channel_refs=[IA]))
+
+    def test_original_group_membership_is_unchanged_after_rejected_add(self):
+        registry = MeasurementGroupRegistry()
+        registry.add(_group("mg-1", channel_refs=[VA, VB]))
+        with pytest.raises(MeasurementGroupAlreadyExistsError):
+            registry.add(_group("mg-1", channel_refs=[IA]))
+        assert registry.get("ws-1", "mg-1").channel_refs == [VA, VB]
+
+    def test_original_reverse_index_entries_survive_a_rejected_add(self):
+        registry = MeasurementGroupRegistry()
+        registry.add(_group("mg-1", channel_refs=[VA, VB]))
+        with pytest.raises(MeasurementGroupAlreadyExistsError):
+            registry.add(_group("mg-1", channel_refs=[IA]))
+        assert registry.group_for_channel("ws-1", VA) == "mg-1"
+        assert registry.group_for_channel("ws-1", VB) == "mg-1"
+
+    def test_rejected_attempts_own_channels_are_never_indexed(self):
+        registry = MeasurementGroupRegistry()
+        registry.add(_group("mg-1", channel_refs=[VA, VB]))
+        with pytest.raises(MeasurementGroupAlreadyExistsError):
+            registry.add(_group("mg-1", channel_refs=[IA]))
+        assert registry.group_for_channel("ws-1", IA) is None
+
+    def test_count_and_listing_unchanged_after_rejected_add(self):
+        registry = MeasurementGroupRegistry()
+        registry.add(_group("mg-1", channel_refs=[VA, VB]))
+        with pytest.raises(MeasurementGroupAlreadyExistsError):
+            registry.add(_group("mg-1", channel_refs=[IA]))
+        assert registry.count() == 1
+        assert [g.id for g in registry.list_for_workspace("ws-1")] == ["mg-1"]
+
+    def test_same_group_id_in_different_workspaces_remains_isolated_and_valid(self):
+        # Identity is (workspace_id, id) -- the same id string in a
+        # DIFFERENT workspace is not a duplicate at all.
+        registry = MeasurementGroupRegistry()
+        registry.add(_group("mg-1", workspace_id="ws-a", channel_refs=[VA]))
+        registry.add(_group("mg-1", workspace_id="ws-b", channel_refs=[VB]))  # must not raise
+        assert registry.get("ws-a", "mg-1").channel_refs == [VA]
+        assert registry.get("ws-b", "mg-1").channel_refs == [VB]
+        assert registry.group_for_channel("ws-a", VA) == "mg-1"
+        assert registry.group_for_channel("ws-b", VB) == "mg-1"
+
+    def test_replacing_an_existing_group_still_works_via_update(self):
+        # The create-only restriction applies to add() only -- update()
+        # remains the correct, fully-validated replace/modify path.
+        registry = MeasurementGroupRegistry()
+        registry.add(_group("mg-1", channel_refs=[VA, VB]))
+        replacement = registry.get("ws-1", "mg-1")
+        replacement.channel_refs = [IA]
+        registry.update(replacement)
+        assert registry.get("ws-1", "mg-1").channel_refs == [IA]
+        assert registry.group_for_channel("ws-1", VA) is None
+        assert registry.group_for_channel("ws-1", VB) is None
+        assert registry.group_for_channel("ws-1", IA) == "mg-1"
 
 
 class TestGroupForChannelIndex:
