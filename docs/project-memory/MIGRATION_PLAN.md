@@ -8648,6 +8648,123 @@ owner UAT after this push.
 
 ---
 
+## Phase 11 — DEC-050 Slice 5: Group-Aware Per-Unit Resolution in Live Display Endpoints (2026-08-24)
+
+### Scope
+
+Wires DEC-050's group-aware Voltage/Current resolvers (Slices 3/4) into
+the four LIVE source display/measurement endpoints that already support
+`unit_mode` (`GET .../waveform`, `POST .../cursor-values`,
+`.../annotation-anchor`, `.../peak-values`) -- the first slice where
+DEC-050 configuration actually changes a real, observable numeric PU
+result. The four calculated-channel equivalents were deliberately NOT
+touched (calculated-channel `MeasurementGroup` inheritance is Slice 7
+scope; a calculated channel is never itself a group member, per Slice 1).
+
+**Live-endpoint inventory** (confirmed by direct code search, not
+assumed from prior phases): exactly 8 `unit_mode`-aware endpoints exist
+today, unchanged in count from Phase 5C -- 4 in `app/api/v1/sources.py`
+(migrated this slice) and 4 in `app/api/v1/calculated_channels.py`
+(untouched, out of scope).
+
+**New `app/services/group_aware_per_unit.py`** -- the one new piece of
+production wiring. `resolve_group_aware_per_unit()` resolves a
+channel's `ChannelRef` -> `MeasurementGroupRegistry.group_for_channel()`
+-> the group's own kind-specific config (`VoltageGroupConfigRegistry`/
+`CurrentGroupConfigRegistry`) -> the already-proven Slice 3/4 pure
+domain resolvers (`resolve_voltage_base_for_group`/
+`resolve_current_base_for_group`, entirely unchanged) -> an adapted
+`app.domain.per_unit.PerUnitResolution` (the exact type/shape the
+EXISTING DEC-049 code path already produces, `profile_id` repurposed to
+carry a `measurement_group_id`, never exposed in any API response).
+Returns `None` when the channel is not a member of any group. Zero new
+conversion/unit-normalization logic -- `per_unit.apply_per_unit_to_value()`/
+`apply_per_unit_to_array()` (unchanged) consume this resolution
+identically to a DEC-049 one.
+
+**`app/services/waveform_service.py`**: one new private dispatch helper,
+`_resolve_effective_per_unit()`, inserted ahead of every existing
+`resolve_per_unit()` call site in `extract_waveform_range`/
+`extract_cursor_values`/`resolve_annotation_anchor`/`resolve_peak_value`
+-- each function gained four new OPTIONAL parameters
+(`workspace_id`/`group_registry`/`voltage_config_registry`/
+`current_config_registry`, all defaulting to `None`), so every existing
+caller/test that omits them gets EXACTLY the previous behaviour.
+Registry/config resolution happens once per requested channel per
+request (never per sample, never a source-wide scan) -- the same
+"resolve once, apply to the whole array/value" shape the existing
+DEC-049 path already used.
+
+**`app/api/v1/sources.py`**: the three group-configuration registries
+threaded through as new `Depends()` parameters on the four migrated
+endpoints (mirroring the existing `per_unit_registry` dependency
+exactly), passed through to the service calls above alongside
+`workspace_id`.
+
+**DEC-049/DEC-050 coexistence precedence -- recorded as
+[DEC-051](DECISIONS.md#dec-051--dec-049dec-050-live-endpoint-coexistence-precedence-group-membership-not-configuration-completeness-decides-which-resolver-applies-to-a-channel)**,
+since the canonical documents left this genuinely undefined (confirmed
+by direct search before implementation, not assumed): a channel that is
+a member of a `MeasurementGroup` is resolved EXCLUSIVELY by DEC-050
+(whether `configured` or `base_required` -- DEC-049 is never
+additionally consulted for it, never silently overrides it); an
+ungrouped channel uses the existing DEC-049 source-wide resolution,
+completely unchanged. **De-risking fact confirmed before implementation**:
+no frontend UI or auto-trigger exists yet to populate a
+`MeasurementGroupRegistry` in the live app, so this behaviour is dormant
+for every real user session today -- it cannot retroactively change any
+already-observed PU output.
+
+**Preserved unchanged, verified by full regression sweep**: Voltage
+LG/LL denominator math (Slice 3), Current equipment-rating/manual/none
+methods and linked-Voltage-group Vbase_LL-only reading (Slice 4), the
+authoritative `confirmed`/`manual` status gate on a group's OWN status
+(both Voltage and Current), the rule that a LINKED Voltage group's own
+status never gates Current resolution (proven live, not just at the
+domain level, via a "suggested" linked group scenario), digital-channel
+behaviour (no `unit_mode` concept at that endpoint at all), Power/
+Frequency/etc. remaining `not_applicable`, engineering-mode responses
+(byte-for-byte unchanged), the DEC-049 source-wide `/per-unit/sources`
+API and `per_unit.py`/`per_unit_registry.py`/`per_unit_service.py`
+(zero lines changed), Slice 2's grouping detector (never invoked by any
+display request), and calculated-channel behaviour (endpoints untouched).
+
+**New test fixture**: `tests/fixtures/comtrade/synth_measurement_groups.cfg`/
+`.dat` -- a purpose-built synthetic source with 19 analog channels
+(three independent 3-phase Voltage groups at 275/132/275 kV covering
+both LG and LL reference styles, five Current channels covering
+equipment-rating/manual/none/ungrouped configurations, one Frequency
+channel) and 2 digital channels, every analog channel holding a constant
+value across all samples so expected PU results can be computed
+independently in each test rather than hard-coded.
+
+### Tests
+
+30 new tests across two new files: `test_group_aware_per_unit_service.py`
+(9, resolver/registry level) and `test_group_aware_per_unit_endpoints.py`
+(21, full live-endpoint integration via the real FastAPI app -- two
+independent voltage levels, LG-vs-LL groups at the same nominal level,
+transformer HV/LV current sides sharing one Sbase, manual Ibase, current
+method `none`, missing-group DEC-049 fallback, DEC-049/DEC-050
+coexistence on one source, a suggested linked Voltage group, cross-
+source isolation with identical channel names, digital-channel
+non-interference, unsupported-quantity rejection, engineering-mode
+non-interference, all four migrated endpoints, and five adversarial
+cases -- same display name on two groups, a deleted linked group's
+config, a deleted linked group entirely, a corrupted zero Ibase, and
+LG-vs-LL-linked Current groups producing identical Ibase). Full backend
+suite: 1077 tests pass (up from 1047), zero regressions.
+
+### Status
+
+**Slice 5 complete for the 4 source display endpoints it targets. The 4
+calculated-channel display endpoints remain on DEC-049-only behaviour
+(unchanged, out of scope -- Slice 7). Slice 6 (frontend group-based
+configuration workspace) is NOT authorized** -- it requires its own
+separate, explicit approval. No frontend file was modified this slice.
+
+---
+
 ## Phase 9 — DEC-050 Slices 2 & 3: Automatic Grouping + Voltage Group Voltage PU Semantics (2026-08-24)
 
 ### Scope

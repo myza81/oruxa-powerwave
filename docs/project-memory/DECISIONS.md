@@ -6541,6 +6541,124 @@ sequence and Slice-1-scope sections), [CURRENT_STATE.md](CURRENT_STATE.md),
 
 ---
 
+## DEC-051 — DEC-049/DEC-050 live-endpoint coexistence precedence: group membership, not configuration completeness, decides which resolver applies to a channel
+
+Date: 2026-08-24
+Status: Approved — implemented (DEC-050 Slice 5).
+Source: the Slice 5 implementation task's own explicit "preferred
+compatibility principle" (Slice 5 prompt, section 8), confirmed against
+[PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) and this
+document's own DEC-050 entry, neither of which defines any DEC-049/
+DEC-050 coexistence rule (verified by direct search before
+implementation — the gap was real, not merely unclear wording).
+
+Decision:
+
+Now that DEC-050's group-aware resolver is wired into the live source
+display/measurement endpoints (Slice 5) alongside the still-live DEC-049
+source-wide resolver, exactly one of them applies to any given channel
+per request, decided by a single, simple, structural fact — **channel
+membership in a `MeasurementGroup`, never configuration completeness**:
+
+```text
+channel IS a member of a MeasurementGroup
+    → DEC-050 group-aware resolution is authoritative for that channel
+    → its outcome (configured OR base_required) is final
+    → DEC-049's source-wide profile is never additionally consulted
+      for it, and never silently overrides it
+
+channel is NOT a member of any MeasurementGroup
+    → the existing DEC-049 source-wide resolution applies, completely
+      unchanged from pre-Slice-5 behaviour
+```
+
+Concretely: a channel assigned to a Voltage/Current group whose own
+configuration is incomplete (no base set, current method `none`, a
+stale/deleted linked-group reference, etc.) resolves as `base_required`
+— it does **not** fall back to a source-wide DEC-049 base that happens
+to exist on the same source, even though that number is available.
+Conversely, a channel with no group membership at all is completely
+unaffected by Slice 5 and behaves exactly as it did before this slice,
+including using a DEC-049 profile if one is configured.
+
+Reason:
+
+The two systems needed *some* precedence the moment they became live on
+the same endpoints for the same requests — silence in the canonical
+docs could not be resolved by inventing an ad-hoc rule mid-implementation
+(this document's and CLAUDE.md's own change-governance expectation).
+The task's own preferred principle ("DEC-050 becomes the correct path
+for channels with valid group-specific bases; DEC-049 remains available
+for backwards compatibility; DEC-049 must never silently override an
+explicit DEC-050 configuration") was verified to not contradict either
+canonical document, so it was implemented as given rather than treated
+as a fresh invention. Membership (not "did the group happen to resolve
+successfully") was chosen as the actual switch because the alternative
+— falling back to a source-wide number whenever a channel's own group
+configuration is merely incomplete — is exactly the kind of "silently
+borrow another base" behaviour `PER_UNIT_MEASUREMENT_MODEL.md` section
+21 already forbids, and would make a grouped channel's PU status depend
+on ambient, unrelated source-wide state instead of its own group's
+explicit configuration.
+
+**A material de-risking fact, confirmed before implementation**: no
+frontend UI exists yet (Slice 6) to create a `MeasurementGroup` through
+the live application, and no upload-time or display-time auto-grouping
+trigger exists (Slice 2's detector remains standalone-only, per its own
+scope and per this slice's own explicit "do not invoke the grouping
+detector during display requests" instruction). Every `MeasurementGroupRegistry`
+is therefore empty for the life of the process unless something calls
+`create_group()`/`generate_suggested_groups_for_source()` directly —
+which nothing in the live, reachable application does. This decision's
+behaviour change is consequently **dormant for every real user session
+today**: it cannot retroactively change any already-observed PU output,
+since no real session can have populated a measurement group in the
+first place. This is why the decision could be implemented directly
+rather than deferred pending owner sign-off — the risk profile of "an
+additive code path with zero live trigger" is the same one already
+established and accepted for Slices 1-4.
+
+Alternatives considered:
+
+- **A brand-new, separate `unit_mode` value (e.g. `"per_unit_group"`)
+  that never touches the existing `"per_unit"` behaviour at all** —
+  rejected for this slice: every one of the task's own required
+  integration-test scenarios (two voltage levels, LG/LL groups,
+  transformer HV/LV sides, manual Ibase, etc.) is written against the
+  EXISTING `unit_mode="per_unit"` request shape, and the frontend isn't
+  being touched to ever send a new mode value regardless — a separate
+  mode would have made Slice 5's own required tests impossible to
+  satisfy through the live endpoint contract without also touching the
+  frontend, which is explicitly out of scope until Slice 6.
+- **DEC-049 wins whenever it is configured, DEC-050 only as a fallback**
+  — rejected; this is the literal inverse of the task's own explicit
+  instruction ("do not allow DEC-049 to silently override an explicit
+  DEC-050 group-specific configuration") and would make a grouped
+  channel's correct, purpose-built configuration invisible behind
+  whatever legacy source-wide profile happens to exist.
+- **A grouped-but-`base_required` channel falls back to the DEC-049
+  source-wide base if one exists** — rejected; this blends two
+  independent configuration authorities for one channel, is exactly the
+  "silently borrow another base" pattern the canonical document forbids
+  (section 21), and would make a channel's displayed PU value depend on
+  unrelated, ambient source-wide state rather than its own explicit
+  group configuration.
+
+Impact:
+
+New `backend/app/services/group_aware_per_unit.py` (the resolution
+bridge implementing this precedence) and its own test coverage. Modified
+`backend/app/services/waveform_service.py` (one new dispatch helper,
+`_resolve_effective_per_unit()`, inserted ahead of every existing
+`resolve_per_unit()` call site) and `backend/app/api/v1/sources.py`
+(the three group-configuration registries threaded through as new
+optional dependencies on the four live source display endpoints). No
+existing DEC-049 code path (`per_unit.py`/`per_unit_registry.py`/
+`per_unit_service.py`/the `/per-unit/sources` API) was modified. See
+[MIGRATION_PLAN.md — Phase 11](MIGRATION_PLAN.md#phase-11--dec-050-slice-5-group-aware-per-unit-resolution-in-live-display-endpoints-2026-08-24).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

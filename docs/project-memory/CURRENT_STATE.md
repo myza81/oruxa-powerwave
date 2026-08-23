@@ -4,7 +4,9 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-24** (Phase 10 — DEC-050 Slice 4:
+Last meaningful update: **2026-08-24** (Phase 11 — DEC-050 Slice 5:
+Group-Aware Per-Unit Resolution in Live Display Endpoints, on top of
+Phase 10 — DEC-050 Slice 4:
 Current Measurement-Group Base Semantics, on top of
 Phase 9 — DEC-050 Slices 2 & 3:
 Automatic Grouping + Voltage Group Voltage PU Semantics, on top of
@@ -39,6 +41,42 @@ Text Note, Phase 4D — Precision Step Zoom + Icon Toolbar Refinement,
 Waveform Time-Axis Sub-ms Precision, Waveform Adaptive Resolution, Phase
 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B,
 Phase 4A-UAT9, and Phase 4A-UAT10).
+
+`[FACT]` **DEC-050 Slice 5 implemented (2026-08-24) — Group-Aware
+Per-Unit Resolution in Live Display Endpoints.** The four LIVE source
+display/measurement endpoints that already support `unit_mode`
+(`GET .../waveform`, `.../cursor-values`, `.../annotation-anchor`,
+`.../peak-values`) now consult a channel's own `MeasurementGroup`
+configuration (Slices 3/4) when one exists — the first slice where
+DEC-050 changes a real, observable PU number. New
+`app/services/group_aware_per_unit.py` resolves
+`ChannelRef → MeasurementGroup → group's own Voltage/Current config →
+resolved base`, adapting the result into the SAME `PerUnitResolution`
+shape the existing DEC-049 path already produces, so the unchanged
+`apply_per_unit_to_value()`/`apply_per_unit_to_array()` consume either
+identically. **Precedence (new [DEC-051](DECISIONS.md#dec-051--dec-049dec-050-live-endpoint-coexistence-precedence-group-membership-not-configuration-completeness-decides-which-resolver-applies-to-a-channel),
+since the canonical docs left this genuinely undefined)**: a channel
+that belongs to a `MeasurementGroup` is resolved EXCLUSIVELY by
+DEC-050 (`configured` or `base_required` — DEC-049 is never additionally
+consulted or silently overridden for it); an ungrouped channel uses the
+existing DEC-049 source-wide resolution, completely unchanged — proven
+directly by a live coexistence test on one source carrying both a
+grouped channel and a DEC-049 profile. No frontend UI or auto-trigger
+exists yet to populate a group registry in the live app, so this
+behaviour is dormant for every real user session today. Proven via 30
+new tests (9 resolver-level, 21 full live-endpoint integration,
+including two independent voltage levels, LG-vs-LL groups at the same
+nominal level, transformer HV/LV sides sharing one Sbase producing
+different Ibase, manual Ibase, current method `none`, a suggested
+linked Voltage group not blocking Current resolution, cross-source
+isolation, and five adversarial cases) — 1077 total, zero regressions.
+**The DEC-049 source-wide `/per-unit/sources` API and
+`per_unit.py`/`per_unit_registry.py`/`per_unit_service.py` were not
+modified at all.** Calculated-channel display endpoints are untouched
+(Slice 7 scope); the frontend remains entirely DEC-049 UI until Slice 6.
+See
+[MIGRATION_PLAN.md — Phase 11](MIGRATION_PLAN.md#phase-11--dec-050-slice-5-group-aware-per-unit-resolution-in-live-display-endpoints-2026-08-24)
+and [HANDOFF.md](HANDOFF.md).
 
 `[FACT]` **DEC-050 Slice 4 implemented (2026-08-24) — Current
 Measurement-Group Base Semantics.** A `kind='current'` measurement group

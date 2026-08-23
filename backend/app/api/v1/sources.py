@@ -237,12 +237,22 @@ def get_source_waveform(
     ),
     registry: WorkspaceRegistry = Depends(get_workspace_registry),
     per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
+    measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
+    voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
+    current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
 ) -> WaveformRangeOut:
     """Phase 2A waveform range endpoint -- see docs/project-memory/MIGRATION_PLAN.md's
     Phase 2A implementation record for the full API contract and its rationale.
 
     Analog channels only in Phase 2A (digital waveform delivery is
     deliberately deferred -- see app.services.errors.ChannelNotAnalogError).
+
+    Slice 5 (DEC-050): when `unit_mode="per_unit"`, a channel that
+    belongs to a `MeasurementGroup` is converted using that group's own
+    Voltage/Current base configuration instead of this source's DEC-049
+    profile -- see app.services.group_aware_per_unit's own module
+    docstring for the exact precedence rule (DEC-051). An ungrouped
+    channel's behaviour is completely unchanged.
     """
     workspace_id = _validate_workspace_id(workspace_id)
     active = _get_or_404(registry, workspace_id, source_id)
@@ -257,6 +267,10 @@ def get_source_waveform(
             unit_mode=unit_mode,
             per_unit_profile=per_unit_profile,
             voltage_channel_names=_voltage_channel_names_for_active(active),
+            workspace_id=workspace_id,
+            group_registry=measurement_group_registry,
+            voltage_config_registry=voltage_group_config_registry,
+            current_config_registry=current_group_config_registry,
         )
     except ImportServiceError as exc:
         logger.info(
@@ -324,6 +338,9 @@ def get_source_cursor_values(
     body: CursorValuesRequest,
     registry: WorkspaceRegistry = Depends(get_workspace_registry),
     per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
+    measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
+    voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
+    current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
 ) -> CursorValuesOut:
     """Batched A/B cursor-measurement endpoint (Phase 4C1 analog, Phase
     4C2 digital).
@@ -352,6 +369,10 @@ def get_source_cursor_values(
         unit_mode=body.unit_mode,
         per_unit_profile=per_unit_profile,
         voltage_channel_names=_voltage_channel_names_for_active(active),
+        workspace_id=workspace_id,
+        group_registry=measurement_group_registry,
+        voltage_config_registry=voltage_group_config_registry,
+        current_config_registry=current_group_config_registry,
     )
     return CursorValuesOut.from_result(result)
 
@@ -363,6 +384,9 @@ def resolve_source_annotation_anchor(
     body: AnnotationAnchorRequest,
     registry: WorkspaceRegistry = Depends(get_workspace_registry),
     per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
+    measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
+    voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
+    current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
 ) -> AnnotationAnchorOut:
     """Phase 4F Callout annotation anchor resolution (DEC-045).
 
@@ -388,6 +412,10 @@ def resolve_source_annotation_anchor(
             unit_mode=body.unit_mode,
             per_unit_profile=per_unit_profile,
             voltage_channel_names=_voltage_channel_names_for_active(active),
+            workspace_id=workspace_id,
+            group_registry=measurement_group_registry,
+            voltage_config_registry=voltage_group_config_registry,
+            current_config_registry=current_group_config_registry,
         )
     except ImportServiceError as exc:
         logger.info(
@@ -408,6 +436,9 @@ def resolve_source_peak_values(
     body: PeakValueBatchRequest,
     registry: WorkspaceRegistry = Depends(get_workspace_registry),
     per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
+    measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
+    voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
+    current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
 ) -> PeakValueBatchOut:
     """Phase 4G Maximum/Minimum Peak annotation resolution (DEC-046).
 
@@ -462,6 +493,10 @@ def resolve_source_peak_values(
                 unit_mode=body.unit_mode,
                 per_unit_profile=per_unit_profile,
                 voltage_channel_names=voltage_channel_names,
+                workspace_id=workspace_id,
+                group_registry=measurement_group_registry,
+                voltage_config_registry=voltage_group_config_registry,
+                current_config_registry=current_group_config_registry,
             )
         except ImportServiceError as exc:
             logger.info(

@@ -27,15 +27,19 @@ from dataclasses import dataclass
 import numpy as np
 
 from app.domain.channel_classification import UNDEFINED
-from app.domain.per_unit import PerUnitBaseProfile, apply_per_unit_to_array, apply_per_unit_to_value, resolve_per_unit
+from app.domain.per_unit import PerUnitBaseProfile, PerUnitResolution, apply_per_unit_to_array, apply_per_unit_to_value, resolve_per_unit
 from app.domain.source import ActiveSource, DigitalChannelSummary
 from app.domain.waveform_reduction import build_min_max_envelope
+from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.errors import (
     ChannelNotAnalogError,
     ChannelNotDigitalError,
     ChannelNotFoundError,
     InvalidTimeRangeError,
 )
+from app.services.group_aware_per_unit import resolve_group_aware_per_unit
+from app.services.measurement_group_registry import MeasurementGroupRegistry
+from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 
 UNIT_MODE_ENGINEERING = "engineering"
 UNIT_MODE_PER_UNIT = "per_unit"
@@ -47,6 +51,49 @@ def _analog_channel_engineering_type(active: ActiveSource, channel_name: str) ->
     own `_resolve_input` uses -- never a second classification pass."""
     matching = next((ch for ch in active.metadata.analog_channels if ch.name == channel_name), None)
     return matching.engineering_type if matching is not None else UNDEFINED
+
+
+def _resolve_effective_per_unit(
+    active: ActiveSource,
+    channel_name: str,
+    engineering_type: str,
+    per_unit_profile: PerUnitBaseProfile | None,
+    voltage_channel_names: list[str] | None,
+    *,
+    workspace_id: str | None,
+    group_registry: MeasurementGroupRegistry | None,
+    voltage_config_registry: VoltageGroupConfigRegistry | None,
+    current_config_registry: CurrentGroupConfigRegistry | None,
+) -> PerUnitResolution:
+    """DEC-050 Slice 5: the ONE dispatch point every per-unit-aware
+    function below calls, instead of `resolve_per_unit()` directly.
+    Attempts group-aware resolution first (only when the caller supplied
+    all four new registry-scoped params -- every existing caller/test
+    that omits them gets the exact previous behaviour, unchanged); if
+    the channel is not a member of any `MeasurementGroup`,
+    `resolve_group_aware_per_unit()` returns `None` and this falls
+    through to the existing DEC-049 source-wide resolution exactly as
+    before. See `app.services.group_aware_per_unit`'s own module
+    docstring for the full precedence rule (DEC-051)."""
+    resolution: PerUnitResolution | None = None
+    if (
+        workspace_id is not None
+        and group_registry is not None
+        and voltage_config_registry is not None
+        and current_config_registry is not None
+    ):
+        resolution = resolve_group_aware_per_unit(
+            workspace_id=workspace_id,
+            source_id=active.metadata.source_id,
+            channel_name=channel_name,
+            engineering_type=engineering_type,
+            group_registry=group_registry,
+            voltage_config_registry=voltage_config_registry,
+            current_config_registry=current_config_registry,
+        )
+    if resolution is None:
+        resolution = resolve_per_unit(engineering_type, per_unit_profile, voltage_channel_names)
+    return resolution
 
 #: Starting reference point: `powerwave`'s own live desktop code
 #: (`build_aligned_data`/`decimate_for_display`) uses this exact value at
@@ -170,6 +217,10 @@ def extract_waveform_range(
     unit_mode: str = UNIT_MODE_ENGINEERING,
     per_unit_profile: PerUnitBaseProfile | None = None,
     voltage_channel_names: list[str] | None = None,
+    workspace_id: str | None = None,
+    group_registry: MeasurementGroupRegistry | None = None,
+    voltage_config_registry: VoltageGroupConfigRegistry | None = None,
+    current_config_registry: CurrentGroupConfigRegistry | None = None,
 ) -> WaveformRangeResult:
     """Extract an exact time range for one analog channel, then prepare it for display.
 
@@ -219,7 +270,11 @@ def extract_waveform_range(
     per_unit_status: str | None = None
     if unit_mode == UNIT_MODE_PER_UNIT:
         engineering_type = _analog_channel_engineering_type(active, channel_name)
-        resolution = resolve_per_unit(engineering_type, per_unit_profile, voltage_channel_names)
+        resolution = _resolve_effective_per_unit(
+            active, channel_name, engineering_type, per_unit_profile, voltage_channel_names,
+            workspace_id=workspace_id, group_registry=group_registry,
+            voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+        )
         out_values, unit, per_unit_status = apply_per_unit_to_array(out_values, unit, engineering_type, resolution)
 
     return WaveformRangeResult(
@@ -353,6 +408,10 @@ def extract_cursor_values(
     unit_mode: str = UNIT_MODE_ENGINEERING,
     per_unit_profile: PerUnitBaseProfile | None = None,
     voltage_channel_names: list[str] | None = None,
+    workspace_id: str | None = None,
+    group_registry: MeasurementGroupRegistry | None = None,
+    voltage_config_registry: VoltageGroupConfigRegistry | None = None,
+    current_config_registry: CurrentGroupConfigRegistry | None = None,
 ) -> CursorValuesResult:
     """Recorded channel values/states at cursor A/B, from full-resolution
     source data (Phase 4C1 analog, Phase 4C2 digital).
@@ -418,7 +477,11 @@ def extract_cursor_values(
         per_unit_status: str | None = None
         if unit_mode == UNIT_MODE_PER_UNIT:
             engineering_type = _analog_channel_engineering_type(active, name)
-            resolution = resolve_per_unit(engineering_type, per_unit_profile, voltage_channel_names)
+            resolution = _resolve_effective_per_unit(
+                active, name, engineering_type, per_unit_profile, voltage_channel_names,
+                workspace_id=workspace_id, group_registry=group_registry,
+                voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+            )
             a_value, display_unit, per_unit_status = apply_per_unit_to_value(a_value, unit, engineering_type, resolution)
             b_value, display_unit, per_unit_status = apply_per_unit_to_value(b_value, unit, engineering_type, resolution)
 
@@ -494,6 +557,10 @@ def resolve_annotation_anchor(
     unit_mode: str = UNIT_MODE_ENGINEERING,
     per_unit_profile: PerUnitBaseProfile | None = None,
     voltage_channel_names: list[str] | None = None,
+    workspace_id: str | None = None,
+    group_registry: MeasurementGroupRegistry | None = None,
+    voltage_config_registry: VoltageGroupConfigRegistry | None = None,
+    current_config_registry: CurrentGroupConfigRegistry | None = None,
 ) -> AnnotationAnchorResult:
     """Resolve a Callout annotation's anchor to the nearest ACTUAL
     full-resolution recorded sample on one analog channel (Phase 4F,
@@ -531,7 +598,11 @@ def resolve_annotation_anchor(
     per_unit_status: str | None = None
     if unit_mode == UNIT_MODE_PER_UNIT:
         engineering_type = _analog_channel_engineering_type(active, channel_name)
-        resolution = resolve_per_unit(engineering_type, per_unit_profile, voltage_channel_names)
+        resolution = _resolve_effective_per_unit(
+            active, channel_name, engineering_type, per_unit_profile, voltage_channel_names,
+            workspace_id=workspace_id, group_registry=group_registry,
+            voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+        )
         value, unit, per_unit_status = apply_per_unit_to_value(value, unit, engineering_type, resolution)
 
     return AnnotationAnchorResult(
@@ -625,6 +696,10 @@ def resolve_peak_value(
     unit_mode: str = UNIT_MODE_ENGINEERING,
     per_unit_profile: PerUnitBaseProfile | None = None,
     voltage_channel_names: list[str] | None = None,
+    workspace_id: str | None = None,
+    group_registry: MeasurementGroupRegistry | None = None,
+    voltage_config_registry: VoltageGroupConfigRegistry | None = None,
+    current_config_registry: CurrentGroupConfigRegistry | None = None,
 ) -> PeakValueResult:
     """Resolve one analog channel's maximum or minimum RECORDED sample
     value within `[start_time, end_time]` (Phase 4G, DEC-046).
@@ -680,7 +755,11 @@ def resolve_peak_value(
     display_unit = unit if available else None
     if available and unit_mode == UNIT_MODE_PER_UNIT:
         engineering_type = _analog_channel_engineering_type(active, channel_name)
-        resolution = resolve_per_unit(engineering_type, per_unit_profile, voltage_channel_names)
+        resolution = _resolve_effective_per_unit(
+            active, channel_name, engineering_type, per_unit_profile, voltage_channel_names,
+            workspace_id=workspace_id, group_registry=group_registry,
+            voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
+        )
         value, display_unit, per_unit_status = apply_per_unit_to_value(value, unit, engineering_type, resolution)
 
     return PeakValueResult(

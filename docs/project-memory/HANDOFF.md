@@ -8,6 +8,107 @@ Last updated: **2026-08-24**
 
 ## What was most recently done
 
+**Phase 11 — DEC-050 Slice 5: Group-Aware Per-Unit Resolution in Live
+Display Endpoints.** The first slice where DEC-050 configuration
+changes a real, observable PU number -- wires Slices 3/4's group-aware
+resolvers into the four LIVE source display/measurement endpoints that
+already support `unit_mode`: `GET .../waveform`, `POST .../cursor-values`,
+`.../annotation-anchor`, `.../peak-values`. The four calculated-channel
+equivalents were deliberately left untouched (calculated-channel group
+inheritance is Slice 7 scope; a calculated channel can never itself be
+a group member, per Slice 1).
+
+**Live-endpoint inventory** (verified by direct code search before
+touching anything, not assumed from prior phases' own reporting): still
+exactly 8 `unit_mode`-aware endpoints, 4 per router, unchanged in count
+since Phase 5C.
+
+**New `app/services/group_aware_per_unit.py`** -- the one new piece of
+production wiring. `resolve_group_aware_per_unit()` resolves
+`ChannelRef -> MeasurementGroupRegistry.group_for_channel() -> the
+group's own kind-specific config -> the already-proven, UNCHANGED Slice
+3/4 pure domain resolvers (`resolve_voltage_base_for_group`/
+`resolve_current_base_for_group`) -> an adapted `PerUnitResolution`` --
+the exact type the EXISTING DEC-049 path already produces (`profile_id`
+repurposed to carry a `measurement_group_id`, never exposed in any API
+response), so `apply_per_unit_to_value()`/`apply_per_unit_to_array()`
+(zero lines changed) consume either resolution identically. Returns
+`None` for an ungrouped channel -- the caller then falls through to the
+existing DEC-049 resolution completely unchanged.
+
+**`waveform_service.py`**: one new private dispatch helper,
+`_resolve_effective_per_unit()`, called ahead of every existing
+`resolve_per_unit()` site in all four functions -- each gained four new
+OPTIONAL parameters (`workspace_id`/three registries, all defaulting to
+`None`), so every existing caller/test that omits them is byte-for-byte
+unaffected. **`sources.py`**: the three group-configuration registries
+threaded through as new `Depends()` params on the four migrated
+endpoints, mirroring the existing `per_unit_registry` dependency.
+
+**DEC-049/DEC-050 coexistence precedence -- a genuine gap in the
+canonical docs, confirmed by direct search before implementing anything,
+now recorded as [DEC-051](DECISIONS.md#dec-051--dec-049dec-050-live-endpoint-coexistence-precedence-group-membership-not-configuration-completeness-decides-which-resolver-applies-to-a-channel)**:
+a channel that IS a member of a `MeasurementGroup` is resolved
+EXCLUSIVELY by DEC-050 (`configured` or `base_required` -- DEC-049 is
+never additionally consulted for it, never silently overrides it); an
+ungrouped channel uses the existing DEC-049 source-wide resolution,
+completely unchanged. This was the Slice 5 task's own explicit
+"preferred compatibility principle," verified (not merely assumed) to
+not contradict either canonical document before being implemented as
+given. **A material de-risking fact confirmed before implementation**:
+no frontend UI or auto-trigger exists yet to populate a
+`MeasurementGroupRegistry` in the live app (Slice 6 is the frontend
+slice; Slice 2's detector remains standalone-only), so this precedence
+is dormant for every real user session today -- it cannot retroactively
+change any already-observed PU output for an existing recording.
+
+**Preserved unchanged, verified by full regression sweep, not merely
+assumed**: Voltage LG/LL denominator math (Slice 3) and Current
+equipment-rating/manual/none methods with linked-Voltage-group
+`nominal_voltage_ll_kv`-only reading (Slice 4, never the linked group's
+own reference-aware denominator); the `confirmed`/`manual` authoritative-
+status gate on a group's OWN status (both kinds, unchanged); the rule
+that a LINKED Voltage group's own lifecycle status never gates Current
+resolution -- proven live this time (a "suggested" linked group with a
+valid config still lets an otherwise-authoritative Current group
+resolve); digital-channel behaviour (that endpoint has no `unit_mode`
+concept at all); Power/Frequency/etc. remaining `not_applicable`, never
+guessed into a Voltage/Current base; engineering-mode responses
+(byte-for-byte identical before/after a channel is grouped); the
+DEC-049 source-wide `/per-unit/sources` API and
+`per_unit.py`/`per_unit_registry.py`/`per_unit_service.py` (zero lines
+changed, confirmed by `git diff`); Slice 2's grouping detector (never
+invoked by any display request); and calculated-channel behaviour
+(those 4 endpoints untouched).
+
+**New test fixture**: `tests/fixtures/comtrade/synth_measurement_groups.cfg`/
+`.dat` -- purpose-built, 19 analog + 2 digital channels, every analog
+channel a constant value across all samples so expected PU results are
+computed independently in each test rather than hard-coded against a
+"magic" fixture value.
+
+**Tests**: 30 new across two files -- `test_group_aware_per_unit_service.py`
+(9, resolver level) and `test_group_aware_per_unit_endpoints.py` (21,
+full live HTTP integration: two independent voltage levels, LG-vs-LL at
+the same nominal level, transformer HV/LV sides sharing one Sbase
+producing different Ibase, manual Ibase, current method `none`, missing-
+group DEC-049 fallback, DEC-049/DEC-050 coexistence on one source, a
+suggested linked Voltage group, cross-source isolation with identical
+channel names, digital non-interference, unsupported-quantity
+rejection, engineering-mode non-interference, all four migrated
+endpoints, and five adversarial cases). Full backend suite: 1077 tests
+pass (up from 1047), zero regressions.
+
+**Next step**: nothing is pre-authorized. **Slice 6 (frontend group-
+based configuration workspace) requires its own separate, explicit
+owner-approved implementation prompt.** No frontend file was modified
+this slice.
+
+Committed as one isolated commit; see this task's own final report for
+the exact commit hash, git-diff verification, and push/CI status.
+
+## What was done in the prior session (Phase 10 — DEC-050 Slice 4: Current Measurement-Group Base Semantics, plus both robustness follow-ups)
+
 **Phase 10 — DEC-050 Slice 4: Current Measurement-Group Base
 Semantics.** Implements exactly Slice 4 of the 8-slice sequence,
 mirroring Slice 3's own architectural shape (a separate domain module,
