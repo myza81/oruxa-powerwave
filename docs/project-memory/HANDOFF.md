@@ -4,9 +4,76 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-08-22**
+Last updated: **2026-08-23**
 
 ## What was most recently done
+
+**Phase 7 — Per-Unit Measurement Model Decision Clarification
+(documentation only).** Following Phase 6's canonical specification
+(below), the owner clarified most of what that document had left
+`[OPEN]`. **No application code, frontend code, or backend test was
+modified this pass.**
+
+**What was recorded, as approved product/engineering direction —
+implementation still pending, not built**: (1) nominal Vbase is entered
+as the familiar LL system voltage; phase-to-ground channels derive
+`Vbase_phase = Vbase_LL / √3` internally, superseding the old blanket
+"never apply √3 to measured voltage division" rule with the corrected
+principle "the PU denominator must match the electrical reference of
+the measured channel"; (2) voltage-reference detection must prioritize
+explicit phase/pair naming over generic "BUS"/location vocabulary; (3) a
+current group's applicable voltage base may link to a voltage group or
+fall back to an independent manual Vbase; (4) the initial current-base
+method set is Equipment Rating / Manual Ibase / Not Configured — CT
+primary reference is explicitly excluded from the initial
+implementation; (5) CT/VT ratio is measurement scaling, never PU
+normalization (a 5-layer measurement pipeline keeps these concerns
+separate); (6) calculated-channel inheritance for the first group-aware
+implementation is same-group-only, `base_required` otherwise; (7)
+automatic grouping uses a Suggested → Confirmed lifecycle, with
+uncertain/contradictory grouping rendering `Needs review` and never
+silently driving conversion; (8) a refined `MeasurementGroup` +
+`VoltageBaseConfiguration`/`CurrentBaseConfiguration` conceptual domain
+model, replacing one generic base object with many nullable fields.
+
+**Two additional genuine code-level conflicts confirmed by direct
+inspection, neither fixed this pass (both Slice 3 work)**:
+`resolve_per_unit()` (`backend/app/domain/per_unit.py`) still divides a
+Voltage channel's measured value directly by the raw entered Vbase with
+no phase-vs-LL adjustment; `_classify_one_channel_name()`
+(`backend/app/domain/voltage_reference.py`) checks its generic
+`"BUS"`/`"LL"` substring evidence *before* the single-phase-letter case,
+so a name like `"NORTH BUS VA"` is currently misclassified as
+Line-to-Line — the exact inversion of the newly-recorded detection-
+priority principle.
+
+**What was updated**: [PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md)
+(§6, §8, §9-§12, §15, §18, §19 revised with the newly approved
+decisions; new §24/§25 recording the 8-slice implementation sequence
+and Slice 1's exact scope), [DECISIONS.md](DECISIONS.md) (a DEC-050
+Update, 2026-08-23 — DEC-049's and the original DEC-050's own history
+preserved unchanged, not rewritten), [MIGRATION_PLAN.md](MIGRATION_PLAN.md)
+(new Phase 7 entry, the 8-slice sequence), [CURRENT_STATE.md](CURRENT_STATE.md)
+(a concise DEC-050-Update paragraph, linking out rather than
+duplicating). **AGENTS.md and CLAUDE.md were left unchanged** — they
+already point to the canonical document from the Phase 6 pass, and this
+task's own instruction was to change them only if necessary.
+
+**Next step — the ONLY thing authorized next for Per-Unit**: **Slice 1
+only — Measurement-group domain model + identities + invariants.**
+Slice 1 must not change voltage/current PU math, waveform display,
+frontend UI, the grouping algorithm, or calculated-channel behaviour,
+and must not change API behaviour beyond strictly internal scaffolding.
+The final Slice 1 implementation prompt will be issued separately — this
+documentation pass does not itself start it. **Do not begin Slice 2 or
+later, and do not resolve the two code-level conflicts above, without a
+separate, explicit owner-approved prompt.**
+
+Committed as one isolated documentation-only commit; see this task's own
+final report for the exact commit hash, git-diff verification, and
+push/CI status.
+
+## What was done in the prior session (Phase 6 — Per-Unit Measurement Model Alignment, documentation only)
 
 **Phase 6 — Per-Unit Measurement Model Alignment (documentation and
 agent-coordination only).** Before any further Per-Unit implementation
@@ -6870,16 +6937,22 @@ checks for this Phase 3B pass. **Production was not touched.**
 
 - `[OPEN]`, **Per-Unit measurement model — the current source-bound
   implementation (DEC-049) is confirmed insufficient for a source
-  spanning multiple electrical measurement contexts, and a genuine
-  Voltage per-unit division mismatch has been confirmed by direct code
-  review** (a phase-to-ground measurement reads against the raw entered
-  Vbase with no reference-aware adjustment). See
+  spanning multiple electrical measurement contexts.** Most previously
+  open questions are now resolved as approved-but-unbuilt decisions
+  (DEC-050's 2026-08-23 update) — see
   [PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) (the
-  now-authoritative specification) and
+  authoritative specification) and
   [DECISIONS.md — DEC-050](DECISIONS.md#dec-050--per-unit-measurement-model-is-clarified-to-be-measurement-group-aware-the-currently-deployed-source-bound-model-dec-049-is-not-the-final-target).
-  **Do not continue extending the current source-wide model** — the
-  next authorized step is an independent architecture/code review
-  against that document, not implementation.
+  Two genuine code-level conflicts remain confirmed but unfixed: a
+  Voltage channel's own division does not yet adjust for its electrical
+  reference (`resolve_per_unit()`), and generic "BUS"/"LL" naming
+  currently overrides explicit single-phase evidence
+  (`_classify_one_channel_name()` in `voltage_reference.py`) — both are
+  Slice 3 work. **Do not continue extending the current source-wide
+  model** — the only currently authorized next implementation step is
+  **Slice 1 only** (measurement-group domain model + identities +
+  invariants), via a separate, explicit implementation prompt not yet
+  issued. Do not begin Slice 2 or later without further owner approval.
 - `[OPEN]`, **direct vertical drag/reorder of panels and drag-to-overlay/
   group by direct lane dragging are still fully unimplemented and
   undecided** — `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`,
@@ -7370,12 +7443,17 @@ sources actually get imported during a shared-DEV session.
 
 ## Owner approval needed before proceeding?
 
-- **Yes — an independent architecture/code review against
-  [PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) is
-  required before any further Per-Unit implementation work begins**,
-  including before resolving the §8 voltage-math open item. Do not
-  extend the current source-wide Per-Unit model in the meantime — see
-  "What was most recently done" and "What remains unresolved" above.
+- **Yes — a separate, explicit implementation prompt is required before
+  starting Slice 1 (measurement-group domain model + identities +
+  invariants), and further owner approval is required before any Slice
+  2 or later work.** The remaining open decisions have been clarified
+  (DEC-050's 2026-08-23 update) and Slice 1 is the confirmed next step,
+  but this documentation pass does not itself authorize starting it. Do
+  not extend the current source-wide Per-Unit model in the meantime, and
+  do not silently fix the two confirmed code-level conflicts
+  (`resolve_per_unit()`'s phase adjustment; `voltage_reference.py`'s
+  BUS-priority inversion) — see "What was most recently done" and "What
+  remains unresolved" above.
 - **Yes — Phase 4A (Digital Channels Rendering) specifically needs
   real-browser owner UAT before any further waveform feature work
   (cursor/measurement tools etc.) begins**, per that task's own explicit

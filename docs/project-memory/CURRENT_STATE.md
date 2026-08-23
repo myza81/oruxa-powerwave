@@ -4,8 +4,10 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-22** (Phase 6 — Per-Unit Measurement
-Model Alignment, documentation only, on top of Phase 5C-UAT — Source-Bound
+Last meaningful update: **2026-08-23** (Phase 7 — Per-Unit Measurement
+Model Decision Clarification, documentation only, on top of Phase 6 —
+Per-Unit Measurement Model Alignment, documentation only, on top of
+Phase 5C-UAT — Source-Bound
 Per-Unit Redesign, on top of Phase 5C — Global Per-Unit
 Measurement Mode, on top of Phase 5B-UAT — Clarify RMS
 Parameter UI, on top of Phase 5B — RMS Calculated
@@ -32,7 +34,43 @@ Waveform Time-Axis Sub-ms Precision, Waveform Adaptive Resolution, Phase
 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B,
 Phase 4A-UAT9, and Phase 4A-UAT10).
 
-`[DECISION]` **Per-Unit Measurement Model Alignment — DEC-050**
+`[DECISION]` **Per-Unit Measurement Model Decision Clarification — DEC-050
+Update** (2026-08-23, documentation only — **no application code,
+frontend code, or backend test was modified**): following the Phase 6
+canonical specification below, the owner clarified most items it had
+left `[OPEN]`. These are now recorded in
+[PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) as
+**approved engineering/product direction — implementation still
+pending**: the LL-entered Vbase / phase-base (`Vbase_LL / √3`)
+relationship for phase-to-ground channels; explicit phase/pair naming
+outranking generic "BUS"/location vocabulary in voltage-reference
+detection; a current group's applicable voltage base either linking to
+a voltage group or falling back to a manual Vbase; an initial
+current-base method set of Equipment Rating / Manual Ibase / Not
+Configured (CT primary reference explicitly excluded from the initial
+implementation); CT/VT ratio as measurement scaling, never PU
+normalization; a conservative same-group-only calculated-channel
+inheritance rule (`base_required` for cross-group/cross-source); and a
+Suggested → Confirmed automatic-grouping lifecycle (uncertain grouping
+renders `Needs review`, never silently drives conversion). Two
+additional genuine code-level conflicts were confirmed by direct
+inspection (`resolve_per_unit()` still divides directly by the raw
+entered Vbase with no phase adjustment; `_classify_one_channel_name()`
+in `voltage_reference.py` lets generic "BUS"/"LL" substrings override
+explicit single-phase-letter evidence) — **neither fixed this pass**,
+both are Slice 3 work. The implementation sequence is now 8 explicit
+slices (Slice 1: measurement-group domain model + identities +
+invariants; ... Slice 8: migration/regression/UAT). **The only
+currently authorized next implementation step is Slice 1** — issued as
+a separate, explicit prompt, not started by this documentation pass.
+See
+[DECISIONS.md — DEC-050 Update (2026-08-23)](DECISIONS.md#dec-050--per-unit-measurement-model-is-clarified-to-be-measurement-group-aware-the-currently-deployed-source-bound-model-dec-049-is-not-the-final-target)
+and
+[MIGRATION_PLAN.md — Phase 7](MIGRATION_PLAN.md#phase-7--per-unit-measurement-model-decision-clarification-documentation-only-2026-08-23).
+
+`[DECISION]` **Per-Unit Measurement Model Alignment — DEC-050 (original,
+2026-08-22 entry — superseded in scope, not history, by the 2026-08-23
+update immediately above)**
 (2026-08-22, documentation and agent-coordination only — **no
 application code, frontend code, or backend test was modified**): the
 currently deployed DEC-049 source-bound model (`source_id → one PU

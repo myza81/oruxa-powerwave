@@ -6408,6 +6408,137 @@ architecture/code review before continuing any PU implementation),
 pointer to the canonical document for PU-related work). See
 [MIGRATION_PLAN.md — Phase 6](MIGRATION_PLAN.md#phase-6--per-unit-measurement-model-alignment-documentation-only-2026-08-22).
 
+**Update (2026-08-23) — remaining owner decisions clarified; Slice 1
+prepared, not started:**
+
+Following further owner review, most items this decision had left
+`[OPEN]` in [PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md)
+are now resolved as **approved product/engineering direction —
+implementation still pending**. This update does not change DEC-049's
+own history, and does not itself authorize any code change — it records
+newly approved decisions and refines the implementation sequence.
+
+Newly approved decisions (full detail in
+[PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md), not
+duplicated here):
+
+1. **Nominal voltage base is entered as the familiar nominal system
+   line-to-line voltage** (500 kV / 275 kV / 132 kV, etc.) — the
+   engineer enters one number regardless of how an individual channel
+   happens to be measured.
+2. **Phase-to-ground channels derive their applicable base as
+   `Vbase_phase = Vbase_LL / √3`** — a healthy phase-to-ground waveform
+   on a nominal 275 kV system (≈158.8 kV) should read ≈1.0 pu.
+   Line-to-line channels continue to use `Vpu = Vmeasured_LL / Vbase_LL`
+   directly. **This supersedes the previous blanket statement "never
+   apply √3 to measured voltage division"** — the corrected governing
+   principle is: *the PU denominator must match the electrical reference
+   of the measured channel.* The original rule's underlying intent (never
+   fabricate an LL-equivalent measurement from an LG reading, or vice
+   versa) is preserved; what changes is that selecting the correct
+   denominator for an LG channel now derives a phase base from the
+   entered LL base, rather than dividing directly by the raw LL number.
+   `[FACT]`-confirmed via direct code reading that the currently
+   deployed `resolve_per_unit()` does not yet do this (§8 of the
+   canonical document) — not fixed by this update, Slice 3 work.
+3. **Voltage-reference detection must prioritize explicit electrical
+   phase/pair representation over generic location/equipment
+   vocabulary** — e.g. "NORTH BUS VA/VB/VC" must still be interpreted
+   as individual phase-to-ground channels; the word "BUS" must never
+   override explicit phase structure. `[FACT]`-confirmed via direct code
+   reading that `_classify_one_channel_name()` in
+   `backend/app/domain/voltage_reference.py` currently checks its
+   `"BUS"/"LL"` substring evidence *before* the single-phase-letter
+   case, so a name like "NORTH BUS VA" is misclassified as
+   Line-to-Line today — a second, distinct conflict from item 2, also
+   not fixed by this update, also Slice 3 work.
+4. **A current measurement group's applicable voltage base may either
+   link to an existing voltage measurement group, or use an
+   independent/manual Vbase** when no suitable voltage group exists in
+   the recording — current groups must not be forced to depend on a
+   voltage-channel group.
+5. **Initial target current-base methods are Equipment Rating (Sbase +
+   applicable Vbase → Ibase), Manual Ibase, and Not Configured** — CT
+   primary reference is explicitly excluded from the initial
+   measurement-group implementation (not merely deprioritized).
+6. **CT/VT ratio is measurement scaling, never Per-Unit normalization**
+   — a CT/VT-derived primary value is still an engineering-unit value,
+   not a PU value; CT/VT rating must never silently become the default
+   PU base. A five-layer measurement pipeline (raw/recorder measurement
+   → CT/VT scaling → primary engineering value → disturbance analysis →
+   PU normalization → pu) is recorded to keep these concerns
+   architecturally separate.
+7. **Calculated-channel PU inheritance, for the first group-aware
+   implementation, is conservative**: a same-group calculation (e.g.
+   `-IA`, `abs(IA)`, `IA + IB` where every input resolves to the same
+   compatible measurement group) may inherit that group's base;
+   cross-group, cross-source, or otherwise incompatible-base
+   calculations do not invent a PU base and resolve to `base_required`
+   instead. This is the existing source-level
+   `derive_per_unit_profile_id()` rule shape, confirmed as the correct
+   starting point extended from `source_id` to `measurement_group_id`
+   — no new inheritance algorithm needs inventing.
+8. **Automatic grouping uses a Suggested → Confirmed lifecycle, not a
+   mandatory per-group confirmation step**: high-confidence suggestions
+   may appear already grouped in the configuration UI; the engineer's
+   own act of reviewing/configuring/saving a group's base promotes it
+   from Suggested to Confirmed. Uncertain/contradictory grouping must
+   render as `Needs review` and must never silently drive PU conversion
+   — it behaves like an unconfigured/`base_required` group until
+   resolved.
+9. **The target domain model avoids one generic base object with many
+   irrelevant nullable fields**, using a `MeasurementGroup` (id,
+   source_id, kind, display_name, channel_refs, grouping_status,
+   type-specific configuration) with separate `VoltageBaseConfiguration`
+   and `CurrentBaseConfiguration` shapes — conceptual, not a forced
+   class/file structure.
+
+**Revised implementation sequence** (sequencing only, not a standing
+authorization to proceed slice-by-slice without further approval — each
+slice still requires its own review):
+
+```text
+Slice 1 — Measurement-group domain model + identities + invariants
+Slice 2 — Deterministic automatic grouping (suggested/confirmed/ambiguous)
+Slice 3 — Voltage groups (corrected detection + LL/LG PU base resolution)
+Slice 4 — Current groups (equipment-rating/manual/none + voltage linking)
+Slice 5 — Group-aware PU resolution (display/measurement endpoints)
+Slice 6 — Frontend group-based configuration workspace
+Slice 7 — Calculated-channel same-group inheritance
+Slice 8 — migration, regression, performance verification and UAT
+```
+
+**The only authorized next implementation step is Slice 1** —
+measurement-group domain model, identities, and invariants only. Slice 1
+must not change voltage/current PU math, waveform display, frontend UI,
+the grouping algorithm, or calculated-channel behaviour, and must not
+change API behaviour beyond strictly internal scaffolding. The final
+Slice 1 implementation prompt is issued separately; this decision update
+does not itself start it.
+
+Mark: **Approved engineering/product direction. Implementation
+pending.**
+
+Reason:
+
+Owner review of the initial DEC-050 direction identified that several
+items left open for later review had concrete answers the owner already
+held (the LL/phase-base relationship, the current-group-to-voltage-group
+linking shape, the CT/VT-vs-PU distinction, the conservative calculated-
+channel rule, and the grouping-confirmation UX) — recording them now,
+before any Slice 1 work begins, avoids each future agent session
+re-deriving or re-guessing the same answers independently.
+
+Impact:
+
+**No application code, frontend code, or backend test was modified by
+this update.** Updated:
+[PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) (§6, §8,
+§9/§10/§11/§12, §15, §18, §19 revised; new §24/§25 implementation-
+sequence and Slice-1-scope sections), [CURRENT_STATE.md](CURRENT_STATE.md),
+[MIGRATION_PLAN.md](MIGRATION_PLAN.md), [HANDOFF.md](HANDOFF.md). See
+[MIGRATION_PLAN.md — Phase 7](MIGRATION_PLAN.md#phase-7--per-unit-measurement-model-decision-clarification-documentation-only-2026-08-23).
+
 ---
 
 ## How to add a decision

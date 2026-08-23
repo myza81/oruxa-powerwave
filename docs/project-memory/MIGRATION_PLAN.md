@@ -8648,6 +8648,65 @@ owner UAT after this push.
 
 ---
 
+## Phase 7 — Per-Unit Measurement Model Decision Clarification (documentation only) (2026-08-23)
+
+### Scope
+
+**Documentation only — no application code, frontend code, or backend
+test was modified in this phase.** Following Phase 6's canonical
+specification, the owner clarified most of the items that document had
+left `[OPEN]`. This phase records those decisions in
+[PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) as
+**approved product/engineering direction — implementation still
+pending** (not built), refines the implementation sequence into 8
+explicit slices, and confirms the only currently authorized next
+implementation step is **Slice 1 — Measurement-group domain model +
+identities + invariants only**. Full decision record:
+[DECISIONS.md — DEC-050 Update (2026-08-23)](DECISIONS.md#dec-050--per-unit-measurement-model-is-clarified-to-be-measurement-group-aware-the-currently-deployed-source-bound-model-dec-049-is-not-the-final-target).
+
+Two additional genuine code-level conflicts were confirmed by direct
+inspection while updating the canonical document (neither fixed this
+phase, both Slice 3 work):
+
+- `resolve_per_unit()` (`backend/app/domain/per_unit.py`) still divides
+  a Voltage channel's measured value directly by the raw entered Vbase,
+  with no phase-vs-line-to-line adjustment (the previously-recorded §8
+  gap, now with an approved resolution — `Vbase_phase = Vbase_LL / √3`
+  for phase-to-ground channels).
+- `_classify_one_channel_name()` (`backend/app/domain/
+  voltage_reference.py`) checks its generic `"BUS"`/`"LL"` substring
+  evidence *before* the single-phase-letter case, so a name like
+  `"NORTH BUS VA"` is currently misclassified as Line-to-Line — the
+  exact inversion of the newly-recorded detection-priority principle
+  (explicit phase/pair representation must outrank generic location/
+  equipment vocabulary).
+
+### Revised implementation sequence
+
+```text
+Slice 1 — Measurement-group domain model + identities + invariants
+Slice 2 — Deterministic automatic grouping (suggested/confirmed/ambiguous)
+Slice 3 — Voltage groups (corrected detection + LL/LG PU base resolution)
+Slice 4 — Current groups (equipment-rating/manual/none + voltage linking)
+Slice 5 — Group-aware PU resolution (display/measurement endpoints)
+Slice 6 — Frontend group-based configuration workspace
+Slice 7 — Calculated-channel same-group inheritance
+Slice 8 — migration, regression, performance verification and UAT
+```
+
+**Slice 1 is the only authorized next implementation step**, and only
+once a separate, explicit implementation prompt is issued — this phase
+does not itself start it. Slice 1 must not change voltage/current PU
+math, waveform display, frontend UI, the grouping algorithm, or
+calculated-channel behaviour, and must not change API behaviour beyond
+strictly internal scaffolding. Expected Slice 1 concerns: workspace/
+source ownership, a stable `measurement_group_id`, group kind (voltage/
+current), channel membership with no channel silently belonging to
+incompatible duplicate groups, group status, group lifecycle on source/
+workspace removal, and clean invariants throughout.
+
+---
+
 ## Phase 6 — Per-Unit Measurement Model Alignment (documentation only) (2026-08-22)
 
 ### Scope
