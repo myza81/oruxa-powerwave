@@ -73,3 +73,48 @@ class TestWorkspaceIsolation:
     def test_remove_workspace_is_idempotent(self):
         registry = VoltageGroupConfigRegistry()
         assert registry.remove_workspace("ws-empty") == 0
+
+
+class TestCopyOnBoundary:
+    """Robustness follow-up (post-Codex-review of the sibling Current
+    registry, applied here too): the registry must own its stored
+    state -- mutating an object on either side of `upsert()`/`get()`/
+    `list_for_workspace()` must never reach back into registry-owned
+    state, the same guarantee `MeasurementGroupRegistry` and
+    `CurrentGroupConfigRegistry` already provide for their own types."""
+
+    def test_mutating_the_object_passed_to_upsert_does_not_affect_the_registry(self):
+        registry = VoltageGroupConfigRegistry()
+        config = _config("mg-a", nominal_voltage_ll_kv=275.0)
+        registry.upsert(config)
+        config.nominal_voltage_ll_kv = 999.0
+        assert registry.get("ws-1", "mg-a").nominal_voltage_ll_kv == 275.0
+
+    def test_mutating_a_get_result_does_not_affect_the_registry(self):
+        registry = VoltageGroupConfigRegistry()
+        registry.upsert(_config("mg-a", nominal_voltage_ll_kv=275.0))
+        fetched = registry.get("ws-1", "mg-a")
+        fetched.nominal_voltage_ll_kv = 999.0
+        assert registry.get("ws-1", "mg-a").nominal_voltage_ll_kv == 275.0
+
+    def test_mutating_a_list_for_workspace_result_does_not_affect_the_registry(self):
+        registry = VoltageGroupConfigRegistry()
+        registry.upsert(_config("mg-a", nominal_voltage_ll_kv=275.0))
+        [listed] = registry.list_for_workspace("ws-1")
+        listed.nominal_voltage_ll_kv = 999.0
+        assert registry.get("ws-1", "mg-a").nominal_voltage_ll_kv == 275.0
+
+    def test_successive_get_calls_return_independent_objects(self):
+        registry = VoltageGroupConfigRegistry()
+        registry.upsert(_config("mg-a", nominal_voltage_ll_kv=275.0))
+        first = registry.get("ws-1", "mg-a")
+        second = registry.get("ws-1", "mg-a")
+        assert first is not second
+        first.nominal_voltage_ll_kv = 999.0
+        assert second.nominal_voltage_ll_kv == 275.0
+
+    def test_upsert_does_not_store_the_callers_own_reference(self):
+        registry = VoltageGroupConfigRegistry()
+        config = _config("mg-a", nominal_voltage_ll_kv=275.0)
+        registry.upsert(config)
+        assert registry.get("ws-1", "mg-a") is not config

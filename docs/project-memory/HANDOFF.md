@@ -124,14 +124,29 @@ regressions. No other file touched -- no live endpoint, DEC-049,
 frontend, calculated-channel, CT/VT, grouping, PU-math, or lifecycle-
 status-gate change.
 
+**Second robustness follow-up, same day** -- the deferred
+`VoltageGroupConfigRegistry` gap above is now closed too: identical
+`_copy_config()`/`dataclasses.replace()` hardening applied to
+`upsert()`/`get()`/`list_for_workspace()`, no service-layer code change
+needed (`voltage_group_config_service.py` already calls `upsert()`
+after every mutation). **Zero changes to `VoltageBaseConfiguration`
+semantics, LG/LL PU denominator math, reference-mode/override handling,
+or voltage-reference detection** -- verified by re-running the full
+focused Voltage-group + measurement-group regression sweep unchanged
+before committing. 6 new tests (same shape as the Current registry's
+own boundary tests). Full backend suite: 1047 tests pass (up from
+1041), zero regressions. **Both group-configuration registries now
+share the same defensive-copy ownership boundary
+`MeasurementGroupRegistry` already had.**
+
 **Next step**: nothing is pre-authorized. **Slice 5 (group-aware PU
 resolution wired into display/measurement endpoints) requires its own
-separate, explicit owner-approved implementation prompt**, and should
-consider fixing `VoltageGroupConfigRegistry`'s own identical copy-on-
-boundary gap while it is already touching that layer.
+separate, explicit owner-approved implementation prompt.** No known
+registry-ownership blocker remains before Slice 5 begins.
 
-Committed as one isolated commit; see this task's own final report for
-the exact commit hash, git-diff verification, and push/CI status.
+Committed as two isolated commits (one per registry); see this task's
+own final report for the exact commit hashes, git-diff verification,
+and push/CI status.
 
 ## What was done in the prior session (Phase 9 — DEC-050 Slices 2 & 3: Automatic Grouping + Voltage Group Voltage PU Semantics)
 

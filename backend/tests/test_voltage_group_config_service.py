@@ -73,6 +73,18 @@ class TestSetVoltageBase:
         assert config.reference_mode == VOLTAGE_REFERENCE_MODE_AUTO
         assert voltage_config_registry.get("ws-1", "mg-voltage").nominal_voltage_ll_kv == 275.0
 
+    def test_mutating_the_returned_configuration_does_not_affect_the_registry(self, group_registry, voltage_config_registry):
+        """Robustness follow-up: the object a setter returns is a value,
+        not a live handle into registry state -- mutating it afterward
+        must never leak back into what `resolve_group_voltage_base()`
+        (or any other reader) later sees."""
+        config = set_voltage_base(
+            workspace_id="ws-1", measurement_group_id="mg-voltage", nominal_voltage_ll_kv=275.0,
+            group_registry=group_registry, voltage_config_registry=voltage_config_registry,
+        )
+        config.nominal_voltage_ll_kv = 999.0
+        assert voltage_config_registry.get("ws-1", "mg-voltage").nominal_voltage_ll_kv == 275.0
+
     def test_reconfiguring_preserves_an_existing_manual_override(self, group_registry, voltage_config_registry):
         set_voltage_base(workspace_id="ws-1", measurement_group_id="mg-voltage", nominal_voltage_ll_kv=275.0,
                           group_registry=group_registry, voltage_config_registry=voltage_config_registry)

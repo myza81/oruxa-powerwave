@@ -77,10 +77,17 @@ auto-trigger. **Robustness follow-up (post-review, same day)**:
 `MeasurementGroupRegistry`'s own copy-on-boundary guarantee) — a
 caller mutating an object after any of these calls, including a
 service-layer setter's own return value, can no longer reach back into
-registry-owned state. `VoltageGroupConfigRegistry` carries the
-identical latent weakness but was deliberately left unfixed as
-out-of-scope for this narrow follow-up (flagged, not silently
-expanded). 6 new tests (1041 total, zero regressions). See
+registry-owned state. **`VoltageGroupConfigRegistry` (Slice 3) received
+the identical hardening in a second, same-day follow-up** — same
+`_copy_config()`/`dataclasses.replace()` pattern, same three boundary
+methods (`upsert`/`get`/`list_for_workspace`), zero changes to
+`VoltageBaseConfiguration` semantics, LG/LL PU mathematics, reference
+detection, or any other Voltage-group behaviour. Both group-
+configuration registries now share the same ownership-boundary
+guarantee `MeasurementGroupRegistry` already had, closing this gap
+before Slice 5 wires either configuration type into live display
+endpoints. 12 new tests total across both follow-ups (1047 total, zero
+regressions). See
 [MIGRATION_PLAN.md — Phase 10](MIGRATION_PLAN.md#phase-10--dec-050-slice-4-current-measurement-group-base-semantics-2026-08-24)
 and [HANDOFF.md](HANDOFF.md).
 

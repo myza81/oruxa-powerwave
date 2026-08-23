@@ -8874,11 +8874,43 @@ backend suite: 1041 tests pass (up from 1035), zero regressions. No
 other file touched -- no live endpoint, DEC-049, frontend, calculated-
 channel, CT/VT, grouping, PU-math, or lifecycle-status-gate change.
 
+### Second robustness follow-up (same day) — VoltageGroupConfigRegistry
+
+Applied the identical hardening to `VoltageGroupConfigRegistry` (Slice
+3), closing the gap the Current-registry follow-up above deliberately
+left open. Same `_copy_config()`/`dataclasses.replace()` pattern
+(`VoltageBaseConfiguration` also has no nested-container fields, so a
+flat copy is complete); same three boundaries (`upsert()` copies on
+entry, `get()`/`list_for_workspace()` copy on exit); no service-layer
+code change needed (`voltage_group_config_service.py`'s existing
+read-modify-write functions already call `upsert()` after every
+mutation). **Zero changes to `VoltageBaseConfiguration` semantics,
+`nominal_voltage_ll_kv`, the LG (`Vbase_LL / sqrt(3)`) / LL (`Vbase_LL`)
+denominator rules, reference-mode/override handling, or voltage-
+reference detection** -- confirmed by running the full focused
+Voltage-group + measurement-group regression sweep
+(`test_voltage_reference.py`, `test_voltage_group_config_domain.py`,
+`test_voltage_group_config_registry.py`,
+`test_voltage_group_config_service.py`,
+`test_measurement_group_lifecycle_api.py`,
+`test_measurement_group_domain.py`, `test_measurement_group_registry.py`,
+`test_measurement_group_service.py`,
+`test_measurement_group_detection.py`) unchanged before committing. 6
+new tests (5 in `test_voltage_group_config_registry.py`, 1 in
+`test_voltage_group_config_service.py`), same shape as the Current
+registry's own boundary tests. Full backend suite: 1047 tests pass (up
+from 1041), zero regressions. **Both group-configuration registries now
+share the same defensive-copy ownership boundary
+`MeasurementGroupRegistry` already had, before Slice 5 begins wiring
+either configuration type into live display endpoints.**
+
 ### Status
 
-**Slice 4 complete (including the above robustness follow-up). Slice 5
-(group-aware PU resolution wired into display/measurement endpoints) is
-NOT authorized** -- it requires its own separate, explicit approval.
+**Slice 4 CLOSED (including both robustness follow-ups above -- both
+group-configuration registries now defensively copy on every boundary).
+Slice 5 (group-aware PU resolution wired into display/measurement
+endpoints) is NOT authorized** -- it requires its own separate,
+explicit approval.
 
 ---
 
