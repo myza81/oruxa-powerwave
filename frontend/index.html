@@ -1927,12 +1927,13 @@
         .ww-toolbar {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 7px;
+            row-gap: 6px;
             flex-wrap: wrap;
-            padding: 10px;
-            border-bottom: 1px solid grey;
+            padding: 7px 10px;
             border-bottom: 1px solid var(--panel-border);
-            background: var(--panel);
+            background: linear-gradient(180deg, var(--toolbar-surface), var(--panel));
+            box-shadow: inset 0 1px 0 var(--surface-tint), inset 0 -1px 0 var(--surface-tint);
         }
         .ww-toolbar[hidden] { display: none; }
         .toolbar-spacer { flex: 1; }
@@ -1968,6 +1969,12 @@
         .ww-caret { width: 10px; height: 10px; }
         .ww-caret svg { width: 10px; height: 10px; }
 
+        .ww-toolbar .theme-toggle.ww-icon-group {
+            background: var(--panel);
+            border-color: var(--panel-border);
+            box-shadow: 0 1px 2px var(--surface-tint), inset 0 1px 0 var(--surface-tint);
+        }
+
         /* Standalone icon buttons (Reset Time View / Autoscale Y / A/B
            Cursors / Clear Workspace / each split-button's own main+
            trigger halves) -- same border/radius/hover/focus language as
@@ -1994,6 +2001,36 @@
             border-color: var(--accent-dim);
         }
         .ww-icon-btn:disabled { opacity: 0.4; cursor: not-allowed; background: transparent; }
+        .ww-toolbar .ww-icon-btn {
+            width: 30px;
+            height: 30px;
+            border-radius: 6px;
+            background: var(--panel);
+            box-shadow: 0 1px 2px var(--surface-tint), inset 0 1px 0 var(--surface-tint);
+            transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
+        }
+        .ww-toolbar .ww-icon-btn:hover {
+            color: var(--text);
+            border-color: var(--accent-dim);
+            background: var(--hover-tint);
+        }
+        .ww-toolbar .ww-icon-btn:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+        .ww-toolbar .ww-icon-btn[aria-pressed="true"] {
+            background: var(--accent-wash-soft);
+            color: var(--accent);
+            border-color: var(--accent-dim);
+            box-shadow: 0 1px 2px var(--surface-tint), inset 0 0 0 1px var(--accent-dim);
+        }
+        .ww-toolbar .ww-icon-btn:disabled {
+            opacity: 0.42;
+            color: var(--text-dim);
+            border-color: var(--panel-border);
+            background: var(--panel);
+            box-shadow: none;
+        }
 
         /* Phase 5C (DEC-049): the Unit Mode trigger carries a short text
            label ("ENG"/"PU") instead of an icon -- everything else
@@ -2001,6 +2038,7 @@
            .ww-icon-btn unchanged; only the fixed 28px square width is
            overridden to fit the text. */
         .ww-unit-mode-btn { width: auto; padding: 0 8px; gap: 4px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.02em; }
+        .ww-toolbar .ww-unit-mode-btn { width: auto; min-width: 42px; padding: 0 9px; }
         .ww-unit-mode-warning { color: var(--error); font-size: 0.85rem; line-height: 1; }
 
         /* Segmented icon groups (Box Zoom/Pan, Absolute/Elapsed,
@@ -2016,6 +2054,18 @@
             align-items: center;
             justify-content: center;
         }
+        .ww-toolbar .theme-toggle.ww-icon-group button {
+            width: 30px;
+            height: 30px;
+            transition: background-color 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
+        }
+        .ww-toolbar .theme-toggle.ww-icon-group button[aria-pressed="true"] {
+            box-shadow: inset 0 0 0 1px var(--accent-dim), inset 0 2px 0 var(--accent);
+        }
+        .ww-toolbar .theme-toggle.ww-icon-group button:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: -2px;
+        }
 
         /* Thin, subtle group separators (section 33) -- a hairline, not a
            heavy divider, so related icon clusters (Navigation / Zoom step
@@ -2027,6 +2077,18 @@
             align-self: stretch;
             margin: 2px 2px;
             background: var(--panel-border);
+        }
+        .ww-toolbar > .ww-toolbar-sep {
+            height: 22px;
+            align-self: center;
+            margin: 0 4px;
+            opacity: 0.75;
+        }
+        .ww-split-menu > .ww-toolbar-sep {
+            display: block;
+            width: auto;
+            height: 1px;
+            margin: 5px 4px;
         }
 
         /* Phase 4D (section 2/3/35): the Zoom In/Zoom Out split button --
@@ -2049,6 +2111,17 @@
             border-top-left-radius: 0;
             border-bottom-left-radius: 0;
         }
+        .ww-toolbar .ww-split-btn {
+            border-radius: 6px;
+            box-shadow: 0 1px 2px var(--surface-tint), inset 0 1px 0 var(--surface-tint);
+        }
+        .ww-toolbar .ww-split-btn .ww-icon-btn {
+            box-shadow: none;
+        }
+        .ww-toolbar .ww-split-btn-trigger {
+            width: 20px;
+            color: var(--text-dim);
+        }
         .ww-split-menu {
             position: absolute;
             top: calc(100% + 4px);
@@ -2060,6 +2133,12 @@
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
             box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+        }
+        .ww-toolbar .ww-split-menu {
+            top: calc(100% + 6px);
+            padding: 5px;
+            background: var(--panel);
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
         }
         .ww-split-menu[hidden] { display: none; }
         .ww-split-menu-item {
@@ -2084,6 +2163,10 @@
         }
         .ww-split-menu-item[aria-checked="true"] { color: var(--accent); font-weight: 700; }
         .ww-split-menu-item[aria-checked="true"] .ww-icon { color: var(--accent); }
+        .ww-toolbar .ww-split-menu-item {
+            min-height: 30px;
+            font-size: 0.78rem;
+        }
 
         /* Phase 4D (section 11): the active Y-zoom panel's own subtle,
            understated visual cue -- an accent border tint only, no
