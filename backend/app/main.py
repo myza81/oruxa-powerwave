@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
 from app.api.v1.calculated_channels import router as calculated_channels_v1_router
+from app.api.v1.measurement_groups import router as measurement_groups_v1_router
 from app.api.v1.per_unit import router as per_unit_v1_router
 from app.api.v1.sources import router as sources_v1_router
 from app.api.v1.workspaces import router as workspaces_v1_router
@@ -127,6 +128,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(workspaces_v1_router)
     app.include_router(calculated_channels_v1_router)
     app.include_router(per_unit_v1_router)
+    app.include_router(measurement_groups_v1_router)
 
     @app.get("/health")
     def health():
