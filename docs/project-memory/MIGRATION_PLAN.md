@@ -8846,11 +8846,39 @@ by the caller, never a registry scan inside the pure domain resolver).
 plus additions to `test_measurement_group_lifecycle_api.py`. Full
 backend suite: 1035 tests pass (up from 968), zero regressions.
 
+### Robustness follow-up (post-review, same day)
+
+An independent Codex review of Slice 4 returned "APPROVE WITH MINOR
+FOLLOW-UP": `CurrentGroupConfigRegistry.upsert()`/`get()`/
+`list_for_workspace()` stored and returned live, mutable
+`CurrentBaseConfiguration` references rather than defensive copies --
+the same class of registry-boundary weakness `MeasurementGroupRegistry`
+was already hardened against. Fixed with a `_copy_config()` helper
+(`dataclasses.replace()` -- sufficient since every field is a plain
+scalar, no nested containers to deep-copy) applied on every boundary
+crossing: `upsert()` copies on entry, `get()`/`list_for_workspace()`
+copy on exit. This also closes the indirect path through the service
+layer's own setters (`set_current_base_equipment_rating`/`_manual`/
+`_none`) -- their return value is now provably a value object, never a
+live handle into registry state. **Deliberately scoped to
+`CurrentGroupConfigRegistry` only** -- `VoltageGroupConfigRegistry`
+(Slice 3) carries the identical latent weakness but was left unfixed
+here, reported rather than silently expanded into, per this follow-up's
+own explicit narrow-scope instruction. 6 new tests (5 in
+`test_current_group_config_registry.py`, 1 in
+`test_current_group_config_service.py`) prove the boundary in both
+directions (mutating an object after `upsert()`/`get()`/
+`list_for_workspace()`/a setter's return value never reaches stored
+state; successive `get()` calls return independent objects). Full
+backend suite: 1041 tests pass (up from 1035), zero regressions. No
+other file touched -- no live endpoint, DEC-049, frontend, calculated-
+channel, CT/VT, grouping, PU-math, or lifecycle-status-gate change.
+
 ### Status
 
-**Slice 4 complete. Slice 5 (group-aware PU resolution wired into
-display/measurement endpoints) is NOT authorized** -- it requires its
-own separate, explicit approval.
+**Slice 4 complete (including the above robustness follow-up). Slice 5
+(group-aware PU resolution wired into display/measurement endpoints) is
+NOT authorized** -- it requires its own separate, explicit approval.
 
 ---
 

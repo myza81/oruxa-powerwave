@@ -107,9 +107,28 @@ tests pass (up from 968), zero regressions -- every existing DEC-049/
 RMS/Calculated-Channel/annotation/measurement-group/voltage-group test
 passed completely unchanged.
 
+**Robustness follow-up, same day (post-review)**: an independent Codex
+review returned "APPROVE WITH MINOR FOLLOW-UP" -- `CurrentGroupConfigRegistry`
+stored/returned live, mutable `CurrentBaseConfiguration` references
+rather than defensive copies, the same registry-boundary weakness
+`MeasurementGroupRegistry` was already hardened against. Fixed:
+`upsert()`/`get()`/`list_for_workspace()` now all copy on the boundary
+(`dataclasses.replace()` -- every field is a plain scalar, no nested
+containers), including the indirect path through the service layer's
+own setter return values. **Deliberately scoped to
+`CurrentGroupConfigRegistry` only** -- `VoltageGroupConfigRegistry`
+carries the identical latent weakness, reported here rather than
+silently fixed (out of this follow-up's own explicit narrow scope). 6
+new tests. Full backend suite: 1041 tests pass (up from 1035), zero
+regressions. No other file touched -- no live endpoint, DEC-049,
+frontend, calculated-channel, CT/VT, grouping, PU-math, or lifecycle-
+status-gate change.
+
 **Next step**: nothing is pre-authorized. **Slice 5 (group-aware PU
 resolution wired into display/measurement endpoints) requires its own
-separate, explicit owner-approved implementation prompt.**
+separate, explicit owner-approved implementation prompt**, and should
+consider fixing `VoltageGroupConfigRegistry`'s own identical copy-on-
+boundary gap while it is already touching that layer.
 
 Committed as one isolated commit; see this task's own final report for
 the exact commit hash, git-diff verification, and push/CI status.

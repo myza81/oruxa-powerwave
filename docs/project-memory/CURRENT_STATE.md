@@ -70,7 +70,17 @@ are completely untouched** — 67 new tests (1035 total, zero
 regressions), not yet wired into any display/measurement endpoint
 (Slice 5), no frontend change (Slice 6), no calculated-channel
 inheritance change (Slice 7), no CT/VT scaling, no source-upload
-auto-trigger. See
+auto-trigger. **Robustness follow-up (post-review, same day)**:
+`CurrentGroupConfigRegistry` now defensively copies
+`CurrentBaseConfiguration` on every `upsert()`/`get()`/
+`list_for_workspace()` boundary crossing (mirroring
+`MeasurementGroupRegistry`'s own copy-on-boundary guarantee) — a
+caller mutating an object after any of these calls, including a
+service-layer setter's own return value, can no longer reach back into
+registry-owned state. `VoltageGroupConfigRegistry` carries the
+identical latent weakness but was deliberately left unfixed as
+out-of-scope for this narrow follow-up (flagged, not silently
+expanded). 6 new tests (1041 total, zero regressions). See
 [MIGRATION_PLAN.md — Phase 10](MIGRATION_PLAN.md#phase-10--dec-050-slice-4-current-measurement-group-base-semantics-2026-08-24)
 and [HANDOFF.md](HANDOFF.md).
 

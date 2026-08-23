@@ -73,3 +73,47 @@ class TestWorkspaceIsolation:
     def test_remove_workspace_is_idempotent(self):
         registry = CurrentGroupConfigRegistry()
         assert registry.remove_workspace("ws-empty") == 0
+
+
+class TestCopyOnBoundary:
+    """Slice 4 robustness follow-up (post-Codex-review): the registry
+    must own its stored state -- mutating an object on either side of
+    `upsert()`/`get()`/`list_for_workspace()` must never reach back into
+    registry-owned state, the same guarantee `MeasurementGroupRegistry`
+    already provides for `MeasurementGroup`."""
+
+    def test_mutating_the_object_passed_to_upsert_does_not_affect_the_registry(self):
+        registry = CurrentGroupConfigRegistry()
+        config = _config("mg-a", manual_ibase_ka=2.0)
+        registry.upsert(config)
+        config.manual_ibase_ka = 999.0
+        assert registry.get("ws-1", "mg-a").manual_ibase_ka == 2.0
+
+    def test_mutating_a_get_result_does_not_affect_the_registry(self):
+        registry = CurrentGroupConfigRegistry()
+        registry.upsert(_config("mg-a", manual_ibase_ka=2.0))
+        fetched = registry.get("ws-1", "mg-a")
+        fetched.manual_ibase_ka = 999.0
+        assert registry.get("ws-1", "mg-a").manual_ibase_ka == 2.0
+
+    def test_mutating_a_list_for_workspace_result_does_not_affect_the_registry(self):
+        registry = CurrentGroupConfigRegistry()
+        registry.upsert(_config("mg-a", manual_ibase_ka=2.0))
+        [listed] = registry.list_for_workspace("ws-1")
+        listed.manual_ibase_ka = 999.0
+        assert registry.get("ws-1", "mg-a").manual_ibase_ka == 2.0
+
+    def test_successive_get_calls_return_independent_objects(self):
+        registry = CurrentGroupConfigRegistry()
+        registry.upsert(_config("mg-a", manual_ibase_ka=2.0))
+        first = registry.get("ws-1", "mg-a")
+        second = registry.get("ws-1", "mg-a")
+        assert first is not second
+        first.manual_ibase_ka = 999.0
+        assert second.manual_ibase_ka == 2.0
+
+    def test_upsert_does_not_store_the_callers_own_reference(self):
+        registry = CurrentGroupConfigRegistry()
+        config = _config("mg-a", manual_ibase_ka=2.0)
+        registry.upsert(config)
+        assert registry.get("ws-1", "mg-a") is not config

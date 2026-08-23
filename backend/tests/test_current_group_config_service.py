@@ -222,6 +222,18 @@ class TestSetCurrentBaseManual:
         assert config.method == METHOD_MANUAL
         assert config.manual_ibase_ka == 2.5
 
+    def test_mutating_the_returned_configuration_does_not_affect_the_registry(self, group_registry, current_config_registry):
+        """Slice 4 robustness follow-up: the object a setter returns is a
+        value, not a live handle into registry state -- mutating it
+        afterward must never leak back into what `resolve_group_current_base()`
+        (or any other reader) later sees."""
+        config = set_current_base_manual(
+            workspace_id="ws-1", measurement_group_id="mg-current", manual_ibase_ka=2.5,
+            group_registry=group_registry, current_config_registry=current_config_registry,
+        )
+        config.manual_ibase_ka = 999.0
+        assert current_config_registry.get("ws-1", "mg-current").manual_ibase_ka == 2.5
+
     def test_does_not_require_sbase_or_voltage_source(self, group_registry, current_config_registry):
         # Absence of a raised error IS the assertion here (task section 6).
         config = set_current_base_manual(
