@@ -8,9 +8,7 @@ Mirrors `VoltageGroupConfigRegistry`'s own exact shape (`upsert`/`get`/
 rather than inventing a new registry convention -- see that module's own
 docstring for the full reasoning, not repeated here.
 
-**Copy-on-boundary (Slice 4 robustness follow-up, post-review)**: unlike
-`VoltageGroupConfigRegistry` (which still relies on the service layer's
-own read-modify-write discipline never leaking a stored reference), this
+**Copy-on-boundary (Slice 4 robustness follow-up, post-review)**: this
 registry defensively copies `CurrentBaseConfiguration` on every boundary
 crossing -- `upsert()` copies the object it is handed before storing it,
 and `get()`/`list_for_workspace()` copy the object they return -- the
@@ -26,11 +24,14 @@ object after `upsert()`, after `get()`, or after `list_for_workspace()`
 -- including a service-layer caller's own local variable returned
 onward to ITS OWN caller (e.g. `current_group_config_service.set_current_base_manual()`'s
 return value), since that returned object is never the same instance the
-registry stored in the first place. This is intentionally scoped
-narrowly to `CurrentGroupConfigRegistry` -- `VoltageGroupConfigRegistry`
-carries the identical latent weakness but is explicitly out of scope for
-this follow-up (see this task's own final report for why it was flagged,
-not fixed, here).
+registry stored in the first place. **`VoltageGroupConfigRegistry` was
+hardened with the identical `_copy_config()`/`dataclasses.replace()`
+pattern in a second, same-day follow-up (commit `5e9a7d1`, "fix: harden
+voltage group config registry boundary")** -- both sibling registries
+now share the same copy-on-boundary ownership guarantee
+`MeasurementGroupRegistry` already had; neither relies on the service
+layer's own read-modify-write discipline to avoid aliasing a stored
+reference any more.
 
 A separate, sibling registry from `MeasurementGroupRegistry` AND from
 `VoltageGroupConfigRegistry` (never a field on either) -- see

@@ -273,6 +273,112 @@ class TestMissingGroupCompatibility:
         assert ungrouped["values"][0] == pytest.approx(0.5 / 9.0, abs=1e-9)
 
 
+class TestDec051PrecedenceAcrossMigratedEndpoints:
+    """Codex follow-up (post-9f6f4fb review): the sharpest DEC-051 case
+    is not "grouped with a VALID config beats DEC-049" (already covered
+    above) but "grouped with an UNRESOLVED config must still never fall
+    back to a DEC-049 base that would otherwise successfully convert the
+    channel." Verified identically across all four migrated endpoints,
+    proving the precedence rule cannot diverge between them -- they all
+    share the exact same `_resolve_effective_per_unit()` dispatch point
+    in `waveform_service.py`."""
+
+    @pytest.fixture
+    def source_with_conflicting_bases(self, client, comtrade_fixtures_dir):
+        """Both DEC-049 and DEC-050 are configured on the SAME source.
+        DEC-049 alone WOULD successfully convert LINEA_IR (raw 3000 A)
+        to `3.0 / 9.0 = 0.333... pu` if it were ever consulted -- but
+        LINEA_IR is grouped into a Current group with method=none, an
+        explicit, deterministic unresolved DEC-050 state."""
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        put_resp = client.put(
+            f"/api/v1/workspaces/ws-1/per-unit/sources/{source_id}",
+            json={"current_base_mode": "direct", "direct_current_base_value": 9.0},
+        )
+        assert put_resp.status_code == 200, put_resp.text
+        _current_group_none(client, "ws-1", source_id, ["LINEA_IR"], "LINE A CURRENT")
+        return source_id
+
+    def _via_waveform(self, client, source_id):
+        resp = client.get(
+            f"/api/v1/workspaces/ws-1/sources/{source_id}/waveform",
+            params={"channel_name": "LINEA_IR", "unit_mode": "per_unit"},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        return body["per_unit_status"], body["values"][0], body["unit"]
+
+    def _via_cursor_values(self, client, source_id):
+        resp = client.post(
+            f"/api/v1/workspaces/ws-1/sources/{source_id}/cursor-values",
+            json={
+                "analog_channel_names": ["LINEA_IR"], "digital_channel_names": [],
+                "cursor_a_time": 0.0, "cursor_b_time": None, "unit_mode": "per_unit",
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        channel = resp.json()["channels"][0]
+        return channel["per_unit_status"], channel["a_value"], channel["unit"]
+
+    def _via_annotation_anchor(self, client, source_id):
+        resp = client.post(
+            f"/api/v1/workspaces/ws-1/sources/{source_id}/annotation-anchor",
+            json={"channel_name": "LINEA_IR", "approximate_elapsed_seconds": 0.0, "unit_mode": "per_unit"},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        return body["per_unit_status"], body["value"], body["unit"]
+
+    def _via_peak_values(self, client, source_id):
+        resp = client.post(
+            f"/api/v1/workspaces/ws-1/sources/{source_id}/peak-values",
+            json={
+                "start_time": 0.0, "end_time": 0.001, "unit_mode": "per_unit",
+                "requests": [{"channel_name": "LINEA_IR", "mode": "max"}],
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        result = resp.json()["results"][0]
+        return result["per_unit_status"], result["value"], result["unit"]
+
+    @pytest.mark.parametrize(
+        "request_via",
+        ["_via_waveform", "_via_cursor_values", "_via_annotation_anchor", "_via_peak_values"],
+    )
+    def test_grouped_but_unresolved_channel_never_falls_back_to_dec049(
+        self, client, source_with_conflicting_bases, request_via
+    ):
+        per_unit_status, value, unit = getattr(self, request_via)(client, source_with_conflicting_bases)
+        assert per_unit_status == "base_required"
+        # Had DEC-049 fallback incorrectly occurred, this would read
+        # ~0.333 with unit "pu" (3000 A / 9.0 kA) -- neither may appear.
+        assert unit != "pu"
+        assert value == pytest.approx(3000.0)
+
+    def test_stale_linked_voltage_group_never_falls_back_to_dec049(self, client, comtrade_fixtures_dir):
+        """Second unresolved-DEC-050 state per the review's own
+        suggestion: a Current group whose linked Voltage group was
+        removed after configuration -- still `base_required`, never the
+        source's own valid DEC-049 profile."""
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        put_resp = client.put(
+            f"/api/v1/workspaces/ws-1/per-unit/sources/{source_id}",
+            json={"current_base_mode": "direct", "direct_current_base_value": 9.0},
+        )
+        assert put_resp.status_code == 200, put_resp.text
+        linked_voltage = _voltage_group(client, "ws-1", source_id, ["N275_VR", "N275_VY", "N275_VB"], 275.0, "275 BUS")
+        _current_group_equipment_rating(
+            client, "ws-1", source_id, ["IBT_HV_IR", "IBT_HV_IY", "IBT_HV_IB"], 1000.0, "IBT1 HV CURRENT",
+            linked_voltage_group_id=linked_voltage.id,
+        )
+        client.app.state.measurement_group_registry.remove("ws-1", linked_voltage.id)
+
+        result = _waveform_pu(client, "ws-1", source_id, "IBT_HV_IR")
+        assert result["per_unit_status"] == "base_required"
+        assert result["unit"] != "pu"
+        assert result["values"][0] == pytest.approx(4199.0)
+
+
 class TestSuggestedLinkedVoltageGroup:
     """Scenario G: a linked Voltage group's own lifecycle status must
     NOT block Current Ibase resolution -- only the CURRENT group's own
@@ -320,16 +426,32 @@ class TestDigitalChannelsUnaffected:
 
     def test_digital_waveform_unaffected_by_grouping(self, client, comtrade_fixtures_dir):
         source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
-        _voltage_group(client, "ws-1", source_id, ["N275_VR", "N275_VY", "N275_VB"], 275.0, "275 BUS")
 
-        resp = client.get(
-            f"/api/v1/workspaces/ws-1/sources/{source_id}/digital-waveform",
-            params={"channel_names": ["BRK_A"]},
-        )
-        assert resp.status_code == 200, resp.text
-        body = resp.json()
-        assert body["channels"][0]["channel_name"] == "BRK_A"
-        assert "unit" not in body["channels"][0] or True  # digital results carry no unit/pu concept at all
+        def _digital_waveform():
+            resp = client.get(
+                f"/api/v1/workspaces/ws-1/sources/{source_id}/digital-waveform",
+                params={"channel_names": ["BRK_A"]},
+            )
+            assert resp.status_code == 200, resp.text
+            return resp.json()
+
+        before = _digital_waveform()
+        _voltage_group(client, "ws-1", source_id, ["N275_VR", "N275_VY", "N275_VB"], 275.0, "275 BUS")
+        after = _digital_waveform()
+
+        # Byte-for-byte identical before/after grouping other channels on
+        # the same source -- grouping has zero effect on digital data.
+        assert before == after
+        assert after["channels"][0]["channel_name"] == "BRK_A"
+        assert after["channels"][0]["transitions"] != []
+        # DigitalWaveformOut (app.schemas.digital_waveform) has no
+        # unit/per_unit_status field at all -- this is a permanent
+        # contract property, not merely an observation about this
+        # response: digital channels carry no unit/PU concept.
+        assert set(after["channels"][0].keys()) == {
+            "source_id", "channel_name", "classification", "normal_state",
+            "initial_state", "transitions", "start_time", "end_time", "sample_count",
+        }
 
 
 class TestUnsupportedAnalogQuantity:
