@@ -796,6 +796,7 @@
 
         .ww-cc-field { margin-top: 12px; }
         .ww-cc-field span { display: block; margin-bottom: 4px; }
+        .ww-cc-rms-label { font-size: 0.75rem; }
         .ww-cc-field input {
             width: 100%;
             box-sizing: border-box;
@@ -12301,7 +12302,7 @@
             const freq = Number(wwCcBuilder.nominalFrequency);
             const windowMs = freq > 0 ? (1000 / freq).toFixed(2) : "?";
             let html = '<div class="ww-cc-field">' +
-                '<span>Nominal Frequency' +
+                '<span class="ww-cc-rms-label">Nominal Frequency' +
                 wwInfoTipHtml(
                     "About Nominal Frequency",
                     "Nominal frequency sets the duration of the one-cycle RMS window. 50 Hz uses a 20 ms window; 60 Hz uses approximately 16.67 ms."
@@ -12331,7 +12332,7 @@
             // the engineer could mistake for an input; always read-only,
             // always re-derived from whichever nominal frequency is
             // currently in effect above.
-            html += '<div class="ww-cc-field"><span>Window' +
+            html += '<div class="ww-cc-field"><span class="ww-cc-rms-label">Window' +
                 wwInfoTipHtml(
                     "About Window",
                     "RMS is calculated over one trailing electrical cycle. The window length is calculated automatically from the nominal frequency."
@@ -12341,7 +12342,7 @@
             // Category D (fixed operation definition) -- Phase 5B supports
             // only True RMS; never a dropdown of one item (owner section
             // 8), never editable.
-            html += '<div class="ww-cc-field"><span>Method' +
+            html += '<div class="ww-cc-field"><span class="ww-cc-rms-label">Method' +
                 wwInfoTipHtml(
                     "About Method",
                     "True RMS calculates the effective value using the complete waveform within the one-cycle window. DC offset and harmonics are included."
