@@ -22,6 +22,7 @@ from app.schemas.source import ErrorOut
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
+from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.services.workspace_registry import WorkspaceRegistry
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["workspaces"])
@@ -43,6 +44,10 @@ def get_measurement_group_registry(request: Request) -> MeasurementGroupRegistry
     return request.app.state.measurement_group_registry
 
 
+def get_voltage_group_config_registry(request: Request) -> VoltageGroupConfigRegistry:
+    return request.app.state.voltage_group_config_registry
+
+
 def _validate_workspace_id(workspace_id: str) -> str:
     # Same shape check as app.api.v1.sources -- never used as a filesystem
     # path, so this guards against a blank/whitespace-only id, not path
@@ -62,6 +67,7 @@ def delete_workspace(
     calc_registry: CalculatedChannelRegistry = Depends(get_calculated_channel_registry),
     per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
     measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
+    voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
 ) -> None:
     """Release every source this workspace owns.
 
@@ -84,9 +90,13 @@ def delete_workspace(
     workspace owns -- internal scaffolding, not yet visible through any
     API response, but its lifecycle must not outlive the workspace it
     belongs to (workspace isolation).
+
+    Slice 3 (DEC-050): also releases every Voltage group's own base
+    configuration this workspace owns, the same way.
     """
     workspace_id = _validate_workspace_id(workspace_id)
     registry.remove_workspace(workspace_id)
     calc_registry.remove_workspace(workspace_id)
     per_unit_registry.remove_workspace(workspace_id)
     measurement_group_registry.remove_workspace(workspace_id)
+    voltage_group_config_registry.remove_workspace(workspace_id)

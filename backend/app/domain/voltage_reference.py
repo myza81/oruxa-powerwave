@@ -31,6 +31,26 @@ reading with a trailing "Y" (the owner's own explicit warning: "R/Y/B
 present is useful evidence, but it must NOT automatically mean
 Line-to-Ground when the names clearly indicate combinations such as
 VRY/VYB/VBR").
+
+**DEC-050 Slice 3 correction (2026-08-24)**: the original implementation
+only ever recognized phase evidence when the ENTIRE channel name was
+"V" + a bare token (e.g. exactly "VR", "VRY", "VBUS") -- it had no way
+to see phase evidence in a longer, location-prefixed name like "NORTH
+BUS VA", so the generic `_LL_EXPLICIT_SUBSTRINGS` ("BUS"/"LL") fallback
+was the ONLY thing that ever matched such a name, incorrectly returning
+Line-to-Line even though "VA" at the end is strong, explicit
+Line-to-Ground evidence. Per
+PER_UNIT_MEASUREMENT_MODEL.md's own corrected principle -- "explicit
+electrical representation outranks generic location/equipment
+vocabulary" -- `_classify_one_channel_name()` now looks for an explicit
+"V" + phase-token pattern anywhere a real word boundary precedes it
+(name start, or a non-alphanumeric separator -- never fused into an
+unrelated word like "AVR", which must keep resolving to `None`, exactly
+as before this fix), and only falls back to the generic BUS/LL
+substring check when no such explicit suffix is found at all. Every
+pre-existing test in test_voltage_reference.py still passes unchanged
+-- this is a strictly additive detection capability, not a
+re-interpretation of any name this module already classified.
 """
 
 from __future__ import annotations
@@ -77,35 +97,61 @@ class VoltageReferenceDetection:
     reason: str = REASON_NO_PATTERN
 
 
-def _phase_token(channel_name: str) -> str:
-    """Strips a single leading "V" (the near-universal Voltage-channel
-    naming prefix -- "VR", "VAB", "VBUS") before pattern matching, so the
-    patterns themselves stay in terms of the bare phase designator. A
-    name that doesn't start with "V" (e.g. a raw "BUS VOLTAGE" label) is
-    matched as-is -- the explicit-substring check below still finds
-    "BUS" regardless."""
-    upper = channel_name.strip().upper()
-    if upper.startswith("V") and len(upper) > 1:
-        return upper[1:]
-    return upper
+def _ends_with_v_token(upper: str, token: str) -> bool:
+    """True if `upper` ends in "V" + `token`, with that "V" starting its
+    own word -- either the whole name IS "V" + token (e.g. "VR"), or the
+    character immediately before the "V" is a non-alphanumeric separator
+    (space/hyphen/underscore/etc.), e.g. "NORTH BUS VA", "275KV-BUS_VRY".
+    This is what lets a longer, location-prefixed name still carry
+    recognizable explicit phase evidence. The word-boundary requirement
+    is deliberate: it is what keeps a name like "AVR" (Automatic Voltage
+    Regulator -- a real power-system abbreviation, "V" fused into the
+    middle of an unrelated word) from being misread as phase-R evidence
+    -- explicit evidence must be a genuine, separated phase token, not a
+    coincidental letter run inside a different word."""
+    suffix = "V" + token
+    if not upper.endswith(suffix):
+        return False
+    prefix_len = len(upper) - len(suffix)
+    if prefix_len == 0:
+        return True
+    return not upper[prefix_len - 1].isalnum()
 
 
 def _classify_one_channel_name(channel_name: str) -> str | None:
     """Returns LINE_TO_LINE/LINE_TO_GROUND for one channel name, or
     `None` if it carries no recognizable phase-naming evidence at all.
-    Checked in priority order: phase-PAIR tokens and explicit LL
-    vocabulary before any single-phase-letter reading, so a pair name is
-    never mis-read via its own leading letter alone."""
+
+    Priority order, per PER_UNIT_MEASUREMENT_MODEL.md's own corrected
+    principle -- "explicit electrical representation outranks generic
+    location/equipment vocabulary": an explicit phase token (bare, e.g.
+    a channel literally named just "RY" or "AN", OR as a word-bounded
+    "V" + token suffix of a longer name, e.g. "NORTH BUS VA") is checked
+    FIRST, in pair > neutral > single sub-priority so a pair is never
+    mis-read via its own trailing single letter -- and ONLY when no such
+    explicit token is found anywhere does the generic "BUS"/"LL"
+    vocabulary fallback apply. A name like "NORTH BUS VA" therefore
+    resolves via its own explicit "VA" evidence to Line-to-Ground, never
+    falling through to the generic "BUS" reading; a name with no phase
+    letter at all, like plain "BUS VOLTAGE" or "VBUS", still correctly
+    falls through to that same generic reading, unchanged from before
+    this correction."""
     upper = channel_name.strip().upper()
-    token = _phase_token(upper)
-    if token in _LL_PAIR_TOKENS:
-        return LINE_TO_LINE
+
+    def matches(token: str) -> bool:
+        return upper == token or _ends_with_v_token(upper, token)
+
+    for token in _LL_PAIR_TOKENS:
+        if matches(token):
+            return LINE_TO_LINE
+    for token in _LG_NEUTRAL_TOKENS:
+        if matches(token):
+            return LINE_TO_GROUND
+    for token in _LG_SINGLE_TOKENS:
+        if matches(token):
+            return LINE_TO_GROUND
     if any(marker in upper for marker in _LL_EXPLICIT_SUBSTRINGS):
         return LINE_TO_LINE
-    if token in _LG_NEUTRAL_TOKENS:
-        return LINE_TO_GROUND
-    if token in _LG_SINGLE_TOKENS:
-        return LINE_TO_GROUND
     return None
 
 

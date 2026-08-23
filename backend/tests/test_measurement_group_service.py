@@ -511,3 +511,127 @@ class TestGenerateSuggestedGroupsForSource:
             for ref in group.channel_refs:
                 assert ref.source_id == "src-1"
                 assert channel_kind_compatible(group.kind, by_name[ref.channel_name])
+
+
+class TestGenerateSuggestedGroupsForSourceRobustness:
+    """Slice 3 robustness fix (section 2/22): a source containing a
+    literal duplicate channel name within one detected cluster must not
+    leave the registry in a partial, uncontrolled state -- the invalid
+    cluster is skipped entirely, deterministically, before anything is
+    persisted, while every other genuinely valid candidate on the same
+    source is still created normally. Also covers cross-source/cross-
+    workspace generation isolation and a near-miss multi-bay false-merge
+    regression, run directly through the generator (not just the
+    underlying detector/registry, already covered by
+    test_measurement_group_detection.py and
+    test_measurement_group_registry.py respectively)."""
+
+    def test_duplicate_literal_channel_name_cluster_is_skipped_not_crashed(self):
+        ws_registry = WorkspaceRegistry()
+        ws_registry.add(_active_source("src-1", "ws-1", [
+            ("IBT1 HV IR", CURRENT), ("IBT1 HV IY", CURRENT), ("IBT1 HV IB", CURRENT),
+            ("NORTH BUS VR", VOLTAGE), ("NORTH BUS VR", VOLTAGE), ("NORTH BUS VY", VOLTAGE), ("NORTH BUS VB", VOLTAGE),
+        ]))
+        registry = MeasurementGroupRegistry()
+
+        created = generate_suggested_groups_for_source(workspace_id="ws-1", source_id="src-1", registry=registry, source_registry=ws_registry)
+
+        # No crash reached this point at all -- the call above completed.
+        assert len(created) == 1
+        assert created[0].display_name == "IBT1 HV CURRENT"
+        assert {ref.channel_name for ref in created[0].channel_refs} == {"IBT1 HV IR", "IBT1 HV IY", "IBT1 HV IB"}
+
+    def test_no_uncontrolled_partial_persistence_for_the_invalid_cluster_itself(self):
+        # None of the duplicate-named channels end up claimed by any
+        # group -- the invalid candidate was never partially written,
+        # not even one of its two colliding entries.
+        ws_registry = WorkspaceRegistry()
+        ws_registry.add(_active_source("src-1", "ws-1", [
+            ("NORTH BUS VR", VOLTAGE), ("NORTH BUS VR", VOLTAGE), ("NORTH BUS VY", VOLTAGE), ("NORTH BUS VB", VOLTAGE),
+        ]))
+        registry = MeasurementGroupRegistry()
+
+        created = generate_suggested_groups_for_source(workspace_id="ws-1", source_id="src-1", registry=registry, source_registry=ws_registry)
+
+        assert created == []
+        assert registry.list_for_workspace("ws-1") == []
+        for name in ("NORTH BUS VR", "NORTH BUS VY", "NORTH BUS VB"):
+            ref = ChannelRef(kind="source", source_id="src-1", channel_name=name)
+            assert registry.group_for_channel("ws-1", ref) is None
+
+    def test_existing_valid_clusters_on_the_same_source_remain_predictable_across_reruns(self):
+        # Re-running generation on a source that ALSO contains a
+        # permanently-invalid cluster must not cause the valid cluster
+        # to be created twice, nor to disappear.
+        ws_registry = WorkspaceRegistry()
+        ws_registry.add(_active_source("src-1", "ws-1", [
+            ("IBT1 HV IR", CURRENT), ("IBT1 HV IY", CURRENT), ("IBT1 HV IB", CURRENT),
+            ("NORTH BUS VR", VOLTAGE), ("NORTH BUS VR", VOLTAGE), ("NORTH BUS VY", VOLTAGE), ("NORTH BUS VB", VOLTAGE),
+        ]))
+        registry = MeasurementGroupRegistry()
+
+        first = generate_suggested_groups_for_source(workspace_id="ws-1", source_id="src-1", registry=registry, source_registry=ws_registry)
+        second = generate_suggested_groups_for_source(workspace_id="ws-1", source_id="src-1", registry=registry, source_registry=ws_registry)
+
+        assert len(first) == 1
+        assert second == []  # nothing new -- the valid group already exists, the invalid cluster is still invalid
+        assert len(registry.list_for_source("ws-1", "src-1")) == 1
+
+    def test_cross_source_generation_is_isolated(self):
+        ws_registry = WorkspaceRegistry()
+        ws_registry.add(_active_source("src-a", "ws-1", [("VR", VOLTAGE), ("VY", VOLTAGE), ("VB", VOLTAGE)]))
+        ws_registry.add(_active_source("src-b", "ws-1", [("VR", VOLTAGE), ("VY", VOLTAGE), ("VB", VOLTAGE)]))
+        registry = MeasurementGroupRegistry()
+
+        created_a = generate_suggested_groups_for_source(workspace_id="ws-1", source_id="src-a", registry=registry, source_registry=ws_registry)
+        created_b = generate_suggested_groups_for_source(workspace_id="ws-1", source_id="src-b", registry=registry, source_registry=ws_registry)
+
+        assert len(created_a) == 1
+        assert len(created_b) == 1
+        assert created_a[0].id != created_b[0].id
+        assert created_a[0].source_id == "src-a"
+        assert created_b[0].source_id == "src-b"
+        # Each source's own "VR" is a distinct ChannelRef (different
+        # source_id) -- generating for src-b must never see src-a's own
+        # channels as already claimed.
+        assert list_groups_for_source("ws-1", "src-a", registry=registry)[0].id == created_a[0].id
+        assert list_groups_for_source("ws-1", "src-b", registry=registry)[0].id == created_b[0].id
+
+    def test_cross_workspace_generation_is_isolated(self):
+        ws_registry = WorkspaceRegistry()
+        ws_registry.add(_active_source("src-1", "ws-a", [("VR", VOLTAGE), ("VY", VOLTAGE), ("VB", VOLTAGE)]))
+        ws_registry.add(_active_source("src-1", "ws-b", [("VR", VOLTAGE), ("VY", VOLTAGE), ("VB", VOLTAGE)]))
+        registry = MeasurementGroupRegistry()
+
+        created_a = generate_suggested_groups_for_source(workspace_id="ws-a", source_id="src-1", registry=registry, source_registry=ws_registry)
+        created_b = generate_suggested_groups_for_source(workspace_id="ws-b", source_id="src-1", registry=registry, source_registry=ws_registry)
+
+        assert len(created_a) == 1
+        assert len(created_b) == 1
+        assert created_a[0].id != created_b[0].id
+        assert list_groups_for_workspace("ws-a", registry=registry) == [created_a[0]]
+        assert list_groups_for_workspace("ws-b", registry=registry) == [created_b[0]]
+
+    def test_near_miss_bay_names_remain_separate_through_the_generator(self):
+        # Section 12/22's own adversarial regression: IBT1 HV1 and HV2
+        # must never be merged into one group despite sharing "IBT1" and
+        # the trailing phase letters.
+        ws_registry = WorkspaceRegistry()
+        ws_registry.add(_active_source("src-1", "ws-1", [
+            ("IBT1 HV1 IR", CURRENT), ("IBT1 HV1 IY", CURRENT), ("IBT1 HV1 IB", CURRENT),
+            ("IBT1 HV2 IR", CURRENT), ("IBT1 HV2 IY", CURRENT), ("IBT1 HV2 IB", CURRENT),
+        ]))
+        registry = MeasurementGroupRegistry()
+
+        created = generate_suggested_groups_for_source(workspace_id="ws-1", source_id="src-1", registry=registry, source_registry=ws_registry)
+
+        assert len(created) == 2
+        by_display_name = {g.display_name: g for g in created}
+        assert set(by_display_name) == {"IBT1 HV1 CURRENT", "IBT1 HV2 CURRENT"}
+        assert {ref.channel_name for ref in by_display_name["IBT1 HV1 CURRENT"].channel_refs} == {"IBT1 HV1 IR", "IBT1 HV1 IY", "IBT1 HV1 IB"}
+        assert {ref.channel_name for ref in by_display_name["IBT1 HV2 CURRENT"].channel_refs} == {"IBT1 HV2 IR", "IBT1 HV2 IY", "IBT1 HV2 IB"}
+        # Never sharing a channel between the two groups.
+        assert not (
+            {ref.channel_name for ref in by_display_name["IBT1 HV1 CURRENT"].channel_refs}
+            & {ref.channel_name for ref in by_display_name["IBT1 HV2 CURRENT"].channel_refs}
+        )

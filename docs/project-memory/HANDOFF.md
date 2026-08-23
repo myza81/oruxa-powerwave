@@ -4,9 +4,119 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-08-23**
+Last updated: **2026-08-24**
 
 ## What was most recently done
+
+**Phase 9 — DEC-050 Slices 2 & 3: Automatic Grouping + Voltage Group
+Voltage PU Semantics.** Slice 2 (deterministic automatic grouping) had
+previously been implemented but never documented as its own phase --
+recorded here for the first time, together with Slice 3 (the first
+slice able to correct actual Voltage PU numerical behaviour), since the
+two are reviewed and built on together in this pass.
+
+**Slice 2 recap + independent review**: `app/domain/
+measurement_group_detection.py` (`detect_measurement_groups()`)
+clusters a source's Voltage/Current channels by common prefix + phase
+suffix; `measurement_group_service.generate_suggested_groups_for_source()`
+persists candidates as `suggested`/`needs_review` through the existing
+`create_group()` path, standalone, no automatic trigger. An independent
+review (Codex) returned "APPROVE WITH MINOR FOLLOW-UP" -- no
+grouping-safety blocker, but one real robustness gap: a source with two
+literally-identically-named channels within one detected cluster could
+crash `generate_suggested_groups_for_source()` with an unhandled
+`DuplicateChannelReferenceError`, with any earlier-processed clusters
+in the same call already persisted before the crash. **Fixed this
+pass**: every candidate is now validated for internal duplicate
+`ChannelRef`s BEFORE any persistence is attempted, so an invalid
+candidate is skipped deterministically while every other valid
+candidate on the same source still gets created normally -- no partial
+or uncontrolled state, verified directly by reproducing the exact crash
+scenario before and after the fix, plus new regression tests (duplicate
+name, no partial persistence, cross-source isolation, cross-workspace
+isolation, near-miss bay-name false-merge).
+
+**Slice 3 -- the first slice able to correct actual Voltage PU
+numerical behaviour**:
+
+1. **A genuine detection bug was found and fixed** in
+   `app/domain/voltage_reference.py`: `_classify_one_channel_name()`
+   only ever recognized phase evidence in a name that WAS entirely "V"
+   + a bare token (e.g. exactly "VR") -- a longer, location-prefixed
+   name like "NORTH BUS VA" had no way to be read as anything but the
+   generic "BUS" substring fallback, so it was misclassified
+   Line-to-Line. Corrected to recognize an explicit "V" + phase-token
+   suffix wherever a genuine word boundary precedes it -- checked
+   BEFORE the generic fallback, per the corrected principle "explicit
+   electrical representation outranks generic vocabulary." A
+   word-boundary requirement specifically keeps a real abbreviation
+   like "AVR" (Automatic Voltage Regulator, "V" fused into an unrelated
+   word) from becoming a new false positive -- verified unchanged. All
+   14 pre-existing tests still pass unchanged; 11 new tests added.
+2. **New `app/domain/voltage_group_config.py`** (+ a sibling registry/
+   service pair, mirroring `PerUnitRegistry`'s own shape): a
+   `kind='voltage'` measurement group can now carry a
+   `VoltageBaseConfiguration` (`nominal_voltage_ll_kv`, `reference_mode`,
+   `reference_override`) -- deliberately a SEPARATE object, never a
+   field on `MeasurementGroup` itself, so a Current group structurally
+   never carries it. The user-facing base is always the familiar
+   nominal system LL voltage (e.g. "275") -- the engineer never enters
+   a phase-derived number.
+3. **Corrected voltage PU mathematics, proven by direct test**:
+   Line-to-Line -> `Vbase_applicable = nominal_voltage_ll_kv`;
+   Line-to-Ground -> `Vbase_applicable = nominal_voltage_ll_kv / √3`. A
+   healthy ~158.77 kV phase-ground reading on a nominal 275 kV system
+   now resolves to ~1.0 pu (not the old, incorrect ~0.577 pu); 132 kV
+   resolves its own ~76.21 kV phase base independently; two Voltage
+   groups in one source (275 kV + 132 kV buses, or one LG + one LL
+   group) resolve completely independently -- reference detection runs
+   against each GROUP's own channel membership only, never a whole
+   source's voltage channels.
+4. **Only `confirmed`/`manual` groups are authoritative** for PU
+   resolution -- a `suggested`/`needs_review` group is `base_required`
+   even with a fully valid configuration attached, so an automatic
+   suggestion can never silently drive real PU conversion.
+5. **Manual override / Return to Auto** work exactly like the existing
+   DEC-049 source-wide pattern: an explicit override always wins;
+   returning to auto clears it entirely and the live resolver always
+   re-derives the auto result from the group's current channels, never
+   a stale cached value.
+
+**Explicitly NOT done, per Slice 3's own scope**: no Current-group base
+semantics (equipment rating, linked voltage group, manual Ibase --
+Slice 4); **no frontend file touched** (Slice 6); no calculated-channel
+inheritance change (Slice 7); no CT/VT scaling; no source-upload
+auto-trigger for group detection (the generator remains standalone-
+only, exactly as Slice 2 left it). **The currently deployed DEC-049
+source-wide `/per-unit/sources` API and
+`app.domain.per_unit.resolve_per_unit()` are completely untouched and
+continue to operate exactly as before** -- confirmed by `git diff`
+showing zero changes to `per_unit.py`, `per_unit_registry.py`,
+`per_unit_service.py`, or any `app/api/v1/*` route beyond the existing
+DELETE lifecycle-cleanup pattern. The new group-aware resolver is
+proven correct by its own tests but is not wired into any display/
+measurement endpoint -- Slice 5's job, once group-aware resolution
+needs to become observable.
+
+**Lifecycle wiring**: `VoltageGroupConfigRegistry` is a sixth sibling
+registry in `app.main`'s lifespan, cleaned up via the same existing
+`DELETE .../sources/{id}` and `DELETE /workspaces/{id}` endpoints'
+cleanup sequence Slice 1 already established for
+`MeasurementGroupRegistry` -- no new endpoint, no API contract change.
+
+**Tests**: 78 new tests across 6 files. Full backend suite: 968 pass
+(up from 890), zero regressions -- every existing DEC-049/RMS/
+Calculated-Channel/annotation/measurement-group test passed completely
+unchanged.
+
+**Next step**: nothing is pre-authorized. **Slice 4 (Current groups)
+requires its own separate, explicit owner-approved implementation
+prompt.**
+
+Committed as one isolated commit; see this task's own final report for
+the exact commit hash, git-diff verification, and push/CI status.
+
+## What was done in the prior session (Phase 8 — DEC-050 Slice 1: Measurement-Group Domain Foundation)
 
 **Phase 8 — DEC-050 Slice 1: Measurement-Group Domain Foundation.**
 Implements exactly Slice 1 of the 8-slice sequence Phase 7 recorded:
@@ -7019,25 +7129,28 @@ checks for this Phase 3B pass. **Production was not touched.**
 
 ## What remains unresolved
 
-- `[OPEN]`, **Per-Unit measurement model — Slice 1 (measurement-group
-  domain foundation) is now implemented** (internal scaffolding only;
-  see "What was most recently done" above), but the current DEC-049
-  source-wide PU CONVERSION remains deployed and unchanged, and is still
-  confirmed insufficient for a source spanning multiple electrical
-  measurement contexts — see
+- `[OPEN]`, **Per-Unit measurement model — Slices 1, 2, and 3
+  (measurement-group foundation, automatic grouping, and group-aware
+  Voltage PU semantics) are now implemented** (see "What was most
+  recently done" above), but the current DEC-049 source-wide PU
+  CONVERSION remains deployed and unchanged, and is still confirmed
+  insufficient for a source spanning multiple electrical measurement
+  contexts — see
   [PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) (the
   authoritative specification) and
   [DECISIONS.md — DEC-050](DECISIONS.md#dec-050--per-unit-measurement-model-is-clarified-to-be-measurement-group-aware-the-currently-deployed-source-bound-model-dec-049-is-not-the-final-target).
-  Two genuine code-level conflicts remain confirmed but unfixed: a
-  Voltage channel's own division does not yet adjust for its electrical
-  reference (`resolve_per_unit()`), and generic "BUS"/"LL" naming
-  currently overrides explicit single-phase evidence
-  (`_classify_one_channel_name()` in `voltage_reference.py`) — both are
-  Slice 3 work. **Do not continue extending the current source-wide
-  conversion model, and do not begin Slice 2 (automatic grouping) or
-  later** without a separate, explicit owner-approved implementation
-  prompt for each slice — Slice 1's own completion does not
-  pre-authorize Slice 2.
+  The Voltage phase-reference detection bug (`_classify_one_channel_name()`
+  in `voltage_reference.py`) is now FIXED for the shared detector
+  function; the OLD source-wide `resolve_per_unit()` still divides
+  directly by the raw entered Vbase with no phase adjustment, unchanged
+  and untouched by design (see Slice 3's own coexistence note above) --
+  it is not itself "broken" for its own source-wide contract, it simply
+  predates the group-aware correction and is superseded by it, pending
+  Slice 5's migration. **Do not continue extending the current
+  source-wide conversion model, and do not begin Slice 4 (Current
+  groups) or later** without a separate, explicit owner-approved
+  implementation prompt for each slice — Slice 3's own completion does
+  not pre-authorize Slice 4.
 - `[OPEN]`, **direct vertical drag/reorder of panels and drag-to-overlay/
   group by direct lane dragging are still fully unimplemented and
   undecided** — `[PROPOSAL]`/`[ANALYSIS]`/`[COMPARISON]`/`[NEEDS UAT]`,
@@ -7528,14 +7641,15 @@ sources actually get imported during a shared-DEV session.
 
 ## Owner approval needed before proceeding?
 
-- **Yes — Slice 1 is now complete; a separate, explicit implementation
-  prompt is required before starting Slice 2 (deterministic automatic
-  grouping) or any later slice.** Do not extend the current source-wide
-  Per-Unit CONVERSION model in the meantime, and do not silently fix the
-  two confirmed code-level conflicts (`resolve_per_unit()`'s phase
-  adjustment; `voltage_reference.py`'s BUS-priority inversion) — both
-  are Slice 3 work, not to be done ahead of sequence. See "What was most
-  recently done" and "What
+- **Yes — Slices 1, 2, and 3 are now complete; a separate, explicit
+  implementation prompt is required before starting Slice 4 (Current
+  measurement-group base configuration) or any later slice.** Do not
+  extend the current source-wide Per-Unit CONVERSION model in the
+  meantime, and do not wire `generate_suggested_groups_for_source()`
+  into the source-upload endpoint or any group-aware resolver into a
+  live display/measurement endpoint without a separate, explicit prompt
+  for that specific integration (Slice 5). See "What was most recently
+  done" and "What
   remains unresolved" above.
 - **Yes — Phase 4A (Digital Channels Rendering) specifically needs
   real-browser owner UAT before any further waveform feature work

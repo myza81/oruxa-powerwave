@@ -8648,6 +8648,110 @@ owner UAT after this push.
 
 ---
 
+## Phase 9 — DEC-050 Slices 2 & 3: Automatic Grouping + Voltage Group Voltage PU Semantics (2026-08-24)
+
+### Scope
+
+Records Slice 2 (deterministic automatic grouping, previously
+implemented but not yet documented as its own phase) together with
+Slice 3 (the first slice to correct actual Voltage PU numerical
+behaviour), reviewed together since Slice 3 builds directly on Slice
+2's own robustness.
+
+**Slice 2 recap**: `app/domain/measurement_group_detection.py`
+(`detect_measurement_groups()`) clusters a source's Voltage/Current
+channels by common prefix + phase suffix, and
+`measurement_group_service.generate_suggested_groups_for_source()`
+persists each still-eligible candidate as `suggested`/`needs_review`
+through the existing `create_group()` path -- a standalone function
+with no automatic trigger. An independent review (Codex, "APPROVE WITH
+MINOR FOLLOW-UP") found no grouping-safety blocker, but identified one
+real robustness gap, fixed in this phase (see below).
+
+**Slice 2 robustness fix**: `generate_suggested_groups_for_source()`
+previously could crash with an unhandled `DuplicateChannelReferenceError`
+if a source contained two literally-identically-named channels within
+one detected cluster -- worse, any clusters processed earlier in the
+same call were already persisted before the crash. Fixed with preflight
+validation: every candidate is checked for internal duplicate
+`ChannelRef`s BEFORE any persistence is attempted, so an invalid
+candidate is skipped deterministically and every other valid candidate
+on the same source is still created normally, with zero partial or
+uncontrolled state.
+
+**Slice 3 -- the first slice able to correct actual Voltage PU
+numerical behaviour**:
+
+1. **Voltage-reference detector correction**
+   (`app/domain/voltage_reference.py`): `_classify_one_channel_name()`
+   previously only recognized phase evidence in a name that WAS
+   entirely "V" + a bare token (e.g. exactly "VR"); a longer,
+   location-prefixed name like "NORTH BUS VA" fell through to the
+   generic "BUS"/"LL" substring fallback and was misclassified
+   Line-to-Line. Corrected to recognize an explicit "V" + phase-token
+   suffix wherever a genuine word boundary precedes it (never fused
+   into an unrelated word like "AVR" -- confirmed still unrecognized,
+   no new false positive), checked BEFORE the generic fallback. Every
+   one of the 14 pre-existing tests still passes unchanged; 11 new
+   tests added.
+2. **`app/domain/voltage_group_config.py`** (new) -- a `kind='voltage'`
+   measurement group can now carry a `VoltageBaseConfiguration`
+   (`nominal_voltage_ll_kv`, `reference_mode`, `reference_override`),
+   stored in a separate sibling registry
+   (`voltage_group_config_registry.py`) rather than a field on
+   `MeasurementGroup` itself -- a Current group structurally never has
+   an entry. The user-facing base is always the familiar nominal system
+   LL voltage; the engineer never enters a phase-derived number.
+3. **Corrected voltage PU mathematics**:
+   `resolve_voltage_base_for_group()` resolves, per group: Line-to-Line
+   -> `Vbase_applicable = nominal_voltage_ll_kv`; Line-to-Ground ->
+   `Vbase_applicable = nominal_voltage_ll_kv / sqrt(3)`. Proven directly
+   by test: a healthy ~158.77 kV phase-ground reading on a 275 kV
+   nominal system resolves to ~1.0 pu (not the old, incorrect ~0.577
+   pu); a 132 kV system resolves its own phase base (~76.21 kV)
+   independently; two Voltage groups in one source (e.g. 275 kV and 132
+   kV buses, or one LG and one LL group) resolve completely
+   independently. Reference detection runs against each GROUP's own
+   channel membership only, never a whole source's voltage channels.
+4. **Authoritative-status gate**: only `confirmed`/`manual` groups
+   resolve a real denominator; `suggested`/`needs_review` groups are
+   `base_required` even with a fully valid configuration attached --
+   automatic suggestions never silently become authoritative for PU
+   conversion.
+5. **Manual override / Return to Auto**: `set_manual_voltage_reference()`
+   switches a group to an explicit override; `return_voltage_reference_to_auto()`
+   clears it entirely (never a stale cached value) -- the live
+   `resolve_effective_voltage_reference_for_group()` always re-derives
+   the auto result from the group's current channels.
+
+**Deliberately NOT done, per explicit Slice 3 scope**: no Current-group
+base semantics (equipment rating, linked voltage group, manual Ibase --
+Slice 4); no frontend change (`frontend/index.html` untouched -- Slice
+6); no calculated-channel inheritance change (Slice 7); no CT/VT
+scaling; no source-upload auto-trigger for group detection; **the
+currently deployed DEC-049 source-wide `/per-unit/sources` API and
+`app.domain.per_unit.resolve_per_unit()` are completely untouched and
+continue to operate exactly as before** -- the new group-aware resolver
+is a deliberately independent module, proven correct by its own tests,
+not yet wired into any display/measurement endpoint (that integration
+is Slice 5's job).
+
+### Tests
+
+78 new tests across 6 files (`test_voltage_group_config_domain.py`,
+`test_voltage_group_config_registry.py`, `test_voltage_group_config_service.py`,
+plus additions to `test_voltage_reference.py`,
+`test_measurement_group_service.py`, `test_measurement_group_lifecycle_api.py`).
+Full backend suite: 968 tests pass (up from 890), zero regressions.
+
+### Status
+
+**Slices 2 and 3 complete. Slice 4 (Current groups: equipment-rating/
+manual/none base methods, voltage-group linking, manual Vbase fallback)
+is NOT authorized** -- it requires its own separate, explicit approval.
+
+---
+
 ## Phase 8 — DEC-050 Slice 1: Measurement-Group Domain Foundation (2026-08-23)
 
 ### Scope

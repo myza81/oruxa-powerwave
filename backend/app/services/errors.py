@@ -317,3 +317,38 @@ class DuplicateChannelReferenceError(ImportServiceError):
     single measurement group's own membership list."""
 
     code = "duplicate_channel_reference"
+
+
+# ---- Slice 3 (DEC-050): Voltage measurement-group base configuration --
+# internal scaffolding for the group-aware voltage PU resolver
+# (app.domain.voltage_group_config). Not exposed through any public API
+# endpoint yet -- raised only by
+# app.services.voltage_group_config_service, consumed directly by
+# domain/service tests.
+# ----
+
+
+class VoltageConfigurationNotApplicableError(ImportServiceError):
+    """A voltage-base configuration operation was attempted against a
+    measurement group whose `kind` is not `voltage` (e.g. a Current
+    group). Voltage base configuration is only ever meaningful for a
+    Voltage group -- rejected explicitly, never silently accepted or
+    silently ignored (canonical document section 23's own
+    "reject incorrect configuration explicitly" requirement)."""
+
+    code = "voltage_configuration_not_applicable"
+
+
+class InvalidVoltageBaseValueError(ImportServiceError):
+    """A submitted nominal line-to-line voltage base value is missing,
+    non-finite, or non-positive (app.domain.voltage_group_config's own
+    `voltage_base_valid()`)."""
+
+    code = "invalid_voltage_base_value"
+
+
+class InvalidVoltageReferenceOverrideError(ImportServiceError):
+    """A submitted manual voltage-reference override is not one of the
+    known values (`line_to_ground`/`line_to_line`)."""
+
+    code = "invalid_voltage_reference_override"

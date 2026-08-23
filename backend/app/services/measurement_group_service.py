@@ -45,7 +45,7 @@ from app.domain.measurement_group import (
     group_kind_valid,
     group_status_valid,
 )
-from app.domain.measurement_group_detection import detect_measurement_groups
+from app.domain.measurement_group_detection import DetectedGroup, detect_measurement_groups
 from app.services.errors import (
     ChannelNotFoundError,
     ChannelWrongEngineeringTypeError,
@@ -57,6 +57,7 @@ from app.services.errors import (
     UnsupportedChannelReferenceKindError,
 )
 from app.services.measurement_group_registry import MeasurementGroupRegistry
+from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.services.workspace_registry import WorkspaceRegistry
 
 
@@ -207,12 +208,30 @@ def update_group_membership(
     return group
 
 
-def delete_group(workspace_id: str, measurement_group_id: str, *, registry: MeasurementGroupRegistry) -> bool:
-    return registry.remove(workspace_id, measurement_group_id)
+def delete_group(
+    workspace_id: str,
+    measurement_group_id: str,
+    *,
+    registry: MeasurementGroupRegistry,
+    voltage_config_registry: VoltageGroupConfigRegistry | None = None,
+) -> bool:
+    """Deletes one group. Slice 3: also releases its own Voltage base
+    configuration, if any (optional param, same reason
+    `remove_calculated_channels_for_source` takes an optional
+    `per_unit_registry` -- older callers/tests that predate Slice 3 and
+    have no voltage configuration to worry about are unaffected)."""
+    removed = registry.remove(workspace_id, measurement_group_id)
+    if removed and voltage_config_registry is not None:
+        voltage_config_registry.delete(workspace_id, measurement_group_id)
+    return removed
 
 
 def remove_measurement_groups_for_source(
-    *, workspace_id: str, source_id: str, registry: MeasurementGroupRegistry
+    *,
+    workspace_id: str,
+    source_id: str,
+    registry: MeasurementGroupRegistry,
+    voltage_config_registry: VoltageGroupConfigRegistry | None = None,
 ) -> list[str]:
     """Source-removal lifecycle counterpart to
     `calculated_channel_service.remove_calculated_channels_for_source`
@@ -220,10 +239,15 @@ def remove_measurement_groups_for_source(
     reverse "groups by source" index, matching this codebase's own
     established "no denormalized reverse index beyond what one
     invariant strictly requires" convention. Returns the removed group
-    ids, for logging/testing. Idempotent for a source with no groups."""
+    ids, for logging/testing. Idempotent for a source with no groups.
+
+    Slice 3: also releases each removed group's own Voltage base
+    configuration, if any (optional param, same reason as above)."""
     affected = [group.id for group in registry.list_for_source(workspace_id, source_id)]
     for measurement_group_id in affected:
         registry.remove(workspace_id, measurement_group_id)
+        if voltage_config_registry is not None:
+            voltage_config_registry.delete(workspace_id, measurement_group_id)
     return affected
 
 
@@ -264,24 +288,46 @@ def generate_suggested_groups_for_source(
     channels = [(ch.name, ch.engineering_type) for ch in active.metadata.analog_channels]
     detected_groups = detect_measurement_groups(channels)
 
-    created: list[MeasurementGroup] = []
+    # Slice 3 robustness fix: every candidate is fully validated BEFORE
+    # any persistence is attempted, so a single invalid candidate (e.g.
+    # a source with two literally-identically-named channels, producing
+    # a duplicate ChannelRef within one detected cluster) can never
+    # leave earlier-processed candidates already persisted while a
+    # later one crashes mid-loop. This is preflight validation, not
+    # exception-swallowing: the ONE known failure mode
+    # (`create_group()`'s own duplicate-reference check) is checked
+    # directly here, on data that cannot change between this check and
+    # the persistence loop below (both read the same already-fetched
+    # `active.metadata.analog_channels` within one synchronous call) --
+    # so the persistence loop itself is not expected to raise for any
+    # candidate that reaches it.
+    candidates: list[tuple[DetectedGroup, list[ChannelRef]]] = []
     for detected in detected_groups:
         channel_refs = [
             ChannelRef(kind="source", source_id=source_id, channel_name=name) for name in detected.channel_names
         ]
-        already_claimed = any(registry.group_for_channel(workspace_id, ref) is not None for ref in channel_refs)
-        if already_claimed:
+        if len(channel_refs) != len(set(channel_refs)):
+            # A detected cluster containing the same channel reference
+            # twice (only reachable when the source itself has two
+            # channels sharing one exact name) can never be persisted
+            # as a valid group -- skip it entirely, deterministically,
+            # before touching the registry at all. Never partially
+            # applied, never silently retried with a mutated ref list.
             continue
-        created.append(
-            create_group(
-                workspace_id=workspace_id,
-                source_id=source_id,
-                kind=detected.kind,
-                display_name=detected.display_name,
-                channel_refs=channel_refs,
-                status=detected.status,
-                registry=registry,
-                source_registry=source_registry,
-            )
+        if any(registry.group_for_channel(workspace_id, ref) is not None for ref in channel_refs):
+            continue
+        candidates.append((detected, channel_refs))
+
+    return [
+        create_group(
+            workspace_id=workspace_id,
+            source_id=source_id,
+            kind=detected.kind,
+            display_name=detected.display_name,
+            channel_refs=channel_refs,
+            status=detected.status,
+            registry=registry,
+            source_registry=source_registry,
         )
-    return created
+        for detected, channel_refs in candidates
+    ]
