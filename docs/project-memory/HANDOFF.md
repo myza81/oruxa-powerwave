@@ -8,6 +8,114 @@ Last updated: **2026-08-24**
 
 ## What was most recently done
 
+**Phase 10 — DEC-050 Slice 4: Current Measurement-Group Base
+Semantics.** Implements exactly Slice 4 of the 8-slice sequence,
+mirroring Slice 3's own architectural shape (a separate domain module,
+a sibling registry, a service layer enforcing the same "type-specific
+configuration only applies to its own group kind" invariant).
+
+**New `app/domain/current_group_config.py`**: `CurrentBaseConfiguration`
+(`method: equipment_rating | manual | none`, `equipment_rating_mva`,
+`linked_voltage_group_id`, `manual_voltage_base_kv`, `manual_ibase_ka`)
+-- deliberately a SEPARATE object from `VoltageBaseConfiguration`, never
+a shared object with unrelated nullable fields. `resolve_current_base_for_group()`
+uses the same `not_applicable`/`configured`/`base_required` shape and
+`confirmed`/`manual`-only authoritative-status gate Slice 3 established.
+`equipment_rating_ibase_ka()` implements `Ibase = Sbase / (√3 ×
+Vbase_LL)`, verified against the transformer worked examples: 1000 MVA
+at 500 kV -> ~1.1547 kA, 275 kV -> ~2.0995 kA, 132 kV -> ~4.3739 kA.
+
+**Critical distinction, deliberate and tested**: equipment-rating
+derivation always reads a linked Voltage group's raw `nominal_voltage_ll_kv`
+directly, never through `resolve_voltage_base_for_group()`'s own
+reference-aware denominator -- a transformer's/line's own rated nominal
+system voltage is always the LL number, regardless of whether the
+linked group's channels happen to be measured line-to-ground. A
+dedicated test proves this: two otherwise-identical linked Voltage
+groups differing only in effective reference (LG vs LL, same
+`nominal_voltage_ll_kv`) produce the exact same Ibase for an equipment-
+rated Current group linked to either one.
+
+**Flexible applicable voltage base, never forced**: an equipment-rating
+configuration accepts exactly one of `linked_voltage_group_id`
+(validated: exists, same workspace, same source, `kind='voltage'`, has
+a usable nominal LL Vbase -- `MeasurementGroupNotFoundError` if the id
+doesn't exist at all, `InvalidLinkedVoltageGroupError` for every other
+rejection reason) or `manual_voltage_base_kv` -- both together raises
+`AmbiguousCurrentVoltageSourceError`, neither raises
+`MissingCurrentVoltageSourceError`. An invalid link is always rejected
+outright at configuration time; falling back to a manual value is
+structurally impossible (the two fields are mutually exclusive by
+construction, enforced by the service layer's own setters, which also
+explicitly clear every field not relevant to the method being set --
+documented directly in `CurrentBaseConfiguration`'s own docstring per
+the task's "record the chosen internal behaviour" instruction).
+
+**Core engineering requirement proven by test**: a 1000 MVA
+transformer's HV (275 kV) and LV (132 kV) sides -- same Sbase, two
+independent linked Voltage groups in the SAME source -- resolve to
+~2.0995 kA and ~4.3739 kA respectively, confirmed different, with a
+four-group independent-configuration test (two current groups plus two
+unrelated line-current groups, one manual, one none, one left entirely
+unconfigured) proving zero cross-group leakage. A separate manual-Vbase-
+fallback test proves a Current group with NO corresponding Voltage
+group anywhere in the recording (a line current with no recorded bus
+voltage) still resolves correctly via `manual_voltage_base_kv` alone.
+
+**New `app/services/current_group_config_registry.py`**
+(`CurrentGroupConfigRegistry`, structurally identical to
+`VoltageGroupConfigRegistry` -- same CRUD shape, same no-defensive-copy
+convention) and **`app/services/current_group_config_service.py`**
+(`set_current_base_equipment_rating`/`set_current_base_manual`/
+`set_current_base_none`/`resolve_group_current_base`). New error
+classes in `app/services/errors.py`: `current_configuration_not_applicable`,
+`invalid_equipment_rating_value`, `invalid_manual_current_base_value`,
+`invalid_manual_voltage_base_value`, `ambiguous_current_voltage_source`,
+`missing_current_voltage_source`, `invalid_linked_voltage_group`.
+
+**Lifecycle wiring**: `CurrentGroupConfigRegistry` is a sixth sibling
+registry in `app.main`'s lifespan, cleaned up via the same existing
+`DELETE .../sources/{id}` and `DELETE /workspaces/{id}` endpoints'
+cleanup sequence -- `measurement_group_service.delete_group()`/
+`remove_measurement_groups_for_source()` each gained an optional
+`current_config_registry` parameter, mirroring the existing optional
+`voltage_config_registry` parameter exactly. No new endpoint, no API
+contract change.
+
+**Explicitly NOT done, per Slice 4's own scope**: no CT-primary current-
+base method (explicitly excluded by DEC-050, not merely deprioritized);
+no group-aware PU resolution wired into any display/measurement
+endpoint (Slice 5); **no frontend file touched** (Slice 6); no
+calculated-channel inheritance change (Slice 7); no CT/VT scaling; no
+source-upload auto-trigger. **The currently deployed DEC-049 source-
+wide `/per-unit/sources` API and `app.domain.per_unit.resolve_per_unit()`
+are completely untouched** -- confirmed by `git diff` showing zero
+changes to `per_unit.py`, `per_unit_registry.py`, `per_unit_service.py`,
+`calculated_channel_service.py`, `calculated_channel.py`, or
+`frontend/index.html`, and no new call to
+`generate_suggested_groups_for_source()` anywhere. The new resolver is a
+deliberately independent, dependency-free pure function (linked-group
+lookups happen once at the service layer, not inside the domain
+resolver), ready for Slice 5 to call efficiently without a source-wide
+scan per conversion.
+
+**Tests**: 67 new tests across 3 new files
+(`test_current_group_config_domain.py`, `test_current_group_config_registry.py`,
+`test_current_group_config_service.py`) plus additions to
+`test_measurement_group_lifecycle_api.py`. Full backend suite: 1035
+tests pass (up from 968), zero regressions -- every existing DEC-049/
+RMS/Calculated-Channel/annotation/measurement-group/voltage-group test
+passed completely unchanged.
+
+**Next step**: nothing is pre-authorized. **Slice 5 (group-aware PU
+resolution wired into display/measurement endpoints) requires its own
+separate, explicit owner-approved implementation prompt.**
+
+Committed as one isolated commit; see this task's own final report for
+the exact commit hash, git-diff verification, and push/CI status.
+
+## What was done in the prior session (Phase 9 — DEC-050 Slices 2 & 3: Automatic Grouping + Voltage Group Voltage PU Semantics)
+
 **Phase 9 — DEC-050 Slices 2 & 3: Automatic Grouping + Voltage Group
 Voltage PU Semantics.** Slice 2 (deterministic automatic grouping) had
 previously been implemented but never documented as its own phase --

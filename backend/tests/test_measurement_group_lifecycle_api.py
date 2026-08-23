@@ -25,8 +25,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.domain.calculated_channel import ChannelRef
-from app.domain.measurement_group import KIND_VOLTAGE
+from app.domain.measurement_group import KIND_CURRENT, KIND_VOLTAGE
 from app.main import create_app
+from app.services.current_group_config_service import set_current_base_manual
 from app.services.measurement_group_service import create_group, list_groups_for_source, list_groups_for_workspace
 from app.services.voltage_group_config_service import set_voltage_base
 
@@ -50,12 +51,12 @@ def _upload(client, workspace_id, comtrade_fixtures_dir, stem="synth_ascii"):
     return resp.json()["source_id"]
 
 
-def _create_empty_group(client, workspace_id, source_id, display_name="TEST GROUP"):
+def _create_empty_group(client, workspace_id, source_id, display_name="TEST GROUP", kind=KIND_VOLTAGE):
     """Creates a group with no channel membership directly against the
     live app's own registries -- sufficient to prove lifecycle wiring
     without depending on any particular fixture's own channel names."""
     return create_group(
-        workspace_id=workspace_id, source_id=source_id, kind=KIND_VOLTAGE, display_name=display_name,
+        workspace_id=workspace_id, source_id=source_id, kind=kind, display_name=display_name,
         channel_refs=[], registry=client.app.state.measurement_group_registry,
         source_registry=client.app.state.workspace_registry,
     )
@@ -134,6 +135,11 @@ class TestRegistryIsWiredIntoAppState:
         assert client.app.state.voltage_group_config_registry is not None
         assert client.app.state.voltage_group_config_registry.count() == 0
 
+    def test_current_group_config_registry_exists_on_app_state(self, client):
+        # Slice 4's sixth sibling registry, same reasoning as above.
+        assert client.app.state.current_group_config_registry is not None
+        assert client.app.state.current_group_config_registry.count() == 0
+
 
 class TestVoltageGroupConfigLifecycle:
     """Slice 3: proves DELETE .../sources/{id} and DELETE
@@ -191,3 +197,61 @@ class TestVoltageGroupConfigLifecycle:
 
         assert client.app.state.voltage_group_config_registry.get("ws-a", group_a.id) is None
         assert client.app.state.voltage_group_config_registry.get("ws-b", group_b.id) is not None
+
+
+class TestCurrentGroupConfigLifecycle:
+    """Slice 4: proves DELETE .../sources/{id} and DELETE
+    /workspaces/{id} actually call through to
+    `app.state.current_group_config_registry` too, the same lifecycle
+    guarantee every other workspace-owned resource already has."""
+
+    def _create_current_group_with_base(self, client, workspace_id, source_id, display_name="TEST GROUP"):
+        group = _create_empty_group(client, workspace_id, source_id, display_name, kind=KIND_CURRENT)
+        set_current_base_manual(
+            workspace_id=workspace_id, measurement_group_id=group.id, manual_ibase_ka=2.0,
+            group_registry=client.app.state.measurement_group_registry,
+            current_config_registry=client.app.state.current_group_config_registry,
+        )
+        return group
+
+    def test_deleting_a_source_removes_its_groups_own_current_configuration(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        group = self._create_current_group_with_base(client, "ws-1", source_id)
+        assert client.app.state.current_group_config_registry.get("ws-1", group.id) is not None
+
+        resp = client.delete(f"/api/v1/workspaces/ws-1/sources/{source_id}")
+        assert resp.status_code == 204
+
+        assert client.app.state.current_group_config_registry.get("ws-1", group.id) is None
+
+    def test_deleting_one_source_never_touches_another_sources_current_configuration(self, client, comtrade_fixtures_dir):
+        source_a = _upload(client, "ws-1", comtrade_fixtures_dir)
+        source_b = _upload(client, "ws-1", comtrade_fixtures_dir)
+        group_a = self._create_current_group_with_base(client, "ws-1", source_a, "A")
+        group_b = self._create_current_group_with_base(client, "ws-1", source_b, "B")
+
+        client.delete(f"/api/v1/workspaces/ws-1/sources/{source_a}")
+
+        assert client.app.state.current_group_config_registry.get("ws-1", group_a.id) is None
+        assert client.app.state.current_group_config_registry.get("ws-1", group_b.id) is not None
+
+    def test_deleting_a_workspace_removes_all_its_current_group_configurations(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        group = self._create_current_group_with_base(client, "ws-1", source_id)
+        assert client.app.state.current_group_config_registry.count() == 1
+
+        resp = client.delete("/api/v1/workspaces/ws-1")
+        assert resp.status_code == 204
+
+        assert client.app.state.current_group_config_registry.get("ws-1", group.id) is None
+
+    def test_deleting_a_workspace_never_touches_a_different_workspaces_current_configuration(self, client, comtrade_fixtures_dir):
+        source_a = _upload(client, "ws-a", comtrade_fixtures_dir)
+        source_b = _upload(client, "ws-b", comtrade_fixtures_dir)
+        group_a = self._create_current_group_with_base(client, "ws-a", source_a, "A")
+        group_b = self._create_current_group_with_base(client, "ws-b", source_b, "B")
+
+        client.delete("/api/v1/workspaces/ws-a")
+
+        assert client.app.state.current_group_config_registry.get("ws-a", group_a.id) is None
+        assert client.app.state.current_group_config_registry.get("ws-b", group_b.id) is not None

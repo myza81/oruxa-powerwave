@@ -352,3 +352,77 @@ class InvalidVoltageReferenceOverrideError(ImportServiceError):
     known values (`line_to_ground`/`line_to_line`)."""
 
     code = "invalid_voltage_reference_override"
+
+
+# ---- Slice 4 (DEC-050): Current measurement-group base configuration --
+# internal scaffolding for the group-aware current PU resolver
+# (app.domain.current_group_config). Not exposed through any public API
+# endpoint yet -- raised only by
+# app.services.current_group_config_service, consumed directly by
+# domain/service tests.
+# ----
+
+
+class CurrentConfigurationNotApplicableError(ImportServiceError):
+    """A current-base configuration operation was attempted against a
+    measurement group whose `kind` is not `current` (e.g. a Voltage
+    group). Current base configuration is only ever meaningful for a
+    Current group -- rejected explicitly, never silently accepted or
+    silently ignored (same "reject incorrect configuration explicitly"
+    principle as `VoltageConfigurationNotApplicableError`)."""
+
+    code = "current_configuration_not_applicable"
+
+
+class InvalidEquipmentRatingValueError(ImportServiceError):
+    """A submitted equipment rated apparent power (`equipment_rating_mva`)
+    is missing, non-finite, or non-positive."""
+
+    code = "invalid_equipment_rating_value"
+
+
+class InvalidManualCurrentBaseValueError(ImportServiceError):
+    """A submitted manual current base (`manual_ibase_ka`) is missing,
+    non-finite, or non-positive."""
+
+    code = "invalid_manual_current_base_value"
+
+
+class InvalidManualVoltageBaseValueError(ImportServiceError):
+    """A submitted manual applicable voltage base
+    (`manual_voltage_base_kv`) for an equipment-rated Current group is
+    missing, non-finite, or non-positive."""
+
+    code = "invalid_manual_voltage_base_value"
+
+
+class AmbiguousCurrentVoltageSourceError(ImportServiceError):
+    """Both `linked_voltage_group_id` and `manual_voltage_base_kv` were
+    submitted together for an equipment-rated Current group. The
+    applicable voltage base must come from exactly one source -- this
+    codebase prefers rejecting ambiguous input over defining a silent
+    precedence between the two (task section 8)."""
+
+    code = "ambiguous_current_voltage_source"
+
+
+class MissingCurrentVoltageSourceError(ImportServiceError):
+    """Neither `linked_voltage_group_id` nor `manual_voltage_base_kv` was
+    submitted for an equipment-rated Current group -- exactly one
+    applicable-voltage-base source is required for this method."""
+
+    code = "missing_current_voltage_source"
+
+
+class InvalidLinkedVoltageGroupError(ImportServiceError):
+    """A submitted `linked_voltage_group_id` exists but fails one of the
+    link-validity requirements (task section 4): different source,
+    wrong kind (not `voltage`), or no usable nominal LL voltage base
+    configured. A `linked_voltage_group_id` that does not exist at all
+    raises `MeasurementGroupNotFoundError` instead (same distinction
+    `voltage_group_config_service._get_voltage_group()` already makes
+    between "not found" and "wrong kind"). Never silently falls back to
+    a manual value when raised (task section 4's own explicit
+    instruction)."""
+
+    code = "invalid_linked_voltage_group"

@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.schemas.source import ErrorOut
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
+from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
@@ -48,6 +49,10 @@ def get_voltage_group_config_registry(request: Request) -> VoltageGroupConfigReg
     return request.app.state.voltage_group_config_registry
 
 
+def get_current_group_config_registry(request: Request) -> CurrentGroupConfigRegistry:
+    return request.app.state.current_group_config_registry
+
+
 def _validate_workspace_id(workspace_id: str) -> str:
     # Same shape check as app.api.v1.sources -- never used as a filesystem
     # path, so this guards against a blank/whitespace-only id, not path
@@ -68,6 +73,7 @@ def delete_workspace(
     per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
     measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
+    current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
 ) -> None:
     """Release every source this workspace owns.
 
@@ -93,6 +99,9 @@ def delete_workspace(
 
     Slice 3 (DEC-050): also releases every Voltage group's own base
     configuration this workspace owns, the same way.
+
+    Slice 4 (DEC-050): also releases every Current group's own base
+    configuration this workspace owns, the same way.
     """
     workspace_id = _validate_workspace_id(workspace_id)
     registry.remove_workspace(workspace_id)
@@ -100,3 +109,4 @@ def delete_workspace(
     per_unit_registry.remove_workspace(workspace_id)
     measurement_group_registry.remove_workspace(workspace_id)
     voltage_group_config_registry.remove_workspace(workspace_id)
+    current_group_config_registry.remove_workspace(workspace_id)

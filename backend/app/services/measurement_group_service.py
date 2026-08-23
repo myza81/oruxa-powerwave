@@ -46,6 +46,7 @@ from app.domain.measurement_group import (
     group_status_valid,
 )
 from app.domain.measurement_group_detection import DetectedGroup, detect_measurement_groups
+from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.errors import (
     ChannelNotFoundError,
     ChannelWrongEngineeringTypeError,
@@ -214,15 +215,19 @@ def delete_group(
     *,
     registry: MeasurementGroupRegistry,
     voltage_config_registry: VoltageGroupConfigRegistry | None = None,
+    current_config_registry: CurrentGroupConfigRegistry | None = None,
 ) -> bool:
     """Deletes one group. Slice 3: also releases its own Voltage base
-    configuration, if any (optional param, same reason
+    configuration, if any. Slice 4: also releases its own Current base
+    configuration, if any (both optional params, same reason
     `remove_calculated_channels_for_source` takes an optional
-    `per_unit_registry` -- older callers/tests that predate Slice 3 and
-    have no voltage configuration to worry about are unaffected)."""
+    `per_unit_registry` -- older callers/tests that predate Slice 3/4 and
+    have no such configuration to worry about are unaffected)."""
     removed = registry.remove(workspace_id, measurement_group_id)
     if removed and voltage_config_registry is not None:
         voltage_config_registry.delete(workspace_id, measurement_group_id)
+    if removed and current_config_registry is not None:
+        current_config_registry.delete(workspace_id, measurement_group_id)
     return removed
 
 
@@ -232,6 +237,7 @@ def remove_measurement_groups_for_source(
     source_id: str,
     registry: MeasurementGroupRegistry,
     voltage_config_registry: VoltageGroupConfigRegistry | None = None,
+    current_config_registry: CurrentGroupConfigRegistry | None = None,
 ) -> list[str]:
     """Source-removal lifecycle counterpart to
     `calculated_channel_service.remove_calculated_channels_for_source`
@@ -242,12 +248,16 @@ def remove_measurement_groups_for_source(
     ids, for logging/testing. Idempotent for a source with no groups.
 
     Slice 3: also releases each removed group's own Voltage base
-    configuration, if any (optional param, same reason as above)."""
+    configuration, if any. Slice 4: also releases each removed group's
+    own Current base configuration, if any (both optional params, same
+    reason as above)."""
     affected = [group.id for group in registry.list_for_source(workspace_id, source_id)]
     for measurement_group_id in affected:
         registry.remove(workspace_id, measurement_group_id)
         if voltage_config_registry is not None:
             voltage_config_registry.delete(workspace_id, measurement_group_id)
+        if current_config_registry is not None:
+            current_config_registry.delete(workspace_id, measurement_group_id)
     return affected
 
 

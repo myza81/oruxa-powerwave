@@ -36,6 +36,7 @@ from app.schemas.source import ErrorOut, SourceChannelsOut, SourceSummaryOut
 from app.schemas.waveform import WaveformRangeOut
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import remove_calculated_channels_for_source
+from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.errors import ImportServiceError, InvalidTimeRangeError
 from app.services.import_service import import_comtrade_source
 from app.services.measurement_group_registry import MeasurementGroupRegistry
@@ -97,6 +98,10 @@ def get_measurement_group_registry(request: Request) -> MeasurementGroupRegistry
 
 def get_voltage_group_config_registry(request: Request) -> VoltageGroupConfigRegistry:
     return request.app.state.voltage_group_config_registry
+
+
+def get_current_group_config_registry(request: Request) -> CurrentGroupConfigRegistry:
+    return request.app.state.current_group_config_registry
 
 
 def _voltage_channel_names_for_active(active: ActiveSource) -> list[str]:
@@ -498,6 +503,7 @@ def delete_source(
     per_unit_registry: PerUnitRegistry = Depends(get_per_unit_registry),
     measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
+    current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
 ) -> None:
     """Phase 5A (DEC-047, section 64): removing a source also removes
     every calculated channel grounded on it, directly or transitively --
@@ -521,6 +527,9 @@ def delete_source(
 
     Slice 3 (DEC-050): also releases each removed group's own Voltage
     base configuration, the same way.
+
+    Slice 4 (DEC-050): also releases each removed group's own Current
+    base configuration, the same way.
     """
     workspace_id = _validate_workspace_id(workspace_id)
     active = _get_or_404(registry, workspace_id, source_id)
@@ -536,4 +545,5 @@ def delete_source(
     remove_measurement_groups_for_source(
         workspace_id=workspace_id, source_id=source_id, registry=measurement_group_registry,
         voltage_config_registry=voltage_group_config_registry,
+        current_config_registry=current_group_config_registry,
     )

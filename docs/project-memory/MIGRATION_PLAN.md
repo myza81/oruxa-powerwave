@@ -8752,6 +8752,108 @@ is NOT authorized** -- it requires its own separate, explicit approval.
 
 ---
 
+## Phase 10 — DEC-050 Slice 4: Current Measurement-Group Base Semantics (2026-08-24)
+
+### Scope
+
+Implements exactly Slice 4 of the 8-slice sequence: `kind='current'`
+measurement-group base configuration, deliberately independent of the
+existing DEC-049 source-wide resolver, mirroring Slice 3's own
+architectural shape (a separate domain module, a sibling registry, a
+service layer enforcing "current configuration only applies to
+`kind='current'` groups").
+
+New `app/domain/current_group_config.py` -- `CurrentBaseConfiguration`
+(`method: equipment_rating | manual | none`, `equipment_rating_mva`,
+`linked_voltage_group_id`, `manual_voltage_base_kv`, `manual_ibase_ka`),
+`resolve_current_base_for_group()` (the same `not_applicable`/
+`configured`/`base_required` shape and `confirmed`/`manual`-only
+authoritative-status gate Slice 3 established), and
+`equipment_rating_ibase_ka()` implementing `Ibase = Sbase / (sqrt(3) *
+Vbase_LL)`. **Critical distinction from Slice 3's own voltage resolver**:
+equipment-rating derivation always reads a linked Voltage group's raw
+`nominal_voltage_ll_kv` directly, never through
+`resolve_voltage_base_for_group()`'s reference-aware denominator -- an
+equipment's own rated nominal system voltage is always the LL number,
+regardless of whether the linked group's channels happen to be measured
+line-to-ground. Proven by a dedicated test: two otherwise-identical
+linked Voltage groups differing only in effective reference (LG vs LL)
+produce the exact same Ibase.
+
+New `app/services/current_group_config_registry.py`
+(`CurrentGroupConfigRegistry`, structurally identical to
+`VoltageGroupConfigRegistry`) and `app/services/current_group_config_service.py`
+(`set_current_base_equipment_rating`/`set_current_base_manual`/
+`set_current_base_none`/`resolve_group_current_base`). Each setter
+explicitly clears every field not relevant to the method being set --
+a configuration never carries stale numeric data that could silently
+resurface (documented explicitly in `CurrentBaseConfiguration`'s own
+docstring, since the task instructions required the chosen behaviour to
+be recorded, not left implicit).
+
+**Applicable voltage base is flexible, per the canonical document's own
+"not forced" requirement**: an equipment-rating configuration accepts
+exactly one of `linked_voltage_group_id` (validated: exists, same
+workspace, same source, `kind='voltage'`, has a usable nominal LL
+Vbase) or `manual_voltage_base_kv` -- both together raises
+`AmbiguousCurrentVoltageSourceError`, neither raises
+`MissingCurrentVoltageSourceError`; an invalid link is always rejected
+outright at configuration time, never silently falls back to a manual
+value (structurally impossible, since the two fields are mutually
+exclusive by construction). New error classes in `app/services/errors.py`:
+`current_configuration_not_applicable`, `invalid_equipment_rating_value`,
+`invalid_manual_current_base_value`, `invalid_manual_voltage_base_value`,
+`ambiguous_current_voltage_source`, `missing_current_voltage_source`,
+`invalid_linked_voltage_group`.
+
+Verified worked examples (1000 MVA transformer): 500 kV side ~1.1547 kA,
+275 kV side ~2.0995 kA, 132 kV side ~4.3739 kA -- and, the core
+engineering requirement this slice exists to prove, the SAME 1000 MVA
+Sbase on a transformer's HV and LV sides resolves to two independent,
+different Ibase values (one source, multiple current groups, multiple
+current bases), including a full pipeline test linking two Current
+groups to two different Voltage groups (275 kV / 132 kV bus voltages)
+in one source and confirming zero cross-group leakage. A manual-Vbase-
+fallback test proves a Current group with no corresponding Voltage
+group at all in the recording (a line current with no recorded bus
+voltage) still resolves correctly.
+
+The new sixth sibling registry is wired into `app.main`'s `lifespan()`
+and into the EXISTING `DELETE .../sources/{id}` and `DELETE
+/workspaces/{id}` endpoints' own cleanup sequence (`measurement_group_service.delete_group()`/
+`remove_measurement_groups_for_source()` both gained an optional
+`current_config_registry` parameter, mirroring the existing optional
+`voltage_config_registry` parameter exactly) -- a Current group's own
+base configuration can never outlive its owning group/source/workspace.
+
+**Deliberately NOT done, per explicit Slice 4 scope**: no CT-primary
+current-base method (explicitly excluded per DEC-050); no group-aware
+PU resolution wired into any display/measurement endpoint (Slice 5); no
+frontend change (`frontend/index.html` untouched -- Slice 6); no
+calculated-channel inheritance change (Slice 7); no CT/VT scaling; no
+source-upload auto-trigger for group detection; **the currently
+deployed DEC-049 source-wide `/per-unit/sources` API and
+`app.domain.per_unit.resolve_per_unit()` are completely untouched** --
+the new resolver is a deliberately independent module, proven correct
+by its own tests, ready for Slice 5 to call without a source-wide scan
+(resolution is group/config-level, using pre-resolved objects passed in
+by the caller, never a registry scan inside the pure domain resolver).
+
+### Tests
+
+67 new tests across three new files (`test_current_group_config_domain.py`,
+`test_current_group_config_registry.py`, `test_current_group_config_service.py`)
+plus additions to `test_measurement_group_lifecycle_api.py`. Full
+backend suite: 1035 tests pass (up from 968), zero regressions.
+
+### Status
+
+**Slice 4 complete. Slice 5 (group-aware PU resolution wired into
+display/measurement endpoints) is NOT authorized** -- it requires its
+own separate, explicit approval.
+
+---
+
 ## Phase 8 — DEC-050 Slice 1: Measurement-Group Domain Foundation (2026-08-23)
 
 ### Scope

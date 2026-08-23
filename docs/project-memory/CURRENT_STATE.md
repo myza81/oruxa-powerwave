@@ -4,7 +4,9 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-24** (Phase 9 — DEC-050 Slices 2 & 3:
+Last meaningful update: **2026-08-24** (Phase 10 — DEC-050 Slice 4:
+Current Measurement-Group Base Semantics, on top of
+Phase 9 — DEC-050 Slices 2 & 3:
 Automatic Grouping + Voltage Group Voltage PU Semantics, on top of
 Phase 8 — DEC-050 Slice 1:
 Measurement-Group Domain Foundation, internal scaffolding only, on top
@@ -37,6 +39,40 @@ Text Note, Phase 4D — Precision Step Zoom + Icon Toolbar Refinement,
 Waveform Time-Axis Sub-ms Precision, Waveform Adaptive Resolution, Phase
 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B,
 Phase 4A-UAT9, and Phase 4A-UAT10).
+
+`[FACT]` **DEC-050 Slice 4 implemented (2026-08-24) — Current
+Measurement-Group Base Semantics.** A `kind='current'` measurement group
+can now carry a `CurrentBaseConfiguration`
+(`app/domain/current_group_config.py` + a sibling
+`current_group_config_registry.py`/`_service.py`, mirroring Slice 3's
+own architectural shape exactly): `method` is one of
+`equipment_rating`/`manual`/`none` (CT-primary reference deliberately
+excluded, per DEC-050). Equipment-rating derivation implements `Ibase =
+Sbase / (√3 × Vbase_LL)`, obtaining the applicable Vbase_LL either by
+linking to an existing Voltage group's own `nominal_voltage_ll_kv` or
+via an independent manual value — validated exactly one source is ever
+supplied, an invalid link is rejected outright (never a silent fallback
+to manual), and, critically, the linked Voltage group's raw LL value is
+read directly rather than through its own reference-aware PU
+denominator, so a Current group's Ibase is identical regardless of
+whether its linked Voltage group happens to be measured line-to-ground
+or line-to-line. Proven by test: a 1000 MVA transformer's HV (275 kV)
+and LV (132 kV) sides resolve to ~2.0995 kA and ~4.3739 kA respectively
+— the same Sbase does NOT imply the same Ibase — with a manual-Vbase
+fallback proven for a Current group with no corresponding Voltage group
+in the recording at all. Only `confirmed`/`manual` groups resolve a
+real Ibase, same authoritative-status gate as Slice 3. The new sixth
+sibling registry is wired into the same `DELETE .../sources/{id}`/
+`DELETE /workspaces/{id}` lifecycle cleanup every other workspace-owned
+resource already has. **The currently deployed DEC-049 source-wide
+`/per-unit/sources` API and `app.domain.per_unit.resolve_per_unit()`
+are completely untouched** — 67 new tests (1035 total, zero
+regressions), not yet wired into any display/measurement endpoint
+(Slice 5), no frontend change (Slice 6), no calculated-channel
+inheritance change (Slice 7), no CT/VT scaling, no source-upload
+auto-trigger. See
+[MIGRATION_PLAN.md — Phase 10](MIGRATION_PLAN.md#phase-10--dec-050-slice-4-current-measurement-group-base-semantics-2026-08-24)
+and [HANDOFF.md](HANDOFF.md).
 
 `[FACT]` **DEC-050 Slices 2 & 3 implemented (2026-08-24) — Automatic
 Grouping + Voltage Group Voltage PU Semantics.** Slice 2 (deterministic

@@ -17,6 +17,7 @@ from app.api.v1.sources import router as sources_v1_router
 from app.api.v1.workspaces import router as workspaces_v1_router
 from app.config import Settings, load_settings
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
+from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
@@ -65,6 +66,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # router. See app.services.voltage_group_config_registry's own
         # module docstring.
         app.state.voltage_group_config_registry = VoltageGroupConfigRegistry()
+        # Slice 4 (DEC-050): a sixth sibling in-memory registry -- Current
+        # measurement-group base configuration, not yet wired into any API
+        # router. See app.services.current_group_config_registry's own
+        # module docstring.
+        app.state.current_group_config_registry = CurrentGroupConfigRegistry()
         yield
 
     app = FastAPI(title="Powerwave API", lifespan=lifespan)
