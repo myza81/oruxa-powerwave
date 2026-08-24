@@ -4,7 +4,9 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-24** (Phase 11 — DEC-050 Slice 5:
+Last meaningful update: **2026-08-24** (Phase 12 — DEC-050 Slice 6:
+Measurement Group / Per-Unit Configuration Workspace, on top of
+Phase 11 — DEC-050 Slice 5:
 Group-Aware Per-Unit Resolution in Live Display Endpoints, on top of
 Phase 10 — DEC-050 Slice 4:
 Current Measurement-Group Base Semantics, on top of
@@ -41,6 +43,41 @@ Text Note, Phase 4D — Precision Step Zoom + Icon Toolbar Refinement,
 Waveform Time-Axis Sub-ms Precision, Waveform Adaptive Resolution, Phase
 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B,
 Phase 4A-UAT9, and Phase 4A-UAT10).
+
+`[FACT]` **DEC-050 Slice 6 implemented (2026-08-24) — Measurement
+Group / Per-Unit Configuration Workspace.** The frontend now has a
+usable, user-facing way to configure DEC-050 group-specific bases,
+superseding the source-wide "Manage Per-Unit Bases" modal as the
+PRIMARY PU configuration entry point (that legacy modal remains fully
+functional, reachable via a de-emphasized "Legacy source-wide base
+settings…" menu item — never deleted, backend DEC-049 unchanged). New
+thin API (`app/api/v1/measurement_groups.py`, source-scoped under
+`/sources/{source_id}/measurement-groups`) exposes list/create/get/
+patch/delete groups, explicit `POST .../suggest`, and `PUT
+.../voltage-config`/`.../current-config` — every mutating call goes
+straight into an existing, already-tested Slice 1/3/4 service function,
+no new validation or math. New modal (`#measurementGroupsOverlay`)
+lists Voltage/Current groups as compact rows (channels, a grouping-
+status badge SEPARATE from a PU-readiness badge, base summary, Edit);
+Edit opens a slide-in drawer reusing the legacy modal's own `.ww-pu-*`
+form-control CSS verbatim for Voltage reference (Auto/Manual) and
+Current method (Equipment Rating/Manual/None) — no CT/VT method, no
+new font sizes anywhere. Saving a `suggested`/`needs_review` group's
+base configuration now also promotes it to `confirmed` in the same
+action (canonical document section 15's own "the act of saving IS the
+promotion" rule) — a real correctness gap found and fixed during live-
+browser verification, not merely assumed correct from static review.
+Verified end-to-end via Playwright against the real running app/backend
+(Suggest → Edit → Save for Voltage and all three Current methods,
+including a live `Ibase ≈ 2.0995 kA → 2.10 kA` preview-then-resolved
+match for a 1000 MVA/275 kV equipment-rating example; two-source
+isolation; Cancel-discards-edits) — zero console errors. 53 new tests
+total (29 backend API, 24 frontend static regression) — 1135 backend
+tests pass, zero regressions. Move/split/merge-group UI remains
+deferred to a later UAT iteration (the backend membership-replace
+endpoint already exists and is tested). See
+[MIGRATION_PLAN.md — Phase 12](MIGRATION_PLAN.md#phase-12--dec-050-slice-6-measurement-group--per-unit-configuration-workspace-2026-08-24)
+and [HANDOFF.md](HANDOFF.md).
 
 `[FACT]` **DEC-050 Slice 5 implemented (2026-08-24) — Group-Aware
 Per-Unit Resolution in Live Display Endpoints.** The four LIVE source

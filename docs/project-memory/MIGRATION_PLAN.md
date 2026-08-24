@@ -8648,6 +8648,125 @@ owner UAT after this push.
 
 ---
 
+## Phase 12 — DEC-050 Slice 6: Measurement Group / Per-Unit Configuration Workspace (2026-08-24)
+
+### Scope
+
+The first frontend-facing slice of DEC-050: a new "Measurement Groups"
+configuration workspace superseding the source-wide "Manage Per-Unit
+Bases" modal as the PRIMARY, user-facing PU configuration entry point.
+Reflects the actual electrical model (`source -> Measurement Groups ->
+group-specific Voltage/Current base configuration`), so a recording
+spanning multiple voltage levels or current contexts (e.g. a 275/132 kV
+interbus transformer recording) can finally be configured correctly
+through the UI, not just through the backend.
+
+**Backend API exposure (thin, Slice 1-4 behaviour unchanged)** -- new
+`app/api/v1/measurement_groups.py`, source-scoped under
+`/api/v1/workspaces/{workspace_id}/sources/{source_id}/measurement-groups`:
+list/create/get/patch/delete groups, `POST .../suggest` (explicit,
+user-triggered generation only), `PUT .../voltage-config`, `PUT
+.../current-config`. New `app/services/measurement_group_view_service.py`
+composes a group with its own type-specific config and resolved PU
+status into one read model, so the list endpoint returns everything a
+configuration-workspace row needs in a single request (no per-row
+follow-up call). Every mutating endpoint calls straight into an
+existing, already-tested Slice 1/3/4 service function -- no new
+validation, no new conversion math, no new lifecycle rule. Every
+group-scoped endpoint validates the requested `measurement_group_id`
+actually belongs to the URL's `source_id` before touching it. 29 new
+API tests; full backend suite 1111 (up from 1082) before the frontend
+work began.
+
+**Frontend workspace** -- new modal (`#measurementGroupsOverlay`,
+reusing the exact `.confirm-overlay`/`.group-editor-box` shell the
+legacy Per-Unit modal and Custom Groups editor already use) listing
+Voltage and Current groups as compact rows (name, channel chips,
+grouping-status badge, SEPARATE PU-readiness badge, base summary, Edit
+button) with a source selector and a compact "N groups · N ready · N
+need review" summary. Empty state offers an explicit "Suggest Groups"
+action (never auto-run). Edit opens a slide-in drawer (reusing the
+Calculated Channels Signal Builder's own `.ww-cc-drawer` shell) whose
+form fields reuse the legacy Per-Unit modal's own `.ww-pu-mode-row`/
+`.ww-pu-section`/`.ww-pu-detection-details` CSS verbatim -- Voltage
+reference Auto/Manual and Current method Equipment-Rating/Manual/None
+are the SAME "choose one of N, each with a description" interaction
+that modal already solved. Genuinely new CSS is limited to the group-
+row/badge presentation itself (`.ww-mg-*`, ~90 lines) -- no font-size
+increase anywhere, matching the owner's explicit typography-scale
+preference.
+
+**Lifecycle promotion (canonical document section 15, discovered and
+fixed during live-browser verification, not merely assumed correct)**:
+saving a Voltage/Current base configuration for a `suggested`/
+`needs_review` group now also promotes its own `status` to `confirmed`
+in the same Save action (`PATCH` immediately after the config `PUT`
+succeeds) -- the engineer's own act of reviewing/configuring/saving IS
+the promotion, never a separate confirmation step, and never touching
+an already-`manual`/`confirmed` group. Verified live: a freshly
+suggested Voltage group showed `Base Required` even after its nominal
+kV was saved (`status` still `suggested`) until this fix; after the
+fix, Save correctly flips it to `Confirmed`/`Ready` in one action.
+
+**Live-browser verification** (Playwright against the real running app
++ real backend, using a new purpose-built fixture `synth_measurement_groups.cfg`):
+Suggest Groups -> 8 suggested groups across 3 Voltage + 5 Current
+groups; editing a Voltage group (275 kV, auto-detected Phase-to-Ground)
+correctly resolves `Ready`; editing a Current group with Equipment
+Rating linked to that Voltage group shows a LIVE `Ibase ≈ 2.0995 kA`
+preview before Save and `Ibase ≈ 2.10 kA` after (matching the canonical
+document's own worked example exactly); Manual Ibase and None modes
+both render/save correctly; two sources in one workspace stay
+completely isolated (a second, freshly uploaded source correctly shows
+zero groups, no leakage); Cancel discards an in-progress edit (reopening
+shows the last SAVED value, never the discarded one); the legacy
+"Legacy source-wide base settings…" menu item remains fully functional
+and independently wired. Zero browser console errors across every
+scenario.
+
+**DEC-049 coexistence** -- the legacy source-wide modal
+(`#perUnitProfilesOverlay`) is untouched code, still fully functional,
+now reached via a de-emphasized (`--legacy` CSS modifier, smaller/dimmer
+text, same click target) secondary menu item rather than the primary
+one. Backend DEC-049 (`per_unit.py`/`per_unit_registry.py`/
+`per_unit_service.py`/the `/per-unit/sources` API) was not modified at
+all this slice.
+
+**Deferred, per the task's own explicit progressive-delivery
+instruction (section 19/37)**: move-channel/split-group/merge-groups
+UI remain unbuilt -- the backend's `update_group_membership()`/
+`PATCH .../measurement-groups/{id}` already support a full channel-
+refs replace (exercised by the API tests), so a future slice/UAT
+iteration can add a membership editor without new backend work.
+Card-vs-row layout, source-selector shape (dropdown vs tabs), and exact
+status wording are all left open for owner UAT refinement, per the
+owner's own stated preference for hands-on UAT over pre-finalized UX.
+
+### Tests
+
+24 new frontend regression tests (`test_frontend_measurement_groups.py`
+-- static source-text checks: modal/drawer markup, DEC-049 coexistence
+unchanged, no-hidden-modification-on-open, suggestions explicit-only,
+status-promotion-on-save, Voltage/Current payload construction, no CT/VT
+method anywhere, Cancel discards without saving, Escape drawer-before-
+modal priority, workspace-reset lifecycle). Full backend suite: 1135
+tests pass (up from 1111), zero regressions. End-to-end UI behaviour
+verified live via Playwright (see above) rather than through a browser/
+DOM test runner, which this codebase does not have for its single-file
+frontend -- the same established verification approach every prior
+frontend-touching phase in this project has used.
+
+### Status
+
+**Slice 6 delivered as a first usable configuration workspace, per the
+task's own "strong first usable workspace, not an over-finalized one"
+instruction. Slice 7 (calculated-channel same-group inheritance) is NOT
+authorized** -- it requires its own separate, explicit approval. No
+CT/VT scaling, no calculated-channel MeasurementGroup membership, no
+upload-time auto-grouping trigger, no DEC-051 semantic change.
+
+---
+
 ## Phase 11 — DEC-050 Slice 5: Group-Aware Per-Unit Resolution in Live Display Endpoints (2026-08-24)
 
 ### Scope

@@ -1001,6 +1001,91 @@
         }
         .ww-pu-advanced-body { margin-top: 10px; }
 
+        /* Slice 6 (DEC-050): Measurement Group configuration workspace.
+           Deliberately reuses .ww-pu-section/-section-title/-status-line
+           and .ww-pu-mode-row/.ww-pu-detection-details/-evidence-list
+           verbatim for the Edit drawer's own form fields (Voltage
+           reference / Current method are the SAME "choose one of N,
+           each with a description" interaction the Per-Unit modal
+           already solved) -- only the group LIST/row presentation below
+           is genuinely new, since no existing list pattern in this file
+           combines a compact multi-line summary with a status badge AND
+           a separate PU-readiness badge in one row. Font sizes match
+           the existing scale exactly (0.7-0.75rem body, 0.66-0.68rem
+           badges/meta) -- no new type scale introduced, per the owner's
+           own explicit "do not increase general font sizes" preference. */
+        .group-editor-box.ww-mg-dialog { max-width: 720px; }
+        .ww-mg-section-heading {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            color: var(--text-dim);
+            font-weight: 600;
+            margin: 18px 0 8px;
+        }
+        .ww-mg-section-heading:first-child { margin-top: 0; }
+        .ww-mg-empty-state {
+            padding: 18px 14px;
+            text-align: center;
+            border: 1px dashed var(--panel-border);
+            border-radius: var(--radius);
+            color: var(--text-dim);
+            font-size: 0.72rem;
+        }
+        .ww-mg-empty-state p { margin: 0 0 10px; }
+        .ww-mg-empty-state p:last-child { margin-bottom: 0; }
+        .ww-mg-row {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 9px 11px;
+            margin-top: 6px;
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+        }
+        .ww-mg-row:first-of-type { margin-top: 0; }
+        .ww-mg-row-main { min-width: 0; flex: 1 1 auto; }
+        .ww-mg-row-header { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+        .ww-mg-row-name { font-size: 0.75rem; font-weight: 600; color: var(--text); }
+        .ww-mg-row-channels {
+            margin-top: 3px;
+            font-size: 0.68rem;
+            color: var(--text-dim);
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .ww-mg-row-base { margin-top: 4px; font-size: 0.7rem; color: var(--text-dim); }
+        .ww-mg-row-base strong { color: var(--text); font-weight: 600; }
+        .ww-mg-row-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
+        .ww-mg-row-actions button { font-size: 0.7rem; padding: 4px 10px; }
+
+        /* Two independent badge families -- section 9's own explicit
+           "grouping status" vs "PU readiness" distinction must never
+           collapse into one vague color. Neither relies on color alone
+           (each carries its own distinct label text, never a bare dot
+           -- section 31). */
+        .ww-mg-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            border-radius: 999px;
+            padding: 2px 8px;
+            font-size: 0.64rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
+        }
+        .ww-mg-badge--suggested { background: var(--surface-tint); color: var(--text-dim); border: 1px solid var(--panel-border); }
+        .ww-mg-badge--needs-review { background: var(--surface-tint); color: var(--warn); border: 1px solid var(--warn); }
+        .ww-mg-badge--confirmed, .ww-mg-badge--manual { background: var(--accent-wash-soft); color: var(--accent); border: 1px solid var(--accent-dim); }
+        .ww-mg-badge--ready { background: var(--ok-wash); color: var(--ok); border: 1px solid var(--ok); }
+        .ww-mg-badge--base-required { background: var(--surface-tint); color: var(--text-dim); border: 1px solid var(--panel-border); }
+        .ww-mg-badge--not-applicable { background: var(--surface-tint); color: var(--text-dim); border: 1px solid var(--panel-border); }
+
         /* Phase 5B UAT (DEC-048 clarification, section 17): a small,
            reusable accessible info-tip -- see wwInfoTipHtml()'s own
            comment for why this exists instead of native `title`. */
@@ -2165,6 +2250,11 @@
         }
         .ww-split-menu-item[aria-checked="true"] { color: var(--accent); font-weight: 700; }
         .ww-split-menu-item[aria-checked="true"] .ww-icon { color: var(--accent); }
+        /* Slice 6: the old source-wide PU modal is de-emphasized (never
+           removed -- DEC-049 backend compatibility is unchanged) once
+           the Measurement Group workspace becomes the primary entry
+           point -- smaller, dimmer text only, same click target size. */
+        .ww-split-menu-item--legacy { font-size: 0.72rem; color: var(--text-dim); }
         .ww-toolbar .ww-split-menu-item {
             min-height: 30px;
             font-size: 0.78rem;
@@ -3405,8 +3495,22 @@
                                     Per Unit
                                 </button>
                                 <span class="ww-toolbar-sep" aria-hidden="true"></span>
-                                <button type="button" class="ww-split-menu-item" id="wwManagePerUnitBasesBtn">
-                                    Manage Per-Unit Bases&hellip;
+                                <!-- Slice 6 (DEC-050): the Measurement
+                                     Group workspace is now the primary,
+                                     user-facing PU configuration entry
+                                     point -- the old source-wide modal
+                                     (still fully functional, DEC-049
+                                     backend compatibility unchanged) is
+                                     de-emphasized as a secondary "Legacy"
+                                     item below, never deleted, per the
+                                     Slice 6 task's own explicit
+                                     instruction not to remove backend/
+                                     frontend access to it outright. -->
+                                <button type="button" class="ww-split-menu-item" id="wwManageMeasurementGroupsBtn">
+                                    Manage Per-Unit / Measurement Groups&hellip;
+                                </button>
+                                <button type="button" class="ww-split-menu-item ww-split-menu-item--legacy" id="wwManagePerUnitBasesBtn">
+                                    Legacy source-wide base settings&hellip;
                                 </button>
                             </div>
                         </div>
@@ -4000,6 +4104,70 @@
             </div>
         </div>
     </div>
+
+    <!-- Slice 6 (DEC-050): Measurement Group configuration workspace --
+         the new primary PU configuration entry point, superseding the
+         source-wide Per-Unit modal above for normal workflows (that
+         modal remains fully functional as a de-emphasized "Legacy"
+         path -- see wwManagePerUnitBasesBtn's own updated label).
+         Reuses the exact same .confirm-overlay/.group-editor-box shell.
+         Opening this modal NEVER mutates group status/membership/base
+         configuration -- it only ever GETs; every write happens inside
+         the Edit drawer below, behind its own explicit Save. -->
+    <div class="confirm-overlay" id="measurementGroupsOverlay" hidden>
+        <div class="group-editor-box ww-pu-dialog ww-mg-dialog" role="dialog" aria-modal="true" aria-labelledby="measurementGroupsTitle">
+            <div class="group-editor-header">
+                <h3 id="measurementGroupsTitle">Measurement Groups</h3>
+                <button type="button" class="group-editor-close" id="measurementGroupsCloseBtn" aria-label="Close">&times;</button>
+            </div>
+            <p class="hint">Configure voltage and current bases by electrical measurement group --
+                a recording may contain multiple voltage levels or current contexts, each
+                with its own independent Per-Unit base.</p>
+
+            <div class="ww-pu-section ww-pu-section--first">
+                <h4 class="ww-pu-section-title">Recording</h4>
+                <label class="ww-cc-field">
+                    <span class="ww-visually-hidden-label">Recording</span>
+                    <select id="measurementGroupsSourceSelect"></select>
+                </label>
+                <div class="ww-pu-status-line" id="measurementGroupsSummary"></div>
+            </div>
+            <p class="hint error" id="measurementGroupsError" hidden role="alert"></p>
+
+            <div id="measurementGroupsBody"></div>
+
+            <div class="group-editor-footer">
+                <button type="button" class="secondary" id="measurementGroupsSuggestBtn">Suggest Groups&hellip;</button>
+                <span class="toolbar-spacer"></span>
+                <button type="button" class="secondary" id="measurementGroupsCloseFooterBtn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slice 6: the Edit drawer for one Voltage or Current group's own
+         base configuration -- reuses the exact .ww-cc-drawer/-backdrop
+         shell the Calculated Channels Signal Builder already
+         established (same slide-in-from-right, same z-index layering
+         above .confirm-overlay's own z-index:10, so it correctly stacks
+         over the Measurement Groups modal while that modal stays open
+         behind it). Local working-copy form state only until Save --
+         see wwMgEditState's own docstring; opening/closing this drawer
+         never persists anything by itself (section 21/22/23). -->
+    <div class="ww-cc-drawer-backdrop" id="wwMgDrawerBackdrop" hidden></div>
+    <aside class="ww-cc-drawer" id="wwMgDrawer" aria-hidden="true" aria-labelledby="wwMgDrawerTitle">
+        <div class="ww-cc-drawer-header">
+            <h3 id="wwMgDrawerTitle">Edit Measurement Group</h3>
+            <button type="button" class="ww-annotation-drawer-close" id="wwMgDrawerCloseBtn" aria-label="Close">&times;</button>
+        </div>
+        <div class="ww-cc-drawer-body">
+            <div id="wwMgDrawerBody"></div>
+            <p class="hint error" id="wwMgDrawerError" hidden role="alert"></p>
+        </div>
+        <div class="ww-cc-drawer-footer">
+            <button type="button" class="secondary" id="wwMgDrawerCancelBtn">Cancel</button>
+            <button type="button" id="wwMgDrawerSaveBtn">Save</button>
+        </div>
+    </aside>
 
     <!-- Phase 4E (DEC-044): the generic Annotation List drawer -- a
          right-side OVERLAY panel (position: fixed, never consumes/
@@ -6663,6 +6831,17 @@
             // Configuration. Same lifecycle as ww.calculatedChannels --
             // cleared only by Start New Workspace.
             perUnitSourceConfigs: new Map(),
+            // Slice 6 (DEC-050): source_id -> array of Measurement Group
+            // objects as returned by GET .../measurement-groups (each
+            // already embedding its own type-specific config + resolved
+            // PU status -- see wwFetchMeasurementGroupsForSource()'s own
+            // docstring). Fetched once per source when the configuration
+            // workspace opens or that source is selected within it,
+            // refreshed only after an explicit Save/Suggest -- never
+            // re-fetched per rendered row. Same lifecycle as
+            // ww.perUnitSourceConfigs -- cleared only by Start New
+            // Workspace.
+            measurementGroups: new Map(),
         };
 
         function wwFiniteNumber(value) {
@@ -8718,6 +8897,546 @@
             await wwRefetchAllChannels(startTime, endTime);
             wwRebuildLayout();
             wwUpdateUnitModeWarningBadge();
+        }
+
+        // ------------------------------------------------------------------
+        // Slice 6 (DEC-050): Measurement Group configuration workspace --
+        // the new primary Per-Unit configuration entry point. Wraps the
+        // thin Slice 6 backend API (app/api/v1/measurement_groups.py),
+        // never reimplements any backend validation/detection/conversion
+        // math in JS -- the JS-side "derived Ibase" preview below is
+        // COSMETIC ONLY, exactly the same already-approved pattern
+        // wwPerUnitEditorResolvedCurrentBaseText() established for the
+        // legacy modal (re-derived authoritatively by the backend the
+        // moment Save actually runs).
+        //
+        // Opening this modal, selecting a different source, or opening
+        // the Edit drawer NEVER writes anything -- only GET requests
+        // happen outside of an explicit Save (section 21). Unsaved
+        // drawer edits are always silently discarded on Cancel/close/
+        // Escape/backdrop-click, matching the EXACT same established
+        // convention every other modal/drawer in this file already uses
+        // (Custom Groups editor, legacy Per-Unit modal, Signal Builder
+        // drawer -- none of them warn on unsaved changes either).
+        // ------------------------------------------------------------------
+
+        let wwMgSourcesList = [];
+        let wwMgSelectedSourceId = null;
+        let wwMgEditState = null;
+
+        async function wwFetchMeasurementGroupsForSource(sourceId) {
+            if (!sourceId) return [];
+            let response;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                    "/sources/" + encodeURIComponent(sourceId) + "/measurement-groups"
+                );
+            } catch (error) {
+                return null; // network failure -- caller shows "Failed to load"
+            }
+            if (!response.ok) return null;
+            const groups = await response.json();
+            ww.measurementGroups.set(sourceId, groups);
+            return groups;
+        }
+
+        function wwMgGroupsForSelectedSource() {
+            return ww.measurementGroups.get(wwMgSelectedSourceId) || [];
+        }
+
+        function wwMgGroupDisplayName(groupId) {
+            const found = wwMgGroupsForSelectedSource().find((g) => g.id === groupId);
+            return found ? found.display_name : groupId;
+        }
+
+        function wwMgLinkableVoltageGroups() {
+            return wwMgGroupsForSelectedSource().filter((g) => g.kind === "voltage");
+        }
+
+        // Section 18: quick electrical-context recognition, never a tall
+        // vertically-listed card -- a compact truncation past 4 channels.
+        function wwMgChannelsText(channelRefs, maxShown) {
+            maxShown = maxShown || 4;
+            const names = (channelRefs || []).map((r) => r.channel_name);
+            if (names.length <= maxShown) return names.join(" · ");
+            return names.slice(0, maxShown).join(" · ") + " +" + (names.length - maxShown);
+        }
+
+        function wwMgStatusBadge(groupStatus) {
+            const labels = { suggested: "Suggested", confirmed: "Confirmed", needs_review: "Needs Review", manual: "Manual" };
+            const cls = groupStatus === "needs_review" ? "needs-review" : groupStatus;
+            return '<span class="ww-mg-badge ww-mg-badge--' + cls + '">' + (labels[groupStatus] || escapeHtml(groupStatus)) + '</span>';
+        }
+
+        // Section 9/10: deliberately a SEPARATE badge from grouping
+        // status -- a "Suggested" group and its own PU readiness are two
+        // independent facts, never merged into one vague indicator.
+        function wwMgPuBadge(puStatus) {
+            const map = {
+                configured: ["ready", "Ready"],
+                not_applicable: ["not-applicable", "N/A"],
+            };
+            const entry = map[puStatus] || ["base-required", "Base Required"];
+            return '<span class="ww-mg-badge ww-mg-badge--' + entry[0] + '">' + entry[1] + '</span>';
+        }
+
+        function wwMgBaseSummaryHtml(group) {
+            if (group.kind === "voltage") {
+                const cfg = group.voltage_config;
+                if (!cfg || cfg.nominal_voltage_ll_kv == null) return "Base: Not configured";
+                const refLabel = cfg.effective_reference === "line_to_line" ? "Line-to-Line"
+                    : cfg.effective_reference === "line_to_ground" ? "Phase-to-Ground" : "Unrecognized";
+                const refMode = cfg.reference_mode === "manual" ? "Manual" : "Auto";
+                return "Base: <strong>" + cfg.nominal_voltage_ll_kv + " kV</strong> · " + escapeHtml(refMode) + " · " + escapeHtml(refLabel);
+            }
+            const cfg = group.current_config;
+            if (!cfg || cfg.method === "none") return "Method: Not configured";
+            if (cfg.method === "manual") {
+                return cfg.manual_ibase_ka != null
+                    ? "Manual Ibase: <strong>" + cfg.manual_ibase_ka + " kA</strong>"
+                    : "Method: Manual (not set)";
+            }
+            if (cfg.equipment_rating_mva == null) return "Method: Equipment Rating (incomplete)";
+            const voltageSourceText = cfg.linked_voltage_group_id
+                ? "linked to " + escapeHtml(wwMgGroupDisplayName(cfg.linked_voltage_group_id))
+                : (cfg.manual_voltage_base_kv != null ? cfg.manual_voltage_base_kv + " kV (manual)" : "no voltage source");
+            const ibaseText = cfg.resolved_ibase_ka != null ? " · Ibase ≈ " + cfg.resolved_ibase_ka.toFixed(2) + " kA" : "";
+            return cfg.equipment_rating_mva + " MVA · " + voltageSourceText + ibaseText;
+        }
+
+        function wwRenderMeasurementGroupRow(group) {
+            return '<div class="ww-mg-row">' +
+                '<div class="ww-mg-row-main">' +
+                    '<div class="ww-mg-row-header">' +
+                        '<span class="ww-mg-row-name">' + escapeHtml(group.display_name) + '</span>' +
+                        wwMgStatusBadge(group.status) +
+                        wwMgPuBadge(group.pu_status) +
+                    '</div>' +
+                    '<div class="ww-mg-row-channels">' + escapeHtml(wwMgChannelsText(group.channel_refs)) + '</div>' +
+                    '<div class="ww-mg-row-base">' + wwMgBaseSummaryHtml(group) + '</div>' +
+                '</div>' +
+                '<div class="ww-mg-row-actions">' +
+                    '<button type="button" class="secondary" id="wwMgEditBtn-' + escapeHtml(group.id) + '">' +
+                        (group.status === "suggested" || group.status === "needs_review" ? "Review / Edit" : "Edit") +
+                    '</button>' +
+                '</div>' +
+            '</div>';
+        }
+
+        function wwRenderMeasurementGroupsSummary(groups) {
+            const el = document.getElementById("measurementGroupsSummary");
+            if (!el) return;
+            if (!groups.length) { el.textContent = ""; return; }
+            const ready = groups.filter((g) => g.pu_status === "configured").length;
+            const needReview = groups.filter((g) => g.status === "needs_review" || g.status === "suggested").length;
+            let text = "<strong>" + groups.length + "</strong> group" + (groups.length === 1 ? "" : "s") +
+                " · " + ready + " ready";
+            if (needReview) text += " · " + needReview + " need review";
+            el.innerHTML = text;
+        }
+
+        function wwRenderMeasurementGroupsBody(groups) {
+            const bodyEl = document.getElementById("measurementGroupsBody");
+            if (!groups.length) {
+                bodyEl.innerHTML =
+                    '<div class="ww-mg-empty-state">' +
+                        '<p>No measurement groups are configured for this recording.</p>' +
+                        '<p>Powerwave can suggest voltage/current groups from channel names. Review suggestions before using them.</p>' +
+                    '</div>';
+                return;
+            }
+            const voltageGroups = groups.filter((g) => g.kind === "voltage");
+            const currentGroups = groups.filter((g) => g.kind === "current");
+            let html = "";
+            html += '<h4 class="ww-mg-section-heading">Voltage Groups</h4>';
+            html += voltageGroups.length ? voltageGroups.map(wwRenderMeasurementGroupRow).join("") : '<p class="hint">No Voltage groups yet.</p>';
+            html += '<h4 class="ww-mg-section-heading">Current Groups</h4>';
+            html += currentGroups.length ? currentGroups.map(wwRenderMeasurementGroupRow).join("") : '<p class="hint">No Current groups yet.</p>';
+            bodyEl.innerHTML = html;
+            for (const group of groups) {
+                const btn = document.getElementById("wwMgEditBtn-" + group.id);
+                if (btn) btn.addEventListener("click", () => wwOpenMgDrawer(group.id));
+            }
+        }
+
+        async function wwLoadAndRenderMeasurementGroupsBody() {
+            const bodyEl = document.getElementById("measurementGroupsBody");
+            const errorEl = document.getElementById("measurementGroupsError");
+            errorEl.hidden = true;
+            if (!wwMgSelectedSourceId) {
+                bodyEl.innerHTML = '<p class="hint">Upload a recording to configure its Measurement Groups.</p>';
+                document.getElementById("measurementGroupsSummary").textContent = "";
+                return;
+            }
+            bodyEl.innerHTML = '<p class="hint">Loading groups&hellip;</p>';
+            const groups = await wwFetchMeasurementGroupsForSource(wwMgSelectedSourceId);
+            if (groups === null) {
+                errorEl.textContent = "Failed to load measurement groups. Check your connection and try again.";
+                errorEl.hidden = false;
+                bodyEl.innerHTML = "";
+                return;
+            }
+            wwRenderMeasurementGroupsSummary(groups);
+            wwRenderMeasurementGroupsBody(groups);
+        }
+
+        function wwRenderMeasurementGroupsSourceSelect() {
+            const select = document.getElementById("measurementGroupsSourceSelect");
+            let html = "";
+            for (const source of wwMgSourcesList) {
+                html += '<option value="' + escapeHtml(source.source_id) + '">' +
+                    escapeHtml(recordingDisplayName(source)) + '</option>';
+            }
+            select.innerHTML = html || '<option value="">No recordings loaded yet</option>';
+            select.value = wwMgSelectedSourceId || "";
+        }
+
+        async function wwMeasurementGroupsSourceSelectChange(sourceId) {
+            wwMgSelectedSourceId = sourceId;
+            await wwLoadAndRenderMeasurementGroupsBody();
+        }
+
+        async function wwOpenMeasurementGroupsModal() {
+            const sources = await fetchSourcesList();
+            wwMgSourcesList = sources || [];
+            wwMgSelectedSourceId = wwMgSourcesList.length ? wwMgSourcesList[0].source_id : null;
+            document.getElementById("measurementGroupsError").hidden = true;
+            wwRenderMeasurementGroupsSourceSelect();
+            document.getElementById("measurementGroupsOverlay").hidden = false;
+            await wwLoadAndRenderMeasurementGroupsBody();
+        }
+
+        function wwCloseMeasurementGroupsModal() {
+            document.getElementById("measurementGroupsOverlay").hidden = true;
+            wwCloseMgDrawer();
+        }
+
+        // Section 20: explicit, user-triggered ONLY -- never called from
+        // anywhere except this one button's own click handler.
+        async function wwSuggestMeasurementGroups() {
+            if (!wwMgSelectedSourceId) return;
+            const errorEl = document.getElementById("measurementGroupsError");
+            errorEl.hidden = true;
+            let response;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                    "/sources/" + encodeURIComponent(wwMgSelectedSourceId) + "/measurement-groups/suggest",
+                    { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
+                );
+            } catch (error) {
+                errorEl.textContent = "Could not reach the backend. Check your connection and try again.";
+                errorEl.hidden = false;
+                return;
+            }
+            if (!response.ok) {
+                let detail = {};
+                try { detail = (await response.json()).detail || {}; } catch (error) { /* generic message below */ }
+                errorEl.textContent = detail.message || "Could not generate suggestions.";
+                errorEl.hidden = false;
+                return;
+            }
+            await wwLoadAndRenderMeasurementGroupsBody();
+        }
+
+        // ---- Edit drawer -----------------------------------------------
+
+        function wwMgGroupToEditState(group) {
+            if (group.kind === "voltage") {
+                const cfg = group.voltage_config || {};
+                return {
+                    groupId: group.id, kind: "voltage", displayName: group.display_name, channelRefs: group.channel_refs,
+                    originalStatus: group.status,
+                    effectiveReference: cfg.effective_reference, evidenceNames: cfg.evidence_names || [],
+                    detectionReason: cfg.detection_reason,
+                    nominalKv: cfg.nominal_voltage_ll_kv, referenceMode: cfg.reference_mode || "auto",
+                    referenceOverride: cfg.reference_override,
+                };
+            }
+            const cfg = group.current_config || {};
+            let voltageSourceMode = "linked";
+            if (cfg.method === "equipment_rating" && !cfg.linked_voltage_group_id && cfg.manual_voltage_base_kv != null) voltageSourceMode = "manual";
+            return {
+                groupId: group.id, kind: "current", displayName: group.display_name, channelRefs: group.channel_refs,
+                originalStatus: group.status,
+                method: cfg.method || "none",
+                equipmentRatingMva: cfg.equipment_rating_mva,
+                voltageSourceMode,
+                linkedVoltageGroupId: cfg.linked_voltage_group_id,
+                manualVoltageBaseKv: cfg.manual_voltage_base_kv,
+                manualIbaseKa: cfg.manual_ibase_ka,
+            };
+        }
+
+        function wwMgModeRow(id, name, value, selected, title, description) {
+            return '<label class="ww-pu-mode-row' + (selected ? " ww-pu-mode-row--selected" : "") + '">' +
+                '<input type="radio" name="' + name + '" value="' + value + '" id="' + id + '"' + (selected ? " checked" : "") + '>' +
+                '<span class="ww-pu-mode-row-text"><strong>' + title + '</strong><small>' + description + '</small></span>' +
+            '</label>';
+        }
+
+        // Section 11/12: nominal voltage is ALWAYS the familiar nominal
+        // system line-to-line number -- the engineer never enters a
+        // phase-derived value. Detection result/evidence is DISPLAY ONLY
+        // -- `effective_reference`/`evidence_names` come straight from
+        // the backend's own live `resolve_effective_voltage_reference_for_group()`;
+        // this drawer never re-implements that classification in JS.
+        function wwRenderMgVoltageDrawerHtml(state) {
+            const refLabel = (ref) => (ref === "line_to_line" ? "Line-to-Line" : ref === "line_to_ground" ? "Phase-to-Ground" : "Unrecognized / needs review");
+            let html = "";
+            html += '<div class="ww-pu-section ww-pu-section--first">';
+            html += '<h4 class="ww-pu-section-title">Group</h4>';
+            html += '<p class="hint">' + escapeHtml(state.displayName) + '<br><span style="font-size:0.68rem;">' + escapeHtml(wwMgChannelsText(state.channelRefs, 8)) + '</span></p>';
+            html += '</div>';
+
+            html += '<div class="ww-pu-section">';
+            html += '<h4 class="ww-pu-section-title">Nominal System Voltage</h4>';
+            html += '<label class="ww-cc-field"><span class="ww-cc-rms-label">Nominal voltage (line-to-line)</span>';
+            html += '<div class="ww-pu-value-suffix-group"><input type="number" id="wwMgVoltageKvInput" min="0" step="any" value="' + (state.nominalKv != null ? state.nominalKv : "") + '"><span class="ww-pu-suffix">kV</span></div>';
+            html += '</label>';
+            html += '<p class="hint" style="margin-top:6px;">Always entered as the familiar nominal system line-to-line voltage &mdash; e.g. enter 275 for a 275 kV system, even if this group’s own channels measure phase-to-ground. Powerwave derives 275/&radic;3 automatically for phase channels.</p>';
+            html += '</div>';
+
+            html += '<div class="ww-pu-section">';
+            html += '<h4 class="ww-pu-section-title">Voltage Reference</h4>';
+            html += wwMgModeRow("wwMgRefAuto", "wwMgVoltageReference", "auto", state.referenceMode === "auto",
+                "Auto", "Detected: " + refLabel(state.effectiveReference) + (state.effectiveReference ? "" : " (" + escapeHtml(state.detectionReason || "needs review") + ")"));
+            html += wwMgModeRow("wwMgRefManual", "wwMgVoltageReference", "manual", state.referenceMode === "manual",
+                "Manual", "Choose Phase-to-Ground or Line-to-Line explicitly");
+            if (state.referenceMode === "manual") {
+                html += '<label class="ww-cc-field" style="margin-top:8px;"><span class="ww-visually-hidden-label">Manual reference</span>';
+                html += '<select id="wwMgManualReferenceSelect">';
+                html += '<option value="line_to_ground"' + (state.referenceOverride === "line_to_ground" ? " selected" : "") + '>Phase-to-Ground</option>';
+                html += '<option value="line_to_line"' + (state.referenceOverride === "line_to_line" ? " selected" : "") + '>Line-to-Line</option>';
+                html += '</select></label>';
+            } else if (state.evidenceNames.length) {
+                html += '<div class="ww-pu-detection-details"><p>Detected from:</p><ul class="ww-pu-evidence-list">' +
+                    state.evidenceNames.map((n) => "<li>" + escapeHtml(n) + "</li>").join("") + '</ul></div>';
+            }
+            html += '</div>';
+            return html;
+        }
+
+        // Section 13-15: exactly the three approved methods, no CT
+        // Primary. The "Derived Current Base" preview below is COSMETIC
+        // JS-side math ONLY (see module header comment) -- Save always
+        // re-resolves it authoritatively on the backend.
+        function wwRenderMgCurrentDrawerHtml(state) {
+            let html = "";
+            html += '<div class="ww-pu-section ww-pu-section--first">';
+            html += '<h4 class="ww-pu-section-title">Group</h4>';
+            html += '<p class="hint">' + escapeHtml(state.displayName) + '<br><span style="font-size:0.68rem;">' + escapeHtml(wwMgChannelsText(state.channelRefs, 8)) + '</span></p>';
+            html += '</div>';
+
+            html += '<div class="ww-pu-section">';
+            html += '<h4 class="ww-pu-section-title">Current Base Method</h4>';
+            html += wwMgModeRow("wwMgMethodEquipment", "wwMgCurrentMethod", "equipment_rating", state.method === "equipment_rating",
+                "Equipment Rating", "Derive Ibase from equipment MVA and a voltage base");
+            html += wwMgModeRow("wwMgMethodManual", "wwMgCurrentMethod", "manual", state.method === "manual",
+                "Manual Ibase", "Enter the known current base directly");
+            html += wwMgModeRow("wwMgMethodNone", "wwMgCurrentMethod", "none", state.method === "none",
+                "None", "Per-unit normalization is disabled for this current group");
+            html += '</div>';
+
+            if (state.method === "equipment_rating") {
+                html += '<div class="ww-pu-section">';
+                html += '<h4 class="ww-pu-section-title">Equipment Rating</h4>';
+                html += '<label class="ww-cc-field"><span class="ww-cc-rms-label">Equipment Rating</span>';
+                html += '<div class="ww-pu-value-suffix-group"><input type="number" id="wwMgMvaInput" min="0" step="any" value="' + (state.equipmentRatingMva != null ? state.equipmentRatingMva : "") + '"><span class="ww-pu-suffix">MVA</span></div></label>';
+                html += '</div>';
+
+                html += '<div class="ww-pu-section">';
+                html += '<h4 class="ww-pu-section-title">Voltage Base Source</h4>';
+                html += wwMgModeRow("wwMgVoltSrcLinked", "wwMgVoltageSource", "linked", state.voltageSourceMode === "linked",
+                    "Link Voltage Measurement Group", "Use another group’s own nominal LL voltage");
+                html += wwMgModeRow("wwMgVoltSrcManual", "wwMgVoltageSource", "manual", state.voltageSourceMode === "manual",
+                    "Manual nominal LL voltage", "For a current group with no corresponding Voltage group in this recording");
+
+                if (state.voltageSourceMode === "linked") {
+                    const candidates = wwMgLinkableVoltageGroups();
+                    html += '<label class="ww-cc-field" style="margin-top:8px;"><span class="ww-visually-hidden-label">Linked Voltage Group</span><select id="wwMgLinkedVoltageSelect">';
+                    html += '<option value="">Select a Voltage group&hellip;</option>';
+                    for (const c of candidates) {
+                        const label = c.display_name + (c.voltage_config && c.voltage_config.nominal_voltage_ll_kv != null
+                            ? " — " + c.voltage_config.nominal_voltage_ll_kv + " kV" : " — not configured");
+                        html += '<option value="' + escapeHtml(c.id) + '"' + (state.linkedVoltageGroupId === c.id ? " selected" : "") + '>' + escapeHtml(label) + '</option>';
+                    }
+                    html += '</select></label>';
+                    if (!candidates.length) html += '<p class="hint" style="margin-top:6px;">No Voltage groups exist yet in this recording &mdash; create one, or use a manual nominal voltage instead.</p>';
+                } else {
+                    html += '<label class="ww-cc-field" style="margin-top:8px;"><span class="ww-cc-rms-label">Manual nominal voltage (line-to-line)</span>';
+                    html += '<div class="ww-pu-value-suffix-group"><input type="number" id="wwMgManualVbaseInput" min="0" step="any" value="' + (state.manualVoltageBaseKv != null ? state.manualVoltageBaseKv : "") + '"><span class="ww-pu-suffix">kV</span></div></label>';
+                }
+                html += '</div>';
+
+                html += '<div class="ww-pu-section">';
+                html += '<h4 class="ww-pu-section-title">Derived Current Base</h4>';
+                html += '<p class="hint"><strong id="wwMgDerivedIbaseText">Ibase ≈ ' + wwMgCurrentDrawerDerivedIbaseText(state) + '</strong><br><span style="font-size:0.66rem;">Read-only, calculated by the backend.</span></p>';
+                html += '</div>';
+            } else if (state.method === "manual") {
+                html += '<div class="ww-pu-section">';
+                html += '<h4 class="ww-pu-section-title">Current Base (Ibase)</h4>';
+                html += '<label class="ww-cc-field"><span class="ww-cc-rms-label">Current base</span>';
+                html += '<div class="ww-pu-value-suffix-group"><input type="number" id="wwMgManualIbaseInput" min="0" step="any" value="' + (state.manualIbaseKa != null ? state.manualIbaseKa : "") + '"><span class="ww-pu-suffix">kA</span></div></label>';
+                html += '</div>';
+            } else {
+                html += '<div class="ww-pu-section">';
+                html += '<p class="hint">Per-unit normalization is disabled for this current group. Engineering-unit values remain available as always.</p>';
+                html += '</div>';
+            }
+            return html;
+        }
+
+        function wwMgCurrentDrawerDerivedIbaseText(state) {
+            const mva = Number(state.equipmentRatingMva);
+            let vbaseLL = null;
+            if (state.voltageSourceMode === "linked" && state.linkedVoltageGroupId) {
+                const linked = wwMgLinkableVoltageGroups().find((c) => c.id === state.linkedVoltageGroupId);
+                vbaseLL = linked && linked.voltage_config ? linked.voltage_config.nominal_voltage_ll_kv : null;
+            } else if (state.voltageSourceMode === "manual") {
+                vbaseLL = Number(state.manualVoltageBaseKv);
+            }
+            if (!Number.isFinite(mva) || mva <= 0 || !Number.isFinite(vbaseLL) || vbaseLL <= 0) return "—";
+            return (mva / (PER_UNIT_SQRT_3 * vbaseLL)).toFixed(4) + " kA";
+        }
+
+        function wwUpdateMgDerivedIbasePreview() {
+            const el = document.getElementById("wwMgDerivedIbaseText");
+            if (el) el.textContent = "Ibase ≈ " + wwMgCurrentDrawerDerivedIbaseText(wwMgEditState);
+        }
+
+        function wwRenderMgDrawerBody() {
+            const bodyEl = document.getElementById("wwMgDrawerBody");
+            const state = wwMgEditState;
+            if (!state) { bodyEl.innerHTML = ""; return; }
+            bodyEl.innerHTML = state.kind === "voltage" ? wwRenderMgVoltageDrawerHtml(state) : wwRenderMgCurrentDrawerHtml(state);
+            wwWireMgDrawerEvents();
+        }
+
+        function wwWireMgDrawerEvents() {
+            const state = wwMgEditState;
+            if (!state) return;
+            if (state.kind === "voltage") {
+                const kvInput = document.getElementById("wwMgVoltageKvInput");
+                if (kvInput) kvInput.addEventListener("input", () => { state.nominalKv = wwPerUnitNumberOrNull(kvInput.value); });
+                const autoRadio = document.getElementById("wwMgRefAuto");
+                if (autoRadio) autoRadio.addEventListener("change", () => { if (autoRadio.checked) { state.referenceMode = "auto"; wwRenderMgDrawerBody(); } });
+                const manualRadio = document.getElementById("wwMgRefManual");
+                if (manualRadio) manualRadio.addEventListener("change", () => {
+                    if (manualRadio.checked) {
+                        state.referenceMode = "manual";
+                        if (!state.referenceOverride) state.referenceOverride = "line_to_ground";
+                        wwRenderMgDrawerBody();
+                    }
+                });
+                const manualSelect = document.getElementById("wwMgManualReferenceSelect");
+                if (manualSelect) manualSelect.addEventListener("change", () => { state.referenceOverride = manualSelect.value; });
+                return;
+            }
+            const methodRadioIds = { equipment_rating: "wwMgMethodEquipment", manual: "wwMgMethodManual", none: "wwMgMethodNone" };
+            for (const value of Object.keys(methodRadioIds)) {
+                const el = document.getElementById(methodRadioIds[value]);
+                if (el) el.addEventListener("change", () => { if (el.checked) { state.method = value; wwRenderMgDrawerBody(); } });
+            }
+            if (state.method === "equipment_rating") {
+                const mvaInput = document.getElementById("wwMgMvaInput");
+                if (mvaInput) mvaInput.addEventListener("input", () => { state.equipmentRatingMva = wwPerUnitNumberOrNull(mvaInput.value); wwUpdateMgDerivedIbasePreview(); });
+                const linkedRadio = document.getElementById("wwMgVoltSrcLinked");
+                if (linkedRadio) linkedRadio.addEventListener("change", () => { if (linkedRadio.checked) { state.voltageSourceMode = "linked"; wwRenderMgDrawerBody(); } });
+                const manualRadio = document.getElementById("wwMgVoltSrcManual");
+                if (manualRadio) manualRadio.addEventListener("change", () => { if (manualRadio.checked) { state.voltageSourceMode = "manual"; wwRenderMgDrawerBody(); } });
+                const linkedSelect = document.getElementById("wwMgLinkedVoltageSelect");
+                if (linkedSelect) linkedSelect.addEventListener("change", () => { state.linkedVoltageGroupId = linkedSelect.value || null; wwUpdateMgDerivedIbasePreview(); });
+                const manualVbaseInput = document.getElementById("wwMgManualVbaseInput");
+                if (manualVbaseInput) manualVbaseInput.addEventListener("input", () => { state.manualVoltageBaseKv = wwPerUnitNumberOrNull(manualVbaseInput.value); wwUpdateMgDerivedIbasePreview(); });
+            } else if (state.method === "manual") {
+                const ibaseInput = document.getElementById("wwMgManualIbaseInput");
+                if (ibaseInput) ibaseInput.addEventListener("input", () => { state.manualIbaseKa = wwPerUnitNumberOrNull(ibaseInput.value); });
+            }
+        }
+
+        function wwOpenMgDrawer(groupId) {
+            const group = wwMgGroupsForSelectedSource().find((g) => g.id === groupId);
+            if (!group) return;
+            wwMgEditState = wwMgGroupToEditState(group);
+            document.getElementById("wwMgDrawerError").hidden = true;
+            document.getElementById("wwMgDrawerTitle").textContent = "Edit " + (group.kind === "voltage" ? "Voltage" : "Current") + " Group";
+            wwRenderMgDrawerBody();
+            document.getElementById("wwMgDrawerBackdrop").hidden = false;
+            const drawer = document.getElementById("wwMgDrawer");
+            drawer.classList.add("ww-cc-drawer--open");
+            drawer.setAttribute("aria-hidden", "false");
+        }
+
+        function wwCloseMgDrawer() {
+            wwMgEditState = null;
+            document.getElementById("wwMgDrawerBackdrop").hidden = true;
+            const drawer = document.getElementById("wwMgDrawer");
+            drawer.classList.remove("ww-cc-drawer--open");
+            drawer.setAttribute("aria-hidden", "true");
+        }
+
+        async function wwSaveMgDrawer() {
+            const state = wwMgEditState;
+            if (!state) return;
+            const errorEl = document.getElementById("wwMgDrawerError");
+            errorEl.hidden = true;
+            const base = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                "/sources/" + encodeURIComponent(wwMgSelectedSourceId) + "/measurement-groups/" + encodeURIComponent(state.groupId);
+            let url, body;
+            if (state.kind === "voltage") {
+                url = base + "/voltage-config";
+                body = {
+                    nominal_voltage_ll_kv: state.nominalKv, reference_mode: state.referenceMode,
+                    reference_override: state.referenceMode === "manual" ? state.referenceOverride : null,
+                };
+            } else {
+                url = base + "/current-config";
+                body = { method: state.method };
+                if (state.method === "equipment_rating") {
+                    body.equipment_rating_mva = state.equipmentRatingMva;
+                    if (state.voltageSourceMode === "linked") body.linked_voltage_group_id = state.linkedVoltageGroupId;
+                    else body.manual_voltage_base_kv = state.manualVoltageBaseKv;
+                } else if (state.method === "manual") {
+                    body.manual_ibase_ka = state.manualIbaseKa;
+                }
+            }
+            let response;
+            try {
+                response = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+            } catch (error) {
+                errorEl.textContent = "Could not reach the backend. Check your connection and try again.";
+                errorEl.hidden = false;
+                return;
+            }
+            if (!response.ok) {
+                let detail = {};
+                try { detail = (await response.json()).detail || {}; } catch (error) { /* generic message below */ }
+                errorEl.textContent = detail.message || "Could not save this group's configuration.";
+                errorEl.hidden = false;
+                return;
+            }
+            // Canonical document section 15: "the engineer's own act of
+            // reviewing/configuring/saving a group's base is what
+            // promotes it from Suggested to Confirmed, not a separate,
+            // redundant confirmation step." A `manual`/already-`confirmed`
+            // group's own status is never touched here -- only a
+            // `suggested`/`needs_review` group is promoted, and only
+            // because the engineer just explicitly saved a configuration
+            // for it (never on open, never automatically elsewhere).
+            if (state.originalStatus === "suggested" || state.originalStatus === "needs_review") {
+                try {
+                    await fetch(base, {
+                        method: "PATCH", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ status: "confirmed" }),
+                    });
+                } catch (error) { /* best-effort promotion -- the base config itself already saved successfully */ }
+            }
+            wwCloseMgDrawer();
+            await wwLoadAndRenderMeasurementGroupsBody();
+            wwUpdateUnitModeWarningBadge();
+            await wwRefreshDisplayedChannelsForPerUnitChange();
         }
 
 
@@ -13621,9 +14340,11 @@
                 // deliberately leaves both alone.
                 ww.unitMode = "engineering";
                 ww.perUnitSourceConfigs.clear();
+                ww.measurementGroups.clear();
                 wwSyncUnitModeControls();
                 wwUpdateUnitModeWarningBadge();
                 wwClosePerUnitProfilesModal();
+                wwCloseMeasurementGroupsModal();
             } else {
                 ww.workspaceBounds = wwDeriveWorkspaceBounds();
                 ww.viewport = ww.workspaceBounds ? { start: ww.workspaceBounds.start, end: ww.workspaceBounds.end } : null;
@@ -15776,6 +16497,37 @@
             if (event.key !== "Escape") return;
             if (!document.getElementById("perUnitProfilesOverlay").hidden) wwClosePerUnitProfilesModal();
         });
+
+        // Slice 6 (DEC-050): Measurement Group configuration workspace
+        // wiring -- same Apply/Cancel/close/Escape/backdrop-click
+        // convention as Custom Groups/legacy Per-Unit modal above. The
+        // Edit drawer gets its OWN independent Escape/backdrop handling
+        // (closing the drawer must never also close the modal behind
+        // it, and vice versa).
+        document.getElementById("wwManageMeasurementGroupsBtn").addEventListener("click", () => {
+            wwSetUnitModeMenuOpen(false);
+            wwOpenMeasurementGroupsModal();
+        });
+        document.getElementById("measurementGroupsSourceSelect").addEventListener("change", (event) => {
+            wwMeasurementGroupsSourceSelectChange(event.target.value);
+        });
+        document.getElementById("measurementGroupsSuggestBtn").addEventListener("click", () => wwSuggestMeasurementGroups());
+        document.getElementById("measurementGroupsCloseBtn").addEventListener("click", wwCloseMeasurementGroupsModal);
+        document.getElementById("measurementGroupsCloseFooterBtn").addEventListener("click", wwCloseMeasurementGroupsModal);
+        document.getElementById("measurementGroupsOverlay").addEventListener("click", (event) => {
+            if (event.target.id === "measurementGroupsOverlay") wwCloseMeasurementGroupsModal(); // click on backdrop
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            // The drawer takes priority: Escape closes IT first if open,
+            // never both layers at once.
+            if (!document.getElementById("wwMgDrawerBackdrop").hidden) { wwCloseMgDrawer(); return; }
+            if (!document.getElementById("measurementGroupsOverlay").hidden) wwCloseMeasurementGroupsModal();
+        });
+        document.getElementById("wwMgDrawerSaveBtn").addEventListener("click", () => wwSaveMgDrawer());
+        document.getElementById("wwMgDrawerCancelBtn").addEventListener("click", wwCloseMgDrawer);
+        document.getElementById("wwMgDrawerCloseBtn").addEventListener("click", wwCloseMgDrawer);
+        document.getElementById("wwMgDrawerBackdrop").addEventListener("click", wwCloseMgDrawer);
 
         // Phase 2C-B1/C1: Grouped/Separate/Custom layout mode.
         document.getElementById("layoutModeGroupedBtn").addEventListener("click", () => wwSetLayoutMode("grouped"));

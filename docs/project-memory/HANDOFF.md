@@ -8,6 +8,108 @@ Last updated: **2026-08-24**
 
 ## What was most recently done
 
+**Phase 12 — DEC-050 Slice 6: Measurement Group / Per-Unit
+Configuration Workspace.** The first frontend-facing slice: a real,
+usable way for an engineer to configure DEC-050 group-specific bases,
+replacing the source-wide "Manage Per-Unit Bases" modal as the primary
+entry point.
+
+**Backend (thin exposure only, zero Slice 1-4 behaviour change)**: new
+`app/api/v1/measurement_groups.py`, source-scoped under
+`/api/v1/workspaces/{workspace_id}/sources/{source_id}/measurement-groups`
+-- list/create/get/patch/delete, `POST .../suggest` (explicit only),
+`PUT .../voltage-config`/`.../current-config`. New
+`app/services/measurement_group_view_service.py` builds one combined
+read model (group + its own config + resolved PU status) so the list
+endpoint answers everything a configuration row needs in one request.
+Every group-scoped endpoint 404s if the requested `measurement_group_id`
+belongs to a different source than the URL's own. 29 new API tests;
+1111 backend tests passed before frontend work began.
+
+**Frontend**: new `#measurementGroupsOverlay` modal (reuses the
+`.confirm-overlay`/`.group-editor-box` shell already established by the
+legacy Per-Unit modal and Custom Groups editor) listing Voltage/Current
+groups as compact rows -- name, channel chips (`VR · VY · VB`), a
+grouping-status badge, a SEPARATE PU-readiness badge (never merged --
+canonical document section 9), a base summary line, Edit. Empty state
+offers an explicit "Suggest Groups" action, never auto-run. Edit opens
+a slide-in drawer (`#wwMgDrawer`, reusing the Signal Builder drawer's
+own `.ww-cc-drawer` shell) whose form fields reuse the legacy modal's
+own `.ww-pu-mode-row`/`.ww-pu-section`/`.ww-pu-detection-details` CSS
+verbatim -- Voltage Auto/Manual reference and Current Equipment-Rating/
+Manual/None method are the exact same "choose one of N" interaction
+that modal already solved, so genuinely new CSS is limited to the
+group-row/badge presentation itself (~90 lines, no font-size increase
+anywhere -- the owner's own explicit typography preference). A linked-
+Voltage-group dropdown for Current groups is scoped to the SAME source
+only, shows a live (cosmetic-only, backend-reauthoritative-on-Save)
+derived Ibase preview using the same already-approved pattern the
+legacy modal's own current-base preview established.
+
+**A real correctness gap found and fixed during live-browser
+verification** (not merely assumed correct from static review):
+canonical document section 15 says saving a group's base configuration
+IS what promotes it from `suggested`/`needs_review` to `confirmed` --
+initially, Save only wrote the config and left status alone, so a
+freshly-suggested Voltage group stayed `Base Required` even after its
+nominal kV was correctly saved. Fixed: `wwSaveMgDrawer()` now PATCHes
+`status: "confirmed"` immediately after a successful config PUT,
+ONLY when the group's own status was `suggested`/`needs_review`
+(captured as `originalStatus` when the drawer opens) -- an already-
+`manual`/`confirmed` group's status is never touched by Save.
+
+**Live-browser verification (Playwright, real running app + real
+backend, new fixture `synth_measurement_groups.cfg`/`.dat`)**: Suggest
+Groups on a fresh source correctly produced 8 groups (3 Voltage + 5
+Current); editing the 275 kV Voltage group (auto-detected Phase-to-
+Ground) resolved `Ready` after Save; editing a Current group with
+Equipment Rating linked to that Voltage group showed a LIVE
+`Ibase ≈ 2.0995 kA` preview before Save and the row correctly showed
+`1000 MVA · linked to N275 VOLTAGE · Ibase ≈ 2.10 kA` after -- matching
+the canonical document's own worked example verbatim; Manual Ibase
+(1.5 kA) and None mode both rendered/saved correctly (None stayed
+`Base Required` even once `Confirmed`, correctly); a second, freshly-
+uploaded source in the SAME workspace showed zero groups (no leakage);
+Cancel on a modified-but-unsaved field correctly discarded the edit
+(reopening showed the last real saved value); the legacy modal's own
+menu item and open function remained completely intact and independently
+reachable. Zero browser console errors across every scenario tested.
+
+**DEC-049 coexistence**: the legacy modal is untouched code, now reached
+via a de-emphasized (`ww-split-menu-item--legacy`, smaller/dimmer text,
+same click target) secondary menu item. Backend DEC-049 (`per_unit.py`/
+`per_unit_registry.py`/`per_unit_service.py`/the `/per-unit/sources`
+API) was not modified at all.
+
+**Deferred, per the task's own explicit progressive-delivery
+instruction**: move-channel/split-group/merge-groups UI -- the backend
+membership-replace endpoint (`PATCH .../measurement-groups/{id}` with
+`channel_refs`) already exists and is tested, so a future UAT iteration
+can add an editor without new backend work. Card/row layout, source-
+selector shape, and exact status wording are intentionally left open
+for hands-on owner UAT, per the owner's own stated preference.
+
+**Tests**: 53 new total -- 29 backend API
+(`test_measurement_group_api.py`) and 24 frontend static regression
+(`test_frontend_measurement_groups.py`: markup exists, DEC-049
+coexistence unchanged, no-hidden-modification-on-open, suggestions
+explicit-only, status-promotion-on-save, Voltage/Current payload
+construction, no CT/VT method anywhere, Cancel discards without saving,
+Escape drawer-before-modal priority, workspace-reset lifecycle). Full
+backend suite: 1135 tests pass (up from 1082), zero regressions.
+
+**Next step**: nothing is pre-authorized. **Slice 7 (calculated-channel
+same-group inheritance) requires its own separate, explicit owner-
+approved implementation prompt.** No CT/VT scaling, no calculated-
+channel MeasurementGroup membership, no upload-time auto-grouping
+trigger, no DEC-051 semantic change.
+
+Committed as two isolated commits (backend API exposure, then frontend
+UI); see this task's own final report for the exact commit hashes,
+git-diff verification, and push/CI status.
+
+## What was done in the prior session (Phase 11 — DEC-050 Slice 5: Group-Aware Per-Unit Resolution in Live Display Endpoints)
+
 **Phase 11 — DEC-050 Slice 5: Group-Aware Per-Unit Resolution in Live
 Display Endpoints.** The first slice where DEC-050 configuration
 changes a real, observable PU number -- wires Slices 3/4's group-aware
