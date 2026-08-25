@@ -243,3 +243,36 @@ class TestNoCrossSourceLeakageInMarkup:
         )
         assert "wwMgSelectedSourceId = sourceId;" in body
         assert "wwLoadAndRenderMeasurementGroupsBody();" in body
+
+
+class TestInputSuffixGroupAlignment:
+    """UX follow-up: `.ww-pu-value-suffix-group`/`.ww-pu-suffix` is the
+    ONE shared input-plus-unit-addon pattern used everywhere in this
+    file (legacy Per-Unit modal's Voltage/Apparent-Power/Direct-Current
+    Base fields, and every Measurement Group drawer field -- Nominal
+    Voltage/Equipment Rating/Manual Voltage Base/Manual Ibase). Matching
+    padding/font-size alone was proven (by direct pixel measurement in
+    a real browser) NOT sufficient to equalize the input and suffix
+    box heights -- only an explicit, identical `height` on both sides
+    produced a pixel-exact match. This test locks that in so a future
+    edit to either rule can't silently reintroduce the mismatch."""
+
+    def test_input_and_suffix_share_an_explicit_identical_height(self):
+        source = _source()
+        group_rule = _function_body(source, ".ww-pu-value-suffix-group input {", ".ww-pu-suffix {")
+        suffix_rule = _function_body(source, ".ww-pu-suffix {", "/* Phase 5C-UAT2")
+        assert "height: 32px;" in group_rule
+        assert "height: 32px;" in suffix_rule
+
+    def test_input_and_suffix_share_the_same_font_size(self):
+        source = _source()
+        suffix_rule = _function_body(source, ".ww-pu-suffix {", "/* Phase 5C-UAT2")
+        # Matches .ww-cc-field input's own font-size -- no larger
+        # typography introduced anywhere by this fix.
+        assert "font-size: 0.75rem;" in suffix_rule
+
+    def test_this_is_the_only_input_suffix_css_rule_in_the_file(self):
+        """Confirms a single shared fix, not one-off per-field styling."""
+        source = _source()
+        assert source.count(".ww-pu-suffix {") == 1
+        assert source.count(".ww-pu-value-suffix-group {") == 1

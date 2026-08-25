@@ -826,18 +826,47 @@
            old cramped-number/wide-dropdown Voltage Base layout. The
            domain always accepts one canonical unit per field (kV/MVA/
            kA), so a dropdown here would be a needless extra control,
-           not a genuine choice. Same font-size/height as every other
+           not a genuine choice. Same font-size as every other
            .ww-cc-field input -- no larger typography than the rest of
-           the app. */
+           the app.
+
+           Slice 6 UX follow-up -- diagnosed by direct pixel
+           measurement in a real browser, not merely from appearance:
+           `.ww-pu-suffix` originally carried `padding: 0 10px` and
+           `font-size: 0.7rem` (vs. the input's own `padding: 7px
+           10px`/`font-size: 0.75rem`), rendering visibly shorter than
+           its own input (26px vs. 30px). Matching that padding/
+           font-size alone did NOT fix it (a `type="number"` input's
+           own native spinner control renders measurably taller than
+           its CSS box-model alone predicts, and a `.ww-pu-suffix` that
+           is itself a nested flex container does not reliably stretch
+           to match a sibling's height across browsers even with
+           `align-items: stretch` explicitly set on both the parent and
+           the child) -- confirmed empirically: still off by the same
+           4px after matching padding/font alone. The only fix proven
+           to produce an EXACT match is an explicit, IDENTICAL `height`
+           set on both sides, below -- this is the ONE shared rule
+           EVERY input-with-unit-suffix control in the app already uses
+           (Voltage Base/Apparent Power Base/Direct Current Base in the
+           legacy Per-Unit modal, and every Measurement Group drawer
+           field -- Nominal Voltage/Equipment Rating/Manual Voltage
+           Base/Manual Ibase) -- fixing it here fixes all of them at
+           once, deliberately never duplicated per field. (The legacy
+           modal's readonly "Calculated Current Base" preview is a
+           plain single `<input readonly>` whose value already embeds
+           its own unit text, e.g. "2.0995 kA" -- it has no separate
+           suffix element and does not use this pattern.) */
         .ww-pu-value-suffix-group { display: flex; }
         .ww-pu-value-suffix-group input {
             flex: 1 1 auto;
             min-width: 0;
+            height: 32px;
             border-top-right-radius: 0;
             border-bottom-right-radius: 0;
         }
         .ww-pu-suffix {
             flex: 0 0 auto;
+            height: 32px;
             display: flex;
             align-items: center;
             padding: 0 10px;
@@ -847,7 +876,8 @@
             border-bottom-right-radius: var(--radius);
             background: var(--bg);
             color: var(--text-dim);
-            font-size: 0.7rem;
+            font-size: 0.75rem;
+            box-sizing: border-box;
         }
         /* Phase 5C-UAT2 (owner UAT: "simple at first glance, expandable
            when needed"): the Manage Per-Unit Bases dialog gets its own
