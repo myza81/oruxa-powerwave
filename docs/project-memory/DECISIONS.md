@@ -7190,6 +7190,203 @@ Impact:
 
 ---
 
+## DEC-055 — Waveform time synchronization Slice 2: an explicit, workspace-wide common event `t=0`, reusing Cursor A as the origin picker, independent of and never absorbing per-source alignment offsets
+
+Date: 2026-08-26
+Status: Approved
+Source: explicit project-owner instruction, delivered as a dedicated
+"Slice 2 of waveform time synchronization" implementation prompt,
+immediately following DEC-053 (Slice 1).
+
+Decision:
+
+**An engineer can, after manually synchronizing sources (DEC-053), select
+one workspace-time instant as a common event origin `t=0`. Every
+already-synchronized source's waveform then displays with event-relative
+time (negative before the event, `0` at the event, positive after) —
+without altering any source's own data, without altering any source's
+own alignment offset, and without being reset by "Reset All" alignment
+offsets.**
+
+Concretely:
+
+- Core mapping: `event_time = workspace_time - t0_workspace_time`
+  (inverse: `workspace_time = event_time + t0_workspace_time`),
+  composed with DEC-053's own mapping into
+  `event_time = source_time + alignment_offset_s - t0_workspace_time`.
+  Implemented as two new pure functions in
+  `app/domain/synchronization.py` —
+  `workspace_time_to_event_time()`/`event_time_to_workspace_time()` —
+  deliberately never a third, separately-coded flat formula; every real
+  caller composes them from DEC-053's existing
+  `source_time_to_workspace_time()`/`workspace_time_to_source_time()`
+  pair.
+- **`t=0` is ONE workspace-wide value, never per-source.** A second,
+  genuinely independent store (`SynchronizationRegistry._t0`, a plain
+  `dict[workspace_id, float]`, alongside DEC-053's existing `_offsets`
+  dict in the same registry) backs three new endpoints under the same
+  `.../synchronization` router: `GET/PUT/DELETE .../synchronization/t0`.
+  Validated with the same finite-number rule DEC-053's offset validator
+  already enforces (`alignment_offset_valid()`, reused rather than
+  duplicated), under a distinct error code (`invalid_t0`) so a client
+  can tell the two failures apart.
+- **UI reuses the existing A/B measurement cursor rather than inventing
+  a new interaction**: a single toolbar button (`#wwSetT0Btn`, "Set
+  Cursor A as t=0" / "Clear t=0", dual-purpose like `#wwCursorModeBtn`)
+  promotes Cursor A's current workspace-time position to `t0`. The
+  button is `disabled` — never silently uses an arbitrary time —
+  whenever there is nothing valid to act on: no already-selected `t0`
+  to clear, and no currently-placed Cursor A to promote. Once set, the
+  value is surfaced via the button's own title/aria-label and a compact
+  bottom-status-bar item (`#statusBarT0`, hidden entirely while unset)
+  — no separate always-visible toolbar label.
+- **Single choke-point propagation, zero scattered arithmetic**: the
+  existing `wwElapsedToPlotlyX()`/`wwPlotlyXToElapsed()` functions (the
+  one existing bridge between internal workspace-time coordinates and
+  every Plotly-facing X value — traces, axis ranges, ruler, digital
+  chart, calculated channels) now delegate to the two new conversion
+  helpers above. Both are documented no-op passthroughs when no `t0` is
+  selected, so this required zero conditional branching at any of their
+  existing call sites. The cursor-overlay/annotation-anchor positioning
+  system is a wholly separate, fraction-based coordinate system
+  (`(time - viewport.start) / (viewport.end - viewport.start)`),
+  mathematically invariant under a constant `t0` shift — confirmed by
+  inspection to need no code changes, including the A/B cursor Δt
+  readout (a subtraction, so it cancels the shift by construction).
+- **Backend source-native queries always receive workspace time, never
+  event time.** `wwFetchCursorValuesForSource()`'s existing DEC-053
+  inverse-mapping call sites needed zero Slice 2 changes: `Cursor A`/`B`
+  positions live in `ww.measurementCursors` as workspace time (the same
+  coordinate system as `ww.viewport`), the same coordinate `t0` itself
+  is defined in — event time is a display-only presentation layer over
+  that.
+- **Independence is structural, not merely tested.** `t0` and per-source
+  alignment offsets are separate dict stores in the same registry;
+  `remove_workspace()` (used by "Reset All") touches only `_offsets`,
+  never `_t0`. A combined `remove_workspace_synchronization_state()`
+  service function (renamed from DEC-053's
+  `remove_workspace_alignment()`) explicitly calls both
+  `registry.remove_workspace()` and the new `registry.clear_t0()` for
+  full workspace teardown (workspace delete/"Start New Workspace" only).
+  Removing a source (including whichever source's cursor originally
+  helped select `t0`) never touches `t0` — once defined, `t0` is a pure
+  workspace-time coordinate, independent of which source (if any)
+  contributed the cursor position that selected it.
+- **Digital channels, RMS/derived channels, and calculated-channel
+  mathematical-timebase validation are unaffected in substance.**
+  Digital transitions move through the same render-time
+  `wwElapsedToPlotlyX()` DEC-053 already applies them through — no
+  interpolation, exact transitions preserved. RMS/other source-native
+  derived calculations remain entirely in source-native time; only the
+  display X coordinate becomes event-relative.
+  `app.domain.calculated_channel.timebases_aligned()` is untouched —
+  visual synchronization plus a common `t=0` still does not imply (or
+  create) a common mathematical sample grid.
+- **Absolute-time-mode interaction, deliberately minimal**: when `t0` is
+  defined, event-relative display takes precedence over Absolute mode's
+  wall-clock labels/hover/customdata (`wwTimeAxisTickFormat()`,
+  `wwTraceCustomData()`/`wwTraceHoverTemplate()`, the sticky ruler all
+  gained a `&& !wwHasT0()` guard on their existing absolute-mode
+  branches) — the smallest safe behavior given DEC-053's own
+  already-documented multi-source Absolute-time limitation, which this
+  slice does not attempt to solve.
+- Precision: `t0_workspace_time` is stored/transmitted as a `float`
+  number of seconds with sub-millisecond precision, never rounded
+  internally; the status-bar/button display formats to milliseconds for
+  readability only, the same single-conversion-point pattern DEC-053
+  established for the offset value.
+- Performance: applying/clearing `t0` re-projects each already-displayed
+  channel's existing, unmodified `channel.time` array through
+  `wwElapsedToPlotlyX()` via `Plotly.restyle()` — no re-fetch, no
+  duplicate arrays, no backend reprocessing (`wwApplyT0ToDisplay()`,
+  mirroring `wwSetTimeMode()`'s own established presentation-only
+  pattern).
+
+Reason:
+
+DEC-053 was deliberately scoped to per-source visual alignment only,
+with a common event origin named as later, separate work. This slice is
+that follow-up, kept to the owner's own explicit scope: no automatic
+`t=0`/trigger/threshold/fault-inception detection, no
+correlation/cross-correlation, no clock-drift/timezone correction, no
+event grouping/classification, no resampling, no drag-to-align, no
+reference-source redesign — a single, manually-selected, workspace-wide
+coordinate shift over already-synchronized display data, reusing
+existing infrastructure (Cursor A, the DEC-036/DEC-053
+`wwElapsedToPlotlyX()` choke-point, the DEC-053 `SynchronizationRegistry`
+shape) end to end.
+
+Alternatives considered:
+
+- A new, dedicated origin-picking interaction (a click-to-place marker
+  distinct from the A/B cursors) — rejected per the task's own explicit
+  "reuse the existing waveform cursor rather than inventing a new
+  interaction" instruction; Cursor A already carries exactly the
+  workspace-time-position semantics `t0` needs, and introducing a
+  second selection mechanism would be pure UI surface for no additional
+  capability.
+- Absorbing `t0` into each source's own alignment offset (shifting the
+  stored offset itself so the origin lands at zero) — rejected: this
+  would conflate two independent concepts the task explicitly requires
+  to stay separate (visual pairwise alignment vs. a single shared event
+  origin), and would make "Reset All" alignment offsets silently move
+  or destroy the event origin, which section 14 of the task explicitly
+  forbids.
+- Clearing `t0` whenever a source is removed (in case that source's
+  cursor originally helped select it) — rejected per the task's own
+  explicit section 15 guidance: once defined, `t0` is a pure
+  workspace-time coordinate no longer tied to any particular source's
+  continued presence, mirroring how `ww.alignmentOffsets` for a
+  *different, still-present* source is already unaffected by an
+  unrelated source's removal.
+
+Impact:
+
+- Backend: two new pure functions in `app/domain/synchronization.py`; a
+  second independent store (`_t0`) and three new methods
+  (`get_t0`/`set_t0`/`clear_t0`) in `SynchronizationRegistry`; a new
+  `T0View` dataclass and `get_t0()`/`set_t0()`/`clear_t0()` in
+  `synchronization_service.py`;
+  `remove_workspace_alignment()` renamed to
+  `remove_workspace_synchronization_state()` (now clears both stores);
+  a new `InvalidT0Error` (code `invalid_t0`); `T0UpdateRequest`/`T0Out`
+  schemas; three new REST endpoints. 54 new domain/registry/service/API
+  tests plus 13 new frontend-static-regression tests (67 total), zero
+  regressions (1294 → 1361 backend tests, the intermediate 1348 figure
+  being backend-only before this session's frontend work landed).
+- Frontend: `ww.t0WorkspaceTime` mirror; `wwT0WorkspaceTime()`/
+  `wwHasT0()`/`wwWorkspaceTimeToEventTime()`/
+  `wwEventTimeToWorkspaceTime()` helpers; `wwFetchAlignmentOffsetsForWorkspace()`
+  renamed to `wwFetchSynchronizationStateForWorkspace()` (now fetches
+  `.../t0` alongside `.../sources` in parallel); the new
+  `#wwSetT0Btn`/`#statusBarT0` UI and its `wwSetT0FromCursorA()`/
+  `wwClearT0()`/`wwSyncT0Controls()`/`wwApplyT0ToDisplay()` functions;
+  `t0WorkspaceTime` cleared in `wwClearWorkspace()`'s "Start New
+  Workspace" branch only (same lifecycle policy DEC-053 already
+  established for `ww.alignmentOffsets`/`ww.referenceSourceId`), never
+  by plain "Clear workspace".
+- Live browser UAT (Playwright, backend + static frontend server):
+  two-source upload, Source B alignment offset set to 401 ms, Cursor A
+  placed via the existing A/B toggle, `t0` set from it, X-axis
+  confirmed switching to `-0.00325…0.0065` s straddling `0` with title
+  "Event Time (s)", cursor readout confirmed showing signed event time
+  (`A +0.000 ms`, `B +3.250 ms`, `Δt 3.250 ms` — Δt unchanged from
+  workspace-time as expected), box-zoom confirmed staying event-relative
+  after a viewport change, Source B's offset fine-adjusted to 405 ms
+  while `t0` stayed fixed, `t0` cleared (offset confirmed unchanged),
+  `t0` set again, "Reset All" alignment offsets confirmed leaving `t0`
+  unchanged (the core independence regression), "Start New Workspace"
+  confirmed clearing `t0`. Zero console errors observed throughout.
+- **Known, explicitly documented limitation, not silently gapped**: the
+  Callout/+Peak/-Peak annotation-anchor offset-awareness gap DEC-053
+  already documented is unchanged by this slice (out of scope); the
+  existing multi-source Absolute-time-mode limitation is not solved
+  here either — this slice only ensures event-relative display cleanly
+  takes precedence over it when `t0` is active, per the task's own
+  "smallest safe behavior" instruction.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

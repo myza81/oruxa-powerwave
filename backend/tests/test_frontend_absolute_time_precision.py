@@ -24,6 +24,14 @@ def _function_body(source: str, signature: str, next_signature: str) -> str:
 
 
 def test_elapsed_to_plotly_x_is_identity_in_all_time_modes():
+    """Absolute-vs-Elapsed time MODE never affects this coordinate (still
+    true post-Slice-2: no Date/absolute-timestamp math here at all).
+    Slice 2 of waveform time synchronization gave it exactly one new,
+    intentional transform -- delegating to wwWorkspaceTimeToEventTime(),
+    which is itself a documented no-op passthrough whenever no t0 is
+    selected (see test_synchronization_t0_domain.py's own coverage of
+    that pure function) -- so this remains numerically identity except
+    when the engineer has explicitly picked an event origin."""
     source = _source()
     body = _function_body(
         source,
@@ -31,7 +39,7 @@ def test_elapsed_to_plotly_x_is_identity_in_all_time_modes():
         "function wwPlotlyXToElapsed(x)",
     )
 
-    assert "return elapsedSeconds;" in body
+    assert "return wwWorkspaceTimeToEventTime(elapsedSeconds);" in body
     assert "wwWorkspaceRecordingStartMs" not in body
     assert "new Date" not in body
     assert "Date.UTC" not in body
@@ -45,7 +53,7 @@ def test_plotly_x_to_elapsed_is_identity_in_all_time_modes():
         "function wwNiceTickStep",
     )
 
-    assert "return Number(x);" in body
+    assert "return wwEventTimeToWorkspaceTime(Number(x));" in body
     assert "wwParseNaiveTimestamp" not in body
     assert "wwWorkspaceRecordingStartMs" not in body
 
@@ -61,11 +69,17 @@ def test_absolute_mode_never_uses_date_axis_or_date_strings_for_plotly_coordinat
 
 
 def test_time_mode_switch_does_not_rewrite_trace_geometry():
+    """Boundary is wwApplyT0ToDisplay() -- the Slice 2 function
+    immediately following wwSetTimeMode() -- not
+    wwUpdateEditGroupsButtonVisibility(), which now sits several
+    functions further down after the new t=0 block; wwApplyT0ToDisplay()
+    itself DOES restyle x (a real, t0-driven coordinate change, unlike a
+    mode switch), so it must stay excluded from this body."""
     source = _source()
     body = _function_body(
         source,
         "function wwSetTimeMode(mode)",
-        "function wwUpdateEditGroupsButtonVisibility()",
+        "function wwApplyT0ToDisplay()",
     )
 
     assert "Plotly.restyle" in body

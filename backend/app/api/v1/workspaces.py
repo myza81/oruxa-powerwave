@@ -24,7 +24,7 @@ from app.services.current_group_config_registry import CurrentGroupConfigRegistr
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.synchronization_registry import SynchronizationRegistry
-from app.services.synchronization_service import remove_workspace_alignment
+from app.services.synchronization_service import remove_workspace_synchronization_state
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.services.workspace_registry import WorkspaceRegistry
 
@@ -114,6 +114,11 @@ def delete_workspace(
     source's own manual alignment offset this workspace owns, the same
     way (task section 10: "workspace reset/new workspace" must clear
     all synchronization state).
+
+    Slice 2 of waveform time synchronization: also releases this
+    workspace's own single event origin (t0), the same way (task
+    section 15: "t=0 is workspace-scoped state. It must be cleared when
+    starting a new workspace; deleting/resetting the workspace").
     """
     workspace_id = _validate_workspace_id(workspace_id)
     registry.remove_workspace(workspace_id)
@@ -122,4 +127,4 @@ def delete_workspace(
     measurement_group_registry.remove_workspace(workspace_id)
     voltage_group_config_registry.remove_workspace(workspace_id)
     current_group_config_registry.remove_workspace(workspace_id)
-    remove_workspace_alignment(workspace_id=workspace_id, registry=synchronization_registry)
+    remove_workspace_synchronization_state(workspace_id=workspace_id, registry=synchronization_registry)

@@ -449,3 +449,16 @@ class ReferenceSourceAlignmentError(ImportServiceError):
     every other source's offset around a new reference."""
 
     code = "reference_source_alignment_not_allowed"
+
+
+# ---- Slice 2 of waveform time synchronization: one workspace-wide
+# event origin, t0 (app.domain.synchronization, app.services.
+# synchronization_registry/_service). ----
+
+
+class InvalidT0Error(ImportServiceError):
+    """A submitted `t0_workspace_time` is missing/non-finite/non-numeric
+    (app.domain.synchronization.alignment_offset_valid, reused for t0 --
+    see that function's own docstring for why)."""
+
+    code = "invalid_t0"

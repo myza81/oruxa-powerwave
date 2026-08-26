@@ -4,7 +4,9 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-26** (Phase 16 — Multi-Source
+Last meaningful update: **2026-08-26** (Phase 17 — Waveform Time
+Synchronization Slice 2: Explicit Common Event t=0, on top of
+Phase 16 — Multi-Source
 Workspace Sidebar Redesign, on top of
 Phase 15 — Waveform Time
 Synchronization Slice 1: Manual Per-Source Alignment Offset, on top of
@@ -52,6 +54,74 @@ Text Note, Phase 4D — Precision Step Zoom + Icon Toolbar Refinement,
 Waveform Time-Axis Sub-ms Precision, Waveform Adaptive Resolution, Phase
 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B,
 Phase 4A-UAT9, and Phase 4A-UAT10).
+
+`[FACT]` **Waveform Time Synchronization Slice 2 implemented
+(2026-08-26) — Explicit Common Event t=0.** On top of Slice 1's manual
+per-source alignment offset: an engineer can now select one
+workspace-time instant as a single, workspace-wide event origin `t=0`
+(never per-source), reusing the existing A/B measurement cursor (Cursor
+A specifically) as the origin picker rather than a new interaction. Core
+mapping: `event_time = workspace_time - t0_workspace_time` (inverse:
+`workspace_time = event_time + t0_workspace_time`), composed with
+Slice 1's own mapping into
+`event_time = source_time + alignment_offset_s - t0_workspace_time`.
+**Backend owns the `t0` VALUE only**, in a second store
+(`SynchronizationRegistry._t0`, independent of Slice 1's `_offsets`
+dict) behind three new endpoints on the same router:
+`GET/PUT/DELETE .../synchronization/t0`. **Frontend propagates it from
+exactly one choke point**: the existing `wwElapsedToPlotlyX()`/
+`wwPlotlyXToElapsed()` functions (already the sole bridge from internal
+workspace time to every Plotly-facing X value) now delegate to two new
+pure conversion helpers, both no-op passthroughs when no `t0` is
+selected — so every existing consumer (traces, axis ranges, the sticky
+ruler, the digital chart, calculated channels) became event-time-aware
+with zero scattered arithmetic and zero changes at those call sites. The
+cursor-overlay/annotation-anchor positioning system (a separate,
+fraction-of-viewport coordinate system) and the A/B cursor Δt readout
+needed no changes at all — both are mathematically invariant under a
+constant `t0` shift by construction. **A single compact toolbar control**
+(`#wwSetT0Btn`, "Set Cursor A as t=0" / "Clear t=0") is disabled
+whenever there is nothing valid to act on — never silently uses an
+arbitrary time — with the current value surfaced via the button's own
+title and a small bottom-status-bar item (`#statusBarT0`, hidden while
+unset). **Independence from Slice 1 is structural**: `t0` and per-source
+alignment offsets are genuinely separate registry stores; "Reset All"
+alignment offsets (`remove_workspace()`) never touches `_t0`; "Clear
+t=0" never touches offsets; removing a source (even the one whose
+cursor originally helped select `t0`) never clears `t0` — once defined
+it is a pure workspace-time coordinate. `t0` is cleared only by "Start
+New Workspace"/workspace delete (`remove_workspace_synchronization_state()`,
+renamed from Slice 1's `remove_workspace_alignment()`, now clears both
+stores), never by plain "Clear workspace", mirroring Slice 1's own
+`ww.alignmentOffsets`/`ww.referenceSourceId` lifecycle policy exactly.
+Digital channels, RMS/derived-channel calculations, and
+`app.domain.calculated_channel.timebases_aligned()` are unaffected in
+substance — event-relative is a display-only transform over unchanged
+source-native/workspace-time data and unchanged mathematical-timebase
+validation. When `t0` is active, event-relative display takes
+precedence over Absolute-time-mode's wall-clock labels (the smallest
+safe interaction with Slice 1's already-documented multi-source
+Absolute-time limitation, not a fix for it). Precision: `t0` is a
+`float` seconds value with sub-millisecond precision, never rounded
+internally. **Verified by live-browser testing** (Playwright, real
+running app + real backend): two sources uploaded, Source B given a 401
+ms alignment offset, Cursor A placed via the existing cursor-mode
+toggle, `t0` set from it — X-axis confirmed switching to
+`[-0.00325, 0.0065]` s straddling `0` with title "Event Time (s)",
+cursor readout confirmed showing signed event time (`A +0.000 ms`,
+`B +3.250 ms`, `Δt 3.250 ms`), a box-zoom confirmed staying
+event-relative after a viewport change, Source B's offset fine-adjusted
+to 405 ms while `t0` stayed fixed at its original value, `t0` cleared
+(offset confirmed unchanged), `t0` set again, "Reset All" alignment
+offsets confirmed leaving `t0` unchanged (the core independence
+regression), "Start New Workspace" confirmed clearing `t0` — zero
+console errors throughout. 54 new backend tests (domain/registry/
+service/API) + 13 new frontend static-regression tests (67 total), plus
+5 pre-existing frontend tests updated to match renamed functions/shifted
+code boundaries; full backend suite: 1361 passed, zero regressions (up
+from 1294). See
+[DECISIONS.md — DEC-055](DECISIONS.md#dec-055--waveform-time-synchronization-slice-2-an-explicit-workspace-wide-common-event-t0-reusing-cursor-a-as-the-origin-picker-independent-of-and-never-absorbing-per-source-alignment-offsets)
+and [HANDOFF.md](HANDOFF.md).
 
 `[FACT]` **Multi-Source Workspace Sidebar Redesign implemented
 (2026-08-26).** Owner UAT finding after Waveform Time Synchronization

@@ -39,8 +39,11 @@ def test_calculated_channels_resolve_offset_through_their_reference_source():
 
 
 def test_fetch_alignment_offsets_hits_the_synchronization_sources_endpoint():
+    """Slice 2 renamed this to wwFetchSynchronizationStateForWorkspace()
+    (it now also fetches .../t0 in parallel) -- the offsets/reference-
+    source half of its contract is unchanged."""
     source = _source()
-    assert "async function wwFetchAlignmentOffsetsForWorkspace()" in source
+    assert "async function wwFetchSynchronizationStateForWorkspace()" in source
     assert "/synchronization/sources" in source
     assert "row.is_reference" in source
 
@@ -108,7 +111,7 @@ def test_select_source_refreshes_offsets_before_deriving_workspace_bounds():
     source = _source()
     select_idx = source.index("async function selectSource(sourceId)")
     select_body = source[select_idx : source.index("wwSyncChannelBrowserDisplayState();", select_idx)]
-    fetch_idx = select_body.index("await wwFetchAlignmentOffsetsForWorkspace();")
+    fetch_idx = select_body.index("await wwFetchSynchronizationStateForWorkspace();")
     refresh_idx = select_body.index("await refreshSourceList();")
     assert fetch_idx < refresh_idx
 
@@ -117,7 +120,7 @@ def test_source_removal_refreshes_alignment_offsets():
     source = _source()
     remove_idx = source.index("async function performRemoveSource(sourceId)")
     remove_body = source[remove_idx : source.index("// ----", remove_idx)]
-    assert "await wwFetchAlignmentOffsetsForWorkspace();" in remove_body
+    assert "await wwFetchSynchronizationStateForWorkspace();" in remove_body
 
 
 def test_start_new_workspace_clears_alignment_offset_state():

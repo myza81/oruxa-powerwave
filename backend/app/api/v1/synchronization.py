@@ -1,13 +1,16 @@
-"""Slice 1 waveform time-synchronization API.
+"""Waveform time-synchronization API (Slice 1: per-source alignment
+offsets; Slice 2: one workspace-wide event origin, `t0`).
 
 Source-scoped, mirroring `app.api.v1.per_unit`'s own shape: `GET
 .../synchronization/sources` lists every real source currently in the
 workspace (offset or not), `PUT .../sources/{source_id}` sets one
 source's own alignment offset, `DELETE .../sources/{source_id}` resets
 it to `0`, and `DELETE .../sources` resets every source's offset in the
-workspace at once ("Reset All"). See
-app.services.synchronization_service's own module docstring for why this
-router never touches waveform/cursor/digital-waveform data itself.
+workspace at once ("Reset All"). `GET/PUT/DELETE .../t0` is Slice 2's
+own addition -- a single workspace-wide resource with no `source_id` at
+all (see app.domain.synchronization's own module docstring for why).
+See app.services.synchronization_service's own module docstring for why
+this router never touches waveform/cursor/digital-waveform data itself.
 """
 
 from __future__ import annotations
@@ -15,15 +18,18 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.schemas.source import ErrorOut
-from app.schemas.synchronization import SourceAlignmentOut, SourceAlignmentUpdateRequest
+from app.schemas.synchronization import SourceAlignmentOut, SourceAlignmentUpdateRequest, T0Out, T0UpdateRequest
 from app.services.errors import ImportServiceError
 from app.services.synchronization_registry import SynchronizationRegistry
 from app.services.synchronization_service import (
+    clear_t0,
     get_source_alignment,
+    get_t0,
     list_source_alignments,
     reset_all_alignment_offsets,
     reset_source_alignment_offset,
     set_source_alignment_offset,
+    set_t0,
 )
 from app.services.workspace_registry import WorkspaceRegistry
 
@@ -34,6 +40,7 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "source_not_found": status.HTTP_404_NOT_FOUND,
     "invalid_alignment_offset": status.HTTP_400_BAD_REQUEST,
     "reference_source_alignment_not_allowed": status.HTTP_409_CONFLICT,
+    "invalid_t0": status.HTTP_400_BAD_REQUEST,
     "internal_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
@@ -136,3 +143,45 @@ def reset_source(
         reset_source_alignment_offset(workspace_id=workspace_id, source_id=source_id, registry=registry, source_registry=source_registry)
     except ImportServiceError as exc:
         raise _http_error(exc) from exc
+
+
+@router.get("/t0", response_model=T0Out)
+def get_workspace_t0(
+    workspace_id: str,
+    registry: SynchronizationRegistry = Depends(get_synchronization_registry),
+) -> T0Out:
+    """`t0_workspace_time: null` when no event origin has been selected
+    yet -- never a 404 (Slice 2's own single-resource-per-workspace
+    shape, mirroring how an unconfigured source's alignment offset reads
+    as `0` rather than 404ing)."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    return T0Out.from_view(get_t0(workspace_id=workspace_id, registry=registry))
+
+
+@router.put("/t0", response_model=T0Out)
+def put_workspace_t0(
+    workspace_id: str,
+    body: T0UpdateRequest,
+    registry: SynchronizationRegistry = Depends(get_synchronization_registry),
+) -> T0Out:
+    """Sets the workspace's single common event origin (Slice 2 task
+    section 4 -- never per-source, no `source_id` anywhere in this
+    request). 400 `invalid_t0` for a non-finite value."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        view = set_t0(workspace_id=workspace_id, t0_workspace_time=body.t0_workspace_time, registry=registry)
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return T0Out.from_view(view)
+
+
+@router.delete("/t0", status_code=status.HTTP_204_NO_CONTENT)
+def delete_workspace_t0(
+    workspace_id: str,
+    registry: SynchronizationRegistry = Depends(get_synchronization_registry),
+) -> None:
+    """"Clear t=0" (Slice 2 task section 13) -- removes ONLY the event
+    origin; every source's own alignment offset is untouched. Idempotent
+    (a workspace with no event origin set is a successful no-op)."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    clear_t0(workspace_id=workspace_id, registry=registry)

@@ -22,7 +22,7 @@ from app.services.synchronization_service import (
     get_source_alignment,
     list_source_alignments,
     remove_source_alignment,
-    remove_workspace_alignment,
+    remove_workspace_synchronization_state,
     reset_all_alignment_offsets,
     reset_source_alignment_offset,
     resolve_reference_source_id,
@@ -174,8 +174,13 @@ class TestLifecycleHooks:
         remove_source_alignment(workspace_id="ws-1", source_id="src-a", registry=registry)
         assert registry.get_offset("ws-1", "src-a") == 0.0
 
-    def test_remove_workspace_alignment(self, registry):
+    def test_remove_workspace_synchronization_state(self, registry):
+        """Full workspace-lifecycle teardown clears BOTH offsets and t0
+        -- see test_synchronization_t0_service.py for t0-specific
+        coverage of this same function."""
         registry.set_offset("ws-1", "src-a", 0.5)
         registry.set_offset("ws-1", "src-b", -0.2)
-        remove_workspace_alignment(workspace_id="ws-1", registry=registry)
+        registry.set_t0("ws-1", 0.512345)
+        remove_workspace_synchronization_state(workspace_id="ws-1", registry=registry)
         assert registry.list_for_workspace("ws-1") == {}
+        assert registry.get_t0("ws-1") is None

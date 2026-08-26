@@ -8,6 +8,127 @@ Last updated: **2026-08-26**
 
 ## What was most recently done
 
+**Phase 17 — Waveform Time Synchronization Slice 2: Explicit Common
+Event t=0.** On top of Phase 15 (Slice 1) below -- see
+[DECISIONS.md — DEC-055](DECISIONS.md#dec-055--waveform-time-synchronization-slice-2-an-explicit-workspace-wide-common-event-t0-reusing-cursor-a-as-the-origin-picker-independent-of-and-never-absorbing-per-source-alignment-offsets)
+and [CURRENT_STATE.md](CURRENT_STATE.md) for the full record; summarized
+here for continuity.
+
+An engineer can now select one workspace-time instant as a single,
+workspace-wide event origin `t=0` (never per-source), reusing the
+existing A/B measurement cursor -- Cursor A specifically -- as the
+origin picker rather than a new interaction. Core mapping:
+`event_time = workspace_time - t0_workspace_time` (inverse:
+`workspace_time = event_time + t0_workspace_time`), composed with
+Slice 1's own mapping into
+`event_time = source_time + alignment_offset_s - t0_workspace_time`.
+
+**Backend** owns the `t0` VALUE only, in a second store
+(`SynchronizationRegistry._t0`, a plain `dict[workspace_id, float]`,
+independent of Slice 1's existing `_offsets` dict) behind three new
+endpoints on the same router: `GET/PUT/DELETE .../synchronization/t0`.
+Validated with the same finite-number rule Slice 1's offset validator
+already enforces, under a distinct error code (`invalid_t0`).
+
+**Frontend propagates it from exactly one choke point** -- the existing
+`wwElapsedToPlotlyX()`/`wwPlotlyXToElapsed()` functions (already the
+sole bridge from internal workspace time to every Plotly-facing X
+value) now delegate to two new pure conversion helpers
+(`wwWorkspaceTimeToEventTime()`/`wwEventTimeToWorkspaceTime()`), both
+documented no-op passthroughs when no `t0` is selected. Every existing
+consumer -- traces, axis ranges, the sticky ruler, the digital chart,
+calculated channels -- became event-time-aware with zero scattered
+arithmetic and zero changes at those call sites. The cursor-overlay/
+annotation-anchor positioning system (a separate, fraction-of-viewport
+coordinate system) and the A/B cursor Δt readout needed no changes at
+all -- both are mathematically invariant under a constant `t0` shift by
+construction, confirmed by inspection rather than assumed.
+
+**UI**: a single compact toolbar control (`#wwSetT0Btn`, "Set Cursor A
+as t=0" / "Clear t=0", dual-purpose like `#wwCursorModeBtn`) is
+disabled whenever there is nothing valid to act on -- never silently
+uses an arbitrary time -- with the current value surfaced via the
+button's own title/aria-label and a small bottom-status-bar item
+(`#statusBarT0`, hidden entirely while unset).
+
+**Independence from Slice 1 is structural, not just tested**: `t0` and
+per-source alignment offsets are genuinely separate registry stores;
+"Reset All" alignment offsets (`remove_workspace()`) never touches
+`_t0`; "Clear t=0" never touches offsets; removing a source (even the
+one whose cursor originally helped select `t0`) never clears `t0` --
+once defined it is a pure workspace-time coordinate. `t0` is cleared
+only by "Start New Workspace"/workspace delete
+(`remove_workspace_synchronization_state()`, renamed from Slice 1's
+`remove_workspace_alignment()`, now clears both stores), never by plain
+"Clear workspace" -- mirroring Slice 1's own `ww.alignmentOffsets`/
+`ww.referenceSourceId` lifecycle policy exactly.
+
+**Digital channels, RMS/derived-channel calculations, and
+`app.domain.calculated_channel.timebases_aligned()` are unaffected in
+substance** -- event-relative is a display-only transform over
+unchanged source-native/workspace-time data and unchanged
+mathematical-timebase validation. When `t0` is active, event-relative
+display takes precedence over Absolute-time-mode's wall-clock labels
+(the smallest safe interaction with Slice 1's already-documented
+multi-source Absolute-time limitation, not a fix for it). Precision:
+`t0` is a `float` seconds value with sub-millisecond precision, never
+rounded internally.
+
+**Verified by live-browser testing this pass** (Playwright + real
+Chromium, reused from the session scratchpad -- a real running
+`uvicorn`/`python -m http.server` app on `127.0.0.1:8000`/`:8101`, not a
+static check; note the frontend server had to be moved from an initial
+`:8080` to `:8101` to match the backend's default `CORS_ORIGINS`, and
+`STORAGE_PATH` had to be set explicitly for the backend to start at
+all -- neither is a code defect, both are pre-existing local-dev-startup
+requirements): uploaded two COMTRADE fixtures, displayed `VA` from
+both, gave Source B a `+401 ms` alignment offset via the Synchronize
+Sources modal, enabled cursor mode (auto-placing Cursor A/B), set `t0`
+from Cursor A -- confirmed the X-axis switched to
+`[-0.00325, 0.0065]` s straddling `0` with title "Event Time (s)", the
+bottom-status-bar showing `T=0  0.003250 s`, and the cursor readout
+showing signed event time (`A +0.000 ms`, `B +3.250 ms`,
+`Δt 3.250 ms`); box-zoomed tight around a post-event region and
+confirmed the axis stayed correctly event-relative after the viewport
+change; fine-adjusted Source B's offset to `405 ms` while `t0` was
+active and confirmed `t0` did not move; cleared `t0` and confirmed
+Source B's offset (`405 ms`) was unaffected; set `t0` again; used
+"Reset All" alignment offsets and confirmed `t0` was still unchanged
+afterward (the core independence regression this slice must never
+break); started a new workspace and confirmed `t0` cleared. Zero
+console errors observed across the entire run.
+
+**Tests**: 54 new backend tests across
+`test_synchronization_t0_domain.py`/`_registry.py`/`_service.py`/`_api.py`
+(11+14+16+13) + 13 new frontend static-regression tests
+(`test_frontend_synchronization_t0.py`), plus 5 pre-existing frontend
+tests updated (2 in `test_frontend_synchronization.py` for the
+`wwFetchAlignmentOffsetsForWorkspace` → `wwFetchSynchronizationStateForWorkspace`
+rename, 2 in `test_frontend_absolute_time_precision.py` and 1 in
+`test_frontend_calculated_channel_time_mode.py` whose fixed
+`_function_body()` end-boundary markers shifted because the new t0
+function block was inserted between `wwSetTimeMode()` and its
+previously-adjacent next function -- each a test-fixture adjustment for
+legitimately relocated/renamed code, not a behavior regression). Full
+backend suite: 1361 passed, zero regressions (up from 1294).
+
+**Known, explicitly deferred, not silently gapped** (all per the task's
+own explicit non-goals list): no automatic `t=0`/trigger/threshold/
+fault-inception detection, no correlation/cross-correlation, no
+clock-drift/timezone correction, no event grouping/classification, no
+resampling, no drag-to-align interaction, no reference-source redesign,
+no source-details popover work. Slice 1's own already-documented
+Callout/+Peak/-Peak annotation-anchor offset-awareness gap and the
+multi-source Absolute-time-mode limitation are both unchanged by this
+slice -- this slice only ensures event-relative display cleanly takes
+precedence over the latter when `t0` is active.
+
+**Next step**: nothing is pre-authorized. Documentation updates for
+this slice were completed as part of this same pass (this file,
+CURRENT_STATE.md, DECISIONS.md).
+
+## What was done in the prior session (Phase 16 — Multi-Source Workspace Sidebar Redesign)
+
 **Phase 16 — Multi-Source Workspace Sidebar Redesign.** Owner UAT
 finding immediately after Phase 15 below: "the waveform workspace now
 supports multiple active recordings, but the left sidebar still

@@ -70,11 +70,18 @@ def test_participating_sources_use_calculated_reference_source_for_bounds():
 
 
 def test_calculated_channel_absolute_time_mode_remains_presentation_only():
+    """Boundary is wwApplyT0ToDisplay() -- see
+    test_frontend_absolute_time_precision.py's own
+    test_time_mode_switch_does_not_rewrite_trace_geometry for why: it is
+    the Slice 2 function immediately following wwSetTimeMode() now, and
+    it legitimately does fetch(...)/restyle x (t0 PUT/DELETE + trace
+    re-projection), so it must stay excluded from this Absolute-Time-mode
+    body."""
     source = _source()
     set_time_mode = _function_body(
         source,
         "function wwSetTimeMode(mode)",
-        "function wwUpdateEditGroupsButtonVisibility()",
+        "function wwApplyT0ToDisplay()",
     )
     calculated_meta = _function_body(
         source,

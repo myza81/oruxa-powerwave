@@ -3539,6 +3539,29 @@
                             <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="6" y1="2.5" x2="6" y2="15.5" stroke-width="1.3" stroke="var(--accent)"/><line x1="12" y1="2.5" x2="12" y2="15.5" stroke-width="1.3" stroke="var(--error)"/><text x="6" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="var(--accent)" font-weight="700">A</text><text x="12" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="var(--error)" font-weight="700">B</text></svg></span>
                         </button>
 
+                        <!-- Slice 2 of waveform time synchronization
+                             ("explicit common event t=0"): reuses Cursor
+                             A (task section 6's own smallest-
+                             deterministic-rule preference) as the
+                             event-origin picker -- one button, dual
+                             purpose (same pattern as #wwCursorModeBtn's
+                             own toggle immediately above): sets t=0 from
+                             Cursor A's current position when none is
+                             defined yet, clears it when one already is.
+                             Disabled (never silently uses an arbitrary
+                             time) whenever there is nothing valid to act
+                             on -- see wwSyncT0Controls(). The current t=0
+                             value itself, once set, is surfaced via this
+                             button's own title/aria-label AND the
+                             #statusBarT0 bottom-status-bar item (see
+                             #bottomStatusBar below) -- no separate
+                             always-visible toolbar label, keeping this a
+                             single compact control per the task's own
+                             "do not add excessive controls" instruction. -->
+                        <button class="ww-icon-btn" type="button" id="wwSetT0Btn" aria-pressed="false" title="Set Cursor A as t=0" aria-label="Set Cursor A as t=0" disabled>
+                            <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="9" y1="2.5" x2="9" y2="15.5" stroke-width="1.3" stroke-dasharray="2.2,1.6"/><text x="9" y="14.5" font-size="5.5" text-anchor="middle" stroke="none" fill="currentColor" font-weight="700">0</text></svg></span>
+                        </button>
+
                         <span class="ww-toolbar-sep" aria-hidden="true"></span>
 
                         <!-- Phase 5C (DEC-049): Unit Mode control -- the
@@ -4058,6 +4081,15 @@
                  this is a presentation removal only. -->
             <div id="bottomStatusBar">
                 <span class="shell-status-item"><span class="shell-status-label">Workspace</span><span class="shell-status-value" id="statusBarWorkspaceId">&mdash;</span></span>
+                <!-- Slice 2 of waveform time synchronization: the
+                     workspace's own event origin, once selected -- see
+                     #wwSetT0Btn above and wwSyncT0Controls(). Hidden
+                     entirely (never a "—" placeholder) while no t0 is
+                     defined, matching the toolbar button's own "nothing
+                     to show" state; shown/hidden and its value kept in
+                     sync from that SAME one function, never a second
+                     update path. -->
+                <span class="shell-status-item" id="statusBarT0" hidden title="Event origin (t=0) in workspace time"><span class="shell-status-label">t=0</span><span class="shell-status-value" id="statusBarT0Value">&mdash;</span></span>
                 <!-- Phase 4B: A/B/Δt measurement readout -- pushed to the
                      RIGHT side of the status bar (owner requirement) via
                      the flex spacer below, rather than a floating dialog.
@@ -5597,7 +5629,7 @@
             // change WHICH remaining source is the reference (task
             // section 9's own deterministic rule), and that recomputation
             // must happen server-side, not be guessed here.
-            await wwFetchAlignmentOffsetsForWorkspace();
+            await wwFetchSynchronizationStateForWorkspace();
             // Stale-banner fix: only clear the success/import message if it
             // actually describes the source just removed.
             if (lastImportedSourceId === sourceId) {
@@ -5660,7 +5692,7 @@
                 // source's shifted extent/badge to be reflected
                 // immediately, not just after the next manual offset
                 // change.
-                await wwFetchAlignmentOffsetsForWorkspace();
+                await wwFetchSynchronizationStateForWorkspace();
 
                 // Multi-source sidebar redesign: refreshSourceList() now
                 // fetches/caches EVERY uploaded source's own /channels
@@ -7216,7 +7248,7 @@
             // unshifted (offset 0) -- mirrors ww.perUnitSourceConfigs'
             // own "no entry = not configured" convention. Fetched
             // whenever a source's channels are (re-)opened
-            // (wwFetchAlignmentOffsetsForWorkspace(), called from
+            // (wwFetchSynchronizationStateForWorkspace(), called from
             // selectSource()) and after every offset mutation; cleared
             // only by Start New Workspace.
             alignmentOffsets: new Map(),
@@ -7226,9 +7258,26 @@
             // never chosen by the frontend). Its own offset is always 0
             // and the manual alignment UI never lets it be edited
             // directly. `null` before the first
-            // wwFetchAlignmentOffsetsForWorkspace() call resolves, or if
-            // the workspace has no sources yet.
+            // wwFetchSynchronizationStateForWorkspace() call resolves, or
+            // if the workspace has no sources yet.
             referenceSourceId: null,
+            // Slice 2 of waveform time synchronization ("explicit common
+            // event t=0"): the workspace's own single, manually-selected
+            // event origin, in WORKSPACE time seconds (backend-
+            // authoritative -- see GET/PUT/DELETE .../synchronization/t0).
+            // `null` when no event origin has been selected yet (or it
+            // was cleared) -- never a fabricated `0` default, since a
+            // workspace-time instant of exactly `0` is itself a
+            // legitimate, deliberately-chosen origin (see
+            // wwHasT0()/wwT0WorkspaceTime() below, the ONE pair of
+            // accessors every other t0-aware function reads through).
+            // Deliberately NOT per-source (task section 4: "one common
+            // event origin for the workspace"). Fetched alongside
+            // ww.alignmentOffsets by the same
+            // wwFetchSynchronizationStateForWorkspace() call; cleared
+            // only by Start New Workspace -- NOT by "Reset All" alignment
+            // offsets (task section 14: the two are independent).
+            t0WorkspaceTime: null,
         };
 
         function wwFiniteNumber(value) {
@@ -7347,31 +7396,97 @@
             return workspaceTime - wwAlignmentOffsetForDisplaySourceId(displaySourceId);
         }
 
-        // GET .../synchronization/sources -- the backend is the
-        // authoritative owner of alignment-offset state (task section 2);
-        // this refreshes the local read cache above (ww.alignmentOffsets/
-        // ww.referenceSourceId) used by every conversion call site.
-        // Resilient like every other list-fetch in this app (fetchSourcesList()/
-        // selectSource()): a failed request leaves whatever was already
-        // cached in place rather than clearing it out from under an
-        // in-progress render.
-        async function wwFetchAlignmentOffsetsForWorkspace() {
-            let body;
-            try {
-                const response = await fetch(
-                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/synchronization/sources"
-                );
-                if (!response.ok) return;
-                body = await response.json();
-            } catch (error) {
-                return;
-            }
-            ww.alignmentOffsets.clear();
-            ww.referenceSourceId = null;
-            for (const row of body) {
-                ww.alignmentOffsets.set(row.source_id, row.alignment_offset_s);
-                if (row.is_reference) ww.referenceSourceId = row.source_id;
-            }
+        // ==================================================================
+        // Slice 2 of waveform time synchronization ("explicit common
+        // event t=0")
+        //
+        // Extends Slice 1's mapping with one more, deliberately workspace-
+        // WIDE (never per-source) layer:
+        //
+        //     event_time = workspace_time - t0_workspace_time
+        //     workspace_time = event_time + t0_workspace_time
+        //
+        // Composed with Slice 1's own source<->workspace pair (never a
+        // third, independently-coded formula):
+        //
+        //     event_time  = source_time + alignment_offset_s - t0_workspace_time
+        //     source_time = event_time + t0_workspace_time - alignment_offset_s
+        //
+        // wwHasT0()/wwT0WorkspaceTime() are the ONE pair of accessors
+        // every t0-aware function below reads through -- when no t0 is
+        // selected, wwWorkspaceTimeToEventTime()/wwEventTimeToWorkspaceTime()
+        // are exact no-op passthroughs (event_time === workspace_time),
+        // which is exactly the task's own "when no t0 is defined, preserve
+        // current workspace elapsed-time behaviour" requirement --
+        // satisfied automatically by these two functions' own math, never
+        // a separate "if t0 exists" branch scattered at each call site.
+        // ==================================================================
+
+        function wwT0WorkspaceTime() {
+            return typeof ww.t0WorkspaceTime === "number" && Number.isFinite(ww.t0WorkspaceTime) ? ww.t0WorkspaceTime : null;
+        }
+
+        function wwHasT0() {
+            return wwT0WorkspaceTime() !== null;
+        }
+
+        function wwWorkspaceTimeToEventTime(workspaceTime) {
+            const t0 = wwT0WorkspaceTime();
+            return t0 === null ? workspaceTime : workspaceTime - t0;
+        }
+
+        function wwEventTimeToWorkspaceTime(eventTime) {
+            const t0 = wwT0WorkspaceTime();
+            return t0 === null ? eventTime : eventTime + t0;
+        }
+
+        // GET .../synchronization/sources + GET .../synchronization/t0,
+        // in parallel -- the backend is the authoritative owner of BOTH
+        // (Slice 1 task section 2, Slice 2 task section 16); this
+        // refreshes the local read caches above (ww.alignmentOffsets/
+        // ww.referenceSourceId/ww.t0WorkspaceTime) used by every
+        // conversion call site. Resilient like every other list-fetch in
+        // this app (fetchSourcesList()/selectSource()): a failed request
+        // leaves whatever was already cached in place rather than
+        // clearing it out from under an in-progress render -- each of the
+        // two fetches below fails independently (a t0 fetch failure never
+        // discards an already-fetched, still-valid offsets list, and vice
+        // versa).
+        async function wwFetchSynchronizationStateForWorkspace() {
+            const workspaceId = currentWorkspaceId();
+            await Promise.all([
+                (async () => {
+                    let body;
+                    try {
+                        const response = await fetch(
+                            apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/synchronization/sources"
+                        );
+                        if (!response.ok) return;
+                        body = await response.json();
+                    } catch (error) {
+                        return;
+                    }
+                    ww.alignmentOffsets.clear();
+                    ww.referenceSourceId = null;
+                    for (const row of body) {
+                        ww.alignmentOffsets.set(row.source_id, row.alignment_offset_s);
+                        if (row.is_reference) ww.referenceSourceId = row.source_id;
+                    }
+                })(),
+                (async () => {
+                    let body;
+                    try {
+                        const response = await fetch(
+                            apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/synchronization/t0"
+                        );
+                        if (!response.ok) return;
+                        body = await response.json();
+                    } catch (error) {
+                        return;
+                    }
+                    ww.t0WorkspaceTime = body.t0_workspace_time;
+                })(),
+            ]);
         }
 
         // Multi-source sidebar redesign (task section 12: "all uploaded
@@ -7709,18 +7824,35 @@
             return null;
         }
 
-        // elapsed seconds (the ONE authoritative coordinate system) -> the
-        // value Plotly's own x-axis plots directly. Refined by the sub-ms
-        // precision fix: this is ALWAYS identity, in both Absolute and
-        // Elapsed modes. Absolute is presentation only.
+        // workspace-time elapsed seconds (ww.viewport/channel.time's own
+        // authoritative coordinate system, unchanged by Slice 2) -> the
+        // value Plotly's own x-axis actually plots. Absolute/Elapsed mode
+        // remained pure presentation (identity here) through Slice 1 --
+        // Slice 2 is the first time this function is a REAL transform:
+        // once a workspace event origin (t0) exists, every Plotly-facing
+        // X value becomes event-relative
+        // (wwWorkspaceTimeToEventTime()'s own "no-op when no t0"
+        // passthrough is what keeps this function's Slice-1 identity
+        // behaviour exactly intact whenever t0 is unset). This is
+        // DELIBERATELY the ONE place that mapping is applied -- every
+        // trace/axis-range/tick/ruler call site already funnels through
+        // this single function (see wwBuildTrace()/wwTimeAxisRelayout()/
+        // wwSyncStickyRuler()/wwRebuildDigitalChart(), none of which
+        // needed their own t0-awareness added directly), so t0 support
+        // reaches every one of them for free, never scattered arithmetic.
         function wwElapsedToPlotlyX(elapsedSeconds) {
-            return elapsedSeconds;
+            return wwWorkspaceTimeToEventTime(elapsedSeconds);
         }
 
-        // The inverse is also identity because Plotly relayout events now
-        // report elapsed numeric seconds in every time mode.
+        // The inverse -- used wherever a Plotly-reported X value (a
+        // relayout's own xaxis.range, e.g.) needs to become a
+        // WORKSPACE-time value again, since ww.viewport/channel.time
+        // themselves always stay in workspace time (never event time) --
+        // see wwWirePanelRelayout()'s own call site, the one place a
+        // user-driven zoom/pan re-enters the app's internal coordinate
+        // system.
         function wwPlotlyXToElapsed(x) {
-            return Number(x);
+            return wwEventTimeToWorkspaceTime(Number(x));
         }
 
         function wwNiceTickStep(spanSeconds, targetTickCount) {
@@ -7763,8 +7895,20 @@
         // stay numeric seconds, but use custom tick text so labels show
         // recording_start + elapsed without feeding millisecond date strings
         // back into waveform geometry.
+        //
+        // Slice 2 of waveform time synchronization (task section 21):
+        // once a workspace event origin exists, event-relative display
+        // takes precedence over Absolute's own custom clock-time labels
+        // -- "do not allow misleading simultaneous interpretation" of an
+        // axis that is now event-relative underneath (via
+        // wwElapsedToPlotlyX()) but would otherwise still show
+        // recording_start + elapsed labels, silently combining two
+        // different time bases in one axis. The generic branch below
+        // already produces correctly negative/zero/positive labels for
+        // free once t0 has shifted the underlying axis values -- no new
+        // formatting logic needed there, only this one added guard.
         function wwTimeAxisTickFormat(startTime, endTime) {
-            if (ww.timeMode === "absolute") {
+            if (ww.timeMode === "absolute" && !wwHasT0()) {
                 const start = Number.isFinite(startTime) ? startTime : (ww.viewport && ww.viewport.start);
                 const end = Number.isFinite(endTime) ? endTime : (ww.viewport && ww.viewport.end);
                 if (Number.isFinite(start) && Number.isFinite(end)) return wwAbsoluteTickLabelsForRange(start, end);
@@ -7800,7 +7944,14 @@
         // Section 12: Absolute mode keeps each panel's own axis title
         // empty -- Absolute tick labels already show clock-time context.
         // Elapsed mode keeps the existing "Time (s)" title, unchanged.
+        //
+        // Slice 2: once t0 exists, the title says so explicitly ("Event
+        // Time (s)") regardless of ww.timeMode -- the SAME "event-
+        // relative takes precedence, never a silent dual interpretation"
+        // principle as wwTimeAxisTickFormat() above, applied to the
+        // title this time.
         function wwTimeAxisTitle() {
+            if (wwHasT0()) return "Event Time (s)";
             return ww.timeMode === "absolute" ? "" : "Time (s)";
         }
 
@@ -8412,14 +8563,21 @@
             });
         }
 
+        // Slice 2 (task section 21): event-relative takes precedence over
+        // Absolute's own recording_start + elapsed hover text whenever t0
+        // exists -- same "never a silent dual interpretation" principle
+        // as wwTimeAxisTickFormat()/wwTimeAxisTitle() above. Falling back
+        // to the generic `%{x:.6f}s` hover format is sufficient: `x` is
+        // already the correctly-signed event-relative value once t0 is
+        // set (via wwElapsedToPlotlyX()), so no new formatting is needed.
         function wwTraceCustomData(channel) {
-            if (ww.timeMode !== "absolute") return null;
+            if (ww.timeMode !== "absolute" || wwHasT0()) return null;
             const span = wwVisibleSpanSeconds();
             return (channel.time || []).map((t) => wwFormatAbsoluteElapsedTime(t, { spanSeconds: span }));
         }
 
         function wwTraceHoverTemplate(channel) {
-            const xFormat = ww.timeMode === "absolute" ? "%{customdata}" : "%{x:.6f}s";
+            const xFormat = ww.timeMode === "absolute" && !wwHasT0() ? "%{customdata}" : "%{x:.6f}s";
             return xFormat + ": %{y}" + (channel.unit ? " " + channel.unit : "") +
                 "<extra>" + escapeHtml(channel.channelName) + "</extra>";
         }
@@ -9741,7 +9899,7 @@
             document.getElementById("wwSyncError").hidden = true;
             document.getElementById("wwSyncOverlay").hidden = false;
             document.getElementById("wwSyncBody").innerHTML = '<p class="hint">Loading sources&hellip;</p>';
-            await wwFetchAlignmentOffsetsForWorkspace();
+            await wwFetchSynchronizationStateForWorkspace();
             const sources = (await fetchSourcesList()) || [];
             wwRenderSyncBody(sources);
         }
@@ -9836,7 +9994,7 @@
         async function wwSyncSetOffsetMs(sourceId, ms) {
             const ok = await wwSyncPutOffset(sourceId, wwSyncMsToOffsetSeconds(ms));
             if (!ok) { await wwOpenSyncModal(); return; } // re-render to discard the rejected edit
-            await wwFetchAlignmentOffsetsForWorkspace();
+            await wwFetchSynchronizationStateForWorkspace();
             const sources = (await fetchSourcesList()) || [];
             wwRenderSyncBody(sources);
             await wwSyncApplyOffsetChangeSideEffects();
@@ -9864,7 +10022,7 @@
                 wwSyncShowError("Could not reset this source's alignment offset.");
                 return;
             }
-            await wwFetchAlignmentOffsetsForWorkspace();
+            await wwFetchSynchronizationStateForWorkspace();
             const sources = (await fetchSourcesList()) || [];
             wwRenderSyncBody(sources);
             await wwSyncApplyOffsetChangeSideEffects();
@@ -9886,7 +10044,7 @@
                 wwSyncShowError("Could not reset synchronization.");
                 return;
             }
-            await wwFetchAlignmentOffsetsForWorkspace();
+            await wwFetchSynchronizationStateForWorkspace();
             const sources = (await fetchSourcesList()) || [];
             wwRenderSyncBody(sources);
             await wwSyncApplyOffsetChangeSideEffects();
@@ -15143,6 +15301,19 @@
                 ww.alignmentOffsets.clear();
                 ww.referenceSourceId = null;
                 wwCloseSyncModal();
+                // Slice 2 of waveform time synchronization: "Start New
+                // Workspace" also clears the workspace's own event origin
+                // (t0) -- the backend side is already handled by the SAME
+                // DELETE /api/v1/workspaces/{id} call
+                // (synchronization_registry.clear_t0(), see
+                // app.api.v1.workspaces.delete_workspace's own Slice 2
+                // extension); this just keeps the frontend's own mirror/
+                // UI in sync. Plain "Clear workspace" (the else branch
+                // below) deliberately leaves it alone, same policy as
+                // ww.alignmentOffsets immediately above -- t0 remains
+                // meaningful for the still-selected source's own data.
+                ww.t0WorkspaceTime = null;
+                wwSyncT0Controls();
             } else {
                 ww.workspaceBounds = wwDeriveWorkspaceBounds();
                 ww.viewport = ww.workspaceBounds ? { start: ww.workspaceBounds.start, end: ww.workspaceBounds.end } : null;
@@ -15284,18 +15455,31 @@
                 ? [wwElapsedToPlotlyX(start), wwElapsedToPlotlyX(end)]
                 : undefined;
             let tickPresentation, title;
-            if (ww.timeMode === "absolute") {
+            // Slice 2 (task section 21): same event-relative-takes-
+            // precedence guard as every other Absolute-mode branch in
+            // this file -- see wwTimeAxisTickFormat()'s own comment.
+            if (ww.timeMode === "absolute" && !wwHasT0()) {
                 tickPresentation = Number.isFinite(start) && Number.isFinite(end)
                     ? wwAbsoluteTickLabelsForRange(start, end)
                     : wwTimeAxisTickFormat(start, end);
                 title = "Record Time";
             } else {
+                // Span is shift-invariant (end - start is unchanged by a
+                // constant t0 shift applied to both), so this reads the
+                // RAW workspace-time start/end unchanged; only the tick
+                // VALUES passed to wwRulerTickLabelsForRange() below need
+                // to be in the SAME coordinate space as xrange above
+                // (event time once t0 exists) for Plotly's own tickvals
+                // to land in the right place on the now-event-relative
+                // axis -- wwElapsedToPlotlyX() is the one place that
+                // conversion happens, exactly like it already does for
+                // xrange two lines up.
                 const spanSeconds = ww.viewport ? Math.abs(end - start) : 1;
                 const unit = wwStickyRulerElapsedUnit(spanSeconds);
                 tickPresentation = Number.isFinite(start) && Number.isFinite(end)
-                    ? wwRulerTickLabelsForRange(start, end, unit)
+                    ? wwRulerTickLabelsForRange(wwElapsedToPlotlyX(start), wwElapsedToPlotlyX(end), unit)
                     : wwTimeAxisTickFormat(start, end);
-                title = unit.title;
+                title = (wwHasT0() ? "Event " : "") + unit.title;
             }
 
             if (!ww.rulerReady) {
@@ -15470,14 +15654,44 @@
             return seconds.toFixed(3) + " s";
         }
 
+        // Slice 2 (task section 9): a cursor's own point-in-time reading,
+        // once an event origin exists, is explicitly SIGNED ("Cursor A =
+        // +23.4 ms") -- unlike wwFormatCursorDuration() itself (reused
+        // here for the magnitude only, via Math.abs(), never modified --
+        // Δt's own un-prefixed signedness, per that function's own
+        // comment, stays exactly as established). A leading "+" is
+        // explicit for a non-negative event time (never assumed/omitted)
+        // so "before/at/after the origin" is unambiguous at a glance;
+        // "-" already appears naturally for a negative one.
+        function wwFormatSignedCursorDuration(seconds) {
+            if (!Number.isFinite(seconds)) return "—";
+            const magnitude = wwFormatCursorDuration(Math.abs(seconds));
+            return (seconds < 0 ? "-" : "+") + magnitude;
+        }
+
         // A/B's own point-in-time display (section 18/20): Elapsed mode is
         // just wwFormatCursorDuration() on the raw engineering value.
         // Absolute mode formats the cursor's elapsed engineering time as
         // recording_start + elapsed, but never changes the cursor authority
         // itself. The visible precision follows the current viewport so deep
         // zooms can show sub-ms positions.
+        //
+        // Slice 2 (task section 9/21): once a workspace event origin (t0)
+        // exists, this takes precedence over BOTH Elapsed and Absolute --
+        // the cursor's own WORKSPACE-time value (`elapsedSeconds`, the
+        // authority this function has always received, unchanged by
+        // Slice 2 -- see wwCursorPixelXToTime()'s own fraction-based,
+        // t0-invariant math) is converted to event time and shown signed.
+        // Never queries source-native data with this value (section 9's
+        // own explicit warning) -- this is display formatting only; the
+        // backend cursor-values request itself still sends the
+        // UNCONVERTED workspace-time value (wwFetchCursorValuesForSource()
+        // is untouched by Slice 2 for exactly this reason).
         function wwFormatCursorPointTime(elapsedSeconds) {
             if (!Number.isFinite(elapsedSeconds)) return "—";
+            if (wwHasT0()) {
+                return wwFormatSignedCursorDuration(wwWorkspaceTimeToEventTime(elapsedSeconds));
+            }
             if (ww.timeMode === "absolute") {
                 return wwFormatAbsoluteElapsedTime(elapsedSeconds, { spanSeconds: wwVisibleSpanSeconds() });
             }
@@ -15559,6 +15773,12 @@
             // rendered yet) can skip it -- Callout reprojection has
             // nothing to do with A/B cursor state.
             wwRenderAnnotations();
+            // Slice 2: same reasoning -- Cursor A's own placement/removal
+            // is exactly what the "Set Cursor A as t=0" button's enabled
+            // state depends on, so this is kept in sync from the same one
+            // hook point, unconditionally, before any of this function's
+            // own cursor-DOM early returns below.
+            wwSyncT0Controls();
 
             const overlayEl = document.getElementById("wwCursorOverlay");
             const rulerOverlayEl = document.getElementById("wwCursorRulerOverlay");
@@ -16554,6 +16774,140 @@
             wwRebuildDigitalChart();
         }
 
+        // ==================================================================
+        // Slice 2 of waveform time synchronization: "Set Cursor A as t=0"
+        //
+        // Reuses the existing A/B measurement cursor (Cursor A,
+        // deliberately -- task section 6's own "smallest deterministic
+        // rule... If Cursor A does not exist/has not been placed, disable
+        // or reject Set as t=0 clearly") as the event-origin picker,
+        // rather than a new interaction. t0 itself is backend-
+        // authoritative (GET/PUT/DELETE .../synchronization/t0, Slice 1's
+        // own architecture, unchanged) -- ww.t0WorkspaceTime is a read
+        // cache, never the source of truth.
+        // ==================================================================
+
+        // Re-derives every already-displayed channel's own Plotly X
+        // values from its EXISTING, unmodified channel.time array (still
+        // workspace time -- see ww.viewport's own docstring) through the
+        // NEW wwElapsedToPlotlyX() mapping -- never a re-fetch, since the
+        // underlying data never changes, only the display coordinate
+        // does (task section 23: "avoid unnecessary backend
+        // reprocessing... reuse the existing conversion architecture").
+        // Mirrors wwSetTimeMode()'s own established "presentation-only,
+        // suppressNext-guarded relayout" pattern immediately above,
+        // extended to also restyle the trace x arrays themselves --
+        // wwSetTimeMode() never needed to, since wwElapsedToPlotlyX() was
+        // always identity before this slice; here it is a genuine
+        // transform, so every already-plotted trace's own X values must
+        // be explicitly re-applied via Plotly.restyle(), not just the
+        // axis range/ticks around them.
+        function wwApplyT0ToDisplay() {
+            for (const panel of ww.panels) {
+                if (!panel.plotlyReady) continue;
+                panel.channels.forEach((channel, idx) => {
+                    Plotly.restyle(panel.chartEl, {
+                        x: [(channel.time || []).map(wwElapsedToPlotlyX)],
+                        customdata: [wwTraceCustomData(channel)],
+                        hovertemplate: [wwTraceHoverTemplate(channel)],
+                    }, [idx]);
+                });
+                panel.suppressNext = true;
+                const relayout = ww.viewport ? wwTimeAxisRelayout(ww.viewport.start, ww.viewport.end) : { "xaxis.type": "linear" };
+                relayout["xaxis.title"] = wwTimeAxisTitle();
+                Plotly.relayout(panel.chartEl, relayout);
+            }
+            wwApplyTimeAxisChrome();
+            // Same two hook points wwSetTimeMode() already relies on for
+            // the SAME reason -- the ruler and digital chart both
+            // re-derive their own presentation fresh from
+            // wwElapsedToPlotlyX() (now t0-aware) with zero new network
+            // request; wwUpdateCursorOverlay() (A/B readout text, Callout/
+            // Peak reprojection) is reached transitively through both, so
+            // it is not called a third time here.
+            wwSyncStickyRuler();
+            wwRebuildDigitalChart();
+        }
+
+        // Reflects current t0/Cursor-A state into the toolbar control and
+        // the bottom-status-bar readout -- called from wwUpdateCursorOverlay()
+        // (so Cursor A's own placement/removal immediately updates the
+        // button's enabled state) and after every t0 mutation below.
+        function wwSyncT0Controls() {
+            const btn = document.getElementById("wwSetT0Btn");
+            if (!btn) return;
+            const hasT0 = wwHasT0();
+            const cursors = ww.measurementCursors;
+            const cursorAReady = cursors.enabled && cursors.a.visible && Number.isFinite(cursors.a.time);
+            btn.setAttribute("aria-pressed", String(hasT0));
+            // Never silently uses an arbitrary time (task section 6): the
+            // control is only ever actionABLE when there is something
+            // valid to act on -- either an already-selected t0 to clear,
+            // or a currently-placed Cursor A to promote.
+            btn.disabled = !hasT0 && !cursorAReady;
+            const label = hasT0 ? "Clear t=0" : "Set Cursor A as t=0";
+            btn.setAttribute("aria-label", label);
+            btn.title = hasT0
+                ? "Clear t=0 (currently " + ww.t0WorkspaceTime.toFixed(6) + " s workspace time)"
+                : label;
+
+            const statusEl = document.getElementById("statusBarT0");
+            const statusValueEl = document.getElementById("statusBarT0Value");
+            if (statusEl && statusValueEl) {
+                statusEl.hidden = !hasT0;
+                if (hasT0) statusValueEl.textContent = ww.t0WorkspaceTime.toFixed(6) + " s";
+            }
+        }
+
+        async function wwSetT0FromCursorA() {
+            const cursors = ww.measurementCursors;
+            if (!cursors.enabled || !cursors.a.visible || !Number.isFinite(cursors.a.time)) return;
+            let response;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/synchronization/t0",
+                    {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ t0_workspace_time: cursors.a.time }),
+                    }
+                );
+            } catch (error) {
+                return;
+            }
+            if (!response.ok) return;
+            const body = await response.json();
+            ww.t0WorkspaceTime = body.t0_workspace_time;
+            wwSyncT0Controls();
+            wwApplyT0ToDisplay();
+        }
+
+        async function wwClearT0() {
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/synchronization/t0",
+                    { method: "DELETE" }
+                );
+                if (!response.ok) return;
+            } catch (error) {
+                return;
+            }
+            ww.t0WorkspaceTime = null;
+            wwSyncT0Controls();
+            wwApplyT0ToDisplay();
+        }
+
+        // The toolbar button's one click handler -- dual purpose, same
+        // "one button toggles between two related actions" pattern
+        // #wwCursorModeBtn already established for A/B cursor mode.
+        function wwHandleSetOrClearT0Click() {
+            if (wwHasT0()) {
+                wwClearT0();
+            } else {
+                wwSetT0FromCursorA();
+            }
+        }
+
         // Phase 2C-C1: shows/hides "Edit Channel Groups" -- only relevant
         // while Custom is the active layout mode (parallels how the whole
         // toolbar itself is hidden when nothing is displayed).
@@ -17211,6 +17565,8 @@
         document.getElementById("clearWorkspaceBtn").addEventListener("click", wwClearWorkspace);
         // Phase 4B: A/B time measurement cursors.
         document.getElementById("wwCursorModeBtn").addEventListener("click", wwToggleMeasurementCursors);
+        // Slice 2 of waveform time synchronization: "Set Cursor A as t=0" / "Clear t=0".
+        document.getElementById("wwSetT0Btn").addEventListener("click", wwHandleSetOrClearT0Click);
         wwWireCursorDrag();
         // Phase 4F-UAT (DEC-045 addendum): Callout anchor dragging --
         // wired once, delegated, same convention as wwWireCursorDrag()
