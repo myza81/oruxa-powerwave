@@ -15,12 +15,14 @@ from app.api.v1.calculated_channels import router as calculated_channels_v1_rout
 from app.api.v1.measurement_groups import router as measurement_groups_v1_router
 from app.api.v1.per_unit import router as per_unit_v1_router
 from app.api.v1.sources import router as sources_v1_router
+from app.api.v1.synchronization import router as synchronization_v1_router
 from app.api.v1.workspaces import router as workspaces_v1_router
 from app.config import Settings, load_settings
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
+from app.services.synchronization_registry import SynchronizationRegistry
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.services.workspace_registry import WorkspaceRegistry
 from app.storage import StorageBackend, get_storage
@@ -72,6 +74,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # router. See app.services.current_group_config_registry's own
         # module docstring.
         app.state.current_group_config_registry = CurrentGroupConfigRegistry()
+        # Slice 1 of waveform time synchronization: a seventh sibling
+        # in-memory registry -- manual per-source alignment offsets. See
+        # app.services.synchronization_registry's own module docstring.
+        app.state.synchronization_registry = SynchronizationRegistry()
         yield
 
     app = FastAPI(title="Powerwave API", lifespan=lifespan)
@@ -129,6 +135,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(calculated_channels_v1_router)
     app.include_router(per_unit_v1_router)
     app.include_router(measurement_groups_v1_router)
+    app.include_router(synchronization_v1_router)
 
     @app.get("/health")
     def health():

@@ -43,6 +43,8 @@ from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.measurement_group_service import remove_measurement_groups_for_source
 from app.services.per_unit_registry import PerUnitRegistry
 from app.services.per_unit_service import delete_source_per_unit_config
+from app.services.synchronization_registry import SynchronizationRegistry
+from app.services.synchronization_service import remove_source_alignment
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.services.waveform_service import (
     DEFAULT_POINT_BUDGET,
@@ -102,6 +104,10 @@ def get_voltage_group_config_registry(request: Request) -> VoltageGroupConfigReg
 
 def get_current_group_config_registry(request: Request) -> CurrentGroupConfigRegistry:
     return request.app.state.current_group_config_registry
+
+
+def get_synchronization_registry(request: Request) -> SynchronizationRegistry:
+    return request.app.state.synchronization_registry
 
 
 def _voltage_channel_names_for_active(active: ActiveSource) -> list[str]:
@@ -539,6 +545,7 @@ def delete_source(
     measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
+    synchronization_registry: SynchronizationRegistry = Depends(get_synchronization_registry),
 ) -> None:
     """Phase 5A (DEC-047, section 64): removing a source also removes
     every calculated channel grounded on it, directly or transitively --
@@ -565,6 +572,10 @@ def delete_source(
 
     Slice 4 (DEC-050): also releases each removed group's own Current
     base configuration, the same way.
+
+    Slice 1 of waveform time synchronization: also releases this
+    source's own manual alignment offset, if any (task section 10:
+    "removing a source removes its synchronization state").
     """
     workspace_id = _validate_workspace_id(workspace_id)
     active = _get_or_404(registry, workspace_id, source_id)
@@ -582,3 +593,4 @@ def delete_source(
         voltage_config_registry=voltage_group_config_registry,
         current_config_registry=current_group_config_registry,
     )
+    remove_source_alignment(workspace_id=workspace_id, source_id=source_id, registry=synchronization_registry)

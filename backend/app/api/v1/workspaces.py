@@ -23,6 +23,8 @@ from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
+from app.services.synchronization_registry import SynchronizationRegistry
+from app.services.synchronization_service import remove_workspace_alignment
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.services.workspace_registry import WorkspaceRegistry
 
@@ -53,6 +55,10 @@ def get_current_group_config_registry(request: Request) -> CurrentGroupConfigReg
     return request.app.state.current_group_config_registry
 
 
+def get_synchronization_registry(request: Request) -> SynchronizationRegistry:
+    return request.app.state.synchronization_registry
+
+
 def _validate_workspace_id(workspace_id: str) -> str:
     # Same shape check as app.api.v1.sources -- never used as a filesystem
     # path, so this guards against a blank/whitespace-only id, not path
@@ -74,6 +80,7 @@ def delete_workspace(
     measurement_group_registry: MeasurementGroupRegistry = Depends(get_measurement_group_registry),
     voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
+    synchronization_registry: SynchronizationRegistry = Depends(get_synchronization_registry),
 ) -> None:
     """Release every source this workspace owns.
 
@@ -102,6 +109,11 @@ def delete_workspace(
 
     Slice 4 (DEC-050): also releases every Current group's own base
     configuration this workspace owns, the same way.
+
+    Slice 1 of waveform time synchronization: also releases every
+    source's own manual alignment offset this workspace owns, the same
+    way (task section 10: "workspace reset/new workspace" must clear
+    all synchronization state).
     """
     workspace_id = _validate_workspace_id(workspace_id)
     registry.remove_workspace(workspace_id)
@@ -110,3 +122,4 @@ def delete_workspace(
     measurement_group_registry.remove_workspace(workspace_id)
     voltage_group_config_registry.remove_workspace(workspace_id)
     current_group_config_registry.remove_workspace(workspace_id)
+    remove_workspace_alignment(workspace_id=workspace_id, registry=synchronization_registry)

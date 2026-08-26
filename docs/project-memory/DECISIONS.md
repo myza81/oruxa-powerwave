@@ -6854,6 +6854,156 @@ into inheriting the group's base. Cross-referenced from
 
 ---
 
+## DEC-053 — Waveform time synchronization Slice 1: manual, per-source alignment offset; first-uploaded source is the deterministic reference; the backend owns the offset value, the frontend applies the transform
+
+Date: 2026-08-26
+Status: Approved
+Source: explicit project-owner instruction, delivered as a dedicated
+"Slice 1 of waveform time synchronization" implementation prompt.
+
+Decision:
+
+**An engineer can manually shift one uploaded source's waveform display
+left or right in time, relative to a deterministic reference source, to
+visually align two recordings of the same physical event — without
+altering any original source timestamps or waveform data, and without
+implying a common mathematical sample grid.**
+
+Concretely:
+
+- Core mapping: `workspace_time = source_time + alignment_offset_s`
+  (inverse: `source_time = workspace_time - alignment_offset_s`).
+  `source_time` (a source's own native elapsed time,
+  `waveform_data["time"]`) is never altered. `workspace_time` is the
+  synchronized/display coordinate this app already treated as its one
+  shared viewport/Plotly-X coordinate system (DEC-036) — prior to this
+  slice that coordinate system was implicitly every source's own raw
+  elapsed time (an always-zero offset); this slice makes the offset
+  explicit and engineer-adjustable per source, without otherwise
+  changing that architecture.
+- **Backend is the authoritative owner of the offset VALUE only.** A new
+  `SynchronizationRegistry` (`app/services/synchronization_registry.py`,
+  the same in-memory, ephemeral, workspace-scoped shape as
+  `PerUnitRegistry`) stores `alignment_offset_s` keyed by
+  `(workspace_id, source_id)`; a new thin API
+  (`app/api/v1/synchronization.py`, under
+  `/api/v1/workspaces/{workspace_id}/synchronization`) exposes list/get/
+  put/reset-one/reset-all. The backend never applies the offset to
+  waveform/cursor/digital-waveform data itself — those three existing
+  endpoints are completely unmodified.
+- **The frontend applies the transform, at the request/response boundary
+  of each existing fetch.** This mirrors DEC-042's own established
+  "presentation-layer transform, not a backend data authority"
+  precedent for Absolute/Elapsed time-mode, applied here to a second,
+  independent presentation transform. `wwFetchChannelRange()` converts
+  a workspace-time fetch range to source-native before calling
+  `.../waveform` (unchanged), then shifts the returned `time` array back
+  into workspace time; `wwFetchCursorValuesForSource()` does the
+  equivalent inverse mapping for cursor A/B times before calling
+  `.../cursor-values` (unchanged). Digital channels are fetched once in
+  full (unchanged) and the offset is applied only at RENDER time
+  (`wwDigitalHighIntervals()`/`wwRebuildDigitalChart()`), not baked into
+  the stored transition data — an offset change therefore never needs a
+  digital re-fetch, only a cheap re-render.
+- **Reference source rule (deterministic, no selector UI)**: the
+  workspace's reference source is always the one with the EARLIEST
+  `SourceMetadata.created_at` (`app.domain.synchronization.reference_source_id_for_workspace`,
+  ties broken on `source_id` for determinism) — recomputed fresh on
+  every request, never cached/persisted, so it never goes stale as
+  sources are added/removed. Its own offset is always `0`; the backend
+  rejects (`409 reference_source_alignment_not_allowed`) any attempt to
+  set it to a non-zero value directly.
+- **Reversible everywhere required**: resetting one source
+  (`DELETE .../synchronization/sources/{source_id}`), resetting all
+  (`DELETE .../synchronization/sources`), source removal
+  (`app.api.v1.sources.delete_source` now also calls
+  `remove_source_alignment()`), and workspace reset
+  (`app.api.v1.workspaces.delete_workspace` now also calls
+  `remove_workspace_alignment()`) all correctly clear synchronization
+  state — the frontend's own `ww.alignmentOffsets`/`ww.referenceSourceId`
+  mirror is cleared only by "Start New Workspace" (same lifecycle policy
+  as `ww.perUnitSourceConfigs`), never by the plain "Clear workspace"
+  action.
+- **Existing calculated-channel timebase validation is completely
+  untouched.** `app.domain.calculated_channel.timebases_aligned()` still
+  operates purely on `reference_source_id`/native elapsed
+  arrays/`start_time` — neither that module nor
+  `calculated_channel_service.py` imports anything from this slice's new
+  code. Visual alignment never implies (or silently creates) a common
+  mathematical sample grid.
+- Precision: the offset is stored/transmitted as a `float` number of
+  seconds, never rounded to milliseconds; the manual-alignment UI
+  displays/accepts milliseconds (the natural unit for disturbance work)
+  but converts to/from seconds at exactly one point
+  (`wwSyncMsToOffsetSeconds`/`wwSyncOffsetToMsDisplay`).
+
+Reason:
+
+DEC-036's own "synchronization-ready" note (2026-08-19) explicitly
+anticipated this: "a future phase can introduce an alignment offset
+between source-native bounds and aligned workspace bounds, but no
+timestamp alignment... manual offset controls... is implemented by this
+decision." This slice is that future phase, deliberately narrow per the
+owner's own explicit scope: no automatic `t=0`/trigger/correlation
+detection, no clock-drift/timezone correction, no event grouping —
+manual, reversible, per-source visual alignment only.
+
+Alternatives considered:
+
+- Store/apply the offset entirely in the backend (shift `time` arrays
+  server-side before returning them) — rejected as inconsistent with
+  this codebase's own established DEC-042 precedent (Absolute/Elapsed is
+  already a frontend-only presentation transform over backend-served
+  native data); would also have required threading a new
+  workspace-scoped alignment-offset dependency through every one of the
+  8 existing `unit_mode`-aware display/measurement endpoints for no
+  additional correctness benefit, since the transform is pure
+  `+`/`-` arithmetic either way.
+- Bake the offset into stored digital-channel data at fetch time (same
+  as analog) — rejected: digital data is fetched once, in full, and
+  never re-fetched on a viewport change (existing, unrelated
+  `extract_digital_waveform` design); baking the offset in at fetch time
+  would mean an offset CHANGE for an already-displayed digital channel
+  silently would not visually update. Render-time application avoids
+  this staleness class entirely, at zero extra fetch cost.
+- An explicit reference-source selector control — rejected for this
+  slice per the task's own explicit "if not [simple/safe], use the
+  smallest deterministic rule" guidance; no reference-selection UI
+  infrastructure exists yet, and the first-uploaded-source rule is
+  simple, predictable, and matches the task's own worked example.
+
+Impact:
+
+- New backend files: `app/domain/synchronization.py`,
+  `app/services/synchronization_registry.py`,
+  `app/services/synchronization_service.py`,
+  `app/schemas/synchronization.py`, `app/api/v1/synchronization.py`; two
+  new error codes (`invalid_alignment_offset`,
+  `reference_source_alignment_not_allowed`); a seventh sibling in-memory
+  registry wired into `app.main`'s lifespan, `app.api.v1.sources`'s
+  source-removal cleanup, and `app.api.v1.workspaces`'s workspace-reset
+  cleanup.
+- Frontend: a new `ww.alignmentOffsets`/`ww.referenceSourceId` mirror,
+  the `wwSourceTimeToWorkspaceTime()`/`wwWorkspaceTimeToSourceTime()`
+  conversion helpers, a new "Synchronize Sources" toolbar button/modal
+  (`#wwSyncBtn`/`#wwSyncOverlay`), and targeted edits at exactly the
+  fetch/render boundaries listed above — no other rendering, layout,
+  cursor-mode, or unit-mode code touched.
+- **Known, explicitly documented limitation, not silently gapped**:
+  Callout/+Peak/-Peak annotation anchoring and the existing
+  single-workspace-origin Absolute-time display (DEC-036/DEC-042's own
+  prior documented gap) are NOT offset-aware this slice — out of the
+  task's own explicit scope (sections 1–10 only); a source carrying a
+  non-zero offset can show a misleading annotation anchor or Absolute-
+  mode wall-clock label. Documented in-code at the relevant call sites
+  (`wwCreateCalloutFromClick`, `wwFormatAbsoluteElapsedTime`) and here;
+  fixing this is future work, not part of Slice 1.
+- 83 new backend tests (domain/registry/service/API), 16 new frontend
+  static-regression tests, zero regressions to the existing 1191-test
+  backend suite (1274 total after this slice).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

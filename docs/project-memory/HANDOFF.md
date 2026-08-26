@@ -8,6 +8,91 @@ Last updated: **2026-08-26**
 
 ## What was most recently done
 
+**Phase 15 — Waveform Time Synchronization Slice 1: Manual Per-Source
+Alignment Offset.** A new, independent feature area (not part of the
+DEC-050 Per-Unit sequence below) -- see
+[DECISIONS.md — DEC-053](DECISIONS.md#dec-053--waveform-time-synchronization-slice-1-manual-per-source-alignment-offset-first-uploaded-source-is-the-deterministic-reference-the-backend-owns-the-offset-value-the-frontend-applies-the-transform)
+and [CURRENT_STATE.md](CURRENT_STATE.md) for the full record; summarized
+here for continuity.
+
+An engineer can now manually shift one uploaded source's waveform
+display left/right in time relative to a deterministic reference
+source (first-uploaded, by earliest `created_at`), to visually align
+recordings of the same physical event, without altering original
+source data or implying a common mathematical sample grid. Core
+mapping: `workspace_time = source_time + alignment_offset_s`.
+
+**Backend** (all new, zero existing file's BEHAVIOUR changed): a
+seventh sibling in-memory registry, `SynchronizationRegistry`
+(`app/services/synchronization_registry.py`, same shape as
+`PerUnitRegistry`), plus `app/domain/synchronization.py` (pure
+conversion functions + the deterministic reference-source rule),
+`app/services/synchronization_service.py` (orchestration/validation),
+`app/schemas/synchronization.py`, and a new thin API,
+`app/api/v1/synchronization.py`
+(`/api/v1/workspaces/{workspace_id}/synchronization/sources...` --
+list/get/put/reset-one/reset-all). Wired into `app.main`'s lifespan and
+into the EXISTING `DELETE .../sources/{id}`/`DELETE /workspaces/{id}`
+cleanup sequences (`remove_source_alignment()`/
+`remove_workspace_alignment()`), mirroring every other sibling
+registry's own lifecycle-hook shape. **The existing
+waveform/cursor-values/digital-waveform endpoints are completely
+unmodified** -- the offset transform is applied entirely frontend-side.
+
+**Frontend**: `wwFetchChannelRange()` converts a workspace-time fetch
+range to source-native before calling `.../waveform` (unchanged), then
+shifts the returned `time` array back into workspace time --
+`wwFetchCursorValuesForSource()` does the equivalent inverse mapping
+for cursor A/B. Digital channels apply the offset at RENDER time only
+(`wwDigitalHighIntervals()`/`wwRebuildDigitalChart()`, never baked into
+fetched transition data), so an offset change needs no digital
+re-fetch. `wwDeriveWorkspaceBounds()` now unions each participating
+source's own native bounds SHIFTED by its offset. A new "Synchronize
+Sources" toolbar button/modal (`#wwSyncBtn`/`#wwSyncOverlay`, reusing
+the Measurement Groups modal's own `.confirm-overlay`/`.ww-mg-row`
+shell) lets the engineer step ±1 ms/±0.1 ms, type an exact millisecond
+value, or Reset one/Reset all; the stored value is always seconds, only
+the UI displays milliseconds.
+
+**Verified unaffected by direct inspection**: `app.domain.
+calculated_channel.timebases_aligned()` and `calculated_channel_
+service.py` import nothing from this slice's new code -- visual
+alignment never creates a common mathematical sample grid.
+
+**Known, explicitly documented limitation, not silently gapped**:
+Callout/+Peak/-Peak annotation anchoring and the pre-existing
+single-workspace-origin Absolute-time display (DEC-036/DEC-042's own
+prior documented gap) are NOT offset-aware this slice -- out of the
+task's own explicit scope (sections 1-10 only). Documented in-code at
+`wwCreateCalloutFromClick`/`wwFormatAbsoluteElapsedTime` and in
+DEC-053.
+
+**Tests**: 83 new backend tests (`test_synchronization_domain.py`,
+`test_synchronization_registry.py`, `test_synchronization_service.py`,
+`test_synchronization_api.py`) + 16 new frontend static-regression
+tests (`test_frontend_synchronization.py`) + one pre-existing frontend
+test updated to match the new fetch-boundary variable names
+(`test_frontend_waveform_adaptive_resolution.py`). Full backend suite:
+1274 passed, zero regressions (up from 1191).
+
+**GitHub connectivity note for this pass**: `git fetch origin` failed
+in this sandbox (`Permission denied (publickey)`) -- no SSH access to
+GitHub was available, so the local clone's currency against `origin`
+could not be independently re-verified before this work began (it
+reported clean/up-to-date from its own last known state). Flagged here
+per this project's own mandatory pre-task protocol, not silently
+assumed away.
+
+**Next step**: nothing is pre-authorized. Slice 1's own explicit
+Non-Goals list (automatic `t=0`/trigger/correlation detection, clock-
+drift/timezone correction, event grouping, drag-to-align, resampling)
+remains unimplemented by design; any of it requires its own separate,
+explicit owner-approved prompt. The two known limitations above
+(annotation offset-awareness, Absolute-time per-source origin) are
+candidates for a future slice, not blockers.
+
+## What was done in the prior session (Phase 14 — DEC-050 Slice 8: Final Migration, Regression, Performance, and UAT Hardening)
+
 **Phase 14 — DEC-050 Slice 8: Final Migration, Regression,
 Performance, and UAT Hardening. DEC-050 CORE IS NOW COMPLETE.** Not a
 feature slice -- the final hardening pass validating the whole Slice

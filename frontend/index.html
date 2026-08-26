@@ -1116,6 +1116,20 @@
         .ww-mg-badge--base-required { background: var(--surface-tint); color: var(--text-dim); border: 1px solid var(--panel-border); }
         .ww-mg-badge--not-applicable { background: var(--surface-tint); color: var(--text-dim); border: 1px solid var(--panel-border); }
 
+        /* Slice 1 of waveform time synchronization: the manual-offset
+           control row -- reuses .ww-mg-row/-row-main/-row-header/-row-name
+           for the surrounding source row (same list shape as Measurement
+           Groups above), only this stepper-button-row is genuinely new. */
+        .ww-sync-controls { display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+        .ww-sync-controls button { font-size: 0.7rem; padding: 4px 9px; white-space: nowrap; }
+        .ww-sync-value-input {
+            width: 92px;
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+        }
+        .ww-sync-unit { font-size: 0.7rem; color: var(--text-dim); }
+        .ww-sync-reference-note { margin-top: 4px; font-size: 0.68rem; color: var(--text-dim); }
+
         /* Phase 5B UAT (DEC-048 clarification, section 17): a small,
            reusable accessible info-tip -- see wwInfoTipHtml()'s own
            comment for why this exists instead of native `title`. */
@@ -3599,6 +3613,19 @@
                             <span class="ww-annotation-count-badge" id="wwAnnotationCountBadge" hidden>0</span>
                         </button>
 
+                        <span class="ww-toolbar-sep" aria-hidden="true"></span>
+
+                        <!-- Slice 1 of waveform time synchronization: a
+                             minimal manual-alignment control (task section
+                             8) -- one button opening a small modal listing
+                             every participating source with a per-source
+                             offset control. No toolbar redesign: this is
+                             a single icon button, same .ww-icon-btn shell
+                             as every other toolbar control. -->
+                        <button class="ww-icon-btn" type="button" id="wwSyncBtn" title="Synchronize Sources" aria-label="Synchronize Sources">
+                            <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="2.5" y1="6" x2="9" y2="6" stroke-width="1.3"/><polyline points="6.5,3.5 9,6 6.5,8.5" stroke-width="1.3"/><line x1="15.5" y1="12" x2="9" y2="12" stroke-width="1.3"/><polyline points="11.5,9.5 9,12 11.5,14.5" stroke-width="1.3"/></svg></span>
+                        </button>
+
                         <div class="toolbar-spacer"></div>
                         <div class="theme-toggle ww-icon-group" id="layoutModeToggle" role="group" aria-label="Waveform layout">
                             <button type="button" id="layoutModeGroupedBtn" aria-pressed="true" title="Grouped Layout" aria-label="Grouped Layout">
@@ -4170,6 +4197,41 @@
                 <button type="button" class="secondary" id="measurementGroupsSuggestBtn">Suggest Groups&hellip;</button>
                 <span class="toolbar-spacer"></span>
                 <button type="button" class="secondary" id="measurementGroupsCloseFooterBtn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slice 1 of waveform time synchronization: "Synchronize Sources" --
+         a small, functional manual-alignment control (task section 8).
+         Reuses the exact same .confirm-overlay/.group-editor-box/
+         .ww-pu-dialog shell as Measurement Groups above, and its own
+         .ww-mg-row list shape for the per-source rows -- no new dialog
+         pattern introduced. One source is always the reference (task
+         section 9: the first-uploaded source, deterministic, backend-
+         computed) and is shown as a badge with no editable control; every
+         other source gets stepper buttons, a numeric millisecond field,
+         and its own Reset button. Values are entered/displayed in
+         milliseconds (the natural unit for disturbance work) but the
+         backend always stores/returns seconds -- see wwSyncOffsetToMs()/
+         wwSyncMsToOffset() below for the one, sole conversion point. -->
+    <div class="confirm-overlay" id="wwSyncOverlay" hidden>
+        <div class="group-editor-box ww-pu-dialog" role="dialog" aria-modal="true" aria-labelledby="wwSyncTitle">
+            <div class="group-editor-header">
+                <h3 id="wwSyncTitle">Synchronize Sources</h3>
+                <button type="button" class="group-editor-close" id="wwSyncCloseBtn" aria-label="Close">&times;</button>
+            </div>
+            <p class="hint">Manually shift a recording left or right in time to visually align it with the
+                reference recording, so the same physical disturbance lines up across sources. This never
+                changes a recording's own original data, and a visually synchronized pair of sources does
+                not become mathematically compatible for calculated channels.</p>
+            <p class="hint error" id="wwSyncError" hidden role="alert"></p>
+
+            <div id="wwSyncBody"></div>
+
+            <div class="group-editor-footer">
+                <button type="button" class="secondary" id="wwSyncResetAllBtn">Reset All</button>
+                <span class="toolbar-spacer"></span>
+                <button type="button" class="secondary" id="wwSyncCloseFooterBtn">Close</button>
             </div>
         </div>
     </div>
@@ -5544,6 +5606,15 @@
             // candidate inventory too, never linger as a stale option.
             ww.sourceChannelInventory.delete(sourceId);
             ww.sourceTiming.delete(sourceId);
+            // Slice 1 of waveform time synchronization: the backend
+            // already released this source's own alignment offset via the
+            // SAME DELETE call above (app.api.v1.sources.delete_source ->
+            // remove_source_alignment()); re-fetch rather than just
+            // deleting the local entry, since removing a source can also
+            // change WHICH remaining source is the reference (task
+            // section 9's own deterministic rule), and that recomputation
+            // must happen server-side, not be guessed here.
+            await wwFetchAlignmentOffsetsForWorkspace();
             // Stale-banner fix: only clear the success/import message if it
             // actually describes the source just removed.
             if (lastImportedSourceId === sourceId) {
@@ -5633,6 +5704,14 @@
                     nominalFrequency: data.source.nominal_frequency,
                 });
                 wwRememberSourceTimingFromChannelsData(data);
+                // Slice 1: refresh the workspace's alignment-offset cache
+                // BEFORE deriving workspace bounds below -- bounds
+                // derivation (wwDeriveWorkspaceBounds()) reads
+                // ww.alignmentOffsets, so this must resolve first for a
+                // newly-opened/re-opened source's shifted extent to be
+                // reflected immediately, not just after the next manual
+                // offset change.
+                await wwFetchAlignmentOffsetsForWorkspace();
                 // Phase 4A-UAT10: opening/selecting a source establishes
                 // that source's true elapsed bounds immediately from the
                 // backend timebase metadata, even with zero channels visible.
@@ -6872,6 +6951,32 @@
             // ww.perUnitSourceConfigs -- cleared only by Start New
             // Workspace.
             measurementGroups: new Map(),
+            // Slice 1 of waveform time synchronization: source_id ->
+            // alignment_offset_s (seconds, backend-authoritative -- see
+            // GET/PUT/DELETE .../synchronization/sources). Real source
+            // ids only, keyed the same as ww.sourceBounds/ww.sourceTiming
+            // -- a calculated channel's own display sourceId resolves to
+            // its REFERENCE source's offset via
+            // wwAlignmentOffsetForDisplaySourceId() below, never a
+            // separate entry of its own (the offset belongs to the
+            // source, never an individual channel -- task's own Core
+            // Engineering Rule). A source absent from this map is simply
+            // unshifted (offset 0) -- mirrors ww.perUnitSourceConfigs'
+            // own "no entry = not configured" convention. Fetched
+            // whenever a source's channels are (re-)opened
+            // (wwFetchAlignmentOffsetsForWorkspace(), called from
+            // selectSource()) and after every offset mutation; cleared
+            // only by Start New Workspace.
+            alignmentOffsets: new Map(),
+            // The workspace's current reference source (task section 9:
+            // "the first participating source becomes the reference" --
+            // deterministic, backend-computed by earliest created_at,
+            // never chosen by the frontend). Its own offset is always 0
+            // and the manual alignment UI never lets it be edited
+            // directly. `null` before the first
+            // wwFetchAlignmentOffsetsForWorkspace() call resolves, or if
+            // the workspace has no sources yet.
+            referenceSourceId: null,
         };
 
         function wwFiniteNumber(value) {
@@ -6942,6 +7047,81 @@
             return (calc && calc.reference_source_id) || sourceId;
         }
 
+        // ==================================================================
+        // Slice 1 of waveform time synchronization
+        //
+        // Core mapping (the task's own "Core Engineering Rule"):
+        //
+        //     workspace_time = source_time + alignment_offset_s
+        //     source_time    = workspace_time - alignment_offset_s
+        //
+        // `source_time` is a source's own original/native elapsed time --
+        // never altered anywhere in this codebase. `workspace_time` is the
+        // synchronized/display time this app already treats as the ONE
+        // authoritative coordinate system for ww.viewport/ww.workspaceBounds/
+        // every Plotly X coordinate (see the Phase 2C-C3 architecture note
+        // above) -- prior to this slice that coordinate system was
+        // IMPLICITLY every source's own raw elapsed time (equivalent to an
+        // always-zero offset); this slice makes the offset explicit and
+        // engineer-adjustable per source, without changing that
+        // architecture at all. These two functions are the ONE place the
+        // mapping is applied -- every fetch/render call site below routes
+        // through them rather than doing its own offset arithmetic.
+        // ==================================================================
+
+        function wwAlignmentOffsetForSource(sourceId) {
+            const offset = ww.alignmentOffsets.get(sourceId);
+            return typeof offset === "number" && Number.isFinite(offset) ? offset : 0;
+        }
+
+        // Resolves a DISPLAY source id -- a real source_id, or a
+        // calculated channel's own "calc-*" pseudo-source id -- to its
+        // effective alignment offset. A calculated channel has no offset
+        // of its own (the offset belongs to the SOURCE, task section 5);
+        // it always follows whichever real source grounds its own
+        // inherited time array, reusing the SAME reference-source
+        // resolution wwTimingSourceIdForDisplaySourceId() already
+        // established for Absolute/Elapsed timing (never a second
+        // "which source owns this calculated channel's timing" rule).
+        function wwAlignmentOffsetForDisplaySourceId(displaySourceId) {
+            return wwAlignmentOffsetForSource(wwTimingSourceIdForDisplaySourceId(displaySourceId));
+        }
+
+        function wwSourceTimeToWorkspaceTime(displaySourceId, sourceTime) {
+            return sourceTime + wwAlignmentOffsetForDisplaySourceId(displaySourceId);
+        }
+
+        function wwWorkspaceTimeToSourceTime(displaySourceId, workspaceTime) {
+            return workspaceTime - wwAlignmentOffsetForDisplaySourceId(displaySourceId);
+        }
+
+        // GET .../synchronization/sources -- the backend is the
+        // authoritative owner of alignment-offset state (task section 2);
+        // this refreshes the local read cache above (ww.alignmentOffsets/
+        // ww.referenceSourceId) used by every conversion call site.
+        // Resilient like every other list-fetch in this app (fetchSourcesList()/
+        // selectSource()): a failed request leaves whatever was already
+        // cached in place rather than clearing it out from under an
+        // in-progress render.
+        async function wwFetchAlignmentOffsetsForWorkspace() {
+            let body;
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/synchronization/sources"
+                );
+                if (!response.ok) return;
+                body = await response.json();
+            } catch (error) {
+                return;
+            }
+            ww.alignmentOffsets.clear();
+            ww.referenceSourceId = null;
+            for (const row of body) {
+                ww.alignmentOffsets.set(row.source_id, row.alignment_offset_s);
+                if (row.is_reference) ww.referenceSourceId = row.source_id;
+            }
+        }
+
         function wwParticipatingSourceIds() {
             const ids = new Set();
             if (selectedSourceId && ww.sourceBounds.has(selectedSourceId)) ids.add(selectedSourceId);
@@ -6956,14 +7136,27 @@
             return ids;
         }
 
+        // Slice 1: ww.sourceBounds always holds each source's own TRUE
+        // NATIVE elapsed extent (unchanged -- see wwRememberSourceBounds()'s
+        // own docstring); workspace bounds are the union of those extents
+        // in WORKSPACE time, so a source shifted left/right by its own
+        // alignment offset correctly grows/moves the derived workspace
+        // extent instead of silently clipping that source's own shifted
+        // data out of view. wwParticipatingSourceIds() already resolves a
+        // calculated channel's display id back to its real reference
+        // source before this runs, so wwAlignmentOffsetForSource() (not
+        // the display-id-resolving variant) is correct here.
         function wwDeriveWorkspaceBounds() {
             let start = null;
             let end = null;
             for (const sourceId of wwParticipatingSourceIds()) {
                 const bounds = ww.sourceBounds.get(sourceId);
                 if (!bounds) continue;
-                start = start === null ? bounds.start : Math.min(start, bounds.start);
-                end = end === null ? bounds.end : Math.max(end, bounds.end);
+                const offset = wwAlignmentOffsetForSource(sourceId);
+                const shiftedStart = bounds.start + offset;
+                const shiftedEnd = bounds.end + offset;
+                start = start === null ? shiftedStart : Math.min(start, shiftedStart);
+                end = end === null ? shiftedEnd : Math.max(end, shiftedEnd);
             }
             return start === null || end === null ? null : { start, end };
         }
@@ -7140,6 +7333,24 @@
             return 0;
         }
 
+        // Known limitation, Slice 1 of waveform time synchronization
+        // (documented per the task's own explicit "do not make it worse;
+        // add documentation" instruction -- Absolute-time redesign is out
+        // of this slice's scope): `elapsedSeconds` passed in below is
+        // already WORKSPACE time (post-offset) for a displayed channel's
+        // own hover/annotation label (see the call sites of this
+        // function), but `wwWorkspaceRecordingStartMs()` still returns a
+        // SINGLE workspace-wide origin (the first displayed analog
+        // channel's own `recordingStartMs` -- a pre-existing, separately
+        // documented DEC-036/DEC-042 gap for multi-source Absolute
+        // display, unrelated to this slice). A source with a manually
+        // applied non-zero alignment offset therefore has its own
+        // Absolute-mode wall-clock label shifted by that same offset --
+        // correct/expected when comparing against a DIFFERENT source's
+        // own origin (that is the whole point of visual alignment), but
+        // misleading if read as "this source's own true recording
+        // instant" once it carries a non-zero offset. Not fixed here; a
+        // correct per-source Absolute-time origin is future work.
         function wwFormatAbsoluteElapsedTime(elapsedSeconds, opts) {
             if (!Number.isFinite(elapsedSeconds)) return "—";
             const originMs = wwWorkspaceRecordingStartMs();
@@ -7626,6 +7837,16 @@
             // everything below this point (restyle, representation
             // tracking) needs zero changes for either channel kind.
             const isCalculated = wwIsCalculatedSourceId(channelEntry.sourceId);
+            // Slice 1 (task section 6): the caller's startTime/endTime are
+            // WORKSPACE time (the shared viewport's own coordinate system);
+            // the backend's waveform range is always source-native, so the
+            // inverse mapping is applied here, at the one place this
+            // channel's own fetch boundary is crossed.
+            const alignmentOffset = wwAlignmentOffsetForDisplaySourceId(channelEntry.sourceId);
+            const nativeStart = startTime !== null && startTime !== undefined
+                ? wwWorkspaceTimeToSourceTime(channelEntry.sourceId, startTime) : startTime;
+            const nativeEnd = endTime !== null && endTime !== undefined
+                ? wwWorkspaceTimeToSourceTime(channelEntry.sourceId, endTime) : endTime;
             const url = new URL(
                 apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
                 (isCalculated
@@ -7633,8 +7854,8 @@
                     : "/sources/" + encodeURIComponent(channelEntry.sourceId) + "/waveform")
             );
             if (!isCalculated) url.searchParams.set("channel_name", channelEntry.channelName);
-            if (startTime !== null && startTime !== undefined) url.searchParams.set("start_time", startTime);
-            if (endTime !== null && endTime !== undefined) url.searchParams.set("end_time", endTime);
+            if (nativeStart !== null && nativeStart !== undefined) url.searchParams.set("start_time", nativeStart);
+            if (nativeEnd !== null && nativeEnd !== undefined) url.searchParams.set("end_time", nativeEnd);
             url.searchParams.set("point_budget", String(pointBudget));
             // Phase 5C (DEC-049): the backend is the sole conversion
             // authority (decision 2) -- this is the ONE place every
@@ -7657,6 +7878,17 @@
             if (!response.ok) {
                 const detail = (body && body.detail) || {};
                 return { superseded: false, error: detail };
+            }
+            // Slice 1: the response's own `time` array is source-native
+            // (the backend never applies synchronization -- see
+            // app.services.synchronization_service's own module
+            // docstring); shift it back into workspace time here, ONCE,
+            // so every downstream reader of channelEntry.time
+            // (wwBuildTrace/restyle/hover/customdata) already sees the
+            // synchronized coordinate this app treats as authoritative
+            // for display, with no separate offset-awareness of its own.
+            if (body && Array.isArray(body.time) && alignmentOffset !== 0) {
+                body = Object.assign({}, body, { time: body.time.map((t) => t + alignmentOffset) });
             }
             return { superseded: false, body };
         }
@@ -9168,6 +9400,210 @@
                 return;
             }
             await wwLoadAndRenderMeasurementGroupsBody();
+        }
+
+        // ==================================================================
+        // Slice 1 of waveform time synchronization: "Synchronize Sources"
+        // modal -- see #wwSyncOverlay's own HTML comment for the shell this
+        // reuses. UI displays/accepts milliseconds (task section 8: "more
+        // natural for disturbance work"); the backend always stores/returns
+        // seconds -- these two functions are the ONE conversion point, so
+        // the stored value never loses the sub-millisecond precision the
+        // task requires (never routed through a rounding display format).
+        // ==================================================================
+
+        function wwSyncOffsetToMsDisplay(offsetSeconds) {
+            return (offsetSeconds * 1000).toFixed(3);
+        }
+
+        function wwSyncMsToOffsetSeconds(ms) {
+            return ms / 1000;
+        }
+
+        function wwRenderSyncSourceRow(source, offsetSeconds, isReference) {
+            const name = escapeHtml(recordingDisplayName(source));
+            if (isReference) {
+                return (
+                    '<div class="ww-mg-row" data-source-id="' + escapeHtml(source.source_id) + '">' +
+                        '<div class="ww-mg-row-main">' +
+                            '<div class="ww-mg-row-header">' +
+                                '<span class="ww-mg-row-name">' + name + '</span>' +
+                                '<span class="ww-mg-badge ww-mg-badge--confirmed">Reference</span>' +
+                            '</div>' +
+                            '<p class="ww-sync-reference-note">Every other source is shifted relative to this one. Alignment offset: 0 ms.</p>' +
+                        '</div>' +
+                    '</div>'
+                );
+            }
+            const msValue = wwSyncOffsetToMsDisplay(offsetSeconds);
+            return (
+                '<div class="ww-mg-row" data-source-id="' + escapeHtml(source.source_id) + '">' +
+                    '<div class="ww-mg-row-main">' +
+                        '<div class="ww-mg-row-header">' +
+                            '<span class="ww-mg-row-name">' + name + '</span>' +
+                        '</div>' +
+                        '<div class="ww-sync-controls">' +
+                            '<button type="button" class="secondary ww-sync-step-btn" data-source-id="' + escapeHtml(source.source_id) + '" data-step-ms="-1">&minus;1 ms</button>' +
+                            '<button type="button" class="secondary ww-sync-step-btn" data-source-id="' + escapeHtml(source.source_id) + '" data-step-ms="-0.1">&minus;0.1 ms</button>' +
+                            '<input type="number" step="0.001" class="ww-sync-value-input" data-source-id="' + escapeHtml(source.source_id) + '" value="' + msValue + '">' +
+                            '<span class="ww-sync-unit">ms</span>' +
+                            '<button type="button" class="secondary ww-sync-step-btn" data-source-id="' + escapeHtml(source.source_id) + '" data-step-ms="0.1">+0.1 ms</button>' +
+                            '<button type="button" class="secondary ww-sync-step-btn" data-source-id="' + escapeHtml(source.source_id) + '" data-step-ms="1">+1 ms</button>' +
+                            '<button type="button" class="secondary ww-sync-reset-btn" data-source-id="' + escapeHtml(source.source_id) + '">Reset</button>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>'
+            );
+        }
+
+        function wwRenderSyncBody(sources) {
+            const bodyEl = document.getElementById("wwSyncBody");
+            if (!sources.length) {
+                bodyEl.innerHTML = '<p class="hint">Upload at least one recording to configure synchronization.</p>';
+                return;
+            }
+            const html = sources
+                .map((source) => wwRenderSyncSourceRow(source, wwAlignmentOffsetForSource(source.source_id), source.source_id === ww.referenceSourceId))
+                .join("");
+            bodyEl.innerHTML = html;
+            for (const btn of bodyEl.querySelectorAll(".ww-sync-step-btn")) {
+                btn.addEventListener("click", () => wwSyncStepOffset(btn.dataset.sourceId, parseFloat(btn.dataset.stepMs)));
+            }
+            for (const btn of bodyEl.querySelectorAll(".ww-sync-reset-btn")) {
+                btn.addEventListener("click", () => wwSyncResetOffset(btn.dataset.sourceId));
+            }
+            for (const input of bodyEl.querySelectorAll(".ww-sync-value-input")) {
+                input.addEventListener("change", () => {
+                    const ms = parseFloat(input.value);
+                    if (!Number.isFinite(ms)) return;
+                    wwSyncSetOffsetMs(input.dataset.sourceId, ms);
+                });
+            }
+        }
+
+        async function wwOpenSyncModal() {
+            document.getElementById("wwSyncError").hidden = true;
+            document.getElementById("wwSyncOverlay").hidden = false;
+            document.getElementById("wwSyncBody").innerHTML = '<p class="hint">Loading sources&hellip;</p>';
+            await wwFetchAlignmentOffsetsForWorkspace();
+            const sources = (await fetchSourcesList()) || [];
+            wwRenderSyncBody(sources);
+        }
+
+        function wwCloseSyncModal() {
+            document.getElementById("wwSyncOverlay").hidden = true;
+        }
+
+        function wwSyncShowError(message) {
+            const errorEl = document.getElementById("wwSyncError");
+            errorEl.textContent = message;
+            errorEl.hidden = false;
+        }
+
+        // The one place every offset mutation below re-syncs the rest of
+        // the app once the backend confirms the change (task's own
+        // Performance Requirement: correctness over premature
+        // optimization -- an offset change already requires a genuine
+        // analog refetch, since the backend's own point-budget reduction
+        // depends on the exact native range requested, so this reuses the
+        // SAME wwRefetchAllChannels() orchestrator zoom/pan/unit-mode
+        // switch already funnel through, rather than inventing a second,
+        // partial-refresh path). Digital channels need no refetch at all
+        // (wwRebuildDigitalChart() re-reads the current offset live, see
+        // wwDigitalHighIntervals()'s own comment) -- only a cheap re-render.
+        async function wwSyncApplyOffsetChangeSideEffects() {
+            await wwRefreshWorkspaceBounds({ resetViewport: false });
+            const vp = ww.viewport;
+            if (vp) await wwRefetchAllChannels(vp.start, vp.end);
+            wwRebuildDigitalChart();
+            if (ww.measurementCursors.enabled) {
+                for (const sourceId of wwParticipatingSourceIds()) wwFetchCursorValuesForSource(sourceId);
+            }
+        }
+
+        async function wwSyncPutOffset(sourceId, offsetSeconds) {
+            document.getElementById("wwSyncError").hidden = true;
+            let response;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                    "/synchronization/sources/" + encodeURIComponent(sourceId),
+                    {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ alignment_offset_s: offsetSeconds }),
+                    }
+                );
+            } catch (error) {
+                wwSyncShowError("Could not reach the backend. Check your connection and try again.");
+                return false;
+            }
+            if (!response.ok) {
+                let detail = {};
+                try { detail = (await response.json()).detail || {}; } catch (error) { /* generic message below */ }
+                wwSyncShowError(detail.message || "Could not set this source's alignment offset.");
+                return false;
+            }
+            return true;
+        }
+
+        async function wwSyncSetOffsetMs(sourceId, ms) {
+            const ok = await wwSyncPutOffset(sourceId, wwSyncMsToOffsetSeconds(ms));
+            if (!ok) { await wwOpenSyncModal(); return; } // re-render to discard the rejected edit
+            await wwFetchAlignmentOffsetsForWorkspace();
+            const sources = (await fetchSourcesList()) || [];
+            wwRenderSyncBody(sources);
+            await wwSyncApplyOffsetChangeSideEffects();
+        }
+
+        async function wwSyncStepOffset(sourceId, stepMs) {
+            const currentMs = Number(wwSyncOffsetToMsDisplay(wwAlignmentOffsetForSource(sourceId)));
+            await wwSyncSetOffsetMs(sourceId, currentMs + stepMs);
+        }
+
+        async function wwSyncResetOffset(sourceId) {
+            document.getElementById("wwSyncError").hidden = true;
+            let response;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                    "/synchronization/sources/" + encodeURIComponent(sourceId),
+                    { method: "DELETE" }
+                );
+            } catch (error) {
+                wwSyncShowError("Could not reach the backend. Check your connection and try again.");
+                return;
+            }
+            if (!response.ok && response.status !== 404) {
+                wwSyncShowError("Could not reset this source's alignment offset.");
+                return;
+            }
+            await wwFetchAlignmentOffsetsForWorkspace();
+            const sources = (await fetchSourcesList()) || [];
+            wwRenderSyncBody(sources);
+            await wwSyncApplyOffsetChangeSideEffects();
+        }
+
+        async function wwSyncResetAll() {
+            document.getElementById("wwSyncError").hidden = true;
+            let response;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/synchronization/sources",
+                    { method: "DELETE" }
+                );
+            } catch (error) {
+                wwSyncShowError("Could not reach the backend. Check your connection and try again.");
+                return;
+            }
+            if (!response.ok) {
+                wwSyncShowError("Could not reset synchronization.");
+                return;
+            }
+            await wwFetchAlignmentOffsetsForWorkspace();
+            const sources = (await fetchSourcesList()) || [];
+            wwRenderSyncBody(sources);
+            await wwSyncApplyOffsetChangeSideEffects();
         }
 
         // ---- Edit drawer -----------------------------------------------
@@ -11172,6 +11608,21 @@
         // (section 55) -- the resolved sample_index/elapsed_seconds/value
         // become the annotation's own fixed engineering anchor from this
         // point on.
+        // Known limitation, Slice 1 of waveform time synchronization
+        // (documented rather than silently left broken -- task's own
+        // Absolute-Time-Display guidance: "do not make it worse... add
+        // documentation around any interaction with synchronization"):
+        // Callout/+Peak/-Peak annotation anchoring (this function,
+        // wwResolveCalloutAnchorMove(), wwCreatePeakFromClick() below) is
+        // NOT offset-aware. `approximateElapsedSeconds` here is WORKSPACE
+        // time (from wwCursorPixelXToTime()), but is sent to the backend
+        // as-is and clamped against ww.sourceBounds's own NATIVE bounds --
+        // for a source with a non-zero alignment offset, an annotation
+        // placed near that source's own start/end can anchor to the wrong
+        // sample, or a click that is genuinely over the shifted trace can
+        // be clamped as if it were outside the source's native range.
+        // Annotations are outside this slice's explicit scope (section
+        // 1-10 of the task); fixing this is deferred to a future slice.
         async function wwCreateCalloutFromClick(panel, channel, approximateElapsedSeconds) {
             const workspaceId = currentWorkspaceId();
             const epochAtStart = ww.epoch;
@@ -12031,20 +12482,32 @@
         // starts high and never transitions yields one interval spanning
         // the whole record (section 9/57's own "still Triggered" case);
         // a channel that is always low yields zero intervals.
+        // Slice 1: `entry.startTime`/`entry.endTime`/`transitions[].time`
+        // are always stored SOURCE-NATIVE (wwAddDigitalChannels() never
+        // shifts them -- digital data is fetched once, in full, and never
+        // re-fetched merely because an offset changes, see that
+        // function's own docstring); the alignment offset is applied
+        // here, at RENDER time, instead. This means an offset change only
+        // ever needs a call to wwRebuildDigitalChart() (already the
+        // established, zero-network re-render hook) to take effect --
+        // never a re-fetch -- and there is no stale-baked-in-offset risk
+        // to manage.
         function wwDigitalHighIntervals(entry) {
+            const offset = wwAlignmentOffsetForSource(entry.sourceId);
             const intervals = [];
             let state = entry.initialState;
-            let openStart = state ? entry.startTime : null;
+            let openStart = state ? entry.startTime + offset : null;
             for (const t of entry.transitions) {
+                const time = t.time + offset;
                 if (state && !t.state) {
-                    intervals.push([openStart, t.time]);
+                    intervals.push([openStart, time]);
                     openStart = null;
                 } else if (!state && t.state) {
-                    openStart = t.time;
+                    openStart = time;
                 }
                 state = t.state;
             }
-            if (state) intervals.push([openStart, entry.endTime]);
+            if (state) intervals.push([openStart, entry.endTime + offset]);
             return intervals;
         }
 
@@ -12189,8 +12652,9 @@
                 }
 
                 const entry = row.entry;
-                const startX = wwElapsedToPlotlyX(entry.startTime);
-                const endX = wwElapsedToPlotlyX(entry.endTime);
+                const entryOffset = wwAlignmentOffsetForSource(entry.sourceId);
+                const startX = wwElapsedToPlotlyX(entry.startTime + entryOffset);
+                const endX = wwElapsedToPlotlyX(entry.endTime + entryOffset);
 
                 // Thin baseline -- always drawn, full record width. Real
                 // (not "hoverinfo: skip") hovertext so the full channel
@@ -14375,6 +14839,20 @@
                 wwUpdateUnitModeWarningBadge();
                 wwClosePerUnitProfilesModal();
                 wwCloseMeasurementGroupsModal();
+                // Slice 1 of waveform time synchronization: "Start New
+                // Workspace" also clears every source's own alignment
+                // offset -- the backend side is already handled by this
+                // SAME DELETE /api/v1/workspaces/{id} call
+                // (synchronization_registry.remove_workspace(), see
+                // app.api.v1.workspaces.delete_workspace); this just keeps
+                // the frontend's own mirror/UI in sync, same policy as
+                // ww.perUnitSourceConfigs immediately above. Plain "Clear
+                // workspace" (the else branch below) deliberately leaves
+                // it alone -- the still-selected source's own offset
+                // remains meaningful, same reasoning as ww.sourceTiming.
+                ww.alignmentOffsets.clear();
+                ww.referenceSourceId = null;
+                wwCloseSyncModal();
             } else {
                 ww.workspaceBounds = wwDeriveWorkspaceBounds();
                 ww.viewport = ww.workspaceBounds ? { start: ww.workspaceBounds.start, end: ww.workspaceBounds.end } : null;
@@ -15402,6 +15880,18 @@
             const bTime = cursors.b.visible && Number.isFinite(cursors.b.time) ? cursors.b.time : null;
             if (aTime === null && bTime === null) return;
 
+            // Slice 1 (task section 7): cursor A/B times live in
+            // WORKSPACE time (ww.measurementCursors, the same coordinate
+            // system as ww.viewport); the backend resolves a cursor
+            // against a source's own native sample array, so the inverse
+            // mapping is applied here before the request goes out, and
+            // the forward mapping is applied to the returned
+            // `sample_time` echo below -- never comparing a workspace
+            // time directly against source-native data.
+            const alignmentOffset = wwAlignmentOffsetForDisplaySourceId(sourceId);
+            const nativeATime = aTime === null ? null : wwWorkspaceTimeToSourceTime(sourceId, aTime);
+            const nativeBTime = bTime === null ? null : wwWorkspaceTimeToSourceTime(sourceId, bTime);
+
             const generation = (wwCursorValuesGeneration.get(sourceId) || 0) + 1;
             wwCursorValuesGeneration.set(sourceId, generation);
 
@@ -15424,12 +15914,12 @@
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify(
                             isCalculated
-                                ? { calculated_channel_ids: [sourceId], cursor_a_time: aTime, cursor_b_time: bTime, unit_mode: ww.unitMode }
+                                ? { calculated_channel_ids: [sourceId], cursor_a_time: nativeATime, cursor_b_time: nativeBTime, unit_mode: ww.unitMode }
                                 : {
                                     analog_channel_names: analogNames,
                                     digital_channel_names: digitalNames,
-                                    cursor_a_time: aTime,
-                                    cursor_b_time: bTime,
+                                    cursor_a_time: nativeATime,
+                                    cursor_b_time: nativeBTime,
                                     unit_mode: ww.unitMode,
                                 }
                         ),
@@ -15478,12 +15968,18 @@
                 wwUpdateCursorValueCellsForChannels(sourceId, analogNames);
                 return;
             }
+            const aSampleTimeNative = body.cursor_a ? body.cursor_a.sample_time : null;
+            const bSampleTimeNative = body.cursor_b ? body.cursor_b.sample_time : null;
             for (const channel of body.channels) {
                 ww.cursorValues.set(wwChannelKey(sourceId, channel.channel_name), {
                     aValue: channel.a_value,
                     bValue: channel.b_value,
-                    aSampleTime: body.cursor_a ? body.cursor_a.sample_time : null,
-                    bSampleTime: body.cursor_b ? body.cursor_b.sample_time : null,
+                    // Slice 1: shifted back into workspace time so this
+                    // echo (currently unused by any renderer, but kept
+                    // correct as reserved state) never disagrees with the
+                    // workspace-time cursor position it was resolved for.
+                    aSampleTime: aSampleTimeNative === null ? null : aSampleTimeNative + alignmentOffset,
+                    bSampleTime: bSampleTimeNative === null ? null : bSampleTimeNative + alignmentOffset,
                 });
             }
             for (const channel of body.digital_channels) {
@@ -16558,6 +17054,19 @@
         document.getElementById("wwMgDrawerCancelBtn").addEventListener("click", wwCloseMgDrawer);
         document.getElementById("wwMgDrawerCloseBtn").addEventListener("click", wwCloseMgDrawer);
         document.getElementById("wwMgDrawerBackdrop").addEventListener("click", wwCloseMgDrawer);
+
+        // Slice 1 of waveform time synchronization: "Synchronize Sources".
+        document.getElementById("wwSyncBtn").addEventListener("click", () => wwOpenSyncModal());
+        document.getElementById("wwSyncResetAllBtn").addEventListener("click", () => wwSyncResetAll());
+        document.getElementById("wwSyncCloseBtn").addEventListener("click", wwCloseSyncModal);
+        document.getElementById("wwSyncCloseFooterBtn").addEventListener("click", wwCloseSyncModal);
+        document.getElementById("wwSyncOverlay").addEventListener("click", (event) => {
+            if (event.target.id === "wwSyncOverlay") wwCloseSyncModal(); // click on backdrop
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            if (!document.getElementById("wwSyncOverlay").hidden) wwCloseSyncModal();
+        });
 
         // Phase 2C-B1/C1: Grouped/Separate/Custom layout mode.
         document.getElementById("layoutModeGroupedBtn").addEventListener("click", () => wwSetLayoutMode("grouped"));

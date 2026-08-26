@@ -4,7 +4,9 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-26** (Phase 14 — DEC-050 Slice 8:
+Last meaningful update: **2026-08-26** (Phase 15 — Waveform Time
+Synchronization Slice 1: Manual Per-Source Alignment Offset, on top of
+Phase 14 — DEC-050 Slice 8:
 Final Migration, Regression, Performance, and UAT Hardening — DEC-050
 CORE now COMPLETE, on top of
 Phase 13 — DEC-050 Slice 7:
@@ -48,6 +50,62 @@ Text Note, Phase 4D — Precision Step Zoom + Icon Toolbar Refinement,
 Waveform Time-Axis Sub-ms Precision, Waveform Adaptive Resolution, Phase
 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B,
 Phase 4A-UAT9, and Phase 4A-UAT10).
+
+`[FACT]` **Waveform Time Synchronization Slice 1 implemented
+(2026-08-26) — Manual Per-Source Alignment Offset.** A genuinely new
+feature area (independent of the DEC-050 Per-Unit work above): an
+engineer can now manually shift one uploaded source's waveform display
+left or right in time, relative to a deterministic reference source
+(the first-uploaded source, by earliest `created_at`), so recordings of
+the same physical event can be visually aligned — without altering any
+original source timestamps/waveform data, and without implying a common
+mathematical sample grid. Core mapping: `workspace_time = source_time +
+alignment_offset_s` (inverse: `source_time = workspace_time -
+alignment_offset_s`). **Backend is the authoritative owner of the
+offset VALUE only** — a new `SynchronizationRegistry`
+(`app/services/synchronization_registry.py`, a seventh sibling
+in-memory registry, same shape as `PerUnitRegistry`) stores
+`alignment_offset_s` per `(workspace_id, source_id)`; a new thin API
+(`app/api/v1/synchronization.py`,
+`/api/v1/workspaces/{workspace_id}/synchronization/sources...`)
+exposes list/get/put/reset-one/reset-all. **The existing
+waveform/cursor-values/digital-waveform endpoints are completely
+unmodified** — the transform is applied entirely on the frontend, at
+each fetch's own request/response boundary
+(`wwFetchChannelRange()`/`wwFetchCursorValuesForSource()` convert
+workspace time to source-native before the request and shift the
+response back), mirroring DEC-042's own established "presentation-layer
+transform, not a backend data authority" precedent for Absolute/Elapsed
+time-mode. Digital channels apply the offset at RENDER time only
+(`wwDigitalHighIntervals()`/`wwRebuildDigitalChart()`), never baked into
+fetched data, so an offset change needs no digital re-fetch. The
+reference source's own offset is always `0`, enforced backend-side
+(`409 reference_source_alignment_not_allowed` on a direct non-zero
+attempt). Source removal and workspace reset both correctly clear
+synchronization state (new `remove_source_alignment()`/
+`remove_workspace_alignment()` lifecycle hooks, wired into the existing
+`DELETE .../sources/{id}`/`DELETE /workspaces/{id}` cleanup sequences —
+no new lifecycle hook shape invented). A small "Synchronize Sources"
+toolbar button/modal (`#wwSyncBtn`/`#wwSyncOverlay`) lets the engineer
+step ±1 ms/±0.1 ms, type an exact millisecond value, or Reset one/Reset
+all — the stored value itself is never rounded to milliseconds (a
+`float` number of seconds throughout the actual conversion path).
+**Existing calculated-channel timebase validation
+(`app.domain.calculated_channel.timebases_aligned()`) is completely
+untouched** — neither that module nor `calculated_channel_service.py`
+imports anything from this slice; visual alignment never creates a
+common mathematical sample grid. **Known, explicitly documented
+limitation, not silently gapped**: Callout/+Peak/-Peak annotation
+anchoring and the pre-existing single-workspace-origin Absolute-time
+display (DEC-036/DEC-042's own prior documented gap) are NOT
+offset-aware this slice — out of the task's own explicit scope; a
+source carrying a non-zero offset can show a misleading annotation
+anchor or Absolute-mode wall-clock label, documented in-code at the
+relevant call sites. 83 new backend tests (domain/registry/service/API)
++ 16 new frontend static-regression tests, zero regressions (1274 total
+backend tests, up from 1191). See
+[DECISIONS.md — DEC-053](DECISIONS.md#dec-053--waveform-time-synchronization-slice-1-manual-per-source-alignment-offset-first-uploaded-source-is-the-deterministic-reference-the-backend-owns-the-offset-value-the-frontend-applies-the-transform)
+and [HANDOFF.md](HANDOFF.md).
 
 `[DECISION]` **DEC-052 approved (2026-08-26, documentation only — no
 code change)**: the Slice 7 Voltage-group multi-input Addition/

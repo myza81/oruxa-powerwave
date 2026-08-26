@@ -426,3 +426,26 @@ class InvalidLinkedVoltageGroupError(ImportServiceError):
     instruction)."""
 
     code = "invalid_linked_voltage_group"
+
+
+# ---- Slice 1 of waveform time synchronization: manual per-source
+# alignment offsets (app.domain.synchronization,
+# app.services.synchronization_registry/_service). ----
+
+
+class InvalidAlignmentOffsetError(ImportServiceError):
+    """A submitted `alignment_offset_s` is missing/non-finite/non-numeric
+    (app.domain.synchronization.alignment_offset_valid)."""
+
+    code = "invalid_alignment_offset"
+
+
+class ReferenceSourceAlignmentError(ImportServiceError):
+    """An attempt was made to set a non-zero alignment offset on the
+    workspace's own reference source. The reference source's offset is
+    always `0` by construction (task section 9: "the reference offset is
+    always 0; other sources are shifted relative to it") -- rejected
+    outright rather than silently ignored or silently re-normalizing
+    every other source's offset around a new reference."""
+
+    code = "reference_source_alignment_not_allowed"

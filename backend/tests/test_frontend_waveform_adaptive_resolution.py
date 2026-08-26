@@ -94,7 +94,13 @@ def test_zoom_still_requests_elapsed_engineering_range_in_all_time_modes():
 
     assert "wwPlotlyXToElapsed(x0)" in relayout_body
     assert "wwPlotlyXToElapsed(x1)" in relayout_body
-    assert 'url.searchParams.set("start_time", startTime)' in fetch_body
-    assert 'url.searchParams.set("end_time", endTime)' in fetch_body
+    # Slice 1 of waveform time synchronization: the fetch now converts the
+    # caller's workspace-time startTime/endTime into this channel's own
+    # source-native range (nativeStart/nativeEnd, via
+    # wwWorkspaceTimeToSourceTime) before building the request -- still
+    # the same elapsed/engineering coordinate system, never re-transformed
+    # through a display-mode-specific wwElapsedToPlotlyX() call.
+    assert 'url.searchParams.set("start_time", nativeStart)' in fetch_body
+    assert 'url.searchParams.set("end_time", nativeEnd)' in fetch_body
     assert "wwElapsedToPlotlyX(startTime)" not in fetch_body
     assert "wwElapsedToPlotlyX(endTime)" not in fetch_body
