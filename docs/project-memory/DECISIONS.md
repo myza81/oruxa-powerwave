@@ -7004,6 +7004,192 @@ Impact:
 
 ---
 
+## DEC-054 — The Workspace Sidebar becomes source-first: every uploaded source gets its own collapsible hierarchy, replacing the single-source "Active Recording" context; the persistent bottom metadata panel is removed
+
+Date: 2026-08-26
+Status: Approved
+Source: explicit owner UAT finding after Waveform Time Synchronization
+Slice 1 ("the waveform workspace now supports multiple active
+recordings, but the left sidebar still visually behaves like a
+single-record workspace"), delivered as a dedicated implementation
+prompt.
+
+Decision:
+
+**The Workspace Sidebar's Channels area now shows EVERY source
+currently uploaded to the workspace at once, each as its own
+collapsible section with its own Analog/Digital channel hierarchy —
+never merged with another source's channels, never gated behind a
+single "selected" source.**
+
+Concretely:
+
+- Hierarchy: `Workspace -> Recording/Source -> Analog/Digital -> Signal
+  Category -> Channel`. The old two-section split ("Active Recording"
+  read-only identity line + a separate "Channels" panel scoped to
+  whichever source was last opened, Phase 3B-UAT8) is replaced by ONE
+  section, headed "Recordings (N)" (`N` = live source count), containing
+  one `<details class="source-recording">` per source.
+  `wwRenderWorkspaceRecordings()` is the new single entry point that
+  (re)builds this whole hierarchy; `renderAnalogGroup()`/
+  `renderDigitalGroup()`/`renderChannelTable()` and every existing
+  channel-row toggle/search mechanism are reused completely unchanged,
+  called once per source instead of once total.
+- **Data cost**: zero extra requests for the compact per-source summary
+  line (`12 analog · 24 digital · 5 kHz · 0.825 s`) — `SourceSummaryOut`
+  (the existing `GET .../sources` list response) already carries
+  `analog_channel_count`/`digital_channel_count`/`sampling_rates`/
+  `duration_seconds`. Each source's own full channel TREE additionally
+  needs its existing `GET .../sources/{id}/channels` response (channel
+  names/phase/engineering_type/classification aren't on
+  `SourceSummaryOut`), fetched once per source in parallel and cached
+  (`ww.sourceChannelsData`, `wwEnsureSourceChannelsFetched()`) — a source
+  already cached is never re-fetched, since a source's own channel
+  metadata is immutable after upload. **No backend change was made or
+  needed** — every field this redesign renders was already exposed.
+- Sampling rate is formatted compactly (kHz once >= 1000 Hz, e.g. "5
+  kHz"; plain Hz below that) from the recording's OWN `sampling_rates`,
+  never the nominal grid frequency; a genuinely multi-rate source (more
+  than one sampling-rate section) renders "Multi-rate" rather than
+  inventing a single misleading value. Duration is formatted to 3
+  significant figures (`0.825 s` / `1.30 s` / `12.5 s`) — a NEW,
+  sidebar-specific formatter (`wwFormatCompactDuration`); the
+  pre-existing Recordings-page duration formatter (fixed 3 decimals) is
+  untouched.
+- Default expand state (task's own explicit request): the first source
+  in the fetched list starts expanded, additional sources start
+  collapsed; within each source, Analog Channels defaults open, Digital
+  Channels now defaults COLLAPSED (a deliberate change from every
+  source's previous both-open default — large digital channel counts,
+  e.g. 538, should not dominate the initial view once multiple sources
+  can be open at once). A source/group/subgroup's own expand/collapse
+  state survives later, unrelated structural rebuilds (another source
+  added/removed) via a generic capture/restore pass keyed on each
+  `<details>` element's own `data-expand-key`
+  (`wwCaptureChannelTreeExpandState()`/`wwRestoreChannelTreeExpandState()`)
+  — never silently reset just because the DOM was rebuilt.
+- Search (`setupChannelSearch()`) now spans every source's channels at
+  once but never flattens ownership: a source with zero matches
+  collapses out of the way (same treatment a Voltage/Current sub-group
+  with zero matches already got); a source with at least one match
+  forces its own section open, with only its matching rows visible
+  underneath. Clearing search restores each level's own default state,
+  explicitly un-hiding anything a PREVIOUS search had hidden — a real,
+  pre-existing gap in the single-source version (clearing search never
+  reset a sub-group's own `hidden` flag) fixed as part of extending this
+  same logic to the new source level, not left to compound at a second
+  level.
+- **The persistent bottom-status-bar metadata panel (Station/Sample
+  rate/Duration/Displayed channels) is removed outright** — it showed
+  one source's own fields in a workspace that can now hold several, and
+  duplicated the new inline per-source summary. `shellUpdateStatusBar()`/
+  `shellUpdateStatusBarChannelCount()`/`shellSetStatusBarWaveformFieldsVisible()`
+  are deleted, not just hidden. The "Workspace" identity field and the
+  A/B/Δt cursor readout are untouched. **Underlying metadata is
+  unaffected everywhere else** — `SourceSummaryOut`/`TimebaseOut`,
+  `ww.sourceChannelsData`/`ww.sourceBounds`/`ww.sourceTiming`, and every
+  backend field remain exactly as before; this is a presentation removal
+  only.
+- **Source participation is no longer gated by a single "selected"
+  source.** `selectedSourceId` is retired; a narrower `focusedSourceId`
+  remains only as "the source most recently opened via a Recordings
+  row," used solely to decide the shared viewport's own reset heuristic
+  — never to decide which sources' channels are shown (every uploaded
+  source's data is fetched and rendered regardless of focus).
+  `wwParticipatingSourceIds()` — previously a bespoke union of the
+  selected source plus every source with a currently-displayed channel
+  — simplifies to "every key in `ww.sourceBounds`", since every uploaded
+  source now has a bounds entry the moment its `/channels` response is
+  fetched (task's own explicit "do not reintroduce the single-source
+  assumption; all uploaded sources may participate simultaneously").
+- **Optional Slice 1 (waveform time synchronization) integration,
+  included**: a subtle badge next to each source's name — "Reference"
+  for the reference source, `±N.NNN ms` for a non-reference source with
+  a non-zero alignment offset, nothing otherwise. Reads
+  `ww.alignmentOffsets`/`ww.referenceSourceId`; never mutates
+  synchronization state and never touches the Synchronize Sources modal.
+  A live-testing finding (not caught by static review): the badge did
+  not refresh when an offset changed via the modal, since offset changes
+  never rebuild the sidebar tree — fixed with a small, targeted DOM
+  patch (`wwRefreshSourceSyncBadges()`, called from
+  `wwSyncApplyOffsetChangeSideEffects()`) rather than a full tree
+  rebuild, so an offset change never disturbs the engineer's own
+  expand/collapse state or an in-progress search.
+
+Reason:
+
+The single-source "Active Recording" model (Phase 3B-UAT8) predates
+multi-source waveform display and was a deliberate simplification at the
+time ("switching is no longer possible from inside Waveform"). Once
+Waveform Time Synchronization Slice 1 made multi-source comparison a
+first-class workflow, that simplification became actively misleading —
+the sidebar implied only one recording was ever "active" even while two
+or more were genuinely participating in the shared viewport. This
+decision corrects that without touching Phase 3B-UAT8's own still-valid
+product-responsibility split (Recordings = upload/management,
+Waveform = analysis) — Recordings still owns Upload/Remove; this redesign
+only changes what the Waveform page's OWN sidebar shows once a
+recording has been opened into it.
+
+Alternatives considered:
+
+- A dropdown/tab switcher between sources (keep single-source rendering,
+  just make switching faster) — rejected: the owner's own target UX
+  model (task section 2) explicitly shows every source's hierarchy
+  simultaneously, and a switcher would still hide one source's channels
+  whenever another was being browsed, the exact problem being fixed.
+- Fetching every source's full `/channels` response lazily, only on
+  first expand — rejected in favour of eager (parallel, cached-once)
+  fetching for every uploaded source: channel search (task's own
+  explicit requirement) needs every source's channel list available to
+  search across, and `/channels` is metadata-only (no waveform sample
+  arrays) so the cost is small even for a large channel count; avoiding
+  this kept the implementation simpler with no measured performance
+  problem to justify the added complexity of a lazy-fetch/search
+  integration.
+- Keeping the bottom-status-bar fields but making them multi-source-aware
+  (e.g. a per-source dropdown) — rejected per the owner's own explicit
+  instruction: "does not carry enough value to justify the complexity of
+  making it multi-source aware."
+
+Impact:
+
+- `frontend/index.html` only — no backend file changed (every field this
+  redesign needed was already exposed via existing APIs, task section
+  18's own "prefer using metadata already exposed" instruction).
+- New frontend state: `ww.sourceChannelsData`; `selectedSourceId`
+  renamed to the narrower `focusedSourceId`.
+- New frontend functions: `wwRenderWorkspaceRecordings()`,
+  `wwEnsureSourceChannelsFetched()`, `wwRenderSourceRecordingHtml()`,
+  `wwFormatSourceSummaryLine()`, `wwFormatCompactSamplingRate()`,
+  `wwFormatCompactDuration()`, `wwSourceSyncBadgeHtml()`,
+  `wwRefreshSourceSyncBadges()`,
+  `wwCaptureChannelTreeExpandState()`/`wwRestoreChannelTreeExpandState()`,
+  `wwResetWorkspaceRecordingsPanel()`. Removed:
+  `renderActiveRecording()`, `shellUpdateStatusBar()`,
+  `shellUpdateStatusBarChannelCount()`,
+  `shellSetStatusBarWaveformFieldsVisible()`.
+- **Existing channel-selection/plotting/digital/synchronization/removal/
+  reset workflows are unchanged in mechanism** — verified both by 19 new
+  static-regression tests and by live-browser verification (Playwright,
+  real running app + real backend): two sources uploaded and opened
+  together, each with its own correctly-scoped hierarchy; search
+  spanning both with ownership preserved and correctly restored on
+  clear; one channel from each source toggled and plotted together on
+  the same shared viewport; the Synchronize Sources modal opened,
+  offset applied, sidebar badge updated live; one source removed
+  (`Recordings (2)` → `Recordings (1)`, cleanly); Start New Workspace
+  clearing all source/hierarchy state. Zero console errors across this
+  realistic click path.
+- **Known, explicitly deferred, not silently gapped**: the optional
+  source-details popover (task section 14, an info icon exposing
+  start/trigger timestamp, COMTRADE revision, detailed sampling-rate
+  sections) was not built — the task's own explicit instruction was that
+  the inline summary is mandatory and the popover is secondary, not to
+  let it delay or complicate the core redesign.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

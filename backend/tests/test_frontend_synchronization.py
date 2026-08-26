@@ -97,12 +97,20 @@ def test_digital_channels_apply_offset_at_render_time_not_fetch_time():
 
 
 def test_select_source_refreshes_offsets_before_deriving_workspace_bounds():
+    """Multi-source sidebar redesign: selectSource() no longer fetches
+    /channels or calls wwRememberSourceBoundsFromChannelsData() directly
+    -- that now happens inside wwEnsureSourceChannelsFetched(), invoked
+    (for every uploaded source) via refreshSourceList() ->
+    wwRenderWorkspaceRecordings(). The ordering guarantee this test
+    protects still holds: alignment offsets must be fetched before that
+    bounds-establishing call chain runs, so a newly-opened/re-opened
+    source's shifted extent and sync badge are correct on first render."""
     source = _source()
     select_idx = source.index("async function selectSource(sourceId)")
     select_body = source[select_idx : source.index("wwSyncChannelBrowserDisplayState();", select_idx)]
     fetch_idx = select_body.index("await wwFetchAlignmentOffsetsForWorkspace();")
-    bounds_idx = select_body.index("wwRememberSourceBoundsFromChannelsData(data)")
-    assert fetch_idx < bounds_idx
+    refresh_idx = select_body.index("await refreshSourceList();")
+    assert fetch_idx < refresh_idx
 
 
 def test_source_removal_refreshes_alignment_offsets():

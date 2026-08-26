@@ -39,9 +39,12 @@ def test_workspace_sidebar_normal_text_uses_requested_size():
 
     assert_font_size(html, "#workspaceSidebar", "0.7rem")
     assert_font_size(html, "#workspaceSidebar section.panel h2", "0.7rem")
-    assert_font_size(html, ".active-recording h2", "0.7rem")
-    assert_font_size(html, ".active-recording-name", "0.7rem")
-    assert_font_size(html, ".active-recording-meta", "0.7rem")
+    # Multi-source sidebar redesign: .active-recording/-name/-meta (the
+    # single-source "Active Recording" section) were removed; each
+    # uploaded source's own header now uses .source-recording-name/-meta
+    # instead, held to the exact same 0.7rem sidebar-text discipline.
+    assert_font_size(html, ".source-recording-name", "0.7rem")
+    assert_font_size(html, ".source-recording-meta", "0.7rem")
     assert_font_size(html, "#workspaceSidebar .empty-state", "0.7rem")
     assert_font_size(html, "table.channels", "0.7rem")
     assert_font_size(html, "table.channels caption", "0.7rem")

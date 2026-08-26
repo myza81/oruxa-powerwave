@@ -4,7 +4,9 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-26** (Phase 15 — Waveform Time
+Last meaningful update: **2026-08-26** (Phase 16 — Multi-Source
+Workspace Sidebar Redesign, on top of
+Phase 15 — Waveform Time
 Synchronization Slice 1: Manual Per-Source Alignment Offset, on top of
 Phase 14 — DEC-050 Slice 8:
 Final Migration, Regression, Performance, and UAT Hardening — DEC-050
@@ -50,6 +52,68 @@ Text Note, Phase 4D — Precision Step Zoom + Icon Toolbar Refinement,
 Waveform Time-Axis Sub-ms Precision, Waveform Adaptive Resolution, Phase
 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B,
 Phase 4A-UAT9, and Phase 4A-UAT10).
+
+`[FACT]` **Multi-Source Workspace Sidebar Redesign implemented
+(2026-08-26).** Owner UAT finding after Waveform Time Synchronization
+Slice 1: "the waveform workspace now supports multiple active
+recordings, but the left sidebar still visually behaves like a
+single-record workspace." The Workspace Sidebar's Channels area is now
+source-first: `Workspace -> Recording/Source -> Analog/Digital ->
+Signal Category -> Channel`. Every source currently uploaded to the
+workspace gets its own collapsible section ("Recordings (N)" heading,
+`N` = live source count), each with a compact inline summary
+(`12 analog · 24 digital · 5 kHz · 0.825 s`) and its own Analog/Digital
+channel hierarchy — never merged with another source's channels, never
+gated behind a single "selected" source. Replaces Phase 3B-UAT8's
+single-source "Active Recording" + "Channels" split
+(`wwRenderWorkspaceRecordings()` is the new entry point;
+`renderAnalogGroup()`/`renderDigitalGroup()`/`renderChannelTable()` and
+every existing channel-toggle/search mechanism are reused unchanged,
+called once per source). **Zero backend change** — every field needed
+(`analog_channel_count`/`digital_channel_count`/`sampling_rates`/
+`duration_seconds`) was already on the existing `GET .../sources` list
+response; each source's own channel tree uses the existing
+`GET .../sources/{id}/channels` response, fetched once per source in
+parallel and cached (immutable after upload, never re-fetched). Sampling
+rate renders as compact kHz/Hz (never the nominal grid frequency;
+"Multi-rate" for a genuine multi-rate source); duration renders to 3
+significant figures. Defaults: first source expanded/others collapsed;
+Analog Channels open/Digital Channels now collapsed by default (changed
+from both-open, since a large digital count — e.g. 538 — across
+multiple sources should not dominate the initial view); a generic
+capture/restore pass preserves any source/group/subgroup's own
+expand-state across later structural rebuilds. Search now spans every
+source but never flattens ownership (a source with zero matches
+collapses out of the way; clearing search restores every level's own
+default, including a pre-existing single-source gap fixed along the
+way: a previously-hidden sub-group no longer stays stale-hidden after
+clearing). **The persistent bottom-status-bar metadata panel (Station/
+Sample rate/Duration/Displayed channels) is removed outright** — the
+underlying metadata is untouched everywhere else; this is a
+presentation removal only. `selectedSourceId` is retired in favour of
+a narrower `focusedSourceId` (viewport-reset heuristic only, never
+gates which sources' channels are shown); `wwParticipatingSourceIds()`
+simplifies to "every key in `ww.sourceBounds`", since every uploaded
+source now has a bounds entry the moment its channels are fetched.
+Optional Slice 1 integration: a subtle "Reference"/`±N.NNN ms` badge
+per source, reading (never mutating) `ww.alignmentOffsets`/
+`ww.referenceSourceId`; a live-testing finding (badge not refreshing
+on an offset change) was fixed with a targeted DOM patch
+(`wwRefreshSourceSyncBadges()`) rather than a full tree rebuild.
+**Verified by live-browser testing** (Playwright, real running app +
+real backend): two sources uploaded/opened together with correctly
+source-scoped hierarchies; search spanning both with ownership
+preserved; one channel from each source toggled and plotted together;
+the Synchronize Sources modal applying an offset with the sidebar badge
+updating live; one source removed cleanly (`Recordings (2)` →
+`Recordings (1)`); Start New Workspace clearing all state — zero
+console errors across this realistic click path. 20 new frontend
+static-regression tests (`test_frontend_multi_source_sidebar.py`) + 3
+pre-existing frontend tests updated to match the new implementation
+details they were asserting on; full backend suite: 1294 passed, zero
+regressions (up from 1274). See
+[DECISIONS.md — DEC-054](DECISIONS.md#dec-054--the-workspace-sidebar-becomes-source-first-every-uploaded-source-gets-its-own-collapsible-hierarchy-replacing-the-single-source-active-recording-context-the-persistent-bottom-metadata-panel-is-removed)
+and [HANDOFF.md](HANDOFF.md).
 
 `[FACT]` **Waveform Time Synchronization Slice 1 implemented
 (2026-08-26) — Manual Per-Source Alignment Offset.** A genuinely new

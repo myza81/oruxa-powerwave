@@ -8,6 +8,118 @@ Last updated: **2026-08-26**
 
 ## What was most recently done
 
+**Phase 16 — Multi-Source Workspace Sidebar Redesign.** Owner UAT
+finding immediately after Phase 15 below: "the waveform workspace now
+supports multiple active recordings, but the left sidebar still
+visually behaves like a single-record workspace." See
+[DECISIONS.md — DEC-054](DECISIONS.md#dec-054--the-workspace-sidebar-becomes-source-first-every-uploaded-source-gets-its-own-collapsible-hierarchy-replacing-the-single-source-active-recording-context-the-persistent-bottom-metadata-panel-is-removed)
+and [CURRENT_STATE.md](CURRENT_STATE.md) for the full record; summarized
+here for continuity.
+
+The Workspace Sidebar's Channels area is now source-first:
+`Workspace -> Recording/Source -> Analog/Digital -> Signal Category ->
+Channel`. Replaces Phase 3B-UAT8's single-source "Active Recording" +
+"Channels" split -- every uploaded source now gets its own collapsible
+section (`Recordings (N)` heading), each with a compact inline summary
+(analog/digital counts, sampling rate, duration) and its own Analog/
+Digital hierarchy, never merged with another source's channels.
+
+**Zero backend change** -- `wwRenderWorkspaceRecordings()` (the new
+entry point) renders the per-source summary straight from the already-
+fetched `GET .../sources` list (`SourceSummaryOut` already had every
+field needed) and fetches each source's own `GET .../sources/{id}/channels`
+once, in parallel, cached forever after (immutable per source).
+`renderAnalogGroup()`/`renderDigitalGroup()`/`renderChannelTable()` and
+every existing channel-toggle/search mechanism are reused completely
+unchanged, just called once per source instead of once total.
+
+**Defaults**: first source expanded, additional sources collapsed;
+Analog Channels open, Digital Channels now collapsed by default (a
+deliberate change from the previous both-open default -- a large
+digital count, e.g. 538, should not dominate the view once several
+sources can be open at once). A generic `data-expand-key`-based
+capture/restore pass preserves any source/group/subgroup's own
+expand-state across later rebuilds (a source added/removed no longer
+silently resets everything else).
+
+**Search** now spans every source's channels but never flattens
+ownership -- a source with zero matches collapses out of the way,
+exactly like a Voltage/Current sub-group with zero matches already did;
+clearing search restores every level's own default, including a real
+pre-existing gap fixed along the way (a sub-group hidden by a previous
+search no longer stays stale-hidden after clearing).
+
+**The persistent bottom-status-bar metadata panel (Station/Sample
+rate/Duration/Displayed channels) is removed outright** -- underlying
+metadata is untouched everywhere else (`SourceSummaryOut`/
+`TimebaseOut`, `ww.sourceChannelsData`/`ww.sourceBounds`/
+`ww.sourceTiming`); this is a presentation removal only. `Workspace`
+identity and the A/B/Δt cursor readout are unaffected.
+
+**Participation model**: `selectedSourceId` retired in favour of a
+narrower `focusedSourceId` (viewport-reset heuristic only, never gates
+which sources' channels render). `wwParticipatingSourceIds()`
+simplifies to "every key in `ww.sourceBounds`" -- every uploaded source
+now gets a bounds entry the moment its channels are fetched, which now
+happens for every source, not just a single selected one.
+
+**Optional Slice 1 integration**: a subtle "Reference"/`±N.NNN ms`
+badge per source, reading (never mutating) `ww.alignmentOffsets`/
+`ww.referenceSourceId`. **Live-testing finding, fixed same pass**: the
+badge did not refresh when an offset changed via the Synchronize
+Sources modal (offset changes never rebuilt the sidebar tree) --
+fixed with a small, targeted DOM patch (`wwRefreshSourceSyncBadges()`,
+called from `wwSyncApplyOffsetChangeSideEffects()`) rather than a full
+tree rebuild, so an offset change never disturbs the engineer's own
+expand/collapse state or an in-progress search.
+
+**Verified by live-browser testing this pass** (Playwright + real
+Chromium, installed into the session's own scratchpad -- not a project
+dependency; a real running `uvicorn`/`python -m http.server` app, not a
+static check): uploaded two COMTRADE fixtures, opened both, confirmed
+each renders its own correctly-scoped hierarchy with the right compact
+summary/default-expand state; searched across both with ownership
+preserved, cleared search and confirmed the hierarchy restored
+correctly; toggled one channel from each source and confirmed both
+plot together on the shared viewport (the empty Grouped-mode
+`.ww-legend` is a **pre-existing, unrelated, intentional** Phase
+4A-UAT4 behavior -- the Channels sidebar IS the legend in Grouped/
+Custom mode, not a bug); opened the Synchronize Sources modal with two
+sources present, applied a `+1 ms` offset, confirmed the sidebar's own
+badges updated live to `Reference`/`+1.000 ms`; removed one source and
+confirmed `Recordings (2)` -> `Recordings (1)` cleanly; started a new
+workspace and confirmed the hierarchy/state cleared to empty. Zero
+console errors across this realistic click path (one non-reproducing
+transient Plotly-internal console error was chased down during this
+verification and confirmed to be a TEST-SCRIPT artifact -- an unscoped
+Playwright selector accidentally re-clicking an already-visible row
+from a different source instead of the intended, correctly-hidden-until-
+expanded row of the target source; a real user cannot trigger this,
+since a collapsed section's rows are not clickable at all; not a code
+issue, no code change was made for it).
+
+**Tests**: 20 new frontend static-regression tests
+(`test_frontend_multi_source_sidebar.py`, including one covering the
+live-testing badge-refresh fix) + 3 pre-existing frontend tests updated
+(`test_frontend_calculated_channel_time_mode.py`,
+`test_frontend_synchronization.py`,
+`test_frontend_workspace_sidebar_typography.py` -- each was asserting an
+implementation detail this redesign legitimately changed, not a
+behavior regression). Full backend suite: 1294 passed, zero
+regressions (up from 1274).
+
+**Known, explicitly deferred, not silently gapped**: the optional
+source-details popover (an info icon exposing start/trigger timestamp,
+COMTRADE revision, detailed sampling-rate sections) was not built --
+the task's own explicit instruction was that the inline summary is
+mandatory and the popover is secondary, never to let it delay or
+complicate the core redesign.
+
+**Next step**: nothing is pre-authorized. The deferred popover above is
+a candidate for a future, separate UX refinement, not a blocker.
+
+## What was done in the prior session (Phase 15 — Waveform Time Synchronization Slice 1: Manual Per-Source Alignment Offset)
+
 **Phase 15 — Waveform Time Synchronization Slice 1: Manual Per-Source
 Alignment Offset.** A new, independent feature area (not part of the
 DEC-050 Per-Unit sequence below) -- see

@@ -50,6 +50,15 @@ def test_calculated_channel_display_identity_is_not_used_as_timing_authority():
 
 
 def test_participating_sources_use_calculated_reference_source_for_bounds():
+    """Multi-source sidebar redesign: wwParticipatingSourceIds() no longer
+    needs its own per-calculated-channel wwTimingSourceIdForDisplaySourceId()
+    resolution loop -- every source a calculated channel could possibly be
+    grounded on is now unconditionally present in ww.sourceBounds the
+    moment it is uploaded (wwEnsureSourceChannelsFetched() fetches EVERY
+    source's own timebase eagerly, not only a single selected one), so
+    "every key in ww.sourceBounds" already IS "every participating real
+    source, including every calculated channel's own reference source" --
+    see wwParticipatingSourceIds()'s own updated comment."""
     source = _source()
     body = _function_body(
         source,
@@ -57,9 +66,7 @@ def test_participating_sources_use_calculated_reference_source_for_bounds():
         "function wwDeriveWorkspaceBounds()",
     )
 
-    assert "wwTimingSourceIdForDisplaySourceId(channel.sourceId)" in body
-    assert "ww.sourceBounds.has(timingSourceId)" in body
-    assert "ids.add(timingSourceId)" in body
+    assert "return new Set(ww.sourceBounds.keys());" in body
 
 
 def test_calculated_channel_absolute_time_mode_remains_presentation_only():

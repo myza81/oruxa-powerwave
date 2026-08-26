@@ -603,7 +603,7 @@
            stylesheet's default `[hidden] { display: none }` rule by
            ORIGIN alone (author always wins over UA, regardless of
            specificity or source order), so without this override,
-           shellSetStatusBarWaveformFieldsVisible()'s `.hidden = true`
+           wwUpdateCursorOverlay()'s own `#wwCursorReadout.hidden = true`
            would have no visible effect at all. */
         #bottomStatusBar .shell-status-item[hidden] { display: none; }
         #bottomStatusBar .shell-status-label { text-transform: uppercase; letter-spacing: 0.03em; }
@@ -1519,36 +1519,66 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* Phase 3B-UAT8: replaces the old multi-source list/card
-           (ul.source-list, a clickable-with-a-Remove-button-per-row
-           management list) -- Active Recording is read-only context, not
-           a management surface (that's Recordings' job now), so it gets
-           a small restrained section instead of a bordered .panel card
-           (section 19's own "is the heavy card still necessary?"
-           review -- it isn't, once there's nothing left to manage here). */
-        .active-recording {
-            padding: 10px;
-            margin-bottom: 14px;
-            border-bottom: 1px solid var(--panel-border);
+        /* Multi-source sidebar redesign (replaces Phase 3B-UAT8's
+           single-source "Active Recording" section, which itself replaced
+           the original ul.source-list management list -- see Git history
+           for both). Each uploaded source is its own collapsible
+           `<details class="source-recording">`, styled as a bolder outer
+           sibling of `details.channel-group` below (same border/radius/
+           summary language, one visual "size" larger since a source is
+           conceptually a level above Analog/Digital). Name + compact
+           metadata line live TOGETHER inside `<summary>` (never a sibling
+           of it), so both stay visible whether the source is collapsed or
+           expanded -- "what recordings are in my workspace, what are
+           their key characteristics" must never require expanding
+           anything to answer. */
+        details.source-recording {
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            margin-bottom: 12px;
+            overflow: hidden;
         }
-        .active-recording h2 {
-            font-size: 0.7rem;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            color: var(--text-dim);
-            margin: 0 0 6px;
+        details.source-recording[hidden] { display: none; }
+        details.source-recording > summary {
+            list-style: none;
+            cursor: pointer;
+            padding: 10px 14px;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            user-select: none;
+            background: var(--surface-tint);
         }
+        details.source-recording > summary .chevron { margin-top: 2px; }
         /* Phase 3A-UAT4 containment precedent, carried forward: recording
            names come straight from imported files/real station names and
            can be long/unbroken -- wrap in place, never overflow the
-           Workspace Sidebar. No flex-item min-width trap here (.active-
-           recording is a plain block section, not display:flex), so
-           overflow-wrap alone is sufficient; max-width:100% is kept as
-           the same defensive belt-and-braces cap used everywhere else
-           this containment pattern appears. */
-        .active-recording-name { font-size: 0.7rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; max-width: 100%; }
-        .active-recording-meta { font-size: 0.7rem; color: var(--text-dim); margin-top: 2px; }
-        .active-recording .empty-state { padding: 0; text-align: left; font-size: 0.7rem; }
+           Workspace Sidebar. min-width:0 is required here (this IS a flex
+           item, unlike the old .active-recording block) so overflow-wrap
+           can actually take effect instead of forcing the row wider. */
+        .source-recording-header-text { min-width: 0; flex: 1 1 auto; }
+        .source-recording-name { font-size: 0.7rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+        .source-recording-meta { font-size: 0.7rem; color: var(--text-dim); margin-top: 2px; font-variant-numeric: tabular-nums; }
+        /* Slice 1 (waveform time synchronization) integration, optional
+           per that task's own section 15 -- a subtle badge only, never a
+           redesign of the Synchronize Sources modal itself. */
+        .source-recording-sync-badge {
+            font-size: 0.6rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            padding: 1px 7px;
+            border-radius: 999px;
+            white-space: nowrap;
+            flex-shrink: 0;
+            margin-top: 1px;
+            background: var(--surface-tint);
+            color: var(--text-dim);
+            border: 1px solid var(--panel-border);
+        }
+        .source-recording-sync-badge--reference { background: var(--accent-wash-soft); color: var(--accent); border-color: var(--accent-dim); }
+        details.source-recording .source-recording-body { padding: 10px 10px 4px; }
+        details.source-recording .source-recording-body .channel-group:last-child { margin-bottom: 0; }
 
         .empty-state {
             color: var(--text-dim);
@@ -3310,33 +3340,29 @@
                     <!-- Phase 3B: the always-visible "Import COMTRADE Event"
                          form that used to live here has moved into the
                          Recordings page's "Upload New" modal (section 16).
-                         Phase 3B-UAT8 (owner product-responsibility rule --
-                         Recordings = recording management, Waveform =
-                         active recording context + channel
-                         analysis): the multi-source management list that
-                         used to live here (click-to-switch, a Remove
-                         button per source) duplicated Recordings' own
-                         row-click-to-open/Remove -- replaced with a
-                         compact, read-only "Active Recording" context
-                         reflecting whichever source is currently selected
-                         (selectSource()'s existing `selectedSourceId`,
-                         unchanged) -- see renderActiveRecording(). To
-                         browse a DIFFERENT recording's channels, the user
-                         goes back to Recordings and opens that row --
-                         switching is no longer possible from inside
-                         Waveform, which is the deliberate, owner-directed
-                         behavior change this section implements. -->
-                    <section class="active-recording" aria-labelledby="active-recording-heading">
-                        <h2 id="active-recording-heading">Active Recording</h2>
-                        <div id="activeRecordingContent">
-                            <p class="empty-state" id="activeRecordingEmpty">No active recording. Open a recording from Recordings.</p>
-                        </div>
-                    </section>
-
+                         Multi-source sidebar redesign (owner UAT finding
+                         after Waveform Time Synchronization Slice 1: "the
+                         waveform workspace now supports multiple active
+                         recordings, but the left sidebar still visually
+                         behaves like a single-record workspace"):
+                         Phase 3B-UAT8's own single-source "Active
+                         Recording" context (see Git history for the
+                         retired section this replaced) is gone -- EVERY
+                         source currently uploaded to this workspace gets
+                         its own collapsible section here, each with its
+                         own compact summary line and its own Analog/
+                         Digital channel hierarchy nested underneath (never
+                         merged with another source's channels). See
+                         wwRenderWorkspaceRecordings()'s own module
+                         docstring for the full hierarchy/fetch/caching
+                         model. Recordings management (upload/remove) still
+                         lives on the Recordings page, unchanged -- this is
+                         a read/browse/display surface, same
+                         product-responsibility split as before. -->
                     <section class="panel" aria-labelledby="channels-heading">
-                        <h2 id="channels-heading">Channels</h2>
+                        <h2 id="channels-heading">Recordings <span id="wwRecordingsCountBadge" class="count-badge">(0)</span></h2>
                         <div id="channelsPanel">
-                            <p class="empty-state">Select a recording from Recordings to see its channels here.</p>
+                            <p class="empty-state">No recordings loaded yet. Upload one from Recordings.</p>
                         </div>
                     </section>
 
@@ -4018,22 +4044,20 @@
                  Workspace Row inside Work Area -- see the CSS comment
                  above #bottomStatusBar for why this specific nesting is
                  what keeps it from ever running under Main Sidebar Menu.
-                 Real, already-available values only -- see
-                 shellUpdateStatusBar()/shellUpdateStatusBarChannelCount(). -->
+                 Real, already-available values only. Multi-source sidebar
+                 redesign: the old Station/Sample rate/Duration/Displayed
+                 channels fields (single-source only, section 13 of that
+                 task) were removed here -- each source's own station
+                 name/sample rate/duration now appears inline in its own
+                 Recordings sidebar header instead (see
+                 wwFormatSourceSummaryLine()), and "Displayed channels" did
+                 not generalize to multiple sources cleanly enough to be
+                 worth keeping. The underlying metadata is untouched
+                 everywhere else (SourceSummaryOut/TimebaseOut, this app's
+                 own ww.sourceChannelsData/ww.sourceBounds/ww.sourceTiming) --
+                 this is a presentation removal only. -->
             <div id="bottomStatusBar">
                 <span class="shell-status-item"><span class="shell-status-label">Workspace</span><span class="shell-status-value" id="statusBarWorkspaceId">&mdash;</span></span>
-                <!-- Phase 3B: these four are specifically about the active
-                     waveform analysis context -- shellSetStatusBarWaveformFieldsVisible()
-                     hides them while shell.currentPage is "recordings"
-                     (section 20: don't show misleading waveform-only
-                     values when no recording is actively being analysed
-                     there). "Workspace" above stays visible on both
-                     pages -- it's workspace-level identity, not
-                     waveform-specific. -->
-                <span class="shell-status-item shell-status-item-waveform"><span class="shell-status-label">Station</span><span class="shell-status-value" id="statusBarStation">&mdash;</span></span>
-                <span class="shell-status-item shell-status-item-waveform"><span class="shell-status-label">Sample rate</span><span class="shell-status-value" id="statusBarSampleRate">&mdash;</span></span>
-                <span class="shell-status-item shell-status-item-waveform"><span class="shell-status-label">Duration</span><span class="shell-status-value" id="statusBarDuration">&mdash;</span></span>
-                <span class="shell-status-item shell-status-item-waveform"><span class="shell-status-label">Displayed channels</span><span class="shell-status-value" id="statusBarChannelCount">0</span></span>
                 <!-- Phase 4B: A/B/Δt measurement readout -- pushed to the
                      RIGHT side of the status bar (owner requirement) via
                      the flex spacer below, rather than a floating dialog.
@@ -4414,11 +4438,11 @@
         // much later in this file) -- section 28 of that phase's own
         // instructions: nothing in this section ever reads or writes `ww`
         // directly. Where the shell needs to reflect a waveform-domain
-        // fact (e.g. the Bottom Status Bar's displayed-channel count), the
-        // OWNING waveform code calls a small shell setter explicitly
-        // (shellUpdateStatusBarChannelCount()) rather than the shell
-        // reaching in on its own -- a narrow, one-way dependency, not a
-        // merge of the two state models. This keeps the shell reusable for
+        // fact (e.g. the Bottom Status Bar's own A/B/Δt cursor readout,
+        // see wwUpdateCursorOverlay()), the OWNING waveform code writes it
+        // explicitly rather than the shell reaching in on its own -- a
+        // narrow, one-way dependency, not a merge of the two state
+        // models. This keeps the shell reusable for
         // a future Table/Split view that has nothing to do with `ww` at
         // all.
         // ------------------------------------------------------------------
@@ -4679,8 +4703,6 @@
             document.getElementById("shellViewToggle").style.display = page === "waveform" ? "" : "none";
             document.getElementById("shellSidebarToggleBtn").style.display = page === "waveform" ? "" : "none";
 
-            shellSetStatusBarWaveformFieldsVisible(page === "waveform");
-
             if (page === "waveform" && !wasWaveform) {
                 // Section 3A-UAT3 Finding E's exact reasoning applies one
                 // level up here too: the whole workspace row was hidden,
@@ -4713,44 +4735,6 @@
         // has no effect outside that media query. ----
         function shellSetSidebarDrawerOpen(open) {
             document.getElementById("workspaceRow").classList.toggle("shell-sidebar-open", open);
-        }
-
-        // ---- Bottom Status Bar (section 17/18): real, already-available
-        // values only -- never fabricated. Two independent update points,
-        // matching the two independent facts it shows: which SOURCE is
-        // currently selected (station/sample rate/duration, sourced from
-        // renderChannels()'s own already-fetched data -- no new API call)
-        // and how many channels are currently DISPLAYED in the waveform
-        // workspace (ww.displayed.size, read -- never mutated -- from the
-        // existing call sites that already track that count changing). ----
-        function shellUpdateStatusBar(source, timebase) {
-            const stationEl = document.getElementById("statusBarStation");
-            const rateEl = document.getElementById("statusBarSampleRate");
-            const durationEl = document.getElementById("statusBarDuration");
-            if (!source || !timebase) {
-                stationEl.textContent = "—";
-                rateEl.textContent = "—";
-                durationEl.textContent = "—";
-                return;
-            }
-            stationEl.textContent = source.station_name || "—";
-            rateEl.textContent = timebase.sampling_rates.map((r) => r + " Hz").join(", ");
-            durationEl.textContent = timebase.duration_seconds.toFixed(3) + " s";
-        }
-
-        function shellUpdateStatusBarChannelCount(count) {
-            document.getElementById("statusBarChannelCount").textContent = String(count);
-        }
-
-        // Phase 3B (section 20): only hides/shows the status items --
-        // never clears their stored values, so returning to the Waveform
-        // page instantly shows the correct last-known values again with
-        // zero recomputation (no Status Bar redesign, per this task's own
-        // explicit instruction).
-        function shellSetStatusBarWaveformFieldsVisible(visible) {
-            document.querySelectorAll(".shell-status-item-waveform").forEach((el) => {
-                el.hidden = !visible;
-            });
         }
 
         // ------------------------------------------------------------------
@@ -4847,10 +4831,10 @@
             // so nothing in it remains valid. See
             // docs/project-memory/DECISIONS.md DEC-018.
             localStorage.setItem(WORKSPACE_STORAGE_KEY, crypto.randomUUID());
-            selectedSourceId = null;
+            focusedSourceId = null;
             lastImportedSourceId = null;
             clearUploadStatus();
-            renderChannels(null);
+            wwResetWorkspaceRecordingsPanel();
             wwClearWorkspace({ resetSourceBounds: true });
             document.getElementById("statusBarWorkspaceId").textContent = currentWorkspaceId();
             await refreshAllSourceViews();
@@ -4876,7 +4860,19 @@
         // ------------------------------------------------------------------
         // Upload
         // ------------------------------------------------------------------
-        let selectedSourceId = null;
+        // Multi-source sidebar redesign: EVERY uploaded source now gets
+        // its own always-visible section in the Workspace Sidebar (see
+        // wwRenderWorkspaceRecordings()) -- there is no longer a single
+        // "the" selected/active source the sidebar is scoped to. This
+        // variable keeps a narrower, internal meaning: the source most
+        // recently opened via openRecordingForAnalysis() (a Recordings
+        // row's "Open" action), used only to decide whether opening it
+        // again should reset the shared viewport (wwRefreshWorkspaceBounds()'s
+        // own `resetViewport` heuristic) and, cosmetically, which
+        // source's own section to bring into view/expand by default.
+        // Never read to decide which source's channels are SHOWN in the
+        // sidebar -- that is always every source in ww.sourceChannelsData.
+        let focusedSourceId = null;
 
         // Phase 3B-UAT8: how many sources currently exist in this
         // workspace (ANY source, not just the selected/active one) --
@@ -5092,51 +5088,31 @@
             return null;
         }
 
-        // Refreshes BOTH the Workspace Sidebar's Active Recording context
-        // and the Recordings page's table together, from one fetch --
-        // called at every point that actually changes the source set
-        // (upload success, remove, workspace reset) so neither view can
-        // drift out of sync with the other regardless of which page is
-        // currently active (section 18).
+        // Refreshes BOTH the Workspace Sidebar's multi-source Recordings
+        // hierarchy (wwRenderWorkspaceRecordings(), see its own module
+        // header comment) and the Recordings page's table together, from
+        // one fetch -- called at every point that actually changes the
+        // source set (upload success, remove, workspace reset) so neither
+        // view can drift out of sync with the other regardless of which
+        // page is currently active.
         async function refreshAllSourceViews() {
             const sources = await fetchSourcesList();
             latestSourcesCount = (sources || []).length;
-            renderActiveRecording(sources || []);
+            await wwRenderWorkspaceRecordings(sources || []);
             renderRecordingsTable(sources || []);
         }
 
+        // Returns wwRenderWorkspaceRecordings()'s own "any source's
+        // channel data was genuinely fetched for the first time this
+        // call" signal -- selectSource() uses it to decide whether the
+        // shared viewport should reset (a source is only "new" to the
+        // workspace once, so this can never spuriously fire on a plain
+        // re-render of already-known sources).
         async function refreshSourceList() {
             const sources = await fetchSourcesList();
-            if (sources !== null) {
-                latestSourcesCount = sources.length;
-                renderActiveRecording(sources);
-            }
-        }
-
-        // Phase 3B-UAT8: replaces the old renderSourceListItems() (a
-        // clickable list of EVERY source, each with its own Remove
-        // button -- source management that duplicated Recordings).
-        // Read-only: renders ONLY whichever source `selectedSourceId`
-        // currently names (the same selection selectSource() already
-        // manages, untouched) -- no source-switching UI, no Remove
-        // button. Zero extra fetch: `sources` is the SAME already-
-        // fetched list refreshAllSourceViews()/refreshSourceList() just
-        // received, and `selectedSourceId`'s own channel data (fetched
-        // separately by selectSource() -- unchanged) is not touched
-        // here at all, so this never depends on or triggers a
-        // `.../channels` request just to show the recording's name/
-        // channel counts.
-        function renderActiveRecording(sources) {
-            const contentEl = document.getElementById("activeRecordingContent");
-            const source = sources.find((s) => s.source_id === selectedSourceId);
-            if (!source) {
-                contentEl.innerHTML = '<p class="empty-state" id="activeRecordingEmpty">No active recording. Open a recording from Recordings.</p>';
-                return;
-            }
-            contentEl.innerHTML =
-                '<div class="active-recording-name">' + escapeHtml(recordingDisplayName(source)) + '</div>' +
-                '<div class="active-recording-meta">' + source.analog_channel_count + ' analog &middot; ' +
-                source.digital_channel_count + ' digital</div>';
+            if (sources === null) return false;
+            latestSourcesCount = sources.length;
+            return await wwRenderWorkspaceRecordings(sources);
         }
 
         // ------------------------------------------------------------------
@@ -5597,14 +5573,21 @@
                 "/sources/" + encodeURIComponent(sourceId),
                 { method: "DELETE" }
             );
-            if (selectedSourceId === sourceId) {
-                selectedSourceId = null;
-                renderChannels(null);
+            if (focusedSourceId === sourceId) {
+                focusedSourceId = null;
             }
             // Phase 5A-UAT3 (section 12): this source is gone -- its
             // channels must disappear from the Calculated Channels
             // candidate inventory too, never linger as a stale option.
             ww.sourceChannelInventory.delete(sourceId);
+            // Multi-source sidebar redesign: same cleanup, for the full
+            // cached /channels response this source's own sidebar
+            // section was built from -- wwRenderWorkspaceRecordings()
+            // below (via refreshAllSourceViews()) also reconciles this
+            // generically against the fresh source list, but deleting it
+            // explicitly here keeps this call site symmetrical with the
+            // two lines immediately around it.
+            ww.sourceChannelsData.delete(sourceId);
             ww.sourceTiming.delete(sourceId);
             // Slice 1 of waveform time synchronization: the backend
             // already released this source's own alignment offset via the
@@ -5665,74 +5648,61 @@
             // not sufficient (owner UAT: the loader "does not appear").
             await wwYieldToPaint();
             try {
-                const previousSelectedSourceId = selectedSourceId;
-                selectedSourceId = sourceId;
-                await refreshSourceList();
+                const previousFocusedSourceId = focusedSourceId;
+                focusedSourceId = sourceId;
 
-                const panel = document.getElementById("channelsPanel");
-                panel.innerHTML = '<p class="empty-state"><span class="spinner"></span>Loading channels&hellip;</p>';
+                // Slice 1: refresh the workspace's alignment-offset cache
+                // BEFORE building the sidebar below -- both workspace-
+                // bounds derivation (wwDeriveWorkspaceBounds()) and each
+                // source's own optional sync badge
+                // (wwSourceSyncBadgeHtml()) read ww.alignmentOffsets, so
+                // this must resolve first for a newly-opened/re-opened
+                // source's shifted extent/badge to be reflected
+                // immediately, not just after the next manual offset
+                // change.
+                await wwFetchAlignmentOffsetsForWorkspace();
 
-                const response = await fetch(
-                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
-                    "/sources/" + encodeURIComponent(sourceId) + "/channels"
-                );
-                if (!response.ok) {
-                    panel.innerHTML = '<p class="empty-state">Could not load this source’s channels.</p>';
+                // Multi-source sidebar redesign: refreshSourceList() now
+                // fetches/caches EVERY uploaded source's own /channels
+                // response (not only this one) and rebuilds the whole
+                // Recordings hierarchy -- see wwRenderWorkspaceRecordings()'s
+                // own module header comment. Its own return value tells
+                // us whether ANY source (this one included) was genuinely
+                // new to the cache this call, which is what "opening a
+                // recording should establish fresh bounds" actually means
+                // now that every source, not just one, can be new.
+                const anyNewlyFetched = await refreshSourceList();
+
+                if (!ww.sourceChannelsData.has(sourceId)) {
+                    // This specific source's own fetch failed -- its own
+                    // section (if the source still exists at all) already
+                    // shows "Could not load channels for this recording"
+                    // (wwRenderSourceRecordingHtml()); nothing further to
+                    // do here.
                     return;
                 }
-                const data = await response.json();
-                renderChannels(data);
-                // Phase 5A-UAT3 (DEC-047 clarification): cache this
-                // source's COMPLETE analog-channel inventory for the
-                // Calculated Channels builder -- independent of which
-                // individual rows the engineer goes on to toggle visible.
-                // Reuses the response already fetched for the Channel
-                // Browser above; no extra request. See
-                // ww.sourceChannelInventory's own comment.
-                ww.sourceChannelInventory.set(sourceId, {
-                    sourceId, sourceName: data.source.station_name,
-                    analogChannels: data.analog_channels,
-                    // Phase 5B UAT (DEC-048 clarification): the source's own
-                    // declared nominal frequency (COMTRADE CFG's mandatory
-                    // "lf" line, app.domain.source.SourceMetadata.
-                    // nominal_frequency) -- already reused, no new request.
-                    // Already shown unconditionally as an authoritative fact
-                    // in the Recordings page's own detail card (see
-                    // renderRecordingDetails()'s own "Nominal frequency"
-                    // row), so RMS's own Nominal Frequency field treats it
-                    // with the same trust, never re-deriving or guessing it.
-                    nominalFrequency: data.source.nominal_frequency,
-                });
-                wwRememberSourceTimingFromChannelsData(data);
-                // Slice 1: refresh the workspace's alignment-offset cache
-                // BEFORE deriving workspace bounds below -- bounds
-                // derivation (wwDeriveWorkspaceBounds()) reads
-                // ww.alignmentOffsets, so this must resolve first for a
-                // newly-opened/re-opened source's shifted extent to be
-                // reflected immediately, not just after the next manual
-                // offset change.
-                await wwFetchAlignmentOffsetsForWorkspace();
+
                 // Phase 4A-UAT10: opening/selecting a source establishes
                 // that source's true elapsed bounds immediately from the
                 // backend timebase metadata, even with zero channels visible.
-                // A newly-selected source resets the view to the derived
-                // participating-source workspace extent; re-opening the same
-                // source (page navigation or sidebar refresh) preserves the
-                // user's current viewport.
-                const boundsChanged = wwRememberSourceBoundsFromChannelsData(data);
+                // Opening a genuinely new (previously-unfetched) source
+                // resets the view to the derived participating-source
+                // workspace extent; re-opening an already-known source
+                // preserves the user's current viewport.
                 await wwRefreshWorkspaceBounds({
-                    resetViewport: previousSelectedSourceId !== sourceId || !ww.viewport || boundsChanged,
+                    resetViewport: previousFocusedSourceId !== sourceId || !ww.viewport || anyNewlyFetched,
                 });
                 // Phase 4A-UAT9: opening a source no longer auto-displays
                 // any channel (see this task's own product rule -- default
                 // visibility is now zero, opt-in only, to keep opening a
-                // recording lightweight). renderChannels() just rebuilt
-                // the channel table from scratch, so every row starts as
+                // recording lightweight). wwRenderWorkspaceRecordings()
+                // (inside refreshSourceList() above) just rebuilt the
+                // whole channel tree from scratch, so every row starts as
                 // "not displayed" via its own initial markup -- correct
                 // for a genuinely new source, but this sync is still
-                // needed when RE-opening/re-selecting an ALREADY-open
-                // source whose channels the user has since toggled, so the
-                // sidebar reflects the TRUE current ww.displayed/
+                // needed when RE-opening an ALREADY-open source whose
+                // channels the user has since toggled, so the sidebar
+                // reflects the TRUE current ww.displayed/
                 // ww.digitalDisplayed state rather than the fresh-row
                 // default.
                 wwSyncChannelBrowserDisplayState();
@@ -5754,51 +5724,279 @@
         // never silently disappears from the UI.
         const ANALOG_GROUP_ORDER = ["Voltage", "Current", "Power", "Frequency", "ROCOF", "Undefined"];
 
-        function renderChannels(data) {
+        // ------------------------------------------------------------------
+        // Multi-source sidebar redesign
+        //
+        // Owner UAT finding after Waveform Time Synchronization Slice 1:
+        // "the waveform workspace now supports multiple active
+        // recordings, but the left sidebar still visually behaves like a
+        // single-record workspace." Replaces Phase 3B-UAT8's single-
+        // source "Active Recording" + "Channels" split with ONE
+        // source-first hierarchy:
+        //
+        //     Workspace -> Recording/Source -> Analog/Digital -> Signal Category -> Channel
+        //
+        // EVERY source currently uploaded to the workspace gets its own
+        // collapsible `<details class="source-recording">`, in the same
+        // order `GET .../sources` already returns them -- never merged,
+        // never gated behind a single "selected" source (task section 4/12).
+        // Each source's compact summary line (analog/digital counts,
+        // sampling rate, duration) renders straight from the
+        // already-fetched `GET .../sources` list (`SourceSummaryOut`
+        // already carries all four fields -- zero extra requests, see
+        // wwFormatSourceSummaryLine()). Each source's full Analog/Digital
+        // channel TREE additionally needs that source's own
+        // `GET .../sources/{id}/channels` response (channel names/phase/
+        // engineering_type/classification aren't on `SourceSummaryOut`)
+        // -- fetched once per source, in parallel, and cached in
+        // ww.sourceChannelsData (wwEnsureSourceChannelsFetched() below is
+        // a no-op for an already-cached source, since a source's own
+        // channel metadata never changes after upload).
+        //
+        // Reuses renderAnalogGroup()/renderDigitalGroup()/renderChannelTable()
+        // completely unchanged in mechanism -- called once per source
+        // instead of once total. Their own rows already carry every
+        // per-row data-source-id needed for correct multi-source toggle/
+        // search behaviour (see analogChannelRowAttrs()/digitalChannelRowAttrs());
+        // wwToggleChannelGroupDisplay()'s own membership resolution
+        // (button.closest("details.channel-subgroup")) is DOM-tree-scoped,
+        // not attribute-value-keyed, so two sources sharing a subgroup
+        // name (e.g. both having a "Voltage" group) were ALREADY safe
+        // before this change and remain so -- no new scoping logic was
+        // needed there.
+        // ------------------------------------------------------------------
+
+        // Fetches and caches one source's full channel list (idempotent --
+        // a source already present in ww.sourceChannelsData is never
+        // re-fetched). Returns true only when a genuinely NEW fetch
+        // happened, so callers can distinguish "already knew about this
+        // source" from "just learned about it" (wwRenderWorkspaceRecordings()'s
+        // own return value, used by selectSource()'s resetViewport
+        // decision).
+        async function wwEnsureSourceChannelsFetched(sourceId) {
+            if (ww.sourceChannelsData.has(sourceId)) return false;
+            let response;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                    "/sources/" + encodeURIComponent(sourceId) + "/channels"
+                );
+            } catch (error) {
+                return false;
+            }
+            if (!response.ok) return false;
+            const data = await response.json();
+            ww.sourceChannelsData.set(sourceId, data);
+            // Phase 5A-UAT3 (DEC-047 clarification): the SAME cache this
+            // source's complete analog-channel inventory step
+            // selectSource() always ran -- now runs for every uploaded
+            // source, not only the one most recently opened, so the
+            // Calculated Channels builder's own input picker
+            // (wwCcAvailableCandidates()) sees every source's channels
+            // immediately (a strict widening of an already-established
+            // rule -- input availability was already independent of
+            // Waveform visibility, see ww.sourceChannelInventory's own
+            // comment above -- never a new eligibility rule).
+            ww.sourceChannelInventory.set(sourceId, {
+                sourceId, sourceName: data.source.station_name,
+                analogChannels: data.analog_channels,
+                nominalFrequency: data.source.nominal_frequency,
+            });
+            wwRememberSourceTimingFromChannelsData(data);
+            wwRememberSourceBoundsFromChannelsData(data);
+            return true;
+        }
+
+        // Sampling rate, formatted compactly for the source summary line
+        // (task's own section 6): whole/decimal kHz once the recording's
+        // own rate is >= 1000 Hz (5000 -> "5 kHz", 10000 -> "10 kHz"),
+        // plain Hz below that (50 -> "50 Hz"). A source with more than
+        // one distinct sampling-rate SECTION (genuine COMTRADE multi-rate,
+        // `sampling_rates.length > 1`) has no single unambiguous value to
+        // show -- rather than inventing one (e.g. picking the first
+        // section, or averaging), this renders "Multi-rate" explicitly,
+        // per the task's own explicit instruction. Never the nominal grid
+        // frequency (SourceMetadata.nominal_frequency, a completely
+        // separate field this function never reads) -- always the
+        // RECORDING's own sampling_rates.
+        function wwFormatCompactSamplingRate(samplingRates) {
+            if (!Array.isArray(samplingRates) || samplingRates.length === 0) return "—";
+            if (samplingRates.length > 1) return "Multi-rate";
+            const hz = samplingRates[0];
+            if (!Number.isFinite(hz) || hz <= 0) return "—";
+            if (hz >= 1000) return (Math.round((hz / 1000) * 100) / 100) + " kHz";
+            return Math.round(hz) + " Hz";
+        }
+
+        // Recording duration, formatted compactly for the source summary
+        // line (task's own section 7): 3 significant figures (0.825 s /
+        // 1.30 s / 12.5 s -- exactly the task's own worked examples),
+        // never touching the underlying duration_seconds value itself.
+        // Durations at or above 1000 s fall back to a whole-second
+        // display -- toPrecision(3) alone would switch to exponential
+        // notation there, never desirable for a duration. A DIFFERENT,
+        // deliberately more generous formatter (formatRecordingDuration(),
+        // fixed 3 decimals) already exists for the Recordings page's own
+        // table/Details panel -- left completely untouched; this is a new,
+        // sidebar-specific formatter, not a global behaviour change.
+        function wwFormatCompactDuration(seconds) {
+            if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) return "—";
+            if (seconds >= 1000) return Math.round(seconds) + " s";
+            return seconds.toPrecision(3) + " s";
+        }
+
+        function wwFormatSourceSummaryLine(source) {
+            return source.analog_channel_count + " analog &middot; " + source.digital_channel_count + " digital &middot; " +
+                escapeHtml(wwFormatCompactSamplingRate(source.sampling_rates)) + " &middot; " +
+                escapeHtml(wwFormatCompactDuration(source.duration_seconds));
+        }
+
+        // Slice 1 of waveform time synchronization integration (that
+        // task's own section 15, explicitly optional): a subtle badge
+        // only, reading already-fetched ww.alignmentOffsets/
+        // ww.referenceSourceId state -- never mutating it, never touching
+        // the Synchronize Sources modal. Empty string (no badge at all)
+        // for the common case of an unshifted, non-reference source (or
+        // before synchronization state has ever been fetched), so a
+        // workspace that has never touched synchronization shows no
+        // visual clutter.
+        function wwSourceSyncBadgeHtml(sourceId) {
+            if (!ww.referenceSourceId) return "";
+            if (sourceId === ww.referenceSourceId) {
+                return '<span class="source-recording-sync-badge source-recording-sync-badge--reference">Reference</span>';
+            }
+            const offsetS = wwAlignmentOffsetForSource(sourceId);
+            if (offsetS === 0) return "";
+            const ms = offsetS * 1000;
+            const sign = ms > 0 ? "+" : "";
+            return '<span class="source-recording-sync-badge">' + escapeHtml(sign + ms.toFixed(3) + " ms") + '</span>';
+        }
+
+        // Generic <details> open/closed state capture, keyed by each
+        // element's own `data-expand-key` (unique within #channelGroups --
+        // source/group/subgroup levels each set one, see
+        // renderAnalogGroup()/renderDigitalGroup() and
+        // wwRenderSourceRecordingHtml() below). #channelsPanel is fully
+        // replaced via innerHTML on every structural rebuild (a source
+        // added/removed, a newly-opened source's data arriving -- the
+        // same pattern the old single-source renderChannels() always
+        // used), so without this, EVERY such rebuild would silently
+        // revert every <details> in the WHOLE tree to its just-rendered
+        // default, discarding whatever the engineer had expanded/
+        // collapsed elsewhere.
+        function wwCaptureChannelTreeExpandState() {
+            const state = new Map();
+            for (const el of document.querySelectorAll("#channelGroups details[data-expand-key]")) {
+                state.set(el.dataset.expandKey, el.open);
+            }
+            return state;
+        }
+
+        function wwRestoreChannelTreeExpandState(state) {
+            for (const el of document.querySelectorAll("#channelGroups details[data-expand-key]")) {
+                const key = el.dataset.expandKey;
+                if (state.has(key)) el.open = state.get(key);
+                // else: a genuinely new element (first time this source/
+                // group is seen) -- leave the just-rendered default as-is.
+            }
+        }
+
+        // Task section 11: "first source expanded, additional sources
+        // collapsed" -- decided purely by this source's own position in
+        // the CURRENT sources list at render time; wwRestoreChannelTreeExpandState()
+        // above then preserves whatever the engineer does with it across
+        // later, unrelated rebuilds (e.g. a second source's data
+        // arriving).
+        function wwRenderSourceRecordingHtml(sourceSummary, isFirst) {
+            const sourceId = sourceSummary.source_id;
+            const data = ww.sourceChannelsData.get(sourceId);
+            const body = data
+                ? renderAnalogGroup(data.analog_channels, data.source, data.timebase) +
+                  renderDigitalGroup(data.digital_channels, data.source, data.timebase)
+                : '<p class="empty-state">Could not load channels for this recording.</p>';
+
+            return '<details class="source-recording" data-source-id="' + escapeHtml(sourceId) + '"' +
+                ' data-expand-key="source:' + escapeHtml(sourceId) + '" data-default-open="' + isFirst + '"' +
+                (isFirst ? ' open' : '') + '>' +
+                '<summary>' +
+                    '<span class="chevron">&#9656;</span>' +
+                    '<span class="source-recording-header-text">' +
+                        '<span class="source-recording-name">' + escapeHtml(recordingDisplayName(sourceSummary)) + '</span>' +
+                        '<span class="source-recording-meta">' + wwFormatSourceSummaryLine(sourceSummary) + '</span>' +
+                    '</span>' +
+                    wwSourceSyncBadgeHtml(sourceId) +
+                '</summary>' +
+                '<div class="source-recording-body">' + body + '</div>' +
+                '</details>';
+        }
+
+        // The one entry point that (re)builds the ENTIRE multi-source
+        // Recordings hierarchy in the Workspace Sidebar -- see this
+        // section's own header comment for the full model. Safe to call
+        // repeatedly/redundantly (upload, remove, workspace reset, and
+        // every source open all funnel through refreshAllSourceViews()/
+        // refreshSourceList() into this) -- an already-cached source
+        // costs zero extra network requests. Returns true if any source's
+        // channel data was genuinely fetched for the first time this
+        // call (used by selectSource()'s own resetViewport decision).
+        async function wwRenderWorkspaceRecordings(sources) {
             const panel = document.getElementById("channelsPanel");
-            if (!data) {
-                panel.innerHTML = '<p class="empty-state">Select a recording from Recordings to see its channels here.</p>';
-                shellUpdateStatusBar(null, null);
-                return;
+            const badge = document.getElementById("wwRecordingsCountBadge");
+
+            // Drop cache entries for sources that no longer exist -- keeps
+            // ww.sourceChannelsData from growing unbounded across a long
+            // session of uploads/removals (mirrors ww.sourceChannelInventory/
+            // ww.sourceTiming's own existing per-source .delete()
+            // convention, generalized here since any removal path should
+            // leave this reconciled, not only performRemoveSource()).
+            const liveIds = new Set(sources.map((s) => s.source_id));
+            for (const cachedId of Array.from(ww.sourceChannelsData.keys())) {
+                if (!liveIds.has(cachedId)) ww.sourceChannelsData.delete(cachedId);
             }
 
-            const source = data.source;
-            const timebase = data.timebase;
-            // Phase 3A (section 17/18): the Bottom Status Bar reuses this
-            // SAME already-fetched data -- no new API call, no second
-            // implementation of what a "source" is.
-            shellUpdateStatusBar(source, timebase);
+            if (badge) badge.textContent = "(" + sources.length + ")";
 
-            let html = "";
-            // Phase 3B-UAT5 removed the recording METADATA card stack
-            // (Recorder, Nominal Frequency, etc.) here -- that's the
-            // Recordings page's own per-recording "Details" panel now.
-            // Phase 3B-UAT8 removed the compact identity line (station
-            // name + CFG/DAT filenames) that UAT5 had deliberately KEPT
-            // as "active source identification" -- the new Active
-            // Recording section directly above this Channels panel (see
-            // renderActiveRecording()) already shows that identity, so
-            // repeating it here was exactly the redundancy the owner
-            // flagged. The Channels section now begins directly with
-            // channel interaction, per the owner's own preferred
-            // structure.
-            html += '<div class="search-row">' +
-                '<input type="search" id="channelSearch" placeholder="Search channels&hellip;" aria-label="Search channels">' +
-                '<span id="channelSearchCount"></span></div>';
+            if (sources.length === 0) {
+                panel.innerHTML = '<p class="empty-state">No recordings loaded yet. Upload one from Recordings.</p>';
+                return false;
+            }
 
-            html += '<div id="channelGroups">';
-            html += renderAnalogGroup(data.analog_channels, source, timebase);
-            html += renderDigitalGroup(data.digital_channels, source, timebase);
-            html += '</div>';
-            html += '<p class="empty-state" id="channelSearchEmpty" hidden>No channels match your search.</p>';
+            const fetchResults = await Promise.all(sources.map((s) => wwEnsureSourceChannelsFetched(s.source_id)));
+            const anyNewlyFetched = fetchResults.some(Boolean);
 
-            panel.innerHTML = html;
-            setupChannelSearch(data.analog_channels, data.digital_channels);
-            // Phase 4A-UAT8: both analog and digital rows are now direct
-            // toggle controls (no checkbox, no "Add selected"/"Clear
-            // selection" workflow left at all) -- re-wired every render,
-            // same reason setupChannelSearch is re-wired each time too.
+            const expandState = wwCaptureChannelTreeExpandState();
+
+            const html = sources.map((s, index) => wwRenderSourceRecordingHtml(s, index === 0)).join("");
+            panel.innerHTML =
+                '<div class="search-row">' +
+                    '<input type="search" id="channelSearch" placeholder="Search channels&hellip;" aria-label="Search channels">' +
+                    '<span id="channelSearchCount"></span></div>' +
+                '<div id="channelGroups">' + html + '</div>' +
+                '<p class="empty-state" id="channelSearchEmpty" hidden>No channels match your search.</p>';
+
+            wwRestoreChannelTreeExpandState(expandState);
+
+            const allAnalog = sources.flatMap((s) => (ww.sourceChannelsData.get(s.source_id) || {}).analog_channels || []);
+            const allDigital = sources.flatMap((s) => (ww.sourceChannelsData.get(s.source_id) || {}).digital_channels || []);
+            setupChannelSearch(allAnalog, allDigital);
+            // Phase 4A-UAT8: both analog and digital rows are direct
+            // toggle controls -- re-wired every render, same reason
+            // setupChannelSearch is re-wired each time too.
             setupChannelRowToggles();
+
+            return anyNewlyFetched;
+        }
+
+        // Immediate, synchronous reset of the sidebar's Recordings panel
+        // to its empty state -- used by resetToNewWorkspace() to clear
+        // the OLD workspace's content instantly, before the async
+        // refreshAllSourceViews() below it resolves against the NEW
+        // (empty) workspace.
+        function wwResetWorkspaceRecordingsPanel() {
+            document.getElementById("channelsPanel").innerHTML =
+                '<p class="empty-state">No recordings loaded yet. Upload one from Recordings.</p>';
+            const badge = document.getElementById("wwRecordingsCountBadge");
+            if (badge) badge.textContent = "(0)";
         }
 
         // Analog Channels: collapsible top-level section (open by default --
@@ -5826,7 +6024,8 @@
                 body = '<div class="subgroup-list">';
                 for (const type of orderedTypes) {
                     const group = byType.get(type);
-                    body += '<details class="channel-subgroup" open data-subgroup="' + escapeHtml(type) + '">';
+                    body += '<details class="channel-subgroup" open data-subgroup="' + escapeHtml(type) + '"' +
+                        ' data-expand-key="source:' + escapeHtml(source.source_id) + ':group:analog:subgroup:' + escapeHtml(type) + '">';
                     body += '<summary><span class="chevron">&#9656;</span>' + escapeHtml(type) +
                         ' <span class="count-badge">(' + group.length + ')</span>' +
                         groupToggleButtonHtml("analog", type) +
@@ -5846,7 +6045,8 @@
                 body += '</div>';
             }
 
-            return '<details class="channel-group" open data-group="analog">' +
+            return '<details class="channel-group" open data-group="analog"' +
+                ' data-expand-key="source:' + escapeHtml(source.source_id) + ':group:analog">' +
                 '<summary><span class="chevron">&#9656;</span>Analog Channels ' +
                 '<span class="count-badge">(' + total + ')</span></summary>' +
                 '<div class="group-body">' + body + '</div></details>';
@@ -5870,13 +6070,20 @@
         // about order (section 17). Every subgroup starts OPEN (section
         // 18: "keep all three groups accessible... do NOT hide Spare by
         // default" -- this is a deliberate UAT experiment, not a place to
-        // preemptively declutter). Phase 4A-UAT8: each row is now its own
-        // display toggle (see digitalChannelRowAttrs()) -- no checkbox, no
-        // "Normal state" column (owner-determined dead weight in the
-        // sidebar; the underlying `normal_state` field is untouched
-        // everywhere else -- backend domain model, API response, this
-        // very function's own `channels` argument -- this is a UI
-        // presentation removal only).
+        // preemptively declutter) -- unchanged by the multi-source sidebar
+        // redesign. The top-level "Digital Channels" group itself now
+        // starts COLLAPSED, not open (that redesign's own section 11:
+        // "Digital Channels: default collapsed" -- a deliberate change
+        // from the previous default, since a large digital channel count
+        // -- e.g. 538 -- across multiple sources should not dominate the
+        // initial view; this is a default-STATE change only, the
+        // underlying classification/grouping/order above is untouched).
+        // Phase 4A-UAT8: each row is now its own display toggle (see
+        // digitalChannelRowAttrs()) -- no checkbox, no "Normal state"
+        // column (owner-determined dead weight in the sidebar; the
+        // underlying `normal_state` field is untouched everywhere else --
+        // backend domain model, API response, this very function's own
+        // `channels` argument -- this is a UI presentation removal only).
         function renderDigitalGroup(channels, source, timebase) {
             const total = channels.length;
             let body;
@@ -5893,7 +6100,8 @@
                 for (const group of DIGITAL_GROUP_ORDER) {
                     if (!byGroup.has(group)) continue;
                     const sorted = wwDigitalSortChannels(byGroup.get(group));
-                    body += '<details class="channel-subgroup" open data-subgroup="' + escapeHtml(group) + '">';
+                    body += '<details class="channel-subgroup" open data-subgroup="' + escapeHtml(group) + '"' +
+                        ' data-expand-key="source:' + escapeHtml(source.source_id) + ':group:digital:subgroup:' + escapeHtml(group) + '">';
                     body += '<summary><span class="chevron">&#9656;</span>' + escapeHtml(DIGITAL_GROUP_LABELS[group]) +
                         ' <span class="count-badge">(' + sorted.length + ')</span>' +
                         groupToggleButtonHtml("digital", DIGITAL_GROUP_LABELS[group]) +
@@ -5906,7 +6114,8 @@
                 body += '</div>';
             }
 
-            return '<details class="channel-group" open data-group="digital">' +
+            return '<details class="channel-group" data-group="digital"' +
+                ' data-expand-key="source:' + escapeHtml(source.source_id) + ':group:digital">' +
                 '<summary><span class="chevron">&#9656;</span>Digital Channels ' +
                 '<span class="count-badge">(' + total + ')</span></summary>' +
                 '<div class="group-body">' + body + '</div></details>';
@@ -6108,7 +6317,7 @@
         // visibility authority for its OWN kind (ww.displayed for analog,
         // ww.digitalDisplayed for digital -- dispatched by the row's own
         // data-channel-kind, never a shared/merged check). Rows are built
-        // ONCE per renderChannels() call, but the displayed sets can
+        // ONCE per wwRenderWorkspaceRecordings() call, but the displayed sets can
         // change many times after that (row toggle, Separate-mode lane
         // remove, source removal, workspace clear, default-display-on-
         // open) -- called from each of those mutation points rather than
@@ -6303,9 +6512,10 @@
             }
         }
 
-        // Wired fresh after every renderChannels() call (the whole panel is
-        // rebuilt via innerHTML, same reason setupChannelSearch is re-wired
-        // each time too) -- a single pair of delegated listeners on
+        // Wired fresh after every wwRenderWorkspaceRecordings() call (the
+        // whole panel is rebuilt via innerHTML, same reason
+        // setupChannelSearch is re-wired each time too) -- a single pair
+        // of delegated listeners on
         // #channelGroups handles EVERY channel row (analog and digital
         // alike), dispatching via wwToggleChannelRowDisplay(). Mirrors the
         // existing table.recordings row-as-button wiring elsewhere in
@@ -6351,11 +6561,17 @@
 
         // ------------------------------------------------------------------
         // Channel search -- pure client-side filtering over the channel
-        // list already fetched for the selected source (no additional
-        // network requests per keystroke, per section 5/20's performance
-        // requirements). Rows are indexed once per render; each keystroke
-        // only toggles `hidden`/`open` on already-built DOM nodes, it never
-        // rebuilds the channel HTML.
+        // lists already fetched for every source in the workspace (no
+        // additional network requests per keystroke, per section 5/20's
+        // performance requirements). Rows are indexed once per render;
+        // each keystroke only toggles `hidden`/`open` on already-built DOM
+        // nodes, it never rebuilds the channel HTML. Multi-source sidebar
+        // redesign (task section 10): searches across every source's
+        // channels at once, but never flattens the result -- a source
+        // with zero matches collapses out of the way (same "hide, don't
+        // merge" treatment a Voltage/Current sub-group with zero matches
+        // already got); a source with at least one match forces its own
+        // section open, with only ITS matching rows visible underneath.
         // ------------------------------------------------------------------
         function setupChannelSearch(analogChannels, digitalChannels) {
             const input = document.getElementById("channelSearch");
@@ -6363,23 +6579,34 @@
             const emptyEl = document.getElementById("channelSearchEmpty");
             const totalCount = analogChannels.length + digitalChannels.length;
 
-            // Cache row/group DOM refs once -- avoids re-querying the DOM on
-            // every keystroke.
+            // Cache row/group/source DOM refs once -- avoids re-querying
+            // the DOM on every keystroke.
             const rows = Array.from(document.querySelectorAll("#channelGroups tr[data-search]"));
             const subgroups = Array.from(document.querySelectorAll("#channelGroups details.channel-subgroup"));
             const groups = Array.from(document.querySelectorAll("#channelGroups details.channel-group"));
+            const sourceRecordings = Array.from(document.querySelectorAll("#channelGroups details.source-recording"));
 
             function applyFilter(query) {
                 const q = query.trim().toLowerCase();
                 let visibleCount = 0;
 
                 if (!q) {
-                    // Cleared search: restore default state rather than
-                    // whatever arbitrary state the user's own toggling left
-                    // groups in -- simple, predictable behaviour.
+                    // Cleared search: restore each level's own default
+                    // state rather than whatever arbitrary state the
+                    // user's own toggling left it in -- simple,
+                    // predictable behaviour (task section 10: "restore
+                    // the normal hierarchy and collapse/expand behaviour
+                    // appropriately"). `hidden` is explicitly reset at
+                    // every level here, not just `open` -- a subgroup/
+                    // source hidden by a PREVIOUS search (zero matches
+                    // that time) must not stay invisible forever after.
                     for (const row of rows) row.hidden = false;
-                    for (const sub of subgroups) sub.open = true;
+                    for (const sub of subgroups) { sub.hidden = false; sub.open = true; }
                     for (const group of groups) group.open = group.dataset.group === "analog";
+                    for (const source of sourceRecordings) {
+                        source.hidden = false;
+                        source.open = source.dataset.defaultOpen === "true";
+                    }
                     countEl.textContent = "";
                     emptyEl.hidden = true;
                     return;
@@ -6391,10 +6618,14 @@
                     if (match) visibleCount++;
                 }
 
-                // A sub-group/group with at least one visible row is forced
-                // open so matches are never hidden inside a collapsed
-                // section; groups with zero matches collapse out of the way
-                // (but their existence/count elsewhere is unaffected).
+                // A sub-group/group/source with at least one visible row
+                // is forced open so matches are never hidden inside a
+                // collapsed section; a sub-group/source with zero matches
+                // collapses out of the way entirely (but its existence/
+                // count elsewhere is unaffected) -- the top-level
+                // Analog/Digital group itself is never hidden (only
+                // opened on a match), matching its own pre-existing
+                // behaviour unchanged.
                 for (const sub of subgroups) {
                     const hasMatch = sub.querySelectorAll('tr[data-search]:not([hidden])').length > 0;
                     sub.hidden = !hasMatch;
@@ -6403,6 +6634,11 @@
                 for (const group of groups) {
                     const hasMatch = group.querySelectorAll('tr[data-search]:not([hidden])').length > 0;
                     if (hasMatch) group.open = true;
+                }
+                for (const source of sourceRecordings) {
+                    const hasMatch = source.querySelectorAll('tr[data-search]:not([hidden])').length > 0;
+                    source.hidden = !hasMatch;
+                    if (hasMatch) source.open = true;
                 }
 
                 countEl.textContent = visibleCount + " of " + totalCount + " channels";
@@ -6663,6 +6899,22 @@
             // hide/Clear-workspace, deleted per-source on source removal,
             // cleared entirely only by Start New Workspace.
             sourceChannelInventory: new Map(),
+            // Multi-source sidebar redesign: source_id -> the full,
+            // unmodified `GET .../sources/{id}/channels` response
+            // (SourceChannelsOut: source/timebase/analog_channels/
+            // digital_channels). This is the SAME response
+            // ww.sourceChannelInventory/ww.sourceTiming/ww.sourceBounds
+            // already derive narrower slices from -- kept here in full so
+            // wwRenderWorkspaceRecordings() can rebuild ANY source's own
+            // Analog/Digital channel tree without a second fetch, for
+            // EVERY uploaded source at once (never just the one most
+            // recently opened). A source already present here is never
+            // re-fetched (channel metadata is immutable per source after
+            // upload) -- see wwEnsureSourceChannelsFetched(). Deleted
+            // per-source on source removal, cleared entirely only by
+            // Start New Workspace -- same lifecycle as
+            // ww.sourceChannelInventory.
+            sourceChannelsData: new Map(),
             // Phase 5A-UAT (DEC-047): source_id -> {recordingStartTime,
             // recordingStartMs, timingReference}. This is the frontend's
             // timing-authority mirror for each real source opened this
@@ -7122,18 +7374,22 @@
             }
         }
 
+        // Multi-source sidebar redesign (task section 12: "all uploaded
+        // sources may participate simultaneously, do not reintroduce the
+        // old single-source assumption"): EVERY source currently known to
+        // the workspace sidebar has its own ww.sourceBounds entry
+        // (wwEnsureSourceChannelsFetched() sets it for every uploaded
+        // source, not only a single "selected" one, the moment
+        // wwRenderWorkspaceRecordings() first learns about it) -- so
+        // "has a ww.sourceBounds entry" and "participates in the
+        // workspace" are now the same fact by construction, and this
+        // simply returns that whole key set. A source with zero displayed
+        // channels still correctly contributes its own extent (Phase
+        // 4A-UAT10's own "zero-channel source-open can still establish
+        // correct time bounds" requirement), now for every open source at
+        // once rather than only the single most-recently-selected one.
         function wwParticipatingSourceIds() {
-            const ids = new Set();
-            if (selectedSourceId && ww.sourceBounds.has(selectedSourceId)) ids.add(selectedSourceId);
-            for (const { channel } of ww.displayed.values()) {
-                if (!channel) continue;
-                const timingSourceId = wwTimingSourceIdForDisplaySourceId(channel.sourceId);
-                if (ww.sourceBounds.has(timingSourceId)) ids.add(timingSourceId);
-            }
-            for (const entry of ww.digitalDisplayed.values()) {
-                if (entry && ww.sourceBounds.has(entry.sourceId)) ids.add(entry.sourceId);
-            }
-            return ids;
+            return new Set(ww.sourceBounds.keys());
         }
 
         // Slice 1: ww.sourceBounds always holds each source's own TRUE
@@ -9518,6 +9774,36 @@
             wwRebuildDigitalChart();
             if (ww.measurementCursors.enabled) {
                 for (const sourceId of wwParticipatingSourceIds()) wwFetchCursorValuesForSource(sourceId);
+            }
+            // Multi-source sidebar redesign: each source's own optional
+            // sync badge (wwSourceSyncBadgeHtml()) is rendered inside its
+            // sidebar header at TREE-BUILD time -- an offset change here
+            // does not itself rebuild the tree, so without this the badge
+            // would silently go stale until some unrelated event (source
+            // add/remove, page reload) happened to rebuild it. A single
+            // targeted DOM patch, not a full wwRenderWorkspaceRecordings()
+            // rebuild -- cheaper, and never disturbs the engineer's own
+            // expand/collapse state or the search box's current value.
+            wwRefreshSourceSyncBadges();
+        }
+
+        // Patches every currently-rendered source's own sync badge in
+        // place, without touching anything else in the sidebar tree (see
+        // wwSyncApplyOffsetChangeSideEffects()'s own comment for why this
+        // exists as a separate, narrower operation from a full rebuild).
+        function wwRefreshSourceSyncBadges() {
+            for (const el of document.querySelectorAll("#channelGroups details.source-recording")) {
+                const sourceId = el.dataset.sourceId;
+                const summaryEl = el.querySelector(":scope > summary");
+                if (!summaryEl) continue;
+                const existing = summaryEl.querySelector(".source-recording-sync-badge");
+                const html = wwSourceSyncBadgeHtml(sourceId);
+                if (existing) {
+                    if (html) existing.outerHTML = html;
+                    else existing.remove();
+                } else if (html) {
+                    summaryEl.insertAdjacentHTML("beforeend", html);
+                }
             }
         }
 
@@ -12207,10 +12493,6 @@
             // just keeps it in sync if it was already visible) -- ww.panels
             // and ww.viewport are both already final at this point.
             wwSyncStickyRuler();
-            // Phase 3A (section 18): the Bottom Status Bar's displayed-
-            // channel count -- a narrow, one-way read of ww.displayed,
-            // never a shell mutation of waveform state.
-            shellUpdateStatusBarChannelCount(ww.displayed.size);
             // Phase 4A-UAT4: the sidebar is now the analog legend -- keep
             // its dots/remove-controls in sync with the just-updated
             // displayed set.
@@ -12268,7 +12550,6 @@
             // (ww.viewport may be clamped below if this source no longer
             // participates in the derived workspace bounds).
             wwSyncStickyRuler();
-            shellUpdateStatusBarChannelCount(ww.displayed.size);
             // Phase 4A-UAT4: the sidebar is now the analog legend -- keep
             // its dots/remove-controls in sync with the just-updated
             // displayed set.
@@ -12350,7 +12631,6 @@
             wwApplyTimeAxisChrome();
             wwUpdateTimeModeControlAvailability();
             wwSyncStickyRuler();
-            shellUpdateStatusBarChannelCount(ww.displayed.size);
             wwSyncChannelBrowserDisplayState();
             // Phase 4C1 (section 14/29): a group "Hide all" removes
             // potentially dozens of channels at once -- clear/re-render
@@ -14766,6 +15046,16 @@
                 // entire point of this fix (visibility/display state must
                 // never gate input availability).
                 ww.sourceChannelInventory.clear();
+                // Multi-source sidebar redesign: same scoping/reasoning
+                // as ww.sourceChannelInventory immediately above -- the
+                // full per-source /channels cache the Recordings
+                // hierarchy renders from. wwRenderWorkspaceRecordings()
+                // would eventually reconcile this on its own (it drops
+                // any cache entry absent from the fresh sources list),
+                // but "Start New Workspace" clears it explicitly here too
+                // for the same definitive, non-implicit guarantee its
+                // sibling caches already get.
+                ww.sourceChannelsData.clear();
                 ww.sourceTiming.clear();
                 // Phase 4B (section 24): "Start New Workspace" is the one
                 // place cursor state resets completely -- the plain "Clear
@@ -14895,7 +15185,6 @@
             // overwrites its range/type/tickformat regardless.
             wwSyncStickyRuler();
             wwRebuildDigitalChart();
-            shellUpdateStatusBarChannelCount(ww.displayed.size);
             // Phase 4A-UAT4: ww.displayed was cleared in bulk above (not
             // via wwRemoveChannel(), which self-syncs) -- explicit sync so
             // the sidebar's dots/remove-controls reflect the now-empty
