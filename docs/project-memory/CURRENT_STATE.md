@@ -4,7 +4,10 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-25** (Phase 13 — DEC-050 Slice 7:
+Last meaningful update: **2026-08-26** (Phase 14 — DEC-050 Slice 8:
+Final Migration, Regression, Performance, and UAT Hardening — DEC-050
+CORE now COMPLETE, on top of
+Phase 13 — DEC-050 Slice 7:
 Calculated-Channel Per-Unit Inheritance, on top of
 Phase 12 — DEC-050 Slice 6:
 Measurement Group / Per-Unit Configuration Workspace, on top of
@@ -45,6 +48,67 @@ Text Note, Phase 4D — Precision Step Zoom + Icon Toolbar Refinement,
 Waveform Time-Axis Sub-ms Precision, Waveform Adaptive Resolution, Phase
 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B,
 Phase 4A-UAT9, and Phase 4A-UAT10).
+
+`[DECISION]` **DEC-052 approved (2026-08-26, documentation only — no
+code change)**: the Slice 7 Voltage-group multi-input Addition/
+Subtraction restriction (never inherits a DEC-050 base, even when
+unanimous) is now owner-approved canonical policy, not merely a
+flagged conservative default. See
+[DECISIONS.md — DEC-052](DECISIONS.md#dec-052--voltage-multi-input-additionsubtraction-calculated-channels-never-inherit-a-dec-050-measurement-group-base).
+
+`[FACT]` **DEC-050 Slice 8 implemented (2026-08-26) — Final Migration,
+Regression, Performance, and UAT Hardening. DEC-050 CORE IS NOW
+COMPLETE.** Not a feature slice — validated the full Slice 1-7 system
+end-to-end and closed it out:
+
+- **Migration/coexistence audit**: confirmed by direct code inspection
+  that all 8 live endpoints (4 source, 4 calculated) route through
+  exactly one of two dispatch points
+  (`waveform_service._resolve_effective_per_unit()` /
+  `calculated_channel_service._resolve_effective_per_unit_for_calculated_channel()`),
+  with no stray direct `resolve_per_unit()` call anywhere else —
+  DEC-051's precedence is structurally guaranteed consistent, not just
+  individually tested. No change made.
+- **DEC-049 retirement audit**: nothing is safe to remove. The DEC-049
+  domain/registry/service/API and the frontend legacy modal remain the
+  active, required fallback for every ungrouped source channel and
+  every calculated channel with an ambiguous inherited group — recorded
+  as still-required, not deprecated-and-unused.
+- **Performance**: benchmarked directly at the service layer (bypassing
+  HTTP overhead) for a 500,000-sample array across 20 Measurement
+  Groups — Per-Unit conversion cost is statistically indistinguishable
+  from (in this run, marginally faster than) engineering-mode
+  extraction (ratio ≈0.94-0.95x), and group/config lookup cost is flat
+  regardless of group count (20 groups: 4.47 ms vs. 1 group: 4.44 ms),
+  confirming the existing O(1) indexed-dict lookups and vectorized
+  conversion. No optimization was needed or made.
+- **Frontend UX**: live-Playwright-verified against a synthetic 30-group
+  source (10 Voltage + 20 Current) — the Measurement Groups modal
+  scales cleanly (internal scroll, no DOM breakage, long names wrap),
+  and `READY`/`BASE REQUIRED` are color- and text-distinct with an
+  inline one-line reason already shown per row. No frontend change was
+  needed or made.
+- **Regression**: 9 new tests
+  (`test_dec050_slice8_regression.py`: realistic multi-voltage/
+  multi-current single-source scenario with zero cross-group leakage;
+  multi-source isolation using the SAME nominal voltage plus
+  delete-one-doesn't-affect-the-other; true three-request
+  engineering→per_unit→engineering no-mutation check across all four
+  of {source, calculated} × {Voltage, Current} —
+  `test_dec050_slice8_performance.py`: 3 performance regression guards)
+  close every genuine gap this audit found against the Slice 1-7
+  suites; every other scenario in the task's own regression matrix was
+  confirmed already covered and re-run, not duplicated.
+- **Lifecycle/group-generation/documentation-consistency audits**: all
+  re-confirmed correct by direct code read, zero changes required.
+
+**Zero production code was modified this slice** — only test files were
+added and documentation was updated/closed out. Full backend suite:
+zero failures, zero regressions. See
+[MIGRATION_PLAN.md — Phase 14](MIGRATION_PLAN.md#phase-14--dec-050-slice-8-final-migration-regression-performance-and-uat-hardening-2026-08-26)
+and [HANDOFF.md](HANDOFF.md) for the full audit detail, and this task's
+own final report for the complete UAT checklist and non-core follow-up
+list.
 
 `[FACT]` **DEC-050 Slice 7 implemented (2026-08-25) — Calculated-
 Channel Per-Unit Inheritance.** A calculated channel may now inherit

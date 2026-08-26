@@ -4,9 +4,89 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-08-25**
+Last updated: **2026-08-26**
 
 ## What was most recently done
+
+**Phase 14 — DEC-050 Slice 8: Final Migration, Regression,
+Performance, and UAT Hardening. DEC-050 CORE IS NOW COMPLETE.** Not a
+feature slice -- the final hardening pass validating the whole Slice
+1-7 system end-to-end and closing out DEC-050.
+
+**Owner decision recorded first (task's own section 0)**: the Slice 7
+Voltage-group multi-input Addition/Subtraction restriction (never
+inherits a DEC-050 base, even when unanimous) is now formally
+[DEC-052](DECISIONS.md#dec-052--voltage-multi-input-additionsubtraction-calculated-channels-never-inherit-a-dec-050-measurement-group-base)
+-- documentation only, zero code change (Slice 7's own implementation
+already matched this exactly).
+
+**Migration/coexistence audit**: verified directly in code that all 8
+live endpoints route through exactly one of two dispatch points
+(`waveform_service._resolve_effective_per_unit()` /
+`calculated_channel_service._resolve_effective_per_unit_for_calculated_channel()`)
+with no stray direct `resolve_per_unit()` call anywhere else --
+DEC-051's precedence is structurally guaranteed, not just
+per-endpoint-tested. No change made.
+
+**DEC-049 retirement audit**: classified every legacy component. Result:
+**nothing is safe to remove** -- the DEC-049 domain/registry/service/API
+and the frontend's de-emphasized legacy modal remain the active,
+required fallback for ungrouped source channels and ambiguous
+calculated-channel inheritance. Nothing was deleted.
+
+**Performance** (benchmarked at the service layer, bypassing HTTP
+overhead, 500,000 samples across 20 Measurement Groups):
+
+```text
+Voltage:  engineering=4.895 ms   per_unit=4.608 ms   ratio=0.94x
+Current:  engineering=4.694 ms   per_unit=4.452 ms   ratio=0.95x
+Lookup scaling: 20 groups=4.4701 ms   1 group=4.4388 ms  (flat)
+```
+
+Per-Unit conversion carries essentially zero measurable overhead, and
+group/config lookup cost does not scale with group count -- confirming
+the existing O(1) dict-indexed registries and vectorized conversion.
+**No optimization needed or made.**
+
+**Frontend UX**: live-Playwright-verified against a synthetic 30-group
+source (10 Voltage + 20 Current). The Measurement Groups modal scales
+cleanly -- internal scroll, no DOM breakage, long display names wrap --
+and `READY`/`BASE REQUIRED` badges are color- AND text-distinct, each
+with an inline one-line reason ("Manual Ibase: 1.5 kA" / "Method: Not
+configured") already shown per row, sufficient for a normal user to
+tell states apart without a new reason taxonomy. **No frontend change
+needed or made.**
+
+**Tests**: 9 new, both files backend-only --
+`test_dec050_slice8_regression.py` (6: realistic multi-voltage/
+multi-current single-source scenario proving zero cross-group leakage;
+multi-source isolation using the SAME nominal voltage, plus
+delete-one-doesn't-affect-the-other; a true three-request
+engineering→per_unit→engineering no-mutation check across all four of
+{source, calculated} × {Voltage, Current}) and
+`test_dec050_slice8_performance.py` (3: the benchmarks above, kept as a
+permanent, generously-thresholded regression guard). Every other
+scenario in the task's own regression matrix was confirmed already
+covered by the Slice 1-7 suites and re-run, not duplicated. **Zero
+production code was modified this slice.** Full backend suite: zero
+failures, zero regressions.
+
+**Documentation**: cross-checked all 7 canonical documents
+(`DECISIONS.md`, `PER_UNIT_MEASUREMENT_MODEL.md`, `CURRENT_STATE.md`,
+`MIGRATION_PLAN.md`, `HANDOFF.md`, `AGENTS.md`, `CLAUDE.md`) -- no
+material inconsistency found; one stale-implication callout added to
+PER_UNIT_MEASUREMENT_MODEL.md §19 clarifying Voltage vs. Current
+multi-input inheritance now that DEC-052 exists.
+
+**Next step**: DEC-050's core is complete. Non-core follow-ups
+(advanced move/split/merge Measurement Group UI, CT/VT scaling, richer
+calculated-channel Voltage-reference metadata, a richer `base_required`
+reason taxonomy, eventual DEC-049 retirement) are explicitly NOT
+blockers and each requires its own separate, explicit owner-approved
+prompt before any work begins -- see this task's own final report for
+the full UAT checklist and non-core follow-up list.
+
+## What was done in the prior session (Phase 13 — DEC-050 Slice 7: Calculated-Channel Per-Unit Inheritance)
 
 **Phase 13 — DEC-050 Slice 7: Calculated-Channel Per-Unit
 Inheritance.** A calculated channel may now inherit DEC-050 group-

@@ -8648,6 +8648,208 @@ owner UAT after this push.
 
 ---
 
+## Phase 14 — DEC-050 Slice 8: Final Migration, Regression, Performance, and UAT Hardening (2026-08-26)
+
+### Scope
+
+The final planned core slice of DEC-050 (§24 of
+[PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md)) — not a
+new feature slice. Closes DEC-050 by validating the whole system as one
+coherent product: migration/coexistence audit, DEC-049 retirement
+readiness, a full engineering regression matrix, performance
+measurement, frontend UX audit, lifecycle re-verification, and
+documentation consistency. First formalizes the owner-approved Slice 7
+Voltage multi-input rule as [DEC-052](DECISIONS.md#dec-052--voltage-multi-input-additionsubtraction-calculated-channels-never-inherit-a-dec-050-measurement-group-base)
+(documentation only, no code change — Slice 7's implementation already
+matched it verbatim).
+
+### Migration/coexistence audit (no change required)
+
+Verified by direct code inspection that every one of the 8 live
+endpoints (4 source-channel, 4 calculated-channel) routes through
+exactly one of two dispatch points —
+`waveform_service._resolve_effective_per_unit()` or
+`calculated_channel_service._resolve_effective_per_unit_for_calculated_channel()`
+— and that no other call site in `app/services/*.py`/`app/api/v1/*.py`
+calls `resolve_per_unit()` directly outside those two functions. The
+DEC-051 precedence (grouped → DEC-050 exclusively; ungrouped → DEC-049)
+is therefore structurally guaranteed to be consistent across every
+endpoint, not just individually tested per-endpoint. No contradiction
+found; precedence unchanged.
+
+### DEC-049 retirement audit
+
+Classified per the task's own A/B/C/D scheme:
+
+- **A. Still required**: `app/domain/per_unit.py` (`resolve_per_unit`,
+  `apply_per_unit_to_value`/`_array`, `derive_per_unit_profile_id`),
+  `app/services/per_unit_registry.py`, `app/services/per_unit_service.py`,
+  `app/api/v1/per_unit.py` (`/per-unit/sources` API), and the frontend
+  "Manage Per-Unit Bases" modal + its menu entry — all are the active,
+  live fallback path for every ungrouped source channel and every
+  calculated channel whose inherited group context is ambiguous. No
+  code path is safe to remove today: an ungrouped-channel workflow has
+  no other configuration mechanism.
+- **B. Deprecated but retained**: the frontend modal is already
+  correctly de-emphasized (`ww-split-menu-item--legacy`, "Legacy
+  source-wide base settings…") — no further UI change needed.
+- **C. Safe to remove now**: none identified.
+- **D. Requires a future migration decision**: eventual full DEC-049
+  retirement, once/if every real recording is expected to use
+  Measurement Groups — explicitly out of scope for this slice.
+
+Nothing was removed.
+
+### Regression matrix
+
+New `backend/tests/test_dec050_slice8_regression.py` (6 tests) closes
+the three genuine gaps identified against the Slice 8 task's own
+matrix that Slices 1-7's existing suites didn't already cover:
+
+1. **Realistic multi-voltage, multi-current single-source scenario**
+   (275 kV + 132 kV Voltage groups, two equipment-rating Current groups
+   linked to each, a manual-Ibase line, a method=none line, an
+   ungrouped channel, and Frequency) verified together in ONE test,
+   proving zero cross-group leakage end-to-end rather than pairwise —
+   confirms the exact worked example (1000 MVA @ 275 kV LG → Ibase
+   ≈2.0995 kA; @ 132 kV LG → ≈4.3739 kA) with both sides carrying
+   identical raw current yet resolving to different pu values.
+2. **Multi-source isolation with the SAME nominal voltage** (the
+   pre-existing `TestCrossSourceIsolation` in
+   `test_group_aware_per_unit_endpoints.py` used deliberately
+   *different* bases; this proves id-keying, not a coincidence of
+   differing numbers) plus that deleting one source never affects the
+   other's still-live group/config/resolution.
+3. **True three-request original-data-integrity check** (engineering →
+   per_unit → engineering, request 1 and 3 byte-identical) for all four
+   of {source, calculated} × {Voltage, Current} — the existing suites
+   each checked one engineering-mode request in isolation, never that a
+   prior per_unit request left no residue.
+
+Every other scenario in the task's matrix (Voltage/Current group
+variants, group lifecycle states, calculated-channel inheritance
+shapes, legacy fallback) was found already covered by the existing
+Slice 1-7 suites and was re-run, not duplicated.
+
+### Voltage arithmetic approved regression
+
+Already present from Slice 7 (`test_addition_from_same_voltage_group_does_not_inherit`
+in `test_calculated_group_aware_per_unit.py`, and
+`test_subtraction_of_two_same_group_voltage_channels_is_base_required`
+in `test_calculated_group_aware_per_unit_endpoints.py`, each with an
+explanatory docstring) and re-verified unchanged — no new test needed,
+now backed by the formal [DEC-052](DECISIONS.md#dec-052--voltage-multi-input-additionsubtraction-calculated-channels-never-inherit-a-dec-050-measurement-group-base)
+record.
+
+### Performance
+
+New `backend/tests/test_dec050_slice8_performance.py` (3 tests)
+benchmarks the group-aware Per-Unit path directly at the service layer
+(bypassing HTTP overhead) for a 500,000-sample array across 20
+Measurement Groups (10 Voltage + 10 Current):
+
+```text
+Voltage:  engineering=4.895 ms   per_unit=4.608 ms   ratio=0.94x
+Current:  engineering=4.694 ms   per_unit=4.452 ms   ratio=0.95x
+Lookup scaling: 20 groups=4.4701 ms   1 group=4.4388 ms  (flat)
+```
+
+Per-Unit conversion is effectively free relative to engineering-mode
+extraction (within measurement noise, not slower), and group/config
+lookup cost does not scale with group count — confirming the O(1)
+indexed `dict` lookups already in place (`MeasurementGroupRegistry.
+group_for_channel`, `VoltageGroupConfigRegistry.get`,
+`CurrentGroupConfigRegistry.get`) and the fully vectorized
+`convert_array_to_pu()` conversion. **No performance issue found; no
+optimization made**, per the task's own "do not optimize for
+hypothetical future scale" instruction. Tests kept as a permanent,
+generously-thresholded regression guard (8x ceiling) against a future
+per-sample-lookup or non-vectorized-conversion regression.
+
+### Frontend performance/UX audit (no change made)
+
+Reviewed the Slice 6 Measurement Groups modal's own JS: the group list
+is fetched exactly once per open/source-switch/Suggest/Save (`
+wwLoadAndRenderMeasurementGroupsBody()`, 4 call sites total, no
+per-row fetch loop anywhere). Live-verified via Playwright against a
+synthetic 30-group source (10 Voltage + 20 Current, deliberately
+unrecognizable single-letter-suffix channel names to also exercise the
+"reference unrecognized → base_required" safe-default path): the modal
+renders all 30 rows with an internally-scrolling body (header/footer
+stay pinned), no DOM breakage, long display names wrap cleanly, and
+`READY` (green)/`BASE REQUIRED` (grey) badges are visually distinct by
+color in addition to text, each paired with a one-line reason
+("Manual Ibase: 1.5 kA" / "Method: Not configured") — already
+sufficient for a normal user to distinguish states without a new
+reason taxonomy. **No frontend issue found; no refactor made.**
+
+### Lifecycle cleanup audit (no change required)
+
+Re-confirmed by direct code read: workspace delete calls
+`remove_workspace()` on all three group/config registries
+(`app/api/v1/workspaces.py`); source delete calls
+`remove_measurement_groups_for_source()`, which releases the group AND
+its Voltage/Current config together (`app/services/
+measurement_group_service.py`); the frontend's `wwClearWorkspace()`
+"plain Clear" path performs no network calls at all (display-state
+only), while `resetSourceBounds` (Start New Workspace) is the only
+branch that also drops the local channel inventory — matching the
+already-established DEC-018/Phase-5A-UAT3 distinction, unchanged.
+Exercised end-to-end by this slice's own new multi-source-isolation
+test (source-delete via the live API).
+
+### Group-generation audit (no change required)
+
+Re-confirmed: `POST .../measurement-groups/suggest` has exactly one
+call site in the frontend, wired to the "Suggest Groups…" button's own
+click handler, self-documented ("Section 20: explicit, user-triggered
+ONLY — never called from anywhere except this one button's own click
+handler"). No upload/modal-open/PU-mode/display trigger exists.
+
+### Group correction scope
+
+Move/split/merge dedicated UI remains intentionally deferred, per
+Slice 6's own closing note — not implemented in this slice either; no
+blocker was found that would require it. Manual create +
+membership-replace (`PATCH .../measurement-groups/{id}`) remains the
+existing capability. Recorded as a future UAT enhancement, not a Slice
+8 gap.
+
+### Documentation consistency audit
+
+Cross-checked `DECISIONS.md`, `PER_UNIT_MEASUREMENT_MODEL.md`,
+`CURRENT_STATE.md`, `MIGRATION_PLAN.md`, `HANDOFF.md`, `AGENTS.md`, and
+`CLAUDE.md`. `AGENTS.md`/`CLAUDE.md` are pointer-only (they direct to
+the canonical documents rather than describing the model themselves) —
+no stale wording found there. The five project-memory documents already
+consistently describe Source → Measurement Groups → group-specific
+Voltage/Current bases → group-aware live resolution → calculated
+inheritance where safe, each with DEC-049 clearly marked legacy/
+coexisting rather than erased. One genuine stale-implication fixed:
+[PER_UNIT_MEASUREMENT_MODEL.md §19](PER_UNIT_MEASUREMENT_MODEL.md#19-calculated-channel-implications--decision-initial-rule-approved-2026-08-23-implementation-pending)'s
+own "same-group calculation → may inherit" framing didn't distinguish
+Voltage from Current multi-input arithmetic — a `[DEC-052 correction]`
+callout was added inline.
+
+### Tests
+
+9 new (6 regression + 3 performance). Full backend suite re-run:
+zero failures, zero regressions to any DEC-049/DEC-050 Slice 1-7
+coverage.
+
+### Status
+
+**DEC-050 core implementation: COMPLETE.** No code defects found during
+this hardening pass; the only code-adjacent action taken was adding
+regression/performance test coverage for gaps this audit identified —
+no production code was modified. Non-core follow-ups (advanced
+move/split/merge UI, CT/VT scaling, richer calculated Voltage-reference
+metadata, a richer `base_required` reason taxonomy, eventual DEC-049
+retirement) are explicitly NOT blockers and are recorded as future,
+separately-approved work.
+
+---
+
 ## Phase 13 — DEC-050 Slice 7: Calculated-Channel Per-Unit Inheritance (2026-08-25)
 
 ### Scope

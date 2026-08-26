@@ -58,12 +58,24 @@ addendum) — this document's own framing below (Slices "not yet
 implemented") describes the state as of 2026-08-22/23 and is preserved
 as the original specification, not rewritten in place; do not infer
 current implementation status from the body text below without
-checking CURRENT_STATE.md first. Slice 7 also introduced one
-conservative restriction (Voltage-group multi-input Addition/
-Subtraction never auto-inherits, even when unanimous) that was **not**
-itself decided by this document or DEC-050 — flagged for explicit
-owner review in DEC-051's Slice 7 addendum, not asserted as approved
-by this note.
+checking CURRENT_STATE.md first.
+
+**Revision note (2026-08-26)**: Slice 7's conservative restriction
+(Voltage-group multi-input Addition/Subtraction never auto-inherits a
+DEC-050 base, even when every input unanimously agrees) is now
+**owner-approved canonical policy** —
+[DECISIONS.md — DEC-052](DECISIONS.md#dec-052--voltage-multi-input-additionsubtraction-calculated-channels-never-inherit-a-dec-050-measurement-group-base).
+This supersedes §19's own text below where it doesn't yet distinguish
+unary from multi-input Voltage inheritance: for a Voltage
+`MeasurementGroup`, only unary operations (`-V`, `abs(V)`, `V * k`,
+`RMS(V)`) inherit; Addition/Subtraction resolve `base_required`
+unconditionally, because this codebase has no operation-level metadata
+proving whether a multi-input Voltage result remains phase-to-ground
+or becomes phase-to-phase, and guessing risks a silently wrong value
+rather than a merely unavailable one. Current-group multi-input
+arithmetic is unaffected (Ibase has no phase-reference concept) and
+DEC-050 Slice 7 (calculated-channel inheritance) is now implemented in
+full — see [MIGRATION_PLAN.md](MIGRATION_PLAN.md) Phase 13.
 
 ---
 
@@ -1078,6 +1090,19 @@ IBT HV current + IBT LV current
 **Final advanced cross-group semantics can be designed later**, if a
 real engineering use case requires them — this document does not
 attempt to solve that now, and no such use case has been approved.
+
+**`[DEC-052 correction]`**: the "same-group calculation → may inherit"
+rule above is NOT unconditional for Voltage multi-input arithmetic.
+`IA + IB` (Current, shown above) does inherit — a Current group's Ibase
+has no phase-reference concept. But `VR - VY` on a same, fully
+confirmed Voltage group does **not** inherit, even though every input
+agrees — an Addition/Subtraction of two Voltage-group channels may
+numerically produce a phase-to-phase quantity while the group's own
+resolved denominator stays phase-to-ground, and this codebase has no
+operation-level metadata to prove otherwise. See
+[DECISIONS.md — DEC-052](DECISIONS.md#dec-052--voltage-multi-input-additionsubtraction-calculated-channels-never-inherit-a-dec-050-measurement-group-base)
+for the full, owner-approved rule. Unary Voltage operations
+(`-V`/`abs(V)`/`V * k`/`RMS(V)`) are unaffected and inherit normally.
 
 **`CURRENT IMPLEMENTATION` note**: the existing calculated-channel
 inheritance rule (`derive_per_unit_profile_id()`, DEC-049 decisions

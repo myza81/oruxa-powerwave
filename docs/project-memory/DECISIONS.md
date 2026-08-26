@@ -6719,12 +6719,12 @@ a Voltage group (`-VR`, `abs(VR)`, `VR * k`, `RMS(VR)`) are unaffected
 too — none of them can change which physical reference the result
 represents. See
 `backend/app/services/calculated_group_aware_per_unit.py`'s own module
-docstring for the full reasoning. **This restriction is implemented
-today as the conservative default, but is NOT itself an owner-approved
-decision** — it is recorded here, explicitly flagged, as a candidate
-future `DEC-052` should the owner want a more precise rule (e.g.
-operation-level metadata distinguishing phase-to-phase derivations)
-instead of the current blanket exclusion.
+docstring for the full reasoning. **This restriction was flagged here
+as implemented-but-not-yet-approved; the owner has since explicitly
+approved it as canonical policy (Slice 8, 2026-08-26) — see
+[DEC-052](#dec-052--voltage-multi-input-additionsubtraction-calculated-channels-never-inherit-a-dec-050-measurement-group-base)
+below, which formalizes this exact rule with no code change (Slice 7's
+implementation already matched it verbatim).**
 
 Impact (Slice 7 addition): new
 `backend/app/services/calculated_group_aware_per_unit.py` (the
@@ -6743,6 +6743,114 @@ reuses it rather than duplicating the Voltage/Current resolution logic
 a second time. No existing DEC-049 calculated-channel code path was
 modified. See
 [MIGRATION_PLAN.md — Phase 13](MIGRATION_PLAN.md#phase-13--dec-050-slice-7-calculated-channel-per-unit-inheritance-2026-08-25).
+
+---
+
+## DEC-052 — Voltage multi-input Addition/Subtraction calculated channels never inherit a DEC-050 Measurement Group base
+
+Date: 2026-08-26
+Status: Approved — implemented (already shipped, verbatim, in DEC-050
+Slice 7; this decision formalizes the rule as canonical, no code
+change).
+Source: explicit owner approval, issued as the opening instruction of
+the DEC-050 Slice 8 task, promoting the restriction Slice 7 had shipped
+as an implemented-but-flagged conservative default (see DEC-051's own
+Slice 7 addendum) into approved policy.
+
+Decision:
+
+A calculated channel that combines two or more Voltage inputs via
+Addition or Subtraction (the only two multi-input operations this
+codebase supports) does **not** inherit a DEC-050 `MeasurementGroup`'s
+Voltage Base, even when every input unanimously resolves to the exact
+same, fully confirmed Voltage group. It resolves `base_required`
+instead.
+
+```text
+VR, VY both belong to the SAME 275 kV phase-to-ground Voltage group
+
+VR - VY
+
+Physical output: line-to-line voltage
+Group's own resolved denominator: 275 / sqrt(3)  (phase-to-ground)
+
+→ dividing the numerically-LL result by the LG denominator would be
+  SILENTLY WRONG, not merely unavailable
+→ approved behaviour: base_required
+```
+
+This applies **only** to Voltage-group multi-input arithmetic. It does
+**not** apply to:
+
+- unary Voltage operations on a Voltage-group input (`-VR`, `abs(VR)`,
+  `VR * k`, `RMS(VR)`) — none of these can change which physical
+  reference (LG vs. LL) the result represents, so they continue to
+  inherit the group's base exactly as before;
+- Current-group multi-input arithmetic (`IR + IY`, etc.) — a Current
+  group's Ibase is one scalar with no phase-reference concept, so no
+  equivalent ambiguity exists.
+
+Do not infer LG/LL from a calculated channel's own name, and do not
+divide a multi-input Voltage result by the input group's LG denominator
+regardless of naming convention — both are explicitly rejected
+approaches (see Alternatives below).
+
+Reason:
+
+The current calculated-channel domain model
+(`app.domain.calculated_channel`) carries no operation-level metadata
+that distinguishes "this Addition/Subtraction of two phase-to-ground
+channels produces a phase-to-phase quantity" from any other
+Addition/Subtraction. Guessing the correct denominator from context
+(group membership, channel naming, or the operation alone) risks a
+**silently wrong** displayed PU value, which is a strictly worse
+outcome for an engineer reviewing a disturbance recording than an
+honest `base_required` state that visibly asks for configuration.
+`base_required` is therefore the only behaviour consistent with this
+project's own repeated principle (first stated in DEC-049, reaffirmed
+throughout DEC-050): never fabricate a PU value from an unproven
+electrical reference.
+
+Alternatives considered:
+
+- **Infer LG/LL from calculated-channel or input channel naming
+  conventions** (e.g. treat `VR`/`VY`/`VB`-style names as always LG) —
+  rejected; naming conventions are not a reliable or verifiable
+  electrical fact, and DEC-050's own voltage-reference detection
+  principle (§6 of
+  [PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md)) was
+  adopted specifically because generic vocabulary/naming evidence is
+  weaker than explicit structure — extending naming-based inference
+  into calculated-channel arithmetic would reintroduce exactly the
+  class of bug that principle was written to prevent.
+- **Divide by the inherited group's own LG denominator regardless of
+  the operation** — rejected; this is precisely the silently-wrong
+  case this decision exists to prevent (a genuine LL quantity divided
+  by an LG base produces a plausible-looking but numerically incorrect
+  PU value with no visible warning).
+- **Build full operation-level Voltage-reference metadata now** (e.g.
+  classify certain Addition/Subtraction pairs as "produces LL") —
+  rejected for this decision; the owner's own instruction is explicit
+  that this is not authorized in Slice 8 ("do not create broader
+  DEC-052 functionality now"). This decision formalizes the
+  `base_required` default only; richer metadata remains a genuine
+  future option (see
+  [MIGRATION_PLAN.md](MIGRATION_PLAN.md) Slice 8 follow-ups list).
+
+Impact:
+
+**No code change** — `app.services.calculated_group_aware_per_unit`
+already implements exactly this rule (the `MULTI_OPERATIONS` +
+`KIND_VOLTAGE` exclusion in `resolve_calculated_group_aware_per_unit()`,
+shipped in Slice 7,
+[8ccaf4a](https://github.com/myza81/oruxa-powerwave/commit/8ccaf4ad02ed62cfd715f4cca65983023c3f4cd1)).
+This decision's only effect is documentation: it removes the "flagged,
+not yet owner-approved" caveat DEC-051's Slice 7 addendum carried, and
+gives the existing behaviour a permanent decision record so it is never
+mistaken for an oversight or accidentally "fixed" by a future session
+into inheriting the group's base. Cross-referenced from
+[PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md) and
+[CURRENT_STATE.md](CURRENT_STATE.md) (DEC-050 Slice 8).
 
 ---
 
