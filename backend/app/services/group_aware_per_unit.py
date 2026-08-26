@@ -42,6 +42,14 @@ config, and -- only for an equipment-rating Current group with a link
 -- the linked Voltage group's own config) -- never per sample, and
 never invoking Slice 2's grouping detector (this module only ever
 READS already-persisted group/config state).
+
+`resolve_per_unit_for_group()` below is the shared kind-dispatch core
+(source `MeasurementGroup` -> `PerUnitResolution`), factored out so
+DEC-050 Slice 7's calculated-channel inheritance
+(`app.services.calculated_group_aware_per_unit`) can reuse it once a
+calculated channel's own inherited `measurement_group_id` has been
+derived, without duplicating the Voltage/Current config-resolution
+logic here a second time (see that module's own docstring).
 """
 
 from __future__ import annotations
@@ -53,12 +61,80 @@ from app.domain.current_group_config import (
     STATUS_CONFIGURED as _CURRENT_STATUS_CONFIGURED,
     resolve_current_base_for_group,
 )
-from app.domain.measurement_group import KIND_CURRENT, KIND_VOLTAGE
+from app.domain.measurement_group import KIND_CURRENT, KIND_VOLTAGE, MeasurementGroup
 from app.domain.per_unit import STATUS_BASE_REQUIRED, STATUS_CONFIGURED, PerUnitResolution
 from app.domain.voltage_group_config import STATUS_CONFIGURED as _VOLTAGE_STATUS_CONFIGURED, resolve_voltage_base_for_group
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
+
+
+def resolve_per_unit_for_group(
+    group: MeasurementGroup,
+    measurement_group_id: str,
+    *,
+    group_registry: MeasurementGroupRegistry,
+    voltage_config_registry: VoltageGroupConfigRegistry,
+    current_config_registry: CurrentGroupConfigRegistry,
+) -> PerUnitResolution:
+    """Resolves an already-identified `MeasurementGroup` to a
+    `PerUnitResolution` -- the kind-dispatch core shared by
+    `resolve_group_aware_per_unit()` (source channels, below) and
+    `app.services.calculated_group_aware_per_unit` (Slice 7, calculated
+    channels). Callers are responsible for having already established
+    that `group` is the correct, unambiguous group for whatever channel
+    they are resolving -- this function performs no membership lookup
+    of its own."""
+    if group.kind == KIND_VOLTAGE:
+        config = voltage_config_registry.get(group.workspace_id, measurement_group_id)
+        resolution = resolve_voltage_base_for_group(group, config)
+        if resolution.status == _VOLTAGE_STATUS_CONFIGURED:
+            return PerUnitResolution(
+                status=STATUS_CONFIGURED,
+                profile_id=measurement_group_id,
+                base_amount=resolution.denominator_kv * 1000.0,
+                base_unit="V",
+                reason=None,
+            )
+        return PerUnitResolution(
+            status=STATUS_BASE_REQUIRED, profile_id=measurement_group_id, base_amount=None, base_unit=None,
+            reason=resolution.reason,
+        )
+
+    if group.kind == KIND_CURRENT:
+        current_config = current_config_registry.get(group.workspace_id, measurement_group_id)
+        linked_voltage_group = None
+        linked_voltage_config = None
+        if (
+            current_config is not None
+            and current_config.method == METHOD_EQUIPMENT_RATING
+            and current_config.linked_voltage_group_id is not None
+        ):
+            linked_voltage_group = group_registry.get(group.workspace_id, current_config.linked_voltage_group_id)
+            linked_voltage_config = voltage_config_registry.get(group.workspace_id, current_config.linked_voltage_group_id)
+        resolution = resolve_current_base_for_group(
+            group, current_config, linked_voltage_group=linked_voltage_group, linked_voltage_config=linked_voltage_config
+        )
+        if resolution.status == _CURRENT_STATUS_CONFIGURED:
+            return PerUnitResolution(
+                status=STATUS_CONFIGURED,
+                profile_id=measurement_group_id,
+                base_amount=resolution.ibase_ka * 1000.0,
+                base_unit="A",
+                reason=None,
+            )
+        return PerUnitResolution(
+            status=STATUS_BASE_REQUIRED, profile_id=measurement_group_id, base_amount=None, base_unit=None,
+            reason=resolution.reason,
+        )
+
+    # A Voltage/Current-typed channel assigned to a group of some other
+    # kind is structurally impossible -- channel_kind_compatible() is
+    # enforced at group-membership time (Slice 1) -- defensive only.
+    return PerUnitResolution(
+        status=STATUS_BASE_REQUIRED, profile_id=measurement_group_id, base_amount=None, base_unit=None,
+        reason="group_kind_mismatch",
+    )
 
 
 def resolve_group_aware_per_unit(
@@ -98,53 +174,7 @@ def resolve_group_aware_per_unit(
         # never a guessed base.
         return None
 
-    if group.kind == KIND_VOLTAGE:
-        config = voltage_config_registry.get(workspace_id, measurement_group_id)
-        resolution = resolve_voltage_base_for_group(group, config)
-        if resolution.status == _VOLTAGE_STATUS_CONFIGURED:
-            return PerUnitResolution(
-                status=STATUS_CONFIGURED,
-                profile_id=measurement_group_id,
-                base_amount=resolution.denominator_kv * 1000.0,
-                base_unit="V",
-                reason=None,
-            )
-        return PerUnitResolution(
-            status=STATUS_BASE_REQUIRED, profile_id=measurement_group_id, base_amount=None, base_unit=None,
-            reason=resolution.reason,
-        )
-
-    if group.kind == KIND_CURRENT:
-        current_config = current_config_registry.get(workspace_id, measurement_group_id)
-        linked_voltage_group = None
-        linked_voltage_config = None
-        if (
-            current_config is not None
-            and current_config.method == METHOD_EQUIPMENT_RATING
-            and current_config.linked_voltage_group_id is not None
-        ):
-            linked_voltage_group = group_registry.get(workspace_id, current_config.linked_voltage_group_id)
-            linked_voltage_config = voltage_config_registry.get(workspace_id, current_config.linked_voltage_group_id)
-        resolution = resolve_current_base_for_group(
-            group, current_config, linked_voltage_group=linked_voltage_group, linked_voltage_config=linked_voltage_config
-        )
-        if resolution.status == _CURRENT_STATUS_CONFIGURED:
-            return PerUnitResolution(
-                status=STATUS_CONFIGURED,
-                profile_id=measurement_group_id,
-                base_amount=resolution.ibase_ka * 1000.0,
-                base_unit="A",
-                reason=None,
-            )
-        return PerUnitResolution(
-            status=STATUS_BASE_REQUIRED, profile_id=measurement_group_id, base_amount=None, base_unit=None,
-            reason=resolution.reason,
-        )
-
-    # A Voltage/Current-typed channel assigned to a group of some other
-    # kind is structurally impossible -- channel_kind_compatible() is
-    # enforced at group-membership time (Slice 1) -- defensive only.
-    return PerUnitResolution(
-        status=STATUS_BASE_REQUIRED, profile_id=measurement_group_id, base_amount=None, base_unit=None,
-        reason="group_kind_mismatch",
+    return resolve_per_unit_for_group(
+        group, measurement_group_id, group_registry=group_registry,
+        voltage_config_registry=voltage_config_registry, current_config_registry=current_config_registry,
     )

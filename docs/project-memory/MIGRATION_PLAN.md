@@ -8648,6 +8648,124 @@ owner UAT after this push.
 
 ---
 
+## Phase 13 — DEC-050 Slice 7: Calculated-Channel Per-Unit Inheritance (2026-08-25)
+
+### Scope
+
+Implements Slice 7 of the DEC-050 sequence: a calculated channel may
+inherit DEC-050 group-aware Per-Unit context from its own inputs when
+that context is unambiguous, mirroring
+[PER_UNIT_MEASUREMENT_MODEL.md §19](PER_UNIT_MEASUREMENT_MODEL.md#19-calculated-channel-implications--decision-initial-rule-approved-2026-08-23-implementation-pending)'s
+own confirmed direction: the existing DEC-049 calculated-channel
+inheritance function (`derive_per_unit_profile_id()`) reused verbatim,
+extended from keying on `source_id` to keying on `measurement_group_id`
+— no new inheritance algorithm invented. Deliberately conservative, per
+the task's own explicit scope: calculated channels are never added to
+`MeasurementGroupRegistry` (inheritance is derived at request time,
+never persisted); cross-group and cross-source calculations never
+invent a common base; incompatible/ambiguous cases resolve
+`base_required`.
+
+### Implementation
+
+New `backend/app/services/calculated_group_aware_per_unit.py`:
+
+- `resolve_inherited_measurement_group_id()` — walks a calculated
+  channel's own `inputs: list[ChannelRef]`, recursing into a
+  `"calculated"`-kind input's own already-stored `CalculatedChannel`
+  (reading its `inputs` again) so the rule composes transitively
+  through calculated-on-calculated chains with no separate recursive
+  algorithm, exactly mirroring how DEC-049's own
+  `derive_per_unit_profile_id()` already composes at the `source_id`
+  level. Per-request memoization only; no persistence, no new cycle
+  detection (the existing `would_create_cycle()` guard at calculated-
+  channel creation time already makes a real cycle structurally
+  impossible here).
+- `resolve_calculated_group_aware_per_unit()` — the quantity/reference
+  compatibility gate: refuses inheritance unless the calculated
+  channel's own `engineering_type` is Voltage or Current and matches
+  the inherited group's `kind` (defensive only — no operation in this
+  codebase changes physical dimension), and refuses inheritance for a
+  MULTI-input operation (Addition/Subtraction) whose inherited group is
+  `KIND_VOLTAGE` even when every input unanimously agrees — see "Voltage
+  multi-input restriction" below. Otherwise delegates to the SAME
+  Voltage/Current config-resolution core `group_aware_per_unit.py`
+  already uses for source channels (`resolve_per_unit_for_group()`,
+  extracted from that module by this slice as a pure, behaviour-
+  preserving refactor — re-verified against its own full pre-existing
+  test suite, zero regressions) — never a duplicated Voltage/Current
+  resolution algorithm.
+
+Wired into all four calculated-channel display/measurement endpoints
+(`GET .../calculated-channels/{id}/waveform`,
+`POST .../cursor-values`, `POST .../peak-values`,
+`POST .../{id}/annotation-anchor`) via a new dispatch helper in
+`calculated_channel_service.py`,
+`_resolve_effective_per_unit_for_calculated_channel()`, which mirrors
+`waveform_service._resolve_effective_per_unit()`'s own exact
+precedence: attempts group-aware inheritance first; if no unambiguous,
+compatible inherited group exists, falls through to the pre-existing
+DEC-049 calculated-channel-profile resolution, completely unchanged
+(see DEC-051's Slice 7 addendum in
+[DECISIONS.md](DECISIONS.md#dec-051--dec-049dec-050-live-endpoint-coexistence-precedence-group-membership-not-configuration-completeness-decides-which-resolver-applies-to-a-channel)
+for the full precedence rule). Every new parameter defaults to `None`,
+so every pre-existing caller/test that omits them observes byte-for-
+byte identical behaviour.
+
+### Voltage multi-input restriction (flagged, not owner-approved)
+
+Even a fully confirmed, unanimous same-Voltage-group Addition/
+Subtraction never auto-inherits in this implementation. Reason: this
+codebase has no metadata distinguishing a Voltage group's own
+phase-to-ground vs. phase-to-phase reference from the physical
+reference an Addition/Subtraction of two of that group's own channels
+actually produces (`VR - VY` on a phase-to-ground group is numerically
+phase-to-phase, but the group's own resolved denominator remains
+phase-to-ground — dividing the former by the latter would silently
+produce a **wrong** PU value, not merely a missing one). Current groups
+have no equivalent reference-frame concept and are unaffected; unary
+Voltage operations (`-VR`, `abs(VR)`, `VR * k`, `RMS(VR)`) are
+unaffected too. This restriction is the conservative default this slice
+ships with, but is explicitly **not** an owner-approved decision — see
+DEC-051's Slice 7 addendum for the full flag and the suggested future
+`DEC-052`.
+
+### Tests
+
+19 new resolver-level tests
+(`test_calculated_group_aware_per_unit.py`) and 26 new live-endpoint
+integration tests
+(`test_calculated_group_aware_per_unit_endpoints.py`, parametrized
+across all four migrated endpoints), covering: same-group unary
+Voltage/Current inheritance; same-group multi-input Current
+inheritance; the Voltage multi-input restriction; cross-group,
+cross-source, and transformer-HV/LV adversarial cases (never a
+first-input fallback, never an average); ungrouped inputs correctly
+falling back to DEC-049; the DEC-051-style regression (a channel
+grouped with `method=none`, on a source that also carries a valid
+DEC-049 profile that WOULD convert it if consulted, must stay
+`base_required`); calculated-on-calculated same-context propagation and
+ambiguous-parent-stays-ambiguous; and an engineering-mode regression
+check (values unchanged by grouping). Full backend suite: all tests
+pass, zero regressions to any DEC-049 or Slice 1-6 coverage.
+
+### Status
+
+**Slice 7 complete for the four calculated-channel display/measurement
+endpoints it targets.** No calculated channel was added to
+`MeasurementGroupRegistry`; no `measurement_group_id` is persisted
+anywhere on a `CalculatedChannel` (inheritance stays fully derived);
+no CT/VT scaling; no frontend file touched (the response schema's
+`per_unit_status` field stays within its existing `configured`/
+`base_required`/`not_applicable`/`null` value set, so the existing
+frontend handling needs no change); DEC-049 calculated-channel
+inheritance/provenance code untouched; no DEC-051 semantic change for
+SOURCE channels. Per the task's own explicit instruction, Slice 8
+(migration/regression/performance/UAT) is **not** started by this
+phase.
+
+---
+
 ## Phase 12 — DEC-050 Slice 6: Measurement Group / Per-Unit Configuration Workspace (2026-08-24)
 
 ### Scope

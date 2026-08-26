@@ -4,7 +4,9 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-24** (Phase 12 — DEC-050 Slice 6:
+Last meaningful update: **2026-08-25** (Phase 13 — DEC-050 Slice 7:
+Calculated-Channel Per-Unit Inheritance, on top of
+Phase 12 — DEC-050 Slice 6:
 Measurement Group / Per-Unit Configuration Workspace, on top of
 Phase 11 — DEC-050 Slice 5:
 Group-Aware Per-Unit Resolution in Live Display Endpoints, on top of
@@ -43,6 +45,47 @@ Text Note, Phase 4D — Precision Step Zoom + Icon Toolbar Refinement,
 Waveform Time-Axis Sub-ms Precision, Waveform Adaptive Resolution, Phase
 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B,
 Phase 4A-UAT9, and Phase 4A-UAT10).
+
+`[FACT]` **DEC-050 Slice 7 implemented (2026-08-25) — Calculated-
+Channel Per-Unit Inheritance.** A calculated channel may now inherit
+DEC-050 group-aware Per-Unit context from its own inputs, derived at
+request time (never persisted, never adding the channel to
+`MeasurementGroupRegistry`) via the SAME `derive_per_unit_profile_id()`
+inheritance shape DEC-049 already used at the `source_id` level, now
+also keyed on `measurement_group_id` — no new algorithm invented. New
+`app/services/calculated_group_aware_per_unit.py` recurses through a
+calculated channel's own `inputs: list[ChannelRef]` (including
+calculated-on-calculated chains) to find a single unambiguous inherited
+group, refuses inheritance for a type/kind mismatch or a MULTI-input
+(Addition/Subtraction) operation whose inherited group is
+`KIND_VOLTAGE` (a conservative restriction — see below), then delegates
+to the SAME Voltage/Current resolution core `group_aware_per_unit.py`
+already uses for source channels (`resolve_per_unit_for_group()`,
+extracted from that module as a pure refactor this slice, zero
+behaviour change, re-verified by its own full existing suite). Wired
+into all four calculated-channel display/measurement endpoints via a
+new dispatch helper mirroring `waveform_service._resolve_effective_per_unit()`'s
+own exact precedence: group-aware inheritance first; if none exists,
+falls through to the pre-existing DEC-049 calculated-channel-profile
+resolution unchanged (DEC-051's coexistence precedence, extended one
+layer up — see
+[DECISIONS.md — DEC-051](DECISIONS.md#dec-051--dec-049dec-050-live-endpoint-coexistence-precedence-group-membership-not-configuration-completeness-decides-which-resolver-applies-to-a-channel)'s
+Slice 7 addendum). **One restriction this slice introduces is flagged,
+not owner-approved**: a Voltage group's own confirmed Addition/
+Subtraction inputs never auto-inherit that group's base, even when
+unanimous — this codebase has no metadata distinguishing a phase-to-
+ground group's own denominator from the phase-to-phase quantity such
+an operation numerically produces, and silently dividing by the wrong
+denominator would be a materially worse failure than `base_required`.
+Current-group multi-input arithmetic and every unary Voltage/Current
+operation are unaffected. `per_unit_status` stays within its existing
+`configured`/`base_required`/`not_applicable`/`null` value set, so
+**no frontend file was touched**. 45 new tests (19 resolver-level, 26
+live-endpoint integration across all four migrated endpoints); full
+backend suite passes, zero regressions. See
+[MIGRATION_PLAN.md — Phase 13](MIGRATION_PLAN.md#phase-13--dec-050-slice-7-calculated-channel-per-unit-inheritance-2026-08-25)
+and [HANDOFF.md](HANDOFF.md). Per the task's own explicit instruction,
+Slice 8 (migration/regression/performance/UAT) is **not** started.
 
 `[FACT]` **DEC-050 Slice 6 implemented (2026-08-24) — Measurement
 Group / Per-Unit Configuration Workspace.** The frontend now has a

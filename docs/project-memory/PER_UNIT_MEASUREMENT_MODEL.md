@@ -44,6 +44,27 @@ and its 2026-08-23 addendum. **None of these resolutions are
 implemented in code yet** — see §25 for the authorized next step
 (Slice 1 only).
 
+**Revision note (2026-08-25)**: Slices 1–7 of §24's sequence are now
+implemented (Measurement-group domain foundation; automatic grouping;
+Voltage groups; Current groups; group-aware PU resolution wired into
+the live source display/measurement endpoints, DEC-051; the
+Measurement Group frontend configuration workspace; and calculated-
+channel same-group inheritance, this section's own §19 rule extended
+from `source_id` to `measurement_group_id` exactly as anticipated). See
+[CURRENT_STATE.md](CURRENT_STATE.md) for exact current status and
+[DECISIONS.md — DEC-051](DECISIONS.md#dec-051--dec-049dec-050-live-endpoint-coexistence-precedence-group-membership-not-configuration-completeness-decides-which-resolver-applies-to-a-channel)
+for the DEC-049/DEC-050 coexistence precedence (including its Slice 7
+addendum) — this document's own framing below (Slices "not yet
+implemented") describes the state as of 2026-08-22/23 and is preserved
+as the original specification, not rewritten in place; do not infer
+current implementation status from the body text below without
+checking CURRENT_STATE.md first. Slice 7 also introduced one
+conservative restriction (Voltage-group multi-input Addition/
+Subtraction never auto-inherits, even when unanimous) that was **not**
+itself decided by this document or DEC-050 — flagged for explicit
+owner review in DEC-051's Slice 7 addendum, not asserted as approved
+by this note.
+
 ---
 
 ## 1. Fundamental purpose

@@ -4,9 +4,77 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-08-24**
+Last updated: **2026-08-25**
 
 ## What was most recently done
+
+**Phase 13 — DEC-050 Slice 7: Calculated-Channel Per-Unit
+Inheritance.** A calculated channel may now inherit DEC-050 group-
+aware Per-Unit context from its own inputs, derived fresh at request
+time -- never persisted, never adding the channel to
+`MeasurementGroupRegistry` (Slice 1's group-membership scope stays
+source-channels-only, unchanged).
+
+**Backend only, zero frontend file touched.** New
+`app/services/calculated_group_aware_per_unit.py`:
+`resolve_inherited_measurement_group_id()` walks a calculated channel's
+own `inputs: list[ChannelRef]`, reusing DEC-049's existing
+`derive_per_unit_profile_id()` UNCHANGED (now keyed on
+`measurement_group_id` instead of `source_id` -- no new inheritance
+algorithm, exactly as
+[PER_UNIT_MEASUREMENT_MODEL.md §19](PER_UNIT_MEASUREMENT_MODEL.md#19-calculated-channel-implications--decision-initial-rule-approved-2026-08-23-implementation-pending)
+already anticipated), recursing into a `"calculated"`-kind input's own
+stored `CalculatedChannel` so the rule composes transitively through
+calculated-on-calculated chains with no separate recursive logic.
+`resolve_calculated_group_aware_per_unit()` then gates on quantity
+compatibility and delegates to `group_aware_per_unit.py`'s own
+Voltage/Current resolution core (`resolve_per_unit_for_group()`,
+extracted from that module this slice as a pure, behaviour-preserving
+refactor -- its own full pre-existing test suite re-run and unchanged).
+Wired into all four calculated-channel display endpoints via a new
+`_resolve_effective_per_unit_for_calculated_channel()` dispatch helper
+in `calculated_channel_service.py`, mirroring
+`waveform_service._resolve_effective_per_unit()`'s own exact
+precedence (group-aware first, DEC-049 calculated-channel-profile
+fallback unchanged if none exists -- DEC-051's coexistence rule,
+extended one layer up, formally recorded as a Slice 7 addendum to
+[DECISIONS.md — DEC-051](DECISIONS.md#dec-051--dec-049dec-050-live-endpoint-coexistence-precedence-group-membership-not-configuration-completeness-decides-which-resolver-applies-to-a-channel)).
+Every new parameter defaults to `None`; every pre-existing caller/test
+that omits them is byte-for-byte unchanged.
+
+**One conservative restriction this slice introduces, flagged for
+explicit owner review rather than asserted as approved policy**: a
+Voltage group's own confirmed, unanimous Addition/Subtraction inputs
+never auto-inherit that group's base (e.g. `VR - VY` on a
+phase-to-ground group is numerically phase-to-phase, but the group's
+own resolved denominator stays phase-to-ground -- no operation-level
+metadata exists anywhere in this codebase to distinguish the two, and
+silently dividing by the wrong denominator would be a materially worse
+failure than `base_required`). Current-group multi-input arithmetic and
+every unary Voltage/Current operation are unaffected. See DEC-051's
+Slice 7 addendum for the full reasoning and the suggested future
+`DEC-052`.
+
+**Tests**: 45 new -- 19 resolver-level
+(`test_calculated_group_aware_per_unit.py`) and 26 live-endpoint
+integration, parametrized across all four migrated endpoints
+(`test_calculated_group_aware_per_unit_endpoints.py`), covering
+same-group unary/multi-input inheritance, the Voltage multi-input
+restriction, cross-group/cross-source/transformer-HV-LV adversarial
+cases, ungrouped-falls-back-to-DEC-049, the DEC-051-style
+grouped-but-unresolved-never-falls-back regression, calculated-on-
+calculated propagation (both the successful-chain and
+ambiguous-parent-stays-ambiguous cases), and an engineering-mode
+regression check. Full backend suite passes, zero regressions to any
+DEC-049 or Slice 1-6 coverage.
+
+**Next step**: nothing is pre-authorized. Per the task's own explicit
+instruction, Slice 8 (migration/regression/performance verification and
+UAT) was NOT started by this phase and requires its own separate,
+explicit approval -- see this task's own final report for the exact
+commit hash(es) and push/CI status.
+
+## What was done in the prior session (Phase 12 — DEC-050 Slice 6: Measurement Group / Per-Unit Configuration Workspace)
 
 **Phase 12 — DEC-050 Slice 6: Measurement Group / Per-Unit
 Configuration Workspace.** The first frontend-facing slice: a real,

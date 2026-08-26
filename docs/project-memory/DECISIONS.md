@@ -6657,6 +6657,93 @@ existing DEC-049 code path (`per_unit.py`/`per_unit_registry.py`/
 `per_unit_service.py`/the `/per-unit/sources` API) was modified. See
 [MIGRATION_PLAN.md — Phase 11](MIGRATION_PLAN.md#phase-11--dec-050-slice-5-group-aware-per-unit-resolution-in-live-display-endpoints-2026-08-24).
 
+**Update (2026-08-25) — extended to calculated-channel display
+endpoints (DEC-050 Slice 7); one new conservative restriction flagged
+for owner review, not treated as approved by this update:**
+
+Slice 7 wires the identical precedence rule above one layer up, for a
+calculated channel's four `unit_mode`-aware endpoints
+(`.../calculated-channels/{id}/waveform`, `.../cursor-values`,
+`.../peak-values`, `.../{id}/annotation-anchor`). A calculated channel
+is never added to `MeasurementGroupRegistry` (group membership stays
+source-channels-only, per Slice 1's own scope) — so "is this channel a
+member of a group" is not directly askable for it the way it is for a
+source channel. Instead, the equivalent structural fact is **derived**
+at request time by walking the calculated channel's own
+`inputs: list[ChannelRef]` (reusing `derive_per_unit_profile_id()`
+UNCHANGED, per
+[PER_UNIT_MEASUREMENT_MODEL.md §19](PER_UNIT_MEASUREMENT_MODEL.md#19-calculated-channel-implications--decision-initial-rule-approved-2026-08-23-implementation-pending)'s
+own confirmed direction — "the same function, extended from `source_id`
+to `measurement_group_id`... no new inheritance algorithm needs to be
+invented"), never persisted onto the channel or the registry:
+
+```text
+calculated channel's inputs resolve, unambiguously, to ONE
+measurement_group_id (recursing through calculated-on-calculated
+chains the same way DEC-049's own inheritance already does)
+    → DEC-050 group-aware resolution is authoritative for it
+    → its outcome (configured OR base_required) is final
+    → the existing DEC-049 calculated-channel-profile inheritance
+      is never additionally consulted for it, and never silently
+      overrides it
+
+calculated channel's inputs do NOT resolve to one unambiguous
+measurement_group_id (any input ungrouped, cross-group, cross-source,
+or an operation this update excludes -- see below)
+    → the existing DEC-049 calculated-channel-profile resolution
+      applies, completely unchanged from pre-Slice-7 behaviour
+```
+
+This is the same precedence shape as the base DEC-051 decision above,
+applied at the calculated-channel layer instead of the source-channel
+layer — not a new coexistence rule requiring separate owner review.
+
+**One additional restriction this update DOES introduce, which was NOT
+already decided anywhere and is flagged here for explicit owner
+review rather than asserted as approved policy**: even when a
+calculated channel's Addition/Subtraction inputs unanimously resolve to
+the same Voltage `MeasurementGroup`, this implementation does **not**
+inherit that group's base. Reason: this codebase has no metadata
+anywhere distinguishing a Voltage group's own phase-to-ground vs.
+phase-to-phase reference from the physical reference an Addition/
+Subtraction of two of that group's own channels actually produces —
+e.g. `VR - VY` on a phase-to-ground group is numerically a
+phase-to-phase quantity, but the group's own resolved denominator
+remains phase-to-ground; dividing the former by the latter would
+silently produce a **wrong** PU value (not merely a missing one),
+which is a materially worse failure mode than the `base_required` this
+restriction produces instead. A Current group has no equivalent
+reference-frame concept (Ibase is one scalar regardless of phase), so
+Current-group multi-input arithmetic is unaffected. Unary operations on
+a Voltage group (`-VR`, `abs(VR)`, `VR * k`, `RMS(VR)`) are unaffected
+too — none of them can change which physical reference the result
+represents. See
+`backend/app/services/calculated_group_aware_per_unit.py`'s own module
+docstring for the full reasoning. **This restriction is implemented
+today as the conservative default, but is NOT itself an owner-approved
+decision** — it is recorded here, explicitly flagged, as a candidate
+future `DEC-052` should the owner want a more precise rule (e.g.
+operation-level metadata distinguishing phase-to-phase derivations)
+instead of the current blanket exclusion.
+
+Impact (Slice 7 addition): new
+`backend/app/services/calculated_group_aware_per_unit.py` (the
+resolution bridge + inheritance derivation) and its own resolver-level
+and live-endpoint test coverage. Modified
+`backend/app/services/calculated_channel_service.py` (one new dispatch
+helper, `_resolve_effective_per_unit_for_calculated_channel()`, mirrors
+`waveform_service._resolve_effective_per_unit()` exactly) and
+`backend/app/api/v1/calculated_channels.py` (the three group-
+configuration registries threaded through as new optional dependencies
+on the four calculated-channel display endpoints). `backend/app/services/group_aware_per_unit.py`
+had its Voltage/Current config-resolution core extracted into a shared
+`resolve_per_unit_for_group()` function (pure refactor, behaviour
+unchanged, re-verified by its own full existing test suite) so Slice 7
+reuses it rather than duplicating the Voltage/Current resolution logic
+a second time. No existing DEC-049 calculated-channel code path was
+modified. See
+[MIGRATION_PLAN.md — Phase 13](MIGRATION_PLAN.md#phase-13--dec-050-slice-7-calculated-channel-per-unit-inheritance-2026-08-25).
+
 ---
 
 ## How to add a decision
