@@ -239,6 +239,129 @@ class TestSearchRangeNarrowing:
         assert view.found is True
 
 
+def _two_event_waveform(*, duration_s: float = 3.0, fs: float = 5000.0, event_a_time_s: float = 1.0, event_b_time_s: float = 2.0):
+    """Task section 21's own worked scenario: two genuine, independent
+    disturbances in one record -- Event A (a moderate dip, recovering
+    afterward) well after the full-record baseline window, then a calm
+    stretch, then Event B (a deeper dip that persists to the end). Both
+    are individually well clear of any sensitivity tier's trigger band
+    when isolated."""
+    t = np.arange(0.0, duration_s, 1.0 / fs)
+    amplitude = np.full_like(t, 100.0)
+    amplitude[(t >= event_a_time_s) & (t < event_a_time_s + 0.5)] = 50.0  # Event A, recovers after 0.5s
+    amplitude[t >= event_b_time_s] = 30.0  # Event B, persists
+    return t, amplitude * np.sin(2.0 * np.pi * F0 * t)
+
+
+class TestMultiEventSearchRangeUAT:
+    """The owner's own real UAT finding (task section 21): a full-record
+    search finds the FIRST qualifying disturbance (Event A), which may
+    not be the one the engineer is actually analysing. Restricting the
+    search to a viewport around the LATER event (Event B) must find
+    that one instead, with Event A entirely excluded from consideration
+    -- never a blended/backtracked result."""
+
+    @pytest.fixture
+    def two_event_registry(self):
+        registry = WorkspaceRegistry()
+        t, values = _two_event_waveform()
+        registry.add(_active_source(time=t, channels={"VA": values}))
+        return registry
+
+    def test_full_recording_selects_the_first_event(self, two_event_registry, sync_registry):
+        """Task section G: "Full recording mode selects the first
+        qualifying Event A, preserving current semantics.\""""
+        view = detect_event_candidate(
+            workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="normal",
+            search_start_time=None, search_end_time=None,
+            source_registry=two_event_registry, synchronization_registry=sync_registry,
+        )
+        assert view.found is True
+        assert abs(view.candidate_source_time - 1.0) < 0.05  # Event A, not Event B
+
+    def test_visible_range_around_event_b_excludes_event_a(self, two_event_registry, sync_registry):
+        """Task section G: "Current visible range around Event B
+        excludes Event A and detects Event B\" -- the core owner UAT
+        acceptance path."""
+        view = detect_event_candidate(
+            workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="normal",
+            search_start_time=1.7, search_end_time=2.5,
+            source_registry=two_event_registry, synchronization_registry=sync_registry,
+        )
+        assert view.found is True
+        assert abs(view.candidate_source_time - 2.0) < 0.05  # Event B, not Event A
+
+    def test_visible_range_with_no_disturbance_returns_no_event_even_though_one_exists_outside_it(
+        self, two_event_registry, sync_registry
+    ):
+        """Task section I: a quiet sub-range must return "no clear
+        event" even though the record genuinely contains a disturbance
+        elsewhere -- the detector must never search outside the
+        selected range to manufacture a result."""
+        view = detect_event_candidate(
+            workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="normal",
+            search_start_time=1.6, search_end_time=1.95,  # calm stretch between A and B
+            source_registry=two_event_registry, synchronization_registry=sync_registry,
+        )
+        assert view.found is False
+        assert view.reason == "No clear disturbance onset detected."
+
+
+class TestSourceBoundClipping:
+    """Task section D/8: a search range extending beyond the selected
+    source's own native coverage must clip safely to the real overlap,
+    never request/produce an invalid slice."""
+
+    def test_range_extending_past_source_bounds_clips_safely(self, source_registry, sync_registry):
+        """source_registry's own fixture covers [0, 2) s -- request a
+        range that starts before it and ends after it."""
+        view = detect_event_candidate(
+            workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="normal",
+            search_start_time=-5.0, search_end_time=50.0,
+            source_registry=source_registry, synchronization_registry=sync_registry,
+        )
+        assert view.found is True  # equivalent to the full-record result -- clipped to the real overlap, not rejected
+
+
+class TestTooShortVisibleRange:
+    """Task section E: a too-short range must return a clear result,
+    never silently fall back to full-record search (that fallback is
+    handled entirely at the frontend: this endpoint is never CALLED a
+    second time automatically -- see wwHandleDetectEventAnalyseClick()'s
+    own single-request contract)."""
+
+    def test_a_few_samples_returns_too_short_not_a_crash(self, source_registry, sync_registry):
+        view = detect_event_candidate(
+            workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="normal",
+            search_start_time=1.000, search_end_time=1.001,
+            source_registry=source_registry, synchronization_registry=sync_registry,
+        )
+        assert view.found is False
+        assert "too short" in view.reason.lower()
+
+
+class TestInsufficientBaselineInVisibleRange:
+    """Task section F: zooming so tightly that the visible range leaves
+    too little genuine pre-event history to build a trustworthy
+    baseline (distinct from TestTooShortVisibleRange's own "not even
+    one RMS window" case: this range IS long enough to compute SOME RMS
+    values, just not enough of them to satisfy the minimum-cycles
+    baseline requirement) -- must not fabricate a baseline."""
+
+    def test_a_sliver_longer_than_one_rms_window_has_no_baseline(self, sync_registry):
+        registry = WorkspaceRegistry()
+        t, values = _dip_waveform(event_time_s=1.0)
+        registry.add(_active_source(time=t, channels={"VA": values}))
+
+        view = detect_event_candidate(
+            workspace_id="ws-1", source_id="src-1", channel_name="VA", sensitivity="normal",
+            search_start_time=1.0, search_end_time=1.021,  # ~1 ms past the 1-cycle RMS warm-up -- too few valid RMS samples for a baseline
+            source_registry=registry, synchronization_registry=sync_registry,
+        )
+        assert view.found is False
+        assert "baseline" in view.reason.lower()
+
+
 class TestDoesNotMutateState:
     """Task section 15/17: detection must never touch t0 or the
     source's own alignment offset -- it only ever READS the offset to

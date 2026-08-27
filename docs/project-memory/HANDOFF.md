@@ -136,9 +136,106 @@ trim per the task's own "avoid a large configuration form" guidance,
 not an oversight. Every other item on the task's own non-goals list
 (section 32) remains out of scope, as intended.
 
-**Next step**: nothing is pre-authorized. The deferred search-range UI
-above is a candidate for a future, separate UX refinement, not a
-blocker.
+**Same-day UAT fix (2026-08-27, no new decision entry — see
+[DECISIONS.md — DEC-056](DECISIONS.md#dec-056--waveform-time-synchronization-slice-3-assisted-event-origin-detection-is-advisory-only-operates-on-one-engineer-selected-analog-channels-sustained-rms-change-and-only-ever-proposes-a-candidate-through-slice-2s-existing-t0-mechanism-on-explicit-acceptance)'s
+own "Update" addendum for the full record)**: owner UAT found the
+Detect Event modal's original two-step accept flow could show BOTH
+"Set as t=0" and "Replace t=0" at once, plus two Cancel buttons.
+**Fixed to expose exactly one state-appropriate acceptance action and
+exactly one Cancel** — the accept button's own label/enabled state is
+now decided purely by the current `wwHasT0()` state
+(`wwSyncDetectEventAcceptButtonState()`), never a second click-to-
+reveal confirmation panel; the separate `#wwDetectEventReplaceConfirm`
+sub-panel was removed outright. Both states click straight into the
+same, still-unmodified `wwAcceptDetectedEvent()` / Slice 2 `PUT
+.../synchronization/t0`. A related fix in the same pass: changing
+source/channel/sensitivity after a candidate was found now invalidates
+it (`wwInvalidateDetectEventSuggestion()`), so the accept button can
+never stay enabled for an unanalysed selection. Pure frontend UX fix —
+zero detection/timing/backend logic touched (`backend/` has no diff).
+9 new frontend static-regression tests + a dedicated live-browser UAT
+(9/9 checks passed, zero console errors, screenshots confirmed both
+button states and a genuine `t0` move on Replace). Full backend suite:
+1427 passed, zero regressions.
+
+**Same-day owner UAT correction (2026-08-27, same DEC-056 "Update"
+addendum) — viewport-bounded detection.** Real disturbance recordings
+exposed the deferred search-range UI (noted above) as more than
+optional: a full-record search returns the FIRST sustained qualifying
+disturbance, which is not always the one the engineer is analysing when
+a recording genuinely contains more than one event -- confirmed by the
+owner across all three sensitivity tiers, so this was a search-SCOPE
+problem, not a threshold problem.
+
+**Fixed**: the Detect Event modal now has a "Detection range" picker
+-- "Current visible range" (preferred/default) or "Full recording"
+(explicit secondary option) -- reusing the Per-Unit Current Base
+picker's own existing stacked-radio-row pattern, never a numeric
+start/end time form. The engineer already indicates the event of
+interest by zooming/panning; this reuses that existing interaction.
+
+**Backend required zero changes** — `POST .../synchronization/detect-event`'s
+existing optional `search_start_time`/`search_end_time` (source-native
+seconds, boundary-inclusive clip) were already fully correct; confirmed
+by 6 new backend tests (a synthetic two-genuine-event record: full
+recording selects the earlier event, a range restricted around the
+later event selects that one and excludes the earlier one entirely;
+source-bound clipping; a too-short range; an insufficient-baseline
+range — all already degrade to a clear `found=false` result with no
+code change needed). `backend/app/` has zero diff for this correction.
+
+**Time mapping reuses existing helpers only** (task's own "do not
+duplicate hardcoded formulas" instruction): `ww.viewport` was confirmed
+by inspection to already stay in WORKSPACE time at all times -- every
+Plotly relayout handler already routes the raw range through
+`wwPlotlyXToElapsed()` (Slice 2's own inverse mapping) before storing
+it -- so this correction needed only ONE conversion step, Slice 1's own
+`wwWorkspaceTimeToSourceTime(sourceId, workspaceTime)`, applied to
+`ww.viewport.start`/`.end`; no separate "apply t0" step was needed (it
+would have double-applied it).
+
+**No silent fallback (mandatory)**: a missing viewport, too-short
+range, insufficient baseline, or no-clear-event result all show an
+explicit message; the frontend never retries the same request against
+the full record. Viewport is captured fresh inside the Analyse click
+handler, never cached from when the modal opened.
+`wwOpenDetectEventModal()` never reads `ww.viewport` at all. Changing
+source/channel/sensitivity/range-mode after a candidate was found
+invalidates it (reuses the SAME `wwInvalidateDetectEventSuggestion()`
+the prior UX fix above already established). The result panel gained
+one line, "Search range: …", reusing `wwFormatCursorPointTime()` (the
+same formatter every other time readout already uses, so it stays
+correct in event-relative display too once a `t0` is active).
+**Sensitivity/RMS/persistence/quality logic is completely unchanged.**
+
+**Verified by live-browser testing this pass** (Playwright, a
+purpose-built synthetic COMTRADE fixture with two genuine, independent
+current-rise events at different times on one channel): full recording
+correctly found the earlier event; zooming to the later event and
+reopening Detect Event defaulted to "Current visible range" and
+correctly found the later event, excluding the earlier one entirely,
+across Conservative/Normal/Sensitive; a too-tight zoom (50 ms, entirely
+post-event) produced a clear "no clear event" message with "Set as
+t=0" staying disabled and no fallback; confirmed correct with an active
+alignment offset and with an active `t0` (screenshot confirmed the
+search-range line rendering in signed event-relative time, and "Replace
+t=0" correctly moving the origin to the new candidate). 14/14 checks
+passed, zero console errors.
+
+**Tests**: 6 new backend tests
+(`test_event_detection_service.py`: `TestMultiEventSearchRangeUAT`,
+`TestSourceBoundClipping`, `TestTooShortVisibleRange`,
+`TestInsufficientBaselineInVisibleRange`) + 11 new frontend
+static-regression tests (`test_frontend_detect_event.py`). Full backend
+suite: 1444 passed, zero regressions (up from 1427).
+
+**Known, explicitly deferred, not silently gapped**: multi-event
+candidate lists, automatic event ranking, an event chooser UI, and any
+other multi-candidate workflow remain out of scope (task's own explicit
+non-goals) — one visible-range search still returns exactly one
+candidate, or none, unchanged from before.
+
+**Next step**: nothing is pre-authorized.
 
 ## What was done in the prior session (Phase 17 — Waveform Time Synchronization Slice 2: Explicit Common Event t=0)
 

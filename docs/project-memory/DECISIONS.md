@@ -7565,6 +7565,118 @@ Impact:
   the optional search-range narrowing the backend already supports —
   candidate future UX refinement, not required for this slice.
 
+**Update (2026-08-27, same-day owner UAT refinement — no new decision
+entry)**: owner UAT found the modal's original two-step accept flow
+confusing — clicking "Set as t=0" while a `t0` already existed hid the
+main footer and revealed a SECOND panel with its own "Replace t=0"
+button and its own "Cancel" button, so a screenshot mid-flow could show
+both accept actions and two Cancel buttons at once. **The Detect Event
+modal now exposes exactly one state-appropriate acceptance action —
+"Set as t=0" when no event origin exists, "Replace t=0" when one
+already does — and exactly one Cancel, decided by
+`wwSyncDetectEventAcceptButtonState()` from the CURRENT `wwHasT0()`
+state alone, never a second click-to-reveal panel.** The separate
+`#wwDetectEventReplaceConfirm` sub-panel (and its own footer/Cancel/
+Replace buttons) was removed outright; the "A t=0 is already defined"
+explanatory text became inline context (`#wwDetectEventReplaceHint`,
+shown only alongside an active, acceptable candidate) rather than a
+second footer. Both button states click straight into the SAME
+`wwAcceptDetectedEvent()` — still the one unmodified Slice 2 `PUT
+.../synchronization/t0` call; no replacement-specific API or logic was
+added. A related, same-pass fix: selecting a different source, channel,
+or sensitivity after a candidate was already found now invalidates that
+stale candidate (`wwInvalidateDetectEventSuggestion()`) so the accept
+button can never stay enabled for a selection that was never actually
+analysed. Verified by 9 new static-regression tests plus a dedicated
+live-browser UAT (9/9 checks passed, zero console errors): the no-t0
+case showed only "Set as t=0"; accepting, reopening, and detecting a
+second, later event on a different channel showed only "Replace t=0"
+plus the inline hint; Cancel left `t0` unchanged; accepting the replace
+action moved `t0` from the first candidate to the second, confirmed
+numerically and via the event-relative axis re-rendering correctly.
+Zero detection/timing/backend logic touched — `backend/` has no diff
+for this fix. See [HANDOFF.md](HANDOFF.md) for the full record.
+
+**Update (2026-08-27, same-day owner UAT correction — no new decision
+entry)**: owner UAT with real disturbance recordings found that a
+**full-record search is insufficient when a recording contains more
+than one genuine disturbance** — the detector correctly returns the
+FIRST sustained qualifying RMS change, but that is not always the
+event the engineer is actually analysing, and the owner confirmed
+across all three sensitivity tiers that this is a search-SCOPE problem,
+not a threshold-tuning problem. **Event detection now supports
+viewport-bounded analysis. "Current visible range" is the preferred/
+default search scope; "Full recording" remains available explicitly**
+via a compact two-row picker in the Detect Event modal (reusing the
+Per-Unit Current Base picker's own existing stacked-radio-row pattern
+verbatim — no new UI primitive, no numeric start/end time form). The
+engineer already indicates the event of interest by zooming/panning
+the waveform; this reuses that existing interaction rather than adding
+one.
+
+- **Backend required zero changes.** `POST .../synchronization/detect-event`'s
+  existing optional `search_start_time`/`search_end_time` (source-native
+  seconds, boundary-inclusive `np.searchsorted` clip) were already
+  fully correct — confirmed by 6 new backend tests exercising exactly
+  this owner scenario (a synthetic two-genuine-event record: full
+  recording selects the earlier event; a range restricted around the
+  later event selects that one instead, with the earlier event entirely
+  excluded), plus source-bound clipping (a range extending past the
+  source's own native coverage clips safely, never rejected), a
+  too-short range, and an insufficient-baseline range — all already
+  produced clear, honest `found=false` results with no code change
+  needed. `backend/app/` has zero diff for this correction; only new
+  tests were added.
+- **Time mapping reuses existing helpers only, per the task's own "do
+  not duplicate hardcoded formulas" instruction.** `ww.viewport` was
+  already documented (and confirmed by inspection) to stay in
+  WORKSPACE time at all times — every Plotly relayout handler already
+  routes the raw range through `wwPlotlyXToElapsed()` (Slice 2's own
+  event-time-to-workspace-time inverse) before ever storing it, so no
+  event-relative-to-workspace conversion step was needed in this
+  correction at all. The ONLY conversion required is Slice 1's own
+  `wwWorkspaceTimeToSourceTime(sourceId, workspaceTime)`, applied to
+  `ww.viewport.start`/`.end` — the same helper every other
+  source-native request in this app already uses.
+- **No silent fallback (mandatory).** If "Current visible range" cannot
+  produce a usable request (no viewport currently exists) or the
+  detector itself rejects the resulting slice (too short, insufficient
+  baseline, no clear event), the engineer sees a clear message and
+  "Set as t=0"/"Replace t=0" stays disabled — the frontend never
+  retries the same request against the full record.
+- **Viewport captured at Analyse-click time, not modal-open time**
+  (task section 7) — the conversion runs inside the Analyse handler
+  itself, reading `ww.viewport` fresh at that moment; confirmed
+  `wwOpenDetectEventModal()` never reads it at all.
+- **Sensitivity/RMS/persistence/quality logic is completely
+  unchanged** — this correction is entirely about selecting the correct
+  search REGION, never about re-tuning what counts as a qualifying
+  disturbance within it (task section 13).
+- The result panel gained one line, "Search range: …", reusing the SAME
+  `wwFormatCursorPointTime()` formatter every other time readout in this
+  app already uses (so it stays consistent with whatever Elapsed/
+  Absolute/event-relative display mode is currently active — confirmed
+  in the live UAT with an active `t0`, where the line correctly showed
+  signed event-relative bounds).
+- Verified by 6 new backend tests (multi-event regression, source-bound
+  clipping, too-short range, insufficient baseline) + 11 new frontend
+  static-regression tests, plus a dedicated live-browser UAT reproducing
+  the owner's own scenario end to end (14/14 checks passed, zero console
+  errors): full recording found the earlier event; zooming to the later
+  event and reopening Detect Event defaulted to "Current visible range"
+  and found the later event, excluding the earlier one entirely, across
+  Conservative/Normal/Sensitive; a too-tight zoom produced a clear "no
+  clear event"/insufficient-range message with no fallback; behaviour
+  was confirmed correct with an active alignment offset and with an
+  active `t0` (Replace t=0 moved the origin correctly, search range
+  shown in event-relative time). Full backend suite: 1444 passed, zero
+  regressions.
+- **Deferred, not silently gapped**: multi-event candidate lists,
+  automatic event ranking, an event chooser UI, and any other
+  multi-candidate workflow remain out of scope for this correction (task
+  section 22) — one visible-range search still returns exactly one
+  candidate (or none), the same shape as before.
+
 ---
 
 ## How to add a decision

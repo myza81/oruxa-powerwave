@@ -4344,9 +4344,23 @@
          shell #wwSyncOverlay above already established -- no new modal
          primitive invented. Advisory only throughout (task section 1):
          nothing in this modal ever writes t0/an alignment offset/source
-         data except the one explicit "Set as t=0" action, which itself
-         only ever calls the EXISTING PUT .../synchronization/t0
-         endpoint Slice 2 already established (task section 14). -->
+         data except the one explicit accept action, which itself only
+         ever calls the EXISTING PUT .../synchronization/t0 endpoint
+         Slice 2 already established (task section 14).
+
+         UAT fix (owner-observed defect): exactly ONE acceptance action
+         and ONE Cancel are ever rendered -- never both "Set as t=0" AND
+         "Replace t=0" simultaneously, never two Cancel buttons. There
+         is no separate confirm-step sub-panel with its own footer any
+         more; #wwDetectEventAcceptBtn's own label/behavior is switched
+         in place by wwSyncDetectEventAcceptButtonState() (called on
+         open, after every Analyse, and on source/channel/sensitivity
+         change) purely from the CURRENT wwHasT0() state -- "if t0
+         exists, the only valid primary action is Replace t=0; if it
+         doesn't, the only valid primary action is Set as t=0," never
+         a two-click reveal. The "already defined" explanatory message
+         becomes inline context text (#wwDetectEventReplaceHint) next
+         to the result, not a second footer. -->
     <div class="confirm-overlay" id="wwDetectEventOverlay" hidden>
         <div class="group-editor-box ww-pu-dialog" role="dialog" aria-modal="true" aria-labelledby="wwDetectEventTitle">
             <div class="group-editor-header">
@@ -4375,6 +4389,29 @@
                 </select>
             </div>
 
+            <!-- UAT correction: a full-record search finds the FIRST
+                 qualifying disturbance, which is not always the one the
+                 engineer is actually analysing when a recording contains
+                 more than one genuine event. The engineer already
+                 indicates the event of interest by zooming/panning the
+                 waveform -- reusing that existing interaction (never a
+                 numeric start/end time form, task section 2) as the
+                 default search scope. Reuses the SAME .ww-pu-mode-row
+                 stacked-radio-row pattern the Per-Unit Current Base
+                 picker already established -- no new picker primitive
+                 invented. -->
+            <div class="field">
+                <label>Detection range</label>
+                <label class="ww-pu-mode-row ww-pu-mode-row--selected" id="wwDetectEventRangeVisibleRow">
+                    <input type="radio" name="wwDetectEventRange" id="wwDetectEventRangeVisible" value="visible" checked>
+                    <span class="ww-pu-mode-row-text"><strong>Current visible range</strong><small>Analyse only the waveform region currently shown.</small></span>
+                </label>
+                <label class="ww-pu-mode-row" id="wwDetectEventRangeFullRow">
+                    <input type="radio" name="wwDetectEventRange" id="wwDetectEventRangeFull" value="full">
+                    <span class="ww-pu-mode-row-text"><strong>Full recording</strong><small>Search the full selected recording.</small></span>
+                </label>
+            </div>
+
             <button type="button" class="secondary" id="wwDetectEventAnalyseBtn" style="margin-top:8px;">Analyse</button>
 
             <!-- Populated by wwRenderDetectEventResult() -- "no clear
@@ -4383,16 +4420,12 @@
                  analysis. -->
             <div id="wwDetectEventResult" hidden></div>
 
-            <!-- Task section 16: shown only when accepting THIS result
-                 would move an already-defined t0 -- never auto-confirmed. -->
-            <div id="wwDetectEventReplaceConfirm" hidden>
-                <p class="hint">A t=0 is already defined. Accepting this suggestion will move it.</p>
-                <div class="group-editor-footer">
-                    <button type="button" class="secondary" id="wwDetectEventReplaceCancelBtn">Cancel</button>
-                    <span class="toolbar-spacer"></span>
-                    <button type="button" id="wwDetectEventReplaceConfirmBtn">Replace t=0</button>
-                </div>
-            </div>
+            <!-- Task section 16: context text only, shown alongside a
+                 found result exactly when accepting it would move an
+                 already-defined t0 -- the ACTION itself lives only in
+                 #wwDetectEventFooter below (see this file's own UAT-fix
+                 comment above #wwDetectEventOverlay). -->
+            <p class="hint" id="wwDetectEventReplaceHint" hidden>A t=0 is already defined. Accepting this suggestion will move it.</p>
 
             <div class="group-editor-footer" id="wwDetectEventFooter">
                 <button type="button" class="secondary" id="wwDetectEventCancelBtn">Cancel</button>
@@ -17157,19 +17190,85 @@
             channelSelect.innerHTML = wwDetectEventChannelOptionsHtml(sourceSelect.value);
         }
 
+        // UAT correction: which of the two Detection range rows is
+        // currently selected, "visible" (default) or "full" -- the ONE
+        // place this is read from the DOM.
+        function wwDetectEventRangeMode() {
+            return document.getElementById("wwDetectEventRangeFull").checked ? "full" : "visible";
+        }
+
+        // Mirrors the Per-Unit Current Base picker's own established
+        // "toggle a --selected class at render/change time, never
+        // :has()" convention (see .ww-pu-mode-row's own CSS comment) --
+        // reused verbatim, not reinvented for this second stacked-radio
+        // picker.
+        function wwSyncDetectEventRangeRowHighlight() {
+            const visible = wwDetectEventRangeMode() === "visible";
+            document.getElementById("wwDetectEventRangeVisibleRow").classList.toggle("ww-pu-mode-row--selected", visible);
+            document.getElementById("wwDetectEventRangeFullRow").classList.toggle("ww-pu-mode-row--selected", !visible);
+        }
+
+        // UAT fix: the ONE place #wwDetectEventAcceptBtn's own label and
+        // the "already defined" hint's visibility are decided, from
+        // CURRENT wwHasT0() state alone -- never a separate confirm-step
+        // panel with its own second copy of the button/Cancel (see this
+        // modal's own top-level HTML comment for the full "one primary
+        // acceptance action only" rule). Called after every state change
+        // that could make the previous label/hint stale: modal open,
+        // a completed Analyse (found OR not-found), and every
+        // source/channel/sensitivity change.
+        function wwSyncDetectEventAcceptButtonState() {
+            const acceptBtn = document.getElementById("wwDetectEventAcceptBtn");
+            const hintEl = document.getElementById("wwDetectEventReplaceHint");
+            const hasT0 = wwHasT0();
+            acceptBtn.textContent = hasT0 ? "Replace t=0" : "Set as t=0";
+            // The hint is contextual to an ACTIVE candidate -- shown only
+            // once accepting is actually possible (acceptBtn enabled),
+            // never dangling above a disabled/no-candidate state.
+            hintEl.hidden = !(hasT0 && !acceptBtn.disabled);
+        }
+
+        // Task section: "source/channel changed after a candidate was
+        // generated" must never leave a stale candidate's Accept button
+        // enabled for a selection that was never actually analysed --
+        // clears the result panel/marker/button state (but never
+        // t0/an alignment offset) the moment the engineer changes what
+        // they're about to analyse.
+        function wwInvalidateDetectEventSuggestion() {
+            document.getElementById("wwDetectEventResult").hidden = true;
+            document.getElementById("wwDetectEventAcceptBtn").disabled = true;
+            wwResetDetectEventSuggestion();
+            wwSyncDetectEventAcceptButtonState();
+        }
+
         // Task section 27: a concise reason plus a FEW diagnostic values
         // -- never an overcrowded modal. "found=false" (task section 28)
         // renders just as deliberately as "found=true", with the exact
         // manual-fallback instruction the task's own worked example uses
         // ("Use Cursor A to set t=0 manually.").
-        function wwRenderDetectEventResult(view, channelUnit) {
+        // Task section 17: "a subtle indication of the search scope in
+        // the result... do not overload the result panel" -- one short
+        // line, reusing wwFormatCursorPointTime() (the SAME formatter
+        // the Suggested event point line above and every A/B cursor
+        // readout already use, so it stays consistent with whatever
+        // Elapsed/Absolute/event-relative mode is currently active)
+        // rather than a bespoke duration format.
+        function wwDetectEventSearchRangeLabel(searchRangeInfo) {
+            if (!searchRangeInfo || searchRangeInfo.mode !== "visible") return "Full recording";
+            return "Current visible range (" + wwFormatCursorPointTime(searchRangeInfo.workspaceStart) +
+                " to " + wwFormatCursorPointTime(searchRangeInfo.workspaceEnd) + ")";
+        }
+
+        function wwRenderDetectEventResult(view, channelUnit, searchRangeInfo) {
             const resultEl = document.getElementById("wwDetectEventResult");
             const acceptBtn = document.getElementById("wwDetectEventAcceptBtn");
+            const searchRangeLine = '<p class="hint">Search range: ' + escapeHtml(wwDetectEventSearchRangeLabel(searchRangeInfo)) + '</p>';
             if (!view.found) {
                 resultEl.innerHTML =
-                    '<p class="hint">' + escapeHtml(view.reason) + '<br>Use Cursor A to set t=0 manually.</p>';
+                    '<p class="hint">' + escapeHtml(view.reason) + '<br>Use Cursor A to set t=0 manually.</p>' + searchRangeLine;
                 resultEl.hidden = false;
                 acceptBtn.disabled = true;
+                wwSyncDetectEventAcceptButtonState();
                 return;
             }
             const qualityLabel = { strong: "Strong", moderate: "Moderate", weak: "Weak" }[view.quality] || view.quality;
@@ -17180,9 +17279,11 @@
                 '<p class="hint">' + escapeHtml(view.reason) + '</p>' +
                 '<p class="hint">Pre-event RMS: ' + wwFormatEngineeringValue(view.baseline_rms) + ' ' + escapeHtml(channelUnit) +
                 ' &nbsp;·&nbsp; Post-change RMS: ' + wwFormatEngineeringValue(view.changed_rms) + ' ' + escapeHtml(channelUnit) +
-                ' &nbsp;·&nbsp; ' + (view.change_ratio * 100).toFixed(0) + '% of baseline (' + directionLabel + ')</p>';
+                ' &nbsp;·&nbsp; ' + (view.change_ratio * 100).toFixed(0) + '% of baseline (' + directionLabel + ')</p>' +
+                searchRangeLine;
             resultEl.hidden = false;
             acceptBtn.disabled = false;
+            wwSyncDetectEventAcceptButtonState();
         }
 
         function wwResetDetectEventSuggestion() {
@@ -17193,8 +17294,6 @@
         function wwOpenDetectEventModal() {
             document.getElementById("wwDetectEventError").hidden = true;
             document.getElementById("wwDetectEventResult").hidden = true;
-            document.getElementById("wwDetectEventReplaceConfirm").hidden = true;
-            document.getElementById("wwDetectEventFooter").hidden = false;
             document.getElementById("wwDetectEventAcceptBtn").disabled = true;
             wwResetDetectEventSuggestion();
 
@@ -17202,6 +17301,17 @@
             sourceSelect.innerHTML = wwDetectEventSourceOptionsHtml();
             wwSyncDetectEventChannelSelect();
             document.getElementById("wwDetectEventSensitivitySelect").value = "normal";
+            // UAT correction: "Current visible range" is the preferred
+            // default (task section 2) -- reset fresh every time the
+            // modal opens, never carried over stale from a previous
+            // session's choice.
+            document.getElementById("wwDetectEventRangeVisible").checked = true;
+            wwSyncDetectEventRangeRowHighlight();
+            // Reflects whatever t0 state the workspace is CURRENTLY in
+            // right as the modal opens -- "Set as t=0" if none exists
+            // yet, "Replace t=0" if one already does (never the other
+            // way around, never both at once).
+            wwSyncDetectEventAcceptButtonState();
             document.getElementById("wwDetectEventOverlay").hidden = false;
         }
 
@@ -17220,14 +17330,57 @@
             errorEl.hidden = false;
         }
 
+        // UAT correction: "Current visible range" converts the CURRENT
+        // ww.viewport (the app's own one authoritative coordinate
+        // system for the visible window -- see ww.viewport's own
+        // docstring: it is ALREADY workspace time regardless of
+        // Absolute/Elapsed mode or an active t0, since every relayout
+        // handler routes the raw Plotly range through
+        // wwPlotlyXToElapsed() before ever storing it) into the
+        // selected source's own native time via the SAME
+        // wwWorkspaceTimeToSourceTime() Slice 1 already established --
+        // never a second, hand-rolled formula, never reading a Plotly
+        // axis label. Returns `null` if there is currently no viewport
+        // to convert (task section 15: this is a REJECTION case for
+        // "visible range" mode, not a silent full-record fallback --
+        // the caller is responsible for surfacing that).
+        function wwDetectEventVisibleSourceNativeRange(sourceId) {
+            if (!ww.viewport) return null;
+            return {
+                searchStartTime: wwWorkspaceTimeToSourceTime(sourceId, ww.viewport.start),
+                searchEndTime: wwWorkspaceTimeToSourceTime(sourceId, ww.viewport.end),
+            };
+        }
+
         async function wwHandleDetectEventAnalyseClick() {
             const sourceId = document.getElementById("wwDetectEventSourceSelect").value;
             const channelName = document.getElementById("wwDetectEventChannelSelect").value;
             const sensitivity = document.getElementById("wwDetectEventSensitivitySelect").value;
+            // Task section 7: the viewport is captured HERE, at the
+            // moment Analyse is actually clicked -- never cached from
+            // when the modal first opened -- so a zoom/pan performed
+            // after opening Detect Event (before clicking Analyse) is
+            // still picked up correctly.
+            const rangeMode = wwDetectEventRangeMode();
             document.getElementById("wwDetectEventError").hidden = true;
             if (!sourceId || !channelName) {
                 wwDetectEventShowError("Choose a source and channel first.");
                 return;
+            }
+
+            const body = { source_id: sourceId, channel_name: channelName, sensitivity: sensitivity };
+            let searchRangeInfo = { mode: "full" };
+            if (rangeMode === "visible") {
+                const converted = wwDetectEventVisibleSourceNativeRange(sourceId);
+                // Task section 15: no viewport to search -- a clear
+                // rejection, never a silent switch to Full recording.
+                if (!converted) {
+                    wwDetectEventShowError("No visible waveform range to analyse. Zoom in on a channel, or choose Full recording instead.");
+                    return;
+                }
+                body.search_start_time = converted.searchStartTime;
+                body.search_end_time = converted.searchEndTime;
+                searchRangeInfo = { mode: "visible", workspaceStart: ww.viewport.start, workspaceEnd: ww.viewport.end };
             }
 
             let response;
@@ -17237,7 +17390,7 @@
                     {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ source_id: sourceId, channel_name: channelName, sensitivity: sensitivity }),
+                        body: JSON.stringify(body),
                     }
                 );
             } catch (error) {
@@ -17258,7 +17411,10 @@
             // coordinate ww.viewport/wwCursorTimeToPixelX() already use
             // -- never inferred from any displayed label) BEFORE
             // acceptance is even possible (acceptBtn stays disabled for
-            // found=false, see wwRenderDetectEventResult()).
+            // found=false, see wwRenderDetectEventResult()). Unchanged
+            // by this correction -- the marker's own semantics never
+            // depended on which search-range mode produced the
+            // candidate (task section 10).
             ww.suggestedEvent = {
                 visible: view.found,
                 sourceId: sourceId,
@@ -17267,7 +17423,7 @@
                 result: view,
             };
             wwUpdateCursorOverlay();
-            wwRenderDetectEventResult(view, view.channel_unit);
+            wwRenderDetectEventResult(view, view.channel_unit, searchRangeInfo);
         }
 
         async function wwAcceptDetectedEvent() {
@@ -17299,23 +17455,6 @@
             wwSyncT0Controls();
             wwApplyT0ToDisplay();
             wwCloseDetectEventModal();
-        }
-
-        // Task section 16: accepting while a t0 already exists shows an
-        // inline confirmation naming both the current and the new value
-        // -- never silently replaced.
-        function wwHandleDetectEventAcceptClick() {
-            if (wwHasT0()) {
-                document.getElementById("wwDetectEventFooter").hidden = true;
-                document.getElementById("wwDetectEventReplaceConfirm").hidden = false;
-                return;
-            }
-            wwAcceptDetectedEvent();
-        }
-
-        function wwHandleDetectEventReplaceCancelClick() {
-            document.getElementById("wwDetectEventReplaceConfirm").hidden = true;
-            document.getElementById("wwDetectEventFooter").hidden = false;
         }
 
         // Phase 2C-C1: shows/hides "Edit Channel Groups" -- only relevant
@@ -18125,11 +18264,28 @@
 
         // Slice 3 of waveform time synchronization: "Detect Event Origin".
         document.getElementById("wwDetectEventBtn").addEventListener("click", wwOpenDetectEventModal);
-        document.getElementById("wwDetectEventSourceSelect").addEventListener("change", wwSyncDetectEventChannelSelect);
+        document.getElementById("wwDetectEventSourceSelect").addEventListener("change", () => {
+            wwSyncDetectEventChannelSelect();
+            // UAT fix: a source change invalidates whatever candidate
+            // was showing for the PREVIOUS source -- never leave a
+            // stale Accept button enabled for a selection that hasn't
+            // actually been analysed yet.
+            wwInvalidateDetectEventSuggestion();
+        });
+        document.getElementById("wwDetectEventChannelSelect").addEventListener("change", wwInvalidateDetectEventSuggestion);
+        document.getElementById("wwDetectEventSensitivitySelect").addEventListener("change", wwInvalidateDetectEventSuggestion);
+        for (const radio of [document.getElementById("wwDetectEventRangeVisible"), document.getElementById("wwDetectEventRangeFull")]) {
+            radio.addEventListener("change", () => {
+                wwSyncDetectEventRangeRowHighlight();
+                // A previous candidate was found under the OTHER range
+                // mode -- never leave it (or its marker/Accept state)
+                // looking current for a mode that hasn't been analysed
+                // yet.
+                wwInvalidateDetectEventSuggestion();
+            });
+        }
         document.getElementById("wwDetectEventAnalyseBtn").addEventListener("click", wwHandleDetectEventAnalyseClick);
-        document.getElementById("wwDetectEventAcceptBtn").addEventListener("click", wwHandleDetectEventAcceptClick);
-        document.getElementById("wwDetectEventReplaceConfirmBtn").addEventListener("click", wwAcceptDetectedEvent);
-        document.getElementById("wwDetectEventReplaceCancelBtn").addEventListener("click", wwHandleDetectEventReplaceCancelClick);
+        document.getElementById("wwDetectEventAcceptBtn").addEventListener("click", wwAcceptDetectedEvent);
         document.getElementById("wwDetectEventCloseBtn").addEventListener("click", wwCloseDetectEventModal);
         document.getElementById("wwDetectEventCancelBtn").addEventListener("click", wwCloseDetectEventModal);
         document.getElementById("wwDetectEventOverlay").addEventListener("click", (event) => {

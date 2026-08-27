@@ -99,9 +99,15 @@ alignment offset, never mutating source data. The frontend previews the
 candidate as a distinct dashed "Suggested event" marker on the waveform
 (reusing the existing A/B cursor overlay's own `wwCursorTimeToPixelX()`
 pixel-projection authority, no second X-projection) BEFORE acceptance
-is even possible; accepting while a `t0` already exists requires an
-explicit inline "Replace t=0" confirmation; Cancel/close clears only
-the temporary suggestion, never `t0` or any alignment offset.
+is even possible. **The modal exposes exactly one state-appropriate
+acceptance action and exactly one Cancel** (corrected 2026-08-27, same
+day, after an owner UAT finding that an earlier two-step confirm flow
+could show both "Set as t=0" and "Replace t=0" -- and two Cancel
+buttons -- at once; see DEC-056's own "Update" addendum): "Set as t=0"
+when no `t0` exists yet, "Replace t=0" when one already does, decided
+from current `wwHasT0()` state alone, both calling the same
+unmodified `PUT .../synchronization/t0`. Cancel/close clears only the
+temporary suggestion, never `t0` or any alignment offset.
 **Verified by live-browser testing** (Playwright, real running app +
 real backend, a purpose-built synthetic COMTRADE fixture with a genuine
 sustained 50%-RMS voltage dip on one channel and a steady second
@@ -114,7 +120,48 @@ alignment offset confirmed unchanged) → the steady channel correctly
 returning "No clear disturbance onset detected" with "Set as t=0"
 disabled -- zero console errors. 43 new backend tests (22 domain + 13
 service + 8 API) + 14 new frontend static-regression tests (57 total),
-zero regressions (1418 total backend tests, up from 1361). See
+zero regressions (1418 total backend tests, up from 1361). The
+same-day UX fix above added 9 further frontend static-regression tests
+plus its own dedicated live-browser UAT (9/9 checks passed); current
+total: 1427 backend tests, zero regressions.
+
+**Same-day owner UAT correction (2026-08-27) — viewport-bounded
+detection.** Real disturbance recordings exposed that a full-record
+search returns the FIRST sustained qualifying disturbance, which is not
+always the one the engineer is analysing when a recording contains more
+than one genuine event -- confirmed across all three sensitivity tiers,
+so this was a search-SCOPE problem, not a threshold problem. **Event
+detection now supports viewport-bounded analysis: "Current visible
+range" is the preferred/default search scope in the Detect Event modal;
+"Full recording" remains available explicitly** (a compact two-row
+picker, reusing the Per-Unit Current Base picker's own existing
+stacked-radio-row pattern -- no numeric range form). The engineer
+already indicates the event of interest by zooming/panning; this reuses
+that interaction rather than adding a new one. **Backend required zero
+changes** -- `POST .../synchronization/detect-event`'s existing optional
+`search_start_time`/`search_end_time` were already fully correct
+(confirmed by 6 new tests: multi-event regression, source-bound
+clipping, too-short range, insufficient baseline). **Time mapping reuses
+existing helpers only**: `ww.viewport` was confirmed to already stay in
+WORKSPACE time regardless of Absolute/Elapsed mode or an active `t0`
+(every relayout handler routes through `wwPlotlyXToElapsed()` before
+storing it), so the only conversion needed is Slice 1's own
+`wwWorkspaceTimeToSourceTime()` -- no event-relative-to-workspace step,
+no hand-rolled formula. **No silent fallback** -- a range that is too
+short, has no viewport, or yields no clear event shows an explicit
+message; the frontend never retries against the full record. Viewport is
+captured at Analyse-click time, not modal-open time. Sensitivity/RMS/
+persistence/quality logic is completely unchanged. Verified by 6 new
+backend tests + 11 new frontend static-regression tests, plus a
+dedicated live-browser UAT reproducing the owner's own two-event
+scenario end to end (14/14 checks passed, zero console errors): full
+recording found the earlier event; zooming to the later event defaulted
+to "Current visible range" and correctly found the later event only,
+across all three sensitivities; a too-tight zoom produced a clear
+message with no fallback; confirmed correct with an active alignment
+offset and an active `t0` (search range shown in event-relative time,
+Replace t=0 moved the origin correctly). Current total: 1444 backend
+tests, zero regressions. See
 [DECISIONS.md — DEC-056](DECISIONS.md#dec-056--waveform-time-synchronization-slice-3-assisted-event-origin-detection-is-advisory-only-operates-on-one-engineer-selected-analog-channels-sustained-rms-change-and-only-ever-proposes-a-candidate-through-slice-2s-existing-t0-mechanism-on-explicit-acceptance)
 and [HANDOFF.md](HANDOFF.md).
 
