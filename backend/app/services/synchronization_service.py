@@ -32,9 +32,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.domain.synchronization import alignment_offset_valid, reference_source_id_for_workspace
+import numpy as np
+
+from app.domain.event_detection import VALID_SENSITIVITIES, EventDetectionResult, detect_event_onset
+from app.domain.synchronization import alignment_offset_valid, reference_source_id_for_workspace, source_time_to_workspace_time
 from app.services.errors import (
+    ChannelNotAnalogError,
+    ChannelNotFoundError,
     InvalidAlignmentOffsetError,
+    InvalidDetectionSensitivityError,
     InvalidT0Error,
     ReferenceSourceAlignmentError,
     SourceNotFoundError,
@@ -225,3 +231,154 @@ def clear_t0(*, workspace_id: str, registry: SynchronizationRegistry) -> None:
     below (task section 13: "Do not make Clear t=0 equivalent to
     synchronization Reset All")."""
     registry.clear_t0(workspace_id)
+
+
+# ==============================================================================
+# Slice 3 of waveform time synchronization: assisted event-origin
+# detection ("Detect Event Origin").
+#
+# Advisory only (task section 1) -- this orchestration function ONLY ever
+# returns a candidate; it never calls set_t0() itself and never touches
+# any source's own alignment_offset_s. Acceptance is a SEPARATE, explicit
+# frontend action that calls the existing set_t0() above unchanged (task
+# section 14: "reuse the existing t0 service... do not create a second
+# t0 implementation").
+# ==============================================================================
+
+
+@dataclass(slots=True)
+class DetectEventView:
+    """One channel's assisted event-origin analysis, already composed
+    into WORKSPACE time (task section 17/18) -- the API/frontend layer
+    never needs to apply the alignment-offset composition itself.
+    `candidate_workspace_time` is `None` exactly when `found` is
+    `False`."""
+
+    found: bool
+    reason: str
+    detector_method: str
+    channel_unit: str
+    nominal_frequency_hz: float
+    candidate_source_time: float | None
+    candidate_workspace_time: float | None
+    baseline_rms: float | None
+    changed_rms: float | None
+    change_ratio: float | None
+    direction: str | None
+    quality: str | None
+
+
+def _view_from_detection(
+    result: EventDetectionResult, *, channel_unit: str, nominal_frequency_hz: float, alignment_offset_s: float
+) -> DetectEventView:
+    candidate_workspace_time = (
+        source_time_to_workspace_time(result.candidate_source_time, alignment_offset_s)
+        if result.candidate_source_time is not None
+        else None
+    )
+    return DetectEventView(
+        found=result.found,
+        reason=result.reason,
+        detector_method=result.detector_method,
+        channel_unit=channel_unit,
+        nominal_frequency_hz=nominal_frequency_hz,
+        candidate_source_time=result.candidate_source_time,
+        candidate_workspace_time=candidate_workspace_time,
+        baseline_rms=result.baseline_rms,
+        changed_rms=result.changed_rms,
+        change_ratio=result.change_ratio,
+        direction=result.direction,
+        quality=result.quality,
+    )
+
+
+def detect_event_candidate(
+    *,
+    workspace_id: str,
+    source_id: str,
+    channel_name: str,
+    sensitivity: str,
+    search_start_time: float | None,
+    search_end_time: float | None,
+    source_registry: WorkspaceRegistry,
+    synchronization_registry: SynchronizationRegistry,
+) -> DetectEventView:
+    """Run Slice 3's assisted detector against ONE engineer-selected
+    analog channel (task section 5: "the engineer should explicitly
+    select source; channel" -- never an automatic best-channel choice
+    across a source's whole channel list, task section 32's own
+    non-goal).
+
+    404s (`source_not_found`/`channel_not_found`) or 400s
+    (`channel_not_analog`/`invalid_sensitivity`/`invalid_time_range`)
+    exactly like every other read-only analysis endpoint in this API
+    (`.../peak-values`, `.../annotation-anchor`) -- reuses the SAME
+    `ChannelNotFoundError`/`ChannelNotAnalogError` this module's sibling
+    `app.services.waveform_service` already raises for the identical
+    situation, never a third differently-worded error for the same
+    fact.
+
+    Operates on the selected source's own NATIVE full-resolution data
+    (task section 17: "detection should operate on the selected
+    source's native signal") -- `active.record.waveform_data`, the SAME
+    authoritative array every other analysis endpoint in this codebase
+    reads (never the reduced display envelope). The candidate this
+    returns is composed into WORKSPACE time via
+    `source_time_to_workspace_time()` using this source's CURRENT
+    alignment offset (Slice 1, unmodified by this function) -- so a
+    later-changed offset is naturally reflected the next time detection
+    runs, never a stale cached composition.
+
+    Never mutates `alignment_offset_s`, `t0`, or the source's own
+    record. If `search_start_time`/`search_end_time` are given, the
+    analysed slice is boundary-inclusive clipped to them first (source-
+    native time, the SAME `np.searchsorted` convention
+    `waveform_service._peak_in_range`/`_clip_and_reduce` already use) --
+    task section 24's own optional narrowing; omitted, the full record
+    is analysed (this slice's own documented default -- see
+    app.domain.event_detection's own module docstring for why: typical
+    COMTRADE event captures are short enough that a full-record search
+    is simpler and safe, matching that section's own suggested
+    fallback)."""
+    if sensitivity not in VALID_SENSITIVITIES:
+        raise InvalidDetectionSensitivityError(
+            f"sensitivity must be one of {sorted(VALID_SENSITIVITIES)}."
+        )
+
+    active = source_registry.get(workspace_id, source_id)
+    if active is None:
+        raise SourceNotFoundError(f"No source '{source_id}' in workspace '{workspace_id}'.")
+
+    channel_unit: str | None = None
+    for channel in active.metadata.analog_channels:
+        if channel.name == channel_name:
+            channel_unit = channel.unit
+            break
+    if channel_unit is None:
+        for channel in active.metadata.digital_channels:
+            if channel.name == channel_name:
+                raise ChannelNotAnalogError(
+                    f"Channel '{channel_name}' is a digital channel; event detection currently "
+                    "supports analog channels only."
+                )
+        raise ChannelNotFoundError(f"No channel named '{channel_name}' on this source.")
+
+    waveform_data = active.record.waveform_data
+    time_full = waveform_data["time"].to_numpy()
+    values_full = waveform_data[channel_name].to_numpy()
+
+    lo = 0 if search_start_time is None else int(np.searchsorted(time_full, search_start_time, side="left"))
+    hi = time_full.shape[0] if search_end_time is None else int(np.searchsorted(time_full, search_end_time, side="right"))
+    time_slice = time_full[lo:hi]
+    values_slice = values_full[lo:hi]
+
+    result = detect_event_onset(
+        time_slice, values_slice, nominal_frequency_hz=active.metadata.nominal_frequency, sensitivity=sensitivity
+    )
+    alignment_offset_s = synchronization_registry.get_offset(workspace_id, source_id)
+    return _view_from_detection(
+        result,
+        channel_unit=channel_unit,
+        nominal_frequency_hz=active.metadata.nominal_frequency,
+        alignment_offset_s=alignment_offset_s,
+    )

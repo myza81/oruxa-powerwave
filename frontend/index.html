@@ -3055,6 +3055,21 @@
         }
         .ww-cursor-line--a .ww-cursor-stroke { background: var(--accent); }
         .ww-cursor-line--b .ww-cursor-stroke { background: var(--error); }
+        /* Slice 3 of waveform time synchronization ("assisted event
+           t=0 detection"): the temporary "Suggested event" preview
+           marker -- a THIRD line reusing this exact same overlay
+           system (task section 13: "clearly distinguish it from Cursor
+           A/B"), dashed and in --warn (a color neither Cursor A's
+           --accent nor Cursor B's --error already uses) so it reads
+           unambiguously as "not yet a real cursor, not yet t=0."
+           Deliberately no .ww-cursor-hit drag target and no close
+           button of its own -- it is dismissed only via the Detect
+           Event modal's own Cancel/Set-as-t=0 actions, never dragged. */
+        .ww-cursor-line--suggested .ww-cursor-stroke {
+            background: transparent;
+            width: 0;
+            border-left: 1.5px dashed var(--warn);
+        }
         /* Owner cosmetic refinement: a very subtle filled band between A
            and B, part of the SAME overlay (not a second system) --
            positioned/sized in JS exactly like the two lines (left/width in
@@ -3133,6 +3148,17 @@
         .ww-cursor-label[hidden] { display: none; }
         .ww-cursor-label--a { background: var(--accent); }
         .ww-cursor-label--b { background: var(--error); }
+        /* Slice 3: text label, not just a color -- "clearly distinguish"
+           (task section 13) means readable at a glance, not only via
+           color which some engineers may not reliably distinguish from
+           Cursor A/B's own pills. Not draggable/closable (see the
+           `.ww-cursor-line--suggested` comment above for why), so no
+           `cursor: ew-resize`/close button here either. */
+        .ww-cursor-label--suggested {
+            background: var(--warn);
+            cursor: default;
+            font-size: 0.62rem;
+        }
         .ww-cursor-close {
             appearance: none;
             border: none;
@@ -3177,6 +3203,14 @@
         .ww-cursor-ruler-stroke[hidden] { display: none; }
         .ww-cursor-ruler-stroke.ww-cursor-a { background: var(--accent); }
         .ww-cursor-ruler-stroke.ww-cursor-b { background: var(--error); }
+        /* Slice 3: the suggestion marker's own ruler segment -- dashed,
+           matching .ww-cursor-line--suggested's own stroke above. */
+        .ww-cursor-ruler-stroke.ww-cursor-suggested {
+            background: transparent;
+            border-left: 1.5px dashed var(--warn);
+            width: 0;
+            margin-left: 0;
+        }
         /* The range band's own continuation across the ruler -- same
            token, same JS-driven left/width, so it reads as one unbroken
            fill together with .ww-cursor-range above (identical split
@@ -3560,6 +3594,19 @@
                              "do not add excessive controls" instruction. -->
                         <button class="ww-icon-btn" type="button" id="wwSetT0Btn" aria-pressed="false" title="Set Cursor A as t=0" aria-label="Set Cursor A as t=0" disabled>
                             <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="9" y1="2.5" x2="9" y2="15.5" stroke-width="1.3" stroke-dasharray="2.2,1.6"/><text x="9" y="14.5" font-size="5.5" text-anchor="middle" stroke="none" fill="currentColor" font-weight="700">0</text></svg></span>
+                        </button>
+
+                        <!-- Slice 3 of waveform time synchronization
+                             ("assisted event t=0 detection"): opens the
+                             Detect Event Origin modal (#wwDetectEventOverlay).
+                             Advisory only -- this button never sets t0 by
+                             itself, it only opens the picker/analysis
+                             workflow; t0 is only ever set from inside
+                             that modal's own explicit "Set as t=0"
+                             action (task section 1's own governing
+                             principle: "never silently set t=0"). -->
+                        <button class="ww-icon-btn" type="button" id="wwDetectEventBtn" title="Detect Event Origin" aria-label="Detect Event Origin">
+                            <span class="ww-icon"><svg viewBox="0 0 18 18"><path d="M2.5 10.5 6.5 10.5 8 6.5 10 13 11.5 10.5 15.5 10.5" fill="none" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg></span>
                         </button>
 
                         <span class="ww-toolbar-sep" aria-hidden="true"></span>
@@ -4288,6 +4335,69 @@
                 <button type="button" class="secondary" id="wwSyncResetAllBtn">Reset All</button>
                 <span class="toolbar-spacer"></span>
                 <button type="button" class="secondary" id="wwSyncCloseFooterBtn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slice 3 of waveform time synchronization ("assisted event t=0
+         detection"): reuses the SAME .confirm-overlay/.group-editor-box
+         shell #wwSyncOverlay above already established -- no new modal
+         primitive invented. Advisory only throughout (task section 1):
+         nothing in this modal ever writes t0/an alignment offset/source
+         data except the one explicit "Set as t=0" action, which itself
+         only ever calls the EXISTING PUT .../synchronization/t0
+         endpoint Slice 2 already established (task section 14). -->
+    <div class="confirm-overlay" id="wwDetectEventOverlay" hidden>
+        <div class="group-editor-box ww-pu-dialog" role="dialog" aria-modal="true" aria-labelledby="wwDetectEventTitle">
+            <div class="group-editor-header">
+                <h3 id="wwDetectEventTitle">Detect Event Origin</h3>
+                <button type="button" class="group-editor-close" id="wwDetectEventCloseBtn" aria-label="Close">&times;</button>
+            </div>
+            <p class="hint">Analyses one selected analog channel for a sustained disturbance onset and
+                proposes it as a candidate <strong>t=0</strong> -- this is a suggestion only. Nothing is
+                changed until you explicitly accept it below.</p>
+            <p class="hint error" id="wwDetectEventError" hidden role="alert"></p>
+
+            <div class="field">
+                <label for="wwDetectEventSourceSelect">Source</label>
+                <select id="wwDetectEventSourceSelect"></select>
+            </div>
+            <div class="field">
+                <label for="wwDetectEventChannelSelect">Channel</label>
+                <select id="wwDetectEventChannelSelect"></select>
+            </div>
+            <div class="field">
+                <label for="wwDetectEventSensitivitySelect">Detection sensitivity</label>
+                <select id="wwDetectEventSensitivitySelect">
+                    <option value="conservative">Conservative</option>
+                    <option value="normal" selected>Normal</option>
+                    <option value="sensitive">Sensitive</option>
+                </select>
+            </div>
+
+            <button type="button" class="secondary" id="wwDetectEventAnalyseBtn" style="margin-top:8px;">Analyse</button>
+
+            <!-- Populated by wwRenderDetectEventResult() -- "no clear
+                 event" (task section 28) and "found" both render here,
+                 never a silently-empty panel after a completed
+                 analysis. -->
+            <div id="wwDetectEventResult" hidden></div>
+
+            <!-- Task section 16: shown only when accepting THIS result
+                 would move an already-defined t0 -- never auto-confirmed. -->
+            <div id="wwDetectEventReplaceConfirm" hidden>
+                <p class="hint">A t=0 is already defined. Accepting this suggestion will move it.</p>
+                <div class="group-editor-footer">
+                    <button type="button" class="secondary" id="wwDetectEventReplaceCancelBtn">Cancel</button>
+                    <span class="toolbar-spacer"></span>
+                    <button type="button" id="wwDetectEventReplaceConfirmBtn">Replace t=0</button>
+                </div>
+            </div>
+
+            <div class="group-editor-footer" id="wwDetectEventFooter">
+                <button type="button" class="secondary" id="wwDetectEventCancelBtn">Cancel</button>
+                <span class="toolbar-spacer"></span>
+                <button type="button" id="wwDetectEventAcceptBtn" disabled>Set as t=0</button>
             </div>
         </div>
     </div>
@@ -7278,6 +7388,26 @@
             // only by Start New Workspace -- NOT by "Reset All" alignment
             // offsets (task section 14: the two are independent).
             t0WorkspaceTime: null,
+            // Slice 3 of waveform time synchronization ("assisted event
+            // t=0 detection"): the CURRENT, not-yet-accepted suggestion
+            // from POST .../synchronization/detect-event, if any --
+            // purely local/ephemeral UI state, never sent anywhere
+            // except the one PUT .../synchronization/t0 call "Set as
+            // t=0" makes on explicit acceptance (task section 14: reuse
+            // the existing t0 mechanism, never a second one). `visible`
+            // gates the preview marker (task section 13) independently
+            // of ww.measurementCursors.enabled -- the marker must be
+            // able to show even when A/B cursor mode itself is off.
+            // Cleared (never left stale) by Cancel, by acceptance, and
+            // by the same Start New Workspace lifecycle hook that clears
+            // t0WorkspaceTime above.
+            suggestedEvent: {
+                visible: false,
+                sourceId: null,
+                channelName: null,
+                workspaceTime: null,
+                result: null,
+            },
         };
 
         function wwFiniteNumber(value) {
@@ -15314,6 +15444,14 @@
                 // meaningful for the still-selected source's own data.
                 ww.t0WorkspaceTime = null;
                 wwSyncT0Controls();
+                // Slice 3 of waveform time synchronization: a
+                // not-yet-accepted suggestion is workspace-scoped,
+                // ephemeral UI state -- "Start New Workspace" clears it
+                // the same way it clears t0 immediately above (never
+                // left pointing at a source that may no longer exist).
+                // Plain "Clear workspace" again deliberately leaves it
+                // alone, same policy as t0/ww.alignmentOffsets.
+                wwCloseDetectEventModal();
             } else {
                 ww.workspaceBounds = wwDeriveWorkspaceBounds();
                 ww.viewport = ww.workspaceBounds ? { start: ww.workspaceBounds.start, end: ww.workspaceBounds.end } : null;
@@ -15723,14 +15861,21 @@
                         '<div class="ww-cursor-stroke"></div>' +
                         '<div class="ww-cursor-hit" data-cursor-drag="' + kind + '"></div>' +
                     '</div>';
-                }).join("");
+                }).join("") +
+                    // Slice 3: the "Suggested event" preview marker --
+                    // no .ww-cursor-hit drag target (see this element's
+                    // own CSS comment for why).
+                    '<div class="ww-cursor-line ww-cursor-line--suggested" data-cursor-line="suggested" hidden>' +
+                        '<div class="ww-cursor-stroke"></div>' +
+                    '</div>';
                 overlay.dataset.built = "1";
             }
             if (rulerOverlay && !rulerOverlay.dataset.built) {
                 rulerOverlay.innerHTML =
                     '<div class="ww-cursor-ruler-range" data-cursor-ruler-range hidden></div>' +
                     '<div class="ww-cursor-ruler-stroke ww-cursor-a" data-cursor-ruler-line="a" hidden></div>' +
-                    '<div class="ww-cursor-ruler-stroke ww-cursor-b" data-cursor-ruler-line="b" hidden></div>';
+                    '<div class="ww-cursor-ruler-stroke ww-cursor-b" data-cursor-ruler-line="b" hidden></div>' +
+                    '<div class="ww-cursor-ruler-stroke ww-cursor-suggested" data-cursor-ruler-line="suggested" hidden></div>';
                 rulerOverlay.dataset.built = "1";
             }
             if (labelLayer && !labelLayer.dataset.built) {
@@ -15743,7 +15888,14 @@
                         '<button type="button" class="ww-cursor-close" data-cursor-close="' + kind + '" ' +
                             'aria-label="Remove cursor ' + letter + '">&times;</button>' +
                     '</div>';
-                }).join("");
+                }).join("") +
+                    // Slice 3: text label (not color alone, task section
+                    // 13's own "clearly distinguish") -- not draggable,
+                    // not closable (see this element's own CSS comment).
+                    '<div class="ww-cursor-label ww-cursor-label--suggested" data-cursor-label="suggested" hidden ' +
+                        'aria-label="Suggested event">' +
+                        '<span>Suggested event</span>' +
+                    '</div>';
                 labelLayer.dataset.built = "1";
             }
         }
@@ -15788,6 +15940,15 @@
 
             const cursors = ww.measurementCursors;
             const active = cursors.enabled && !!ww.viewport;
+            // Slice 3: the "Suggested event" preview marker must be able
+            // to show even when A/B cursor mode itself is off (task
+            // section 13 -- the engineer may run Detect Event without
+            // ever having turned cursor mode on) -- so every gate below
+            // that used to be `active`-only now also admits a visible
+            // suggestion.
+            const suggestion = ww.suggestedEvent;
+            const suggestionVisible = !!ww.viewport && suggestion.visible && Number.isFinite(suggestion.workspaceTime);
+            const drawAnything = active || suggestionVisible;
 
             document.getElementById("wwCursorModeBtn").setAttribute("aria-pressed", String(cursors.enabled));
 
@@ -15803,10 +15964,22 @@
             }
 
             // ---- visual overlay ----
-            if (!active) {
+            if (!drawAnything) {
                 overlayEl.hidden = true;
                 rulerOverlayEl.hidden = true;
                 labelLayerEl.hidden = true;
+                // Slice 3: the container's own [hidden] already makes
+                // the suggested marker invisible (CSS), but its OWN
+                // hidden attribute is reset explicitly too -- never left
+                // stale from a previous draw -- so a later caller
+                // querying this element directly (not just visually)
+                // sees a consistent, honest state.
+                const suggestedLineEl = overlayEl.querySelector('[data-cursor-line="suggested"]');
+                const suggestedRulerLineEl = rulerOverlayEl.querySelector('[data-cursor-ruler-line="suggested"]');
+                const suggestedLabelEl = labelLayerEl.querySelector('[data-cursor-label="suggested"]');
+                if (suggestedLineEl) suggestedLineEl.hidden = true;
+                if (suggestedRulerLineEl) suggestedRulerLineEl.hidden = true;
+                if (suggestedLabelEl) suggestedLabelEl.hidden = true;
                 return;
             }
             wwEnsureCursorDom();
@@ -15885,6 +16058,35 @@
                 // sectionRect.left conversion as the line right above --
                 // one X-projection authority (section 5), just written to
                 // a second element living in a different (sticky) layer.
+                if (labelEl) {
+                    labelEl.hidden = !drawable;
+                    if (drawable) labelEl.style.left = (pageX - sectionRect.left) + "px";
+                }
+            }
+
+            // Slice 3: the "Suggested event" preview marker -- SAME
+            // three-element/pageX projection as the A/B loop directly
+            // above, just reading ww.suggestedEvent instead of
+            // ww.measurementCursors[kind] (task section 18: "use the
+            // centralized mapping helpers... do not infer it from
+            // Plotly labels" -- wwCursorTimeToPixelX() is that one
+            // authority, reused verbatim, never a second projection).
+            {
+                const lineEl = overlayEl.querySelector('[data-cursor-line="suggested"]');
+                const rulerLineEl = rulerOverlayEl.querySelector('[data-cursor-ruler-line="suggested"]');
+                const labelEl = labelLayerEl.querySelector('[data-cursor-label="suggested"]');
+                const inViewport = suggestionVisible && suggestion.workspaceTime >= ww.viewport.start && suggestion.workspaceTime <= ww.viewport.end;
+                const pageX = inViewport ? wwCursorTimeToPixelX(suggestion.workspaceTime) : null;
+                const drawable = inViewport && pageX !== null;
+
+                if (lineEl) {
+                    lineEl.hidden = !drawable;
+                    if (drawable) lineEl.style.left = (pageX - sectionRect.left) + "px";
+                }
+                if (rulerLineEl) {
+                    rulerLineEl.hidden = !drawable;
+                    if (drawable) rulerLineEl.style.left = (pageX - rulerRect.left) + "px";
+                }
                 if (labelEl) {
                     labelEl.hidden = !drawable;
                     if (drawable) labelEl.style.left = (pageX - sectionRect.left) + "px";
@@ -16908,6 +17110,214 @@
             }
         }
 
+        // ==================================================================
+        // Slice 3 of waveform time synchronization: "Detect Event Origin"
+        // (assisted event t=0 detection)
+        //
+        // Advisory only throughout (task section 1's own governing
+        // principle -- "an assistant, not an automatic decision-maker"):
+        // nothing below ever writes ww.t0WorkspaceTime or calls the t0
+        // PUT/DELETE endpoints except wwAcceptDetectedEvent(), reached
+        // ONLY through the modal's own explicit "Set as t=0" button. The
+        // backend endpoint itself (POST .../synchronization/detect-event)
+        // is equally read-only -- see app.services.synchronization_service.
+        // detect_event_candidate's own docstring.
+        // ==================================================================
+
+        // Every real source's own analog channels, source-grouped (task
+        // section 5: "the engineer should explicitly select source;
+        // channel" -- never an automatic across-source/across-channel
+        // choice). Reuses ww.sourceChannelInventory verbatim -- the SAME
+        // per-source analog-channel cache the Calculated Channels Signal
+        // Builder's own input picker already reads (wwCcAvailableCandidates()),
+        // just without that picker's calculated-channel entries (task
+        // section 5/30: real source analog channels only, this slice).
+        function wwDetectEventSourceOptionsHtml() {
+            let html = "";
+            for (const inventory of ww.sourceChannelInventory.values()) {
+                if (!inventory.analogChannels || inventory.analogChannels.length === 0) continue;
+                html += '<option value="' + escapeHtml(inventory.sourceId) + '">' +
+                    escapeHtml(inventory.sourceName || inventory.sourceId) + '</option>';
+            }
+            return html;
+        }
+
+        function wwDetectEventChannelOptionsHtml(sourceId) {
+            const inventory = ww.sourceChannelInventory.get(sourceId);
+            if (!inventory) return "";
+            return inventory.analogChannels.map((ch) =>
+                '<option value="' + escapeHtml(ch.name) + '">' + escapeHtml(ch.name) +
+                (ch.unit ? " (" + escapeHtml(ch.unit) + ")" : "") + '</option>'
+            ).join("");
+        }
+
+        function wwSyncDetectEventChannelSelect() {
+            const sourceSelect = document.getElementById("wwDetectEventSourceSelect");
+            const channelSelect = document.getElementById("wwDetectEventChannelSelect");
+            channelSelect.innerHTML = wwDetectEventChannelOptionsHtml(sourceSelect.value);
+        }
+
+        // Task section 27: a concise reason plus a FEW diagnostic values
+        // -- never an overcrowded modal. "found=false" (task section 28)
+        // renders just as deliberately as "found=true", with the exact
+        // manual-fallback instruction the task's own worked example uses
+        // ("Use Cursor A to set t=0 manually.").
+        function wwRenderDetectEventResult(view, channelUnit) {
+            const resultEl = document.getElementById("wwDetectEventResult");
+            const acceptBtn = document.getElementById("wwDetectEventAcceptBtn");
+            if (!view.found) {
+                resultEl.innerHTML =
+                    '<p class="hint">' + escapeHtml(view.reason) + '<br>Use Cursor A to set t=0 manually.</p>';
+                resultEl.hidden = false;
+                acceptBtn.disabled = true;
+                return;
+            }
+            const qualityLabel = { strong: "Strong", moderate: "Moderate", weak: "Weak" }[view.quality] || view.quality;
+            const directionLabel = view.direction === "decrease" ? "reduction" : "increase";
+            resultEl.innerHTML =
+                '<p><strong>Suggested event point:</strong> ' + escapeHtml(wwFormatCursorPointTime(ww.suggestedEvent.workspaceTime)) + '</p>' +
+                '<p><strong>Quality:</strong> ' + escapeHtml(qualityLabel) + '</p>' +
+                '<p class="hint">' + escapeHtml(view.reason) + '</p>' +
+                '<p class="hint">Pre-event RMS: ' + wwFormatEngineeringValue(view.baseline_rms) + ' ' + escapeHtml(channelUnit) +
+                ' &nbsp;·&nbsp; Post-change RMS: ' + wwFormatEngineeringValue(view.changed_rms) + ' ' + escapeHtml(channelUnit) +
+                ' &nbsp;·&nbsp; ' + (view.change_ratio * 100).toFixed(0) + '% of baseline (' + directionLabel + ')</p>';
+            resultEl.hidden = false;
+            acceptBtn.disabled = false;
+        }
+
+        function wwResetDetectEventSuggestion() {
+            ww.suggestedEvent = { visible: false, sourceId: null, channelName: null, workspaceTime: null, result: null };
+            wwUpdateCursorOverlay();
+        }
+
+        function wwOpenDetectEventModal() {
+            document.getElementById("wwDetectEventError").hidden = true;
+            document.getElementById("wwDetectEventResult").hidden = true;
+            document.getElementById("wwDetectEventReplaceConfirm").hidden = true;
+            document.getElementById("wwDetectEventFooter").hidden = false;
+            document.getElementById("wwDetectEventAcceptBtn").disabled = true;
+            wwResetDetectEventSuggestion();
+
+            const sourceSelect = document.getElementById("wwDetectEventSourceSelect");
+            sourceSelect.innerHTML = wwDetectEventSourceOptionsHtml();
+            wwSyncDetectEventChannelSelect();
+            document.getElementById("wwDetectEventSensitivitySelect").value = "normal";
+            document.getElementById("wwDetectEventOverlay").hidden = false;
+        }
+
+        function wwCloseDetectEventModal() {
+            document.getElementById("wwDetectEventOverlay").hidden = true;
+            // Task section 15: closing/canceling removes ONLY the
+            // temporary suggestion -- t0 and every source's own
+            // alignment offset are untouched (never mutated by this
+            // modal except through the one explicit Accept path).
+            wwResetDetectEventSuggestion();
+        }
+
+        function wwDetectEventShowError(message) {
+            const errorEl = document.getElementById("wwDetectEventError");
+            errorEl.textContent = message;
+            errorEl.hidden = false;
+        }
+
+        async function wwHandleDetectEventAnalyseClick() {
+            const sourceId = document.getElementById("wwDetectEventSourceSelect").value;
+            const channelName = document.getElementById("wwDetectEventChannelSelect").value;
+            const sensitivity = document.getElementById("wwDetectEventSensitivitySelect").value;
+            document.getElementById("wwDetectEventError").hidden = true;
+            if (!sourceId || !channelName) {
+                wwDetectEventShowError("Choose a source and channel first.");
+                return;
+            }
+
+            let response;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/synchronization/detect-event",
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ source_id: sourceId, channel_name: channelName, sensitivity: sensitivity }),
+                    }
+                );
+            } catch (error) {
+                wwDetectEventShowError("Could not reach the backend. Check your connection and try again.");
+                return;
+            }
+            if (!response.ok) {
+                let detail = {};
+                try { detail = (await response.json()).detail || {}; } catch (error) { /* generic message below */ }
+                wwDetectEventShowError(detail.message || "Could not analyse this channel.");
+                return;
+            }
+            const view = await response.json();
+
+            // Task section 13: the candidate is shown on the waveform
+            // (via wwUpdateCursorOverlay()'s own suggested-marker
+            // rendering, task section 13/18: workspace time, the SAME
+            // coordinate ww.viewport/wwCursorTimeToPixelX() already use
+            // -- never inferred from any displayed label) BEFORE
+            // acceptance is even possible (acceptBtn stays disabled for
+            // found=false, see wwRenderDetectEventResult()).
+            ww.suggestedEvent = {
+                visible: view.found,
+                sourceId: sourceId,
+                channelName: channelName,
+                workspaceTime: view.candidate_workspace_time,
+                result: view,
+            };
+            wwUpdateCursorOverlay();
+            wwRenderDetectEventResult(view, view.channel_unit);
+        }
+
+        async function wwAcceptDetectedEvent() {
+            const workspaceTime = ww.suggestedEvent.workspaceTime;
+            if (!Number.isFinite(workspaceTime)) return;
+            let response;
+            try {
+                response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/synchronization/t0",
+                    {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ t0_workspace_time: workspaceTime }),
+                    }
+                );
+            } catch (error) {
+                wwDetectEventShowError("Could not reach the backend. Check your connection and try again.");
+                return;
+            }
+            if (!response.ok) {
+                wwDetectEventShowError("Could not set t=0 from this suggestion.");
+                return;
+            }
+            const body = await response.json();
+            // Reuses Slice 2's own existing t0 mechanism verbatim (task
+            // section 14) -- the SAME three calls wwSetT0FromCursorA()
+            // itself makes on success, never a second acceptance path.
+            ww.t0WorkspaceTime = body.t0_workspace_time;
+            wwSyncT0Controls();
+            wwApplyT0ToDisplay();
+            wwCloseDetectEventModal();
+        }
+
+        // Task section 16: accepting while a t0 already exists shows an
+        // inline confirmation naming both the current and the new value
+        // -- never silently replaced.
+        function wwHandleDetectEventAcceptClick() {
+            if (wwHasT0()) {
+                document.getElementById("wwDetectEventFooter").hidden = true;
+                document.getElementById("wwDetectEventReplaceConfirm").hidden = false;
+                return;
+            }
+            wwAcceptDetectedEvent();
+        }
+
+        function wwHandleDetectEventReplaceCancelClick() {
+            document.getElementById("wwDetectEventReplaceConfirm").hidden = true;
+            document.getElementById("wwDetectEventFooter").hidden = false;
+        }
+
         // Phase 2C-C1: shows/hides "Edit Channel Groups" -- only relevant
         // while Custom is the active layout mode (parallels how the whole
         // toolbar itself is hidden when nothing is displayed).
@@ -17711,6 +18121,23 @@
         document.addEventListener("keydown", (event) => {
             if (event.key !== "Escape") return;
             if (!document.getElementById("wwSyncOverlay").hidden) wwCloseSyncModal();
+        });
+
+        // Slice 3 of waveform time synchronization: "Detect Event Origin".
+        document.getElementById("wwDetectEventBtn").addEventListener("click", wwOpenDetectEventModal);
+        document.getElementById("wwDetectEventSourceSelect").addEventListener("change", wwSyncDetectEventChannelSelect);
+        document.getElementById("wwDetectEventAnalyseBtn").addEventListener("click", wwHandleDetectEventAnalyseClick);
+        document.getElementById("wwDetectEventAcceptBtn").addEventListener("click", wwHandleDetectEventAcceptClick);
+        document.getElementById("wwDetectEventReplaceConfirmBtn").addEventListener("click", wwAcceptDetectedEvent);
+        document.getElementById("wwDetectEventReplaceCancelBtn").addEventListener("click", wwHandleDetectEventReplaceCancelClick);
+        document.getElementById("wwDetectEventCloseBtn").addEventListener("click", wwCloseDetectEventModal);
+        document.getElementById("wwDetectEventCancelBtn").addEventListener("click", wwCloseDetectEventModal);
+        document.getElementById("wwDetectEventOverlay").addEventListener("click", (event) => {
+            if (event.target.id === "wwDetectEventOverlay") wwCloseDetectEventModal(); // click on backdrop
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            if (!document.getElementById("wwDetectEventOverlay").hidden) wwCloseDetectEventModal();
         });
 
         // Phase 2C-B1/C1: Grouped/Separate/Custom layout mode.

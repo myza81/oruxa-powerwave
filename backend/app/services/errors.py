@@ -462,3 +462,17 @@ class InvalidT0Error(ImportServiceError):
     see that function's own docstring for why)."""
 
     code = "invalid_t0"
+
+
+# ---- Slice 3 of waveform time synchronization: assisted event-origin
+# detection (app.domain.event_detection, app.services.
+# synchronization_service.detect_event_candidate). ----
+
+
+class InvalidDetectionSensitivityError(ImportServiceError):
+    """A submitted `sensitivity` is not one of the three supported tiers
+    (app.domain.event_detection.VALID_SENSITIVITIES) -- task section 8:
+    a deliberately small, closed set, never a free-text/raw-parameter
+    field."""
+
+    code = "invalid_sensitivity"

@@ -17,12 +17,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
+from app.schemas.event_detection import DetectEventOut, DetectEventRequest
 from app.schemas.source import ErrorOut
 from app.schemas.synchronization import SourceAlignmentOut, SourceAlignmentUpdateRequest, T0Out, T0UpdateRequest
 from app.services.errors import ImportServiceError
 from app.services.synchronization_registry import SynchronizationRegistry
 from app.services.synchronization_service import (
     clear_t0,
+    detect_event_candidate,
     get_source_alignment,
     get_t0,
     list_source_alignments,
@@ -41,6 +43,9 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "invalid_alignment_offset": status.HTTP_400_BAD_REQUEST,
     "reference_source_alignment_not_allowed": status.HTTP_409_CONFLICT,
     "invalid_t0": status.HTTP_400_BAD_REQUEST,
+    "channel_not_found": status.HTTP_404_NOT_FOUND,
+    "channel_not_analog": status.HTTP_400_BAD_REQUEST,
+    "invalid_sensitivity": status.HTTP_400_BAD_REQUEST,
     "internal_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
@@ -185,3 +190,34 @@ def delete_workspace_t0(
     (a workspace with no event origin set is a successful no-op)."""
     workspace_id = _validate_workspace_id(workspace_id)
     clear_t0(workspace_id=workspace_id, registry=registry)
+
+
+@router.post("/detect-event", response_model=DetectEventOut)
+def detect_event(
+    workspace_id: str,
+    body: DetectEventRequest,
+    registry: SynchronizationRegistry = Depends(get_synchronization_registry),
+    source_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+) -> DetectEventOut:
+    """Slice 3: assisted event-origin detection (task section 26).
+    Advisory only -- this NEVER sets `t0` itself; a `found=True` result
+    is only ever a suggestion the frontend previews on the waveform and
+    the engineer separately accepts via the existing `PUT .../t0` above
+    (task section 14: "do not create a second t0 implementation"). 404
+    `source_not_found`/`channel_not_found`, 400 `channel_not_analog`/
+    `invalid_sensitivity`."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        view = detect_event_candidate(
+            workspace_id=workspace_id,
+            source_id=body.source_id,
+            channel_name=body.channel_name,
+            sensitivity=body.sensitivity,
+            search_start_time=body.search_start_time,
+            search_end_time=body.search_end_time,
+            source_registry=source_registry,
+            synchronization_registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
+    return DetectEventOut.from_view(view)

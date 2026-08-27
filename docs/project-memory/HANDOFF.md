@@ -4,9 +4,143 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-08-26**
+Last updated: **2026-08-27**
 
 ## What was most recently done
+
+**Phase 18 — Waveform Time Synchronization Slice 3: Assisted
+Event-Origin Detection.** On top of Phase 17 (Slice 2) below -- see
+[DECISIONS.md — DEC-056](DECISIONS.md#dec-056--waveform-time-synchronization-slice-3-assisted-event-origin-detection-is-advisory-only-operates-on-one-engineer-selected-analog-channels-sustained-rms-change-and-only-ever-proposes-a-candidate-through-slice-2s-existing-t0-mechanism-on-explicit-acceptance)
+and [CURRENT_STATE.md](CURRENT_STATE.md) for the full record; summarized
+here for continuity.
+
+An engineer can now select one uploaded source's own analog channel and
+run "Detect Event Origin," which analyses that channel and proposes a
+candidate `t=0` -- **advisory only** (the owner's own governing
+principle: Powerwave may say "this looks like the likely disturbance
+inception," never "this is definitely the disturbance inception"). The
+backend endpoint (`POST .../synchronization/detect-event`) and the
+frontend modal are both strictly read-only; `t0` is only ever written
+through Slice 2's existing, completely unmodified `PUT
+.../synchronization/t0`, on separate explicit acceptance.
+
+**Detector** (`app/domain/event_detection.detect_event_onset()`): a
+change-based RMS detector, deliberately NOT an instantaneous-sample
+threshold -- a raw AC sample crosses zero every cycle, so
+`if value < threshold` on a raw sinusoid is meaningless (the task's own
+explicit anti-pattern). Reuses `app.domain.calculated_channel.
+evaluate_rms()` VERBATIM -- the exact same trailing one-cycle true-RMS
+engine DEC-048's RMS calculated channel already uses, already proven
+correct for both uniform and genuinely irregular/multi-rate `time`
+arrays, so no separate multi-rate special-casing was needed (confirmed
+directly: a synthetic two-sampling-rate-section record detects
+correctly). Pipeline: establish a pre-event RMS baseline from the
+record's own leading portion (at least a few cycles, or the first ~25%
+of the duration, whichever is larger -- the same fallback rule the
+existing desktop `powerwave`'s own `event_detector.py` already uses);
+compare every later RMS sample against that baseline as a RATIO (never
+an absolute/hard-coded value); require the ratio to stay past a
+sensitivity-selected trigger band for a minimum SUSTAINED duration
+(seconds-based, never a fixed sample count, so results are comparable
+across native sampling rates -- verified at 1/5/10 kHz); report the
+FIRST such sustained onset, or "No clear disturbance onset detected.
+Use Cursor A to set t=0 manually." -- a first-class, expected outcome
+(verified for a clean sinusoid, a single-sample spike, and a noisy
+steady channel: none fabricate a candidate).
+
+**Investigation, reported before implementation (task's own explicit
+requirement)**: `app.domain.calculated_channel.evaluate_rms()`/
+`nominal_frequency_valid()`/`rms_recording_long_enough()`/
+`rms_sampling_dense_enough()` were all found and reused directly rather
+than reimplemented; `SourceMetadata.nominal_frequency` was confirmed
+already populated for every COMTRADE source (parsed from the CFG's own
+mandatory "lf" field, same trusted-metadata precedent DEC-048's own
+addendum already established) so the detector never needs to invent a
+fallback frequency. The existing desktop `powerwave` reference contains
+TWO detectors: `app/analytics/events/event_detector.py` (RMS-segment,
+ratio-vs-baseline, sustained-duration filtering -- these ENGINEERING
+CONCEPTS were adapted, not the code) and
+`app/sessions/alignment_engine.detect_trigger_time()` (thresholds raw
+instantaneous samples against a baseline RMS -- exactly the anti-pattern
+the task forbids, deliberately NOT used as a reference, documented as
+such in `event_detection.py`'s own module docstring).
+
+**Three plain sensitivity tiers** (Conservative/Normal/Sensitive) --
+never raw tunable parameters (sigma/window_samples/derivative
+threshold) exposed to the engineer. Normal reuses `powerwave`'s own
+already-validated 0.90/1.10 dip/swell ratio thresholds verbatim as a
+starting point. **Quality** is a fixed, sensitivity-independent
+qualitative label (Strong/Moderate/Weak, keyed on the sustained
+segment's own peak `|ratio - 1.0|`) -- never a fabricated numeric
+confidence.
+
+**Scope**: the engineer explicitly selects BOTH source and channel
+(never an automatic best-channel choice across a source's full channel
+list); real source analog channels only this slice -- no digital-event
+detection, no calculated-channel analysis, no cross-source correlation,
+no automatic alignment, no clock/timezone/drift correction, no event
+grouping, no machine learning, no resampling (task's own explicit
+non-goals list, all honored).
+
+**Time-coordinate handling**: the candidate is composed into WORKSPACE
+time via the EXISTING Slice 1 `source_time_to_workspace_time()`,
+respecting whatever alignment offset is currently set on that source
+(read-only -- detection never modifies it). The frontend previews the
+candidate as a distinct dashed "Suggested event" marker on the waveform
+-- a third element added to the existing A/B cursor overlay system,
+reusing its own `wwCursorTimeToPixelX()` pixel-projection authority
+verbatim (never inferred from a Plotly label, never a second
+projection) -- BEFORE acceptance is even possible (the "Set as t=0"
+button stays disabled until a `found=true` result exists). The overlay's
+own drawing gate was widened from "cursor mode active" to "cursor mode
+active OR a visible suggestion," so the marker can show even with A/B
+cursor mode off. Accepting while a `t0` already exists requires an
+explicit inline "Replace t=0" confirmation (never silently replaced);
+Cancel/close clears only the temporary suggestion -- `t0` and every
+source's own alignment offset are untouched either way.
+`ww.suggestedEvent` is cleared by "Start New Workspace" (same lifecycle
+policy as `ww.t0WorkspaceTime`/`ww.alignmentOffsets`), never by plain
+"Clear workspace."
+
+**Verified by live-browser testing this pass** (Playwright + real
+Chromium, backend + static frontend server both started fresh in this
+session's own scratchpad; a purpose-built synthetic COMTRADE fixture
+was generated for this UAT -- the shared `synth_ascii`/`synth_binary`
+fixtures are only ~10ms long, far too short for any multi-cycle
+RMS-based analysis -- with a genuine sustained 50%-RMS voltage dip on
+one channel (VA) at t=1.0s and a steady second channel (VB) with no
+event): uploaded, plotted VA, opened Detect Event, selected
+source/channel, ran analysis -- marker appeared exactly at the visible
+amplitude-drop boundary (screenshot confirmed); Cancel correctly left
+`t0` unset and cleared the marker; ran again and Accepted -- screenshot
+confirmed the X-axis switching cleanly to event-relative time
+(`-1…+1` s, `0` exactly at the disturbance boundary) with the
+bottom-status-bar `T=0` value matching; Clear t=0 confirmed via the API
+that the source's own alignment offset (`0`, untouched) remained
+correct; tested the steady VB channel and confirmed "No clear
+disturbance onset detected" rendered with "Set as t=0" disabled
+(screenshot confirmed). 18/18 checks passed, zero console errors
+throughout.
+
+**Tests**: 43 new backend tests
+(`test_event_detection_domain.py` 22, `test_event_detection_service.py`
+13, `test_synchronization_detect_event_api.py` 8) + 14 new frontend
+static-regression tests (`test_frontend_detect_event.py`). Full backend
+suite: 1418 passed, zero regressions (up from 1361).
+
+**Known, explicitly deferred, not silently gapped**: the backend
+already supports optional `search_start_time`/`search_end_time`
+narrowing (task section 24), but the frontend does not yet expose
+range-selection controls this slice -- a documented, deliberate scope
+trim per the task's own "avoid a large configuration form" guidance,
+not an oversight. Every other item on the task's own non-goals list
+(section 32) remains out of scope, as intended.
+
+**Next step**: nothing is pre-authorized. The deferred search-range UI
+above is a candidate for a future, separate UX refinement, not a
+blocker.
+
+## What was done in the prior session (Phase 17 — Waveform Time Synchronization Slice 2: Explicit Common Event t=0)
 
 **Phase 17 — Waveform Time Synchronization Slice 2: Explicit Common
 Event t=0.** On top of Phase 15 (Slice 1) below -- see

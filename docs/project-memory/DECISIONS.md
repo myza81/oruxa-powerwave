@@ -7387,6 +7387,186 @@ Impact:
 
 ---
 
+## DEC-056 — Waveform time synchronization Slice 3: assisted event-origin detection is advisory-only, operates on one engineer-selected analog channel's sustained RMS change, and only ever proposes a candidate through Slice 2's existing t0 mechanism on explicit acceptance
+
+Date: 2026-08-27
+Status: Approved
+Source: explicit project-owner instruction, delivered as a dedicated
+"Slice 3 — Assisted Event `t=0` Detection" implementation prompt,
+immediately following DEC-055 (Slice 2).
+
+Decision:
+
+**Powerwave may analyse one engineer-selected analog channel and
+propose a likely disturbance-onset time as a candidate `t=0` — it never
+sets `t=0` itself. The engineer previews the suggestion on the waveform
+and explicitly Accepts or Rejects it; a clean "no clear event" result is
+a valid, expected outcome, never a manufactured candidate.**
+
+Concretely:
+
+- **Detector**: a change-based RMS detector
+  (`app/domain/event_detection.detect_event_onset()`), NOT an
+  instantaneous-sample threshold (task section 3's own explicit
+  anti-pattern — a raw AC sample crosses zero every cycle and is
+  meaningless as a trigger condition). Reuses
+  `app.domain.calculated_channel.evaluate_rms()` VERBATIM — the same
+  trailing one-cycle true-RMS engine DEC-048's RMS calculated channel
+  already uses, already proven correct for both uniform and genuinely
+  irregular/multi-rate `time` arrays — so no separate multi-rate
+  special-casing was needed (task section 20). Pipeline: establish a
+  pre-event RMS baseline from the record's own leading portion (at
+  least `MIN_BASELINE_CYCLES` cycles, or the first 25% of the record's
+  duration, whichever is larger — the same "first ~25%" fallback rule
+  `powerwave`'s own `event_detector.py` already uses when no trigger
+  hint narrows things); compare every later RMS sample against that
+  baseline as a RATIO (never an absolute/hard-coded value — task
+  section 21); require the ratio to stay past a sensitivity-selected
+  trigger band for a minimum SUSTAINED duration (persistence is
+  duration-based in seconds, never a fixed sample count, so results are
+  comparable across native sampling rates) before accepting it as a
+  candidate; report the FIRST such sustained onset, or "no clear
+  event."
+- **Three plain sensitivity tiers** (Conservative/Normal/Sensitive),
+  never raw tunable parameters (sigma/window_samples/derivative
+  threshold) exposed to the engineer (task section 8). Normal reuses
+  `powerwave`'s own validated dip/swell thresholds (0.90/1.10 ratio)
+  verbatim as a starting point, not a fresh guess.
+- **Quality is a fixed, sensitivity-independent qualitative label**
+  (Strong/Moderate/Weak, keyed on the sustained segment's own peak
+  `|ratio - 1.0|`) — never a fabricated numeric confidence (task
+  section 11).
+- **Engineer explicitly selects source AND channel** (task section 5) —
+  never an automatic best-channel choice across a source's full channel
+  list. Real source analog channels only this slice — no digital-event
+  detection, no calculated-channel analysis (task sections 22/30).
+- **Advisory only, structurally enforced, not merely by convention**:
+  `POST .../synchronization/detect-event` (backend) and the "Detect
+  Event Origin" modal (frontend) are both READ-ONLY — neither ever
+  calls `set_t0()`/`PUT .../t0` itself. The candidate is composed into
+  WORKSPACE time via the EXISTING `source_time_to_workspace_time()`
+  (Slice 1, respecting whatever alignment offset is currently set —
+  task section 17) and previewed as a distinct dashed marker on the
+  waveform (reusing the existing A/B cursor overlay's own pixel-
+  projection authority, `wwCursorTimeToPixelX()`, never a second
+  X-projection — task section 18) BEFORE acceptance is even possible.
+  Acceptance is a SEPARATE, explicit "Set as t=0" action that calls
+  Slice 2's existing, completely unmodified `PUT .../synchronization/t0`
+  — no second t0 implementation exists anywhere (task section 14).
+  Accepting while a t0 already exists requires an explicit inline
+  "Replace t=0" confirmation (task section 16) — never silently
+  replaced. Rejecting/closing the modal clears only the temporary
+  suggestion; `t0` and every source's own alignment offset are
+  untouched (task section 15).
+- **`No clear disturbance onset detected. Use Cursor A to set t=0
+  manually.`** is a first-class, expected response — verified for a
+  clean sinusoid, a single-sample spike, and steady/noisy channels
+  (task sections 9/28/33): none of these fabricate a candidate.
+- **`evaluate_rms()`'s own already-approved DEC-048 correctness for
+  irregular/multi-rate `time` arrays is inherited, not re-proven from
+  scratch** — no artificial "multi-rate unsupported" rejection was
+  added, since doing so would not reflect the detector's actual
+  capability (verified directly: a synthetic two-sampling-rate-section
+  record detects correctly, see test_event_detection_domain.py's own
+  `TestMultiRateSpacing`).
+- Source data, source alignment offsets, and Slice 1/2's own
+  architecture are completely untouched — this slice reads
+  `active.record.waveform_data` (never mutates it, matching every other
+  read-only analysis endpoint) and reads (never writes) the current
+  alignment offset only to compose the response.
+
+Reason:
+
+DEC-055 (Slice 2) established manual event-origin selection via Cursor
+A; the owner's own next-step framing was explicit that assisted
+detection must remain a suggestion an engineer reviews and decides on,
+never an automatic decision — "Powerwave may say 'this looks like the
+likely disturbance inception.' It must never silently say 'this is
+definitely the disturbance inception.'" The existing desktop
+`powerwave` reference contains TWO detectors
+(`app/analytics/events/event_detector.py`,
+`app/sessions/alignment_engine.detect_trigger_time`); only the first's
+ENGINEERING CONCEPTS (RMS-segment ratio-vs-baseline, sustained-duration
+filtering) were reused — the second thresholds raw instantaneous
+samples, exactly the anti-pattern task section 3 forbids, and was
+deliberately not used as a reference for that reason (documented in
+`app/domain/event_detection.py`'s own module docstring).
+
+Alternatives considered:
+
+- A MAD/z-score-based statistical deviation metric instead of a plain
+  ratio-vs-baseline — considered during design, rejected in favor of
+  the simpler ratio approach once `powerwave`'s own already-validated
+  event_detector.py thresholds were found: a ratio (e.g. "40% of
+  baseline") is directly interpretable by an engineer in the
+  transparency panel (task section 27's own worked example), where a
+  z-score/MAD multiple is not, and the ratio approach still satisfies
+  every "statistically meaningful, not an absolute threshold"
+  requirement (task section 3/6) by construction.
+- Analysing only the frontend's current visible viewport by default
+  (task section 24's other suggested option) — rejected for this slice
+  in favor of full-record analysis: typical COMTRADE event captures are
+  short, a full-record search is simpler, and the engineer already
+  narrows scope by explicitly choosing which channel to analyse (task
+  section 5). Optional `search_start_time`/`search_end_time`
+  parameters exist at the domain/service/API layer for future use, but
+  the frontend does not expose range-selection controls this slice
+  (task section 8's own "avoid a large configuration form" guidance) —
+  a documented, deliberate scope trim, not an oversight.
+- A single combined Source+Channel grouped `<select>` (mirroring the
+  Calculated Channels Signal Builder's own existing input picker) —
+  considered, but two dependent selects (Source, then Channel) were
+  used instead, matching the task's own explicit section 12 mockup more
+  literally while still reusing the same underlying
+  `ww.sourceChannelInventory` data the Signal Builder's picker already
+  populates from.
+
+Impact:
+
+- New backend files: `app/domain/event_detection.py` (pure detector),
+  `app/schemas/event_detection.py`; one new function
+  (`detect_event_candidate()`) and one new dataclass (`DetectEventView`)
+  in `app/services/synchronization_service.py`; one new error
+  (`InvalidDetectionSensitivityError`, code `invalid_sensitivity`); one
+  new endpoint, `POST .../synchronization/detect-event`. 43 new backend
+  tests (22 domain + 13 service + 8 API) + 14 new frontend
+  static-regression tests (57 total), zero regressions (1361 → 1418
+  backend tests total).
+- Frontend: `ww.suggestedEvent` state; the "Detect Event Origin" modal
+  (`#wwDetectEventOverlay`) and its `wwOpenDetectEventModal()`/
+  `wwHandleDetectEventAnalyseClick()`/`wwAcceptDetectedEvent()`/
+  `wwHandleDetectEventAcceptClick()`/`wwCloseDetectEventModal()`
+  functions; a third "Suggested event" marker added to the existing A/B
+  cursor overlay system (`wwUpdateCursorOverlay()`, `wwEnsureCursorDom()`
+  — dashed, `var(--warn)`-colored, no drag/close interaction of its
+  own); the overlay's own drawing gate widened from "cursor mode
+  active" to "cursor mode active OR a visible suggestion," so the
+  marker can show even with A/B cursor mode off; `ww.suggestedEvent`
+  cleared by "Start New Workspace" (same lifecycle policy as
+  `ww.t0WorkspaceTime`/`ww.alignmentOffsets`), never by plain "Clear
+  workspace."
+- Live browser UAT (Playwright, backend + static frontend server, a
+  purpose-built synthetic COMTRADE fixture with a genuine sustained
+  50%-RMS voltage dip on one channel and a steady second channel):
+  18/18 checks passed across the full accept/reject/re-run/replace
+  flow — marker previewed before acceptance, Cancel leaves `t0`/offsets
+  untouched, Accept correctly activates the event-relative axis
+  (screenshot confirmed X-axis spanning `-1…+1` s with `0` exactly at
+  the visible amplitude-drop boundary), Clear t=0 leaves the source's
+  own alignment offset unchanged, the steady channel correctly returned
+  "No clear disturbance onset detected" with "Set as t=0" disabled.
+  Zero console errors.
+- **Known, explicitly deferred, not silently gapped** (task section 32's
+  own non-goals list): no automatic application of `t0`, no automatic
+  source alignment, no cross-source correlation, no multi-channel
+  voting/automatic best-channel selection, no digital-event detection,
+  no clock/timezone/drift correction, no event grouping/classification,
+  no machine learning, no resampling. The frontend does not yet expose
+  the optional search-range narrowing the backend already supports —
+  candidate future UX refinement, not required for this slice.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

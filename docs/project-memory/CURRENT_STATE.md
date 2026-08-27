@@ -4,7 +4,9 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-26** (Phase 17 — Waveform Time
+Last meaningful update: **2026-08-27** (Phase 18 — Waveform Time
+Synchronization Slice 3: Assisted Event-Origin Detection, on top of
+Phase 17 — Waveform Time
 Synchronization Slice 2: Explicit Common Event t=0, on top of
 Phase 16 — Multi-Source
 Workspace Sidebar Redesign, on top of
@@ -54,6 +56,67 @@ Text Note, Phase 4D — Precision Step Zoom + Icon Toolbar Refinement,
 Waveform Time-Axis Sub-ms Precision, Waveform Adaptive Resolution, Phase
 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B,
 Phase 4A-UAT9, and Phase 4A-UAT10).
+
+`[FACT]` **Waveform Time Synchronization Slice 3 implemented
+(2026-08-27) — Assisted Event-Origin Detection.** On top of Slice 2's
+explicit common `t=0`: an engineer can now select one uploaded source's
+own analog channel and run "Detect Event Origin," which analyses that
+channel and proposes a candidate `t=0` -- **advisory only, per the
+owner's own governing principle** ("this looks like the likely
+disturbance inception," never "this is definitely the disturbance
+inception"): the backend endpoint and frontend modal are both
+read-only, and `t0` is only ever written through Slice 2's existing,
+completely unmodified `PUT .../synchronization/t0` on explicit
+acceptance. Detector: `app/domain/event_detection.detect_event_onset()`
+-- a change-based RMS detector, deliberately NOT an instantaneous-
+sample threshold (a raw AC sample crosses zero every cycle and would be
+meaningless as a trigger). Reuses `app.domain.calculated_channel.
+evaluate_rms()` VERBATIM (the same trailing one-cycle true-RMS engine
+DEC-048's RMS calculated channel already uses, already proven correct
+for irregular/multi-rate `time` arrays -- confirmed via a dedicated
+multi-rate test, no artificial "unsupported" rejection was needed).
+Pipeline: establish a pre-event RMS baseline from the record's own
+leading portion, compare later RMS samples against it as a RATIO
+(never an absolute threshold), require the ratio to stay past a
+sensitivity-selected trigger band for a minimum SUSTAINED duration
+(seconds-based, never a fixed sample count -- comparable results across
+native sampling rates), report the FIRST such onset or "No clear
+disturbance onset detected. Use Cursor A to set t=0 manually." (a
+first-class, expected outcome, never a manufactured candidate). Three
+plain sensitivity tiers (Conservative/Normal/Sensitive, Normal reusing
+the existing desktop `powerwave`'s own already-validated 0.90/1.10
+dip/swell ratios) -- never raw tunable parameters exposed to the
+engineer. Quality is a fixed, sensitivity-independent qualitative label
+(Strong/Moderate/Weak) -- never a fabricated numeric confidence. The
+engineer explicitly selects BOTH source and channel (never an automatic
+best-channel choice); real source analog channels only this slice.
+`POST .../synchronization/detect-event` composes the candidate into
+WORKSPACE time via the existing Slice 1 `source_time_to_workspace_time()`
+(respecting whatever alignment offset is currently set, read-only) and
+returns it alongside a transparent reason/quality/pre-post-RMS
+breakdown -- never setting `t0`, never touching a source's own
+alignment offset, never mutating source data. The frontend previews the
+candidate as a distinct dashed "Suggested event" marker on the waveform
+(reusing the existing A/B cursor overlay's own `wwCursorTimeToPixelX()`
+pixel-projection authority, no second X-projection) BEFORE acceptance
+is even possible; accepting while a `t0` already exists requires an
+explicit inline "Replace t=0" confirmation; Cancel/close clears only
+the temporary suggestion, never `t0` or any alignment offset.
+**Verified by live-browser testing** (Playwright, real running app +
+real backend, a purpose-built synthetic COMTRADE fixture with a genuine
+sustained 50%-RMS voltage dip on one channel and a steady second
+channel): 18/18 checks passed across upload → plot → open Detect Event
+→ select source/channel → Analyse → marker preview confirmed → Cancel
+(t0/marker both correctly cleared) → re-run → Accept (screenshot
+confirmed the X-axis switching to event-relative time, `0` exactly at
+the visible amplitude-drop boundary) → Clear t=0 (source's own
+alignment offset confirmed unchanged) → the steady channel correctly
+returning "No clear disturbance onset detected" with "Set as t=0"
+disabled -- zero console errors. 43 new backend tests (22 domain + 13
+service + 8 API) + 14 new frontend static-regression tests (57 total),
+zero regressions (1418 total backend tests, up from 1361). See
+[DECISIONS.md — DEC-056](DECISIONS.md#dec-056--waveform-time-synchronization-slice-3-assisted-event-origin-detection-is-advisory-only-operates-on-one-engineer-selected-analog-channels-sustained-rms-change-and-only-ever-proposes-a-candidate-through-slice-2s-existing-t0-mechanism-on-explicit-acceptance)
+and [HANDOFF.md](HANDOFF.md).
 
 `[FACT]` **Waveform Time Synchronization Slice 2 implemented
 (2026-08-26) — Explicit Common Event t=0.** On top of Slice 1's manual
