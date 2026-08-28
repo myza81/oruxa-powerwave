@@ -1557,8 +1557,8 @@
            item, unlike the old .active-recording block) so overflow-wrap
            can actually take effect instead of forcing the row wider. */
         .source-recording-header-text { min-width: 0; flex: 1 1 auto; }
-        .source-recording-name { font-size: 0.7rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
-        .source-recording-meta { font-size: 0.7rem; color: var(--text-dim); margin-top: 2px; font-variant-numeric: tabular-nums; }
+        .source-recording-name { display: block; max-width: 100%; font-size: 0.7rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+        .source-recording-meta { display: block; font-size: 0.65rem; color: var(--text-dim); margin-top: 2px; font-variant-numeric: tabular-nums; }
         /* Slice 1 (waveform time synchronization) integration, optional
            per that task's own section 15 -- a subtle badge only, never a
            redesign of the Synchronize Sources modal itself. */
@@ -4323,16 +4323,17 @@
                 <h3 id="wwSyncTitle">Synchronize Sources</h3>
                 <button type="button" class="group-editor-close" id="wwSyncCloseBtn" aria-label="Close">&times;</button>
             </div>
-            <p class="hint">Manually shift a recording left or right in time to visually align it with the
-                reference recording, so the same physical disturbance lines up across sources. This never
-                changes a recording's own original data, and a visually synchronized pair of sources does
-                not become mathematically compatible for calculated channels.</p>
+            <p class="hint">Sources with a recorded start timestamp are already placed relative to each
+                other automatically. Use the controls below to add a manual correction on top of that
+                placement, so the same physical disturbance lines up exactly. This never changes a
+                recording's own original data, and a visually synchronized pair of sources does not become
+                mathematically compatible for calculated channels.</p>
             <p class="hint error" id="wwSyncError" hidden role="alert"></p>
 
             <div id="wwSyncBody"></div>
 
             <div class="group-editor-footer">
-                <button type="button" class="secondary" id="wwSyncResetAllBtn">Reset All</button>
+                <button type="button" class="secondary" id="wwSyncResetAllBtn" title="Resets every source's own manual correction only -- timestamp-derived placements are unaffected">Reset All Manual Adjustments</button>
                 <span class="toolbar-spacer"></span>
                 <button type="button" class="secondary" id="wwSyncCloseFooterBtn">Close</button>
             </div>
@@ -6029,15 +6030,18 @@
         // Slice 1 of waveform time synchronization integration (that
         // task's own section 15, explicitly optional): a subtle badge
         // only, reading already-fetched ww.alignmentOffsets/
-        // ww.referenceSourceId state -- never mutating it, never touching
-        // the Synchronize Sources modal. Empty string (no badge at all)
-        // for the common case of an unshifted, non-reference source (or
-        // before synchronization state has ever been fetched), so a
-        // workspace that has never touched synchronization shows no
-        // visual clutter.
+        // ww.referenceSourceIds state -- never mutating it, never
+        // touching the Synchronize Sources modal. Empty string (no badge
+        // at all) for the common case of an unshifted, non-reference
+        // source (or before synchronization state has ever been
+        // fetched), so a workspace that has never touched synchronization
+        // shows no visual clutter. Time-Group task: ww.referenceSourceIds
+        // is now a Set (more than one source can be a reference at once,
+        // one per time group) -- membership check, never equality
+        // against a single scalar.
         function wwSourceSyncBadgeHtml(sourceId) {
-            if (!ww.referenceSourceId) return "";
-            if (sourceId === ww.referenceSourceId) {
+            if (ww.referenceSourceIds.size === 0) return "";
+            if (ww.referenceSourceIds.has(sourceId)) {
                 return '<span class="source-recording-sync-badge source-recording-sync-badge--reference">Reference</span>';
             }
             const offsetS = wwAlignmentOffsetForSource(sourceId);
@@ -7394,32 +7398,66 @@
             // (wwFetchSynchronizationStateForWorkspace(), called from
             // selectSource()) and after every offset mutation; cleared
             // only by Start New Workspace.
+            // Timestamp-Based Initial Alignment and Time Groups: this
+            // Map now holds each source's own EFFECTIVE offset
+            // (timestamp_placement_offset_s + manual_alignment_offset_s
+            // -- the backend's own `alignment_offset_s` field, kept
+            // under its original name for continuity, now means exactly
+            // this). wwSourceTimeToWorkspaceTime()/
+            // wwWorkspaceTimeToSourceTime() read it unchanged -- the
+            // timestamp-based initial placement therefore takes visual
+            // effect with ZERO changes to either of those two functions.
             alignmentOffsets: new Map(),
-            // The workspace's current reference source (task section 9:
-            // "the first participating source becomes the reference" --
-            // deterministic, backend-computed by earliest created_at,
-            // never chosen by the frontend). Its own offset is always 0
+            // The MANUAL correction only (task section 20: "UI may
+            // initially continue to show the manual correction as the
+            // editable value") -- the Synchronize Sources modal's own
+            // editable ms field reads/writes THIS map, never
+            // ww.alignmentOffsets (which is the effective total).
+            manualAlignmentOffsets: new Map(),
+            // The DERIVED timestamp-based placement only (read-only
+            // provenance context in the Synchronize Sources UI -- task
+            // section 20/35) -- effective = this + manualAlignmentOffsets.
+            timestampPlacementOffsets: new Map(),
+            // source_id -> its own CURRENT time group's group_id (task
+            // section 9). See ww.timeGroups below for the group's own
+            // members/timing-status/note.
+            timeGroupBySourceId: new Map(),
+            // group_id -> {timeReferenceType, originSourceId, sourceIds,
+            // note} -- every current Time Group in the workspace (`GET
+            // .../synchronization/time-groups`), recomputed fresh
+            // alongside the two maps above by the same
+            // wwFetchSynchronizationStateForWorkspace() call.
+            timeGroups: new Map(),
+            // Every source_id that is its OWN time group's origin/
+            // reference (task section 9's "one coherent time domain" --
+            // with multiple groups there can be MORE THAN ONE reference
+            // source at once, unlike Slice 1's original single-
+            // workspace-wide reference). A Set, not a single scalar, for
+            // exactly that reason. Its own manual correction is always 0
             // and the manual alignment UI never lets it be edited
-            // directly. `null` before the first
+            // directly. Empty before the first
             // wwFetchSynchronizationStateForWorkspace() call resolves, or
             // if the workspace has no sources yet.
-            referenceSourceId: null,
+            referenceSourceIds: new Set(),
             // Slice 2 of waveform time synchronization ("explicit common
-            // event t=0"): the workspace's own single, manually-selected
-            // event origin, in WORKSPACE time seconds (backend-
-            // authoritative -- see GET/PUT/DELETE .../synchronization/t0).
-            // `null` when no event origin has been selected yet (or it
-            // was cleared) -- never a fabricated `0` default, since a
+            // event t=0"), now Time-Group-scoped: the CURRENTLY-FOCUSED
+            // time group's own manually-selected event origin, in
+            // WORKSPACE time seconds (backend-authoritative -- see
+            // GET/PUT/DELETE .../synchronization/t0, all now resolved
+            // via wwPrimaryTimeGroupSourceId()). `null` when no event
+            // origin has been selected yet for that group (or it was
+            // cleared) -- never a fabricated `0` default, since a
             // workspace-time instant of exactly `0` is itself a
             // legitimate, deliberately-chosen origin (see
             // wwHasT0()/wwT0WorkspaceTime() below, the ONE pair of
             // accessors every other t0-aware function reads through).
-            // Deliberately NOT per-source (task section 4: "one common
-            // event origin for the workspace"). Fetched alongside
-            // ww.alignmentOffsets by the same
-            // wwFetchSynchronizationStateForWorkspace() call; cleared
-            // only by Start New Workspace -- NOT by "Reset All" alignment
-            // offsets (task section 14: the two are independent).
+            // For the common single-time-group workspace (task section
+            // 25) this is exactly Slice 2's original behaviour,
+            // unchanged. Fetched alongside ww.alignmentOffsets by the
+            // same wwFetchSynchronizationStateForWorkspace() call;
+            // cleared only by Start New Workspace -- NOT by "Reset All"
+            // alignment offsets (task section 14: the two are
+            // independent).
             t0WorkspaceTime: null,
             // Slice 3 of waveform time synchronization ("assisted event
             // t=0 detection"): the CURRENT, not-yet-accepted suggestion
@@ -7440,6 +7478,12 @@
                 channelName: null,
                 workspaceTime: null,
                 result: null,
+                // Time-Group task section 26: whether the SELECTED
+                // source's own current time group already has a t0 --
+                // resolved fresh on every Analyse (see
+                // wwHandleDetectEventAnalyseClick()'s own lookup), never
+                // the shared toolbar's primary-group cache.
+                groupHasT0: false,
             },
         };
 
@@ -7538,6 +7582,16 @@
             return typeof offset === "number" && Number.isFinite(offset) ? offset : 0;
         }
 
+        // Read-only provenance accessor (task section 20/35) -- the
+        // DERIVED timestamp-based placement only, never written by
+        // anything on the frontend (see ww.timestampPlacementOffsets'
+        // own docstring for the composition: effective = this +
+        // manual).
+        function wwTimestampPlacementOffsetForSource(sourceId) {
+            const offset = ww.timestampPlacementOffsets.get(sourceId);
+            return typeof offset === "number" && Number.isFinite(offset) ? offset : 0;
+        }
+
         // Resolves a DISPLAY source id -- a real source_id, or a
         // calculated channel's own "calc-*" pseudo-source id -- to its
         // effective alignment offset. A calculated channel has no offset
@@ -7557,6 +7611,22 @@
 
         function wwWorkspaceTimeToSourceTime(displaySourceId, workspaceTime) {
             return workspaceTime - wwAlignmentOffsetForDisplaySourceId(displaySourceId);
+        }
+
+        // Time Groups (task section 34: "analog and digital channels
+        // from one source must always belong to the same time group --
+        // source timing is a source-level property, never resolved per
+        // channel"): resolves a DISPLAY source id -- a real source_id,
+        // or a calculated channel's own pseudo-source id -- to its
+        // CURRENT time group id, reusing the SAME
+        // wwTimingSourceIdForDisplaySourceId() grounding-source
+        // resolution wwAlignmentOffsetForDisplaySourceId() already
+        // established, never a second "which source owns this" rule.
+        // `null` before ww.timeGroupBySourceId has ever been populated,
+        // or for an unrecognized source_id.
+        function wwTimeGroupIdForDisplaySourceId(displaySourceId) {
+            const sourceId = wwTimingSourceIdForDisplaySourceId(displaySourceId);
+            return ww.timeGroupBySourceId.get(sourceId) || null;
         }
 
         // ==================================================================
@@ -7603,53 +7673,129 @@
             return t0 === null ? eventTime : eventTime + t0;
         }
 
-        // GET .../synchronization/sources + GET .../synchronization/t0,
-        // in parallel -- the backend is the authoritative owner of BOTH
+        // Timestamp-Based Initial Alignment and Time Groups: t0 is now
+        // Time-Group-scoped on the backend (every GET/PUT/DELETE
+        // .../t0 call takes a source_id to resolve WHICH group is
+        // meant -- see app.services.synchronization_service's own
+        // module docstring). The shared toolbar quick action ("Set
+        // Cursor A as t=0") has no source of its own to carry, so this
+        // resolves a single deterministic PRIMARY source for that
+        // shared action: the FIRST source returned by `.../sources`
+        // (stable backend list order, the same "first uploaded" anchor
+        // Slice 1's own original reference rule used) -- correct and
+        // unambiguous for the common single-time-group workspace (task
+        // section 25), and a documented, narrower scope for a genuinely
+        // multi-group workspace (use Detect Event's own explicit source
+        // selection there instead, which always resolves the CORRECT
+        // group regardless -- see wwHandleDetectEventAnalyseClick()).
+        // `null` when the workspace has no sources at all.
+        function wwPrimaryTimeGroupSourceId() {
+            for (const sourceId of ww.alignmentOffsets.keys()) return sourceId;
+            return null;
+        }
+
+        // GET .../synchronization/sources, then GET .../synchronization/t0
+        // for the resolved PRIMARY source (task section 24: t0 is
+        // Time-Group-scoped, so it can no longer be fetched independently
+        // of knowing which group -- these two calls are therefore
+        // sequential, not parallel, unlike Slice 1/2's own original
+        // shape) -- the backend is the authoritative owner of both
         // (Slice 1 task section 2, Slice 2 task section 16); this
         // refreshes the local read caches above (ww.alignmentOffsets/
-        // ww.referenceSourceId/ww.t0WorkspaceTime) used by every
+        // ww.manualAlignmentOffsets/ww.timeGroupBySourceId/ww.timeGroups/
+        // ww.referenceSourceIds/ww.t0WorkspaceTime) used by every
         // conversion call site. Resilient like every other list-fetch in
         // this app (fetchSourcesList()/selectSource()): a failed request
         // leaves whatever was already cached in place rather than
-        // clearing it out from under an in-progress render -- each of the
-        // two fetches below fails independently (a t0 fetch failure never
-        // discards an already-fetched, still-valid offsets list, and vice
-        // versa).
+        // clearing it out from under an in-progress render.
         async function wwFetchSynchronizationStateForWorkspace() {
             const workspaceId = currentWorkspaceId();
-            await Promise.all([
-                (async () => {
-                    let body;
-                    try {
-                        const response = await fetch(
-                            apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/synchronization/sources"
-                        );
-                        if (!response.ok) return;
-                        body = await response.json();
-                    } catch (error) {
-                        return;
-                    }
-                    ww.alignmentOffsets.clear();
-                    ww.referenceSourceId = null;
-                    for (const row of body) {
-                        ww.alignmentOffsets.set(row.source_id, row.alignment_offset_s);
-                        if (row.is_reference) ww.referenceSourceId = row.source_id;
-                    }
-                })(),
-                (async () => {
-                    let body;
-                    try {
-                        const response = await fetch(
-                            apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/synchronization/t0"
-                        );
-                        if (!response.ok) return;
-                        body = await response.json();
-                    } catch (error) {
-                        return;
-                    }
-                    ww.t0WorkspaceTime = body.t0_workspace_time;
-                })(),
-            ]);
+
+            let sourcesBody = null;
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/synchronization/sources"
+                );
+                if (response.ok) sourcesBody = await response.json();
+            } catch (error) {
+                // Leave the existing caches as-is.
+            }
+            if (sourcesBody !== null) {
+                ww.alignmentOffsets.clear();
+                ww.manualAlignmentOffsets.clear();
+                ww.timestampPlacementOffsets.clear();
+                ww.timeGroupBySourceId.clear();
+                ww.referenceSourceIds.clear();
+                for (const row of sourcesBody) {
+                    ww.alignmentOffsets.set(row.source_id, row.alignment_offset_s);
+                    ww.manualAlignmentOffsets.set(row.source_id, row.manual_alignment_offset_s);
+                    ww.timestampPlacementOffsets.set(row.source_id, row.timestamp_placement_offset_s);
+                    ww.timeGroupBySourceId.set(row.source_id, row.time_group_id);
+                    if (row.is_reference) ww.referenceSourceIds.add(row.source_id);
+                }
+            }
+
+            let groupsBody = null;
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/synchronization/time-groups"
+                );
+                if (response.ok) groupsBody = await response.json();
+            } catch (error) {
+                // Leave the existing cache as-is.
+            }
+            if (groupsBody !== null) {
+                ww.timeGroups.clear();
+                for (const group of groupsBody) {
+                    ww.timeGroups.set(group.group_id, {
+                        timeReferenceType: group.time_reference_type,
+                        originSourceId: group.origin_source_id,
+                        sourceIds: group.source_ids,
+                        note: group.note,
+                    });
+                }
+            }
+
+            const primarySourceId = wwPrimaryTimeGroupSourceId();
+            if (primarySourceId === null) {
+                ww.t0WorkspaceTime = null;
+                return;
+            }
+            let t0Body = null;
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/synchronization/t0" +
+                    "?source_id=" + encodeURIComponent(primarySourceId)
+                );
+                if (response.ok) t0Body = await response.json();
+            } catch (error) {
+                // Leave the existing cache as-is.
+            }
+            if (t0Body !== null) ww.t0WorkspaceTime = t0Body.t0_workspace_time;
+            wwRefreshTimeGroupPanelLabels();
+        }
+
+        // Time-Group task section 29: wwPanelLabelFor()'s own "Time Group
+        // N"/"Elapsed / unaligned" suffix is normally baked in once, at
+        // the moment a panel is first created (wwCreatePanelObject()) --
+        // correct at that instant, but liable to go stale if the
+        // workspace's own group topology later changes (e.g. a THIRD,
+        // far-separated source is uploaded after this panel already
+        // exists, turning a single-group workspace into a multi-group
+        // one). Called once every time fresh sync/time-group state loads
+        // so every already-rendered panel's own header text stays
+        // current -- cheap (text-only, no re-fetch/re-plot) and a no-op
+        // whenever nothing has actually changed.
+        function wwRefreshTimeGroupPanelLabels() {
+            if (!Array.isArray(ww.panels)) return;
+            for (const panel of ww.panels) {
+                if (!panel.channels || panel.channels.length === 0) continue;
+                const freshLabel = wwPanelLabelFor(panel.channels[0]);
+                if (freshLabel === panel.label) continue;
+                panel.label = freshLabel;
+                const labelEl = panel.headerEl && panel.headerEl.querySelector(".ww-panel-label");
+                if (labelEl) labelEl.textContent = freshLabel;
+            }
         }
 
         // Multi-source sidebar redesign (task section 12: "all uploaded
@@ -7957,18 +8103,26 @@
         // matching how ww.panels itself is always derived from
         // ww.displayed rather than kept as a second source of truth.
         //
-        // Known limitation, documented per section 25: if channels from
-        // MULTIPLE sources with DIFFERENT recording-start timestamps are
-        // ever displayed together (not the normal single-source workflow,
-        // and not prevented structurally), every panel still shares the
-        // SAME single physical viewport (elapsed seconds, DEC-021) -- but
-        // Absolute-mode labels for every panel are computed from this ONE
-        // origin (the first-displayed channel's own source), so a second
-        // source's channels would display an INCORRECT absolute timestamp
-        // offset by the difference between the two sources' own recording
-        // starts. Multi-source time alignment is explicitly out of scope
-        // for this task (section 25/31); this is a known, deliberate,
-        // documented gap for that future work, not a silent bug.
+        // Known limitation, documented per Slice 1/2's own section 25/31
+        // (still NOT solved by Timestamp-Based Initial Alignment and Time
+        // Groups -- that task's own section 31 asks for per-GROUP
+        // Absolute origins, but explicitly scoped this implementation to
+        // panel SEPARATION/grouping/placement, not a full per-source-id
+        // threading of Absolute-label call sites across the app; tracked
+        // as Time Groups' own remaining work, not silently reintroduced):
+        // if channels from MULTIPLE sources/time groups with DIFFERENT
+        // recording-start timestamps are ever displayed together, every
+        // panel still shares the SAME single physical viewport (elapsed
+        // seconds, DEC-021) -- but Absolute-mode labels for every panel
+        // are computed from this ONE origin (the first-displayed
+        // channel's own source), so a second time group's own channels
+        // would display an INCORRECT absolute timestamp offset by the
+        // difference between the two groups' own origins. Elapsed-only
+        // channels are unaffected by this gap -- they never offer
+        // Absolute mode at all (wwTimeModesForChannel() below), so this
+        // never fabricates a wall-clock label for one (task section 31's
+        // own "do not display false wall-clock timestamps for
+        // elapsed-only sources" is already satisfied structurally).
         function wwWorkspaceRecordingStartMs() {
             for (const entry of ww.displayed.values()) {
                 const ms = entry.channel.recordingStartMs;
@@ -8225,6 +8379,25 @@
             } else {
                 baseKey = channel.engineeringType || "Undefined";
             }
+            // Timestamp-Based Initial Alignment and Time Groups (task
+            // section 1/27/34): "one waveform panel = one coherent time
+            // domain" -- a Grouped-mode panel key is prefixed with the
+            // channel's own CURRENT time group id, so two channels of
+            // the SAME engineering type from DIFFERENT (independent,
+            // not-necessarily-comparable) time groups can never share
+            // one panel, even though they would have under the old
+            // engineering-type-only key. `null` (sync state not yet
+            // fetched, or an unrecognized source) falls through to the
+            // plain base key unprefixed -- never blocks rendering on
+            // this feature's own state having loaded yet. Separate/
+            // Custom modes are deliberately untouched (checked above) --
+            // Separate already gives every channel its own panel, and
+            // Custom is the engineer's own explicit, deliberate
+            // grouping choice (task section 27: "the UI MAY render
+            // waveform types across time groups differently," not
+            // "must always").
+            const timeGroupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
+            if (timeGroupId !== null) baseKey = timeGroupId + "::" + baseKey;
             // Phase 5C (DEC-049): never mix pu-converted and engineering-
             // unit values for an eligible type on one shared axis (section
             // 27) -- when Per Unit mode is active, a `perUnitStatus`
@@ -8240,6 +8413,29 @@
                 if (channel.perUnitStatus === "base_required") return baseKey + ":base_required";
             }
             return baseKey;
+        }
+
+        // Task section 29: "each panel/group should have a compact
+        // timing label... avoid technical clutter." Empty string (no
+        // clutter at all) whenever the WORKSPACE currently has only one
+        // time group -- the overwhelming common case -- so a workspace
+        // that has never touched multi-group timing looks identical to
+        // before this feature existed. Only once a genuinely
+        // multi-group workspace exists does a compact suffix appear, so
+        // the engineer can see AT A GLANCE why otherwise-same-type
+        // channels ended up in separate panels. An elapsed-only group
+        // gets a fixed, self-explanatory label; every recorded-absolute
+        // group gets a deterministic "Time Group N" number (sorted by
+        // group_id, so the same group keeps the same number across
+        // repeated renders in one session).
+        function wwTimeGroupLabelSuffix(channel) {
+            if (ww.timeGroups.size <= 1) return "";
+            const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
+            const group = groupId !== null ? ww.timeGroups.get(groupId) : null;
+            if (!group) return "";
+            if (group.timeReferenceType === "elapsed_only") return " — Elapsed / unaligned";
+            const sortedGroupIds = Array.from(ww.timeGroups.keys()).sort();
+            return " — Time Group " + (sortedGroupIds.indexOf(groupId) + 1);
         }
 
         // Display label only -- distinct from the group key above (two
@@ -8263,6 +8459,7 @@
             } else {
                 baseLabel = channel.engineeringType || "Undefined";
             }
+            baseLabel += wwTimeGroupLabelSuffix(channel);
             // Phase 5C (DEC-049): mirrors wwPanelGroupKeyFor()'s own
             // per-unit suffix immediately above -- same eligibility
             // check, display text only.
@@ -8554,7 +8751,7 @@
                     // Same "first channel's own unit" rule wwBuildLayout()
                     // already uses for the axis title at panel-creation
                     // time -- reused here verbatim, never a second rule.
-                    wwRenderLegend(panel);
+                    if (ww.layoutMode === "separate") wwRenderLegend(panel);
                     Plotly.relayout(panel.chartEl, { "yaxis.title": panel.channels.length ? panel.channels[0].unit : "" });
                 }
             }
@@ -9997,7 +10194,17 @@
             return ms / 1000;
         }
 
-        function wwRenderSyncSourceRow(source, offsetSeconds, isReference) {
+        // Timestamp-Based Initial Alignment and Time Groups (task
+        // section 20): the editable ms field below binds to the MANUAL
+        // correction ONLY (`manualOffsetSeconds`, ww.manualAlignmentOffsets)
+        // -- never the effective total -- so typing/stepping/Reset here
+        // never silently overwrites or absorbs a source's own timestamp-
+        // derived placement. `timestampPlacementSeconds` renders as a
+        // read-only context line for provenance (task section 35: "avoid
+        // destructive loss of provenance") only when non-zero, so a
+        // single-time-group workspace with no other overlapping source
+        // shows no extra clutter.
+        function wwRenderSyncSourceRow(source, manualOffsetSeconds, timestampPlacementSeconds, isReference) {
             const name = escapeHtml(recordingDisplayName(source));
             if (isReference) {
                 return (
@@ -10007,18 +10214,23 @@
                                 '<span class="ww-mg-row-name">' + name + '</span>' +
                                 '<span class="ww-mg-badge ww-mg-badge--confirmed">Reference</span>' +
                             '</div>' +
-                            '<p class="ww-sync-reference-note">Every other source is shifted relative to this one. Alignment offset: 0 ms.</p>' +
+                            '<p class="ww-sync-reference-note">Every other source in this time group is shifted relative to this one. Alignment offset: 0 ms.</p>' +
                         '</div>' +
                     '</div>'
                 );
             }
-            const msValue = wwSyncOffsetToMsDisplay(offsetSeconds);
+            const msValue = wwSyncOffsetToMsDisplay(manualOffsetSeconds);
+            const placementNote = timestampPlacementSeconds !== 0
+                ? '<p class="ww-sync-reference-note">Timestamp placement (from recorded start time): ' +
+                    escapeHtml(wwSyncOffsetToMsDisplay(timestampPlacementSeconds)) + ' ms &mdash; the manual correction below is added on top of it.</p>'
+                : "";
             return (
                 '<div class="ww-mg-row" data-source-id="' + escapeHtml(source.source_id) + '">' +
                     '<div class="ww-mg-row-main">' +
                         '<div class="ww-mg-row-header">' +
                             '<span class="ww-mg-row-name">' + name + '</span>' +
                         '</div>' +
+                        placementNote +
                         '<div class="ww-sync-controls">' +
                             '<button type="button" class="secondary ww-sync-step-btn" data-source-id="' + escapeHtml(source.source_id) + '" data-step-ms="-1">&minus;1 ms</button>' +
                             '<button type="button" class="secondary ww-sync-step-btn" data-source-id="' + escapeHtml(source.source_id) + '" data-step-ms="-0.1">&minus;0.1 ms</button>' +
@@ -10026,7 +10238,7 @@
                             '<span class="ww-sync-unit">ms</span>' +
                             '<button type="button" class="secondary ww-sync-step-btn" data-source-id="' + escapeHtml(source.source_id) + '" data-step-ms="0.1">+0.1 ms</button>' +
                             '<button type="button" class="secondary ww-sync-step-btn" data-source-id="' + escapeHtml(source.source_id) + '" data-step-ms="1">+1 ms</button>' +
-                            '<button type="button" class="secondary ww-sync-reset-btn" data-source-id="' + escapeHtml(source.source_id) + '">Reset</button>' +
+                            '<button type="button" class="secondary ww-sync-reset-btn" data-source-id="' + escapeHtml(source.source_id) + '" title="Resets the manual correction only -- this source\'s own recorded-timestamp placement is unaffected">Reset manual adjustment</button>' +
                         '</div>' +
                     '</div>' +
                 '</div>'
@@ -10040,7 +10252,12 @@
                 return;
             }
             const html = sources
-                .map((source) => wwRenderSyncSourceRow(source, wwAlignmentOffsetForSource(source.source_id), source.source_id === ww.referenceSourceId))
+                .map((source) => wwRenderSyncSourceRow(
+                    source,
+                    ww.manualAlignmentOffsets.get(source.source_id) || 0,
+                    wwTimestampPlacementOffsetForSource(source.source_id),
+                    ww.referenceSourceIds.has(source.source_id)
+                ))
                 .join("");
             bodyEl.innerHTML = html;
             for (const btn of bodyEl.querySelectorAll(".ww-sync-step-btn")) {
@@ -10164,7 +10381,11 @@
         }
 
         async function wwSyncStepOffset(sourceId, stepMs) {
-            const currentMs = Number(wwSyncOffsetToMsDisplay(wwAlignmentOffsetForSource(sourceId)));
+            // Steps the MANUAL correction only (the value the editable
+            // field itself displays, task section 20) -- never the
+            // effective total, which would silently fold the source's
+            // own timestamp placement into a manual step.
+            const currentMs = Number(wwSyncOffsetToMsDisplay(ww.manualAlignmentOffsets.get(sourceId) || 0));
             await wwSyncSetOffsetMs(sourceId, currentMs + stepMs);
         }
 
@@ -15462,7 +15683,11 @@
                 // it alone -- the still-selected source's own offset
                 // remains meaningful, same reasoning as ww.sourceTiming.
                 ww.alignmentOffsets.clear();
-                ww.referenceSourceId = null;
+                ww.manualAlignmentOffsets.clear();
+                ww.timestampPlacementOffsets.clear();
+                ww.timeGroupBySourceId.clear();
+                ww.timeGroups.clear();
+                ww.referenceSourceIds.clear();
                 wwCloseSyncModal();
                 // Slice 2 of waveform time synchronization: "Start New
                 // Workspace" also clears the workspace's own event origin
@@ -17097,6 +17322,14 @@
         async function wwSetT0FromCursorA() {
             const cursors = ww.measurementCursors;
             if (!cursors.enabled || !cursors.a.visible || !Number.isFinite(cursors.a.time)) return;
+            // Time-Group task section 24/25: this shared toolbar action
+            // targets the PRIMARY time group (see
+            // wwPrimaryTimeGroupSourceId()'s own docstring) -- correct
+            // and unambiguous for the common single-group workspace;
+            // use Detect Event's own explicit source selection for a
+            // genuinely multi-group workspace instead.
+            const sourceId = wwPrimaryTimeGroupSourceId();
+            if (sourceId === null) return;
             let response;
             try {
                 response = await fetch(
@@ -17104,7 +17337,7 @@
                     {
                         method: "PUT",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ t0_workspace_time: cursors.a.time }),
+                        body: JSON.stringify({ source_id: sourceId, t0_workspace_time: cursors.a.time }),
                     }
                 );
             } catch (error) {
@@ -17118,9 +17351,12 @@
         }
 
         async function wwClearT0() {
+            const sourceId = wwPrimaryTimeGroupSourceId();
+            if (sourceId === null) return;
             try {
                 const response = await fetch(
-                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/synchronization/t0",
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/synchronization/t0" +
+                    "?source_id=" + encodeURIComponent(sourceId),
                     { method: "DELETE" }
                 );
                 if (!response.ok) return;
@@ -17220,7 +17456,15 @@
         function wwSyncDetectEventAcceptButtonState() {
             const acceptBtn = document.getElementById("wwDetectEventAcceptBtn");
             const hintEl = document.getElementById("wwDetectEventReplaceHint");
-            const hasT0 = wwHasT0();
+            // Time-Group task section 26: once a candidate exists, use
+            // THAT source's own resolved group t0 state
+            // (ww.suggestedEvent.groupHasT0, task section 26's own
+            // "never apply to an unrelated group" -- see
+            // wwHandleDetectEventAnalyseClick()'s own lookup) rather
+            // than the shared toolbar's primary-group cache; before any
+            // analysis has run yet (no source selected), fall back to
+            // the primary-group wwHasT0() as a reasonable default label.
+            const hasT0 = ww.suggestedEvent.sourceId !== null ? ww.suggestedEvent.groupHasT0 : wwHasT0();
             acceptBtn.textContent = hasT0 ? "Replace t=0" : "Set as t=0";
             // The hint is contextual to an ACTIVE candidate -- shown only
             // once accepting is actually possible (acceptBtn enabled),
@@ -17287,7 +17531,7 @@
         }
 
         function wwResetDetectEventSuggestion() {
-            ww.suggestedEvent = { visible: false, sourceId: null, channelName: null, workspaceTime: null, result: null };
+            ww.suggestedEvent = { visible: false, sourceId: null, channelName: null, workspaceTime: null, result: null, groupHasT0: false };
             wwUpdateCursorOverlay();
         }
 
@@ -17405,6 +17649,25 @@
             }
             const view = await response.json();
 
+            // Time-Group task section 26: "Do not apply that t0 to
+            // unrelated groups" -- the Accept button's own "Set as t=0"
+            // vs "Replace t=0" decision must reflect the SELECTED
+            // source's own current time group, never the shared
+            // toolbar's primary-group cache (ww.t0WorkspaceTime/
+            // wwHasT0()), which may be a DIFFERENT group entirely in a
+            // genuinely multi-group workspace. A cheap, explicit lookup
+            // -- correct regardless of how many time groups exist.
+            let groupT0 = null;
+            try {
+                const t0Response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/synchronization/t0" +
+                    "?source_id=" + encodeURIComponent(sourceId)
+                );
+                if (t0Response.ok) groupT0 = (await t0Response.json()).t0_workspace_time;
+            } catch (error) {
+                groupT0 = null; // falls back to wwSyncDetectEventAcceptButtonState()'s own wwHasT0() default
+            }
+
             // Task section 13: the candidate is shown on the waveform
             // (via wwUpdateCursorOverlay()'s own suggested-marker
             // rendering, task section 13/18: workspace time, the SAME
@@ -17421,6 +17684,7 @@
                 channelName: channelName,
                 workspaceTime: view.candidate_workspace_time,
                 result: view,
+                groupHasT0: groupT0 !== null,
             };
             wwUpdateCursorOverlay();
             wwRenderDetectEventResult(view, view.channel_unit, searchRangeInfo);
@@ -17428,15 +17692,22 @@
 
         async function wwAcceptDetectedEvent() {
             const workspaceTime = ww.suggestedEvent.workspaceTime;
-            if (!Number.isFinite(workspaceTime)) return;
+            const sourceId = ww.suggestedEvent.sourceId;
+            if (!Number.isFinite(workspaceTime) || !sourceId) return;
             let response;
             try {
+                // Time-Group task section 26: reuses the EXPLICIT
+                // source_id the engineer already selected in the Detect
+                // Event modal -- always resolves the CORRECT time group,
+                // even in a genuinely multi-group workspace (unlike the
+                // shared toolbar "Set Cursor A as t=0" action's own
+                // narrower primary-group scope).
                 response = await fetch(
                     apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/synchronization/t0",
                     {
                         method: "PUT",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ t0_workspace_time: workspaceTime }),
+                        body: JSON.stringify({ source_id: sourceId, t0_workspace_time: workspaceTime }),
                     }
                 );
             } catch (error) {

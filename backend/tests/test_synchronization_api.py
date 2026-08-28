@@ -4,6 +4,16 @@ app end-to-end, including the source-removal and workspace-reset
 lifecycle hooks -- see test_synchronization_service.py/
 test_synchronization_registry.py for the already-proven layers this
 router only exposes.
+
+`synth_ascii.cfg`/`synth_binary.cfg` share the EXACT same recorded
+start timestamp -- both land in ONE time group by construction, but
+WHICH of the two becomes that group's own origin/reference is now
+resolved by a `source_id` tie-break once start timestamps are identical
+(never upload order -- see app.domain.time_grouping's own docstring),
+so `_upload_pair()` below resolves the actual origin/non-origin split
+from the live API response rather than assuming the first-uploaded
+source is always the reference, the way pre-Time-Group tests safely
+could.
 """
 
 from __future__ import annotations
@@ -39,8 +49,20 @@ def _base_url(workspace_id):
     return f"/api/v1/workspaces/{workspace_id}/synchronization"
 
 
+def _upload_pair(client, workspace_id, comtrade_fixtures_dir):
+    ids = [
+        _upload(client, workspace_id, comtrade_fixtures_dir, "synth_ascii"),
+        _upload(client, workspace_id, comtrade_fixtures_dir, "synth_binary"),
+    ]
+    rows = client.get(f"{_base_url(workspace_id)}/sources").json()
+    by_id = {row["source_id"]: row for row in rows}
+    origin_id = next(sid for sid in ids if by_id[sid]["is_reference"])
+    other_id = next(sid for sid in ids if sid != origin_id)
+    return origin_id, other_id
+
+
 class TestListSources:
-    def test_lists_every_source_the_first_is_the_reference(self, client, comtrade_fixtures_dir):
+    def test_lists_every_source_exactly_one_is_the_reference(self, client, comtrade_fixtures_dir):
         ws = "ws-list"
         src_a = _upload(client, ws, comtrade_fixtures_dir, "synth_ascii")
         src_b = _upload(client, ws, comtrade_fixtures_dir, "synth_binary")
@@ -48,9 +70,13 @@ class TestListSources:
         assert resp.status_code == 200, resp.text
         body = {row["source_id"]: row for row in resp.json()}
         assert body[src_a]["alignment_offset_s"] == 0.0
-        assert body[src_a]["is_reference"] is True
         assert body[src_b]["alignment_offset_s"] == 0.0
-        assert body[src_b]["is_reference"] is False
+        # Identical recorded start timestamps -> both start with zero
+        # manual correction AND zero timestamp placement relative to
+        # whichever one is the group's own origin -- but exactly ONE of
+        # the two must be marked reference, never both/neither.
+        assert sum(1 for row in body.values() if row["is_reference"]) == 1
+        assert body[src_a]["time_group_id"] == body[src_b]["time_group_id"]
 
     def test_empty_workspace_lists_nothing(self, client):
         resp = client.get(f"{_base_url('ws-empty')}/sources")
@@ -68,24 +94,23 @@ class TestGetSource:
 class TestSetSourceOffset:
     def test_sets_and_returns_the_offset(self, client, comtrade_fixtures_dir):
         ws = "ws-set"
-        _upload(client, ws, comtrade_fixtures_dir, "synth_ascii")
-        src_b = _upload(client, ws, comtrade_fixtures_dir, "synth_binary")
-        resp = client.put(f"{_base_url(ws)}/sources/{src_b}", json={"alignment_offset_s": -0.0185})
+        _origin_id, other_id = _upload_pair(client, ws, comtrade_fixtures_dir)
+        resp = client.put(f"{_base_url(ws)}/sources/{other_id}", json={"alignment_offset_s": -0.0185})
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["alignment_offset_s"] == pytest.approx(-0.0185)
+        assert body["manual_alignment_offset_s"] == pytest.approx(-0.0185)
         assert body["is_reference"] is False
 
         # persisted -- a fresh GET reflects the same value.
-        resp = client.get(f"{_base_url(ws)}/sources/{src_b}")
+        resp = client.get(f"{_base_url(ws)}/sources/{other_id}")
         assert resp.json()["alignment_offset_s"] == pytest.approx(-0.0185)
 
     def test_sub_millisecond_precision_is_preserved(self, client, comtrade_fixtures_dir):
         ws = "ws-precision"
-        _upload(client, ws, comtrade_fixtures_dir, "synth_ascii")
-        src_b = _upload(client, ws, comtrade_fixtures_dir, "synth_binary")
+        _origin_id, other_id = _upload_pair(client, ws, comtrade_fixtures_dir)
         precise_offset = 0.0071234567
-        resp = client.put(f"{_base_url(ws)}/sources/{src_b}", json={"alignment_offset_s": precise_offset})
+        resp = client.put(f"{_base_url(ws)}/sources/{other_id}", json={"alignment_offset_s": precise_offset})
         assert resp.json()["alignment_offset_s"] == pytest.approx(precise_offset, abs=1e-9)
 
     def test_unknown_source_404s(self, client):
@@ -94,8 +119,7 @@ class TestSetSourceOffset:
 
     def test_non_finite_offset_400s(self, client, comtrade_fixtures_dir):
         ws = "ws-invalid"
-        _upload(client, ws, comtrade_fixtures_dir, "synth_ascii")
-        src_b = _upload(client, ws, comtrade_fixtures_dir, "synth_binary")
+        _origin_id, other_id = _upload_pair(client, ws, comtrade_fixtures_dir)
         # Standard JSON has no NaN/Infinity literal, so a conforming client
         # can never legitimately send one -- this crafts the raw (non-
         # standard, Python-`json`-emittable) body directly, bypassing the
@@ -104,7 +128,7 @@ class TestSetSourceOffset:
         # reject it if it ever arrived, not merely relying on no client
         # being able to construct one.
         resp = client.put(
-            f"{_base_url(ws)}/sources/{src_b}",
+            f"{_base_url(ws)}/sources/{other_id}",
             content=b'{"alignment_offset_s": NaN}',
             headers={"Content-Type": "application/json"},
         )
@@ -115,8 +139,8 @@ class TestSetSourceOffset:
 
     def test_non_zero_offset_on_reference_source_409s(self, client, comtrade_fixtures_dir):
         ws = "ws-reference"
-        src_a = _upload(client, ws, comtrade_fixtures_dir, "synth_ascii")
-        resp = client.put(f"{_base_url(ws)}/sources/{src_a}", json={"alignment_offset_s": 0.5})
+        origin_id, _other_id = _upload_pair(client, ws, comtrade_fixtures_dir)
+        resp = client.put(f"{_base_url(ws)}/sources/{origin_id}", json={"alignment_offset_s": 0.5})
         assert resp.status_code == 409
         assert resp.json()["detail"]["code"] == "reference_source_alignment_not_allowed"
 
@@ -124,12 +148,11 @@ class TestSetSourceOffset:
 class TestResetSource:
     def test_resets_a_configured_source_to_zero(self, client, comtrade_fixtures_dir):
         ws = "ws-reset-one"
-        _upload(client, ws, comtrade_fixtures_dir, "synth_ascii")
-        src_b = _upload(client, ws, comtrade_fixtures_dir, "synth_binary")
-        client.put(f"{_base_url(ws)}/sources/{src_b}", json={"alignment_offset_s": 0.02})
-        resp = client.delete(f"{_base_url(ws)}/sources/{src_b}")
+        _origin_id, other_id = _upload_pair(client, ws, comtrade_fixtures_dir)
+        client.put(f"{_base_url(ws)}/sources/{other_id}", json={"alignment_offset_s": 0.02})
+        resp = client.delete(f"{_base_url(ws)}/sources/{other_id}")
         assert resp.status_code == 204
-        resp = client.get(f"{_base_url(ws)}/sources/{src_b}")
+        resp = client.get(f"{_base_url(ws)}/sources/{other_id}")
         assert resp.json()["alignment_offset_s"] == 0.0
 
     def test_idempotent_for_an_already_unshifted_source(self, client, comtrade_fixtures_dir):
@@ -146,9 +169,8 @@ class TestResetSource:
 class TestResetAll:
     def test_resets_every_source_offset_in_the_workspace(self, client, comtrade_fixtures_dir):
         ws = "ws-reset-all"
-        _upload(client, ws, comtrade_fixtures_dir, "synth_ascii")
-        src_b = _upload(client, ws, comtrade_fixtures_dir, "synth_binary")
-        client.put(f"{_base_url(ws)}/sources/{src_b}", json={"alignment_offset_s": 0.02})
+        _origin_id, other_id = _upload_pair(client, ws, comtrade_fixtures_dir)
+        client.put(f"{_base_url(ws)}/sources/{other_id}", json={"alignment_offset_s": 0.02})
         resp = client.delete(f"{_base_url(ws)}/sources")
         assert resp.status_code == 204
         resp = client.get(f"{_base_url(ws)}/sources")
@@ -162,11 +184,10 @@ class TestResetAll:
 class TestSourceRemovalCleanup:
     def test_removing_a_source_clears_its_own_synchronization_state(self, client, comtrade_fixtures_dir):
         ws = "ws-removal"
-        src_a = _upload(client, ws, comtrade_fixtures_dir, "synth_ascii")
-        src_b = _upload(client, ws, comtrade_fixtures_dir, "synth_binary")
-        client.put(f"{_base_url(ws)}/sources/{src_b}", json={"alignment_offset_s": 0.02})
+        origin_id, other_id = _upload_pair(client, ws, comtrade_fixtures_dir)
+        client.put(f"{_base_url(ws)}/sources/{other_id}", json={"alignment_offset_s": 0.02})
 
-        resp = client.delete(f"/api/v1/workspaces/{ws}/sources/{src_b}")
+        resp = client.delete(f"/api/v1/workspaces/{ws}/sources/{other_id}")
         assert resp.status_code == 204
 
         # Re-uploading a NEW source under a fresh id must not inherit any
@@ -175,15 +196,14 @@ class TestSourceRemovalCleanup:
         # registry entry itself is gone.
         resp = client.get(f"{_base_url(ws)}/sources")
         remaining_ids = {row["source_id"] for row in resp.json()}
-        assert remaining_ids == {src_a}
+        assert remaining_ids == {origin_id}
 
 
 class TestWorkspaceResetCleanup:
     def test_deleting_the_workspace_clears_all_synchronization_state(self, client, comtrade_fixtures_dir):
         ws = "ws-full-reset"
-        src_a = _upload(client, ws, comtrade_fixtures_dir, "synth_ascii")
-        src_b = _upload(client, ws, comtrade_fixtures_dir, "synth_binary")
-        client.put(f"{_base_url(ws)}/sources/{src_b}", json={"alignment_offset_s": 0.02})
+        _origin_id, other_id = _upload_pair(client, ws, comtrade_fixtures_dir)
+        client.put(f"{_base_url(ws)}/sources/{other_id}", json={"alignment_offset_s": 0.02})
 
         resp = client.delete(f"/api/v1/workspaces/{ws}")
         assert resp.status_code == 204
@@ -193,7 +213,8 @@ class TestWorkspaceResetCleanup:
 
         # Original waveform data is unaffected by any of this -- re-upload
         # under the same workspace_id starts from a clean slate, and the
-        # reference-source rule re-derives correctly for the new set.
+        # reference-source rule re-derives correctly for the new (now
+        # single-source) set.
         src_c = _upload(client, ws, comtrade_fixtures_dir, "synth_ascii")
         resp = client.get(f"{_base_url(ws)}/sources/{src_c}")
         assert resp.json()["is_reference"] is True

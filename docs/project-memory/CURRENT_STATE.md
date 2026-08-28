@@ -4,7 +4,15 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-27** (Phase 18 — Waveform Time
+Last meaningful update: **2026-08-28** (Phase 19 — Timestamp-Based
+Initial Alignment and Time Groups: COMTRADE sources now place
+themselves automatically from their own recorded start timestamps
+(zero manual sync action required), Time Groups govern which sources
+may ever share one waveform panel, and `t0` is now scoped per Time
+Group — see
+[DECISIONS.md — DEC-057](DECISIONS.md#dec-057--timestamp-based-initial-alignment-and-time-groups-comtrade-sources-now-place-themselves-automatically-from-their-own-recorded-start-timestamps-and-a-waveform-panel-only-ever-mixes-sources-that-share-a-defensible-time-relationship)
+and [HANDOFF.md](HANDOFF.md) for the full record, on top of
+Phase 18 — Waveform Time
 Synchronization Slice 3: Assisted Event-Origin Detection, on top of
 Phase 17 — Waveform Time
 Synchronization Slice 2: Explicit Common Event t=0, on top of
@@ -56,6 +64,52 @@ Text Note, Phase 4D — Precision Step Zoom + Icon Toolbar Refinement,
 Waveform Time-Axis Sub-ms Precision, Waveform Adaptive Resolution, Phase
 4C2, Phase 4C1, Phase 4B-UAT3, Phase 4B-UAT2, Phase 4B-UAT1, Phase 4B,
 Phase 4A-UAT9, and Phase 4A-UAT10).
+
+`[FACT]` **Timestamp-Based Initial Alignment and Time Groups
+implemented (2026-08-28).** On top of Slices 1-3 below: COMTRADE
+sources with different recorded absolute start timestamps now place
+themselves automatically — e.g. B shifted +401ms relative to A — with
+**zero manual synchronization action required**, instead of both
+silently plotting from elapsed 0. Alignment is now three composed
+parts, computed at read time: `effective_alignment_offset_s =
+timestamp_placement_offset_s (derived from recorded start timestamps)
++ manual_alignment_offset_s` (Slice 1's existing correction, unchanged
+semantics). A new **Time Group** concept
+(`app/domain/time_grouping.py`) governs which sources may ever share
+one waveform panel, derived by recorded-absolute INTERVAL OVERLAP
+(connected components via union-find — a transitive A-B/B-C overlap
+chain groups correctly even when A-C never directly overlap), never by
+start-time proximity alone; a large non-overlapping gap gets a neutral
+note rather than a hardcoded time-difference threshold. Elapsed-only
+sources (`timing_reference != "absolute"`) each default to their own
+solo, unaligned group — never auto-merged with another elapsed-only
+source just because both start at 0. Sampling rate never blocks
+grouping (10 kHz + 5 kHz sources share a group; native arrays
+untouched, zero resampling). `t0` is now scoped per Time Group, not
+workspace-wide — setting it in one group never affects another (proven
+live: Detect Event's acceptance for one source's group left an
+unrelated source's own group's `t0` unset). Grouped-mode waveform
+panels are prefixed by the channel's own time-group id, so two
+channels of the same engineering type from unrelated groups can never
+share one panel — verified live (two overlapping absolute sources at
+different sampling rates on one shared panel; a third, ~60-second-away
+source on its own separate, correctly-labeled panel, no giant empty
+span). Reset semantics changed in a way that required relabeling:
+"Reset source"/"Reset All" now return a source to its
+TIMESTAMP-DERIVED position, never absolute zero — buttons relabeled
+"Reset manual adjustment"/"Reset All Manual Adjustments". **Known,
+disclosed, not solved by this phase**: per-Time-Group Absolute-mode
+wall-clock label origins remain a single workspace-wide origin (a
+pre-existing gap since Slice 1/2); the elapsed-only Time Group path is
+fully implemented/tested but not currently reachable through the live
+app, since COMTRADE (the only importer) always sets
+`timing_reference="absolute"`. Verified by 1503 passing backend tests
+(zero regressions, up from 1476) + 24 new/updated frontend
+static-regression tests, plus a dedicated live-browser UAT (27/27
+checks passed, zero console errors) reproducing the owner's own worked
+example end to end. See
+[DECISIONS.md — DEC-057](DECISIONS.md#dec-057--timestamp-based-initial-alignment-and-time-groups-comtrade-sources-now-place-themselves-automatically-from-their-own-recorded-start-timestamps-and-a-waveform-panel-only-ever-mixes-sources-that-share-a-defensible-time-relationship)
+and [HANDOFF.md](HANDOFF.md).
 
 `[FACT]` **Waveform Time Synchronization Slice 3 implemented
 (2026-08-27) — Assisted Event-Origin Detection.** On top of Slice 2's

@@ -18,9 +18,14 @@ def _source() -> str:
 
 
 def test_alignment_offset_state_exists():
+    """Timestamp-Based Initial Alignment and Time Groups: `alignmentOffsets`
+    now holds each source's EFFECTIVE offset, and the single scalar
+    `referenceSourceId` was replaced by a `referenceSourceIds` Set --
+    multiple independent time groups can each have their own origin/
+    reference source at once (task section 9)."""
     source = _source()
     assert "alignmentOffsets: new Map()" in source
-    assert "referenceSourceId: null" in source
+    assert "referenceSourceIds: new Set()" in source
 
 
 def test_core_conversion_helpers_exist():
@@ -124,11 +129,20 @@ def test_source_removal_refreshes_alignment_offsets():
 
 
 def test_start_new_workspace_clears_alignment_offset_state():
+    """Timestamp-Based Initial Alignment and Time Groups: "Start New
+    Workspace" clears every Time-Group-related cache, not just the
+    original two -- manual/timestamp-placement offsets, the per-source
+    group lookup, and the group catalogue itself, alongside the
+    original effective-offset map and reference-source set."""
     source = _source()
     clear_idx = source.index("function wwClearWorkspace(options)")
     clear_body = source[clear_idx : source.index("// Phase 2C-C1", clear_idx)]
     assert "ww.alignmentOffsets.clear()" in clear_body
-    assert "ww.referenceSourceId = null" in clear_body
+    assert "ww.manualAlignmentOffsets.clear()" in clear_body
+    assert "ww.timestampPlacementOffsets.clear()" in clear_body
+    assert "ww.timeGroupBySourceId.clear()" in clear_body
+    assert "ww.timeGroups.clear()" in clear_body
+    assert "ww.referenceSourceIds.clear()" in clear_body
 
 
 def test_manual_alignment_ui_exists():

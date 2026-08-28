@@ -4,9 +4,158 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-08-27**
+Last updated: **2026-08-28**
 
 ## What was most recently done
+
+**Phase 19 — Timestamp-Based Initial Alignment and Time Groups.** On top
+of Phases 15-18 (Slices 1-3 of waveform time synchronization) below --
+see [DECISIONS.md — DEC-057](DECISIONS.md#dec-057--timestamp-based-initial-alignment-and-time-groups-comtrade-sources-now-place-themselves-automatically-from-their-own-recorded-start-timestamps-and-a-waveform-panel-only-ever-mixes-sources-that-share-a-defensible-time-relationship)
+and [CURRENT_STATE.md](CURRENT_STATE.md) for the full record; summarized
+here for continuity.
+
+**Governing principle carried through this phase**: "One waveform panel
+= one coherent time domain." Two COMTRADE sources with different
+recorded absolute start timestamps (e.g. A=13:09:44.000,
+B=13:09:44.401) previously both plotted from elapsed 0 -- silently
+implying simultaneity that was never true. They now place themselves
+automatically, B shifted +401ms relative to A, with **zero manual
+synchronization action required** -- the exact deliverable the owner
+asked for.
+
+**Architecture**: alignment is now three composed parts, computed at
+read time, never stored combined --
+`effective_alignment_offset_s = timestamp_placement_offset_s (derived
+from recorded start timestamps) + manual_alignment_offset_s (Slice 1's
+existing engineer correction, unchanged semantics)`. A new **Time
+Group** concept (`app/domain/time_grouping.py`) groups sources by
+recorded-absolute INTERVAL OVERLAP (connected components over an
+overlap graph, union-find -- correctly handles transitive chains where
+A-B overlap and B-C overlap but A-C don't touch directly), never by
+mere start-time proximity: two long overlapping records with a large
+start-time difference still share a group; two short, near-but-
+non-overlapping records stay separate by default (conservative rule --
+overlap required). A large non-overlapping gap gets a neutral note
+("Large timestamp separation / no temporal overlap...") rather than a
+hardcoded "> N seconds = different event" threshold. Elapsed-only
+sources (`timing_reference != "absolute"`) are NEVER assumed to share
+elapsed-0 with anything else -- each defaults to its own solo,
+unaligned time group, even if several elapsed-only sources are uploaded
+together. Sampling rate never blocks grouping (verified: 10 kHz + 5 kHz
+sources share one group, native arrays untouched, zero resampling).
+
+`t0` (Slice 2's explicit common event origin) is now **scoped per Time
+Group**, not workspace-wide -- the `SynchronizationRegistry`'s `_t0`
+store re-keyed from `dict[workspace_id, float]` to
+`dict[(workspace_id, time_group_key), float]`. Setting `t0` in one
+group never touches an unrelated group's own `t0` (proven both at the
+service layer and live in the browser: accepting a Detect Event
+candidate for source A's group left source D's own unrelated group's
+`t0` unset). Detect Event's own explicit source+channel selection
+(Slice 3) always resolves the CORRECT group regardless of how many
+groups exist; the shared toolbar's "Set Cursor A as t=0" quick action
+(which has no explicit source context of its own) targets one
+deterministic "primary" source instead -- a documented, narrower scope
+for that one shortcut, not a gap in Detect Event's own correctness.
+
+**Reset semantics changed in a way that needed explicit relabeling**
+(task's own "if labels become misleading, change them minimally"):
+"Reset source"/"Reset All" now return a source to its TIMESTAMP-DERIVED
+position, never to absolute zero -- the buttons were relabeled "Reset
+manual adjustment" / "Reset All Manual Adjustments" with explanatory
+tooltips, verified live (reset returns the manual field to 0 while the
+401ms timestamp-placement note visibly survives, exactly as specified).
+
+**Panel rendering**: Grouped-mode panel keys are now prefixed with the
+channel's own time-group id (`wwPanelGroupKeyFor()`), so two channels
+of the same engineering type from different, unrelated time groups can
+never land on one panel -- verified live: two overlapping absolute
+sources 401ms apart with different sampling rates rendered on ONE
+shared "Voltage" panel (2 traces); a third source ~60 seconds away
+(genuinely non-overlapping) rendered on its own, separate second panel,
+each keeping its own tight x-range -- never one giant panel stretched
+across the gap. A compact "— Time Group N" / "— Elapsed / unaligned"
+label suffix appears ONLY once a workspace genuinely has more than one
+group (task section 29) -- the overwhelming single-group common case
+renders with no clutter, identical to before this feature existed.
+
+**Live-UAT-discovered and fixed in this same session**: panel labels
+were originally only ever computed once, at the moment a panel was
+first created -- so an ALREADY-rendered panel's own "Time Group N"
+suffix could go stale if a later upload/removal changed the workspace's
+own group topology (e.g. uploading a third, far-separated source after
+the first panel already existed left that first panel's label
+un-suffixed even though the workspace was now genuinely multi-group).
+Fixed with a new `wwRefreshTimeGroupPanelLabels()`, called once every
+time fresh sync/time-group state loads -- cheap (DOM text patch only,
+no re-fetch/re-plot), and reconfirmed correct live after the fix
+(`['Voltage — Time Group 1', 'Voltage — Time Group 2']`).
+
+**`SourceMetadata.timing_reference`** ("absolute"/"relative_elapsed"),
+originally dead CSV-importer scaffolding that COMTRADE always set to
+"absolute," was reused DIRECTLY as the time-reference-type signal (task
+section 7) -- no new field was needed.
+
+**Known, disclosed limitation carried forward unchanged (NOT solved by
+this phase)**: `wwWorkspaceRecordingStartMs()` (Absolute-mode wall-
+clock label origin) is still a single, workspace-wide origin, not
+per-time-group -- documented as a pre-existing gap since Slice 1/2
+(DEC-053/DEC-055), re-confirmed here as still open. It never fabricates
+a wall-clock label for an elapsed-only source (`wwTimeModesForChannel()`
+already excludes Absolute mode structurally whenever a displayed
+channel lacks `timing_reference === "absolute"`), so task section 31's
+"never display false wall-clock timestamps" half is satisfied; only the
+"each group gets its OWN stable origin" half remains open, tracked as
+Time Groups' own remaining work rather than silently reintroduced.
+
+**Also carried forward, and NOT currently reachable through the live
+app**: elapsed-only Time Group behaviour (its own solo group, never
+merged with another elapsed-only source) is fully implemented and
+tested at the domain/service/frontend level, but COMTRADE -- the ONLY
+importer this app currently has -- always sets
+`timing_reference="absolute"` (COMTRADE's own CFG format always
+carries a start timestamp), so there is currently no way to produce a
+real elapsed-only source through the live app's upload flow. CSV/Excel
+(explicitly out of scope for this task) would be the eventual real
+trigger for this path; it stays fully verified via directly-constructed
+`ActiveSource` fixtures at the domain/service test layers in the
+meantime.
+
+Verified by 1503 passing backend tests (17 new domain, 8 new service, 3
+new API, plus every pre-existing Slice 1/2/3 test rewritten for
+group-awareness -- zero regressions) + 24 new/updated frontend
+static-regression tests, plus a dedicated live-browser UAT (27/27
+checks passed, zero console errors) reproducing the owner's own
+worked example end to end: two absolute sources 401ms apart at
+different sampling rates auto-aligned onto one shared panel with no
+manual action; a manual +1ms correction composed correctly on top and
+reverted correctly on Reset while the timestamp placement itself
+stayed intact; a third, ~60-second-away source rendered as its own
+separate, correctly-labeled panel with no giant empty span; Detect
+Event's acceptance set `t0` for its own source's group only, confirmed
+unset for the unrelated group via a direct API check; Start New
+Workspace cleared every recording and all Time-Group state.
+
+**Files changed**: new `app/domain/time_grouping.py` +
+`backend/tests/test_time_grouping_domain.py`,
+`test_time_grouping_service.py`, `test_time_groups_api.py`; rewrote
+`synchronization_registry.py`, `synchronization_service.py`,
+`schemas/synchronization.py`, `api/v1/synchronization.py` (new `GET
+.../time-groups`) and every pre-existing synchronization test file for
+group-awareness; extensively modified `frontend/index.html` (new
+per-group state, group-aware panel-key prefixing, group-scoped t0
+quick actions, manual/timestamp-placement split in the Synchronize
+Sources modal, relabeled Reset buttons, the panel-label staleness fix)
+plus new `test_frontend_time_groups.py`.
+
+**Next step**: nothing is pre-authorized. Per explicit instruction,
+nothing from this phase was committed or pushed — the working tree
+still carries it uncommitted; the owner's own live UAT pass and
+commit/push decision are the natural next steps. Per-group Absolute-
+mode wall-clock origins (the one open half of task section 31) remain
+available for a future phase if the owner wants it addressed.
+
+## What was done in the prior session (Phase 18 — Waveform Time Synchronization Slice 3: Assisted Event-Origin Detection)
 
 **Phase 18 — Waveform Time Synchronization Slice 3: Assisted
 Event-Origin Detection.** On top of Phase 17 (Slice 2) below -- see
@@ -8171,6 +8320,25 @@ checks for this Phase 3B pass. **Production was not touched.**
 
 ## What remains unresolved
 
+- `[OPEN]`, **new from Phase 19 (Timestamp-Based Initial Alignment and
+  Time Groups)**: Absolute-mode wall-clock label origins
+  (`wwWorkspaceRecordingStartMs()`) are still a single, workspace-wide
+  origin, not resolved per Time Group — a pre-existing gap since Slice
+  1/2 (DEC-053/DEC-055), left open by this phase too (see DEC-057's own
+  Impact section for the full reasoning on why this was deliberately
+  not attempted in the same pass as the rest of Time Groups). It never
+  fabricates a false wall-clock label for an elapsed-only source
+  (structurally excluded already), so this is a display-accuracy gap
+  for a genuinely multi-group Absolute-mode workspace specifically, not
+  a false-data risk.
+- `[OPEN]`, **new from Phase 19**: the elapsed-only Time Group path
+  (its own solo, unaligned group; never auto-merged with another
+  elapsed-only source) is fully implemented and tested at the domain/
+  service/frontend level, but is NOT currently reachable through the
+  live app's own upload flow — COMTRADE, the only importer that exists,
+  always sets `timing_reference="absolute"` (its own CFG format always
+  carries a start timestamp). A future CSV/Excel importer (explicitly
+  out of scope for Phase 19) would be the real trigger for this path.
 - `[OPEN]`, **Per-Unit measurement model — Slices 1, 2, and 3
   (measurement-group foundation, automatic grouping, and group-aware
   Voltage PU semantics) are now implemented** (see "What was most

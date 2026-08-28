@@ -40,6 +40,23 @@ def _sync_url(workspace_id):
     return f"/api/v1/workspaces/{workspace_id}/synchronization"
 
 
+def _upload_pair(client, workspace_id, comtrade_fixtures_dir):
+    """synth_ascii/synth_binary share the exact same recorded start
+    timestamp -- both land in one time group, but WHICH becomes that
+    group's own origin is resolved from the live API response, not
+    assumed from upload order (see test_synchronization_t0_api.py's own
+    module docstring for the full rationale)."""
+    ids = [
+        _upload(client, workspace_id, comtrade_fixtures_dir, "synth_ascii"),
+        _upload(client, workspace_id, comtrade_fixtures_dir, "synth_binary"),
+    ]
+    rows = client.get(f"{_sync_url(workspace_id)}/sources").json()
+    by_id = {row["source_id"]: row for row in rows}
+    origin_id = next(sid for sid in ids if by_id[sid]["is_reference"])
+    other_id = next(sid for sid in ids if sid != origin_id)
+    return origin_id, other_id
+
+
 class TestDetectEventPlumbing:
     def test_short_fixture_returns_found_false_not_an_error(self, client, comtrade_fixtures_dir):
         """The shared synth_ascii fixture is only ~10ms long -- far
@@ -113,16 +130,15 @@ class TestDetectEventNeverMutatesSynchronizationState:
         ws = "ws-detect-no-t0-mutation"
         src = _upload(client, ws, comtrade_fixtures_dir, "synth_ascii")
         client.post(f"{_sync_url(ws)}/detect-event", json={"source_id": src, "channel_name": "VA"})
-        resp = client.get(f"{_sync_url(ws)}/t0")
+        resp = client.get(f"{_sync_url(ws)}/t0", params={"source_id": src})
         assert resp.json()["t0_workspace_time"] is None
 
     def test_running_detection_leaves_alignment_offset_unchanged(self, client, comtrade_fixtures_dir):
         ws = "ws-detect-no-offset-mutation"
-        src = _upload(client, ws, comtrade_fixtures_dir, "synth_ascii")
-        src_b = _upload(client, ws, comtrade_fixtures_dir, "synth_binary")
-        client.put(f"{_sync_url(ws)}/sources/{src_b}", json={"alignment_offset_s": 0.2})
+        _origin_id, other_id = _upload_pair(client, ws, comtrade_fixtures_dir)
+        client.put(f"{_sync_url(ws)}/sources/{other_id}", json={"alignment_offset_s": 0.2})
 
-        client.post(f"{_sync_url(ws)}/detect-event", json={"source_id": src_b, "channel_name": "VA"})
+        client.post(f"{_sync_url(ws)}/detect-event", json={"source_id": other_id, "channel_name": "VA"})
 
-        resp = client.get(f"{_sync_url(ws)}/sources/{src_b}")
-        assert resp.json()["alignment_offset_s"] == pytest.approx(0.2)
+        resp = client.get(f"{_sync_url(ws)}/sources/{other_id}")
+        assert resp.json()["manual_alignment_offset_s"] == pytest.approx(0.2)

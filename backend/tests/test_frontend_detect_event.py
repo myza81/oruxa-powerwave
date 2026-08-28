@@ -111,14 +111,27 @@ def test_analyse_posts_to_detect_event_endpoint():
     assert "sensitivity: sensitivity" in fn_body
 
 
-def test_analyse_never_calls_the_t0_endpoint():
+def test_analyse_never_puts_or_deletes_the_t0_endpoint():
     """Task section 26: "Do not make this endpoint set t0
     automatically." -- verified on the frontend side too: the Analyse
-    handler must never itself PUT/DELETE .../t0."""
+    handler must never itself PUT/DELETE .../t0.
+
+    Timestamp-Based Initial Alignment and Time Groups: the handler now
+    DOES issue a read-only GET .../t0 (scoped to the selected source's
+    own time group, via ww.suggestedEvent.groupHasT0) so the Accept
+    button can correctly say "Set as t=0" vs "Replace t=0" for THAT
+    group specifically, rather than the shared toolbar's primary-group
+    cache -- a read is not a mutation, so this still satisfies the
+    task's own "never set t0 automatically" rule."""
     source = _source()
     fn_idx = source.index("async function wwHandleDetectEventAnalyseClick()")
     fn_body = source[fn_idx : source.index("async function wwAcceptDetectedEvent()", fn_idx)]
-    assert "/synchronization/t0" not in fn_body
+    # The new group-scoped read exists (a plain GET -- fetch()'s default
+    # verb, no explicit "method" needed) but nothing in this handler
+    # ever PUTs or DELETEs t0.
+    assert "/synchronization/t0" in fn_body
+    assert 'method: "PUT"' not in fn_body
+    assert 'method: "DELETE"' not in fn_body
 
 
 def test_preview_marker_is_shown_before_acceptance_is_possible():
@@ -171,11 +184,18 @@ class TestAcceptButtonStateDependsOnlyOnT0:
     acceptance action, state-appropriate, never both at once."""
 
     def test_sync_function_labels_replace_when_t0_exists_and_set_otherwise(self):
+        """Timestamp-Based Initial Alignment and Time Groups (task
+        section 26): once a candidate exists, the label must reflect
+        THAT candidate's own source's time group -- never an unrelated
+        group's t0 -- via ww.suggestedEvent.groupHasT0. Only before any
+        analysis has run (no source selected yet) does it fall back to
+        the shared toolbar's primary-group wwHasT0() as a reasonable
+        default."""
         source = _source()
         fn_idx = source.index("function wwSyncDetectEventAcceptButtonState()")
         fn_body = source[fn_idx : source.index("function wwInvalidateDetectEventSuggestion()", fn_idx)]
         assert 'acceptBtn.textContent = hasT0 ? "Replace t=0" : "Set as t=0";' in fn_body
-        assert "const hasT0 = wwHasT0();" in fn_body
+        assert "ww.suggestedEvent.sourceId !== null ? ww.suggestedEvent.groupHasT0 : wwHasT0()" in fn_body
 
     def test_hint_only_shown_when_t0_exists_and_a_candidate_is_active(self):
         """The "already defined" context text is gated on BOTH t0

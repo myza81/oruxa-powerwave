@@ -373,7 +373,9 @@ class TestDoesNotMutateState:
             search_start_time=None, search_end_time=None,
             source_registry=source_registry, synchronization_registry=sync_registry,
         )
-        assert sync_registry.get_t0("ws-1") is None
+        # src-1 is the sole member of its own time group -- group_id ==
+        # source_id (see app.domain.time_grouping's own docstring).
+        assert sync_registry.get_t0("ws-1", "src-1") is None
 
     def test_running_detection_never_changes_the_offset(self, source_registry, sync_registry):
         sync_registry.set_offset("ws-1", "src-1", 0.25)

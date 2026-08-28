@@ -1,19 +1,47 @@
-"""Waveform time-synchronization orchestration (Slice 1: per-source
-alignment offsets; Slice 2: one workspace-wide event origin, `t0`).
+"""Waveform time-synchronization orchestration.
 
-Every real source currently in the workspace is a candidate for its own
-alignment offset -- this module lists them all (offset defaults to `0`
-until explicitly set), resolves which one is the current reference
-source (`app.domain.synchronization.reference_source_id_for_workspace`,
-by earliest `created_at`), enforces that the reference source's own
-offset can never become non-zero, and validates/stores/clears an offset
-via `SynchronizationRegistry`. Slice 2 adds the equivalent
-validate/store/clear surface for the workspace's own single event
-origin (`t0_workspace_time`) -- deliberately a SEPARATE set of
-functions/registry keys from the per-source offset ones above (Slice 2
-task section 11: "these are separate concepts... do not absorb the
-alignment offset into t0"), never sharing a clear/reset code path except
-at full workspace-lifecycle teardown (`remove_workspace_synchronization_state()`).
+Slice 1: per-source MANUAL alignment offsets. Slice 2: event origin
+(`t0`), now Time-Group-scoped. Slice 3: assisted event-origin detection.
+**Timestamp-Based Initial Alignment and Time Groups**: every source's
+own EFFECTIVE placement is now `timestamp_placement_offset_s` (derived,
+`app.domain.time_grouping`, from recorded start timestamps) +
+`manual_alignment_offset_s` (Slice 1's own existing engineer correction,
+`SynchronizationRegistry`, completely unchanged storage/semantics) --
+see `app.domain.time_grouping`'s own module docstring for the full time
+architecture and grouping rules, and
+docs/project-memory/DECISIONS.md's "Timestamp-Based Initial Alignment
+and Time Groups" entry for the full record.
+
+**Governing principle: "one waveform panel = one coherent time
+domain."** A workspace's sources are partitioned into Time Groups
+(`app.domain.time_grouping.derive_time_groups()`, recomputed fresh on
+every call from the CURRENT source set, never cached/persisted -- see
+that function's own docstring for the deterministic derivation rule).
+Each group has its own ORIGIN source (`group.origin_source_id`, always
+the group's own current `group_id` too -- no separate hardcoded ID
+scheme) -- the group's own reference/anchor, whose `timestamp_placement_offset_s`
+is always `0.0` by construction and whose `manual_alignment_offset_s` is
+locked to `0.0` for the exact same "the reference source's own offset is
+always 0" reason Slice 1 already established, just now scoped PER GROUP
+instead of per-workspace (`ReferenceSourceAlignmentError` below).
+
+`app.domain.synchronization.reference_source_id_for_workspace()` (the
+original, workspace-wide, upload-order reference rule) is intentionally
+left completely untouched -- it is still correct, still tested, simply
+no longer the mechanism this module uses to decide which source's
+manual offset is locked to zero (that decision is now made per Time
+Group, from each group's own EARLIEST recorded start timestamp instead
+of upload order -- task section 4's own worked example).
+
+`t0` (Slice 2) is now Time-Group-scoped (task section 24: "a t0 applies
+to one coherent time domain... do not let setting t0 in one independent
+group silently re-zero unrelated groups") -- every t0 get/set/clear call
+below takes a `source_id` to resolve WHICH group's own t0 is being
+addressed (`SynchronizationRegistry`'s own `(workspace_id,
+time_group_key)` key shape, `time_group_key` always that group's
+current `group_id`). For the common single-group workspace (task
+section 25), this degenerates to exactly Slice 2's original behaviour --
+one group, one t0, unchanged UX.
 
 This module never touches waveform/cursor/digital-waveform data --
 Slice 1's request/response time-shift for those endpoints, and Slice 2's
@@ -23,9 +51,8 @@ the EXISTING `.../waveform`/`.../cursor-values`/`.../digital-waveform`
 endpoints unchanged, then shift the returned times back for display),
 mirroring DEC-042's own "presentation-layer transform, not a backend
 data authority" precedent for Absolute/Elapsed time-mode. The backend's
-own role is authoritative storage and validation of the scalar
-offset/t0 values only -- see app.domain.synchronization's own module
-docstring for the full architectural rationale.
+own role is authoritative storage/derivation of the scalar
+offset/t0/time-group values only.
 """
 
 from __future__ import annotations
@@ -35,7 +62,9 @@ from dataclasses import dataclass
 import numpy as np
 
 from app.domain.event_detection import VALID_SENSITIVITIES, EventDetectionResult, detect_event_onset
-from app.domain.synchronization import alignment_offset_valid, reference_source_id_for_workspace, source_time_to_workspace_time
+from app.domain.source import SourceMetadata
+from app.domain.synchronization import alignment_offset_valid, source_time_to_workspace_time
+from app.domain.time_grouping import TimeGroup, derive_time_groups, timestamp_placement_offset_s
 from app.services.errors import (
     ChannelNotAnalogError,
     ChannelNotFoundError,
@@ -49,32 +78,70 @@ from app.services.synchronization_registry import SynchronizationRegistry
 from app.services.workspace_registry import WorkspaceRegistry
 
 
+def list_time_groups(*, workspace_id: str, source_registry: WorkspaceRegistry) -> list[TimeGroup]:
+    """Every current Time Group in this workspace (task section 9),
+    recomputed fresh from the CURRENT source set -- see
+    `app.domain.time_grouping.derive_time_groups()`'s own docstring for
+    the full derivation rule. A workspace with no sources yet returns an
+    empty list."""
+    sources = [_metadata_tuple(active.metadata) for active in source_registry.list_for_workspace(workspace_id)]
+    return derive_time_groups(sources)
+
+
+def _metadata_tuple(metadata: SourceMetadata) -> tuple[str, str, object, float, float]:
+    return (metadata.source_id, metadata.timing_reference, metadata.start_time, metadata.elapsed_start_seconds, metadata.elapsed_end_seconds)
+
+
+def _group_lookup(*, workspace_id: str, source_registry: WorkspaceRegistry) -> tuple[dict[str, TimeGroup], dict[str, SourceMetadata]]:
+    """The ONE place this module derives Time Groups and builds the two
+    lookups every group-aware function below needs: `source_id ->
+    TimeGroup` (its own current group) and `source_id -> SourceMetadata`
+    (for `start_time` access when computing `timestamp_placement_offset_s`).
+    Computed once per call site, never per-source, so a multi-source
+    workspace stays O(n) rather than O(n^2)."""
+    actives = source_registry.list_for_workspace(workspace_id)
+    metadata_by_id = {active.metadata.source_id: active.metadata for active in actives}
+    groups = derive_time_groups([_metadata_tuple(m) for m in metadata_by_id.values()])
+    group_by_source_id = {source_id: group for group in groups for source_id in group.source_ids}
+    return group_by_source_id, metadata_by_id
+
+
 @dataclass(slots=True)
 class SourceAlignmentView:
-    """One source's own alignment offset, as the manual-synchronization
-    UI needs to render it."""
+    """One source's own alignment state, as the manual-synchronization
+    UI needs to render it -- the three-part composition (task section
+    3): `effective_alignment_offset_s = timestamp_placement_offset_s +
+    manual_alignment_offset_s`. `time_group_id` is that source's own
+    CURRENT time group's `group_id` (see `app.domain.time_grouping`'s
+    own docstring for why that is always a real source_id, never a
+    separate hardcoded identifier). `is_reference` means "is this
+    source its OWN time group's origin" -- scoped per-group now, not
+    per-workspace (see this module's own top-of-file docstring)."""
 
     source_id: str
-    alignment_offset_s: float
+    time_group_id: str
+    timestamp_placement_offset_s: float
+    manual_alignment_offset_s: float
+    effective_alignment_offset_s: float
     is_reference: bool
 
 
-def resolve_reference_source_id(*, workspace_id: str, source_registry: WorkspaceRegistry) -> str | None:
-    """The one place this workspace's current reference source is
-    computed -- see app.domain.synchronization.reference_source_id_for_workspace's
-    own docstring for the deterministic rule (earliest `created_at`).
-    Recomputed fresh on every call rather than cached/persisted: the
-    reference identity is a derived fact of the CURRENT source set, and
-    must never go stale after a source is added/removed."""
-    sources = [(active.metadata.source_id, active.metadata.created_at) for active in source_registry.list_for_workspace(workspace_id)]
-    return reference_source_id_for_workspace(sources)
-
-
-def _view_for_source(*, source_id: str, registry: SynchronizationRegistry, workspace_id: str, reference_source_id: str | None) -> SourceAlignmentView:
+def _view_for_source(
+    *, source_id: str, registry: SynchronizationRegistry, workspace_id: str,
+    group_by_source_id: dict[str, TimeGroup], metadata_by_id: dict[str, SourceMetadata],
+) -> SourceAlignmentView:
+    group = group_by_source_id[source_id]
+    origin_metadata = metadata_by_id[group.origin_source_id]
+    own_metadata = metadata_by_id[source_id]
+    placement = timestamp_placement_offset_s(source_start_time=own_metadata.start_time, origin_start_time=origin_metadata.start_time)
+    manual = registry.get_offset(workspace_id, source_id)
     return SourceAlignmentView(
         source_id=source_id,
-        alignment_offset_s=registry.get_offset(workspace_id, source_id),
-        is_reference=(source_id == reference_source_id),
+        time_group_id=group.group_id,
+        timestamp_placement_offset_s=placement,
+        manual_alignment_offset_s=manual,
+        effective_alignment_offset_s=placement + manual,
+        is_reference=(source_id == group.origin_source_id),
     )
 
 
@@ -82,68 +149,79 @@ def list_source_alignments(*, workspace_id: str, registry: SynchronizationRegist
     """Every real source currently loaded in the workspace, offset or
     not -- mirrors `list_source_per_unit_configs`'s own "every loaded
     recording appears automatically" rule."""
-    reference_source_id = resolve_reference_source_id(workspace_id=workspace_id, source_registry=source_registry)
+    group_by_source_id, metadata_by_id = _group_lookup(workspace_id=workspace_id, source_registry=source_registry)
     return [
-        _view_for_source(source_id=active.metadata.source_id, registry=registry, workspace_id=workspace_id, reference_source_id=reference_source_id)
-        for active in source_registry.list_for_workspace(workspace_id)
+        _view_for_source(source_id=source_id, registry=registry, workspace_id=workspace_id, group_by_source_id=group_by_source_id, metadata_by_id=metadata_by_id)
+        for source_id in metadata_by_id
     ]
 
 
 def get_source_alignment(*, workspace_id: str, source_id: str, registry: SynchronizationRegistry, source_registry: WorkspaceRegistry) -> SourceAlignmentView:
     if source_registry.get(workspace_id, source_id) is None:
         raise SourceNotFoundError(f"No source '{source_id}' in workspace '{workspace_id}'.")
-    reference_source_id = resolve_reference_source_id(workspace_id=workspace_id, source_registry=source_registry)
-    return _view_for_source(source_id=source_id, registry=registry, workspace_id=workspace_id, reference_source_id=reference_source_id)
+    group_by_source_id, metadata_by_id = _group_lookup(workspace_id=workspace_id, source_registry=source_registry)
+    return _view_for_source(source_id=source_id, registry=registry, workspace_id=workspace_id, group_by_source_id=group_by_source_id, metadata_by_id=metadata_by_id)
 
 
 def set_source_alignment_offset(
     *, workspace_id: str, source_id: str, alignment_offset_s: float, registry: SynchronizationRegistry, source_registry: WorkspaceRegistry
 ) -> SourceAlignmentView:
-    """Create-or-replace ONE source's own alignment offset (task section
-    2: "updating a source offset"). 404s if `source_id` does not exist in
-    this workspace; rejects a non-finite offset
-    (`InvalidAlignmentOffsetError`); rejects a non-zero offset on the
-    CURRENT reference source (`ReferenceSourceAlignmentError`, task
-    section 9's own "reference offset is always 0" rule) -- setting the
-    reference source's own offset to exactly `0` is accepted as a
-    harmless no-op, never rejected, so a client does not need to special-
-    case "skip the reference row" before calling this."""
+    """Create-or-replace ONE source's own MANUAL correction (task
+    section 2/20: this sets `manual_alignment_offset_s` only --
+    `timestamp_placement_offset_s` is derived, never writable here).
+    404s if `source_id` does not exist in this workspace; rejects a
+    non-finite offset (`InvalidAlignmentOffsetError`); rejects a
+    non-zero manual correction on the CURRENT origin/reference source OF
+    ITS OWN TIME GROUP (`ReferenceSourceAlignmentError`, now group-
+    scoped -- see this module's own top-of-file docstring for why) --
+    setting it to exactly `0` is accepted as a harmless no-op, never
+    rejected, so a client does not need to special-case "skip the
+    reference row" before calling this."""
     if source_registry.get(workspace_id, source_id) is None:
         raise SourceNotFoundError(f"No source '{source_id}' in workspace '{workspace_id}'.")
     if not alignment_offset_valid(alignment_offset_s):
         raise InvalidAlignmentOffsetError("alignment_offset_s must be a finite number of seconds.")
-    reference_source_id = resolve_reference_source_id(workspace_id=workspace_id, source_registry=source_registry)
-    if source_id == reference_source_id and alignment_offset_s != 0.0:
+    group_by_source_id, metadata_by_id = _group_lookup(workspace_id=workspace_id, source_registry=source_registry)
+    if source_id == group_by_source_id[source_id].origin_source_id and alignment_offset_s != 0.0:
         raise ReferenceSourceAlignmentError(
-            "The reference source's own alignment offset is always 0 and cannot be changed directly."
+            "This source is its own time group's origin; its manual alignment offset is always 0 and cannot be changed directly."
         )
     if alignment_offset_s == 0.0:
         registry.reset_offset(workspace_id, source_id)
     else:
         registry.set_offset(workspace_id, source_id, alignment_offset_s)
-    return _view_for_source(source_id=source_id, registry=registry, workspace_id=workspace_id, reference_source_id=reference_source_id)
+    return _view_for_source(source_id=source_id, registry=registry, workspace_id=workspace_id, group_by_source_id=group_by_source_id, metadata_by_id=metadata_by_id)
 
 
 def reset_source_alignment_offset(
     *, workspace_id: str, source_id: str, registry: SynchronizationRegistry, source_registry: WorkspaceRegistry
 ) -> SourceAlignmentView:
-    """`alignment_offset_s -> 0` for one source (task section 10). 404s
-    if `source_id` does not exist; idempotent for an already-unshifted
-    source (resetting the reference source, which is already always `0`,
-    is always a harmless no-op, never an error)."""
+    """`manual_alignment_offset_s -> 0` for one source (task section 21:
+    "Reset source ... resets only the manual correction. Timestamp-
+    derived placement remains."). 404s if `source_id` does not exist;
+    idempotent for an already-unshifted source (resetting the origin
+    source, whose manual correction is already always `0`, is always a
+    harmless no-op, never an error). The source's own
+    `timestamp_placement_offset_s` is untouched -- this returns it to
+    its recorded-timestamp position, never to a plain zero shift, unless
+    it had none to begin with."""
     if source_registry.get(workspace_id, source_id) is None:
         raise SourceNotFoundError(f"No source '{source_id}' in workspace '{workspace_id}'.")
     registry.reset_offset(workspace_id, source_id)
-    reference_source_id = resolve_reference_source_id(workspace_id=workspace_id, source_registry=source_registry)
-    return _view_for_source(source_id=source_id, registry=registry, workspace_id=workspace_id, reference_source_id=reference_source_id)
+    group_by_source_id, metadata_by_id = _group_lookup(workspace_id=workspace_id, source_registry=source_registry)
+    return _view_for_source(source_id=source_id, registry=registry, workspace_id=workspace_id, group_by_source_id=group_by_source_id, metadata_by_id=metadata_by_id)
 
 
 def reset_all_alignment_offsets(*, workspace_id: str, registry: SynchronizationRegistry) -> int:
-    """Every source offset in this workspace `-> 0` (Slice 1 task section
-    10: "reset all synchronization"). Returns the number of sources that
-    actually had a non-default offset cleared, for logging/testing, not
-    for any success/failure branching by the caller (mirrors
-    `WorkspaceRegistry.remove_workspace()`'s own idempotent contract).
+    """Every source's own MANUAL correction in this workspace `-> 0`
+    (task section 21: "Reset All ... reset all manual corrections. Do
+    not delete timestamp placement."). Returns the number of sources
+    that actually had a non-default manual correction cleared, for
+    logging/testing, not for any success/failure branching by the
+    caller (mirrors `WorkspaceRegistry.remove_workspace()`'s own
+    idempotent contract). Every source's own `timestamp_placement_offset_s`
+    is completely untouched -- it is derived from recorded timestamps,
+    never stored, so there is nothing here that could delete it.
 
     **Deliberately leaves t0 untouched** (Slice 2 task section 14:
     "Synchronization reset and t=0 reset are independent... source
@@ -159,78 +237,105 @@ def remove_source_alignment(*, workspace_id: str, source_id: str, registry: Sync
     from `app.api.v1.sources.delete_source`, mirroring
     `delete_source_per_unit_config`'s own call-site shape exactly.
 
-    Deliberately does NOT touch t0 (Slice 2 task section 15) --
-    `registry.remove_source()` only ever touched this one source's own
-    offset in the first place, so no change was needed here to preserve
-    that; documented at this call site anyway since a future reader
-    extending source-removal cleanup should not assume t0 belongs in
-    this function too."""
+    Deliberately does NOT touch any time group's own t0 (Slice 2 task
+    section 15, Time-Group task section 23: "if the synchronization
+    relationship connecting a source is removed, the architecture should
+    allow it to become independent again" -- groups are recomputed
+    fresh on the NEXT call, never patched retroactively here; see
+    `SynchronizationRegistry.remove_source()`'s own docstring for the
+    full orphaned-key consequence when the removed source happened to be
+    some group's own origin)."""
     registry.remove_source(workspace_id, source_id)
 
 
 def remove_workspace_synchronization_state(*, workspace_id: str, registry: SynchronizationRegistry) -> None:
     """Full workspace-lifecycle teardown hook -- called from
     `app.api.v1.workspaces.delete_workspace` ("Start New Workspace").
-    Clears BOTH every source's own alignment offset AND the workspace's
-    own t0 event origin (Slice 2 task section 15: "t=0 is workspace-
-    scoped state. It must be cleared when starting a new workspace;
-    deleting/resetting the workspace"). Distinct from
-    `reset_all_alignment_offsets()` below (offsets only, "Reset All"
-    within a still-live workspace) -- see that function's own docstring
-    for why t0 must stay untouched there."""
+    Clears BOTH every source's own manual correction AND EVERY time
+    group's own t0 event origin (Slice 2 task section 15 / Time-Group
+    task section 41: "all timing-group state clears" on workspace
+    reset). Distinct from `reset_all_alignment_offsets()` above (manual
+    corrections only, "Reset All" within a still-live workspace) -- see
+    that function's own docstring for why t0 must stay untouched
+    there."""
     registry.remove_workspace(workspace_id)
-    registry.clear_t0(workspace_id)
+    registry.clear_all_t0_for_workspace(workspace_id)
+
+
+# ==============================================================================
+# Slice 2: event origin (t0), now Time-Group-scoped (task section 24).
+# ==============================================================================
 
 
 @dataclass(slots=True)
 class T0View:
-    """The workspace's own single event-origin state, as the API needs
+    """One time group's own single event-origin state, as the API needs
     to render it. `t0_workspace_time` is `None` exactly when no event
-    origin has been selected (or it was cleared) -- never a fabricated
-    `0.0` default (see `SynchronizationRegistry.get_t0()`'s own
-    docstring)."""
+    origin has been selected for THIS group (or it was cleared) --
+    never a fabricated `0.0` default (see
+    `SynchronizationRegistry.get_t0()`'s own docstring). `time_group_id`
+    echoes back which group this view actually resolved to, so a caller
+    that only supplied a `source_id` can see which group it means."""
 
+    time_group_id: str
     t0_workspace_time: float | None
 
 
-def get_t0(*, workspace_id: str, registry: SynchronizationRegistry) -> T0View:
-    return T0View(t0_workspace_time=registry.get_t0(workspace_id))
+def _resolve_time_group_key(*, workspace_id: str, source_id: str, source_registry: WorkspaceRegistry) -> str:
+    """The ONE place a `source_id` is resolved to "which time group's
+    t0 does this address" -- every t0 get/set/clear call below goes
+    through this first. 404s (`SourceNotFoundError`) for an unknown
+    source_id, exactly like every other source-scoped endpoint in this
+    API."""
+    if source_registry.get(workspace_id, source_id) is None:
+        raise SourceNotFoundError(f"No source '{source_id}' in workspace '{workspace_id}'.")
+    group_by_source_id, _ = _group_lookup(workspace_id=workspace_id, source_registry=source_registry)
+    return group_by_source_id[source_id].group_id
 
 
-def set_t0(*, workspace_id: str, t0_workspace_time: float, registry: SynchronizationRegistry) -> T0View:
-    """Sets the workspace's single common event origin (Slice 2 task
-    section 4: "one common event origin for the workspace," never
-    per-source -- there is no `source_id` parameter here at all).
-    Rejects a non-finite value (`InvalidT0Error`) -- reuses the SAME
+def get_t0(*, workspace_id: str, source_id: str, registry: SynchronizationRegistry, source_registry: WorkspaceRegistry) -> T0View:
+    """The event origin for WHICHEVER time group `source_id` currently
+    belongs to (task section 24: t0 applies to one coherent time domain,
+    never the whole workspace unconditionally)."""
+    time_group_id = _resolve_time_group_key(workspace_id=workspace_id, source_id=source_id, source_registry=source_registry)
+    return T0View(time_group_id=time_group_id, t0_workspace_time=registry.get_t0(workspace_id, time_group_id))
+
+
+def set_t0(
+    *, workspace_id: str, source_id: str, t0_workspace_time: float, registry: SynchronizationRegistry, source_registry: WorkspaceRegistry
+) -> T0View:
+    """Sets the event origin for WHICHEVER time group `source_id`
+    currently belongs to -- task section 24's own explicit warning: "do
+    not let setting t0 in one independent group silently re-zero
+    unrelated groups" -- structurally impossible here, since this only
+    ever writes the ONE resolved group's own registry key. Rejects a
+    non-finite value (`InvalidT0Error`) -- reuses the SAME
     finite-real-number validator alignment offsets already use
-    (`app.domain.synchronization.alignment_offset_valid`, see that
-    function's own docstring for why sharing the predicate is correct
-    even though the two are kept as distinctly-coded API errors).
+    (`app.domain.synchronization.alignment_offset_valid`).
 
-    Deliberately does NOT touch any source's own `alignment_offset_s`
-    (task section 11: "these are separate concepts... do not absorb the
-    alignment offset into t0") and does NOT require any particular
-    source to exist -- once selected, t0 is a pure workspace-time
-    coordinate, decoupled from whichever source's cursor happened to
-    help choose it (task section 15's own "t0 is a workspace coordinate
-    once defined" framing). Setting a NEW t0 while one already exists is
-    a plain create-or-replace, matching every other PUT in this
-    codebase -- the caller (the frontend's "Set Cursor A as t=0" action)
-    always sends the engineer's current, deliberate choice."""
+    Deliberately does NOT touch any source's own alignment offset (task
+    section 11: "these are separate concepts... do not absorb the
+    alignment offset into t0"). Setting a NEW t0 while one already
+    exists for this group is a plain create-or-replace, matching every
+    other PUT in this codebase."""
     if not alignment_offset_valid(t0_workspace_time):
         raise InvalidT0Error("t0_workspace_time must be a finite number of seconds.")
-    registry.set_t0(workspace_id, t0_workspace_time)
-    return T0View(t0_workspace_time=t0_workspace_time)
+    time_group_id = _resolve_time_group_key(workspace_id=workspace_id, source_id=source_id, source_registry=source_registry)
+    registry.set_t0(workspace_id, time_group_id, t0_workspace_time)
+    return T0View(time_group_id=time_group_id, t0_workspace_time=t0_workspace_time)
 
 
-def clear_t0(*, workspace_id: str, registry: SynchronizationRegistry) -> None:
-    """"Clear t=0" (Slice 2 task section 13): removes ONLY the
-    event-origin reference, returning the display to plain workspace-
-    elapsed time. Never touches any source's own `alignment_offset_s`
+def clear_t0(*, workspace_id: str, source_id: str, registry: SynchronizationRegistry, source_registry: WorkspaceRegistry) -> T0View:
+    """"Clear t=0" for WHICHEVER time group `source_id` currently
+    belongs to (Slice 2 task section 13): removes ONLY that group's own
+    event-origin reference, leaving every OTHER group's own t0 (and
+    every source's own manual alignment offset, in any group) untouched
     -- deliberately NOT the same operation as `reset_all_alignment_offsets()`
-    below (task section 13: "Do not make Clear t=0 equivalent to
+    above (task section 13: "Do not make Clear t=0 equivalent to
     synchronization Reset All")."""
-    registry.clear_t0(workspace_id)
+    time_group_id = _resolve_time_group_key(workspace_id=workspace_id, source_id=source_id, source_registry=source_registry)
+    registry.clear_t0(workspace_id, time_group_id)
+    return T0View(time_group_id=time_group_id, t0_workspace_time=None)
 
 
 # ==============================================================================
@@ -243,6 +348,16 @@ def clear_t0(*, workspace_id: str, registry: SynchronizationRegistry) -> None:
 # frontend action that calls the existing set_t0() above unchanged (task
 # section 14: "reuse the existing t0 service... do not create a second
 # t0 implementation").
+#
+# Time-Group task section 26: operates within the selected source's own
+# time group -- the candidate is composed into workspace time using that
+# source's EFFECTIVE offset (timestamp placement + manual correction),
+# never the manual value alone, so the previewed marker lands at the
+# source's TRUE current position. Acceptance (a separate, later call)
+# resolves the correct group's own t0 the SAME way every other t0 call
+# does (`_resolve_time_group_key()`), via the source_id the frontend
+# already carries from this same request -- never applied to an
+# unrelated group.
 # ==============================================================================
 
 
@@ -269,10 +384,10 @@ class DetectEventView:
 
 
 def _view_from_detection(
-    result: EventDetectionResult, *, channel_unit: str, nominal_frequency_hz: float, alignment_offset_s: float
+    result: EventDetectionResult, *, channel_unit: str, nominal_frequency_hz: float, effective_alignment_offset_s: float
 ) -> DetectEventView:
     candidate_workspace_time = (
-        source_time_to_workspace_time(result.candidate_source_time, alignment_offset_s)
+        source_time_to_workspace_time(result.candidate_source_time, effective_alignment_offset_s)
         if result.candidate_source_time is not None
         else None
     )
@@ -325,21 +440,18 @@ def detect_event_candidate(
     reads (never the reduced display envelope). The candidate this
     returns is composed into WORKSPACE time via
     `source_time_to_workspace_time()` using this source's CURRENT
-    alignment offset (Slice 1, unmodified by this function) -- so a
-    later-changed offset is naturally reflected the next time detection
-    runs, never a stale cached composition.
+    EFFECTIVE offset (timestamp placement + manual correction, Time-
+    Group task section 26 -- unmodified by this function) -- so a
+    later-changed manual offset, or a later change in which sources
+    overlap this one's own timestamp, is naturally reflected the next
+    time detection runs, never a stale cached composition.
 
-    Never mutates `alignment_offset_s`, `t0`, or the source's own
-    record. If `search_start_time`/`search_end_time` are given, the
-    analysed slice is boundary-inclusive clipped to them first (source-
-    native time, the SAME `np.searchsorted` convention
-    `waveform_service._peak_in_range`/`_clip_and_reduce` already use) --
-    task section 24's own optional narrowing; omitted, the full record
-    is analysed (this slice's own documented default -- see
-    app.domain.event_detection's own module docstring for why: typical
-    COMTRADE event captures are short enough that a full-record search
-    is simpler and safe, matching that section's own suggested
-    fallback)."""
+    Never mutates any offset, t0, or the source's own record. If
+    `search_start_time`/`search_end_time` are given, the analysed slice
+    is boundary-inclusive clipped to them first (source-native time, the
+    SAME `np.searchsorted` convention `waveform_service._peak_in_range`/
+    `_clip_and_reduce` already use) -- task section 24's own optional
+    narrowing; omitted, the full record is analysed."""
     if sensitivity not in VALID_SENSITIVITIES:
         raise InvalidDetectionSensitivityError(
             f"sensitivity must be one of {sorted(VALID_SENSITIVITIES)}."
@@ -375,10 +487,11 @@ def detect_event_candidate(
     result = detect_event_onset(
         time_slice, values_slice, nominal_frequency_hz=active.metadata.nominal_frequency, sensitivity=sensitivity
     )
-    alignment_offset_s = synchronization_registry.get_offset(workspace_id, source_id)
+    group_by_source_id, metadata_by_id = _group_lookup(workspace_id=workspace_id, source_registry=source_registry)
+    view = _view_for_source(source_id=source_id, registry=synchronization_registry, workspace_id=workspace_id, group_by_source_id=group_by_source_id, metadata_by_id=metadata_by_id)
     return _view_from_detection(
         result,
         channel_unit=channel_unit,
         nominal_frequency_hz=active.metadata.nominal_frequency,
-        alignment_offset_s=alignment_offset_s,
+        effective_alignment_offset_s=view.effective_alignment_offset_s,
     )

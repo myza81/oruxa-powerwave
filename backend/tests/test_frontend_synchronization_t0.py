@@ -54,11 +54,16 @@ def test_elapsed_to_plotly_x_delegates_to_t0_conversion():
 
 
 def test_fetch_synchronization_state_fetches_t0_alongside_offsets():
+    """Timestamp-Based Initial Alignment and Time Groups: t0 is now
+    Time-Group-scoped, so this fetch became sequential -- sources, then
+    time-groups, then (only once a primary source is known via
+    wwPrimaryTimeGroupSourceId()) that group's own t0 -- rather than a
+    single parallel fetch keyed by nothing but the workspace."""
     source = _source()
     fn_idx = source.index("async function wwFetchSynchronizationStateForWorkspace()")
     fn_body = source[fn_idx : source.index("function wwParticipatingSourceIds()", fn_idx)]
     assert "/synchronization/t0" in fn_body
-    assert "ww.t0WorkspaceTime = body.t0_workspace_time;" in fn_body
+    assert "ww.t0WorkspaceTime = t0Body.t0_workspace_time;" in fn_body
 
 
 def test_set_t0_puts_cursor_a_time_and_clear_t0_deletes():
