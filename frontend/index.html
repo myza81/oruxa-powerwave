@@ -8146,19 +8146,56 @@
             return primarySourceId !== null ? wwTimeGroupIdForDisplaySourceId(primarySourceId) : null;
         }
 
+        // Owner UAT fix (Time Group Canvas empty-state lifecycle): the
+        // ONE canonical test for "does this Time Group currently own at
+        // least one DISPLAYED channel" -- analog (ww.displayed) OR
+        // digital (ww.digitalDisplayed). A Time Group merely EXISTING --
+        // a source is loaded, appears in the sidebar, has synchronization
+        // state, or even has known bounds (ww.sourceBounds, established
+        // as soon as a source is opened, per Phase 4A-UAT10, well before
+        // any channel is picked) -- is NOT enough. Every canvas creation/
+        // visibility decision below funnels through this one helper
+        // rather than a scattered, ad hoc DOM-hiding condition per
+        // surface (which is exactly how the bug this fixes crept in --
+        // the ruler/digital-chart/slider each independently decided
+        // "hide this element" without ever asking "should the canvas
+        // ROOT itself even exist").
+        function wwTimeGroupHasDisplayedChannels(groupId) {
+            if (groupId === null) return false;
+            for (const { channel } of ww.displayed.values()) {
+                if (wwTimeGroupIdForDisplaySourceId(channel.sourceId) === groupId) return true;
+            }
+            for (const entry of ww.digitalDisplayed.values()) {
+                if (wwTimeGroupIdForDisplaySourceId(entry.sourceId) === groupId) return true;
+            }
+            return false;
+        }
+
         // Every Time Group id currently backing at least one DISPLAYED
         // channel -- this, not ww.timeGroups (every group the WORKSPACE
         // currently has, including ones with no displayed channel at
         // all), is what decides how many Time Group Canvases to render
         // and which groups Reset Time View iterates (task section 9:
         // never render a canvas for a group nothing is currently
-        // showing). Reads ww.displayed directly -- see
-        // wwPrimaryTimeGroupId()'s own comment for why this must not
-        // depend on ww.panels already being correctly routed.
+        // showing). Reads ww.displayed/ww.digitalDisplayed directly (via
+        // wwTimeGroupHasDisplayedChannels()'s own membership test) --
+        // see wwPrimaryTimeGroupId()'s own comment for why this must not
+        // depend on ww.panels already being correctly routed. Owner UAT
+        // fix: previously only scanned ww.displayed (analog), so a Time
+        // Group backed ONLY by a displayed digital channel was silently
+        // never counted as active -- its own canvas could never render
+        // (and, conversely, a group whose only membership was a loaded-
+        // but-not-yet-displayed source could still leak canvas DOM
+        // through an unrelated call path; see
+        // wwTimeGroupHasDisplayedChannels()'s own comment).
         function wwActiveTimeGroupIds() {
             const ids = new Set();
             for (const { channel } of ww.displayed.values()) {
                 const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
+                if (groupId !== null) ids.add(groupId);
+            }
+            for (const entry of ww.digitalDisplayed.values()) {
+                const groupId = wwTimeGroupIdForDisplaySourceId(entry.sourceId);
                 if (groupId !== null) ids.add(groupId);
             }
             return ids;
@@ -13833,8 +13870,19 @@
         }
 
         function wwRemovePanelDom(panel) {
+            // Owner UAT fix: same rAF-deferred purge as wwRebuildLayout()'s
+            // own panel-purge loop (see that loop's own comment for the
+            // full mechanism) -- this is the OTHER place a panel's own
+            // Plotly instance gets torn down, and removing the last
+            // channel from a panel shortly after that panel was first
+            // created (e.g. toggling a channel on and immediately back
+            // off, exactly what the empty-state lifecycle UAT below
+            // does) can hit the identical Plotly "_redrawFromAutoMarginCount"
+            // race if this purge runs synchronously before that panel's
+            // own pending auto-margin redraw callback has fired.
             if (panel.plotlyReady && panel.chartEl) {
-                Plotly.purge(panel.chartEl);
+                const chartElToPurge = panel.chartEl;
+                requestAnimationFrame(() => Plotly.purge(chartElToPurge));
             }
             panel.plotlyReady = false;
             if (panel.containerEl && panel.containerEl.parentNode) {
@@ -14156,8 +14204,25 @@
         // lazy-create), so this is safe to call even before any analog
         // channel from this group has ever been displayed (a
         // digital-only Time Group).
+        //
+        // Owner UAT fix: creation itself is now gated on
+        // wwTimeGroupHasDisplayedChannels(groupId) -- this function used
+        // to call the CREATING wwEnsureTimeGroupCanvasDom() unconditionally,
+        // which meant a caller reaching this with a group that has ZERO
+        // displayed content (e.g. wwApplyAndFetchGroupViewport()'s own
+        // "primary group" resolution falling back to a merely-loaded
+        // source before any channel was ever picked) would materialize a
+        // whole canvas -- header, toolbar, Reset Time View, slider --
+        // just to immediately hide the digital region inside it. When
+        // the group genuinely has displayed content, this is
+        // byte-identical to before (still lazily creates on first need).
+        // When it does not, this now looks up an EXISTING canvas only
+        // (never creates one) so any prior digital region here still
+        // gets correctly hidden/cleared, but no orphan canvas is ever
+        // newly rendered.
         function wwRebuildDigitalChart(groupId) {
-            const canvasEl = wwEnsureTimeGroupCanvasDom(groupId);
+            const hasDisplayedChannels = wwTimeGroupHasDisplayedChannels(groupId);
+            const canvasEl = hasDisplayedChannels ? wwEnsureTimeGroupCanvasDom(groupId) : wwTimeGroupCanvasEl(groupId);
             const regionEl = canvasEl ? canvasEl.querySelector(".ww-tg-digital-region") : null;
             const chartEl = canvasEl ? canvasEl.querySelector(".ww-tg-digital-chart") : null;
             if (!regionEl || !chartEl) return;
@@ -16633,13 +16698,23 @@
         // itself (Absolute/Elapsed) stays workspace-global (ww.timeMode,
         // untouched) -- only the ORIGIN each ruler computes labels from
         // is per-group.
+        //
+        // Owner UAT fix: same creation gate as wwRebuildDigitalChart()'s
+        // own -- wwTimeGroupHasDisplayedChannels(groupId) decides
+        // whether the CANVAS ROOT itself is even allowed to exist,
+        // rather than this function unconditionally creating one (via
+        // the old bare wwEnsureTimeGroupCanvasDom() call) and then only
+        // hiding its OWN ruler wrap. A group with zero displayed
+        // content now resolves to a non-creating lookup, so no canvas
+        // (and therefore no header/toolbar/Reset Time View/slider) ever
+        // renders on its account.
         function wwSyncTimeGroupRuler(groupId) {
-            const canvasEl = wwEnsureTimeGroupCanvasDom(groupId);
+            const hasChannels = wwTimeGroupHasDisplayedChannels(groupId);
+            const canvasEl = hasChannels ? wwEnsureTimeGroupCanvasDom(groupId) : wwTimeGroupCanvasEl(groupId);
             const wrapEl = canvasEl ? canvasEl.querySelector(".ww-tg-ruler") : null;
             const chartEl = canvasEl ? canvasEl.querySelector(".ww-tg-ruler-chart") : null;
             if (!wrapEl || !chartEl) return;
 
-            const hasChannels = wwActiveTimeGroupIds().has(groupId);
             wrapEl.hidden = !hasChannels;
             wwSyncTimeGroupCanvasStickyOffset(groupId);
             if (!hasChannels) return; // section 17: no unnecessary ruler when empty
@@ -17078,7 +17153,29 @@
 
             const sortedIds = Array.from(activeIds).sort();
             if (sortedIds.length === 0) {
+                // Owner UAT fix: this branch used to clear the DOM
+                // without also clearing the per-group ready-state Maps
+                // below (that cleanup lived only in the pruning loop
+                // this early return skips past) -- every group's own
+                // ww.rulerReadyByGroup/ww.digitalChartReadyByGroup/
+                // ww.digitalClickWiredByGroup entry stayed stuck at
+                // `true` even though its own canvas/chart DOM was just
+                // destroyed via innerHTML. The NEXT time that same
+                // group ever got a displayed channel again, its ruler/
+                // digital sync would wrongly believe the chart was
+                // already initialized and call Plotly.relayout()/
+                // Plotly.react() on a brand-new, never-newPlot()'d
+                // element -- throwing an uncaught TypeError reading
+                // Plotly's own internal `_guiEditing`/`_fullLayout`
+                // state (observed live, reproducibly, in this task's
+                // own UAT). Every existing entry is stale here (every
+                // container this Map could refer to was just wiped),
+                // so all three Maps are cleared outright rather than
+                // looked up per former canvas.
                 container.innerHTML = "";
+                ww.rulerReadyByGroup.clear();
+                ww.digitalChartReadyByGroup.clear();
+                ww.digitalClickWiredByGroup.clear();
                 return;
             }
 
