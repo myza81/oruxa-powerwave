@@ -2963,7 +2963,7 @@
             align-items: baseline;
             justify-content: space-between;
             gap: 10px;
-            padding: 6px 2px;
+            padding: 6px 10px;
             font-variant-numeric: tabular-nums;
         }
         .ww-tg-header-title {
@@ -2980,12 +2980,26 @@
            target layout: one compact row of controls per canvas). t0,
            Detect Event, Synchronize Sources stay the one workspace-global
            toolbar (#wwToolbar, untouched), deferred to later slices
-           (TG-E/TG-F). */
+           (TG-E/TG-F).
+           UX refinement: `.ww-tg-toolbar` (left cluster) and
+           `.ww-tg-cursor-readout` (right cluster) are both flex ITEMS of
+           this one row -- `space-between` pushes them to opposite edges
+           on a wide canvas, and `flex-wrap` lets the readout drop to its
+           own line under the toolbar on a narrow one rather than
+           overlapping it. Neither child's own internal layout changes. */
+        .ww-tg-toolbar-row {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 6px 14px;
+            margin-bottom: 6px;
+        }
         .ww-tg-toolbar {
             display: flex;
             align-items: center;
             gap: 6px;
-            margin-bottom: 6px;
+            padding: 6px 10px;
         }
         .ww-tg-toolbar .ww-tg-reset-view-btn,
         .ww-tg-toolbar .ww-tg-autoscale-btn,
@@ -2993,25 +3007,35 @@
             font-size: 0.7rem;
             padding: 3px 10px;
         }
-        /* TG-D2: the per-group A-B measurement readout -- compact, sits
-           directly below the local toolbar (task section 25's own "keep
-           it compact... near the local toolbar"). Reuses the SAME
-           accent/error color convention the former global status-bar
-           readout established (.ww-cursor-readout-a/--b, still generic,
-           unscoped rules) -- not a new color language, just relocated.
-           Hidden via JS (wwUpdateCursorOverlayForGroup()) exactly like
-           the old #wwCursorReadout was, mirroring that element's own
-           `hidden`-toggle contract. */
+        /* TG-D2 (UX refinement): the per-group A-B measurement readout --
+           compact, now the RIGHT-hand cluster of `.ww-tg-toolbar-row`
+           (owner request: toolbar stays left, readout reads like a
+           status/readout area on the right; task section 25's own "keep
+           it compact... near the local toolbar" still holds, just
+           beside it instead of below it). Reuses the SAME accent/error
+           color convention the former global status-bar readout
+           established (.ww-cursor-readout-a/--b, still generic, unscoped
+           rules) -- not a new color language, just relocated. Hidden via
+           JS (wwUpdateCursorOverlayForGroup()) exactly like the old
+           #wwCursorReadout was, mirroring that element's own
+           `hidden`-toggle contract; when hidden, `.ww-tg-toolbar` is the
+           row's only flex item and simply occupies the left side as
+           before. `margin-left: auto` is a defensive fallback so the
+           readout still pins right even if it ever renders without the
+           `space-between` wrapper's help (e.g. a future wrap onto its
+           own line still right-aligns instead of hugging the left edge). */
         .ww-tg-cursor-readout {
             display: flex;
             align-items: baseline;
             gap: 14px;
             font-size: 0.7rem;
             color: var(--text-dim);
-            margin: -2px 0 6px;
+            margin-left: auto;
         }
         .ww-tg-cursor-readout[hidden] { display: none; }
-        .ww-tg-cursor-readout-item { display: flex; gap: 5px; align-items: baseline; }
+        .ww-tg-cursor-readout-item { display: flex; gap: 5px; 
+        padding: 6px 10px;
+        align-items: baseline; }
         .ww-tg-cursor-readout-label { text-transform: uppercase; letter-spacing: 0.03em; }
         .ww-tg-cursor-readout-value { color: var(--text); font-weight: 600; }
         /* The accent/error convention needs to target the VALUE span
@@ -8217,6 +8241,7 @@
                     '<span class="ww-tg-header-title"></span>' +
                     '<span class="ww-tg-header-meta"></span>' +
                 '</div>' +
+                '<div class="ww-tg-toolbar-row">' +
                 '<div class="ww-tg-toolbar">' +
                     '<div class="ww-split-btn ww-tg-zoom-in-split">' +
                         '<button type="button" class="secondary ww-split-btn-main ww-tg-zoom-in-btn" title="Zoom In — X axis" aria-label="Zoom In — X axis">Zoom In</button>' +
@@ -8248,6 +8273,7 @@
                     '<span class="ww-tg-cursor-readout-item ww-cursor-readout-a"><span class="ww-tg-cursor-readout-label">A</span><span class="ww-tg-cursor-readout-value ww-tg-cursor-readout-value--a">—</span></span>' +
                     '<span class="ww-tg-cursor-readout-item ww-cursor-readout-b"><span class="ww-tg-cursor-readout-label">B</span><span class="ww-tg-cursor-readout-value ww-tg-cursor-readout-value--b">—</span></span>' +
                     '<span class="ww-tg-cursor-readout-item"><span class="ww-tg-cursor-readout-label">&Delta;t</span><span class="ww-tg-cursor-readout-value ww-tg-cursor-readout-value--delta">—</span></span>' +
+                '</div>' +
                 '</div>' +
                 '<div class="ww-tg-panels"></div>' +
                 '<div class="ww-tg-digital-region" hidden>' +
