@@ -95,6 +95,63 @@ def test_fetch_synchronization_state_populates_time_group_caches():
     assert "wwPrimaryTimeGroupSourceId()" in fn_body
 
 
+class TestSecondSourceUploadedAfterSelectingTheFirstGetsFreshAlignmentState:
+    """Owner real-file UAT (real GT4/SDNK COMTRADE fixtures 400.884ms
+    apart) found B's waveform rendering at the same apparent X position
+    as A -- traced to a stale-cache bug, NOT a backend/grouping defect
+    (the backend's own effective_alignment_offset_s was correct the
+    whole time; confirmed both by direct domain-layer computation and a
+    live GET .../synchronization/sources call during reproduction).
+
+    Root cause: ww.alignmentOffsets/ww.timestampPlacementOffsets/
+    ww.timeGroupBySourceId are populated ONLY by
+    wwFetchSynchronizationStateForWorkspace() -- previously called only
+    from selectSource(), performRemoveSource(), and the sync-modal/t0/
+    Detect-Event action handlers. The owner's own real workflow --
+    open source A (selectSource(A) fires, caching offsets for the
+    source set that exists AT THAT MOMENT: A only), then upload source
+    B while already on the Waveform page (refreshAllSourceViews() ->
+    wwRenderWorkspaceRecordings() -- neither ever called
+    wwFetchSynchronizationStateForWorkspace()), then toggle B's channel
+    directly from the sidebar (wwToggleAnalogChannelDisplay() ->
+    wwAddSelectedChannels(), no state refresh either) -- left
+    ww.alignmentOffsets.get(B) permanently `undefined` the entire time B
+    was ever fetched. wwAlignmentOffsetForSource()'s own defensive
+    "no entry yet -> 0" fallback then silently rendered B at native
+    elapsed time (offset 0) instead of its true +0.400884s placement --
+    reproduced live with the owner's own real timestamps
+    (13:09:43.809733 / 13:09:44.210617) via Playwright before this fix,
+    and confirmed fixed after it (both in Grouped and Separate layout,
+    plus manual-correction composition/reset and t0 interaction all
+    still correct on top of the fix).
+
+    Fixed at the ONE common choke point every source-introducing/
+    reconciling path already funnels through --
+    wwRenderWorkspaceRecordings() (see its own updated comment) -- so
+    every layout mode (Separate/Grouped/Custom) is covered by this one
+    fix, since none of them have a layout-specific channel-fetch path;
+    they all share wwFetchChannelRange()/wwAlignmentOffsetForSource()."""
+
+    def test_render_workspace_recordings_refreshes_synchronization_state_first(self):
+        source = _source()
+        fn_idx = source.index("async function wwRenderWorkspaceRecordings(sources)")
+        fn_body = source[fn_idx : source.index("const liveIds = new Set", fn_idx)]
+        assert "await wwFetchSynchronizationStateForWorkspace();" in fn_body
+
+    def test_the_refresh_happens_before_the_sync_badge_dependent_html_is_built(self):
+        """The fetch must land BEFORE wwRenderSourceRecordingHtml() (which
+        reads ww.alignmentOffsets/ww.referenceSourceIds via
+        wwSourceSyncBadgeHtml()) runs for the current source list --
+        otherwise the sidebar badge itself would render from the same
+        stale cache this fix is closing."""
+        source = _source()
+        fn_idx = source.index("async function wwRenderWorkspaceRecordings(sources)")
+        fn_body = source[fn_idx : source.index("function wwResetWorkspaceRecordingsPanel", fn_idx)]
+        fetch_idx = fn_body.index("await wwFetchSynchronizationStateForWorkspace();")
+        render_idx = fn_body.index("wwRenderSourceRecordingHtml(s, index === 0)")
+        assert fetch_idx < render_idx
+
+
 def test_primary_time_group_source_id_is_the_first_alignment_offsets_key():
     """Documented, deliberately narrow scope decision: the shared toolbar
     quick action has no explicit source context of its own, so it targets

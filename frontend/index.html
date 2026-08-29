@@ -6122,6 +6122,38 @@
             const panel = document.getElementById("channelsPanel");
             const badge = document.getElementById("wwRecordingsCountBadge");
 
+            // Timestamp-Based Initial Alignment and Time Groups -- UAT fix:
+            // this is the ONE generic reconciliation point every path that
+            // can introduce a source the engineer might immediately toggle
+            // a channel on (upload, workspace reset, selectSource()) funnels
+            // through -- see this function's own header comment. Uploading
+            // a SECOND source while already on the Waveform page (the
+            // owner's own real workflow: open source A, then upload source
+            // B, then toggle B's channel directly from the sidebar without
+            // ever re-selecting/re-opening anything) never used to refresh
+            // ww.alignmentOffsets/ww.timestampPlacementOffsets/
+            // ww.timeGroupBySourceId for the newly-added source -- only
+            // selectSource()/performRemoveSource()/the sync-modal/t0/
+            // Detect-Event action handlers called
+            // wwFetchSynchronizationStateForWorkspace() explicitly, and
+            // none of those necessarily run again after a same-page upload.
+            // wwAlignmentOffsetForSource()'s own defensive "no entry yet ->
+            // 0" fallback then silently rendered that source's waveform
+            // samples at native elapsed time instead of their true
+            // timestamp-derived placement -- reproduced live: B's own
+            // effective_alignment_offset_s was correctly 0.400884 in the
+            // backend the whole time, but ww.alignmentOffsets.get(B) was
+            // still `undefined` at the moment its channel was first
+            // fetched, because nothing had refreshed it since B's upload.
+            // Fetching fresh here, BEFORE the sidebar (and therefore any
+            // channel toggle) is built, closes that gap at its one root
+            // choke point -- every layout mode (Separate/Grouped/Custom)
+            // shares this exact same sidebar-toggle -> wwFetchChannelRange()
+            // pipeline, so this single fix covers all of them; already
+            // idempotent/safe to call redundantly when a caller (e.g.
+            // selectSource()) had already just refreshed it moments earlier.
+            await wwFetchSynchronizationStateForWorkspace();
+
             // Drop cache entries for sources that no longer exist -- keeps
             // ww.sourceChannelsData from growing unbounded across a long
             // session of uploads/removals (mirrors ww.sourceChannelInventory/
