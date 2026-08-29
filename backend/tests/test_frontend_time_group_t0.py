@@ -180,11 +180,18 @@ class TestAnalogTraceUsesOnlyItsOwnChannelsGroup:
         assert "wwElapsedToPlotlyX(groupId, t)" in fn_body
 
     def test_build_layout_derives_group_id_from_the_panels_own_channels(self):
+        """TG-G (DEC-061 fix): wwBuildLayout() must build its xaxis
+        range/tick-format from THIS panel's own group's range
+        (wwTimeGroupVisibleRange(groupId)), never the single global
+        ww.viewport directly -- see test_frontend_time_group_layout.py
+        for the full DEC-061 regression coverage."""
         source = _source()
         fn_idx = source.index("function wwBuildLayout(panel, colors)")
-        fn_body = source[fn_idx : fn_idx + 900]
+        fn_body = source[fn_idx : fn_idx + 1400]
         assert "const groupId = wwPanelTimeGroupId(panel);" in fn_body
-        assert "wwElapsedToPlotlyX(groupId, ww.viewport.start)" in fn_body
+        assert "const range = wwTimeGroupVisibleRange(groupId);" in fn_body
+        assert "wwElapsedToPlotlyX(groupId, range.start)" in fn_body
+        assert "wwElapsedToPlotlyX(groupId, ww.viewport.start)" not in fn_body
 
 
 # ==============================================================================
@@ -253,7 +260,7 @@ class TestLayoutModeSweepPreservesT0Ownership:
         the rebuild by construction, not by copying state around."""
         source = _source()
         fn_idx = source.index("function wwBuildLayout(panel, colors)")
-        fn_body = source[fn_idx : fn_idx + 900]
+        fn_body = source[fn_idx : fn_idx + 1400]
         assert "const groupId = wwPanelTimeGroupId(panel);" in fn_body
 
 

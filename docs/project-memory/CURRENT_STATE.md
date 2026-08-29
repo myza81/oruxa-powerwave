@@ -4,7 +4,30 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-29** (Phase 25 — TG-F: Synchronise
+Last meaningful update: **2026-08-29** (Phase 26 — TG-G: multi-Time-Group
+correctness cleanup. The DEC-061 Absolute-axis bug is FIXED —
+`wwBuildLayout(panel, colors)` now builds its xaxis range/tick-format
+from `wwTimeGroupVisibleRange(groupId)` (the same per-group range
+source the ruler already used) instead of the single global
+`ww.viewport` directly, so a Grouped→Separate→Grouped round trip no
+longer lets a non-primary group's own panel show the primary group's
+own Absolute-time origin. The cursor A/B overlay no longer blocks Time
+Group toolbar controls — `wwUpdateCursorOverlayForGroup()` now starts
+the overlay's own top/height at `.ww-tg-panels`'s own `offsetTop`
+instead of the canvas's own top (0), so cursor interaction stops
+cleanly at the top of the waveform content rather than reaching up
+through the sticky header+toolbar. An audit of remaining
+`ww.viewport`/`wwPrimaryTimeGroupId()` uses found every one either a
+disclosed compatibility wrapper or a dev-only diagnostic (no fix
+needed) EXCEPT annotations: Callout/Peak placement is wired on every
+panel regardless of owning group but still anchors/repositions via
+`wwPrimaryTimeGroupId()`, which can produce a genuinely wrong anchor
+time or a page-X/page-Y geometry mismatch for an annotation on a
+non-primary group's own channel once that group has an active t0 —
+flagged as actively misleading, not fixed (annotations are an explicit
+TG-G non-goal; needs an owner decision) — see
+[DECISIONS.md — DEC-064](DECISIONS.md#dec-064--tg-g-multi-time-group-correctness-cleanup-the-dec-061-absolute-time-x-axis-bug-is-fixed-and-the-cursor-overlay-no-longer-blocks-time-group-toolbar-controls)
+and [HANDOFF.md](HANDOFF.md), on top of Phase 25 — TG-F: Synchronise
 Sources is now local to each Time Group Canvas
 (`.ww-tg-sync-btn`, replacing the former global `#wwSyncBtn`) — the
 shared modal shell (`#wwSyncOverlay`) stays one reusable overlay but is

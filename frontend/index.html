@@ -9778,17 +9778,24 @@
 
         function wwBuildLayout(panel, colors) {
             const unit = panel.channels.length ? panel.channels[0].unit : "";
-            // TG-E: this panel's own owning Time Group -- required now
-            // that wwElapsedToPlotlyX()/wwTimeAxisTickFormat()/
-            // wwTimeAxisTitle() all need to know WHICH group's own t0
-            // applies. Deliberately NOT switched to
-            // wwTimeGroupVisibleRange(groupId) here -- ww.viewport stays
-            // the range source for this specific function, a separate,
-            // documented, pre-existing limitation (DEC-061) this
-            // groupId-plumbing fix does not touch.
+            // TG-G (DEC-061 fix): wwTimeGroupVisibleRange(groupId) -- the
+            // SAME per-group range source the ruler already uses -- now
+            // supplies the range this layout is built from, replacing the
+            // former direct `ww.viewport` read. `ww.viewport` IS this
+            // panel's own range only when the panel belongs to the
+            // PRIMARY group (wwTimeGroupVisibleRange() returns ww.viewport
+            // verbatim then -- zero change for primary-group panels); for
+            // a non-primary panel it was an unrelated group's own range,
+            // feeding wrong tick positions into
+            // wwAbsoluteTickLabelsForRange() -- exposed by a layout-mode
+            // round trip tearing down and recreating every panel via
+            // wwInitPanelPlot() -> wwBuildLayout(). wwPanelTimeGroupId()
+            // already fails safe (null for a channel-less panel, never a
+            // primary-group fallback) -- no new guard needed here.
             const groupId = wwPanelTimeGroupId(panel);
-            const xrange = ww.viewport ? [wwElapsedToPlotlyX(groupId, ww.viewport.start), wwElapsedToPlotlyX(groupId, ww.viewport.end)] : undefined;
-            const tickFormat = wwTimeAxisTickFormat(ww.viewport && ww.viewport.start, ww.viewport && ww.viewport.end, groupId);
+            const range = wwTimeGroupVisibleRange(groupId);
+            const xrange = range ? [wwElapsedToPlotlyX(groupId, range.start), wwElapsedToPlotlyX(groupId, range.end)] : undefined;
+            const tickFormat = wwTimeAxisTickFormat(range && range.start, range && range.end, groupId);
             // Crosshair config identical to waveform-prototype.html's own
             // (DEC-022/DEC-023, unchanged): thin, dashed, theme-driven,
             // sample-snapped. Each panel's spikes are independent --
@@ -18245,9 +18252,27 @@
             // unlike the old single-workspace-overlay version) already
             // gives the exact distance from this canvas's own top to its
             // own ruler.
+            //
+            // TG-G (cursor-overlay-vs-toolbar fix): the overlay's own TOP
+            // edge starts at `.ww-tg-panels`'s own offsetTop now, not the
+            // canvas's own top -- previously the overlay (and therefore
+            // every `.ww-cursor-line`'s own full-height `.ww-cursor-hit`
+            // drag strip, which fills the overlay's own top/bottom: 0 box)
+            // extended up through the header+toolbar row too, so a cursor
+            // positioned near a toolbar button's own X coordinate could
+            // pointer-intercept it. `panelsEl.offsetTop` is the same
+            // offsetTop-based (scroll/sticky-safe) measurement already
+            // used for the ruler above, so this is the SAME established
+            // technique, just also applied to the top edge. Cursor
+            // interaction now only ever covers the waveform/digital/ruler
+            // region -- never the toolbar -- both visually (the line no
+            // longer draws through the toolbar) and for hit-testing.
             const sectionRect = workspaceSectionEl.getBoundingClientRect();
             const rulerRect = rulerWrapEl.getBoundingClientRect();
-            overlayEl.style.height = Math.max(0, rulerWrapEl.offsetTop) + "px";
+            const panelsEl = canvasEl.querySelector(".ww-tg-panels");
+            const overlayTop = panelsEl ? panelsEl.offsetTop : 0;
+            overlayEl.style.top = overlayTop + "px";
+            overlayEl.style.height = Math.max(0, rulerWrapEl.offsetTop - overlayTop) + "px";
 
             for (const kind of ["a", "b"]) {
                 const cursor = cursors[kind];

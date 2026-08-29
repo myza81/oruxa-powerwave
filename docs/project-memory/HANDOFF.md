@@ -8,6 +8,98 @@ Last updated: **2026-08-29**
 
 ## What was most recently done
 
+**Phase 26 — TG-G: multi-Time-Group correctness cleanup (DEC-061 Absolute-axis
+fix + cursor-overlay/toolbar fix).** On top of Phase 25 (TG-F) below — see
+[DECISIONS.md — DEC-064](DECISIONS.md#dec-064--tg-g-multi-time-group-correctness-cleanup-the-dec-061-absolute-time-x-axis-bug-is-fixed-and-the-cursor-overlay-no-longer-blocks-time-group-toolbar-controls)
+for the full record; summarized here for continuity.
+
+**Priority issue A (DEC-061) fixed.** Root cause traced to
+`wwBuildLayout(panel, colors)`: it already resolved this panel's own
+`groupId` (via `wwPanelTimeGroupId(panel)`, added by TG-E) for
+t0-awareness, but still built its own xaxis `range`/tick-format from the
+single global `ww.viewport` directly, not that panel's own group's
+range. Fixed by routing both through `wwTimeGroupVisibleRange(groupId)`
+— the SAME per-group range resolver the ruler already used (returns
+`ww.viewport` verbatim for the primary group, so zero behavior change
+there; returns `ww.timeGroupViewports.get(groupId)` for every other
+group). A layout-mode round trip (Grouped → Separate → Grouped) tears
+down and recreates every panel via `wwInitPanelPlot()` →
+`wwBuildLayout()`, which is exactly where the old bug surfaced. Live
+Playwright UAT with two Time Groups on genuinely different dates (27
+Jan 2026 vs 02 Feb 2026) confirmed each group's own analog-panel tick
+labels stay correct through initial render, Grouped/Separate/Custom
+round trips (single and repeated), zoom/reset on the non-primary group,
+t0 set/clear, and opening/closing the Sync modal — reading Plotly's own
+`_fullLayout.xaxis.ticktext` directly, not just the header (which was
+already correct before this fix).
+
+**Priority issue B fixed.** The cursor A/B overlay
+(`.ww-tg-cursor-overlay`) computed its own height as
+`rulerWrapEl.offsetTop` starting from the canvas's own top (`top: 0`) —
+after the sticky-toolbar patch added `.ww-tg-sticky-top` as the
+canvas's own first child, that meant the overlay (and every
+`.ww-cursor-line`'s own full-height `.ww-cursor-hit` drag strip, which
+fills the overlay's own `top/bottom: 0` box) extended up through the
+header+toolbar row, so a cursor near a toolbar button's own X could
+pointer-intercept it. Fixed by starting the overlay's own `top`/height
+at `.ww-tg-panels`'s own `offsetTop` instead of `0` (same
+offsetTop-based, scroll/sticky-safe technique already used for the
+ruler edge) — cursor interaction and the visible line now stop cleanly
+at the top of the waveform content, never reaching the toolbar, with no
+change to horizontal (X) cursor math (page-absolute Plotly geometry,
+already independent of the overlay's own vertical box) or to dragging.
+Confirmed live: Cursor A placed directly under the Zoom button and
+Cursor B under the Sync button, both controls (plus Autoscale/t0/Sync)
+stayed clickable, including while the toolbar was sticky and scrolled;
+cursor dragging in the waveform region unaffected; cursor labels'
+existing `--ww-tg-sticky-top-h` offset (from the sticky-toolbar patch)
+untouched.
+
+**Audit performed (documented in DEC-064, not all requiring code
+changes)**: every remaining `ww.viewport`/`wwPrimaryTimeGroupId()` use
+(15 total) reviewed and classified — the primary-group-only annotation
+reprojection/placement code (`wwAnchoredAnnotationPagePosition()`,
+`wwWireAnalogPanelClick()`'s Callout anchor) is flagged as **actively
+misleading, not merely limited**: annotation placement is wired
+unconditionally on every panel regardless of group, so a Callout/Peak
+created by clicking a NON-primary group's own panel can anchor to the
+wrong elapsed time (via `wwPlotlyXToElapsed(wwPrimaryTimeGroupId(), ...)`
+instead of that click's own group), and `wwAnchoredAnnotationPagePosition()`
+can compute an annotation's own page X from the PRIMARY group's plot
+geometry while its page Y comes from its ACTUAL (non-primary) panel —
+a real cross-group mismatch once any group other than primary has an
+active t0. **Not fixed this slice, per the task's own explicit "stop
+and report before broadening annotation scope" instruction** — needs an
+owner decision before any change. Legacy singleton ids
+(`wwPanels`/`wwDigitalRegion`/`wwStickyRuler`/`wwCursorOverlay`/
+`wwCursorReadout`/`wwSetT0Btn`/`wwSyncBtn`/`wwCursorModeBtn`/
+`wwCursorLabelLayer`) confirmed fully absent (zero real DOM/
+`getElementById` references, historical comments only).
+
+Verified by the full backend suite (1731 passed, 0 failed — up from
+1718 at TG-F's own end state; 2 pre-existing static-regression
+assertions updated in `test_frontend_time_group_t0.py` for
+`wwBuildLayout()`'s own new body; 13 new tests in the new
+`test_frontend_time_group_layout.py`) plus a live-browser Playwright
+UAT pass covering Cases A-M (see DEC-064's own record for the full
+list), zero console/page errors throughout.
+
+**Files changed**: `frontend/index.html` (DEC-061 fix in
+`wwBuildLayout()`; cursor-overlay fix in
+`wwUpdateCursorOverlayForGroup()` — both `frontend/index.html` only, no
+backend/schema/API changes) + 1 new frontend test file
+(`test_frontend_time_group_layout.py`) + 1 pre-existing frontend test
+file (`test_frontend_time_group_t0.py`) updated for the new
+`wwBuildLayout()` body.
+
+**Next step**: nothing is pre-authorized, in particular the annotation
+cross-group-anchoring finding above needs an explicit owner decision
+before any fix is attempted. Per this session's own "do not commit/push
+without being asked" discipline, these changes stayed uncommitted at
+the end of this task.
+
+## What was done in the prior session (Phase 25 — TG-F)
+
 **Phase 25 — TG-F: per-Time-Group Synchronise Sources.** On top of
 Phase 24 (TG-E) below — see
 [DECISIONS.md — DEC-063](DECISIONS.md#dec-063--tg-f-synchronise-sources-becomes-local-to-each-time-group-canvas-with-manual-alignment-strictly-confined-to-the-launching-time-group-and-never-redefining-canonical-time-group-membership)
