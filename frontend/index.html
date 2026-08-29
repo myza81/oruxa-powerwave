@@ -2705,7 +2705,7 @@
             padding: 3px 6px 3px 8px;
             /* Phase 3A-UAT3 (Finding G): Grouped/Custom legend items had no
                containment at all, unlike Separate's already-UAT'd overlay
-               tag (#wwPanels.ww-panels-unified .ww-legend-item below,
+               tag (.ww-tg-panels.ww-panels-unified .ww-legend-item below,
                untouched by this change -- its own selector is more
                specific and still wins there). Caps one item from ever
                forcing the panel wider; larger than Separate's 150px since
@@ -2728,7 +2728,7 @@
         }
         /* Base (Grouped/Custom) ellipsis containment for the label text --
            same technique the Separate-mode overlay tag already uses
-           (#wwPanels.ww-panels-unified .ww-legend-label), kept separate so
+           (.ww-tg-panels.ww-panels-unified .ww-legend-label), kept separate so
            that already-UAT'd rule (higher specificity) is untouched. */
         .ww-legend-label {
             overflow: hidden;
@@ -2789,7 +2789,7 @@
         /* ---- Phase 2C-C2: adjustable panel height ----
            A thin horizontal grip at the bottom of every panel/lane, in all
            three layout modes (Grouped/Separate/Custom -- this rule is
-           deliberately unscoped, not "#wwPanels.ww-panels-unified only").
+           deliberately unscoped, not ".ww-tg-panels.ww-panels-unified only").
            Detego's own vertical panel-resize interaction is the UX
            benchmark for placement/feel (subtle, discoverable, direct drag)
            -- no Detego styling/branding copied; colors are existing Oruxa
@@ -2823,13 +2823,13 @@
 
         /* ---- Phase 2C-B2: unified analog canvas (Separate mode only) ----
            Grouped mode is untouched (still the individual-card look above).
-           #wwPanels only gains this class while ww.layoutMode === "separate"
+           Each canvas's own .ww-tg-panels only gains this class while ww.layoutMode === "separate"
            (see wwSetLayoutMode()) -- one shared outer container, borderless
            lanes with a hairline divider instead of a repeated card, the
            waveform column getting the maximum available width and a
            fixed-width label column so every lane's plotting/Y-axis region
            stays pixel-aligned with the next. */
-        #wwPanels.ww-panels-unified {
+        .ww-tg-panels.ww-panels-unified {
             background: var(--waveform-surface);
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
@@ -2846,7 +2846,7 @@
            longer split into two grid columns -- it fills the full lane
            width, and the label floats on top of it via absolute
            positioning against the now-relatively-positioned `.ww-panel`. */
-        #wwPanels.ww-panels-unified .ww-panel {
+        .ww-tg-panels.ww-panels-unified .ww-panel {
             position: relative;
             padding: 2px 14px;
             margin-bottom: 0;
@@ -2855,7 +2855,7 @@
             border-radius: 0;
             background: transparent;
         }
-        #wwPanels.ww-panels-unified .ww-panel:last-child { border-bottom: none; }
+        .ww-tg-panels.ww-panels-unified .ww-panel:last-child { border-bottom: none; }
         /* Phase 4A-UAT4 (owner clarification): Separate mode's existing
            presentation is explicitly preserved unchanged -- panel header
            stays hidden (redundant with the legend chip, which remains
@@ -2864,13 +2864,13 @@
            Grouped/Custom stopped rendering .ww-legend content at all
            (see wwRenderLegend()'s own comment) -- this selector and the
            .ww-legend overlay rules below are otherwise untouched. */
-        #wwPanels.ww-panels-unified .ww-panel-header { display: none; }
+        .ww-tg-panels.ww-panels-unified .ww-panel-header { display: none; }
         /* Overlay positioning: floats over the chart, not a layout column.
            pointer-events: none on the wrapper (it shrink-wraps to the pill
            and shouldn't block hover/crosshair on empty space around it);
            re-enabled on the pill itself so its remove button stays
            clickable. */
-        #wwPanels.ww-panels-unified .ww-legend {
+        .ww-tg-panels.ww-panels-unified .ww-legend {
             position: absolute;
             top: 25%;
             right: 14px;
@@ -2882,7 +2882,7 @@
         }
         /* Compact overlay tag: subtle pill, readable but secondary to the
            waveform -- not a card header, not a side panel. */
-        #wwPanels.ww-panels-unified .ww-legend-item {
+        .ww-tg-panels.ww-panels-unified .ww-legend-item {
             pointer-events: auto;
             background: rgb(255 255 255 / 80%);
             border: 1px solid var(--panel-border);
@@ -2892,18 +2892,18 @@
             max-width: 150px;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
         }
-        #wwPanels.ww-panels-unified .ww-legend-label {
+        .ww-tg-panels.ww-panels-unified .ww-legend-label {
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
             min-width: 0;
         }
-        #wwPanels.ww-panels-unified .ww-chart-wrap {
+        .ww-tg-panels.ww-panels-unified .ww-chart-wrap {
             border: none;
             border-radius: 0;
             background: transparent;
         }
-        #wwPanels.ww-panels-unified .ww-chart { height: 140px; }
+        .ww-tg-panels.ww-panels-unified .ww-chart { height: 140px; }
 
         /* ---- Phase 2C-C4: sticky shared time-axis ruler ----
            ONE Oruxa-owned shared time-axis strip, driven entirely by the
@@ -2939,11 +2939,59 @@
            them for free, with no bespoke DOM/CSS positioning needed. This
            wrapper now holds only the (much shorter) chart element, so its
            own padding is reduced to a small, symmetric breathing margin. */
+        /* Time Group Canvas (Slice TG-B+C): the ownership boundary for
+           one Time Group's own complete analysis section -- header,
+           minimal toolbar shell, analog panels, digital region, Time
+           Range slider, sticky ruler. `position: relative` (task section
+           12) is what lets THIS canvas's own ruler/cursor-overlay
+           geometry (see wwUpdateCursorOverlay()'s own comment) resolve
+           against exactly this container, never a workspace-wide one --
+           the same role `#viewWaveform` alone used to play before this
+           slice, just scoped per canvas now. A plain block-level section
+           in normal flow (never itself scrolling/overflow:hidden) is
+           also what makes the sticky ruler/slider-slot below stick to
+           the real scroll container's own bottom edge only WHILE this
+           canvas's own content is still the visible section, then
+           naturally release once it scrolls past (task section 13 --
+           pure CSS bounded `position: sticky`, no JS scroll hijacking). */
+        .ww-time-group-canvas {
+            position: relative;
+            margin-bottom: 14px;
+        }
+        .ww-tg-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 6px 2px;
+            font-variant-numeric: tabular-nums;
+        }
+        .ww-tg-header-title {
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+        .ww-tg-header-meta {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+        }
+        /* Minimal shell this slice (task section 14) -- only Reset Time
+           View is duplicated per canvas; Cursor A/B, t0, Detect Event,
+           Synchronize Sources stay the one workspace-global toolbar
+           (#wwToolbar, untouched), deferred to later slices. */
+        .ww-tg-toolbar {
+            margin-bottom: 6px;
+        }
+        .ww-tg-toolbar .ww-tg-reset-view-btn {
+            font-size: 0.7rem;
+            padding: 3px 10px;
+        }
+
         /* Phase 4A: digital channel region. Visually distinguishable from
            analog .ww-panel cards (own subtle background tint, compact
            title) but still reads as part of the same analysis canvas --
            same border/radius language as .ww-panel, not a heavier or
-           lighter treatment. #wwDigitalScroll is the ONLY scroll
+           lighter treatment. .ww-tg-digital-scroll is the ONLY scroll
            container -- a fixed max-height with overflow-y: auto, so a
            source with hundreds of digital channels never lets the region
            consume the whole page (section 7); the Plotly figure inside it
@@ -2952,46 +3000,57 @@
            scrolling -- an ordinary tall chart in a scrollable div, the
            same low-complexity approach explicitly preferred over a
            resizable/virtualized region for this first implementation. */
-        #wwDigitalRegion {
+        .ww-tg-digital-region {
             background: var(--panel);
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
             margin-bottom: 1px;
             overflow: hidden;
         }
-        #wwDigitalRegion[hidden] { display: none; }
-        .ww-digital-title {
+        .ww-tg-digital-region[hidden] { display: none; }
+        .ww-tg-digital-title {
             font-size: 0.78rem;
             font-weight: 700;
             padding: 10px 14px 8px;
             border-bottom: 1px solid var(--panel-border);
             background: var(--surface-tint);
         }
-        #wwDigitalScroll {
+        .ww-tg-digital-scroll {
             max-height: 200px;
             overflow-y: auto;
-            /* Phase 4A-UAT1B: matches .ww-sticky-ruler's own horizontal
+            /* Phase 4A-UAT1B: matches .ww-tg-ruler's own horizontal
                padding exactly (14px) -- combined with wwRebuildDigitalChart()'s
                Plotly margin now also matching WW_PANEL_MARGIN.l/.r, this
                makes the digital plot area's actual pixel origin identical
-               to every analog panel's and the shared ruler's, fixing the
-               visual-alignment bug (owner UAT finding). Vertical padding
-               stays 0 -- #wwDigitalChart's own JS-computed height already
-               sizes it exactly, and this is the one scrolling container
-               (section 22), so no extra vertical breathing room here. */
+               to every analog panel's and this canvas's own ruler's,
+               fixing the visual-alignment bug (owner UAT finding).
+               Vertical padding stays 0 -- .ww-tg-digital-chart's own
+               JS-computed height already sizes it exactly, and this is
+               the one scrolling container (section 22), so no extra
+               vertical breathing room here. */
             padding: 0 14px;
         }
-        /* Phase 4A-UAT2: explicit, matching .ww-chart/.ww-sticky-ruler-chart's
-           own explicit width:100% rules exactly -- #wwDigitalChart never
-           had one (a real gap found during the alignment investigation:
-           the other two surfaces are both explicit, digital silently
-           relied on default block-level sizing inside a scrolling
-           parent, a less certain layout context). Belt-and-braces
-           alongside the wwResizeAllVisiblePlots()/wwRebuildDigitalChart()
-           fixes -- removes any ambiguity about how this container's
-           width is determined. */
-        #wwDigitalChart { width: 100%; }
-        .ww-sticky-ruler {
+        /* Phase 4A-UAT2: explicit, matching .ww-chart/.ww-tg-ruler-chart's
+           own explicit width:100% rules exactly -- a real gap found
+           during the alignment investigation: the other two surfaces are
+           both explicit, digital silently relied on default block-level
+           sizing inside a scrolling parent, a less certain layout
+           context. Belt-and-braces alongside the
+           wwResizeAllVisiblePlots()/wwRebuildDigitalChart() fixes --
+           removes any ambiguity about how this container's width is
+           determined. */
+        .ww-tg-digital-chart { width: 100%; }
+
+        /* Sticky ruler + Time Range slider, ONE canvas's own bottom dock
+           (task section 8/10/12/13). Both are `position: sticky`,
+           scoped to (bounded by) THIS canvas's own box -- see
+           .ww-time-group-canvas's own comment for why that alone gives
+           the correct "Canvas 1 releases as Canvas 2 arrives" handoff
+           for free, no JS scroll-position math needed. Deliberately TWO
+           separate sticky siblings (slider-slot above the ruler), not
+           one shared wrapper -- see wwSyncTimeGroupCanvasStickyOffset()'s
+           own comment for the offsetParent reasoning this preserves. */
+        .ww-tg-ruler {
             position: sticky;
             bottom: 0;
             z-index: 4;
@@ -3003,44 +3062,31 @@
                it while stuck. */
             pointer-events: none;
         }
-        .ww-sticky-ruler[hidden] { display: none; }
+        .ww-tg-ruler[hidden] { display: none; }
         /* Phase 2C-C4B: just tall enough for Plotly's own tick labels +
-           axis title + minimal internal margin (see wwSyncStickyRuler()'s
-           `margin: { t: 2, b: 34 }`) -- no separate title/date DOM
-           elements above it anymore, so no extra height for those. */
-        .ww-sticky-ruler-chart { width: 100%; height: 40px; }
+           axis title + minimal internal margin (see
+           wwSyncTimeGroupRuler()'s own `margin: { t: 2, b: 34 }`) -- no
+           separate title/date DOM elements above it anymore, so no extra
+           height for those. */
+        .ww-tg-ruler-chart { width: 100%; height: 40px; }
 
         /* Time Range slider -- one compact horizontal two-handle range
-           navigator PER Time Group (see wwRenderTimeGroupSliders()).
-           #wwTimeGroupSliders is empty (zero height) whenever nothing is
-           displayed -- no reserved gap. Row padding is owner-set
+           navigator PER Time Group canvas (task's own "One Time Group =
+           one Time Range slider" rule) -- see
+           wwSyncTimeGroupSliderForCanvas(). Row padding is owner-set
            (symmetric 20px left/right, matching the ruler's own
            horizontal padding) -- deliberately not tied to
-           WW_PANEL_MARGIN.l/r's own panel-plot-area alignment. */
-        /* Sticky (owner UX refinement): pinned near the bottom of
-           #activeViewArea (the real vertical scroll container -- see
-           #activeViewArea's own CSS comment, `overflow-y: auto`;
-           .workspace-section/#viewWaveform between it and this element
-           is plain `position: relative`, `overflow: visible`, so it
-           never becomes the scrolling ancestor `position: sticky`
-           resolves against). `bottom` is set via JS
-           (wwSyncTimeGroupSlidersStickyOffset(), called from
-           wwSyncStickyRuler()) to the RULER's own live rendered height,
-           never a hardcoded pixel guess -- so the two form one
-           clean, gap-free sticky stack (this block directly above the
-           ruler) that stays correct even if the ruler's own height ever
-           changes. Deliberately its OWN separate sticky element, not
-           wrapped together with #wwStickyRuler into one shared
-           container -- that would change #wwStickyRuler's own
-           offsetParent away from #viewWaveform, silently breaking the
-           Phase 4B-UAT2 cursor-overlay-height fix
-           (`rulerWrapEl.offsetTop`, see wwUpdateCursorOverlay()'s own
-           comment) which depends on that ancestor staying exactly what
-           it already is. z-index:3, one below the ruler's own 4 (defensive
+           WW_PANEL_MARGIN.l/r's own panel-plot-area alignment.
+           `bottom` is set via JS (wwSyncTimeGroupCanvasStickyOffset(),
+           called from wwSyncTimeGroupRuler()) to THIS canvas's own
+           ruler's live rendered height, never a hardcoded pixel guess --
+           so the two form one clean, gap-free sticky stack within this
+           one canvas, correct even if the ruler's own height ever
+           changes. z-index:3, one below the ruler's own 4 (defensive
            only -- correct `bottom` stacking already keeps them from
-           ever visually overlapping in the first place). */
-        #wwTimeGroupSliders:empty { display: none; }
-        #wwTimeGroupSliders:not(:empty) {
+           ever visually overlapping). */
+        .ww-tg-slider-slot:empty { display: none; }
+        .ww-tg-slider-slot:not(:empty) {
             position: sticky;
             z-index: 3;
             background: var(--panel);
@@ -3896,60 +3942,38 @@
                                  live-update function write BOTH). -->
                             <div id="wwCursorLabelLayer" class="ww-cursor-label-layer" hidden></div>
 
-                            <div id="wwPanels"></div>
-
-                            <!-- Phase 4A: digital channel region -- BELOW
-                                 every analog panel, ABOVE the shared sticky
-                                 ruler (never mixed into an analog panel; see
-                                 wwRebuildDigitalChart()). ONE Plotly figure
-                                 for every displayed digital channel (never
-                                 one-Plotly-instance-per-channel -- see
-                                 docs/project-memory/MIGRATION_PLAN.md's
-                                 Phase 4A record for why), sized tall enough
-                                 to hold every lane without Plotly's own
-                                 internal scrolling; #wwDigitalScroll (a
-                                 plain CSS overflow-y: auto box with a fixed
-                                 max-height) provides the actual vertical
-                                 scroll, so the shared ruler below it never
-                                 disappears while scrolling through digital
-                                 lanes. -->
-                            <div id="wwDigitalRegion" hidden>
-                                <div class="ww-digital-title">Digital Channels</div>
-                                <div id="wwDigitalScroll">
-                                    <div id="wwDigitalChart"></div>
-                                </div>
-                            </div>
-
-                            <!-- Time Range slider: one compact horizontal
-                                 two-handle range navigator PER Time Group
-                                 (task's own "One Time Group = one Time
-                                 Range slider" rule) -- see
-                                 wwRenderTimeGroupSliders(). Placed here,
-                                 below every analog panel and the (hidden-
-                                 unless-shown) digital region, ABOVE the
-                                 shared sticky ruler -- "at the bottom of
-                                 the Time Group's waveform panel stack,
-                                 close to the shared time axis" (task
-                                 section 9), without reordering panels
-                                 themselves. Empty/hidden whenever nothing
-                                 is displayed, exactly like the ruler right
-                                 below it. -->
-                            <div id="wwTimeGroupSliders"></div>
-
-                            <!-- Phase 2C-C4: sticky shared time-axis ruler --
-                                 see wwSyncStickyRuler(). Sticky behavior is
-                                 unchanged by the Phase 3A shell restructuring
-                                 -- only its scrolling ancestor changed (see
-                                 the CSS comment above #activeViewArea). -->
-                            <div class="ww-sticky-ruler" id="wwStickyRuler" hidden>
-                                <!-- Phase 4B: the cursor overlay's ruler
-                                     segment -- see #wwCursorOverlay's own
-                                     comment above. A child of the sticky
-                                     wrapper itself, so it sticks in lockstep
-                                     with the ruler with no extra JS. -->
-                                <div id="wwCursorRulerOverlay" class="ww-cursor-ruler-overlay" hidden></div>
-                                <div class="ww-sticky-ruler-chart" id="wwStickyRulerChart"></div>
-                            </div>
+                            <!-- Time Group Canvas (task: "Each Time Group
+                                 should eventually behave as its own
+                                 complete waveform analysis canvas" --
+                                 Slice TG-B+C). Entirely JS-built --
+                                 wwSyncTimeGroupCanvases() creates/prunes
+                                 one `.ww-time-group-canvas[data-time-
+                                 group-id]` section per currently ACTIVE
+                                 Time Group (never one for a group with
+                                 nothing displayed), each with its own
+                                 analog panel list, digital region, Time
+                                 Range slider row, and sticky ruler --
+                                 see wwCreateTimeGroupCanvasDom()/
+                                 wwEnsureTimeGroupCanvasDom(). Deliberately
+                                 NO per-group numbered ids
+                                 (`#wwStickyRuler1`/`#wwStickyRuler2` etc)
+                                 -- every per-canvas element is found via
+                                 a scoped `canvasEl.querySelector(...)`
+                                 against its own canvas root, using
+                                 classes only. Cursor A/B (#wwCursorOverlay/
+                                 #wwCursorLabelLayer above) remain
+                                 workspace-global and OUTSIDE any single
+                                 canvas -- their own migration is a later
+                                 slice; in the meantime they keep resolving
+                                 against the PRIMARY canvas's own ruler via
+                                 wwPrimaryTimeGroupCanvasEl() (see that
+                                 function's own comment), so existing
+                                 cursor behavior is unchanged for the
+                                 common single-Time-Group case and simply
+                                 does not yet extend to non-primary
+                                 canvases (a known, disclosed limitation,
+                                 not a regression). -->
+                            <div id="wwTimeGroupCanvases"></div>
                         </section>
 
                         <!-- Structural placeholders only (section 13/14) --
@@ -6989,7 +7013,7 @@
         //     as-is when its panel is rebuilt (see wwRebuildLayout).
         //   - Phase 2C-B2: this is a VISUAL refinement of Separate mode
         //     only, layered entirely on top of the above -- no panel/data
-        //     model change. #wwPanels gains a "ww-panels-unified" class
+        //     model change. Each canvas's own .ww-tg-panels gains a "ww-panels-unified" class
         //     while Separate is active (wwSetLayoutMode) so CSS alone turns
         //     the per-lane cards into one shared outer canvas with a
         //     maximum-width chart column + a fixed-width label column per
@@ -7307,14 +7331,26 @@
             // whole-workspace clear the same way the Grouped/Separate/
             // Custom and Zoom/Pan choices already do.
             timeMode: "absolute",
-            // Phase 2C-C4: whether the sticky ruler's own (trace-less)
-            // Plotly instance has been created yet -- parallels
-            // panel.plotlyReady, guarding wwSyncStickyRuler() between its
-            // one-time Plotly.newPlot and every subsequent Plotly.relayout.
-            // Not reset by wwClearWorkspace() -- the ruler element itself
-            // is never torn down/recreated, only hidden and re-shown (see
-            // wwSyncStickyRuler()'s own comment).
-            rulerReady: false,
+            // Time Group Canvas (Slice TG-B+C): the per-Time-Group
+            // generalization of the original single `rulerReady` boolean
+            // -- groupId -> whether THAT group's own canvas ruler
+            // Plotly instance has been created yet, guarding
+            // wwSyncTimeGroupRuler(groupId) between its one-time
+            // Plotly.newPlot and every subsequent Plotly.relayout.
+            // Pruned alongside the rest of a group's own canvas DOM when
+            // that group stops being active (wwSyncTimeGroupCanvases()).
+            rulerReadyByGroup: new Map(),
+            // The set of Time Group ids wwSyncTimeGroupCanvases() saw
+            // active on its OWN last call -- compared against the
+            // CURRENT set (derived from ww.displayed, never from
+            // ww.panels -- see wwActiveTimeGroupIds()'s own comment on
+            // why) to detect a genuine topology change (merge/split, a
+            // bridging source added/removed) that requires
+            // wwRebuildLayout() to re-route panels before anything else
+            // proceeds. A plain viewport/zoom/pan/Reset never touches
+            // this set, so it never triggers an unnecessary rebuild
+            // (task section 20).
+            lastActiveTimeGroupIds: new Set(),
             // Phase 4A: digital channels. Deliberately a SEPARATE flat map
             // from ww.displayed/ww.panels -- digital channels never get
             // their own Plotly-instance-per-panel (hundreds of digital
@@ -7332,12 +7368,14 @@
             // `rulerReady`/`panel.plotlyReady` -- guards the one-time
             // Plotly.newPlot vs. subsequent Plotly.react/relayout calls.
             digitalDisplayed: new Map(),
-            digitalChartReady: false,
-            // Guards wwRebuildDigitalChart()'s one-time chartEl.on("plotly_click", ...)
-            // registration -- parallels rulerReady/chartReady above, never
-            // reset by wwClearWorkspace() (the chart element itself is
-            // never torn down, same as the sticky ruler's own chartEl).
-            digitalClickWired: false,
+            // Time Group Canvas: per-group generalization of the
+            // original single `digitalChartReady`/`digitalClickWired`
+            // booleans -- groupId -> bool, mirroring rulerReadyByGroup
+            // above exactly (one shared digital Plotly figure PER Time
+            // Group canvas now, never one global figure -- see
+            // wwRebuildDigitalChart(groupId)).
+            digitalChartReadyByGroup: new Map(),
+            digitalClickWiredByGroup: new Map(),
             // Phase 4B: A/B time measurement cursors. `enabled` is the one
             // mode toggle (section 4/24: OFF hides both cursors and the
             // readout but retains a/b.time so a simple OFF->ON within the
@@ -8080,30 +8118,47 @@
 
         // The Time Group every existing single-viewport/cursor/ruler/
         // digital-chart/Detect-Event/Absolute-origin code path stays
-        // scoped to -- the FIRST currently-displayed panel's own group,
-        // falling back to the primary SOURCE's own group
-        // (wwPrimaryTimeGroupSourceId(), already established) when no
-        // panel exists yet (e.g. before any channel is toggled on).
-        // `null` only for a genuinely empty workspace.
+        // scoped to -- the first currently-DISPLAYED channel's own group
+        // (ww.displayed, insertion order), falling back to the primary
+        // SOURCE's own group (wwPrimaryTimeGroupSourceId(), already
+        // established) when nothing is displayed yet. `null` only for a
+        // genuinely empty workspace.
+        //
+        // Time Group Canvas (Slice TG-B+C): deliberately reads
+        // ww.displayed, NOT ww.panels, unlike the very first cut of this
+        // function -- ww.panels can be transiently STALE relative to the
+        // CURRENT Time Group topology (e.g. right after a bridging
+        // source upload changes group membership, before
+        // wwRebuildLayout() has re-routed panels into their new
+        // canvases), which would make this function (and
+        // wwActiveTimeGroupIds() below) report the WRONG/stale group set
+        // at exactly the moment wwSyncTimeGroupCanvases() needs the
+        // correct one to decide whether a rebuild is even needed --
+        // ww.displayed is the one state that is always immediately
+        // authoritative regardless of how panels currently happen to be
+        // arranged.
         function wwPrimaryTimeGroupId() {
-            for (const panel of ww.panels) {
-                const groupId = wwPanelTimeGroupId(panel);
+            for (const { channel } of ww.displayed.values()) {
+                const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
                 if (groupId !== null) return groupId;
             }
             const primarySourceId = wwPrimaryTimeGroupSourceId();
             return primarySourceId !== null ? wwTimeGroupIdForDisplaySourceId(primarySourceId) : null;
         }
 
-        // Every Time Group id currently backing at least one displayed
-        // panel -- this, not ww.timeGroups (every group the WORKSPACE
+        // Every Time Group id currently backing at least one DISPLAYED
+        // channel -- this, not ww.timeGroups (every group the WORKSPACE
         // currently has, including ones with no displayed channel at
-        // all), is what decides how many slider rows to render and
-        // which groups Reset Time View iterates (task section 9: never
-        // render a slider for a group nothing is currently showing).
+        // all), is what decides how many Time Group Canvases to render
+        // and which groups Reset Time View iterates (task section 9:
+        // never render a canvas for a group nothing is currently
+        // showing). Reads ww.displayed directly -- see
+        // wwPrimaryTimeGroupId()'s own comment for why this must not
+        // depend on ww.panels already being correctly routed.
         function wwActiveTimeGroupIds() {
             const ids = new Set();
-            for (const panel of ww.panels) {
-                const groupId = wwPanelTimeGroupId(panel);
+            for (const { channel } of ww.displayed.values()) {
+                const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
                 if (groupId !== null) ids.add(groupId);
             }
             return ids;
@@ -8140,6 +8195,205 @@
             const bounds = wwDeriveTimeGroupBounds(groupId);
             if (!bounds) return wwNormalizeBounds(start, end);
             return wwNormalizeBounds(Math.max(start, bounds.start), Math.min(end, bounds.end));
+        }
+
+        // ==================================================================
+        // Time Group Canvas (Slice TG-B+C) -- DOM ownership boundary.
+        //
+        // "Each Time Group should eventually behave as its own complete
+        // waveform analysis canvas." This slice: canvas container
+        // structure, per-group analog panel routing, per-group digital
+        // panel, per-group Time Range slider placement, per-group sticky
+        // ruler, per-group Absolute-mode origin. Cursor A/B, A-B info,
+        // t0/Detect Event toolbar state, and Synchronize Sources stay
+        // workspace-global/primary-group-scoped this slice (deferred to
+        // later slices, task section 25's own explicit non-goal list).
+        //
+        // Deliberately NO per-group numbered ids (`#wwStickyRuler1`/
+        // `#wwStickyRuler2`) -- one canvas root per active Time Group,
+        // `<section class="ww-time-group-canvas" data-time-group-id="...">`,
+        // with every internal element found via a SCOPED
+        // `canvasEl.querySelector(".ww-tg-...")` against that one root
+        // (task section 5). This is what lets the same rendering
+        // functions (wwCreatePanelDom, wwRebuildDigitalChart,
+        // wwSyncTimeGroupRuler, the slider's own row functions) run
+        // unmodified in shape for N canvases instead of needing N
+        // hand-duplicated copies.
+        // ==================================================================
+
+        // The one container every canvas root lives inside -- see
+        // #wwTimeGroupCanvases's own HTML comment.
+        function wwTimeGroupCanvasesContainerEl() {
+            return document.getElementById("wwTimeGroupCanvases");
+        }
+
+        // Finds (never creates) the DOM root for one Time Group's own
+        // canvas, or `null` if it doesn't exist yet.
+        function wwTimeGroupCanvasEl(groupId) {
+            const container = wwTimeGroupCanvasesContainerEl();
+            if (!container || groupId === null) return null;
+            return container.querySelector('.ww-time-group-canvas[data-time-group-id="' + CSS.escape(groupId) + '"]');
+        }
+
+        // Builds ONE canvas root's own DOM skeleton -- header, minimal
+        // toolbar shell (task section 14: only Reset Time View this
+        // slice -- see that section's own reasoning), analog panel list,
+        // digital region, Time Range slider row container, sticky ruler.
+        // Every internal piece is a CLASS, not an id (task section 5).
+        function wwCreateTimeGroupCanvasDom(groupId) {
+            const section = document.createElement("section");
+            section.className = "ww-time-group-canvas";
+            section.dataset.timeGroupId = groupId;
+            section.innerHTML =
+                '<div class="ww-tg-header">' +
+                    '<span class="ww-tg-header-title"></span>' +
+                    '<span class="ww-tg-header-meta"></span>' +
+                '</div>' +
+                '<div class="ww-tg-toolbar">' +
+                    '<button type="button" class="secondary ww-tg-reset-view-btn" title="Reset Time View for this Time Group">Reset Time View</button>' +
+                '</div>' +
+                '<div class="ww-tg-panels"></div>' +
+                '<div class="ww-tg-digital-region" hidden>' +
+                    '<div class="ww-tg-digital-title">Digital Channels</div>' +
+                    '<div class="ww-tg-digital-scroll"><div class="ww-tg-digital-chart"></div></div>' +
+                '</div>' +
+                '<div class="ww-tg-slider-slot"></div>' +
+                '<div class="ww-tg-ruler" hidden>' +
+                    '<div class="ww-cursor-ruler-overlay" hidden></div>' +
+                    '<div class="ww-tg-ruler-chart"></div>' +
+                '</div>';
+            section.querySelector(".ww-tg-reset-view-btn").addEventListener("click", () => wwResetOneTimeGroupView(groupId));
+            return section;
+        }
+
+        // Finds this group's own canvas root, creating it (appended at
+        // the end of #wwTimeGroupCanvases) if it doesn't exist yet --
+        // the one entry point wwCreatePanelDom() and the ruler/digital/
+        // slider sync functions all rely on, so a canvas is lazily
+        // materialized the first time anything actually needs to render
+        // into it, never pre-built speculatively.
+        function wwEnsureTimeGroupCanvasDom(groupId) {
+            let el = wwTimeGroupCanvasEl(groupId);
+            if (el) return el;
+            const container = wwTimeGroupCanvasesContainerEl();
+            if (!container || groupId === null) return null;
+            el = wwCreateTimeGroupCanvasDom(groupId);
+            container.appendChild(el);
+            return el;
+        }
+
+        // The PRIMARY Time Group's own canvas root -- the one compatibility
+        // anchor every still-deferred, workspace-global feature (cursor
+        // overlay, wwResizeAllVisiblePlots(), wwApplyTheme(),
+        // wwCursorPlotMetrics()) resolves against instead of the OLD
+        // singleton ids (#wwStickyRuler/#wwPanels/#wwDigitalRegion no
+        // longer exist as globals -- see #wwTimeGroupCanvases's own HTML
+        // comment). Resolved fresh on every call (never cached) so it
+        // stays correct even if a topology change promotes a DIFFERENT
+        // group to primary.
+        function wwPrimaryTimeGroupCanvasEl() {
+            return wwTimeGroupCanvasEl(wwPrimaryTimeGroupId());
+        }
+        function wwPrimaryTimeGroupPanelsEl() {
+            const el = wwPrimaryTimeGroupCanvasEl();
+            return el ? el.querySelector(".ww-tg-panels") : null;
+        }
+        function wwPrimaryTimeGroupDigitalRegionEl() {
+            const el = wwPrimaryTimeGroupCanvasEl();
+            return el ? el.querySelector(".ww-tg-digital-region") : null;
+        }
+        function wwPrimaryTimeGroupDigitalChartEl() {
+            const el = wwPrimaryTimeGroupCanvasEl();
+            return el ? el.querySelector(".ww-tg-digital-chart") : null;
+        }
+        function wwPrimaryTimeGroupRulerWrapEl() {
+            const el = wwPrimaryTimeGroupCanvasEl();
+            return el ? el.querySelector(".ww-tg-ruler") : null;
+        }
+        function wwPrimaryTimeGroupRulerChartEl() {
+            const el = wwPrimaryTimeGroupCanvasEl();
+            return el ? el.querySelector(".ww-tg-ruler-chart") : null;
+        }
+        function wwPrimaryTimeGroupCursorRulerOverlayEl() {
+            const el = wwPrimaryTimeGroupCanvasEl();
+            return el ? el.querySelector(".ww-cursor-ruler-overlay") : null;
+        }
+
+        // Deterministic numbering (task section 4: "use deterministic
+        // numbering based on current rendered group order," matching
+        // wwTimeGroupLabelSuffix()'s/the slider's own existing "sorted
+        // group_id" convention exactly, so a panel's own "Time Group N"
+        // suffix, the slider's own row label, and this header always
+        // agree). `group_id` itself is NEVER the visible label (task
+        // section 4's own explicit requirement).
+        function wwTimeGroupDisplayNumber(groupId, sortedActiveIds) {
+            const ids = sortedActiveIds || Array.from(wwActiveTimeGroupIds()).sort();
+            const idx = ids.indexOf(groupId);
+            return idx === -1 ? null : idx + 1;
+        }
+
+        var WW_MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+        // Plain "DD Mon YYYY" from a UTC epoch ms -- same "UTC getters
+        // only, never a locale-dependent Date method, never JS's own
+        // local-timezone parsing" discipline every other Absolute-mode
+        // helper in this file already follows (see wwParseNaiveTimestamp()'s
+        // own comment for why: COMTRADE timestamps are timezone-naive,
+        // and the numbers shown must exactly reproduce the backend's own
+        // naive numbers regardless of the browser's own timezone).
+        function wwFormatHeaderDate(originMs) {
+            const d = new Date(originMs);
+            return wwPadNumber(d.getUTCDate()) + " " + WW_MONTH_ABBR[d.getUTCMonth()] + " " + d.getUTCFullYear();
+        }
+        function wwFormatHeaderTime(originMs) {
+            const d = new Date(originMs);
+            return wwPadNumber(d.getUTCHours()) + ":" + wwPadNumber(d.getUTCMinutes()) + ":" + wwPadNumber(d.getUTCSeconds());
+        }
+
+        // Task section 4's own exact target format:
+        //   Time Group 1
+        //   27 Jan 2026 · 13:09:40–13:10:50 · 2 sources
+        // Elapsed-only groups (no trusted absolute origin) fall back to a
+        // duration-only meta line -- never a fabricated date (same "no
+        // fake timestamps for elapsed-only sources" principle as the
+        // ruler itself, task section 9/19).
+        function wwTimeGroupHeaderText(groupId, sortedActiveIds) {
+            const number = wwTimeGroupDisplayNumber(groupId, sortedActiveIds);
+            const title = "Time Group " + (number === null ? "" : number);
+            const group = ww.timeGroups.get(groupId);
+            const sourceCount = group ? group.sourceIds.length : 0;
+            const sourceWord = sourceCount === 1 ? "source" : "sources";
+            const bounds = wwDeriveTimeGroupBounds(groupId);
+            const originMs = wwTimeGroupRecordingStartMs(groupId);
+            let meta;
+            if (originMs !== null && bounds) {
+                const absStartMs = originMs + bounds.start * 1000;
+                const absEndMs = originMs + bounds.end * 1000;
+                meta = wwFormatHeaderDate(absStartMs) + " · " + wwFormatHeaderTime(absStartMs) + "–" + wwFormatHeaderTime(absEndMs) + " · " + sourceCount + " " + sourceWord;
+            } else if (bounds) {
+                meta = "Elapsed / unaligned · " + wwFormatCursorDuration(bounds.end - bounds.start) + " · " + sourceCount + " " + sourceWord;
+            } else {
+                meta = sourceCount + " " + sourceWord;
+            }
+            return { title, meta };
+        }
+
+        function wwSyncTimeGroupCanvasHeader(groupId, canvasEl, sortedActiveIds) {
+            const { title, meta } = wwTimeGroupHeaderText(groupId, sortedActiveIds);
+            const titleEl = canvasEl.querySelector(".ww-tg-header-title");
+            const metaEl = canvasEl.querySelector(".ww-tg-header-meta");
+            if (titleEl) titleEl.textContent = title;
+            if (metaEl) metaEl.textContent = meta;
+        }
+
+        // Task section 14: Reset Time View duplicated per canvas, safe
+        // because wwApplyAndFetchGroupViewport() already fully isolates
+        // one group's own viewport change from every other group.
+        async function wwResetOneTimeGroupView(groupId) {
+            const bounds = wwDeriveTimeGroupBounds(groupId);
+            if (!bounds) return;
+            clearTimeout(ww.timeGroupViewportDebounceTimers.get(groupId));
+            await wwApplyAndFetchGroupViewport(groupId, bounds.start, bounds.end);
         }
 
         // wwRefreshWorkspaceBounds()'s own per-group generalization,
@@ -8180,7 +8434,10 @@
                 if (current && wwBoundsEqual(current, desired)) continue;
                 await wwApplyAndFetchGroupViewport(groupId, desired.start, desired.end);
             }
-            wwRenderTimeGroupSliders();
+            // Time Group Canvas: the canvas/header/slider/ruler/digital
+            // resync for EVERY group (primary included) now happens once,
+            // in wwRefreshWorkspaceBounds() itself, right after this
+            // function returns -- see that function's own call site.
         }
 
         async function wwRefreshWorkspaceBounds(options) {
@@ -8212,8 +8469,7 @@
 
             if (!next) {
                 ww.viewport = null;
-                wwSyncStickyRuler();
-                wwRebuildDigitalChart();
+                await wwSyncTimeGroupCanvases();
                 // Section 27: workspace just became genuinely empty (no
                 // participating source left) -- cursor mode has nothing
                 // valid left to measure against.
@@ -8222,7 +8478,6 @@
                     wwUpdateCursorOverlay();
                 }
                 wwSyncZoomStepControls();
-                wwRenderTimeGroupSliders();
                 return;
             }
 
@@ -8232,10 +8487,8 @@
 
             if (wwBoundsEqual(ww.viewport, desired)) {
                 if (isFreshViewport) wwReinitCursorsForNewViewport();
-                wwSyncStickyRuler();
-                wwRebuildDigitalChart();
+                await wwSyncTimeGroupCanvases();
                 wwSyncZoomStepControls();
-                wwRenderTimeGroupSliders();
                 return;
             }
 
@@ -8334,10 +8587,18 @@
         // correct per-source Absolute-time origin is future work.
         function wwFormatAbsoluteElapsedTime(elapsedSeconds, opts) {
             if (!Number.isFinite(elapsedSeconds)) return "—";
-            const originMs = wwWorkspaceRecordingStartMs();
+            opts = opts || {};
+            // Time Group Canvas (task section 9): an explicit `opts.groupId`
+            // resolves THAT group's own origin (wwTimeGroupRecordingStartMs())
+            // -- used by the ruler/panel-axis call sites below, which now
+            // always know their own group. Every OTHER pre-existing call
+            // site (hover templates, annotations) omits `groupId` and keeps
+            // the original single workspace-wide origin unchanged --
+            // documented, narrower-scope carryover (not fixed this slice,
+            // see this function's own header comment above).
+            const originMs = opts.groupId !== undefined ? wwTimeGroupRecordingStartMs(opts.groupId) : wwWorkspaceRecordingStartMs();
             if (originMs === null) return wwFormatCursorDuration(elapsedSeconds);
 
-            opts = opts || {};
             const spanSeconds = Number.isFinite(opts.spanSeconds) ? opts.spanSeconds : wwVisibleSpanSeconds();
             const digits = Number.isInteger(opts.fractionDigits)
                 ? Math.max(0, Math.min(6, opts.fractionDigits))
@@ -8442,6 +8703,28 @@
             return null;
         }
 
+        // Time Group Canvas (Slice TG-B+C, task section 9): the fix for
+        // the known limitation documented immediately above --
+        // `groupId`'s own Absolute-mode origin, from THAT group's own
+        // origin source (never the first-displayed-channel-overall
+        // origin wwWorkspaceRecordingStartMs() returns). A group's own
+        // origin source is, by DEC-057's own construction, always the
+        // group's earliest-start_time member -- exactly the source whose
+        // group-time-zero IS its own true recorded wall-clock start, so
+        // no extra offset math is needed here: this source's own
+        // `recordingStartMs` (via wwSourceTimingAuthority(), the SAME
+        // per-source timing cache every other Absolute-mode helper
+        // already reads) is directly the group's own origin. `null` for
+        // an elapsed-only group (no fabricated wall-clock origin -- task
+        // section 9's own "no fake timestamps for elapsed-only sources"),
+        // or a group id not currently known.
+        function wwTimeGroupRecordingStartMs(groupId) {
+            const group = groupId !== null ? ww.timeGroups.get(groupId) : null;
+            if (!group) return null;
+            const timing = wwSourceTimingAuthority(group.originSourceId);
+            return timing.recordingStartMs !== null && timing.recordingStartMs !== undefined ? timing.recordingStartMs : null;
+        }
+
         // workspace-time elapsed seconds (ww.viewport/channel.time's own
         // authoritative coordinate system, unchanged by Slice 2) -> the
         // value Plotly's own x-axis actually plots. Absolute/Elapsed mode
@@ -8495,13 +8778,13 @@
             return values.length ? values : [Number(((lo + hi) / 2).toFixed(12))];
         }
 
-        function wwAbsoluteTickLabelsForRange(start, end) {
+        function wwAbsoluteTickLabelsForRange(start, end, groupId) {
             const span = Math.abs(Number(end) - Number(start));
             const tickvals = wwTickValuesForRange(start, end, 7);
             return {
                 tickmode: "array",
                 tickvals,
-                ticktext: tickvals.map((v) => wwFormatAbsoluteElapsedTime(v, { spanSeconds: span })),
+                ticktext: tickvals.map((v) => wwFormatAbsoluteElapsedTime(v, { spanSeconds: span, groupId })),
                 tickformatstops: [],
                 tickformat: "",
                 hoverformat: ".6f",
@@ -8525,11 +8808,11 @@
         // already produces correctly negative/zero/positive labels for
         // free once t0 has shifted the underlying axis values -- no new
         // formatting logic needed there, only this one added guard.
-        function wwTimeAxisTickFormat(startTime, endTime) {
+        function wwTimeAxisTickFormat(startTime, endTime, groupId) {
             if (ww.timeMode === "absolute" && !wwHasT0()) {
                 const start = Number.isFinite(startTime) ? startTime : (ww.viewport && ww.viewport.start);
                 const end = Number.isFinite(endTime) ? endTime : (ww.viewport && ww.viewport.end);
-                if (Number.isFinite(start) && Number.isFinite(end)) return wwAbsoluteTickLabelsForRange(start, end);
+                if (Number.isFinite(start) && Number.isFinite(end)) return wwAbsoluteTickLabelsForRange(start, end, groupId);
             }
             return {
                 tickmode: "auto",
@@ -8545,8 +8828,8 @@
             };
         }
 
-        function wwTimeAxisRelayout(startTime, endTime) {
-            const tickFormat = wwTimeAxisTickFormat(startTime, endTime);
+        function wwTimeAxisRelayout(startTime, endTime, groupId) {
+            const tickFormat = wwTimeAxisTickFormat(startTime, endTime, groupId);
             return {
                 "xaxis.type": "linear",
                 "xaxis.range": [wwElapsedToPlotlyX(startTime), wwElapsedToPlotlyX(endTime)],
@@ -8662,9 +8945,27 @@
 
         function wwPanelGroupKeyFor(channel) {
             if (ww.layoutMode === "separate") return wwChannelKey(channel.sourceId, channel.channelName);
+            // Time Group Canvas (task section 16): "Time Group remains a
+            // hard time-domain boundary... even in Custom mode, channels
+            // from unrelated Time Groups must not share one physical
+            // waveform panel." This SUPERSEDES the prior Time-Groups
+            // slice's own original Custom-mode allowance ("the engineer's
+            // own explicit, deliberate grouping choice... UI MAY render
+            // waveform types across time groups differently, not must
+            // always") -- the owner has now made that a hard requirement
+            // instead of an option. Minimum necessary fix: a Custom
+            // group's own key is ALSO prefixed with the channel's current
+            // Time Group id, exactly like Grouped mode's own key below --
+            // so if an engineer's OWN custom group happens to span two
+            // Time Groups, its members still split into one panel per
+            // Time Group (never silently merged), while every channel
+            // that stays within one group's own custom selection is
+            // completely unaffected (same single panel as before).
+            const customTimeGroupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
+            const customPrefix = customTimeGroupId !== null ? customTimeGroupId + "::" : "";
             if (ww.layoutMode === "custom") {
                 const group = wwCustomGroupFor(channel);
-                return group ? ("custom:" + group.id) : ("custom-solo:" + wwChannelKey(channel.sourceId, channel.channelName));
+                return group ? (customPrefix + "custom:" + group.id) : (customPrefix + "custom-solo:" + wwChannelKey(channel.sourceId, channel.channelName));
             }
             // Phase 5A-UAT5: Grouped mode only -- calculated channels get
             // their OWN panel per engineering type ("calc:Voltage"),
@@ -8690,13 +8991,7 @@
             // engineering-type-only key. `null` (sync state not yet
             // fetched, or an unrecognized source) falls through to the
             // plain base key unprefixed -- never blocks rendering on
-            // this feature's own state having loaded yet. Separate/
-            // Custom modes are deliberately untouched (checked above) --
-            // Separate already gives every channel its own panel, and
-            // Custom is the engineer's own explicit, deliberate
-            // grouping choice (task section 27: "the UI MAY render
-            // waveform types across time groups differently," not
-            // "must always").
+            // this feature's own state having loaded yet.
             const timeGroupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
             if (timeGroupId !== null) baseKey = timeGroupId + "::" + baseKey;
             // Phase 5C (DEC-049): never mix pu-converted and engineering-
@@ -9103,7 +9398,16 @@
                 '<div class="ww-resize-handle" role="separator" aria-orientation="horizontal" ' +
                     'aria-label="Resize ' + escapeHtml(panel.label) + ' panel height" tabindex="-1"></div>';
 
-            document.getElementById("wwPanels").appendChild(container);
+            // Time Group Canvas (task section 6): routes into THIS
+            // panel's own group's canvas -- lazily created if this is
+            // the first panel that Time Group has ever needed (see
+            // wwEnsureTimeGroupCanvasDom()'s own comment). `null` only
+            // for a panel with no channels yet, which never happens by
+            // the time this function runs (see its own two call sites).
+            const groupId = wwPanelTimeGroupId(panel);
+            const canvasEl = wwEnsureTimeGroupCanvasDom(groupId);
+            const panelsEl = canvasEl ? canvasEl.querySelector(".ww-tg-panels") : null;
+            (panelsEl || wwTimeGroupCanvasesContainerEl()).appendChild(container);
             panel.containerEl = container;
             panel.headerEl = container.querySelector(".ww-panel-header");
             panel.legendEl = container.querySelector(".ww-legend");
@@ -9412,16 +9716,21 @@
             for (const panel of ww.panels) {
                 wwResizePanelPlot(panel);
             }
-            if (ww.rulerReady) {
-                const rulerChartEl = document.getElementById("wwStickyRulerChart");
-                if (rulerChartEl && window.Plotly && Plotly.Plots && typeof Plotly.Plots.resize === "function") {
-                    Plotly.Plots.resize(rulerChartEl);
-                }
-            }
-            if (ww.digitalChartReady) {
-                const digitalChartEl = document.getElementById("wwDigitalChart");
-                if (digitalChartEl && window.Plotly && Plotly.Plots && typeof Plotly.Plots.resize === "function") {
-                    Plotly.Plots.resize(digitalChartEl);
+            // Time Group Canvas: resizes EVERY active group's own ruler
+            // and digital chart, not just one.
+            const canResize = window.Plotly && Plotly.Plots && typeof Plotly.Plots.resize === "function";
+            if (canResize) {
+                for (const groupId of wwActiveTimeGroupIds()) {
+                    const canvasEl = wwTimeGroupCanvasEl(groupId);
+                    if (!canvasEl) continue;
+                    if (ww.rulerReadyByGroup.get(groupId)) {
+                        const rulerChartEl = canvasEl.querySelector(".ww-tg-ruler-chart");
+                        if (rulerChartEl) Plotly.Plots.resize(rulerChartEl);
+                    }
+                    if (ww.digitalChartReadyByGroup.get(groupId)) {
+                        const digitalChartEl = canvasEl.querySelector(".ww-tg-digital-chart");
+                        if (digitalChartEl) Plotly.Plots.resize(digitalChartEl);
+                    }
                 }
             }
             // Phase 4B (section 39): window resize, Workspace Sidebar
@@ -9624,23 +9933,20 @@
             for (const panel of ww.panels) {
                 if (wwPanelTimeGroupId(panel) !== groupId) continue;
                 panel.suppressNext = true;
-                Plotly.relayout(panel.chartEl, wwTimeAxisRelayout(startTime, endTime));
+                Plotly.relayout(panel.chartEl, wwTimeAxisRelayout(startTime, endTime, groupId));
             }
             if (isPrimary) {
                 // ww.viewport ALWAYS stays in elapsed seconds -- the one
                 // authoritative coordinate system (section 8) -- regardless
                 // of ww.timeMode; only the Plotly-facing range above is
-                // transformed.
+                // transformed. Still primary-only: cursor overlay/toolbar
+                // Zoom In-Out/peak-annotation recalculation all remain
+                // deferred, workspace-global features this slice (task
+                // section 25) -- unlike the ruler/digital chart below,
+                // which are now genuinely per-group and so update for
+                // EVERY group's own viewport change, not just the
+                // primary's.
                 ww.viewport = { start: startTime, end: endTime };
-                wwSyncStickyRuler();
-                // Phase 4A (section 3/31): digital lanes are ONE shared
-                // region below every analog panel, regardless of Time
-                // Group (a pre-existing, unrelated constraint -- digital
-                // channels have never been panel-split by Time Group the
-                // way analog channels are; out of scope for this slider
-                // task) -- stays tied to the primary group's own viewport
-                // exactly as before.
-                wwRebuildDigitalChart();
                 wwSyncZoomStepControls();
                 // Phase 4G (DEC-046): peak-annotation recalculation
                 // likewise stays primary-group-scoped -- this preserves
@@ -9651,7 +9957,14 @@
                 // as before.
                 wwRecalculateAllPeakAnnotations(startTime, endTime);
             }
-            wwRenderTimeGroupSliders();
+            // Time Group Canvas (task section 7/8): THIS group's own
+            // ruler and digital chart, regardless of primary status --
+            // both are now genuinely per-group, unlike the deferred
+            // primary-only surfaces above.
+            wwSyncTimeGroupRuler(groupId);
+            wwRebuildDigitalChart(groupId);
+            const canvasEl = wwTimeGroupCanvasEl(groupId);
+            if (canvasEl) wwSyncTimeGroupSliderForCanvas(groupId, canvasEl);
             await wwRefetchChannelsForGroup(groupId, startTime, endTime);
         }
 
@@ -10680,7 +10993,15 @@
         async function wwSyncApplyOffsetChangeSideEffects() {
             await wwRefreshWorkspaceBounds({ resetViewport: false });
             await wwRefetchAllChannelsAcrossGroups();
-            wwRebuildDigitalChart();
+            // Time Group Canvas: a manual offset change can move a
+            // digital lane's own trace position (wwAlignmentOffsetForSource())
+            // WITHOUT necessarily changing that group's own overall
+            // viewport bounds (wwRefreshWorkspaceBounds() above would
+            // then skip re-syncing it) -- rebuild every active group's
+            // own digital chart unconditionally here, correctness over
+            // premature optimization (this function's own established
+            // Performance Requirement, unchanged).
+            wwRebuildAllTimeGroupDigitalCharts();
             if (ww.measurementCursors.enabled) {
                 for (const sourceId of wwParticipatingSourceIds()) wwFetchCursorValuesForSource(sourceId);
             }
@@ -12767,7 +13088,7 @@
         // recreated on a layout-mode switch, never reused in place, so
         // there is no double-wiring risk on the SAME element, unlike the
         // digital chart's own persistent chartEl, which needs its own
-        // `ww.digitalClickWired` guard for exactly that reason). A no-op
+        // `ww.digitalClickWiredByGroup` guard for exactly that reason). A no-op
         // instantly unless Callout placement mode is active -- normal
         // Plotly click/zoom/pan is completely unaffected outside it
         // (section 14).
@@ -13426,7 +13747,9 @@
             // transition from an empty workspace to a displayed one (or
             // just keeps it in sync if it was already visible) -- ww.panels
             // and ww.viewport are both already final at this point.
-            wwSyncStickyRuler();
+            // Time Group Canvas: also (re)builds/prunes canvas roots and
+            // resyncs every group's own header/slider/digital together.
+            wwSyncTimeGroupCanvases();
             // Phase 4A-UAT4: the sidebar is now the analog legend -- keep
             // its dots/remove-controls in sync with the just-updated
             // displayed set.
@@ -13482,8 +13805,10 @@
             // Phase 2C-C4 (section 17): hides the ruler if that was the
             // last displayed channel; otherwise a cheap no-op resync
             // (ww.viewport may be clamped below if this source no longer
-            // participates in the derived workspace bounds).
-            wwSyncStickyRuler();
+            // participates in the derived workspace bounds). Time Group
+            // Canvas: also prunes this channel's own canvas entirely if
+            // it was the group's last displayed channel.
+            wwSyncTimeGroupCanvases();
             // Phase 4A-UAT4: the sidebar is now the analog legend -- keep
             // its dots/remove-controls in sync with the just-updated
             // displayed set.
@@ -13564,7 +13889,7 @@
             wwUpdateEmptyState();
             wwApplyTimeAxisChrome();
             wwUpdateTimeModeControlAvailability();
-            wwSyncStickyRuler();
+            wwSyncTimeGroupCanvases();
             wwSyncChannelBrowserDisplayState();
             // Phase 4C1 (section 14/29): a group "Hide all" removes
             // potentially dozens of channels at once -- clear/re-render
@@ -13645,14 +13970,23 @@
             });
         }
 
-        function wwSortedDigitalEntries() {
+        // Time Group Canvas (task section 7): `groupId`, when given,
+        // restricts to digital entries whose own source currently
+        // belongs to that Time Group -- never mixing lanes from
+        // unrelated groups into one Plotly figure. Omitted (undefined),
+        // this returns every displayed digital entry workspace-wide --
+        // preserved for any call site that genuinely needs the full set.
+        function wwSortedDigitalEntries(groupId) {
             // wwDigitalSortChannels() reads .name/.index/.classification --
             // a displayed digital entry already carries all three under
             // slightly different field names (.channelName/.channelIndex),
             // so this small adapter keeps the shared sort function generic
             // enough to also serve the channel-browser's own
             // DigitalChannelOut-shaped objects (see renderDigitalGroup()).
-            const entries = Array.from(ww.digitalDisplayed.values()).map((entry) => ({
+            const source = groupId === undefined
+                ? Array.from(ww.digitalDisplayed.values())
+                : Array.from(ww.digitalDisplayed.values()).filter((entry) => wwTimeGroupIdForDisplaySourceId(entry.sourceId) === groupId);
+            const entries = source.map((entry) => ({
                 name: entry.channelName, index: entry.channelIndex, classification: entry.classification, entry,
             }));
             return wwDigitalSortChannels(entries).map((wrapped) => wrapped.entry);
@@ -13792,8 +14126,8 @@
         function wwDiagnoseDigitalAlignment() {
             const surfaces = [
                 { name: "analog (first panel)", chartEl: ww.panels[0] && ww.panels[0].chartEl },
-                { name: "digital", chartEl: document.getElementById("wwDigitalChart") },
-                { name: "ruler", chartEl: document.getElementById("wwStickyRulerChart") },
+                { name: "digital", chartEl: wwPrimaryTimeGroupDigitalChartEl() },
+                { name: "ruler", chartEl: wwPrimaryTimeGroupRulerChartEl() },
             ];
             const results = {};
             for (const { name, chartEl } of surfaces) {
@@ -13815,15 +14149,23 @@
             return results;
         }
 
-        function wwRebuildDigitalChart() {
-            const regionEl = document.getElementById("wwDigitalRegion");
-            const chartEl = document.getElementById("wwDigitalChart");
+        // Time Group Canvas (task section 7): rebuilds ONE Time Group's
+        // own digital Plotly figure -- never mixing lanes from an
+        // unrelated group into it. `groupId`'s own canvas is lazily
+        // created if needed (mirrors wwCreatePanelDom()'s own
+        // lazy-create), so this is safe to call even before any analog
+        // channel from this group has ever been displayed (a
+        // digital-only Time Group).
+        function wwRebuildDigitalChart(groupId) {
+            const canvasEl = wwEnsureTimeGroupCanvasDom(groupId);
+            const regionEl = canvasEl ? canvasEl.querySelector(".ww-tg-digital-region") : null;
+            const chartEl = canvasEl ? canvasEl.querySelector(".ww-tg-digital-chart") : null;
             if (!regionEl || !chartEl) return;
 
-            const entries = wwSortedDigitalEntries();
+            const entries = wwSortedDigitalEntries(groupId);
             regionEl.hidden = entries.length === 0;
             if (entries.length === 0) {
-                ww.digitalChartReady = false;
+                ww.digitalChartReadyByGroup.set(groupId, false);
                 // Phase 4B: the digital region's own height (or presence)
                 // just changed -- recompute regardless of whether it went
                 // to zero (nothing displayed) or is about to be rebuilt.
@@ -13932,8 +14274,9 @@
                 });
             });
 
-            const xrange = ww.viewport
-                ? [wwElapsedToPlotlyX(ww.viewport.start), wwElapsedToPlotlyX(ww.viewport.end)]
+            const groupRange = wwTimeGroupVisibleRange(groupId);
+            const xrange = groupRange
+                ? [wwElapsedToPlotlyX(groupRange.start), wwElapsedToPlotlyX(groupRange.end)]
                 : undefined;
 
             chartEl.style.height = (totalRows * WW_DIGITAL_LANE_PX + 16) + "px";
@@ -13968,7 +14311,7 @@
                 responsive: true,
                 displayModeBar: false,
             });
-            ww.digitalChartReady = true;
+            ww.digitalChartReadyByGroup.set(groupId, true);
             // Phase 4A-UAT2: an explicit, guaranteed one-frame-later
             // resize catch-up after every rebuild -- belt-and-braces on
             // top of the wwResizeAllVisiblePlots() fix above. Plotly.react()
@@ -14006,19 +14349,28 @@
             // produces exactly ONE trace again (the baseline, spanning
             // the full lane width) -- curveNumber maps directly to
             // entries[curveNumber], header rows contributing none.
-            if (!ww.digitalClickWired) {
+            if (!ww.digitalClickWiredByGroup.get(groupId)) {
                 chartEl.on("plotly_click", (eventData) => {
                     if (!eventData || !eventData.points || !eventData.points.length) return;
-                    const clicked = wwSortedDigitalEntries()[eventData.points[0].curveNumber];
+                    const clicked = wwSortedDigitalEntries(groupId)[eventData.points[0].curveNumber];
                     if (!clicked) return;
                     wwRemoveDigitalChannelByKey(wwChannelKey(clicked.sourceId, clicked.channelName));
                 });
-                ww.digitalClickWired = true;
+                ww.digitalClickWiredByGroup.set(groupId, true);
             }
             // Phase 4B (section 39): the digital region's own height
             // (WW_DIGITAL_LANE_PX * row count) just potentially changed,
             // which shifts where the ruler sits below it.
             wwUpdateCursorOverlay();
+        }
+
+        // Time Group Canvas: rebuilds EVERY active group's own digital
+        // chart -- the generalization of what used to be a single global
+        // call. Used by cross-cutting triggers (unit-mode switch, theme
+        // change) that must touch every group, never just the primary
+        // one.
+        function wwRebuildAllTimeGroupDigitalCharts() {
+            for (const groupId of wwActiveTimeGroupIds()) wwRebuildDigitalChart(groupId);
         }
 
         // Fetches (batched, one request per source among the newly-added
@@ -14085,7 +14437,11 @@
                 }
                 if (onBatchLoaded) onBatchLoaded(metas.length);
             }
-            wwRebuildDigitalChart();
+            // Time Group Canvas: wwRefreshWorkspaceBounds() below already
+            // rebuilds every active group's own digital chart (via
+            // wwSyncTimeGroupCanvases()) -- no separate no-arg call here
+            // (this function no longer knows a single groupId to target;
+            // newly-shown channels can span multiple groups at once).
             wwUpdateEmptyState();
             // Phase 4A-UAT8: the sidebar's own digital rows need to
             // reflect the just-updated ww.digitalDisplayed set (opacity/
@@ -14105,7 +14461,9 @@
         function wwRemoveDigitalChannelByKey(key) {
             const entry = ww.digitalDisplayed.get(key);
             if (ww.digitalDisplayed.delete(key)) {
-                wwRebuildDigitalChart();
+                // Time Group Canvas: wwRefreshWorkspaceBounds() below
+                // already rebuilds this (and every other active) group's
+                // own digital chart.
                 wwUpdateEmptyState();
                 wwSyncChannelBrowserDisplayState();
                 // Phase 4C2 (section 21): hiding a digital channel
@@ -14139,7 +14497,8 @@
                 }
             }
             if (removedAny) {
-                wwRebuildDigitalChart();
+                // Time Group Canvas: wwRefreshWorkspaceBounds() below
+                // already rebuilds every active group's own digital chart.
                 wwUpdateEmptyState();
                 wwSyncChannelBrowserDisplayState();
                 // Phase 4C2 (section 20): group "Hide all" reverts every
@@ -14180,7 +14539,8 @@
                 }
             }
             if (removedAnyDigital) {
-                wwRebuildDigitalChart();
+                // Time Group Canvas: wwRefreshWorkspaceBounds() below
+                // already rebuilds every active group's own digital chart.
                 wwUpdateEmptyState();
                 wwSyncChannelBrowserDisplayState();
                 // Phase 4C2 (section 32): a fully-removed source's digital
@@ -15958,7 +16318,19 @@
             for (const panel of ww.panels) {
                 if (panel.plotlyReady && panel.chartEl) Plotly.purge(panel.chartEl);
             }
-            document.getElementById("wwPanels").innerHTML = "";
+            // Time Group Canvas: clears every canvas root at once --
+            // each one's own panels/digital/slider/ruler DOM (and
+            // Plotly instances) are simply discarded along with it,
+            // matching Plotly's own "removing the container is
+            // sufficient" cleanup contract already relied on elsewhere
+            // in this function (wwSyncTimeGroupCanvases()'s own pruning
+            // comment).
+            const canvasesEl = wwTimeGroupCanvasesContainerEl();
+            if (canvasesEl) canvasesEl.innerHTML = "";
+            ww.rulerReadyByGroup.clear();
+            ww.digitalChartReadyByGroup.clear();
+            ww.digitalClickWiredByGroup.clear();
+            ww.lastActiveTimeGroupIds = new Set();
             ww.panels = [];
             ww.displayed.clear();
             if (options.resetSourceBounds) {
@@ -16135,15 +16507,11 @@
             wwUpdateEmptyState();
             wwUpdateTimeModeControlAvailability();
             // Phase 2C-C4 (section 17/30): "starting a new workspace: ruler
-            // resets/clears" -- ww.panels is now empty, so this hides it.
-            // The ruler's own Plotly instance (if it exists) is
-            // deliberately NOT purged/torn down here -- it never holds any
-            // trace data (always an empty [] traces array), so there is
-            // nothing to reset beyond visibility; the next
-            // wwSyncStickyRuler() call (when channels are next added) fully
-            // overwrites its range/type/tickformat regardless.
-            wwSyncStickyRuler();
-            wwRebuildDigitalChart();
+            // resets/clears" -- ww.displayed is now empty, so
+            // wwSyncTimeGroupCanvases() sees zero active groups and
+            // clears #wwTimeGroupCanvases entirely (already emptied
+            // above too -- a correct, harmless no-op re-confirmation).
+            wwSyncTimeGroupCanvases();
             // Phase 4A-UAT4: ww.displayed was cleared in bulk above (not
             // via wwRemoveChannel(), which self-syncs) -- explicit sync so
             // the sidebar's dots/remove-controls reflect the now-empty
@@ -16239,28 +16607,49 @@
         // too so the exact value is moot). Called from
         // wwSyncStickyRuler() itself, the one place already responsible
         // for the ruler's own layout state.
-        function wwSyncTimeGroupSlidersStickyOffset() {
-            const slidersEl = document.getElementById("wwTimeGroupSliders");
-            const rulerWrapEl = document.getElementById("wwStickyRuler");
-            if (!slidersEl || !rulerWrapEl) return;
-            slidersEl.style.bottom = rulerWrapEl.getBoundingClientRect().height + "px";
+        // Time Group Canvas: the ruler's own slider-slot sticky `bottom`
+        // offset, scoped to ONE canvas -- see the original single-ruler
+        // version's own comment (preserved below) for why this is a
+        // runtime measurement, never a hardcoded pixel guess. Ruler and
+        // slider are now SIBLINGS inside the SAME canvas root (task
+        // section 10/13), so this offset only ever needs to reach as far
+        // as that one canvas's own ruler, never a workspace-wide one.
+        function wwSyncTimeGroupCanvasStickyOffset(groupId) {
+            const canvasEl = wwTimeGroupCanvasEl(groupId);
+            if (!canvasEl) return;
+            const slotEl = canvasEl.querySelector(".ww-tg-slider-slot");
+            const rulerWrapEl = canvasEl.querySelector(".ww-tg-ruler");
+            if (!slotEl || !rulerWrapEl) return;
+            slotEl.style.bottom = rulerWrapEl.getBoundingClientRect().height + "px";
         }
 
-        function wwSyncStickyRuler() {
-            const wrapEl = document.getElementById("wwStickyRuler");
-            const chartEl = document.getElementById("wwStickyRulerChart");
+        // Time Group Canvas (task section 8/9): the per-group
+        // generalization of the original single wwSyncStickyRuler() --
+        // ONE ruler PER canvas, each using THAT group's own viewport
+        // (wwTimeGroupVisibleRange(), never ww.viewport blindly) and
+        // THAT group's own Absolute-mode origin
+        // (wwTimeGroupRecordingStartMs(), never the single workspace
+        // origin -- task section 9's own core requirement). Time Mode
+        // itself (Absolute/Elapsed) stays workspace-global (ww.timeMode,
+        // untouched) -- only the ORIGIN each ruler computes labels from
+        // is per-group.
+        function wwSyncTimeGroupRuler(groupId) {
+            const canvasEl = wwEnsureTimeGroupCanvasDom(groupId);
+            const wrapEl = canvasEl ? canvasEl.querySelector(".ww-tg-ruler") : null;
+            const chartEl = canvasEl ? canvasEl.querySelector(".ww-tg-ruler-chart") : null;
             if (!wrapEl || !chartEl) return;
 
-            const hasChannels = ww.panels.length > 0;
+            const hasChannels = wwActiveTimeGroupIds().has(groupId);
             wrapEl.hidden = !hasChannels;
-            wwSyncTimeGroupSlidersStickyOffset();
+            wwSyncTimeGroupCanvasStickyOffset(groupId);
             if (!hasChannels) return; // section 17: no unnecessary ruler when empty
 
             // Absolute/Elapsed both use the same numeric elapsed range.
             // Only tick labels/title differ.
-            const start = ww.viewport && ww.viewport.start;
-            const end = ww.viewport && ww.viewport.end;
-            const xrange = ww.viewport
+            const range = wwTimeGroupVisibleRange(groupId);
+            const start = range && range.start;
+            const end = range && range.end;
+            const xrange = range
                 ? [wwElapsedToPlotlyX(start), wwElapsedToPlotlyX(end)]
                 : undefined;
             let tickPresentation, title;
@@ -16269,8 +16658,8 @@
             // this file -- see wwTimeAxisTickFormat()'s own comment.
             if (ww.timeMode === "absolute" && !wwHasT0()) {
                 tickPresentation = Number.isFinite(start) && Number.isFinite(end)
-                    ? wwAbsoluteTickLabelsForRange(start, end)
-                    : wwTimeAxisTickFormat(start, end);
+                    ? wwAbsoluteTickLabelsForRange(start, end, groupId)
+                    : wwTimeAxisTickFormat(start, end, groupId);
                 title = "Record Time";
             } else {
                 // Span is shift-invariant (end - start is unchanged by a
@@ -16283,15 +16672,15 @@
                 // axis -- wwElapsedToPlotlyX() is the one place that
                 // conversion happens, exactly like it already does for
                 // xrange two lines up.
-                const spanSeconds = ww.viewport ? Math.abs(end - start) : 1;
+                const spanSeconds = range ? Math.abs(end - start) : 1;
                 const unit = wwStickyRulerElapsedUnit(spanSeconds);
                 tickPresentation = Number.isFinite(start) && Number.isFinite(end)
                     ? wwRulerTickLabelsForRange(wwElapsedToPlotlyX(start), wwElapsedToPlotlyX(end), unit)
-                    : wwTimeAxisTickFormat(start, end);
+                    : wwTimeAxisTickFormat(start, end, groupId);
                 title = (wwHasT0() ? "Event " : "") + unit.title;
             }
 
-            if (!ww.rulerReady) {
+            if (!ww.rulerReadyByGroup.get(groupId)) {
                 const colors = wwThemeColors();
                 Plotly.newPlot(chartEl, [], {
                     // Phase 2C-C4B: a near-zero top margin and a bottom
@@ -16302,7 +16691,7 @@
                     // traces, hidden Y axis), so the old t:4/height:46
                     // combination left a visibly blank gap above the
                     // ticks; this is a substantially more compact strip
-                    // (see .ww-sticky-ruler-chart's own height).
+                    // (see .ww-tg-ruler-chart's own height).
                     margin: { l: WW_PANEL_MARGIN.l, r: WW_PANEL_MARGIN.r, t: 2, b: 34 },
                     paper_bgcolor: "transparent",
                     plot_bgcolor: "transparent",
@@ -16334,7 +16723,7 @@
                     responsive: true,
                     displayModeBar: false,
                 });
-                ww.rulerReady = true;
+                ww.rulerReadyByGroup.set(groupId, true);
             } else {
                 Plotly.relayout(chartEl, {
                     "xaxis.type": "linear",
@@ -16354,6 +16743,14 @@
             // now projects to on screen, so this is one of the hook points
             // that keeps the overlay's pixel positions in sync (section 17).
             wwUpdateCursorOverlay();
+        }
+
+        // Rebuilds EVERY active group's own ruler -- the generalization
+        // of what used to be a single global call, used by cross-cutting
+        // triggers (unit-mode switch, time-mode switch, theme change)
+        // that must touch every group.
+        function wwSyncAllTimeGroupRulers() {
+            for (const groupId of wwActiveTimeGroupIds()) wwSyncTimeGroupRuler(groupId);
         }
 
         // ==================================================================
@@ -16464,9 +16861,8 @@
         // wwDeriveTimeGroupBounds() on every pointermove frame when the
         // caller already has it.
         function wwPaintTimeGroupSliderRow(groupId, start, end, boundsOverride) {
-            const container = document.getElementById("wwTimeGroupSliders");
-            if (!container) return;
-            const rowEl = container.querySelector('.ww-tg-slider-row[data-group-id="' + CSS.escape(groupId) + '"]');
+            const canvasEl = wwTimeGroupCanvasEl(groupId);
+            const rowEl = canvasEl ? canvasEl.querySelector(".ww-tg-slider-row") : null;
             if (!rowEl) return;
             const bounds = boundsOverride || wwDeriveTimeGroupBounds(groupId);
             if (!bounds) return;
@@ -16598,35 +16994,123 @@
         // never destroyed as long as its own group stays active, even
         // across a full resync. Cheap (DOM-only, no fetch) -- safe to
         // call generously from every viewport-affecting call site.
-        function wwRenderTimeGroupSliders() {
-            const container = document.getElementById("wwTimeGroupSliders");
+        // Time Group Canvas (Slice TG-B+C): ONE slider row lives inside
+        // ONE canvas's own `.ww-tg-slider-slot` -- since a canvas IS a
+        // Time Group, there is never more than one row to disambiguate
+        // inside it (unlike the pre-canvas design, which stacked every
+        // group's own row into one shared global container and needed
+        // its own group-name label to tell them apart). The row's own
+        // label is therefore never shown here (the canvas's own header
+        // already carries that -- task section 4) -- wwSyncTimeGroupSliderRow()
+        // itself is unchanged and still accepts a showGroupLabel flag,
+        // simply always called with `false` from this one caller.
+        function wwSyncTimeGroupSliderForCanvas(groupId, canvasEl) {
+            const slotEl = canvasEl.querySelector(".ww-tg-slider-slot");
+            if (!slotEl) return;
+            let rowEl = slotEl.querySelector(".ww-tg-slider-row");
+            if (!rowEl) {
+                rowEl = wwCreateTimeGroupSliderRow(groupId);
+                slotEl.appendChild(rowEl);
+            }
+            wwSyncTimeGroupSliderRow(groupId, rowEl, false);
+        }
+
+        // ==================================================================
+        // Time Group Canvas -- the one master orchestrator (Slice TG-B+C).
+        //
+        // Every broad "state changed, re-sync everything" call site
+        // (wwRefreshWorkspaceBounds()'s own 3 branches, unit-mode switch,
+        // time-mode switch, theme change, workspace clear) now calls
+        // THIS one function instead of separately calling
+        // wwSyncStickyRuler()/wwRebuildDigitalChart()/
+        // wwRenderTimeGroupSliders() -- consolidating what used to be 3
+        // independent global calls into one canvas-aware pass, so no
+        // caller can accidentally resync only 2 of the 3 per-group
+        // surfaces.
+        //
+        // Topology-change detection (task section 17/18/19): compares
+        // the CURRENT active-group-id SET (from ww.displayed, always
+        // immediately authoritative -- see wwActiveTimeGroupIds()'s own
+        // comment) against what this function saw on its own last call.
+        // A genuine change (a bridging source merged two groups, a
+        // removed source split one) calls wwRebuildLayout() FIRST --
+        // reusing that already-proven function to fully re-route every
+        // panel into its own CURRENT group's canvas (via
+        // wwCreatePanelDom()'s own lazy per-group canvas resolution),
+        // rather than inventing new incremental panel-relocation logic.
+        // A plain viewport/zoom/pan/Reset never changes this set, so it
+        // never triggers this heavier path (task section 20).
+        // Deliberately synchronous -- wwRebuildLayout() and every
+        // per-group header/slider/ruler/digital sync step below are
+        // plain DOM/Plotly operations, never a network fetch, so this
+        // never needs to be awaited. Existing `await
+        // wwSyncTimeGroupCanvases()` call sites remain valid (awaiting a
+        // non-Promise value resolves immediately) -- this just also lets
+        // synchronous callers (wwRemoveChannel() and friends) call it
+        // directly with no extra async plumbing.
+        function wwSyncTimeGroupCanvases() {
+            const container = wwTimeGroupCanvasesContainerEl();
             if (!container) return;
-            // Defensive resync (cheap -- one getBoundingClientRect() call):
-            // covers the one call path that can reach this function
-            // without wwSyncStickyRuler() having just run for the same
-            // change (a non-primary group's own viewport update, inside
-            // wwApplyAndFetchGroupViewport()) -- the ruler's own height
-            // never actually changes between calls, so this is normally
-            // a no-op re-confirmation, never a source of drift.
-            wwSyncTimeGroupSlidersStickyOffset();
-            const activeIds = Array.from(wwActiveTimeGroupIds()).sort();
-            if (activeIds.length === 0) {
+
+            const activeIds = wwActiveTimeGroupIds();
+            // Only a REASSIGNMENT (some previously-active group id no
+            // longer exists -- a merge, a split, or a source's removal)
+            // ever moves an EXISTING panel to a different group/canvas,
+            // since a group's own id never changes while its membership
+            // stays the same (Time Group identity lifecycle -- task
+            // section 17). A pure ADDITION (every previously-active id
+            // is still active, only brand-new disjoint group ids showed
+            // up) never requires touching any already-routed panel --
+            // wwCreatePanelDom()'s own lazy per-group canvas creation
+            // already handles that case entirely additively. Triggering
+            // wwRebuildLayout() on pure growth was both an unnecessary
+            // full-workspace rebuild (task section 20) and observed to
+            // throw an uncaught Plotly "_redrawFromAutoMarginCount"
+            // error live in the browser: purging a just-created,
+            // unrelated panel while ITS OWN newPlot() auto-margin timer
+            // is still in flight leaves that deferred callback with a
+            // torn-down gd._fullLayout.
+            const topologyChanged = Array.from(ww.lastActiveTimeGroupIds).some((id) => !activeIds.has(id));
+            if (topologyChanged) {
+                wwRebuildLayout();
+            }
+            ww.lastActiveTimeGroupIds = new Set(activeIds);
+
+            const sortedIds = Array.from(activeIds).sort();
+            if (sortedIds.length === 0) {
                 container.innerHTML = "";
                 return;
             }
-            const showGroupLabel = ww.timeGroups.size > 1;
-            for (const rowEl of Array.from(container.querySelectorAll(".ww-tg-slider-row"))) {
-                if (!activeIds.includes(rowEl.dataset.groupId)) rowEl.remove();
-            }
-            activeIds.forEach((groupId, index) => {
-                let rowEl = container.querySelector('.ww-tg-slider-row[data-group-id="' + CSS.escape(groupId) + '"]');
-                if (!rowEl) {
-                    rowEl = wwCreateTimeGroupSliderRow(groupId);
-                    container.appendChild(rowEl);
-                } else if (container.children[index] !== rowEl) {
-                    container.appendChild(rowEl); // reorder into the sorted position -- moves, never duplicates
+
+            // Prune canvas roots for groups no longer active (task
+            // section 14/18/19: "no stale canvas DOM" -- also tears down
+            // that canvas's own Plotly instances via Plotly.purge on its
+            // own panels, already handled inside wwRebuildLayout() above
+            // for panels; the ruler/digital Plotly instances are simply
+            // discarded with the DOM node itself here, matching
+            // Plotly's own documented "removing the container is
+            // sufficient" cleanup contract for an instance that will
+            // never be reused again).
+            for (const canvasEl of Array.from(container.querySelectorAll(".ww-time-group-canvas"))) {
+                const groupId = canvasEl.dataset.timeGroupId;
+                if (!sortedIds.includes(groupId)) {
+                    canvasEl.remove();
+                    ww.rulerReadyByGroup.delete(groupId);
+                    ww.digitalChartReadyByGroup.delete(groupId);
+                    ww.digitalClickWiredByGroup.delete(groupId);
                 }
-                wwSyncTimeGroupSliderRow(groupId, rowEl, showGroupLabel);
+            }
+
+            sortedIds.forEach((groupId, index) => {
+                const canvasEl = wwEnsureTimeGroupCanvasDom(groupId);
+                if (!canvasEl) return;
+                if (container.children[index] !== canvasEl) {
+                    container.appendChild(canvasEl); // reorder into sorted position -- moves, never duplicates
+                }
+                wwSyncTimeGroupCanvasHeader(groupId, canvasEl, sortedIds);
+                wwSyncTimeGroupSliderForCanvas(groupId, canvasEl);
+                wwSyncTimeGroupRuler(groupId);
+                wwRebuildDigitalChart(groupId);
             });
         }
 
@@ -16670,10 +17154,19 @@
         // must treat that as "cannot draw a line right now," not average
         // out substitute geometry.
         function wwCursorPlotMetrics() {
+            // Time Group Canvas: cursor overlay stays primary-group-scoped
+            // this slice (task section 25) -- every candidate below is
+            // resolved against the PRIMARY canvas specifically, never an
+            // arbitrary non-primary group's own ruler/digital/panel
+            // geometry (which would produce a pixel<->time mapping that
+            // is simply wrong for the primary group's own coordinate
+            // system).
+            const primaryGroupId = wwPrimaryTimeGroupId();
+            const primaryPanel = ww.panels.find((p) => wwPanelTimeGroupId(p) === primaryGroupId);
             const candidates = [
-                ww.rulerReady ? document.getElementById("wwStickyRulerChart") : null,
-                ww.digitalChartReady ? document.getElementById("wwDigitalChart") : null,
-                ww.panels[0] && ww.panels[0].plotlyReady ? ww.panels[0].chartEl : null,
+                ww.rulerReadyByGroup.get(primaryGroupId) ? wwPrimaryTimeGroupRulerChartEl() : null,
+                ww.digitalChartReadyByGroup.get(primaryGroupId) ? wwPrimaryTimeGroupDigitalChartEl() : null,
+                primaryPanel && primaryPanel.plotlyReady ? primaryPanel.chartEl : null,
             ];
             for (const chartEl of candidates) {
                 if (!chartEl) continue;
@@ -16787,7 +17280,12 @@
         // on drag or resize).
         function wwEnsureCursorDom() {
             const overlay = document.getElementById("wwCursorOverlay");
-            const rulerOverlay = document.getElementById("wwCursorRulerOverlay");
+            // Time Group Canvas: cursor overlay stays primary-group-scoped
+            // this slice -- resolves the PRIMARY canvas's own ruler
+            // overlay segment (see wwPrimaryTimeGroupCanvasEl()'s own
+            // comment), never a global #wwCursorRulerOverlay singleton
+            // (no longer exists -- one now lives inside each canvas).
+            const rulerOverlay = wwPrimaryTimeGroupCursorRulerOverlayEl();
             const labelLayer = document.getElementById("wwCursorLabelLayer");
             if (overlay && !overlay.dataset.built) {
                 // Owner cosmetic refinement: the A-B range band is built
@@ -16878,7 +17376,7 @@
             wwSyncT0Controls();
 
             const overlayEl = document.getElementById("wwCursorOverlay");
-            const rulerOverlayEl = document.getElementById("wwCursorRulerOverlay");
+            const rulerOverlayEl = wwPrimaryTimeGroupCursorRulerOverlayEl();
             const labelLayerEl = document.getElementById("wwCursorLabelLayer");
             const readoutEl = document.getElementById("wwCursorReadout");
             if (!overlayEl || !rulerOverlayEl || !labelLayerEl || !readoutEl) return;
@@ -16930,7 +17428,10 @@
             wwEnsureCursorDom();
 
             const workspaceSectionEl = document.getElementById("viewWaveform");
-            const rulerWrapEl = document.getElementById("wwStickyRuler");
+            // Time Group Canvas: cursor overlay stays primary-group-scoped
+            // this slice -- resolves the PRIMARY canvas's own ruler.
+            const primaryCanvasEl = wwPrimaryTimeGroupCanvasEl();
+            const rulerWrapEl = wwPrimaryTimeGroupRulerWrapEl();
             const metrics = wwCursorPlotMetrics();
             const canDraw = !!metrics && workspaceSectionEl && rulerWrapEl && !rulerWrapEl.hidden;
 
@@ -16972,9 +17473,23 @@
             // itself is still needed below for the ruler segment's own
             // HORIZONTAL (left) positioning, where its CURRENT on-screen
             // (possibly-stuck) position is exactly what's wanted.
+            //
+            // Time Group Canvas addendum: the ruler's own offsetParent is
+            // now the PRIMARY canvas root itself (`position: relative`,
+            // task section 12 -- each canvas scopes its own ruler/overlay
+            // calculations naturally), not #viewWaveform directly as
+            // before this slice. `primaryCanvasEl.offsetTop` (that
+            // canvas's own position within #viewWaveform, whose own
+            // offsetParent IS #viewWaveform -- #wwTimeGroupCanvases
+            // itself is a plain, unpositioned wrapper) plus
+            // `rulerWrapEl.offsetTop` (the ruler's position within ITS
+            // OWN canvas) together reproduce the exact same "distance
+            // from #viewWaveform's own top to the ruler" this fix
+            // originally computed in one step.
             const sectionRect = workspaceSectionEl.getBoundingClientRect();
             const rulerRect = rulerWrapEl.getBoundingClientRect();
-            overlayEl.style.height = Math.max(0, rulerWrapEl.offsetTop) + "px";
+            const canvasOffsetTop = primaryCanvasEl ? primaryCanvasEl.offsetTop : 0;
+            overlayEl.style.height = Math.max(0, canvasOffsetTop + rulerWrapEl.offsetTop) + "px";
 
             for (const kind of ["a", "b"]) {
                 const cursor = cursors[kind];
@@ -17716,10 +18231,13 @@
 
             function livePositionUpdate(kind, time) {
                 const overlay = document.getElementById("wwCursorOverlay");
-                const rulerOverlay = document.getElementById("wwCursorRulerOverlay");
+                // Time Group Canvas: cursor overlay stays primary-group-
+                // scoped this slice -- resolves the PRIMARY canvas's own
+                // ruler segment.
+                const rulerOverlay = wwPrimaryTimeGroupCursorRulerOverlayEl();
                 const labelLayer = document.getElementById("wwCursorLabelLayer");
                 const sectionEl = document.getElementById("viewWaveform");
-                const rulerWrapEl = document.getElementById("wwStickyRuler");
+                const rulerWrapEl = wwPrimaryTimeGroupRulerWrapEl();
                 if (!overlay || !rulerOverlay || !labelLayer || !sectionEl || !rulerWrapEl) return;
                 const pageX = wwCursorTimeToPixelX(time);
                 if (pageX === null) return;
@@ -17899,7 +18417,13 @@
                 // violate (section 9), using the SAME established pattern
                 // wwApplyAndFetchViewport already relies on.
                 panel.suppressNext = true;
-                const relayout = ww.viewport ? wwTimeAxisRelayout(ww.viewport.start, ww.viewport.end) : { "xaxis.type": "linear" };
+                // Time Group Canvas (task section 9): each panel's own
+                // GROUP's own viewport/origin, never the primary group's
+                // ww.viewport blindly applied to every panel regardless
+                // of which group it actually belongs to.
+                const panelGroupId = wwPanelTimeGroupId(panel);
+                const panelRange = wwTimeGroupVisibleRange(panelGroupId);
+                const relayout = panelRange ? wwTimeAxisRelayout(panelRange.start, panelRange.end, panelGroupId) : { "xaxis.type": "linear" };
                 // Grouped/Custom panels get their title corrected here
                 // directly -- wwApplyTimeAxisChrome() below no-ops for
                 // those modes (it only ever touches Separate-mode lanes).
@@ -17907,18 +18431,19 @@
                 Plotly.relayout(panel.chartEl, relayout);
             }
             wwApplyTimeAxisChrome();
-            // Phase 2C-C4 (section 6): the sticky ruler must update
-            // immediately on a mode switch too, same as every panel above
-            // -- calls the same elapsed-coordinate presentation helpers used
-            // above, so the ruler agrees with every panel.
-            wwSyncStickyRuler();
+            // Phase 2C-C4 (section 6): every group's own ruler must
+            // update immediately on a mode switch too, same as every
+            // panel above -- Time Mode itself is workspace-global (task
+            // section 9), so every canvas's own ruler is resynced, each
+            // still computing its OWN group's own Absolute-mode origin.
+            wwSyncAllTimeGroupRulers();
             // Phase 4A (section 32): digital presentation must switch
-            // Absolute/Elapsed consistently with analog and the shared
-            // ruler -- wwRebuildDigitalChart() re-derives every trace's x
-            // values fresh from each entry's own already-fetched
-            // transitions via wwElapsedToPlotlyX() (now reading the NEW
-            // ww.timeMode), zero new network request.
-            wwRebuildDigitalChart();
+            // Absolute/Elapsed consistently with analog and every
+            // group's own ruler -- wwRebuildDigitalChart() re-derives
+            // every trace's x values fresh from each entry's own
+            // already-fetched transitions via wwElapsedToPlotlyX() (now
+            // reading the NEW ww.timeMode), zero new network request.
+            wwRebuildAllTimeGroupDigitalCharts();
         }
 
         // ==================================================================
@@ -17960,20 +18485,25 @@
                     }, [idx]);
                 });
                 panel.suppressNext = true;
-                const relayout = ww.viewport ? wwTimeAxisRelayout(ww.viewport.start, ww.viewport.end) : { "xaxis.type": "linear" };
+                // Time Group Canvas: same per-panel-own-group fix as
+                // wwSetTimeMode() above -- never the primary group's
+                // ww.viewport applied blindly to every panel.
+                const panelGroupId = wwPanelTimeGroupId(panel);
+                const panelRange = wwTimeGroupVisibleRange(panelGroupId);
+                const relayout = panelRange ? wwTimeAxisRelayout(panelRange.start, panelRange.end, panelGroupId) : { "xaxis.type": "linear" };
                 relayout["xaxis.title"] = wwTimeAxisTitle();
                 Plotly.relayout(panel.chartEl, relayout);
             }
             wwApplyTimeAxisChrome();
             // Same two hook points wwSetTimeMode() already relies on for
-            // the SAME reason -- the ruler and digital chart both
-            // re-derive their own presentation fresh from
+            // the SAME reason -- every group's own ruler and digital
+            // chart both re-derive their own presentation fresh from
             // wwElapsedToPlotlyX() (now t0-aware) with zero new network
             // request; wwUpdateCursorOverlay() (A/B readout text, Callout/
             // Peak reprojection) is reached transitively through both, so
             // it is not called a third time here.
-            wwSyncStickyRuler();
-            wwRebuildDigitalChart();
+            wwSyncAllTimeGroupRulers();
+            wwRebuildAllTimeGroupDigitalCharts();
         }
 
         // Reflects current t0/Cursor-A state into the toolbar control and
@@ -18434,13 +18964,20 @@
             document.getElementById("layoutModeGroupedBtn").setAttribute("aria-pressed", String(mode === "grouped"));
             document.getElementById("layoutModeSeparateBtn").setAttribute("aria-pressed", String(mode === "separate"));
             document.getElementById("layoutModeCustomBtn").setAttribute("aria-pressed", String(mode === "custom"));
-            // Phase 2C-B2 (section 6): #wwPanels only gets the unified-canvas
-            // styling while Separate is active -- Grouped and Custom both
-            // keep the existing individual-card look (Custom's panels can
-            // hold multiple channels, just like Grouped's -- the unified
+            // Phase 2C-B2 (section 6): each canvas's own .ww-tg-panels
+            // container only gets the unified-canvas styling while
+            // Separate is active -- Grouped and Custom both keep the
+            // existing individual-card look (Custom's panels can hold
+            // multiple channels, just like Grouped's -- the unified
             // single-channel-lane treatment doesn't fit that shape; see
-            // section 8's own "Custom may visually resemble Grouped" note).
-            document.getElementById("wwPanels").classList.toggle("ww-panels-unified", mode === "separate");
+            // section 8's own "Custom may visually resemble Grouped"
+            // note). Time Group Canvas: applied to EVERY currently
+            // existing canvas's own panels container, not a single
+            // global one.
+            for (const canvasEl of document.querySelectorAll(".ww-time-group-canvas")) {
+                const panelsEl = canvasEl.querySelector(".ww-tg-panels");
+                if (panelsEl) panelsEl.classList.toggle("ww-panels-unified", mode === "separate");
+            }
             wwUpdateEditGroupsButtonVisibility();
             wwRebuildLayout();
         }
@@ -18478,10 +19015,41 @@
             }
 
             for (const panel of ww.panels) {
-                if (panel.plotlyReady && panel.chartEl) Plotly.purge(panel.chartEl);
+                // Time Group Canvas: purge deferred one animation frame --
+                // a panel whose own Plotly.newPlot() fired synchronously
+                // earlier in THIS same call chain (e.g. wwCreatePanelDom()
+                // creating a brand-new channel's panel immediately
+                // followed, in the SAME wwAddSelectedChannels() call, by a
+                // topology change that triggers this rebuild) can still
+                // have Plotly's own internal deferred auto-margin redraw
+                // pending. Purging synchronously before that pending
+                // callback runs leaves it reading a torn-down
+                // gd._fullLayout, throwing an uncaught
+                // "_redrawFromAutoMarginCount" TypeError (observed live
+                // during this slice's own merge-scenario UAT).
+                // requestAnimationFrame() reliably runs after any 0-delay
+                // setTimeout already queued at the time this loop runs,
+                // letting that pending callback resolve safely first --
+                // purely a timing fix, no behavior change (the element is
+                // already detached from the DOM by the innerHTML clear
+                // below; Plotly.purge() does not need it attached).
+                if (panel.plotlyReady && panel.chartEl) {
+                    const chartElToPurge = panel.chartEl;
+                    requestAnimationFrame(() => Plotly.purge(chartElToPurge));
+                }
                 panel.plotlyReady = false; // guards a late-arriving fetch from restyling this now-torn-down panel
             }
-            document.getElementById("wwPanels").innerHTML = "";
+            // Time Group Canvas: clears each EXISTING canvas's own
+            // analog panels container only -- the canvas root itself
+            // (header/toolbar/digital/slider/ruler) survives a layout-
+            // mode switch unchanged; wwCreatePanelDom() below lazily
+            // re-creates any canvas that no longer exists (a topology
+            // change is not what triggers this function -- see
+            // wwSyncTimeGroupCanvases()'s own docstring for that case).
+            for (const canvasEl of document.querySelectorAll(".ww-time-group-canvas")) {
+                const panelsEl = canvasEl.querySelector(".ww-tg-panels");
+                if (panelsEl) panelsEl.innerHTML = "";
+            }
             ww.panels = [];
 
             for (const channel of allChannels) {
@@ -18631,7 +19199,9 @@
             // ANALOG panel exists (a source could have digital channels
             // displayed with zero analog channels displayed) -- checked
             // and handled before the analog-only early return below.
-            if (ww.digitalDisplayed.size > 0) wwRebuildDigitalChart();
+            // Time Group Canvas: re-themes EVERY active group's own
+            // digital chart, not just one.
+            if (ww.digitalDisplayed.size > 0) wwRebuildAllTimeGroupDigitalCharts();
             // Phase 5A-UAT7: `colors` (and the Calculated Channels preview
             // re-theme below) must be computed/run regardless of whether
             // the MAIN Waveform page currently has any panels -- the owner's
@@ -18665,8 +19235,11 @@
             // has no separate `title.font` override -- one relayout call
             // covers both tick labels and the title, no extra property
             // needed.
-            if (ww.rulerReady) {
-                const rulerChartEl = document.getElementById("wwStickyRulerChart");
+            // Time Group Canvas: re-themes EVERY active group's own ruler.
+            for (const groupId of wwActiveTimeGroupIds()) {
+                if (!ww.rulerReadyByGroup.get(groupId)) continue;
+                const canvasEl = wwTimeGroupCanvasEl(groupId);
+                const rulerChartEl = canvasEl ? canvasEl.querySelector(".ww-tg-ruler-chart") : null;
                 if (rulerChartEl) {
                     Plotly.relayout(rulerChartEl, {
                         "font.color": colors.text,
@@ -18921,7 +19494,13 @@
             document.getElementById("layoutModeGroupedBtn").setAttribute("aria-pressed", "false");
             document.getElementById("layoutModeSeparateBtn").setAttribute("aria-pressed", "false");
             document.getElementById("layoutModeCustomBtn").setAttribute("aria-pressed", "true");
-            document.getElementById("wwPanels").classList.remove("ww-panels-unified");
+            // Time Group Canvas: applied to every existing canvas's own
+            // panels container -- see wwSetLayoutMode()'s own identical
+            // fix/comment.
+            for (const canvasEl of document.querySelectorAll(".ww-time-group-canvas")) {
+                const panelsEl = canvasEl.querySelector(".ww-tg-panels");
+                if (panelsEl) panelsEl.classList.remove("ww-panels-unified");
+            }
             wwUpdateEditGroupsButtonVisibility();
             wwRebuildLayout();
         }

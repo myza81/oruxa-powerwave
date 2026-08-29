@@ -8052,6 +8052,164 @@ Impact:
 
 ---
 
+## DEC-059 — Time Group Canvas: each Time Group becomes its own structural UI section (header, panels, digital region, slider, sticky ruler), closing DEC-057/DEC-058's own disclosed "primary group only" ruler/digital/Absolute-origin gap for every group, not just the first
+
+Date: 2026-08-29
+Status: Approved
+Source: explicit project-owner instruction ("Slice TG-B+C — Time Group
+Canvas foundation + per-group sticky time ruler + per-group digital
+panel"), delivered immediately following DEC-058 (Time Range slider).
+
+Decision:
+
+**Each Time Group is now its own complete analysis canvas.** A new DOM
+ownership boundary, `<section class="ww-time-group-canvas"
+data-time-group-id="...">`, replaces the previously-flat, workspace-
+wide singleton containers (`#wwPanels`, `#wwDigitalRegion`,
+`#wwStickyRuler`, `#wwTimeGroupSliders`) with one canvas per currently
+ACTIVE Time Group (a group backing at least one displayed channel —
+`wwActiveTimeGroupIds()`, reading `ww.displayed` directly rather than
+`ww.panels`, since the latter can be transiently stale relative to
+current topology right after a merge/split). Every per-canvas element
+is found via a scoped `canvasEl.querySelector(".ww-tg-...")` against
+its own root, never a numbered singleton id.
+
+Each canvas carries: a header (`"Time Group N\n<date> ·
+<start>–<end> · N sources"`, numbered by current sorted group-id
+order, never `group_id` itself), a minimal local toolbar (Reset Time
+View only this slice — Cursor A/B, Set/Clear t0, Detect Event,
+Synchronise Sources stay workspace-global, deliberately not migrated),
+its own analog panels, its own digital-channel region (generalizing
+`wwRebuildDigitalChart()`/`wwAddDigitalChannels()`/
+`wwDigitalHighIntervals()` to take a `groupId`), its own Time Range
+slider row (DEC-058's slider relocated INTO the canvas, exact owner
+CSS `padding: 3px 20px 3px 20px` preserved unchanged), and its own
+sticky ruler — all as direct sibling children within the SAME canvas
+root, so `position: sticky` naturally bounds itself to that one
+canvas's own box (a canvas releases its own sticky slider/ruler
+automatically as the next canvas's content scrolls into view, no JS
+scroll math).
+
+This closes DEC-057/DEC-058's own explicitly disclosed "primary group
+only" limitation for the ruler, digital chart, and Absolute-mode
+label origin: `wwTimeGroupRecordingStartMs(groupId)` (resolving via
+that group's own origin source) now threads through
+`wwFormatAbsoluteElapsedTime()`/`wwAbsoluteTickLabelsForRange()`/
+`wwTimeAxisTickFormat()`/`wwTimeAxisRelayout()`, so Group 2's own
+ruler shows Group 2's own date, never Group 1's reused. Time Mode
+(Absolute/Elapsed) itself stays workspace-global — only the ORIGIN
+each ruler computes labels from is per-group.
+
+**Audited and fixed one hard-boundary gap this slice's own explicit
+requirement newly introduced**: `wwPanelGroupKeyFor()`'s Custom-mode
+branch did not prefix its panel key with the channel's own current
+Time Group id (unlike the Grouped-mode branch, which already did, per
+DEC-057). This superseded DEC-057's own original Custom-mode
+allowance ("the engineer's own explicit, deliberate grouping choice")
+with the owner's now-explicit "Time Group remains a hard time-domain
+boundary even in Custom mode" — an engineer-defined custom group
+spanning two Time Groups now splits into one panel per Time Group,
+confirmed live (2 canvases, 1 panel each, 2 traces each, never merged
+into one).
+
+**Topology-change-triggered rebuild, scoped to genuine reassignment
+only**: `wwSyncTimeGroupCanvases()` reuses the already-proven
+`wwRebuildLayout()` (rather than inventing incremental panel-
+relocation logic) whenever the active-group-id SET changes — but only
+when some previously-active id actually vanished (a merge, a split, or
+a source removal), never on a pure ADDITION of a brand-new, disjoint
+group (every previously-active id still present): that case needs no
+existing panel to move, `wwCreatePanelDom()`'s own lazy per-group
+canvas creation already covers it entirely additively, and skipping
+the unnecessary rebuild also avoids an uncaught Plotly
+`_redrawFromAutoMarginCount` TypeError found live during this slice's
+own UAT (purging a panel synchronously right after its own
+`Plotly.newPlot()` fired, before Plotly's own deferred auto-margin
+callback had run). The remaining, genuinely-necessary rebuild path
+(merge/split) still carries a residual version of that same race —
+fixed by deferring the panel-purge loop's own `Plotly.purge()` calls
+one `requestAnimationFrame`, which reliably runs after any 0-delay
+`setTimeout` Plotly had already queued.
+
+Reason:
+
+Sections 1-20 of the owner's own task spec (verbatim, not reproduced
+here): the Time Group Canvas boundary is the structural foundation
+every subsequent per-group feature (independent cursors, independent
+t0, per-group Detect Event/Sync scoping — all explicitly deferred,
+see below) will eventually build on; this slice deliberately stops at
+establishing that boundary plus the two already-designed-but-still-
+primary-only surfaces (ruler, digital) DEC-057/058 had already
+disclosed as open gaps.
+
+Alternatives considered:
+
+- Migrating Cursor A/B, t0, Detect Event, and Synchronise Sources to
+  be per-canvas in the SAME pass — explicitly rejected by the task's
+  own non-goals list (section 25): those remain scoped to the primary
+  canvas only, via the same `wwPrimaryTimeGroup*()` compatibility
+  resolvers DEC-057/058 already established, unchanged in behavior.
+- Persistent Time Group ids surviving a merge/split — considered,
+  rejected per the task's own explicit "Time Group identity
+  lifecycle" policy: group ids are dynamically derived and may change;
+  "derived group state recomputes automatically, ambiguous analysis
+  state does not silently migrate" — panels/digital/slider/ruler
+  re-route and headers re-render, but cursor/t0 analysis state is not
+  attempted to survive a topology change this slice.
+- Collapse-by-default for inactive canvases — considered, explicitly
+  deferred (task section 20): every active canvas stays expanded by
+  default this slice.
+
+Impact:
+
+- `frontend/index.html` only. Replaces 4 singleton containers with
+  `#wwTimeGroupCanvases` (JS-populated); new canvas DOM module
+  (`wwCreateTimeGroupCanvasDom()`, `wwEnsureTimeGroupCanvasDom()`,
+  `wwSyncTimeGroupCanvasHeader()`, `wwSyncTimeGroupCanvases()` as the
+  one master per-sync orchestrator); `ww.rulerReadyByGroup`/
+  `ww.digitalChartReadyByGroup`/`ww.digitalClickWiredByGroup`
+  (`Map<groupId, bool>`) replacing the old single booleans;
+  `ww.lastActiveTimeGroupIds` tracking the topology-change baseline.
+  `wwActiveTimeGroupIds()`/`wwPrimaryTimeGroupId()` rewritten to read
+  `ww.displayed` instead of `ww.panels` (a genuine correctness fix,
+  not just a rename — avoids a circular staleness dependency right
+  after a topology change). No backend/schema/API changes.
+- Verified by the full backend suite (zero regressions; 16
+  pre-existing frontend static-regression tests updated for the
+  renamed/generalized selectors and functions, 4 new backend
+  datetime-invariant regression tests added locking in behaviour that
+  was already correct in `app.domain.time_grouping` — different-date-
+  same-time-of-day, the exact bridging-long-record merge case,
+  same-hour-different-date, and non-overlapping midnight rollover)
+  plus four live-browser Playwright UAT passes against a running
+  backend with synthetic COMTRADE fixtures: two independent Time
+  Groups on genuinely different calendar dates (16/16 checks — correct
+  per-group headers/dates, group-exclusive analog/digital routing,
+  one slider/ruler per canvas, scroll-based sticky handoff, correct
+  per-group Absolute-mode origin, zero console errors); a bridge-
+  source merge/split cycle (12/12 checks — one merged canvas
+  consolidating all 3 sources' traces/slider/ruler/header, then a
+  clean split back to 2 independent canvases with no stale DOM, zero
+  console errors); a Grouped/Separate/Custom layout-mode sweep (11/11
+  checks — Time Group boundary preserved across all 3 modes,
+  including the Custom-mode hard-boundary fix confirmed live).
+- **Known, disclosed limitations, not solved by this task** (same
+  class of gap DEC-057/058 already established a precedent for, now
+  narrowed rather than newly introduced): Cursor A/B, the A-B info
+  readout, t0 toolbar state, Detect Event's search scope, and
+  Synchronise Sources all remain workspace-global/primary-canvas-only
+  — a genuinely multi-Time-Group workspace gets independent panel
+  navigation, ruler, and digital-channel display per group, but not
+  yet independent cursors/t0/event-detection/sync scoping of its own.
+- **Deferred, per the task's own explicit non-goals**: per-group
+  Cursor A/B, per-group t0, Detect Event source restriction,
+  Synchronise Sources restriction/redesign, cross-group linking,
+  annotation redesign, collapse-by-default, CSV/Excel, clock
+  correction, timestamp-confidence scoring, and event-name inference
+  all remain unimplemented, unchanged from before this task.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

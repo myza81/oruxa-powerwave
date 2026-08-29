@@ -57,8 +57,13 @@ def test_batched_remove_from_grouped_panel_does_not_rerender_canvas_legend():
 
 
 def test_layout_rebuild_clears_grouped_canvas_legend_and_restores_separate_only():
+    """Time Group Canvas: wwRebuildLayout() clears each EXISTING canvas's
+    own `.ww-tg-panels` container (not a single workspace-wide
+    #wwPanels) -- the canvas root itself survives a layout-mode switch
+    unchanged."""
     source = _source()
     body = _function_body(source, "function wwRebuildLayout()", "// Phase 4A-UAT7")
 
-    assert 'document.getElementById("wwPanels").innerHTML = "";' in body
+    assert 'const panelsEl = canvasEl.querySelector(".ww-tg-panels");' in body
+    assert "panelsEl.innerHTML = \"\";" in body
     assert 'if (ww.layoutMode === "separate") wwRenderLegend(panel);' in body

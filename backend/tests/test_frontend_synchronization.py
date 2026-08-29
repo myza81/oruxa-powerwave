@@ -97,8 +97,8 @@ def test_digital_channels_apply_offset_at_render_time_not_fetch_time():
     intervals_body = source[intervals_idx : source.index("// ONE Plotly figure, two traces", intervals_idx)]
     assert "wwAlignmentOffsetForSource(entry.sourceId)" in intervals_body
 
-    rebuild_idx = source.index("function wwRebuildDigitalChart()")
-    rebuild_body = source[rebuild_idx : source.index("const xrange = ww.viewport", rebuild_idx)]
+    rebuild_idx = source.index("function wwRebuildDigitalChart(groupId)")
+    rebuild_body = source[rebuild_idx : source.index("const groupRange = wwTimeGroupVisibleRange(groupId);", rebuild_idx)]
     assert "entryOffset" in rebuild_body
     assert "entry.startTime + entryOffset" in rebuild_body
     assert "entry.endTime + entryOffset" in rebuild_body
@@ -192,13 +192,18 @@ def test_offset_change_side_effects_reuse_existing_refetch_orchestrator():
     ITS OWN current viewport (wwRefetchAllChannelsAcrossGroups()) rather
     than the single shared ww.viewport applied to every channel
     regardless of group -- in the common single-Time-Group workspace
-    this is the exact same request as before."""
+    this is the exact same request as before.
+
+    Time Group Canvas: the digital chart is now genuinely per-group, so
+    this rebuilds EVERY active group's own digital chart
+    (wwRebuildAllTimeGroupDigitalCharts()) rather than a single
+    workspace-wide one."""
     source = _source()
     fn_idx = source.index("async function wwSyncApplyOffsetChangeSideEffects()")
     fn_body = source[fn_idx : source.index("async function wwSyncPutOffset", fn_idx)]
     assert "wwRefreshWorkspaceBounds(" in fn_body
     assert "wwRefetchAllChannelsAcrossGroups()" in fn_body
-    assert "wwRebuildDigitalChart()" in fn_body
+    assert "wwRebuildAllTimeGroupDigitalCharts();" in fn_body
 
 
 def test_annotation_offset_limitation_is_documented():

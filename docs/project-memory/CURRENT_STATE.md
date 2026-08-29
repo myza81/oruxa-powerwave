@@ -4,7 +4,17 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-29** (Phase 20 — Time Range slider: a
+Last meaningful update: **2026-08-29** (Phase 21 — Time Group Canvas:
+each Time Group is now its own complete structural UI section — own
+header, own analog panels, own digital-channel region, own Time Range
+slider, own sticky ruler with its own per-group Absolute-mode origin
+— closing DEC-057/DEC-058's own disclosed "primary group only"
+ruler/digital/origin gap for every group, not just the first; Layout
+Mode (Grouped/Separate/Custom) remains workspace-global but Time
+Group stays a hard time-domain boundary in every mode, including a
+Custom-mode gap found and fixed this slice — see
+[DECISIONS.md — DEC-059](DECISIONS.md#dec-059--time-group-canvas-each-time-group-becomes-its-own-structural-ui-section-header-panels-digital-region-slider-sticky-ruler-closing-dec-057dec-058s-own-disclosed-primary-group-only-rulerdigitalabsolute-origin-gap-for-every-group-not-just-the-first)
+and [HANDOFF.md](HANDOFF.md), on top of Phase 20 — Time Range slider: a
 compact horizontal two-handle range navigator now renders once per
 active Time Group, bidirectionally synced with Plotly zoom/pan/Reset
 Time View — presentation/navigation only, no backend/timing change —

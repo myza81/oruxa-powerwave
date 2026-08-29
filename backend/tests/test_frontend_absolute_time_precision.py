@@ -139,7 +139,7 @@ def test_sticky_ruler_uses_elapsed_numeric_domain_in_both_modes():
     source = _source()
     body = _function_body(
         source,
-        "function wwSyncStickyRuler()",
+        "function wwSyncTimeGroupRuler(groupId)",
         "// Phase 4B: every path that reaches this function already",
     )
 

@@ -193,6 +193,78 @@ class TestDateRollover:
         assert placement == pytest.approx(0.4, abs=1e-9)
 
 
+class TestTimeGroupCanvasDatetimeInvariants:
+    """Slice TG-B+C sections 1-2/21-23: locks in that Time Groups are
+    derived from complete, normalized absolute datetime intervals --
+    never time-of-day alone -- ahead of the frontend Time Group Canvas
+    work that reads these same groups. These are regression tests for
+    already-correct `derive_time_groups()` behaviour verified ad hoc
+    during that slice's own audit; no domain code changed."""
+
+    def test_case_a_different_date_same_time_of_day_stays_two_groups(self):
+        """Two non-overlapping recordings that happen to start at the
+        exact same time-of-day on different calendar dates must NOT be
+        merged merely because their clock time matches."""
+        a_start = datetime(2026, 1, 27, 13, 9, 40)
+        b_start = datetime(2026, 2, 3, 13, 9, 40)
+        groups = derive_time_groups([
+            _abs_source("A", start=a_start, elapsed_start=0.0, elapsed_end=1.0),
+            _abs_source("B", start=b_start, elapsed_start=0.0, elapsed_end=1.0),
+        ])
+        assert len(groups) == 2
+        group_ids = {g.group_id for g in groups}
+        assert group_ids == {"A", "B"}
+
+    def test_case_b_bridging_long_record_merges_two_dates_into_one_group(self):
+        """Task section 21 Case B's own literal worked example: A and B
+        are on different dates and do not directly overlap, but bridge
+        source C spans from A's date all the way to B's date -- the
+        transitive overlap (A<->C, C<->B) must merge all three into ONE
+        Time Group, never leave A and B split."""
+        a_start = datetime(2026, 1, 27, 13, 0, 0)
+        b_start = datetime(2026, 2, 3, 13, 0, 0)
+        c_start = datetime(2026, 1, 27, 13, 0, 0)
+        c_end_elapsed = (datetime(2026, 2, 3, 13, 0, 30) - c_start).total_seconds()
+        groups = derive_time_groups([
+            _abs_source("A", start=a_start, elapsed_start=0.0, elapsed_end=60.0),
+            _abs_source("B", start=b_start, elapsed_start=0.0, elapsed_end=60.0),
+            _abs_source("C", start=c_start, elapsed_start=0.0, elapsed_end=c_end_elapsed),
+        ])
+        assert len(groups) == 1
+        assert set(groups[0].source_ids) == {"A", "B", "C"}
+
+    def test_case_c_same_hour_different_date_does_not_imply_similarity(self):
+        """Task section 23 Case C: two sources sharing the same clock
+        hour but on different, non-overlapping dates prove that
+        time-of-day *similarity* is never a grouping signal -- only the
+        actual absolute datetime interval overlap is."""
+        a_start = datetime(2026, 4, 1, 9, 30, 0)
+        b_start = datetime(2026, 4, 15, 9, 30, 0)
+        groups = derive_time_groups([
+            _abs_source("A", start=a_start, elapsed_start=0.0, elapsed_end=2.0),
+            _abs_source("B", start=b_start, elapsed_start=0.0, elapsed_end=2.0),
+        ])
+        assert len(groups) == 2
+        group_ids = {g.group_id for g in groups}
+        assert group_ids == {"A", "B"}
+
+    def test_midnight_rollover_non_overlapping_stays_two_groups(self):
+        """Complement to TestDateRollover's overlapping case: when the
+        two intervals straddle midnight but do NOT actually overlap
+        (a real gap remains once compared as full datetimes), they must
+        stay separate groups -- confirming the invariant isn't "any
+        midnight-adjacent pair merges," only genuine interval overlap."""
+        a_start = datetime(2026, 3, 6, 23, 59, 0)
+        b_start = datetime(2026, 3, 7, 0, 5, 0)
+        groups = derive_time_groups([
+            _abs_source("A", start=a_start, elapsed_start=0.0, elapsed_end=1.0),
+            _abs_source("B", start=b_start, elapsed_start=0.0, elapsed_end=1.0),
+        ])
+        assert len(groups) == 2
+        group_ids = {g.group_id for g in groups}
+        assert group_ids == {"A", "B"}
+
+
 class TestSamplingRateIsNeverAGroupingInput:
     """Task section 16/38: derive_time_groups() takes no sampling-rate
     parameter at all -- different rates cannot possibly block grouping

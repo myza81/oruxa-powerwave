@@ -101,14 +101,19 @@ def test_set_t0_requires_cursor_a_to_be_placed():
 def test_apply_t0_to_display_never_refetches():
     """Task's own Performance Requirement: applying t0 is presentation-
     only -- reprojects each channel's existing time array through
-    wwElapsedToPlotlyX(), never a new network request."""
+    wwElapsedToPlotlyX(), never a new network request.
+
+    Time Group Canvas: the ruler and digital chart are now genuinely
+    per-group, so this resyncs EVERY active group's own ruler/digital
+    chart (wwSyncAllTimeGroupRulers()/wwRebuildAllTimeGroupDigitalCharts())
+    rather than a single workspace-wide one."""
     source = _source()
     fn_idx = source.index("function wwApplyT0ToDisplay()")
     fn_body = source[fn_idx : source.index("function wwSyncT0Controls()", fn_idx)]
     assert "fetch(" not in fn_body
     assert ".map(wwElapsedToPlotlyX)" in fn_body
-    assert "wwSyncStickyRuler();" in fn_body
-    assert "wwRebuildDigitalChart();" in fn_body
+    assert "wwSyncAllTimeGroupRulers();" in fn_body
+    assert "wwRebuildAllTimeGroupDigitalCharts();" in fn_body
 
 
 def test_toolbar_and_status_bar_ui_exist():

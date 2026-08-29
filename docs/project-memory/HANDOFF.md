@@ -8,6 +8,79 @@ Last updated: **2026-08-29**
 
 ## What was most recently done
 
+**Phase 21 — Time Group Canvas.** On top of Phase 20 (Time Range
+slider) below — see
+[DECISIONS.md — DEC-059](DECISIONS.md#dec-059--time-group-canvas-each-time-group-becomes-its-own-structural-ui-section-header-panels-digital-region-slider-sticky-ruler-closing-dec-057dec-058s-own-disclosed-primary-group-only-rulerdigitalabsolute-origin-gap-for-every-group-not-just-the-first)
+for the full record; summarized here for continuity.
+
+Each Time Group is now its own complete structural UI section: a new
+`<section class="ww-time-group-canvas" data-time-group-id="...">` DOM
+ownership boundary replaced the previously-flat, workspace-wide
+singleton containers (`#wwPanels`, `#wwDigitalRegion`,
+`#wwStickyRuler`, `#wwTimeGroupSliders`). Every canvas carries its own
+header (`"Time Group N\n<date> · <start>–<end> · N sources"`), its own
+analog panels, its own digital-channel region, its own Time Range
+slider row (DEC-058's slider relocated inside the canvas, owner CSS
+preserved exactly), and its own sticky ruler — all sibling children of
+the same canvas root, so `position: sticky` bounds itself to that one
+canvas and naturally releases as the next canvas scrolls into view, no
+JS scroll math needed.
+
+This closes the "primary group only" ruler/digital/Absolute-origin gap
+DEC-057/058 had already disclosed: `wwTimeGroupRecordingStartMs(groupId)`
+now gives each group's own ruler its own correct wall-clock date, never
+another group's reused. Time Mode itself stays workspace-global — only
+the origin each ruler computes labels from is per-group.
+
+**One hard-boundary gap found and fixed**: Custom mode's own panel-key
+function did not prefix by the channel's current Time Group id (unlike
+Grouped mode, which already did) — an engineer-defined custom group
+spanning two Time Groups would have shared one physical panel. Fixed
+to mirror Grouped mode's own prefixing; confirmed live (2 canvases, 1
+panel each, never merged).
+
+**One genuine regression found and fixed during live UAT, not just
+documented**: `wwSyncTimeGroupCanvases()`'s topology-change rebuild
+was originally too broad — it also fired on a pure ADDITION of a
+brand-new, disjoint Time Group (no existing group's own membership
+actually changed), needlessly purging/recreating already-stable,
+unrelated panels and triggering an uncaught Plotly
+`_redrawFromAutoMarginCount` TypeError. Narrowed to fire only when a
+previously-active group id actually vanished (a genuine merge/split/
+removal); the remaining genuinely-necessary rebuild path also had a
+residual version of the same race, fixed by deferring the panel-purge
+loop one `requestAnimationFrame`.
+
+Verified by the full backend suite (zero regressions; 16 pre-existing
+frontend static-regression tests updated for renamed/generalized
+selectors, 4 new backend datetime-invariant regression tests added)
+plus four live-browser Playwright UAT passes: two Time Groups on
+different calendar dates (16/16 checks, zero console errors), a
+bridge-source merge/split cycle (12/12 checks, zero console errors),
+and a Grouped/Separate/Custom layout-mode sweep including the
+Custom-mode fix (11/11 checks).
+
+**Known, disclosed limitation (same class DEC-057/058 already
+established)**: Cursor A/B, t0, Detect Event, and Synchronise Sources
+remain workspace-global/primary-canvas-only — not yet migrated to be
+per-Time-Group, deliberately deferred per this task's own non-goals.
+
+**Files changed**: `frontend/index.html` only (no backend/schema/API
+changes) + `backend/tests/test_time_grouping_domain.py` (4 new
+regression tests) + 5 pre-existing frontend static-regression test
+files updated for the renamed/generalized selectors and functions
+(`test_frontend_time_range_slider.py`,
+`test_frontend_absolute_time_precision.py`,
+`test_frontend_grouped_layout_labels.py`,
+`test_frontend_synchronization.py`,
+`test_frontend_synchronization_t0.py`).
+
+**Next step**: nothing is pre-authorized. Per this session's own "do
+not commit/push without being asked" discipline, these changes stayed
+uncommitted at the end of this task.
+
+## What was done in the prior session (Phase 20 — Time Range slider)
+
 **Phase 20 — Time Range slider.** On top of Phase 19 (Time Groups)
 below — see
 [DECISIONS.md — DEC-058](DECISIONS.md#dec-058--time-range-slider-one-horizontal-two-handle-range-navigator-per-time-group-requiring-the-single-workspace-wide-viewport-to-become-genuinely-per-time-group-internally-while-every-pre-existing-single-instance-ui-surface-stays-scoped-to-the-primary-group)

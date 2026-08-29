@@ -37,10 +37,16 @@ def test_slider_state_exists():
 
 
 def test_slider_dom_container_sits_between_digital_region_and_sticky_ruler():
+    """Time Group Canvas (Slice TG-B+C): the digital region, slider
+    slot, and ruler are no longer separate workspace-wide singleton
+    containers -- each lives inside ONE canvas's own template, built by
+    wwCreateTimeGroupCanvasDom(), in this same relative order."""
     source = _source()
-    digital_idx = source.index('<div id="wwDigitalRegion" hidden>')
-    slider_idx = source.index('<div id="wwTimeGroupSliders">')
-    ruler_idx = source.index('id="wwStickyRuler"')
+    fn_idx = source.index("function wwCreateTimeGroupCanvasDom(groupId)")
+    fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+    digital_idx = fn_body.index('ww-tg-digital-region')
+    slider_idx = fn_body.index('ww-tg-slider-slot')
+    ruler_idx = fn_body.index('ww-tg-ruler"')
     assert digital_idx < slider_idx < ruler_idx
 
 
@@ -53,22 +59,31 @@ class TestPanelAndPrimaryGroupResolution:
         assert "wwTimeGroupIdForDisplaySourceId(panel.channels[0].sourceId)" in fn_body
 
     def test_primary_time_group_id_falls_back_to_primary_source(self):
+        """Time Group Canvas: reads ww.displayed (channel-level truth,
+        always immediately correct) rather than ww.panels -- ww.panels
+        can be transiently stale relative to CURRENT Time Group
+        topology right after a merge/split, before wwRebuildLayout()
+        has re-routed panels. Falls back to wwPrimaryTimeGroupSourceId()
+        only when nothing is displayed at all."""
         source = _source()
         fn_idx = source.index("function wwPrimaryTimeGroupId()")
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        assert "wwPanelTimeGroupId(panel)" in fn_body
+        assert "for (const { channel } of ww.displayed.values())" in fn_body
+        assert "wwTimeGroupIdForDisplaySourceId(channel.sourceId)" in fn_body
         assert "wwPrimaryTimeGroupSourceId()" in fn_body
 
-    def test_active_time_group_ids_derived_from_displayed_panels_only(self):
-        """Task section 9: never a slider for a group nothing is
+    def test_active_time_group_ids_derived_from_displayed_channels_only(self):
+        """Task section 9/17: never a canvas for a group nothing is
         currently showing -- ww.timeGroups (every group the workspace
-        has) is NOT what decides row count, only groups actually
-        backing a displayed panel are."""
+        has) is NOT what decides canvas count, only groups actually
+        backing a DISPLAYED channel are. Reads ww.displayed directly
+        (same staleness rationale as wwPrimaryTimeGroupId() above) --
+        not ww.panels, which can lag behind topology changes."""
         source = _source()
         fn_idx = source.index("function wwActiveTimeGroupIds()")
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        assert "for (const panel of ww.panels)" in fn_body
-        assert "wwPanelTimeGroupId(panel)" in fn_body
+        assert "for (const { channel } of ww.displayed.values())" in fn_body
+        assert "wwTimeGroupIdForDisplaySourceId(channel.sourceId)" in fn_body
 
 
 class TestFullBoundsComeFromTheGroupItself:
@@ -99,16 +114,27 @@ class TestApplyAndFetchGroupViewportScoping:
         assert "ww.timeGroupViewports.set(groupId, { start: startTime, end: endTime });" in fn_body
 
     def test_primary_group_still_drives_every_existing_single_viewport_surface(self):
+        """Time Group Canvas (task section 7/8/25): ruler/digital/slider
+        are now genuinely per-group and update for EVERY group's own
+        viewport change -- only the still-deferred, workspace-global
+        surfaces (ww.viewport mirror, toolbar zoom-step controls, peak
+        annotations) remain gated to the primary group only."""
         source = _source()
         fn_idx = source.index("async function wwApplyAndFetchGroupViewport(groupId, startTime, endTime)")
         fn_body = source[fn_idx : source.index("async function wwApplyAndFetchViewport(startTime, endTime)", fn_idx)]
         primary_idx = fn_body.index("if (isPrimary) {")
-        primary_block = fn_body[primary_idx : fn_body.index("wwRenderTimeGroupSliders();", primary_idx)]
+        primary_end = fn_body.index("wwRecalculateAllPeakAnnotations(startTime, endTime);", primary_idx) + len(
+            "wwRecalculateAllPeakAnnotations(startTime, endTime);"
+        )
+        primary_block = fn_body[primary_idx:primary_end]
         assert "ww.viewport = { start: startTime, end: endTime };" in primary_block
-        assert "wwSyncStickyRuler();" in primary_block
-        assert "wwRebuildDigitalChart();" in primary_block
         assert "wwSyncZoomStepControls();" in primary_block
         assert "wwRecalculateAllPeakAnnotations(startTime, endTime);" in primary_block
+
+        unconditional_tail = fn_body[primary_end:]
+        assert "wwSyncTimeGroupRuler(groupId);" in unconditional_tail
+        assert "wwRebuildDigitalChart(groupId);" in unconditional_tail
+        assert "wwSyncTimeGroupSliderForCanvas(groupId, canvasEl);" in unconditional_tail
 
     def test_refetches_only_this_groups_own_channels(self):
         source = _source()
@@ -235,19 +261,30 @@ class TestSliderUiWiring:
 
 class TestRenderMatchesActiveGroupsAndNeverFightsAnActiveDrag:
     def test_row_set_is_built_from_active_group_ids_sorted_deterministically(self):
+        """Time Group Canvas: wwSyncTimeGroupCanvases() replaced the
+        old wwRenderTimeGroupSliders() as the one entry point that
+        (re)builds the canvas SET to match wwActiveTimeGroupIds(),
+        sorted deterministically, pruning any canvas whose group is no
+        longer active."""
         source = _source()
-        fn_idx = source.index("function wwRenderTimeGroupSliders()")
+        fn_idx = source.index("function wwSyncTimeGroupCanvases()")
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        assert "const activeIds = Array.from(wwActiveTimeGroupIds()).sort();" in fn_body
-        assert "rowEl.remove()" in fn_body
+        assert "const activeIds = wwActiveTimeGroupIds();" in fn_body
+        assert "const sortedIds = Array.from(activeIds).sort();" in fn_body
+        assert "canvasEl.remove();" in fn_body
 
     def test_group_label_only_shown_once_more_than_one_group_exists(self):
-        """Matches wwTimeGroupLabelSuffix()'s own established "no clutter
-        in the common single-group case" precedent."""
+        """Time Group Canvas (task section 4): numbering/labeling moved
+        from the slider row itself to the canvas's own header
+        (wwSyncTimeGroupCanvasHeader()) -- the row's own label is now
+        ALWAYS suppressed (never a second, redundant label competing
+        with the header), unlike the pre-canvas design where the row
+        needed its own conditional label to disambiguate a shared
+        container."""
         source = _source()
-        fn_idx = source.index("function wwRenderTimeGroupSliders()")
+        fn_idx = source.index("function wwSyncTimeGroupSliderForCanvas(groupId, canvasEl)")
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        assert "const showGroupLabel = ww.timeGroups.size > 1;" in fn_body
+        assert "wwSyncTimeGroupSliderRow(groupId, rowEl, false);" in fn_body
 
     def test_sync_row_skips_repaint_while_that_exact_group_is_mid_drag(self):
         source = _source()
@@ -294,12 +331,14 @@ class TestStickySliderStructure:
     depends on."""
 
     def test_slider_container_is_sticky_only_when_it_has_content(self):
-        """#wwTimeGroupSliders:empty already stays `display: none` (no
+        """.ww-tg-slider-slot:empty already stays `display: none` (no
         reserved gap when nothing is displayed) -- sticky positioning is
         scoped to the populated case only, via the same :not(:empty)
-        guard, never applied to an empty/invisible container."""
+        guard, never applied to an empty/invisible container. Time
+        Group Canvas: this is now scoped per-canvas via a class selector
+        rather than the old workspace-wide #wwTimeGroupSliders id."""
         source = _source()
-        idx = source.index("#wwTimeGroupSliders:not(:empty) {")
+        idx = source.index(".ww-tg-slider-slot:not(:empty) {")
         block = source[idx : source.index("}", idx) + 1]
         assert "position: sticky;" in block
         assert "z-index: 3;" in block
@@ -307,42 +346,62 @@ class TestStickySliderStructure:
         assert "border-top: 1px solid var(--panel-border);" in block
 
     def test_slider_is_not_wrapped_together_with_the_ruler(self):
-        """Wrapping #wwTimeGroupSliders and #wwStickyRuler in one shared
-        sticky container would change the ruler's own offsetParent away
-        from #viewWaveform, silently breaking the existing Phase
-        4B-UAT2 cursor-overlay-height fix (rulerWrapEl.offsetTop) --
-        they must remain separate sticky siblings."""
+        """Wrapping the slider slot and ruler in one shared sticky
+        container would change the ruler's own offsetParent away from
+        its canvas root, silently breaking the existing Phase 4B-UAT2
+        cursor-overlay-height fix -- they must remain separate sticky
+        siblings within wwCreateTimeGroupCanvasDom()'s own template,
+        digital region first, then slider slot, then ruler."""
         source = _source()
-        digital_idx = source.index('<div id="wwDigitalRegion" hidden>')
-        sliders_idx = source.index('<div id="wwTimeGroupSliders">')
-        ruler_idx = source.index('id="wwStickyRuler"')
-        assert digital_idx < sliders_idx < ruler_idx
+        fn_idx = source.index("function wwCreateTimeGroupCanvasDom(groupId)")
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        digital_idx = fn_body.index('ww-tg-digital-region')
+        slider_idx = fn_body.index('ww-tg-slider-slot')
+        ruler_idx = fn_body.index('ww-tg-ruler"')
+        assert digital_idx < slider_idx < ruler_idx
         # No single element wraps both -- confirmed structurally by their
         # both being direct, sequential children (not nested) inside the
-        # same parent, which the DOM order above already establishes.
+        # same canvas root, which the DOM order above already
+        # establishes.
 
     def test_sticky_offset_is_computed_from_the_rulers_live_height_never_hardcoded(self):
+        """Time Group Canvas: renamed wwSyncTimeGroupCanvasStickyOffset(groupId),
+        scoped to one canvas's own slider slot and ruler."""
         source = _source()
-        fn_idx = source.index("function wwSyncTimeGroupSlidersStickyOffset()")
+        fn_idx = source.index("function wwSyncTimeGroupCanvasStickyOffset(groupId)")
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
         assert 'rulerWrapEl.getBoundingClientRect().height + "px"' in fn_body
-        assert "slidersEl.style.bottom" in fn_body
+        assert "slotEl.style.bottom" in fn_body
 
     def test_offset_sync_is_called_from_the_rulers_own_state_function(self):
+        """Time Group Canvas: renamed wwSyncTimeGroupRuler(groupId), the
+        per-group generalization of the old single wwSyncStickyRuler()."""
         source = _source()
-        fn_idx = source.index("function wwSyncStickyRuler()")
+        fn_idx = source.index("function wwSyncTimeGroupRuler(groupId)")
         fn_body = source[fn_idx : source.index("wrapEl.hidden = !hasChannels;", fn_idx) + 200]
-        assert "wwSyncTimeGroupSlidersStickyOffset();" in fn_body
+        assert "wwSyncTimeGroupCanvasStickyOffset(groupId);" in fn_body
 
-    def test_offset_sync_also_runs_defensively_inside_the_sliders_own_render(self):
-        """Covers the one call path that can reach wwRenderTimeGroupSliders()
-        without wwSyncStickyRuler() having just run in the same
-        invocation -- a non-primary group's own viewport change inside
-        wwApplyAndFetchGroupViewport()."""
+    def test_slider_sync_always_co_occurs_with_a_fresh_ruler_sync(self):
+        """Time Group Canvas: unlike the old single-container design
+        (which needed a defensive duplicate offset-sync call inside the
+        slider's own render, since the ruler and slider could resync on
+        different schedules), every call site that syncs a canvas's
+        slider (wwApplyAndFetchGroupViewport() and
+        wwSyncTimeGroupCanvases()) ALSO syncs that same canvas's own
+        ruler in the same pass -- so the sticky offset is always freshly
+        recomputed alongside the slider, with no separate defensive
+        call needed inside wwSyncTimeGroupSliderForCanvas() itself."""
         source = _source()
-        fn_idx = source.index("function wwRenderTimeGroupSliders()")
-        fn_body = source[fn_idx : source.index("const activeIds", fn_idx)]
-        assert "wwSyncTimeGroupSlidersStickyOffset();" in fn_body
+
+        apply_idx = source.index("async function wwApplyAndFetchGroupViewport(groupId, startTime, endTime)")
+        apply_body = source[apply_idx : source.index("async function wwApplyAndFetchViewport(startTime, endTime)", apply_idx)]
+        assert "wwSyncTimeGroupRuler(groupId);" in apply_body
+        assert "wwSyncTimeGroupSliderForCanvas(groupId, canvasEl);" in apply_body
+
+        sync_idx = source.index("function wwSyncTimeGroupCanvases()")
+        sync_body = source[sync_idx : source.index("\n        }\n", sync_idx)]
+        assert "wwSyncTimeGroupSliderForCanvas(groupId, canvasEl);" in sync_body
+        assert "wwSyncTimeGroupRuler(groupId);" in sync_body
 
     def test_owner_css_adjustment_for_slider_row_padding_is_preserved(self):
         """Owner-set exact values -- must never be reverted/reformatted
