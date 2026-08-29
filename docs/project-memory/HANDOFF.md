@@ -8,6 +8,89 @@ Last updated: **2026-08-29**
 
 ## What was most recently done
 
+**Phase 24 — TG-E: per-Time-Group t0 + Detect Event hidden/group-aware.**
+On top of Phase 23 (TG-D2) below — see
+[DECISIONS.md — DEC-062](DECISIONS.md#dec-062--tg-e-t0-becomes-genuinely-time-group-scoped-throughout-the-frontend-mirroring-the-backends-already-group-keyed-truth-and-detect-event-becomes-internally-time-group-aware-while-its-normal-frontend-entry-point-is-hidden-by-owner-decision)
+for the full record; summarized here for continuity.
+
+**Audit finding that shaped the whole slice**: the backend has been
+fully Time-Group-scoped for t0 since Slice 2
+(`SynchronizationRegistry._t0`, keyed by `(workspace_id,
+time_group_key)`) — only the FRONTEND was still narrowed to a single
+scalar (`ww.t0WorkspaceTime`, fetched for one resolved "primary"
+source only). This slice is a frontend mirroring exercise: `ww.timeGroupT0State:
+Map<groupId, t0_workspace_time>` replaces the scalar, populated by
+fetching t0 for every known group in parallel. `wwT0ForGroup(groupId)`/
+`wwHasT0(groupId)` are the new resolver pair — both REQUIRE an explicit
+groupId, no hidden fallback to any "primary" group.
+
+The core X-coordinate transform every panel/ruler/digital-chart trace
+funnels through, `wwElapsedToPlotlyX`/`wwPlotlyXToElapsed`, is
+generalized to `(groupId, value)` — this closes a real correctness gap
+TG-D2 left open: previously ANY group's t0 shifted EVERY panel's
+plotted X data globally (the single scalar applied everywhere). Every
+call site already had a `groupId` available in scope, so this was a
+forced, mechanical propagation, not a redesign.
+
+Each Time Group Canvas's own local toolbar gains a `.ww-tg-t0-btn` —
+the same dual-purpose "Set Cursor A as t=0"/"Clear t=0" toggle UX the
+former global `#wwSetT0Btn` established, preserved verbatim. The old
+global button and `#statusBarT0` readout are removed outright (same
+"ambiguous global surface" reasoning DEC-061 already applied to Cursor
+A/B). t0 state lifecycle: pruned/cleared on topology change (merge/
+split/last-channel removal), same policy as TG-D2's cursor state —
+but, unlike cursor state, NOT cleared by a plain "Clear workspace"
+(only by "Start New Workspace") — deliberately kept the ORIGINAL Slice-2
+policy since t0 is a plain number with no overlay DOM to invalidate,
+unlike cursor state's own DOM-driven reasoning.
+
+**Detect Event** (owner decision, task section 17): the capability
+stays fully implemented and internally Time-Group-aware —
+`wwOpenDetectEventModal(groupId)` now requires an explicit groupId and
+filters the source dropdown to ONLY that group's own member sources;
+"Current visible range" now converts the LAUNCHING GROUP's own
+viewport, never the global/primary one; accepting a candidate derives
+the candidate's own owning group from its sourceId and writes ONLY
+that group's t0. But its normal frontend entry point is HIDDEN by
+explicit owner decision: one named constant,
+`WW_DETECT_EVENT_UI_ENABLED = false`, drives `#wwDetectEventBtn.hidden`
+at init time; the click listener stays wired regardless, so
+re-enabling later is a one-line flip.
+
+**Bug found and fixed live during this task's own UAT**: setting
+`.hidden = true` on the Detect Event button had ZERO visual effect —
+`.ww-icon-btn { display: inline-flex; }`'s own AUTHOR-origin CSS rule
+silently overrides the UA stylesheet's `[hidden] { display: none }`
+default (same origin-precedence mechanism `#bottomStatusBar
+.shell-status-item[hidden]` already documents elsewhere in this
+codebase). Fixed with an explicit `.ww-icon-btn[hidden] { display:
+none; }` override.
+
+Verified by the full backend suite (1688 passed, 0 failed — up from
+1647 at TG-D2's own end state; 39 pre-existing frontend tests updated;
+63 new tests across `test_frontend_time_group_t0.py` (Cases A-M) and
+`test_frontend_detect_event_group_scoped.py` (Cases N-W)) plus a
+live-browser Playwright UAT pass covering the task's own full 20-step
+scenario: Group 1 set/clear t0 with confirmed event-relative shift and
+restore; a second, genuinely separate Time Group given its own
+different t0; independence confirmed in both directions; a layout-mode
+round trip preserved Group 2's own t0; Detect Event button confirmed
+genuinely hidden (post-CSS-fix); the modal invoked programmatically for
+Group 2 with its source list confirmed to resolve exclusively to Group
+2; a manually-constructed candidate accepted for Group 2 confirmed to
+set ONLY Group 2's own t0, Group 1 untouched. Zero console/page errors
+throughout.
+
+**Files changed**: `frontend/index.html` only (no backend/schema/API
+changes — the backend was already fully group-scoped) + 2 new test
+files + 8 pre-existing test files updated.
+
+**Next step**: nothing is pre-authorized. Per this session's own "do
+not commit/push without being asked" discipline, these changes stayed
+uncommitted at the end of this task.
+
+## What was done in the prior session (Phase 23 — TG-D2)
+
 **Phase 23 — TG-D2: Cursor A/B + A-B measurements move into each Time
 Group Canvas.** On top of Phase 22 (TG-D1) below — see
 [DECISIONS.md — DEC-061](DECISIONS.md#dec-061--tg-d2-cursor-ab-and-a-b-measurementinformation-state-migrate-into-each-time-group-canvas-replacing-the-single-workspace-wide-cursor-pair-with-one-independent-pair-per-time-group)

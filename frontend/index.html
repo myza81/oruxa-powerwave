@@ -602,9 +602,11 @@
         /* Explicit -- author CSS's `display: flex` above beats the UA
            stylesheet's default `[hidden] { display: none }` rule by
            ORIGIN alone (author always wins over UA, regardless of
-           specificity or source order), so without this override,
-           `#statusBarT0`'s own `.hidden = true` (wwSyncT0Controls())
-           would have no visible effect at all. */
+           specificity or source order). No `.shell-status-item` in this
+           bar currently ships `hidden` (the former per-workspace t0
+           readout that needed this is gone, TG-E), but kept as a
+           general-purpose override for any future conditionally-hidden
+           item here, rather than re-adding it if one is ever needed. */
         #bottomStatusBar .shell-status-item[hidden] { display: none; }
         #bottomStatusBar .shell-status-label { text-transform: uppercase; letter-spacing: 0.03em; }
         #bottomStatusBar .shell-status-value { color: var(--text); font-weight: 600; }
@@ -2191,6 +2193,17 @@
             background: var(--panel);
             box-shadow: none;
         }
+        /* TG-E: explicit -- author CSS's `display: inline-flex` above
+           beats the UA stylesheet's default `[hidden] { display: none }`
+           rule by ORIGIN alone (author always wins over UA, regardless
+           of specificity or source order -- same mechanism
+           `#bottomStatusBar .shell-status-item[hidden]` already
+           documents), so without this override, setting
+           `#wwDetectEventBtn.hidden = true`
+           (WW_DETECT_EVENT_UI_ENABLED) would have no visible effect at
+           all despite the `hidden` attribute genuinely being present in
+           the DOM -- discovered live during this task's own UAT. */
+        .ww-icon-btn[hidden] { display: none; }
 
         /* Phase 5C (DEC-049): the Unit Mode trigger carries a short text
            label ("ENG"/"PU") instead of an icon -- everything else
@@ -2311,7 +2324,7 @@
             border: none;
             border-radius: calc(var(--radius) - 2px);
             padding: 6px 8px;
-            font-size: 0.8rem;
+            font-size: 0.7rem;
             font-weight: 500;
             color: var(--text);
             cursor: pointer;
@@ -3005,7 +3018,7 @@
         .ww-tg-toolbar .ww-tg-autoscale-btn,
         .ww-tg-toolbar .ww-split-btn-main {
             font-size: 0.7rem;
-            padding: 3px 10px;
+            padding: 7px 10px;
         }
         /* TG-D2 (UX refinement): the per-group A-B measurement readout --
            compact, now the RIGHT-hand cluster of `.ww-tg-toolbar-row`
@@ -3027,8 +3040,8 @@
         .ww-tg-cursor-readout {
             display: flex;
             align-items: baseline;
-            gap: 14px;
-            font-size: 0.7rem;
+            gap: 7px;
+            font-size: 0.65rem;
             color: var(--text-dim);
             margin-left: auto;
         }
@@ -3683,28 +3696,14 @@
                              wwCreateTimeGroupCanvasDom()'s own HTML) -- no
                              longer duplicated here. -->
 
-                        <!-- Slice 2 of waveform time synchronization
-                             ("explicit common event t=0"): reuses Cursor
-                             A (task section 6's own smallest-
-                             deterministic-rule preference) as the
-                             event-origin picker -- one button, dual
-                             purpose (same pattern as #wwCursorModeBtn's
-                             own toggle immediately above): sets t=0 from
-                             Cursor A's current position when none is
-                             defined yet, clears it when one already is.
-                             Disabled (never silently uses an arbitrary
-                             time) whenever there is nothing valid to act
-                             on -- see wwSyncT0Controls(). The current t=0
-                             value itself, once set, is surfaced via this
-                             button's own title/aria-label AND the
-                             #statusBarT0 bottom-status-bar item (see
-                             #bottomStatusBar below) -- no separate
-                             always-visible toolbar label, keeping this a
-                             single compact control per the task's own
-                             "do not add excessive controls" instruction. -->
-                        <button class="ww-icon-btn" type="button" id="wwSetT0Btn" aria-pressed="false" title="Set Cursor A as t=0" aria-label="Set Cursor A as t=0" disabled>
-                            <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="9" y1="2.5" x2="9" y2="15.5" stroke-width="1.3" stroke-dasharray="2.2,1.6"/><text x="9" y="14.5" font-size="5.5" text-anchor="middle" stroke="none" fill="currentColor" font-weight="700">0</text></svg></span>
-                        </button>
+                        <!-- TG-E: "Set Cursor A as t=0"/"Clear t=0" moved
+                             into each Time Group Canvas's own local
+                             toolbar (`.ww-tg-t0-btn`, see
+                             wwCreateTimeGroupCanvasDom()'s own HTML) -- no
+                             longer duplicated here; t0 is now genuinely
+                             per-Time-Group, so one shared global button
+                             (and the #statusBarT0 readout that went with
+                             it) would be ambiguous by construction. -->
 
                         <!-- Slice 3 of waveform time synchronization
                              ("assisted event t=0 detection"): opens the
@@ -3714,7 +3713,14 @@
                              workflow; t0 is only ever set from inside
                              that modal's own explicit "Set as t=0"
                              action (task section 1's own governing
-                             principle: "never silently set t=0"). -->
+                             principle: "never silently set t=0"). TG-E
+                             (owner decision): this element is HIDDEN by
+                             default (`.hidden` set at init time from
+                             WW_DETECT_EVENT_UI_ENABLED, see that
+                             constant's own docstring) -- the capability
+                             stays fully implemented and internally
+                             Time-Group-aware underneath, only its normal
+                             product exposure is disabled. -->
                         <button class="ww-icon-btn" type="button" id="wwDetectEventBtn" title="Detect Event Origin" aria-label="Detect Event Origin">
                             <span class="ww-icon"><svg viewBox="0 0 18 18"><path d="M2.5 10.5 6.5 10.5 8 6.5 10 13 11.5 10.5 15.5 10.5" fill="none" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg></span>
                         </button>
@@ -4201,25 +4207,21 @@
                  this is a presentation removal only. -->
             <div id="bottomStatusBar">
                 <span class="shell-status-item"><span class="shell-status-label">Workspace</span><span class="shell-status-value" id="statusBarWorkspaceId">&mdash;</span></span>
-                <!-- Slice 2 of waveform time synchronization: the
-                     workspace's own event origin, once selected -- see
-                     #wwSetT0Btn above and wwSyncT0Controls(). Hidden
-                     entirely (never a "—" placeholder) while no t0 is
-                     defined, matching the toolbar button's own "nothing
-                     to show" state; shown/hidden and its value kept in
-                     sync from that SAME one function, never a second
-                     update path. -->
-                <!-- TG-D2: the former A/B/Δt measurement readout here is
+                <!-- TG-D2: the former A/B/Δt measurement readout here was
                      removed -- one workspace-wide readout became
                      ambiguous the moment more than one Time Group could
                      exist (whose A/B would it show?). Each Time Group
                      Canvas now carries its own `.ww-tg-cursor-readout`
                      instead (see wwCreateTimeGroupCanvasDom()'s own
-                     HTML) -- no stale/ambiguous global value remains. The
-                     spacer still pushes t=0 (the one remaining
-                     workspace-global readout here) to the right edge. -->
+                     HTML). TG-E: the former #statusBarT0 event-origin
+                     readout is removed for the exact same reason -- t0 is
+                     now genuinely per-Time-Group (see `.ww-tg-t0-btn`'s
+                     own title/aria-label for that group's own current
+                     value instead); no stale/ambiguous global value
+                     remains either way. The spacer is kept -- still a
+                     useful, harmless push-everything-left convention even
+                     with nothing left of it to push against today. -->
                 <div class="ww-status-spacer"></div>
-                <span class="shell-status-item" id="statusBarT0" hidden title="Event origin (t=0) in workspace time"><span class="shell-status-label">t=0</span><span class="shell-status-value" id="statusBarT0Value">&mdash;</span></span>
             </div>
         </div>
     </div>
@@ -4426,10 +4428,12 @@
          more; #wwDetectEventAcceptBtn's own label/behavior is switched
          in place by wwSyncDetectEventAcceptButtonState() (called on
          open, after every Analyse, and on source/channel/sensitivity
-         change) purely from the CURRENT wwHasT0() state -- "if t0
-         exists, the only valid primary action is Replace t=0; if it
-         doesn't, the only valid primary action is Set as t=0," never
-         a two-click reveal. The "already defined" explanatory message
+         change) purely from the CURRENTLY-relevant group's own
+         wwHasT0(groupId) state (TG-E: never a shared/primary-group
+         default) -- "if t0 exists for that group, the only valid
+         primary action is Replace t=0; if it doesn't, the only valid
+         primary action is Set as t=0," never a two-click reveal. The
+         "already defined" explanatory message
          becomes inline context text (#wwDetectEventReplaceHint) next
          to the result, not a second footer. -->
     <div class="confirm-overlay" id="wwDetectEventOverlay" hidden>
@@ -7606,25 +7610,36 @@
             // if the workspace has no sources yet.
             referenceSourceIds: new Set(),
             // Slice 2 of waveform time synchronization ("explicit common
-            // event t=0"), now Time-Group-scoped: the CURRENTLY-FOCUSED
-            // time group's own manually-selected event origin, in
-            // WORKSPACE time seconds (backend-authoritative -- see
-            // GET/PUT/DELETE .../synchronization/t0, all now resolved
-            // via wwPrimaryTimeGroupSourceId()). `null` when no event
-            // origin has been selected yet for that group (or it was
-            // cleared) -- never a fabricated `0` default, since a
-            // workspace-time instant of exactly `0` is itself a
-            // legitimate, deliberately-chosen origin (see
-            // wwHasT0()/wwT0WorkspaceTime() below, the ONE pair of
-            // accessors every other t0-aware function reads through).
-            // For the common single-time-group workspace (task section
-            // 25) this is exactly Slice 2's original behaviour,
-            // unchanged. Fetched alongside ww.alignmentOffsets by the
-            // same wwFetchSynchronizationStateForWorkspace() call;
-            // cleared only by Start New Workspace -- NOT by "Reset All"
-            // alignment offsets (task section 14: the two are
-            // independent).
-            t0WorkspaceTime: null,
+            // event t=0"), TG-E: now genuinely Time-Group-scoped, one
+            // independent event origin PER Time Group -- group_id ->
+            // t0_workspace_time (seconds, WORKSPACE time). Mirrors the
+            // backend's own already-group-scoped truth exactly (see
+            // app.services.synchronization_registry's own `_t0` store,
+            // keyed by `(workspace_id, time_group_key)` -- the frontend
+            // previously fetched/cached only the PRIMARY group's own
+            // value into one flat scalar; this Map removes that
+            // narrowing entirely). ABSENT key (never a stored `null`)
+            // means "no event origin selected yet for that group" --
+            // never a fabricated `0` default, since a workspace-time
+            // instant of exactly `0` is itself a legitimate,
+            // deliberately-chosen origin (see wwT0ForGroup()/wwHasT0()
+            // below, the ONE pair of accessors every other t0-aware
+            // function reads through, both requiring an explicit
+            // groupId -- no hidden fallback to any one "primary"
+            // group). Fetched alongside ww.timeGroups by the same
+            // wwFetchSynchronizationStateForWorkspace() call (one t0
+            // fetch per known group). Topology-driven lifecycle, same
+            // policy as ww.timeGroupCursorState (TG-D2): pruned/cleared
+            // in wwSyncTimeGroupCanvases() when a group's own id
+            // disappears (merge/split/last-channel removal -- "ambiguous
+            // Time-Group analysis state resets when Time Group topology
+            // changes"). Deliberately NOT cleared by plain "Clear
+            // workspace" (only by "Start New Workspace") -- same
+            // established policy the old single-scalar version already
+            // had: a still-loaded source's own group id is unchanged by
+            // a plain clear, so its own t0 remains meaningful, exactly
+            // like ww.alignmentOffsets immediately above.
+            timeGroupT0State: new Map(),
             // Slice 3 of waveform time synchronization ("assisted event
             // t=0 detection"): the CURRENT, not-yet-accepted suggestion
             // from POST .../synchronization/detect-event, if any --
@@ -7798,45 +7813,51 @@
 
         // ==================================================================
         // Slice 2 of waveform time synchronization ("explicit common
-        // event t=0")
+        // event t=0"), TG-E: genuinely Time-Group-scoped -- one coherent
+        // time domain, one event origin, never a single workspace-wide
+        // instant silently applied to every group.
         //
-        // Extends Slice 1's mapping with one more, deliberately workspace-
-        // WIDE (never per-source) layer:
-        //
-        //     event_time = workspace_time - t0_workspace_time
-        //     workspace_time = event_time + t0_workspace_time
+        //     event_time = workspace_time - group_t0
+        //     workspace_time = event_time + group_t0
         //
         // Composed with Slice 1's own source<->workspace pair (never a
         // third, independently-coded formula):
         //
-        //     event_time  = source_time + alignment_offset_s - t0_workspace_time
-        //     source_time = event_time + t0_workspace_time - alignment_offset_s
+        //     event_time  = source_time + alignment_offset_s - group_t0
+        //     source_time = event_time + group_t0 - alignment_offset_s
         //
-        // wwHasT0()/wwT0WorkspaceTime() are the ONE pair of accessors
-        // every t0-aware function below reads through -- when no t0 is
+        // wwHasT0(groupId)/wwT0ForGroup(groupId) are the ONE pair of
+        // accessors every t0-aware function below reads through -- both
+        // REQUIRE an explicit groupId (task's own "no remaining
+        // assumption that one workspace has only one t0" -- and TG-D2's
+        // own established "avoid hidden fallback to primary group"
+        // convention, applied here too). When the given group has no t0
         // selected, wwWorkspaceTimeToEventTime()/wwEventTimeToWorkspaceTime()
-        // are exact no-op passthroughs (event_time === workspace_time),
-        // which is exactly the task's own "when no t0 is defined, preserve
-        // current workspace elapsed-time behaviour" requirement --
-        // satisfied automatically by these two functions' own math, never
-        // a separate "if t0 exists" branch scattered at each call site.
+        // are exact no-op passthroughs (event_time === workspace_time)
+        // for THAT group, which is exactly the original task's own "when
+        // no t0 is defined, preserve current workspace elapsed-time
+        // behaviour" requirement -- satisfied automatically by these two
+        // functions' own math, never a separate "if t0 exists" branch
+        // scattered at each call site.
         // ==================================================================
 
-        function wwT0WorkspaceTime() {
-            return typeof ww.t0WorkspaceTime === "number" && Number.isFinite(ww.t0WorkspaceTime) ? ww.t0WorkspaceTime : null;
+        function wwT0ForGroup(groupId) {
+            if (groupId === null) return null;
+            const value = ww.timeGroupT0State.get(groupId);
+            return typeof value === "number" && Number.isFinite(value) ? value : null;
         }
 
-        function wwHasT0() {
-            return wwT0WorkspaceTime() !== null;
+        function wwHasT0(groupId) {
+            return wwT0ForGroup(groupId) !== null;
         }
 
-        function wwWorkspaceTimeToEventTime(workspaceTime) {
-            const t0 = wwT0WorkspaceTime();
+        function wwWorkspaceTimeToEventTime(workspaceTime, groupId) {
+            const t0 = wwT0ForGroup(groupId);
             return t0 === null ? workspaceTime : workspaceTime - t0;
         }
 
-        function wwEventTimeToWorkspaceTime(eventTime) {
-            const t0 = wwT0WorkspaceTime();
+        function wwEventTimeToWorkspaceTime(eventTime, groupId) {
+            const t0 = wwT0ForGroup(groupId);
             return t0 === null ? eventTime : eventTime + t0;
         }
 
@@ -7861,20 +7882,23 @@
             return null;
         }
 
-        // GET .../synchronization/sources, then GET .../synchronization/t0
-        // for the resolved PRIMARY source (task section 24: t0 is
-        // Time-Group-scoped, so it can no longer be fetched independently
-        // of knowing which group -- these two calls are therefore
-        // sequential, not parallel, unlike Slice 1/2's own original
-        // shape) -- the backend is the authoritative owner of both
-        // (Slice 1 task section 2, Slice 2 task section 16); this
-        // refreshes the local read caches above (ww.alignmentOffsets/
+        // GET .../synchronization/sources, then GET .../synchronization/time-groups,
+        // then GET .../synchronization/t0 ONCE PER KNOWN GROUP (TG-E: t0
+        // is genuinely Time-Group-scoped now -- mirroring the backend's
+        // own already-group-keyed truth in full, not just for one
+        // resolved "primary" source) -- the backend is the authoritative
+        // owner of all three (Slice 1 task section 2, Slice 2 task
+        // section 16, TG-E's own governing principle); this refreshes
+        // the local read caches above (ww.alignmentOffsets/
         // ww.manualAlignmentOffsets/ww.timeGroupBySourceId/ww.timeGroups/
-        // ww.referenceSourceIds/ww.t0WorkspaceTime) used by every
+        // ww.referenceSourceIds/ww.timeGroupT0State) used by every
         // conversion call site. Resilient like every other list-fetch in
         // this app (fetchSourcesList()/selectSource()): a failed request
         // leaves whatever was already cached in place rather than
-        // clearing it out from under an in-progress render.
+        // clearing it out from under an in-progress render. The per-group
+        // t0 fetches run in parallel (Promise.all) -- each is independent
+        // once the group list is known, unlike the old single sequential
+        // primary-source-only fetch.
         async function wwFetchSynchronizationStateForWorkspace() {
             const workspaceId = currentWorkspaceId();
 
@@ -7923,22 +7947,41 @@
                 }
             }
 
-            const primarySourceId = wwPrimaryTimeGroupSourceId();
-            if (primarySourceId === null) {
-                ww.t0WorkspaceTime = null;
-                return;
-            }
-            let t0Body = null;
-            try {
-                const response = await fetch(
-                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/synchronization/t0" +
-                    "?source_id=" + encodeURIComponent(primarySourceId)
+            // TG-E: one t0 fetch per known group, keyed by that group's
+            // own first member source_id (any member resolves the SAME
+            // group on the backend -- see
+            // app.services.synchronization_service._resolve_time_group_key()'s
+            // own docstring) -- never one single "primary" resolution.
+            // Only replaces ww.timeGroupT0State wholesale if the group
+            // list itself resolved (groupsBody !== null); a failed
+            // time-groups fetch already left the old ww.timeGroups cache
+            // in place above, so skipping the t0 refresh here too keeps
+            // both caches mutually consistent rather than silently
+            // clearing t0 state for groups this call could no longer
+            // even see.
+            if (groupsBody !== null) {
+                const entries = await Promise.all(
+                    Array.from(ww.timeGroups.entries()).map(async ([groupId, group]) => {
+                        const representativeSourceId = group.sourceIds && group.sourceIds[0];
+                        if (!representativeSourceId) return [groupId, null];
+                        try {
+                            const response = await fetch(
+                                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(workspaceId) + "/synchronization/t0" +
+                                "?source_id=" + encodeURIComponent(representativeSourceId)
+                            );
+                            if (!response.ok) return [groupId, null];
+                            const body = await response.json();
+                            return [groupId, body.t0_workspace_time];
+                        } catch (error) {
+                            return [groupId, null];
+                        }
+                    })
                 );
-                if (response.ok) t0Body = await response.json();
-            } catch (error) {
-                // Leave the existing cache as-is.
+                ww.timeGroupT0State.clear();
+                for (const [groupId, t0] of entries) {
+                    if (typeof t0 === "number" && Number.isFinite(t0)) ww.timeGroupT0State.set(groupId, t0);
+                }
             }
-            if (t0Body !== null) ww.t0WorkspaceTime = t0Body.t0_workspace_time;
             wwRefreshTimeGroupPanelLabels();
         }
 
@@ -8058,13 +8101,17 @@
             return wwTimeGroupIdForDisplaySourceId(panel.channels[0].sourceId);
         }
 
-        // The Time Group every existing single-viewport/cursor/ruler/
-        // digital-chart/Detect-Event/Absolute-origin code path stays
-        // scoped to -- the first currently-DISPLAYED channel's own group
-        // (ww.displayed, insertion order), falling back to the primary
-        // SOURCE's own group (wwPrimaryTimeGroupSourceId(), already
-        // established) when nothing is displayed yet. `null` only for a
-        // genuinely empty workspace.
+        // The Time Group every remaining genuinely primary-scoped code
+        // path stays scoped to -- annotations (explicit non-goal), the
+        // shared toolbar's t0 fallback resolutions, and the (hidden)
+        // global Detect Event button's own launching-group resolution
+        // (its own internal workflow is otherwise fully group-aware, see
+        // wwOpenDetectEventModal()) -- the first currently-DISPLAYED
+        // channel's own group (ww.displayed, insertion order), falling
+        // back to the primary SOURCE's own group
+        // (wwPrimaryTimeGroupSourceId(), already established) when
+        // nothing is displayed yet. `null` only for a genuinely empty
+        // workspace.
         //
         // Time Group Canvas (Slice TG-B+C): deliberately reads
         // ww.displayed, NOT ww.panels, unlike the very first cut of this
@@ -8267,6 +8314,16 @@
                     '<button type="button" class="secondary ww-tg-autoscale-btn" title="Autoscale Y for this Time Group">Autoscale Y</button>' +
                     '<button type="button" class="ww-icon-btn ww-tg-cursor-mode-btn" aria-pressed="false" title="A/B Time Cursors for this Time Group" aria-label="A/B Time Cursors for this Time Group">' +
                         '<span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="6" y1="2.5" x2="6" y2="15.5" stroke-width="1.3" stroke="var(--accent)"/><line x1="12" y1="2.5" x2="12" y2="15.5" stroke-width="1.3" stroke="var(--error)"/><text x="6" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="var(--accent)" font-weight="700">A</text><text x="12" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="var(--error)" font-weight="700">B</text></svg></span>' +
+                    '</button>' +
+                    // TG-E: this Time Group's own "Set Cursor A as t=0"/
+                    // "Clear t=0" toggle -- same dual-purpose one-button
+                    // pattern the cursor-mode button immediately above
+                    // established, reusing the former global #wwSetT0Btn's
+                    // own icon verbatim. Disabled by default (matches the
+                    // old global button's own initial state) until
+                    // wwSyncT0ControlsForGroup() first runs for this canvas.
+                    '<button type="button" class="ww-icon-btn ww-tg-t0-btn" aria-pressed="false" title="Set Cursor A as t=0" aria-label="Set Cursor A as t=0" disabled>' +
+                        '<span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="9" y1="2.5" x2="9" y2="15.5" stroke-width="1.3" stroke-dasharray="2.2,1.6"/><text x="9" y="14.5" font-size="5.5" text-anchor="middle" stroke="none" fill="currentColor" font-weight="700">0</text></svg></span>' +
                     '</button>' +
                 '</div>' +
                 '<div class="ww-tg-cursor-readout" hidden>' +
@@ -8764,19 +8821,25 @@
         // value Plotly's own x-axis actually plots. Absolute/Elapsed mode
         // remained pure presentation (identity here) through Slice 1 --
         // Slice 2 is the first time this function is a REAL transform:
-        // once a workspace event origin (t0) exists, every Plotly-facing
-        // X value becomes event-relative
+        // once a Time Group's own event origin (t0) exists, every
+        // Plotly-facing X value for THAT group becomes event-relative
         // (wwWorkspaceTimeToEventTime()'s own "no-op when no t0"
         // passthrough is what keeps this function's Slice-1 identity
-        // behaviour exactly intact whenever t0 is unset). This is
-        // DELIBERATELY the ONE place that mapping is applied -- every
-        // trace/axis-range/tick/ruler call site already funnels through
-        // this single function (see wwBuildTrace()/wwTimeAxisRelayout()/
-        // wwSyncStickyRuler()/wwRebuildDigitalChart(), none of which
-        // needed their own t0-awareness added directly), so t0 support
-        // reaches every one of them for free, never scattered arithmetic.
-        function wwElapsedToPlotlyX(elapsedSeconds) {
-            return wwWorkspaceTimeToEventTime(elapsedSeconds);
+        // behaviour exactly intact whenever t0 is unset for the given
+        // group). TG-E: REQUIRES an explicit groupId -- no hidden
+        // fallback to any one "primary" group (same convention
+        // wwCursorTimeToPixelX() already established in TG-D2) -- a
+        // panel/ruler/digital-chart's own X mapping must use ITS OWN
+        // group's t0, never an unrelated one. This is DELIBERATELY the
+        // ONE place that mapping is applied -- every trace/axis-range/
+        // tick/ruler call site already funnels through this single
+        // function (see wwBuildTrace()/wwTimeAxisRelayout()/
+        // wwSyncTimeGroupRuler()/wwRebuildDigitalChart(), none of which
+        // needed their own t0-awareness added beyond passing their own
+        // groupId through), so t0 support reaches every one of them for
+        // free, never scattered arithmetic.
+        function wwElapsedToPlotlyX(groupId, elapsedSeconds) {
+            return wwWorkspaceTimeToEventTime(elapsedSeconds, groupId);
         }
 
         // The inverse -- used wherever a Plotly-reported X value (a
@@ -8785,9 +8848,10 @@
         // themselves always stay in workspace time (never event time) --
         // see wwWirePanelRelayout()'s own call site, the one place a
         // user-driven zoom/pan re-enters the app's internal coordinate
-        // system.
-        function wwPlotlyXToElapsed(x) {
-            return wwEventTimeToWorkspaceTime(Number(x));
+        // system. Same explicit-groupId requirement as
+        // wwElapsedToPlotlyX() above.
+        function wwPlotlyXToElapsed(groupId, x) {
+            return wwEventTimeToWorkspaceTime(Number(x), groupId);
         }
 
         function wwNiceTickStep(spanSeconds, targetTickCount) {
@@ -8843,7 +8907,7 @@
         // free once t0 has shifted the underlying axis values -- no new
         // formatting logic needed there, only this one added guard.
         function wwTimeAxisTickFormat(startTime, endTime, groupId) {
-            if (ww.timeMode === "absolute" && !wwHasT0()) {
+            if (ww.timeMode === "absolute" && !wwHasT0(groupId)) {
                 const start = Number.isFinite(startTime) ? startTime : (ww.viewport && ww.viewport.start);
                 const end = Number.isFinite(endTime) ? endTime : (ww.viewport && ww.viewport.end);
                 if (Number.isFinite(start) && Number.isFinite(end)) return wwAbsoluteTickLabelsForRange(start, end, groupId);
@@ -8866,7 +8930,7 @@
             const tickFormat = wwTimeAxisTickFormat(startTime, endTime, groupId);
             return {
                 "xaxis.type": "linear",
-                "xaxis.range": [wwElapsedToPlotlyX(startTime), wwElapsedToPlotlyX(endTime)],
+                "xaxis.range": [wwElapsedToPlotlyX(groupId, startTime), wwElapsedToPlotlyX(groupId, endTime)],
                 "xaxis.tickmode": tickFormat.tickmode,
                 "xaxis.tickvals": tickFormat.tickvals,
                 "xaxis.ticktext": tickFormat.ticktext,
@@ -8880,13 +8944,16 @@
         // empty -- Absolute tick labels already show clock-time context.
         // Elapsed mode keeps the existing "Time (s)" title, unchanged.
         //
-        // Slice 2: once t0 exists, the title says so explicitly ("Event
-        // Time (s)") regardless of ww.timeMode -- the SAME "event-
-        // relative takes precedence, never a silent dual interpretation"
-        // principle as wwTimeAxisTickFormat() above, applied to the
-        // title this time.
-        function wwTimeAxisTitle() {
-            if (wwHasT0()) return "Event Time (s)";
+        // Slice 2: once THIS group's own t0 exists, the title says so
+        // explicitly ("Event Time (s)") regardless of ww.timeMode -- the
+        // SAME "event-relative takes precedence, never a silent dual
+        // interpretation" principle as wwTimeAxisTickFormat() above,
+        // applied to the title this time. TG-E: requires an explicit
+        // groupId -- an unrelated group's own t0 must never make THIS
+        // panel/ruler's title say "Event Time" when its own group has no
+        // t0 selected.
+        function wwTimeAxisTitle(groupId) {
+            if (wwHasT0(groupId)) return "Event Time (s)";
             return ww.timeMode === "absolute" ? "" : "Time (s)";
         }
 
@@ -9369,7 +9436,7 @@
                     // active, same transform wwBuildTrace applies at
                     // initial creation.
                     Plotly.restyle(panel.chartEl, {
-                        x: [body.time.map(wwElapsedToPlotlyX)],
+                        x: [body.time.map((t) => wwElapsedToPlotlyX(wwPanelTimeGroupId(panel), t))],
                         y: [body.values],
                         customdata: [wwTraceCustomData(channelEntry)],
                         hovertemplate: [wwTraceHoverTemplate(channelEntry)],
@@ -9591,14 +9658,20 @@
         // to the generic `%{x:.6f}s` hover format is sufficient: `x` is
         // already the correctly-signed event-relative value once t0 is
         // set (via wwElapsedToPlotlyX()), so no new formatting is needed.
+        // TG-E: derives groupId from the channel's own sourceId (never a
+        // parameter the caller must remember to pass) -- a channel's own
+        // hover/customdata must reflect ITS OWN Time Group's t0, never an
+        // unrelated one.
         function wwTraceCustomData(channel) {
-            if (ww.timeMode !== "absolute" || wwHasT0()) return null;
+            const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
+            if (ww.timeMode !== "absolute" || wwHasT0(groupId)) return null;
             const span = wwVisibleSpanSeconds();
             return (channel.time || []).map((t) => wwFormatAbsoluteElapsedTime(t, { spanSeconds: span }));
         }
 
         function wwTraceHoverTemplate(channel) {
-            const xFormat = ww.timeMode === "absolute" && !wwHasT0() ? "%{customdata}" : "%{x:.6f}s";
+            const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
+            const xFormat = ww.timeMode === "absolute" && !wwHasT0(groupId) ? "%{customdata}" : "%{x:.6f}s";
             return xFormat + ": %{y}" + (channel.unit ? " " + channel.unit : "") +
                 "<extra>" + escapeHtml(channel.channelName) + "</extra>";
         }
@@ -9606,9 +9679,11 @@
         // Phase 2C-C3, refined by the sub-ms precision fix: x values are
         // always numeric elapsed seconds. A mode switch is presentation-only:
         // hover/customdata and tick labels update, but trace geometry does
-        // not.
+        // not. TG-E: this channel's own owning Time Group's t0 (never an
+        // unrelated group's) shifts its own trace's X values.
         function wwBuildTrace(channel) {
-            const xValues = (channel.time || []).map(wwElapsedToPlotlyX);
+            const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
+            const xValues = (channel.time || []).map((t) => wwElapsedToPlotlyX(groupId, t));
             return {
                 x: xValues,
                 y: channel.values || [],
@@ -9636,8 +9711,17 @@
 
         function wwBuildLayout(panel, colors) {
             const unit = panel.channels.length ? panel.channels[0].unit : "";
-            const xrange = ww.viewport ? [wwElapsedToPlotlyX(ww.viewport.start), wwElapsedToPlotlyX(ww.viewport.end)] : undefined;
-            const tickFormat = wwTimeAxisTickFormat(ww.viewport && ww.viewport.start, ww.viewport && ww.viewport.end);
+            // TG-E: this panel's own owning Time Group -- required now
+            // that wwElapsedToPlotlyX()/wwTimeAxisTickFormat()/
+            // wwTimeAxisTitle() all need to know WHICH group's own t0
+            // applies. Deliberately NOT switched to
+            // wwTimeGroupVisibleRange(groupId) here -- ww.viewport stays
+            // the range source for this specific function, a separate,
+            // documented, pre-existing limitation (DEC-061) this
+            // groupId-plumbing fix does not touch.
+            const groupId = wwPanelTimeGroupId(panel);
+            const xrange = ww.viewport ? [wwElapsedToPlotlyX(groupId, ww.viewport.start), wwElapsedToPlotlyX(groupId, ww.viewport.end)] : undefined;
+            const tickFormat = wwTimeAxisTickFormat(ww.viewport && ww.viewport.start, ww.viewport && ww.viewport.end, groupId);
             // Crosshair config identical to waveform-prototype.html's own
             // (DEC-022/DEC-023, unchanged): thin, dashed, theme-driven,
             // sample-snapped. Each panel's spikes are independent --
@@ -9650,7 +9734,7 @@
                 margin: { l: WW_PANEL_MARGIN.l, r: WW_PANEL_MARGIN.r, t: 10, b: 34 },
                 xaxis: Object.assign({
                     type: "linear",
-                    title: wwTimeAxisTitle(), gridcolor: colors.grid, zeroline: false, range: xrange,
+                    title: wwTimeAxisTitle(groupId), gridcolor: colors.grid, zeroline: false, range: xrange,
                     showspikes: true, spikemode: "across", spikesnap: "data",
                     spikethickness: 0.35, spikedash: "3px,2px", spikecolor: colors.spike,
                 }, tickFormat),
@@ -9939,7 +10023,8 @@
                     // single-Time-Group workspace this is the SAME group
                     // every panel already belongs to, so behavior is
                     // unchanged.
-                    wwBroadcastGroupViewportDebounced(panel, wwPlotlyXToElapsed(x0), wwPlotlyXToElapsed(x1));
+                    const panelGroupId = wwPanelTimeGroupId(panel);
+                    wwBroadcastGroupViewportDebounced(panel, wwPlotlyXToElapsed(panelGroupId, x0), wwPlotlyXToElapsed(panelGroupId, x1));
                     return;
                 }
                 if (eventData["xaxis.autorange"] === true) {
@@ -11781,6 +11866,11 @@
             const cursorModeBtn = canvasEl.querySelector(".ww-tg-cursor-mode-btn");
             if (cursorModeBtn) cursorModeBtn.addEventListener("click", () => wwToggleMeasurementCursors(groupId));
 
+            // TG-E: this Time Group's own "Set Cursor A as t=0"/"Clear
+            // t=0" toggle.
+            const t0Btn = canvasEl.querySelector(".ww-tg-t0-btn");
+            if (t0Btn) t0Btn.addEventListener("click", () => wwHandleSetOrClearT0ClickForGroup(groupId));
+
             for (const action of ["in", "out"]) {
                 const wrap = canvasEl.querySelector(action === "in" ? ".ww-tg-zoom-in-split" : ".ww-tg-zoom-out-split");
                 if (!wrap) continue;
@@ -11884,10 +11974,18 @@
         // A pure chrome relayout (showticklabels/title only) -- never
         // touches xaxis.range, so it cannot trigger the viewport-broadcast
         // loop-prevention path in wwWirePanelRelayout.
-        function wwApplyTimeAxisChrome() {
+        // TG-E: optional groupId -- omitted (the genuinely workspace-wide
+        // callers, a Time-Mode switch or a layout-mode rebuild) sweeps
+        // EVERY panel exactly as before; passed (a single group's own t0
+        // change) restricts the sweep to that group's own panels only,
+        // mirroring wwVisibleSpanSeconds(groupId)'s own established
+        // optional-param generalization (TG-D2) rather than a second,
+        // duplicated function.
+        function wwApplyTimeAxisChrome(groupId) {
             if (ww.layoutMode !== "separate") return;
             ww.panels.forEach((panel) => {
                 if (!panel.plotlyReady) return;
+                if (groupId !== undefined && wwPanelTimeGroupId(panel) !== groupId) return;
                 Plotly.relayout(panel.chartEl, {
                     "xaxis.showticklabels": false,
                     "xaxis.title": "",
@@ -13282,7 +13380,12 @@
                     // task: Callout's own engineering behavior is not
                     // redesigned).
                     wwExitAnnotationPlacementMode();
-                    const approximateElapsedSeconds = wwPlotlyXToElapsed(point.x);
+                    // TG-E: annotations are an explicit non-goal this
+                    // slice (still primary-group-scoped, matching every
+                    // other Callout/Peak call site) -- EXPLICITLY passed,
+                    // never a hidden default now that this helper
+                    // requires a groupId.
+                    const approximateElapsedSeconds = wwPlotlyXToElapsed(wwPrimaryTimeGroupId(), point.x);
                     wwCreateCalloutFromClick(panel, channel, approximateElapsedSeconds);
                 } else {
                     // Phase 4G-UAT (section 10/17): unlike Callout, Peak
@@ -14406,8 +14509,8 @@
 
                 const entry = row.entry;
                 const entryOffset = wwAlignmentOffsetForSource(entry.sourceId);
-                const startX = wwElapsedToPlotlyX(entry.startTime + entryOffset);
-                const endX = wwElapsedToPlotlyX(entry.endTime + entryOffset);
+                const startX = wwElapsedToPlotlyX(groupId, entry.startTime + entryOffset);
+                const endX = wwElapsedToPlotlyX(groupId, entry.endTime + entryOffset);
 
                 // Thin baseline -- always drawn, full record width. Real
                 // (not "hoverinfo: skip") hovertext so the full channel
@@ -14440,7 +14543,7 @@
                 // x0/x1 IS the real transition time, no interpolation).
                 for (const [hiStart, hiEnd] of wwDigitalHighIntervals(entry)) {
                     shapes.push({
-                        type: "line", xref: "x", x0: wwElapsedToPlotlyX(hiStart), x1: wwElapsedToPlotlyX(hiEnd),
+                        type: "line", xref: "x", x0: wwElapsedToPlotlyX(groupId, hiStart), x1: wwElapsedToPlotlyX(groupId, hiEnd),
                         yref: "y", y0: y, y1: y,
                         line: { color: colors.accent, width: 7 },
                     });
@@ -14473,7 +14576,7 @@
 
             const groupRange = wwTimeGroupVisibleRange(groupId);
             const xrange = groupRange
-                ? [wwElapsedToPlotlyX(groupRange.start), wwElapsedToPlotlyX(groupRange.end)]
+                ? [wwElapsedToPlotlyX(groupId, groupRange.start), wwElapsedToPlotlyX(groupId, groupRange.end)]
                 : undefined;
 
             chartEl.style.height = (totalRows * WW_DIGITAL_LANE_PX + 16) + "px";
@@ -16674,19 +16777,27 @@
                 ww.timeGroups.clear();
                 ww.referenceSourceIds.clear();
                 wwCloseSyncModal();
-                // Slice 2 of waveform time synchronization: "Start New
-                // Workspace" also clears the workspace's own event origin
-                // (t0) -- the backend side is already handled by the SAME
-                // DELETE /api/v1/workspaces/{id} call
-                // (synchronization_registry.clear_t0(), see
-                // app.api.v1.workspaces.delete_workspace's own Slice 2
-                // extension); this just keeps the frontend's own mirror/
-                // UI in sync. Plain "Clear workspace" (the else branch
-                // below) deliberately leaves it alone, same policy as
-                // ww.alignmentOffsets immediately above -- t0 remains
-                // meaningful for the still-selected source's own data.
-                ww.t0WorkspaceTime = null;
-                wwSyncT0Controls();
+                // Slice 2 of waveform time synchronization, TG-E: "Start
+                // New Workspace" also clears EVERY Time Group's own event
+                // origin (t0) -- the backend side is already handled by
+                // the SAME DELETE /api/v1/workspaces/{id} call
+                // (synchronization_registry.clear_all_t0_for_workspace(),
+                // see app.api.v1.workspaces.delete_workspace's own Slice
+                // 2 extension); this just keeps the frontend's own
+                // mirror/UI in sync. Plain "Clear workspace" (the else
+                // branch below) deliberately leaves it alone, same policy
+                // as ww.alignmentOffsets immediately above -- a still-
+                // loaded source's own group id is unchanged by a plain
+                // clear, so its own t0 remains meaningful (unlike TG-D2's
+                // cursor state, whose own overlay DOM -- not just a
+                // number -- is destroyed by either branch; t0 has no such
+                // DOM dependency, so it keeps the OLDER, still-correct
+                // single-scalar-era policy rather than adopting cursor
+                // state's newer, DOM-driven one). No per-group sync call
+                // needed here -- every canvas (and its own local t0
+                // button) is about to be destroyed by the unconditional
+                // innerHTML clear this branch already performs elsewhere.
+                ww.timeGroupT0State.clear();
                 // Slice 3 of waveform time synchronization: a
                 // not-yet-accepted suggestion is workspace-scoped,
                 // ephemeral UI state -- "Start New Workspace" clears it
@@ -16881,13 +16992,13 @@
             const start = range && range.start;
             const end = range && range.end;
             const xrange = range
-                ? [wwElapsedToPlotlyX(start), wwElapsedToPlotlyX(end)]
+                ? [wwElapsedToPlotlyX(groupId, start), wwElapsedToPlotlyX(groupId, end)]
                 : undefined;
             let tickPresentation, title;
             // Slice 2 (task section 21): same event-relative-takes-
             // precedence guard as every other Absolute-mode branch in
             // this file -- see wwTimeAxisTickFormat()'s own comment.
-            if (ww.timeMode === "absolute" && !wwHasT0()) {
+            if (ww.timeMode === "absolute" && !wwHasT0(groupId)) {
                 tickPresentation = Number.isFinite(start) && Number.isFinite(end)
                     ? wwAbsoluteTickLabelsForRange(start, end, groupId)
                     : wwTimeAxisTickFormat(start, end, groupId);
@@ -16906,9 +17017,9 @@
                 const spanSeconds = range ? Math.abs(end - start) : 1;
                 const unit = wwStickyRulerElapsedUnit(spanSeconds);
                 tickPresentation = Number.isFinite(start) && Number.isFinite(end)
-                    ? wwRulerTickLabelsForRange(wwElapsedToPlotlyX(start), wwElapsedToPlotlyX(end), unit)
+                    ? wwRulerTickLabelsForRange(wwElapsedToPlotlyX(groupId, start), wwElapsedToPlotlyX(groupId, end), unit)
                     : wwTimeAxisTickFormat(start, end, groupId);
-                title = (wwHasT0() ? "Event " : "") + unit.title;
+                title = (wwHasT0(groupId) ? "Event " : "") + unit.title;
             }
 
             if (!ww.rulerReadyByGroup.get(groupId)) {
@@ -17347,6 +17458,14 @@
                 for (const timerId of wwCursorValuesThrottleTimers.values()) clearTimeout(timerId);
                 wwCursorValuesThrottleTimers.clear();
                 wwCursorValuesThrottlePending.clear();
+                // TG-E: same reasoning as ww.timeGroupCursorState
+                // immediately above -- every group's own local t0 button
+                // DOM was just wiped along with its canvas, and "ambiguous
+                // Time-Group analysis state resets when Time Group
+                // topology changes" applies to t0 exactly as it does to
+                // cursor state (task section 14/15/16's own merge/split/
+                // last-channel policy).
+                ww.timeGroupT0State.clear();
                 return;
             }
 
@@ -17381,6 +17500,17 @@
                     clearTimeout(wwCursorValuesThrottleTimers.get(groupId));
                     wwCursorValuesThrottleTimers.delete(groupId);
                     wwCursorValuesThrottlePending.delete(groupId);
+                    // TG-E: this group's canvas (and therefore its own
+                    // local t0 button DOM) is gone -- prune its t0 state
+                    // too, matching the exact same policy already applied
+                    // to cursor state immediately above (a merge, a
+                    // split, or a last-channel removal all clear the
+                    // affected group's own t0; a group that later becomes
+                    // active again necessarily gets a brand-new id and
+                    // starts clean by construction, since a pruned id is
+                    // never reused -- "do not guess which t0 wins... do
+                    // not inherit the primary group's t0 silently").
+                    ww.timeGroupT0State.delete(groupId);
                 }
             }
 
@@ -17614,20 +17744,18 @@
         // UNCONVERTED workspace-time value (wwFetchCursorValuesForSource()
         // is untouched by Slice 2 for exactly this reason).
         //
-        // TG-D2 (task section 17/27): t0 itself remains workspace-global/
-        // primary-group-scoped this slice (full per-group t0 is TG-E) --
-        // so the t0-based event-time branch applies ONLY when formatting
-        // the PRIMARY group's own cursor (`groupId === wwPrimaryTimeGroupId()`),
-        // matching "Set Cursor A as t=0"'s own identical primary-group
-        // scope exactly. Any OTHER group's cursor labels ignore a t0 that
-        // was never set for them and fall through to plain Absolute/
-        // Elapsed formatting using THAT group's own origin/span (task
-        // section 17's own explicit "each uses its own group origin...
-        // do not use one workspace absolute origin").
+        // TG-E: t0 is now genuinely Time-Group-scoped -- the event-time
+        // branch applies whenever THIS group has its own t0 selected
+        // (`wwHasT0(groupId)`), never gated on being the primary group
+        // (superseding TG-D2's own interim primary-group-only limit).
+        // Any group with NO t0 of its own falls through to plain
+        // Absolute/Elapsed formatting using THAT group's own origin/span
+        // (task section 17's own explicit "each uses its own group
+        // origin... do not use one workspace absolute origin").
         function wwFormatCursorPointTime(elapsedSeconds, groupId) {
             if (!Number.isFinite(elapsedSeconds)) return "—";
-            if (groupId === wwPrimaryTimeGroupId() && wwHasT0()) {
-                return wwFormatSignedCursorDuration(wwWorkspaceTimeToEventTime(elapsedSeconds));
+            if (wwHasT0(groupId)) {
+                return wwFormatSignedCursorDuration(wwWorkspaceTimeToEventTime(elapsedSeconds, groupId));
             }
             if (ww.timeMode === "absolute") {
                 return wwFormatAbsoluteElapsedTime(elapsedSeconds, { spanSeconds: wwVisibleSpanSeconds(groupId), groupId: groupId });
@@ -17867,18 +17995,22 @@
             const canvasEl = wwTimeGroupCanvasEl(groupId);
             if (!canvasEl) return;
             const isPrimary = groupId === wwPrimaryTimeGroupId();
-            // Callout/Peak annotation reprojection and the "Set Cursor A
-            // as t=0" button's enabled state both stay primary-group-
-            // scoped this slice (annotations are an explicit non-goal;
-            // t0 stays primary-group-only per task section 27) -- reused
-            // from the SAME one hook point every OTHER primary-group
-            // viewport/geometry change already funnels through, so a
-            // wwUpdateAllCursorOverlays() sweep reaches this exactly once
-            // per call, via whichever group happens to be primary.
+            // Callout/Peak annotation reprojection stays primary-group-
+            // scoped this slice (annotations are an explicit non-goal,
+            // task section 29) -- reused from the SAME one hook point
+            // every OTHER primary-group viewport/geometry change already
+            // funnels through, so a wwUpdateAllCursorOverlays() sweep
+            // reaches this exactly once per call, via whichever group
+            // happens to be primary.
             if (isPrimary) {
                 wwRenderAnnotations();
-                wwSyncT0Controls();
             }
+            // TG-E: THIS group's own local t0 button -- unconditional,
+            // never gated on isPrimary (the OLD TG-D2-era limit, now
+            // superseded) -- Cursor A's own placement/removal for ANY
+            // group must immediately update THAT group's own "Set t=0"
+            // button, never only the primary group's.
+            wwSyncT0ControlsForGroup(groupId);
 
             const overlayEl = canvasEl.querySelector(".ww-tg-cursor-overlay");
             const rulerOverlayEl = canvasEl.querySelector(".ww-cursor-ruler-overlay");
@@ -18795,7 +18927,7 @@
                 // Grouped/Custom panels get their title corrected here
                 // directly -- wwApplyTimeAxisChrome() below no-ops for
                 // those modes (it only ever touches Separate-mode lanes).
-                relayout["xaxis.title"] = wwTimeAxisTitle();
+                relayout["xaxis.title"] = wwTimeAxisTitle(panelGroupId);
                 Plotly.relayout(panel.chartEl, relayout);
             }
             wwApplyTimeAxisChrome();
@@ -18815,17 +18947,34 @@
         }
 
         // ==================================================================
-        // Slice 2 of waveform time synchronization: "Set Cursor A as t=0"
+        // Slice 2 of waveform time synchronization: "Set t=0", TG-E:
+        // migrated into each Time Group Canvas's own local toolbar.
         //
         // Reuses the existing A/B measurement cursor (Cursor A,
         // deliberately -- task section 6's own "smallest deterministic
         // rule... If Cursor A does not exist/has not been placed, disable
         // or reject Set as t=0 clearly") as the event-origin picker,
-        // rather than a new interaction. t0 itself is backend-
-        // authoritative (GET/PUT/DELETE .../synchronization/t0, Slice 1's
-        // own architecture, unchanged) -- ww.t0WorkspaceTime is a read
-        // cache, never the source of truth.
+        // rather than a new interaction -- now THAT group's own Cursor A
+        // (wwTimeGroupCursorState(groupId).a), never the primary group's.
+        // t0 itself is backend-authoritative (GET/PUT/DELETE
+        // .../synchronization/t0, Slice 1's own architecture, unchanged)
+        // -- ww.timeGroupT0State is a read cache, never the source of
+        // truth.
         // ==================================================================
+
+        // Any one source_id currently belonging to `groupId` -- every t0
+        // GET/PUT/DELETE call takes a source_id purely to resolve WHICH
+        // group is meant (see
+        // app.services.synchronization_service._resolve_time_group_key()'s
+        // own docstring); ANY member resolves the SAME group, so the
+        // first currently-DISPLAYED one is sufficient and always
+        // available here (a group's own local t0 button only exists
+        // inside a canvas that only renders once the group has displayed
+        // content -- see wwSourceIdsForTimeGroup()'s own TG-D2 docstring).
+        function wwAnySourceIdForTimeGroup(groupId) {
+            for (const sourceId of wwSourceIdsForTimeGroup(groupId)) return sourceId;
+            return null;
+        }
 
         // Re-derives every already-displayed channel's own Plotly X
         // values from its EXISTING, unmodified channel.time array (still
@@ -18835,96 +18984,94 @@
         // does (task section 23: "avoid unnecessary backend
         // reprocessing... reuse the existing conversion architecture").
         // Mirrors wwSetTimeMode()'s own established "presentation-only,
-        // suppressNext-guarded relayout" pattern immediately above,
-        // extended to also restyle the trace x arrays themselves --
-        // wwSetTimeMode() never needed to, since wwElapsedToPlotlyX() was
-        // always identity before this slice; here it is a genuine
-        // transform, so every already-plotted trace's own X values must
-        // be explicitly re-applied via Plotly.restyle(), not just the
-        // axis range/ticks around them.
-        function wwApplyT0ToDisplay() {
+        // suppressNext-guarded relayout" pattern above, extended to also
+        // restyle the trace x arrays themselves -- wwSetTimeMode() never
+        // needed to, since wwElapsedToPlotlyX() is identity for a group
+        // with no t0; here it is a genuine transform for THIS group, so
+        // every already-plotted trace's own X values must be explicitly
+        // re-applied via Plotly.restyle(), not just the axis range/ticks
+        // around them.
+        //
+        // TG-E: scoped to ONE Time Group's own panels only (never the
+        // whole workspace) -- performance requirement (task section 31):
+        // a group's own t0 change must never rebuild/restyle an unrelated
+        // group's panels. Mirrors TG-D2's own established "targeted vs
+        // batch" convention (wwUpdateCursorOverlayForGroup() vs
+        // wwUpdateAllCursorOverlays()) -- there is deliberately no
+        // "apply to every group" batch counterpart here: nothing in this
+        // slice needs one (a genuinely global trigger, e.g. a Time Mode
+        // switch, already has its own full-panel loop in
+        // wwSetTimeMode() above, unrelated to any one group's t0).
+        function wwApplyT0ToDisplayForGroup(groupId) {
             for (const panel of ww.panels) {
                 if (!panel.plotlyReady) continue;
+                if (wwPanelTimeGroupId(panel) !== groupId) continue;
                 panel.channels.forEach((channel, idx) => {
                     Plotly.restyle(panel.chartEl, {
-                        x: [(channel.time || []).map(wwElapsedToPlotlyX)],
+                        x: [(channel.time || []).map((t) => wwElapsedToPlotlyX(groupId, t))],
                         customdata: [wwTraceCustomData(channel)],
                         hovertemplate: [wwTraceHoverTemplate(channel)],
                     }, [idx]);
                 });
                 panel.suppressNext = true;
-                // Time Group Canvas: same per-panel-own-group fix as
-                // wwSetTimeMode() above -- never the primary group's
-                // ww.viewport applied blindly to every panel.
-                const panelGroupId = wwPanelTimeGroupId(panel);
-                const panelRange = wwTimeGroupVisibleRange(panelGroupId);
-                const relayout = panelRange ? wwTimeAxisRelayout(panelRange.start, panelRange.end, panelGroupId) : { "xaxis.type": "linear" };
-                relayout["xaxis.title"] = wwTimeAxisTitle();
+                const panelRange = wwTimeGroupVisibleRange(groupId);
+                const relayout = panelRange ? wwTimeAxisRelayout(panelRange.start, panelRange.end, groupId) : { "xaxis.type": "linear" };
+                relayout["xaxis.title"] = wwTimeAxisTitle(groupId);
                 Plotly.relayout(panel.chartEl, relayout);
             }
-            wwApplyTimeAxisChrome();
-            // Same two hook points wwSetTimeMode() already relies on for
-            // the SAME reason -- every group's own ruler and digital
-            // chart both re-derive their own presentation fresh from
-            // wwElapsedToPlotlyX() (now t0-aware) with zero new network
-            // request; wwUpdateCursorOverlayForGroup() (A/B readout text,
-            // Callout/Peak reprojection) is reached transitively through
-            // both, so it is not called a third time here.
-            wwSyncAllTimeGroupRulers();
-            wwRebuildAllTimeGroupDigitalCharts();
+            wwApplyTimeAxisChrome(groupId);
+            // Same two hook points wwSetTimeMode() relies on for the SAME
+            // reason, targeted to THIS group only -- its own ruler and
+            // digital chart both re-derive their own presentation fresh
+            // from wwElapsedToPlotlyX() (now reading THIS group's own
+            // t0) with zero new network request;
+            // wwUpdateCursorOverlayForGroup() (A/B readout text, Callout/
+            // Peak reprojection for the primary group) is reached
+            // transitively through both, so it is not called a third
+            // time here.
+            wwSyncTimeGroupRuler(groupId);
+            wwRebuildDigitalChart(groupId);
         }
 
-        // Reflects current t0/Cursor-A state into the toolbar control and
-        // the bottom-status-bar readout -- called from
-        // wwUpdateCursorOverlayForGroup()'s own primary-group branch (so
-        // the PRIMARY group's Cursor A placement/removal immediately
-        // updates the button's enabled state) and after every t0
-        // mutation below.
-        function wwSyncT0Controls() {
-            const btn = document.getElementById("wwSetT0Btn");
+        // Reflects current t0/Cursor-A state into ONE Time Group's own
+        // local toolbar button -- called after every t0 mutation for
+        // that group, and once per group whenever wwSyncTimeGroupCanvases()
+        // resyncs everything that canvas owns (so a canvas rebuilt after
+        // a topology change, or one whose Cursor A just moved, always
+        // shows the CURRENT state, never a stale one left over from
+        // creation time).
+        function wwSyncT0ControlsForGroup(groupId) {
+            const canvasEl = wwTimeGroupCanvasEl(groupId);
+            const btn = canvasEl ? canvasEl.querySelector(".ww-tg-t0-btn") : null;
             if (!btn) return;
-            const hasT0 = wwHasT0();
-            // TG-D2 (task section 27): "Set Cursor A as t=0" stays
-            // primary-group-scoped this slice (full per-group t0 is
-            // TG-E) -- reads the PRIMARY group's own Cursor A
-            // specifically, never a single global cursor pair, so this
-            // control's enabled state always reflects the SAME group the
-            // action itself will actually target (wwSetT0FromCursorA()
-            // below, unchanged in its own primary-group scope).
-            const cursors = wwTimeGroupCursorState(wwPrimaryTimeGroupId());
+            const hasT0 = wwHasT0(groupId);
+            const cursors = wwTimeGroupCursorState(groupId);
             const cursorAReady = cursors.enabled && cursors.a.visible && Number.isFinite(cursors.a.time);
             btn.setAttribute("aria-pressed", String(hasT0));
-            // Never silently uses an arbitrary time (task section 6): the
-            // control is only ever actionABLE when there is something
-            // valid to act on -- either an already-selected t0 to clear,
-            // or a currently-placed Cursor A to promote.
+            // Never silently uses an arbitrary time (task section 8):
+            // this group's own control is only ever actionABLE when
+            // there is something valid to act on for THIS group --
+            // either an already-selected t0 to clear, or a currently-
+            // placed Cursor A (this group's own) to promote. Group 1's
+            // own Cursor A can never enable Group 2's own button, since
+            // `cursors` above is always resolved via THIS `groupId`.
             btn.disabled = !hasT0 && !cursorAReady;
             const label = hasT0 ? "Clear t=0" : "Set Cursor A as t=0";
             btn.setAttribute("aria-label", label);
             btn.title = hasT0
-                ? "Clear t=0 (currently " + ww.t0WorkspaceTime.toFixed(6) + " s workspace time)"
+                ? "Clear t=0 (currently " + wwT0ForGroup(groupId).toFixed(6) + " s workspace time)"
                 : label;
-
-            const statusEl = document.getElementById("statusBarT0");
-            const statusValueEl = document.getElementById("statusBarT0Value");
-            if (statusEl && statusValueEl) {
-                statusEl.hidden = !hasT0;
-                if (hasT0) statusValueEl.textContent = ww.t0WorkspaceTime.toFixed(6) + " s";
-            }
         }
 
-        async function wwSetT0FromCursorA() {
-            // TG-D2: reads the PRIMARY group's own Cursor A specifically
-            // (wwSyncT0Controls()'s own gate already guarantees this
-            // matches whatever the button's enabled state reflected) --
-            // this shared toolbar action targets the PRIMARY time group
-            // (see wwPrimaryTimeGroupSourceId()'s own docstring) --
-            // correct and unambiguous for the common single-group
-            // workspace; use Detect Event's own explicit source selection
-            // for a genuinely multi-group workspace instead.
-            const cursors = wwTimeGroupCursorState(wwPrimaryTimeGroupId());
+        async function wwSetT0FromCursorAForGroup(groupId) {
+            // TG-E: THIS group's own Cursor A specifically
+            // (wwSyncT0ControlsForGroup()'s own gate already guarantees
+            // this matches whatever the button's enabled state
+            // reflected) -- never the primary group's, unless this
+            // happens to BE the primary group.
+            const cursors = wwTimeGroupCursorState(groupId);
             if (!cursors.enabled || !cursors.a.visible || !Number.isFinite(cursors.a.time)) return;
-            const sourceId = wwPrimaryTimeGroupSourceId();
+            const sourceId = wwAnySourceIdForTimeGroup(groupId);
             if (sourceId === null) return;
             let response;
             try {
@@ -18941,13 +19088,13 @@
             }
             if (!response.ok) return;
             const body = await response.json();
-            ww.t0WorkspaceTime = body.t0_workspace_time;
-            wwSyncT0Controls();
-            wwApplyT0ToDisplay();
+            ww.timeGroupT0State.set(groupId, body.t0_workspace_time);
+            wwSyncT0ControlsForGroup(groupId);
+            wwApplyT0ToDisplayForGroup(groupId);
         }
 
-        async function wwClearT0() {
-            const sourceId = wwPrimaryTimeGroupSourceId();
+        async function wwClearT0ForGroup(groupId) {
+            const sourceId = wwAnySourceIdForTimeGroup(groupId);
             if (sourceId === null) return;
             try {
                 const response = await fetch(
@@ -18959,19 +19106,21 @@
             } catch (error) {
                 return;
             }
-            ww.t0WorkspaceTime = null;
-            wwSyncT0Controls();
-            wwApplyT0ToDisplay();
+            ww.timeGroupT0State.delete(groupId);
+            wwSyncT0ControlsForGroup(groupId);
+            wwApplyT0ToDisplayForGroup(groupId);
         }
 
-        // The toolbar button's one click handler -- dual purpose, same
-        // "one button toggles between two related actions" pattern
-        // #wwCursorModeBtn already established for A/B cursor mode.
-        function wwHandleSetOrClearT0Click() {
-            if (wwHasT0()) {
-                wwClearT0();
+        // Each canvas's own local toolbar button's click handler -- dual
+        // purpose, same "one button toggles between two related actions"
+        // pattern `.ww-tg-cursor-mode-btn` already established for A/B
+        // cursor mode (TG-D2) and the former global t0 button already
+        // established before it.
+        function wwHandleSetOrClearT0ClickForGroup(groupId) {
+            if (wwHasT0(groupId)) {
+                wwClearT0ForGroup(groupId);
             } else {
-                wwSetT0FromCursorA();
+                wwSetT0FromCursorAForGroup(groupId);
             }
         }
 
@@ -18981,12 +19130,30 @@
         //
         // Advisory only throughout (task section 1's own governing
         // principle -- "an assistant, not an automatic decision-maker"):
-        // nothing below ever writes ww.t0WorkspaceTime or calls the t0
+        // nothing below ever writes ww.timeGroupT0State or calls the t0
         // PUT/DELETE endpoints except wwAcceptDetectedEvent(), reached
         // ONLY through the modal's own explicit "Set as t=0" button. The
         // backend endpoint itself (POST .../synchronization/detect-event)
         // is equally read-only -- see app.services.synchronization_service.
         // detect_event_candidate's own docstring.
+        //
+        // TG-E (task section 17/18, owner decision): the capability
+        // itself is retained, fully implemented, and internally
+        // Time-Group-aware (every function below takes or resolves an
+        // explicit groupId -- see wwOpenDetectEventModal()'s own
+        // docstring) -- but its normal frontend entry point
+        // (#wwDetectEventBtn) is HIDDEN from ordinary product use for
+        // now, kept for possible future advanced analytical workflows.
+        // ONE named constant is the single source of truth for this --
+        // deliberately not a general feature-flag system (none exists in
+        // this codebase, and this task does not need one): flip it back
+        // to `true` and the button reappears with zero further changes,
+        // since the workflow underneath was never removed or degraded.
+        // Automated tests call wwOpenDetectEventModal(groupId) and the
+        // rest of this workflow directly, bypassing the (hidden) button
+        // entirely -- exactly like any other internal capability with no
+        // current UI entry point.
+        const WW_DETECT_EVENT_UI_ENABLED = false;
         // ==================================================================
 
         // Every real source's own analog channels, source-grouped (task
@@ -18997,10 +19164,18 @@
         // Builder's own input picker already reads (wwCcAvailableCandidates()),
         // just without that picker's calculated-channel entries (task
         // section 5/30: real source analog channels only, this slice).
-        function wwDetectEventSourceOptionsHtml() {
+        //
+        // TG-E (task section 20): REQUIRES an explicit groupId and
+        // offers ONLY that group's own member sources -- never every
+        // workspace source regardless of which Time Group launched this
+        // modal. A source belonging to a DIFFERENT group is structurally
+        // unreachable here, so nothing downstream (Analyse, Accept) can
+        // ever touch an unrelated group by construction.
+        function wwDetectEventSourceOptionsHtml(groupId) {
             let html = "";
             for (const inventory of ww.sourceChannelInventory.values()) {
                 if (!inventory.analogChannels || inventory.analogChannels.length === 0) continue;
+                if (wwTimeGroupIdForDisplaySourceId(inventory.sourceId) !== groupId) continue;
                 html += '<option value="' + escapeHtml(inventory.sourceId) + '">' +
                     escapeHtml(inventory.sourceName || inventory.sourceId) + '</option>';
             }
@@ -19041,9 +19216,10 @@
         }
 
         // UAT fix: the ONE place #wwDetectEventAcceptBtn's own label and
-        // the "already defined" hint's visibility are decided, from
-        // CURRENT wwHasT0() state alone -- never a separate confirm-step
-        // panel with its own second copy of the button/Cancel (see this
+        // the "already defined" hint's visibility are decided, from the
+        // relevant group's own CURRENT wwHasT0(groupId) state alone --
+        // never a separate confirm-step panel with its own second copy
+        // of the button/Cancel (see this
         // modal's own top-level HTML comment for the full "one primary
         // acceptance action only" rule). Called after every state change
         // that could make the previous label/hint stale: modal open,
@@ -19052,15 +19228,25 @@
         function wwSyncDetectEventAcceptButtonState() {
             const acceptBtn = document.getElementById("wwDetectEventAcceptBtn");
             const hintEl = document.getElementById("wwDetectEventReplaceHint");
-            // Time-Group task section 26: once a candidate exists, use
-            // THAT source's own resolved group t0 state
-            // (ww.suggestedEvent.groupHasT0, task section 26's own
-            // "never apply to an unrelated group" -- see
-            // wwHandleDetectEventAnalyseClick()'s own lookup) rather
-            // than the shared toolbar's primary-group cache; before any
+            // TG-E: once a candidate exists, use THAT source's own
+            // resolved group t0 state (ww.suggestedEvent.groupHasT0,
+            // task section 26's own "never apply to an unrelated group"
+            // -- see wwHandleDetectEventAnalyseClick()'s own lookup)
+            // rather than any shared/primary-group cache; before any
             // analysis has run yet (no source selected), fall back to
-            // the primary-group wwHasT0() as a reasonable default label.
-            const hasT0 = ww.suggestedEvent.sourceId !== null ? ww.suggestedEvent.groupHasT0 : wwHasT0();
+            // the CURRENTLY-SELECTED source's own group (the modal's own
+            // source dropdown is already filtered to the launching
+            // group, so this is always THAT group, never a hidden
+            // primary-group default) -- disabled/false if the dropdown
+            // itself is empty (a group with zero eligible sources).
+            let hasT0;
+            if (ww.suggestedEvent.sourceId !== null) {
+                hasT0 = ww.suggestedEvent.groupHasT0;
+            } else {
+                const selectedSourceId = document.getElementById("wwDetectEventSourceSelect").value;
+                const selectedGroupId = selectedSourceId ? wwTimeGroupIdForDisplaySourceId(selectedSourceId) : null;
+                hasT0 = selectedGroupId !== null && wwHasT0(selectedGroupId);
+            }
             acceptBtn.textContent = hasT0 ? "Replace t=0" : "Set as t=0";
             // The hint is contextual to an ACTIVE candidate -- shown only
             // once accepting is actually possible (acceptBtn enabled),
@@ -19141,14 +19327,23 @@
             wwUpdateAllCursorOverlays();
         }
 
-        function wwOpenDetectEventModal() {
+        // TG-E (task section 19/20): REQUIRES an explicit groupId -- the
+        // Detect Event workflow, even though its normal entry point is
+        // hidden this slice (WW_DETECT_EVENT_UI_ENABLED), stays
+        // internally Time-Group-aware: opening it for `groupId` filters
+        // the source dropdown to ONLY that group's own member sources
+        // (wwDetectEventSourceOptionsHtml(groupId)), so every downstream
+        // action (Analyse, Accept) can only ever resolve back to THIS
+        // SAME group via the selected source_id -- never a hidden
+        // fallback to any one "primary" group.
+        function wwOpenDetectEventModal(groupId) {
             document.getElementById("wwDetectEventError").hidden = true;
             document.getElementById("wwDetectEventResult").hidden = true;
             document.getElementById("wwDetectEventAcceptBtn").disabled = true;
             wwResetDetectEventSuggestion();
 
             const sourceSelect = document.getElementById("wwDetectEventSourceSelect");
-            sourceSelect.innerHTML = wwDetectEventSourceOptionsHtml();
+            sourceSelect.innerHTML = wwDetectEventSourceOptionsHtml(groupId);
             wwSyncDetectEventChannelSelect();
             document.getElementById("wwDetectEventSensitivitySelect").value = "normal";
             // UAT correction: "Current visible range" is the preferred
@@ -19180,25 +19375,29 @@
             errorEl.hidden = false;
         }
 
-        // UAT correction: "Current visible range" converts the CURRENT
-        // ww.viewport (the app's own one authoritative coordinate
-        // system for the visible window -- see ww.viewport's own
-        // docstring: it is ALREADY workspace time regardless of
-        // Absolute/Elapsed mode or an active t0, since every relayout
-        // handler routes the raw Plotly range through
-        // wwPlotlyXToElapsed() before ever storing it) into the
-        // selected source's own native time via the SAME
+        // UAT correction: "Current visible range" converts the LAUNCHING
+        // GROUP's own current viewport (task section 21: never the
+        // single global/primary ww.viewport blindly -- use
+        // wwTimeGroupVisibleRange(groupId), the SAME per-group authority
+        // every panel/ruler/digital-chart already reads; still ALREADY
+        // workspace time regardless of Absolute/Elapsed mode or an
+        // active t0, since every relayout handler routes the raw Plotly
+        // range through wwPlotlyXToElapsed() before ever storing it) into
+        // the selected source's own native time via the SAME
         // wwWorkspaceTimeToSourceTime() Slice 1 already established --
-        // never a second, hand-rolled formula, never reading a Plotly
-        // axis label. Returns `null` if there is currently no viewport
-        // to convert (task section 15: this is a REJECTION case for
-        // "visible range" mode, not a silent full-record fallback --
-        // the caller is responsible for surfacing that).
-        function wwDetectEventVisibleSourceNativeRange(sourceId) {
-            if (!ww.viewport) return null;
+        // an alignment-offset conversion, entirely unrelated to
+        // groups/t0, never touched here. Never a second, hand-rolled
+        // formula, never reading a Plotly axis label. Returns `null` if
+        // this group currently has no visible range to convert (task
+        // section 15: this is a REJECTION case for "visible range" mode,
+        // not a silent full-record fallback -- the caller is responsible
+        // for surfacing that).
+        function wwDetectEventVisibleSourceNativeRange(sourceId, groupId) {
+            const range = wwTimeGroupVisibleRange(groupId);
+            if (!range) return null;
             return {
-                searchStartTime: wwWorkspaceTimeToSourceTime(sourceId, ww.viewport.start),
-                searchEndTime: wwWorkspaceTimeToSourceTime(sourceId, ww.viewport.end),
+                searchStartTime: wwWorkspaceTimeToSourceTime(sourceId, range.start),
+                searchEndTime: wwWorkspaceTimeToSourceTime(sourceId, range.end),
             };
         }
 
@@ -19206,14 +19405,21 @@
             const sourceId = document.getElementById("wwDetectEventSourceSelect").value;
             const channelName = document.getElementById("wwDetectEventChannelSelect").value;
             const sensitivity = document.getElementById("wwDetectEventSensitivitySelect").value;
-            // Task section 7: the viewport is captured HERE, at the
-            // moment Analyse is actually clicked -- never cached from
-            // when the modal first opened -- so a zoom/pan performed
-            // after opening Detect Event (before clicking Analyse) is
-            // still picked up correctly.
+            // TG-E (task section 19): derived from the SELECTED source --
+            // the modal's own source dropdown was already filtered to
+            // ONE Time Group's own members (wwOpenDetectEventModal()), so
+            // this always resolves back to that SAME launching group,
+            // never an unrelated one, with no separate tracked state
+            // needed.
+            const groupId = sourceId ? wwTimeGroupIdForDisplaySourceId(sourceId) : null;
+            // Task section 7/21: the group's own CURRENT viewport is read
+            // HERE, at the moment Analyse is actually clicked -- never
+            // cached from when the modal first opened -- so a zoom/pan
+            // performed after opening Detect Event (before clicking
+            // Analyse) is still picked up correctly.
             const rangeMode = wwDetectEventRangeMode();
             document.getElementById("wwDetectEventError").hidden = true;
-            if (!sourceId || !channelName) {
+            if (!sourceId || !channelName || groupId === null) {
                 wwDetectEventShowError("Choose a source and channel first.");
                 return;
             }
@@ -19221,7 +19427,7 @@
             const body = { source_id: sourceId, channel_name: channelName, sensitivity: sensitivity };
             let searchRangeInfo = { mode: "full" };
             if (rangeMode === "visible") {
-                const converted = wwDetectEventVisibleSourceNativeRange(sourceId);
+                const converted = wwDetectEventVisibleSourceNativeRange(sourceId, groupId);
                 // Task section 15: no viewport to search -- a clear
                 // rejection, never a silent switch to Full recording.
                 if (!converted) {
@@ -19230,7 +19436,8 @@
                 }
                 body.search_start_time = converted.searchStartTime;
                 body.search_end_time = converted.searchEndTime;
-                searchRangeInfo = { mode: "visible", workspaceStart: ww.viewport.start, workspaceEnd: ww.viewport.end };
+                const groupRange = wwTimeGroupVisibleRange(groupId);
+                searchRangeInfo = { mode: "visible", workspaceStart: groupRange.start, workspaceEnd: groupRange.end };
             }
 
             let response;
@@ -19255,24 +19462,16 @@
             }
             const view = await response.json();
 
-            // Time-Group task section 26: "Do not apply that t0 to
-            // unrelated groups" -- the Accept button's own "Set as t=0"
-            // vs "Replace t=0" decision must reflect the SELECTED
-            // source's own current time group, never the shared
-            // toolbar's primary-group cache (ww.t0WorkspaceTime/
-            // wwHasT0()), which may be a DIFFERENT group entirely in a
-            // genuinely multi-group workspace. A cheap, explicit lookup
-            // -- correct regardless of how many time groups exist.
-            let groupT0 = null;
-            try {
-                const t0Response = await fetch(
-                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/synchronization/t0" +
-                    "?source_id=" + encodeURIComponent(sourceId)
-                );
-                if (t0Response.ok) groupT0 = (await t0Response.json()).t0_workspace_time;
-            } catch (error) {
-                groupT0 = null; // falls back to wwSyncDetectEventAcceptButtonState()'s own wwHasT0() default
-            }
+            // TG-E: "Do not apply that t0 to unrelated groups" -- the
+            // Accept button's own "Set as t=0" vs "Replace t=0" decision
+            // must reflect the SELECTED source's own current time group,
+            // never any shared/primary cache. Now a direct read of
+            // ww.timeGroupT0State (kept fresh by
+            // wwFetchSynchronizationStateForWorkspace(), the SAME cache
+            // every other t0-aware surface already trusts) -- no separate
+            // network round trip needed now that t0 is cached per group
+            // rather than only for one resolved "primary" source.
+            const groupHasT0 = wwHasT0(groupId);
 
             // Task section 13: the candidate is shown on the waveform
             // (via wwUpdateCursorOverlayForGroup()'s own suggested-marker
@@ -19291,7 +19490,7 @@
                 channelName: channelName,
                 workspaceTime: view.candidate_workspace_time,
                 result: view,
-                groupHasT0: groupT0 !== null,
+                groupHasT0: groupHasT0,
             };
             // TG-D2: a rerun on a DIFFERENT source than last time can move
             // the suggestion into a different Time Group -- a full sweep
@@ -19331,12 +19530,18 @@
                 return;
             }
             const body = await response.json();
-            // Reuses Slice 2's own existing t0 mechanism verbatim (task
-            // section 14) -- the SAME three calls wwSetT0FromCursorA()
-            // itself makes on success, never a second acceptance path.
-            ww.t0WorkspaceTime = body.t0_workspace_time;
-            wwSyncT0Controls();
-            wwApplyT0ToDisplay();
+            // TG-E (task section 25): reuses Slice 2's own existing t0
+            // mechanism verbatim (task section 14) -- the SAME three
+            // calls wwSetT0FromCursorAForGroup() itself makes on success,
+            // never a second acceptance path -- but resolved to the
+            // CANDIDATE's own owning group (derived from its own
+            // sourceId), never the primary group: "candidate from Group
+            // 2 -> set Group 2 t0" only, Group 1 (or any other group)
+            // stays untouched.
+            const groupId = wwTimeGroupIdForDisplaySourceId(sourceId);
+            ww.timeGroupT0State.set(groupId, body.t0_workspace_time);
+            wwSyncT0ControlsForGroup(groupId);
+            wwApplyT0ToDisplayForGroup(groupId);
             wwCloseDetectEventModal();
         }
 
@@ -20057,8 +20262,12 @@
         // wwCreateTimeGroupCanvasDom()) -- the old global #wwCursorModeBtn
         // markup/listener and the old single wwWireCursorDrag() init call
         // are removed, not merely hidden.
-        // Slice 2 of waveform time synchronization: "Set Cursor A as t=0" / "Clear t=0".
-        document.getElementById("wwSetT0Btn").addEventListener("click", wwHandleSetOrClearT0Click);
+        // TG-E: "Set Cursor A as t=0" / "Clear t=0" moved into each Time
+        // Group Canvas's own local toolbar (wwWireTimeGroupToolbar(),
+        // called per-canvas from wwCreateTimeGroupCanvasDom()) -- the old
+        // global #wwSetT0Btn markup/listener and #statusBarT0 status-bar
+        // item are removed, not merely hidden, so there is exactly one
+        // active way to set/clear a Time Group's own t0.
         // Phase 4F-UAT (DEC-045 addendum): Callout anchor dragging --
         // wired once, delegated, the same general pattern the per-canvas
         // cursor-drag wiring above now also follows (one wiring call per
@@ -20206,7 +20415,19 @@
         });
 
         // Slice 3 of waveform time synchronization: "Detect Event Origin".
-        document.getElementById("wwDetectEventBtn").addEventListener("click", wwOpenDetectEventModal);
+        // TG-E (task section 17/18): owner decision -- the capability
+        // stays fully implemented and Time-Group-aware, but its normal
+        // frontend entry point is hidden for now (WW_DETECT_EVENT_UI_ENABLED,
+        // declared near the top of this section). The click listener
+        // stays wired regardless of the flag -- re-enabling later is a
+        // one-line flip of the constant, never a second wiring pass.
+        // Resolves the PRIMARY group explicitly (this remains a single
+        // GLOBAL/shared button, not migrated to per-canvas this slice --
+        // only its own INTERNAL workflow became group-aware) -- matching
+        // "Set Cursor A as t=0"'s own former shared-toolbar scope before
+        // ITS OWN migration into each canvas above.
+        document.getElementById("wwDetectEventBtn").hidden = !WW_DETECT_EVENT_UI_ENABLED;
+        document.getElementById("wwDetectEventBtn").addEventListener("click", () => wwOpenDetectEventModal(wwPrimaryTimeGroupId()));
         document.getElementById("wwDetectEventSourceSelect").addEventListener("change", () => {
             wwSyncDetectEventChannelSelect();
             // UAT fix: a source change invalidates whatever candidate

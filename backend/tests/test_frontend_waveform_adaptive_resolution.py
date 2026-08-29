@@ -92,8 +92,8 @@ def test_zoom_still_requests_elapsed_engineering_range_in_all_time_modes():
         "function wwFriendlyError",
     )
 
-    assert "wwPlotlyXToElapsed(x0)" in relayout_body
-    assert "wwPlotlyXToElapsed(x1)" in relayout_body
+    assert "wwPlotlyXToElapsed(panelGroupId, x0)" in relayout_body
+    assert "wwPlotlyXToElapsed(panelGroupId, x1)" in relayout_body
     # Slice 1 of waveform time synchronization: the fetch now converts the
     # caller's workspace-time startTime/endTime into this channel's own
     # source-native range (nativeStart/nativeEnd, via

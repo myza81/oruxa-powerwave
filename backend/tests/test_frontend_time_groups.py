@@ -92,7 +92,9 @@ def test_fetch_synchronization_state_populates_time_group_caches():
     assert "/synchronization/time-groups" in fn_body
     assert "ww.timeGroupBySourceId.set(row.source_id, row.time_group_id);" in fn_body
     assert "ww.timeGroups.set(group.group_id" in fn_body
-    assert "wwPrimaryTimeGroupSourceId()" in fn_body
+    # TG-E: t0 itself is fetched per KNOWN GROUP now (Promise.all over
+    # ww.timeGroups), not resolved through a single "primary" source.
+    assert "ww.timeGroupT0State.set(groupId, t0);" in fn_body
 
 
 class TestSecondSourceUploadedAfterSelectingTheFirstGetsFreshAlignmentState:
@@ -273,25 +275,13 @@ class TestResetSemanticsAreManualOnly:
 
 
 class TestT0GroupScopedQuickActions:
-    """Task section 24/26: setting/clearing t0 via the shared toolbar
-    resolves the primary time group's own origin source; Detect Event's
-    Accept always uses the explicitly-selected source's own group."""
-
-    def test_set_t0_from_cursor_a_resolves_the_primary_group_source(self):
-        source = _source()
-        fn_idx = source.index("async function wwSetT0FromCursorA()")
-        fn_body = source[fn_idx : source.index("async function wwClearT0()", fn_idx)]
-        assert "const sourceId = wwPrimaryTimeGroupSourceId();" in fn_body
-        assert "if (sourceId === null) return;" in fn_body
-        assert "source_id: sourceId" in fn_body
-
-    def test_clear_t0_resolves_the_primary_group_source_as_a_query_param(self):
-        source = _source()
-        fn_idx = source.index("async function wwClearT0()")
-        fn_body = source[fn_idx : source.index("function wwHandleSetOrClearT0Click()", fn_idx)]
-        assert "const sourceId = wwPrimaryTimeGroupSourceId();" in fn_body
-        assert "if (sourceId === null) return;" in fn_body
-        assert '"?source_id=" + encodeURIComponent(sourceId)' in fn_body
+    """TG-E superseded this DEC-057-era "primary time group only"
+    scope: setting/clearing t0 via each Time Group Canvas's own local
+    toolbar now resolves THAT canvas's own group (never a shared
+    "primary" resolution) -- see test_frontend_synchronization_t0.py for
+    the full regression suite covering wwSetT0FromCursorAForGroup(groupId)/
+    wwClearT0ForGroup(groupId). Detect Event's Accept still always uses
+    the explicitly-selected source's own group, exactly as before."""
 
     def test_accept_detected_event_uses_the_explicitly_selected_source(self):
         source = _source()
@@ -302,18 +292,21 @@ class TestT0GroupScopedQuickActions:
 
 
 class TestDetectEventGroupScopedT0Lookup:
-    """Task section 26: the Analyse handler resolves a fresh, group-scoped
-    t0 read for the SELECTED source right after a candidate is found, so
-    the Accept button's own label reflects that group -- not the shared
-    toolbar's primary-group cache, which could be a different group
-    entirely in a multi-group workspace."""
+    """TG-E: the Analyse handler's own "does this candidate's group
+    already have a t0" check is now a direct, synchronous read of
+    ww.timeGroupT0State (wwHasT0(groupId)) -- the same cache TG-E keeps
+    fresh per group -- rather than the DEC-057-era separate network GET
+    this class originally covered. Still resolves the SELECTED source's
+    own group specifically, never the shared toolbar's primary-group
+    cache, which could be a different group entirely in a multi-group
+    workspace."""
 
-    def test_analyse_handler_fetches_t0_scoped_to_the_selected_source(self):
+    def test_analyse_handler_reads_t0_state_scoped_to_the_selected_source(self):
         source = _source()
         fn_idx = source.index("async function wwHandleDetectEventAnalyseClick()")
         fn_body = source[fn_idx : source.index("async function wwAcceptDetectedEvent()", fn_idx)]
-        assert "/synchronization/t0" in fn_body
-        assert "groupHasT0" in fn_body
+        assert "const groupId = sourceId ? wwTimeGroupIdForDisplaySourceId(sourceId) : null;" in fn_body
+        assert "const groupHasT0 = wwHasT0(groupId);" in fn_body
 
     def test_suggested_event_state_carries_group_has_t0(self):
         source = _source()
@@ -324,5 +317,5 @@ class TestDetectEventGroupScopedT0Lookup:
     def test_reset_suggestion_clears_group_has_t0(self):
         source = _source()
         fn_idx = source.index("function wwResetDetectEventSuggestion()")
-        fn_body = source[fn_idx : source.index("function wwOpenDetectEventModal()", fn_idx)]
+        fn_body = source[fn_idx : source.index("function wwOpenDetectEventModal(groupId)", fn_idx)]
         assert "groupHasT0: false" in fn_body

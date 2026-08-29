@@ -4,7 +4,33 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-29** (Phase 23 — TG-D2: Cursor A/B
+Last meaningful update: **2026-08-29** (Phase 24 — TG-E: t0 is now
+genuinely Time-Group-scoped throughout the frontend, mirroring the
+backend's own already-group-keyed truth (`ww.timeGroupT0State: Map<groupId,
+t0>` replaces the single `ww.t0WorkspaceTime` scalar) — each Time Group
+Canvas gets its own local "Set Cursor A as t=0"/"Clear t=0" toggle
+button, the old global button and status-bar readout are removed. The
+core `wwElapsedToPlotlyX`/`wwPlotlyXToElapsed` coordinate transform
+every panel/ruler/digital-chart trace uses now requires an explicit
+`groupId` — closing a genuine correctness gap TG-D2 left open (any
+group's t0 previously shifted EVERY panel's plotted X data globally).
+Detect Event stays fully implemented and becomes internally
+Time-Group-aware (group-filtered source list, group-scoped visible
+range, group-scoped candidate acceptance) but its normal frontend entry
+point is now HIDDEN by explicit owner decision
+(`WW_DETECT_EVENT_UI_ENABLED = false`) — the capability is retained for
+possible future advanced analytical workflows, re-enabling it later is
+a one-line flip. A genuine bug was found and fixed live during this
+task's own UAT: `.ww-icon-btn[hidden]` had no visual effect due to a
+CSS origin-precedence gap (author `display: inline-flex` beating the UA
+`[hidden]` default) — now overridden explicitly. Synchronise Sources
+remains deferred to TG-F; the pre-existing, unrelated Absolute-axis
+layout-round-trip tick-label bug DEC-061 documented was left untouched
+(only the required t0-groupId plumbing was threaded through
+`wwBuildLayout()`, confirmed via diff to leave its own range-source
+lines unchanged) — see
+[DECISIONS.md — DEC-062](DECISIONS.md#dec-062--tg-e-t0-becomes-genuinely-time-group-scoped-throughout-the-frontend-mirroring-the-backends-already-group-keyed-truth-and-detect-event-becomes-internally-time-group-aware-while-its-normal-frontend-entry-point-is-hidden-by-owner-decision)
+and [HANDOFF.md](HANDOFF.md), on top of Phase 23 — TG-D2: Cursor A/B
 and the A-B measurement/information readout are now migrated into each
 Time Group Canvas — each Time Group owns a completely independent
 cursor pair (`ww.timeGroupCursorState`, replacing the single workspace-

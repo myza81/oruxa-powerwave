@@ -35,11 +35,11 @@ def test_elapsed_to_plotly_x_is_identity_in_all_time_modes():
     source = _source()
     body = _function_body(
         source,
-        "function wwElapsedToPlotlyX(elapsedSeconds)",
-        "function wwPlotlyXToElapsed(x)",
+        "function wwElapsedToPlotlyX(groupId, elapsedSeconds)",
+        "function wwPlotlyXToElapsed(groupId, x)",
     )
 
-    assert "return wwWorkspaceTimeToEventTime(elapsedSeconds);" in body
+    assert "return wwWorkspaceTimeToEventTime(elapsedSeconds, groupId);" in body
     assert "wwWorkspaceRecordingStartMs" not in body
     assert "new Date" not in body
     assert "Date.UTC" not in body
@@ -49,11 +49,11 @@ def test_plotly_x_to_elapsed_is_identity_in_all_time_modes():
     source = _source()
     body = _function_body(
         source,
-        "function wwPlotlyXToElapsed(x)",
+        "function wwPlotlyXToElapsed(groupId, x)",
         "function wwNiceTickStep",
     )
 
-    assert "return wwEventTimeToWorkspaceTime(Number(x));" in body
+    assert "return wwEventTimeToWorkspaceTime(Number(x), groupId);" in body
     assert "wwParseNaiveTimestamp" not in body
     assert "wwWorkspaceRecordingStartMs" not in body
 
@@ -79,7 +79,7 @@ def test_time_mode_switch_does_not_rewrite_trace_geometry():
     body = _function_body(
         source,
         "function wwSetTimeMode(mode)",
-        "function wwApplyT0ToDisplay()",
+        "function wwAnySourceIdForTimeGroup(groupId)",
     )
 
     assert "Plotly.restyle" in body
@@ -98,7 +98,7 @@ def test_trace_geometry_uses_elapsed_numeric_x_with_absolute_hover_customdata():
         "function wwBuildLayout(panel, colors)",
     )
 
-    assert "const xValues = (channel.time || []).map(wwElapsedToPlotlyX);" in body
+    assert "const xValues = (channel.time || []).map((t) => wwElapsedToPlotlyX(groupId, t));" in body
     assert "x: xValues" in body
     assert "customdata: wwTraceCustomData(channel)" in body
     assert "hovertemplate: wwTraceHoverTemplate(channel)" in body
@@ -107,7 +107,7 @@ def test_trace_geometry_uses_elapsed_numeric_x_with_absolute_hover_customdata():
 
 def test_five_khz_absolute_switch_preserves_unique_numeric_x_coordinates():
     source = _source()
-    assert "function wwElapsedToPlotlyX(elapsedSeconds)" in source
+    assert "function wwElapsedToPlotlyX(groupId, elapsedSeconds)" in source
 
     sample_rate_hz = 5000
     start = 2.0

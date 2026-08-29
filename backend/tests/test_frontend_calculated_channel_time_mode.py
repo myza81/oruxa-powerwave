@@ -81,7 +81,7 @@ def test_calculated_channel_absolute_time_mode_remains_presentation_only():
     set_time_mode = _function_body(
         source,
         "function wwSetTimeMode(mode)",
-        "function wwApplyT0ToDisplay()",
+        "function wwAnySourceIdForTimeGroup(groupId)",
     )
     calculated_meta = _function_body(
         source,

@@ -292,13 +292,16 @@ class TestGlobalStatusBarCursorReadoutRemoved:
         assert 'id="statusBarCursorB"' not in source
         assert 'id="statusBarCursorDelta"' not in source
 
-    def test_status_spacer_and_t0_status_item_are_still_present(self):
-        """The spacer/T0 item are unrelated to this migration and must
-        survive -- confirms the removal was targeted, not a wholesale
-        deletion of the status bar region."""
+    def test_status_spacer_is_still_present(self):
+        """The spacer is unrelated to this migration and must survive --
+        confirms the removal was targeted, not a wholesale deletion of
+        the status bar region. TG-E note: #statusBarT0 itself was later
+        removed too (see test_frontend_synchronization_t0.py), once t0
+        became per-Time-Group and a single global t0 readout became
+        exactly the same kind of ambiguous surface this cursor readout
+        already was."""
         source = _source()
         assert "ww-status-spacer" in source
-        assert 'id="statusBarT0"' in source
 
 
 # ==============================================================================
@@ -381,18 +384,28 @@ class TestTopologyDrivenStateReset:
 # ==============================================================================
 
 
-class TestT0StaysExplicitlyPrimaryGroupScopedThisSlice:
-    def test_sync_t0_controls_reads_the_primary_groups_own_cursor_state(self):
-        source = _source()
-        fn_idx = source.index("function wwSyncT0Controls()")
-        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        assert "wwTimeGroupCursorState(wwPrimaryTimeGroupId())" in fn_body
+class TestT0BecameFullyPerGroupInTGE:
+    """TG-D2 itself deliberately kept t0 primary-group-scoped (task
+    section 27 of that slice, explicitly deferred to "TG-E"). TG-E has
+    since landed: t0 is now genuinely per-Time-Group throughout -- see
+    test_frontend_synchronization_t0.py for the full regression suite.
+    This class only confirms that migration did NOT silently leave a
+    primary-group-only remnant anywhere in the cursor-adjacent code this
+    file itself covers."""
 
-    def test_set_t0_from_cursor_a_reads_the_primary_groups_own_cursor_state(self):
+    def test_sync_t0_controls_for_group_reads_that_groups_own_cursor_state(self):
         source = _source()
-        fn_idx = source.index("async function wwSetT0FromCursorA()")
+        fn_idx = source.index("function wwSyncT0ControlsForGroup(groupId)")
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        assert "wwTimeGroupCursorState(wwPrimaryTimeGroupId())" in fn_body
+        assert "wwTimeGroupCursorState(groupId)" in fn_body
+        assert "wwPrimaryTimeGroupId()" not in fn_body
+
+    def test_set_t0_from_cursor_a_for_group_reads_that_groups_own_cursor_state(self):
+        source = _source()
+        fn_idx = source.index("async function wwSetT0FromCursorAForGroup(groupId)")
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        assert "wwTimeGroupCursorState(groupId)" in fn_body
+        assert "wwPrimaryTimeGroupId()" not in fn_body
 
 
 # ==============================================================================

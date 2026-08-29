@@ -94,7 +94,7 @@ def test_source_channel_candidates_are_real_analog_channels_only():
     source analog channels only -- never calculated channels, never an
     automatic best-channel choice."""
     source = _source()
-    fn_idx = source.index("function wwDetectEventSourceOptionsHtml()")
+    fn_idx = source.index("function wwDetectEventSourceOptionsHtml(groupId)")
     fn_body = source[fn_idx : source.index("function wwDetectEventChannelOptionsHtml", fn_idx)]
     assert "ww.sourceChannelInventory" in fn_body
     assert "calculatedChannels" not in fn_body
@@ -114,22 +114,21 @@ def test_analyse_posts_to_detect_event_endpoint():
 def test_analyse_never_puts_or_deletes_the_t0_endpoint():
     """Task section 26: "Do not make this endpoint set t0
     automatically." -- verified on the frontend side too: the Analyse
-    handler must never itself PUT/DELETE .../t0.
+    handler must never itself PUT/DELETE/GET .../t0 at all.
 
-    Timestamp-Based Initial Alignment and Time Groups: the handler now
-    DOES issue a read-only GET .../t0 (scoped to the selected source's
-    own time group, via ww.suggestedEvent.groupHasT0) so the Accept
-    button can correctly say "Set as t=0" vs "Replace t=0" for THAT
-    group specifically, rather than the shared toolbar's primary-group
-    cache -- a read is not a mutation, so this still satisfies the
-    task's own "never set t0 automatically" rule."""
+    TG-E: the group-scoped "does this group already have a t0" check
+    (groupHasT0, used to label the Accept button "Set as t=0" vs
+    "Replace t=0") is now a direct read of ww.timeGroupT0State
+    (wwHasT0(groupId)) -- the cache TG-E's own
+    wwFetchSynchronizationStateForWorkspace() already keeps fresh per
+    group -- rather than a separate network round trip the OLD
+    single-scalar-era code needed. No fetch of any kind to
+    .../synchronization/t0 happens in this handler at all now."""
     source = _source()
     fn_idx = source.index("async function wwHandleDetectEventAnalyseClick()")
     fn_body = source[fn_idx : source.index("async function wwAcceptDetectedEvent()", fn_idx)]
-    # The new group-scoped read exists (a plain GET -- fetch()'s default
-    # verb, no explicit "method" needed) but nothing in this handler
-    # ever PUTs or DELETEs t0.
-    assert "/synchronization/t0" in fn_body
+    assert "/synchronization/t0" not in fn_body
+    assert "const groupHasT0 = wwHasT0(groupId);" in fn_body
     assert 'method: "PUT"' not in fn_body
     assert 'method: "DELETE"' not in fn_body
 
@@ -150,11 +149,13 @@ def test_preview_marker_is_shown_before_acceptance_is_possible():
 
 
 def test_accept_reuses_the_existing_t0_put_endpoint_only():
-    """Task section 14: "reuse the existing t0 service... do not create
-    a second t0 implementation." -- verified structurally: acceptance
-    calls the SAME PUT .../synchronization/t0 Slice 2 already
+    """Task section 14/25: "reuse the existing t0 service... do not
+    create a second t0 implementation." -- verified structurally:
+    acceptance calls the SAME PUT .../synchronization/t0 Slice 2 already
     established, then the SAME three follow-up calls
-    wwSetT0FromCursorA() itself makes on success. This is the ONE
+    wwSetT0FromCursorAForGroup() itself makes on success -- but resolved
+    to the CANDIDATE's own owning group (never the primary group), so
+    "candidate from Group 2 -> set Group 2 t0" only. This is the ONE
     accept path for both "Set as t=0" and "Replace t=0" -- there is no
     separate replace-specific implementation (UAT fix: both button
     states click straight into this same function)."""
@@ -164,9 +165,10 @@ def test_accept_reuses_the_existing_t0_put_endpoint_only():
     assert '"/synchronization/t0"' in fn_body
     assert 'method: "PUT"' in fn_body
     assert "t0_workspace_time: workspaceTime" in fn_body
-    assert "ww.t0WorkspaceTime = body.t0_workspace_time;" in fn_body
-    assert "wwSyncT0Controls();" in fn_body
-    assert "wwApplyT0ToDisplay();" in fn_body
+    assert "const groupId = wwTimeGroupIdForDisplaySourceId(sourceId);" in fn_body
+    assert "ww.timeGroupT0State.set(groupId, body.t0_workspace_time);" in fn_body
+    assert "wwSyncT0ControlsForGroup(groupId);" in fn_body
+    assert "wwApplyT0ToDisplayForGroup(groupId);" in fn_body
 
 
 def test_accept_button_wired_directly_to_the_single_accept_function():
@@ -184,18 +186,19 @@ class TestAcceptButtonStateDependsOnlyOnT0:
     acceptance action, state-appropriate, never both at once."""
 
     def test_sync_function_labels_replace_when_t0_exists_and_set_otherwise(self):
-        """Timestamp-Based Initial Alignment and Time Groups (task
-        section 26): once a candidate exists, the label must reflect
-        THAT candidate's own source's time group -- never an unrelated
-        group's t0 -- via ww.suggestedEvent.groupHasT0. Only before any
-        analysis has run (no source selected yet) does it fall back to
-        the shared toolbar's primary-group wwHasT0() as a reasonable
-        default."""
+        """TG-E: once a candidate exists, the label must reflect THAT
+        candidate's own source's time group -- never an unrelated
+        group's t0 -- via ww.suggestedEvent.groupHasT0. Before any
+        analysis has run yet (no source selected), it falls back to the
+        CURRENTLY-SELECTED source's own group (the dropdown is already
+        filtered to the launching group -- never a shared/primary-group
+        default)."""
         source = _source()
         fn_idx = source.index("function wwSyncDetectEventAcceptButtonState()")
         fn_body = source[fn_idx : source.index("function wwInvalidateDetectEventSuggestion()", fn_idx)]
         assert 'acceptBtn.textContent = hasT0 ? "Replace t=0" : "Set as t=0";' in fn_body
-        assert "ww.suggestedEvent.sourceId !== null ? ww.suggestedEvent.groupHasT0 : wwHasT0()" in fn_body
+        assert "hasT0 = ww.suggestedEvent.groupHasT0;" in fn_body
+        assert "hasT0 = selectedGroupId !== null && wwHasT0(selectedGroupId);" in fn_body
 
     def test_hint_only_shown_when_t0_exists_and_a_candidate_is_active(self):
         """The "already defined" context text is gated on BOTH t0
@@ -220,7 +223,7 @@ class TestAcceptButtonStateDependsOnlyOnT0:
         CURRENTLY in -- never a stale label left over from a previous
         session's Accept."""
         source = _source()
-        fn_idx = source.index("function wwOpenDetectEventModal()")
+        fn_idx = source.index("function wwOpenDetectEventModal(groupId)")
         fn_body = source[fn_idx : source.index("function wwCloseDetectEventModal()", fn_idx)]
         assert "wwSyncDetectEventAcceptButtonState();" in fn_body
         assert "document.getElementById(\"wwDetectEventAcceptBtn\").disabled = true;" in fn_body
@@ -262,7 +265,7 @@ def test_cancel_and_close_never_touch_t0_or_offsets():
 def test_reset_suggestion_clears_marker_and_refreshes_overlay():
     source = _source()
     fn_idx = source.index("function wwResetDetectEventSuggestion()")
-    fn_body = source[fn_idx : source.index("function wwOpenDetectEventModal()", fn_idx)]
+    fn_body = source[fn_idx : source.index("function wwOpenDetectEventModal(groupId)", fn_idx)]
     assert "visible: false" in fn_body
     assert "workspaceTime: null" in fn_body
     # TG-D2: a full per-group sweep (the suggestion may have been
@@ -347,59 +350,61 @@ def test_detection_range_rows_reuse_the_existing_stacked_radio_pattern():
 
 def test_open_modal_resets_range_to_visible_every_time():
     source = _source()
-    fn_idx = source.index("function wwOpenDetectEventModal()")
+    fn_idx = source.index("function wwOpenDetectEventModal(groupId)")
     fn_body = source[fn_idx : source.index("function wwCloseDetectEventModal()", fn_idx)]
     assert 'document.getElementById("wwDetectEventRangeVisible").checked = true;' in fn_body
     assert "wwSyncDetectEventRangeRowHighlight();" in fn_body
 
 
 class TestVisibleRangeTimeMapping:
-    """Task section 4: "Use existing helpers. Do not duplicate hardcoded
-    formulas." ww.viewport is already documented (see its own
-    docstring) as staying in WORKSPACE time regardless of Absolute/
-    Elapsed mode or an active t0 (every relayout handler routes the raw
-    Plotly range through wwPlotlyXToElapsed() before storing it) -- so
-    the only conversion this correction needs is the SAME Slice 1
+    """Task section 4/21: "Use existing helpers. Do not duplicate
+    hardcoded formulas." TG-E: this now uses the LAUNCHING GROUP's own
+    wwTimeGroupVisibleRange(groupId) -- never the single global/primary
+    ww.viewport blindly -- composed with the SAME Slice 1
     wwWorkspaceTimeToSourceTime() helper every other source-native
     request already uses, never a second hand-rolled formula and never
     a separate "apply t0" step (that would double-apply it)."""
 
     def test_conversion_function_reuses_the_existing_slice_1_helper_only(self):
         source = _source()
-        fn_idx = source.index("function wwDetectEventVisibleSourceNativeRange(sourceId)")
+        fn_idx = source.index("function wwDetectEventVisibleSourceNativeRange(sourceId, groupId)")
         fn_body = source[fn_idx : source.index("async function wwHandleDetectEventAnalyseClick()", fn_idx)]
-        assert "wwWorkspaceTimeToSourceTime(sourceId, ww.viewport.start)" in fn_body
-        assert "wwWorkspaceTimeToSourceTime(sourceId, ww.viewport.end)" in fn_body
+        assert "wwWorkspaceTimeToSourceTime(sourceId, range.start)" in fn_body
+        assert "wwWorkspaceTimeToSourceTime(sourceId, range.end)" in fn_body
         # No second/hand-rolled arithmetic -- no raw "+"/"-" against
-        # t0WorkspaceTime or alignmentOffsets anywhere in this function.
+        # t0 or alignmentOffsets anywhere in this function.
         assert "t0WorkspaceTime" not in fn_body
+        assert "timeGroupT0State" not in fn_body
         assert "alignmentOffsets" not in fn_body
 
     def test_no_viewport_returns_null_never_throws(self):
         source = _source()
-        fn_idx = source.index("function wwDetectEventVisibleSourceNativeRange(sourceId)")
+        fn_idx = source.index("function wwDetectEventVisibleSourceNativeRange(sourceId, groupId)")
         fn_body = source[fn_idx : source.index("async function wwHandleDetectEventAnalyseClick()", fn_idx)]
-        assert "if (!ww.viewport) return null;" in fn_body
+        assert "const range = wwTimeGroupVisibleRange(groupId);" in fn_body
+        assert "if (!range) return null;" in fn_body
 
 
 class TestViewportCapturedAtAnalyseTime:
-    """Task section 7: "Use the viewport that exists when the engineer
-    clicks Analyse, not a stale range captured when the modal first
-    opened." -- verified structurally: the conversion call happens
-    INSIDE wwHandleDetectEventAnalyseClick() itself (reading ww.viewport
-    fresh at call time), never precomputed in wwOpenDetectEventModal()."""
+    """Task section 7/21: "Use the viewport that exists when the
+    engineer clicks Analyse, not a stale range captured when the modal
+    first opened." -- verified structurally: the conversion call happens
+    INSIDE wwHandleDetectEventAnalyseClick() itself (reading the
+    launching group's own current viewport fresh at call time), never
+    precomputed in wwOpenDetectEventModal(groupId)."""
 
     def test_open_modal_never_reads_the_viewport(self):
         source = _source()
-        fn_idx = source.index("function wwOpenDetectEventModal()")
+        fn_idx = source.index("function wwOpenDetectEventModal(groupId)")
         fn_body = source[fn_idx : source.index("function wwCloseDetectEventModal()", fn_idx)]
         assert "ww.viewport" not in fn_body
+        assert "wwTimeGroupVisibleRange" not in fn_body
 
     def test_analyse_handler_computes_the_range_itself(self):
         source = _source()
         fn_idx = source.index("async function wwHandleDetectEventAnalyseClick()")
         fn_body = source[fn_idx : source.index("async function wwAcceptDetectedEvent()", fn_idx)]
-        assert "wwDetectEventVisibleSourceNativeRange(sourceId)" in fn_body
+        assert "wwDetectEventVisibleSourceNativeRange(sourceId, groupId)" in fn_body
 
 
 class TestNoSilentFullRecordFallback:

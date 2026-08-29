@@ -383,18 +383,18 @@ class TestGlobalDuplicatesRemoved:
         assert "wwWireZoomStepSplitButtons();" not in source
 
     def test_deferred_global_controls_are_still_present_and_untouched(self):
-        """Task section 4/12: Layout Mode, Time Mode, Unit Mode, t0,
-        Detect Event, Synchronise Sources, upload, and the annotation
-        drawer all remain workspace-global -- confirms this slice did
-        not accidentally remove or migrate them. (Cursor A/B itself was
-        migrated in the later TG-D2 slice -- see
-        test_frontend_time_group_cursors.py for its own coverage.)"""
+        """Task section 4/12: Layout Mode, Time Mode, Unit Mode,
+        Synchronise Sources, upload, and the annotation drawer all
+        remain workspace-global -- confirms this slice did not
+        accidentally remove or migrate them. (Cursor A/B was migrated in
+        the later TG-D2 slice, and t0 in the later TG-E slice -- see
+        test_frontend_time_group_cursors.py/test_frontend_synchronization_t0.py
+        for their own coverage.)"""
         source = _source()
         for still_global_id in (
             "layoutModeGroupedBtn",
             "timeModeAbsoluteBtn",
             "wwUnitModeBtn",
-            "wwSetT0Btn",
             "recordingsUploadBtn",
         ):
             assert f'id="{still_global_id}"' in source, f"expected still-global control id={still_global_id} to remain"

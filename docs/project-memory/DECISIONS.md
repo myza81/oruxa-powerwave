@@ -8533,6 +8533,205 @@ Impact:
 
 ---
 
+## DEC-062 — TG-E: t0 becomes genuinely Time-Group-scoped throughout the frontend (mirroring the backend's already-group-keyed truth), and Detect Event becomes internally Time-Group-aware while its normal frontend entry point is hidden by owner decision
+
+Date: 2026-08-29
+Status: Approved
+Source: explicit project-owner instruction ("TG-E — Per-Time-Group t0 +
+Detect Event migration"), delivered as the direct successor to TG-D2
+(DEC-061), which had deliberately deferred full per-group t0 to this
+slice.
+
+Decision:
+
+**Each Time Group owns its own t0.** Audit finding that shaped this
+entire slice: the BACKEND has been fully Time-Group-scoped for t0
+since Slice 2 (`SynchronizationRegistry._t0`, keyed by
+`(workspace_id, time_group_key)` — see
+`app.services.synchronization_service._resolve_time_group_key()`) —
+every GET/PUT/DELETE `.../synchronization/t0` call already resolves
+"which group" from the `source_id` it's given and touches only that
+group's own key. The FRONTEND was the one place still narrowed to a
+single scalar (`ww.t0WorkspaceTime`, fetched only for one resolved
+"primary" source). This slice is therefore a frontend mirroring
+exercise, not a new architecture: `ww.timeGroupT0State: Map<groupId,
+t0_workspace_time>` replaces the scalar, populated by fetching t0 for
+every known group in parallel (`Promise.all`) rather than one primary
+source. `wwT0ForGroup(groupId)`/`wwHasT0(groupId)` are the resolver
+pair every t0-aware function now reads through — both REQUIRE an
+explicit `groupId`, no hidden fallback to any one "primary" group,
+matching TG-D2's own established convention for cursor state.
+
+The core X-coordinate transform every panel/ruler/digital-chart trace
+already funnels through, `wwElapsedToPlotlyX`/`wwPlotlyXToElapsed`, is
+generalized to `(groupId, value)` — this is the fix for the actual
+correctness gap TG-D2 left open: previously, ANY group's t0 shifted
+EVERY panel's plotted X data globally (the single scalar applied
+everywhere `wwElapsedToPlotlyX` was called), a latent bug invisible
+until a genuinely multi-group workspace with an active t0 was tested.
+Every call site already had a `groupId` available in scope (a panel's
+own via `wwPanelTimeGroupId()`, a channel's own via
+`wwTimeGroupIdForDisplaySourceId(channel.sourceId)`, a ruler/digital
+function's own parameter) — this was a mechanical, forced propagation,
+not a redesign.
+
+Each Time Group Canvas's own local toolbar gains a `.ww-tg-t0-btn` —
+the exact same single dual-purpose "Set Cursor A as t=0"/"Clear t=0"
+toggle UX the former global `#wwSetT0Btn` established, preserved
+verbatim per task section 7's own "preserve that UX where practical."
+The old global button and the `#statusBarT0` bottom-status-bar readout
+are both removed outright (not merely hidden) — a single global t0
+readout became exactly the same kind of ambiguous surface DEC-061
+already eliminated for Cursor A/B ("whose t0 would it show?").
+
+Reason:
+
+Section 1's own governing principle: "There must be no remaining
+assumption that one workspace has only one t0." A single global
+scalar — even one that already read from a per-group-keyed backend —
+still meant every panel's own rendering used ONE group's t0 regardless
+of which group it actually belonged to, silently wrong the moment a
+second group's t0 was ever set. This is the same class of
+correctness-critical gap DEC-061 closed for cursor overlays, now
+closed for the coordinate transform underneath them.
+
+Detect Event (task section 17, explicit owner decision): "the
+capability remains implemented and fully maintained... but its normal
+frontend entry point should be hidden for now." A single named
+constant, `WW_DETECT_EVENT_UI_ENABLED = false`, is the one source of
+truth — deliberately not a general feature-flag system (none exists in
+this codebase, and this task does not need one). The button's own
+`.hidden` attribute is set from that constant at init time; the click
+listener stays wired regardless, so re-enabling later is a one-line
+flip, never a second wiring/architecture pass. Discovered live during
+this task's own UAT: `.ww-icon-btn { display: inline-flex; }`'s own
+AUTHOR-origin CSS rule silently overrides the browser's UA-stylesheet
+`[hidden] { display: none }` default (same origin-precedence mechanism
+`#bottomStatusBar .shell-status-item[hidden]` already documents
+elsewhere in this file) — without an explicit `.ww-icon-btn[hidden] {
+display: none; }` override, setting `.hidden = true` on the button had
+zero visual effect despite the attribute genuinely being present in
+the DOM. Fixed as part of this slice (the bug is in the SAME hiding
+mechanism this task introduces, not a pre-existing unrelated issue).
+
+Even hidden, Detect Event's own internal workflow is migrated to be
+genuinely Time-Group-aware (task section 19): `wwOpenDetectEventModal(groupId)`
+now requires an explicit groupId and filters the source dropdown to
+ONLY that group's own member sources
+(`wwDetectEventSourceOptionsHtml(groupId)`); "Current visible range"
+now converts the LAUNCHING GROUP's own `wwTimeGroupVisibleRange(groupId)`,
+never the single global/primary `ww.viewport`; accepting a candidate
+now derives the candidate's own owning group from its `sourceId` and
+writes ONLY that group's `ww.timeGroupT0State` entry. No new per-group
+Map was introduced for the transient candidate itself (task section 24's
+own explicit allowance against overengineering a transient modal's
+state) — unambiguous ownership instead falls out structurally from the
+group-filtered source dropdown: whichever source a candidate names,
+`wwTimeGroupIdForDisplaySourceId(sourceId)` always resolves back to the
+SAME group that launched the modal.
+
+Alternatives considered:
+
+- Keeping t0 primary-group-scoped permanently (TG-D2's own interim
+  policy) — explicitly rejected: this is the exact deferred work TG-E
+  exists to complete, and the governing principle ("no remaining
+  assumption that one workspace has only one t0") is incompatible with
+  leaving any group second-class.
+- A `wwTimeGroupDetectEventState = Map<groupId, {...}>` for the
+  candidate itself (task section 24's own suggested "if needed"
+  alternative) — considered, rejected as unnecessary: the modal is a
+  single transient global overlay (only one can ever be open), and its
+  own source-dropdown filtering already makes ownership unambiguous
+  without a second piece of state to keep in sync.
+- Deleting the Detect Event capability entirely instead of hiding it —
+  explicitly rejected by the owner's own instruction ("Do not delete
+  the Detect Event implementation. Do not remove its tests.").
+- Migrating Detect Event's own entry point into each Time Group
+  Canvas's local toolbar (mirroring t0/Cursor A/B) — considered,
+  rejected: the owner decision is to HIDE the capability from normal
+  use, not to give it a more prominent per-canvas home; the existing
+  single global (now-hidden) button remains the one entry point, ready
+  to resolve `wwPrimaryTimeGroupId()` if ever re-enabled as-is, or to
+  be migrated per-canvas in a genuinely future slice if the owner
+  chooses to re-expose it that way instead.
+- Not fixing the newly-discovered `.ww-icon-btn[hidden]` CSS-origin bug
+  and instead deleting the button's markup outright — rejected: task
+  section 27 requires the DOM/workflow to "remain functional," and an
+  entirely removed button contradicts "re-enabling later should require
+  only a small exposure change."
+
+Impact:
+
+- `frontend/index.html` only (no backend/schema/API changes — the
+  backend was already fully group-scoped). New:
+  `wwT0ForGroup()`, `wwAnySourceIdForTimeGroup()`,
+  `wwApplyT0ToDisplayForGroup()`, `wwSyncT0ControlsForGroup()`,
+  `wwSetT0FromCursorAForGroup()`, `wwClearT0ForGroup()`,
+  `wwHandleSetOrClearT0ClickForGroup()`, `WW_DETECT_EVENT_UI_ENABLED`.
+  Generalized in place to require `groupId`: `wwHasT0()`,
+  `wwWorkspaceTimeToEventTime()`, `wwEventTimeToWorkspaceTime()`,
+  `wwElapsedToPlotlyX()`, `wwPlotlyXToElapsed()`, `wwTimeAxisTitle()`,
+  `wwFormatCursorPointTime()`'s own t0 gate (no longer primary-only),
+  `wwApplyTimeAxisChrome()` (optional groupId, mirrors
+  `wwVisibleSpanSeconds()`'s own TG-D2 precedent),
+  `wwDetectEventSourceOptionsHtml()`,
+  `wwDetectEventVisibleSourceNativeRange()`, `wwOpenDetectEventModal()`.
+  `ww.timeGroupT0State` replaces the old flat `ww.t0WorkspaceTime`.
+  Removed outright: the old global `#wwSetT0Btn`/`#statusBarT0`/
+  `#statusBarT0Value` HTML and their wiring, `wwSyncT0Controls()`,
+  `wwSetT0FromCursorA()`, `wwClearT0()`, `wwHandleSetOrClearT0Click()`,
+  `wwApplyT0ToDisplay()` (workspace-wide form — no "apply to every
+  group" batch counterpart was needed; nothing in this slice required
+  one).
+- New CSS: `.ww-icon-btn[hidden] { display: none; }` (the origin-
+  precedence fix described above).
+- Verified by the full backend suite (1688 passed, 0 failed — up from
+  1647 at TG-D2's own end state; 39 pre-existing frontend static-
+  regression tests updated across
+  `test_frontend_absolute_time_precision.py`,
+  `test_frontend_calculated_channel_time_mode.py`,
+  `test_frontend_waveform_adaptive_resolution.py`,
+  `test_frontend_synchronization_t0.py`,
+  `test_frontend_detect_event.py`, `test_frontend_time_group_cursors.py`,
+  `test_frontend_time_group_toolbar.py`, `test_frontend_time_groups.py`;
+  63 new tests added across two new files,
+  `test_frontend_time_group_t0.py` (Cases A-M) and
+  `test_frontend_detect_event_group_scoped.py` (Cases N-W)) plus a
+  live-browser Playwright UAT pass covering the task's own full 20-step
+  scenario against a running backend: Group 1 set/clear t0 with
+  event-relative shift confirmed and original mapping restored; a
+  second, genuinely separate Time Group added and given its own,
+  different t0; both groups' own local button state confirmed
+  independent in both directions (setting/clearing one never affects
+  the other); a Grouped/Separate layout-mode round trip preserved
+  Group 2's own t0; the Detect Event button confirmed hidden (and, once
+  the CSS bug above was found and fixed, genuinely invisible, not just
+  attribute-hidden); the modal invoked programmatically
+  (`wwOpenDetectEventModal(group2Id)`) with its source list confirmed
+  to resolve exclusively to Group 2; and — after manually constructing
+  a candidate for Group 2 (the synthetic sawtooth fixtures used for
+  this UAT have no genuine RMS-change event for the unmodified
+  detection algorithm to find, an expected true-negative, not a
+  defect) — accepting it confirmed to set ONLY Group 2's own t0,
+  Group 1 unaffected. Zero console/page errors throughout.
+- **Deferred, per the task's own explicit non-goals**: Synchronise
+  Sources migration (TG-F), cross-group t0 (deliberately prohibited by
+  design, not merely unimplemented), automatic cross-file event
+  alignment, new event detection algorithms, event classification,
+  annotation redesign (still primary-group-scoped, unchanged), collapse
+  behavior, CSV/Excel, clock drift correction, and cross-group cursor
+  comparison all remain unimplemented/unchanged from before this task.
+  The pre-existing, unrelated Absolute-axis layout-round-trip bug
+  DEC-061 already documented (`wwBuildLayout()`'s own tick-RANGE source
+  still reads global `ww.viewport`, not a per-group range) was
+  correctly left untouched — this slice only threaded `groupId` through
+  `wwBuildLayout()`'s t0-awareness (a forced, minimal propagation,
+  confirmed via `git diff` to touch zero range-source lines), never
+  fixing the separate, still-open range-source limitation, exactly as
+  instructed.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or
