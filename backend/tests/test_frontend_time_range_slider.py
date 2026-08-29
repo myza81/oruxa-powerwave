@@ -114,11 +114,12 @@ class TestApplyAndFetchGroupViewportScoping:
         assert "ww.timeGroupViewports.set(groupId, { start: startTime, end: endTime });" in fn_body
 
     def test_primary_group_still_drives_every_existing_single_viewport_surface(self):
-        """Time Group Canvas (task section 7/8/25): ruler/digital/slider
-        are now genuinely per-group and update for EVERY group's own
-        viewport change -- only the still-deferred, workspace-global
-        surfaces (ww.viewport mirror, toolbar zoom-step controls, peak
-        annotations) remain gated to the primary group only."""
+        """Time Group Canvas (task section 7/8/25) + TG-D1 (task section
+        7): ruler/digital/slider/local-toolbar-zoom-controls are all now
+        genuinely per-group and update for EVERY group's own viewport
+        change -- only the still-deferred, workspace-global surfaces
+        (ww.viewport mirror, peak annotations) remain gated to the
+        primary group only."""
         source = _source()
         fn_idx = source.index("async function wwApplyAndFetchGroupViewport(groupId, startTime, endTime)")
         fn_body = source[fn_idx : source.index("async function wwApplyAndFetchViewport(startTime, endTime)", fn_idx)]
@@ -128,13 +129,13 @@ class TestApplyAndFetchGroupViewportScoping:
         )
         primary_block = fn_body[primary_idx:primary_end]
         assert "ww.viewport = { start: startTime, end: endTime };" in primary_block
-        assert "wwSyncZoomStepControls();" in primary_block
         assert "wwRecalculateAllPeakAnnotations(startTime, endTime);" in primary_block
 
         unconditional_tail = fn_body[primary_end:]
         assert "wwSyncTimeGroupRuler(groupId);" in unconditional_tail
         assert "wwRebuildDigitalChart(groupId);" in unconditional_tail
         assert "wwSyncTimeGroupSliderForCanvas(groupId, canvasEl);" in unconditional_tail
+        assert "wwSyncTimeGroupZoomControls(groupId);" in unconditional_tail
 
     def test_refetches_only_this_groups_own_channels(self):
         source = _source()

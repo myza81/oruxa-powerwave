@@ -4,7 +4,16 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-29** (Phase 21 — Time Group Canvas:
+Last meaningful update: **2026-08-29** (Phase 22 — TG-D1: staged Zoom
+In/Zoom Out, Reset Time View, and Autoscale Y are now migrated into
+each Time Group Canvas's own local navigation toolbar — genuinely
+Time-Group-scoped, never affecting an unrelated group; the former
+global toolbar's own duplicate controls were removed, not merely
+hidden. Cursor A/B, A-B measurements, t0, Detect Event, and
+Synchronise Sources remain workspace-global, deliberately deferred to
+later slices — see
+[DECISIONS.md — DEC-060](DECISIONS.md#dec-060--tg-d1-staged-zoom-inout-reset-time-view-and-autoscale-y-migrate-into-each-time-group-canvass-own-local-navigation-toolbar-making-these-four-controls-genuinely-time-group-scoped-instead-of-workspace-global)
+and [HANDOFF.md](HANDOFF.md), on top of Phase 21 — Time Group Canvas:
 each Time Group is now its own complete structural UI section — own
 header, own analog panels, own digital-channel region, own Time Range
 slider, own sticky ruler with its own per-group Absolute-mode origin

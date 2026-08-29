@@ -8,6 +8,66 @@ Last updated: **2026-08-29**
 
 ## What was most recently done
 
+**Phase 22 — TG-D1: local Time Group toolbar.** On top of Phase 21
+(Time Group Canvas) below — see
+[DECISIONS.md — DEC-060](DECISIONS.md#dec-060--tg-d1-staged-zoom-inout-reset-time-view-and-autoscale-y-migrate-into-each-time-group-canvass-own-local-navigation-toolbar-making-these-four-controls-genuinely-time-group-scoped-instead-of-workspace-global)
+for the full record; summarized here for continuity.
+
+Staged Zoom In, staged Zoom Out (X/Y split-button dropdown, exact
+Phase 4D stepping factors/min-span floors preserved), Reset Time View,
+and Autoscale Y all moved into each Time Group Canvas's own
+`.ww-tg-toolbar` (the TG-B+C shell, reused — no second toolbar
+container). Every control resolves via `canvasEl.querySelector(...)`
+scoped classes (`ww-tg-zoom-in-btn`, `ww-tg-zoom-out-btn`,
+`ww-tg-reset-view-btn`, `ww-tg-autoscale-btn`), wired once per canvas
+by one reusable `wwWireTimeGroupToolbar(canvasEl, groupId)` — no
+singleton ids, no per-group duplicated listener logic.
+`wwStepZoomX`/`wwStepZoomY` were generalized to take `groupId` first,
+reading/writing that group's own viewport
+(`wwTimeGroupVisibleRange()`) instead of the single `ww.viewport`; a
+new `wwActivePanelForGroup(groupId)` gives Y-zoom a group-scoped
+"active panel" fallback (never `ww.panels[0]` outright). The
+split-button's own remembered X/Y axis preference became
+`ww.zoomStepAxisByGroup: Map<groupId, {in, out}>` so choosing Y in one
+group's own dropdown never relabels another group's button. Plotly's
+own native double-click-to-autorange gesture was also re-pointed at
+the group-scoped reset, not the workspace-wide one.
+
+The former global toolbar's own duplicate controls (`#wwZoomInSplit`/
+`#wwZoomOutSplit`/`#wwResetViewBtn`/`#wwAutoscaleBtn` markup and their
+init-time wiring) were removed outright, not merely hidden — exactly
+one active way to invoke each of the four actions remains. The former
+workspace-wide functions (`wwResetTimeView()`, `wwAutoscaleY()`) are
+kept as compatibility wrappers (task's own explicit allowance; an
+existing backend test also depends on `wwResetTimeView()`'s own
+documented behavior) but are no longer wired to any button.
+
+Verified by the full backend suite (zero regressions; 1 pre-existing
+test updated for the now-unconditional zoom-controls sync; 46 new
+tests in `test_frontend_time_group_toolbar.py`) plus two live-browser
+Playwright UAT passes: 20/20 checks (one/two Time Groups, staged
+zoom/reset/autoscale isolation in both directions, slider/ruler/
+digital sync, Grouped/Separate/Custom layout-mode sweep) and 11/11
+checks (per-group axis-preference isolation, a bridge-source merge
+producing exactly one fresh, correctly-wired, non-duplicated
+toolbar), zero console errors throughout.
+
+**Known, disclosed limitation (same class DEC-057/058/059 already
+established)**: Cursor A/B, A-B measurements, t0, Detect Event, and
+Synchronise Sources remain workspace-global/primary-canvas-only —
+deliberately deferred to later slices, per this task's own explicit
+non-goals.
+
+**Files changed**: `frontend/index.html` only (no backend/schema/API
+changes) + new `backend/tests/test_frontend_time_group_toolbar.py` +
+`backend/tests/test_frontend_time_range_slider.py` updated (1 test).
+
+**Next step**: nothing is pre-authorized. Per this session's own "do
+not commit/push without being asked" discipline, these changes stayed
+uncommitted at the end of this task.
+
+## What was done in the prior session (Phase 21 — Time Group Canvas)
+
 **Phase 21 — Time Group Canvas.** On top of Phase 20 (Time Range
 slider) below — see
 [DECISIONS.md — DEC-059](DECISIONS.md#dec-059--time-group-canvas-each-time-group-becomes-its-own-structural-ui-section-header-panels-digital-region-slider-sticky-ruler-closing-dec-057dec-058s-own-disclosed-primary-group-only-rulerdigitalabsolute-origin-gap-for-every-group-not-just-the-first)

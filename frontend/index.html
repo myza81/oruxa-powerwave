@@ -2975,14 +2975,21 @@
             font-size: 0.7rem;
             color: var(--text-dim);
         }
-        /* Minimal shell this slice (task section 14) -- only Reset Time
-           View is duplicated per canvas; Cursor A/B, t0, Detect Event,
-           Synchronize Sources stay the one workspace-global toolbar
-           (#wwToolbar, untouched), deferred to later slices. */
+        /* TG-D1: Zoom In/Zoom Out/Reset Time View/Autoscale Y all live
+           here now, each Time-Group-scoped (task section 1's own
+           target layout: one compact row of controls per canvas).
+           Cursor A/B, t0, Detect Event, Synchronize Sources stay the
+           one workspace-global toolbar (#wwToolbar, untouched),
+           deferred to later slices. */
         .ww-tg-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 6px;
             margin-bottom: 6px;
         }
-        .ww-tg-toolbar .ww-tg-reset-view-btn {
+        .ww-tg-toolbar .ww-tg-reset-view-btn,
+        .ww-tg-toolbar .ww-tg-autoscale-btn,
+        .ww-tg-toolbar .ww-split-btn-main {
             font-size: 0.7rem;
             padding: 3px 10px;
         }
@@ -3585,55 +3592,13 @@
                             </button>
                         </div>
 
-                        <!-- Phase 4D (section 2/3): precision step zoom --
-                             ONE split button per action (never four
-                             permanent X+/X-/Y+/Y- buttons, section 2's own
-                             explicit instruction). Main icon performs
-                             whichever axis was last chosen (default X,
-                             section 4); the small trigger opens a 2-item
-                             axis menu. See wwWireZoomStepSplitButtons()
-                             for the interaction wiring and
-                             wwSyncZoomStepControls() for the
-                             tooltip/aria-label/checkmark/disabled-state
-                             sync. -->
-                        <div class="ww-split-btn" id="wwZoomInSplit">
-                            <button type="button" class="ww-icon-btn ww-split-btn-main" id="wwZoomInBtn" title="Zoom In — X axis" aria-label="Zoom In — X axis">
-                                <span class="ww-icon"><svg viewBox="0 0 18 18"><circle cx="7.5" cy="7.5" r="4.5"/><line x1="10.8" y1="10.8" x2="15.5" y2="15.5"/><line x1="7.5" y1="5.3" x2="7.5" y2="9.7"/><line x1="5.3" y1="7.5" x2="9.7" y2="7.5"/></svg></span>
-                            </button>
-                            <button type="button" class="ww-icon-btn ww-split-btn-trigger" id="wwZoomInMenuBtn" aria-haspopup="menu" aria-expanded="false" title="Choose Zoom In axis" aria-label="Choose Zoom In axis">
-                                <span class="ww-icon ww-caret"><svg viewBox="0 0 18 18"><polyline points="4,6.5 9,11.5 14,6.5" stroke-width="1.6"/></svg></span>
-                            </button>
-                            <div class="ww-split-menu" id="wwZoomInMenu" role="menu" aria-label="Zoom In axis" hidden>
-                                <button type="button" class="ww-split-menu-item" role="menuitemradio" data-axis="x" aria-checked="true">
-                                    <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="3" y1="9" x2="15" y2="9"/><polyline points="5,6.5 2.5,9 5,11.5"/><polyline points="13,6.5 15.5,9 13,11.5"/></svg></span>
-                                    Horizontal (X)
-                                </button>
-                                <button type="button" class="ww-split-menu-item" role="menuitemradio" data-axis="y" aria-checked="false">
-                                    <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="9" y1="3" x2="9" y2="15"/><polyline points="6.5,5 9,2.5 11.5,5"/><polyline points="6.5,13 9,15.5 11.5,13"/></svg></span>
-                                    Vertical (Y)
-                                </button>
-                            </div>
-                        </div>
-                        <div class="ww-split-btn" id="wwZoomOutSplit">
-                            <button type="button" class="ww-icon-btn ww-split-btn-main" id="wwZoomOutBtn" title="Zoom Out — X axis" aria-label="Zoom Out — X axis">
-                                <span class="ww-icon"><svg viewBox="0 0 18 18"><circle cx="7.5" cy="7.5" r="4.5"/><line x1="10.8" y1="10.8" x2="15.5" y2="15.5"/><line x1="5.3" y1="7.5" x2="9.7" y2="7.5"/></svg></span>
-                            </button>
-                            <button type="button" class="ww-icon-btn ww-split-btn-trigger" id="wwZoomOutMenuBtn" aria-haspopup="menu" aria-expanded="false" title="Choose Zoom Out axis" aria-label="Choose Zoom Out axis">
-                                <span class="ww-icon ww-caret"><svg viewBox="0 0 18 18"><polyline points="4,6.5 9,11.5 14,6.5" stroke-width="1.6"/></svg></span>
-                            </button>
-                            <div class="ww-split-menu" id="wwZoomOutMenu" role="menu" aria-label="Zoom Out axis" hidden>
-                                <button type="button" class="ww-split-menu-item" role="menuitemradio" data-axis="x" aria-checked="true">
-                                    <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="3" y1="9" x2="15" y2="9"/><polyline points="5,6.5 2.5,9 5,11.5"/><polyline points="13,6.5 15.5,9 13,11.5"/></svg></span>
-                                    Horizontal (X)
-                                </button>
-                                <button type="button" class="ww-split-menu-item" role="menuitemradio" data-axis="y" aria-checked="false">
-                                    <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="9" y1="3" x2="9" y2="15"/><polyline points="6.5,5 9,2.5 11.5,5"/><polyline points="6.5,13 9,15.5 11.5,13"/></svg></span>
-                                    Vertical (Y)
-                                </button>
-                            </div>
-                        </div>
-
-                        <span class="ww-toolbar-sep" aria-hidden="true"></span>
+                        <!-- TG-D1: Zoom In/Zoom Out split buttons (Phase 4D)
+                             moved into each Time Group Canvas's own local
+                             toolbar -- see wwCreateTimeGroupCanvasDom()'s
+                             own HTML and wwWireTimeGroupToolbar() for the
+                             interaction wiring, wwSyncTimeGroupZoomControls()
+                             for the tooltip/aria-label/checkmark/disabled-
+                             state sync. No longer duplicated here. -->
 
                         <div class="theme-toggle ww-icon-group" id="timeModeToggle" role="group" aria-label="Time axis mode">
                             <button type="button" id="timeModeAbsoluteBtn" aria-pressed="true" title="Absolute Time" aria-label="Absolute Time">
@@ -3644,14 +3609,11 @@
                             </button>
                         </div>
 
-                        <span class="ww-toolbar-sep" aria-hidden="true"></span>
-
-                        <button class="ww-icon-btn" type="button" id="wwResetViewBtn" title="Reset Time View" aria-label="Reset Time View">
-                            <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="3" y1="9" x2="15" y2="9"/><polyline points="5.5,6.5 3,9 5.5,11.5"/><polyline points="12.5,6.5 15,9 12.5,11.5"/></svg></span>
-                        </button>
-                        <button class="ww-icon-btn" type="button" id="wwAutoscaleBtn" title="Autoscale Y" aria-label="Autoscale Y">
-                            <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="9" y1="3" x2="9" y2="15"/><polyline points="6.5,5.5 9,3 11.5,5.5"/><polyline points="6.5,12.5 9,15 11.5,12.5"/></svg></span>
-                        </button>
+                        <!-- TG-D1: Reset Time View/Autoscale Y (formerly
+                             #wwResetViewBtn/#wwAutoscaleBtn here) moved into
+                             each Time Group Canvas's own local toolbar --
+                             see wwCreateTimeGroupCanvasDom()'s own HTML.
+                             No longer duplicated here. -->
 
                         <span class="ww-toolbar-sep" aria-hidden="true"></span>
 
@@ -7436,17 +7398,20 @@
             // self-healing fallback to the first panel -- see its own
             // comment for why this needs no separate rebuild-time hook.
             activePanelGroupKey: null,
-            // Phase 4D (section 4): the last-selected axis for each step
-            // action, remembered SEPARATELY for Zoom In vs. Zoom Out (the
-            // task's own primary recommendation over one shared axis --
-            // sharing risked a surprising cross-action jump, e.g.
-            // selecting Y for Zoom In silently redirecting a later Zoom
-            // Out click too). Defaults to "x" per section 4's own
-            // explicit preference (precise time-window inspection is the
-            // most common case). Never reset by wwClearWorkspace() --
-            // a viewing preference, same lifecycle class as
-            // ww.layoutMode/ww.dragMode/ww.timeMode above.
-            zoomStepAxis: { in: "x", out: "x" },
+            // TG-D1: the last-selected axis for each step action,
+            // remembered SEPARATELY per Time Group (Map<groupId, {in, out}>)
+            // now that Zoom In/Out are Time-Group-scoped controls -- a
+            // groupId with no entry yet defaults to "x" (see
+            // wwZoomStepAxisForGroup()'s own comment), matching this
+            // feature's own original single-workspace default (Phase 4D
+            // section 4: precise time-window inspection is the most
+            // common case). Also remembered separately for Zoom In vs.
+            // Zoom Out within one group (Phase 4D's own original
+            // recommendation, unchanged -- sharing risked a surprising
+            // cross-action jump). Cleared by wwClearWorkspace() (a stale
+            // group id carries no meaning once its own group is gone),
+            // unlike the single-workspace viewing preferences above.
+            zoomStepAxisByGroup: new Map(),
             // Phase 4E (DEC-044) + Phase 4E-UAT scroll-anchoring addendum:
             // the generic annotation authority --
             // "sourceId::channelName"-style per-channel state this is NOT
@@ -8028,52 +7993,6 @@
             );
         }
 
-        // Phase 4D (section 7): a deliberately SEPARATE clamp from
-        // wwClampRangeToWorkspace() above -- that helper clamps each
-        // endpoint independently, which is correct for its own callers
-        // (drag-zoom/pan broadcast, unchanged, section 45) but would
-        // asymmetrically truncate a Zoom-Out step's SPAN whenever the
-        // window's center sits close to one edge of the workspace (e.g.
-        // zooming out from a window already near the record start would
-        // clip the left side while barely touching the right, silently
-        // shrinking the requested step instead of "preserving as much
-        // center intent as practical," section 7's own explicit wording).
-        // This version instead SHIFTS the window to fit fully inside
-        // workspace bounds whenever the requested span itself is <= the
-        // full workspace span -- preserving the exact requested SPAN
-        // (the actual "zoom out" content) even if that means the window's
-        // center moves slightly toward the interior. Only once the
-        // requested span can no longer fit at all does it fall back to
-        // the full workspace bounds outright.
-        function wwClampZoomWindowToWorkspace(start, end) {
-            if (!ww.workspaceBounds) return wwNormalizeBounds(start, end);
-            const bounds = ww.workspaceBounds;
-            const requestedSpan = end - start;
-            if (requestedSpan >= bounds.end - bounds.start) {
-                return { start: bounds.start, end: bounds.end };
-            }
-            let newStart = start;
-            let newEnd = end;
-            if (newStart < bounds.start) {
-                const shift = bounds.start - newStart;
-                newStart += shift;
-                newEnd += shift;
-            }
-            if (newEnd > bounds.end) {
-                const shift = newEnd - bounds.end;
-                newEnd -= shift;
-                newStart -= shift;
-            }
-            // Defensive final clamp -- covers only the pathological case
-            // where requestedSpan is within float epsilon of the full
-            // workspace span, where the two shifts above could otherwise
-            // leave a sliver outside bounds.
-            return wwNormalizeBounds(
-                Math.max(newStart, bounds.start),
-                Math.min(newEnd, bounds.end)
-            );
-        }
-
         // ==================================================================
         // Time Range slider -- per-Time-Group viewport support
         //
@@ -8277,6 +8196,19 @@
         // slice -- see that section's own reasoning), analog panel list,
         // digital region, Time Range slider row container, sticky ruler.
         // Every internal piece is a CLASS, not an id (task section 5).
+        // TG-D1: one local navigation toolbar per Time Group Canvas --
+        // Zoom In/Zoom Out (staged, X/Y split-button exactly as the
+        // former global toolbar's own Phase 4D controls), Reset Time
+        // View (already present since TG-B+C), and Autoscale Y (task
+        // section 2's exact migration scope, nothing broader). Every
+        // control uses a scoped class (`.ww-tg-zoom-in-btn` etc.),
+        // never a singleton id -- see wwWireTimeGroupToolbar() for the
+        // resolution/wiring, always scoped to THIS canvas root. Markup
+        // mirrors the former global split-button structure exactly
+        // (same `.ww-split-btn`/`.ww-split-menu`/`.ww-split-menu-item`
+        // classes, same X/Y menu items) -- only the main action button
+        // is now a text label (matching this shell's own pre-existing
+        // Reset Time View convention) rather than an SVG icon.
         function wwCreateTimeGroupCanvasDom(groupId) {
             const section = document.createElement("section");
             section.className = "ww-time-group-canvas";
@@ -8287,7 +8219,28 @@
                     '<span class="ww-tg-header-meta"></span>' +
                 '</div>' +
                 '<div class="ww-tg-toolbar">' +
+                    '<div class="ww-split-btn ww-tg-zoom-in-split">' +
+                        '<button type="button" class="secondary ww-split-btn-main ww-tg-zoom-in-btn" title="Zoom In — X axis" aria-label="Zoom In — X axis">Zoom In</button>' +
+                        '<button type="button" class="ww-icon-btn ww-split-btn-trigger" aria-haspopup="menu" aria-expanded="false" title="Choose Zoom In axis" aria-label="Choose Zoom In axis">' +
+                            '<span class="ww-icon ww-caret"><svg viewBox="0 0 18 18"><polyline points="4,6.5 9,11.5 14,6.5" stroke-width="1.6"/></svg></span>' +
+                        '</button>' +
+                        '<div class="ww-split-menu" role="menu" aria-label="Zoom In axis" hidden>' +
+                            '<button type="button" class="ww-split-menu-item" role="menuitemradio" data-axis="x" aria-checked="true">Horizontal (X)</button>' +
+                            '<button type="button" class="ww-split-menu-item" role="menuitemradio" data-axis="y" aria-checked="false">Vertical (Y)</button>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="ww-split-btn ww-tg-zoom-out-split">' +
+                        '<button type="button" class="secondary ww-split-btn-main ww-tg-zoom-out-btn" title="Zoom Out — X axis" aria-label="Zoom Out — X axis">Zoom Out</button>' +
+                        '<button type="button" class="ww-icon-btn ww-split-btn-trigger" aria-haspopup="menu" aria-expanded="false" title="Choose Zoom Out axis" aria-label="Choose Zoom Out axis">' +
+                            '<span class="ww-icon ww-caret"><svg viewBox="0 0 18 18"><polyline points="4,6.5 9,11.5 14,6.5" stroke-width="1.6"/></svg></span>' +
+                        '</button>' +
+                        '<div class="ww-split-menu" role="menu" aria-label="Zoom Out axis" hidden>' +
+                            '<button type="button" class="ww-split-menu-item" role="menuitemradio" data-axis="x" aria-checked="true">Horizontal (X)</button>' +
+                            '<button type="button" class="ww-split-menu-item" role="menuitemradio" data-axis="y" aria-checked="false">Vertical (Y)</button>' +
+                        '</div>' +
+                    '</div>' +
                     '<button type="button" class="secondary ww-tg-reset-view-btn" title="Reset Time View for this Time Group">Reset Time View</button>' +
+                    '<button type="button" class="secondary ww-tg-autoscale-btn" title="Autoscale Y for this Time Group">Autoscale Y</button>' +
                 '</div>' +
                 '<div class="ww-tg-panels"></div>' +
                 '<div class="ww-tg-digital-region" hidden>' +
@@ -8299,7 +8252,7 @@
                     '<div class="ww-cursor-ruler-overlay" hidden></div>' +
                     '<div class="ww-tg-ruler-chart"></div>' +
                 '</div>';
-            section.querySelector(".ww-tg-reset-view-btn").addEventListener("click", () => wwResetOneTimeGroupView(groupId));
+            wwWireTimeGroupToolbar(section, groupId);
             return section;
         }
 
@@ -8506,6 +8459,10 @@
 
             if (!next) {
                 ww.viewport = null;
+                // TG-D1: wwSyncTimeGroupCanvases()'s own per-group loop
+                // now also resyncs each active group's own local toolbar
+                // zoom controls (wwSyncTimeGroupZoomControls()) -- no
+                // separate call needed here anymore.
                 await wwSyncTimeGroupCanvases();
                 // Section 27: workspace just became genuinely empty (no
                 // participating source left) -- cursor mode has nothing
@@ -8514,7 +8471,6 @@
                     ww.measurementCursors.enabled = false;
                     wwUpdateCursorOverlay();
                 }
-                wwSyncZoomStepControls();
                 return;
             }
 
@@ -8525,7 +8481,6 @@
             if (wwBoundsEqual(ww.viewport, desired)) {
                 if (isFreshViewport) wwReinitCursorsForNewViewport();
                 await wwSyncTimeGroupCanvases();
-                wwSyncZoomStepControls();
                 return;
             }
 
@@ -9489,6 +9444,28 @@
             return panel;
         }
 
+        // TG-D1: wwActivePanel()'s own per-group generalization for
+        // group-scoped Y step zoom (task section 9: "apply only to
+        // panels inside the launching Time Group... ensure unrelated
+        // groups are excluded"). If the GLOBAL active panel (set by
+        // clicking any panel's header, unchanged/still workspace-wide --
+        // that click mechanism itself is not migrated this slice)
+        // happens to belong to `groupId`, that's what Group `groupId`'s
+        // own Y-zoom targets, exactly matching pre-TG-D1 behavior for
+        // the common single-Time-Group case. Otherwise falls back to
+        // the FIRST panel belonging to THIS group specifically -- never
+        // ww.panels[0] outright, which could belong to an unrelated
+        // group and would violate the isolation rule. Deliberately a
+        // pure read: unlike wwActivePanel()'s own self-healing write of
+        // ww.activePanelGroupKey, resolving a per-group fallback here
+        // must never silently reassign the GLOBAL active panel as a
+        // side effect of a group-scoped control.
+        function wwActivePanelForGroup(groupId) {
+            const active = wwActivePanel();
+            if (active && wwPanelTimeGroupId(active) === groupId) return active;
+            return ww.panels.find((p) => wwPanelTimeGroupId(p) === groupId);
+        }
+
         // Section 11: a subtle, understated visual cue only -- toggles one
         // CSS class (.ww-panel--active, border/accent only, see its own
         // CSS comment) across every currently-rendered panel container to
@@ -9921,7 +9898,13 @@
                     return;
                 }
                 if (eventData["xaxis.autorange"] === true) {
-                    wwResetTimeView();
+                    // TG-D1: Plotly's own native double-click-to-autorange
+                    // gesture on a panel resets ONLY that panel's own Time
+                    // Group -- routed the same way every other viewport-
+                    // changing gesture on this panel already is (see
+                    // wwBroadcastGroupViewportDebounced() immediately
+                    // above), never the workspace-wide wwResetTimeView().
+                    wwResetOneTimeGroupView(wwPanelTimeGroupId(panel));
                     return;
                 }
                 // Phase 4F (section 26/56): a Y-range change -- manual
@@ -9976,15 +9959,14 @@
                 // ww.viewport ALWAYS stays in elapsed seconds -- the one
                 // authoritative coordinate system (section 8) -- regardless
                 // of ww.timeMode; only the Plotly-facing range above is
-                // transformed. Still primary-only: cursor overlay/toolbar
-                // Zoom In-Out/peak-annotation recalculation all remain
-                // deferred, workspace-global features this slice (task
-                // section 25) -- unlike the ruler/digital chart below,
+                // transformed. Still primary-only: cursor overlay/
+                // peak-annotation recalculation remain deferred,
+                // workspace-global features (task section 22/25) --
+                // unlike the ruler/digital chart/zoom controls below,
                 // which are now genuinely per-group and so update for
                 // EVERY group's own viewport change, not just the
                 // primary's.
                 ww.viewport = { start: startTime, end: endTime };
-                wwSyncZoomStepControls();
                 // Phase 4G (DEC-046): peak-annotation recalculation
                 // likewise stays primary-group-scoped -- this preserves
                 // its EXACT pre-existing behavior (unchanged even for the
@@ -9994,14 +9976,15 @@
                 // as before.
                 wwRecalculateAllPeakAnnotations(startTime, endTime);
             }
-            // Time Group Canvas (task section 7/8): THIS group's own
-            // ruler and digital chart, regardless of primary status --
-            // both are now genuinely per-group, unlike the deferred
-            // primary-only surfaces above.
+            // Time Group Canvas / TG-D1: THIS group's own ruler, digital
+            // chart, slider, and local toolbar zoom controls, regardless
+            // of primary status -- all four are now genuinely per-group,
+            // unlike the still-deferred primary-only surfaces above.
             wwSyncTimeGroupRuler(groupId);
             wwRebuildDigitalChart(groupId);
             const canvasEl = wwTimeGroupCanvasEl(groupId);
             if (canvasEl) wwSyncTimeGroupSliderForCanvas(groupId, canvasEl);
+            wwSyncTimeGroupZoomControls(groupId);
             await wwRefetchChannelsForGroup(groupId, startTime, endTime);
         }
 
@@ -11481,6 +11464,14 @@
         // ww.workspaceBounds itself is still the cheap, already-correct
         // "is there anything to reset at all" guard (null exactly when
         // the workspace is genuinely empty).
+        // Kept as a workspace-wide COMPATIBILITY WRAPPER (TG-D1 task's
+        // own explicit allowance) -- resets EVERY active Time Group to
+        // its own full bounds. No longer wired to any toolbar button
+        // (each Time Group Canvas now has its own wwResetOneTimeGroupView()
+        // button instead -- see wwWireTimeGroupToolbar()); kept
+        // available for any future/programmatic "reset everything" need
+        // without ever being what a single per-group button click
+        // reaches.
         async function wwResetTimeView() {
             if (!ww.workspaceBounds) return;
             clearTimeout(ww.viewportDebounceTimer);
@@ -11501,54 +11492,77 @@
         // from exactly that already-viewport-scoped data -- no custom
         // Y-range math, no whole-record fallback. Proportional/shared-unit
         // scaling across panels is explicitly not implemented yet.
+        // Kept as a workspace-wide COMPATIBILITY WRAPPER (same reasoning
+        // as wwResetTimeView() above) -- no longer wired to any button;
+        // wwAutoscaleYForGroup(groupId) below is what each Time Group
+        // Canvas's own Autoscale Y button actually calls.
         function wwAutoscaleY() {
             for (const panel of ww.panels) {
                 Plotly.relayout(panel.chartEl, { "yaxis.autorange": true });
             }
         }
 
+        // TG-D1: the per-Time-Group generalization of wwAutoscaleY()
+        // above -- identical Fit-only semantics (task section 11: "use
+        // existing Plotly relayout/autorange semantics... do not
+        // broadly rebuild the workspace"), restricted to panels
+        // belonging to `groupId` only, so Group 2's own Y ranges are
+        // never touched by Group 1's own Autoscale click.
+        function wwAutoscaleYForGroup(groupId) {
+            for (const panel of ww.panels) {
+                if (wwPanelTimeGroupId(panel) !== groupId) continue;
+                Plotly.relayout(panel.chartEl, { "yaxis.autorange": true });
+            }
+        }
+
         // ------------------------------------------------------------------
-        // Phase 4D: precision step zoom (DEC-043)
-        //
-        // "X step zoom is workspace-global; Y step zoom is active-panel-
-        // local" -- see wwStepZoomX()/wwStepZoomY() below. Both share the
-        // same +/-20% stepping factors (WW_ZOOM_STEP_IN_FACTOR/
-        // WW_ZOOM_STEP_OUT_FACTOR) and the same "keep the current midpoint
-        // fixed" math; only the axis, the state they read/write, and the
+        // Phase 4D: precision step zoom (DEC-043), generalized per Time
+        // Group by TG-D1 (task section 7): "X step zoom is Time-Group-
+        // scoped; Y step zoom is active-panel-local, restricted to the
+        // launching group." Both share the same +/-20% stepping factors
+        // (WW_ZOOM_STEP_IN_FACTOR/WW_ZOOM_STEP_OUT_FACTOR) and the same
+        // "keep the current midpoint fixed" math, unchanged from Phase
+        // 4D -- only the axis, the state they read/write, and the
         // bounds they respect differ.
         // ------------------------------------------------------------------
 
-        // Section 5/6/8: workspace-global, keeps the CURRENT viewport
-        // midpoint fixed, and -- critically -- reuses
-        // wwApplyAndFetchViewport() exactly like drag-zoom/pan/Reset Time
-        // View already do, never a direct Plotly relayout of stale trace
-        // data. That single call site is what guarantees every analog
-        // panel, the digital region, and the shared ruler all move
-        // together (section 47), and that the normal adaptive-resolution
-        // range fetch runs again for the new range (section 48) -- this
-        // function contributes ONLY the new [start, end] math, nothing
-        // about how that range then gets fetched/rendered.
-        async function wwStepZoomX(direction) {
-            if (!ww.viewport) return;
-            const span = ww.viewport.end - ww.viewport.start;
+        // TG-D1: reads/writes `groupId`'s own viewport
+        // (wwTimeGroupVisibleRange()/wwApplyAndFetchGroupViewport()),
+        // never the single ww.viewport blindly -- the exact same
+        // "keep the current midpoint fixed, reuse the SAME apply/fetch
+        // call site every other viewport-changing gesture already uses"
+        // design Phase 4D originally established for the workspace-wide
+        // version, just re-pointed at one group. That single call site
+        // is still what guarantees THIS group's own analog panels,
+        // digital region, and ruler all move together, and that the
+        // normal adaptive-resolution range fetch runs again for the new
+        // range -- this function still contributes ONLY the new
+        // [start, end] math.
+        async function wwStepZoomX(groupId, direction) {
+            const range = wwTimeGroupVisibleRange(groupId);
+            if (!range) return;
+            const span = range.end - range.start;
             if (!Number.isFinite(span) || span <= 0) return;
-            const center = (ww.viewport.start + ww.viewport.end) / 2;
+            const center = (range.start + range.end) / 2;
             const factor = direction === "in" ? WW_ZOOM_STEP_IN_FACTOR : WW_ZOOM_STEP_OUT_FACTOR;
             let newSpan = span * factor;
             if (direction === "in") newSpan = Math.max(newSpan, WW_MIN_X_SPAN_SECONDS);
             let next = { start: center - newSpan / 2, end: center + newSpan / 2 };
             if (direction === "out") {
-                // Section 7: a smart window clamp that preserves the
-                // requested SPAN (shifting the window instead of
-                // asymmetrically truncating it) whenever the span itself
-                // still fits inside the workspace -- see
-                // wwClampZoomWindowToWorkspace()'s own comment.
-                const clamped = wwClampZoomWindowToWorkspace(next.start, next.end);
+                // A smart window clamp that preserves the requested SPAN
+                // (shifting the window instead of asymmetrically
+                // truncating it) whenever the span itself still fits
+                // inside THIS group's own full bounds -- reuses
+                // wwClampPanWindowToTimeGroup() (the Time Range slider's
+                // own pan clamp, identical shift-preserving-span logic
+                // to Phase 4D's original workspace-wide zoom-out clamp,
+                // already generalized per-group by that earlier slice).
+                const clamped = wwClampPanWindowToTimeGroup(groupId, next.start, next.end);
                 if (!clamped) return;
                 next = clamped;
-                // Section 7: already at (or beyond) full workspace range --
+                // Already at (or beyond) this group's own full range --
                 // a genuine no-op, never an unnecessary refetch.
-                if (wwBoundsEqual(next, ww.viewport)) return;
+                if (wwBoundsEqual(next, range)) return;
             } else {
                 // Zoom In's new span is always a strict subset of the
                 // current viewport (center fixed, span only shrinks), and
@@ -11558,25 +11572,29 @@
                 if (!normalized) return;
                 next = normalized;
             }
-            clearTimeout(ww.viewportDebounceTimer);
-            await wwApplyAndFetchViewport(next.start, next.end);
+            clearTimeout(ww.timeGroupViewportDebounceTimers.get(groupId));
+            await wwApplyAndFetchGroupViewport(groupId, next.start, next.end);
         }
 
-        // Section 9/10/12/13: ACTIVE-PANEL-LOCAL, not workspace-global --
-        // a deliberate contrast with wwStepZoomX() above (DEC-043's own
-        // "X step zoom is workspace-global; Y step zoom is
-        // active-panel-local" rule). Reads the panel's own CURRENTLY
-        // RESOLVED Y range from Plotly's `_fullLayout` (the real range in
-        // effect whether it got there via autorange or a previous manual
-        // step -- `layout.yaxis.range` alone can be undefined while still
-        // auto-ranging, see wwPanelPlotWidth()'s own established
-        // `_fullLayout` precedent for reading Plotly's resolved geometry
-        // rather than its raw input layout), then writes an explicit new
-        // range back -- taking the panel out of autorange, exactly
-        // "manual range as appropriate" per section 14 (Autoscale Y
-        // remains the one action that restores autorange, untouched here).
-        function wwStepZoomY(direction) {
-            const panel = wwActivePanel();
+        // TG-D1: ACTIVE-PANEL-LOCAL, RESTRICTED TO `groupId` -- a
+        // deliberate contrast with wwStepZoomX() above (DEC-043's own
+        // "X step zoom is workspace-scoped; Y step zoom is
+        // active-panel-local" rule, now "Time-Group-scoped" for X).
+        // Resolves the active panel via wwActivePanelForGroup(groupId)
+        // (task section 9: "ensure unrelated groups are excluded") --
+        // see that function's own comment for the exact fallback rule.
+        // Reads the panel's own CURRENTLY RESOLVED Y range from Plotly's
+        // `_fullLayout` (the real range in effect whether it got there
+        // via autorange or a previous manual step -- `layout.yaxis.range`
+        // alone can be undefined while still auto-ranging, see
+        // wwPanelPlotWidth()'s own established `_fullLayout` precedent
+        // for reading Plotly's resolved geometry rather than its raw
+        // input layout), then writes an explicit new range back --
+        // taking the panel out of autorange, exactly "manual range as
+        // appropriate" (Autoscale Y remains the one action that restores
+        // autorange, untouched here).
+        function wwStepZoomY(groupId, direction) {
+            const panel = wwActivePanelForGroup(groupId);
             if (!panel || !panel.plotlyReady || !panel.chartEl) return;
             const fl = panel.chartEl._fullLayout;
             const currentRange = fl && fl.yaxis ? fl.yaxis.range : null;
@@ -11588,8 +11606,8 @@
             if (!Number.isFinite(span) || span === 0) return;
             const center = (lo + hi) / 2;
             const factor = direction === "in" ? WW_ZOOM_STEP_IN_FACTOR : WW_ZOOM_STEP_OUT_FACTOR;
-            // Section 41: epsilon floor against a collapsing-to-zero span,
-            // applied to the ABSOLUTE span so it works identically for an
+            // Epsilon floor against a collapsing-to-zero span, applied
+            // to the ABSOLUTE span so it works identically for an
             // inverted (hi < lo) axis, which Plotly permits.
             const sign = span < 0 ? -1 : 1;
             let newSpan = Math.abs(span) * factor;
@@ -11601,91 +11619,126 @@
             });
         }
 
-        // Section 3/4/37: the ONE function every main Zoom In/Zoom Out
-        // toolbar click calls -- dispatches to X or Y based on whichever
-        // axis was last chosen for THIS action (see ww.zoomStepAxis),
-        // remembered separately for "in" vs. "out".
-        function wwPerformZoomStep(action) {
-            const axis = ww.zoomStepAxis[action] === "y" ? "y" : "x";
-            if (axis === "y") wwStepZoomY(action);
-            else wwStepZoomX(action);
+        // TG-D1: this group's own last-chosen axis preference for each
+        // step action -- `{in, out}` -- defaulting to "x" for either
+        // action the group has never chosen yet (Phase 4D's own
+        // original default, per-group now instead of workspace-wide).
+        function wwZoomStepAxisForGroup(groupId) {
+            return ww.zoomStepAxisByGroup.get(groupId) || { in: "x", out: "x" };
         }
 
-        // Section 3/37: choosing an axis from the split-button's dropdown
-        // BOTH remembers the preference AND performs that exact step
-        // immediately -- the user just explicitly asked for "Zoom In -> Y"
-        // (or "Out -> X"), so treating the click as selection-only with no
-        // visible effect would be the surprising outcome (section 37: "do
-        // not surprise the user"), not the safe one. Every subsequent
-        // click of the main icon then repeats the SAME axis with no menu
-        // needed (section 4's own minimum bar).
-        function wwSetZoomStepAxis(action, axis) {
-            ww.zoomStepAxis[action] = axis === "y" ? "y" : "x";
-            wwSyncZoomStepControls();
-            wwPerformZoomStep(action);
+        // The ONE function every Time Group Canvas's own main Zoom In/
+        // Zoom Out button click calls -- dispatches to X or Y based on
+        // whichever axis was last chosen for THIS action, in THIS group.
+        function wwPerformZoomStep(groupId, action) {
+            const axis = wwZoomStepAxisForGroup(groupId)[action] === "y" ? "y" : "x";
+            if (axis === "y") wwStepZoomY(groupId, action);
+            else wwStepZoomX(groupId, action);
         }
 
-        // Keeps the split-buttons' tooltips/aria-labels/menu checkmarks
-        // and the Zoom-Out-at-full-range disabled state all in sync.
-        // Called after every axis-preference change and every viewport/
-        // workspace-bounds change (section 7's own "or visually disabled
-        // if appropriate").
-        function wwSyncZoomStepControls() {
+        // Choosing an axis from the split-button's dropdown BOTH
+        // remembers the preference (for THIS group only) AND performs
+        // that exact step immediately -- the user just explicitly asked
+        // for "Zoom In -> Y" (or "Out -> X"), so treating the click as
+        // selection-only with no visible effect would be the surprising
+        // outcome, not the safe one. Every subsequent click of the main
+        // button then repeats the SAME axis with no menu needed.
+        function wwSetZoomStepAxis(groupId, action, axis) {
+            const current = wwZoomStepAxisForGroup(groupId);
+            const resolvedAxis = axis === "y" ? "y" : "x";
+            ww.zoomStepAxisByGroup.set(groupId, { ...current, [action]: resolvedAxis });
+            wwSyncTimeGroupZoomControls(groupId);
+            wwPerformZoomStep(groupId, action);
+        }
+
+        // Keeps ONE Time Group Canvas's own split-buttons' tooltips/
+        // aria-labels/menu checkmarks and the Zoom-Out-at-full-range
+        // disabled state all in sync -- the per-group generalization of
+        // the original wwSyncZoomStepControls(). Called after every
+        // axis-preference change and every viewport/bounds change for
+        // THIS group (via wwSyncTimeGroupCanvases()'s own per-group
+        // loop and wwApplyAndFetchGroupViewport()'s own unconditional
+        // per-group resync, mirroring the ruler/digital/slider precedent
+        // already established for this exact call pattern).
+        function wwSyncTimeGroupZoomControls(groupId) {
+            const canvasEl = wwTimeGroupCanvasEl(groupId);
+            if (!canvasEl) return;
+            const axisPref = wwZoomStepAxisForGroup(groupId);
+            const groupRange = wwTimeGroupVisibleRange(groupId);
+            const groupBounds = wwDeriveTimeGroupBounds(groupId);
+            const atFullRange = !!(groupRange && groupBounds && wwBoundsEqual(groupRange, groupBounds));
             for (const action of ["in", "out"]) {
-                const axis = ww.zoomStepAxis[action] === "y" ? "y" : "x";
+                const axis = axisPref[action] === "y" ? "y" : "x";
                 const axisLabel = axis === "y" ? "Y axis" : "X axis";
                 const actionLabel = action === "in" ? "Zoom In" : "Zoom Out";
-                const mainBtn = document.getElementById(action === "in" ? "wwZoomInBtn" : "wwZoomOutBtn");
+                const splitEl = canvasEl.querySelector(action === "in" ? ".ww-tg-zoom-in-split" : ".ww-tg-zoom-out-split");
+                if (!splitEl) continue;
+                const mainBtn = splitEl.querySelector(".ww-split-btn-main");
                 if (mainBtn) {
                     const label = actionLabel + " — " + axisLabel;
                     mainBtn.title = label;
                     mainBtn.setAttribute("aria-label", label);
+                    // Zoom Out reads as unavailable once the current
+                    // viewport already covers this group's own full
+                    // bounds AND the remembered preference for "out" is
+                    // X (a Y-axis preference has no comparable hard
+                    // limit, so it stays enabled).
+                    if (action === "out") mainBtn.disabled = axis !== "y" && atFullRange;
                 }
-                const menu = document.getElementById(action === "in" ? "wwZoomInMenu" : "wwZoomOutMenu");
+                const menu = splitEl.querySelector(".ww-split-menu");
                 if (menu) {
                     for (const item of menu.querySelectorAll(".ww-split-menu-item")) {
                         item.setAttribute("aria-checked", String(item.dataset.axis === axis));
                     }
                 }
             }
-            // Section 7: Zoom Out reads as unavailable once the current
-            // viewport already covers the full workspace AND the user's
-            // remembered preference for "out" is X (a Y-axis preference
-            // has no comparable hard limit, so it stays enabled).
-            const outBtn = document.getElementById("wwZoomOutBtn");
-            if (outBtn) {
-                const atFullRange = !!(ww.viewport && ww.workspaceBounds && wwBoundsEqual(ww.viewport, ww.workspaceBounds));
-                outBtn.disabled = ww.zoomStepAxis.out !== "y" && atFullRange;
-            }
         }
 
-        // Section 35: split-button/dropdown accessibility -- Tab reaches
-        // the main action, then the trigger (natural DOM order, no
-        // tabindex tricks needed); Enter/Space activates either (native
-        // <button> behavior); opening the menu moves focus to its first
-        // item so keyboard users can Tab between the two X/Y items
-        // directly; Escape closes the menu and returns focus to the
-        // trigger; a click anywhere outside an open menu closes it too
-        // (standard dropdown convention, not itself a keyboard
-        // requirement but expected mouse behavior).
-        function wwWireZoomStepSplitButtons() {
+        // TG-D1: wwSyncTimeGroupZoomControls()'s own "every active
+        // group" batch form -- mirrors wwSyncAllTimeGroupRulers()'s own
+        // established convention exactly.
+        function wwSyncAllTimeGroupZoomControls() {
+            for (const groupId of wwActiveTimeGroupIds()) wwSyncTimeGroupZoomControls(groupId);
+        }
+
+        // Split-button/dropdown accessibility -- Tab reaches the main
+        // action, then the trigger (natural DOM order, no tabindex
+        // tricks needed); Enter/Space activates either (native <button>
+        // behavior); opening the menu moves focus to its first item so
+        // keyboard users can Tab between the two X/Y items directly;
+        // Escape closes the menu and returns focus to the trigger; a
+        // click anywhere outside an open menu closes it too (standard
+        // dropdown convention, not itself a keyboard requirement but
+        // expected mouse behavior). TG-D1: generalized from the original
+        // wwWireZoomStepSplitButtons() (wired ONCE globally against two
+        // singleton ids) into wwWireTimeGroupToolbar() below, which
+        // wires ALL FOUR controls (both split-buttons, Reset, Autoscale)
+        // for ONE canvas, scoped via canvasEl.querySelector() -- called
+        // once per canvas at creation time (wwCreateTimeGroupCanvasDom()),
+        // never a document-wide singleton lookup, so it works uniformly
+        // whether there is one Time Group or many.
+        function wwWireTimeGroupToolbar(canvasEl, groupId) {
+            const resetBtn = canvasEl.querySelector(".ww-tg-reset-view-btn");
+            if (resetBtn) resetBtn.addEventListener("click", () => wwResetOneTimeGroupView(groupId));
+
+            const autoscaleBtn = canvasEl.querySelector(".ww-tg-autoscale-btn");
+            if (autoscaleBtn) autoscaleBtn.addEventListener("click", () => wwAutoscaleYForGroup(groupId));
+
             for (const action of ["in", "out"]) {
-                const wrapId = action === "in" ? "wwZoomInSplit" : "wwZoomOutSplit";
-                const mainId = action === "in" ? "wwZoomInBtn" : "wwZoomOutBtn";
-                const triggerId = action === "in" ? "wwZoomInMenuBtn" : "wwZoomOutMenuBtn";
-                const menuId = action === "in" ? "wwZoomInMenu" : "wwZoomOutMenu";
-                const wrap = document.getElementById(wrapId);
-                const mainBtn = document.getElementById(mainId);
-                const triggerBtn = document.getElementById(triggerId);
-                const menu = document.getElementById(menuId);
-                if (!wrap || !mainBtn || !triggerBtn || !menu) continue;
+                const wrap = canvasEl.querySelector(action === "in" ? ".ww-tg-zoom-in-split" : ".ww-tg-zoom-out-split");
+                if (!wrap) continue;
+                const mainBtn = wrap.querySelector(".ww-split-btn-main");
+                const triggerBtn = wrap.querySelector(".ww-split-btn-trigger");
+                const menu = wrap.querySelector(".ww-split-menu");
+                if (!mainBtn || !triggerBtn || !menu) continue;
 
                 function closeMenu() {
                     menu.hidden = true;
                     triggerBtn.setAttribute("aria-expanded", "false");
                 }
                 function openMenu() {
-                    // Only one split-button menu open at a time.
+                    // Only one split-button menu open at a time,
+                    // document-wide (across every Time Group Canvas).
                     for (const otherMenu of document.querySelectorAll(".ww-split-menu")) {
                         otherMenu.hidden = true;
                     }
@@ -11698,14 +11751,14 @@
                     if (firstItem) firstItem.focus();
                 }
 
-                mainBtn.addEventListener("click", () => wwPerformZoomStep(action));
+                mainBtn.addEventListener("click", () => wwPerformZoomStep(groupId, action));
                 triggerBtn.addEventListener("click", (event) => {
                     event.stopPropagation();
                     if (menu.hidden) openMenu(); else closeMenu();
                 });
                 for (const item of menu.querySelectorAll(".ww-split-menu-item")) {
                     item.addEventListener("click", () => {
-                        wwSetZoomStepAxis(action, item.dataset.axis);
+                        wwSetZoomStepAxis(groupId, action, item.dataset.axis);
                         closeMenu();
                         triggerBtn.focus();
                     });
@@ -11717,16 +11770,20 @@
                     triggerBtn.focus();
                 });
                 // Closes the menu if keyboard focus leaves the split
-                // button entirely (e.g. Tab past the last menu item onto
-                // the next toolbar control) -- relatedTarget is null for
-                // some non-keyboard blur causes, in which case this
-                // safely no-ops rather than risk closing on every blur.
+                // button entirely -- relatedTarget is null for some
+                // non-keyboard blur causes, in which case this safely
+                // no-ops rather than risk closing on every blur.
                 wrap.addEventListener("focusout", (event) => {
                     if (event.relatedTarget && !wrap.contains(event.relatedTarget)) closeMenu();
                 });
             }
+        }
 
-            // Click anywhere outside every split button closes any open menu.
+        // Click-outside-closes-any-open-menu is inherently canvas-
+        // agnostic (operates on ANY `.ww-split-menu` currently open,
+        // anywhere in the document) -- wired ONCE at page init rather
+        // than per-canvas, unlike wwWireTimeGroupToolbar() above.
+        function wwWireSplitMenuOutsideClickDismissal() {
             document.addEventListener("click", (event) => {
                 for (const openMenu of document.querySelectorAll(".ww-split-menu:not([hidden])")) {
                     const wrap = openMenu.closest(".ww-split-btn");
@@ -16395,6 +16452,7 @@
             ww.rulerReadyByGroup.clear();
             ww.digitalChartReadyByGroup.clear();
             ww.digitalClickWiredByGroup.clear();
+            ww.zoomStepAxisByGroup.clear();
             ww.lastActiveTimeGroupIds = new Set();
             ww.panels = [];
             ww.displayed.clear();
@@ -16884,12 +16942,14 @@
             }, 120));
         }
 
-        // wwClampZoomWindowToWorkspace()'s own per-group generalization,
-        // used for the slider's own PAN (drag the selected window) drag
-        // specifically -- preserves the exact dragged SPAN by shifting
-        // rather than independently clamping each endpoint, so panning
-        // up against either edge of the group's own full extent never
-        // asymmetrically squishes the window's width.
+        // Originally built for the slider's own PAN (drag the selected
+        // window) drag specifically -- preserves the exact dragged SPAN
+        // by shifting rather than independently clamping each endpoint,
+        // so panning up against either edge of the group's own full
+        // extent never asymmetrically squishes the window's width. Also
+        // reused by TG-D1's own group-scoped wwStepZoomX() Zoom Out
+        // clamp (identical shift-preserving-span requirement), so this
+        // is no longer pan-drag-only despite the name.
         function wwClampPanWindowToTimeGroup(groupId, start, end) {
             const bounds = wwDeriveTimeGroupBounds(groupId);
             if (!bounds) return wwNormalizeBounds(start, end);
@@ -17176,6 +17236,7 @@
                 ww.rulerReadyByGroup.clear();
                 ww.digitalChartReadyByGroup.clear();
                 ww.digitalClickWiredByGroup.clear();
+                ww.zoomStepAxisByGroup.clear();
                 return;
             }
 
@@ -17195,6 +17256,7 @@
                     ww.rulerReadyByGroup.delete(groupId);
                     ww.digitalChartReadyByGroup.delete(groupId);
                     ww.digitalClickWiredByGroup.delete(groupId);
+                    ww.zoomStepAxisByGroup.delete(groupId);
                 }
             }
 
@@ -17208,6 +17270,11 @@
                 wwSyncTimeGroupSliderForCanvas(groupId, canvasEl);
                 wwSyncTimeGroupRuler(groupId);
                 wwRebuildDigitalChart(groupId);
+                // TG-D1: this group's own local toolbar zoom controls
+                // (tooltips/checkmarks/Zoom-Out-disabled-at-full-range),
+                // resynced alongside the ruler/digital/slider it already
+                // sits next to structurally.
+                wwSyncTimeGroupZoomControls(groupId);
             });
         }
 
@@ -19743,8 +19810,12 @@
         // Phase 2C-A: central Powerwave toolbar + theme integration.
         document.getElementById("dragModeZoomBtn").addEventListener("click", () => wwSetDragMode("zoom"));
         document.getElementById("dragModePanBtn").addEventListener("click", () => wwSetDragMode("pan"));
-        document.getElementById("wwResetViewBtn").addEventListener("click", wwResetTimeView);
-        document.getElementById("wwAutoscaleBtn").addEventListener("click", wwAutoscaleY);
+        // TG-D1: Reset Time View/Zoom In/Zoom Out/Autoscale Y moved into
+        // each Time Group Canvas's own local toolbar (wwWireTimeGroupToolbar(),
+        // called per-canvas from wwCreateTimeGroupCanvasDom()) -- the old
+        // global #wwResetViewBtn/#wwAutoscaleBtn/split-button markup and
+        // wiring are removed, not merely hidden, so there is exactly one
+        // active way to invoke each of these four actions.
         document.getElementById("clearWorkspaceBtn").addEventListener("click", wwClearWorkspace);
         // Phase 4B: A/B time measurement cursors.
         document.getElementById("wwCursorModeBtn").addEventListener("click", wwToggleMeasurementCursors);
@@ -19755,12 +19826,12 @@
         // wired once, delegated, same convention as wwWireCursorDrag()
         // immediately above.
         wwWireCalloutAnchorDrag();
-        // Phase 4D: precision step zoom split buttons + initial tooltip/
-        // checkmark sync (X is the default axis for both actions, matches
-        // the HTML's own static title="...— X axis" text until the first
-        // real viewport exists).
-        wwWireZoomStepSplitButtons();
-        wwSyncZoomStepControls();
+        // TG-D1: the per-canvas split-button wiring itself now happens
+        // in wwWireTimeGroupToolbar() (called from
+        // wwCreateTimeGroupCanvasDom()) -- only the canvas-agnostic
+        // "click outside closes any open menu" behavior is still wired
+        // once, globally, here.
+        wwWireSplitMenuOutsideClickDismissal();
         document.addEventListener("powerwave:theme-change", wwApplyTheme);
 
         // Phase 4E: generic annotation framework + Free Text Note (DEC-044).

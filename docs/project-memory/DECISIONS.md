@@ -8208,6 +8208,134 @@ Impact:
   correction, timestamp-confidence scoring, and event-name inference
   all remain unimplemented, unchanged from before this task.
 
+## DEC-060 — TG-D1: staged Zoom In/Out, Reset Time View, and Autoscale Y migrate into each Time Group Canvas's own local navigation toolbar, making these four controls genuinely Time-Group-scoped instead of workspace-global
+
+Date: 2026-08-29
+Status: Approved
+Source: explicit project-owner instruction ("TG-D1 — migrate low-risk
+navigation controls into each Time Group toolbar"), delivered
+immediately following the owner-approved Slice TG-B+C empty-state
+lifecycle fix.
+
+Decision:
+
+**A navigation control inside a Time Group Canvas affects only that
+Time Group.** Each `.ww-tg-toolbar` shell (established by TG-B+C, one
+per canvas) now carries staged Zoom In, staged Zoom Out (both
+preserving the exact Phase 4D/DEC-043 X/Y split-button dropdown, the
+same ±20%/±25% stepping factors, the same min-span floors, the same
+"keep the midpoint fixed" math — no redesign), Reset Time View
+(already correctly per-group since TG-B+C — audited and confirmed,
+not rewritten), and Autoscale Y (newly generalized to
+`wwAutoscaleYForGroup(groupId)`, filtering by
+`wwPanelTimeGroupId(panel) === groupId`). The former workspace-wide
+functions (`wwStepZoomX`/`wwStepZoomY`) were generalized in place to
+take `groupId` as their first parameter (task's own explicit example),
+reading/writing that group's own viewport
+(`wwTimeGroupVisibleRange()`/`wwApplyAndFetchGroupViewport()`) instead
+of the single `ww.viewport`. Y-step-zoom's own "active panel" target
+is resolved via a new `wwActivePanelForGroup(groupId)` — the global
+active-panel-click mechanism itself is untouched, but a group-scoped
+Y-zoom now falls back to that group's OWN first panel, never
+`ww.panels[0]` outright, so it can never reach into an unrelated
+group.
+
+Each control is wired once per canvas via one reusable
+`wwWireTimeGroupToolbar(canvasEl, groupId)`, resolving every element
+through `canvasEl.querySelector(...)` — no singleton ids reintroduced,
+no per-group duplicated listener logic. The former global split-button
+markup/ids and their `wwWireZoomStepSplitButtons()` wiring were
+removed outright (not merely hidden), so there is exactly one active
+way to invoke each of the four controls. The former global functions
+(`wwResetTimeView()`, `wwAutoscaleY()`) are kept as workspace-wide
+compatibility wrappers (per the task's own explicit allowance) —
+present, correct, but no longer wired to any button. The zoom
+split-button's own remembered X/Y axis preference became
+`ww.zoomStepAxisByGroup: Map<groupId, {in, out}>` (was a single flat
+object) so choosing Y in one group's own dropdown never relabels
+another group's button. Plotly's own native double-click-to-autorange
+gesture on a panel was also re-pointed at
+`wwResetOneTimeGroupView(wwPanelTimeGroupId(panel))` — the same
+isolation rule applies to every path that can trigger a reset, not
+only the toolbar button.
+
+Reason:
+
+Sections 1-3 of the owner's own task spec: these four controls
+operate purely on one group's own viewport/panels/Y-presentation, so
+they are the natural next slice after TG-B+C's own structural
+boundary work — genuinely low-risk to migrate without touching Cursor
+A/B, A-B measurements, t0, Detect Event, or Synchronise Sources
+(explicitly deferred, unchanged).
+
+Alternatives considered:
+
+- Redesigning the zoom mechanics (e.g. collapsing the X/Y split-button
+  into a single button, or changing the stepping factors) — explicitly
+  rejected (task section 2's own "do not simplify or redesign the zoom
+  behavior").
+- A workspace-wide `zoomStepAxis` preference shared across all groups
+  — considered, rejected: would let choosing Y in one group's own menu
+  silently redirect another group's button label/behavior, violating
+  the task's own "control state must not leak between groups" rule
+  (section 14).
+- Removing `wwResetTimeView()`/`wwAutoscaleY()` entirely instead of
+  keeping them as wrappers — considered, rejected per the task's own
+  explicit compatibility allowance (section 10); an existing backend
+  test (`test_frontend_source_bounds.py`) also already depends on
+  `wwResetTimeView()`'s own documented behavior.
+
+Impact:
+
+- `frontend/index.html` only (no backend/schema/API changes). New:
+  `wwActivePanelForGroup()`, `wwAutoscaleYForGroup()`,
+  `wwZoomStepAxisForGroup()`, `wwSyncTimeGroupZoomControls()` +
+  `wwSyncAllTimeGroupZoomControls()`, `wwWireTimeGroupToolbar()`,
+  `wwWireSplitMenuOutsideClickDismissal()`. Generalized in place:
+  `wwStepZoomX(groupId, direction)`, `wwStepZoomY(groupId, direction)`,
+  `wwPerformZoomStep(groupId, action)`,
+  `wwSetZoomStepAxis(groupId, action, axis)`. `ww.zoomStepAxisByGroup`
+  replaces the old flat `ww.zoomStepAxis`. Removed as genuinely dead
+  code once its only caller was generalized per-group:
+  `wwClampZoomWindowToWorkspace()` (superseded by the already-existing,
+  now-reused `wwClampPanWindowToTimeGroup()`). Removed global HTML:
+  the former `#wwZoomInSplit`/`#wwZoomOutSplit`/`#wwResetViewBtn`/
+  `#wwAutoscaleBtn` markup and their init-time wiring calls.
+- Verified by the full backend suite (zero regressions; 1 pre-existing
+  frontend static-regression test updated for the now-unconditional,
+  no-longer-primary-only zoom-controls sync; 46 new tests in
+  `test_frontend_time_group_toolbar.py` covering all 12 of the task's
+  own required cases) plus two live-browser Playwright UAT passes
+  against a running backend: 20/20 checks (one Time Group's own
+  toolbar, staged Zoom In/Out narrowing/widening only that group,
+  Reset restoring exact full bounds, Autoscale setting
+  `yaxis.autorange`, a second Time Group's own toolbar appearing on
+  activation, byte-for-byte isolation in both directions for
+  zoom/reset/autoscale, slider/ruler/digital staying in sync, and
+  toolbar count surviving a Grouped/Separate/Custom layout-mode sweep)
+  and 11/11 checks (per-group axis-preference isolation — choosing Y
+  in one group's own dropdown never relabels the other's button — and
+  a bridge-source merge producing exactly one fresh, correctly-wired,
+  non-duplicated toolbar on the newly merged canvas), zero console
+  errors throughout both passes.
+- **Known, disclosed limitations, not solved by this task** (same
+  class of gap DEC-057/058/059 already established a precedent for,
+  now narrowed further, not newly introduced): Cursor A/B, the A-B
+  info readout, t0 toolbar state, Detect Event's search scope, and
+  Synchronise Sources all remain workspace-global/primary-canvas-only
+  — deliberately deferred to later slices, per this task's own
+  explicit non-goals list (section 22).
+- **Deferred, per the task's own explicit non-goals**: per-group
+  Cursor A/B, per-group A-B info, per-group t0 UI, Detect Event
+  migration, Synchronise Sources migration, annotation redesign,
+  collapse behavior, Time/Unit/Layout Mode localization, cross-group
+  linking, and CSV/Excel all remain unimplemented, unchanged from
+  before this task. Sticky-top behavior for `.ww-tg-toolbar` itself
+  was also not introduced this slice (task section 15: "only make it
+  sticky if this was already planned/proven safe from TG-B+C" — it was
+  not, so the toolbar stays structurally where TG-B+C placed it,
+  non-sticky).
+
 ---
 
 ## How to add a decision
