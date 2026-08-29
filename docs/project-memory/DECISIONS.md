@@ -7904,6 +7904,154 @@ Impact:
 
 ---
 
+## DEC-058 — Time Range slider: one horizontal two-handle range navigator per Time Group, requiring the single workspace-wide viewport to become genuinely per-Time-Group internally, while every pre-existing single-instance UI surface stays scoped to the primary group
+
+Date: 2026-08-29
+Status: Approved
+Source: explicit project-owner instruction, "Add a horizontal
+two-handle Time Range slider for each Time Group," delivered
+immediately following DEC-057 (Timestamp-Based Initial Alignment and
+Time Groups).
+
+Decision:
+
+**Time Range slider is a UX navigation control over an existing Time
+Group viewport. It does not alter timing, synchronization, source
+data, or sampling.** A compact horizontal two-handle range slider now
+renders once per Time Group (never once per panel), reflecting and
+controlling that group's own current visible viewport against its own
+full recorded extent, bidirectionally synchronized with Plotly
+mouse zoom/pan and Reset Time View.
+
+Investigation found a real architectural constraint that materially
+changed the approach (task's own explicit ask, section 22): every
+panel in the workspace shared exactly ONE global `ww.viewport`/
+`ww.workspaceBounds` (DEC-021's own "one shared X/time viewport across
+every displayed channel," predating Time Groups entirely, and
+explicitly left that way by DEC-057's own "fully independent
+per-time-group viewports... deliberately scoped OUT" decision). A
+slider genuinely independent per Time Group (task's own hard
+requirement — section 3/6/7/8, and a dedicated regression Case G)
+could not be built on top of a single shared viewport; it required
+generalizing the viewport itself to `ww.timeGroupViewports: Map<groupId,
+{start, end}>`, with the corresponding zoom/pan/refetch pipeline
+(`wwApplyAndFetchGroupViewport()`, `wwRefetchChannelsForGroup()`,
+`wwBroadcastGroupViewportDebounced()`) threaded per group.
+
+**Scope boundary, deliberately drawn**: every pre-existing
+single-instance cross-cutting UI surface — the cursor overlay, the
+sticky ruler, the digital-channel region, +Peak/-Peak annotation
+recalculation, the toolbar Zoom In/Out buttons, Detect Event's
+visible-range search, Absolute-mode label origin — stays scoped to the
+workspace's own PRIMARY Time Group (`wwPrimaryTimeGroupId()`, the same
+"one deterministic source, narrower scope for cross-cutting shared
+UI" precedent DEC-057 already established for `wwPrimaryTimeGroupSourceId()`
+and the toolbar's own "Set Cursor A as t=0" action). In the common
+single-Time-Group workspace this is byte-for-byte identical to
+pre-slider behavior (there is only ever one group, so it IS the
+primary one). A genuinely multi-Time-Group workspace gets independent
+panel navigation per group through the slider itself, while those
+specific shared, single-instance surfaces (never split by Time Group
+in the underlying architecture to begin with — digital channels, for
+one, have never been panel-split by Time Group even for analog's own
+sake) continue to reflect only the primary group, exactly as before
+this task, not newly regressed by it.
+
+Reason:
+
+The owner's own real-file UAT scenario — a 5 kHz ~1.3 s record and a
+20 Hz ~69 s record of the same event, correctly sharing one Time Group
+per DEC-057's own overlap rule — makes the short high-speed record
+visually compressed to a sliver once Reset Time View shows the full
+~69 s extent (correct, per DEC-057, and must not change). The slider
+lets an engineer zoom/pan to the short event quickly without
+abandoning the correct, non-resampled shared time axis.
+
+Alternatives considered:
+
+- A single zoom-factor slider (`Zoom: 1x —●— 10x`) — explicitly
+  rejected by the task's own instructions (section 20): it shows
+  neither WHERE within the full record the current view sits nor its
+  actual width: a genuine range navigator (position + zoom together)
+  is what the owner's own worked example requires.
+- Two overlapping native `<input type="range">` elements — considered
+  per the task's own explicit "first inspect existing dependencies"
+  instruction (no slider/range library exists in this app, only
+  Plotly); rejected because overlapping native ranges have no
+  reasonable way to represent a draggable-in-the-middle "pan the
+  window" gesture and are notoriously hard to grab the correct handle
+  on. A lightweight, fully custom pointer-events-based track/handles/
+  window implementation was built instead — contained to one new
+  section of `frontend/index.html`, no new dependency.
+- Fully extending cursor overlay/sticky ruler/digital-chart/Detect-
+  Event/Absolute-origin independence to every Time Group in the SAME
+  pass — considered, deliberately scoped OUT (see "Scope boundary"
+  above): this task's own explicit ask is slider navigation, not a
+  full multi-viewport rearchitecture of every UI surface, and DEC-057
+  already established the identical narrower-scope precedent for
+  exactly this class of cross-cutting single-instance feature.
+- Rebasing wall-clock (Absolute-mode-style) labels onto the slider —
+  considered, rejected: the slider's own compact label uses ONLY
+  `wwFormatCursorDuration()` (a plain, always-correct duration, "Full:
+  69.000 s · Visible: 1.299 s"), deliberately sidestepping DEC-057's
+  own already-documented, still-open per-Time-Group Absolute-mode
+  origin gap rather than extending it into a new surface.
+
+Impact:
+
+- `frontend/index.html` only (no backend/schema/API changes — the
+  task's own "do not change backend timing calculations unless
+  absolutely necessary" was fully honored; nothing was necessary).
+  New per-group viewport state and pipeline
+  (`ww.timeGroupViewports`/`ww.timeGroupViewportDebounceTimers`,
+  `wwPanelTimeGroupId()`, `wwPrimaryTimeGroupId()`,
+  `wwActiveTimeGroupIds()`, `wwDeriveTimeGroupBounds()`,
+  `wwClampRangeToTimeGroup()`/`wwClampPanWindowToTimeGroup()`,
+  `wwApplyAndFetchGroupViewport()`, `wwRefetchChannelsForGroup()`,
+  `wwRefetchAllChannelsAcrossGroups()` replacing the old single-range
+  `wwRefetchAllChannels()` at its 3 cross-cutting call sites,
+  `wwRefreshTimeGroupViewports()` called from the existing
+  `wwRefreshWorkspaceBounds()` without disturbing its own primary-group
+  logic). `wwApplyAndFetchViewport()`/`wwResetTimeView()` kept their
+  exact signatures as thin, backward-compatible wrappers. New slider UI
+  (`#wwTimeGroupSliders`, between the digital region and the sticky
+  ruler; `wwRenderTimeGroupSliders()` and its own row-creation/paint/
+  drag-wiring functions) using native Pointer Events, no new library.
+- Verified by 1533 passing backend tests (26 new
+  `test_frontend_time_range_slider.py` + 4 pre-existing frontend
+  static-regression tests updated for the renamed/generalized
+  functions, zero regressions from 1507) plus two dedicated
+  live-browser UAT passes (Playwright, real backend, synthetic COMTRADE
+  fixtures matching the owner's own 5 kHz/1.3 s + 20 Hz/69 s scenario
+  exactly): 25/25 checks passed across Reset Time View (full ~69 s,
+  slider full-width), dragging a handle inward to ~1.3 s with both
+  traces still rendering real, non-resampled sample counts, panning the
+  selected window preserving span exactly, mouse zoom on the chart
+  correctly driving the slider, Grouped and Separate layout parity,
+  two independent Time Groups with an isolated drag on one leaving the
+  other completely untouched, t0 set/cleared while the slider's own
+  physical interval stayed bit-identical, and a source removal cleanly
+  updating the slider's own row set and clamping the viewport safely.
+- **Known, disclosed limitation, not solved by this task** (matches
+  DEC-057's own precedent exactly): the digital-channel region,
+  +Peak/-Peak annotation recalculation, the cursor overlay, the sticky
+  ruler, and Absolute-mode label origins all remain scoped to the
+  primary Time Group only — a genuinely multi-Time-Group workspace's
+  non-primary groups get correct, independent WAVEFORM PANEL navigation
+  via their own slider, but not yet independent cursors/ruler/digital-
+  chart/Absolute labels of their own. This is the same class of gap
+  DEC-057 already disclosed for t0's own toolbar quick-action, now
+  extended (not newly introduced) to viewport navigation.
+- **Deferred, per the task's own explicit non-goals**: Fit Active
+  Source, automatic event focus, an overview waveform/minimap,
+  source-specific sliders, sampling-rate conversion, waveform
+  resampling, automatic t0 synchronization, backend synchronization
+  changes, new Time Group derivation rules, clock correction, and CSV/
+  Excel import all remain unimplemented, unchanged from before this
+  task.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

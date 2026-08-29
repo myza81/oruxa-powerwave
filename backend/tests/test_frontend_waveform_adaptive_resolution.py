@@ -84,7 +84,7 @@ def test_zoom_still_requests_elapsed_engineering_range_in_all_time_modes():
     relayout_body = _function_body(
         source,
         "function wwWirePanelRelayout(panel)",
-        "function wwBroadcastViewportDebounced",
+        "function wwBroadcastGroupViewportDebounced",
     )
     fetch_body = _function_body(
         source,

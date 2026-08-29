@@ -4,7 +4,13 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-28** (Phase 19 — Timestamp-Based
+Last meaningful update: **2026-08-29** (Phase 20 — Time Range slider: a
+compact horizontal two-handle range navigator now renders once per
+active Time Group, bidirectionally synced with Plotly zoom/pan/Reset
+Time View — presentation/navigation only, no backend/timing change —
+see
+[DECISIONS.md — DEC-058](DECISIONS.md#dec-058--time-range-slider-one-horizontal-two-handle-range-navigator-per-time-group-requiring-the-single-workspace-wide-viewport-to-become-genuinely-per-time-group-internally-while-every-pre-existing-single-instance-ui-surface-stays-scoped-to-the-primary-group)
+and [HANDOFF.md](HANDOFF.md), on top of Phase 19 — Timestamp-Based
 Initial Alignment and Time Groups: COMTRADE sources now place
 themselves automatically from their own recorded start timestamps
 (zero manual sync action required), Time Groups govern which sources

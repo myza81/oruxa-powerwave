@@ -3010,6 +3010,41 @@
            elements above it anymore, so no extra height for those. */
         .ww-sticky-ruler-chart { width: 100%; height: 40px; }
 
+        /* Time Range slider -- one compact horizontal two-handle range
+           navigator PER Time Group (see wwRenderTimeGroupSliders()).
+           #wwTimeGroupSliders is empty (zero height) whenever nothing is
+           displayed -- no reserved gap. Track margins match
+           WW_PANEL_MARGIN (l:55/r:20) so the slider's own full-width
+           track lines up under each panel's own plot area, not its
+           Y-axis label gutter. */
+        #wwTimeGroupSliders:empty { display: none; }
+        .ww-tg-slider-row { padding: 3px 20px 3px 55px; border-top: 1px solid var(--panel-border); background: var(--panel); }
+        .ww-tg-slider-row:first-child { border-top: none; }
+        .ww-tg-slider-label {
+            display: flex; justify-content: space-between; gap: 8px;
+            font-size: 0.65rem; color: var(--text-dim); margin-bottom: 2px;
+            font-variant-numeric: tabular-nums; white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis;
+        }
+        .ww-tg-slider-track {
+            position: relative; height: 14px; border-radius: 7px;
+            background: var(--hover-tint); cursor: pointer;
+            touch-action: none; /* the track itself owns all pointer gestures -- no native scroll/pinch fighting a drag */
+        }
+        .ww-tg-slider-window {
+            position: absolute; top: 0; bottom: 0;
+            background: var(--accent-wash-soft); border-top: 1px solid var(--accent-dim); border-bottom: 1px solid var(--accent-dim);
+            cursor: grab;
+        }
+        .ww-tg-slider-window:active { cursor: grabbing; }
+        .ww-tg-slider-handle {
+            position: absolute; top: -3px; width: 10px; height: 20px; margin-left: -5px;
+            background: var(--accent); border-radius: 3px; cursor: ew-resize;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+        }
+        .ww-tg-slider-handle:hover, .ww-tg-slider-handle:focus-visible { filter: brightness(1.15); }
+        .ww-tg-slider-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
         /* Phase 4B: A/B time measurement cursors -- a workspace-level DOM
            overlay (see #wwCursorOverlay's own HTML comment for the "why
            not a Plotly shape per panel" reasoning). `top`/`left`/`right: 0`
@@ -3856,6 +3891,22 @@
                                     <div id="wwDigitalChart"></div>
                                 </div>
                             </div>
+
+                            <!-- Time Range slider: one compact horizontal
+                                 two-handle range navigator PER Time Group
+                                 (task's own "One Time Group = one Time
+                                 Range slider" rule) -- see
+                                 wwRenderTimeGroupSliders(). Placed here,
+                                 below every analog panel and the (hidden-
+                                 unless-shown) digital region, ABOVE the
+                                 shared sticky ruler -- "at the bottom of
+                                 the Time Group's waveform panel stack,
+                                 close to the shared time axis" (task
+                                 section 9), without reordering panels
+                                 themselves. Empty/hidden whenever nothing
+                                 is displayed, exactly like the ruler right
+                                 below it. -->
+                            <div id="wwTimeGroupSliders"></div>
 
                             <!-- Phase 2C-C4: sticky shared time-axis ruler --
                                  see wwSyncStickyRuler(). Sticky behavior is
@@ -7055,6 +7106,36 @@
             sourceBounds: new Map(),
             workspaceBounds: null,
             viewport: null,
+            // Time Range slider (task: "Add a horizontal two-handle Time
+            // Range slider for each Time Group"): the per-Time-Group
+            // generalization of the single ww.viewport above --
+            // group_id -> {start, end}, ALWAYS group-time seconds (the
+            // exact same pre-t0, pre-Absolute-mode coordinate convention
+            // ww.viewport itself already uses -- see that field's own
+            // comment). Full/derived bounds are NOT stored here (mirrors
+            // ww.workspaceBounds/wwDeriveWorkspaceBounds()'s own
+            // "recomputed fresh, never cached" precedent) -- see
+            // wwDeriveTimeGroupBounds(). The PRIMARY group's own entry
+            // (wwPrimaryTimeGroupId()) is always kept mirrored into
+            // ww.viewport/ww.workspaceBounds too, so every existing
+            // single-viewport consumer (cursor overlay, sticky ruler,
+            // digital chart, Detect Event's visible-range search,
+            // Absolute-mode origin, the toolbar Zoom In/Out buttons)
+            // keeps working completely unchanged for that one group --
+            // a documented, deliberately narrower scope for those
+            // specific cross-cutting single-instance UI surfaces, the
+            // same precedent already established for
+            // wwPrimaryTimeGroupSourceId() (Timestamp-Based Initial
+            // Alignment and Time Groups). In the overwhelming common
+            // single-Time-Group case this map always has exactly one
+            // entry and is byte-for-byte equivalent to ww.viewport.
+            timeGroupViewports: new Map(),
+            // Per-group debounce timers for slider<->Plotly drag-zoom/pan
+            // broadcasts (mirrors ww.viewportDebounceTimer below, now one
+            // timer per group instead of one shared timer, so a drag in
+            // Group A's panel/slider can never coalesce with or cancel a
+            // concurrent drag in Group B's).
+            timeGroupViewportDebounceTimers: new Map(),
             dragMode: "zoom",
             // Phase 2C-B1: which algorithm currently derives ww.panels from
             // the flat set of displayed channels -- "grouped" (by
@@ -7927,8 +8008,166 @@
             );
         }
 
+        // ==================================================================
+        // Time Range slider -- per-Time-Group viewport support
+        //
+        // Everything above this point (ww.viewport/ww.workspaceBounds/
+        // wwDeriveWorkspaceBounds()/wwClampRangeToWorkspace()) stays
+        // completely unchanged and remains authoritative for the
+        // PRIMARY Time Group (wwPrimaryTimeGroupId() below) -- these new
+        // functions are an ADDITIVE generalization, not a replacement:
+        // in the common single-Time-Group workspace, a "group" viewport
+        // and THE workspace viewport are the same thing by construction,
+        // so every existing single-viewport code path (cursor overlay,
+        // sticky ruler, digital chart, Detect Event, Absolute-mode
+        // origin, toolbar Zoom In/Out) needs zero changes and keeps
+        // working exactly as before. Only once a workspace genuinely has
+        // MORE THAN ONE Time Group do these functions start doing
+        // anything a single global viewport couldn't already do.
+        // ==================================================================
+
+        // A panel's own Time Group -- resolved from its FIRST channel's
+        // own source (mirrors wwRefreshTimeGroupPanelLabels()'s own
+        // "first channel wins" convention, itself mirroring
+        // wwPanelLabelFor()'s/wwBuildLayout()'s pre-existing "first
+        // channel's own unit for the Y-axis title" rule). Works
+        // uniformly across Grouped/Separate/Custom layout modes without
+        // depending on wwPanelGroupKeyFor()'s own time-group-id string
+        // prefix (which Grouped mode adds but Separate/Custom
+        // deliberately do not -- see that function's own comment) --
+        // this is a SEPARATE, always-available resolution path. A
+        // Custom-mode panel the engineer chose to mix channels from
+        // different Time Groups into (their own deliberate, explicit
+        // choice -- Custom mode is never auto-split) still resolves to
+        // ONE group here, the first channel's own -- the same accepted
+        // simplification already implicit in that panel's single shared
+        // Plotly x-axis (one Plotly chart cannot show two different
+        // ranges at once regardless of this function). Returns `null`
+        // only for a panel with no channels yet (never reached for an
+        // already-rendered panel in practice).
+        function wwPanelTimeGroupId(panel) {
+            if (!panel.channels || panel.channels.length === 0) return null;
+            return wwTimeGroupIdForDisplaySourceId(panel.channels[0].sourceId);
+        }
+
+        // The Time Group every existing single-viewport/cursor/ruler/
+        // digital-chart/Detect-Event/Absolute-origin code path stays
+        // scoped to -- the FIRST currently-displayed panel's own group,
+        // falling back to the primary SOURCE's own group
+        // (wwPrimaryTimeGroupSourceId(), already established) when no
+        // panel exists yet (e.g. before any channel is toggled on).
+        // `null` only for a genuinely empty workspace.
+        function wwPrimaryTimeGroupId() {
+            for (const panel of ww.panels) {
+                const groupId = wwPanelTimeGroupId(panel);
+                if (groupId !== null) return groupId;
+            }
+            const primarySourceId = wwPrimaryTimeGroupSourceId();
+            return primarySourceId !== null ? wwTimeGroupIdForDisplaySourceId(primarySourceId) : null;
+        }
+
+        // Every Time Group id currently backing at least one displayed
+        // panel -- this, not ww.timeGroups (every group the WORKSPACE
+        // currently has, including ones with no displayed channel at
+        // all), is what decides how many slider rows to render and
+        // which groups Reset Time View iterates (task section 9: never
+        // render a slider for a group nothing is currently showing).
+        function wwActiveTimeGroupIds() {
+            const ids = new Set();
+            for (const panel of ww.panels) {
+                const groupId = wwPanelTimeGroupId(panel);
+                if (groupId !== null) ids.add(groupId);
+            }
+            return ids;
+        }
+
+        // wwDeriveWorkspaceBounds()'s own per-group generalization --
+        // the union of every PARTICIPATING source's own shifted extent,
+        // restricted to sources whose CURRENT Time Group is `groupId`.
+        // Recomputed fresh on every call, never cached (same "derived,
+        // not stored" precedent as the union version) -- task section 4:
+        // "the slider's full extent must come from the Time Group's
+        // actual full bounds," never a first-source/first-panel
+        // shortcut. `null` if no participating source currently belongs
+        // to this group (the group has fully emptied out, e.g. its last
+        // displayed channel was just removed).
+        function wwDeriveTimeGroupBounds(groupId) {
+            let start = null;
+            let end = null;
+            for (const sourceId of wwParticipatingSourceIds()) {
+                if (wwTimeGroupIdForDisplaySourceId(sourceId) !== groupId) continue;
+                const bounds = ww.sourceBounds.get(sourceId);
+                if (!bounds) continue;
+                const offset = wwAlignmentOffsetForSource(sourceId);
+                const shiftedStart = bounds.start + offset;
+                const shiftedEnd = bounds.end + offset;
+                start = start === null ? shiftedStart : Math.min(start, shiftedStart);
+                end = end === null ? shiftedEnd : Math.max(end, shiftedEnd);
+            }
+            return start === null || end === null ? null : { start, end };
+        }
+
+        // wwClampRangeToWorkspace()'s own per-group generalization.
+        function wwClampRangeToTimeGroup(groupId, start, end) {
+            const bounds = wwDeriveTimeGroupBounds(groupId);
+            if (!bounds) return wwNormalizeBounds(start, end);
+            return wwNormalizeBounds(Math.max(start, bounds.start), Math.min(end, bounds.end));
+        }
+
+        // wwRefreshWorkspaceBounds()'s own per-group generalization,
+        // called from it (task section 13/14: source add/remove or a
+        // manual-sync-offset change can shift a Time Group's own full
+        // bounds) -- mirrors the SAME "fresh -> use full bounds,
+        // otherwise clamp the existing viewport into the (possibly
+        // shrunk) new bounds" rule, per NON-primary group (the primary
+        // group stays owned by wwRefreshWorkspaceBounds()'s own
+        // unchanged logic, see that function's own comment). Also prunes
+        // ww.timeGroupViewports entries for a group that no longer has
+        // any displayed channel (task section 14: "remove the slider
+        // entirely if the Time Group disappears") and for a group id
+        // that no longer exists after a topology change (task section
+        // 15: "old group slider state must not incorrectly remain
+        // attached" -- an orphaned key, same accepted "recomputed fresh,
+        // never persisted" consequence DEC-057's own group_id scheme
+        // already established for t0).
+        async function wwRefreshTimeGroupViewports(options) {
+            options = options || {};
+            const primaryGroupId = wwPrimaryTimeGroupId();
+            const activeIds = wwActiveTimeGroupIds();
+
+            for (const groupId of Array.from(ww.timeGroupViewports.keys())) {
+                if (!activeIds.has(groupId)) ww.timeGroupViewports.delete(groupId);
+            }
+
+            for (const groupId of activeIds) {
+                if (groupId === primaryGroupId) continue;
+                const bounds = wwDeriveTimeGroupBounds(groupId);
+                if (!bounds) {
+                    ww.timeGroupViewports.delete(groupId);
+                    continue;
+                }
+                const current = ww.timeGroupViewports.get(groupId);
+                const isFresh = !!(options.resetViewport || !current);
+                const desired = isFresh ? bounds : (wwClampRangeToTimeGroup(groupId, current.start, current.end) || bounds);
+                if (current && wwBoundsEqual(current, desired)) continue;
+                await wwApplyAndFetchGroupViewport(groupId, desired.start, desired.end);
+            }
+            wwRenderTimeGroupSliders();
+        }
+
         async function wwRefreshWorkspaceBounds(options) {
             options = options || {};
+            // Time Range slider: every NON-primary Time Group's own
+            // bounds/viewport (task section 13/14: "if group full bounds
+            // change... update the slider full extent; preserve current
+            // viewport where still valid; clamp safely"). Deliberately
+            // does NOT touch the primary group -- that stays owned
+            // end-to-end by this function's own existing, unchanged
+            // logic below (ww.viewport/ww.workspaceBounds), so there is
+            // never a second, competing authority for it (task section
+            // 23). A no-op call in the common single-Time-Group
+            // workspace (every group IS the primary one).
+            await wwRefreshTimeGroupViewports(options);
             const next = wwDeriveWorkspaceBounds();
             ww.workspaceBounds = next;
             // Phase 4B (section 25): captured BEFORE ww.viewport is
@@ -7955,6 +8194,7 @@
                     wwUpdateCursorOverlay();
                 }
                 wwSyncZoomStepControls();
+                wwRenderTimeGroupSliders();
                 return;
             }
 
@@ -7967,6 +8207,7 @@
                 wwSyncStickyRuler();
                 wwRebuildDigitalChart();
                 wwSyncZoomStepControls();
+                wwRenderTimeGroupSliders();
                 return;
             }
 
@@ -9293,7 +9534,16 @@
                     // modes. Keep the boundary helper for one named
                     // conversion point, but it is intentionally identity
                     // after the sub-ms precision fix.
-                    wwBroadcastViewportDebounced(wwPlotlyXToElapsed(x0), wwPlotlyXToElapsed(x1));
+                    //
+                    // Time Range slider: THIS panel's own Time Group is
+                    // the one that changed -- routed to the group-scoped
+                    // broadcast so a drag-zoom/pan in one Time Group's
+                    // panel can never move an unrelated group's own
+                    // panels/slider (task section 3/6/8). In the common
+                    // single-Time-Group workspace this is the SAME group
+                    // every panel already belongs to, so behavior is
+                    // unchanged.
+                    wwBroadcastGroupViewportDebounced(panel, wwPlotlyXToElapsed(x0), wwPlotlyXToElapsed(x1));
                     return;
                 }
                 if (eventData["xaxis.autorange"] === true) {
@@ -9314,74 +9564,123 @@
             });
         }
 
-        function wwBroadcastViewportDebounced(startTime, endTime) {
-            const clamped = wwClampRangeToWorkspace(startTime, endTime);
-            if (!clamped) return;
-
-            clearTimeout(ww.viewportDebounceTimer);
-            // 120ms -- same debounce window Phase 2B already established
-            // (long enough to coalesce a drag gesture's intermediate
-            // frames, short enough not to add perceptible wait to a
-            // discrete click).
-            ww.viewportDebounceTimer = setTimeout(() => {
-                wwApplyAndFetchViewport(clamped.start, clamped.end);
-            }, 120);
+        // Time Range slider: the per-Time-Group generalization of the
+        // original wwBroadcastViewportDebounced() -- resolves which
+        // group THIS panel belongs to, then shares the exact same
+        // per-group debounce core (wwDebounceApplyGroupViewport(), see
+        // the Time Range slider section below) the slider's own drag
+        // handlers use, so a Plotly drag gesture in Group A's panel and
+        // a slider drag on Group B's row can never coalesce with (or
+        // cancel) each other.
+        function wwBroadcastGroupViewportDebounced(panel, startTime, endTime) {
+            const groupId = wwPanelTimeGroupId(panel);
+            if (groupId === null) return;
+            wwDebounceApplyGroupViewport(groupId, startTime, endTime);
         }
 
-        async function wwApplyAndFetchViewport(startTime, endTime) {
-            // ww.viewport ALWAYS stays in elapsed seconds -- the one
-            // authoritative coordinate system (section 8) -- regardless of
-            // ww.timeMode; only the Plotly-facing range below is
-            // transformed.
-            ww.viewport = { start: startTime, end: endTime };
+        // Time Range slider: the per-Time-Group generalization of the
+        // original wwApplyAndFetchViewport() -- see that function's own
+        // (now thin-wrapper) comment below for why the PRIMARY group
+        // specifically still mirrors into ww.viewport/ww.workspaceBounds
+        // and keeps driving every existing single-viewport UI surface
+        // (cursor overlay, sticky ruler, digital chart, peak-annotation
+        // recalculation, the toolbar Zoom In/Out buttons) completely
+        // unchanged. A non-primary group's own viewport change relayouts
+        // ONLY that group's own panels, refetches ONLY that group's own
+        // channels, and resyncs ONLY that group's own slider row --
+        // structurally unable to touch an unrelated group (task section
+        // 3/6/7/8).
+        async function wwApplyAndFetchGroupViewport(groupId, startTime, endTime) {
+            ww.timeGroupViewports.set(groupId, { start: startTime, end: endTime });
+            const isPrimary = groupId === wwPrimaryTimeGroupId();
             for (const panel of ww.panels) {
+                if (wwPanelTimeGroupId(panel) !== groupId) continue;
                 panel.suppressNext = true;
                 Plotly.relayout(panel.chartEl, wwTimeAxisRelayout(startTime, endTime));
             }
-            // Phase 2C-C4 (section 9/10): this one function is the sole
-            // place ww.viewport ever changes (zoom, pan, AND Reset Time
-            // View all funnel through it) -- so this is the single call
-            // site needed to keep the sticky ruler's own range in sync,
-            // without adding a second synchronization loop.
-            wwSyncStickyRuler();
-            // Phase 4A (section 3/31): digital lanes share this exact same
-            // authoritative viewport -- zoom/pan/Reset Time View all reach
-            // digital through this one call site too, never a second
-            // synchronization path. Presentation-only: zero digital-
-            // waveform refetch (unlike wwRefetchAllChannels() below, which
-            // IS analog-specific -- digital's full-record data never needs
-            // re-fetching for a viewport change, see
-            // extract_digital_waveform's own docstring).
-            wwRebuildDigitalChart();
-            // Phase 4D (section 7): re-evaluate the Zoom Out disabled
-            // state for the new viewport -- this is the one call site
-            // every X viewport change (drag-zoom, pan, Reset Time View,
-            // AND step zoom) already funnels through.
-            wwSyncZoomStepControls();
-            // Phase 4G (section 31/32/36/37/38, DEC-046): this is the ONE
-            // call site every genuine X viewport change (drag-zoom, pan,
-            // step zoom, AND Reset Time View) already funnels through --
-            // so it is also the single, correct hook for recalculating
-            // every active +Peak/-Peak annotation's dynamic
-            // sampleIndex/peakElapsedSeconds/peakValue against the NEW
-            // interval. Deliberately NOT awaited: an annotation
-            // measurement request must never delay/gate the waveform
-            // fetch below (section 71) -- it resolves independently,
-            // updating each affected annotation's SAME id in place
-            // (section 19/30) once its own batched response lands, with
-            // its own stale-response protection (see
-            // wwRecalculatePeakAnnotationsForSource()'s own comment).
-            // Y-range changes, Absolute/Elapsed, and box drags never call
-            // this function at all (section 6/39/40/55) -- only this one
-            // committed-viewport call site does.
-            wwRecalculateAllPeakAnnotations(startTime, endTime);
-            await wwRefetchAllChannels(startTime, endTime);
+            if (isPrimary) {
+                // ww.viewport ALWAYS stays in elapsed seconds -- the one
+                // authoritative coordinate system (section 8) -- regardless
+                // of ww.timeMode; only the Plotly-facing range above is
+                // transformed.
+                ww.viewport = { start: startTime, end: endTime };
+                wwSyncStickyRuler();
+                // Phase 4A (section 3/31): digital lanes are ONE shared
+                // region below every analog panel, regardless of Time
+                // Group (a pre-existing, unrelated constraint -- digital
+                // channels have never been panel-split by Time Group the
+                // way analog channels are; out of scope for this slider
+                // task) -- stays tied to the primary group's own viewport
+                // exactly as before.
+                wwRebuildDigitalChart();
+                wwSyncZoomStepControls();
+                // Phase 4G (DEC-046): peak-annotation recalculation
+                // likewise stays primary-group-scoped -- this preserves
+                // its EXACT pre-existing behavior (unchanged even for the
+                // single-Time-Group case) rather than extending it to
+                // every group, which is a materially larger change this
+                // task does not ask for. Deliberately NOT awaited, same
+                // as before.
+                wwRecalculateAllPeakAnnotations(startTime, endTime);
+            }
+            wwRenderTimeGroupSliders();
+            await wwRefetchChannelsForGroup(groupId, startTime, endTime);
         }
 
-        async function wwRefetchAllChannels(startTime, endTime) {
+        // Backward-compatible entry point -- every pre-existing caller
+        // (wwStepZoomX/Y, wwResetTimeView, wwRefreshWorkspaceBounds, the
+        // Synchronize Sources modal's own offset-change side effects)
+        // keeps working completely unchanged: they all mean "the
+        // PRIMARY Time Group's own viewport," exactly as before this
+        // task (in the common single-Time-Group workspace, the primary
+        // group IS the only group, so this is byte-for-byte identical to
+        // pre-slider behavior).
+        async function wwApplyAndFetchViewport(startTime, endTime) {
+            const primaryGroupId = wwPrimaryTimeGroupId();
+            if (primaryGroupId === null) return;
+            await wwApplyAndFetchGroupViewport(primaryGroupId, startTime, endTime);
+        }
+
+        // Time Range slider: refetches only the channels belonging to
+        // ONE Time Group, using that group's own explicit range --
+        // required because wwFetchChannelRange() converts this range
+        // into each channel's own SOURCE-NATIVE time via that source's
+        // own alignment offset (wwWorkspaceTimeToSourceTime()); reusing
+        // one group's own range for a DIFFERENT group's channels would
+        // request the wrong native window entirely (they do not share
+        // an origin). A channel's own group is resolved per-CHANNEL, not
+        // per-panel, so a Custom-mode panel the engineer deliberately
+        // mixed channels from different Time Groups into still only
+        // refetches the channels that actually belong to `groupId`.
+        async function wwRefetchChannelsForGroup(groupId, startTime, endTime) {
             const jobs = [];
             for (const panel of ww.panels) {
                 for (const channel of panel.channels) {
+                    if (wwTimeGroupIdForDisplaySourceId(channel.sourceId) !== groupId) continue;
+                    jobs.push(wwLoadChannelRange(panel, channel, startTime, endTime, { isInitialLoad: false }));
+                }
+            }
+            await Promise.all(jobs);
+        }
+
+        // Cross-cutting refetch: EVERY currently displayed channel,
+        // using ITS OWN Time Group's CURRENT tracked viewport (never a
+        // single shared range) -- the correct generalization for a
+        // workspace-wide trigger that isn't itself a viewport change
+        // (unit-mode switch, a Per-Unit base/reference edit). Falls back
+        // to ww.viewport for a group not yet tracked in
+        // ww.timeGroupViewports (only possible transiently, before its
+        // first zoom/pan/Reset -- the primary group's own bounds before
+        // this task, and every group's own bounds right after Reset Time
+        // View, which seeds every group's entry).
+        async function wwRefetchAllChannelsAcrossGroups() {
+            const jobs = [];
+            for (const panel of ww.panels) {
+                for (const channel of panel.channels) {
+                    const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
+                    const range = ww.timeGroupViewports.get(groupId) || ww.viewport;
+                    const startTime = range ? range.start : null;
+                    const endTime = range ? range.end : null;
                     jobs.push(wwLoadChannelRange(panel, channel, startTime, endTime, { isInitialLoad: false }));
                 }
             }
@@ -9393,14 +9692,15 @@
         // ------------------------------------------------------------------
 
         // The ONE place ww.unitMode ever changes -- switching modes
-        // re-fetches every currently displayed channel's CURRENT viewport
-        // (reusing wwRefetchAllChannels(), the same orchestrator Reset
-        // Time View/zoom/pan already use, never a full source/page
-        // reload -- section 59-60), then regroups panels once every
-        // channel's fresh `perUnitStatus` is known (wwPanelGroupKeyFor()'s
-        // own per-unit branch needs that value to decide panel
-        // membership -- see its own comment for why a brand-new mode
-        // can't be reflected until at least one fetch has resolved).
+        // re-fetches every currently displayed channel using ITS OWN
+        // Time Group's CURRENT viewport (wwRefetchAllChannelsAcrossGroups(),
+        // the group-aware generalization of the orchestrator Reset Time
+        // View/zoom/pan already use, never a full source/page reload --
+        // section 59-60), then regroups panels once every channel's
+        // fresh `perUnitStatus` is known (wwPanelGroupKeyFor()'s own
+        // per-unit branch needs that value to decide panel membership --
+        // see its own comment for why a brand-new mode can't be
+        // reflected until at least one fetch has resolved).
         async function wwApplyUnitMode(mode) {
             if (mode !== "engineering" && mode !== "per_unit") return;
             if (ww.unitMode === mode) return;
@@ -9413,9 +9713,7 @@
             if (mode === "per_unit") await wwFetchPerUnitSourceConfigs();
             ww.unitMode = mode;
             wwSyncUnitModeControls();
-            const startTime = ww.viewport ? ww.viewport.start : null;
-            const endTime = ww.viewport ? ww.viewport.end : null;
-            await wwRefetchAllChannels(startTime, endTime);
+            await wwRefetchAllChannelsAcrossGroups();
             wwRebuildLayout();
             wwUpdateUnitModeWarningBadge();
         }
@@ -9960,9 +10258,7 @@
         // actually active (nothing to refresh in Engineering mode).
         async function wwRefreshDisplayedChannelsForPerUnitChange() {
             if (ww.unitMode !== "per_unit") return;
-            const startTime = ww.viewport ? ww.viewport.start : null;
-            const endTime = ww.viewport ? ww.viewport.end : null;
-            await wwRefetchAllChannels(startTime, endTime);
+            await wwRefetchAllChannelsAcrossGroups();
             wwRebuildLayout();
             wwUpdateUnitModeWarningBadge();
         }
@@ -10332,15 +10628,30 @@
         // optimization -- an offset change already requires a genuine
         // analog refetch, since the backend's own point-budget reduction
         // depends on the exact native range requested, so this reuses the
-        // SAME wwRefetchAllChannels() orchestrator zoom/pan/unit-mode
-        // switch already funnel through, rather than inventing a second,
-        // partial-refresh path). Digital channels need no refetch at all
-        // (wwRebuildDigitalChart() re-reads the current offset live, see
-        // wwDigitalHighIntervals()'s own comment) -- only a cheap re-render.
+        // SAME wwRefetchAllChannelsAcrossGroups() orchestrator zoom/pan/
+        // unit-mode switch already funnel through, rather than inventing
+        // a second, partial-refresh path). Digital channels need no
+        // refetch at all (wwRebuildDigitalChart() re-reads the current
+        // offset live, see wwDigitalHighIntervals()'s own comment) --
+        // only a cheap re-render.
+        //
+        // Time Range slider: wwRefreshWorkspaceBounds() below already
+        // refreshes EVERY Time Group's own bounds/viewport (task section
+        // 13 -- a manual correction can change which sources overlap,
+        // shifting a group's own full extent), including already
+        // refetching each non-primary group's own channels internally
+        // (wwRefreshTimeGroupViewports() -> wwApplyAndFetchGroupViewport()).
+        // wwRefetchAllChannelsAcrossGroups() below then covers the
+        // PRIMARY group's own channels the same way (and is a correct,
+        // idempotent no-op re-request for every other group's channels
+        // that were already just refetched moments earlier with the
+        // exact same now-current per-group range) -- never the single
+        // shared ww.viewport applied to every channel regardless of
+        // group, which would request the WRONG native window for a
+        // non-primary group's own channels.
         async function wwSyncApplyOffsetChangeSideEffects() {
             await wwRefreshWorkspaceBounds({ resetViewport: false });
-            const vp = ww.viewport;
-            if (vp) await wwRefetchAllChannels(vp.start, vp.end);
+            await wwRefetchAllChannelsAcrossGroups();
             wwRebuildDigitalChart();
             if (ww.measurementCursors.enabled) {
                 for (const sourceId of wwParticipatingSourceIds()) wwFetchCursorValuesForSource(sourceId);
@@ -10769,10 +11080,31 @@
         // "Reset Time View": restores the full-record X/time range for
         // EVERY panel -- a distinct operation from "Autoscale Y" (DEC-021's
         // required terminology, unchanged from Phase 2B).
+        //
+        // Time Range slider (task section 16): "for the relevant Time
+        // Group: Reset -> visible viewport = full group extent." Resets
+        // EVERY currently active Time Group to ITS OWN full bounds
+        // (wwDeriveTimeGroupBounds()), never the single-group's-worth-
+        // wider ww.workspaceBounds (the union across every group) --
+        // in the common single-Time-Group workspace the two are
+        // IDENTICAL by construction (there is only one group, so its own
+        // bounds ARE the workspace bounds), so this is byte-for-byte the
+        // same behavior as before this task for that case; a genuinely
+        // multi-Time-Group workspace now correctly resets each group to
+        // its own extent rather than one shared cross-group span.
+        // ww.workspaceBounds itself is still the cheap, already-correct
+        // "is there anything to reset at all" guard (null exactly when
+        // the workspace is genuinely empty).
         async function wwResetTimeView() {
             if (!ww.workspaceBounds) return;
             clearTimeout(ww.viewportDebounceTimer);
-            await wwApplyAndFetchViewport(ww.workspaceBounds.start, ww.workspaceBounds.end);
+            for (const timerId of ww.timeGroupViewportDebounceTimers.values()) clearTimeout(timerId);
+            ww.timeGroupViewportDebounceTimers.clear();
+            for (const groupId of wwActiveTimeGroupIds()) {
+                const bounds = wwDeriveTimeGroupBounds(groupId);
+                if (!bounds) continue;
+                await wwApplyAndFetchGroupViewport(groupId, bounds.start, bounds.end);
+            }
         }
 
         // "Autoscale Y": viewport-aware Fit only (section 8) -- every
@@ -15973,6 +16305,272 @@
             // now projects to on screen, so this is one of the hook points
             // that keeps the overlay's pixel positions in sync (section 17).
             wwUpdateCursorOverlay();
+        }
+
+        // ==================================================================
+        // Time Range slider -- one compact horizontal two-handle range
+        // navigator PER Time Group (#wwTimeGroupSliders).
+        //
+        // Position math is ALWAYS in group-time seconds (the same raw,
+        // pre-t0, pre-Absolute-mode coordinate ww.viewport/
+        // ww.timeGroupViewports already store -- task section 11/12: one
+        // canonical internal coordinate drives every display mode; a t0
+        // shift or an Absolute/Elapsed switch never touches this math,
+        // only the compact duration LABEL text, which is itself
+        // shift-invariant -- wwFormatCursorDuration() formats a SPAN,
+        // and end-start is unchanged by a constant t0 shift applied to
+        // both). Never fabricates a wall-clock label (task section 10's
+        // own duration-based example, not the wall-clock one) -- this
+        // sidesteps the separately-documented, pre-existing single-
+        // workspace Absolute-mode-origin limitation entirely (DEC-057).
+        //
+        // Loop prevention (task section 6): a slider-driven change goes
+        // through wwDebounceApplyGroupViewport() -> the SAME
+        // wwApplyAndFetchGroupViewport() a Plotly drag-zoom/pan already
+        // funnels through, which sets panel.suppressNext before its own
+        // Plotly.relayout() call (the pre-existing, established guard --
+        // see wwWirePanelRelayout()'s own "if (panel.suppressNext)"
+        // check) -- so that programmatic relayout can never re-trigger
+        // ANOTHER slider update. Conversely, a Plotly-driven change
+        // (mouse zoom/pan) repaints the slider via the same
+        // wwApplyAndFetchGroupViewport() -> wwRenderTimeGroupSliders()
+        // call, never a separate "Plotly changed, now tell the slider"
+        // listener loop. wwTimeGroupSliderDragState guards the other
+        // direction -- while THIS group's own row is being dragged, an
+        // unrelated resync (e.g. a DIFFERENT group's own update calling
+        // wwRenderTimeGroupSliders()) never repaints/fights the row
+        // already being live-updated by the drag handler itself.
+        // ==================================================================
+
+        // Transient (never part of `ww` -- ephemeral per-gesture UI
+        // state, the same convention uploadModalSubmitting/
+        // lastImportedSourceId already use): which Time Group's own
+        // slider row, if any, is currently mid-drag.
+        let wwTimeGroupSliderDragState = null;
+
+        // The shared debounce core BOTH the slider's own drag handlers
+        // and wwBroadcastGroupViewportDebounced() (Plotly drag-zoom/pan)
+        // call -- one 120ms timer per group (ww.timeGroupViewportDebounceTimers,
+        // the same coalescing window Phase 2B already established), so a
+        // fast drag never floods wwApplyAndFetchGroupViewport() with a
+        // network request per pixel of movement (task section 17).
+        function wwDebounceApplyGroupViewport(groupId, startTime, endTime) {
+            const clamped = wwClampRangeToTimeGroup(groupId, startTime, endTime);
+            if (!clamped) return;
+            clearTimeout(ww.timeGroupViewportDebounceTimers.get(groupId));
+            ww.timeGroupViewportDebounceTimers.set(groupId, setTimeout(() => {
+                wwApplyAndFetchGroupViewport(groupId, clamped.start, clamped.end);
+            }, 120));
+        }
+
+        // wwClampZoomWindowToWorkspace()'s own per-group generalization,
+        // used for the slider's own PAN (drag the selected window) drag
+        // specifically -- preserves the exact dragged SPAN by shifting
+        // rather than independently clamping each endpoint, so panning
+        // up against either edge of the group's own full extent never
+        // asymmetrically squishes the window's width.
+        function wwClampPanWindowToTimeGroup(groupId, start, end) {
+            const bounds = wwDeriveTimeGroupBounds(groupId);
+            if (!bounds) return wwNormalizeBounds(start, end);
+            const span = end - start;
+            if (span >= bounds.end - bounds.start) return { start: bounds.start, end: bounds.end };
+            let newStart = start;
+            let newEnd = end;
+            if (newStart < bounds.start) {
+                const shift = bounds.start - newStart;
+                newStart += shift;
+                newEnd += shift;
+            }
+            if (newEnd > bounds.end) {
+                const shift = newEnd - bounds.end;
+                newEnd -= shift;
+                newStart -= shift;
+            }
+            return wwNormalizeBounds(Math.max(newStart, bounds.start), Math.min(newEnd, bounds.end));
+        }
+
+        // The visible range this group's slider should currently show --
+        // the primary group's own entry is ww.viewport itself (task
+        // section 23: "prefer the existing viewport as authoritative");
+        // every other group reads ww.timeGroupViewports.
+        function wwTimeGroupVisibleRange(groupId) {
+            if (groupId === wwPrimaryTimeGroupId()) return ww.viewport;
+            return ww.timeGroupViewports.get(groupId) || null;
+        }
+
+        // Mirrors wwTimeGroupLabelSuffix()'s own numbering EXACTLY (same
+        // sorted-group-id convention) so a slider row's own label always
+        // agrees with that same group's panel-header suffix -- one
+        // numbering scheme, never two that could drift apart.
+        function wwTimeGroupSliderGroupLabel(groupId) {
+            const group = ww.timeGroups.get(groupId);
+            if (!group) return "";
+            if (group.timeReferenceType === "elapsed_only") return "Elapsed / unaligned";
+            const sortedGroupIds = Array.from(ww.timeGroups.keys()).sort();
+            return "Time Group " + (sortedGroupIds.indexOf(groupId) + 1);
+        }
+
+        // Pure DOM paint -- no state mutation, safe to call at 60fps
+        // during a drag. `boundsOverride` avoids recomputing
+        // wwDeriveTimeGroupBounds() on every pointermove frame when the
+        // caller already has it.
+        function wwPaintTimeGroupSliderRow(groupId, start, end, boundsOverride) {
+            const container = document.getElementById("wwTimeGroupSliders");
+            if (!container) return;
+            const rowEl = container.querySelector('.ww-tg-slider-row[data-group-id="' + CSS.escape(groupId) + '"]');
+            if (!rowEl) return;
+            const bounds = boundsOverride || wwDeriveTimeGroupBounds(groupId);
+            if (!bounds) return;
+            const span = bounds.end - bounds.start;
+            const leftPct = span > 0 ? ((start - bounds.start) / span) * 100 : 0;
+            const rightPct = span > 0 ? ((end - bounds.start) / span) * 100 : 100;
+            const windowEl = rowEl.querySelector(".ww-tg-slider-window");
+            const leftHandle = rowEl.querySelector(".ww-tg-slider-handle--left");
+            const rightHandle = rowEl.querySelector(".ww-tg-slider-handle--right");
+            windowEl.style.left = leftPct + "%";
+            windowEl.style.width = Math.max(0, rightPct - leftPct) + "%";
+            leftHandle.style.left = leftPct + "%";
+            rightHandle.style.left = rightPct + "%";
+            leftHandle.setAttribute("aria-valuenow", start.toFixed(3));
+            rightHandle.setAttribute("aria-valuenow", end.toFixed(3));
+            const rangeLabelEl = rowEl.querySelector(".ww-tg-slider-label-range");
+            if (rangeLabelEl) {
+                rangeLabelEl.textContent = "Full: " + wwFormatCursorDuration(span) + " · Visible: " + wwFormatCursorDuration(end - start);
+            }
+        }
+
+        function wwWireTimeGroupSliderHandle(handleEl, trackEl, groupId, side) {
+            const onMove = (moveEvent) => {
+                const bounds = wwDeriveTimeGroupBounds(groupId);
+                if (!bounds || !wwTimeGroupSliderDragState) return;
+                const rect = trackEl.getBoundingClientRect();
+                const frac = rect.width > 0 ? Math.min(1, Math.max(0, (moveEvent.clientX - rect.left) / rect.width)) : 0;
+                const t = bounds.start + frac * (bounds.end - bounds.start);
+                const current = wwTimeGroupSliderDragState.current;
+                const minSpan = Math.max((bounds.end - bounds.start) * 0.002, 1e-9);
+                if (side === "left") current.start = Math.min(t, current.end - minSpan);
+                else current.end = Math.max(t, current.start + minSpan);
+                wwPaintTimeGroupSliderRow(groupId, current.start, current.end, bounds);
+                wwDebounceApplyGroupViewport(groupId, current.start, current.end);
+            };
+            const onUp = (upEvent) => {
+                handleEl.releasePointerCapture(upEvent.pointerId);
+                handleEl.removeEventListener("pointermove", onMove);
+                handleEl.removeEventListener("pointerup", onUp);
+                wwTimeGroupSliderDragState = null;
+            };
+            handleEl.addEventListener("pointerdown", (event) => {
+                event.preventDefault();
+                const range = wwTimeGroupVisibleRange(groupId);
+                if (!range) return;
+                handleEl.setPointerCapture(event.pointerId);
+                wwTimeGroupSliderDragState = { groupId, current: { start: range.start, end: range.end } };
+                handleEl.addEventListener("pointermove", onMove);
+                handleEl.addEventListener("pointerup", onUp);
+            });
+        }
+
+        function wwWireTimeGroupSliderWindow(windowEl, trackEl, groupId) {
+            const onMove = (moveEvent) => {
+                const state = wwTimeGroupSliderDragState;
+                const bounds = wwDeriveTimeGroupBounds(groupId);
+                if (!bounds || !state) return;
+                const rect = trackEl.getBoundingClientRect();
+                const deltaFrac = rect.width > 0 ? (moveEvent.clientX - state.startClientX) / rect.width : 0;
+                const deltaTime = deltaFrac * (bounds.end - bounds.start);
+                const span = state.startRange.end - state.startRange.start;
+                const newStart = state.startRange.start + deltaTime;
+                const clamped = wwClampPanWindowToTimeGroup(groupId, newStart, newStart + span);
+                wwPaintTimeGroupSliderRow(groupId, clamped.start, clamped.end, bounds);
+                wwDebounceApplyGroupViewport(groupId, clamped.start, clamped.end);
+            };
+            const onUp = (upEvent) => {
+                windowEl.releasePointerCapture(upEvent.pointerId);
+                windowEl.removeEventListener("pointermove", onMove);
+                windowEl.removeEventListener("pointerup", onUp);
+                wwTimeGroupSliderDragState = null;
+            };
+            windowEl.addEventListener("pointerdown", (event) => {
+                event.preventDefault();
+                const range = wwTimeGroupVisibleRange(groupId);
+                if (!range) return;
+                windowEl.setPointerCapture(event.pointerId);
+                wwTimeGroupSliderDragState = { groupId, startClientX: event.clientX, startRange: { start: range.start, end: range.end } };
+                windowEl.addEventListener("pointermove", onMove);
+                windowEl.addEventListener("pointerup", onUp);
+            });
+        }
+
+        function wwCreateTimeGroupSliderRow(groupId) {
+            const row = document.createElement("div");
+            row.className = "ww-tg-slider-row";
+            row.dataset.groupId = groupId;
+            row.innerHTML =
+                '<div class="ww-tg-slider-label">' +
+                    '<span class="ww-tg-slider-label-name"></span>' +
+                    '<span class="ww-tg-slider-label-range"></span>' +
+                '</div>' +
+                '<div class="ww-tg-slider-track">' +
+                    '<div class="ww-tg-slider-window"></div>' +
+                    '<div class="ww-tg-slider-handle ww-tg-slider-handle--left" role="slider" tabindex="0" aria-label="Visible range start"></div>' +
+                    '<div class="ww-tg-slider-handle ww-tg-slider-handle--right" role="slider" tabindex="0" aria-label="Visible range end"></div>' +
+                '</div>';
+            const track = row.querySelector(".ww-tg-slider-track");
+            const windowEl = row.querySelector(".ww-tg-slider-window");
+            const leftHandle = row.querySelector(".ww-tg-slider-handle--left");
+            const rightHandle = row.querySelector(".ww-tg-slider-handle--right");
+            wwWireTimeGroupSliderHandle(leftHandle, track, groupId, "left");
+            wwWireTimeGroupSliderHandle(rightHandle, track, groupId, "right");
+            wwWireTimeGroupSliderWindow(windowEl, track, groupId);
+            return row;
+        }
+
+        // Resyncs ONE row from authoritative state -- skipped for
+        // whichever group is currently mid-drag (wwTimeGroupSliderDragState),
+        // so an unrelated update elsewhere can never fight the live
+        // pointermove-driven paint already in progress for that row.
+        function wwSyncTimeGroupSliderRow(groupId, rowEl, showGroupLabel) {
+            const nameEl = rowEl.querySelector(".ww-tg-slider-label-name");
+            if (nameEl) nameEl.textContent = showGroupLabel ? wwTimeGroupSliderGroupLabel(groupId) : "";
+            if (wwTimeGroupSliderDragState && wwTimeGroupSliderDragState.groupId === groupId) return;
+            const bounds = wwDeriveTimeGroupBounds(groupId);
+            if (!bounds) return;
+            const range = wwTimeGroupVisibleRange(groupId) || bounds;
+            wwPaintTimeGroupSliderRow(groupId, range.start, range.end, bounds);
+        }
+
+        // The one entry point that (re)builds the Time Range slider row
+        // SET to match wwActiveTimeGroupIds() (task section 3/9/14:
+        // never one slider per panel, never a stale row for a group
+        // that no longer has anything displayed) and resyncs every
+        // row's own handle/window positions + label. Rows are created/
+        // removed/reordered in place -- an EXISTING row's own DOM node
+        // (and therefore its drag listeners/any in-progress gesture) is
+        // never destroyed as long as its own group stays active, even
+        // across a full resync. Cheap (DOM-only, no fetch) -- safe to
+        // call generously from every viewport-affecting call site.
+        function wwRenderTimeGroupSliders() {
+            const container = document.getElementById("wwTimeGroupSliders");
+            if (!container) return;
+            const activeIds = Array.from(wwActiveTimeGroupIds()).sort();
+            if (activeIds.length === 0) {
+                container.innerHTML = "";
+                return;
+            }
+            const showGroupLabel = ww.timeGroups.size > 1;
+            for (const rowEl of Array.from(container.querySelectorAll(".ww-tg-slider-row"))) {
+                if (!activeIds.includes(rowEl.dataset.groupId)) rowEl.remove();
+            }
+            activeIds.forEach((groupId, index) => {
+                let rowEl = container.querySelector('.ww-tg-slider-row[data-group-id="' + CSS.escape(groupId) + '"]');
+                if (!rowEl) {
+                    rowEl = wwCreateTimeGroupSliderRow(groupId);
+                    container.appendChild(rowEl);
+                } else if (container.children[index] !== rowEl) {
+                    container.appendChild(rowEl); // reorder into the sorted position -- moves, never duplicates
+                }
+                wwSyncTimeGroupSliderRow(groupId, rowEl, showGroupLabel);
+            });
         }
 
         // ==================================================================

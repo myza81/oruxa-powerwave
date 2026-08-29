@@ -69,12 +69,24 @@ def test_waveform_fetch_no_longer_establishes_full_bounds_from_response():
 
 
 def test_zoom_pan_clamps_to_workspace_bounds():
+    """Time Range slider: wwBroadcastViewportDebounced() was replaced by
+    wwBroadcastGroupViewportDebounced() (resolves the panel's own Time
+    Group, task section 3/6/8), which shares the actual clamp+debounce
+    core (wwDebounceApplyGroupViewport()) with the slider's own drag
+    handlers -- clamping is now per-Time-Group
+    (wwClampRangeToTimeGroup()), which degenerates to exactly
+    wwClampRangeToWorkspace()'s own old per-workspace behavior in the
+    common single-Time-Group case."""
     source = _source()
 
-    broadcast_idx = source.index("function wwBroadcastViewportDebounced")
-    broadcast_body = source[broadcast_idx : source.index("async function wwApplyAndFetchViewport", broadcast_idx)]
-    assert "wwClampRangeToWorkspace(startTime, endTime)" in broadcast_body
-    assert "wwApplyAndFetchViewport(clamped.start, clamped.end)" in broadcast_body
+    broadcast_idx = source.index("function wwBroadcastGroupViewportDebounced")
+    broadcast_body = source[broadcast_idx : source.index("async function wwApplyAndFetchGroupViewport", broadcast_idx)]
+    assert "wwDebounceApplyGroupViewport(groupId, startTime, endTime)" in broadcast_body
+
+    debounce_idx = source.index("function wwDebounceApplyGroupViewport")
+    debounce_body = source[debounce_idx : source.index("function wwClampPanWindowToTimeGroup", debounce_idx)]
+    assert "wwClampRangeToTimeGroup(groupId, startTime, endTime)" in debounce_body
+    assert "wwApplyAndFetchGroupViewport(groupId, clamped.start, clamped.end)" in debounce_body
 
 
 def test_display_only_clear_preserves_selected_source_bounds():

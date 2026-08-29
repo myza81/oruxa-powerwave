@@ -184,13 +184,20 @@ def test_ui_stores_seconds_not_milliseconds():
 def test_offset_change_side_effects_reuse_existing_refetch_orchestrator():
     """Task's own Performance Requirement: never a fragile, separate
     frontend-only offset-application path -- reuse the SAME
-    wwRefetchAllChannels()/wwRebuildDigitalChart() call sites zoom/pan/
-    unit-mode-switch already funnel through."""
+    wwRefetchAllChannelsAcrossGroups()/wwRebuildDigitalChart() call sites
+    zoom/pan/unit-mode-switch already funnel through.
+
+    Time Range slider: a manual offset change can shift a Time Group's
+    own bounds, so this now refetches every group's own channels using
+    ITS OWN current viewport (wwRefetchAllChannelsAcrossGroups()) rather
+    than the single shared ww.viewport applied to every channel
+    regardless of group -- in the common single-Time-Group workspace
+    this is the exact same request as before."""
     source = _source()
     fn_idx = source.index("async function wwSyncApplyOffsetChangeSideEffects()")
     fn_body = source[fn_idx : source.index("async function wwSyncPutOffset", fn_idx)]
     assert "wwRefreshWorkspaceBounds(" in fn_body
-    assert "wwRefetchAllChannels(vp.start, vp.end)" in fn_body
+    assert "wwRefetchAllChannelsAcrossGroups()" in fn_body
     assert "wwRebuildDigitalChart()" in fn_body
 
 

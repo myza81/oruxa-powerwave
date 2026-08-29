@@ -41,11 +41,17 @@ def test_every_channel_waveform_fetch_requests_unit_mode():
 
 
 def test_apply_unit_mode_refetches_and_regroups():
+    """Time Range slider: a unit-mode switch is a workspace-wide trigger,
+    not itself a viewport change, so it now refetches every displayed
+    channel using ITS OWN Time Group's current viewport
+    (wwRefetchAllChannelsAcrossGroups()) rather than one shared range --
+    in the common single-Time-Group workspace this is the exact same
+    request as before."""
     source = _source()
     body = _function_body(source, "async function wwApplyUnitMode(mode)", "function wwSyncUnitModeControls()")
     assert "if (ww.unitMode === mode) return;" in body
     assert "ww.unitMode = mode;" in body
-    assert "await wwRefetchAllChannels(startTime, endTime);" in body
+    assert "await wwRefetchAllChannelsAcrossGroups();" in body
     assert "wwRebuildLayout();" in body
     assert "wwUpdateUnitModeWarningBadge();" in body
     # A workspace with an already-configured source from an earlier

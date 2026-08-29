@@ -4,9 +4,87 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-08-28**
+Last updated: **2026-08-29**
 
 ## What was most recently done
+
+**Phase 20 — Time Range slider.** On top of Phase 19 (Time Groups)
+below — see
+[DECISIONS.md — DEC-058](DECISIONS.md#dec-058--time-range-slider-one-horizontal-two-handle-range-navigator-per-time-group-requiring-the-single-workspace-wide-viewport-to-become-genuinely-per-time-group-internally-while-every-pre-existing-single-instance-ui-surface-stays-scoped-to-the-primary-group)
+for the full record; summarized here for continuity.
+
+A compact horizontal two-handle range slider now renders once per
+active Time Group (never once per panel), below the panel stack and
+above the shared sticky ruler, showing that group's own full recorded
+extent with the current viewport as the selected window — solves the
+owner's own real scenario (a 5 kHz ~1.3 s record sharing a Time Group
+with a 20 Hz ~69 s record of the same event; after Reset Time View the
+short record is correctly a sliver inside the full ~69 s extent, and
+the slider lets the engineer zoom to it quickly without leaving that
+correct, non-resampled shared axis).
+
+**Investigation surfaced a real architectural constraint** (reported
+per the task's own instruction rather than silently worked around):
+every panel in the workspace shared exactly ONE global `ww.viewport`
+(DEC-021, predating Time Groups; DEC-057 explicitly deferred "fully
+independent per-time-group viewports" out of scope). A slider
+genuinely independent per Time Group required generalizing this into
+`ww.timeGroupViewports: Map<groupId, {start, end}>` with a
+corresponding per-group zoom/pan/refetch pipeline
+(`wwApplyAndFetchGroupViewport()`, `wwRefetchChannelsForGroup()`).
+Every pre-existing single-instance cross-cutting surface (cursor
+overlay, sticky ruler, digital-channel region, peak-annotation
+recalc, toolbar Zoom In/Out, Detect Event's visible-range search,
+Absolute-mode label origin) deliberately stays scoped to the
+workspace's own PRIMARY Time Group — the same narrower-scope
+precedent DEC-057 already established for `wwPrimaryTimeGroupSourceId()`
+— so the common single-Time-Group workspace (by far the most frequent
+case) behaves byte-for-byte identically to before this task.
+
+**Backend untouched** — no timing calculation, schema, or API changed;
+this is presentation/navigation layer only, over the same DEC-057
+Time-Group coordinate system, using its own existing offset/t0
+composition unchanged.
+
+Verified by 1533 passing backend tests (26 new + 4 pre-existing
+frontend static-regression tests updated for the renamed/generalized
+functions, zero regressions from 1507) plus two live-browser UAT
+passes (Playwright, real backend, synthetic COMTRADE fixtures matching
+the owner's own 5 kHz/1.3 s + 20 Hz/69 s scenario): 25/25 checks
+passed — full-range Reset, handle-drag zoom to ~1.3 s with both traces
+still real/non-resampled, window-drag pan preserving span exactly,
+mouse-zoom-on-chart correctly driving the slider, Grouped/Separate
+layout parity, two independent Time Groups with an isolated drag on
+one leaving the other untouched, t0 set/cleared with the slider's own
+physical interval unchanged, and a source removal cleanly updating the
+slider's own row set with a safe clamp.
+
+**Known, disclosed limitation (matches DEC-057's own precedent)**: a
+genuinely multi-Time-Group workspace's non-primary groups get correct,
+independent WAVEFORM PANEL navigation via their own slider, but not
+yet independent cursors/ruler/digital-chart/Absolute labels of their
+own — those stay primary-group-only, unchanged from before this task.
+
+**Files changed**: `frontend/index.html` only (new per-group viewport
+state/pipeline/slider UI, contained to that one file) + new
+`backend/tests/test_frontend_time_range_slider.py` + 4 pre-existing
+frontend static-regression test files updated for the function
+rename/generalization (`test_frontend_per_unit_mode.py`,
+`test_frontend_source_bounds.py`, `test_frontend_synchronization.py`,
+`test_frontend_waveform_adaptive_resolution.py`).
+
+**Next step**: nothing is pre-authorized. A concurrent, external
+commit (`d888713`, made outside this session, titled only "change
+wwPanels.ww-panels-unified legend-item from 0.75rem to 0.6rem") was
+found to have already swept this task's own in-progress
+`frontend/index.html` changes into itself — see this task's own final
+report for the full account; nothing was lost, but the commit message
+does not describe most of what it actually contains, and it has not
+been pushed. The remaining test-file changes from this task stayed
+uncommitted, per this session's own "do not commit/push without being
+asked" discipline.
+
+## What was done in the prior session (Phase 19 — Timestamp-Based Initial Alignment and Time Groups)
 
 **Phase 19 — Timestamp-Based Initial Alignment and Time Groups.** On top
 of Phases 15-18 (Slices 1-3 of waveform time synchronization) below --
