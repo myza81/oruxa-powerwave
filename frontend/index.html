@@ -2971,6 +2971,39 @@
             position: relative;
             margin-bottom: 14px;
         }
+        /* Sticky-toolbar UX task: ONE shared wrapper around `.ww-tg-header`
+           + `.ww-tg-toolbar-row` (never two independently-sticky elements
+           -- that could separate/overlap during a fast scroll). `position:
+           sticky; top: 0` is bounded to THIS wrapper's own containing
+           block, which is `.ww-time-group-canvas` -- the exact same
+           per-canvas "bounded sticky handoff" already proven by the
+           existing bottom ruler/slider stack and by
+           `.ww-tg-cursor-label-layer` below (both established TG-B+C/
+           TG-D2 precedent, not a new pattern). `top: 0`, not an app-level
+           offset: #wwToolbar (the one global fixed toolbar) is a SIBLING
+           of #activeViewArea, the actual scrolling ancestor, not an
+           ancestor inside it, so nothing above already occupies the top
+           of that scroll box. Opaque `background: var(--panel)` (the same
+           panel color already used by the ruler/slider stack) stops
+           waveform content scrolling underneath it; the subtle
+           `box-shadow` reads as a hairline separation only while
+           genuinely stuck (no border added to the unstuck/static case, so
+           normal in-flow appearance is unchanged). z-index: 5 -- smallest
+           value that still clears the local per-canvas layers below it
+           (ruler=4) and sits below the cursor-label-layer(6)/split-menu
+           dropdowns(20)/modals(10)/drawers(40)/tooltips(50) stacked
+           elsewhere in this file, so it can never incorrectly cover any
+           of those. See wwSyncTimeGroupCanvasStickyOffset() for how this
+           wrapper's own rendered height is fed to
+           `--ww-tg-sticky-top-h` so the cursor-label-layer below never
+           renders underneath it. */
+        .ww-tg-sticky-top {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            background: var(--panel);
+            box-shadow: 0 1px 0 var(--panel-border);
+        }
         .ww-tg-header {
             display: flex;
             align-items: baseline;
@@ -3296,10 +3329,19 @@
            is that ONE canvas -- it naturally releases as the next
            canvas's own content scrolls into view, the exact same "bounded
            sticky handoff" pattern already proven for the ruler/slider
-           (TG-B+C). z-index above both cursor overlays. */
+           (TG-B+C). z-index above both cursor overlays.
+           Sticky-toolbar UX task: `top` is offset by
+           `--ww-tg-sticky-top-h` (the new `.ww-tg-sticky-top` header+
+           toolbar wrapper's own live rendered height, set on the canvas
+           root by wwSyncTimeGroupCanvasStickyOffset()) -- two independent
+           `position: sticky` elements do NOT know about each other's
+           occupied space by default, so without this the labels would
+           stick at the OLD fixed `6px` and render underneath the new
+           sticky header/toolbar. Defaults to `0px` so nothing shifts
+           before that offset is first measured. */
         .ww-tg-cursor-label-layer {
             position: sticky;
-            top: 6px;
+            top: calc(var(--ww-tg-sticky-top-h, 0px) + 6px);
             left: 0; right: 0;
             height: 0;
             pointer-events: none;
@@ -8290,6 +8332,13 @@
             section.className = "ww-time-group-canvas";
             section.dataset.timeGroupId = groupId;
             section.innerHTML =
+                // Sticky-toolbar UX task: header + toolbar-row share ONE
+                // sticky wrapper (never independently sticky) so they can
+                // only ever move together -- no separation/overlap risk
+                // during a Time-Group-to-Time-Group scroll handoff. See
+                // `.ww-tg-sticky-top`'s own CSS comment for the sticky
+                // mechanics; neither child's own markup/classes changed.
+                '<div class="ww-tg-sticky-top">' +
                 '<div class="ww-tg-header">' +
                     '<span class="ww-tg-header-title"></span>' +
                     '<span class="ww-tg-header-meta"></span>' +
@@ -8347,6 +8396,7 @@
                     '<span class="ww-tg-cursor-readout-item ww-cursor-readout-a"><span class="ww-tg-cursor-readout-label">A</span><span class="ww-tg-cursor-readout-value ww-tg-cursor-readout-value--a">—</span></span>' +
                     '<span class="ww-tg-cursor-readout-item ww-cursor-readout-b"><span class="ww-tg-cursor-readout-label">B</span><span class="ww-tg-cursor-readout-value ww-tg-cursor-readout-value--b">—</span></span>' +
                     '<span class="ww-tg-cursor-readout-item"><span class="ww-tg-cursor-readout-label">&Delta;t</span><span class="ww-tg-cursor-readout-value ww-tg-cursor-readout-value--delta">—</span></span>' +
+                '</div>' +
                 '</div>' +
                 '</div>' +
                 '<div class="ww-tg-panels"></div>' +
@@ -17033,8 +17083,22 @@
             if (!canvasEl) return;
             const slotEl = canvasEl.querySelector(".ww-tg-slider-slot");
             const rulerWrapEl = canvasEl.querySelector(".ww-tg-ruler");
-            if (!slotEl || !rulerWrapEl) return;
-            slotEl.style.bottom = rulerWrapEl.getBoundingClientRect().height + "px";
+            if (slotEl && rulerWrapEl) {
+                slotEl.style.bottom = rulerWrapEl.getBoundingClientRect().height + "px";
+            }
+            // Sticky-toolbar UX task: same runtime-measurement reasoning
+            // as the bottom ruler/slider pair above, applied to the TOP
+            // sticky stack -- `.ww-tg-sticky-top`'s own height varies
+            // (narrow-viewport toolbar wrap, cursor-readout show/hide),
+            // so it's measured here, not hardcoded, and published as a
+            // CSS custom property that `.ww-tg-cursor-label-layer` reads
+            // via `calc()`. Still layout-driven only (called from
+            // wwSyncTimeGroupRuler()/wwUpdateCursorOverlayForGroup()/a
+            // full resize sweep), never a scroll listener.
+            const stickyTopEl = canvasEl.querySelector(".ww-tg-sticky-top");
+            if (stickyTopEl) {
+                canvasEl.style.setProperty("--ww-tg-sticky-top-h", stickyTopEl.getBoundingClientRect().height + "px");
+            }
         }
 
         // Time Group Canvas (task section 8/9): the per-group
@@ -18283,6 +18347,12 @@
                     rulerRangeEl.style.width = Math.abs(bX - aX) + "px";
                 }
             }
+            // Sticky-toolbar UX task: `readoutEl.hidden` toggled above can
+            // itself change `.ww-tg-sticky-top`'s own rendered height (the
+            // readout is part of that sticky wrapper's own toolbar row),
+            // so the cursor-label-layer's offset is re-measured here too --
+            // see wwSyncTimeGroupCanvasStickyOffset()'s own comment.
+            wwSyncTimeGroupCanvasStickyOffset(groupId);
         }
 
         // TG-D2: the "resync every active group's own cursor overlay"
