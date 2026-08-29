@@ -288,7 +288,7 @@ def test_source_status_line_renders_separately_from_the_select_options():
 def test_cursor_peak_and_annotation_anchor_requests_all_carry_unit_mode():
     source = _source()
     body = _function_body(
-        source, "async function wwFetchCursorValuesForSource(sourceId)", "function wwFetchAllCursorValues()"
+        source, "async function wwFetchCursorValuesForSource(sourceId)", "function wwFetchAllCursorValuesForGroup(groupId)"
     )
     assert body.count("unit_mode: ww.unitMode") >= 2  # both the calculated and source-channel request shapes
 

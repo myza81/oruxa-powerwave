@@ -120,9 +120,14 @@ def test_bottom_status_bar_no_longer_shows_single_source_metadata():
     assert "function shellUpdateStatusBar(" not in source
     assert "function shellUpdateStatusBarChannelCount(" not in source
     assert "function shellSetStatusBarWaveformFieldsVisible(" not in source
-    # Workspace identity and the A/B/Δt cursor readout are untouched.
+    # Workspace identity is untouched. TG-D2: the former global A/B/Δt
+    # cursor readout (#wwCursorReadout) was removed from the status bar
+    # entirely -- each Time Group Canvas now carries its own
+    # `.ww-tg-cursor-readout` instead (see test_frontend_time_group_cursors.py),
+    # so there is no longer a single workspace-wide readout to assert
+    # here.
     assert 'id="statusBarWorkspaceId"' in source
-    assert 'id="wwCursorReadout"' in source
+    assert 'id="wwCursorReadout"' not in source
 
 
 def test_analog_defaults_open_digital_defaults_collapsed():

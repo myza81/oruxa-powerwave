@@ -137,14 +137,14 @@ def test_analyse_never_puts_or_deletes_the_t0_endpoint():
 def test_preview_marker_is_shown_before_acceptance_is_possible():
     """Task section 13: the suggested point must be visible on the
     waveform BEFORE acceptance -- the marker is set (ww.suggestedEvent,
-    then wwUpdateCursorOverlay()) unconditionally on a found result,
-    strictly before wwRenderDetectEventResult() ever enables the Accept
-    button."""
+    then wwUpdateAllCursorOverlays(), TG-D2's per-group-aware sweep)
+    unconditionally on a found result, strictly before
+    wwRenderDetectEventResult() ever enables the Accept button."""
     source = _source()
     fn_idx = source.index("async function wwHandleDetectEventAnalyseClick()")
     fn_body = source[fn_idx : source.index("async function wwAcceptDetectedEvent()", fn_idx)]
     marker_idx = fn_body.index("ww.suggestedEvent = {")
-    overlay_idx = fn_body.index("wwUpdateCursorOverlay();", marker_idx)
+    overlay_idx = fn_body.index("wwUpdateAllCursorOverlays();", marker_idx)
     render_idx = fn_body.index("wwRenderDetectEventResult(", overlay_idx)
     assert marker_idx < overlay_idx < render_idx
 
@@ -265,7 +265,9 @@ def test_reset_suggestion_clears_marker_and_refreshes_overlay():
     fn_body = source[fn_idx : source.index("function wwOpenDetectEventModal()", fn_idx)]
     assert "visible: false" in fn_body
     assert "workspaceTime: null" in fn_body
-    assert "wwUpdateCursorOverlay();" in fn_body
+    # TG-D2: a full per-group sweep (the suggestion may have been
+    # showing in any one Time Group's own overlay, or none).
+    assert "wwUpdateAllCursorOverlays();" in fn_body
 
 
 def test_cursor_overlay_draws_the_suggestion_marker_independent_of_cursor_mode():
@@ -274,7 +276,7 @@ def test_cursor_overlay_draws_the_suggestion_marker_independent_of_cursor_mode()
     admit EITHER cursor-mode-active OR a visible suggestion, not only
     the former."""
     source = _source()
-    fn_idx = source.index("function wwUpdateCursorOverlay()")
+    fn_idx = source.index("function wwUpdateCursorOverlayForGroup(groupId)")
     body = source[fn_idx : fn_idx + 10000]
     assert "suggestionVisible" in body
     assert "const drawAnything = active || suggestionVisible;" in body
@@ -287,7 +289,7 @@ def test_workspace_time_never_inferred_from_plotly_labels():
     wwCursorTimeToPixelX() authority every other cursor already uses,
     never a second X-projection."""
     source = _source()
-    fn_idx = source.index("function wwUpdateCursorOverlay()")
+    fn_idx = source.index("function wwUpdateCursorOverlayForGroup(groupId)")
     body = source[fn_idx : fn_idx + 12000]
     # Anchored on this block's own unique comment, not the bare
     # `data-cursor-line="suggested"` selector -- that selector also
@@ -295,7 +297,10 @@ def test_workspace_time_never_inferred_from_plotly_labels():
     # hidden-state reset (see that branch's own comment).
     suggested_block_idx = body.index('Slice 3: the "Suggested event" preview marker -- SAME')
     suggested_block = body[suggested_block_idx : suggested_block_idx + 1200]
-    assert "wwCursorTimeToPixelX(suggestion.workspaceTime)" in suggested_block
+    # TG-D2: the group-scoped helper's signature now requires an
+    # explicit groupId -- never a hidden/defaulted primary-group
+    # fallback (task section 9).
+    assert "wwCursorTimeToPixelX(groupId, suggestion.workspaceTime)" in suggested_block
 
 
 def test_new_workspace_clears_suggestion_but_plain_clear_workspace_does_not():
@@ -432,13 +437,15 @@ def test_result_shows_search_range_scope():
     """Task section 17: "a subtle indication of the search scope in the
     result" -- reuses wwFormatCursorPointTime() (never a bespoke
     duration formatter, stays consistent with the app's own current
-    Elapsed/Absolute/event-relative display mode)."""
+    Elapsed/Absolute/event-relative display mode). TG-D2: the label
+    helper now takes an explicit groupId too (the suggestion's own
+    owning Time Group, never a hidden primary-group default)."""
     source = _source()
-    fn_idx = source.index("function wwDetectEventSearchRangeLabel(searchRangeInfo)")
+    fn_idx = source.index("function wwDetectEventSearchRangeLabel(searchRangeInfo, groupId)")
     fn_body = source[fn_idx : source.index("function wwRenderDetectEventResult(", fn_idx)]
     assert 'return "Full recording";' in fn_body
-    assert "wwFormatCursorPointTime(searchRangeInfo.workspaceStart)" in fn_body
-    assert "wwFormatCursorPointTime(searchRangeInfo.workspaceEnd)" in fn_body
+    assert "wwFormatCursorPointTime(searchRangeInfo.workspaceStart, groupId)" in fn_body
+    assert "wwFormatCursorPointTime(searchRangeInfo.workspaceEnd, groupId)" in fn_body
 
     render_idx = source.index("function wwRenderDetectEventResult(view, channelUnit, searchRangeInfo)")
     render_body = source[render_idx : source.index("function wwResetDetectEventSuggestion()", render_idx)]

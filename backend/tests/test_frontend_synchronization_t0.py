@@ -145,7 +145,7 @@ def test_cursor_overlay_refreshes_t0_controls():
     button's enabled state -- wired from the same function every other
     cursor-driven UI refresh already goes through."""
     source = _source()
-    fn_idx = source.index("function wwUpdateCursorOverlay(")
+    fn_idx = source.index("function wwUpdateCursorOverlayForGroup(")
     fn_body = source[fn_idx : fn_idx + 1400]
     assert "wwSyncT0Controls();" in fn_body
 
@@ -185,7 +185,7 @@ def test_cursor_values_fetch_uses_workspace_time_cursors_unaffected_by_t0():
     mapping is already correct regardless of t0."""
     source = _source()
     fn_idx = source.index("async function wwFetchCursorValuesForSource(sourceId)")
-    fn_body = source[fn_idx : source.index("function wwFetchAllCursorValues()", fn_idx)]
+    fn_body = source[fn_idx : source.index("function wwFetchAllCursorValuesForGroup(groupId)", fn_idx)]
     assert "wwEventTimeToWorkspaceTime" not in fn_body
     assert "wwWorkspaceTimeToSourceTime(sourceId, aTime)" in fn_body
     assert "wwWorkspaceTimeToSourceTime(sourceId, bTime)" in fn_body

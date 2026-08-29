@@ -603,19 +603,18 @@
            stylesheet's default `[hidden] { display: none }` rule by
            ORIGIN alone (author always wins over UA, regardless of
            specificity or source order), so without this override,
-           wwUpdateCursorOverlay()'s own `#wwCursorReadout.hidden = true`
+           `#statusBarT0`'s own `.hidden = true` (wwSyncT0Controls())
            would have no visible effect at all. */
         #bottomStatusBar .shell-status-item[hidden] { display: none; }
         #bottomStatusBar .shell-status-label { text-transform: uppercase; letter-spacing: 0.03em; }
         #bottomStatusBar .shell-status-value { color: var(--text); font-weight: 600; }
-        /* Phase 4B: pushes the A/B/Δt readout to the right edge of the bar
+        /* Phase 4B: pushes the T0 readout to the right edge of the bar
            (owner requirement) -- a flex spacer, the same technique
            .toolbar-spacer already uses in #wwToolbar, not a second layout
-           mechanism. */
+           mechanism. TG-D2: the A/B/Δt readout this originally shared the
+           bar with moved into each Time Group Canvas -- see
+           .ww-tg-cursor-readout -- this spacer now serves T0 alone. */
         .ww-status-spacer { flex: 1 1 auto; }
-        .ww-cursor-readout { gap: 14px; }
-        .ww-cursor-readout-a .shell-status-value { color: var(--accent); }
-        .ww-cursor-readout-b .shell-status-value { color: var(--error); }
 
         /* ==================================================================
            Responsive fallback (section 23 of Phase 3A, refined by the
@@ -2944,8 +2943,9 @@
            minimal toolbar shell, analog panels, digital region, Time
            Range slider, sticky ruler. `position: relative` (task section
            12) is what lets THIS canvas's own ruler/cursor-overlay
-           geometry (see wwUpdateCursorOverlay()'s own comment) resolve
-           against exactly this container, never a workspace-wide one --
+           geometry (see wwUpdateCursorOverlayForGroup()'s own comment)
+           resolve against exactly this container, never a workspace-wide
+           one --
            the same role `#viewWaveform` alone used to play before this
            slice, just scoped per canvas now. A plain block-level section
            in normal flow (never itself scrolling/overflow:hidden) is
@@ -2975,12 +2975,12 @@
             font-size: 0.7rem;
             color: var(--text-dim);
         }
-        /* TG-D1: Zoom In/Zoom Out/Reset Time View/Autoscale Y all live
-           here now, each Time-Group-scoped (task section 1's own
-           target layout: one compact row of controls per canvas).
-           Cursor A/B, t0, Detect Event, Synchronize Sources stay the
-           one workspace-global toolbar (#wwToolbar, untouched),
-           deferred to later slices. */
+        /* TG-D1/TG-D2: Zoom In/Zoom Out/Reset Time View/Autoscale Y/A-B
+           Cursors all live here now, each Time-Group-scoped (task's own
+           target layout: one compact row of controls per canvas). t0,
+           Detect Event, Synchronize Sources stay the one workspace-global
+           toolbar (#wwToolbar, untouched), deferred to later slices
+           (TG-E/TG-F). */
         .ww-tg-toolbar {
             display: flex;
             align-items: center;
@@ -2993,6 +2993,35 @@
             font-size: 0.7rem;
             padding: 3px 10px;
         }
+        /* TG-D2: the per-group A-B measurement readout -- compact, sits
+           directly below the local toolbar (task section 25's own "keep
+           it compact... near the local toolbar"). Reuses the SAME
+           accent/error color convention the former global status-bar
+           readout established (.ww-cursor-readout-a/--b, still generic,
+           unscoped rules) -- not a new color language, just relocated.
+           Hidden via JS (wwUpdateCursorOverlayForGroup()) exactly like
+           the old #wwCursorReadout was, mirroring that element's own
+           `hidden`-toggle contract. */
+        .ww-tg-cursor-readout {
+            display: flex;
+            align-items: baseline;
+            gap: 14px;
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            margin: -2px 0 6px;
+        }
+        .ww-tg-cursor-readout[hidden] { display: none; }
+        .ww-tg-cursor-readout-item { display: flex; gap: 5px; align-items: baseline; }
+        .ww-tg-cursor-readout-label { text-transform: uppercase; letter-spacing: 0.03em; }
+        .ww-tg-cursor-readout-value { color: var(--text); font-weight: 600; }
+        /* The accent/error convention needs to target the VALUE span
+           directly -- the former global readout's own `.ww-cursor-
+           readout-a .shell-status-value` descendant selector doesn't
+           match this element's own `.ww-tg-cursor-readout-value` class
+           name, so it is restated here rather than silently never
+           applying. */
+        .ww-cursor-readout-a .ww-tg-cursor-readout-value { color: var(--accent); }
+        .ww-cursor-readout-b .ww-tg-cursor-readout-value { color: var(--error); }
 
         /* Phase 4A: digital channel region. Visually distinguishable from
            analog .ww-panel cards (own subtle background tint, compact
@@ -3126,27 +3155,30 @@
         .ww-tg-slider-handle:hover, .ww-tg-slider-handle:focus-visible { filter: brightness(1.15); }
         .ww-tg-slider-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-        /* Phase 4B: A/B time measurement cursors -- a workspace-level DOM
-           overlay (see #wwCursorOverlay's own HTML comment for the "why
-           not a Plotly shape per panel" reasoning). `top`/`left`/`right: 0`
-           with a JS-computed `height` (never `bottom: 0` -- that would
-           extend the overlay across the ruler's own row too, producing the
-           double-line section 33 explicitly warns against whenever the
-           ruler is in its natural, non-stuck flow position). The container
-           itself is pointer-events: none so it never blocks Plotly hover,
-           panel resize handles, or digital-lane clicks underneath it
-           (section 34) -- only the two small per-cursor hit targets/labels
-           opt back in. */
-        .ww-cursor-overlay {
+        /* TG-D2: A/B time measurement cursors -- ONE overlay PER Time
+           Group Canvas (was a single workspace-level overlay, Phase 4B --
+           see wwCreateTimeGroupCanvasDom()'s own HTML comment for the "why
+           not a Plotly shape per panel" reasoning, still true per-group).
+           `top`/`left`/`right: 0` with a JS-computed `height` (never
+           `bottom: 0` -- that would extend the overlay across the ruler's
+           own row too, producing a double line whenever the ruler is in
+           its natural, non-stuck flow position). The container itself is
+           pointer-events: none so it never blocks Plotly hover, panel
+           resize handles, or digital-lane clicks underneath it -- only the
+           two small per-cursor hit targets/labels opt back in. Positioned
+           relative to its own `.ww-time-group-canvas` (`position: relative`
+           since TG-B+C), so its own height/offset math never needs to
+           account for a sibling canvas's own geometry. */
+        .ww-tg-cursor-overlay {
             position: absolute;
             top: 0; left: 0; right: 0;
             pointer-events: none;
             z-index: 3;
             overflow: hidden;
         }
-        .ww-cursor-overlay[hidden] { display: none; }
+        .ww-tg-cursor-overlay[hidden] { display: none; }
         /* One `.ww-cursor-line` per cursor, positioned via inline `left`
-           (px, relative to this overlay -- see wwUpdateCursorOverlay()).
+           (px, relative to this overlay -- see wwUpdateCursorOverlayForGroup()).
            Full height of the overlay itself (top/bottom: 0), not the
            visible-line width -- this is the DRAG HIT AREA's own bounding
            box, wide enough to grab comfortably (section 14) while the
@@ -3213,18 +3245,22 @@
             pointer-events: auto;
             touch-action: none;
         }
-        /* Phase 4B-UAT1: the sticky label layer -- see #wwCursorLabelLayer's
-           own HTML comment for why this must be a SIBLING of
-           #wwCursorOverlay, not nested inside it. `height: 0` so it never
-           adds scrollable space of its own (it's purely a positioning
-           anchor for its absolutely-positioned label children); `top`
-           matches "just below the top of the visible waveform workspace"
-           (section 7) -- #activeViewArea (the real scroll container) has no
-           fixed header of its own above the workspace section, so a small
-           fixed px offset here is sufficient without needing to read any
-           other layout token. z-index above both cursor overlays (section
-           13). */
-        .ww-cursor-label-layer {
+        /* TG-D2: the sticky label layer, now PER Time Group Canvas --
+           still a SIBLING of `.ww-tg-cursor-overlay`, not nested inside
+           it (same reasoning as Phase 4B-UAT1's own original: `position:
+           sticky` breaks/clips under an `overflow: hidden` ancestor,
+           which `.ww-tg-cursor-overlay` deliberately has). `height: 0` so
+           it never adds scrollable space of its own (it's purely a
+           positioning anchor for its absolutely-positioned label
+           children); `top` matches "just below the top of the visible
+           waveform workspace" -- a small fixed px offset is sufficient.
+           Being a direct child of `.ww-time-group-canvas` (never a
+           workspace-wide sibling) means its own sticky containing block
+           is that ONE canvas -- it naturally releases as the next
+           canvas's own content scrolls into view, the exact same "bounded
+           sticky handoff" pattern already proven for the ruler/slider
+           (TG-B+C). z-index above both cursor overlays. */
+        .ww-tg-cursor-label-layer {
             position: sticky;
             top: 6px;
             left: 0; right: 0;
@@ -3232,7 +3268,7 @@
             pointer-events: none;
             z-index: 6;
         }
-        .ww-cursor-label-layer[hidden] { display: none; }
+        .ww-tg-cursor-label-layer[hidden] { display: none; }
         /* Compact "[A ×]" pill (section 7). translateX(-50%) centers it on
            the cursor's own X -- positioned via inline `left` in the SAME
            coordinate space as the lines (relative to `.workspace-section`'s
@@ -3617,32 +3653,11 @@
 
                         <span class="ww-toolbar-sep" aria-hidden="true"></span>
 
-                        <!-- Phase 4B: A/B time measurement cursors -- a mode
-                             toggle. aria-pressed carries the on/off state
-                             (section 41 -- must not rely on cursor
-                             visibility several screens below); title/
-                             aria-label give the same accessible name. Lives
-                             inside the EXISTING #wwToolbar, so it naturally
-                             follows wwUpdateEmptyState()'s established
-                             show/hide-when-empty gate exactly like Zoom/Pan/
-                             Reset Time View already do -- see
-                             wwToggleMeasurementCursors()'s own comment for
-                             why this is deliberate, not an oversight. -->
-                        <!-- Cosmetic refinement (same phase, owner follow-up):
-                             the A/B line + letter colors below deliberately
-                             reuse var(--accent)/var(--error) -- the EXACT
-                             SAME tokens .ww-cursor-line--a/--b already use
-                             for the real waveform cursor lines (see that
-                             CSS rule's own comment) -- not new/duplicated
-                             color values, so this icon stays theme-correct
-                             in Light/Dark for free and can never drift out
-                             of sync with the real cursor colors. Everything
-                             else in this icon (button chrome, hover/active/
-                             disabled states, stroke-width) remains
-                             currentColor-driven, unchanged. -->
-                        <button class="ww-icon-btn" type="button" id="wwCursorModeBtn" aria-pressed="false" title="A/B Time Cursors" aria-label="A/B Time Cursors">
-                            <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="6" y1="2.5" x2="6" y2="15.5" stroke-width="1.3" stroke="var(--accent)"/><line x1="12" y1="2.5" x2="12" y2="15.5" stroke-width="1.3" stroke="var(--error)"/><text x="6" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="var(--accent)" font-weight="700">A</text><text x="12" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="var(--error)" font-weight="700">B</text></svg></span>
-                        </button>
+                        <!-- TG-D2: A/B Time Cursors moved into each Time
+                             Group Canvas's own local toolbar
+                             (`.ww-tg-cursor-mode-btn`, see
+                             wwCreateTimeGroupCanvasDom()'s own HTML) -- no
+                             longer duplicated here. -->
 
                         <!-- Slice 2 of waveform time synchronization
                              ("explicit common event t=0"): reuses Cursor
@@ -3861,48 +3876,17 @@
 
                             <p class="empty-state" id="wwEmptyState">Select channels from the sidebar to display waveforms.</p>
 
-                            <!-- Phase 4B: A/B time measurement cursors -- ONE
-                                 workspace-level overlay, never a per-panel
-                                 Plotly shape (section 9 of that task). Spans
-                                 from the top of this section down to the top
-                                 of the shared sticky ruler (height set by
-                                 wwUpdateCursorOverlay(), not CSS, since it
-                                 must track however tall the analog+digital
-                                 content currently is). A SEPARATE nested
-                                 overlay lives inside #wwStickyRuler itself
-                                 (see below) so the cursor line inherits the
-                                 ruler's own `position: sticky` pinning
-                                 automatically instead of scrolling away with
-                                 the rest of this absolutely-positioned,
-                                 non-sticky overlay -- the two segments abut
-                                 exactly at the ruler's top edge and are
-                                 driven by the identical time->pixel
-                                 conversion, so they read as one continuous
-                                 line (section 33). `hidden` by default;
-                                 shown only while ww.measurementCursors.enabled. -->
-                            <div id="wwCursorOverlay" class="ww-cursor-overlay" hidden></div>
-                            <!-- Phase 4B-UAT1: the A/B label pills, split
-                                 out of #wwCursorOverlay into their own
-                                 `position: sticky` layer (owner requirement:
-                                 the labels must stay visible near the top of
-                                 the visible waveform viewport while
-                                 scrolling; the vertical LINES themselves
-                                 must NOT become sticky -- see
-                                 #wwCursorOverlay's own comment, unchanged).
-                                 A sibling of #wwCursorOverlay, NOT a
-                                 descendant of it -- `position: sticky`
-                                 breaks/clips under an `overflow: hidden`
-                                 ancestor that isn't itself the real scroll
-                                 container (#wwCursorOverlay has
-                                 `overflow: hidden`, #activeViewArea is the
-                                 actual one, see that ID's own CSS comment),
-                                 so this layer sits directly inside
-                                 `.workspace-section` (plain `overflow:
-                                 visible`) with nothing else in between. Same
-                                 X-projection authority as the lines
-                                 (wwUpdateCursorOverlay()/the drag path's own
-                                 live-update function write BOTH). -->
-                            <div id="wwCursorLabelLayer" class="ww-cursor-label-layer" hidden></div>
+                            <!-- TG-D2: A/B time measurement cursors moved
+                                 from ONE workspace-level overlay into each
+                                 Time Group Canvas's own `.ww-tg-cursor-overlay`/
+                                 `.ww-tg-cursor-label-layer` (see
+                                 wwCreateTimeGroupCanvasDom()'s own template)
+                                 -- no longer built here. Each canvas is its
+                                 own `position: relative` boundary (TG-B+C),
+                                 so a group's own overlay height/label
+                                 sticky-offset scope naturally to that one
+                                 canvas, never spanning into a sibling
+                                 group's own section. -->
 
                             <!-- Time Group Canvas (task: "Each Time Group
                                  should eventually behave as its own
@@ -4201,20 +4185,17 @@
                      to show" state; shown/hidden and its value kept in
                      sync from that SAME one function, never a second
                      update path. -->
-                <span class="shell-status-item" id="statusBarT0" hidden title="Event origin (t=0) in workspace time"><span class="shell-status-label">t=0</span><span class="shell-status-value" id="statusBarT0Value">&mdash;</span></span>
-                <!-- Phase 4B: A/B/Δt measurement readout -- pushed to the
-                     RIGHT side of the status bar (owner requirement) via
-                     the flex spacer below, rather than a floating dialog.
-                     Shown/hidden by wwUpdateCursorOverlay() together with
-                     the overlay itself; independent of whether any channel
-                     is currently displayed (section 27 -- the readout only
-                     needs a valid ww.viewport, not a rendered plot). -->
+                <!-- TG-D2: the former A/B/Δt measurement readout here is
+                     removed -- one workspace-wide readout became
+                     ambiguous the moment more than one Time Group could
+                     exist (whose A/B would it show?). Each Time Group
+                     Canvas now carries its own `.ww-tg-cursor-readout`
+                     instead (see wwCreateTimeGroupCanvasDom()'s own
+                     HTML) -- no stale/ambiguous global value remains. The
+                     spacer still pushes t=0 (the one remaining
+                     workspace-global readout here) to the right edge. -->
                 <div class="ww-status-spacer"></div>
-                <span class="shell-status-item ww-cursor-readout" id="wwCursorReadout" hidden>
-                    <span class="shell-status-item ww-cursor-readout-a"><span class="shell-status-label">A</span><span class="shell-status-value" id="statusBarCursorA">&mdash;</span></span>
-                    <span class="shell-status-item ww-cursor-readout-b"><span class="shell-status-label">B</span><span class="shell-status-value" id="statusBarCursorB">&mdash;</span></span>
-                    <span class="shell-status-item"><span class="shell-status-label">&Delta;t</span><span class="shell-status-value" id="statusBarCursorDelta">&mdash;</span></span>
-                </span>
+                <span class="shell-status-item" id="statusBarT0" hidden title="Event origin (t=0) in workspace time"><span class="shell-status-label">t=0</span><span class="shell-status-value" id="statusBarT0Value">&mdash;</span></span>
             </div>
         </div>
     </div>
@@ -4679,9 +4660,12 @@
         // much later in this file) -- section 28 of that phase's own
         // instructions: nothing in this section ever reads or writes `ww`
         // directly. Where the shell needs to reflect a waveform-domain
-        // fact (e.g. the Bottom Status Bar's own A/B/Δt cursor readout,
-        // see wwUpdateCursorOverlay()), the OWNING waveform code writes it
-        // explicitly rather than the shell reaching in on its own -- a
+        // fact (e.g. the Bottom Status Bar's own T0 readout, see
+        // wwSyncT0Controls() -- the A/B/Δt readout this once covered
+        // moved into each Time Group Canvas's own
+        // wwUpdateCursorOverlayForGroup() in TG-D2), the OWNING waveform
+        // code writes it explicitly rather than the shell reaching in on
+        // its own -- a
         // narrow, one-way dependency, not a merge of the two state
         // models. This keeps the shell reusable for
         // a future Table/Split view that has nothing to do with `ww` at
@@ -7338,42 +7322,52 @@
             // wwRebuildDigitalChart(groupId)).
             digitalChartReadyByGroup: new Map(),
             digitalClickWiredByGroup: new Map(),
-            // Phase 4B: A/B time measurement cursors. `enabled` is the one
-            // mode toggle (section 4/24: OFF hides both cursors and the
-            // readout but retains a/b.time so a simple OFF->ON within the
-            // same source/workspace restores the previous positions --
-            // only "Start new workspace" wipes this, see
-            // wwClearWorkspace()'s own comment). `a`/`b` are stored ONLY as
-            // elapsed engineering seconds in the exact same coordinate
-            // system as ww.viewport/ww.workspaceBounds (section 6) -- never
-            // pixels, never a Plotly paper coordinate, never an absolute
-            // timestamp string; Absolute-mode display is a pure formatting
-            // transform read at render time (wwFormatCursorPointTime()),
-            // exactly like ww.timeMode already treats ww.viewport itself.
-            // `visible` is per-cursor (section 22/23: closing A's × must
-            // never touch B or the master `enabled` flag) and is
-            // deliberately separate from `time` so re-showing a closed
-            // cursor (cycling the toolbar mode OFF->ON, section 23) can
-            // restore it at its LAST time rather than forcing a fresh
-            // 1/3-2/3 re-init -- see wwToggleMeasurementCursors()'s own
-            // comment for exactly when a fresh init does vs. doesn't happen.
-            measurementCursors: {
-                enabled: false,
-                a: { visible: true, time: null },
-                b: { visible: true, time: null },
-            },
+            // TG-D2: A/B time measurement cursors are now Time-Group-scoped
+            // -- Map<groupId, {enabled, a: {visible, time}, b: {visible,
+            // time}}> replacing the old single workspace-wide
+            // ww.measurementCursors object (Phase 4B). Cursor A and Cursor
+            // B always belong to one coherent Time Group (task's own
+            // governing principle) -- unrelated Time Groups never share
+            // one physical time axis, so cross-group cursor comparison is
+            // prohibited by design, not merely by convention. A group with
+            // no entry yet (never toggled on) is treated as
+            // `{enabled: false, a: {visible: true, time: null}, b: {...}}`
+            // by wwTimeGroupCursorState()'s own default -- see that
+            // function's comment. `time` is stored ONLY as elapsed
+            // engineering seconds in that group's OWN coordinate system
+            // (wwTimeGroupVisibleRange(groupId)/wwDeriveTimeGroupBounds(groupId)) --
+            // never pixels, never a Plotly paper coordinate, never an
+            // absolute timestamp string; Absolute-mode display is a pure
+            // formatting transform read at render time
+            // (wwFormatCursorPointTime()), exactly like ww.timeMode
+            // already treats a group's own viewport. `visible` is
+            // per-cursor (closing A's x must never touch B or the group's
+            // own `enabled` flag). Cleared per-group (task's own approved
+            // "ambiguous Time-Group analysis state resets when Time Group
+            // topology changes" policy) everywhere the other per-group
+            // ready-state Maps already get pruned/cleared -- see
+            // wwSyncTimeGroupCanvases()'s own pruning loop and
+            // wwClearWorkspace()'s own unconditional cleanup, both
+            // updated by this same slice.
+            timeGroupCursorState: new Map(),
             // Phase 4C1: "sourceId::channelName" -> {aValue, bValue,
-            // aSampleTime, bSampleTime} -- derived measurement state ONLY
-            // (section 34): the engineering authority for CURSOR TIME
-            // remains ww.measurementCursors exclusively; this map is
-            // purely a cache of the backend's last-known recorded
-            // channel values at those times, for the currently-displayed
-            // analog channels of whichever sources are involved. A hidden
-            // channel or a closed/disabled cursor is never computed from
-            // here directly -- wwCurValueText() always re-checks the
-            // CURRENT visibility/enabled state at render time, so a stale
-            // entry lingering here (e.g. for a channel hidden without an
-            // explicit cache purge) can never be shown as though current.
+            // aSampleTime, bSampleTime} -- derived measurement state ONLY:
+            // the engineering authority for CURSOR TIME remains each
+            // channel's own OWNING Time Group's entry in
+            // ww.timeGroupCursorState exclusively (TG-D2: resolved via
+            // wwTimeGroupIdForDisplaySourceId(sourceId), never a single
+            // global cursor pair); this map stays a workspace-wide cache
+            // keyed by channel (task section 12's own explicit allowance
+            // -- "ww.cursorValues/ww.digitalCursorValues can remain
+            // workspace maps keyed by source/channel"), purely a cache of
+            // the backend's last-known recorded channel values at
+            // whichever cursor times produced them. A hidden channel or a
+            // closed/disabled cursor is never computed from here
+            // directly -- wwCurValueText() always re-checks the CURRENT
+            // visibility/enabled state (of that channel's own OWNING
+            // group) at render time, so a stale entry lingering here
+            // (e.g. for a channel hidden without an explicit cache purge)
+            // can never be shown as though current.
             cursorValues: new Map(),
             // Phase 4C2: digital's own equivalent, "sourceId::channelName"
             // -> {aState, bState} (plain 0/1/null) -- a DELIBERATELY
@@ -7446,9 +7440,13 @@
             // workspace_id, see wwClearWorkspace()'s own
             // options.resetSourceBounds branch) -- NEVER by the plain
             // "Clear workspace" button, which is display-only and keeps
-            // the same session/source context (same precedent already
-            // established for ww.measurementCursors via
-            // wwResetMeasurementCursors()). A Callout's (Phase 4F) or
+            // the same session/source context. (TG-D2: this is now a
+            // DIFFERENT lifecycle than ww.timeGroupCursorState, which
+            // -- per the approved "ambiguous Time-Group analysis state
+            // resets when Time Group topology changes" policy -- clears
+            // per-group on ANY wwClearWorkspace() call, since every
+            // canvas is destroyed either way; see that Map's own
+            // comment.) A Callout's (Phase 4F) or
             // +Peak/-Peak's (Phase 4G) own source is ALSO an exception to
             // "never cleared otherwise": removing that specific source
             // deletes ITS waveform-anchored annotations outright (section
@@ -7611,8 +7609,9 @@
             // t=0" makes on explicit acceptance (task section 14: reuse
             // the existing t0 mechanism, never a second one). `visible`
             // gates the preview marker (task section 13) independently
-            // of ww.measurementCursors.enabled -- the marker must be
-            // able to show even when A/B cursor mode itself is off.
+            // of any Time Group's own cursor `enabled` state (TG-D2:
+            // ww.timeGroupCursorState) -- the marker must be able to
+            // show even when A/B cursor mode itself is off.
             // Cleared (never left stale) by Cancel, by acceptance, and
             // by the same Start New Workspace lifecycle hook that clears
             // t0WorkspaceTime above.
@@ -8241,18 +8240,29 @@
                     '</div>' +
                     '<button type="button" class="secondary ww-tg-reset-view-btn" title="Reset Time View for this Time Group">Reset Time View</button>' +
                     '<button type="button" class="secondary ww-tg-autoscale-btn" title="Autoscale Y for this Time Group">Autoscale Y</button>' +
+                    '<button type="button" class="ww-icon-btn ww-tg-cursor-mode-btn" aria-pressed="false" title="A/B Time Cursors for this Time Group" aria-label="A/B Time Cursors for this Time Group">' +
+                        '<span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="6" y1="2.5" x2="6" y2="15.5" stroke-width="1.3" stroke="var(--accent)"/><line x1="12" y1="2.5" x2="12" y2="15.5" stroke-width="1.3" stroke="var(--error)"/><text x="6" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="var(--accent)" font-weight="700">A</text><text x="12" y="14.5" font-size="5" text-anchor="middle" stroke="none" fill="var(--error)" font-weight="700">B</text></svg></span>' +
+                    '</button>' +
+                '</div>' +
+                '<div class="ww-tg-cursor-readout" hidden>' +
+                    '<span class="ww-tg-cursor-readout-item ww-cursor-readout-a"><span class="ww-tg-cursor-readout-label">A</span><span class="ww-tg-cursor-readout-value ww-tg-cursor-readout-value--a">—</span></span>' +
+                    '<span class="ww-tg-cursor-readout-item ww-cursor-readout-b"><span class="ww-tg-cursor-readout-label">B</span><span class="ww-tg-cursor-readout-value ww-tg-cursor-readout-value--b">—</span></span>' +
+                    '<span class="ww-tg-cursor-readout-item"><span class="ww-tg-cursor-readout-label">&Delta;t</span><span class="ww-tg-cursor-readout-value ww-tg-cursor-readout-value--delta">—</span></span>' +
                 '</div>' +
                 '<div class="ww-tg-panels"></div>' +
                 '<div class="ww-tg-digital-region" hidden>' +
                     '<div class="ww-tg-digital-title">Digital Channels</div>' +
                     '<div class="ww-tg-digital-scroll"><div class="ww-tg-digital-chart"></div></div>' +
                 '</div>' +
+                '<div class="ww-tg-cursor-overlay" hidden></div>' +
+                '<div class="ww-tg-cursor-label-layer" hidden></div>' +
                 '<div class="ww-tg-slider-slot"></div>' +
                 '<div class="ww-tg-ruler" hidden>' +
                     '<div class="ww-cursor-ruler-overlay" hidden></div>' +
                     '<div class="ww-tg-ruler-chart"></div>' +
                 '</div>';
             wwWireTimeGroupToolbar(section, groupId);
+            wwWireTimeGroupCursorOverlay(section, groupId);
             return section;
         }
 
@@ -8273,40 +8283,29 @@
         }
 
         // The PRIMARY Time Group's own canvas root -- the one compatibility
-        // anchor every still-deferred, workspace-global feature (cursor
-        // overlay, wwResizeAllVisiblePlots(), wwApplyTheme(),
-        // wwCursorPlotMetrics()) resolves against instead of the OLD
-        // singleton ids (#wwStickyRuler/#wwPanels/#wwDigitalRegion no
-        // longer exist as globals -- see #wwTimeGroupCanvases's own HTML
-        // comment). Resolved fresh on every call (never cached) so it
-        // stays correct even if a topology change promotes a DIFFERENT
-        // group to primary.
+        // anchor every still-deferred, workspace-global feature
+        // (wwResizeAllVisiblePlots(), wwApplyTheme()) resolves against
+        // instead of the OLD singleton ids (#wwStickyRuler/#wwPanels/
+        // #wwDigitalRegion no longer exist as globals -- see
+        // #wwTimeGroupCanvases's own HTML comment). Resolved fresh on
+        // every call (never cached) so it stays correct even if a
+        // topology change promotes a DIFFERENT group to primary.
+        // TG-D2: wwPrimaryTimeGroupPanelsEl()/wwPrimaryTimeGroupDigitalRegionEl()/
+        // wwPrimaryTimeGroupRulerWrapEl()/wwPrimaryTimeGroupCursorRulerOverlayEl()
+        // were removed here -- their only caller (the pre-TG-D2 primary-
+        // group-only cursor overlay) is gone; wwPrimaryTimeGroupDigitalChartEl()/
+        // wwPrimaryTimeGroupRulerChartEl() are kept, still used by the dev
+        // diagnostic tool below.
         function wwPrimaryTimeGroupCanvasEl() {
             return wwTimeGroupCanvasEl(wwPrimaryTimeGroupId());
-        }
-        function wwPrimaryTimeGroupPanelsEl() {
-            const el = wwPrimaryTimeGroupCanvasEl();
-            return el ? el.querySelector(".ww-tg-panels") : null;
-        }
-        function wwPrimaryTimeGroupDigitalRegionEl() {
-            const el = wwPrimaryTimeGroupCanvasEl();
-            return el ? el.querySelector(".ww-tg-digital-region") : null;
         }
         function wwPrimaryTimeGroupDigitalChartEl() {
             const el = wwPrimaryTimeGroupCanvasEl();
             return el ? el.querySelector(".ww-tg-digital-chart") : null;
         }
-        function wwPrimaryTimeGroupRulerWrapEl() {
-            const el = wwPrimaryTimeGroupCanvasEl();
-            return el ? el.querySelector(".ww-tg-ruler") : null;
-        }
         function wwPrimaryTimeGroupRulerChartEl() {
             const el = wwPrimaryTimeGroupCanvasEl();
             return el ? el.querySelector(".ww-tg-ruler-chart") : null;
-        }
-        function wwPrimaryTimeGroupCursorRulerOverlayEl() {
-            const el = wwPrimaryTimeGroupCanvasEl();
-            return el ? el.querySelector(".ww-cursor-ruler-overlay") : null;
         }
 
         // Deterministic numbering (task section 4: "use deterministic
@@ -8463,14 +8462,13 @@
                 // now also resyncs each active group's own local toolbar
                 // zoom controls (wwSyncTimeGroupZoomControls()) -- no
                 // separate call needed here anymore.
+                // TG-D2: the workspace just became genuinely empty (no
+                // participating source left) -- zero active groups, so
+                // wwSyncTimeGroupCanvases()'s own "zero active groups"
+                // branch already clears ww.timeGroupCursorState entirely
+                // (alongside the other per-group Maps); no separate
+                // cursor-disable call is needed here anymore.
                 await wwSyncTimeGroupCanvases();
-                // Section 27: workspace just became genuinely empty (no
-                // participating source left) -- cursor mode has nothing
-                // valid left to measure against.
-                if (ww.measurementCursors.enabled) {
-                    ww.measurementCursors.enabled = false;
-                    wwUpdateCursorOverlay();
-                }
                 return;
             }
 
@@ -8479,16 +8477,15 @@
                 : (wwClampRangeToWorkspace(ww.viewport.start, ww.viewport.end) || next);
 
             if (wwBoundsEqual(ww.viewport, desired)) {
-                if (isFreshViewport) wwReinitCursorsForNewViewport();
+                // TG-D2: cursor reinitialization-on-fresh-viewport is
+                // retired -- see wwToggleMeasurementCursors()'s own
+                // comment for why the topology-driven prune/default
+                // mechanism now fully covers this case.
                 await wwSyncTimeGroupCanvases();
                 return;
             }
 
             await wwApplyAndFetchViewport(desired.start, desired.end);
-            if (isFreshViewport) {
-                wwReinitCursorsForNewViewport();
-                wwUpdateCursorOverlay();
-            }
         }
 
         // ==================================================================
@@ -8542,7 +8539,26 @@
             return String(n).padStart(len || 2, "0");
         }
 
-        function wwVisibleSpanSeconds() {
+        // TG-D2: an optional `groupId` reads THAT group's own visible
+        // range/full bounds instead of the workspace/primary-group
+        // mirror -- used by per-group cursor label formatting so a
+        // non-primary group's Absolute-mode precision follows ITS OWN
+        // zoom level, never the primary group's. Every pre-existing
+        // no-arg caller (hover templates etc.) is unaffected -- `groupId`
+        // stays `undefined` for them, taking the original branch below
+        // unchanged.
+        function wwVisibleSpanSeconds(groupId) {
+            if (groupId !== undefined) {
+                const range = wwTimeGroupVisibleRange(groupId);
+                if (range && Number.isFinite(range.start) && Number.isFinite(range.end)) {
+                    return Math.abs(range.end - range.start);
+                }
+                const bounds = wwDeriveTimeGroupBounds(groupId);
+                if (bounds && Number.isFinite(bounds.start) && Number.isFinite(bounds.end)) {
+                    return Math.abs(bounds.end - bounds.start);
+                }
+                return 1;
+            }
             if (ww.viewport && Number.isFinite(ww.viewport.start) && Number.isFinite(ww.viewport.end)) {
                 return Math.abs(ww.viewport.end - ww.viewport.start);
             }
@@ -9691,8 +9707,10 @@
             // a panel's height changing shifts where everything below it
             // (digital region, ruler) sits, so the overlay's height/pixel
             // projection must be recomputed here too, not just from the
-            // window/sidebar-resize path below.
-            wwUpdateCursorOverlay();
+            // window/sidebar-resize path below. TG-D2: targeted to THIS
+            // panel's own Time Group only -- an unrelated group's own
+            // overlay geometry never changed.
+            wwUpdateCursorOverlayForGroup(wwPanelTimeGroupId(panel));
         }
 
         // Phase 3A-UAT1: reflows EVERY currently-visible waveform Plotly
@@ -9749,9 +9767,10 @@
             }
             // Phase 4B (section 39): window resize, Workspace Sidebar
             // drag, and Main Sidebar Menu collapse/expand all funnel
-            // through here -- one more hook point so the cursor overlay's
-            // pixel projection never goes stale after any of them.
-            wwUpdateCursorOverlay();
+            // through here -- one more hook point so every active group's
+            // own cursor overlay pixel projection never goes stale after
+            // any of them.
+            wwUpdateAllCursorOverlays();
             // Phase 4E (section 19) + Phase 4E-UAT: the SAME "workspace
             // geometry changed" signal re-clamps every annotation note
             // within its OWN region's current scrollable content bounds
@@ -11022,9 +11041,14 @@
             // premature optimization (this function's own established
             // Performance Requirement, unchanged).
             wwRebuildAllTimeGroupDigitalCharts();
-            if (ww.measurementCursors.enabled) {
-                for (const sourceId of wwParticipatingSourceIds()) wwFetchCursorValuesForSource(sourceId);
-            }
+            // TG-D2: an offset change can affect sources across MULTIPLE
+            // Time Groups at once -- loop every participating source
+            // unconditionally; wwFetchCursorValuesForSource()'s own
+            // internal check (that source's OWN owning group's cursor
+            // state) already no-ops correctly for a group whose cursors
+            // are off, so this naturally refreshes only the groups that
+            // actually need it, never a blanket global gate.
+            for (const sourceId of wwParticipatingSourceIds()) wwFetchCursorValuesForSource(sourceId);
             // Multi-source sidebar redesign: each source's own optional
             // sync badge (wwSourceSyncBadgeHtml()) is rendered inside its
             // sidebar header at TREE-BUILD time -- an offset change here
@@ -11723,6 +11747,13 @@
 
             const autoscaleBtn = canvasEl.querySelector(".ww-tg-autoscale-btn");
             if (autoscaleBtn) autoscaleBtn.addEventListener("click", () => wwAutoscaleYForGroup(groupId));
+
+            // TG-D2: A/B Time Cursors mode toggle -- the drag/close
+            // interaction for the overlay itself is wired separately, by
+            // wwWireTimeGroupCursorOverlay() (called right after this
+            // function from wwCreateTimeGroupCanvasDom()).
+            const cursorModeBtn = canvasEl.querySelector(".ww-tg-cursor-mode-btn");
+            if (cursorModeBtn) cursorModeBtn.addEventListener("click", () => wwToggleMeasurementCursors(groupId));
 
             for (const action of ["in", "out"]) {
                 const wrap = canvasEl.querySelector(action === "in" ? ".ww-tg-zoom-in-split" : ".ww-tg-zoom-out-split");
@@ -12461,7 +12492,15 @@
             if (!ww.viewport || !Number.isFinite(time)) return null;
             const inViewport = time >= ww.viewport.start && time <= ww.viewport.end;
             if (!inViewport) return null;
-            const pageX = wwCursorTimeToPixelX(time);
+            // TG-D2: annotations are not migrated this slice (explicit
+            // non-goal) and stay scoped to the PRIMARY Time Group exactly
+            // as before -- wwCursorTimeToPixelX() now requires an
+            // explicit groupId (task section 9: "avoid hidden fallback to
+            // the primary group"), so that scope is passed here
+            // EXPLICITLY rather than defaulted, preserving this
+            // function's own pre-existing primary-group-only behavior
+            // byte-for-byte.
+            const pageX = wwCursorTimeToPixelX(wwPrimaryTimeGroupId(), time);
             if (pageX === null) return null;
             const pageY = wwAnchorValueToPixelY(entry.panel, value);
             if (pageY === null) return null;
@@ -12526,7 +12565,7 @@
                 // (nothing else in this layer is ever hit-testable).
                 // `data-callout-anchor-hit` is the SAME delegation
                 // convention `data-cursor-drag` already established for
-                // A/B cursor dragging (wwWireCursorDrag()).
+                // A/B cursor dragging (wwWireTimeGroupCursorOverlay()).
                 group.innerHTML =
                     '<line class="ww-callout-connector"></line>' +
                     '<circle class="ww-callout-anchor-marker" r="4"></circle>' +
@@ -12651,10 +12690,12 @@
         // own FIXED source/channel (section 2/3 -- identity is never
         // touched here; cross-channel re-anchoring is explicitly out of
         // scope). Wired ONCE via event delegation on
-        // #wwCalloutConnectorLayer -- the SAME pattern wwWireCursorDrag()
-        // already established for A/B cursor dragging on
-        // #wwCursorOverlay -- so every current AND future Callout is
-        // draggable with zero per-annotation wiring.
+        // #wwCalloutConnectorLayer (annotations stay workspace-global,
+        // unmigrated by TG-D2 -- the SAME `data-*`-attribute delegation
+        // convention A/B cursor dragging uses, just still one single
+        // layer here rather than one per Time Group Canvas) -- so every
+        // current AND future Callout is draggable with zero
+        // per-annotation wiring.
         //
         // UAT2 refinement: the owner's own hands-on feedback on the first
         // cut was "engineering outcome PASS, UX FAIL" -- constraining the
@@ -12867,8 +12908,10 @@
         // still true for text_note). Phase 4F: this is ALSO the ONE
         // generic render pass Callout uses (section 52 -- never a second
         // annotation rendering system), which DOES need to run on zoom/
-        // pan/Y-range/layout changes; see wwUpdateCursorOverlay()'s own
-        // comment for where those extra calls live.
+        // pan/Y-range/layout changes; see wwUpdateCursorOverlayForGroup()'s
+        // own comment for where those extra calls live (still
+        // primary-group-scoped only, per TG-D2's own annotation
+        // non-goal).
         function wwRenderAnnotations() {
             // Section 39/UAT-resize: re-clamping every note within its
             // region's CURRENT scrollWidth/scrollHeight on every render
@@ -13861,7 +13904,12 @@
             // DISTINCT source touched by this batch (never one per
             // channel) -- covers both a single row click and a whole
             // group's "Show all" for free, since both funnel through here.
-            if (ww.measurementCursors.enabled) {
+            // TG-D2: touched sources can span multiple Time Groups (e.g.
+            // a sidebar "Show all" across sources) -- loop unconditionally,
+            // wwFetchCursorValuesForSource()'s own internal per-group
+            // check already no-ops correctly wherever cursor mode happens
+            // to be off.
+            {
                 const touchedSources = new Set(jobs.map(({ channelEntry }) => channelEntry.sourceId));
                 for (const sourceId of touchedSources) wwFetchCursorValuesForSource(sourceId);
             }
@@ -14291,7 +14339,8 @@
                 // Phase 4B: the digital region's own height (or presence)
                 // just changed -- recompute regardless of whether it went
                 // to zero (nothing displayed) or is about to be rebuilt.
-                wwUpdateCursorOverlay();
+                // TG-D2: targeted to THIS group only.
+                wwUpdateCursorOverlayForGroup(groupId);
                 return;
             }
 
@@ -14482,8 +14531,9 @@
             }
             // Phase 4B (section 39): the digital region's own height
             // (WW_DIGITAL_LANE_PX * row count) just potentially changed,
-            // which shifts where the ruler sits below it.
-            wwUpdateCursorOverlay();
+            // which shifts where the ruler sits below it. TG-D2: targeted
+            // to THIS group only.
+            wwUpdateCursorOverlayForGroup(groupId);
         }
 
         // Time Group Canvas: rebuilds EVERY active group's own digital
@@ -14574,9 +14624,10 @@
             // their own A/B state populated -- one batched request per
             // touched source (mirrors wwAddSelectedChannels()'s own
             // analog hook exactly).
-            if (ww.measurementCursors.enabled) {
-                for (const sourceId of bySource.keys()) wwFetchCursorValuesForSource(sourceId);
-            }
+            // TG-D2: touched sources can span multiple Time Groups --
+            // loop unconditionally, same reasoning as
+            // wwAddSelectedChannels()'s own analog equivalent.
+            for (const sourceId of bySource.keys()) wwFetchCursorValuesForSource(sourceId);
             wwRefreshWorkspaceBounds();
         }
 
@@ -16453,6 +16504,29 @@
             ww.digitalChartReadyByGroup.clear();
             ww.digitalClickWiredByGroup.clear();
             ww.zoomStepAxisByGroup.clear();
+            // TG-D2: unconditional, unlike the pre-TG-D2 single-cursor
+            // era (where cursor state deliberately survived a PLAIN
+            // "Clear workspace" -- see the git history/DECISIONS.md for
+            // that earlier precedent). Every canvas -- and therefore
+            // every group's own cursor overlay/label-layer DOM -- is
+            // destroyed by EITHER "Clear workspace" or "Start New
+            // Workspace" alike (the innerHTML clear two lines above), so
+            // per the approved "ambiguous Time-Group analysis state
+            // resets when Time Group topology changes" policy, cursor
+            // state is cleared here too, for both. A source that stays
+            // loaded and gets its channels re-displayed afterward is
+            // very likely to resolve to the SAME group id as before (Time
+            // Group ids depend on source timestamps, not display state),
+            // but its own canvas -- and any cursor lines drawn on it --
+            // was just torn down regardless, so starting that group's
+            // own cursor state clean again is the correct, honest
+            // behavior rather than silently reusing pixel-stale state.
+            ww.timeGroupCursorState.clear();
+            ww.cursorValues.clear();
+            ww.digitalCursorValues.clear();
+            for (const timerId of wwCursorValuesThrottleTimers.values()) clearTimeout(timerId);
+            wwCursorValuesThrottleTimers.clear();
+            wwCursorValuesThrottlePending.clear();
             ww.lastActiveTimeGroupIds = new Set();
             ww.panels = [];
             ww.displayed.clear();
@@ -16486,12 +16560,10 @@
                 // sibling caches already get.
                 ww.sourceChannelsData.clear();
                 ww.sourceTiming.clear();
-                // Phase 4B (section 24): "Start New Workspace" is the one
-                // place cursor state resets completely -- the plain "Clear
-                // workspace" branch below deliberately does NOT call this
-                // (it keeps the still-selected source's bounds/viewport,
-                // so existing cursor times stay meaningful).
-                wwResetMeasurementCursors();
+                // TG-D2: cursor state itself is now cleared unconditionally
+                // above (both branches) -- see that cleanup's own comment
+                // for why this differs from the pre-TG-D2 single-cursor
+                // era's own narrower "Start New Workspace only" policy.
                 // Phase 4E (DEC-044, section 40): same policy as cursors
                 // immediately above -- "Start New Workspace" is a
                 // genuinely new workspace_id (see this function's own
@@ -16874,8 +16946,9 @@
             // changed the viewport, the displayed-channel set, or the time
             // mode -- all three can move where a cursor's engineering time
             // now projects to on screen, so this is one of the hook points
-            // that keeps the overlay's pixel positions in sync (section 17).
-            wwUpdateCursorOverlay();
+            // that keeps the overlay's pixel positions in sync. TG-D2:
+            // targeted to THIS group only.
+            wwUpdateCursorOverlayForGroup(groupId);
         }
 
         // Rebuilds EVERY active group's own ruler -- the generalization
@@ -17237,6 +17310,17 @@
                 ww.digitalChartReadyByGroup.clear();
                 ww.digitalClickWiredByGroup.clear();
                 ww.zoomStepAxisByGroup.clear();
+                // TG-D2: same reasoning -- every group's own cursor
+                // overlay/label-layer DOM was just wiped along with its
+                // canvas, so any stale ww.timeGroupCursorState entry
+                // (and its own per-group throttle-timer bookkeeping) must
+                // go with it -- "ambiguous Time-Group analysis state
+                // resets when Time Group topology changes," and zero
+                // active groups is the limiting case of that.
+                ww.timeGroupCursorState.clear();
+                for (const timerId of wwCursorValuesThrottleTimers.values()) clearTimeout(timerId);
+                wwCursorValuesThrottleTimers.clear();
+                wwCursorValuesThrottlePending.clear();
                 return;
             }
 
@@ -17257,6 +17341,20 @@
                     ww.digitalChartReadyByGroup.delete(groupId);
                     ww.digitalClickWiredByGroup.delete(groupId);
                     ww.zoomStepAxisByGroup.delete(groupId);
+                    // TG-D2: this group's canvas (and therefore its own
+                    // cursor overlay/label-layer DOM) is gone -- prune its
+                    // cursor state too, matching the exact same policy
+                    // already applied to the ready-state Maps above (task
+                    // section 21/23: a merge, a split, or a last-channel
+                    // removal all clear the affected group's own
+                    // analysis state; a group that later becomes active
+                    // again necessarily gets a brand-new id and starts
+                    // clean by construction, since a pruned id is never
+                    // reused).
+                    ww.timeGroupCursorState.delete(groupId);
+                    clearTimeout(wwCursorValuesThrottleTimers.get(groupId));
+                    wwCursorValuesThrottleTimers.delete(groupId);
+                    wwCursorValuesThrottlePending.delete(groupId);
                 }
             }
 
@@ -17275,62 +17373,117 @@
                 // resynced alongside the ruler/digital/slider it already
                 // sits next to structurally.
                 wwSyncTimeGroupZoomControls(groupId);
+                // TG-D2: this group's own cursor overlay/readout/toolbar
+                // button -- already reached transitively via the ruler/
+                // digital syncs above (both call
+                // wwUpdateCursorOverlayForGroup(groupId) at their own end
+                // once this group has displayed content, which it always
+                // does here since sortedIds only ever contains active
+                // groups), but listed explicitly so this orchestrator's
+                // own "everything this group's own canvas owns gets
+                // resynced" contract stays self-documenting.
+                wwUpdateCursorOverlayForGroup(groupId);
             });
         }
 
         // ==================================================================
-        // Phase 4B: A/B time measurement cursors
+        // TG-D2: A/B time measurement cursors -- now Time-Group-scoped
         //
-        // Architecture: ONE workspace-level DOM overlay (see
-        // #wwCursorOverlay/#wwCursorRulerOverlay's own HTML comments), never
-        // a Plotly `layout.shapes` entry per panel -- shapes would mean N
+        // Architecture: ONE cursor overlay PER Time Group Canvas (see
+        // wwCreateTimeGroupCanvasDom()'s own `.ww-tg-cursor-overlay`/
+        // `.ww-tg-cursor-label-layer`/`.ww-cursor-ruler-overlay`), never a
+        // Plotly `layout.shapes` entry per panel -- shapes would mean N
         // independent lines to keep pixel-aligned across every analog
         // panel, the digital chart, AND the ruler on every zoom/pan/resize/
         // layout change, exactly the fragmentation/duplicated-state risk
-        // this task's own section 9 called out. A plain absolutely-
-        // positioned overlay, recomputed from the same single X-conversion
-        // authority every other shared-viewport feature already uses
-        // (ww.viewport + each surface's real Plotly `_fullLayout.xaxis`
-        // geometry, the exact technique wwDiagnoseDigitalAlignment() already
-        // established in Phase 4A-UAT2), is both simpler and cheaper: a
-        // drag becomes a handful of `style.left`/textContent writes, never
-        // a Plotly redraw (section 38).
+        // this feature's own original design called out. A plain
+        // absolutely-positioned overlay, recomputed from the same single
+        // per-group X-conversion authority every other Time-Group-scoped
+        // feature already uses (that group's own viewport + that group's
+        // own ruler/digital/panel `_fullLayout.xaxis` geometry, the exact
+        // technique wwDiagnoseDigitalAlignment() already established), is
+        // both simpler and cheaper: a drag becomes a handful of
+        // `style.left`/textContent writes, never a Plotly redraw.
         //
-        // State: ww.measurementCursors.{a,b}.time are ALWAYS elapsed
-        // engineering seconds in the exact same coordinate system as
-        // ww.viewport/ww.workspaceBounds (section 6) -- reusing
+        // Governing rule (TG-D2 task section 1): Cursor A and Cursor B
+        // always belong to ONE coherent Time Group -- never
+        // `Cursor A -> Group 1, Cursor B -> Group 2`, since unrelated
+        // Time Groups do not share one physical time axis. Enforced
+        // structurally: cursor state lives in ww.timeGroupCursorState,
+        // keyed by groupId, and every projection/placement/drag function
+        // below takes that SAME groupId explicitly -- there is no shared
+        // "the" cursor pair to accidentally cross-wire.
+        //
+        // State: ww.timeGroupCursorState.get(groupId).{a,b}.time are
+        // ALWAYS elapsed engineering seconds in that group's own
+        // coordinate system (wwTimeGroupVisibleRange(groupId)/
+        // wwDeriveTimeGroupBounds(groupId)) -- reusing
         // wwElapsedToPlotlyX() only when a value must be RENDERED as text
-        // in Absolute mode, exactly parallel to how ww.viewport itself is
-        // never converted except at a Plotly-facing boundary.
+        // in Absolute mode, exactly parallel to how a group's own
+        // viewport is never converted except at a Plotly-facing boundary.
         // ==================================================================
 
-        // One authoritative source of "where is the shared plotting area,
-        // in real page pixels" -- reused by every pixel<->time conversion
-        // below (section 12: "one X conversion authority"). Deliberately
-        // reads a REAL rendered Plotly surface's own `_fullLayout.xaxis`
-        // offset/length (never a guessed/hard-coded margin) -- the ruler
-        // chart is preferred (present whenever ANY channel, analog or
-        // digital, is displayed, per wwSyncStickyRuler()'s own gate), with
-        // the digital chart as a fallback for the rare case the ruler
-        // element exists but hasn't painted yet, and the first analog
-        // panel as a last resort. Returns null (never a guess) when no
-        // surface has actually rendered its plotting area yet -- callers
-        // must treat that as "cannot draw a line right now," not average
-        // out substitute geometry.
-        function wwCursorPlotMetrics() {
-            // Time Group Canvas: cursor overlay stays primary-group-scoped
-            // this slice (task section 25) -- every candidate below is
-            // resolved against the PRIMARY canvas specifically, never an
-            // arbitrary non-primary group's own ruler/digital/panel
-            // geometry (which would produce a pixel<->time mapping that
-            // is simply wrong for the primary group's own coordinate
-            // system).
-            const primaryGroupId = wwPrimaryTimeGroupId();
-            const primaryPanel = ww.panels.find((p) => wwPanelTimeGroupId(p) === primaryGroupId);
+        // TG-D2: the one canonical read-only default for a group with no
+        // ww.timeGroupCursorState entry yet (never toggled on) -- mirrors
+        // wwZoomStepAxisForGroup()'s own established "default object,
+        // never auto-insert into the Map on a mere read" convention.
+        // Every cursor-reading call site below goes through this, never
+        // `ww.timeGroupCursorState.get(groupId)` directly, so a
+        // never-touched group reads as "off, nothing placed" rather than
+        // throwing on `undefined.enabled`.
+        function wwTimeGroupCursorState(groupId) {
+            return ww.timeGroupCursorState.get(groupId) || { enabled: false, a: { visible: true, time: null }, b: { visible: true, time: null } };
+        }
+
+        // The mutating counterpart -- get-or-create, used by every
+        // function that actually WRITES cursor state for a group (toggle
+        // on, place/drag A or B, close a cursor). Lazily materializes a
+        // fresh default entry in the Map on first write, exactly once per
+        // group's own lifetime (until pruned by a topology change -- see
+        // wwSyncTimeGroupCanvases()'s own pruning loop).
+        function wwEnsureTimeGroupCursorStateEntry(groupId) {
+            let entry = ww.timeGroupCursorState.get(groupId);
+            if (!entry) {
+                entry = { enabled: false, a: { visible: true, time: null }, b: { visible: true, time: null } };
+                ww.timeGroupCursorState.set(groupId, entry);
+            }
+            return entry;
+        }
+
+        // Cheap gate for the scroll-refresh handler below (and any other
+        // "is there ANY reason to keep doing per-group overlay work"
+        // check) -- true iff at least one Time Group currently has
+        // cursor mode on, regardless of which one.
+        function wwAnyTimeGroupCursorsEnabled() {
+            for (const state of ww.timeGroupCursorState.values()) {
+                if (state.enabled) return true;
+            }
+            return false;
+        }
+
+        // One authoritative source of "where is THIS group's own shared
+        // plotting area, in real page pixels" -- reused by every
+        // pixel<->time conversion below ("one X conversion authority",
+        // now per-group rather than workspace-wide). Deliberately reads a
+        // REAL rendered Plotly surface's own `_fullLayout.xaxis` offset/
+        // length (never a guessed/hard-coded margin) -- that group's own
+        // ruler chart is preferred (present whenever ANY channel, analog
+        // or digital, is displayed in THAT group), with that group's own
+        // digital chart as a fallback for the rare case the ruler element
+        // exists but hasn't painted yet, and that group's own first
+        // analog panel as a last resort. Returns null (never a guess, and
+        // never another group's geometry) when no surface belonging to
+        // THIS group has actually rendered its plotting area yet --
+        // callers must treat that as "cannot draw a line right now for
+        // this group," not average out substitute geometry from an
+        // unrelated group.
+        function wwCursorPlotMetrics(groupId) {
+            const canvasEl = wwTimeGroupCanvasEl(groupId);
+            const groupPanel = ww.panels.find((p) => wwPanelTimeGroupId(p) === groupId);
             const candidates = [
-                ww.rulerReadyByGroup.get(primaryGroupId) ? wwPrimaryTimeGroupRulerChartEl() : null,
-                ww.digitalChartReadyByGroup.get(primaryGroupId) ? wwPrimaryTimeGroupDigitalChartEl() : null,
-                primaryPanel && primaryPanel.plotlyReady ? primaryPanel.chartEl : null,
+                canvasEl && ww.rulerReadyByGroup.get(groupId) ? canvasEl.querySelector(".ww-tg-ruler-chart") : null,
+                canvasEl && ww.digitalChartReadyByGroup.get(groupId) ? canvasEl.querySelector(".ww-tg-digital-chart") : null,
+                groupPanel && groupPanel.plotlyReady ? groupPanel.chartEl : null,
             ];
             for (const chartEl of candidates) {
                 if (!chartEl) continue;
@@ -17345,33 +17498,40 @@
             return null;
         }
 
-        // Engineering elapsed seconds -> page-absolute pixel X. Returns
-        // null exactly when wwCursorPlotMetrics()/ww.viewport can't
-        // currently answer that question (section 15: an out-of-viewport
-        // or not-yet-rendered cursor stays off-screen, never silently
-        // relocated).
-        function wwCursorTimeToPixelX(time) {
-            if (!ww.viewport || !Number.isFinite(time)) return null;
-            const metrics = wwCursorPlotMetrics();
+        // Engineering elapsed seconds -> page-absolute pixel X, using
+        // `groupId`'s own visible viewport and `groupId`'s own plotting
+        // geometry -- REQUIRED, never optional/defaulted to the primary
+        // group (task section 9's own explicit "avoid hidden fallback to
+        // the primary group"). Returns null exactly when
+        // wwCursorPlotMetrics(groupId)/that group's own visible range
+        // can't currently answer that question (an out-of-viewport or
+        // not-yet-rendered cursor stays off-screen, never silently
+        // relocated, and never borrows a DIFFERENT group's geometry to
+        // produce a number anyway).
+        function wwCursorTimeToPixelX(groupId, time) {
+            const range = wwTimeGroupVisibleRange(groupId);
+            if (!range || !Number.isFinite(time)) return null;
+            const metrics = wwCursorPlotMetrics(groupId);
             if (!metrics) return null;
-            const span = ww.viewport.end - ww.viewport.start;
+            const span = range.end - range.start;
             if (!(span > 0)) return null;
-            const frac = (time - ww.viewport.start) / span;
+            const frac = (time - range.start) / span;
             return metrics.plotLeftPage + frac * metrics.plotWidth;
         }
 
-        // The inverse, used only while dragging -- clamps to the current
-        // viewport's own plotting bounds (section 15: "clamp to current
+        // The inverse, used only while dragging -- clamps to `groupId`'s
+        // own current viewport's own plotting bounds ("clamp to current
         // viewport" during visible interaction), which is exactly
         // equivalent to clamping the returned TIME to
-        // [viewport.start, viewport.end] since the plot's own xaxis range
-        // already IS that viewport by construction.
-        function wwCursorPixelXToTime(pageX, metrics) {
-            const m = metrics || wwCursorPlotMetrics();
-            if (!m || !ww.viewport) return null;
+        // [range.start, range.end] since the plot's own xaxis range
+        // already IS that group's own viewport by construction.
+        function wwCursorPixelXToTime(groupId, pageX, metrics) {
+            const m = metrics || wwCursorPlotMetrics(groupId);
+            const range = wwTimeGroupVisibleRange(groupId);
+            if (!m || !range) return null;
             const clampedX = Math.max(m.plotLeftPage, Math.min(m.plotLeftPage + m.plotWidth, pageX));
             const frac = m.plotWidth > 0 ? (clampedX - m.plotLeftPage) / m.plotWidth : 0;
-            return ww.viewport.start + frac * (ww.viewport.end - ww.viewport.start);
+            return range.start + frac * (range.end - range.start);
         }
 
         // Section 20/48: three plain tiers (µs / ms / s) -- deliberately a
@@ -17427,13 +17587,24 @@
         // backend cursor-values request itself still sends the
         // UNCONVERTED workspace-time value (wwFetchCursorValuesForSource()
         // is untouched by Slice 2 for exactly this reason).
-        function wwFormatCursorPointTime(elapsedSeconds) {
+        //
+        // TG-D2 (task section 17/27): t0 itself remains workspace-global/
+        // primary-group-scoped this slice (full per-group t0 is TG-E) --
+        // so the t0-based event-time branch applies ONLY when formatting
+        // the PRIMARY group's own cursor (`groupId === wwPrimaryTimeGroupId()`),
+        // matching "Set Cursor A as t=0"'s own identical primary-group
+        // scope exactly. Any OTHER group's cursor labels ignore a t0 that
+        // was never set for them and fall through to plain Absolute/
+        // Elapsed formatting using THAT group's own origin/span (task
+        // section 17's own explicit "each uses its own group origin...
+        // do not use one workspace absolute origin").
+        function wwFormatCursorPointTime(elapsedSeconds, groupId) {
             if (!Number.isFinite(elapsedSeconds)) return "—";
-            if (wwHasT0()) {
+            if (groupId === wwPrimaryTimeGroupId() && wwHasT0()) {
                 return wwFormatSignedCursorDuration(wwWorkspaceTimeToEventTime(elapsedSeconds));
             }
             if (ww.timeMode === "absolute") {
-                return wwFormatAbsoluteElapsedTime(elapsedSeconds, { spanSeconds: wwVisibleSpanSeconds() });
+                return wwFormatAbsoluteElapsedTime(elapsedSeconds, { spanSeconds: wwVisibleSpanSeconds(groupId), groupId: groupId });
             }
             return wwFormatCursorDuration(elapsedSeconds);
         }
@@ -17442,26 +17613,37 @@
         // later update only ever toggles `hidden`/writes `style.left`/
         // textContent on these same nodes (section 38: no innerHTML churn
         // on drag or resize).
-        function wwEnsureCursorDom() {
-            const overlay = document.getElementById("wwCursorOverlay");
-            // Time Group Canvas: cursor overlay stays primary-group-scoped
-            // this slice -- resolves the PRIMARY canvas's own ruler
-            // overlay segment (see wwPrimaryTimeGroupCanvasEl()'s own
-            // comment), never a global #wwCursorRulerOverlay singleton
-            // (no longer exists -- one now lives inside each canvas).
-            const rulerOverlay = wwPrimaryTimeGroupCursorRulerOverlayEl();
-            const labelLayer = document.getElementById("wwCursorLabelLayer");
+        // TG-D2: builds ONE canvas's own cursor overlay/label-layer/ruler-
+        // overlay DOM (lazily, once -- mirrors the original
+        // wwEnsureCursorDom()'s own `dataset.built` guard exactly) AND
+        // wires its own drag/close interaction, scoped to `canvasEl`/
+        // `groupId` throughout -- the per-canvas generalization of the
+        // former wwEnsureCursorDom() + wwWireCursorDrag() pair (which
+        // built/wired ONE workspace-wide overlay, called once at page
+        // init). Called once per canvas, from wwCreateTimeGroupCanvasDom()
+        // itself, exactly like wwWireTimeGroupToolbar() -- so every group,
+        // however many exist, gets its own fully independent cursor
+        // interaction with zero shared mutable closure state between
+        // groups (each call has its own draggingKind/dragMetrics/dragTarget).
+        function wwWireTimeGroupCursorOverlay(canvasEl, groupId) {
+            const overlay = canvasEl.querySelector(".ww-tg-cursor-overlay");
+            const rulerOverlay = canvasEl.querySelector(".ww-cursor-ruler-overlay");
+            const labelLayer = canvasEl.querySelector(".ww-tg-cursor-label-layer");
+            if (!overlay || !rulerOverlay || !labelLayer) return;
+
             if (overlay && !overlay.dataset.built) {
                 // Owner cosmetic refinement: the A-B range band is built
                 // FIRST (so it paints behind both cursor lines in DOM/
                 // paint order) as one more element in this SAME overlay --
-                // positioned/hidden by wwUpdateCursorOverlay() exactly
-                // like the two lines, never a second overlay system.
-                // Phase 4B-UAT1: the label pill itself is built separately
-                // below, in #wwCursorLabelLayer -- see that element's own
+                // positioned/hidden by wwUpdateCursorOverlayForGroup()
+                // exactly like the two lines, never a second overlay
+                // system. Phase 4B-UAT1: the label pill itself is built
+                // separately below, in this canvas's own
+                // `.ww-tg-cursor-label-layer` -- see that element's own
                 // HTML comment for why it can no longer live nested inside
                 // `.ww-cursor-line` (position: sticky needs to escape
-                // #wwCursorOverlay's `overflow: hidden`).
+                // this canvas's own `.ww-tg-cursor-overlay`'s `overflow:
+                // hidden`).
                 overlay.innerHTML = '<div class="ww-cursor-range" data-cursor-range hidden></div>' +
                     ["a", "b"].map((kind) => {
                     return '<div class="ww-cursor-line ww-cursor-line--' + kind + '" data-cursor-line="' + kind + '" hidden>' +
@@ -17505,69 +17687,209 @@
                     '</div>';
                 labelLayer.dataset.built = "1";
             }
+
+            // ---- drag/close interaction, scoped to THIS canvas/group ----
+            let draggingKind = null;
+            let dragMetrics = null;
+            let dragTarget = null;
+
+            function livePositionUpdate(kind, time) {
+                const sectionEl = document.getElementById("viewWaveform");
+                const rulerWrapEl = canvasEl.querySelector(".ww-tg-ruler");
+                if (!sectionEl || !rulerWrapEl) return;
+                const pageX = wwCursorTimeToPixelX(groupId, time);
+                if (pageX === null) return;
+                const sectionRect = sectionEl.getBoundingClientRect();
+                const rulerRect = rulerWrapEl.getBoundingClientRect();
+                const lineEl = overlay.querySelector('[data-cursor-line="' + kind + '"]');
+                const rulerLineEl = rulerOverlay.querySelector('[data-cursor-ruler-line="' + kind + '"]');
+                const labelEl = labelLayer.querySelector('[data-cursor-label="' + kind + '"]');
+                if (lineEl) lineEl.style.left = (pageX - sectionRect.left) + "px";
+                if (rulerLineEl) rulerLineEl.style.left = (pageX - rulerRect.left) + "px";
+                // Phase 4B-UAT1: the sticky label follows the same live
+                // pageX every pointermove -- still just a style.left write,
+                // no extra metrics measurement.
+                if (labelEl) labelEl.style.left = (pageX - sectionRect.left) + "px";
+
+                const cursors = wwTimeGroupCursorState(groupId);
+                const aShown = cursors.a.visible && Number.isFinite(cursors.a.time);
+                const bShown = cursors.b.visible && Number.isFinite(cursors.b.time);
+                const aEl = canvasEl.querySelector(".ww-tg-cursor-readout-value--a");
+                const bEl = canvasEl.querySelector(".ww-tg-cursor-readout-value--b");
+                const dEl = canvasEl.querySelector(".ww-tg-cursor-readout-value--delta");
+                if (aEl && kind === "a") aEl.textContent = aShown ? wwFormatCursorPointTime(cursors.a.time, groupId) : "—";
+                if (bEl && kind === "b") bEl.textContent = bShown ? wwFormatCursorPointTime(cursors.b.time, groupId) : "—";
+                if (dEl) dEl.textContent = aShown && bShown ? wwFormatCursorDuration(cursors.b.time - cursors.a.time) : "—";
+
+                // Owner cosmetic refinement: keep the range band tracking
+                // the dragged edge live too -- the other cursor's own
+                // pixel position is cheap to re-derive (one more
+                // wwCursorTimeToPixelX() call, no metrics re-measure).
+                if (aShown && bShown) {
+                    const otherX = kind === "a" ? wwCursorTimeToPixelX(groupId, cursors.b.time) : wwCursorTimeToPixelX(groupId, cursors.a.time);
+                    if (otherX !== null) {
+                        const left = Math.min(pageX, otherX);
+                        const width = Math.abs(otherX - pageX);
+                        const rangeEl = overlay.querySelector("[data-cursor-range]");
+                        const rulerRangeEl = rulerOverlay.querySelector("[data-cursor-ruler-range]");
+                        if (rangeEl) {
+                            rangeEl.hidden = false;
+                            rangeEl.style.left = (left - sectionRect.left) + "px";
+                            rangeEl.style.width = width + "px";
+                        }
+                        if (rulerRangeEl) {
+                            rulerRangeEl.hidden = false;
+                            rulerRangeEl.style.left = (left - rulerRect.left) + "px";
+                            rulerRangeEl.style.width = width + "px";
+                        }
+                    }
+                }
+            }
+
+            function onPointerMove(event) {
+                if (!draggingKind || !dragMetrics) return;
+                const time = wwCursorPixelXToTime(groupId, event.clientX, dragMetrics);
+                if (time === null) return;
+                wwEnsureTimeGroupCursorStateEntry(groupId)[draggingKind].time = time;
+                livePositionUpdate(draggingKind, time);
+                // Phase 4C1 (section 22): the visual line above already
+                // moved at full pointermove speed; the BACKEND measurement
+                // fetch is throttled (~50ms) so a fast drag never floods
+                // the network with one request per raw move -- scoped to
+                // THIS group's own participating sources only.
+                wwScheduleCursorValuesRefreshForGroup(groupId);
+            }
+
+            function endDrag(event) {
+                if (!dragTarget) return;
+                dragTarget.removeEventListener("pointermove", onPointerMove);
+                dragTarget.removeEventListener("pointerup", endDrag);
+                dragTarget.removeEventListener("pointercancel", endDrag);
+                if (dragTarget.hasPointerCapture && dragTarget.hasPointerCapture(event.pointerId)) {
+                    dragTarget.releasePointerCapture(event.pointerId);
+                }
+                dragTarget = null;
+                draggingKind = null;
+                dragMetrics = null;
+                wwUpdateCursorOverlayForGroup(groupId); // one authoritative final pass, THIS group only
+                // Phase 4C1 (section 24): guarantees the sidebar settles to
+                // the exact final A/B time even if the throttle above
+                // skipped the very last pointermove -- immediate, not
+                // throttled, still scoped to this group's own sources.
+                wwFetchAllCursorValuesForGroup(groupId);
+            }
+
+            function onPointerDown(event) {
+                const closeBtn = event.target.closest("[data-cursor-close]");
+                if (closeBtn) {
+                    wwSetMeasurementCursorVisible(groupId, closeBtn.getAttribute("data-cursor-close"), false);
+                    return;
+                }
+                const handle = event.target.closest("[data-cursor-drag]");
+                if (!handle) return;
+                if (event.button !== undefined && event.button !== 0) return;
+                const kind = handle.getAttribute("data-cursor-drag");
+                const cursors = wwTimeGroupCursorState(groupId);
+                if (!cursors[kind] || !cursors[kind].visible) return;
+                dragMetrics = wwCursorPlotMetrics(groupId);
+                if (!dragMetrics) return;
+                draggingKind = kind;
+                dragTarget = handle;
+                if (handle.setPointerCapture) handle.setPointerCapture(event.pointerId);
+                handle.addEventListener("pointermove", onPointerMove);
+                handle.addEventListener("pointerup", endDrag);
+                handle.addEventListener("pointercancel", endDrag);
+                event.preventDefault();
+            }
+
+            function onClick(event) {
+                const closeBtn = event.target.closest("[data-cursor-close]");
+                if (closeBtn) wwSetMeasurementCursorVisible(groupId, closeBtn.getAttribute("data-cursor-close"), false);
+            }
+
+            // Phase 4B-UAT1: the drag hit-strip (`.ww-cursor-hit`, inside
+            // the overlay) and the label/close-button (in the SEPARATE
+            // sticky label layer) are not the same DOM subtree -- the
+            // same two handlers are wired to both, rather than
+            // duplicating drag logic (labels stay draggable, same
+            // pointer-capture/live-update path either way).
+            overlay.addEventListener("pointerdown", onPointerDown);
+            labelLayer.addEventListener("pointerdown", onPointerDown);
+            // Plain click (not a drag gesture) on the x already fires via
+            // pointerdown above -- also handle a keyboard activation
+            // (Enter/Space) on the close button for accessibility, since
+            // pointerdown alone never fires for keyboard users.
+            overlay.addEventListener("click", onClick);
+            labelLayer.addEventListener("click", onClick);
         }
 
-        // The one recompute-and-render pass -- safe/cheap to call from
-        // anywhere (viewport change, layout switch, resize, theme, drag
-        // end): every branch either no-ops or does a handful of style/
+        // TG-D2: the one recompute-and-render pass for ONE Time Group's
+        // own cursor overlay -- safe/cheap to call from anywhere
+        // (viewport change, layout switch, resize, theme, drag end):
+        // every branch either no-ops or does a handful of style/
         // textContent writes, never a Plotly call. Handles BOTH halves
-        // independently on purpose (section 27): the status-bar readout
-        // only needs ww.viewport (works with zero displayed channels),
-        // while the visual line additionally needs wwCursorPlotMetrics()
-        // (only available once something has actually rendered a plotting
-        // area) -- so with zero channels displayed, cursor mode can be ON
-        // and the readout can show real A/B/Δt values with no line drawn
-        // yet, which is the intentional, honest state (there is genuinely
-        // nothing to draw a line across).
-        function wwUpdateCursorOverlay() {
-            // Phase 4F (section 56): every trigger this function already
-            // reacts to (X viewport change via wwRebuildDigitalChart(),
-            // resize, layout-mode switch, digital-region height change,
-            // scroll via wwScheduleCursorOverlayRefresh()) is ALSO exactly
-            // the trigger surface Callout anchors need reprojected on --
-            // reusing this ONE existing hook point rather than fanning the
-            // same ~15 call sites out a second time. Placed FIRST,
-            // unconditionally, so none of this function's OWN cursor-
-            // specific early returns below (cursor mode off, nothing
-            // rendered yet) can skip it -- Callout reprojection has
-            // nothing to do with A/B cursor state.
-            wwRenderAnnotations();
-            // Slice 2: same reasoning -- Cursor A's own placement/removal
-            // is exactly what the "Set Cursor A as t=0" button's enabled
-            // state depends on, so this is kept in sync from the same one
-            // hook point, unconditionally, before any of this function's
-            // own cursor-DOM early returns below.
-            wwSyncT0Controls();
+        // independently on purpose: the readout only needs THIS group's
+        // own visible range (works with zero displayed channels), while
+        // the visual line additionally needs wwCursorPlotMetrics(groupId)
+        // (only available once something has actually rendered a
+        // plotting area for THIS group) -- so with zero channels
+        // displayed for this group, cursor mode can be ON and the readout
+        // can show real A/B/Δt values with no line drawn yet, the
+        // intentional, honest state (there is genuinely nothing to draw a
+        // line across).
+        function wwUpdateCursorOverlayForGroup(groupId) {
+            const canvasEl = wwTimeGroupCanvasEl(groupId);
+            if (!canvasEl) return;
+            const isPrimary = groupId === wwPrimaryTimeGroupId();
+            // Callout/Peak annotation reprojection and the "Set Cursor A
+            // as t=0" button's enabled state both stay primary-group-
+            // scoped this slice (annotations are an explicit non-goal;
+            // t0 stays primary-group-only per task section 27) -- reused
+            // from the SAME one hook point every OTHER primary-group
+            // viewport/geometry change already funnels through, so a
+            // wwUpdateAllCursorOverlays() sweep reaches this exactly once
+            // per call, via whichever group happens to be primary.
+            if (isPrimary) {
+                wwRenderAnnotations();
+                wwSyncT0Controls();
+            }
 
-            const overlayEl = document.getElementById("wwCursorOverlay");
-            const rulerOverlayEl = wwPrimaryTimeGroupCursorRulerOverlayEl();
-            const labelLayerEl = document.getElementById("wwCursorLabelLayer");
-            const readoutEl = document.getElementById("wwCursorReadout");
+            const overlayEl = canvasEl.querySelector(".ww-tg-cursor-overlay");
+            const rulerOverlayEl = canvasEl.querySelector(".ww-cursor-ruler-overlay");
+            const labelLayerEl = canvasEl.querySelector(".ww-tg-cursor-label-layer");
+            const readoutEl = canvasEl.querySelector(".ww-tg-cursor-readout");
+            const modeBtn = canvasEl.querySelector(".ww-tg-cursor-mode-btn");
             if (!overlayEl || !rulerOverlayEl || !labelLayerEl || !readoutEl) return;
 
-            const cursors = ww.measurementCursors;
-            const active = cursors.enabled && !!ww.viewport;
+            const cursors = wwTimeGroupCursorState(groupId);
+            const range = wwTimeGroupVisibleRange(groupId);
+            const active = cursors.enabled && !!range;
             // Slice 3: the "Suggested event" preview marker must be able
-            // to show even when A/B cursor mode itself is off (task
-            // section 13 -- the engineer may run Detect Event without
-            // ever having turned cursor mode on) -- so every gate below
-            // that used to be `active`-only now also admits a visible
-            // suggestion.
+            // to show even when A/B cursor mode itself is off (the
+            // engineer may run Detect Event without ever having turned
+            // cursor mode on) -- so every gate below that used to be
+            // `active`-only also admits a visible suggestion. TG-D2: a
+            // suggestion belongs to exactly one Time Group (derived from
+            // its own sourceId) -- only THAT group's overlay ever shows
+            // it, never leaking into any other group's canvas.
             const suggestion = ww.suggestedEvent;
-            const suggestionVisible = !!ww.viewport && suggestion.visible && Number.isFinite(suggestion.workspaceTime);
+            const suggestionGroupId = suggestion.sourceId !== null ? wwTimeGroupIdForDisplaySourceId(suggestion.sourceId) : null;
+            const suggestionVisible = suggestionGroupId === groupId && !!range && suggestion.visible && Number.isFinite(suggestion.workspaceTime);
             const drawAnything = active || suggestionVisible;
 
-            document.getElementById("wwCursorModeBtn").setAttribute("aria-pressed", String(cursors.enabled));
+            if (modeBtn) modeBtn.setAttribute("aria-pressed", String(cursors.enabled));
 
-            // ---- status-bar readout (channel-display-independent) ----
+            // ---- A-B readout (channel-display-independent) ----
             readoutEl.hidden = !active;
             if (active) {
                 const aShown = cursors.a.visible && Number.isFinite(cursors.a.time);
                 const bShown = cursors.b.visible && Number.isFinite(cursors.b.time);
-                document.getElementById("statusBarCursorA").textContent = aShown ? wwFormatCursorPointTime(cursors.a.time) : "—";
-                document.getElementById("statusBarCursorB").textContent = bShown ? wwFormatCursorPointTime(cursors.b.time) : "—";
-                document.getElementById("statusBarCursorDelta").textContent =
-                    aShown && bShown ? wwFormatCursorDuration(cursors.b.time - cursors.a.time) : "—";
+                const aEl = canvasEl.querySelector(".ww-tg-cursor-readout-value--a");
+                const bEl = canvasEl.querySelector(".ww-tg-cursor-readout-value--b");
+                const dEl = canvasEl.querySelector(".ww-tg-cursor-readout-value--delta");
+                if (aEl) aEl.textContent = aShown ? wwFormatCursorPointTime(cursors.a.time, groupId) : "—";
+                if (bEl) bEl.textContent = bShown ? wwFormatCursorPointTime(cursors.b.time, groupId) : "—";
+                if (dEl) dEl.textContent = aShown && bShown ? wwFormatCursorDuration(cursors.b.time - cursors.a.time) : "—";
             }
 
             // ---- visual overlay ----
@@ -17589,14 +17911,10 @@
                 if (suggestedLabelEl) suggestedLabelEl.hidden = true;
                 return;
             }
-            wwEnsureCursorDom();
 
             const workspaceSectionEl = document.getElementById("viewWaveform");
-            // Time Group Canvas: cursor overlay stays primary-group-scoped
-            // this slice -- resolves the PRIMARY canvas's own ruler.
-            const primaryCanvasEl = wwPrimaryTimeGroupCanvasEl();
-            const rulerWrapEl = wwPrimaryTimeGroupRulerWrapEl();
-            const metrics = wwCursorPlotMetrics();
+            const rulerWrapEl = canvasEl.querySelector(".ww-tg-ruler");
+            const metrics = wwCursorPlotMetrics(groupId);
             const canDraw = !!metrics && workspaceSectionEl && rulerWrapEl && !rulerWrapEl.hidden;
 
             overlayEl.hidden = !canDraw;
@@ -17607,53 +17925,25 @@
             // Section 10: stop exactly at the top of the ruler -- never
             // its bottom, never the bottom of the last analog panel/top of
             // digital (this height IS "through analog + digital, no
-            // further"; the ruler's OWN segment, drawn by
-            // #wwCursorRulerOverlay above, covers the remaining "down
-            // through the ruler" requirement).
+            // further"; the ruler's OWN segment covers the remaining
+            // "down through the ruler" requirement).
             //
-            // Phase 4B-UAT2 bug fix: this used to be
-            // `rulerRect.top - sectionRect.top`, both from
-            // getBoundingClientRect() -- VIEWPORT-relative coordinates.
-            // #wwStickyRuler is `position: sticky`, which repaints the
-            // ruler at a constant on-screen position once "stuck," while
-            // #viewWaveform's own getBoundingClientRect().top keeps
-            // changing as the page scrolls -- so a height computed from
-            // that pair while (or shortly after) the ruler is in its stuck
-            // state does not reliably reproduce the ruler's TRUE position
-            // in the scroll content, and the resulting stale/incorrect
-            // overlay height silently truncated the line/range-band
-            // overlay (clipped by this element's own `overflow: hidden`)
-            // partway down a tall waveform stack -- exactly the owner's
-            // reported "lines disappear further down" bug. Fixed by
-            // reading `rulerWrapEl.offsetTop` instead: offsetTop reflects
-            // an element's position in NORMAL LAYOUT FLOW relative to its
-            // offsetParent (here, #viewWaveform itself, the nearest
-            // `position: relative` ancestor -- confirmed the DOM parent of
-            // both #wwCursorOverlay and #wwStickyRuler) and is, by
-            // definition, UNAFFECTED by scroll position or by
-            // `position: sticky`'s paint-time displacement -- the same
-            // "stable layout metric, not a live/scrolled one" fix this
-            // bug's own investigation confirmed is necessary. rulerRect
-            // itself is still needed below for the ruler segment's own
-            // HORIZONTAL (left) positioning, where its CURRENT on-screen
-            // (possibly-stuck) position is exactly what's wanted.
-            //
-            // Time Group Canvas addendum: the ruler's own offsetParent is
-            // now the PRIMARY canvas root itself (`position: relative`,
-            // task section 12 -- each canvas scopes its own ruler/overlay
-            // calculations naturally), not #viewWaveform directly as
-            // before this slice. `primaryCanvasEl.offsetTop` (that
-            // canvas's own position within #viewWaveform, whose own
-            // offsetParent IS #viewWaveform -- #wwTimeGroupCanvases
-            // itself is a plain, unpositioned wrapper) plus
-            // `rulerWrapEl.offsetTop` (the ruler's position within ITS
-            // OWN canvas) together reproduce the exact same "distance
-            // from #viewWaveform's own top to the ruler" this fix
-            // originally computed in one step.
+            // Phase 4B-UAT2 bug fix (still true, now per-canvas): reading
+            // `rulerWrapEl.offsetTop` -- an element's position in NORMAL
+            // LAYOUT FLOW relative to its offsetParent -- is UNAFFECTED
+            // by scroll position or by `position: sticky`'s paint-time
+            // displacement, unlike a getBoundingClientRect()-based
+            // difference (which breaks once the ruler is "stuck").
+            // TG-D2: the overlay now lives INSIDE its own canvas
+            // (`position: relative` since TG-B+C), so THAT canvas IS the
+            // overlay's own offsetParent directly -- `rulerWrapEl.offsetTop`
+            // alone (no canvas-level offset addition needed anymore,
+            // unlike the old single-workspace-overlay version) already
+            // gives the exact distance from this canvas's own top to its
+            // own ruler.
             const sectionRect = workspaceSectionEl.getBoundingClientRect();
             const rulerRect = rulerWrapEl.getBoundingClientRect();
-            const canvasOffsetTop = primaryCanvasEl ? primaryCanvasEl.offsetTop : 0;
-            overlayEl.style.height = Math.max(0, canvasOffsetTop + rulerWrapEl.offsetTop) + "px";
+            overlayEl.style.height = Math.max(0, rulerWrapEl.offsetTop) + "px";
 
             for (const kind of ["a", "b"]) {
                 const cursor = cursors[kind];
@@ -17666,8 +17956,8 @@
                 // pointer-interactive) beyond the plot area's own edges --
                 // its engineering time is untouched either way, only
                 // drawability changes.
-                const inViewport = shown && cursor.time >= ww.viewport.start && cursor.time <= ww.viewport.end;
-                const pageX = inViewport ? wwCursorTimeToPixelX(cursor.time) : null;
+                const inViewport = shown && cursor.time >= range.start && cursor.time <= range.end;
+                const pageX = inViewport ? wwCursorTimeToPixelX(groupId, cursor.time) : null;
                 const drawable = inViewport && pageX !== null;
 
                 if (lineEl) {
@@ -17680,8 +17970,8 @@
                 }
                 // Phase 4B-UAT1: the sticky label uses the IDENTICAL pageX/
                 // sectionRect.left conversion as the line right above --
-                // one X-projection authority (section 5), just written to
-                // a second element living in a different (sticky) layer.
+                // one X-projection authority, just written to a second
+                // element living in a different (sticky) layer.
                 if (labelEl) {
                     labelEl.hidden = !drawable;
                     if (drawable) labelEl.style.left = (pageX - sectionRect.left) + "px";
@@ -17691,16 +17981,18 @@
             // Slice 3: the "Suggested event" preview marker -- SAME
             // three-element/pageX projection as the A/B loop directly
             // above, just reading ww.suggestedEvent instead of
-            // ww.measurementCursors[kind] (task section 18: "use the
-            // centralized mapping helpers... do not infer it from
-            // Plotly labels" -- wwCursorTimeToPixelX() is that one
-            // authority, reused verbatim, never a second projection).
+            // wwTimeGroupCursorState(groupId)[kind] (use the centralized
+            // mapping helpers, never infer it from Plotly labels --
+            // wwCursorTimeToPixelX() is that one authority, reused
+            // verbatim, never a second projection). Already gated above
+            // (suggestionVisible) to only reach here for the suggestion's
+            // own owning group.
             {
                 const lineEl = overlayEl.querySelector('[data-cursor-line="suggested"]');
                 const rulerLineEl = rulerOverlayEl.querySelector('[data-cursor-ruler-line="suggested"]');
                 const labelEl = labelLayerEl.querySelector('[data-cursor-label="suggested"]');
-                const inViewport = suggestionVisible && suggestion.workspaceTime >= ww.viewport.start && suggestion.workspaceTime <= ww.viewport.end;
-                const pageX = inViewport ? wwCursorTimeToPixelX(suggestion.workspaceTime) : null;
+                const inViewport = suggestionVisible && suggestion.workspaceTime >= range.start && suggestion.workspaceTime <= range.end;
+                const pageX = inViewport ? wwCursorTimeToPixelX(groupId, suggestion.workspaceTime) : null;
                 const drawable = inViewport && pageX !== null;
 
                 if (lineEl) {
@@ -17725,18 +18017,17 @@
             // `inViewport` the way the lines themselves are) -- an
             // endpoint currently off-screen still has a real pixel
             // position on the same infinite line the viewport is a window
-            // onto, and the overlay's own `overflow: hidden` (section 9's
-            // established containment) naturally clips the band to
-            // whatever portion of [A, B] is currently visible, exactly
-            // the "highlight of the selected time window" this is meant
-            // to be rather than something that disappears the moment one
-            // endpoint scrolls out of view.
+            // onto, and the overlay's own `overflow: hidden` naturally
+            // clips the band to whatever portion of [A, B] is currently
+            // visible, exactly the "highlight of the selected time
+            // window" this is meant to be rather than something that
+            // disappears the moment one endpoint scrolls out of view.
             const rangeEl = overlayEl.querySelector("[data-cursor-range]");
             const rulerRangeEl = rulerOverlayEl.querySelector("[data-cursor-ruler-range]");
             const bandReady = cursors.a.visible && cursors.b.visible &&
                 Number.isFinite(cursors.a.time) && Number.isFinite(cursors.b.time);
-            const aX = bandReady ? wwCursorTimeToPixelX(cursors.a.time) : null;
-            const bX = bandReady ? wwCursorTimeToPixelX(cursors.b.time) : null;
+            const aX = bandReady ? wwCursorTimeToPixelX(groupId, cursors.a.time) : null;
+            const bX = bandReady ? wwCursorTimeToPixelX(groupId, cursors.b.time) : null;
             const bandDrawable = bandReady && aX !== null && bX !== null;
             if (rangeEl) {
                 rangeEl.hidden = !bandDrawable;
@@ -17752,6 +18043,21 @@
                     rulerRangeEl.style.width = Math.abs(bX - aX) + "px";
                 }
             }
+        }
+
+        // TG-D2: the "resync every active group's own cursor overlay"
+        // batch form -- mirrors wwSyncAllTimeGroupRulers()/
+        // wwSyncAllTimeGroupZoomControls()'s own established convention
+        // exactly. This is the replacement call target for every
+        // GENUINELY workspace-wide trigger (a full resize, a layout-mode
+        // rebuild, a theme change) that must touch every group -- a
+        // group-specific trigger (a viewport change, a ruler resync)
+        // instead calls wwUpdateCursorOverlayForGroup(groupId) directly,
+        // never this loop, per the performance requirement that a single
+        // group's own cursor movement must never touch an unrelated
+        // group's canvas.
+        function wwUpdateAllCursorOverlays() {
+            for (const groupId of wwActiveTimeGroupIds()) wwUpdateCursorOverlayForGroup(groupId);
         }
 
         // Phase 4B-UAT3 bug fix: the owner's own real-browser evidence
@@ -17777,7 +18083,7 @@
         // firing. Rather than guess further at exactly which browser
         // paint/compositing quirk is responsible without a real browser to
         // inspect (none is available in this sandbox), this reuses the
-        // ONE PROVEN fix (re-running wwUpdateCursorOverlay()) as the
+        // ONE PROVEN fix (re-running wwUpdateAllCursorOverlays()) as the
         // scroll-triggered remedy too -- matching this task's own explicit
         // instruction that a lightweight scroll synchronization is
         // acceptable once runtime evidence (the OFF/ON behavior itself)
@@ -17786,137 +18092,122 @@
         // fire far faster than the display can usefully redraw); a no-op,
         // cheap early return whenever cursor mode isn't even enabled, so
         // ordinary scrolling with cursors off costs nothing extra.
-        // wwUpdateCursorOverlay() itself is already documented as cheap
-        // (a handful of getBoundingClientRect() reads and style/
+        // wwUpdateCursorOverlayForGroup() itself is already documented as
+        // cheap (a handful of getBoundingClientRect() reads and style/
         // textContent writes, never a Plotly call, waveform fetch, or
-        // panel rebuild), so this stays well within section 21's
+        // panel rebuild) -- TG-D2's own batch wrapper just repeats that
+        // per active group -- so this stays well within section 21's
         // performance requirement even at native scroll-event frequency.
         let wwCursorScrollRafId = null;
         function wwScheduleCursorOverlayRefresh() {
-            if (!ww.measurementCursors.enabled) return;
+            if (!wwAnyTimeGroupCursorsEnabled()) return;
             if (wwCursorScrollRafId !== null) return;
             wwCursorScrollRafId = requestAnimationFrame(() => {
                 wwCursorScrollRafId = null;
-                wwUpdateCursorOverlay();
+                wwUpdateAllCursorOverlays();
             });
         }
 
-        // Section 5: A = viewport.start + width/3, B = viewport.start +
-        // 2*width/3. Only ever called when there is no prior position to
-        // preserve -- see wwToggleMeasurementCursors()'s own comment.
-        function wwInitMeasurementCursorPositions() {
-            if (!ww.viewport) return;
-            const width = ww.viewport.end - ww.viewport.start;
-            ww.measurementCursors.a.time = ww.viewport.start + width / 3;
-            ww.measurementCursors.b.time = ww.viewport.start + (2 * width) / 3;
+        // A = range.start + width/3, B = range.start + 2*width/3, for
+        // `groupId`'s OWN visible range. Only ever called when there is no
+        // prior position to preserve for THIS group -- see
+        // wwToggleMeasurementCursors()'s own comment.
+        function wwInitMeasurementCursorPositions(groupId) {
+            const range = wwTimeGroupVisibleRange(groupId);
+            if (!range) return;
+            const width = range.end - range.start;
+            const entry = wwEnsureTimeGroupCursorStateEntry(groupId);
+            entry.a.time = range.start + width / 3;
+            entry.b.time = range.start + (2 * width) / 3;
         }
 
-        // The one toolbar mode toggle (section 4/24). OFF retains a/b.time
+        // TG-D2: the per-group toolbar mode toggle -- generalized from
+        // the original single wwToggleMeasurementCursors() (task's own
+        // governing principle: "clicking Group 1's cursor button enables/
+        // disables cursor mode only for Group 1"). OFF retains a/b.time
         // exactly as they were (nothing here ever clears them) -- turning
         // back ON:
-        //   - fresh-inits to 1/3 / 2/3 ONLY the first time this workspace
+        //   - fresh-inits to 1/3 / 2/3 ONLY the first time THIS group
         //     ever enables cursors (both times still null);
         //   - otherwise restores the EXISTING times untouched, and also
         //     restores `visible: true` for both -- this is deliberately
-        //     the same action that satisfies section 24's "OFF -> ON
-        //     restores previous positions" AND section 23's "minimum
-        //     acceptable" un-hide path for a cursor closed via its own ×
-        //     while mode stayed on, without needing two different toggle
-        //     behaviors.
-        // Section 27: requires a valid ww.viewport (a real workspace/
-        // source) to do anything at all -- the button itself already only
-        // exists inside the toolbar, which is already hidden whenever the
-        // workspace is empty (wwUpdateEmptyState()), so this guard is
-        // belt-and-braces, not the primary gate.
-        function wwToggleMeasurementCursors() {
-            if (!ww.viewport) return;
-            const cursors = ww.measurementCursors;
+        //     the same action that satisfies "OFF -> ON restores previous
+        //     positions" AND the "minimum acceptable" un-hide path for a
+        //     cursor closed via its own x while mode stayed on, without
+        //     needing two different toggle behaviors.
+        // Requires a valid visible range for THIS group to do anything at
+        // all -- the button itself already only exists inside a canvas
+        // that only renders once the group has displayed content, so
+        // this guard is belt-and-braces, not the primary gate.
+        function wwToggleMeasurementCursors(groupId) {
+            const range = wwTimeGroupVisibleRange(groupId);
+            if (!range) return;
+            const cursors = wwEnsureTimeGroupCursorStateEntry(groupId);
             if (cursors.enabled) {
                 cursors.enabled = false;
-                wwUpdateCursorOverlay();
+                wwUpdateCursorOverlayForGroup(groupId);
                 // Phase 4C1 (section 15/35): OFF means every Cur A/Cur B
-                // cell shows "—" and no further requests are outstanding.
-                wwCursorValuesHandleModeDisabled();
+                // cell for THIS group's own channels shows "—" and no
+                // further requests are outstanding for them.
+                wwCursorValuesHandleModeDisabledForGroup(groupId);
                 return;
             }
             cursors.enabled = true;
             if (!Number.isFinite(cursors.a.time) || !Number.isFinite(cursors.b.time)) {
-                wwInitMeasurementCursorPositions();
+                wwInitMeasurementCursorPositions(groupId);
             }
             cursors.a.visible = true;
             cursors.b.visible = true;
-            wwUpdateCursorOverlay();
+            wwUpdateCursorOverlayForGroup(groupId);
             // Phase 4C1: turning ON (whether a fresh 1/3-2/3 init or
             // restoring prior positions) always needs a fresh instantaneous
             // value fetch -- one batched request per source with displayed
-            // analog channels (section 8), immediate/unthrottled since this
-            // is a discrete action, not a drag.
-            wwFetchAllCursorValues();
+            // analog channels belonging to THIS group, immediate/
+            // unthrottled since this is a discrete action, not a drag.
+            wwFetchAllCursorValuesForGroup(groupId);
         }
 
-        // Section 22: an individual cursor's own × -- hides ONLY that
-        // cursor (visible: false, time untouched) and never touches
-        // ww.measurementCursors.enabled or the other cursor.
-        function wwSetMeasurementCursorVisible(kind, visible) {
-            const cursor = ww.measurementCursors[kind];
+        // Section 22: an individual cursor's own x -- hides ONLY that
+        // cursor (visible: false, time untouched) and never touches this
+        // group's own `enabled` flag or the other cursor, and never
+        // touches any OTHER group's cursor state.
+        function wwSetMeasurementCursorVisible(groupId, kind, visible) {
+            const cursors = wwEnsureTimeGroupCursorStateEntry(groupId);
+            const cursor = cursors[kind];
             if (!cursor) return;
             cursor.visible = !!visible;
-            wwUpdateCursorOverlay();
+            wwUpdateCursorOverlayForGroup(groupId);
             // Phase 4C1 (section 16/35): closing a cursor clears only ITS
-            // OWN cached values (never the other cursor's); no new fetch is
-            // needed here -- nothing about the remaining cursor's own time
-            // changed. Re-showing it (OFF->ON cycling the whole mode, the
-            // only current path per wwToggleMeasurementCursors()'s own
-            // comment) already triggers a fresh fetch on its own.
-            if (!cursor.visible) wwCursorValuesHandleCursorClosed(kind);
+            // OWN cached values (never the other cursor's, never another
+            // group's); no new fetch is needed here -- nothing about the
+            // remaining cursor's own time changed. Re-showing it (OFF->ON
+            // cycling the whole mode, the only current path per
+            // wwToggleMeasurementCursors()'s own comment) already
+            // triggers a fresh fetch on its own.
+            if (!cursor.visible) wwCursorValuesHandleCursorClosedForGroup(groupId, kind);
         }
 
-        // Section 25: called only from the one place ww.viewport is reset
-        // to a genuinely fresh value (wwRefreshWorkspaceBounds()'s own
-        // `resetViewport` branch -- a new source selection, the first
-        // viewport ever established, or source bounds that actually
-        // changed). Reinitializes ONLY if cursor mode is currently
-        // enabled, using the freshly-resolved ww.viewport -- stale A/B
-        // times from a previous recording must never silently carry over
-        // into a different one (section 25's own explicit requirement).
-        // Layout-mode switches, zoom/pan, and re-selecting the SAME
-        // already-open source never call this (section 17: engineering
-        // cursor time is otherwise always preserved, only its pixel
-        // projection is recomputed).
-        function wwReinitCursorsForNewViewport() {
-            if (!ww.measurementCursors.enabled) return;
-            wwInitMeasurementCursorPositions();
-            ww.measurementCursors.a.visible = true;
-            ww.measurementCursors.b.visible = true;
-            // Phase 4C1 (section 36): cursor engineering time just moved
-            // to the new source's own 1/3-2/3 -- any still-displayed
-            // channel (this source's own, once it has channels shown, or
-            // another still-participating source's) needs its Cur A/Cur B
-            // recomputed for the new times; never retain the previous
-            // source's own numbers. A no-op if nothing is displayed yet
-            // (the common case right after a genuinely new, default-hidden
-            // source-open -- section 53).
-            wwFetchAllCursorValues();
-        }
-
-        // Section 24: "Start New Workspace" is the one place cursor state
-        // resets completely (unlike the plain "Clear workspace" button,
-        // which keeps the still-selected source's bounds/viewport and
-        // therefore deliberately leaves cursor state alone -- see this
-        // function's own two call sites in wwClearWorkspace()).
-        function wwResetMeasurementCursors() {
-            ww.measurementCursors.enabled = false;
-            ww.measurementCursors.a = { visible: true, time: null };
-            ww.measurementCursors.b = { visible: true, time: null };
-            // Phase 4C1 (section 35): "Start New Workspace" is one of the
-            // explicit clear points for cached channel values too -- never
-            // let a previous recording's Cur A/Cur B numbers persist into
-            // a brand-new workspace.
-            ww.cursorValues.clear();
-            // Phase 4C2 (section 32): same clear point for digital A/B
-            // states.
-            ww.digitalCursorValues.clear();
-        }
+        // TG-D2: wwReinitCursorsForNewViewport()/wwResetMeasurementCursors()
+        // (the original single-cursor "reset on a fresh viewport" and
+        // "Start New Workspace" helpers) are RETIRED this slice -- their
+        // own job is now fully covered by the topology-driven pruning
+        // already established for every other per-group Map
+        // (ww.rulerReadyByGroup/ww.digitalChartReadyByGroup/
+        // ww.digitalClickWiredByGroup/ww.zoomStepAxisByGroup): a group
+        // whose canvas is destroyed (last channel removed, a merge/split
+        // changes its own id, or "Clear workspace"/"Start New Workspace"
+        // tears down every canvas at once) has its
+        // ww.timeGroupCursorState entry pruned/cleared right alongside
+        // those -- see wwSyncTimeGroupCanvases()'s own pruning loop and
+        // wwClearWorkspace()'s own unconditional cleanup. A group whose
+        // id survives unchanged (re-opening the SAME already-loaded
+        // source, or a bounds recalculation that is not a topology
+        // change) correctly keeps its own existing cursor state, per the
+        // task's own approved policy ("Ambiguous Time-Group analysis
+        // state resets when Time Group topology changes" -- not on every
+        // viewport refresh). This is a deliberate behavior refinement
+        // from the pre-TG-D2 single-cursor era (documented in this
+        // slice's own final report), not an oversight.
 
         // ==================================================================
         // Phase 4C1: instantaneous Cur A / Cur B values (DEC-040)
@@ -17969,8 +18260,16 @@
         // wwCursorValuesHandleCursorClosed()/wwClearWorkspace()) as
         // defense in depth, never relied on alone.
         function wwCurValueText(sourceId, channelName, kind) {
-            if (!ww.measurementCursors.enabled) return "—";
-            const cursor = ww.measurementCursors[kind];
+            // TG-D2 (task section 12): a channel's own Cur A/Cur B value
+            // must use ITS OWN OWNING Time Group's cursor state -- never
+            // one workspace-global cursor pair. A channel whose source
+            // does not currently resolve to any Time Group (not yet
+            // synchronized) has nothing valid to read.
+            const groupId = wwTimeGroupIdForDisplaySourceId(sourceId);
+            if (groupId === null) return "—";
+            const cursors = wwTimeGroupCursorState(groupId);
+            if (!cursors.enabled) return "—";
+            const cursor = cursors[kind];
             if (!cursor || !cursor.visible || !Number.isFinite(cursor.time)) return "—";
             if (!wwIsAnalogChannelVisible(sourceId, channelName)) return "—";
             const entry = ww.cursorValues.get(wwChannelKey(sourceId, channelName));
@@ -18055,8 +18354,13 @@
         // formatted/decorated string -- wwDigitalCurBadgeHtml() adds the
         // "A:"/"B:" labels.
         function wwDigitalCurStateText(sourceId, channelName, kind) {
-            if (!ww.measurementCursors.enabled) return "—";
-            const cursor = ww.measurementCursors[kind];
+            // TG-D2: same per-owning-group resolution as wwCurValueText()'s
+            // own analog equivalent.
+            const groupId = wwTimeGroupIdForDisplaySourceId(sourceId);
+            if (groupId === null) return "—";
+            const cursors = wwTimeGroupCursorState(groupId);
+            if (!cursors.enabled) return "—";
+            const cursor = cursors[kind];
             if (!cursor || !cursor.visible || !Number.isFinite(cursor.time)) return "—";
             if (!wwIsDigitalChannelVisible(sourceId, channelName)) return "—";
             const entry = ww.digitalCursorValues.get(wwChannelKey(sourceId, channelName));
@@ -18116,38 +18420,62 @@
             for (const name of channelNames) ww.digitalCursorValues.delete(wwChannelKey(sourceId, name));
         }
 
-        // Section 35: cursor mode OFF clears the whole cache (not just the
-        // display) and invalidates every in-flight request's generation
-        // (below) so a slow response that lands AFTER the user disabled
-        // cursor mode can never silently repopulate it. Phase 4C2:
-        // extended to also clear digital state -- ONE shared generation
-        // counter per source already guards both analog and digital
-        // (they are fetched together, see wwFetchCursorValuesForSource()),
-        // so only the cache-clear + redraw calls needed doubling here.
-        function wwCursorValuesHandleModeDisabled() {
-            ww.cursorValues.clear();
-            ww.digitalCursorValues.clear();
-            for (const sourceId of wwCursorValuesGeneration.keys()) {
+        // TG-D2: every source (analog- or digital-displayed) currently
+        // resolving to `groupId` -- the shared basis for both functions
+        // below, so a group's own mode-disable/cursor-close action only
+        // ever touches ITS OWN participating sources' cached values,
+        // never another group's.
+        function wwSourceIdsForTimeGroup(groupId) {
+            const ids = new Set();
+            for (const sourceId of wwDisplayedAnalogSourceIds()) {
+                if (wwTimeGroupIdForDisplaySourceId(sourceId) === groupId) ids.add(sourceId);
+            }
+            for (const sourceId of wwDisplayedDigitalSourceIds()) {
+                if (wwTimeGroupIdForDisplaySourceId(sourceId) === groupId) ids.add(sourceId);
+            }
+            return ids;
+        }
+
+        // TG-D2: cursor mode OFF for `groupId` clears ONLY that group's
+        // own cached values (not the whole workspace cache) and
+        // invalidates only THAT group's own sources' in-flight request
+        // generations, so a slow response that lands AFTER the user
+        // disabled cursor mode for Group 1 can never silently repopulate
+        // it, while Group 2's own still-enabled cursor cache is
+        // completely untouched. The sidebar redraw itself still sweeps
+        // every rendered row (wwCurValueText()/wwDigitalCurStateText()
+        // each independently resolve their own owning group and
+        // correctly show "—" only for the affected one) -- a full sweep
+        // is cheap and this is a discrete, rare action, not a drag hot
+        // path.
+        function wwCursorValuesHandleModeDisabledForGroup(groupId) {
+            for (const sourceId of wwSourceIdsForTimeGroup(groupId)) {
+                wwClearCursorValuesForChannels(sourceId, wwDisplayedAnalogChannelNamesForSource(sourceId));
+                wwClearDigitalCursorValuesForChannels(sourceId, wwDisplayedDigitalChannelNamesForSource(sourceId));
                 wwCursorValuesGeneration.set(sourceId, (wwCursorValuesGeneration.get(sourceId) || 0) + 1);
             }
             wwUpdateAllCursorValueCells();
             wwUpdateAllDigitalCursorBadges();
         }
 
-        // Section 16/35: closing A (or B) individually clears only THAT
-        // cursor's own values from every cached entry -- the other
-        // cursor's own numbers are untouched, matching
-        // wwSetMeasurementCursorVisible()'s own "never touch the other
-        // cursor" contract exactly. Phase 4C2: same treatment for digital
-        // state.
-        function wwCursorValuesHandleCursorClosed(kind) {
-            for (const entry of ww.cursorValues.values()) {
-                if (kind === "a") entry.aValue = null;
-                else entry.bValue = null;
-            }
-            for (const entry of ww.digitalCursorValues.values()) {
-                if (kind === "a") entry.aState = null;
-                else entry.bState = null;
+        // TG-D2: closing A (or B) individually for `groupId` clears only
+        // THAT cursor's own values, only for THAT group's own
+        // participating sources -- the other cursor's own numbers, and
+        // every OTHER group's own cached values, are untouched.
+        function wwCursorValuesHandleCursorClosedForGroup(groupId, kind) {
+            for (const sourceId of wwSourceIdsForTimeGroup(groupId)) {
+                for (const name of wwDisplayedAnalogChannelNamesForSource(sourceId)) {
+                    const entry = ww.cursorValues.get(wwChannelKey(sourceId, name));
+                    if (!entry) continue;
+                    if (kind === "a") entry.aValue = null;
+                    else entry.bValue = null;
+                }
+                for (const name of wwDisplayedDigitalChannelNamesForSource(sourceId)) {
+                    const entry = ww.digitalCursorValues.get(wwChannelKey(sourceId, name));
+                    if (!entry) continue;
+                    if (kind === "a") entry.aState = null;
+                    else entry.bState = null;
+                }
             }
             wwUpdateAllCursorValueCells();
             wwUpdateAllDigitalCursorBadges();
@@ -18205,12 +18533,18 @@
         // (section 15/16/53) -- the three conditions this whole feature
         // must never fetch under.
         async function wwFetchCursorValuesForSource(sourceId) {
-            if (!ww.measurementCursors.enabled) return;
+            // TG-D2: THIS source's own OWNING Time Group's cursor state --
+            // never the old single global ww.measurementCursors. A source
+            // that doesn't currently resolve to any Time Group has
+            // nothing valid to fetch against.
+            const groupId = wwTimeGroupIdForDisplaySourceId(sourceId);
+            if (groupId === null) return;
+            const cursors = wwTimeGroupCursorState(groupId);
+            if (!cursors.enabled) return;
             const analogNames = wwDisplayedAnalogChannelNamesForSource(sourceId);
             const digitalNames = wwDisplayedDigitalChannelNamesForSource(sourceId);
             if (analogNames.length === 0 && digitalNames.length === 0) return;
 
-            const cursors = ww.measurementCursors;
             const aTime = cursors.a.visible && Number.isFinite(cursors.a.time) ? cursors.a.time : null;
             const bTime = cursors.b.visible && Number.isFinite(cursors.b.time) ? cursors.b.time : null;
             if (aTime === null && bTime === null) return;
@@ -18327,206 +18661,50 @@
             wwUpdateDigitalCursorBadgesForChannels(sourceId, digitalNames);
         }
 
-        // Section 32 (Phase 4C1)/17 (Phase 4C2): every source with at
-        // least one displayed analog OR digital channel gets its OWN
-        // batched request -- never merged across sources. Called on:
-        // cursor mode enabled, a channel becomes newly displayed (single
-        // row or group Show all, either kind), and the throttled/final
-        // drag paths below.
-        function wwFetchAllCursorValues() {
-            if (!ww.measurementCursors.enabled) return;
-            const sourceIds = new Set([...wwDisplayedAnalogSourceIds(), ...wwDisplayedDigitalSourceIds()]);
-            for (const sourceId of sourceIds) wwFetchCursorValuesForSource(sourceId);
+        // TG-D2: every source with at least one displayed analog OR
+        // digital channel, RESTRICTED to `groupId`'s own participating
+        // sources, gets its OWN batched request -- never merged across
+        // sources, and never reaching into another group's own sources.
+        // Called on: cursor mode enabled for this group, a channel
+        // belonging to this group becomes newly displayed, and the
+        // throttled/final drag paths below.
+        function wwFetchAllCursorValuesForGroup(groupId) {
+            const cursors = wwTimeGroupCursorState(groupId);
+            if (!cursors.enabled) return;
+            for (const sourceId of wwSourceIdsForTimeGroup(groupId)) wwFetchCursorValuesForSource(sourceId);
         }
 
-        // Section 22: a leading+trailing throttle (~50ms, inside the
-        // owner's own suggested 30-60ms window) -- fires immediately on
-        // the first call for a responsive feel, then coalesces any further
+        // A leading+trailing throttle (~50ms) -- fires immediately on the
+        // first call for a responsive feel, then coalesces any further
         // calls that arrive before the window elapses into exactly ONE
         // trailing call carrying the LATEST cursor position, rather than
         // flooding the backend with one request per raw pointermove
         // (which can fire far faster than 50ms). The cursor's own visual
         // position/DOM geometry is never throttled -- only this backend
-        // measurement fetch -- see wwWireCursorDrag()'s own onPointerMove,
-        // which still calls livePositionUpdate() unthrottled every move.
-        let wwCursorValuesThrottleTimer = null;
-        let wwCursorValuesThrottlePending = false;
+        // measurement fetch -- see wwWireTimeGroupCursorOverlay()'s own
+        // onPointerMove, which still calls livePositionUpdate()
+        // unthrottled every move. TG-D2: ONE throttle timer PER GROUP
+        // (Map<groupId, timerId>/Map<groupId, bool>) -- a fast drag in
+        // Group 1 must never coalesce with (or delay) a simultaneous drag
+        // in Group 2.
+        const wwCursorValuesThrottleTimers = new Map();
+        const wwCursorValuesThrottlePending = new Map();
         const WW_CURSOR_VALUES_THROTTLE_MS = 50;
-        function wwScheduleCursorValuesRefresh() {
-            if (!ww.measurementCursors.enabled) return;
-            if (wwCursorValuesThrottleTimer !== null) {
-                wwCursorValuesThrottlePending = true;
+        function wwScheduleCursorValuesRefreshForGroup(groupId) {
+            const cursors = wwTimeGroupCursorState(groupId);
+            if (!cursors.enabled) return;
+            if (wwCursorValuesThrottleTimers.has(groupId)) {
+                wwCursorValuesThrottlePending.set(groupId, true);
                 return;
             }
-            wwFetchAllCursorValues();
-            wwCursorValuesThrottleTimer = setTimeout(() => {
-                wwCursorValuesThrottleTimer = null;
-                if (wwCursorValuesThrottlePending) {
-                    wwCursorValuesThrottlePending = false;
-                    wwScheduleCursorValuesRefresh();
+            wwFetchAllCursorValuesForGroup(groupId);
+            wwCursorValuesThrottleTimers.set(groupId, setTimeout(() => {
+                wwCursorValuesThrottleTimers.delete(groupId);
+                if (wwCursorValuesThrottlePending.get(groupId)) {
+                    wwCursorValuesThrottlePending.delete(groupId);
+                    wwScheduleCursorValuesRefreshForGroup(groupId);
                 }
-            }, WW_CURSOR_VALUES_THROTTLE_MS);
-        }
-
-        // Section 13/14/38: pointer-capture drag on either the wide
-        // invisible hit strip or the top label -- both share the same
-        // handler via `data-cursor-drag`. Plot metrics are measured ONCE
-        // at pointerdown and reused for the whole gesture (section 38:
-        // "lightweight... prefer DOM/CSS updates," not a
-        // wwCursorPlotMetrics() call, itself just a couple of cheap
-        // getBoundingClientRect() reads, on every single pointermove --
-        // still correct because nothing that would change plot geometry
-        // can happen mid-drag, this function never touches ww.viewport/
-        // panels/layout, section 13's own explicit requirement). Only
-        // ww.measurementCursors[kind].time changes; wwUpdateCursorOverlay()
-        // is deliberately NOT called on every move (would re-measure
-        // metrics and touch every surface) -- pointerup does one final
-        // full pass instead, exactly the same "cheap during drag, one
-        // authoritative pass at the end" shape wwWireResizeHandle() already
-        // established for panel-height dragging.
-        function wwWireCursorDrag() {
-            const overlayEl = document.getElementById("wwCursorOverlay");
-            const labelLayerEl = document.getElementById("wwCursorLabelLayer");
-            if (!overlayEl || !labelLayerEl) return;
-
-            let draggingKind = null;
-            let dragMetrics = null;
-            let dragTarget = null;
-
-            function livePositionUpdate(kind, time) {
-                const overlay = document.getElementById("wwCursorOverlay");
-                // Time Group Canvas: cursor overlay stays primary-group-
-                // scoped this slice -- resolves the PRIMARY canvas's own
-                // ruler segment.
-                const rulerOverlay = wwPrimaryTimeGroupCursorRulerOverlayEl();
-                const labelLayer = document.getElementById("wwCursorLabelLayer");
-                const sectionEl = document.getElementById("viewWaveform");
-                const rulerWrapEl = wwPrimaryTimeGroupRulerWrapEl();
-                if (!overlay || !rulerOverlay || !labelLayer || !sectionEl || !rulerWrapEl) return;
-                const pageX = wwCursorTimeToPixelX(time);
-                if (pageX === null) return;
-                const sectionRect = sectionEl.getBoundingClientRect();
-                const rulerRect = rulerWrapEl.getBoundingClientRect();
-                const lineEl = overlay.querySelector('[data-cursor-line="' + kind + '"]');
-                const rulerLineEl = rulerOverlay.querySelector('[data-cursor-ruler-line="' + kind + '"]');
-                const labelEl = labelLayer.querySelector('[data-cursor-label="' + kind + '"]');
-                if (lineEl) lineEl.style.left = (pageX - sectionRect.left) + "px";
-                if (rulerLineEl) rulerLineEl.style.left = (pageX - rulerRect.left) + "px";
-                // Phase 4B-UAT1: the sticky label follows the same live
-                // pageX every pointermove -- still just a style.left write,
-                // no extra metrics measurement (section 20's own "no
-                // independent horizontal positioning logic" requirement).
-                if (labelEl) labelEl.style.left = (pageX - sectionRect.left) + "px";
-
-                const cursors = ww.measurementCursors;
-                const aShown = cursors.a.visible && Number.isFinite(cursors.a.time);
-                const bShown = cursors.b.visible && Number.isFinite(cursors.b.time);
-                const aEl = document.getElementById("statusBarCursorA");
-                const bEl = document.getElementById("statusBarCursorB");
-                const dEl = document.getElementById("statusBarCursorDelta");
-                if (aEl && kind === "a") aEl.textContent = aShown ? wwFormatCursorPointTime(cursors.a.time) : "—";
-                if (bEl && kind === "b") bEl.textContent = bShown ? wwFormatCursorPointTime(cursors.b.time) : "—";
-                if (dEl) dEl.textContent = aShown && bShown ? wwFormatCursorDuration(cursors.b.time - cursors.a.time) : "—";
-
-                // Owner cosmetic refinement: keep the range band tracking
-                // the dragged edge live too -- the other cursor's own
-                // pixel position is cheap to re-derive (one more
-                // wwCursorTimeToPixelX() call, no metrics re-measure).
-                if (aShown && bShown) {
-                    const otherX = kind === "a" ? wwCursorTimeToPixelX(cursors.b.time) : wwCursorTimeToPixelX(cursors.a.time);
-                    if (otherX !== null) {
-                        const left = Math.min(pageX, otherX);
-                        const width = Math.abs(otherX - pageX);
-                        const rangeEl = overlay.querySelector("[data-cursor-range]");
-                        const rulerRangeEl = rulerOverlay.querySelector("[data-cursor-ruler-range]");
-                        if (rangeEl) {
-                            rangeEl.hidden = false;
-                            rangeEl.style.left = (left - sectionRect.left) + "px";
-                            rangeEl.style.width = width + "px";
-                        }
-                        if (rulerRangeEl) {
-                            rulerRangeEl.hidden = false;
-                            rulerRangeEl.style.left = (left - rulerRect.left) + "px";
-                            rulerRangeEl.style.width = width + "px";
-                        }
-                    }
-                }
-            }
-
-            function onPointerMove(event) {
-                if (!draggingKind || !dragMetrics) return;
-                const time = wwCursorPixelXToTime(event.clientX, dragMetrics);
-                if (time === null) return;
-                ww.measurementCursors[draggingKind].time = time;
-                livePositionUpdate(draggingKind, time);
-                // Phase 4C1 (section 22): the visual line above already
-                // moved at full pointermove speed; the BACKEND measurement
-                // fetch is throttled (~50ms) so a fast drag never floods
-                // the network with one request per raw move.
-                wwScheduleCursorValuesRefresh();
-            }
-
-            function endDrag(event) {
-                if (!dragTarget) return;
-                dragTarget.removeEventListener("pointermove", onPointerMove);
-                dragTarget.removeEventListener("pointerup", endDrag);
-                dragTarget.removeEventListener("pointercancel", endDrag);
-                if (dragTarget.hasPointerCapture && dragTarget.hasPointerCapture(event.pointerId)) {
-                    dragTarget.releasePointerCapture(event.pointerId);
-                }
-                dragTarget = null;
-                draggingKind = null;
-                dragMetrics = null;
-                wwUpdateCursorOverlay(); // one authoritative final pass
-                // Phase 4C1 (section 24): guarantees the sidebar settles to
-                // the exact final A/B time even if the throttle above
-                // skipped the very last pointermove -- immediate, not
-                // throttled.
-                wwFetchAllCursorValues();
-            }
-
-            function onPointerDown(event) {
-                const closeBtn = event.target.closest("[data-cursor-close]");
-                if (closeBtn) {
-                    wwSetMeasurementCursorVisible(closeBtn.getAttribute("data-cursor-close"), false);
-                    return;
-                }
-                const handle = event.target.closest("[data-cursor-drag]");
-                if (!handle) return;
-                if (event.button !== undefined && event.button !== 0) return;
-                const kind = handle.getAttribute("data-cursor-drag");
-                if (!ww.measurementCursors[kind] || !ww.measurementCursors[kind].visible) return;
-                dragMetrics = wwCursorPlotMetrics();
-                if (!dragMetrics) return;
-                draggingKind = kind;
-                dragTarget = handle;
-                if (handle.setPointerCapture) handle.setPointerCapture(event.pointerId);
-                handle.addEventListener("pointermove", onPointerMove);
-                handle.addEventListener("pointerup", endDrag);
-                handle.addEventListener("pointercancel", endDrag);
-                event.preventDefault();
-            }
-
-            function onClick(event) {
-                const closeBtn = event.target.closest("[data-cursor-close]");
-                if (closeBtn) wwSetMeasurementCursorVisible(closeBtn.getAttribute("data-cursor-close"), false);
-            }
-
-            // Phase 4B-UAT1: the drag hit-strip (`.ww-cursor-hit`, inside
-            // #wwCursorOverlay) and the label/close-button (now inside the
-            // SEPARATE sticky #wwCursorLabelLayer, see that element's own
-            // HTML comment) are no longer the same DOM subtree -- the same
-            // two handlers are wired to both, rather than duplicating drag
-            // logic (section 11/12: labels stay draggable, same pointer-
-            // capture/live-update path either way).
-            overlayEl.addEventListener("pointerdown", onPointerDown);
-            labelLayerEl.addEventListener("pointerdown", onPointerDown);
-            // Plain click (not a drag gesture) on the × already fires via
-            // pointerdown above -- also handle a keyboard activation
-            // (Enter/Space) on the close button for accessibility (section
-            // 54), since pointerdown alone never fires for keyboard users.
-            overlayEl.addEventListener("click", onClick);
-            labelLayerEl.addEventListener("click", onClick);
+            }, WW_CURSOR_VALUES_THROTTLE_MS));
         }
 
         // Phase 2C-C3 (section 24): enables/disables each time-mode
@@ -18663,22 +18841,31 @@
             // the SAME reason -- every group's own ruler and digital
             // chart both re-derive their own presentation fresh from
             // wwElapsedToPlotlyX() (now t0-aware) with zero new network
-            // request; wwUpdateCursorOverlay() (A/B readout text, Callout/
-            // Peak reprojection) is reached transitively through both, so
-            // it is not called a third time here.
+            // request; wwUpdateCursorOverlayForGroup() (A/B readout text,
+            // Callout/Peak reprojection) is reached transitively through
+            // both, so it is not called a third time here.
             wwSyncAllTimeGroupRulers();
             wwRebuildAllTimeGroupDigitalCharts();
         }
 
         // Reflects current t0/Cursor-A state into the toolbar control and
-        // the bottom-status-bar readout -- called from wwUpdateCursorOverlay()
-        // (so Cursor A's own placement/removal immediately updates the
-        // button's enabled state) and after every t0 mutation below.
+        // the bottom-status-bar readout -- called from
+        // wwUpdateCursorOverlayForGroup()'s own primary-group branch (so
+        // the PRIMARY group's Cursor A placement/removal immediately
+        // updates the button's enabled state) and after every t0
+        // mutation below.
         function wwSyncT0Controls() {
             const btn = document.getElementById("wwSetT0Btn");
             if (!btn) return;
             const hasT0 = wwHasT0();
-            const cursors = ww.measurementCursors;
+            // TG-D2 (task section 27): "Set Cursor A as t=0" stays
+            // primary-group-scoped this slice (full per-group t0 is
+            // TG-E) -- reads the PRIMARY group's own Cursor A
+            // specifically, never a single global cursor pair, so this
+            // control's enabled state always reflects the SAME group the
+            // action itself will actually target (wwSetT0FromCursorA()
+            // below, unchanged in its own primary-group scope).
+            const cursors = wwTimeGroupCursorState(wwPrimaryTimeGroupId());
             const cursorAReady = cursors.enabled && cursors.a.visible && Number.isFinite(cursors.a.time);
             btn.setAttribute("aria-pressed", String(hasT0));
             // Never silently uses an arbitrary time (task section 6): the
@@ -18701,14 +18888,16 @@
         }
 
         async function wwSetT0FromCursorA() {
-            const cursors = ww.measurementCursors;
+            // TG-D2: reads the PRIMARY group's own Cursor A specifically
+            // (wwSyncT0Controls()'s own gate already guarantees this
+            // matches whatever the button's enabled state reflected) --
+            // this shared toolbar action targets the PRIMARY time group
+            // (see wwPrimaryTimeGroupSourceId()'s own docstring) --
+            // correct and unambiguous for the common single-group
+            // workspace; use Detect Event's own explicit source selection
+            // for a genuinely multi-group workspace instead.
+            const cursors = wwTimeGroupCursorState(wwPrimaryTimeGroupId());
             if (!cursors.enabled || !cursors.a.visible || !Number.isFinite(cursors.a.time)) return;
-            // Time-Group task section 24/25: this shared toolbar action
-            // targets the PRIMARY time group (see
-            // wwPrimaryTimeGroupSourceId()'s own docstring) -- correct
-            // and unambiguous for the common single-group workspace;
-            // use Detect Event's own explicit source selection for a
-            // genuinely multi-group workspace instead.
             const sourceId = wwPrimaryTimeGroupSourceId();
             if (sourceId === null) return;
             let response;
@@ -18878,16 +19067,22 @@
         // readout already use, so it stays consistent with whatever
         // Elapsed/Absolute/event-relative mode is currently active)
         // rather than a bespoke duration format.
-        function wwDetectEventSearchRangeLabel(searchRangeInfo) {
+        function wwDetectEventSearchRangeLabel(searchRangeInfo, groupId) {
             if (!searchRangeInfo || searchRangeInfo.mode !== "visible") return "Full recording";
-            return "Current visible range (" + wwFormatCursorPointTime(searchRangeInfo.workspaceStart) +
-                " to " + wwFormatCursorPointTime(searchRangeInfo.workspaceEnd) + ")";
+            return "Current visible range (" + wwFormatCursorPointTime(searchRangeInfo.workspaceStart, groupId) +
+                " to " + wwFormatCursorPointTime(searchRangeInfo.workspaceEnd, groupId) + ")";
         }
 
         function wwRenderDetectEventResult(view, channelUnit, searchRangeInfo) {
             const resultEl = document.getElementById("wwDetectEventResult");
             const acceptBtn = document.getElementById("wwDetectEventAcceptBtn");
-            const searchRangeLine = '<p class="hint">Search range: ' + escapeHtml(wwDetectEventSearchRangeLabel(searchRangeInfo)) + '</p>';
+            // TG-D2: ww.suggestedEvent.sourceId is already set by the
+            // caller by the time this runs -- its own owning Time Group
+            // is what every wwFormatCursorPointTime() call in this
+            // function's own output should use, never the primary
+            // group's origin by accident.
+            const groupId = wwTimeGroupIdForDisplaySourceId(ww.suggestedEvent.sourceId);
+            const searchRangeLine = '<p class="hint">Search range: ' + escapeHtml(wwDetectEventSearchRangeLabel(searchRangeInfo, groupId)) + '</p>';
             if (!view.found) {
                 resultEl.innerHTML =
                     '<p class="hint">' + escapeHtml(view.reason) + '<br>Use Cursor A to set t=0 manually.</p>' + searchRangeLine;
@@ -18899,7 +19094,7 @@
             const qualityLabel = { strong: "Strong", moderate: "Moderate", weak: "Weak" }[view.quality] || view.quality;
             const directionLabel = view.direction === "decrease" ? "reduction" : "increase";
             resultEl.innerHTML =
-                '<p><strong>Suggested event point:</strong> ' + escapeHtml(wwFormatCursorPointTime(ww.suggestedEvent.workspaceTime)) + '</p>' +
+                '<p><strong>Suggested event point:</strong> ' + escapeHtml(wwFormatCursorPointTime(ww.suggestedEvent.workspaceTime, groupId)) + '</p>' +
                 '<p><strong>Quality:</strong> ' + escapeHtml(qualityLabel) + '</p>' +
                 '<p class="hint">' + escapeHtml(view.reason) + '</p>' +
                 '<p class="hint">Pre-event RMS: ' + wwFormatEngineeringValue(view.baseline_rms) + ' ' + escapeHtml(channelUnit) +
@@ -18913,7 +19108,11 @@
 
         function wwResetDetectEventSuggestion() {
             ww.suggestedEvent = { visible: false, sourceId: null, channelName: null, workspaceTime: null, result: null, groupHasT0: false };
-            wwUpdateCursorOverlay();
+            // TG-D2: the suggestion may have been showing in ANY group's
+            // own overlay (or none) -- a full sweep is the simplest safe
+            // way to guarantee it disappears wherever it was, this is a
+            // rare, discrete action, not a drag hot path.
+            wwUpdateAllCursorOverlays();
         }
 
         function wwOpenDetectEventModal() {
@@ -19050,9 +19249,10 @@
             }
 
             // Task section 13: the candidate is shown on the waveform
-            // (via wwUpdateCursorOverlay()'s own suggested-marker
+            // (via wwUpdateCursorOverlayForGroup()'s own suggested-marker
             // rendering, task section 13/18: workspace time, the SAME
-            // coordinate ww.viewport/wwCursorTimeToPixelX() already use
+            // coordinate its own group's visible range/wwCursorTimeToPixelX()
+            // already use
             // -- never inferred from any displayed label) BEFORE
             // acceptance is even possible (acceptBtn stays disabled for
             // found=false, see wwRenderDetectEventResult()). Unchanged
@@ -19067,7 +19267,12 @@
                 result: view,
                 groupHasT0: groupT0 !== null,
             };
-            wwUpdateCursorOverlay();
+            // TG-D2: a rerun on a DIFFERENT source than last time can move
+            // the suggestion into a different Time Group -- a full sweep
+            // correctly clears the marker from wherever it used to show
+            // and draws it in its own new group, this is a rare, discrete
+            // action, not a drag hot path.
+            wwUpdateAllCursorOverlays();
             wwRenderDetectEventResult(view, view.channel_unit, searchRangeInfo);
         }
 
@@ -19168,13 +19373,14 @@
             if (allChannels.length === 0) {
                 // Phase 4B: no analog panel to rebuild, but a layout-mode
                 // switch can still happen with digital-only display (or
-                // even zero display) -- recompute regardless so a cursor's
-                // pixel projection never goes stale relative to whatever IS
-                // currently rendered (the ruler/digital chart, if either
-                // exists). Cursor TIME itself is never touched by a layout
-                // switch either way (owner clarification: A/B are global
-                // across Grouped/Separate/Custom).
-                wwUpdateCursorOverlay();
+                // even zero display) -- recompute regardless so every
+                // active group's own cursor pixel projection never goes
+                // stale relative to whatever IS currently rendered (the
+                // ruler/digital chart, if either exists). Cursor TIME
+                // itself is never touched by a layout switch either way
+                // (owner clarification: A/B stay stable within one Time
+                // Group across Grouped/Separate/Custom).
+                wwUpdateAllCursorOverlays();
                 return; // nothing displayed yet -- mode is still recorded for the next Add
             }
 
@@ -19244,12 +19450,14 @@
             // and channel colors are stable per-channel (wwColorForChannel()),
             // never per-panel -- so the sidebar's dots/remove-controls
             // never need re-syncing here.
-            // Phase 4B (owner clarification): A/B cursor TIME is global
-            // across Grouped/Separate/Custom -- this function never reads
-            // or writes ww.measurementCursors. Only the overlay's PIXEL
-            // projection needs recomputing here, since every panel's own
-            // plotting-area geometry was just torn down and rebuilt above.
-            wwUpdateCursorOverlay();
+            // Phase 4B (owner clarification), TG-D2: A/B cursor TIME is
+            // stable within its own Time Group across Grouped/Separate/
+            // Custom -- this function never reads or writes
+            // ww.timeGroupCursorState. Only every active group's own
+            // overlay PIXEL projection needs recomputing here, since
+            // every panel's own plotting-area geometry was just torn down
+            // and rebuilt above.
+            wwUpdateAllCursorOverlays();
             // Phase 4D (section 15): every panel object above this line is
             // BRAND NEW -- ww.activePanelGroupKey may no longer name any of
             // them (e.g. a Separate-mode per-channel groupKey has no
@@ -19817,14 +20025,18 @@
         // wiring are removed, not merely hidden, so there is exactly one
         // active way to invoke each of these four actions.
         document.getElementById("clearWorkspaceBtn").addEventListener("click", wwClearWorkspace);
-        // Phase 4B: A/B time measurement cursors.
-        document.getElementById("wwCursorModeBtn").addEventListener("click", wwToggleMeasurementCursors);
+        // TG-D2: A/B time measurement cursors (the button, overlay, and
+        // drag wiring) moved into each Time Group Canvas's own local
+        // toolbar (wwWireTimeGroupCursorOverlay(), called per-canvas from
+        // wwCreateTimeGroupCanvasDom()) -- the old global #wwCursorModeBtn
+        // markup/listener and the old single wwWireCursorDrag() init call
+        // are removed, not merely hidden.
         // Slice 2 of waveform time synchronization: "Set Cursor A as t=0" / "Clear t=0".
         document.getElementById("wwSetT0Btn").addEventListener("click", wwHandleSetOrClearT0Click);
-        wwWireCursorDrag();
         // Phase 4F-UAT (DEC-045 addendum): Callout anchor dragging --
-        // wired once, delegated, same convention as wwWireCursorDrag()
-        // immediately above.
+        // wired once, delegated, the same general pattern the per-canvas
+        // cursor-drag wiring above now also follows (one wiring call per
+        // owning scope).
         wwWireCalloutAnchorDrag();
         // TG-D1: the per-canvas split-button wiring itself now happens
         // in wwWireTimeGroupToolbar() (called from

@@ -8338,6 +8338,201 @@ Impact:
 
 ---
 
+## DEC-061 — TG-D2: Cursor A/B and A-B measurement/information state migrate into each Time Group Canvas, replacing the single workspace-wide cursor pair with one independent pair per Time Group
+
+Date: 2026-08-29
+Status: Approved
+Source: explicit project-owner instruction ("TG-D2 — migrate Cursor
+A/B and A-B measurement/information state into each Time Group
+Canvas"), delivered as the correctness-critical successor to TG-D1's
+navigation-control migration.
+
+Decision:
+
+**Cursor A/B is meaningful only inside one coherent Time Group. No
+cursor state, overlay, value, or A-B measurement may leak across Time
+Group boundaries.** The single `ww.measurementCursors` object is
+replaced by `ww.timeGroupCursorState: Map<groupId, {enabled,
+a:{visible,time}, b:{visible,time}}>`, resolved via the same
+default-vs-mutating resolver pair TG-D1 established for
+`ww.zoomStepAxisByGroup`: `wwTimeGroupCursorState(groupId)` (read-only,
+returns a default for an untouched group, never inserts) and
+`wwEnsureTimeGroupCursorStateEntry(groupId)` (get-or-create, used by
+every write path). Every projection helper
+(`wwCursorPlotMetrics`/`wwCursorTimeToPixelX`/`wwCursorPixelXToTime`)
+now REQUIRES an explicit `groupId` — no hidden fallback to the primary
+group — reading that group's own `wwTimeGroupVisibleRange()` instead
+of the single `ww.viewport`, closing the exact ambiguity the task
+exists to fix (a non-primary canvas's cursor line could previously be
+drawn at the wrong X position using the primary group's own
+viewport).
+
+The Cursor A/B toggle button, the A-B readout (`A`/`B`/`Δt`), and the
+cursor/label/ruler overlay DOM all moved from workspace-wide
+singletons into each `.ww-time-group-canvas` (`.ww-tg-cursor-mode-btn`,
+`.ww-tg-cursor-readout`, `.ww-tg-cursor-overlay`,
+`.ww-tg-cursor-label-layer`), wired once per canvas via
+`wwWireTimeGroupCursorOverlay(canvasEl, groupId)` — merging the former
+`wwEnsureCursorDom()` + `wwWireCursorDrag()` into one per-canvas
+function with its own closure-scoped drag state (zero shared mutable
+state between groups). The former single ~230-line
+`wwUpdateCursorOverlay()` became `wwUpdateCursorOverlayForGroup(groupId)`
+plus a thin `wwUpdateAllCursorOverlays()` batch wrapper (mirroring
+`wwSyncAllTimeGroupRulers()`'s established convention) — every call
+site with a specific group already in scope (drag handlers, panel
+resize, ruler/digital sync) calls the per-group function directly;
+only genuinely workspace-wide triggers (full resize, layout-mode
+rebuild, Detect Event suggestion changes) call the batch sweep, per
+the task's own performance requirement that one group's cursor
+movement must never touch an unrelated group's canvas. The sidebar's
+existing "Cur A"/"Cur B" per-channel value columns stay in their
+existing location (not moved — only the A-B readout itself moved) but
+`wwCurValueText()`/`wwDigitalCurStateText()` now resolve each
+channel's own OWNING Time Group via `wwTimeGroupIdForDisplaySourceId()`
+before reading cursor state — the core fix for the task's own
+channel-value cross-group-leakage concern.
+
+**State lifecycle changed from viewport-driven to topology-driven**:
+the former `wwReinitCursorsForNewViewport()` (reset on any fresh
+viewport, even within a still-existing group) and
+`wwResetMeasurementCursors()` (Start New Workspace only) are both
+retired outright. Per-group cursor state now lives and dies with the
+same topology-change lifecycle already proven for
+`ww.rulerReadyByGroup`/`ww.digitalChartReadyByGroup`/
+`ww.digitalClickWiredByGroup`/`ww.zoomStepAxisByGroup`: pruned in
+`wwSyncTimeGroupCanvases()`'s per-group prune loop and its
+zero-active-groups branch, and cleared unconditionally by
+`wwClearWorkspace()` for BOTH "Clear workspace" and "Start New
+Workspace" (a deliberate behavior change from the pre-TG-D2 era, where
+plain "Clear workspace" left the single global cursor pair alone —
+every canvas, and therefore every group's own overlay DOM, is torn
+down by either action alike, so starting each surviving group's own
+cursor state clean is the correct, honest behavior rather than
+silently reusing now-pixel-stale state).
+
+"Set Cursor A as t=0" stays explicitly primary-group-scoped this
+slice (t0 itself remains deferred to TG-E): `wwSyncT0Controls()`/
+`wwSetT0FromCursorA()` now read
+`wwTimeGroupCursorState(wwPrimaryTimeGroupId())` — byte-identical
+behavior for the common single-group case, and a documented,
+intentional scope limit for a genuinely multi-group workspace
+(consistent with the already-established primary-group-only
+precedent DEC-057/058/059/060 set for other still-deferred
+cross-cutting features). Detect Event's "Suggested event" preview
+marker (which shares the same overlay rendering code) is narrowly
+adapted to derive its own owning group from
+`ww.suggestedEvent.sourceId` — a minimal scoping fix, not a Detect
+Event feature change (unmigrated, per the task's own explicit
+non-goal). Annotation reprojection
+(`wwAnchoredAnnotationPagePosition()`) now passes
+`wwPrimaryTimeGroupId()` explicitly to the now-required-groupId
+`wwCursorTimeToPixelX()` — preserving its pre-existing primary-group-
+only behavior byte-for-byte (annotations are unmigrated, an explicit
+non-goal). The former global bottom-status-bar `#wwCursorReadout`
+(`A`/`B`/`Δt`) is removed outright — it would otherwise show whichever
+group was clicked last with no indication of which, exactly the
+ambiguity this task exists to eliminate.
+
+Reason:
+
+The task's own governing correctness problem: a single workspace-wide
+`ww.measurementCursors` pair, combined with a primary/global viewport
+projection, could draw a cursor line at the wrong X position on a
+non-primary canvas in a multi-group workspace — silently wrong
+analysis, not merely a cosmetic gap (unlike TG-D1's four navigation
+controls, explicitly called out by the task as "correctness-critical"
+for this reason).
+
+Alternatives considered:
+
+- Keeping one hidden global cursor pair underneath multiple canvases
+  (e.g. only changing which canvas visually renders it) — explicitly
+  rejected by the task's own target-state model (section 3): each
+  group must own its own completely independent pair, not share one
+  hidden pair.
+- Migrating "Set Cursor A as t=0" to be genuinely per-group this same
+  slice — rejected per the task's own explicit deferral (section 27);
+  the existing primary-group-only read is the smallest safe,
+  unambiguous interim behavior, clearly disclosed rather than silently
+  left inconsistent.
+- Resetting cursor state on every viewport change (preserving the old
+  `wwReinitCursorsForNewViewport()` behavior) — rejected: superseded by
+  the already-proven topology-based prune/default mechanism, which is
+  strictly more correct (a fresh-viewport recalculation within the
+  SAME still-existing group no longer needlessly discards a placed
+  cursor).
+
+Impact:
+
+- `frontend/index.html` only (no backend/schema/API changes). New:
+  `wwTimeGroupCursorState()`, `wwEnsureTimeGroupCursorStateEntry()`,
+  `wwAnyTimeGroupCursorsEnabled()`, `wwWireTimeGroupCursorOverlay()`,
+  `wwUpdateCursorOverlayForGroup()`, `wwUpdateAllCursorOverlays()`,
+  `wwSourceIdsForTimeGroup()`,
+  `wwCursorValuesHandleModeDisabledForGroup()`,
+  `wwCursorValuesHandleCursorClosedForGroup()`,
+  `wwFetchAllCursorValuesForGroup()`,
+  `wwScheduleCursorValuesRefreshForGroup()`. Generalized in place to
+  require `groupId`: `wwCursorPlotMetrics()`, `wwCursorTimeToPixelX()`,
+  `wwCursorPixelXToTime()`, `wwFormatCursorPointTime()`,
+  `wwInitMeasurementCursorPositions()`, `wwToggleMeasurementCursors()`,
+  `wwSetMeasurementCursorVisible()`, `wwCurValueText()`,
+  `wwDigitalCurStateText()`, `wwFetchCursorValuesForSource()`,
+  `wwDetectEventSearchRangeLabel()`. `ww.timeGroupCursorState` replaces
+  the old flat `ww.measurementCursors`;
+  `wwCursorValuesThrottleTimers`/`wwCursorValuesThrottlePending` became
+  per-group `Map`s. Removed outright:
+  `wwReinitCursorsForNewViewport()`, `wwResetMeasurementCursors()`, the
+  old global `#wwCursorModeBtn`/`#wwCursorOverlay`/
+  `#wwCursorLabelLayer`/`#wwCursorReadout` HTML and their init-time
+  wiring, and 5 now-dead `wwPrimaryTimeGroup*El()` helpers that existed
+  only to support the former primary-only overlay.
+- Verified by the full backend suite (1606 passed before this task's
+  own new tests; 9 pre-existing frontend static-regression tests
+  across `test_frontend_detect_event.py` (5),
+  `test_frontend_per_unit_mode.py` (1),
+  `test_frontend_synchronization.py` (1), and
+  `test_frontend_synchronization_t0.py` (2) updated for the renamed/
+  regrouped functions; 41 new tests in
+  `test_frontend_time_group_cursors.py` covering the task's own
+  required cases — final suite: 1647 passed, 0 failed) plus a live-
+  browser Playwright UAT pass against a running backend covering two
+  genuinely separate Time Groups (non-overlapping absolute time,
+  forced via a second synthetic fixture an hour apart): one group's
+  cursor mode enabled/placed/zoomed with Δt verified stable across a
+  zoom-then-reset cycle, a second group confirmed OFF by default with
+  no readout, enabled independently with different A/B values,
+  Group 1 confirmed byte-for-byte unaffected throughout (both
+  directions), a Grouped/Separate layout-mode round trip confirmed
+  Group 1's cursor readout survived, and zero console/page errors
+  throughout.
+- **Pre-existing bug discovered during this task's UAT, NOT introduced
+  by and NOT fixed by this task (out of scope — unrelated to cursor
+  state)**: with two Time Groups present, switching layout mode
+  (Grouped → Separate → Grouped) leaves a non-primary group's own
+  analog-panel X-axis TICK LABELS showing the PRIMARY group's Absolute-
+  time origin, even though that panel's own header, trace color, and
+  data stay correctly matched to its own group — confirmed
+  independently reproducible on unmodified `HEAD` (i.e. before any
+  TG-D2 change), root-caused to `wwBuildLayout()` (called from
+  `wwRebuildLayout()`'s panel-recreation loop) computing its tick
+  format from the single global `ww.viewport` with no `groupId`
+  parameter, unlike `wwSetTimeMode()`/`wwApplyT0ToDisplay()` which
+  already correctly resolve each panel's own group. Reported here per
+  the project's own change-governance requirement rather than silently
+  fixed inside a cursor-scoped task; a future slice should pass each
+  panel's own `wwPanelTimeGroupId(panel)` into `wwBuildLayout()`'s tick
+  computation.
+- **Deferred, per the task's own explicit non-goals**: per-group t0 UI
+  (t0 itself stays primary-group-scoped), Detect Event migration,
+  Synchronise Sources migration, cross-group cursor comparison
+  (deliberately prohibited by this task's own design, not merely
+  unimplemented), annotation redesign, collapse behavior, CSV/Excel,
+  clock correction, and new cursor math/analysis features all remain
+  unimplemented/unchanged from before this task.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

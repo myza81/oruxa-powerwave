@@ -4,7 +4,27 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-29** (Phase 22 — TG-D1: staged Zoom
+Last meaningful update: **2026-08-29** (Phase 23 — TG-D2: Cursor A/B
+and the A-B measurement/information readout are now migrated into each
+Time Group Canvas — each Time Group owns a completely independent
+cursor pair (`ww.timeGroupCursorState`, replacing the single workspace-
+wide `ww.measurementCursors`), its own toggle button, its own overlay/
+label/ruler DOM, and its own A-B readout; every cursor-time-to-pixel
+projection now requires an explicit `groupId`, closing the specific
+correctness gap where a non-primary canvas's cursor line could be
+drawn using the primary group's own viewport. Cursor state lifecycle
+changed from viewport-driven resets to the same topology-driven prune/
+clear policy already proven for the other per-group Maps (a plain
+"Clear workspace" now also clears cursor state, a deliberate change
+from the pre-TG-D2 era). t0, Detect Event, and Synchronise Sources
+remain workspace-global/primary-scoped, deliberately deferred to later
+slices; a pre-existing, unrelated Absolute-time axis-tick-label bug
+(non-primary group's panel ticks show the primary group's origin after
+a layout-mode round trip) was discovered during this task's own UAT
+and reported, not fixed, since it predates this task and is out of its
+scope — see
+[DECISIONS.md — DEC-061](DECISIONS.md#dec-061--tg-d2-cursor-ab-and-a-b-measurementinformation-state-migrate-into-each-time-group-canvas-replacing-the-single-workspace-wide-cursor-pair-with-one-independent-pair-per-time-group)
+and [HANDOFF.md](HANDOFF.md), on top of Phase 22 — TG-D1: staged Zoom
 In/Zoom Out, Reset Time View, and Autoscale Y are now migrated into
 each Time Group Canvas's own local navigation toolbar — genuinely
 Time-Group-scoped, never affecting an unrelated group; the former

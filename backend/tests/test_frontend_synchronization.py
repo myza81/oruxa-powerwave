@@ -66,7 +66,7 @@ def test_analog_waveform_fetch_converts_request_and_shifts_response():
 def test_cursor_values_fetch_converts_request_and_shifts_sample_time_echo():
     source = _source()
     fn_idx = source.index("async function wwFetchCursorValuesForSource(sourceId)")
-    fn_body = source[fn_idx : source.index("// Section 32 (Phase 4C1)/17 (Phase 4C2)", fn_idx)]
+    fn_body = source[fn_idx : source.index("function wwFetchAllCursorValuesForGroup(groupId)", fn_idx)]
     assert "wwWorkspaceTimeToSourceTime(sourceId, aTime)" in fn_body
     assert "wwWorkspaceTimeToSourceTime(sourceId, bTime)" in fn_body
     assert "cursor_a_time: nativeATime" in fn_body
