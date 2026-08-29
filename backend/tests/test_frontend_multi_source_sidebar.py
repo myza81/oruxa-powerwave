@@ -233,13 +233,14 @@ def test_sync_badge_refreshes_live_when_an_offset_changes():
     Synchronize Sources modal) does not itself rebuild the sidebar tree,
     so without a dedicated patch step the sidebar's own sync badge would
     silently go stale until some unrelated event rebuilt the whole tree.
-    wwSyncApplyOffsetChangeSideEffects() must call a targeted patch, not
-    a full wwRenderWorkspaceRecordings() rebuild (which would also reset
-    the engineer's own expand/collapse state and the search box)."""
+    wwSyncApplyOffsetChangeSideEffectsForGroup() must call a targeted
+    patch, not a full wwRenderWorkspaceRecordings() rebuild (which would
+    also reset the engineer's own expand/collapse state and the search
+    box)."""
     source = _source()
     assert "function wwRefreshSourceSyncBadges()" in source
     effects_body = _function_body(
-        source, "async function wwSyncApplyOffsetChangeSideEffects()", "function wwRefreshSourceSyncBadges"
+        source, "async function wwSyncApplyOffsetChangeSideEffectsForGroup(groupId)", "function wwRefreshSourceSyncBadges"
     )
     assert "wwRefreshSourceSyncBadges();" in effects_body
     assert "await wwRenderWorkspaceRecordings(" not in effects_body

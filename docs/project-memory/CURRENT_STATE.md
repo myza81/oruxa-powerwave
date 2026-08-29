@@ -4,7 +4,31 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-29** (Phase 24 — TG-E: t0 is now
+Last meaningful update: **2026-08-29** (Phase 25 — TG-F: Synchronise
+Sources is now local to each Time Group Canvas
+(`.ww-tg-sync-btn`, replacing the former global `#wwSyncBtn`) — the
+shared modal shell (`#wwSyncOverlay`) stays one reusable overlay but is
+now opened with an explicit `groupId` (`wwOpenSyncModal(groupId)`,
+never inferred) and lists only that group's own member sources
+(`wwSourcesForTimeGroup(groupId, sources)`). Audited and confirmed
+Time Group membership is derived exclusively from each source's own
+raw recorded timestamp/elapsed bounds — `list_time_groups()` cannot
+even read the manual-offset registry, so a manual correction is
+architecturally unable to redefine group membership; this invariant is
+now locked in by an explicit regression test
+(`test_time_grouping_service.py::TestManualSynchronizationNeverRedefinesTimeGroupMembership`).
+"Reset All" is now scoped to the launching Time Group only, reusing the
+existing per-source DELETE endpoint in a loop rather than widening the
+backend (no backend/schema/API changes this slice at all). Offset-
+change side effects (waveform refetch, digital rebuild, cursor-value
+refresh) are now targeted to the affected group only, not a workspace-
+wide sweep. Reference-source semantics were already correctly
+per-group (DEC-057) and needed no changes. Detect Event, Synchronise
+Sources' own manual-correction/timestamp-placement separation, cursor/
+t0 isolation, and the DEC-061 pre-existing Absolute-axis bug all remain
+exactly as TG-E left them — see
+[DECISIONS.md — DEC-063](DECISIONS.md#dec-063--tg-f-synchronise-sources-becomes-local-to-each-time-group-canvas-with-manual-alignment-strictly-confined-to-the-launching-time-group-and-never-redefining-canonical-time-group-membership)
+and [HANDOFF.md](HANDOFF.md), on top of Phase 24 — TG-E: t0 is now
 genuinely Time-Group-scoped throughout the frontend, mirroring the
 backend's own already-group-keyed truth (`ww.timeGroupT0State: Map<groupId,
 t0>` replaces the single `ww.t0WorkspaceTime` scalar) — each Time Group

@@ -244,7 +244,7 @@ class TestSyncModalManualVsTimestampPlacementSplit:
     def test_render_body_supplies_manual_and_timestamp_placement_from_their_own_maps(self):
         source = _source()
         fn_idx = source.index("function wwRenderSyncBody(sources)")
-        fn_body = source[fn_idx : source.index("async function wwOpenSyncModal()", fn_idx)]
+        fn_body = source[fn_idx : source.index("async function wwSyncReloadAndRenderForGroup", fn_idx)]
         assert "ww.manualAlignmentOffsets.get(source.source_id) || 0" in fn_body
         assert "wwTimestampPlacementOffsetForSource(source.source_id)" in fn_body
         assert "ww.referenceSourceIds.has(source.source_id)" in fn_body
@@ -271,7 +271,9 @@ class TestResetSemanticsAreManualOnly:
     def test_reset_all_button_label_and_tooltip_clarify_manual_only_scope(self):
         source = _source()
         assert "Reset All Manual Adjustments" in source
-        assert "every source's own manual correction only" in source
+        # TG-F: the tooltip also now makes the Time-Group scope explicit
+        # -- never a workspace-wide reset.
+        assert "every source's own manual correction in this Time Group only" in source
 
 
 class TestT0GroupScopedQuickActions:

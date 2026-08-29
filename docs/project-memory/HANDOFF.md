@@ -8,6 +8,96 @@ Last updated: **2026-08-29**
 
 ## What was most recently done
 
+**Phase 25 — TG-F: per-Time-Group Synchronise Sources.** On top of
+Phase 24 (TG-E) below — see
+[DECISIONS.md — DEC-063](DECISIONS.md#dec-063--tg-f-synchronise-sources-becomes-local-to-each-time-group-canvas-with-manual-alignment-strictly-confined-to-the-launching-time-group-and-never-redefining-canonical-time-group-membership)
+for the full record; summarized here for continuity.
+
+**Audit finding that shaped the whole slice**: Time Group membership
+(`derive_time_groups()`) is fed exclusively by each source's own raw
+recorded `start_time`/elapsed bounds — `list_time_groups()`'s own
+signature never even accepts the synchronization registry as a
+parameter, so a manual offset is structurally unable to influence
+topology, not merely by convention. This was the single most important
+safety property the task depended on, and it was already true; no
+backend change was needed anywhere in this slice.
+
+The former global `#wwSyncBtn` moved into each Time Group Canvas's own
+local toolbar as `.ww-tg-sync-btn`, wired through the same
+`wwWireTimeGroupToolbar(canvasEl, groupId)` every other per-canvas
+control uses. The modal shell (`#wwSyncOverlay`) stays ONE shared
+overlay (never cloned per canvas, same pattern Detect Event's own
+modal established in TG-E), opened via `wwOpenSyncModal(groupId)` —
+REQUIRES an explicit groupId, never `wwPrimaryTimeGroupId()`, never
+inferred from "whichever source was selected most recently." A new
+`wwSyncModalGroupId` module-level variable (mirroring the pre-existing
+`wwMgEditState` convention) tracks which group's own modal is
+currently open; `wwSourcesForTimeGroup(groupId, sources)` filters the
+full workspace source list to that group's own members before the
+modal ever renders them.
+
+**Reset All is now local to the launching Time Group.** The backend's
+own Reset All endpoint (`DELETE .../synchronization/sources`) resets
+every workspace source at once with no group-scoped variant — rather
+than widen the backend (task's own explicit "reuse existing source-
+level API, do not create unnecessary duplicate endpoints"),
+`wwSyncResetAllForGroup(groupId)` loops the group's own known
+`sourceIds` calling the ALREADY-existing per-source `DELETE
+.../sources/{source_id}` endpoint in parallel. Offset-change side
+effects (`wwSyncApplyOffsetChangeSideEffectsForGroup(groupId)`) reuse
+the already-existing, per-channel-filtered
+`wwRefetchChannelsForGroup(groupId, startTime, endTime)` helper (the
+Time Range slider's own established one) plus the already-per-group
+`wwRebuildDigitalChart(groupId)`/`wwSourceIdsForTimeGroup(groupId)` —
+never the workspace-wide batch forms, which stay reserved for
+genuinely global triggers (Time Mode/Unit Mode switch).
+`wwRefreshWorkspaceBounds()` itself was NOT narrowed further (its own
+primary/non-primary viewport entanglement is a separate, pre-existing
+architecture, out of this task's scope per DEC-061's own precedent) —
+it is already effectively self-limiting since a manual offset inside
+one group can only ever change that group's own derived bounds.
+
+Reference-source semantics needed no changes (already correctly
+per-group since DEC-057). A one-source group's local button is never
+disabled (matches the former global button's own always-enabled UX);
+its own reference-only row rendering already produces a clear "nothing
+to synchronise" state automatically.
+
+Verified by the full backend suite (1718 passed, 0 failed — up from
+1688 at TG-E's own end state; 6 pre-existing tests updated; 30 new
+tests in `test_frontend_time_group_sync.py` covering Cases A-T, plus 2
+new backend tests in `test_time_grouping_service.py` locking in the
+topology-safety invariant explicitly) plus a live-browser Playwright
+UAT pass covering the task's own full 26-step scenario: one-source
+reference-only state, a second overlapping source joining the SAME
+canvas, the modal listing exactly that group's own sources, +/-/step/
+Reset all source-scoped, Reset All group-scoped (a second group's own
+manual offset survived untouched), cross-group exclusion confirmed
+both directions, Group 1's own t0 stable across a Sync interaction,
+Cursor A/B independently active in both groups, a layout-mode round
+trip preserving exactly one sync button per canvas, zero console/page
+errors.
+
+**Pre-existing (TG-D2-era) interaction quirk found during UAT, not
+fixed (out of scope)**: the cursor overlay's own hit-area spans the
+full canvas height (top:0 through the ruler), so an active Cursor A
+positioned near a toolbar button's own X coordinate can visually/
+pointer-intercept it in a real browser. Worked around in the test
+script (direct DOM `.click()` dispatch); not a TG-F regression — the
+overlay's own height computation was not touched by this task.
+
+**Files changed**: `frontend/index.html` only (no backend/schema/API
+changes) + 1 new frontend test file
+(`test_frontend_time_group_sync.py`) + 6 pre-existing frontend test
+files updated + `test_time_grouping_service.py` extended with 2 new
+backend tests (no backend source change).
+
+**Next step**: nothing is pre-authorized. Per this session's own "do
+not commit/push without being asked" discipline, these changes stayed
+uncommitted at the end of this task.
+
+## What was done in the prior session (Phase 24 — TG-E)
+
 **Phase 24 — TG-E: per-Time-Group t0 + Detect Event hidden/group-aware.**
 On top of Phase 23 (TG-D2) below — see
 [DECISIONS.md — DEC-062](DECISIONS.md#dec-062--tg-e-t0-becomes-genuinely-time-group-scoped-throughout-the-frontend-mirroring-the-backends-already-group-keyed-truth-and-detect-event-becomes-internally-time-group-aware-while-its-normal-frontend-entry-point-is-hidden-by-owner-decision)

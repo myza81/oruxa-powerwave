@@ -146,11 +146,16 @@ def test_start_new_workspace_clears_alignment_offset_state():
 
 
 def test_manual_alignment_ui_exists():
+    """TG-F: the entry point moved from a global #wwSyncBtn into each
+    Time Group Canvas's own local toolbar (.ww-tg-sync-btn) -- the modal
+    shell itself (#wwSyncOverlay) stays ONE shared overlay, now opened
+    with an explicit groupId (see test_frontend_time_groups.py's own
+    TG-F coverage for the full regression suite)."""
     source = _source()
-    assert 'id="wwSyncBtn"' in source
+    assert 'id="wwSyncBtn"' not in source
     assert 'id="wwSyncOverlay"' in source
     assert 'id="wwSyncResetAllBtn"' in source
-    assert "function wwOpenSyncModal()" in source
+    assert "async function wwOpenSyncModal(groupId)" in source
     assert "function wwCloseSyncModal()" in source
 
 
@@ -162,13 +167,13 @@ def test_set_offset_hits_put_and_reset_hits_delete():
     assert "/synchronization/sources/" in put_body
 
     reset_idx = source.index("async function wwSyncResetOffset(sourceId)")
-    reset_body = source[reset_idx : source.index("async function wwSyncResetAll", reset_idx)]
+    reset_body = source[reset_idx : source.index("async function wwSyncResetAllForGroup", reset_idx)]
     assert 'method: "DELETE"' in reset_body
 
-    reset_all_idx = source.index("async function wwSyncResetAll()")
+    reset_all_idx = source.index("async function wwSyncResetAllForGroup(groupId)")
     reset_all_body = source[reset_all_idx : source.index("// ---- Edit drawer", reset_all_idx)]
     assert 'method: "DELETE"' in reset_all_body
-    assert '"/synchronization/sources"' in reset_all_body or '/synchronization/sources"' in reset_all_body
+    assert '"/synchronization/sources/" + encodeURIComponent(sourceId)' in reset_all_body
 
 
 def test_ui_stores_seconds_not_milliseconds():
@@ -182,28 +187,26 @@ def test_ui_stores_seconds_not_milliseconds():
 
 
 def test_offset_change_side_effects_reuse_existing_refetch_orchestrator():
-    """Task's own Performance Requirement: never a fragile, separate
-    frontend-only offset-application path -- reuse the SAME
-    wwRefetchAllChannelsAcrossGroups()/wwRebuildDigitalChart() call sites
-    zoom/pan/unit-mode-switch already funnel through.
-
-    Time Range slider: a manual offset change can shift a Time Group's
-    own bounds, so this now refetches every group's own channels using
-    ITS OWN current viewport (wwRefetchAllChannelsAcrossGroups()) rather
-    than the single shared ww.viewport applied to every channel
-    regardless of group -- in the common single-Time-Group workspace
-    this is the exact same request as before.
-
-    Time Group Canvas: the digital chart is now genuinely per-group, so
-    this rebuilds EVERY active group's own digital chart
-    (wwRebuildAllTimeGroupDigitalCharts()) rather than a single
-    workspace-wide one."""
+    """TG-F superseded this task's own original workspace-wide sweep
+    with a Time-Group-scoped one (task section 16/31: "update only the
+    affected Time Group... one +/- adjustment should not rebuild every
+    canvas"): wwSyncApplyOffsetChangeSideEffectsForGroup(groupId) reuses
+    the ALREADY-EXISTING, per-channel-filtered
+    wwRefetchChannelsForGroup(groupId, startTime, endTime) (the Time
+    Range slider's own established group-scoped refetch helper) and the
+    already-per-group wwRebuildDigitalChart(groupId) -- never a second,
+    duplicate implementation, and never the workspace-wide
+    wwRefetchAllChannelsAcrossGroups()/wwRebuildAllTimeGroupDigitalCharts()
+    batch forms (still reserved for genuinely global triggers like a
+    Time Mode/Unit Mode switch)."""
     source = _source()
-    fn_idx = source.index("async function wwSyncApplyOffsetChangeSideEffects()")
+    fn_idx = source.index("async function wwSyncApplyOffsetChangeSideEffectsForGroup(groupId)")
     fn_body = source[fn_idx : source.index("async function wwSyncPutOffset", fn_idx)]
     assert "wwRefreshWorkspaceBounds(" in fn_body
-    assert "wwRefetchAllChannelsAcrossGroups()" in fn_body
-    assert "wwRebuildAllTimeGroupDigitalCharts();" in fn_body
+    assert "wwRefetchChannelsForGroup(groupId, range ? range.start : null, range ? range.end : null)" in fn_body
+    assert "wwRebuildDigitalChart(groupId);" in fn_body
+    assert "wwRefetchAllChannelsAcrossGroups" not in fn_body
+    assert "wwRebuildAllTimeGroupDigitalCharts" not in fn_body
 
 
 def test_annotation_offset_limitation_is_documented():

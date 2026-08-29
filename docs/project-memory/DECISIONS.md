@@ -8732,6 +8732,200 @@ Impact:
 
 ---
 
+## DEC-063 — TG-F: Synchronise Sources becomes local to each Time Group Canvas, with manual alignment strictly confined to the launching Time Group and never redefining canonical Time Group membership
+
+Date: 2026-08-29
+Status: Approved
+Source: explicit project-owner instruction ("TG-F — migrate Synchronise
+Sources into each Time Group Canvas"), delivered as the direct
+successor to TG-E (DEC-062), completing the migration of every
+remaining per-Time-Group toolbar control.
+
+Decision:
+
+**Synchronise Sources is local to one Time Group.** Audit finding that
+shaped this slice's own central safety property: Time Group membership
+(`app.domain.time_grouping.derive_time_groups()`, fed exclusively by
+`app.services.synchronization_service._group_lookup()` from
+`WorkspaceRegistry`'s own `SourceMetadata` — raw recorded
+`start_time`/`elapsed_start_seconds`/`elapsed_end_seconds` only) is
+structurally UNABLE to read `SynchronizationRegistry`'s own manual-
+offset store at all — `list_time_groups()`'s own signature never even
+accepts a `registry` parameter. Manual synchronization therefore cannot
+redefine Time Group membership by construction, not merely by
+convention; this was confirmed both behaviorally (a 60s manual offset
+applied inside a group does not change `list_time_groups()`'s own
+output) and structurally (an `inspect.signature()` assertion) in
+`test_time_grouping_service.py::TestManualSynchronizationNeverRedefinesTimeGroupMembership`.
+No backend or domain-layer change was needed for this slice's own
+governing safety rule — it already held.
+
+The former global `#wwSyncBtn` moved into each Time Group Canvas's own
+local toolbar as `.ww-tg-sync-btn`, wired through the same
+`wwWireTimeGroupToolbar(canvasEl, groupId)` every other per-canvas
+control already uses. The modal shell itself (`#wwSyncOverlay`) stays
+ONE shared, reusable overlay — never cloned per canvas — mirroring
+Detect Event's own established pattern (TG-E): opened via
+`wwOpenSyncModal(groupId)`, which REQUIRES an explicit groupId (never
+`wwPrimaryTimeGroupId()`, never inferred from "whichever source was
+selected most recently"). A new `let wwSyncModalGroupId` module-level
+variable (mirroring the pre-existing `wwMgEditState` convention for
+"whichever modal/drawer is currently open") remembers which group's
+own modal is open, so every subsequent action inside it (step, set,
+reset, Reset All) re-scopes back to the SAME launching group. A new
+`wwSourcesForTimeGroup(groupId, sources)` filters the full workspace
+source list to only that group's own members (every source, not just
+currently-displayed ones — a source can be a group member worth
+synchronizing before any of its channels are toggled on) before
+`wwRenderSyncBody()` ever sees it — mirroring
+`wwDetectEventSourceOptionsHtml(groupId)`'s own established filtering
+convention exactly.
+
+**Reset All is now local to the launching Time Group.** The backend's
+own `DELETE .../synchronization/sources` endpoint resets every
+workspace source's manual correction at once, with no group-scoped
+variant — but per task section 29/30 ("reuse existing source-level
+API... do not widen backend scope unnecessarily"), no backend change
+was made: the new `wwSyncResetAllForGroup(groupId)` instead loops the
+group's own `sourceIds` (from `ww.timeGroups`) calling the ALREADY-
+existing, already-validated, already-idempotent per-source `DELETE
+.../sources/{source_id}` endpoint in parallel (`Promise.all`) — the
+smallest correct implementation, never a duplicated or widened backend
+surface.
+
+Offset-change side effects (`wwSyncApplyOffsetChangeSideEffectsForGroup(groupId)`,
+replacing the former workspace-wide `wwSyncApplyOffsetChangeSideEffects()`)
+are now genuinely group-scoped (task section 16/31's own performance
+requirement: "one +/- adjustment should not rebuild every canvas"):
+channel refetching reuses the ALREADY-EXISTING, per-channel-filtered
+`wwRefetchChannelsForGroup(groupId, startTime, endTime)` (the Time
+Range slider's own established helper — an early draft of this task
+accidentally shadowed this exact function with a same-named,
+worse-signature duplicate; caught via `grep`/`node --check` before
+landing, never shipped, and worth recording here as a concrete example
+of why "reuse the existing helper" audits matter), digital rebuild
+uses the already-per-group `wwRebuildDigitalChart(groupId)`, and cursor
+value refresh uses the already-per-group `wwSourceIdsForTimeGroup(groupId)`
+— never the workspace-wide `wwRefetchAllChannelsAcrossGroups()`/
+`wwRebuildAllTimeGroupDigitalCharts()`/`wwParticipatingSourceIds()`
+batch forms (still reserved for genuinely global triggers like a Time
+Mode/Unit Mode switch). `wwRefreshWorkspaceBounds()` itself is the one
+call this function could not narrow further without touching that
+function's own deeply-entangled primary/non-primary viewport machinery
+(explicitly out of this task's own scope, per its own DEC-061
+precedent for not widening into an unrelated pre-existing
+architecture) — but it is already effectively self-limiting in
+practice, since a manual offset change inside `groupId` can only ever
+change THAT group's own derived bounds (per the topology-safety
+finding above), and `wwRefreshTimeGroupViewports()`'s own internal
+`wwBoundsEqual()` diff already skips re-fetching a group whose bounds
+did not actually move.
+
+Reference-source semantics are unchanged — already correctly per-group
+(`app.services.synchronization_service.set_source_alignment_offset()`
+already rejects a non-zero manual correction on `group_by_source_id[source_id].origin_source_id`
+specifically, not any single workspace-wide reference), audited and
+confirmed to require no changes (task section 4's own "preserve
+existing... unless current code already has a stronger per-group
+rule" — it already did, from DEC-057).
+
+A one-source Time Group's own local button is deliberately NEVER
+disabled (task section 8's own "prefer disabled if consistent with
+current UX" — the former global button was NEVER disabled either, so
+this preserves that exact behavior) — instead, since a Time Group's
+own origin/reference is by construction always a group member
+(DEC-057), a one-source group's one source IS trivially that group's
+own reference, so `wwRenderSyncSourceRow()`'s existing "Reference"
+branch (no editable controls, just a note) already renders the
+task's own "clear nothing-to-synchronise state" automatically, with no
+new disabled-gate needed.
+
+Reason:
+
+Section 1's own governing rule: a manual alignment control that could
+reach across Time Group boundaries would let an engineer accidentally
+shift a source relative to an unrelated group's own data — the same
+class of correctness-critical ambiguity DEC-061/DEC-062 already closed
+for Cursor A/B and t0. Section 13's own topology-safety concern is the
+single most important property this task depends on; the audit above
+confirms it was ALREADY structurally guaranteed by the existing
+backend architecture, so this slice's own risk profile is almost
+entirely a frontend UI-scoping exercise, not a backend migration.
+
+Alternatives considered:
+
+- A group-scoped `DELETE .../synchronization/sources?group_id=...`
+  backend endpoint for Reset All — considered, rejected per task
+  section 29/30's own explicit "do not create unnecessary duplicate
+  endpoints... if existing source-level API remains sufficient, do not
+  widen backend scope": the existing per-source DELETE, looped
+  frontend-side over the group's own known membership, is already
+  correct and sufficient.
+- Disabling the local Sync button for a one-source group — considered,
+  rejected: the former global button's own UX was never disabled-based,
+  and the existing reference-only row rendering already produces an
+  equally clear "nothing to synchronise" result without a new
+  disabled-state mechanism to introduce and keep in sync.
+- Narrowing `wwRefreshWorkspaceBounds()` itself to accept an explicit
+  groupId — considered, rejected as out of this task's own scope: that
+  function's primary/non-primary viewport entanglement is a separate,
+  pre-existing architecture (the same one DEC-061 already declined to
+  widen into for an unrelated reason); its own internal diffing already
+  makes the practical effect correctly group-scoped without this
+  change.
+
+Impact:
+
+- `frontend/index.html` only (no backend/schema/API changes — audited
+  and confirmed the existing per-source/per-group-derivation backend
+  architecture already fully supports this migration). New:
+  `wwSyncModalGroupId`, `wwSourcesForTimeGroup()`,
+  `wwSyncReloadAndRenderForGroup()`, `wwSyncApplyOffsetChangeSideEffectsForGroup()`,
+  `wwSyncResetAllForGroup()`. Generalized/renamed in place:
+  `wwOpenSyncModal(groupId)` (was no-arg). Removed outright: the old
+  global `#wwSyncBtn` HTML/listener, `wwSyncApplyOffsetChangeSideEffects()`
+  (workspace-wide form), `wwSyncResetAll()` (workspace-wide form).
+- New backend test coverage (no backend code change): `test_time_grouping_service.py::TestManualSynchronizationNeverRedefinesTimeGroupMembership`
+  (2 tests) locks in the topology-safety invariant explicitly, both
+  behaviorally and structurally.
+- Verified by the full backend suite (1718 passed, 0 failed — up from
+  1688 at TG-E's own end state; 6 pre-existing frontend static-
+  regression tests updated across `test_frontend_multi_source_sidebar.py`,
+  `test_frontend_synchronization.py`, `test_frontend_time_groups.py`;
+  30 new tests in `test_frontend_time_group_sync.py` covering the
+  task's own required Cases A-T) plus a live-browser Playwright UAT
+  pass covering the task's own full 26-step scenario against a running
+  backend: a one-source group rendering reference-only with no
+  editable controls; a second, overlapping source joining the SAME
+  canvas (never creating a new one); the modal listing exactly that
+  group's own 2 sources; +/-/step/Reset all confirmed source-scoped;
+  Reset All confirmed group-scoped (a second, genuinely separate Time
+  Group's own +6.4ms manual offset, applied afterward, survived
+  untouched); cross-group source-list exclusion confirmed in both
+  directions; Group 1's own t0 confirmed stable across a Sync modal
+  interaction; Cursor A/B confirmed independently active in both
+  groups; a Grouped/Separate layout-mode round trip preserved exactly
+  one sync button per canvas; zero console/page errors throughout. One
+  genuine, pre-existing (TG-D2-era, unrelated to this task)
+  interaction quirk was discovered during UAT and worked around in the
+  test script rather than "fixed": the cursor overlay's own hit-area
+  spans the full canvas height (top:0 through the ruler), so an active
+  Cursor A positioned near a toolbar button's own X coordinate can
+  visually/pointer-intercept it — reported here for awareness, not
+  addressed (out of this task's own scope).
+- **Deferred, per the task's own explicit non-goals**: cross-Time-Group
+  synchronization, automatic event matching, waveform correlation sync,
+  trigger-time auto-sync, clock correction, timestamp repair, drift
+  compensation, resampling, CSV/Excel, annotation redesign (still
+  primary-group-scoped, unchanged), cross-group t0, and cross-group
+  cursor comparison all remain unimplemented/unchanged from before this
+  task. The DEC-061 pre-existing Absolute-axis layout-round-trip bug
+  was not touched (this slice never needed to read `wwBuildLayout()`'s
+  own tick-range logic at all). Detect Event was not changed (TG-E's
+  own hidden-but-internally-group-aware state is untouched).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

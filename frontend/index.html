@@ -1949,7 +1949,7 @@
         .group-editor-close:hover { color: var(--error); }
         .group-editor-section { margin: 16px 0; }
         .group-editor-section h4 {
-            font-size: 0.78rem;
+            font-size: 0.7rem;
             text-transform: uppercase;
             letter-spacing: 0.03em;
             color: var(--text-dim);
@@ -1964,7 +1964,7 @@
             display: flex;
             align-items: center;
             gap: 6px;
-            font-size: 0.8rem;
+            font-size: 0.65rem;
             color: var(--text-dim);
             background: var(--surface-tint);
             border: 1px solid var(--panel-border);
@@ -2010,7 +2010,7 @@
             background: transparent;
             border: none;
             color: var(--accent);
-            font-size: 0.76rem;
+            font-size: 0.7rem;
             cursor: pointer;
             padding: 0;
         }
@@ -2033,7 +2033,7 @@
             border: 1px solid var(--panel-border);
             border-radius: var(--radius);
             padding: 6px 8px;
-            font-size: 0.85rem;
+            font-size: 0.7rem;
             font-weight: 600;
             color: var(--text);
         }
@@ -3827,16 +3827,13 @@
 
                         <span class="ww-toolbar-sep" aria-hidden="true"></span>
 
-                        <!-- Slice 1 of waveform time synchronization: a
-                             minimal manual-alignment control (task section
-                             8) -- one button opening a small modal listing
-                             every participating source with a per-source
-                             offset control. No toolbar redesign: this is
-                             a single icon button, same .ww-icon-btn shell
-                             as every other toolbar control. -->
-                        <button class="ww-icon-btn" type="button" id="wwSyncBtn" title="Synchronize Sources" aria-label="Synchronize Sources">
-                            <span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="2.5" y1="6" x2="9" y2="6" stroke-width="1.3"/><polyline points="6.5,3.5 9,6 6.5,8.5" stroke-width="1.3"/><line x1="15.5" y1="12" x2="9" y2="12" stroke-width="1.3"/><polyline points="11.5,9.5 9,12 11.5,14.5" stroke-width="1.3"/></svg></span>
-                        </button>
+                        <!-- TG-F: "Synchronize Sources" moved into each Time
+                             Group Canvas's own local toolbar
+                             (`.ww-tg-sync-btn`, see
+                             wwCreateTimeGroupCanvasDom()'s own HTML) -- no
+                             longer duplicated here; a manual alignment
+                             control is meaningful only within one coherent
+                             Time Group. -->
 
                         <div class="toolbar-spacer"></div>
                         <div class="theme-toggle ww-icon-group" id="layoutModeToggle" role="group" aria-label="Waveform layout">
@@ -4395,17 +4392,26 @@
                 <h3 id="wwSyncTitle">Synchronize Sources</h3>
                 <button type="button" class="group-editor-close" id="wwSyncCloseBtn" aria-label="Close">&times;</button>
             </div>
+            <!-- TG-F: this shared modal is now opened per-Time-Group
+                 (wwOpenSyncModal(groupId)), same pattern Detect Event's
+                 own modal already established (TG-E) -- ONE overlay, never
+                 duplicated per canvas, but always scoped to whichever
+                 group's own local toolbar button launched it. This label
+                 is the one place that scope is made visible to the
+                 engineer, so a multi-group workspace never leaves it
+                 ambiguous which group's sources are being edited. -->
+            <p class="hint" id="wwSyncGroupLabel"></p>
             <p class="hint">Sources with a recorded start timestamp are already placed relative to each
-                other automatically. Use the controls below to add a manual correction on top of that
-                placement, so the same physical disturbance lines up exactly. This never changes a
-                recording's own original data, and a visually synchronized pair of sources does not become
-                mathematically compatible for calculated channels.</p>
+                other automatically, within this Time Group. Use the controls below to add a manual
+                correction on top of that placement, so the same physical disturbance lines up exactly.
+                This never changes a recording's own original data, and a visually synchronized pair of
+                sources does not become mathematically compatible for calculated channels.</p>
             <p class="hint error" id="wwSyncError" hidden role="alert"></p>
 
             <div id="wwSyncBody"></div>
 
             <div class="group-editor-footer">
-                <button type="button" class="secondary" id="wwSyncResetAllBtn" title="Resets every source's own manual correction only -- timestamp-derived placements are unaffected">Reset All Manual Adjustments</button>
+                <button type="button" class="secondary" id="wwSyncResetAllBtn" title="Resets every source's own manual correction in this Time Group only -- timestamp-derived placements are unaffected, and no other Time Group is touched">Reset All Manual Adjustments</button>
                 <span class="toolbar-spacer"></span>
                 <button type="button" class="secondary" id="wwSyncCloseFooterBtn">Close</button>
             </div>
@@ -8325,6 +8331,17 @@
                     '<button type="button" class="ww-icon-btn ww-tg-t0-btn" aria-pressed="false" title="Set Cursor A as t=0" aria-label="Set Cursor A as t=0" disabled>' +
                         '<span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="9" y1="2.5" x2="9" y2="15.5" stroke-width="1.3" stroke-dasharray="2.2,1.6"/><text x="9" y="14.5" font-size="5.5" text-anchor="middle" stroke="none" fill="currentColor" font-weight="700">0</text></svg></span>' +
                     '</button>' +
+                    // TG-F: this Time Group's own "Synchronize Sources"
+                    // entry point -- reuses the former global #wwSyncBtn's
+                    // own icon verbatim. Always enabled (never disabled,
+                    // matching the OLD global button's own never-disabled
+                    // UX) -- a one-source group's own modal already shows a
+                    // clear "nothing to synchronise but the reference"
+                    // state via the existing row rendering, so no separate
+                    // disabled-gate is needed here.
+                    '<button type="button" class="ww-icon-btn ww-tg-sync-btn" title="Synchronize Sources in this Time Group" aria-label="Synchronize Sources in this Time Group">' +
+                        '<span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="2.5" y1="6" x2="9" y2="6" stroke-width="1.3"/><polyline points="6.5,3.5 9,6 6.5,8.5" stroke-width="1.3"/><line x1="15.5" y1="12" x2="9" y2="12" stroke-width="1.3"/><polyline points="11.5,9.5 9,12 11.5,14.5" stroke-width="1.3"/></svg></span>' +
+                    '</button>' +
                 '</div>' +
                 '<div class="ww-tg-cursor-readout" hidden>' +
                     '<span class="ww-tg-cursor-readout-item ww-cursor-readout-a"><span class="ww-tg-cursor-readout-label">A</span><span class="ww-tg-cursor-readout-value ww-tg-cursor-readout-value--a">—</span></span>' +
@@ -11064,10 +11081,31 @@
             );
         }
 
+        // TG-F: which Time Group's own sync modal is CURRENTLY open, if
+        // any -- mirrors wwMgEditState's own established "transient
+        // module-level state for whichever modal/drawer is currently
+        // open" convention. Set by wwOpenSyncModal(groupId), read by
+        // every later action inside the (one, shared) modal so a
+        // step/reset/Reset-All triggered from its own controls always
+        // re-scopes back to the SAME launching group, never a different
+        // one and never a hidden "primary" default.
+        let wwSyncModalGroupId = null;
+
+        // TG-F (task section 7): every source belonging to `groupId`,
+        // from the full workspace source list -- never just the
+        // currently-DISPLAYED ones (a source can be a Time Group member,
+        // and worth synchronizing, without any of its channels being
+        // toggled on yet). Mirrors Detect Event's own
+        // wwDetectEventSourceOptionsHtml(groupId) filtering convention
+        // (TG-E) exactly.
+        function wwSourcesForTimeGroup(groupId, sources) {
+            return sources.filter((source) => wwTimeGroupIdForDisplaySourceId(source.source_id) === groupId);
+        }
+
         function wwRenderSyncBody(sources) {
             const bodyEl = document.getElementById("wwSyncBody");
             if (!sources.length) {
-                bodyEl.innerHTML = '<p class="hint">Upload at least one recording to configure synchronization.</p>';
+                bodyEl.innerHTML = '<p class="hint">This Time Group has no synchronizable sources.</p>';
                 return;
             }
             const html = sources
@@ -11094,17 +11132,38 @@
             }
         }
 
-        async function wwOpenSyncModal() {
-            document.getElementById("wwSyncError").hidden = true;
-            document.getElementById("wwSyncOverlay").hidden = false;
-            document.getElementById("wwSyncBody").innerHTML = '<p class="hint">Loading sources&hellip;</p>';
+        // TG-F: re-fetches CURRENT backend truth (task section 24 -- "do
+        // not rely on stale frontend cache," the same lesson the upload
+        // lifecycle already taught this codebase once) and re-renders
+        // the modal body scoped to wwSyncModalGroupId. Shared by every
+        // mutation below (set/step/reset/Reset All) as their own common
+        // "reload and redraw" tail, so there is exactly one place that
+        // sequence is written.
+        async function wwSyncReloadAndRenderForGroup(groupId) {
             await wwFetchSynchronizationStateForWorkspace();
             const sources = (await fetchSourcesList()) || [];
-            wwRenderSyncBody(sources);
+            wwRenderSyncBody(wwSourcesForTimeGroup(groupId, sources));
+        }
+
+        // TG-F (task section 6): REQUIRES an explicit groupId -- never
+        // inferred from wwPrimaryTimeGroupId() or "whichever source was
+        // selected most recently" (task's own explicit prohibition). The
+        // launching Time Group Canvas's own local button is the only
+        // caller (wwWireTimeGroupToolbar()); the modal shell itself
+        // stays ONE shared overlay, same pattern Detect Event's own
+        // modal already established (TG-E).
+        async function wwOpenSyncModal(groupId) {
+            wwSyncModalGroupId = groupId;
+            document.getElementById("wwSyncError").hidden = true;
+            document.getElementById("wwSyncOverlay").hidden = false;
+            document.getElementById("wwSyncGroupLabel").textContent = wwTimeGroupSliderGroupLabel(groupId) || "";
+            document.getElementById("wwSyncBody").innerHTML = '<p class="hint">Loading sources&hellip;</p>';
+            await wwSyncReloadAndRenderForGroup(groupId);
         }
 
         function wwCloseSyncModal() {
             document.getElementById("wwSyncOverlay").hidden = true;
+            wwSyncModalGroupId = null;
         }
 
         function wwSyncShowError(message) {
@@ -11113,53 +11172,46 @@
             errorEl.hidden = false;
         }
 
-        // The one place every offset mutation below re-syncs the rest of
-        // the app once the backend confirms the change (task's own
-        // Performance Requirement: correctness over premature
-        // optimization -- an offset change already requires a genuine
-        // analog refetch, since the backend's own point-budget reduction
-        // depends on the exact native range requested, so this reuses the
-        // SAME wwRefetchAllChannelsAcrossGroups() orchestrator zoom/pan/
-        // unit-mode switch already funnel through, rather than inventing
-        // a second, partial-refresh path). Digital channels need no
-        // refetch at all (wwRebuildDigitalChart() re-reads the current
-        // offset live, see wwDigitalHighIntervals()'s own comment) --
-        // only a cheap re-render.
+        // TG-F: scoped to ONE Time Group's own panels/digital chart/
+        // cursor values only -- performance requirement (task section
+        // 16/31): a manual offset change inside one group must never
+        // rebuild/refetch an unrelated group's own rendering. Digital
+        // channels need no refetch at all (wwRebuildDigitalChart()
+        // re-reads the current offset live, see
+        // wwDigitalHighIntervals()'s own comment) -- only a cheap
+        // re-render.
         //
-        // Time Range slider: wwRefreshWorkspaceBounds() below already
-        // refreshes EVERY Time Group's own bounds/viewport (task section
-        // 13 -- a manual correction can change which sources overlap,
-        // shifting a group's own full extent), including already
-        // refetching each non-primary group's own channels internally
-        // (wwRefreshTimeGroupViewports() -> wwApplyAndFetchGroupViewport()).
-        // wwRefetchAllChannelsAcrossGroups() below then covers the
-        // PRIMARY group's own channels the same way (and is a correct,
-        // idempotent no-op re-request for every other group's channels
-        // that were already just refetched moments earlier with the
-        // exact same now-current per-group range) -- never the single
-        // shared ww.viewport applied to every channel regardless of
-        // group, which would request the WRONG native window for a
-        // non-primary group's own channels.
-        async function wwSyncApplyOffsetChangeSideEffects() {
+        // wwRefreshWorkspaceBounds() below is the one call this function
+        // cannot narrow further without touching that function's own
+        // deeply-entangled primary/non-primary viewport machinery (out
+        // of this task's own scope, see DEC-061's own precedent for not
+        // widening into an unrelated pre-existing architecture) --
+        // but it is already effectively self-limiting in practice: Time
+        // Group membership/bounds are derived purely from each source's
+        // own RAW recorded timestamp (task section 13, audited and
+        // confirmed below), so a manual offset change inside `groupId`
+        // can only ever change THAT group's own derived bounds; every
+        // OTHER group's own wwDeriveTimeGroupBounds() result is
+        // unchanged, and wwRefreshTimeGroupViewports()'s own internal
+        // wwBoundsEqual() diff already skips re-fetching a group whose
+        // bounds did not actually move.
+        async function wwSyncApplyOffsetChangeSideEffectsForGroup(groupId) {
             await wwRefreshWorkspaceBounds({ resetViewport: false });
-            await wwRefetchAllChannelsAcrossGroups();
-            // Time Group Canvas: a manual offset change can move a
-            // digital lane's own trace position (wwAlignmentOffsetForSource())
-            // WITHOUT necessarily changing that group's own overall
-            // viewport bounds (wwRefreshWorkspaceBounds() above would
-            // then skip re-syncing it) -- rebuild every active group's
-            // own digital chart unconditionally here, correctness over
-            // premature optimization (this function's own established
-            // Performance Requirement, unchanged).
-            wwRebuildAllTimeGroupDigitalCharts();
-            // TG-D2: an offset change can affect sources across MULTIPLE
-            // Time Groups at once -- loop every participating source
-            // unconditionally; wwFetchCursorValuesForSource()'s own
-            // internal check (that source's OWN owning group's cursor
-            // state) already no-ops correctly for a group whose cursors
-            // are off, so this naturally refreshes only the groups that
-            // actually need it, never a blanket global gate.
-            for (const sourceId of wwParticipatingSourceIds()) wwFetchCursorValuesForSource(sourceId);
+            // Reuses the ALREADY-EXISTING, per-channel-filtered
+            // wwRefetchChannelsForGroup(groupId, startTime, endTime) --
+            // the Time Range slider's own established group-scoped
+            // refetch helper (see its own docstring) -- rather than a
+            // second, duplicate implementation.
+            const range = wwTimeGroupVisibleRange(groupId);
+            await wwRefetchChannelsForGroup(groupId, range ? range.start : null, range ? range.end : null);
+            wwRebuildDigitalChart(groupId);
+            // TG-F: only THIS group's own displayed sources -- never
+            // wwParticipatingSourceIds() (every source workspace-wide).
+            // wwFetchCursorValuesForSource()'s own internal check (that
+            // source's OWN owning group's cursor state) already no-ops
+            // correctly if this group's cursors are off, so this stays
+            // correct even when narrowed.
+            for (const sourceId of wwSourceIdsForTimeGroup(groupId)) wwFetchCursorValuesForSource(sourceId);
             // Multi-source sidebar redesign: each source's own optional
             // sync badge (wwSourceSyncBadgeHtml()) is rendered inside its
             // sidebar header at TREE-BUILD time -- an offset change here
@@ -11169,13 +11221,19 @@
             // targeted DOM patch, not a full wwRenderWorkspaceRecordings()
             // rebuild -- cheaper, and never disturbs the engineer's own
             // expand/collapse state or the search box's current value.
+            // Kept as a full sidebar sweep (not narrowed to `groupId`):
+            // it is cheap (text/DOM patches only, no network/Plotly
+            // cost) and correctness-preserving, matching TG-D2's own
+            // established "a cheap sweep is fine" precedent
+            // (wwUpdateAllCursorValueCells()).
             wwRefreshSourceSyncBadges();
         }
 
         // Patches every currently-rendered source's own sync badge in
         // place, without touching anything else in the sidebar tree (see
-        // wwSyncApplyOffsetChangeSideEffects()'s own comment for why this
-        // exists as a separate, narrower operation from a full rebuild).
+        // wwSyncApplyOffsetChangeSideEffectsForGroup()'s own comment for
+        // why this exists as a separate, narrower operation from a full
+        // rebuild).
         function wwRefreshSourceSyncBadges() {
             for (const el of document.querySelectorAll("#channelGroups details.source-recording")) {
                 const sourceId = el.dataset.sourceId;
@@ -11219,12 +11277,11 @@
         }
 
         async function wwSyncSetOffsetMs(sourceId, ms) {
+            const groupId = wwSyncModalGroupId;
             const ok = await wwSyncPutOffset(sourceId, wwSyncMsToOffsetSeconds(ms));
-            if (!ok) { await wwOpenSyncModal(); return; } // re-render to discard the rejected edit
-            await wwFetchSynchronizationStateForWorkspace();
-            const sources = (await fetchSourcesList()) || [];
-            wwRenderSyncBody(sources);
-            await wwSyncApplyOffsetChangeSideEffects();
+            if (!ok) { await wwOpenSyncModal(groupId); return; } // re-render to discard the rejected edit
+            await wwSyncReloadAndRenderForGroup(groupId);
+            await wwSyncApplyOffsetChangeSideEffectsForGroup(groupId);
         }
 
         async function wwSyncStepOffset(sourceId, stepMs) {
@@ -11237,6 +11294,7 @@
         }
 
         async function wwSyncResetOffset(sourceId) {
+            const groupId = wwSyncModalGroupId;
             document.getElementById("wwSyncError").hidden = true;
             let response;
             try {
@@ -11253,32 +11311,51 @@
                 wwSyncShowError("Could not reset this source's alignment offset.");
                 return;
             }
-            await wwFetchSynchronizationStateForWorkspace();
-            const sources = (await fetchSourcesList()) || [];
-            wwRenderSyncBody(sources);
-            await wwSyncApplyOffsetChangeSideEffects();
+            await wwSyncReloadAndRenderForGroup(groupId);
+            await wwSyncApplyOffsetChangeSideEffectsForGroup(groupId);
         }
 
-        async function wwSyncResetAll() {
+        // TG-F (task section 11/29/30): "Reset All" scoped to ONE Time
+        // Group -- the backend's own DELETE .../sources endpoint resets
+        // EVERY workspace source's manual correction at once (there is
+        // no group-scoped variant, and none is needed: the existing
+        // per-source DELETE .../sources/{source_id} endpoint already
+        // does exactly "reset one source's manual correction," already
+        // 404-safe/idempotent, already validated -- reusing it in a
+        // loop is the smallest correct implementation, never a
+        // duplicated/widened backend surface). Requires an explicit
+        // groupId -- never wwPrimaryTimeGroupId() or any other implicit
+        // scope. Deletes run in parallel (each is independent and
+        // idempotent); the reference/origin source is included in the
+        // loop for simplicity (its own manual correction is already
+        // always 0, so resetting it is a harmless no-op, exactly like
+        // wwSyncResetOffset()'s own per-row Reset button already relies
+        // on for that same row today).
+        async function wwSyncResetAllForGroup(groupId) {
+            if (!groupId) return;
             document.getElementById("wwSyncError").hidden = true;
-            let response;
+            const group = ww.timeGroups.get(groupId);
+            const sourceIds = group ? group.sourceIds : [];
+            let anyFailed = false;
             try {
-                response = await fetch(
-                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) + "/synchronization/sources",
-                    { method: "DELETE" }
-                );
+                const results = await Promise.all(sourceIds.map((sourceId) =>
+                    fetch(
+                        apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                        "/synchronization/sources/" + encodeURIComponent(sourceId),
+                        { method: "DELETE" }
+                    )
+                ));
+                anyFailed = results.some((response) => !response.ok && response.status !== 404);
             } catch (error) {
                 wwSyncShowError("Could not reach the backend. Check your connection and try again.");
                 return;
             }
-            if (!response.ok) {
-                wwSyncShowError("Could not reset synchronization.");
+            if (anyFailed) {
+                wwSyncShowError("Could not reset synchronization for this Time Group.");
                 return;
             }
-            await wwFetchSynchronizationStateForWorkspace();
-            const sources = (await fetchSourcesList()) || [];
-            wwRenderSyncBody(sources);
-            await wwSyncApplyOffsetChangeSideEffects();
+            await wwSyncReloadAndRenderForGroup(groupId);
+            await wwSyncApplyOffsetChangeSideEffectsForGroup(groupId);
         }
 
         // ---- Edit drawer -----------------------------------------------
@@ -11870,6 +11947,11 @@
             // t=0" toggle.
             const t0Btn = canvasEl.querySelector(".ww-tg-t0-btn");
             if (t0Btn) t0Btn.addEventListener("click", () => wwHandleSetOrClearT0ClickForGroup(groupId));
+
+            // TG-F: this Time Group's own "Synchronize Sources" entry
+            // point.
+            const syncBtn = canvasEl.querySelector(".ww-tg-sync-btn");
+            if (syncBtn) syncBtn.addEventListener("click", () => wwOpenSyncModal(groupId));
 
             for (const action of ["in", "out"]) {
                 const wrap = canvasEl.querySelector(action === "in" ? ".ww-tg-zoom-in-split" : ".ww-tg-zoom-out-split");
@@ -20401,9 +20483,15 @@
         document.getElementById("wwMgDrawerCloseBtn").addEventListener("click", wwCloseMgDrawer);
         document.getElementById("wwMgDrawerBackdrop").addEventListener("click", wwCloseMgDrawer);
 
-        // Slice 1 of waveform time synchronization: "Synchronize Sources".
-        document.getElementById("wwSyncBtn").addEventListener("click", () => wwOpenSyncModal());
-        document.getElementById("wwSyncResetAllBtn").addEventListener("click", () => wwSyncResetAll());
+        // TG-F: "Synchronize Sources" is now opened only from each Time
+        // Group Canvas's own local toolbar button (`.ww-tg-sync-btn`,
+        // wired per-canvas in wwWireTimeGroupToolbar()) -- the old global
+        // #wwSyncBtn click listener is removed outright, not merely
+        // hidden. The modal shell itself (#wwSyncOverlay) stays ONE
+        // shared, reusable overlay -- exactly like Detect Event's own
+        // modal (TG-E) -- opened with an explicit groupId each time
+        // (wwOpenSyncModal(groupId)), never inferred.
+        document.getElementById("wwSyncResetAllBtn").addEventListener("click", () => wwSyncResetAllForGroup(wwSyncModalGroupId));
         document.getElementById("wwSyncCloseBtn").addEventListener("click", wwCloseSyncModal);
         document.getElementById("wwSyncCloseFooterBtn").addEventListener("click", wwCloseSyncModal);
         document.getElementById("wwSyncOverlay").addEventListener("click", (event) => {

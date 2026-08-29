@@ -24,6 +24,7 @@ from app.services.synchronization_service import (
     detect_event_candidate,
     get_t0,
     list_time_groups,
+    set_source_alignment_offset,
     set_t0,
 )
 from app.services.workspace_registry import WorkspaceRegistry
@@ -187,3 +188,61 @@ class TestDetectEventUsesEffectiveOffsetWithinItsOwnGroup:
         # group's origin) -- candidate_workspace_time must include it,
         # not just the (zero, unset) manual correction.
         assert view.candidate_workspace_time == pytest.approx(view.candidate_source_time + 0.401, abs=1e-6)
+
+
+class TestManualSynchronizationNeverRedefinesTimeGroupMembership:
+    """TG-F task section 13 (the governing safety rule this whole slice
+    depends on): "Manual synchronization must not redefine canonical
+    Time Group membership." list_time_groups()/derive_time_groups() are
+    computed purely from each source's own RAW recorded
+    start_time/elapsed bounds (app.domain.time_grouping.derive_time_groups(),
+    fed by app.services.synchronization_service._group_lookup() from
+    WorkspaceRegistry metadata alone) -- SynchronizationRegistry's own
+    manual-offset store is never read by that computation at all. These
+    tests lock that invariant in explicitly: two sources far enough
+    apart to start in DIFFERENT Time Groups stay in different groups no
+    matter how large a manual correction is applied to either one
+    (Case S: "manual correction does not merge unrelated Time
+    Groups")."""
+
+    def test_a_large_manual_offset_does_not_merge_two_originally_separate_groups(self, source_registry, sync_registry):
+        # A is alone in Group 1. B and C overlap each other (100ms apart)
+        # but are 2 hours away from A -- unambiguously two separate Time
+        # Groups by DEC-057's own overlap-based derivation rule. C (not
+        # B, which is Group 2's own origin and therefore constrained to
+        # a 0 manual offset) gets the manual correction.
+        source_registry.add(_source("A", start_time=T0))
+        source_registry.add(_source("B", start_time=T0 + timedelta(hours=2)))
+        source_registry.add(_source("C", start_time=T0 + timedelta(hours=2, milliseconds=100)))
+        groups_before = list_time_groups(workspace_id="ws-1", source_registry=source_registry)
+        assert len(groups_before) == 2
+
+        # A deliberately large manual correction -- an analysis-layer
+        # adjustment only, never a "move this source's clock" operation.
+        set_source_alignment_offset(
+            workspace_id="ws-1", source_id="C", alignment_offset_s=60.0,
+            registry=sync_registry, source_registry=source_registry,
+        )
+
+        groups_after = list_time_groups(workspace_id="ws-1", source_registry=source_registry)
+        assert len(groups_after) == 2
+        assert {g.group_id for g in groups_after} == {g.group_id for g in groups_before}
+
+    def test_group_lookup_never_reads_the_synchronization_registry(self, source_registry, sync_registry):
+        """A stronger, structural guarantee than the behavioral test
+        above: derive_time_groups() is fed exclusively from
+        WorkspaceRegistry's own SourceMetadata tuples (start_time,
+        elapsed_start_seconds, elapsed_end_seconds) -- the
+        SynchronizationRegistry instance is passed to THIS test's own
+        fixtures purely so set_source_alignment_offset() can be called;
+        list_time_groups() itself never receives it as a parameter at
+        all, so there is no code path here through which a manual
+        offset COULD influence topology, not merely one that happens not
+        to today."""
+        import inspect
+
+        from app.services.synchronization_service import list_time_groups as list_time_groups_fn
+
+        signature = inspect.signature(list_time_groups_fn)
+        assert "registry" not in signature.parameters
+        assert set(signature.parameters) == {"workspace_id", "source_registry"}
