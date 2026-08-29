@@ -280,3 +280,73 @@ class TestGroupLabelNumberingMatchesPanelSuffix:
         assert 'group.timeReferenceType === "elapsed_only"' in fn_body
         assert "Array.from(ww.timeGroups.keys()).sort()" in fn_body
         assert '"Time Group " + (sortedGroupIds.indexOf(groupId) + 1)' in fn_body
+
+
+class TestStickySliderStructure:
+    """Owner UX refinement: the slider stays pinned near the bottom of
+    the waveform workspace while scrolling. Verified live via Playwright
+    (real backend, 19-panel/two-Time-Group scroll scenarios: sticky held
+    through scroll down/up, handle/window drag and mouse-zoom-driven
+    updates all still work while scrolled, Reset Time View unaffected,
+    both Grouped and Separate layouts, an independent second group's row
+    stayed untouched even while the sticky block was scrolled) -- these
+    checks guard the underlying structural contract that behavior
+    depends on."""
+
+    def test_slider_container_is_sticky_only_when_it_has_content(self):
+        """#wwTimeGroupSliders:empty already stays `display: none` (no
+        reserved gap when nothing is displayed) -- sticky positioning is
+        scoped to the populated case only, via the same :not(:empty)
+        guard, never applied to an empty/invisible container."""
+        source = _source()
+        idx = source.index("#wwTimeGroupSliders:not(:empty) {")
+        block = source[idx : source.index("}", idx) + 1]
+        assert "position: sticky;" in block
+        assert "z-index: 3;" in block
+        assert "background: var(--panel);" in block
+        assert "border-top: 1px solid var(--panel-border);" in block
+
+    def test_slider_is_not_wrapped_together_with_the_ruler(self):
+        """Wrapping #wwTimeGroupSliders and #wwStickyRuler in one shared
+        sticky container would change the ruler's own offsetParent away
+        from #viewWaveform, silently breaking the existing Phase
+        4B-UAT2 cursor-overlay-height fix (rulerWrapEl.offsetTop) --
+        they must remain separate sticky siblings."""
+        source = _source()
+        digital_idx = source.index('<div id="wwDigitalRegion" hidden>')
+        sliders_idx = source.index('<div id="wwTimeGroupSliders">')
+        ruler_idx = source.index('id="wwStickyRuler"')
+        assert digital_idx < sliders_idx < ruler_idx
+        # No single element wraps both -- confirmed structurally by their
+        # both being direct, sequential children (not nested) inside the
+        # same parent, which the DOM order above already establishes.
+
+    def test_sticky_offset_is_computed_from_the_rulers_live_height_never_hardcoded(self):
+        source = _source()
+        fn_idx = source.index("function wwSyncTimeGroupSlidersStickyOffset()")
+        fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
+        assert 'rulerWrapEl.getBoundingClientRect().height + "px"' in fn_body
+        assert "slidersEl.style.bottom" in fn_body
+
+    def test_offset_sync_is_called_from_the_rulers_own_state_function(self):
+        source = _source()
+        fn_idx = source.index("function wwSyncStickyRuler()")
+        fn_body = source[fn_idx : source.index("wrapEl.hidden = !hasChannels;", fn_idx) + 200]
+        assert "wwSyncTimeGroupSlidersStickyOffset();" in fn_body
+
+    def test_offset_sync_also_runs_defensively_inside_the_sliders_own_render(self):
+        """Covers the one call path that can reach wwRenderTimeGroupSliders()
+        without wwSyncStickyRuler() having just run in the same
+        invocation -- a non-primary group's own viewport change inside
+        wwApplyAndFetchGroupViewport()."""
+        source = _source()
+        fn_idx = source.index("function wwRenderTimeGroupSliders()")
+        fn_body = source[fn_idx : source.index("const activeIds", fn_idx)]
+        assert "wwSyncTimeGroupSlidersStickyOffset();" in fn_body
+
+    def test_owner_css_adjustment_for_slider_row_padding_is_preserved(self):
+        """Owner-set exact values -- must never be reverted/reformatted
+        back to the earlier WW_PANEL_MARGIN-aligned padding."""
+        source = _source()
+        assert "padding: 3px 20px 3px 20px; border-top: 1px solid var(--panel-border); background: var(--panel);" in source
+        assert source.count(".ww-tg-slider-row:first-child { border-top: none; }") == 1

@@ -3013,12 +3013,40 @@
         /* Time Range slider -- one compact horizontal two-handle range
            navigator PER Time Group (see wwRenderTimeGroupSliders()).
            #wwTimeGroupSliders is empty (zero height) whenever nothing is
-           displayed -- no reserved gap. Track margins match
-           WW_PANEL_MARGIN (l:55/r:20) so the slider's own full-width
-           track lines up under each panel's own plot area, not its
-           Y-axis label gutter. */
+           displayed -- no reserved gap. Row padding is owner-set
+           (symmetric 20px left/right, matching the ruler's own
+           horizontal padding) -- deliberately not tied to
+           WW_PANEL_MARGIN.l/r's own panel-plot-area alignment. */
+        /* Sticky (owner UX refinement): pinned near the bottom of
+           #activeViewArea (the real vertical scroll container -- see
+           #activeViewArea's own CSS comment, `overflow-y: auto`;
+           .workspace-section/#viewWaveform between it and this element
+           is plain `position: relative`, `overflow: visible`, so it
+           never becomes the scrolling ancestor `position: sticky`
+           resolves against). `bottom` is set via JS
+           (wwSyncTimeGroupSlidersStickyOffset(), called from
+           wwSyncStickyRuler()) to the RULER's own live rendered height,
+           never a hardcoded pixel guess -- so the two form one
+           clean, gap-free sticky stack (this block directly above the
+           ruler) that stays correct even if the ruler's own height ever
+           changes. Deliberately its OWN separate sticky element, not
+           wrapped together with #wwStickyRuler into one shared
+           container -- that would change #wwStickyRuler's own
+           offsetParent away from #viewWaveform, silently breaking the
+           Phase 4B-UAT2 cursor-overlay-height fix
+           (`rulerWrapEl.offsetTop`, see wwUpdateCursorOverlay()'s own
+           comment) which depends on that ancestor staying exactly what
+           it already is. z-index:3, one below the ruler's own 4 (defensive
+           only -- correct `bottom` stacking already keeps them from
+           ever visually overlapping in the first place). */
         #wwTimeGroupSliders:empty { display: none; }
-        .ww-tg-slider-row { padding: 3px 20px 3px 55px; border-top: 1px solid var(--panel-border); background: var(--panel); }
+        #wwTimeGroupSliders:not(:empty) {
+            position: sticky;
+            z-index: 3;
+            background: var(--panel);
+            border-top: 1px solid var(--panel-border);
+        }
+        .ww-tg-slider-row { padding: 3px 20px 3px 20px; border-top: 1px solid var(--panel-border); background: var(--panel); }
         .ww-tg-slider-row:first-child { border-top: none; }
         .ww-tg-slider-label {
             display: flex; justify-content: space-between; gap: 8px;
@@ -16198,6 +16226,26 @@
         // proven correct on every panel. No separate date line is shown in
         // the ruler at all anymore (section 5/6); Absolute mode's tick text
         // is the one place clock-time context now appears.
+        // Sticky Time Range slider (owner UX refinement): the slider
+        // block and #wwStickyRuler are two SEPARATE `position: sticky`
+        // siblings (see #wwTimeGroupSliders's own CSS comment for why
+        // they are deliberately not wrapped together) -- so the slider's
+        // own `bottom` must equal the ruler's CURRENT rendered height for
+        // the two to stack as one gap-free, non-overlapping unit. Reads
+        // the ruler's real `getBoundingClientRect().height` every time
+        // (never a hardcoded pixel guess -- correct even if the ruler's
+        // own height ever changes, and correctly 0 while the ruler is
+        // `hidden`, in which case the slider container is empty/hidden
+        // too so the exact value is moot). Called from
+        // wwSyncStickyRuler() itself, the one place already responsible
+        // for the ruler's own layout state.
+        function wwSyncTimeGroupSlidersStickyOffset() {
+            const slidersEl = document.getElementById("wwTimeGroupSliders");
+            const rulerWrapEl = document.getElementById("wwStickyRuler");
+            if (!slidersEl || !rulerWrapEl) return;
+            slidersEl.style.bottom = rulerWrapEl.getBoundingClientRect().height + "px";
+        }
+
         function wwSyncStickyRuler() {
             const wrapEl = document.getElementById("wwStickyRuler");
             const chartEl = document.getElementById("wwStickyRulerChart");
@@ -16205,6 +16253,7 @@
 
             const hasChannels = ww.panels.length > 0;
             wrapEl.hidden = !hasChannels;
+            wwSyncTimeGroupSlidersStickyOffset();
             if (!hasChannels) return; // section 17: no unnecessary ruler when empty
 
             // Absolute/Elapsed both use the same numeric elapsed range.
@@ -16552,6 +16601,14 @@
         function wwRenderTimeGroupSliders() {
             const container = document.getElementById("wwTimeGroupSliders");
             if (!container) return;
+            // Defensive resync (cheap -- one getBoundingClientRect() call):
+            // covers the one call path that can reach this function
+            // without wwSyncStickyRuler() having just run for the same
+            // change (a non-primary group's own viewport update, inside
+            // wwApplyAndFetchGroupViewport()) -- the ruler's own height
+            // never actually changes between calls, so this is normally
+            // a no-op re-confirmation, never a source of drift.
+            wwSyncTimeGroupSlidersStickyOffset();
             const activeIds = Array.from(wwActiveTimeGroupIds()).sort();
             if (activeIds.length === 0) {
                 container.innerHTML = "";
