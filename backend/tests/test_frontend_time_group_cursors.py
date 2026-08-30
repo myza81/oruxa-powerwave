@@ -227,7 +227,7 @@ class TestOverlayUpdateIsPerGroupScoped:
     def test_update_function_takes_group_id_and_resolves_this_groups_own_canvas(self):
         source = _source()
         fn_idx = source.index("function wwUpdateCursorOverlayForGroup(groupId)")
-        fn_body = source[fn_idx : fn_idx + 1600]
+        fn_body = source[fn_idx : fn_idx + 1700]
         assert "wwTimeGroupCanvasEl(groupId)" in fn_body
         assert 'canvasEl.querySelector(".ww-tg-cursor-overlay")' in fn_body
         assert 'canvasEl.querySelector(".ww-tg-cursor-label-layer")' in fn_body
@@ -415,12 +415,20 @@ class TestT0BecameFullyPerGroupInTGE:
 # ==============================================================================
 
 
-class TestAnnotationProjectionExplicitlyStaysPrimaryGroupScoped:
-    def test_annotation_page_position_passes_the_primary_group_id_explicitly(self):
+class TestAnnotationProjectionIsNowGenuinelyPerGroup:
+    """TG-H: annotation reprojection is no longer primary-group-scoped --
+    see test_frontend_time_group_annotations.py for the full Case A-O
+    regression suite. This class only re-confirms the ONE assertion this
+    file's own former TestAnnotationProjectionExplicitlyStaysPrimaryGroupScoped
+    class used to make the opposite claim about, so a reader diffing this
+    file's own history sees the exact reversal in place."""
+    def test_annotation_page_position_no_longer_passes_the_primary_group_id(self):
         source = _source()
         fn_idx = source.index("function wwAnchoredAnnotationPagePosition(annotation)")
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        assert "wwCursorTimeToPixelX(wwPrimaryTimeGroupId(), time)" in fn_body
+        assert "wwCursorTimeToPixelX(wwPrimaryTimeGroupId(), time)" not in fn_body
+        assert "wwCursorTimeToPixelX(groupId, time)" in fn_body
+        assert "wwTimeGroupIdForDisplaySourceId(data.sourceId)" in fn_body
 
 
 # ==============================================================================

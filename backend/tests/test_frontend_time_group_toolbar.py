@@ -305,17 +305,21 @@ class TestSliderRulerDigitalZoomStayTogetherAfterAnyGroupViewportChange:
     """Task section 16/17: after any X zoom/reset action, viewport <->
     slider <-> ruler <-> digital must remain synchronized for that
     group -- all four sync calls must live in the SAME unconditional
-    (not primary-gated) section of wwApplyAndFetchGroupViewport()."""
+    (not primary-gated) section of wwApplyAndFetchGroupViewport().
+    TG-H: peak-annotation recalculation joined this same unconditional
+    group (previously primary-gated -- see
+    test_frontend_time_group_annotations.py's own Case F coverage)."""
 
     def test_ruler_digital_slider_and_zoom_controls_all_resync_unconditionally(self):
         source = _source()
         fn_idx = source.index("async function wwApplyAndFetchGroupViewport(groupId, startTime, endTime)")
         fn_body = source[fn_idx : source.index("async function wwApplyAndFetchViewport(startTime, endTime)", fn_idx)]
         primary_idx = fn_body.index("if (isPrimary) {")
-        primary_end = fn_body.index("wwRecalculateAllPeakAnnotations(startTime, endTime);", primary_idx) + len(
-            "wwRecalculateAllPeakAnnotations(startTime, endTime);"
+        primary_end = fn_body.index("ww.viewport = { start: startTime, end: endTime };", primary_idx) + len(
+            "ww.viewport = { start: startTime, end: endTime };"
         )
         unconditional_tail = fn_body[primary_end:]
+        assert "wwRecalculateAllPeakAnnotations(groupId, startTime, endTime);" in unconditional_tail
         assert "wwSyncTimeGroupRuler(groupId);" in unconditional_tail
         assert "wwRebuildDigitalChart(groupId);" in unconditional_tail
         assert "wwSyncTimeGroupSliderForCanvas(groupId, canvasEl);" in unconditional_tail

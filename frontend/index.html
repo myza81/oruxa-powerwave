@@ -10142,13 +10142,15 @@
         // Time Range slider: the per-Time-Group generalization of the
         // original wwApplyAndFetchViewport() -- see that function's own
         // (now thin-wrapper) comment below for why the PRIMARY group
-        // specifically still mirrors into ww.viewport/ww.workspaceBounds
-        // and keeps driving every existing single-viewport UI surface
-        // (cursor overlay, sticky ruler, digital chart, peak-annotation
-        // recalculation, the toolbar Zoom In/Out buttons) completely
-        // unchanged. A non-primary group's own viewport change relayouts
+        // specifically still mirrors into ww.viewport/ww.workspaceBounds,
+        // the one remaining still-deferred workspace-global surface
+        // (cursor overlay). TG-H: peak-annotation recalculation is no
+        // longer part of that primary-only mirror -- it is now genuinely
+        // per-group, same as the ruler/digital chart/slider/zoom controls
+        // below. A non-primary group's own viewport change relayouts
         // ONLY that group's own panels, refetches ONLY that group's own
-        // channels, and resyncs ONLY that group's own slider row --
+        // channels, resyncs ONLY that group's own slider row, and
+        // recalculates ONLY that group's own Peak annotations --
         // structurally unable to touch an unrelated group (task section
         // 3/6/7/8).
         async function wwApplyAndFetchGroupViewport(groupId, startTime, endTime) {
@@ -10163,23 +10165,24 @@
                 // ww.viewport ALWAYS stays in elapsed seconds -- the one
                 // authoritative coordinate system (section 8) -- regardless
                 // of ww.timeMode; only the Plotly-facing range above is
-                // transformed. Still primary-only: cursor overlay/
-                // peak-annotation recalculation remain deferred,
-                // workspace-global features (task section 22/25) --
-                // unlike the ruler/digital chart/zoom controls below,
-                // which are now genuinely per-group and so update for
-                // EVERY group's own viewport change, not just the
+                // transformed. Still primary-only: cursor overlay is a
+                // still-deferred, workspace-global feature (task section
+                // 22/25) -- unlike the ruler/digital chart/zoom controls
+                // below, which are now genuinely per-group and so update
+                // for EVERY group's own viewport change, not just the
                 // primary's.
                 ww.viewport = { start: startTime, end: endTime };
-                // Phase 4G (DEC-046): peak-annotation recalculation
-                // likewise stays primary-group-scoped -- this preserves
-                // its EXACT pre-existing behavior (unchanged even for the
-                // single-Time-Group case) rather than extending it to
-                // every group, which is a materially larger change this
-                // task does not ask for. Deliberately NOT awaited, same
-                // as before.
-                wwRecalculateAllPeakAnnotations(startTime, endTime);
             }
+            // TG-H (Problem A fix): peak-annotation recalculation is now
+            // genuinely per-group, mirroring the ruler/digital chart/zoom
+            // controls below -- THIS group's own Peak annotations
+            // recalculate using THIS group's own just-applied range,
+            // regardless of primary status (wwRecalculateAllPeakAnnotations()
+            // itself filters to only this groupId's own peaks). Previously
+            // primary-only, so a non-primary group's own Peak never
+            // recalculated on its own zoom/pan/reset. Deliberately NOT
+            // awaited, same as before.
+            wwRecalculateAllPeakAnnotations(groupId, startTime, endTime);
             // Time Group Canvas / TG-D1: THIS group's own ruler, digital
             // chart, slider, and local toolbar zoom controls, regardless
             // of primary status -- all four are now genuinely per-group,
@@ -12352,11 +12355,21 @@
         // wwFormatAbsoluteElapsedTime()/wwFormatCursorDuration() authority
         // A/B cursors already use (section 28/43) -- reading it here never
         // mutates the stored anchor/peak.
+        // TG-H: `groupId`, derived from this annotation's own sourceId
+        // (never the primary group id, never the no-arg
+        // wwWorkspaceRecordingStartMs() default), is threaded into
+        // wwFormatAbsoluteElapsedTime() so a non-primary group's own
+        // Callout/Peak shows ITS OWN Absolute-mode origin/precision --
+        // this was the last remaining primary/first-displayed-channel
+        // fallback in the annotation display path (the underlying
+        // anchorElapsedSeconds/peakElapsedSeconds value itself was
+        // already correct; only this TEXT formatting was wrong).
         function wwAnnotationMetaLine(annotation) {
             const data = annotation.data || {};
+            const groupId = wwTimeGroupIdForDisplaySourceId(data.sourceId);
             if (annotation.type === "callout") {
                 const time = ww.timeMode === "absolute"
-                    ? wwFormatAbsoluteElapsedTime(data.anchorElapsedSeconds)
+                    ? wwFormatAbsoluteElapsedTime(data.anchorElapsedSeconds, { groupId: groupId, spanSeconds: wwVisibleSpanSeconds(groupId) })
                     : wwFormatCursorDuration(data.anchorElapsedSeconds);
                 const value = Number.isFinite(data.anchorValue)
                     ? data.anchorValue.toFixed(3) + (data.unit ? " " + data.unit : "")
@@ -12366,7 +12379,7 @@
             if (wwIsPeakType(annotation.type)) {
                 if (!data.available) return (data.channelName || "—") + " · Unavailable for current view";
                 const time = ww.timeMode === "absolute"
-                    ? wwFormatAbsoluteElapsedTime(data.peakElapsedSeconds)
+                    ? wwFormatAbsoluteElapsedTime(data.peakElapsedSeconds, { groupId: groupId, spanSeconds: wwVisibleSpanSeconds(groupId) })
                     : wwFormatCursorDuration(data.peakElapsedSeconds);
                 return (data.channelName || "—") + " · t = " + time;
             }
@@ -12381,8 +12394,9 @@
             const data = annotation.data || {};
             const line1 = wwPeakValueLineText(annotation);
             if (!data.available) return { line1: line1, line2: "" };
+            const groupId = wwTimeGroupIdForDisplaySourceId(data.sourceId);
             const time = ww.timeMode === "absolute"
-                ? wwFormatAbsoluteElapsedTime(data.peakElapsedSeconds)
+                ? wwFormatAbsoluteElapsedTime(data.peakElapsedSeconds, { groupId: groupId, spanSeconds: wwVisibleSpanSeconds(groupId) })
                 : wwFormatCursorDuration(data.peakElapsedSeconds);
             return { line1: line1, line2: "t = " + time };
         }
@@ -12746,24 +12760,32 @@
         // viewport), or the value is outside the panel's current Y range
         // (section 36/41) -- any one of these means "hidden from canvas,
         // still in state/list."
+        // TG-H (Problem B fix): `groupId` is derived FRESH from the
+        // annotation's own `data.sourceId` every call
+        // (wwTimeGroupIdForDisplaySourceId()), never stored on the
+        // annotation and never the primary group id -- Time Group ids
+        // are themselves derived/dynamic (can change after a merge/
+        // split), so re-resolving from the annotation's own stable
+        // source/channel ownership on every render is the only way this
+        // stays correct across topology changes (task section 19), and
+        // it also means the SAME groupId now drives both the X geometry
+        // (wwCursorTimeToPixelX) below AND the Y geometry (already always
+        // `entry.panel`, this annotation's own ACTUAL panel) -- the old
+        // code's cross-group mismatch (X from the primary group's plot,
+        // Y from this annotation's real panel) is structurally
+        // impossible now: both come from the SAME resolved group/panel.
         function wwAnchoredAnnotationPagePosition(annotation) {
             const data = annotation.data || {};
             const entry = ww.displayed.get(wwChannelKey(data.sourceId, data.channelName));
             if (!entry || !entry.panel || !entry.panel.plotlyReady) return null;
+            const groupId = wwTimeGroupIdForDisplaySourceId(data.sourceId);
+            const range = wwTimeGroupVisibleRange(groupId);
             const time = wwAnchoredAnnotationTime(annotation);
             const value = wwAnchoredAnnotationValue(annotation);
-            if (!ww.viewport || !Number.isFinite(time)) return null;
-            const inViewport = time >= ww.viewport.start && time <= ww.viewport.end;
+            if (!range || !Number.isFinite(time)) return null;
+            const inViewport = time >= range.start && time <= range.end;
             if (!inViewport) return null;
-            // TG-D2: annotations are not migrated this slice (explicit
-            // non-goal) and stay scoped to the PRIMARY Time Group exactly
-            // as before -- wwCursorTimeToPixelX() now requires an
-            // explicit groupId (task section 9: "avoid hidden fallback to
-            // the primary group"), so that scope is passed here
-            // EXPLICITLY rather than defaulted, preserving this
-            // function's own pre-existing primary-group-only behavior
-            // byte-for-byte.
-            const pageX = wwCursorTimeToPixelX(wwPrimaryTimeGroupId(), time);
+            const pageX = wwCursorTimeToPixelX(groupId, time);
             if (pageX === null) return null;
             const pageY = wwAnchorValueToPixelY(entry.panel, value);
             if (pageY === null) return null;
@@ -12982,6 +13004,20 @@
             let draggingId = null;
             let dragMetrics = null;
             let dragTarget = null;
+            // TG-H bug fix: this dragged annotation's own Time Group,
+            // resolved once at pointerdown (see onPointerDown() below) and
+            // threaded through to wwCursorPlotMetrics()/wwCursorPixelXToTime()
+            // -- both REQUIRE an explicit groupId (TG-D2/TG-E). Before this
+            // fix, onPointerDown() called wwCursorPlotMetrics() with NO
+            // groupId argument at all, which could never resolve any real
+            // group's own metrics -- Callout anchor dragging was silently a
+            // complete no-op (always fell through to `if (!dragMetrics)
+            // return;`) regardless of Time Groups, not merely
+            // primary-group-scoped. Fixed here as the same class of
+            // "annotation code must resolve its own Time Group, never rely
+            // on an implicit/missing one" defect this slice's own Problem
+            // A/B fixes address.
+            let dragGroupId = null;
 
             // Phase 4F-UAT2 (free 2D preview, DEC-045 addendum): the
             // preview marker follows the pointer FREELY in both X and Y
@@ -13078,6 +13114,7 @@
                 draggingId = null;
                 dragMetrics = null;
                 dragTarget = null;
+                dragGroupId = null;
                 if (target) stopListening(target);
                 restoreAuthoritativeAnchor(); // section 30: no backend call
             }
@@ -13088,6 +13125,7 @@
                 draggingId = null;
                 dragMetrics = null;
                 dragTarget = null;
+                dragGroupId = null;
                 if (target) {
                     stopListening(target);
                     releaseCapture(target, event);
@@ -13103,11 +13141,12 @@
                 // axes, but final resolution reads X ONLY --
                 // `event.clientY` is never consulted here, at any point.
                 // `wwCursorPixelXToTime()` already clamps internally to
-                // the current ww.viewport.
-                const time = wwCursorPixelXToTime(event.clientX, dragMetrics);
+                // this annotation's own Time Group's current viewport.
+                const time = wwCursorPixelXToTime(dragGroupId, event.clientX, dragMetrics);
                 draggingId = null;
                 dragMetrics = null;
                 dragTarget = null;
+                dragGroupId = null;
                 if (target) {
                     stopListening(target);
                     releaseCapture(target, event);
@@ -13144,7 +13183,12 @@
                 event.preventDefault();
                 event.stopPropagation(); // never reach a document-level "click outside deselects" listener, and never Plotly/A-B-cursor beneath (section 5/27)
                 wwSelectAnnotation(id); // section 25
-                dragMetrics = wwCursorPlotMetrics();
+                // TG-H bug fix: this Callout's own Time Group, derived from
+                // its own stable sourceId ownership (never a stored/stale
+                // groupId, never the primary group id) -- required by
+                // wwCursorPlotMetrics()/wwCursorPixelXToTime() below.
+                dragGroupId = wwTimeGroupIdForDisplaySourceId(annotation.data.sourceId);
+                dragMetrics = wwCursorPlotMetrics(dragGroupId);
                 if (!dragMetrics) return;
                 draggingId = id;
                 dragTarget = hit;
@@ -13519,12 +13563,19 @@
                     // task: Callout's own engineering behavior is not
                     // redesigned).
                     wwExitAnnotationPlacementMode();
-                    // TG-E: annotations are an explicit non-goal this
-                    // slice (still primary-group-scoped, matching every
-                    // other Callout/Peak call site) -- EXPLICITLY passed,
-                    // never a hidden default now that this helper
-                    // requires a groupId.
-                    const approximateElapsedSeconds = wwPlotlyXToElapsed(wwPrimaryTimeGroupId(), point.x);
+                    // TG-H (Problem A fix): the CLICKED panel's own Time
+                    // Group, never the primary group id -- `point.x` is
+                    // THAT panel's own Plotly-rendered X (event-relative
+                    // if THAT group has its own t0 set), so converting it
+                    // back to workspace time must undo THAT SAME group's
+                    // own t0, not an unrelated group's. Using the wrong
+                    // group's t0 here silently resolved the wrong PHYSICAL
+                    // SAMPLE whenever the two groups' t0 values differed
+                    // (approximateElapsedSeconds below is the SEARCH SEED
+                    // sent to the backend's nearest-sample resolver, not
+                    // just a display value).
+                    const clickGroupId = wwPanelTimeGroupId(panel);
+                    const approximateElapsedSeconds = wwPlotlyXToElapsed(clickGroupId, point.x);
                     wwCreateCalloutFromClick(panel, channel, approximateElapsedSeconds);
                 } else {
                     // Phase 4G-UAT (section 10/17): unlike Callout, Peak
@@ -13652,10 +13703,19 @@
         // Section 3/4: unlike wwCreateCalloutFromClick(), the click's own X
         // position is never used as engineering input -- only the clicked
         // TRACE resolves channel identity; the search interval is always
-        // the CURRENT ww.viewport (section 4/75), never the click position
-        // or the whole record.
+        // the CURRENT visible range (section 4/75), never the click
+        // position or the whole record.
+        // TG-H (Problem A fix): "current visible range" now means the
+        // CLICKED PANEL's own Time Group's own current range
+        // (wwTimeGroupVisibleRange(groupId), the same TG-G-established
+        // per-group resolver the ruler/wwBuildLayout() already use) --
+        // never the single global ww.viewport, which is only ever this
+        // panel's own range when the panel happens to belong to the
+        // primary group.
         async function wwCreatePeakFromClick(panel, channel, mode) {
-            if (!ww.viewport) return;
+            const clickGroupId = wwPanelTimeGroupId(panel);
+            const clickRange = wwTimeGroupVisibleRange(clickGroupId);
+            if (!clickRange) return;
             const type = mode === "max" ? "peak_max" : "peak_min";
             const workspaceId = currentWorkspaceId();
             const epochAtStart = ww.epoch;
@@ -13668,8 +13728,8 @@
             const placementGenerationAtStart = ww.annotationPlacementGeneration;
             const sourceId = channel.sourceId;
             const channelName = channel.channelName;
-            const startTime = ww.viewport.start;
-            const endTime = ww.viewport.end;
+            const startTime = clickRange.start;
+            const endTime = clickRange.end;
 
             function wwPlacementSessionStale() {
                 return epochAtStart !== ww.epoch || currentWorkspaceId() !== workspaceId ||
@@ -13895,18 +13955,30 @@
             }
         }
 
-        // Section 31: the ONE dispatcher wwApplyAndFetchViewport() calls --
-        // groups every active +Peak/-Peak annotation by its own sourceId
-        // (section 59: cross-channel/cross-source annotations update
-        // independently, never contaminating each other) and fires one
-        // batched request per distinct source (never merged, never one
-        // request per annotation).
-        function wwRecalculateAllPeakAnnotations(startTime, endTime) {
+        // Section 31: the ONE dispatcher wwApplyAndFetchGroupViewport()
+        // calls -- groups every active +Peak/-Peak annotation BELONGING
+        // TO THIS groupId by its own sourceId (section 59: cross-channel/
+        // cross-source annotations update independently, never
+        // contaminating each other) and fires one batched request per
+        // distinct source (never merged, never one request per
+        // annotation).
+        // TG-H (Problem A fix): now requires an explicit `groupId` and
+        // filters to only that group's own Peak annotations (via
+        // wwTimeGroupIdForDisplaySourceId(data.sourceId), never a stored
+        // groupId) -- previously this recalculated EVERY Peak annotation
+        // in the workspace using ONE shared range, only ever called for
+        // the primary group's own viewport change, so a non-primary
+        // group's own Peak never recalculated on ITS OWN zoom/pan, and
+        // any accidental cross-group call would have recalculated an
+        // unrelated group's own peaks using the wrong range.
+        function wwRecalculateAllPeakAnnotations(groupId, startTime, endTime) {
             const sourceIds = new Set();
             for (const annotation of ww.annotations.values()) {
                 if (!wwIsPeakType(annotation.type)) continue;
                 const data = annotation.data || {};
-                if (data.sourceId) sourceIds.add(data.sourceId);
+                if (!data.sourceId) continue;
+                if (wwTimeGroupIdForDisplaySourceId(data.sourceId) !== groupId) continue;
+                sourceIds.add(data.sourceId);
             }
             for (const sourceId of sourceIds) {
                 wwRecalculatePeakAnnotationsForSource(sourceId, startTime, endTime);
@@ -18147,17 +18219,18 @@
         function wwUpdateCursorOverlayForGroup(groupId) {
             const canvasEl = wwTimeGroupCanvasEl(groupId);
             if (!canvasEl) return;
-            const isPrimary = groupId === wwPrimaryTimeGroupId();
-            // Callout/Peak annotation reprojection stays primary-group-
-            // scoped this slice (annotations are an explicit non-goal,
-            // task section 29) -- reused from the SAME one hook point
-            // every OTHER primary-group viewport/geometry change already
-            // funnels through, so a wwUpdateAllCursorOverlays() sweep
-            // reaches this exactly once per call, via whichever group
-            // happens to be primary.
-            if (isPrimary) {
-                wwRenderAnnotations();
-            }
+            // TG-H: Callout/Peak annotation reprojection is no longer
+            // primary-group-gated -- annotations are now genuinely
+            // per-group (wwAnchoredAnnotationPagePosition() resolves each
+            // annotation's own group fresh), so ANY group's own viewport/
+            // cursor update must resync annotations, not only the
+            // primary's. wwRenderAnnotations() is a flat, cheap sweep
+            // over ww.annotations (never touches Time Group canvas DOM),
+            // so calling it once per group-scoped update stays lightweight
+            // (task section 23) -- reused from the SAME one hook point
+            // every OTHER per-group viewport/geometry change already
+            // funnels through.
+            wwRenderAnnotations();
             // TG-E: THIS group's own local t0 button -- unconditional,
             // never gated on isPrimary (the OLD TG-D2-era limit, now
             // superseded) -- Cursor A's own placement/removal for ANY

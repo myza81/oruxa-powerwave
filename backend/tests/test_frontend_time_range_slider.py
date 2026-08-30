@@ -113,25 +113,28 @@ class TestApplyAndFetchGroupViewportScoping:
         assert "if (wwPanelTimeGroupId(panel) !== groupId) continue;" in fn_body
         assert "ww.timeGroupViewports.set(groupId, { start: startTime, end: endTime });" in fn_body
 
-    def test_primary_group_still_drives_every_existing_single_viewport_surface(self):
+    def test_primary_group_still_drives_the_one_remaining_single_viewport_surface(self):
         """Time Group Canvas (task section 7/8/25) + TG-D1 (task section
-        7): ruler/digital/slider/local-toolbar-zoom-controls are all now
+        7): ruler/digital/slider/local-toolbar-zoom-controls are all
         genuinely per-group and update for EVERY group's own viewport
-        change -- only the still-deferred, workspace-global surfaces
-        (ww.viewport mirror, peak annotations) remain gated to the
-        primary group only."""
+        change. TG-H: peak-annotation recalculation joined that same
+        unconditional, genuinely-per-group set (previously gated to the
+        primary group only, see
+        test_frontend_time_group_annotations.py's own Case F) -- only
+        the ww.viewport mirror itself (the still-deferred, workspace-
+        global cursor-overlay surface reads it) remains primary-only."""
         source = _source()
         fn_idx = source.index("async function wwApplyAndFetchGroupViewport(groupId, startTime, endTime)")
         fn_body = source[fn_idx : source.index("async function wwApplyAndFetchViewport(startTime, endTime)", fn_idx)]
         primary_idx = fn_body.index("if (isPrimary) {")
-        primary_end = fn_body.index("wwRecalculateAllPeakAnnotations(startTime, endTime);", primary_idx) + len(
-            "wwRecalculateAllPeakAnnotations(startTime, endTime);"
+        primary_end = fn_body.index("ww.viewport = { start: startTime, end: endTime };", primary_idx) + len(
+            "ww.viewport = { start: startTime, end: endTime };"
         )
         primary_block = fn_body[primary_idx:primary_end]
         assert "ww.viewport = { start: startTime, end: endTime };" in primary_block
-        assert "wwRecalculateAllPeakAnnotations(startTime, endTime);" in primary_block
 
         unconditional_tail = fn_body[primary_end:]
+        assert "wwRecalculateAllPeakAnnotations(groupId, startTime, endTime);" in unconditional_tail
         assert "wwSyncTimeGroupRuler(groupId);" in unconditional_tail
         assert "wwRebuildDigitalChart(groupId);" in unconditional_tail
         assert "wwSyncTimeGroupSliderForCanvas(groupId, canvasEl);" in unconditional_tail

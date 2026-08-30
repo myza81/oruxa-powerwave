@@ -144,7 +144,7 @@ class TestCursorOverlayExcludesToolbarRegion:
     def test_overlay_top_and_height_are_derived_from_the_panels_element_offset(self):
         source = _source()
         fn_idx = source.index("function wwUpdateCursorOverlayForGroup(groupId)")
-        fn_body = source[fn_idx : fn_idx + 8300]
+        fn_body = source[fn_idx : fn_idx + 8800]
         assert 'const panelsEl = canvasEl.querySelector(".ww-tg-panels");' in fn_body
         assert "const overlayTop = panelsEl ? panelsEl.offsetTop : 0;" in fn_body
         assert 'overlayEl.style.top = overlayTop + "px";' in fn_body

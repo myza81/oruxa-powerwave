@@ -4,7 +4,33 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-29** (Phase 26 — TG-G: multi-Time-Group
+Last meaningful update: **2026-08-29** (Phase 27 — TG-H: per-Time-Group
+annotation placement/anchoring/reprojection. Annotations now resolve
+their own owning Time Group FRESH on every call, from their own stable
+`data.sourceId` (`wwTimeGroupIdForDisplaySourceId()`) — never a stored
+groupId, never `wwPrimaryTimeGroupId()`. Fixed: Callout/Peak placement
+(`wwWireAnalogPanelClick()`/`wwCreatePeakFromClick()`) now converts the
+CLICKED panel's own Plotly X / search range using THAT panel's own Time
+Group, not primary; `wwAnchoredAnnotationPagePosition()`'s X and Y
+geometry now both resolve through the same group (closing a real X/Y
+mismatch for non-primary-group annotations); `wwRecalculateAllPeakAnnotations()`
+is now genuinely per-group (previously primary-only, so a non-primary
+group's own Peak never recalculated on its own zoom/pan); Absolute-mode
+display TEXT for a Callout/Peak (`wwAnnotationMetaLine()`/
+`wwPeakLabelLines()`) now uses that annotation's own group's origin.
+Also found and fixed: Callout anchor drag-to-reposition
+(`wwWireCalloutAnchorDrag()`) was calling its own pixel-projection
+helpers with NO groupId argument at all — a complete pre-existing
+no-op bug (dragging always silently snapped back), not merely
+primary-scoped, predating this slice. The annotation review drawer
+stays workspace-global, unchanged, and now correctly reflects each
+entry's own group (it already just reads each annotation's own now-
+correct rendered position). Found but explicitly NOT fixed (a general
+waveform hover tooltip, not an annotation, out of scope):
+`wwTraceCustomData()`'s own Absolute-mode hover-tooltip text has the
+same "omits groupId" gap. See
+[DECISIONS.md — DEC-065](DECISIONS.md#dec-065--tg-h-per-time-group-annotation-placementanchoringreprojection--annotations-resolve-their-own-owning-time-group-dynamically-from-sourcechannel-ownership-never-wwprimarytimegroupid)
+and [HANDOFF.md](HANDOFF.md), on top of Phase 26 — TG-G: multi-Time-Group
 correctness cleanup. The DEC-061 Absolute-axis bug is FIXED —
 `wwBuildLayout(panel, colors)` now builds its xaxis range/tick-format
 from `wwTimeGroupVisibleRange(groupId)` (the same per-group range

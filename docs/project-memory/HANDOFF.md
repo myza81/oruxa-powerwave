@@ -8,6 +8,82 @@ Last updated: **2026-08-29**
 
 ## What was most recently done
 
+**Phase 27 — TG-H: per-Time-Group annotation placement/anchoring/
+reprojection.** On top of Phase 26 (TG-G) below — see
+[DECISIONS.md — DEC-065](DECISIONS.md#dec-065--tg-h-per-time-group-annotation-placementanchoringreprojection--annotations-resolve-their-own-owning-time-group-dynamically-from-sourcechannel-ownership-never-wwprimarytimegroupid)
+for the full record; summarized here for continuity.
+
+TG-G's own audit had already found (and explicitly deferred) that
+annotation placement/reprojection was still primary-group-scoped. This
+slice fixes it: every per-annotation function now derives `groupId`
+FRESH from the annotation's own `data.sourceId` (via
+`wwTimeGroupIdForDisplaySourceId()`) instead of calling
+`wwPrimaryTimeGroupId()` or reading the single global `ww.viewport` —
+never a stored groupId on the annotation itself, since Time Group ids
+are themselves derived/dynamic and can change after a merge/split.
+
+**Fixed**: `wwWireAnalogPanelClick()`'s Callout branch (used the
+CLICKED panel's own group to convert Plotly X back to workspace time,
+not primary — this was the search seed sent to the backend's nearest-
+sample resolver, so the old bug could silently anchor to the wrong
+physical sample once groups had different t0 values);
+`wwCreatePeakFromClick()`'s own search range (now
+`wwTimeGroupVisibleRange(wwPanelTimeGroupId(panel))`, not the global
+`ww.viewport`); `wwAnchoredAnnotationPagePosition()` (X and Y geometry
+now both resolve through the SAME group, closing a real X/Y mismatch
+for non-primary-group annotations); `wwRecalculateAllPeakAnnotations()`
+(now requires an explicit `groupId`, filters to only that group's own
+Peak annotations, and runs unconditionally per group instead of only
+for the primary group's own viewport change); `wwAnnotationMetaLine()`/
+`wwPeakLabelLines()` (Absolute-mode display TEXT now uses the
+annotation's own group's origin, not the first-displayed-channel
+fallback). **Also found and fixed during this slice's own audit**:
+Callout anchor drag-to-reposition
+(`wwWireCalloutAnchorDrag()`) was calling
+`wwCursorPlotMetrics()`/`wwCursorPixelXToTime()` with NO `groupId`
+argument at all — not merely primary-scoped, a complete pre-existing
+no-op bug (dragging a Callout's anchor always silently snapped back to
+its original position, regardless of Time Groups) — fixed by
+resolving the dragged annotation's own group once at pointerdown and
+threading it through.
+
+Verified by the full backend suite (1749 passed, 0 failed — up from
+1731 at TG-G's own end state; 4 pre-existing test files updated for
+the new function signatures/shapes; 18 new tests in the new
+`test_frontend_time_group_annotations.py`) plus a live-browser
+Playwright UAT pass with two genuinely-different-date Time Groups (27
+Jan 2026 vs 02 Feb 2026): a Callout placed in each group resolved to
+its own correct group; both stayed correctly anchored through
+different t0 per group, an Absolute↔Elapsed switch, Group 2's own
+zoom/reset (Group 1 provably unaffected), a Grouped→Separate→Grouped
+round trip, and Custom layout; a +Peak in Group 2 showed its own
+group's correct Absolute-time text; the sticky toolbar's own button
+confirmed (via `document.elementFromPoint()`) to remain the real
+top hit-test target with annotations present; Cursor A dragging
+confirmed unaffected; zero console/page errors.
+
+**Found, reported, NOT fixed (out of this task's own scope — a
+general waveform hover tooltip, not an annotation)**:
+`wwTraceCustomData()` (the Absolute-mode hover-tooltip text on every
+analog trace) has the same "omits groupId, falls back to the
+first-displayed-channel's own origin" gap this slice fixed for
+annotation display text — a future slice should thread `groupId`
+through that one call site too.
+
+**Files changed**: `frontend/index.html` only (no backend/schema/API
+changes) + 1 new frontend test file
+(`test_frontend_time_group_annotations.py`) + 4 pre-existing frontend
+test files updated (`test_frontend_time_group_cursors.py`,
+`test_frontend_time_group_toolbar.py`, `test_frontend_time_range_slider.py`,
+`test_frontend_time_group_layout.py` — the last is a window-size widen
+only).
+
+**Next step**: nothing is pre-authorized. Per this session's own "do
+not commit/push without being asked" discipline, these changes stayed
+uncommitted at the end of this task.
+
+## What was done in the prior session (Phase 26 — TG-G)
+
 **Phase 26 — TG-G: multi-Time-Group correctness cleanup (DEC-061 Absolute-axis
 fix + cursor-overlay/toolbar fix).** On top of Phase 25 (TG-F) below — see
 [DECISIONS.md — DEC-064](DECISIONS.md#dec-064--tg-g-multi-time-group-correctness-cleanup-the-dec-061-absolute-time-x-axis-bug-is-fixed-and-the-cursor-overlay-no-longer-blocks-time-group-toolbar-controls)

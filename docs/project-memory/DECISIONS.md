@@ -9125,6 +9125,217 @@ Impact:
 
 ---
 
+## DEC-065 — TG-H: per-Time-Group annotation placement/anchoring/reprojection — annotations resolve their own owning Time Group dynamically from source/channel ownership, never wwPrimaryTimeGroupId()
+
+Date: 2026-08-29
+Status: Approved
+Source: explicit project-owner instruction ("TG-H — Per-Time-Group
+Annotation Placement and Reprojection"), delivered as the direct
+successor to TG-G (DEC-064), which had flagged this exact cross-group
+annotation defect during its own audit but explicitly deferred fixing
+it, pending an owner decision.
+
+Decision:
+
+**An annotation must always use the time transform and plot geometry
+of the panel and Time Group it actually belongs to — never the
+primary Time Group by default.** `groupId` is derived FRESH, every
+call, from the annotation's own already-stable `data.sourceId` (via
+`wwTimeGroupIdForDisplaySourceId()`) — never stored on the annotation
+and never `wwPrimaryTimeGroupId()`. This was a deliberate audit
+finding (task section 6/19): the annotation data model already carries
+enough ownership information (`sourceId`/`channelName`) to resolve its
+current Time Group unambiguously at any time, including after a
+merge/split changes which derived group id a source belongs to — so no
+new stored field was added, and no annotation schema change was
+needed.
+
+Two problems named by the task, plus a third discovered during this
+slice's own audit, all fixed by threading the CLICKED/OWNING panel's
+own `groupId` through instead of `wwPrimaryTimeGroupId()`:
+
+- **Problem A (placement)**: `wwWireAnalogPanelClick(panel)`'s Callout
+  branch converted the click's own Plotly X via
+  `wwPlotlyXToElapsed(wwPrimaryTimeGroupId(), point.x)` — wrong
+  whenever the clicked panel's own group differs from primary AND
+  either group has an active t0 (the search-seed sent to the backend's
+  nearest-sample resolver, not merely a display value, so this could
+  silently anchor to the wrong physical sample). Fixed:
+  `wwPlotlyXToElapsed(wwPanelTimeGroupId(panel), point.x)`.
+  `wwCreatePeakFromClick(panel, channel, mode)` had the same class of
+  bug for Peak placement's own search RANGE — it used the single
+  global `ww.viewport.start/end` unconditionally (`if (!ww.viewport)
+  return;`), never the clicked panel's own group. Fixed:
+  `wwTimeGroupVisibleRange(wwPanelTimeGroupId(panel))` supplies
+  `startTime`/`endTime` instead.
+- **Problem B (reprojection)**: `wwAnchoredAnnotationPagePosition(annotation)`
+  computed page-X via `wwCursorTimeToPixelX(wwPrimaryTimeGroupId(),
+  time)` while page-Y always came from `entry.panel` (the annotation's
+  ACTUAL, possibly non-primary, panel) — a real X/Y geometry mismatch
+  whenever an annotation belonged to a non-primary group. Fixed: both
+  the `inViewport` range check and the X projection now resolve
+  through the SAME `groupId` (derived from `data.sourceId`), so X and
+  Y structurally can never disagree about which group/panel they
+  belong to.
+- **Peak recalculation-on-viewport-change (found during this slice's
+  own audit, same root class as Problem A)**: `wwRecalculateAllPeakAnnotations(startTime,
+  endTime)` recalculated EVERY Peak annotation in the workspace using
+  ONE shared range, called only from `wwApplyAndFetchGroupViewport()`'s
+  own `if (isPrimary)` branch — meaning a non-primary group's own
+  Peak never recalculated on its own zoom/pan/reset at all. Fixed:
+  `wwRecalculateAllPeakAnnotations(groupId, startTime, endTime)` now
+  requires an explicit `groupId`, filters to only that group's own
+  Peak annotations (via `wwTimeGroupIdForDisplaySourceId(data.sourceId)
+  !== groupId` exclusion), and is called unconditionally (moved out of
+  the `if (isPrimary)` block) with whichever group's viewport just
+  changed.
+- **Absolute-mode display TEXT (found during this slice's own audit,
+  same root class)**: `wwAnnotationMetaLine()`/`wwPeakLabelLines()`
+  called `wwFormatAbsoluteElapsedTime(elapsedSeconds)` with no
+  `opts.groupId` at all — the underlying stored anchor time was
+  already correct (Problem A's own fix), but the DISPLAYED Absolute-
+  time text for a non-first-displayed-channel's annotation fell back
+  to `wwWorkspaceRecordingStartMs()`'s own "first channel in display
+  order" origin, not that annotation's own group's origin. Fixed: both
+  now pass `{ groupId, spanSeconds: wwVisibleSpanSeconds(groupId) }`.
+- **Callout anchor drag-to-reposition (found during this slice's own
+  audit — not merely primary-scoped, a complete pre-existing no-op
+  bug)**: `wwWireCalloutAnchorDrag()`'s own `onPointerDown` called
+  `wwCursorPlotMetrics()` with NO arguments at all (`groupId` stayed
+  `undefined`, which can never match any real group id), and
+  `onPointerUp` called `wwCursorPixelXToTime(event.clientX,
+  dragMetrics)` — a pixel value in the `groupId` slot and the metrics
+  object in the `pageX` slot. Both silently resolved to `null`/no
+  match every time, so dragging a Callout's anchor marker to reposition
+  it was a complete no-op (always snapped back), regardless of Time
+  Groups, predating this slice. Fixed by resolving `dragGroupId =
+  wwTimeGroupIdForDisplaySourceId(annotation.data.sourceId)` once at
+  pointerdown (the dragged annotation is already resolved there) and
+  threading it through both calls — the same "derive fresh from
+  source/channel ownership" pattern as everywhere else this slice.
+
+Reason:
+
+Section 2's own governing principle: every anchored annotation belongs
+unambiguously to Time Group → Panel → Channel/source → Anchor
+time/value, and its time conversion/pixel projection must use that
+SAME Time Group/panel, never borrow the primary Time Group's. This is
+the exact same class of correctness gap DEC-061 (Absolute-axis)/DEC-064
+(cursor overlay) already closed elsewhere in this migration, now
+closed for the one remaining annotation surface.
+
+Alternatives considered:
+
+- Storing an explicit `groupId` field on each annotation at creation
+  time, updated on merge/split — considered, rejected per the task's
+  own section 6/19 explicit guidance: Time Group ids are themselves
+  derived/dynamic and can change after a merge/split; a STORED groupId
+  would need active invalidation/re-resolution logic to stay correct,
+  while deriving it fresh from the already-stable `sourceId` on every
+  render is simpler, always correct by construction, and needs no
+  merge/split-specific annotation code at all.
+- A per-Time-Group annotation overlay/drawer — explicitly rejected by
+  the task's own non-goals (section 27); the existing single global
+  `#wwAnnotationOverlayMain`/`#wwAnnotationDrawer` already renders each
+  annotation's own CORRECT position once the per-annotation group
+  resolution above is in place (task section 16's own "a global overlay
+  is acceptable only if every annotation's page position is computed
+  from its own correct group/panel geometry" — now true).
+- Fixing only Problems A/B as literally named by the task and leaving
+  the Peak-recalculation/display-text/drag-anchor bugs found during
+  this slice's own audit unaddressed — considered, rejected: all three
+  are the exact same root defect (annotation code reading
+  `wwPrimaryTimeGroupId()`/no groupId/the global `ww.viewport` instead
+  of resolving the annotation's own group), directly within this
+  task's own explicit framing ("make annotation creation, anchoring,
+  rendering, and reprojection use the annotation's own Time Group and
+  panel geometry"), not a scope expansion into a new feature area.
+- Fixing the general (non-annotation) trace-hover-tooltip gap
+  (`wwTraceCustomData()` also omits `groupId` from its own
+  `wwFormatAbsoluteElapsedTime()` call) alongside the annotation
+  display-text fix above, since both share the same root helper —
+  considered, rejected as genuinely out of this task's own scope (a
+  waveform hover tooltip, not an annotation); reported here for
+  awareness, not fixed.
+
+Impact:
+
+- `frontend/index.html` only (no backend/schema/API changes —
+  audited and confirmed the existing per-source `annotation-anchor`/
+  `peak-values` backend endpoints already resolve purely from
+  `sourceId`/`channel_name`, with no Time Group concept at all, so
+  nothing there needed to change). Changed in place (no signature
+  change unless noted): `wwWireAnalogPanelClick()`,
+  `wwCreatePeakFromClick()`, `wwAnchoredAnnotationPagePosition()`,
+  `wwAnnotationMetaLine()`, `wwPeakLabelLines()`,
+  `wwWireCalloutAnchorDrag()`. Signature changed:
+  `wwRecalculateAllPeakAnnotations(startTime, endTime)` →
+  `wwRecalculateAllPeakAnnotations(groupId, startTime, endTime)` (one
+  call site, in `wwApplyAndFetchGroupViewport()`, updated to match and
+  moved out of its own `if (isPrimary)` gate). No new module-level
+  state, no new singleton DOM, no new scroll listeners, no annotation
+  schema change.
+- New test file `test_frontend_time_group_annotations.py` (18 tests,
+  Cases A-O). Updated: `test_frontend_time_group_cursors.py` (the
+  former `TestAnnotationProjectionExplicitlyStaysPrimaryGroupScoped`
+  class, which asserted the OLD primary-scoped behavior, now asserts
+  the reversal; one window-size widen), `test_frontend_time_group_toolbar.py`
+  and `test_frontend_time_range_slider.py` (both had a duplicate
+  assertion of `wwApplyAndFetchGroupViewport()`'s own old
+  primary-gated peak-annotation-recalculation shape, updated to match
+  the new unconditional, per-group shape), `test_frontend_time_group_layout.py`
+  (one window-size widen only, no assertion change, to accommodate a
+  longer in-place comment).
+- Verified by the full backend suite (1749 passed, 0 failed — up from
+  1731 at TG-G's own end state) plus a live-browser Playwright UAT
+  pass using the same two genuinely-different-date Time Groups as
+  TG-G's own UAT (27 Jan 2026 vs 02 Feb 2026, non-overlapping): a
+  Callout placed in each group resolved to its own correct group
+  (verified via `wwTimeGroupIdForDisplaySourceId`, not screen
+  position); both callouts stayed visibly positioned through different
+  t0 values set in each group, an Absolute→Elapsed→Absolute switch
+  (stored anchor value byte-identical throughout both), Group 2's own
+  zoom+reset (Group 1's own callout position provably unchanged, exact
+  DOM style comparison), a Grouped→Separate→Grouped round trip, and a
+  Custom-layout excursion (group ownership unchanged throughout); a
+  +Peak annotation placed in Group 2 correctly resolved to Group 2 and
+  rendered its own group's correct Absolute-time text (screenshot:
+  "+Peak: 900.0 V, t = 13:00:40.00225", Group 2's own origin, not
+  Group 1's 13:09:40); the sticky toolbar's own Autoscale button
+  confirmed via `document.elementFromPoint()` to be the actual top
+  hit-test target with annotations present and the toolbar stuck
+  (no z-index/overlay-interception regression, despite
+  `.ww-annotation-overlay`'s own z-index:15 nominally exceeding
+  `.ww-tg-sticky-top`'s z-index:5 — its pre-existing `pointer-events:
+  none` container already prevents interception, confirmed rather than
+  assumed); Cursor A dragging in the waveform region confirmed
+  unaffected; zero console/page errors throughout.
+- **Discovered during this slice's own audit, reported here per the
+  project's own change-governance requirement rather than silently
+  fixed, and explicitly NOT fixed (out of this task's own scope, a
+  general waveform hover tooltip, not an annotation)**:
+  `wwTraceCustomData(channel)` (used for the Absolute-mode hover-
+  tooltip text on every analog trace) already resolves its own
+  `groupId` locally but never passes it to its own
+  `wwFormatAbsoluteElapsedTime()` call — the SAME class of "falls back
+  to the first-displayed-channel's own origin" gap this slice fixed
+  for annotation display text, but for hover tooltips instead. A
+  future slice should thread `groupId` through that one call site the
+  same way.
+- **Deferred, per the task's own explicit non-goals**: Time Group
+  collapse, cross-group synchronization/cursor comparison/t0, Detect
+  Event UI exposure, a per-Time-Group annotation drawer, new
+  annotation types, CSV/Excel, automatic event matching, clock
+  correction, waveform correlation, and any new analysis feature all
+  remain unimplemented/unchanged from before this task. Synchronise
+  Sources' own manual-offset/timestamp-placement semantics were
+  audited and confirmed to need no change (annotations already resolve
+  their own owning group's current source/time mapping dynamically,
+  never a stored group reference, so a manual sync offset inside one
+  group can never affect another group's own annotations).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or
