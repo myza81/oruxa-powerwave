@@ -522,6 +522,21 @@ uploaded *file*) is otherwise **fully intact and unaffected**: DEC-019 is
 about an already-parsed in-memory object, not the file, and nothing about
 Phase 2A writes anything to disk/DB/object storage.
 
+**Update (CSV/Excel Ingestion Decisions, 2026-08-30) — see
+[DEC-072](#dec-072--csv-excel-ingestion-six-architectural-clarifications-approved--temporary-preparation-state-retention-preparation-scoped-severity-model-hybrid-rawworking-overlay-architecture-deferred-disturbancerecord-hardening-honest-non-absolute-time-preservation-and-an-open-ended-time-axis-format-list):**
+this decision governs *durable/permanent* retention of an uploaded
+event-record file and remains **fully intact and unaffected**. It does
+**not** prohibit a bounded, session-scoped *temporary preparation copy*
+of an uploaded CSV/XLSX file's raw bytes/parsed structure, held only for
+the lifetime of an active Data Preparation session (inspection, reset,
+undo, sheet switching, provenance, validation, normalization, cleaned-
+data export) and released at the end of that session — this is a
+narrower, explicitly time-bounded concept this decision was not written
+to address either way, not an exception carved out of it. Permanent
+retention of an uploaded CSV/XLSX file beyond an active preparation
+session remains out of scope unless a future, separate decision
+introduces it.
+
 ---
 
 ## DEC-016 — Upload size ceiling is configurable, not hard-coded, with ~100 MB as the current MVP assumption
@@ -10039,6 +10054,192 @@ the single-source, single-Time-Group, analog-only, Grouped-mode-default
 path — not a substitute for the channel-presentation feature's own
 broader manual/live UAT coverage; CI wiring remains a deliberately
 separate future decision.
+
+---
+
+## DEC-072 — CSV/Excel Ingestion: six architectural clarifications approved — temporary preparation-state retention, preparation-scoped severity model, hybrid raw/working-overlay architecture, deferred DisturbanceRecord hardening, honest non-absolute time preservation, and an open-ended time-axis format list
+
+Date: 2026-08-30
+Status: Approved
+Source: explicit project-owner direction, delivered as a dedicated
+"Close Owner Decisions and Finalize CSV/Excel Ingestion Baseline"
+follow-up to the CSV/Excel Ingestion Foundation audit (see
+[CSV_EXCEL_INGESTION_ARCHITECTURE.md](CSV_EXCEL_INGESTION_ARCHITECTURE.md),
+itself produced from an owner-requested audit-only task). This entry
+records decisions only — no implementation was authorized or performed
+alongside it (see that document's own Impact section below).
+
+Decision:
+
+**1. Temporary preparation-state retention is permitted; durable
+retention is not.** CSV/XLSX original source data may be retained as
+temporary ingestion/preparation state for the lifetime of an active Data
+Preparation session — to support inspection, reset, undo, sheet
+switching, provenance, validation, normalization, and cleaned-data
+export. This is explicitly **not** durable/permanent uploaded-file
+storage and does not reopen DEC-015 (see the addendum added to DEC-015
+above) — temporary preparation state is cleaned up according to the
+preparation-session lifecycle; permanent retention of an uploaded CSV/
+XLSX file remains out of scope unless a future, separate, explicit
+decision introduces it.
+
+**2. A preparation-scoped severity model is approved, not a redesign of
+the application's error taxonomy.** A new "preparation/readiness issue"
+concept (blocking/warning/info) is approved for the CSV/Excel
+preparation/readiness domain only. Existing runtime/application errors
+(`ImportServiceError` and its ~50 subclasses, `backend/app/services/errors.py`)
+remain unchanged and continue to model request/runtime failure exactly
+as today. The two concepts are conceptually distinct and must not be
+merged:
+
+```text
+Application / request / runtime failure  -> existing ImportServiceError model
+Dataset preparation / readiness finding  -> new preparation/readiness issue model
+```
+
+A blocking preparation issue prevents canonical `DisturbanceRecord`
+conversion; a warning does not necessarily block; an informational
+finding is descriptive only; no severity tier may silently repair
+engineering data (unchanged from the original audit's principle 7). The
+exact shape (a `PreparationIssue{severity, code, message, location,
+suggested_action}"`-style record is the leading candidate, per the
+follow-up task's own framing) is **not** approved yet and is not
+implemented by this decision — only the principle is decided.
+
+**3. Raw/working dataset architecture is a hybrid, reference-holding
+"preparation session," never a naive full-duplication model.** A naive
+architecture that duplicates the entire raw dataset AND an entire
+working copy in browser and/or backend memory is explicitly rejected.
+The approved direction:
+
+```text
+Temporary ingestion storage
+        |
+Immutable raw dataset
+        |
+Working overlay / operation set
+        |
+Paged/windowed backend access
+        |
+Frontend Data Preparation Workspace
+```
+
+A `PreparationSession` concept holds identity, references, and metadata
+— not full duplicated datasets — conceptually: session/source identity;
+a raw-storage reference; workbook/sheet metadata; selected sheet;
+selected header/data region; column mappings; an edit/correction
+overlay; exclusions; time-axis interpretation; validation/readiness
+state; lifecycle metadata. The browser must never receive an entire
+100k–1M-row dataset merely to render the preparation table — pagination/
+windowing/virtualization is required. **The concrete storage mechanism
+is deliberately left open** (not a database design, not Redis, not a
+specific file format, not a specific table/grid library) — this
+decision approves the boundary/principle only; see Open Items below.
+
+**4. `DisturbanceRecord.validate()` hardening is deferred, not the first
+CSV/Excel production change.** Time validity (finite, ascending `time`
+column) must first be enforced by the CSV/Excel preparation/readiness
+gate, before canonical conversion:
+
+```text
+Working Dataset -> Readiness Validator -> finite/valid/monotonic time
+confirmed -> Normalizer -> DisturbanceRecord
+```
+
+Adding the equivalent defensive check directly to
+`DisturbanceRecord.validate()` (`backend/app/domain/disturbance_record.py:103`)
+as independent canonical-contract hardening may be considered later, as
+its own separate, explicitly authorized change — it is **not**
+authorized now and must not be bundled into CSV/Excel implementation
+work.
+
+**5. Non-absolute time must be preserved honestly, never fabricated.**
+Reaffirms and formalizes the audit's own finding
+([DEC-057](#dec-057--timestamp-based-initial-alignment-and-time-groups-comtrade-sources-now-place-themselves-automatically-from-their-own-recorded-start-timestamps-and-a-waveform-panel-only-ever-mixes-sources-that-share-a-defensible-time-relationship)'s
+existing elapsed-only Time Group behavior already does the right thing
+here): a CSV/Excel source with no defensible absolute timestamp must
+**never** receive a fabricated absolute date/time merely to satisfy the
+canonical contract's non-`None` `start_time` field — no legacy-style
+sentinel anchor (e.g. `powerwave`'s own `2000-01-01` fallback, see
+[POWERWAVE_DISCOVERY.md — The 2000-01-01 sentinel](POWERWAVE_DISCOVERY.md#the-2000-01-01-sentinel--the-load-bearing-detail-behind-anchored-sources))
+while labeling the source `timing_reference="absolute"`. Elapsed time,
+sample-index-derived time, time-only sources, and any other non-absolute
+representation must remain honestly non-absolute (`timing_reference` set
+to a non-`"absolute"` value) unless the engineer explicitly supplies a
+valid absolute anchor. This is a binding design guardrail for every
+future time-axis interpreter (see point 6), not a per-interpreter
+choice.
+
+**6. The time-axis format list stays permanently open-ended.** Reaffirms
+the original audit's §15 finding: the codebase does not hard-code a
+closed list of supported time-axis formats today, and no future CSV/
+Excel work may introduce one. Known examples (absolute timestamp,
+elapsed time, sample index, Excel serial date/time, separate date+time
+columns, time-only, no explicit time column, unknown/unsupported) remain
+illustrative, not exhaustive. New interpreters must be addable without
+changing `time_grouping.py`, `synchronization.py`, or any waveform-
+rendering code, matching the extensibility already confirmed for the
+existing two-value `timing_reference` signal.
+
+Reason:
+
+Closes the three owner-decision items the original audit
+(`CSV_EXCEL_INGESTION_ARCHITECTURE.md` §12/§18) explicitly flagged as
+requiring owner input before implementation design could proceed (DEC-015
+vs. temporary preparation state; the shape of severity-tiered validation;
+where raw/working state should live), plus formalizes three principles
+the audit had already found the codebase to be consistent with (honest
+non-absolute time, the open-ended time-axis list, and deferring
+`DisturbanceRecord.validate()` hardening out of the CSV/Excel critical
+path) so the implementation phase has a stable, unambiguous authority to
+build against rather than re-deriving these from the audit's own
+[PROPOSAL]/[OPEN] framing each time.
+
+Alternatives considered:
+
+For point 1: durable retention of uploaded CSV/XLSX files by default
+(rejected — reopens DEC-015 far more broadly than the owner intends;
+temporary session-scoped retention satisfies the actual preparation
+workflow need without that); no temporary retention at all, re-deriving
+everything from re-uploaded bytes on every preparation-session action
+(rejected — unworkable for undo/reset/sheet-switching UX, and not what
+the owner asked for). For point 2: extending `ImportServiceError` itself
+with a severity field (rejected — conflates two genuinely different
+concepts, application/runtime failure vs. dataset-quality finding, per
+the owner's own explicit conceptual separation). For point 3: a naive
+full-raw-plus-full-working-copy duplication model (explicitly rejected
+by the owner); prematurely committing to a specific database/cache/file
+format now (rejected — the follow-up task's own explicit instruction to
+keep the storage mechanism open for the implementation slices). For
+point 4: hardening `DisturbanceRecord.validate()` first, as the original
+audit's own slice 2 proposed (rejected by the owner — the preparation/
+readiness gate is the correct enforcement point for CSV/Excel-sourced
+data specifically; the canonical contract's own hardening is real but
+independent future work). For point 5: any sentinel-anchor fallback
+(rejected outright, matching the audit's own finding that this is a
+legacy-`powerwave` anti-pattern, not a design to inherit). For point 6:
+defining a closed enumeration now "to keep scope bounded" (rejected —
+directly contradicts the owner's original, reaffirmed instruction).
+
+Impact:
+
+Documentation-only. `CSV_EXCEL_INGESTION_ARCHITECTURE.md` updated to
+mark the six points above as resolved `[OWNER DECISION]`s (cross-
+referencing this entry) rather than `[OPEN]`/`[PROPOSAL]`, and its
+implementation-slices section replaced with the owner's revised 13+-slice
+sequence (preparation-session-and-raw-ingestion-first, rather than
+severity-primitive-and-validate()-hardening-first). `CURRENT_STATE.md`
+and `HANDOFF.md` cross-reference this entry. No production frontend/
+backend code, tests, or database/schema were changed — this decision
+authorizes a stable design baseline for future implementation slices, it
+does not itself implement any of them. Genuinely unresolved items
+remain open by the owner's own explicit instruction (exact temporary-
+storage mechanism; exact overlay/delta implementation; exact frontend
+grid/virtualization technology; exact API shapes; the exact timestamp-
+interpreter list; exact saved-profile design; permanent CSV/XLSX
+persistence; the exact future `DisturbanceRecord.validate()` hardening
+change) — see `CSV_EXCEL_INGESTION_ARCHITECTURE.md`'s own updated open-
+questions register for the authoritative list.
 
 ---
 

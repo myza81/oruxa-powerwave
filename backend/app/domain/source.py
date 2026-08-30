@@ -89,6 +89,16 @@ class SourceMetadata:
 
     analog_channels: list[AnalogChannelSummary] = field(default_factory=list)
     digital_channels: list[DigitalChannelSummary] = field(default_factory=list)
+    # Slice 1 (CSV/Excel ingestion, DEC-072): the combined byte size of
+    # every originally-uploaded file for this source (cfg+dat for
+    # COMTRADE) -- captured once at upload time in import_service.py,
+    # since the temporary upload bytes themselves are never retained
+    # past the request (DEC-015). Additive, defaulted field (backward-
+    # compatible with every existing direct SourceMetadata construction
+    # in the test suite) -- every live provider path sets it explicitly;
+    # only a pre-existing test helper that never expected this field
+    # would ever observe the `0` default.
+    file_size_bytes: int = 0
 
 
 @dataclass(slots=True)

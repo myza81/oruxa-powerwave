@@ -4202,6 +4202,9 @@
                         <thead>
                             <tr>
                                 <th>Recording</th>
+                                <th>File Format</th>
+                                <th>File Size</th>
+                                <th>Status</th>
                                 <th>Start Time</th>
                                 <th>Duration</th>
                                 <th>Sampling Rate(s)</th>
@@ -4874,30 +4877,38 @@
         //
         // A small, DATA-driven model the upload modal renders its file
         // inputs from, so adding a future format means adding an entry
-        // here (plus, eventually, its own backend endpoint/parser) rather
-        // than rewriting the modal. COMTRADE is the only `enabled: true`
-        // entry this phase -- CSV/Excel are real, visible options (proving
-        // the architecture, matching the same visible-but-disabled
-        // convention already used for Table/Tools/Reports in the Main
-        // Sidebar Menu) but are NOT selectable and NOT implemented. No
-        // parser exists for them; selecting one is prevented client-side
-        // by the <option disabled> below, same technique <select> already
-        // uses natively.
+        // here (plus its own backend endpoint) rather than rewriting the
+        // modal. COMTRADE and CSV are enabled; Excel remains a real,
+        // visible, disabled option (CSV/Excel ingestion Slice 2 scope --
+        // same visible-but-disabled convention already used for Table/
+        // Tools/Reports in the Main Sidebar Menu) -- proving the
+        // architecture without pretending it already works. `submitLabel`
+        // drives the modal's primary action text (Slice 1: CSV is not yet
+        // imported into Powerwave as a waveform, so its button reads
+        // "Upload & Prepare", never "Upload & Import" -- see
+        // renderUploadModalFileFields()).
         // ------------------------------------------------------------------
         const RECORDING_FORMATS = [
             {
                 id: "comtrade",
                 label: "COMTRADE",
                 enabled: true,
+                submitLabel: "Upload & Import",
                 files: [
                     { key: "cfg", label: "Configuration file (.cfg)", accept: ".cfg,.CFG,.comtrade" },
                     { key: "dat", label: "Data file (.dat)", accept: ".dat,.DAT" },
                 ],
             },
-            { id: "csv", label: "CSV (coming soon)", enabled: false, files: [
-                { key: "csv", label: "CSV file (.csv)", accept: ".csv,.CSV" },
-            ] },
-            { id: "excel", label: "Excel (coming soon)", enabled: false, files: [
+            {
+                id: "csv",
+                label: "CSV",
+                enabled: true,
+                submitLabel: "Upload & Prepare",
+                files: [
+                    { key: "csv", label: "CSV file", accept: ".csv,.CSV" },
+                ],
+            },
+            { id: "excel", label: "Excel (coming soon)", enabled: false, submitLabel: "Upload & Prepare", files: [
                 { key: "xlsx", label: "Excel file (.xlsx)", accept: ".xlsx,.xls" },
             ] },
         ];
@@ -5394,15 +5405,35 @@
             return knownMessages[code] || (message || "Import failed.");
         }
 
+        // CSV/Excel ingestion Slice 1: a SEPARATE small message map from
+        // friendlyErrorMessage() above -- reusing that function's COMTRADE-
+        // worded "doesn't look like a COMTRADE .cfg/.dat file" text for a
+        // rejected CSV would be actively misleading (section: same error
+        // codes, format-appropriate wording). The backend reuses the exact
+        // same error codes/taxonomy for both (unsupported_file_type/
+        // invalid_file/upload_too_large -- no new Readiness Issue model
+        // yet, that's Slice 6), so only the wording differs here.
+        function friendlyPreparationErrorMessage(code, message) {
+            const knownMessages = {
+                unsupported_file_type: "That doesn't look like a .csv file. Check the file extension and try again.",
+                invalid_file: "That CSV file is empty or unreadable.",
+                upload_too_large: message || ("This file is larger than the current " + CLIENT_SIZE_GUIDANCE_MB + " MB limit."),
+                invalid_workspace: "Something went wrong identifying your workspace. Try starting a new one.",
+                internal_error: "Something went wrong on our end. Please try again.",
+            };
+            return knownMessages[code] || (message || "Upload failed.");
+        }
+
         // ------------------------------------------------------------------
         // Phase 3B: Upload Recording modal -- the ONE upload implementation
         // (section 11/16/17), opened by "Upload New" on the Recordings
         // page (Phase 3B-UAT2 removed the Global Header's own Import
         // shortcut -- Recordings' own Upload New now covers that role).
-        // Structure is driven by RECORDING_FORMATS; the actual submit
-        // path stays COMTRADE-specific because that is the only format
-        // with a backend endpoint to call -- see RECORDING_FORMATS's own
-        // comment.
+        // Structure is driven by RECORDING_FORMATS. CSV/Excel ingestion
+        // Slice 1: the submit path now branches by format
+        // (submitComtradeUpload/submitCsvUpload below) -- COMTRADE's own
+        // branch is the exact, unmodified body this handler always ran,
+        // just relocated into its own named function.
         // ------------------------------------------------------------------
         let uploadModalSubmitting = false; // section 25/30: guards against double-submit and mid-upload dismissal
 
@@ -5430,6 +5461,12 @@
                     escapeHtml(fileSpec.key) + '" accept="' + escapeHtml(fileSpec.accept) + '" required>' +
                 '</div>'
             ).join("");
+            // CSV/Excel ingestion Slice 1: the primary action's own label
+            // is format-driven too (RECORDING_FORMATS' own submitLabel) --
+            // "Upload & Prepare" for CSV, unchanged "Upload & Import" for
+            // COMTRADE, since a CSV is not yet imported into Powerwave as
+            // a waveform at the end of this modal's flow.
+            document.getElementById("uploadModalSubmitBtn").textContent = format.submitLabel || "Upload & Import";
         }
 
         document.getElementById("uploadModalFormatSelect").addEventListener("change", () => {
@@ -5477,11 +5514,20 @@
                 files[input.dataset.fileKey] = file;
             }
 
-            // Only COMTRADE is enabled this phase -- see RECORDING_FORMATS.
-            if (format.id !== "comtrade") return;
-            const cfgFile = files.cfg;
-            const datFile = files.dat;
+            // CSV/Excel ingestion Slice 1: dispatch by format id -- COMTRADE's
+            // own branch below is the exact, unmodified body this handler
+            // always ran (just relocated), so COMTRADE's upload behavior is
+            // byte-for-byte unchanged. Excel has no branch yet (unreachable
+            // via the UI -- disabled <option> -- so falling through to
+            // nothing is correct, not a gap).
+            if (format.id === "comtrade") {
+                await submitComtradeUpload(files.cfg, files.dat);
+            } else if (format.id === "csv") {
+                await submitCsvUpload(files.csv);
+            }
+        });
 
+        async function submitComtradeUpload(cfgFile, datFile) {
             // Immediate client-side feedback -- NOT the authoritative check
             // (the backend enforces its own configured limit regardless of
             // this estimate; see docs/project-memory/MIGRATION_PLAN.md's
@@ -5538,7 +5584,66 @@
                 document.getElementById("uploadModalCancelBtn").disabled = false;
                 document.getElementById("uploadModalCloseBtn").disabled = false;
             }
-        });
+        }
+
+        // CSV/Excel ingestion Slice 1 (DEC-072): a preparation source is
+        // accepted as raw input only -- never parsed into a waveform here.
+        // Deliberately parallel to submitComtradeUpload() above (same
+        // guard/disable/status-message shape), posting to the SEPARATE
+        // preparation-sources endpoint instead (app.api.v1.preparation_sources)
+        // -- never app.api.v1.sources, which stays COMTRADE-only.
+        async function submitCsvUpload(csvFile) {
+            const mb = csvFile.size / (1024 * 1024);
+            if (mb > CLIENT_SIZE_GUIDANCE_MB) {
+                setUploadStatus(
+                    "error",
+                    "This file is about " + mb.toFixed(1) + " MB, which is over the " +
+                    CLIENT_SIZE_GUIDANCE_MB + " MB guidance. You can still try -- the server will " +
+                    "confirm whether it fits the currently configured limit."
+                );
+            }
+
+            uploadModalSubmitting = true;
+            const submitBtn = document.getElementById("uploadModalSubmitBtn");
+            submitBtn.disabled = true;
+            document.getElementById("uploadModalCancelBtn").disabled = true;
+            document.getElementById("uploadModalCloseBtn").disabled = true;
+            setUploadStatus("busy", '<span class="spinner"></span>Uploading&hellip;');
+
+            const formData = new FormData();
+            formData.append("csv_file", csvFile, csvFile.name);
+
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                        "/preparation-sources",
+                    { method: "POST", body: formData }
+                );
+                const body = await response.json().catch(() => null);
+
+                if (!response.ok) {
+                    const detail = (body && body.detail) || {};
+                    setUploadStatus("error", friendlyPreparationErrorMessage(detail.code, detail.message));
+                    return;
+                }
+
+                await refreshAllSourceViews();
+                // Same "upload -> list, no auto-open" convention as
+                // COMTRADE -- doubly true here, since a preparation source
+                // cannot be opened as a waveform yet regardless (see
+                // renderRecordingsTable()'s own status-gated row click).
+                document.getElementById("uploadModalOverlay").hidden = true;
+                document.getElementById("uploadModalForm").reset();
+                clearUploadStatus();
+            } catch (error) {
+                setUploadStatus("error", "Could not reach the backend. Check your connection and try again.");
+            } finally {
+                uploadModalSubmitting = false;
+                submitBtn.disabled = false;
+                document.getElementById("uploadModalCancelBtn").disabled = false;
+                document.getElementById("uploadModalCloseBtn").disabled = false;
+            }
+        }
 
         // ------------------------------------------------------------------
         // Source list
@@ -5562,6 +5667,57 @@
             return null;
         }
 
+        // CSV/Excel ingestion Slice 1 (DEC-072): a SEPARATE resource from
+        // fetchSourcesList() above -- a preparation source has no parsed
+        // DisturbanceRecord/channels, so it is never returned by
+        // `GET .../sources` (app.api.v1.preparation_sources's own module
+        // docstring). This is the structural reason a "Needs Preparation"
+        // CSV never reaches the Workspace Sidebar's channel-selection list
+        // (only wwRenderWorkspaceRecordings(sources) below still reads
+        // that COMTRADE-only list, unchanged) -- only the Recordings page's
+        // own table additionally merges this in (see refreshAllSourceViews).
+        async function fetchPreparationSourcesList() {
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                        "/preparation-sources"
+                );
+                if (response.ok) return await response.json();
+            } catch (error) {
+                // Same graceful-degradation convention as fetchSourcesList().
+            }
+            return null;
+        }
+
+        // Normalizes one PreparationSessionSummaryOut into the SAME shape
+        // renderRecordingsTable()'s existing helpers (recordingDisplayName,
+        // recordingFormatLabel, formatRecordingDuration,
+        // formatRecordingStartTime, formatSamplingRates) already expect
+        // from a SourceSummaryOut -- so a CSV preparation row renders
+        // through the exact same table-building code, not a second table
+        // implementation. `_recordingKind` is a frontend-only synthetic
+        // marker (never part of any API contract) used only to route the
+        // Remove action to the right DELETE endpoint (see
+        // requestRemoveSource()) -- row-click-to-open gating itself uses
+        // the real `status` field, not this marker (see
+        // renderRecordingsTable()).
+        function preparationSourceAsRecordingRow(prep) {
+            return {
+                source_id: prep.source_id,
+                workspace_id: prep.workspace_id,
+                provider_type: prep.file_format,
+                original_filenames: [prep.original_filename],
+                station_name: null,
+                status: prep.status,
+                created_at: prep.created_at,
+                file_size_bytes: prep.file_size_bytes,
+                duration_seconds: null,
+                start_time: null,
+                sampling_rates: [],
+                _recordingKind: "csv",
+            };
+        }
+
         // Refreshes BOTH the Workspace Sidebar's multi-source Recordings
         // hierarchy (wwRenderWorkspaceRecordings(), see its own module
         // header comment) and the Recordings page's table together, from
@@ -5569,11 +5725,21 @@
         // source set (upload success, remove, workspace reset) so neither
         // view can drift out of sync with the other regardless of which
         // page is currently active.
+        //
+        // CSV/Excel ingestion Slice 1: the Sidebar's own
+        // wwRenderWorkspaceRecordings() call is deliberately UNCHANGED --
+        // COMTRADE sources only, exactly as before -- while the Recordings
+        // page's table additionally merges in preparation sources, since
+        // only the Recordings Events table (not channel selection) needs
+        // to show a "Needs Preparation" row.
         async function refreshAllSourceViews() {
             const sources = await fetchSourcesList();
-            latestSourcesCount = (sources || []).length;
+            const preparationSources = await fetchPreparationSourcesList();
+            latestSourcesCount = (sources || []).length + (preparationSources || []).length;
             await wwRenderWorkspaceRecordings(sources || []);
-            renderRecordingsTable(sources || []);
+            const comtradeRows = (sources || []).map((s) => Object.assign({ _recordingKind: "comtrade" }, s));
+            const csvRows = (preparationSources || []).map(preparationSourceAsRecordingRow);
+            renderRecordingsTable(comtradeRows.concat(csvRows));
         }
 
         // Returns wwRenderWorkspaceRecordings()'s own "any source's
@@ -5673,6 +5839,39 @@
         function formatSamplingRates(rates) {
             if (!Array.isArray(rates) || rates.length === 0) return "—";
             return rates.map((r) => r + " Hz").join(", ");
+        }
+
+        // CSV/Excel ingestion Slice 1 (DEC-072): human-readable size for
+        // the Recording Events table's own File Size column. Reads the
+        // canonical backend value (file_size_bytes) -- presentation-layer
+        // formatting only, never stored as a string anywhere (source
+        // schema decision, see docs/project-memory/CSV_EXCEL_INGESTION_ARCHITECTURE.md).
+        // Whole bytes/KB round to the nearest integer; MB/GB/TB keep one
+        // decimal place (dropped when it would just be ".0" for a scale
+        // where that reads more naturally, e.g. "15 MB" not "15.0 MB").
+        function formatFileSize(bytes) {
+            if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes < 0) return "—";
+            const units = ["B", "KB", "MB", "GB", "TB"];
+            let value = bytes;
+            let unitIndex = 0;
+            while (value >= 1024 && unitIndex < units.length - 1) {
+                value /= 1024;
+                unitIndex++;
+            }
+            const rounded = unitIndex === 0 ? Math.round(value) : Math.round(value * 10) / 10;
+            return rounded + " " + units[unitIndex];
+        }
+
+        // CSV/Excel ingestion Slice 1: the Recording Events table's own
+        // Status column. `status` is already a real backend field for
+        // every recording kind (SourceSummaryOut.status = "ready" for
+        // COMTRADE, unchanged; PreparationSessionSummaryOut.status =
+        // "needs_preparation" for CSV) -- this is presentation-only
+        // labeling, never a second source of truth for readiness.
+        function formatRecordingStatus(recordingStatus) {
+            if (recordingStatus === "needs_preparation") return "Needs Preparation";
+            if (recordingStatus === "ready") return "Ready";
+            return recordingStatus || "—";
         }
 
         // Phase 3B-UAT5/UAT6/UAT7: the full per-recording metadata panel,
@@ -5791,6 +5990,16 @@
                     .filter(Boolean).join(" ").toLowerCase();
                 const expanded = recordingsExpandedDetails.has(source.source_id);
                 const detailsLabel = expanded ? "Hide details" : "Show details";
+                const recordingKind = source._recordingKind || "comtrade";
+                // CSV/Excel ingestion Slice 1 (DEC-072): "Needs Preparation"
+                // rows are never Open/Analyse targets -- the MOST important
+                // guardrail of this slice ("a Needs Preparation CSV must
+                // never reach normal waveform loading"), enforced here by
+                // the row's own click/keydown handlers below checking
+                // data-status, not merely by omitting the visual/ARIA
+                // affordance (defense in depth: even a row rendered without
+                // role="button" still fires a native click event).
+                const isReady = source.status === "ready";
                 // Phase 3B-UAT7 (row-click-to-open refinement): the row
                 // itself is now the primary Open/Analyse target -- no
                 // separate visible button. `role="button"` + `tabindex`
@@ -5803,21 +6012,40 @@
                 // focusable/operable -- see the click/keydown wiring
                 // below, which stops the row's own handler from firing
                 // for events that originate inside .recording-actions.
+                // A non-ready row (Slice 1: a CSV preparation source)
+                // omits role/tabindex/aria-label entirely -- it is not an
+                // Open/Analyse target, so it gets no such accessible name.
+                const openableAttrs = isReady
+                    ? ' tabindex="0" role="button" aria-label="Open ' + escapeHtml(name) + ' for analysis"'
+                    : "";
                 html += '<tr data-search="' + escapeHtml(searchText) + '" data-source-id="' + escapeHtml(source.source_id) +
-                    '" class="' + (expanded ? "recording-row-expanded" : "") + '"' +
-                    ' tabindex="0" role="button" aria-label="Open ' + escapeHtml(name) + ' for analysis">' +
+                    '" data-status="' + escapeHtml(source.status || "") + '"' +
+                    ' class="' + (expanded ? "recording-row-expanded" : "") + '"' + openableAttrs + '>' +
                     '<td class="recording-name-cell">' +
                         '<div class="recording-name">' + escapeHtml(name) + '</div>' +
                     '</td>' +
+                    '<td>' + escapeHtml(recordingFormatLabel(source)) + '</td>' +
+                    '<td>' + formatFileSize(source.file_size_bytes) + '</td>' +
+                    '<td>' + escapeHtml(formatRecordingStatus(source.status)) + '</td>' +
                     '<td class="recording-start-time-cell">' + formatRecordingStartTime(source.start_time) + '</td>' +
                     '<td>' + formatRecordingDuration(source.duration_seconds) + '</td>' +
                     '<td class="recording-sampling-rates-cell">' + formatSamplingRates(source.sampling_rates) + '</td>' +
                     '<td><div class="recording-actions">' +
-                        '<button type="button" class="secondary recording-details-toggle icon-button" data-action="details" data-source-id="' +
-                        escapeHtml(source.source_id) + '" aria-expanded="' + expanded + '" aria-label="' + detailsLabel +
-                        '" title="' + detailsLabel + '"><span class="chevron">&#9656;</span></button>' +
+                        // CSV/Excel ingestion Slice 1: the Details toggle is
+                        // COMTRADE-only for now -- renderRecordingDetails()
+                        // reads channel/timing/file fields a preparation
+                        // source doesn't have yet (Slice 3+ scope). Omitting
+                        // it for a CSV row (rather than rendering a details
+                        // panel full of "—"/undefined) keeps Remove as the
+                        // one and only action, which is all this slice needs.
+                        (recordingKind === "comtrade"
+                            ? '<button type="button" class="secondary recording-details-toggle icon-button" data-action="details" data-source-id="' +
+                              escapeHtml(source.source_id) + '" aria-expanded="' + expanded + '" aria-label="' + detailsLabel +
+                              '" title="' + detailsLabel + '"><span class="chevron">&#9656;</span></button>'
+                            : "") +
                         '<button type="button" class="danger icon-button" data-action="remove" data-source-id="' +
                         escapeHtml(source.source_id) + '" data-source-name="' + escapeHtml(name) +
+                        '" data-source-kind="' + escapeHtml(recordingKind) +
                         '" aria-label="Remove recording" title="Remove recording">&times;</button>' +
                     '</div></td>' +
                 '</tr>';
@@ -5826,11 +6054,18 @@
                 // Association is exact by construction: this markup is
                 // generated from THIS loop iteration's own `source`
                 // object, never a shared/global active-source reference,
-                // so there is no possible cross-row leakage.
-                html += '<tr class="recording-details-row" data-details-for="' + escapeHtml(source.source_id) + '"' +
-                    (expanded ? "" : " hidden") + '>' +
-                    '<td colspan="5">' + renderRecordingDetails(source) + '</td>' +
-                '</tr>';
+                // so there is no possible cross-row leakage. CSV/Excel
+                // ingestion Slice 1: no details row at all for a
+                // preparation source (see the Details-toggle omission
+                // above) -- colspan="8" matches this row's own total
+                // column count (Recording/File Format/File Size/Status/
+                // Start Time/Duration/Sampling Rate(s)/Actions).
+                if (recordingKind === "comtrade") {
+                    html += '<tr class="recording-details-row" data-details-for="' + escapeHtml(source.source_id) + '"' +
+                        (expanded ? "" : " hidden") + '>' +
+                        '<td colspan="8">' + renderRecordingDetails(source) + '</td>' +
+                    '</tr>';
+                }
             }
             bodyEl.innerHTML = html;
 
@@ -5848,7 +6083,7 @@
             bodyEl.querySelectorAll('button[data-action="remove"]').forEach((btn) => {
                 btn.addEventListener("click", (event) => {
                     event.stopPropagation();
-                    requestRemoveSource(btn.dataset.sourceId, btn.dataset.sourceName);
+                    requestRemoveSource(btn.dataset.sourceId, btn.dataset.sourceName, btn.dataset.sourceKind);
                 });
             });
             // The row itself is the primary Open/Analyse target --
@@ -5861,12 +6096,21 @@
             // propagation -- keydown is a different event and bubbles
             // independently, so the `event.target === row` guard below
             // is what actually prevents Enter/Space on a focused child
-            // button from ALSO activating the row).
+            // button from ALSO activating the row). CSV/Excel ingestion
+            // Slice 1: the data-status check is the AUTHORITATIVE guard
+            // against opening a "Needs Preparation" row as a waveform --
+            // it applies regardless of whether role="button"/tabindex
+            // were rendered above, since a plain <tr> still fires a real
+            // click event on click.
             bodyEl.querySelectorAll('tr[data-source-id]').forEach((row) => {
-                row.addEventListener("click", () => openRecordingForAnalysis(row.dataset.sourceId));
+                row.addEventListener("click", () => {
+                    if (row.dataset.status !== "ready") return;
+                    openRecordingForAnalysis(row.dataset.sourceId);
+                });
                 row.addEventListener("keydown", (event) => {
                     if (event.target !== row) return;
                     if (event.key !== "Enter" && event.key !== " ") return;
+                    if (row.dataset.status !== "ready") return;
                     event.preventDefault();
                     openRecordingForAnalysis(row.dataset.sourceId);
                 });
@@ -6002,9 +6246,18 @@
         // destructive action in the whole app).
         // ------------------------------------------------------------------
         let pendingRemoveSourceId = null;
+        // CSV/Excel ingestion Slice 1 (DEC-072): which DELETE endpoint the
+        // confirm button should call -- "comtrade" (unchanged, existing
+        // full performRemoveSource() cascade) or "csv" (new, minimal
+        // performRemovePreparationSource(), since a preparation source has
+        // no calculated channels/measurement groups/synchronization state
+        // to clean up). Defaults to "comtrade" so any call site that
+        // doesn't pass a third argument keeps the exact existing behavior.
+        let pendingRemoveSourceKind = "comtrade";
 
-        function requestRemoveSource(sourceId, sourceName) {
+        function requestRemoveSource(sourceId, sourceName, sourceKind) {
             pendingRemoveSourceId = sourceId;
+            pendingRemoveSourceKind = sourceKind || "comtrade";
             document.getElementById("confirmSourceName").textContent = sourceName;
             document.getElementById("confirmOverlay").hidden = false;
             document.getElementById("confirmRemoveBtn").focus();
@@ -6012,6 +6265,7 @@
 
         function closeRemoveConfirm() {
             pendingRemoveSourceId = null;
+            pendingRemoveSourceKind = "comtrade";
             document.getElementById("confirmOverlay").hidden = true;
         }
 
@@ -6031,9 +6285,14 @@
 
         document.getElementById("confirmRemoveBtn").addEventListener("click", async () => {
             const sourceId = pendingRemoveSourceId;
+            const sourceKind = pendingRemoveSourceKind;
             if (!sourceId) return;
             closeRemoveConfirm();
-            await performRemoveSource(sourceId);
+            if (sourceKind === "csv") {
+                await performRemovePreparationSource(sourceId);
+            } else {
+                await performRemoveSource(sourceId);
+            }
         });
 
         document.getElementById("newWorkspaceConfirmStartBtn").addEventListener("click", async () => {
@@ -6108,6 +6367,23 @@
             // Section 18: keeps the Recordings page and the Waveform
             // source state consistent regardless of which page is
             // currently active.
+            await refreshAllSourceViews();
+        }
+
+        // CSV/Excel ingestion Slice 1 (DEC-072): the preparation-source
+        // counterpart of performRemoveSource() above -- deliberately much
+        // smaller. A preparation source was never displayed as a waveform
+        // channel, never had a calculated channel, measurement group, or
+        // synchronization offset reference it (all of that state requires
+        // a real SourceMetadata/ActiveSource, which a preparation source
+        // never becomes in this slice) -- so there is no equivalent
+        // cascade of frontend state to reconcile, only the list refresh.
+        async function performRemovePreparationSource(sourceId) {
+            await fetch(
+                apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                    "/preparation-sources/" + encodeURIComponent(sourceId),
+                { method: "DELETE" }
+            );
             await refreshAllSourceViews();
         }
 

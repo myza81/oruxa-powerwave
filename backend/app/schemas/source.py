@@ -82,6 +82,17 @@ class SourceSummaryOut(BaseModel):
     SAME already-fetched `GET .../sources` list response, with zero
     additional `.../channels` request needed just to show recording
     metadata.
+
+    Slice 1 (CSV/Excel ingestion, DEC-072): `file_size_bytes` was added
+    the same way -- already existed on `SourceMetadata` (captured once
+    at import time as the combined cfg+dat byte size, since the raw
+    upload bytes themselves are never retained past the request), no new
+    storage, no new computation. Lets the Recording Events table's File
+    Size column render for COMTRADE sources from this SAME response, the
+    same way it already does for a preparation-source row (see
+    `app.schemas.preparation_session.PreparationSessionSummaryOut`, a
+    deliberately separate, smaller schema for that different resource
+    kind rather than reshaping this one).
     """
 
     source_id: str
@@ -90,6 +101,7 @@ class SourceSummaryOut(BaseModel):
     original_filenames: list[str]
     status: str = "ready"
     created_at: datetime
+    file_size_bytes: int
     station_name: str
     recorder_name: str
     nominal_frequency: float
@@ -112,6 +124,7 @@ class SourceSummaryOut(BaseModel):
             provider_type=source.provider_type,
             original_filenames=list(source.original_filenames),
             created_at=source.created_at,
+            file_size_bytes=source.file_size_bytes,
             station_name=source.station_name,
             recorder_name=source.recorder_name,
             nominal_frequency=source.nominal_frequency,

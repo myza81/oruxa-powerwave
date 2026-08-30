@@ -14,6 +14,7 @@ from starlette.responses import JSONResponse
 from app.api.v1.calculated_channels import router as calculated_channels_v1_router
 from app.api.v1.measurement_groups import router as measurement_groups_v1_router
 from app.api.v1.per_unit import router as per_unit_v1_router
+from app.api.v1.preparation_sources import router as preparation_sources_v1_router
 from app.api.v1.sources import router as sources_v1_router
 from app.api.v1.synchronization import router as synchronization_v1_router
 from app.api.v1.workspaces import router as workspaces_v1_router
@@ -22,6 +23,7 @@ from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
+from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.synchronization_registry import SynchronizationRegistry
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.services.workspace_registry import WorkspaceRegistry
@@ -78,6 +80,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # in-memory registry -- manual per-source alignment offsets. See
         # app.services.synchronization_registry's own module docstring.
         app.state.synchronization_registry = SynchronizationRegistry()
+        # CSV/Excel ingestion Slice 1 (DEC-072): an eighth sibling
+        # in-memory registry -- raw, immutable CSV preparation sessions.
+        # Deliberately NOT the WorkspaceRegistry (a preparation session
+        # is not a SourceMetadata/ActiveSource -- it has no parsed
+        # DisturbanceRecord) -- see
+        # app.services.preparation_session_registry's own module
+        # docstring for why an in-memory sibling registry, not
+        # StorageBackend, was chosen for Slice 1.
+        app.state.preparation_session_registry = PreparationSessionRegistry()
         yield
 
     app = FastAPI(title="Powerwave API", lifespan=lifespan)
@@ -136,6 +147,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(per_unit_v1_router)
     app.include_router(measurement_groups_v1_router)
     app.include_router(synchronization_v1_router)
+    app.include_router(preparation_sources_v1_router)
 
     @app.get("/health")
     def health():

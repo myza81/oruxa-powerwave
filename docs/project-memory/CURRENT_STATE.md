@@ -25,8 +25,9 @@ COMTRADE upload/parse/browse, the app now has a full multi-source,
 multi-panel waveform workspace with Time-Group-aware synchronization,
 cursors, t0, annotations, a group-aware Per-Unit measurement model,
 calculated channels, and digital-channel display. CSV/Excel ingestion is
-the next planned workstream and is not yet implemented (see
-[Current next workstream](#current-next-workstream)).
+the current workstream — Slice 1 (raw CSV preparation-source upload,
+no waveform conversion yet) is implemented; the remaining slices are not
+(see [Current next workstream](#current-next-workstream)).
 
 ## Architecture
 
@@ -182,6 +183,30 @@ re-confirmed by the TG-FINAL audit):
 - A minimal committed real-browser smoke-test foundation now protects
   critical upload/render/interaction paths — see
   [docs/development/BROWSER_SMOKE_TEST.md](../development/BROWSER_SMOKE_TEST.md).
+- **CSV preparation-source upload (CSV/Excel ingestion Slice 1, DEC-072)**:
+  the Upload Recording modal's CSV option is now enabled (`RECORDING_FORMATS`,
+  `frontend/index.html`) with its own "Upload & Prepare" action, posting
+  to a new `POST .../preparation-sources` endpoint
+  (`app/api/v1/preparation_sources.py`) that validates and accepts a raw
+  `.csv` file into a new, purely in-memory `PreparationSession`
+  (`app/domain/preparation_session.py` +
+  `app/services/preparation_session_registry.py`, an eighth sibling
+  registry alongside `WorkspaceRegistry` and friends) — never a
+  `DisturbanceRecord`, never anything a waveform request can reach. It
+  appears in Recording Events (now with File Format/File Size/Status
+  columns, populated for COMTRADE too via an additive
+  `SourceMetadata.file_size_bytes` field) with status `Needs Preparation`;
+  Start Time/Duration/Sampling Rate(s) show `—` rather than fabricated
+  values. A `Needs Preparation` row is structurally excluded from
+  `GET .../sources` (so the Workspace Sidebar's channel-selection list
+  never sees it at all) and its own row click/keydown handlers are
+  additionally gated on `status === "ready"` before opening a waveform —
+  two independent reasons it can never be opened, not one. Released on
+  its own `DELETE .../preparation-sources/{id}` or on whole-workspace
+  `DELETE /api/v1/workspaces/{id}` (now cascades into this registry too).
+  Excel, header/column/time-axis inference, working-dataset editing, and
+  readiness validation are explicitly NOT part of this slice — see
+  [CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md).
 
 ## Known intentional constraints / deferred items
 
@@ -222,20 +247,33 @@ way):
 
 ## Current next workstream
 
-**CSV/Excel ingestion and normalization** is the next planned area of
-work, per current owner direction. It is expected to deal with
-inconsistent column labels, inconsistent date/time formats, and
-nonstandard tabular formatting in real-world CSV/Excel waveform/event
-exports — normalizing that data before it can be plotted or analyzed,
-while still producing Powerwave's own canonical timing/data model
-(`SourceMetadata`/`TimingInformation`) rather than a parallel one.
-`SourceMetadata.timing_reference` already reserves a
-`"relative_elapsed"` value specifically for a future importer whose
-source has no trustworthy absolute recording timestamp — CSV/Excel is
-that future importer. No implementation has started, and no column-
-mapping/normalization design has been approved yet; this section records
-direction, not an approved design — see [Change governance](../../CLAUDE.md#change-governance)
-before starting implementation.
+**CSV/Excel ingestion and normalization** is the current area of work,
+per owner direction, now in progress following the owner-revised 13-slice
+sequence recorded in
+[CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md)
+(itself grounded in [DECISIONS.md — DEC-072](DECISIONS.md#dec-072--csv-excel-ingestion-six-architectural-clarifications-approved--temporary-preparation-state-retention-preparation-scoped-severity-model-hybrid-rawworking-overlay-architecture-deferred-disturbancerecord-hardening-honest-non-absolute-time-preservation-and-an-open-ended-time-axis-format-list)).
+**Slice 1 (Preparation-session foundation + raw CSV ingestion) is
+implemented (2026-08-30)** — see
+[Implemented capabilities](#implemented-capabilities) below for exactly
+what that covers. It deliberately produces **no `DisturbanceRecord`
+and no waveform**: a CSV is accepted as raw, immutable input into a new
+`PreparationSession` (in-memory, `app.services.preparation_session_registry`)
+and surfaced in Recording Events with status `Needs Preparation` —
+structurally excluded from `GET .../sources` so it can never reach the
+Workspace Sidebar's channel-selection list or normal waveform loading.
+Slices 2–13 (Excel ingestion, paged preview workspace, working-dataset
+overlay, column-role mapping, the Readiness Issue model, the extensible
+time-axis framework, canonical `DisturbanceRecord` conversion, export,
+and progressive automation) remain unimplemented and require their own
+explicit owner go-ahead before starting, per
+[Change governance](../../CLAUDE.md#change-governance) — being recorded
+in the architecture document's own slice sequence does not itself
+authorize starting any of them.
+`SourceMetadata.timing_reference` still reserves a value other than
+`"absolute"` for a future importer with no trustworthy absolute
+recording timestamp — Slice 1's CSV preparation source does not reach
+`SourceMetadata` at all yet (see above), so this remains genuinely
+unreached until a later slice actually produces a `DisturbanceRecord`.
 
 ## Repository identity
 

@@ -8,6 +8,188 @@ Last updated: **2026-08-30**
 
 ## What was most recently done
 
+**CSV/Excel Ingestion Slice 1 — Preparation Session Foundation + Raw
+CSV Ingestion. Implemented and verified.** Direct follow-up to the
+CSV/Excel Ingestion Baseline decisions (DEC-072, below) — the first
+actual implementation slice of the owner's revised 13-slice sequence
+(`CSV_EXCEL_INGESTION_ARCHITECTURE.md` §14). Deliberately narrow, per
+the task's own explicit scope: raw CSV upload accepted as immutable,
+temporary preparation input; no header/column/time-axis inference, no
+`DisturbanceRecord`, no waveform conversion, no Excel, no working-dataset
+editing, no readiness validation.
+
+**Backend**: new `app.domain.preparation_session` (`PreparationSession`/
+`PreparationSessionSummary`), new `app.services.preparation_session_registry.PreparationSessionRegistry`
+(an eighth in-memory sibling registry, mirroring `WorkspaceRegistry`
+exactly — see that module's own docstring for why `StorageBackend`'s
+dormant `"working"` category was considered and rejected: it has no
+delete capability at all), new `app.services.preparation_import_service.import_csv_preparation_source()`
+(validate `.csv` suffix/non-empty/size-bound, reusing the exact same
+generic helpers COMTRADE's own import now also uses — extracted,
+unchanged in behavior, into a new `app.services.upload_utils`), new
+`app.schemas.preparation_session.PreparationSessionSummaryOut`, new
+`app.api.v1.preparation_sources` router
+(`POST`/`GET`/`GET one`/`DELETE .../preparation-sources`), wired into
+`main.py`'s `lifespan()` alongside the other seven sibling registries.
+`app.api.v1.workspaces.delete_workspace` now also cascades into this
+registry (whole-workspace reset discards an in-progress CSV upload too).
+Additive-only changes to existing COMTRADE code: `SourceMetadata`/
+`SourceSummaryOut` gained a defaulted `file_size_bytes: int = 0` field
+(the Recording Events table's File Size column, populated for COMTRADE
+as `len(cfg_bytes) + len(dat_bytes)`, captured once at upload time since
+the raw bytes themselves are never retained past the request); zero
+behavior change to parsing, validation, or any existing response field.
+
+**Frontend**: `RECORDING_FORMATS`' `csv` entry is now `enabled: true`
+with its own `submitLabel: "Upload & Prepare"`; the upload submit
+handler is now dispatch-by-format (`submitComtradeUpload()` — the exact,
+unmodified previous handler body, just relocated — vs. the new
+`submitCsvUpload()`, posting to the separate `.../preparation-sources`
+endpoint); Recording Events table gained File Format/File Size/Status
+columns (`formatFileSize()`/`formatRecordingStatus()`, new); a "Needs
+Preparation" row is rendered from a SEPARATE `fetchPreparationSourcesList()`
+fetch, normalized into the same row shape `renderRecordingsTable()`'s
+existing helpers already expect (no second table implementation) — it
+never enters `wwRenderWorkspaceRecordings()`'s own COMTRADE-only Sidebar
+list, and its own row click/keydown handlers additionally check
+`status === "ready"` before calling `openRecordingForAnalysis()` (two
+independent reasons it can never open as a waveform, not one). Its
+Details toggle/panel is omitted (Slice 3+ scope — `renderRecordingDetails()`
+reads channel/timing fields a preparation source doesn't have yet).
+Remove routes to the correct DELETE endpoint via a `data-source-kind`
+attribute threaded through `requestRemoveSource()`/the confirm handler;
+a new, much smaller `performRemovePreparationSource()` sits alongside
+the existing, completely unmodified `performRemoveSource()` (a
+preparation source has no calculated-channel/measurement-group/
+synchronization state to cascade-clean, unlike a real source).
+
+**Verification**: full backend suite 1813 passed (36 new tests: registry,
+service, API, plus one COMTRADE regression assertion for
+`file_size_bytes`), 0 regressions (was 1777 before this slice); the
+committed browser smoke test (`browser-tests/smoke.spec.js`, COMTRADE
+upload → display → Time Group → cursor → rename) still passes unchanged;
+a throwaway (not committed) live-browser Playwright script independently
+walked both UAT acceptance scenarios from the task — COMTRADE upload
+unaffected (File Format "COMTRADE", File Size = combined cfg+dat,
+Status "Ready", waveform opens normally) and CSV upload (row shows
+correct filename/File Format "CSV"/File Size/Status "Needs
+Preparation"/Start Time "—"/Duration "—"/Sampling Rate(s) "—", not
+openable as a waveform, removable) — zero console/page errors in either
+run.
+
+**Files changed**: Backend — new `app/domain/preparation_session.py`,
+`app/services/preparation_session_registry.py`,
+`app/services/preparation_import_service.py`,
+`app/services/upload_utils.py`, `app/schemas/preparation_session.py`,
+`app/api/v1/preparation_sources.py`; modified `app/domain/source.py`,
+`app/schemas/source.py`, `app/services/import_service.py`, `app/main.py`,
+`app/api/v1/workspaces.py`. Tests — new `tests/test_preparation_session_registry.py`,
+`tests/test_preparation_import_service.py`,
+`tests/test_preparation_sources_api.py`; modified `tests/test_sources_api.py`
+(one new assertion). Frontend — `frontend/index.html` only. Documentation
+— `CSV_EXCEL_INGESTION_ARCHITECTURE.md` (§9/§14/§18 updated to mark the
+Slice 1 storage-mechanism choice and completion status), `CURRENT_STATE.md`,
+here. No new `DECISIONS.md` entry — the storage-mechanism choice was
+already delegated to implementation by DEC-072 point 3's own boundary,
+not a new architectural decision.
+
+**Next step**: nothing beyond Slice 1 is pre-authorized. Slice 2 (Excel
+ingestion + worksheet discovery) is the next candidate per the owner's
+revised sequence, but requires its own explicit go-ahead.
+
+## What was done in the prior session — CSV/Excel Ingestion Baseline: six owner decisions closed (DEC-072)
+
+**CSV/Excel Ingestion Baseline — six owner decisions closed
+(DEC-072), documentation-only.** Direct follow-up to the CSV/Excel
+Ingestion Foundation audit (below): the owner resolved the three open
+items that audit's own §12 flagged (DEC-015 vs. temporary preparation
+retention; the shape of severity-tiered validation; where raw/working
+state physically lives), plus formalized three further principles the
+audit had already found the codebase consistent with (deferring
+`DisturbanceRecord.validate()` hardening out of the CSV/Excel critical
+path; never fabricating an absolute timestamp for a non-absolute
+source; keeping the time-axis format list permanently open-ended). Full
+text is in [DECISIONS.md — DEC-072](DECISIONS.md#dec-072--csv-excel-ingestion-six-architectural-clarifications-approved--temporary-preparation-state-retention-preparation-scoped-severity-model-hybrid-rawworking-overlay-architecture-deferred-disturbancerecord-hardening-honest-non-absolute-time-preservation-and-an-open-ended-time-axis-format-list);
+[CSV_EXCEL_INGESTION_ARCHITECTURE.md](CSV_EXCEL_INGESTION_ARCHITECTURE.md)
+was updated in place (§2A new; §6/§9/§11/§12/§14/§15-18 annotated with
+resolution status, original analysis retained rather than deleted) and
+its implementation-slices section (§14) replaced with the owner's
+revised 13-slice, workflow-first sequence (preparation-session-and-raw-
+ingestion first, rather than severity-primitive-and-`validate()`-
+hardening first).
+
+Eight items remain deliberately open per the owner's own explicit
+instruction (exact temporary-storage mechanism; exact overlay/delta
+implementation; exact frontend grid/virtualization technology; exact API
+shapes; the exact first-slice timestamp-interpreter subset; exact
+saved-profile design; permanent CSV/XLSX persistence; the exact future
+`DisturbanceRecord.validate()` hardening change) — see the architecture
+document's own §18. No code-level constraint was found requiring any of
+these to be decided before Slice 1 can be scoped.
+
+**Files changed**: `docs/project-memory/DECISIONS.md` (new DEC-072 entry;
+one cross-reference addendum appended to DEC-015's own existing entry,
+not rewritten), `docs/project-memory/CSV_EXCEL_INGESTION_ARCHITECTURE.md`
+(updated in place — see above), one paragraph each in `CURRENT_STATE.md`
+and here. No frontend/backend code, tests, or database/schema changes —
+confirmed by this session as explicitly out of scope.
+
+**Next step**: nothing is pre-authorized. Slice 1 (preparation-session
+foundation + raw CSV ingestion) is the next candidate implementation
+unit per the revised sequence, but still requires an explicit owner
+go-ahead before starting, per this project's own change-governance rule.
+
+## What was done in the prior session — CSV/Excel Ingestion Foundation audit (no implementation)
+
+**CSV/Excel Ingestion Foundation — audit and design-validation pass, no
+implementation.** Owner requested a thorough audit of the current
+codebase (and legacy `powerwave`'s own CSV/Excel Import Wizard, via the
+existing [POWERWAVE_DISCOVERY.md](POWERWAVE_DISCOVERY.md) record) ahead
+of the next planned workstream (CSV/Excel ingestion) — explicitly
+scoped as audit-only: no production code, tests, or database changes.
+
+Full findings, ranked risks, and the concrete answer to "what canonical
+dataset must a CSV/Excel importer produce" are recorded in the new
+[CSV_EXCEL_INGESTION_ARCHITECTURE.md](CSV_EXCEL_INGESTION_ARCHITECTURE.md)
+— read it in full before starting any CSV/Excel implementation design.
+Summary: the existing provider abstraction
+(`app.providers.base.BaseProvider` → `DisturbanceRecord`), the Time
+Group model's already-built elapsed-only path
+(`app.domain.time_grouping`), and the sibling-in-memory-registry pattern
+(`main.py`'s seven `app.state.*` registries) all generalize cleanly to a
+future CSV/Excel provider with no redesign needed. Two genuine gaps were
+found, not merely unbuilt features: (1) **no severity concept exists
+anywhere in the validation model** — every current error is a hard-
+blocking `ImportServiceError` (`backend/app/services/errors.py`), so a
+Powerwave Readiness Validator distinguishing blocking/warning/
+informational issues is new architecture, not an extension; (2)
+**`DisturbanceRecord.waveform_data["time"]` monotonicity/finiteness is
+required by essentially every downstream consumer (RMS, event
+detection, synchronization, calculated channels, waveform extraction)
+but enforced nowhere** — this has never mattered because COMTRADE's own
+parser guarantees it by construction, and a CSV/Excel importer is the
+first thing that could actually violate it. On the frontend, zero
+table/grid virtualization precedent exists anywhere (`frontend/vendor/`
+has only Plotly), so a raw preview table for a large CSV/Excel file is
+new frontend engineering; the recently-shipped channel-presentation-
+override mechanism (`ww.channelPresentationOverrides`) is flagged as
+the strongest existing precedent for the requested non-destructive
+Working Dataset edit model. Three owner decisions are identified as not
+yet resolved (see the new document's §12): DEC-015 vs. Working Dataset
+persistence, the shape of severity-tiered validation, and where
+raw/working state should physically live.
+
+**Files changed**: `docs/project-memory/CSV_EXCEL_INGESTION_ARCHITECTURE.md`
+(new), one cross-reference paragraph each in `CURRENT_STATE.md` and here.
+No frontend/backend code, tests, or database/schema changes — confirmed
+by this session as explicitly out of scope.
+
+**Next step**: nothing is pre-authorized. The three owner decisions
+listed above (and the new document's §18 open-questions register) need
+explicit owner input before any CSV/Excel implementation slice begins.
+
+## What was done in the prior session — TG-FINAL Time Group Architecture Closure Audit
+
 **TG-FINAL — Time Group Architecture Closure Audit. Verdict:
 ARCHITECTURALLY COMPLETE.** See
 [DECISIONS.md — DEC-069](DECISIONS.md#dec-069--tg-final-time-group-architecture-migration-is-declared-complete--the-deferred-hover-tooltip-absolute-time-gap-is-fixed-and-a-full-primary-groupwwviewportwwworkspaceboundssingleton-domstate-lifecycle-audit-finds-no-remaining-active-correctness-defects)

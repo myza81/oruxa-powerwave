@@ -54,48 +54,13 @@ from app.services.errors import (
     MissingCompanionFileError,
     ParseError,
     UnsupportedComtradeVariantError,
-    UnsupportedFileTypeError,
     UploadTooLargeError,
 )
+from app.services.upload_utils import read_bounded, validate_suffix
 from app.services.workspace_registry import WorkspaceRegistry
 
 _CFG_SUFFIXES = {".cfg", ".comtrade"}
 _DAT_SUFFIXES = {".dat"}
-_READ_CHUNK_BYTES = 1024 * 1024  # 1 MiB
-
-
-async def _read_bounded(upload: UploadFile, *, max_bytes: int, already_read: int) -> bytes:
-    """Read *upload* fully, aborting as soon as the combined total would exceed max_bytes.
-
-    Does not trust upload.size alone (the caller already used it as a fast
-    pre-check, but a missing/zero Content-Length can leave it unset) --
-    this is the authoritative check, based on bytes actually read.
-    """
-    chunks: list[bytes] = []
-    total = already_read
-    while True:
-        chunk = await upload.read(_READ_CHUNK_BYTES)
-        if not chunk:
-            break
-        total += len(chunk)
-        if total > max_bytes:
-            raise UploadTooLargeError(
-                f"Combined upload size exceeds the {max_bytes // (1024 * 1024)} MB limit."
-            )
-        chunks.append(chunk)
-    return b"".join(chunks)
-
-
-def _validate_suffix(filename: str | None, allowed: set[str], role: str) -> str:
-    if not filename:
-        raise UnsupportedFileTypeError(f"{role} file must have a filename.")
-    suffix = Path(filename).suffix.lower()
-    if suffix not in allowed:
-        raise UnsupportedFileTypeError(
-            f"{role} file '{filename}' has an unsupported extension "
-            f"(expected one of {sorted(allowed)})."
-        )
-    return filename
 
 
 async def import_comtrade_source(
@@ -111,12 +76,12 @@ async def import_comtrade_source(
     Raises app.services.errors.ImportServiceError subclasses on any failure.
     Never writes to StorageBackend or any persistent location.
     """
-    cfg_filename = _validate_suffix(cfg_upload.filename, _CFG_SUFFIXES, "CFG")
-    dat_filename = _validate_suffix(dat_upload.filename, _DAT_SUFFIXES, "DAT")
+    cfg_filename = validate_suffix(cfg_upload.filename, _CFG_SUFFIXES, "CFG")
+    dat_filename = validate_suffix(dat_upload.filename, _DAT_SUFFIXES, "DAT")
 
     # Fast pre-check using Starlette's already-known part sizes (populated
     # once the multipart body has been received) -- cheaper than reading
-    # again, but not solely relied upon: _read_bounded below is the
+    # again, but not solely relied upon: read_bounded below is the
     # authoritative check based on bytes actually read.
     known_size = (cfg_upload.size or 0) + (dat_upload.size or 0)
     if known_size > max_total_bytes:
@@ -125,8 +90,8 @@ async def import_comtrade_source(
             f"{max_total_bytes // (1024 * 1024)} MB limit."
         )
 
-    cfg_bytes = await _read_bounded(cfg_upload, max_bytes=max_total_bytes, already_read=0)
-    dat_bytes = await _read_bounded(
+    cfg_bytes = await read_bounded(cfg_upload, max_bytes=max_total_bytes, already_read=0)
+    dat_bytes = await read_bounded(
         dat_upload, max_bytes=max_total_bytes, already_read=len(cfg_bytes)
     )
 
@@ -161,6 +126,11 @@ async def import_comtrade_source(
         workspace_id=workspace_id,
         source_id=source_id,
         original_filenames=(cfg_filename, dat_filename),
+        # Slice 1 (CSV/Excel ingestion): the Recording Events table's own
+        # File Size column needs this for every format, COMTRADE included
+        # -- captured here since the raw bytes themselves are discarded
+        # (never persisted) once this function returns.
+        file_size_bytes=len(cfg_bytes) + len(dat_bytes),
     )
     # record is retained by reference (never copied here) alongside the
     # lightweight metadata -- see ActiveSource's docstring and DEC-019.
@@ -199,6 +169,7 @@ def _build_source_metadata(
     workspace_id: str,
     source_id: str,
     original_filenames: tuple[str, str],
+    file_size_bytes: int,
 ) -> SourceMetadata:
     analog = [
         AnalogChannelSummary(
@@ -239,6 +210,7 @@ def _build_source_metadata(
         provider_type=record.metadata.provider_type,
         original_filenames=original_filenames,
         created_at=utc_now(),
+        file_size_bytes=file_size_bytes,
         station_name=record.metadata.station_name,
         recorder_name=record.metadata.recorder_name,
         nominal_frequency=record.metadata.nominal_frequency,

@@ -54,6 +54,12 @@ class TestUpload:
         assert body["analog_channel_count"] == 3
         assert body["digital_channel_count"] == 2
         assert body["status"] == "ready"
+        # Slice 1 (CSV/Excel ingestion, DEC-072): file_size_bytes is a
+        # new, additive field on SourceSummaryOut (the Recording Events
+        # table's File Size column, computed the same way for every
+        # format) -- for COMTRADE it must equal the combined cfg+dat
+        # byte size actually uploaded, never a guess or a partial count.
+        assert body["file_size_bytes"] == len(cfg) + len(dat)
         # Phase 3B: duration_seconds/sample_count are new, additive fields
         # on SourceSummaryOut (the Recordings page's list Duration column) --
         # cross-checked against the pre-existing timebase.* fields on the

@@ -23,6 +23,7 @@ from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
 from app.services.measurement_group_registry import MeasurementGroupRegistry
 from app.services.per_unit_registry import PerUnitRegistry
+from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.synchronization_registry import SynchronizationRegistry
 from app.services.synchronization_service import remove_workspace_synchronization_state
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
@@ -59,6 +60,10 @@ def get_synchronization_registry(request: Request) -> SynchronizationRegistry:
     return request.app.state.synchronization_registry
 
 
+def get_preparation_session_registry(request: Request) -> PreparationSessionRegistry:
+    return request.app.state.preparation_session_registry
+
+
 def _validate_workspace_id(workspace_id: str) -> str:
     # Same shape check as app.api.v1.sources -- never used as a filesystem
     # path, so this guards against a blank/whitespace-only id, not path
@@ -81,6 +86,7 @@ def delete_workspace(
     voltage_group_config_registry: VoltageGroupConfigRegistry = Depends(get_voltage_group_config_registry),
     current_group_config_registry: CurrentGroupConfigRegistry = Depends(get_current_group_config_registry),
     synchronization_registry: SynchronizationRegistry = Depends(get_synchronization_registry),
+    preparation_session_registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
 ) -> None:
     """Release every source this workspace owns.
 
@@ -119,6 +125,13 @@ def delete_workspace(
     workspace's own single event origin (t0), the same way (task
     section 15: "t=0 is workspace-scoped state. It must be cleared when
     starting a new workspace; deleting/resetting the workspace").
+
+    CSV/Excel ingestion Slice 1 (DEC-072): also releases every CSV
+    preparation session this workspace owns, the same way -- "Start New
+    Workspace" must discard an in-progress, not-yet-prepared CSV upload
+    exactly like it discards a fully-imported COMTRADE source, per
+    DEC-072 point 1 (temporary preparation retention is scoped to the
+    active session, never durable).
     """
     workspace_id = _validate_workspace_id(workspace_id)
     registry.remove_workspace(workspace_id)
@@ -128,3 +141,4 @@ def delete_workspace(
     voltage_group_config_registry.remove_workspace(workspace_id)
     current_group_config_registry.remove_workspace(workspace_id)
     remove_workspace_synchronization_state(workspace_id=workspace_id, registry=synchronization_registry)
+    preparation_session_registry.remove_workspace(workspace_id)
