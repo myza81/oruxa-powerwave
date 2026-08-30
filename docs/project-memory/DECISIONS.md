@@ -9866,6 +9866,108 @@ Impact:
   single closure-time reference rather than scattered across DEC-057
   through DEC-068.
 
+## DEC-070 — Channel presentation customization (RECORDINGS sidebar rename + color override) is implemented as a pure presentation layer above canonical channel identity; analog source channels only, this slice
+
+Date: 2026-08-30
+Status: Approved
+Source: owner-requested feature ("Channel presentation customization from
+the RECORDINGS sidebar"), following the completed Time Group closure
+(DEC-069). The owner's own task prompt specified the governing
+architecture rule directly (presentation override above canonical
+identity, never rekeying engineering lookups by a display alias); this
+entry records that rule as implemented, not as a newly-negotiated one.
+
+Decision:
+
+**Channel rename and color customization are presentation overrides
+keyed by the SAME stable `sourceId::channelName` identity
+(`wwChannelKey()`) every other engineering lookup already uses — never a
+new identity, never the display text.** A pre-implementation audit
+confirmed `wwChannelKey(sourceId, channelName)` is already the one
+identity scheme threaded through `ww.displayed`, `ww.cursorValues`,
+`ww.channelColors`, `wwCustomGroupFor()`, annotation anchors
+(`data.sourceId`/`data.channelName`), calculated-channel `ChannelRef`
+(`source_id`/`channel_name`), and Measurement Group `channel_refs` — none
+of these were rekeyed or touched by this feature; only their own display
+TEXT now resolves through a new `wwChannelDisplayName(sourceId,
+channelName)` call at each render site.
+
+State: one new Map, `ww.channelPresentationOverrides` (`sourceId::channelName
+-> {displayName?, color?}`), workspace-scoped, same lifecycle as the
+pre-existing `ww.channelColors`/`ww.channelMeta` (individual channel/source
+removal deliberately leaves it alone — a re-added channel keeps its own
+customization; only `wwClearWorkspace()`, i.e. plain "Clear workspace" or
+"Start New Workspace", clears it). Resolvers: `wwChannelDisplayName()`
+(falls back to the canonical name); `wwDefaultChannelColor()` (the
+pre-existing auto-cycled `ww.channelColors` assignment, unchanged,
+extracted as its own named function so Reset can always recover it);
+`wwColorForChannel()` (unchanged name/signature, now override-aware —
+still "the ONE color authority" every trace/sidebar-dot consumer already
+called, so no call site needed to change for color). Setters
+(`wwSetChannelDisplayName`/`wwResetChannelDisplayName`/
+`wwSetChannelColorOverride`/`wwResetChannelColorOverride`) end with a
+targeted refresh (`wwRefreshChannelPresentation()`): the sidebar row's
+Channel cell, plus — only if the channel is currently displayed — a
+single `Plotly.restyle()` call on that one trace (name/hovertemplate/
+line.color) and, in Separate mode, that one panel's own legend. No
+waveform refetch, no panel/Time Group rebuild, no calculated-channel
+recomputation, ever.
+
+UI: right-click on an analog RECORDINGS-sidebar channel row (no
+pre-existing context-menu system existed to extend; digital rows are
+explicitly out of scope this slice, sharing the same `wwChannelKey()`
+identity but not wired into the menu) opens a small popover
+(`Rename…`/`Change colour…`), reusing the existing row hover
+(`.channel-row--toggle:hover`, unchanged) and the existing
+`.confirm-overlay`/`.group-editor-box`/`.group-editor-header`/
+`.group-editor-footer` modal shell every other Powerwave dialog already
+uses. Rename: shows the immutable canonical name, pre-fills the current
+effective display name, Apply/Reset-to-original/Cancel. Color: a 10-color
+preset grid (the existing `CHANNEL_TRACE_COLORS` six plus four additional
+presets) plus a custom hex field (native `<input type="color">` alongside
+it), Set/Reset-to-default. Both close on click-outside/Escape/action/
+source removal/opening another menu, per the existing per-modal Escape
+convention already used throughout this file.
+
+Explicitly excluded this slice, with reasons found during the audit, not
+merely deferred by default: **calculated channels** — a calculated
+channel's own server-generated id is used AS its `channelName` identity
+(`wwIsCalculatedSourceId()`'s own documented convention, predating this
+feature), so a calculated channel's display name and its identity are
+already the SAME field; extending rename there would need a real design
+decision, not a mechanical reuse of this Map. **Digital channels** —
+share `wwChannelKey()` but render via one shared batched chart, not
+individual Plotly traces; flagged as a plausible low-cost future
+extension, not built this slice.
+
+Reason: the owner's own explicit safety requirement ("A renamed channel
+must NOT become a new engineering identity") is the entire risk this
+feature could introduce, given how many subsystems (cursor values,
+calculated-channel inputs, Per-Unit membership, annotations, waveform
+trace identity) already read a channel's name. Reusing the SAME existing
+identity helper everywhere, rather than introducing a second identity
+concept, was judged the only implementation that could not silently
+diverge from it over time.
+
+Impact: `frontend/index.html` only — no backend change (canonical names
+never cross the wire), no COMTRADE/source-file mutation. Persistence is
+workspace-local for this first slice (survives rerenders/layout switches/
+Grouped-Separate-Custom/Time-Group-topology changes within the active
+workspace; does NOT survive a page refresh — no localStorage/backend
+persistence was introduced, matching every other `ww.*` in-memory Map's
+existing scope; resets on "Start New Workspace"/"Clear workspace", per
+the owner's own stated default absent an existing broader persistence
+convention to plug into). 44 new frontend regression checks (jsdom,
+scratch convention, not committed to the repo — no frontend test suite
+exists here to add to, same situation as DEC-032's own RECORDINGS
+timestamp precedent) covering identity-safety (rename/color isolation
+across duplicate cross-source names, calculated-channel/Per-Unit/
+annotation/cursor-value survival), color validation (preset/custom hex/
+invalid-hex/reset-to-exact-original-default/layout-mode-independence),
+and UI behavior (hover, right-click targeting, no-toggle-on-right-click,
+modal pre-fill, Escape dismissal, single-target discipline, Start-New-
+Workspace reset).
+
 ---
 
 ## How to add a decision

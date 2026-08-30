@@ -167,6 +167,18 @@ re-confirmed by the TG-FINAL audit):
   badges reusing the analog cursor pipeline.
 - **CI/CD**: DEV auto-deploys after CI succeeds on `main`; PROD deployment
   remains a manual `workflow_dispatch`, deliberately not automatic.
+- **Channel presentation customization**: right-click an analog RECORDINGS-
+  sidebar channel row for `Rename…`/`Change colour…`. Both are pure
+  presentation overrides keyed by the same stable `sourceId::channelName`
+  identity every engineering lookup already uses (cursor values,
+  calculated-channel inputs, Per-Unit membership, annotations, waveform
+  trace identity) — canonical parsed names are never mutated, never sent
+  to the backend, and never used as a lookup key. Reset restores the
+  original name / the exact original auto-assigned color. Workspace-local
+  (survives rerenders/layout/Time-Group changes, not a page refresh);
+  resets on Start New Workspace/Clear workspace. Calculated channels and
+  digital channels are explicitly excluded this slice — see
+  [DECISIONS.md — DEC-070](DECISIONS.md#dec-070--channel-presentation-customization-recordings-sidebar-rename--color-override-is-implemented-as-a-pure-presentation-layer-above-canonical-channel-identity-analog-source-channels-only-this-slice).
 
 ## Known intentional constraints / deferred items
 

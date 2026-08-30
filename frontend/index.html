@@ -2057,6 +2057,95 @@
             flex-wrap: wrap; /* Finding D: footer row may wrap rather than overflow at extreme zoom/narrow widths */
         }
 
+        /* ---- Channel presentation customization (RECORDINGS sidebar) ----
+           Right-click context menu: a small floating popover, positioned
+           via inline left/top at open time (see wwOpenChannelContextMenu()
+           in the main script) -- same --panel/--panel-border/--radius
+           tokens as every modal box, .confirm-overlay's own z-index:10 (it
+           has no backdrop of its own, so it must still sit above ordinary
+           page content). */
+        .ww-context-menu {
+            position: fixed;
+            z-index: 10;
+            min-width: 160px;
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+            padding: 4px;
+        }
+        .ww-context-menu[hidden] { display: none; }
+        .ww-context-menu-item {
+            display: block;
+            width: 100%;
+            text-align: left;
+            appearance: none;
+            border: none;
+            background: transparent;
+            color: var(--text);
+            font-size: 0.75rem;
+            padding: 7px 10px;
+            border-radius: calc(var(--radius) - 2px);
+            cursor: pointer;
+        }
+        .ww-context-menu-item:hover, .ww-context-menu-item:focus-visible {
+            background: var(--hover-tint);
+            outline: none;
+        }
+        /* Rename modal's own input -- same visual language as the existing
+           Custom Groups editor's .group-name-input, kept as its own class
+           to avoid any accidental cross-wiring with that editor's own
+           delegated input listener. Reused verbatim for the color modal's
+           hex field too. */
+        .ww-rename-input {
+            display: block;
+            width: 100%;
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            padding: 7px 9px;
+            font-size: 0.75rem;
+            color: var(--text);
+            margin: 10px 0;
+            box-sizing: border-box;
+        }
+        .ww-rename-input:focus { outline: none; border-color: var(--accent-dim); }
+        .ww-color-presets {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
+            margin: 10px 0 4px;
+        }
+        .ww-color-preset {
+            appearance: none;
+            border: 1px solid var(--panel-border);
+            border-radius: calc(var(--radius) - 2px);
+            height: 28px;
+            cursor: pointer;
+            padding: 0;
+        }
+        .ww-color-preset:hover, .ww-color-preset:focus-visible { border-color: var(--accent-dim); outline: none; }
+        .ww-color-custom-row { display: flex; align-items: center; gap: 8px; }
+        .ww-color-custom-row .ww-rename-input { margin: 0; flex: 1 1 auto; }
+        .ww-color-swatch {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            border-radius: calc(var(--radius) - 2px);
+            border: 1px solid var(--panel-border);
+            flex: 0 0 auto;
+        }
+        #wwChannelColorNativeInput {
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            border: 1px solid var(--panel-border);
+            border-radius: calc(var(--radius) - 2px);
+            background: transparent;
+            flex: 0 0 auto;
+            cursor: pointer;
+        }
+
         /* ---- Phase 2C-A: waveform workspace ----
            Phase 3A: no longer a page-width-constrained top-level section --
            it now fills the Main Workspace's Active View Area (section 11);
@@ -4581,6 +4670,67 @@
         </div>
     </div>
 
+    <!-- Channel presentation customization (RECORDINGS sidebar): a small
+         right-click context menu on an analog channel row, plus two
+         modals (Rename / Change colour) reusing the SAME .confirm-overlay/
+         .group-editor-box/.group-editor-header/.group-editor-footer shell
+         every other Powerwave modal already uses -- no new dialog
+         primitive introduced. Both modals apply ONLY a presentation
+         override (see wwSetChannelDisplayName()/wwSetChannelColorOverride()
+         in the main script) -- never canonical channel identity. One
+         singleton instance of each, retargeted per open() call (same
+         "shared overlay, explicit target argument" convention as
+         #wwSyncOverlay/#wwDetectEventOverlay above), never one per row. -->
+    <div class="ww-context-menu" id="wwChannelContextMenu" role="menu" hidden>
+        <button type="button" class="ww-context-menu-item" id="wwChannelMenuRenameBtn" role="menuitem">Rename&hellip;</button>
+        <button type="button" class="ww-context-menu-item" id="wwChannelMenuColorBtn" role="menuitem">Change colour&hellip;</button>
+    </div>
+
+    <div class="confirm-overlay" id="wwChannelRenameOverlay" hidden>
+        <div class="group-editor-box" role="dialog" aria-modal="true" aria-labelledby="wwChannelRenameTitle">
+            <div class="group-editor-header">
+                <h3 id="wwChannelRenameTitle">Rename channel</h3>
+                <button type="button" class="group-editor-close" id="wwChannelRenameCloseBtn" aria-label="Close">&times;</button>
+            </div>
+            <p class="hint">Original: <strong id="wwChannelRenameOriginal"></strong></p>
+            <p class="hint error" id="wwChannelRenameError" hidden role="alert"></p>
+            <input type="text" id="wwChannelRenameInput" class="ww-rename-input" maxlength="200"
+                aria-label="Display name" autocomplete="off">
+            <div class="group-editor-footer">
+                <button type="button" class="secondary" id="wwChannelRenameResetBtn">Reset to original</button>
+                <span class="toolbar-spacer"></span>
+                <button type="button" class="secondary" id="wwChannelRenameCancelBtn">Cancel</button>
+                <button type="button" id="wwChannelRenameApplyBtn">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="confirm-overlay" id="wwChannelColorOverlay" hidden>
+        <div class="group-editor-box" role="dialog" aria-modal="true" aria-labelledby="wwChannelColorTitle">
+            <div class="group-editor-header">
+                <h3 id="wwChannelColorTitle"><span id="wwChannelColorName"></span> &middot; color</h3>
+                <button type="button" class="group-editor-close" id="wwChannelColorCloseBtn" aria-label="Close">&times;</button>
+            </div>
+            <div class="ww-color-presets" id="wwChannelColorPresets"></div>
+            <div class="group-editor-section">
+                <h4>Custom</h4>
+                <div class="ww-color-custom-row">
+                    <span class="ww-color-swatch" id="wwChannelColorSwatch" aria-hidden="true"></span>
+                    <input type="color" id="wwChannelColorNativeInput" aria-label="Pick custom color">
+                    <input type="text" id="wwChannelColorHexInput" class="ww-rename-input" maxlength="7"
+                        placeholder="#3cb44b" aria-label="Custom hex color" autocomplete="off">
+                    <button type="button" class="secondary" id="wwChannelColorSetBtn">Set</button>
+                </div>
+                <p class="hint error" id="wwChannelColorError" hidden role="alert"></p>
+            </div>
+            <div class="group-editor-footer">
+                <button type="button" class="secondary" id="wwChannelColorResetBtn">Reset to default</button>
+                <span class="toolbar-spacer"></span>
+                <button type="button" class="secondary" id="wwChannelColorCloseFooterBtn">Close</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Slice 6: the Edit drawer for one Voltage or Current group's own
          base configuration -- reuses the exact .ww-cc-drawer/-backdrop
          shell the Calculated Channels Signal Builder already
@@ -5900,6 +6050,14 @@
             if (focusedSourceId === sourceId) {
                 focusedSourceId = null;
             }
+            // Channel presentation customization (section 31): never leave
+            // a context menu/modal pointed at a channel that just stopped
+            // existing. The override Map itself deliberately stays
+            // untouched (same lifecycle as ww.channelColors/ww.channelMeta
+            // -- a re-added source keeps its own rename/color).
+            if (wwChannelMenuTarget && wwChannelMenuTarget.sourceId === sourceId) wwCloseChannelContextMenu();
+            wwCloseChannelRenameModal();
+            wwCloseChannelColorModal();
             // Phase 5A-UAT3 (section 12): this source is gone -- its
             // channels must disappear from the Calculated Channels
             // candidate inventory too, never linger as a stale option.
@@ -6592,7 +6750,8 @@
         // before.
         function analogChannelNameCellHtml(source, channel) {
             const color = wwColorForChannel(source.source_id, channel.name);
-            const label = channel.unit ? channel.name + " (" + channel.unit + ")" : channel.name;
+            const displayName = wwChannelDisplayName(source.source_id, channel.name);
+            const label = channel.unit ? displayName + " (" + channel.unit + ")" : displayName;
             return '<span class="channel-name-cell">' +
                 '<span class="channel-color-dot" style="background:' + escapeHtml(color) + '" aria-hidden="true"></span>' +
                 '<span class="channel-name-text">' + escapeHtml(label) + '</span>' +
@@ -6615,7 +6774,7 @@
         // active/inactive map, no re-fetch.
         function analogChannelRowAttrs(source, channel, timebase) {
             const isDisplayed = wwIsAnalogChannelVisible(source.source_id, channel.name);
-            const label = (isDisplayed ? "Hide " : "Show ") + channel.name;
+            const label = (isDisplayed ? "Hide " : "Show ") + wwChannelDisplayName(source.source_id, channel.name);
             return ' class="channel-row--toggle' + (isDisplayed ? "" : " channel-row--hidden") + '"' +
                 ' tabindex="0" role="button" aria-pressed="' + isDisplayed + '"' +
                 ' data-channel-kind="analog"' +
@@ -6939,6 +7098,18 @@
                 if (!row || event.target !== row) return;
                 event.preventDefault();
                 wwToggleChannelRowDisplay(row);
+            });
+            // Channel presentation customization (section 6/30): analog
+            // rows only -- digital rows fall through to the browser's own
+            // default context menu, deliberately out of scope this slice
+            // (section 29). preventDefault() stops the native menu WITHOUT
+            // touching the row's own left-click toggle path above (a
+            // contextmenu event never bubbles into a synthetic "click").
+            groupsEl.addEventListener("contextmenu", (event) => {
+                const row = event.target.closest("tr.channel-row--toggle");
+                if (!row || row.dataset.channelKind !== "analog") return;
+                event.preventDefault();
+                wwOpenChannelContextMenu(event, row);
             });
         }
 
@@ -7280,6 +7451,20 @@
             // clears it (a brand-new workspace has no color history to
             // remember).
             channelColors: new Map(),
+            // Channel presentation overrides: "sourceId::channelName" ->
+            // {displayName?, color?} -- user-controlled RENAME/COLOR
+            // overrides for a loaded source channel (RECORDINGS sidebar
+            // context menu), kept entirely separate from canonical channel
+            // identity (channel.channelName/wwChannelKey() are never
+            // affected -- see wwChannelDisplayName()) and from
+            // ww.channelColors' own auto-assigned default above (never
+            // overwritten by an override, so Reset can always recover the
+            // real default -- see wwDefaultChannelColor()/wwColorForChannel()).
+            // Same lifecycle policy as ww.channelColors/ww.channelMeta
+            // immediately above: individual channel/source removal
+            // deliberately leaves this alone (a re-added channel keeps its
+            // own rename/color); only wwClearWorkspace() clears it.
+            channelPresentationOverrides: new Map(),
             // Phase 4A-UAT6: "sourceId::channelName" -> {sourceId,
             // sourceName, channelName, unit, engineeringType} -- survives
             // a channel being hidden (wwRemoveChannel never deletes from
@@ -9118,6 +9303,281 @@
         }
 
         // ------------------------------------------------------------------
+        // Channel presentation overrides (rename-for-display + custom
+        // color, RECORDINGS sidebar context menu). Architecture rule
+        // (see docs/project-memory/CURRENT_STATE.md): these are a pure
+        // presentation layer ABOVE canonical channel identity --
+        // channel.channelName / wwChannelKey() are the stable engineering
+        // key used for every lookup (cursor values, calculated-channel
+        // inputs, Per-Unit membership, annotations, waveform trace
+        // identity); a rename NEVER rekeys any of that, it only changes
+        // what a handful of user-facing labels resolve to. Every resolver
+        // below reads ww.channelPresentationOverrides purely for display
+        // text/color, never for identity.
+        // ------------------------------------------------------------------
+
+        // The one canonical display-name resolver -- every user-facing
+        // surface that shows a channel name should call this instead of
+        // reading channel.channelName/channel.name directly. Falls back to
+        // the canonical name whenever no override (or an empty one) exists,
+        // so a channel that was never renamed behaves exactly as before.
+        function wwChannelDisplayName(sourceId, channelName) {
+            const override = ww.channelPresentationOverrides.get(wwChannelKey(sourceId, channelName));
+            return (override && override.displayName) ? override.displayName : channelName;
+        }
+
+        // Trim, reject empty/whitespace-only, cap pathological length.
+        // Deliberately permissive otherwise -- ordinary engineering
+        // characters (spaces, hyphens, underscores, brackets, slashes,
+        // etc.) are all accepted; every render site escapeHtml()s this
+        // text like any other channel name, so no character-set
+        // restriction is needed for safety.
+        const WW_CHANNEL_DISPLAY_NAME_MAX_LENGTH = 200;
+        function wwValidateChannelDisplayName(rawValue) {
+            const trimmed = (rawValue || "").trim();
+            if (!trimmed) return { ok: false, error: "Name cannot be empty." };
+            if (trimmed.length > WW_CHANNEL_DISPLAY_NAME_MAX_LENGTH) {
+                return { ok: false, error: "Name is too long (max " + WW_CHANNEL_DISPLAY_NAME_MAX_LENGTH + " characters)." };
+            }
+            return { ok: true, value: trimmed };
+        }
+
+        // Sets/clears the displayName half of this channel's override,
+        // pruning the entry entirely once both halves are empty (so a
+        // fully-reset channel leaves no trace in the Map). If the trimmed
+        // value equals the canonical name, this IS a reset -- never store
+        // a no-op alias. Ends with a targeted refresh (section 33): no
+        // refetch, no full rebuild, see wwRefreshChannelPresentation().
+        function wwSetChannelDisplayName(sourceId, channelName, displayName) {
+            const trimmed = (displayName || "").trim();
+            if (!trimmed || trimmed === channelName) {
+                wwResetChannelDisplayName(sourceId, channelName);
+                return;
+            }
+            const key = wwChannelKey(sourceId, channelName);
+            const existing = ww.channelPresentationOverrides.get(key) || {};
+            existing.displayName = trimmed;
+            ww.channelPresentationOverrides.set(key, existing);
+            wwRefreshChannelPresentation(sourceId, channelName);
+        }
+
+        function wwResetChannelDisplayName(sourceId, channelName) {
+            const key = wwChannelKey(sourceId, channelName);
+            const existing = ww.channelPresentationOverrides.get(key);
+            if (existing) {
+                delete existing.displayName;
+                if (existing.color) ww.channelPresentationOverrides.set(key, existing);
+                else ww.channelPresentationOverrides.delete(key);
+            }
+            wwRefreshChannelPresentation(sourceId, channelName);
+        }
+
+        // Targeted DOM update for exactly one sidebar row's Channel cell
+        // (name + color dot) -- mirrors the existing
+        // wwUpdateCursorValueCellsForChannels() precedent's row-lookup
+        // selector. A no-op if the row isn't currently rendered (a
+        // collapsed subgroup still keeps its row in the DOM, so this only
+        // truly misses when the source/channel isn't loaded at all).
+        function wwRefreshChannelSidebarRow(sourceId, channelName) {
+            const row = document.querySelector(
+                'tr.channel-row--toggle[data-channel-kind="analog"][data-source-id="' + CSS.escape(sourceId) +
+                '"][data-channel-name="' + CSS.escape(channelName) + '"]'
+            );
+            if (!row) return;
+            const cell = row.querySelector(".channel-name-cell");
+            if (cell) cell.outerHTML = analogChannelNameCellHtml({ source_id: sourceId }, { name: channelName, unit: row.dataset.unit });
+            row.setAttribute("aria-label", (row.getAttribute("aria-pressed") === "true" ? "Hide " : "Show ") +
+                wwChannelDisplayName(sourceId, channelName));
+            row.setAttribute("title", row.getAttribute("aria-label"));
+        }
+
+        // Section 33 (performance): the ONE targeted refresh path after a
+        // rename/color override change -- updates exactly the sidebar row
+        // plus, only if this channel is currently displayed, restyles its
+        // own single Plotly trace in place (mirrors the existing
+        // idx = panel.channels.indexOf(...); Plotly.restyle(..., [idx])
+        // precedent used elsewhere for a re-fetched range) and refreshes
+        // that one panel's own legend/header label. Never refetches
+        // waveform samples, never rebuilds a panel or Time Group, never
+        // recomputes calculated channels.
+        function wwRefreshChannelPresentation(sourceId, channelName) {
+            wwRefreshChannelSidebarRow(sourceId, channelName);
+            const entry = ww.displayed.get(wwChannelKey(sourceId, channelName));
+            if (entry) {
+                const panel = entry.panel;
+                const channel = entry.channel;
+                channel.color = wwColorForChannel(sourceId, channelName);
+                if (panel.plotlyReady) {
+                    const idx = panel.channels.indexOf(channel);
+                    if (idx !== -1) {
+                        Plotly.restyle(panel.chartEl, {
+                            name: [wwChannelDisplayName(sourceId, channelName)],
+                            hovertemplate: [wwTraceHoverTemplate(channel)],
+                            "line.color": [channel.color],
+                        }, [idx]);
+                    }
+                }
+                if (ww.layoutMode === "separate") wwRenderLegend(panel);
+            }
+            // Cheap, text-only, no-op-when-unchanged -- covers a Separate-
+            // mode panel's own header title (one channel = one panel there)
+            // and any Time-Group-suffix-bearing label, the same existing
+            // mechanism topology changes already rely on.
+            wwRefreshTimeGroupPanelLabels();
+        }
+
+        function wwSetChannelColorOverride(sourceId, channelName, color) {
+            const key = wwChannelKey(sourceId, channelName);
+            const existing = ww.channelPresentationOverrides.get(key) || {};
+            existing.color = color;
+            ww.channelPresentationOverrides.set(key, existing);
+            wwRefreshChannelPresentation(sourceId, channelName);
+        }
+
+        function wwResetChannelColorOverride(sourceId, channelName) {
+            const key = wwChannelKey(sourceId, channelName);
+            const existing = ww.channelPresentationOverrides.get(key);
+            if (existing) {
+                delete existing.color;
+                if (existing.displayName) ww.channelPresentationOverrides.set(key, existing);
+                else ww.channelPresentationOverrides.delete(key);
+            }
+            wwRefreshChannelPresentation(sourceId, channelName);
+        }
+
+        // ------------------------------------------------------------------
+        // Channel presentation customization UI: right-click context menu +
+        // Rename/Change colour modals. Scoped to analog RECORDINGS-sidebar
+        // rows only (section 29 -- digital channels share the same
+        // wwChannelKey() identity scheme but are deliberately not wired
+        // into this menu this slice).
+        // ------------------------------------------------------------------
+
+        // The single currently-targeted channel, resolved once at
+        // right-click time (section 7: never inferred later from whatever
+        // is globally "selected"). Cleared on every close.
+        let wwChannelMenuTarget = null;
+
+        function wwCloseChannelContextMenu() {
+            const menu = document.getElementById("wwChannelContextMenu");
+            if (menu) menu.hidden = true;
+            wwChannelMenuTarget = null;
+        }
+
+        function wwOpenChannelContextMenu(event, row) {
+            wwCloseChannelRenameModal();
+            wwCloseChannelColorModal();
+            wwChannelMenuTarget = {
+                sourceId: row.dataset.sourceId,
+                sourceName: row.dataset.sourceName,
+                channelName: row.dataset.channelName,
+                unit: row.dataset.unit,
+            };
+            const menu = document.getElementById("wwChannelContextMenu");
+            menu.hidden = false;
+            // Clamp so the menu can never render partly off-screen -- a
+            // right-click near the Workspace Sidebar's own right/bottom
+            // edge is the common case, not an edge case.
+            const rect = menu.getBoundingClientRect();
+            const maxLeft = Math.max(8, window.innerWidth - rect.width - 8);
+            const maxTop = Math.max(8, window.innerHeight - rect.height - 8);
+            menu.style.left = Math.min(Math.max(8, event.clientX), maxLeft) + "px";
+            menu.style.top = Math.min(Math.max(8, event.clientY), maxTop) + "px";
+        }
+
+        function wwCloseChannelRenameModal() {
+            const overlay = document.getElementById("wwChannelRenameOverlay");
+            if (overlay) overlay.hidden = true;
+        }
+
+        // Target section 8: shows the immutable original (canonical) name,
+        // pre-fills the input with the CURRENT effective display name (an
+        // alias if one exists, else the canonical name itself) -- never
+        // blank, never the original when an alias is already active.
+        function wwOpenChannelRenameModal() {
+            if (!wwChannelMenuTarget) return;
+            const sourceId = wwChannelMenuTarget.sourceId;
+            const channelName = wwChannelMenuTarget.channelName;
+            wwCloseChannelContextMenu();
+            document.getElementById("wwChannelRenameOriginal").textContent = channelName;
+            const input = document.getElementById("wwChannelRenameInput");
+            input.value = wwChannelDisplayName(sourceId, channelName);
+            input.dataset.sourceId = sourceId;
+            input.dataset.channelName = channelName;
+            const errorEl = document.getElementById("wwChannelRenameError");
+            errorEl.hidden = true;
+            errorEl.textContent = "";
+            document.getElementById("wwChannelRenameOverlay").hidden = false;
+            input.focus();
+            input.select();
+        }
+
+        function wwCloseChannelColorModal() {
+            const overlay = document.getElementById("wwChannelColorOverlay");
+            if (overlay) overlay.hidden = true;
+        }
+
+        // Section 19: a small, useful preset set, reusing the existing
+        // channel-identity palette (CHANNEL_TRACE_COLORS) first so the
+        // picker feels consistent with already-assigned trace colors, then
+        // a few additional distinct, readable-on-either-theme colors to
+        // reach the owner's own reference roughly-10-preset count.
+        const WW_CHANNEL_COLOR_EXTRA_PRESETS = ["#c2185b", "#827717", "#455a64", "#e65100"];
+        const WW_CHANNEL_COLOR_PRESETS = CHANNEL_TRACE_COLORS.concat(WW_CHANNEL_COLOR_EXTRA_PRESETS);
+
+        const WW_HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+        // Accepts with or without a leading "#"; returns a normalized
+        // lowercase "#rrggbb" string, or null for anything invalid --
+        // the one, sole validation point for both the hex text field and
+        // (defensively) the native color input.
+        function wwNormalizeHexColor(value) {
+            const trimmed = (value || "").trim();
+            const withHash = trimmed.startsWith("#") ? trimmed : "#" + trimmed;
+            return WW_HEX_COLOR_RE.test(withHash) ? withHash.toLowerCase() : null;
+        }
+
+        function wwRenderChannelColorPresets() {
+            const container = document.getElementById("wwChannelColorPresets");
+            container.innerHTML = WW_CHANNEL_COLOR_PRESETS.map((color) =>
+                '<button type="button" class="ww-color-preset" data-color="' + escapeHtml(color) +
+                '" style="background:' + escapeHtml(color) + '" title="' + escapeHtml(color) +
+                '" aria-label="Use ' + escapeHtml(color) + '"></button>'
+            ).join("");
+            container.querySelectorAll(".ww-color-preset").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                    const hexInput = document.getElementById("wwChannelColorHexInput");
+                    wwSetChannelColorOverride(hexInput.dataset.sourceId, hexInput.dataset.channelName, btn.dataset.color);
+                    wwSyncChannelColorModalPreview(btn.dataset.color);
+                });
+            });
+        }
+
+        function wwSyncChannelColorModalPreview(color) {
+            document.getElementById("wwChannelColorSwatch").style.background = color;
+            document.getElementById("wwChannelColorHexInput").value = color;
+            const normalized = wwNormalizeHexColor(color);
+            if (normalized) document.getElementById("wwChannelColorNativeInput").value = normalized;
+        }
+
+        // Target section 18: preset grid + custom hex/native picker, pre-
+        // filled with the CURRENT effective color (an override if one
+        // exists, else the default -- see wwColorForChannel()).
+        function wwOpenChannelColorModal() {
+            if (!wwChannelMenuTarget) return;
+            const sourceId = wwChannelMenuTarget.sourceId;
+            const channelName = wwChannelMenuTarget.channelName;
+            wwCloseChannelContextMenu();
+            document.getElementById("wwChannelColorName").textContent = wwChannelDisplayName(sourceId, channelName);
+            const hexInput = document.getElementById("wwChannelColorHexInput");
+            hexInput.dataset.sourceId = sourceId;
+            hexInput.dataset.channelName = channelName;
+            wwRenderChannelColorPresets();
+            wwSyncChannelColorModalPreview(wwColorForChannel(sourceId, channelName));
+            document.getElementById("wwChannelColorError").hidden = true;
+            document.getElementById("wwChannelColorOverlay").hidden = false;
+        }
+
+        // ------------------------------------------------------------------
         // Phase 5A (DEC-047): Calculated Channels are treated as analog-like
         // pseudo-source channels everywhere in the existing panel/layout/
         // annotation machinery (section 53/58 of the task -- "do not
@@ -9284,7 +9744,7 @@
         // group key already guards that, this is purely what the panel
         // header shows).
         function wwPanelLabelFor(channel) {
-            if (ww.layoutMode === "separate") return channel.channelName;
+            if (ww.layoutMode === "separate") return wwChannelDisplayName(channel.sourceId, channel.channelName);
             if (ww.layoutMode === "custom") {
                 const group = wwCustomGroupFor(channel);
                 return group ? group.label : channel.channelName;
@@ -9327,7 +9787,13 @@
         // gets a real, stable color here (called from the sidebar render
         // path too, section 8's own "the user should still be able to
         // understand what color the channel WILL use when re-added").
-        function wwColorForChannel(sourceId, channelName) {
+        // The pure AUTO-ASSIGNED default -- ignores any user color
+        // override entirely. This is the value channel presentation
+        // "Reset to default" restores, and the value the color picker
+        // shows as its own "default" swatch/label. Never hard-writes an
+        // override; ww.channelColors stays the one auto-cycle cache it
+        // always was.
+        function wwDefaultChannelColor(sourceId, channelName) {
             const key = wwChannelKey(sourceId, channelName);
             let color = ww.channelColors.get(key);
             if (!color) {
@@ -9335,6 +9801,18 @@
                 ww.channelColors.set(key, color);
             }
             return color;
+        }
+
+        // Channel presentation override: still "the ONE color authority"
+        // every consumer (Plotly trace, sidebar dot, legend) calls --
+        // unchanged call sites/signature. A user color override, if one
+        // exists, wins; otherwise falls through to the auto-assigned
+        // default above, exactly as before this feature existed.
+        function wwColorForChannel(sourceId, channelName) {
+            const key = wwChannelKey(sourceId, channelName);
+            const override = ww.channelPresentationOverrides.get(key);
+            if (override && override.color) return override.color;
+            return wwDefaultChannelColor(sourceId, channelName);
         }
 
         // Phase 4A-UAT6: the ONE authority for "is this analog channel
@@ -9777,13 +10255,14 @@
         function wwRenderLegend(panel) {
             let html = "";
             for (const channel of panel.channels) {
+                const displayName = wwChannelDisplayName(channel.sourceId, channel.channelName);
                 html += '<span class="ww-legend-item">' +
                     '<span class="ww-legend-dot" style="background:' + channel.color + '"></span>' +
-                    '<span class="ww-legend-label">' + escapeHtml(channel.channelName) +
+                    '<span class="ww-legend-label">' + escapeHtml(displayName) +
                     (channel.unit ? " (" + escapeHtml(channel.unit) + ")" : "") + '</span>' +
                     '<button type="button" class="ww-legend-remove" data-source-id="' + escapeHtml(channel.sourceId) +
                     '" data-channel-name="' + escapeHtml(channel.channelName) + '" title="Remove from display" ' +
-                    'aria-label="Remove ' + escapeHtml(channel.channelName) + ' from display">&times;</button>' +
+                    'aria-label="Remove ' + escapeHtml(displayName) + ' from display">&times;</button>' +
                     '</span>';
             }
             panel.legendEl.innerHTML = html;
@@ -9825,7 +10304,7 @@
             const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
             const xFormat = ww.timeMode === "absolute" && !wwHasT0(groupId) ? "%{customdata}" : "%{x:.6f}s";
             return xFormat + ": %{y}" + (channel.unit ? " " + channel.unit : "") +
-                "<extra>" + escapeHtml(channel.channelName) + "</extra>";
+                "<extra>" + escapeHtml(wwChannelDisplayName(channel.sourceId, channel.channelName)) + "</extra>";
         }
 
         // Phase 2C-C3, refined by the sub-ms precision fix: x values are
@@ -9846,7 +10325,7 @@
                 // "spline" -- no curve smoothing between real samples,
                 // unchanged from Phase 2B.
                 line: { shape: "linear", width: 1.5, color: channel.color },
-                name: channel.channelName,
+                name: wwChannelDisplayName(channel.sourceId, channel.channelName),
                 hovertemplate: wwTraceHoverTemplate(channel),
                 // Phase 4A-UAT7: a stable "sourceId::channelName" identity
                 // (the same wwChannelKey() convention used everywhere
@@ -10975,7 +11454,7 @@
         // vertically-listed card -- a compact truncation past 4 channels.
         function wwMgChannelsText(channelRefs, maxShown) {
             maxShown = maxShown || 4;
-            const names = (channelRefs || []).map((r) => r.channel_name);
+            const names = (channelRefs || []).map((r) => wwChannelDisplayName(r.source_id, r.channel_name));
             if (names.length <= maxShown) return names.join(" · ");
             return names.slice(0, maxShown).join(" · ") + " +" + (names.length - maxShown);
         }
@@ -12452,6 +12931,10 @@
         function wwAnnotationMetaLine(annotation) {
             const data = annotation.data || {};
             const groupId = wwTimeGroupIdForDisplaySourceId(data.sourceId);
+            // Channel presentation override: the stored anchor identity
+            // (data.sourceId/data.channelName) is never rewritten -- only
+            // this display text resolves through the current alias, if any.
+            const displayName = data.channelName ? wwChannelDisplayName(data.sourceId, data.channelName) : "—";
             if (annotation.type === "callout") {
                 const time = ww.timeMode === "absolute"
                     ? wwFormatAbsoluteElapsedTime(data.anchorElapsedSeconds, { groupId: groupId, spanSeconds: wwVisibleSpanSeconds(groupId) })
@@ -12459,14 +12942,14 @@
                 const value = Number.isFinite(data.anchorValue)
                     ? data.anchorValue.toFixed(3) + (data.unit ? " " + data.unit : "")
                     : "—";
-                return (data.channelName || "—") + " · " + time + " · " + value;
+                return displayName + " · " + time + " · " + value;
             }
             if (wwIsPeakType(annotation.type)) {
-                if (!data.available) return (data.channelName || "—") + " · Unavailable for current view";
+                if (!data.available) return displayName + " · Unavailable for current view";
                 const time = ww.timeMode === "absolute"
                     ? wwFormatAbsoluteElapsedTime(data.peakElapsedSeconds, { groupId: groupId, spanSeconds: wwVisibleSpanSeconds(groupId) })
                     : wwFormatCursorDuration(data.peakElapsedSeconds);
-                return (data.channelName || "—") + " · t = " + time;
+                return displayName + " · t = " + time;
             }
             return "";
         }
@@ -15419,11 +15902,16 @@
             const candidates = [];
             for (const inventory of ww.sourceChannelInventory.values()) {
                 for (const ch of inventory.analogChannels) {
+                    // Channel presentation override: shortLabel/pickerLabel
+                    // are display text ONLY -- channelName below (the
+                    // actual submitted ChannelRef.channel_name) stays the
+                    // canonical name, unaffected by any alias.
+                    const displayName = wwChannelDisplayName(inventory.sourceId, ch.name);
                     candidates.push({
                         kind: "source", sourceId: inventory.sourceId, channelName: ch.name,
                         calculatedChannelId: null, referenceSourceId: inventory.sourceId,
-                        shortLabel: ch.name,
-                        pickerLabel: (inventory.sourceName ? inventory.sourceName + " — " : "") + ch.name,
+                        shortLabel: displayName,
+                        pickerLabel: (inventory.sourceName ? inventory.sourceName + " — " : "") + displayName,
                         unit: ch.unit || "", group: inventory.sourceName || inventory.sourceId,
                     });
                 }
@@ -15440,7 +15928,7 @@
         }
 
         function wwCcInputDisplayName(inputRef) {
-            if (inputRef.kind === "source") return inputRef.channel_name;
+            if (inputRef.kind === "source") return wwChannelDisplayName(inputRef.source_id, inputRef.channel_name);
             const dep = ww.calculatedChannels.get(inputRef.calculated_channel_id);
             return dep ? dep.name : "(deleted)";
         }
@@ -17129,6 +17617,16 @@
             // remembering; individual channel/source removal deliberately
             // leaves this alone (see the field's own comment on ww).
             ww.channelColors.clear();
+            // Channel presentation overrides: same policy as
+            // ww.channelColors/ww.customGroups/ww.panelHeights above -- a
+            // brand-new workspace has no rename/color history worth
+            // remembering either; individual channel/source removal
+            // deliberately leaves this alone (see the field's own comment
+            // on ww).
+            ww.channelPresentationOverrides.clear();
+            wwCloseChannelContextMenu();
+            wwCloseChannelRenameModal();
+            wwCloseChannelColorModal();
             // Phase 4A-UAT6: same policy -- a brand-new workspace has no
             // metadata history worth remembering either.
             ww.channelMeta.clear();
@@ -19537,7 +20035,7 @@
             const inventory = ww.sourceChannelInventory.get(sourceId);
             if (!inventory) return "";
             return inventory.analogChannels.map((ch) =>
-                '<option value="' + escapeHtml(ch.name) + '">' + escapeHtml(ch.name) +
+                '<option value="' + escapeHtml(ch.name) + '">' + escapeHtml(wwChannelDisplayName(sourceId, ch.name)) +
                 (ch.unit ? " (" + escapeHtml(ch.unit) + ")" : "") + '</option>'
             ).join("");
         }
@@ -20308,7 +20806,7 @@
                 const channel = entry.channel;
                 unassignedHtml += '<span class="group-chip">' +
                     '<span class="group-chip-dot" style="background:' + channel.color + '"></span>' +
-                    '<span class="group-chip-label">' + escapeHtml(channel.channelName) +
+                    '<span class="group-chip-label">' + escapeHtml(wwChannelDisplayName(channel.sourceId, channel.channelName)) +
                     (channel.unit ? " (" + escapeHtml(channel.unit) + ")" : "") + '</span>' +
                     '<select class="group-assign-select" data-channel-key="' + escapeHtml(key) + '">' +
                     '<option value="">Add to group&hellip;</option>' + groupOptionsHtml +
@@ -20348,13 +20846,14 @@
                         if (!meta) continue; // defensive: a key that was never actually assigned a real channel
                         const isHidden = !wwIsAnalogChannelVisible(meta.sourceId, meta.channelName);
                         const color = wwColorForChannel(meta.sourceId, meta.channelName);
+                        const metaDisplayName = wwChannelDisplayName(meta.sourceId, meta.channelName);
                         groupsHtml += '<span class="group-chip' + (isHidden ? ' group-chip--hidden' : '') + '"' +
                             (isHidden ? ' title="Hidden -- not currently displayed"' : '') + '>' +
                             '<span class="group-chip-dot" style="background:' + color + '"></span>' +
-                            '<span class="group-chip-label">' + escapeHtml(meta.channelName) +
+                            '<span class="group-chip-label">' + escapeHtml(metaDisplayName) +
                             (meta.unit ? " (" + escapeHtml(meta.unit) + ")" : "") + '</span>' +
                             '<button type="button" class="group-chip-remove" data-channel-key="' + escapeHtml(key) +
-                            '" title="Remove from group" aria-label="Remove ' + escapeHtml(meta.channelName) +
+                            '" title="Remove from group" aria-label="Remove ' + escapeHtml(metaDisplayName) +
                             ' from group">&times;</button></span>';
                     }
                 }
@@ -20815,6 +21314,88 @@
         document.addEventListener("keydown", (event) => {
             if (event.key !== "Escape") return;
             if (!document.getElementById("wwDetectEventOverlay").hidden) wwCloseDetectEventModal();
+        });
+
+        // Channel presentation customization: context menu + Rename/Change
+        // colour modals (RECORDINGS sidebar). Menu item clicks; Escape/
+        // click-outside dismissal (section 31) -- ordered so Escape closes
+        // only the TOP-most open layer, one at a time, same convention as
+        // the drawer-priority Escape handler above.
+        document.getElementById("wwChannelMenuRenameBtn").addEventListener("click", wwOpenChannelRenameModal);
+        document.getElementById("wwChannelMenuColorBtn").addEventListener("click", wwOpenChannelColorModal);
+        document.addEventListener("click", (event) => {
+            const menu = document.getElementById("wwChannelContextMenu");
+            if (!menu.hidden && !menu.contains(event.target)) wwCloseChannelContextMenu();
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            if (!document.getElementById("wwChannelContextMenu").hidden) { wwCloseChannelContextMenu(); return; }
+            if (!document.getElementById("wwChannelRenameOverlay").hidden) { wwCloseChannelRenameModal(); return; }
+            if (!document.getElementById("wwChannelColorOverlay").hidden) wwCloseChannelColorModal();
+        });
+
+        // Rename modal.
+        document.getElementById("wwChannelRenameApplyBtn").addEventListener("click", () => {
+            const input = document.getElementById("wwChannelRenameInput");
+            const validation = wwValidateChannelDisplayName(input.value);
+            const errorEl = document.getElementById("wwChannelRenameError");
+            if (!validation.ok) {
+                errorEl.textContent = validation.error;
+                errorEl.hidden = false;
+                return;
+            }
+            wwSetChannelDisplayName(input.dataset.sourceId, input.dataset.channelName, validation.value);
+            wwCloseChannelRenameModal();
+        });
+        document.getElementById("wwChannelRenameResetBtn").addEventListener("click", () => {
+            const input = document.getElementById("wwChannelRenameInput");
+            wwResetChannelDisplayName(input.dataset.sourceId, input.dataset.channelName);
+            wwCloseChannelRenameModal();
+        });
+        document.getElementById("wwChannelRenameCancelBtn").addEventListener("click", wwCloseChannelRenameModal);
+        document.getElementById("wwChannelRenameCloseBtn").addEventListener("click", wwCloseChannelRenameModal);
+        document.getElementById("wwChannelRenameOverlay").addEventListener("click", (event) => {
+            if (event.target.id === "wwChannelRenameOverlay") wwCloseChannelRenameModal(); // click on backdrop
+        });
+        document.getElementById("wwChannelRenameInput").addEventListener("keydown", (event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            document.getElementById("wwChannelRenameApplyBtn").click();
+        });
+
+        // Change colour modal.
+        document.getElementById("wwChannelColorSetBtn").addEventListener("click", () => {
+            const hexInput = document.getElementById("wwChannelColorHexInput");
+            const normalized = wwNormalizeHexColor(hexInput.value);
+            const errorEl = document.getElementById("wwChannelColorError");
+            if (!normalized) {
+                errorEl.textContent = "Enter a valid hex color, e.g. #3cb44b.";
+                errorEl.hidden = false;
+                return;
+            }
+            errorEl.hidden = true;
+            wwSetChannelColorOverride(hexInput.dataset.sourceId, hexInput.dataset.channelName, normalized);
+            wwSyncChannelColorModalPreview(normalized);
+        });
+        document.getElementById("wwChannelColorHexInput").addEventListener("keydown", (event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            document.getElementById("wwChannelColorSetBtn").click();
+        });
+        document.getElementById("wwChannelColorNativeInput").addEventListener("input", (event) => {
+            const hexInput = document.getElementById("wwChannelColorHexInput");
+            wwSetChannelColorOverride(hexInput.dataset.sourceId, hexInput.dataset.channelName, event.target.value);
+            wwSyncChannelColorModalPreview(event.target.value);
+        });
+        document.getElementById("wwChannelColorResetBtn").addEventListener("click", () => {
+            const hexInput = document.getElementById("wwChannelColorHexInput");
+            wwResetChannelColorOverride(hexInput.dataset.sourceId, hexInput.dataset.channelName);
+            wwSyncChannelColorModalPreview(wwDefaultChannelColor(hexInput.dataset.sourceId, hexInput.dataset.channelName));
+        });
+        document.getElementById("wwChannelColorCloseBtn").addEventListener("click", wwCloseChannelColorModal);
+        document.getElementById("wwChannelColorCloseFooterBtn").addEventListener("click", wwCloseChannelColorModal);
+        document.getElementById("wwChannelColorOverlay").addEventListener("click", (event) => {
+            if (event.target.id === "wwChannelColorOverlay") wwCloseChannelColorModal(); // click on backdrop
         });
 
         // Phase 2C-B1/C1: Grouped/Separate/Custom layout mode.
