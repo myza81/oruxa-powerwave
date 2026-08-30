@@ -7,9 +7,12 @@ the right places/order.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend" / "index.html"
+
+_DIV_TAG_RE = re.compile(r"<(/?)div\b")
 
 
 def _source() -> str:
@@ -20,6 +23,30 @@ def _function_body(source: str, signature: str, next_signature: str) -> str:
     start = source.index(signature)
     end = source.index(next_signature, start)
     return source[start:end]
+
+
+def _element_html_by_id(source: str, element_id: str) -> str:
+    """Extracts one <div id="..."> element's full outer HTML by balanced
+    tag counting from its own opening tag, rather than slicing up to some
+    neighboring marker (a sibling HTML comment, the next function's
+    signature, etc). A neighboring-marker boundary is only ever as stable
+    as "nothing else gets inserted as a sibling in between" -- exactly the
+    assumption the channel-presentation-customization feature broke for
+    test_modal_has_exactly_one_footer_and_one_cancel_button below, when its
+    two new modals landed between #wwDetectEventOverlay and the old
+    "<!-- Slice 6:" marker that test used as its end boundary. Counting
+    this element's own <div>/</div> balance is robust to ANY future
+    sibling markup, because it never looks past this element's own close.
+    """
+    id_idx = source.index(f'id="{element_id}"')
+    tag_start = source.rindex("<div", 0, id_idx)
+    depth = 0
+    for match in _DIV_TAG_RE.finditer(source, tag_start):
+        depth += -1 if match.group(1) else 1
+        if depth == 0:
+            close_end = source.index(">", match.start()) + 1
+            return source[tag_start:close_end]
+    raise AssertionError(f"unbalanced <div> markup while extracting id={element_id!r}")
 
 
 def test_suggested_event_state_exists():
@@ -60,10 +87,19 @@ def test_modal_has_exactly_one_footer_and_one_cancel_button():
     """UAT fix: "The modal should also have only one visible Cancel
     action" -- verified structurally: exactly one .group-editor-footer
     and exactly one id="wwDetectEvent...CancelBtn"-shaped element in
-    the whole modal block."""
+    the whole modal block.
+
+    Scoped to the #wwDetectEventOverlay element itself (balanced <div>
+    counting via _element_html_by_id(), not a slice up to some later
+    sibling marker) -- a prior version of this test sliced up to the
+    next "<!-- Slice 6:" comment, which silently started capturing
+    unrelated sibling modals (channel presentation customization's own
+    Rename/Change colour dialogs) once those were added as new siblings
+    between this modal and that marker. Scoping to this element's own
+    balanced close makes the assertion immune to whatever markup is
+    added as a later sibling."""
     source = _source()
-    modal_idx = source.index('id="wwDetectEventOverlay"')
-    modal_body = source[modal_idx : source.index("<!-- Slice 6:", modal_idx)]
+    modal_body = _element_html_by_id(source, "wwDetectEventOverlay")
     assert modal_body.count("group-editor-footer") == 1
     assert modal_body.count("Cancel</button>") == 1
     assert modal_body.count('id="wwDetectEventAcceptBtn"') == 1
