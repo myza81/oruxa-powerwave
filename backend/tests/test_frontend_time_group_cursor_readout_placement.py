@@ -15,6 +15,15 @@ cursor state/math (`ww.timeGroupCursorState`, `wwFormatCursorPointTime`,
 `wwFormatCursorDuration`) -- only WHERE the element lives in the
 template and how its own sticky `bottom` offset is computed changed.
 
+Follow-up bugfix (owner UAT on commit eb55528): the initial relocation
+used THREE independent `position: sticky` siblings (slider/readout/
+ruler) with JS-computed `bottom` offsets; the readout was found to not
+actually stay stuck while scrolling. `.ww-tg-slider-slot` and
+`.ww-tg-cursor-readout` now share ONE `.ww-tg-sticky-bottom` wrapper
+(normal-flow children, browser-computed height) -- see
+`TestStickyBottomWrapperBugfix` below and this file's own inline
+comments throughout for the full root-cause writeup.
+
 Mirrors this suite's own established pure string/index-based approach
 (test_frontend_time_group_toolbar.py, test_frontend_time_range_slider.py)
 -- no jsdom execution. Real multi-group/sticky/scroll behavior is
@@ -87,12 +96,35 @@ class TestReadoutIsBetweenSliderAndRuler:
             "bottom sticky stack"
         )
 
-    def test_readout_css_sits_in_the_bottom_stack_between_ruler_and_slider_css(self):
+    def test_slider_and_readout_share_one_wrapper_ruler_stays_independent(self):
+        """Bugfix (owner UAT on eb55528, readout not actually sticky):
+        `.ww-tg-slider-slot` and `.ww-tg-cursor-readout` are both nested
+        INSIDE `.ww-tg-sticky-bottom` (normal-flow children of ONE
+        sticky wrapper) -- `.ww-tg-ruler` is NOT, staying a direct,
+        independent sibling of the wrapper so its own `offsetTop` keeps
+        resolving relative to the canvas root (Phase 4B-UAT2's own
+        cursor-overlay-height fix depends on this)."""
+        source = _source()
+        body = _canvas_template_body(source)
+        wrapper_open_idx = body.index('\'<div class="ww-tg-sticky-bottom">\'')
+        slider_idx = body.index('\'<div class="ww-tg-slider-slot">', wrapper_open_idx)
+        readout_idx = body.index('\'<div class="ww-tg-cursor-readout" hidden>\'', wrapper_open_idx)
+        wrapper_close_idx = body.index("'</div>' +\n                '</div>' +\n                '<div class=\"ww-tg-ruler\" hidden>'")
+        ruler_idx = body.index('\'<div class="ww-tg-ruler" hidden>\'')
+        assert wrapper_open_idx < slider_idx < readout_idx < wrapper_close_idx <= ruler_idx
+
+    def test_readout_css_sits_in_the_shared_bottom_wrapper_section_after_the_ruler(self):
+        """Bugfix (owner UAT on eb55528): the readout and slider are now
+        both normal-flow children of `.ww-tg-sticky-bottom`, declared in
+        source after `.ww-tg-ruler` (which stays independent) -- order
+        within that shared section is wrapper, then slider, then
+        readout (matching DOM order top-to-bottom)."""
         source = _source()
         ruler_css_idx = source.index(".ww-tg-ruler {")
-        readout_css_idx = source.index(".ww-tg-cursor-readout {", ruler_css_idx)
-        slider_css_idx = source.index(".ww-tg-slider-slot:not(:empty) {", readout_css_idx)
-        assert ruler_css_idx < readout_css_idx < slider_css_idx
+        wrapper_css_idx = source.index(".ww-tg-sticky-bottom {", ruler_css_idx)
+        slider_css_idx = source.index(".ww-tg-slider-slot:not(:empty) {", wrapper_css_idx)
+        readout_css_idx = source.index(".ww-tg-cursor-readout {", slider_css_idx)
+        assert ruler_css_idx < wrapper_css_idx < slider_css_idx < readout_css_idx
 
 
 # ==============================================================================
@@ -205,3 +237,73 @@ class TestCursorMathAndStateUntouched:
         assert "color: var(--text); font-weight: 600;" in source[value_idx : value_idx + 120]
         assert ".ww-cursor-readout-a .ww-tg-cursor-readout-value { color: var(--accent); }" in source
         assert ".ww-cursor-readout-b .ww-tg-cursor-readout-value { color: var(--error); }" in source
+
+
+# ==============================================================================
+# Bugfix (owner UAT on eb55528, "readout is NOT actually sticky while
+# scrolling"): the shared `.ww-tg-sticky-bottom` wrapper. Case-letter
+# references (A-I) below refer to THIS follow-up task's own section 12
+# required-test list -- runtime-only behaviors (B/E/F/G/H) are proven
+# live via Playwright (see this task's own live-UAT report); the
+# assertions here lock in the structural contract that behavior
+# depends on.
+# ==============================================================================
+
+
+class TestStickyBottomWrapperBugfix:
+    def test_case_a_wrapper_is_position_sticky(self):
+        source = _source()
+        idx = source.index(".ww-tg-sticky-bottom {")
+        block = source[idx : source.index("}", idx) + 1]
+        assert "position: sticky;" in block
+
+    def test_case_c_ruler_is_the_wrappers_own_next_sibling_in_dom_order(self):
+        source = _source()
+        body = _canvas_template_body(source)
+        wrapper_close_idx = body.index(
+            "'</div>' +\n                '</div>' +\n                '<div class=\"ww-tg-ruler\" hidden>'"
+        )
+        ruler_idx = body.index('\'<div class="ww-tg-ruler" hidden>\'')
+        # The wrapper's own closing sequence is immediately followed by
+        # the ruler's own opening tag -- no other sibling in between.
+        assert body[wrapper_close_idx:ruler_idx].count("'<div") == 0
+
+    def test_case_d_slider_is_the_wrappers_own_first_child(self):
+        source = _source()
+        body = _canvas_template_body(source)
+        wrapper_open_idx = body.index('\'<div class="ww-tg-sticky-bottom">\'')
+        slider_idx = body.index('\'<div class="ww-tg-slider-slot">', wrapper_open_idx)
+        # Nothing else opens between the wrapper and the slider slot.
+        assert body[wrapper_open_idx + len('\'<div class="ww-tg-sticky-bottom">\''):slider_idx].strip() in ("", "+")
+
+    def test_case_e_hidden_readout_still_collapses_via_display_none(self):
+        source = _source()
+        assert ".ww-tg-cursor-readout[hidden] { display: none; }" in source
+
+    def test_case_h_readout_still_wraps_at_narrow_widths(self):
+        source = _source()
+        idx = source.index(".ww-tg-cursor-readout {")
+        block = source[idx : source.index("}", idx) + 1]
+        assert "flex-wrap: wrap;" in block
+
+    def test_case_i_top_sticky_toolbar_css_is_untouched_by_this_bugfix(self):
+        source = _source()
+        idx = source.index(".ww-tg-sticky-top {")
+        block = source[idx : source.index("}", idx) + 1]
+        assert "position: sticky;" in block
+        assert "top: 0;" in block
+        assert "z-index: 5;" in block
+        assert "background: var(--panel);" in block
+
+    def test_offset_sync_still_called_from_the_rulers_own_state_function(self):
+        """Same established call site as before this bugfix -- only the
+        function BODY's own internals changed, not who calls it or
+        when."""
+        source = _source()
+        fn_idx = source.index("function wwSyncTimeGroupRuler(groupId)")
+        fn_body = source[fn_idx : source.index("wrapEl.hidden = !hasChannels;", fn_idx) + 200]
+        assert "wwSyncTimeGroupCanvasStickyOffset(groupId);" in fn_body
+
+    def test_no_new_scroll_listener_was_added_for_this_bugfix(self):
+        source = _source()
+        assert source.count('addEventListener("scroll"') == 1  # the pre-existing cursor-overlay-refresh listener only

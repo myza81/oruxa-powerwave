@@ -8,8 +8,41 @@ Last updated: **2026-08-29**
 
 ## What was most recently done
 
-**Small UX task — A/B cursor readout relocated to the bottom sticky
-stack.** On top of Phase 27 (TG-H) below — see
+**Bugfix — the bottom sticky stack is now ONE shared wrapper (readout
+was not actually sticky).** On top of the cursor-readout relocation
+below — see
+[DECISIONS.md — DEC-067](DECISIONS.md#dec-067--bugfix-the-bottom-sticky-stack-time-range-slider--a-b-cursor-readout-becomes-one-shared-sticky-wrapper-replacing-three-independent-sticky-siblings)
+for the full record; summarized here for continuity.
+
+Owner manual UAT of the readout relocation (`eb55528`) found the
+readout was correctly positioned between the slider and ruler but
+scrolled away instead of sticking. Root cause: three independent
+`position: sticky` siblings, each with a JS-computed `bottom` offset —
+the readout's own height measurement could go stale relative to
+concurrent layout activity (reproduced live: rock-solid with one Time
+Group, drifted once a second Time Group/Grouped layout mode was
+involved). Fix: `.ww-tg-slider-slot` and `.ww-tg-cursor-readout` are
+now normal-flow children of ONE new `.ww-tg-sticky-bottom` wrapper
+(mirroring `.ww-tg-sticky-top`'s own pattern) — its own height is
+browser-computed, not JS-measured, eliminating the staleness
+structurally. `.ww-tg-ruler` stays an independent sibling outside the
+wrapper (audited first: wrapping it too would break the cursor-
+overlay's own `offsetTop`-relative-to-canvas height calculation).
+Verified by the full suite (1771 passed, 0 failed) plus 3 repeated
+live-UAT runs of the exact scenario that previously reproduced the
+drift — now rock-solid every time. Zero console/page errors.
+
+**Files changed**: `frontend/index.html` only + 2 pre-existing test
+files updated (`test_frontend_time_group_cursor_readout_placement.py`,
+`test_frontend_time_range_slider.py`).
+
+**Next step**: nothing is pre-authorized. Per this session's own "do
+not commit/push without being asked" discipline, these changes stayed
+uncommitted at the end of this task.
+
+## What was done in the prior session — A/B cursor readout relocated to the bottom sticky stack
+
+**Small UX task.** On top of Phase 27 (TG-H) below — see
 [DECISIONS.md — DEC-066](DECISIONS.md#dec-066--ab-cursor-readout-relocated-from-the-top-toolbar-row-to-the-bottom-sticky-stack-per-time-group)
 for the full record; summarized here for continuity.
 

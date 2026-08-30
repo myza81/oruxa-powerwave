@@ -9434,6 +9434,115 @@ Impact:
 
 ---
 
+## DEC-067 — Bugfix: the bottom sticky stack (Time Range slider + A-B cursor readout) becomes ONE shared sticky wrapper, replacing three independent sticky siblings
+
+Date: 2026-08-29
+Status: Approved
+Source: owner manual UAT of commit `eb55528` ("fix: move cursor readout
+to sticky time axis") — the readout was correctly relocated into the
+bottom dock but was NOT actually sticky while scrolling.
+
+Decision:
+
+**Root cause**: DEC-066's own implementation used THREE independent
+`position: sticky` siblings (`.ww-tg-slider-slot`, `.ww-tg-cursor-readout`,
+`.ww-tg-ruler`), with `wwSyncTimeGroupCanvasStickyOffset()` measuring
+the readout's own live height via `getBoundingClientRect()` and folding
+it into the slider's own `bottom`. That measurement is only ever as
+fresh as the last time the sync function happened to run. Live
+Playwright reproduction (headless Chromium) confirmed the readout's own
+computed `position`/`bottom` were reported correctly by
+`getComputedStyle()` in isolation, yet its own rendered position still
+drifted with scroll once real multi-Time-Group layout activity was
+introduced — consistent with a stale/late height read that nothing
+re-corrected before the user scrolled, not a missing/invalid CSS
+property.
+
+**Fix**: `.ww-tg-slider-slot` and `.ww-tg-cursor-readout` are now
+normal-flow children of ONE new shared wrapper, `.ww-tg-sticky-bottom`
+(mirroring `.ww-tg-sticky-top`'s own established header+toolbar
+pattern). The wrapper's own height — and therefore its own correctly
+stuck position — is computed by the BROWSER via ordinary block layout,
+never JS-measured, structurally eliminating the exact class of
+staleness that broke the three-sibling design. `wwSyncTimeGroupCanvasStickyOffset()`
+now sets exactly ONE JS-computed value (the wrapper's own `bottom` =
+the ruler's own live height) instead of two (the old readout `bottom`
+and the folded slider `bottom`).
+
+`.ww-tg-ruler` deliberately stays OUTSIDE the new wrapper, an
+independent sticky sibling exactly as before -- wrapping it too would
+move its own `offsetTop` to be relative to the new wrapper instead of
+the canvas root, breaking `wwUpdateCursorOverlayForGroup()`'s own
+`rulerWrapEl.offsetTop`-based cursor-overlay height calculation
+(Phase 4B-UAT2's own established fix) — this was audited first and is
+explicitly why the fix does not wrap all three elements into one.
+
+Reason:
+
+The task's own governing rule: "The A/B cursor readout must remain
+visibly sticky together with the Time Group's bottom time-axis stack
+while scrolling through that Time Group." A structural fix (let the
+browser compute the wrapper's own height) is more robust against this
+exact class of staleness than adding more JS synchronization calls to
+chase it, and was the task's own explicitly preferred direction once
+three independent sticky siblings proved unreliable.
+
+Alternatives considered:
+
+- Wrapping all three (slider + readout + ruler) into one wrapper —
+  rejected: breaks the ruler's own `offsetTop`-relative-to-canvas
+  contract the cursor-overlay height calculation depends on (audited
+  and confirmed via code inspection before implementing either option).
+- Keeping three independent siblings and hardening the height
+  measurement with a `ResizeObserver` on the ruler/readout elements —
+  considered as a belt-and-suspenders addition; not implemented after
+  live UAT showed the wrapper fix alone held rock-solid across repeated
+  runs of the exact scenario (two Time Groups, Grouped layout mode)
+  that previously reproduced the drift — adding an observer would have
+  been unnecessary complexity for an already-resolved root cause.
+
+Impact:
+
+- `frontend/index.html` only. Changed in place:
+  `wwCreateTimeGroupCanvasDom()` (slider-slot + cursor-readout now
+  nested inside a new `.ww-tg-sticky-bottom` wrapper div; ruler
+  markup/position unchanged), `wwSyncTimeGroupCanvasStickyOffset()`
+  (sets the wrapper's own `bottom` only). CSS: `.ww-tg-sticky-bottom`
+  is new (`position: sticky`, `z-index: 3`, `background: var(--panel)`);
+  `.ww-tg-slider-slot:not(:empty)` and `.ww-tg-cursor-readout` both lost
+  their own `position: sticky`/`z-index`/`background` (now inherited
+  from the wrapper) but kept their own `border-top` divider and every
+  owner-set value (item padding `6px 10px`, `font-size: 0.65rem`, the
+  A-blue/B-red color convention) byte-for-byte unchanged.
+- Test file `test_frontend_time_group_cursor_readout_placement.py`
+  extended with a new `TestStickyBottomWrapperBugfix` class (Cases
+  A/C/D/E/H/I plus offset-sync-call-site and no-new-scroll-listener
+  checks); `test_frontend_time_range_slider.py` updated for the new
+  wrapper-owns-stickiness shape (3 assertions replaced/added).
+- Verified by the full backend suite (1771 passed, 0 failed — up from
+  1761 before this bugfix) plus repeated live-browser Playwright UAT
+  runs (3x consecutive, same scenario) against a genuinely tall
+  (19-analog-channel) Time Group: the sticky wrapper's own `y` position
+  stayed pinned to the SAME pixel value across every sampled scroll
+  position strictly within Group 1's own bounds, in every run —
+  contrasting sharply with the OLD three-sibling design, which visibly
+  drifted (`readoutTop` continuously changing with scroll) in the exact
+  same two-Time-Group/Grouped-layout scenario before this fix. Slider/
+  readout/ruler confirmed gap-free (adjacent `top`/`bottom` values
+  within 1px) at every sampled point; disabling cursor mode collapsed
+  the stack to slider-directly-above-ruler with no gap; re-enabling
+  restored the 3-tier stack immediately; a narrow (760px) viewport kept
+  the stack gap-free with no horizontal overflow; the top sticky
+  toolbar remained clickable throughout; two-Time-Group handoff
+  confirmed clean (Group 1 released, Group 2 took over, no overlap);
+  zero console/page errors throughout.
+- **Deferred**: none new — this is a scoped bugfix on top of DEC-066,
+  same non-goals apply (cursor calculation/redesign, annotations, Time
+  Group collapse, the hover-tooltip cleanup, cross-group cursor/t0,
+  Synchronise Sources, Detect Event, CSV/Excel).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

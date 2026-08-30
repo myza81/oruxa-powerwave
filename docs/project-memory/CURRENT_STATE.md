@@ -4,10 +4,22 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-29** (Small UX task — the per-Time-
-Group A/B cursor readout (`.ww-tg-cursor-readout`) moved from the top
-`.ww-tg-toolbar-row` into the bottom sticky stack of each Time Group
-Canvas, in DOM order `slider → readout → ruler` — owner UX request.
+Last meaningful update: **2026-08-29** (Bugfix — the bottom sticky
+stack (`.ww-tg-slider-slot` + `.ww-tg-cursor-readout`) is now ONE
+shared `.ww-tg-sticky-bottom` wrapper instead of two independently-
+sticky siblings with JS-computed offsets — owner manual UAT found the
+readout was not actually sticky while scrolling. The wrapper's own
+height is browser-computed (normal block flow), not JS-measured,
+eliminating the stale-height-measurement race that caused the drift.
+`.ww-tg-ruler` stays an independent sibling outside the wrapper
+(wrapping it too would break the cursor-overlay's own
+`offsetTop`-relative-to-canvas height calculation). See
+[DECISIONS.md — DEC-067](DECISIONS.md#dec-067--bugfix-the-bottom-sticky-stack-time-range-slider--a-b-cursor-readout-becomes-one-shared-sticky-wrapper-replacing-three-independent-sticky-siblings)
+and [HANDOFF.md](HANDOFF.md), on top of the prior small UX task — the
+per-Time-Group A/B cursor readout (`.ww-tg-cursor-readout`) moved from
+the top `.ww-tg-toolbar-row` into the bottom sticky stack of each Time
+Group Canvas, in DOM order `slider → readout → ruler` — owner UX
+request.
 Pure DOM/CSS relocation: no cursor math/state changed, still exactly
 one readout per canvas, still resolved via
 `wwUpdateCursorOverlayForGroup(groupId)`'s own unchanged read/write
