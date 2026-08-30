@@ -9688,6 +9688,184 @@ Impact:
   hover-tooltip cleanup, cross-group cursor/t0/Sync, Detect Event,
   CSV/Excel).
 
+## DEC-069 — TG-FINAL: Time Group architecture migration is declared complete — the deferred hover-tooltip Absolute-time gap is fixed, and a full primary-group/`ww.viewport`/`ww.workspaceBounds`/singleton-DOM/state-lifecycle audit finds no remaining active correctness defects
+
+Date: 2026-08-30
+Status: Approved
+Source: owner-requested closure audit ("TG-FINAL — Time Group Architecture
+Closure Audit"), following owner UAT passing across every prior Time
+Group slice (TG-A through TG-H, DEC-057 through DEC-068).
+
+Decision:
+
+**One real, active correctness bug found and fixed; every other audited
+surface confirmed either intentionally workspace-global/compatibility
+or already correctly per-group.**
+
+`[FACT]` `wwTraceCustomData()` (the Absolute-mode hover-tooltip text
+generator for every waveform trace) computed its own `groupId` via
+`wwTimeGroupIdForDisplaySourceId(channel.sourceId)` but used it ONLY to
+gate `wwHasT0(groupId)` — it never passed `groupId` through to
+`wwFormatAbsoluteElapsedTime()`, so the hover text's actual wall-clock
+origin fell back to `wwWorkspaceRecordingStartMs()` (the FIRST
+displayed-channel-overall origin, iteration-order dependent), not this
+channel's own group's origin. This was the single remaining call site
+of `wwFormatAbsoluteElapsedTime()` in the entire file that omitted
+`groupId` — axis ticks, annotations (fixed by DEC-065), and the cursor
+readout already passed it correctly. Proven live (two Time Groups, 27
+Jan 2026 and 02 Feb 2026): before the fix this would have shown the
+non-primary group's hover date as "13:09:40" (Group 1's own origin)
+instead of its own correct "13:00:40" — a genuinely wrong Absolute
+wall-clock value shown to the engineer, not a cosmetic/missing-context
+gap as the DEC-065 deferral had left ambiguous. Fixed minimally:
+`wwTraceCustomData()` now resolves `wwVisibleSpanSeconds(groupId)` and
+passes `{ groupId, spanSeconds: span }` through, matching every other
+call site. A stale `wwFormatAbsoluteElapsedTime()` header comment
+claiming "hover templates, annotations" still omit `groupId` was
+corrected in place (documentation-only, no functional change) — that
+claim was already false for annotations since DEC-065 and is now false
+for hover text too.
+
+`[FACT]` A second, unrelated stale HTML comment was found and
+corrected: the static markup directly above `#wwTimeGroupCanvases`
+still claimed Cursor A/B "remain workspace-global and OUTSIDE any
+single canvas... a known, disclosed limitation" — this was true before
+TG-D2 (DEC-061) but has been false, and directly contradicted by the
+TG-D2 comment immediately above it in the same file, since that slice
+landed. Corrected in place; no functional change (Cursor A/B has been
+genuinely per-Time-Group since DEC-061).
+
+`[FACT]` Full audit results (see the session's own closure report for
+full per-item detail):
+
+- **`wwPrimaryTimeGroupId()`** — 6 real call sites (`wwPrimaryTimeGroupCanvasEl()`,
+  `wwRefreshTimeGroupViewports()`'s own primary-skip, `wwApplyAndFetchGroupViewport()`'s
+  own `isPrimary` mirror-gate, `wwApplyAndFetchViewport()`'s own explicit
+  backward-compatible entry point, `wwTimeGroupVisibleRange()`'s own
+  primary-mirrors-`ww.viewport` branch, and the hidden/disabled Detect
+  Event button's own explicit primary-group resolution). Every one is
+  either category A (legitimate, disclosed workspace-global/compatibility
+  mirror — `ww.viewport` IS the primary group's own viewport by
+  construction, never a silently-wrong fallback for a non-primary group)
+  or category B (a currently-hidden, zero-user-facing-impact global
+  control, `WW_DETECT_EVENT_UI_ENABLED = false`). No category C found.
+- **`ww.viewport`** — every direct read/write audited (workspace-bounds
+  refresh, span-seconds fallback, tick-format fallback, initial-channel-
+  fetch default, cross-group refetch fallback, reset/clear logic, the
+  primary-mirror in `wwTimeGroupVisibleRange()`). All are either the
+  intentional primary-group mirror or a documented, self-correcting
+  transient fallback (a brand-new non-primary group's very first fetch
+  may briefly use the current primary viewport as a default range before
+  `wwRefreshWorkspaceBounds()` → `wwRefreshTimeGroupViewports()` →
+  `wwApplyAndFetchGroupViewport()` immediately re-fetches with that
+  group's own correct bounds in the same awaited call chain — this
+  pattern predates Time Groups (Phase 4A) and is explicitly documented
+  at each fallback site, not a silent bug). No call site lets a
+  non-primary group's own STEADY-STATE rendering/interaction read the
+  wrong group's viewport.
+- **`ww.workspaceBounds`** — confirmed to be a genuinely distinct,
+  legitimately ALL-SOURCES (not primary-only) aggregate
+  (`wwDeriveWorkspaceBounds()` iterates every participating source
+  across every group), used only for clamping the primary group's own
+  viewport, span-seconds/initial-fetch fallbacks, and full-workspace
+  reset — never applied to a specific non-primary group's own
+  rendering/interaction (that is `wwDeriveTimeGroupBounds`/
+  `wwClampRangeToTimeGroup`'s job, confirmed separate).
+- **Singleton DOM** — grepped for every legacy id named in the audit
+  task (`wwPanels`, `wwDigitalRegion`, `wwStickyRuler`, `wwCursorOverlay`,
+  `wwCursorReadout`, `wwCursorModeBtn`, `wwSetT0Btn`, `wwSyncBtn`,
+  `wwCursorLabelLayer`, `wwTimeGroupSliders`) — none exist as DOM ids
+  anywhere in the file. Confirmed clean.
+- **State lifecycle** (`ww.timeGroupViewports`, `ww.timeGroupCursorState`,
+  `ww.timeGroupT0State`, `ww.rulerReadyByGroup`, `ww.digitalChartReadyByGroup`,
+  `ww.digitalClickWiredByGroup`, `ww.zoomStepAxisByGroup`, cursor-value
+  throttle timers) — `wwSyncTimeGroupCanvases()` prunes every one of
+  these Maps on topology change (a group id becoming inactive via merge/
+  split/last-channel-removal), and the zero-active-groups branch clears
+  all of them outright. A pruned group id is never reused (Time Group
+  ids are derived from source timestamps), so a later-reappearing group
+  necessarily starts with clean state by construction — confirmed via
+  direct code reading, consistent with the already-established "ambiguous
+  Time-Group analysis state resets on topology change" policy from
+  DEC-061/DEC-062.
+- **Multi-layout hard boundary** (Grouped/Separate/Custom) —
+  `wwPanelGroupKeyFor()` confirmed to still prefix a Custom-mode panel's
+  own key with the channel's current Time Group id (DEC-059's own hard
+  requirement), so unrelated Time Groups can never share one physical
+  panel in any layout mode.
+- **Sync/Detect Event/Annotations** — no call site of either
+  `wwPrimaryTimeGroupId()` or `ww.viewport` was found anywhere in these
+  three subsystems' own code during the exhaustive whole-file greps
+  above (Sync and annotations thread an explicit `groupId` throughout,
+  per DEC-063/DEC-065; Detect Event's only primary-group dependency is
+  its own single hidden global entry-point button, category B) —
+  confirming DEC-063/DEC-064/DEC-065's own prior audits still hold with
+  zero regression.
+
+Reason:
+
+The owner's own closure criteria required proving, not assuming, that
+every remaining `wwPrimaryTimeGroupId()`/`ww.viewport`/`ww.workspaceBounds`
+use is either intentional or harmless — "do not declare complete merely
+because tests are green." This audit re-derived that proof directly
+from current code (not from trusting the prior DEC-064 audit's own
+conclusion at face value), and in doing so found one place where the
+prior DEC-065 deferral ("found but explicitly NOT fixed... a general
+waveform hover tooltip, not an annotation, out of scope") had left an
+open question about actual user-facing impact — this audit traced the
+call path to prove it WAS an active correctness defect (wrong Absolute
+time shown), not a harmless cosmetic gap, and fixed it.
+
+Alternatives considered:
+
+- Leaving `wwTraceCustomData()`'s gap deferred again, on the theory that
+  a hover tooltip is a minor surface — rejected once live tracing proved
+  it displays an objectively WRONG wall-clock value (not merely an
+  unlabeled one), which is exactly the class of defect this closure
+  audit exists to catch before declaring the migration done.
+- Broader speculative hardening of every `ww.viewport` fallback site
+  (e.g., eliminating the documented transient initial-fetch fallback
+  pattern) — rejected: those fallbacks are self-correcting by
+  construction, predate Time Groups, are already individually
+  documented, and touching them would be scope creep beyond this
+  audit's own "fix only what is clearly a Time Group correctness defect"
+  charter.
+
+Impact:
+
+- `frontend/index.html` only (no backend changes). Changed:
+  `wwTraceCustomData()` (now passes `groupId`/`wwVisibleSpanSeconds(groupId)`
+  through); `wwFormatAbsoluteElapsedTime()`'s own header comment
+  (corrected, no functional change); the stale pre-TG-D2 HTML comment
+  above `#wwTimeGroupCanvases` (corrected, no functional change).
+- `backend/tests/test_frontend_absolute_time_precision.py`: one new
+  regression test (`test_trace_custom_data_resolves_its_own_channels_time_group_origin`)
+  locking in the fix and asserting no `wwFormatAbsoluteElapsedTime()`
+  call site anywhere may omit `groupId`.
+- Verified by the full backend suite (1777 passed, 0 failed — up from
+  1776) plus a live-browser Playwright UAT with two Time Groups on
+  genuinely different recorded dates (27 Jan 2026 / 02 Feb 2026):
+  confirmed the non-primary group's own `wwTraceCustomData()` output now
+  reads its own correct origin (proven distinct from the single
+  workspace-wide origin, so the scenario genuinely exercises the fixed
+  bug, not a coincidental pass); confirmed setting t0 in one group left
+  the other group's own hover text unaffected; confirmed both Time Group
+  headers/rulers/axes/readouts render with their own correct dates in a
+  full-page screenshot; zero console/page errors throughout.
+- **Closure verdict: Time Group architecture migration is declared
+  ARCHITECTURALLY COMPLETE.** Per-group rendering, navigation, cursor,
+  t0, synchronization, annotations, sticky controls, hover text, and
+  time-axis behavior are all isolated by Time Group; remaining
+  `wwPrimaryTimeGroupId()`/`ww.viewport`/`ww.workspaceBounds` uses are
+  proven intentional workspace-global/compatibility surfaces, not hidden
+  defects.
+- **Deferred (product decisions, not correctness defects)**: cross-group
+  sync, cross-group cursor comparison, cross-group t0, Detect Event UI
+  exposure (`WW_DETECT_EVENT_UI_ENABLED`), Time Group collapse,
+  CSV/Excel ingestion — unchanged from prior slices, listed here for a
+  single closure-time reference rather than scattered across DEC-057
+  through DEC-068.
+
 ---
 
 ## How to add a decision

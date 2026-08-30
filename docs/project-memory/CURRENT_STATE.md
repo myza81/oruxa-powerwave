@@ -4,9 +4,34 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-30** (Owner UX correction — the
-numerical A-B/Δt readout (`.ww-tg-cursor-readout`) is back in the top
-`.ww-tg-toolbar-row`, inheriting `.ww-tg-sticky-top`'s own already-
+Last meaningful update: **2026-08-30** (TG-FINAL — Time Group
+Architecture Closure Audit. **Verdict: ARCHITECTURALLY COMPLETE.** An
+exhaustive re-audit (not a re-trust of prior audits) of every
+`wwPrimaryTimeGroupId()`/`ww.viewport`/`ww.workspaceBounds` use, legacy
+singleton DOM id, and per-group state Map lifecycle found exactly one
+active correctness defect and zero others: `wwTraceCustomData()` (the
+Absolute-mode hover-tooltip text generator) computed its own channel's
+`groupId` but never passed it to `wwFormatAbsoluteElapsedTime()`, so
+the hover text silently used `wwWorkspaceRecordingStartMs()` (the
+first-displayed-channel-overall origin) instead of that channel's own
+Time Group's origin — proven live to show an objectively wrong
+Absolute wall-clock date/time for a non-primary group (e.g. showing
+Group 1's own "13:09:40" while hovering Group 2's own trace, whose
+correct value is "13:00:40"), not merely a missing-context cosmetic
+gap as the DEC-065 deferral had left unproven. Fixed minimally by
+threading `groupId` through, matching every other
+`wwFormatAbsoluteElapsedTime()` call site (axis ticks, annotations,
+cursor readout). Every other audited surface — `wwPrimaryTimeGroupId()`'s
+6 real call sites, every `ww.viewport`/`ww.workspaceBounds` read/write,
+the Grouped/Separate/Custom hard panel boundary, and per-group state
+Map prune-on-topology-change discipline — was confirmed either
+intentional workspace-global/compatibility or already correctly
+per-group; two stale historical comments were corrected
+(documentation-only). See
+[DECISIONS.md — DEC-069](DECISIONS.md#dec-069--tg-final-time-group-architecture-migration-is-declared-complete--the-deferred-hover-tooltip-absolute-time-gap-is-fixed-and-a-full-primary-groupwwviewportwwworkspaceboundssingleton-domstate-lifecycle-audit-finds-no-remaining-active-correctness-defects)
+and [HANDOFF.md](HANDOFF.md), on top of the prior owner UX correction —
+the numerical A-B/Δt readout (`.ww-tg-cursor-readout`) is back in the
+top `.ww-tg-toolbar-row`, inheriting `.ww-tg-sticky-top`'s own already-
 proven sticky behavior; the small "[A ×]"/"[B ×]" position badges
 (`.ww-cursor-label`) moved from an independent top-sticky sibling into
 `.ww-tg-ruler`'s own DOM subtree, inheriting the ruler's own sticky

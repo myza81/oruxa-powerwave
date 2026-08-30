@@ -147,4 +147,30 @@ def test_sticky_ruler_uses_elapsed_numeric_domain_in_both_modes():
     assert '"xaxis.type": "linear"' in body
     assert 'type: "date"' not in body
     assert 'ww.viewport.start * unit.scale' not in body
+
+
+def test_trace_custom_data_resolves_its_own_channels_time_group_origin():
+    """TG-FINAL: wwTraceCustomData() previously omitted `groupId` when
+    calling wwFormatAbsoluteElapsedTime(), silently falling back to
+    wwWorkspaceRecordingStartMs() (the first-displayed-channel-overall
+    origin) instead of this channel's own Time Group's origin. For two
+    Time Groups with different recorded start timestamps, hovering a
+    trace in the non-primary group (Absolute mode, no t0) showed the
+    WRONG wall-clock date/time -- borrowed from an unrelated group. Fix:
+    pass this channel's own resolved groupId through, matching every
+    other wwFormatAbsoluteElapsedTime() call site (axis ticks,
+    annotations, cursor readout)."""
+    source = _source()
+    body = _function_body(
+        source,
+        "function wwTraceCustomData(channel)",
+        "function wwTraceHoverTemplate(channel)",
+    )
+
+    assert "const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);" in body
+    assert "wwVisibleSpanSeconds(groupId)" in body
+    assert "wwFormatAbsoluteElapsedTime(t, { groupId, spanSeconds: span })" in body
+    # No remaining wwFormatAbsoluteElapsedTime() call site anywhere may
+    # omit an explicit groupId -- that was the exact shape of this bug.
+    assert "wwFormatAbsoluteElapsedTime(t, { spanSeconds: span })" not in source
     assert 'ww.viewport.end * unit.scale' not in body

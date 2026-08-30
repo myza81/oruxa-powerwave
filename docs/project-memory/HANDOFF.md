@@ -8,8 +8,64 @@ Last updated: **2026-08-30**
 
 ## What was most recently done
 
-**Owner UX correction — numerical readout back to top, A/B badges
-moved into the ruler.** On top of the bottom-sticky-stack bugfix below
+**TG-FINAL — Time Group Architecture Closure Audit. Verdict:
+ARCHITECTURALLY COMPLETE.** See
+[DECISIONS.md — DEC-069](DECISIONS.md#dec-069--tg-final-time-group-architecture-migration-is-declared-complete--the-deferred-hover-tooltip-absolute-time-gap-is-fixed-and-a-full-primary-groupwwviewportwwworkspaceboundssingleton-domstate-lifecycle-audit-finds-no-remaining-active-correctness-defects)
+for the full record; summarized here for continuity.
+
+Owner requested a closure audit after UAT passed across every prior
+Time Group slice. This was primarily an audit/hardening task, not a
+feature slice: exhaustively re-derived (not merely trusted) whether any
+remaining `wwPrimaryTimeGroupId()`/`ww.viewport`/`ww.workspaceBounds`
+use, singleton-DOM id, or per-group state Map could still produce
+wrong/misleading behavior with multiple Time Groups active.
+
+**One real bug found and fixed**: `wwTraceCustomData()` (the Absolute-
+mode hover-tooltip text generator) computed its own channel's `groupId`
+but never passed it to `wwFormatAbsoluteElapsedTime()`, so the hover
+text's wall-clock origin silently fell back to
+`wwWorkspaceRecordingStartMs()` (the first-displayed-channel-overall
+origin) instead of that channel's OWN group's origin — the last
+remaining `wwFormatAbsoluteElapsedTime()` call site in the file that
+omitted `groupId` (axis ticks/annotations/cursor readout already passed
+it). This had been left as an explicitly-deferred, unproven finding
+since DEC-065 ("found but not fixed... a general hover tooltip, out of
+scope"); this audit traced the call path and proved it WAS an active
+correctness defect (a genuinely wrong Absolute date/time shown for a
+non-primary group, not a cosmetic gap) — proven live with two Time
+Groups on different dates (27 Jan 2026 / 02 Feb 2026): the non-primary
+group's hover text would have shown "13:09:40" (borrowed from the
+OTHER group) instead of its own correct "13:00:40". Fixed minimally by
+threading `groupId` through, matching every other call site.
+
+**Everything else audited found no active defect** — `wwPrimaryTimeGroupId()`'s
+6 real call sites, every direct `ww.viewport`/`ww.workspaceBounds`
+read/write, singleton legacy DOM ids (none remain), per-group state Map
+prune-on-topology-change discipline (`wwSyncTimeGroupCanvases()`), and
+the Grouped/Separate/Custom hard panel boundary were all confirmed
+either intentional workspace-global/compatibility surfaces or already
+correctly per-group — see DEC-069's own itemized breakdown. Two stale
+historical comments (one directly contradicting the already-correct
+TG-D2 architecture) were also corrected, documentation-only.
+
+Verified by the full suite (1777 passed, 0 failed — 1 new regression
+test) plus a live-browser Playwright UAT proving the fixed bug's before/
+after behavior directly via `wwTraceCustomData()`'s own return value for
+both groups, t0-isolation, and a full-page screenshot confirming both
+Time Group headers/rulers/axes read their own correct dates. Zero
+console/page errors.
+
+**Files changed**: `frontend/index.html` (2 functions/comments),
+`backend/tests/test_frontend_absolute_time_precision.py` (1 new test),
+`docs/project-memory/DECISIONS.md`/`CURRENT_STATE.md`/`HANDOFF.md`.
+
+**Next step**: nothing is pre-authorized. Per this session's own "do
+not commit/push without being asked" discipline, these changes stayed
+uncommitted at the end of this task — owner review pending.
+
+## What was done in the prior session — owner UX correction, numerical readout back to top, A/B badges moved into the ruler
+
+On top of the bottom-sticky-stack bugfix below
 -- see
 [DECISIONS.md — DEC-068](DECISIONS.md#dec-068--owner-ux-correction-numerical-a-bδt-readout-returns-to-the-top-toolbar-row-ab-position-badges-move-into-the-rulers-own-dom-subtree)
 for the full record; summarized here for continuity.

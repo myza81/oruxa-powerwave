@@ -4002,19 +4002,15 @@
                                  -- every per-canvas element is found via
                                  a scoped `canvasEl.querySelector(...)`
                                  against its own canvas root, using
-                                 classes only. Cursor A/B (#wwCursorOverlay/
-                                 #wwCursorLabelLayer above) remain
-                                 workspace-global and OUTSIDE any single
-                                 canvas -- their own migration is a later
-                                 slice; in the meantime they keep resolving
-                                 against the PRIMARY canvas's own ruler via
-                                 wwPrimaryTimeGroupCanvasEl() (see that
-                                 function's own comment), so existing
-                                 cursor behavior is unchanged for the
-                                 common single-Time-Group case and simply
-                                 does not yet extend to non-primary
-                                 canvases (a known, disclosed limitation,
-                                 not a regression). -->
+                                 classes only. TG-FINAL: this comment
+                                 previously claimed Cursor A/B stayed
+                                 workspace-global outside any single canvas
+                                 -- stale since TG-D2 (see the comment
+                                 immediately above), which already moved
+                                 Cursor A/B into each Time Group Canvas's
+                                 own `.ww-tg-cursor-overlay`/
+                                 `.ww-tg-cursor-label-layer`; corrected
+                                 here, no functional change. -->
                             <div id="wwTimeGroupCanvases"></div>
                         </section>
 
@@ -8804,12 +8800,12 @@
             opts = opts || {};
             // Time Group Canvas (task section 9): an explicit `opts.groupId`
             // resolves THAT group's own origin (wwTimeGroupRecordingStartMs())
-            // -- used by the ruler/panel-axis call sites below, which now
-            // always know their own group. Every OTHER pre-existing call
-            // site (hover templates, annotations) omits `groupId` and keeps
-            // the original single workspace-wide origin unchanged --
-            // documented, narrower-scope carryover (not fixed this slice,
-            // see this function's own header comment above).
+            // -- used by the ruler/panel-axis, annotation, cursor-readout,
+            // and hover-tooltip (wwTraceCustomData(), TG-FINAL) call sites,
+            // all of which now always pass their own known group. No
+            // remaining call site omits `groupId` and falls back to
+            // wwWorkspaceRecordingStartMs() for a per-channel/per-group
+            // display value.
             const originMs = opts.groupId !== undefined ? wwTimeGroupRecordingStartMs(opts.groupId) : wwWorkspaceRecordingStartMs();
             if (originMs === null) return wwFormatCursorDuration(elapsedSeconds);
 
@@ -9785,11 +9781,20 @@
         // parameter the caller must remember to pass) -- a channel's own
         // hover/customdata must reflect ITS OWN Time Group's t0, never an
         // unrelated one.
+        // TG-FINAL: previously omitted `groupId` here and fell back to
+        // wwWorkspaceRecordingStartMs() (the first-displayed-channel-overall
+        // origin) -- for a non-primary group whose recording start differs
+        // from that channel's, the hover tooltip showed the WRONG absolute
+        // wall-clock date/time (borrowed from an unrelated group), not
+        // merely a missing-context cosmetic gap. Now resolves this
+        // channel's own group's origin, matching every other
+        // wwFormatAbsoluteElapsedTime() call site (axis ticks, annotations,
+        // cursor readout).
         function wwTraceCustomData(channel) {
             const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
             if (ww.timeMode !== "absolute" || wwHasT0(groupId)) return null;
-            const span = wwVisibleSpanSeconds();
-            return (channel.time || []).map((t) => wwFormatAbsoluteElapsedTime(t, { spanSeconds: span }));
+            const span = wwVisibleSpanSeconds(groupId);
+            return (channel.time || []).map((t) => wwFormatAbsoluteElapsedTime(t, { groupId, spanSeconds: span }));
         }
 
         function wwTraceHoverTemplate(channel) {
