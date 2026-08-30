@@ -1,0 +1,12 @@
+{
+  "name": "powerwave-browser-smoke",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Minimal real-browser smoke-test foundation for the Powerwave frontend (upload -> parse -> RECORDINGS sidebar -> waveform render -> Time Group -> cursor -> channel context menu). See docs/development/BROWSER_SMOKE_TEST.md.",
+  "scripts": {
+    "test:browser-smoke": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1"
+  }
+}

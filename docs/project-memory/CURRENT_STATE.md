@@ -179,6 +179,9 @@ re-confirmed by the TG-FINAL audit):
   resets on Start New Workspace/Clear workspace. Calculated channels and
   digital channels are explicitly excluded this slice — see
   [DECISIONS.md — DEC-070](DECISIONS.md#dec-070--channel-presentation-customization-recordings-sidebar-rename--color-override-is-implemented-as-a-pure-presentation-layer-above-canonical-channel-identity-analog-source-channels-only-this-slice).
+- A minimal committed real-browser smoke-test foundation now protects
+  critical upload/render/interaction paths — see
+  [docs/development/BROWSER_SMOKE_TEST.md](../development/BROWSER_SMOKE_TEST.md).
 
 ## Known intentional constraints / deferred items
 

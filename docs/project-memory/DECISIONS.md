@@ -9968,6 +9968,78 @@ and UI behavior (hover, right-click targeting, no-toggle-on-right-click,
 modal pre-fill, Escape dismissal, single-target discipline, Start-New-
 Workspace reset).
 
+## DEC-071 — A minimal, committed real-browser smoke-test foundation (Playwright + local backend/frontend) is added ahead of CSV/Excel ingestion; CI integration deliberately deferred
+
+Date: 2026-08-30
+Status: Approved
+Source: owner-requested pre-work slice ahead of CSV/Excel ingestion
+("Establish a minimal, committed browser smoke-test foundation for the
+existing Powerwave web app"), following the channel-presentation
+feature's own investigation, which proved that jsdom/static string
+checks alone had missed a real integration question (right-click event
+wiring) that only a real browser could answer definitively.
+
+Decision:
+
+**A small, permanent, LOCAL-only browser smoke suite now exists at
+`browser-tests/`** (`package.json` + `playwright.config.js` +
+`smoke.spec.js`, pinned `@playwright/test@1.62.1`) — one sequential
+Playwright test covering: app loads → upload the existing
+`synth_ascii` COMTRADE fixture (`backend/tests/fixtures/comtrade/`,
+~1.3 KB, already used by the backend's own test suite — no new fixture
+was created) → source appears in RECORDINGS → one analog channel
+displays and renders a real waveform trace → that channel's Time Group
+canvas is rendered → Cursor A/B mode toggles → right-click suppresses
+the native browser menu and opens Powerwave's own channel context menu
+→ Rename... opens targeting the correct channel → zero unexpected
+console/page errors across the whole run. `playwright.config.js`'s
+`webServer` array starts a real backend (`uvicorn`
+`app.main:create_app --factory` — the same factory the real app/Docker
+image uses, no second entrypoint) against a fresh per-run temp
+`STORAGE_PATH`, and serves the real `frontend/index.html` statically on
+`127.0.0.1:8101` (matching the backend's own `DEFAULT_CORS_ORIGINS`,
+so zero `config.js`/CORS changes were needed), waits on deterministic
+health/URL checks (never a fixed sleep), and tears both down when the
+run ends. Verified 3/3 consecutive clean runs, ~1.8–2.2s wall time each
+(the test itself ~500–760ms) — well within a "tens of seconds" target.
+
+**CI integration was evaluated and explicitly NOT added this slice.**
+The current `.github/workflows/ci.yml` orchestrates nothing beyond
+`pip install && pytest` for one Python-only job; adding Playwright
+would require a second runtime (Node + a ~100+ MB Chromium
+download/cache) running alongside it, which is a real workflow-
+complexity increase, not a trivial addition — meeting this decision's
+own "Option B: do not implement CI integration in this slice, document
+it as the next optional test-hardening step" criterion. No new GitHub
+Actions workflow file was added or modified.
+
+No production code, CSS, or frontend behavior was changed to build
+this — the suite exists to CATCH a defect if the code has one, not to
+fix one. If it had found a real defect, the plan was to stop and report
+rather than silently patch it inside this infrastructure slice; no such
+defect was found. Selectors reused only pre-existing stable ids/data-
+attributes (`#pageRecordings`, `#recordingsUploadBtn`,
+`#uploadModalOverlay`/`#uploadModalFile_0`/`#uploadModalFile_1`/
+`#uploadModalSubmitBtn`, `#recordingsTableBody tr[data-source-id]`,
+`tr.channel-row--toggle[data-channel-kind="analog"]` with its
+`data-source-id`/`data-channel-name` attributes, `.ww-chart`,
+`#wwTimeGroupCanvases .ww-time-group-canvas`, `.ww-tg-cursor-mode-btn`,
+`#wwChannelContextMenu`, `#wwChannelMenuRenameBtn`,
+`#wwChannelRenameOverlay`/`#wwChannelRenameOriginal`) — no new
+`data-testid` attributes were added to the frontend.
+
+Impact: `browser-tests/` (new directory: `package.json`,
+`package-lock.json`, `playwright.config.js`, `smoke.spec.js`), `.gitignore`
+(node_modules/Playwright output dirs), `docs/development/BROWSER_SMOKE_TEST.md`
+(new), one line each in `CURRENT_STATE.md` and here. `frontend/index.html`
+and `backend/app/` are untouched; full Python suite reconfirmed at
+1777 passed, 2 warnings (unchanged). Known limitations: assumes a
+`python3` executable on PATH (overridable via `PW_PYTHON`); covers only
+the single-source, single-Time-Group, analog-only, Grouped-mode-default
+path — not a substitute for the channel-presentation feature's own
+broader manual/live UAT coverage; CI wiring remains a deliberately
+separate future decision.
+
 ---
 
 ## How to add a decision

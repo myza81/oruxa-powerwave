@@ -28,3 +28,8 @@ venv/
 
 # Test / tooling caches
 .pytest_cache/
+
+# Node / Playwright (browser-tests/ -- see docs/development/BROWSER_SMOKE_TEST.md)
+node_modules/
+browser-tests/test-results/
+browser-tests/playwright-report/
