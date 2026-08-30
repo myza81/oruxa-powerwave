@@ -4,7 +4,19 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-29** (Phase 27 — TG-H: per-Time-Group
+Last meaningful update: **2026-08-29** (Small UX task — the per-Time-
+Group A/B cursor readout (`.ww-tg-cursor-readout`) moved from the top
+`.ww-tg-toolbar-row` into the bottom sticky stack of each Time Group
+Canvas, in DOM order `slider → readout → ruler` — owner UX request.
+Pure DOM/CSS relocation: no cursor math/state changed, still exactly
+one readout per canvas, still resolved via
+`wwUpdateCursorOverlayForGroup(groupId)`'s own unchanged read/write
+path. `wwSyncTimeGroupCanvasStickyOffset(groupId)` now folds the
+readout's own live height into the slider's own sticky `bottom`, the
+same runtime-measured technique already used for the ruler/slider
+pair. See
+[DECISIONS.md — DEC-066](DECISIONS.md#dec-066--ab-cursor-readout-relocated-from-the-top-toolbar-row-to-the-bottom-sticky-stack-per-time-group)
+and [HANDOFF.md](HANDOFF.md), on top of Phase 27 — TG-H: per-Time-Group
 annotation placement/anchoring/reprojection. Annotations now resolve
 their own owning Time Group FRESH on every call, from their own stable
 `data.sourceId` (`wwTimeGroupIdForDisplaySourceId()`) — never a stored

@@ -8,6 +8,35 @@ Last updated: **2026-08-29**
 
 ## What was most recently done
 
+**Small UX task — A/B cursor readout relocated to the bottom sticky
+stack.** On top of Phase 27 (TG-H) below — see
+[DECISIONS.md — DEC-066](DECISIONS.md#dec-066--ab-cursor-readout-relocated-from-the-top-toolbar-row-to-the-bottom-sticky-stack-per-time-group)
+for the full record; summarized here for continuity.
+
+Owner UX request: move `.ww-tg-cursor-readout` from the top
+`.ww-tg-toolbar-row` (top sticky area) into the bottom sticky stack of
+each Time Group Canvas, in DOM order `slider → readout → ruler`. Pure
+DOM-placement/CSS change — no cursor math/state touched.
+`wwSyncTimeGroupCanvasStickyOffset(groupId)` (the existing runtime-
+measured sticky-offset helper) was extended to fold the readout's own
+live height into the slider's own `bottom`, the same technique already
+used for the ruler/slider pair. Verified by the full suite (1761
+passed, 0 failed) plus live-browser UAT: readout confirmed gone from
+the top, present gap-free between slider and ruler, updates correctly
+per-group on cursor drag, survives a Grouped→Separate→Custom→Grouped
+sweep with no duplication, and remains readable at a 760px narrow
+viewport with no horizontal overflow. Zero console/page errors.
+
+**Files changed**: `frontend/index.html` only + 1 new frontend test
+file (`test_frontend_time_group_cursor_readout_placement.py`) + 1
+pre-existing test file updated (`test_frontend_time_range_slider.py`).
+
+**Next step**: nothing is pre-authorized. Per this session's own "do
+not commit/push without being asked" discipline, these changes stayed
+uncommitted at the end of this task.
+
+## What was done in the prior session (Phase 27 — TG-H)
+
 **Phase 27 — TG-H: per-Time-Group annotation placement/anchoring/
 reprojection.** On top of Phase 26 (TG-G) below — see
 [DECISIONS.md — DEC-065](DECISIONS.md#dec-065--tg-h-per-time-group-annotation-placementanchoringreprojection--annotations-resolve-their-own-owning-time-group-dynamically-from-sourcechannel-ownership-never-wwprimarytimegroupid)

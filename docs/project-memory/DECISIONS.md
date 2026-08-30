@@ -9336,6 +9336,104 @@ Impact:
 
 ---
 
+## DEC-066 — A/B cursor readout relocated from the top toolbar row to the bottom sticky stack, per Time Group
+
+Date: 2026-08-29
+Status: Approved
+Source: explicit project-owner UX instruction ("move the A/B cursor
+readout summary from the top-right Time Group header area to the
+bottom sticky time-axis area of each Time Group Canvas").
+
+Decision:
+
+**Pure DOM-placement/CSS migration — no cursor engineering change.**
+`.ww-tg-cursor-readout` moved in `wwCreateTimeGroupCanvasDom(groupId)`'s
+own template from a flex item inside `.ww-tg-toolbar-row` (top sticky
+area) to a new tier in the bottom sticky stack, in DOM order between
+`.ww-tg-slider-slot` and `.ww-tg-ruler` (slider → readout → ruler, per
+the owner's own preferred order). The element, its classes, and
+`wwUpdateCursorOverlayForGroup(groupId)`'s own read/write path
+(`canvasEl.querySelector(".ww-tg-cursor-readout")`, the a/b/delta value
+computation, the `hidden` toggle) are byte-for-byte unchanged — only
+its position in the template moved, so there was never a second
+render path or duplicate element to introduce.
+
+The readout became a third `position: sticky` sibling in the existing
+bottom dock (previously two: slider-slot + ruler). `wwSyncTimeGroupCanvasStickyOffset(groupId)`
+(the same existing runtime-measurement helper already computing the
+slider's own `bottom` from the ruler's live rendered height) was
+extended to also measure the readout's own live height and set its own
+`bottom` to the ruler's height, then fold both into the slider's own
+`bottom` (ruler height + readout height) — the exact same
+"never a hardcoded pixel guess, correct even if a sibling's height
+changes" technique already established for the ruler/slider pair, now
+covering three tiers. Since a `[hidden]` (display:none) element's
+`getBoundingClientRect()` returns 0, this naturally collapses back to
+the original two-tier offset whenever cursor mode is off, with no
+separate visibility branch needed. z-index: ruler=4 (unchanged),
+readout=3 (new), slider=2 (down from 3, now the outermost of three
+non-overlapping tiers — defensive only, correct `bottom` values already
+prevent any visual overlap).
+
+Reason:
+
+Owner UX judgment: the readout is measurement/analysis output tied to
+the cursor markers, slider, and ruler — all part of the bottom
+time-axis region — not a toolbar control, so it reads more naturally
+grouped with them than pinned to the top control row.
+
+Alternatives considered:
+
+- A new shared sticky wrapper spanning slider+readout+ruler (mirroring
+  `.ww-tg-sticky-top`'s own header+toolbar wrapper pattern) — rejected:
+  the existing bottom dock is deliberately THREE separate sticky
+  siblings, not one wrapper, specifically so the ruler keeps its own
+  `offsetParent` (the canvas root) for the cursor-overlay height fix
+  (Phase 4B-UAT2) — wrapping would have silently broken that; adding a
+  third sibling with its own runtime-measured offset preserves it.
+- A new scroll listener to reposition the readout — rejected as
+  unnecessary; the existing `position: sticky` + JS-measured `bottom`
+  approach (already proven for the ruler/slider) required no scroll
+  listener before and needed none now.
+
+Impact:
+
+- `frontend/index.html` only (no backend changes). Changed in place:
+  `wwCreateTimeGroupCanvasDom()` (template reorder only — no new/
+  removed elements), `wwSyncTimeGroupCanvasStickyOffset()` (readout
+  height folded into the existing offset calc). CSS: `.ww-tg-cursor-readout`'s
+  outer container restyled for the bottom-stack context (position/
+  bottom/z-index/background/border/justify-content) — its own inner
+  item/label/value rules (including the owner's own manually-set
+  `padding: 6px 10px` on `.ww-tg-cursor-readout-item`, font-size, and
+  the A-blue/B-red color convention) are byte-for-byte unchanged.
+  `.ww-tg-slider-slot`'s own z-index dropped 3→2 to make room.
+- New test file `test_frontend_time_group_cursor_readout_placement.py`
+  (12 tests, Cases A-H); one pre-existing file updated
+  (`test_frontend_time_range_slider.py`, two assertions matching the
+  new z-index/offset-calc shape).
+- Verified by the full backend suite (1761 passed, 0 failed — up from
+  1749 before this task) plus a live-browser Playwright UAT pass:
+  readout confirmed absent from the top sticky region and present in
+  the bottom stack (DOM order slider < readout < ruler, `position:
+  sticky`, gap-free — exact pixel-adjacent `y`+`height` checks);
+  dragging Cursor A/B updated the readout live; scrolling within a tall
+  Time Group kept the readout visible and gap-free against slider/
+  ruler; two Time Groups each showed exactly one independent readout
+  (moving Group 2's own cursors left Group 1's own readout values
+  byte-identical); a Grouped→Separate→Custom→Grouped layout sweep
+  produced exactly 2 readout elements total (no duplication); a narrow
+  (760px) viewport showed no horizontal overflow with the readout and
+  toolbar both still visible; zero console/page errors throughout.
+- **Deferred, per the task's own explicit non-goals**: any cursor
+  calculation/redesign, annotation changes, Time Group collapse, the
+  hover-tooltip cleanup (DEC-065's own deferred finding), cross-group
+  cursor comparison/t0, Synchronise Sources changes, Detect Event
+  changes, and CSV/Excel all remain unimplemented/unchanged from before
+  this task.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

@@ -340,12 +340,15 @@ class TestStickySliderStructure:
         scoped to the populated case only, via the same :not(:empty)
         guard, never applied to an empty/invisible container. Time
         Group Canvas: this is now scoped per-canvas via a class selector
-        rather than the old workspace-wide #wwTimeGroupSliders id."""
+        rather than the old workspace-wide #wwTimeGroupSliders id.
+        Cursor-readout relocation: z-index dropped from 3 to 2, one below
+        the readout's own 3 (the slider is now the outermost of THREE
+        bottom-stack tiers, not two)."""
         source = _source()
         idx = source.index(".ww-tg-slider-slot:not(:empty) {")
         block = source[idx : source.index("}", idx) + 1]
         assert "position: sticky;" in block
-        assert "z-index: 3;" in block
+        assert "z-index: 2;" in block
         assert "background: var(--panel);" in block
         assert "border-top: 1px solid var(--panel-border);" in block
 
@@ -370,12 +373,17 @@ class TestStickySliderStructure:
 
     def test_sticky_offset_is_computed_from_the_rulers_live_height_never_hardcoded(self):
         """Time Group Canvas: renamed wwSyncTimeGroupCanvasStickyOffset(groupId),
-        scoped to one canvas's own slider slot and ruler."""
+        scoped to one canvas's own slider slot and ruler. Cursor-readout
+        relocation: the slider's own `bottom` now also folds in the
+        readout's own live height (0 while hidden), never a hardcoded
+        pixel guess for either tier."""
         source = _source()
         fn_idx = source.index("function wwSyncTimeGroupCanvasStickyOffset(groupId)")
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        assert 'rulerWrapEl.getBoundingClientRect().height + "px"' in fn_body
-        assert "slotEl.style.bottom" in fn_body
+        assert "rulerWrapEl.getBoundingClientRect().height" in fn_body
+        assert "readoutEl.getBoundingClientRect().height" in fn_body
+        assert 'slotEl.style.bottom = (rulerHeight + readoutHeight) + "px";' in fn_body
+        assert 'readoutEl.style.bottom = rulerHeight + "px";' in fn_body
 
     def test_offset_sync_is_called_from_the_rulers_own_state_function(self):
         """Time Group Canvas: renamed wwSyncTimeGroupRuler(groupId), the
