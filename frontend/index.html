@@ -6169,10 +6169,34 @@
             return seconds.toPrecision(3) + " s";
         }
 
+        // RECORDINGS sidebar timestamp enhancement: `source.start_time` is
+        // the SAME raw `SourceSummaryOut.start_time` field already used by
+        // formatRecordingStartTime() (the Recordings table's Start Time
+        // column) -- the canonical recording-start datetime from
+        // TimingInformation.start_time, never trigger_time and never any
+        // Time-Group-derived alignment/offset (see DEC-057). Same
+        // `.replace("T", " ")` technique, deliberately not `new Date(...)`,
+        // for the same timezone-naive/microsecond-precision reasons
+        // documented on formatRecordingStartTime() above. Unlike that
+        // formatter, this one truncates (never rounds up, never pads) to 4
+        // fractional digits -- a canonical compact precision for this
+        // specific one-line sidebar summary, not a change to the
+        // Recordings table's own full-precision display. Elapsed-only
+        // sources have `start_time === null`; returns "" so the caller can
+        // omit the segment entirely rather than fabricate a timestamp.
+        function wwFormatSourceStartTimestamp(startTime) {
+            if (!startTime) return "";
+            const spaced = startTime.replace("T", " ");
+            const dotIndex = spaced.indexOf(".");
+            return dotIndex === -1 ? spaced : spaced.slice(0, dotIndex + 5);
+        }
+
         function wwFormatSourceSummaryLine(source) {
-            return source.analog_channel_count + " analog &middot; " + source.digital_channel_count + " digital &middot; " +
+            const base = source.analog_channel_count + " analog &middot; " + source.digital_channel_count + " digital &middot; " +
                 escapeHtml(wwFormatCompactSamplingRate(source.sampling_rates)) + " &middot; " +
                 escapeHtml(wwFormatCompactDuration(source.duration_seconds));
+            const startTimestamp = wwFormatSourceStartTimestamp(source.start_time);
+            return startTimestamp ? base + " &middot; " + escapeHtml(startTimestamp) : base;
         }
 
         // Slice 1 of waveform time synchronization integration (that
