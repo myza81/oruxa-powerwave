@@ -2977,9 +2977,8 @@
            sticky; top: 0` is bounded to THIS wrapper's own containing
            block, which is `.ww-time-group-canvas` -- the exact same
            per-canvas "bounded sticky handoff" already proven by the
-           existing bottom ruler/slider stack and by
-           `.ww-tg-cursor-label-layer` below (both established TG-B+C/
-           TG-D2 precedent, not a new pattern). `top: 0`, not an app-level
+           existing bottom ruler/slider stack (established TG-B+C
+           precedent, not a new pattern). `top: 0`, not an app-level
            offset: #wwToolbar (the one global fixed toolbar) is a SIBLING
            of #activeViewArea, the actual scrolling ancestor, not an
            ancestor inside it, so nothing above already occupies the top
@@ -2990,13 +2989,9 @@
            genuinely stuck (no border added to the unstuck/static case, so
            normal in-flow appearance is unchanged). z-index: 5 -- smallest
            value that still clears the local per-canvas layers below it
-           (ruler=4) and sits below the cursor-label-layer(6)/split-menu
-           dropdowns(20)/modals(10)/drawers(40)/tooltips(50) stacked
-           elsewhere in this file, so it can never incorrectly cover any
-           of those. See wwSyncTimeGroupCanvasStickyOffset() for how this
-           wrapper's own rendered height is fed to
-           `--ww-tg-sticky-top-h` so the cursor-label-layer below never
-           renders underneath it. */
+           (ruler=4) and sits below the split-menu dropdowns(20)/
+           modals(10)/drawers(40)/tooltips(50) stacked elsewhere in this
+           file, so it can never incorrectly cover any of those. */
         .ww-tg-sticky-top {
             position: sticky;
             top: 0;
@@ -3027,14 +3022,16 @@
            Detect Event, Synchronize Sources stay the one workspace-global
            toolbar (#wwToolbar, untouched), deferred to later slices
            (TG-E/TG-F).
-           Cursor-readout relocation: the A-B measurement readout that
-           used to live here as this row's own right-hand flex item has
-           moved to the bottom sticky stack (see `.ww-tg-cursor-readout`'s
-           own CSS comment near the ruler/slider below) -- owner UX
-           request: it visually belongs with the cursor markers/slider/
-           ruler, not the top toolbar. `.ww-tg-toolbar` is now this row's
-           only child; `justify-content`/`flex-wrap` are harmless no-ops
-           left as-is with a single flex item. */
+           Cursor-readout relocation history: the A-B measurement readout
+           briefly moved to the bottom sticky stack, then proved awkward
+           there (owner reconsideration) -- it is back here, this row's
+           own right-hand flex item, its original home. `.ww-tg-toolbar`
+           (left cluster) and `.ww-tg-cursor-readout` (right cluster) are
+           both flex ITEMS of this one row -- `space-between` pushes them
+           to opposite edges on a wide canvas, `flex-wrap` lets the
+           readout drop to its own line under the toolbar on a narrow
+           one. Neither child's own internal layout changes because of
+           this. */
         .ww-tg-toolbar-row {
             display: flex;
             flex-wrap: wrap;
@@ -3055,6 +3052,46 @@
             font-size: 0.7rem;
             padding: 7px 10px;
         }
+        /* Owner UX correction: the per-group A-B measurement readout --
+           back in its original home, the RIGHT-hand cluster of
+           `.ww-tg-toolbar-row` (it spent one slice in the bottom sticky
+           stack, DEC-066/DEC-067, but proved awkward there and the owner
+           asked for it to return here). Inherits `.ww-tg-sticky-top`'s
+           own already-proven sticky/bounded-handoff behavior for free,
+           same as every other toolbar control. Hidden via JS
+           (wwUpdateCursorOverlayForGroup()) exactly like every other
+           iteration of this element; when hidden, `.ww-tg-toolbar` is
+           the row's only flex item and simply occupies the left side.
+           `margin-left: auto` is a defensive fallback so the readout
+           still pins right even if it ever renders without the
+           `space-between` wrapper's help (e.g. wrapping onto its own
+           line still right-aligns instead of hugging the left edge).
+           Every value below (font-size, item padding, A/B colors) is
+           the owner's own pre-existing setting, untouched throughout
+           every relocation. */
+        .ww-tg-cursor-readout {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            gap: 7px;
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            margin-left: auto;
+        }
+        .ww-tg-cursor-readout[hidden] { display: none; }
+        .ww-tg-cursor-readout-item { display: flex; gap: 5px;
+        padding: 6px 10px;
+        align-items: baseline; }
+        .ww-tg-cursor-readout-label { text-transform: uppercase; letter-spacing: 0.03em; }
+        .ww-tg-cursor-readout-value { color: var(--text); font-weight: 600; }
+        /* The accent/error convention needs to target the VALUE span
+           directly -- the former global readout's own `.ww-cursor-
+           readout-a .shell-status-value` descendant selector doesn't
+           match this element's own `.ww-tg-cursor-readout-value` class
+           name, so it is restated here rather than silently never
+           applying. */
+        .ww-cursor-readout-a .ww-tg-cursor-readout-value { color: var(--accent); }
+        .ww-cursor-readout-b .ww-tg-cursor-readout-value { color: var(--error); }
         /* Phase 4A: digital channel region. Visually distinguishable from
            analog .ww-panel cards (own subtle background tint, compact
            title) but still reads as part of the same analysis canvas --
@@ -3109,38 +3146,33 @@
            determined. */
         .ww-tg-digital-chart { width: 100%; }
 
-        /* Sticky ruler + `.ww-tg-sticky-bottom` (Time Range slider + A-B
-           cursor readout), ONE canvas's own bottom dock (task section
-           8/10/12/13).
-           Bugfix (owner UAT on eb55528, "readout is NOT actually sticky
-           while scrolling"): the earlier design used THREE independent
-           `position: sticky` siblings (slider-slot, readout, ruler),
-           each with its own JS-computed `bottom` --
-           `wwSyncTimeGroupCanvasStickyOffset()` measured the readout's
-           own live height via `getBoundingClientRect()` and folded it
-           into the slider's own `bottom`. That measurement is only ever
-           as fresh as the LAST time the sync function happened to run;
-           live UAT reproduced the readout visibly drifting away while
-           scrolling specifically once a second Time Group existed
-           (extra concurrent layout/resize activity), consistent with a
-           stale/late height read never being corrected before the user
-           scrolled. `.ww-tg-slider-slot` and `.ww-tg-cursor-readout` are
-           now normal-flow children of ONE shared sticky wrapper instead
-           -- the wrapper's own height (and therefore its own correctly
-           stuck position) is computed by the BROWSER via ordinary block
-           layout, never JS-measured, structurally eliminating that
-           staleness. `.ww-tg-ruler` deliberately stays OUTSIDE the
-           wrapper, its own independent sticky sibling exactly as
-           before: wrapping it too would move its own `offsetTop` to be
-           relative to the new wrapper instead of the canvas root,
-           breaking `wwUpdateCursorOverlayForGroup()`'s own
+        /* Sticky ruler + `.ww-tg-sticky-bottom` (Time Range slider), ONE
+           canvas's own bottom dock (task section 8/10/12/13).
+           History: DEC-066/DEC-067 briefly moved the numerical A-B/Δt
+           readout into this stack as a third tier (`.ww-tg-sticky-bottom`
+           wrapping slider+readout together, to avoid the staleness bug
+           three independent sticky siblings had). Owner reconsideration:
+           the readout returned to the top toolbar row (see that
+           selector's own comment) -- `.ww-tg-sticky-bottom` now wraps
+           only the slider again, but is KEPT rather than reverted to a
+           bare independently-sticky slider, since it is still the more
+           robust design (its own height is browser-computed via normal
+           flow, never a second JS measurement to go stale). The A/B
+           cursor position badges (the small "[A ×]"/"[B ×]" pills) also
+           moved this same task, from an independent top-sticky sibling
+           into `.ww-tg-ruler`'s own DOM subtree -- see
+           `.ww-tg-cursor-label-layer`'s own comment. `.ww-tg-ruler`
+           deliberately stays a sibling of `.ww-tg-sticky-bottom`, never
+           wrapped together with it: wrapping it too would move its own
+           `offsetTop` to be relative to that wrapper instead of the
+           canvas root, breaking `wwUpdateCursorOverlayForGroup()`'s own
            `rulerWrapEl.offsetTop`-based cursor-overlay height
-           calculation (Phase 4B-UAT2's own established fix, unrelated
-           to this bug and not touched here). Both remaining sticky
-           elements are scoped to (bounded by) THIS canvas's own box --
-           see .ww-time-group-canvas's own comment for why that alone
-           gives the correct "Canvas 1 releases as Canvas 2 arrives"
-           handoff for free, no JS scroll-position math needed. */
+           calculation (Phase 4B-UAT2's own established fix). Both
+           remaining sticky elements are scoped to (bounded by) THIS
+           canvas's own box -- see .ww-time-group-canvas's own comment
+           for why that alone gives the correct "Canvas 1 releases as
+           Canvas 2 arrives" handoff for free, no JS scroll-position math
+           needed. */
         .ww-tg-ruler {
             position: sticky;
             bottom: 0;
@@ -3150,7 +3182,10 @@
             padding: 2px 14px;
             /* Display-only (section 11) -- never intercepts clicks/hover
                meant for whatever panel is currently scrolled underneath
-               it while stuck. */
+               it while stuck. The A/B position badges nested inside
+               (below) opt back into pointer events themselves, the same
+               established "container is display-only, children opt in"
+               pattern `.ww-tg-cursor-overlay` already uses. */
             pointer-events: none;
         }
         .ww-tg-ruler[hidden] { display: none; }
@@ -3161,17 +3196,15 @@
            height for those. */
         .ww-tg-ruler-chart { width: 100%; height: 30px; }
 
-        /* The shared bottom-stack sticky wrapper (see the block comment
-           above `.ww-tg-ruler` for the full root-cause writeup) --
-           mirrors `.ww-tg-sticky-top`'s own established header+toolbar
-           wrapper pattern, just at the opposite edge. `bottom` is set
-           via JS (wwSyncTimeGroupCanvasStickyOffset(), called from
-           wwSyncTimeGroupRuler()) to THIS canvas's own ruler's live
-           rendered height, never a hardcoded pixel guess -- the ONE
-           remaining runtime measurement in this stack (the same one
-           already proven reliable for the pre-relocation slider/ruler
-           pair). z-index:3, one below the ruler's own 4 (defensive only
-           -- correct `bottom` stacking already keeps them from ever
+        /* The bottom sticky slider wrapper (see the block comment above
+           `.ww-tg-ruler` for the full history) -- mirrors
+           `.ww-tg-sticky-top`'s own established wrapper pattern, just at
+           the opposite edge, now wrapping only the Time Range slider.
+           `bottom` is set via JS (wwSyncTimeGroupCanvasStickyOffset(),
+           called from wwSyncTimeGroupRuler()) to THIS canvas's own
+           ruler's live rendered height, never a hardcoded pixel guess.
+           z-index:3, one below the ruler's own 4 (defensive only --
+           correct `bottom` stacking already keeps them from ever
            visually overlapping). */
         .ww-tg-sticky-bottom {
             position: sticky;
@@ -3192,43 +3225,6 @@
         .ww-tg-slider-slot:not(:empty) {
             border-top: 1px solid var(--panel-border);
         }
-        /* Cursor-readout relocation (owner UX request): the per-group A-B
-           measurement readout -- lives in the bottom sticky stack
-           (below the slider, above the ruler), a normal-flow child of
-           `.ww-tg-sticky-bottom` now (see that wrapper's own comment).
-           Same element/classes/hidden-toggle contract as before
-           (wwUpdateCursorOverlayForGroup() still resolves/toggles it via
-           `.ww-tg-cursor-readout`, unchanged) -- the item/label/value
-           rules below are byte-for-byte the owner's own pre-existing
-           values, untouched. `justify-content: flex-end` reads as a
-           right-aligned status/readout row (task's own "align toward
-           the right side" preference), `flex-wrap` lets A/B/Δt wrap
-           onto their own line at narrow widths without introducing
-           horizontal scroll. */
-        .ww-tg-cursor-readout {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: flex-end;
-            align-items: baseline;
-            gap: 7px;
-            font-size: 0.65rem;
-            color: var(--text-dim);
-            border-top: 1px solid var(--panel-border);
-        }
-        .ww-tg-cursor-readout[hidden] { display: none; }
-        .ww-tg-cursor-readout-item { display: flex; gap: 5px;
-        padding: 6px 10px;
-        align-items: baseline; }
-        .ww-tg-cursor-readout-label { text-transform: uppercase; letter-spacing: 0.03em; }
-        .ww-tg-cursor-readout-value { color: var(--text); font-weight: 600; }
-        /* The accent/error convention needs to target the VALUE span
-           directly -- the former global readout's own `.ww-cursor-
-           readout-a .shell-status-value` descendant selector doesn't
-           match this element's own `.ww-tg-cursor-readout-value` class
-           name, so it is restated here rather than silently never
-           applying. */
-        .ww-cursor-readout-a .ww-tg-cursor-readout-value { color: var(--accent); }
-        .ww-cursor-readout-b .ww-tg-cursor-readout-value { color: var(--error); }
         .ww-tg-slider-row { padding: 3px 20px 3px 20px; border-top: 1px solid var(--panel-border); background: var(--panel); }
         .ww-tg-slider-row:first-child { border-top: none; }
         .ww-tg-slider-label {
@@ -3346,33 +3342,33 @@
             pointer-events: auto;
             touch-action: none;
         }
-        /* TG-D2: the sticky label layer, now PER Time Group Canvas --
-           still a SIBLING of `.ww-tg-cursor-overlay`, not nested inside
-           it (same reasoning as Phase 4B-UAT1's own original: `position:
-           sticky` breaks/clips under an `overflow: hidden` ancestor,
-           which `.ww-tg-cursor-overlay` deliberately has). `height: 0` so
+        /* Owner UX correction: the A/B position badge layer -- now
+           NESTED INSIDE `.ww-tg-ruler` (a sibling of `.ww-cursor-ruler-
+           overlay`/`.ww-tg-ruler-chart`, see wwCreateTimeGroupCanvasDom()'s
+           own template) instead of being its own independent top-sticky
+           sibling of `.ww-tg-cursor-overlay`. It no longer needs its own
+           `position: sticky` at all -- `.ww-tg-ruler` is ALREADY sticky,
+           so a plain `position: absolute` descendant inherits that
+           stuck-in-place behavior for free, released/handed-off in
+           lockstep with the ruler itself (same bounded-per-canvas
+           handoff, one level of DOM nesting deeper). `top` is a small
+           negative offset so the pill floats just above the ruler's own
+           content, never overlapping its own tick labels; `height: 0` so
            it never adds scrollable space of its own (it's purely a
            positioning anchor for its absolutely-positioned label
-           children); `top` matches "just below the top of the visible
-           waveform workspace" -- a small fixed px offset is sufficient.
-           Being a direct child of `.ww-time-group-canvas` (never a
-           workspace-wide sibling) means its own sticky containing block
-           is that ONE canvas -- it naturally releases as the next
-           canvas's own content scrolls into view, the exact same "bounded
-           sticky handoff" pattern already proven for the ruler/slider
-           (TG-B+C). z-index above both cursor overlays.
-           Sticky-toolbar UX task: `top` is offset by
-           `--ww-tg-sticky-top-h` (the new `.ww-tg-sticky-top` header+
-           toolbar wrapper's own live rendered height, set on the canvas
-           root by wwSyncTimeGroupCanvasStickyOffset()) -- two independent
-           `position: sticky` elements do NOT know about each other's
-           occupied space by default, so without this the labels would
-           stick at the OLD fixed `6px` and render underneath the new
-           sticky header/toolbar. Defaults to `0px` so nothing shifts
-           before that offset is first measured. */
+           children, same as before). `pointer-events: none` here, same
+           established "container is display-only, children opt back in"
+           pattern as `.ww-tg-ruler` itself and `.ww-tg-cursor-overlay`;
+           z-index only needs to clear this SAME ruler's own other two
+           children now (`.ww-cursor-ruler-overlay` at 5, the chart at
+           auto). Badge X positions are written relative to the ruler's
+           own `getBoundingClientRect().left` now (see
+           wwUpdateCursorOverlayForGroup()'s own comment) -- the exact
+           same conversion `.ww-cursor-ruler-stroke` already used, now
+           shared by both. */
         .ww-tg-cursor-label-layer {
-            position: sticky;
-            top: calc(var(--ww-tg-sticky-top-h, 0px) + 6px);
+            position: absolute;
+            top: -20px;
             left: 0; right: 0;
             height: 0;
             pointer-events: none;
@@ -8423,6 +8419,18 @@
                         '<span class="ww-icon"><svg viewBox="0 0 18 18"><line x1="2.5" y1="6" x2="9" y2="6" stroke-width="1.3"/><polyline points="6.5,3.5 9,6 6.5,8.5" stroke-width="1.3"/><line x1="15.5" y1="12" x2="9" y2="12" stroke-width="1.3"/><polyline points="11.5,9.5 9,12 11.5,14.5" stroke-width="1.3"/></svg></span>' +
                     '</button>' +
                 '</div>' +
+                // Owner UX correction: the numerical A-B/Δt readout is
+                // back here (its pre-DEC-066 home) as this row's own
+                // right-hand flex item -- see `.ww-tg-cursor-readout`'s
+                // own CSS comment for the full history. It naturally
+                // inherits `.ww-tg-sticky-top`'s own already-proven
+                // sticky/handoff behavior, same as every other control in
+                // this row.
+                '<div class="ww-tg-cursor-readout" hidden>' +
+                    '<span class="ww-tg-cursor-readout-item ww-cursor-readout-a"><span class="ww-tg-cursor-readout-label">A</span><span class="ww-tg-cursor-readout-value ww-tg-cursor-readout-value--a">—</span></span>' +
+                    '<span class="ww-tg-cursor-readout-item ww-cursor-readout-b"><span class="ww-tg-cursor-readout-label">B</span><span class="ww-tg-cursor-readout-value ww-tg-cursor-readout-value--b">—</span></span>' +
+                    '<span class="ww-tg-cursor-readout-item"><span class="ww-tg-cursor-readout-label">&Delta;t</span><span class="ww-tg-cursor-readout-value ww-tg-cursor-readout-value--delta">—</span></span>' +
+                '</div>' +
                 '</div>' +
                 '</div>' +
                 '<div class="ww-tg-panels"></div>' +
@@ -8431,37 +8439,33 @@
                     '<div class="ww-tg-digital-scroll"><div class="ww-tg-digital-chart"></div></div>' +
                 '</div>' +
                 '<div class="ww-tg-cursor-overlay" hidden></div>' +
-                '<div class="ww-tg-cursor-label-layer" hidden></div>' +
-                // Bugfix (owner UAT on eb55528): three INDEPENDENT
-                // `position: sticky` siblings (slider/readout/ruler),
-                // each with its own JS-computed `bottom`, proved
-                // unreliable for the readout specifically -- see
-                // `.ww-tg-sticky-bottom`'s own CSS comment for the full
-                // root-cause writeup. `.ww-tg-slider-slot` and
-                // `.ww-tg-cursor-readout` now share ONE sticky wrapper
-                // (mirroring `.ww-tg-sticky-top`'s own established
-                // header+toolbar pattern) -- its own height (and
-                // therefore its own correct stuck position) is computed
-                // by the BROWSER via normal block flow, never
-                // JS-measured, eliminating the exact class of staleness
-                // that broke the old three-sibling design. `.ww-tg-ruler`
-                // deliberately stays OUTSIDE this wrapper, an
-                // independent sticky sibling exactly as before -- see
-                // the wrapper's own CSS comment for why (the cursor
-                // overlay's own height calculation depends on
-                // `rulerWrapEl.offsetTop` staying relative to the CANVAS
-                // root, which wrapping the ruler would break).
+                // Bugfix (owner UAT on eb55528): `.ww-tg-slider-slot`
+                // shares this sticky wrapper alone now -- the numerical
+                // readout moved back to the top (above), and the A/B
+                // position badges moved into `.ww-tg-ruler` itself
+                // (below) -- see each element's own CSS comment for its
+                // own history. `.ww-tg-ruler` deliberately stays OUTSIDE
+                // this wrapper, an independent sticky sibling: wrapping
+                // it too would move its own `offsetTop` to be relative to
+                // this wrapper instead of the canvas root, breaking
+                // `wwUpdateCursorOverlayForGroup()`'s own
+                // `rulerWrapEl.offsetTop`-based cursor-overlay height
+                // calculation.
                 '<div class="ww-tg-sticky-bottom">' +
                 '<div class="ww-tg-slider-slot"></div>' +
-                '<div class="ww-tg-cursor-readout" hidden>' +
-                    '<span class="ww-tg-cursor-readout-item ww-cursor-readout-a"><span class="ww-tg-cursor-readout-label">A</span><span class="ww-tg-cursor-readout-value ww-tg-cursor-readout-value--a">—</span></span>' +
-                    '<span class="ww-tg-cursor-readout-item ww-cursor-readout-b"><span class="ww-tg-cursor-readout-label">B</span><span class="ww-tg-cursor-readout-value ww-tg-cursor-readout-value--b">—</span></span>' +
-                    '<span class="ww-tg-cursor-readout-item"><span class="ww-tg-cursor-readout-label">&Delta;t</span><span class="ww-tg-cursor-readout-value ww-tg-cursor-readout-value--delta">—</span></span>' +
-                '</div>' +
                 '</div>' +
                 '<div class="ww-tg-ruler" hidden>' +
                     '<div class="ww-cursor-ruler-overlay" hidden></div>' +
                     '<div class="ww-tg-ruler-chart"></div>' +
+                    // Owner UX correction: the small A/B position badges
+                    // ("[A ×]"/"[B ×]" pills) move here, into the ruler's
+                    // own DOM subtree, instead of being their own
+                    // independent sticky sibling -- they now inherit
+                    // `.ww-tg-ruler`'s own already-proven sticky/handoff
+                    // behavior for free. See `.ww-tg-cursor-label-layer`'s
+                    // own CSS comment for the full history and the
+                    // `rulerRect`-relative X-projection this required.
+                    '<div class="ww-tg-cursor-label-layer" hidden></div>' +
                 '</div>';
             wwWireTimeGroupToolbar(section, groupId);
             wwWireTimeGroupCursorOverlay(section, groupId);
@@ -17210,14 +17214,21 @@
         // (task section 10/13), so this offset only ever needs to reach
         // as far as that one canvas's own ruler, never a workspace-wide
         // one.
-        // Bugfix (owner UAT on eb55528): this now sets exactly ONE
-        // element's own `bottom` (the wrapper's) instead of separately
-        // computing and folding the readout's own height into the
-        // slider's own `bottom` -- the wrapper's own height (slider +
-        // readout, whichever is currently visible) is the BROWSER's own
-        // normal-flow computation, not a second JS measurement that
-        // could go stale relative to it. See `.ww-tg-sticky-bottom`'s
-        // own CSS comment for the full root-cause writeup.
+        // Bugfix (owner UAT on eb55528): sets exactly ONE element's own
+        // `bottom` (the wrapper's) -- the wrapper's own height (just the
+        // slider now) is the BROWSER's own normal-flow computation, not
+        // a second JS measurement that could go stale relative to it.
+        // Owner UX correction (this task): the readout moved back to the
+        // top toolbar row (inherits `.ww-tg-sticky-top`'s own existing
+        // height measurement, nothing new needed here for it), and the
+        // A/B position badges moved into `.ww-tg-ruler`'s own DOM
+        // subtree (inherit the ruler's own sticky positioning directly,
+        // no separate offset of their own needed either) -- so the
+        // `--ww-tg-sticky-top-h` custom property this function used to
+        // also publish (for the label layer's own top-of-canvas `top`
+        // calc) has no remaining consumer and was removed along with it.
+        // See `.ww-tg-sticky-bottom`'s own CSS comment for the full
+        // history.
         function wwSyncTimeGroupCanvasStickyOffset(groupId) {
             const canvasEl = wwTimeGroupCanvasEl(groupId);
             if (!canvasEl) return;
@@ -17225,19 +17236,6 @@
             const rulerWrapEl = canvasEl.querySelector(".ww-tg-ruler");
             if (stickyBottomEl && rulerWrapEl) {
                 stickyBottomEl.style.bottom = rulerWrapEl.getBoundingClientRect().height + "px";
-            }
-            // Sticky-toolbar UX task: same runtime-measurement reasoning
-            // as the bottom wrapper/ruler pair above, applied to the TOP
-            // sticky stack -- `.ww-tg-sticky-top`'s own height varies
-            // (narrow-viewport toolbar wrap), so it's measured here, not
-            // hardcoded, and published as a CSS custom property that
-            // `.ww-tg-cursor-label-layer` reads via `calc()`. Still
-            // layout-driven only (called from
-            // wwSyncTimeGroupRuler()/wwUpdateCursorOverlayForGroup()/a
-            // full resize sweep), never a scroll listener.
-            const stickyTopEl = canvasEl.querySelector(".ww-tg-sticky-top");
-            if (stickyTopEl) {
-                canvasEl.style.setProperty("--ww-tg-sticky-top-h", stickyTopEl.getBoundingClientRect().height + "px");
             }
         }
 
@@ -18146,10 +18144,15 @@
                 const labelEl = labelLayer.querySelector('[data-cursor-label="' + kind + '"]');
                 if (lineEl) lineEl.style.left = (pageX - sectionRect.left) + "px";
                 if (rulerLineEl) rulerLineEl.style.left = (pageX - rulerRect.left) + "px";
-                // Phase 4B-UAT1: the sticky label follows the same live
-                // pageX every pointermove -- still just a style.left write,
-                // no extra metrics measurement.
-                if (labelEl) labelEl.style.left = (pageX - sectionRect.left) + "px";
+                // Owner UX correction: the badge now lives inside
+                // `.ww-tg-ruler` itself (see `.ww-tg-cursor-label-layer`'s
+                // own CSS comment), so its own `left` uses the SAME
+                // `rulerRect`-relative conversion as `rulerLineEl` right
+                // above -- not `sectionRect` any more (that was correct
+                // only while the label layer was canvas-rooted). Still
+                // just a style.left write on every pointermove, no extra
+                // metrics measurement.
+                if (labelEl) labelEl.style.left = (pageX - rulerRect.left) + "px";
 
                 const cursors = wwTimeGroupCursorState(groupId);
                 const aShown = cursors.a.visible && Number.isFinite(cursors.a.time);
@@ -18247,10 +18250,13 @@
                 if (closeBtn) wwSetMeasurementCursorVisible(groupId, closeBtn.getAttribute("data-cursor-close"), false);
             }
 
-            // Phase 4B-UAT1: the drag hit-strip (`.ww-cursor-hit`, inside
-            // the overlay) and the label/close-button (in the SEPARATE
-            // sticky label layer) are not the same DOM subtree -- the
-            // same two handlers are wired to both, rather than
+            // Phase 4B-UAT1 (owner UX correction updated the label
+            // layer's own DOM location, not this): the drag hit-strip
+            // (`.ww-cursor-hit`, inside the overlay) and the label/
+            // close-button (now inside `.ww-tg-ruler`'s own badge layer)
+            // are still not the same DOM subtree -- the same two
+            // handlers are wired to both (attached directly to each
+            // element, so nesting depth never matters), rather than
             // duplicating drag logic (labels stay draggable, same
             // pointer-capture/live-update path either way).
             overlay.addEventListener("pointerdown", onPointerDown);
@@ -18431,13 +18437,15 @@
                     rulerLineEl.hidden = !drawable;
                     if (drawable) rulerLineEl.style.left = (pageX - rulerRect.left) + "px";
                 }
-                // Phase 4B-UAT1: the sticky label uses the IDENTICAL pageX/
-                // sectionRect.left conversion as the line right above --
-                // one X-projection authority, just written to a second
-                // element living in a different (sticky) layer.
+                // Owner UX correction: the badge now lives inside
+                // `.ww-tg-ruler` (see `.ww-tg-cursor-label-layer`'s own
+                // CSS comment), so it uses the IDENTICAL pageX/
+                // rulerRect.left conversion as `rulerLineEl` right above
+                // -- one X-projection authority, just written to a
+                // second element in the same ruler-owned layer.
                 if (labelEl) {
                     labelEl.hidden = !drawable;
-                    if (drawable) labelEl.style.left = (pageX - sectionRect.left) + "px";
+                    if (drawable) labelEl.style.left = (pageX - rulerRect.left) + "px";
                 }
             }
 
@@ -18468,7 +18476,7 @@
                 }
                 if (labelEl) {
                     labelEl.hidden = !drawable;
-                    if (drawable) labelEl.style.left = (pageX - sectionRect.left) + "px";
+                    if (drawable) labelEl.style.left = (pageX - rulerRect.left) + "px";
                 }
             }
 

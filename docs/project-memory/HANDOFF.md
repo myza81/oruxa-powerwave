@@ -4,13 +4,58 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-08-29**
+Last updated: **2026-08-30**
 
 ## What was most recently done
 
-**Bugfix — the bottom sticky stack is now ONE shared wrapper (readout
-was not actually sticky).** On top of the cursor-readout relocation
-below — see
+**Owner UX correction — numerical readout back to top, A/B badges
+moved into the ruler.** On top of the bottom-sticky-stack bugfix below
+-- see
+[DECISIONS.md — DEC-068](DECISIONS.md#dec-068--owner-ux-correction-numerical-a-bδt-readout-returns-to-the-top-toolbar-row-ab-position-badges-move-into-the-rulers-own-dom-subtree)
+for the full record; summarized here for continuity.
+
+The owner reconsidered the recent cursor-readout relocation: the
+bottom sticky behavior proved more complex/fragile than expected.
+`.ww-tg-cursor-readout` (numerical A/B/Δt) moved BACK to the top
+`.ww-tg-toolbar-row`, inheriting `.ww-tg-sticky-top`'s own already-
+proven sticky behavior — no new sticky mechanism needed.
+`.ww-tg-sticky-bottom` (from the prior bugfix) is kept, now wrapping
+only the slider (per the task's own "don't remove it blindly" — it's
+still the more robust design). The small "[A ×]"/"[B ×]" position
+badges (`.ww-cursor-label`) moved from an independent top-sticky
+sibling into `.ww-tg-ruler`'s own DOM subtree instead — they inherit
+the ruler's own sticky behavior directly, no sticky positioning of
+their own. Their own `left` now reads relative to the ruler's own
+`getBoundingClientRect()` (matching the ruler's own pre-existing
+stroke-mark conversion) instead of the workspace section's. The now-
+orphaned `--ww-tg-sticky-top-h` CSS custom property (the former label
+layer's own top-of-canvas offset) was removed along with its one
+consumer.
+
+Verified by the full suite (1776 passed, 0 failed) plus live-browser
+UAT: readout confirmed back inside `.ww-tg-sticky-top`, staying pinned
+with the toolbar while scrolling; badges confirmed nested inside
+`.ww-tg-ruler`; dragging both cursors updated the readout and moved
+both badges in exact horizontal lockstep with their own cursor lines;
+two Time Groups showed fully independent readouts/badges; a
+Grouped→Separate→Custom→Grouped sweep produced no duplication; narrow
+width (760px) kept both visible with no overflow; zero console/page
+errors. Screenshots confirm the badges read cleanly as time-axis
+markers with no ruler tick-label overlap.
+
+**Files changed**: `frontend/index.html` only + 2 pre-existing test
+files updated (`test_frontend_time_group_cursor_readout_placement.py`
+rewritten for the new architecture, `test_frontend_time_group_layout.py`
+one assertion updated).
+
+**Next step**: nothing is pre-authorized. Per this session's own "do
+not commit/push without being asked" discipline, these changes stayed
+uncommitted at the end of this task.
+
+## What was done in the prior session — the bottom sticky stack is now ONE shared wrapper
+
+**Bugfix (readout was not actually sticky).** On top of the
+cursor-readout relocation below — see
 [DECISIONS.md — DEC-067](DECISIONS.md#dec-067--bugfix-the-bottom-sticky-stack-time-range-slider--a-b-cursor-readout-becomes-one-shared-sticky-wrapper-replacing-three-independent-sticky-siblings)
 for the full record; summarized here for continuity.
 

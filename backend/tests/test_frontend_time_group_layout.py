@@ -184,15 +184,24 @@ class TestCursorOverlayExcludesToolbarRegion:
         assert ".offsetTop" not in fn_body
 
     def test_label_layer_offset_from_the_sticky_toolbar_fix_is_unchanged(self):
-        """Case M: the cursor A/B label pills live in the SEPARATE
-        `.ww-tg-cursor-label-layer` (not the overlay this fix touches),
-        already positioned below the sticky header/toolbar via
-        `--ww-tg-sticky-top-h` -- confirms this fix did not need to (and
-        did not) touch that mechanism."""
+        """Case M: the cursor A/B label pills lived in the SEPARATE
+        `.ww-tg-cursor-label-layer` (not the overlay this TG-G fix
+        touched), positioned below the sticky header/toolbar via
+        `--ww-tg-sticky-top-h` -- confirming that TG-G fix did not need
+        to (and did not) touch that mechanism.
+        A later owner UX correction moved the label layer into
+        `.ww-tg-ruler`'s own DOM subtree instead (see
+        test_frontend_time_group_cursor_readout_placement.py's own
+        badge-relocation coverage for the CURRENT contract) -- this test
+        only confirms `--ww-tg-sticky-top-h` itself is gone now that its
+        one consumer moved, which is what TG-G's own cursor-overlay fix
+        left in place until that later, separate task changed it."""
         source = _source()
+        assert 'setProperty("--ww-tg-sticky-top-h"' not in source
+        assert "var(--ww-tg-sticky-top-h" not in source
         css_idx = source.index(".ww-tg-cursor-label-layer {")
         css_body = source[css_idx : css_idx + 200]
-        assert "top: calc(var(--ww-tg-sticky-top-h, 0px) + 6px);" in css_body
+        assert "position: absolute;" in css_body
 
     def test_sticky_toolbar_wrapper_itself_is_unchanged_by_this_fix(self):
         """Case K: the sticky toolbar (recently committed) must still be

@@ -4,8 +4,21 @@
 > the project **is right now**. For how it got here, use Git history and
 > [HANDOFF.md](HANDOFF.md); do not let this file accumulate into a diary.
 
-Last meaningful update: **2026-08-29** (Bugfix — the bottom sticky
-stack (`.ww-tg-slider-slot` + `.ww-tg-cursor-readout`) is now ONE
+Last meaningful update: **2026-08-30** (Owner UX correction — the
+numerical A-B/Δt readout (`.ww-tg-cursor-readout`) is back in the top
+`.ww-tg-toolbar-row`, inheriting `.ww-tg-sticky-top`'s own already-
+proven sticky behavior; the small "[A ×]"/"[B ×]" position badges
+(`.ww-cursor-label`) moved from an independent top-sticky sibling into
+`.ww-tg-ruler`'s own DOM subtree, inheriting the ruler's own sticky
+behavior instead — their own `left` now reads relative to the ruler's
+own bounding rect, the same conversion the ruler's own stroke marks
+already used. `.ww-tg-sticky-bottom` (from the prior bugfix) is kept,
+now wrapping only the Time Range slider. The now-orphaned
+`--ww-tg-sticky-top-h` CSS custom property was removed along with its
+one consumer. See
+[DECISIONS.md — DEC-068](DECISIONS.md#dec-068--owner-ux-correction-numerical-a-bδt-readout-returns-to-the-top-toolbar-row-ab-position-badges-move-into-the-rulers-own-dom-subtree)
+and [HANDOFF.md](HANDOFF.md), on top of the prior bugfix — the bottom
+sticky stack (`.ww-tg-slider-slot` + `.ww-tg-cursor-readout`) was ONE
 shared `.ww-tg-sticky-bottom` wrapper instead of two independently-
 sticky siblings with JS-computed offsets — owner manual UAT found the
 readout was not actually sticky while scrolling. The wrapper's own

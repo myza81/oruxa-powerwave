@@ -9543,6 +9543,153 @@ Impact:
 
 ---
 
+## DEC-068 — Owner UX correction: numerical A-B/Δt readout returns to the top toolbar row; A/B position badges move into the ruler's own DOM subtree
+
+Date: 2026-08-30
+Status: Approved
+Source: explicit owner reconsideration, delivered after DEC-066/DEC-067
+("the bottom sticky behavior has proven more complex and fragile than
+expected... restore the numerical Cursor A/B/ΔT readout to the top
+Time Group control area... keep the small A/B position badges at the
+bottom attached to the sticky ruler/time-axis region").
+
+Decision:
+
+**Two elements, two different established sticky mechanisms, each
+reused as-is rather than building anything new.**
+
+`.ww-tg-cursor-readout` (the numerical "A / B / Δt" summary) moves back
+into `.ww-tg-toolbar-row`, its pre-DEC-066 home, as that row's own
+right-hand flex item. It now inherits `.ww-tg-sticky-top`'s own
+already-proven sticky/bounded-handoff behavior automatically — no new
+sticky logic of its own. `.ww-tg-sticky-bottom` (introduced by DEC-067)
+is KEPT, not reverted, now wrapping only `.ww-tg-slider-slot` — per the
+task's own explicit "do not remove it blindly if it now provides
+useful stable slider behavior," it remains the more robust design
+(browser-computed wrapper height) even with only one child.
+
+The small "[A ×]"/"[B ×]" position-badge pills (`.ww-cursor-label`,
+inside `.ww-tg-cursor-label-layer`) move from being an INDEPENDENT
+top-sticky sibling of `.ww-tg-cursor-overlay` into `.ww-tg-ruler`'s own
+DOM subtree — a sibling of `.ww-cursor-ruler-overlay`/
+`.ww-tg-ruler-chart`. They no longer declare their own `position:
+sticky` at all; being a descendant of the already-sticky `.ww-tg-ruler`
+is sufficient for them to move/release/hand-off in lockstep with it,
+one level of nesting deeper than the ruler's own established (and
+otherwise untouched) sticky mechanism. `.ww-tg-ruler` deliberately
+stays a sibling of `.ww-tg-sticky-bottom` (never wrapped together with
+it or with the badge layer moved anywhere else): DEC-067 already
+established why wrapping the ruler breaks
+`wwUpdateCursorOverlayForGroup()`'s own `rulerWrapEl.offsetTop`-based
+cursor-overlay height calculation, and that reasoning is unchanged.
+
+**X-projection**: since the badge layer's own coordinate-space
+reference changed (from the workspace section's own left edge to the
+ruler's own left edge), `labelEl.style.left` now reads `(pageX -
+rulerRect.left)` at all three call sites (`livePositionUpdate()`'s live
+drag update, and both the A/B loop and the "suggested event" marker
+inside `wwUpdateCursorOverlayForGroup()`) — the EXACT SAME conversion
+`.ww-cursor-ruler-stroke` (the ruler's own thin colored tick mark) was
+already using, not a new formula. `wwCursorTimeToPixelX(groupId, time)`
+remains the one shared page-X authority everywhere; only the per-
+element coordinate-space subtraction changed for this one element.
+
+Dead code removed: `--ww-tg-sticky-top-h`, the CSS custom property
+`.ww-tg-sticky-top`'s own JS-measured height used to publish
+specifically so the (formerly top-sticky) label layer's own `top: calc(...)`
+could avoid rendering underneath the header/toolbar — with the label
+layer no longer living there at all, this had no remaining consumer
+and was removed from both its JS publisher
+(`wwSyncTimeGroupCanvasStickyOffset()`) and its own (now-deleted) CSS
+consumer.
+
+Reason:
+
+Owner's own governing rule, verbatim: "Numerical A/B/ΔT values belong
+in the proven sticky top Time Group control area, while the small A/B
+position badges belong to the sticky ruler/time-axis layer." Both
+halves of this correction deliberately AVOID inventing a third sticky
+mechanism — the readout reuses the top wrapper's own proven behavior,
+the badges reuse the ruler's own proven behavior, closing the exact
+"another independent sticky sibling" fragility class DEC-066/DEC-067
+already fought once.
+
+Alternatives considered:
+
+- Reverting `.ww-tg-sticky-bottom` back to a bare, independently-sticky
+  `.ww-tg-slider-slot` now that it wraps only one child — considered,
+  rejected per the task's own explicit "inspect carefully whether it
+  should be simplified... do not remove it blindly": the wrapper's own
+  browser-computed-height property is still strictly more robust than
+  a JS-measured one, at zero extra cost now that it wraps a single
+  child, so keeping it is both simpler (smaller diff) and safer.
+- Interpreting "A/B position badges" as the pre-existing
+  `.ww-cursor-ruler-stroke` marks (already ruler-owned, zero code
+  changes needed) rather than the `.ww-cursor-label` pills — considered
+  and explicitly ruled out by the owner when asked to disambiguate
+  (mid-task clarifying question): the pills are the intended target,
+  confirmed to require an actual DOM-ownership change, not merely
+  verification.
+- Nesting the badge layer inside `.ww-cursor-ruler-overlay` (which
+  already holds the stroke marks) instead of as ITS OWN sibling
+  directly inside `.ww-tg-ruler` — considered, rejected: the two serve
+  different purposes (display-only stroke marks vs. draggable/closable
+  interactive pills with their own `pointer-events: auto` opt-in), and
+  the task's own target diagram shows the badge layer as a direct
+  `.ww-tg-ruler` child, a peer of the ruler-overlay, not nested inside
+  it.
+
+Impact:
+
+- `frontend/index.html` only (no backend changes). Changed in place:
+  `wwCreateTimeGroupCanvasDom()` (readout markup moved into
+  `.ww-tg-toolbar-row`; label-layer markup moved into `.ww-tg-ruler`'s
+  own template), `wwSyncTimeGroupCanvasStickyOffset()` (dead
+  `--ww-tg-sticky-top-h` publisher removed), `livePositionUpdate()` and
+  `wwUpdateCursorOverlayForGroup()` (three `labelEl.style.left` call
+  sites switched from `sectionRect.left` to `rulerRect.left`). CSS:
+  `.ww-tg-cursor-readout` restored to a toolbar-row flex-item shape
+  (`margin-left: auto`, no `position`/`border-top`/`background` of its
+  own); `.ww-tg-cursor-label-layer` changed from `position: sticky; top:
+  calc(var(--ww-tg-sticky-top-h, 0px) + 6px)` to `position: absolute;
+  top: -20px` (empirically tuned via live screenshot inspection to sit
+  just above the ruler's own tick labels with no overlap). Every
+  owner-set value (readout item padding `6px 10px`, font-size
+  `0.65rem`, A-blue/B-red color rules on both the readout and the
+  badges, `.ww-tg-ruler`'s own `padding: 2px 14px` and the owner's
+  recent `height: 30px` ruler-chart edit) is byte-for-byte unchanged —
+  confirmed via `git diff` grep, only relocated.
+- Test file `test_frontend_time_group_cursor_readout_placement.py`
+  rewritten for the new architecture (Cases A-J per this task's own
+  section 20); `test_frontend_time_group_layout.py` updated (one
+  TG-G-era test's own now-obsolete `--ww-tg-sticky-top-h` assertion
+  replaced).
+- Verified by the full backend suite (1776 passed, 0 failed — up from
+  1771 before this task) plus a live-browser Playwright UAT pass with
+  a genuinely tall (19-analog-channel) Time Group: the numerical
+  readout confirmed inside `.ww-tg-sticky-top`, staying pinned together
+  with the toolbar across the whole scroll range; the badge layer
+  confirmed nested inside `.ww-tg-ruler`; dragging both cursors updated
+  the top readout and moved both badges in exact horizontal lockstep
+  with their own cursor lines (verified via a coordinate-offset
+  comparison, not raw equality, since the two now live in different
+  coordinate spaces that happen to share the same origin in this
+  layout); zoom/reset/t0 set-clear completed without error; two Time
+  Groups showed fully independent readouts/badges (moving Group 2's
+  own cursor left Group 1's own readout byte-identical); exactly one
+  readout and one badge layer per group survived a Grouped→Separate→
+  Custom→Grouped sweep; a narrow (760px) viewport kept both elements
+  visible with no horizontal overflow; zero console/page errors
+  throughout. Screenshots confirm the badges read cleanly as
+  time-axis-attached position markers with no ruler tick-label
+  overlap.
+- **Deferred**: none new — same non-goals as DEC-066/DEC-067 (cursor
+  calculation/redesign, annotation changes, Time Group collapse, the
+  hover-tooltip cleanup, cross-group cursor/t0/Sync, Detect Event,
+  CSV/Excel).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or
