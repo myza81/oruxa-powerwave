@@ -801,10 +801,98 @@ owner go-ahead before implementation begins.
    two-worksheet workbook keeps edits made on one sheet completely
    invisible on the other, restored correctly on switching back — all
    with zero console/page errors.
-5. **Header/data-region + column-role mapping.** Header row selection;
-   blank/non-standard headers; roles broader than waveform/no-waveform
-   (Time Axis / Waveform Channel / Metadata / Quality-Status / Ignore /
-   Unknown — principle 9).
+5. **`[DONE, 2026-08-31]` Header/data-region + column-role mapping.**
+   Implemented: the SAME `app.domain.working_overlay.WorkingOverlay`
+   Slice 4 built (not a second, separate structure-mapping model) gains
+   `header_row: dict[worksheet_index_or_None, int]`,
+   `data_region: dict[worksheet_index_or_None, DataRegion(start_row,
+   end_row)]`, and `column_roles: dict[ColumnKey, str]` -- all sparse
+   (absence is the default: no header selected, entire source active,
+   `unknown` role), all participating in the exact same bounded
+   (200-entry) operation history / undo-redo / revision counter as
+   Slice 4's own cell/row/column-ignore mutations (six new pure
+   functions: `set_header_row`/`clear_header_row`/`set_data_region`/
+   `reset_data_region`/`set_column_role`/`reset_column_role`). Role set:
+   `unknown` (implicit default, never written explicitly) /
+   `waveform` / `time_axis` / `metadata` / `quality_status` / `ignore` --
+   multiple columns may carry `time_axis` simultaneously (task's own
+   explicit "do not assume exactly one physical time column" guidance);
+   no role is ever validated beyond membership in this closed set (no
+   numeric/format/uniqueness checking -- purely a stated intent, per
+   principle 9). Slice 4's own separate `ignored_columns` set was
+   RETIRED in favor of `column_roles`'s `ignore` value as the single
+   authoritative representation -- Slice 4's own
+   `PUT .../working/columns/{column_index}` boolean endpoint (body
+   `{ignored: bool}`) is preserved unchanged as a thin alias
+   (`ignored=True` ⇔ role `ignore`; `ignored=False` resets the role to
+   `unknown` ONLY if it is currently `ignore`, never silently
+   reclassifying a column that already carries a different explicit
+   role), verified permanently coherent with the new
+   `PUT .../working/columns/{column_index}/role` endpoint by
+   construction (one underlying store, never two that could drift).
+   `app.services.working_overlay_service` adds bounds validation
+   reusing the exact same `_check_row_bound`/`_check_column_bound`
+   helpers Slice 4 built (no second bounds-checking implementation) plus
+   two new errors: `InvalidDataRegionError` (`start_row > end_row`) and
+   `InvalidColumnRoleError` (role outside the closed set). Six new
+   endpoints (`PUT`/`DELETE .../working/header`, `PUT`/
+   `DELETE .../working/data-region`, `PUT`/
+   `DELETE .../working/columns/{column_index}/role`), each returning the
+   same `WorkingOverlaySummaryOut` Slice 4 built, now extended with
+   `header_row_number`/`data_start_row`/`data_end_row` (scoped to
+   whichever worksheet the caller resolved -- `None` for CSV or an
+   unselected multi-sheet Excel workbook, since Slice 5 mutations can
+   only ever write under a real worksheet index for Excel). The existing
+   `GET .../rows` preview gains `header_row_number`/`data_start_row`/
+   `data_end_row`/`column_labels`/`column_roles` (each O(columns), never
+   duplicated per row) and each row gains `is_header`/`in_active_region`
+   flags -- independent of, and never conflated with, Slice 4's own
+   `excluded` flag (task's own explicit "these are different concepts"
+   distinction: a row can be inside the active region and excluded, or
+   outside the region and not excluded). Column labels come from the
+   header row's own WORKING cells (Slice 4 edits included, verified) via
+   a new `_resolve_header_cells()` that reuses the current page when the
+   header happens to be on it, or performs exactly one bounded
+   single-row fetch (`_fetch_single_csv_row`/`_fetch_single_excel_row`)
+   otherwise -- never a second full-page read. A blank header cell (raw
+   `None` or a working edit to `""`) gets a distinct `"Column {letter}"`
+   fallback; no header at all gets the plain spreadsheet letter; a
+   header WITH duplicate text (e.g. three columns all labeled
+   `"Voltage"`) is returned verbatim, deliberately not disambiguated
+   (task's own "keep implementation simple and stable-index-based"
+   guidance -- the frontend already shows each column's own stable
+   letter alongside its label). Slice 4's own "Reset All Changes" now
+   also clears header/region/role state (`app.domain.working_overlay.reset_all`'s
+   own five-collection snapshot, still bounded by edit/mapping count,
+   never dataset size) -- its own confirm-dialog copy was updated to
+   say so. Frontend: a new "Structure" panel between the meta panel and
+   the preview table -- a header-row number input + Set/Clear buttons, a
+   data-region start/end pair + Set/Reset buttons, and a compact
+   Column/Label/Role mapping table (one `<select>` per column, task's
+   own "may be easier to manage than configuring roles directly in the
+   grid" suggestion) — plus a per-row "Header" quick-select button in
+   the preview table itself (for a header row already visible on the
+   current page) and new `ww-data-prep-row-is-header`/
+   `ww-data-prep-row-inactive` row styling, visually distinct from the
+   existing excluded-row strike-through. No new framework; every control
+   calls its own backend endpoint and re-renders from the response,
+   matching Slice 4's own "backend is authoritative" pattern exactly.
+   No header/data-region/column-role concept was retrofitted into
+   `SourceMetadata`/`DisturbanceRecord`/waveform code anywhere.
+   Verified: 2057 backend tests passing (83 new on top of Slice 4's
+   1974), zero regressions; the committed browser smoke test (COMTRADE)
+   still passes unchanged; two throwaway (not committed) live-browser
+   Playwright UAT scripts confirmed: selecting row 3 as header on a CSV
+   with two preamble rows correctly labels columns from row 3 while
+   rows 1-2 stay visible; a blank + duplicate header row
+   (`Time,VR,,VR`) produces `["Time","VR","Column C","VR"]`; clearing
+   the header reverts to plain letters; a data region correctly flags
+   rows outside it as inactive without removing them, and resetting the
+   region reactivates the full source; assigning `time_axis` to two
+   different columns is accepted with no error; resetting a role
+   returns it to `unknown`; and an Excel two-worksheet workbook keeps
+   header/region/role configuration on one sheet completely invisible
+   on, and unaffected by, the other — all with zero console/page errors.
 6. **Readiness Issue model.** Preparation-specific blocking/warning/info
    (DEC-072 point 2); does not alter existing `ImportServiceError`.
 7. **Extensible time-axis framework.** Interpreter architecture; an
@@ -964,7 +1052,7 @@ slices without further owner input):
 
 | # | Question | Decision mode | Needed before |
 |---|---|---|---|
-| 2 | Exact API shapes for mapping/readiness beyond what Slices 1-4 already established for preparation-source identity/upload/worksheet selection/raw+working preview/working-overlay mutation | `[DECISION MODE: ANALYSIS]`, once slice work actually starts | Slices 5, 6 |
+| 2 | Exact API shapes for readiness beyond what Slices 1-5 already established for preparation-source identity/upload/worksheet selection/raw+working preview/working-overlay mutation/header-data-region-column-role mapping | `[DECISION MODE: ANALYSIS]`, once slice work actually starts | Slice 6 |
 | 3 | Exact timestamp-interpreter list to build first | `[DECISION MODE: ANALYSIS]` — the *list itself* stays open per DEC-072 point 6; only the first-slice subset needs choosing | Slice 8 |
 | 4 | Exact saved-profile design (import-profile reuse across files) | `[DECISION MODE: DEFER]` | Slice 13 |
 | 5 | Whether the underlying in-memory "hold the whole raw file" registry model itself needs to change for a genuinely huge CSV/Excel file (Slice 3's own preview algorithm is bounded per-request, but the registry still holds the entire original upload in memory regardless of size — a separate storage-layer question from anything Slice 3 itself needed to solve) | `[DECISION MODE: DEFER]` | Not currently scheduled |

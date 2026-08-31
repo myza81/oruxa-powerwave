@@ -828,7 +828,7 @@
         .ww-data-prep-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
         .ww-data-prep-toolbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         .ww-data-prep-change-summary { color: var(--text-dim); font-size: 0.8rem; white-space: nowrap; }
-        .ww-data-prep-row-toggle-btn, .ww-data-prep-col-toggle-btn, .ww-data-prep-cell-reset-btn, .ww-data-prep-cell-clear-btn {
+        .ww-data-prep-row-toggle-btn, .ww-data-prep-col-toggle-btn, .ww-data-prep-cell-reset-btn, .ww-data-prep-cell-clear-btn, .ww-data-prep-row-header-btn {
             font: inherit;
             font-size: 0.68rem;
             line-height: 1;
@@ -840,7 +840,8 @@
             text-decoration: underline;
         }
         .ww-data-prep-row-toggle-btn:hover, .ww-data-prep-col-toggle-btn:hover,
-        .ww-data-prep-cell-reset-btn:hover, .ww-data-prep-cell-clear-btn:hover { color: var(--accent); }
+        .ww-data-prep-cell-reset-btn:hover, .ww-data-prep-cell-clear-btn:hover,
+        .ww-data-prep-row-header-btn:hover { color: var(--accent); }
         .ww-data-prep-cell-clear-btn { margin-left: 6px; text-decoration: none; border: 1px solid var(--panel-border); border-radius: 3px; padding: 1px 6px; }
         /* A modified cell keeps showing its working value inline (no
            separate raw-value column) -- the raw value is reachable via
@@ -855,6 +856,21 @@
         .ww-data-prep-table td.ww-data-prep-cell { cursor: text; }
         .ww-data-prep-table td.ww-data-prep-cell:hover { background: var(--surface-tint); }
         .ww-data-prep-cell-input { width: 100%; max-width: 200px; box-sizing: border-box; font: inherit; border: 1px solid var(--accent); border-radius: 3px; padding: 1px 4px; background: var(--panel); color: var(--text); }
+        /* Slice 5 (DEC-072): Structure panel (header/data-region/column
+           roles). Manual-only controls -- plain number inputs and a
+           small mapping table, no new framework. */
+        .ww-data-prep-structure-row { display: flex; flex-wrap: wrap; gap: 24px; margin-bottom: 12px; }
+        .ww-data-prep-structure-field { margin-bottom: 0; }
+        .ww-data-prep-structure-controls { display: flex; align-items: center; gap: 6px; }
+        .ww-data-prep-structure-controls input[type="number"] { width: 80px; }
+        .ww-data-prep-columns-table { width: 100%; }
+        .ww-data-prep-columns-table th, .ww-data-prep-columns-table td { white-space: normal; }
+        .ww-data-prep-columns-table select { font: inherit; background: var(--panel); color: var(--text); border: 1px solid var(--panel-border); border-radius: 3px; padding: 2px 4px; }
+        /* Header row: a distinct highlight from both excluded (strike-
+           through) and outside-region (dimmed) rows -- all three flags
+           are independent and must stay visually distinguishable. */
+        .ww-data-prep-table tr.ww-data-prep-row-is-header td, .ww-data-prep-table tr.ww-data-prep-row-is-header th { background: var(--accent-wash-soft); font-weight: 600; }
+        .ww-data-prep-table tr.ww-data-prep-row-inactive td, .ww-data-prep-table tr.ww-data-prep-row-inactive th { opacity: 0.55; }
         .ww-cc-subtitle { margin: 3px 0 0; color: var(--text-dim); font-size: 0.85rem; }
         .ww-cc-panel { padding: 16px; }
         .ww-cc-panel h3 { margin: 0 0 12px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
@@ -4411,6 +4427,42 @@
                     </div>
                 </section>
 
+                <!-- Slice 5 (DEC-072): Header/Data Region + Column Role
+                     Mapping. Manual-first: nothing here is ever guessed --
+                     every field reflects backend state only, populated by
+                     wwDataPrepRenderStructure()/wwDataPrepRenderColumnMapping()
+                     after every preview fetch. Row numbers here are
+                     ORIGINAL raw row numbers (never renumbered/positional),
+                     matching the preview table's own row-number column. -->
+                <section class="panel ww-cc-panel">
+                    <h3>Structure</h3>
+                    <p class="hint">Manual only -- Powerwave never guesses a header row, data range, or column meaning.</p>
+                    <div class="ww-data-prep-structure-row">
+                        <div class="field ww-data-prep-structure-field">
+                            <label for="wwDataPrepHeaderInput">Header row</label>
+                            <div class="ww-data-prep-structure-controls">
+                                <input type="number" id="wwDataPrepHeaderInput" min="1" placeholder="row #">
+                                <button type="button" class="secondary" id="wwDataPrepSetHeaderBtn">Set as Header</button>
+                                <button type="button" class="secondary" id="wwDataPrepClearHeaderBtn">Clear Header</button>
+                            </div>
+                        </div>
+                        <div class="field ww-data-prep-structure-field">
+                            <label>Data rows</label>
+                            <div class="ww-data-prep-structure-controls">
+                                <input type="number" id="wwDataPrepRegionStartInput" min="1" placeholder="start">
+                                <span class="hint">to</span>
+                                <input type="number" id="wwDataPrepRegionEndInput" min="1" placeholder="end">
+                                <button type="button" class="secondary" id="wwDataPrepSetRegionBtn">Set Region</button>
+                                <button type="button" class="secondary" id="wwDataPrepResetRegionBtn">Reset Region</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ww-data-prep-table-wrap">
+                        <table class="ww-data-prep-table ww-data-prep-columns-table" id="wwDataPrepColumnsTable"></table>
+                    </div>
+                    <div class="upload-status" id="wwDataPrepStructureStatus" role="status" aria-live="polite"></div>
+                </section>
+
                 <section class="panel ww-cc-panel">
                     <div class="ww-data-prep-toolbar">
                         <div>
@@ -4455,9 +4507,11 @@
             <div class="confirm-overlay" id="wwDataPrepResetAllOverlay" hidden>
                 <div class="confirm-box" role="alertdialog" aria-modal="true" aria-labelledby="wwDataPrepResetAllTitle">
                     <p id="wwDataPrepResetAllTitle">Reset all working changes?</p>
-                    <p class="hint">Every cell edit/clear, row exclusion, and column ignore made in this
-                        Data Preparation workspace will be discarded. The original source file is never
-                        affected, and this can still be undone with Undo immediately afterwards.</p>
+                    <p class="hint">Every cell edit/clear, row exclusion, column role/ignore assignment,
+                        header row selection, and data-region narrowing made in this Data Preparation
+                        workspace will be discarded, returning it to its original, unconfigured state.
+                        The original source file is never affected, and this can still be undone with
+                        Undo immediately afterwards.</p>
                     <div class="confirm-actions">
                         <button type="button" class="secondary" id="wwDataPrepResetAllCancelBtn">Cancel</button>
                         <button type="button" class="danger-solid" id="wwDataPrepResetAllConfirmBtn">Reset All Changes</button>
@@ -6527,6 +6581,18 @@
                 canUndo: false,
                 canRedo: false,
             },
+            // Slice 5 (DEC-072): Header/Data Region + Column Role Mapping
+            // state -- headerRowNumber/dataStartRow/dataEndRow come from
+            // BOTH the overlay summary (every mutation response) and the
+            // preview response (page-independent); columnLabels/
+            // columnRoles come from the preview response only (they need
+            // column_count, which the overlay summary alone doesn't
+            // carry). Never computed/guessed locally.
+            headerRowNumber: null,
+            dataStartRow: null,
+            dataEndRow: null,
+            columnLabels: [],
+            columnRoles: [],
         };
 
         function wwDataPrepSourceUrl(suffix) {
@@ -6597,14 +6663,23 @@
             html += "</tr></thead><tbody>";
 
             for (const row of preview.rows) {
-                // Slice 4: `row.excluded`/`row.modified_cells` come straight
+                // Slice 4/5: `row.excluded`/`row.modified_cells`/
+                // `row.is_header`/`row.in_active_region` come straight
                 // from the backend's own working-view merge -- never
                 // recomputed here from a locally-tracked edit list.
                 const modifiedCols = new Set((row.modified_cells || []).map((m) => m.column_index));
-                html += '<tr class="' + (row.excluded ? "ww-data-prep-row-excluded" : "") + '">';
+                const rowClasses = [];
+                if (row.excluded) rowClasses.push("ww-data-prep-row-excluded");
+                if (row.is_header) rowClasses.push("ww-data-prep-row-is-header");
+                if (row.in_active_region === false) rowClasses.push("ww-data-prep-row-inactive");
+                html += '<tr class="' + rowClasses.join(" ") + '">';
                 html += '<th>' + row.row_number +
                     ' <button type="button" class="ww-data-prep-row-toggle-btn" data-row="' + row.row_number +
                     '" data-excluded="' + !!row.excluded + '">' + (row.excluded ? "Include" : "Exclude") + '</button>' +
+                    (row.is_header
+                        ? ""
+                        : ' <button type="button" class="ww-data-prep-row-header-btn" data-row="' + row.row_number +
+                          '" title="Use this row as the header">Header</button>') +
                     '</th>';
                 for (let c = 0; c < columnCount; c++) {
                     const value = row.cells[c];
@@ -6640,10 +6715,14 @@
             table.innerHTML = html;
         }
 
-        // Slice 4 (DEC-072): reflects the backend's own
+        // Slice 4/5 (DEC-072): reflects the backend's own
         // WorkingOverlaySummaryOut verbatim -- never a locally re-derived
         // count. Called after every mutation endpoint response AND once
         // from the initial GET .../preparation-sources/{id} summary.
+        // header_row_number/data_start_row/data_end_row (Slice 5) are
+        // scoped to whichever worksheet the backend resolved for that
+        // particular response -- always the CURRENTLY selected one, so
+        // it is safe to always overwrite wwDataPrep's own copy here.
         function wwDataPrepApplyOverlaySummary(apiSummary) {
             wwDataPrep.overlay = {
                 editedCellCount: apiSummary.edited_cell_count,
@@ -6653,7 +6732,11 @@
                 canRedo: apiSummary.can_redo,
             };
             wwDataPrep.workingRevision = apiSummary.working_revision;
+            wwDataPrep.headerRowNumber = apiSummary.header_row_number;
+            wwDataPrep.dataStartRow = apiSummary.data_start_row;
+            wwDataPrep.dataEndRow = apiSummary.data_end_row;
             wwDataPrepRenderToolbar();
+            wwDataPrepRenderStructureControls();
         }
 
         function wwDataPrepRenderToolbar() {
@@ -6665,17 +6748,71 @@
             document.getElementById("wwDataPrepChangeSummary").textContent = parts.length ? parts.join(" · ") : "No changes";
             document.getElementById("wwDataPrepUndoBtn").disabled = !o.canUndo;
             document.getElementById("wwDataPrepRedoBtn").disabled = !o.canRedo;
-            document.getElementById("wwDataPrepResetAllBtn").disabled = parts.length === 0;
+            // Slice 5: Reset All must stay enabled whenever a header/data
+            // region is set too, not just for cell/row/column changes --
+            // it is a genuine, undoable change even if no cell was ever
+            // edited.
+            const hasStructureMapping = wwDataPrep.headerRowNumber != null || wwDataPrep.dataStartRow != null;
+            document.getElementById("wwDataPrepResetAllBtn").disabled = parts.length === 0 && !hasStructureMapping;
 
             // Task's own explicit requirement: once any working change
             // exists, "Raw Data Preview" would mislead -- the heading/hint
             // must say this is the WORKING view, not silently keep calling
             // edited data "raw."
-            const hasChanges = parts.length > 0;
+            const hasChanges = parts.length > 0 || hasStructureMapping;
             document.getElementById("wwDataPrepPreviewHeading").textContent = hasChanges ? "Data Preview (Edited)" : "Raw Data Preview";
             document.getElementById("wwDataPrepPreviewHint").textContent = hasChanges
                 ? "Shows your working edits applied over the raw source. The original file is never modified. Row 1 is not assumed to be a header."
                 : "Raw, uninterpreted source data. Row 1 is not assumed to be a header.";
+        }
+
+        // Slice 5 (DEC-072): reflects the CURRENT header/data-region
+        // state into the Structure panel's own input fields -- called
+        // after every overlay-summary update (mutation response, initial
+        // GET) so the inputs never drift from backend truth. Never reads
+        // from the inputs themselves here (that only happens when the
+        // user clicks Set/Reset).
+        function wwDataPrepRenderStructureControls() {
+            document.getElementById("wwDataPrepHeaderInput").value = wwDataPrep.headerRowNumber ?? "";
+            document.getElementById("wwDataPrepRegionStartInput").value = wwDataPrep.dataStartRow ?? "";
+            document.getElementById("wwDataPrepRegionEndInput").value = wwDataPrep.dataEndRow ?? "";
+        }
+
+        // Slice 5 (DEC-072): the compact Column | Label | Role mapping
+        // table (task's own "may be easier to manage than configuring
+        // roles directly in the grid" suggestion) -- built from the
+        // preview response's own column_labels/column_roles, which are
+        // already page-independent and O(columns), never duplicated per
+        // row.
+        const WW_DATA_PREP_ROLES = [
+            ["unknown", "Unknown"],
+            ["waveform", "Waveform Channel"],
+            ["time_axis", "Time Axis"],
+            ["metadata", "Metadata"],
+            ["quality_status", "Quality / Status"],
+            ["ignore", "Ignore"],
+        ];
+
+        function wwDataPrepRenderColumnMapping() {
+            const table = document.getElementById("wwDataPrepColumnsTable");
+            const columnCount = wwDataPrep.columnCount || 0;
+            const labels = wwDataPrep.columnLabels || [];
+            const roles = wwDataPrep.columnRoles || [];
+
+            let html = "<thead><tr><th>Column</th><th>Label</th><th>Role</th></tr></thead><tbody>";
+            for (let c = 0; c < columnCount; c++) {
+                const role = roles[c] || "unknown";
+                const optionsHtml = WW_DATA_PREP_ROLES.map(([value, label]) =>
+                    '<option value="' + value + '"' + (value === role ? " selected" : "") + '>' + label + '</option>'
+                ).join("");
+                html += "<tr>" +
+                    "<td>" + wwSpreadsheetColumnLabel(c) + "</td>" +
+                    "<td>" + escapeHtml(labels[c] != null ? String(labels[c]) : wwSpreadsheetColumnLabel(c)) + "</td>" +
+                    '<td><select class="ww-data-prep-role-select" data-col="' + c + '">' + optionsHtml + "</select></td>" +
+                    "</tr>";
+            }
+            html += "</tbody>";
+            table.innerHTML = columnCount ? html : "";
         }
 
         function wwDataPrepRenderPagination(preview) {
@@ -6713,8 +6850,16 @@
                 wwDataPrep.columnCount = preview.column_count;
                 wwDataPrep.ignoredColumns = preview.ignored_columns || [];
                 wwDataPrep.workingRevision = preview.working_revision;
+                wwDataPrep.headerRowNumber = preview.header_row_number;
+                wwDataPrep.dataStartRow = preview.data_start_row;
+                wwDataPrep.dataEndRow = preview.data_end_row;
+                wwDataPrep.columnLabels = preview.column_labels || [];
+                wwDataPrep.columnRoles = preview.column_roles || [];
                 wwDataPrepRenderTable(preview);
                 wwDataPrepRenderPagination(preview);
+                wwDataPrepRenderStructureControls();
+                wwDataPrepRenderColumnMapping();
+                wwDataPrepRenderToolbar();
             } catch (error) {
                 status.textContent = "Could not reach the backend.";
             }
@@ -6835,6 +6980,127 @@
             }
         }
 
+        // ---- Slice 5 (DEC-072): Header/Data Region + Column Role Mapping calls ----
+        // Same convention as every Slice 4 call above: call the backend
+        // endpoint, apply its own returned summary, then re-fetch the
+        // preview so column_labels/column_roles/row flags stay in sync.
+
+        function wwDataPrepStructureStatusEl() {
+            return document.getElementById("wwDataPrepStructureStatus");
+        }
+
+        async function wwDataPrepSetHeader(rowNumber) {
+            const status = wwDataPrepStructureStatusEl();
+            status.textContent = "";
+            try {
+                const response = await fetch(
+                    wwDataPrepSourceUrl("/working/header"),
+                    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ row_number: rowNumber }) }
+                );
+                if (!response.ok) {
+                    const body = await response.json().catch(() => null);
+                    status.textContent = (body && body.detail && body.detail.message) || "Could not set the header row.";
+                    return;
+                }
+                wwDataPrepApplyOverlaySummary(await response.json());
+                await wwDataPrepFetchPreview();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
+        }
+
+        async function wwDataPrepClearHeader() {
+            const status = wwDataPrepStructureStatusEl();
+            status.textContent = "";
+            try {
+                const response = await fetch(wwDataPrepSourceUrl("/working/header"), { method: "DELETE" });
+                if (!response.ok) { status.textContent = "Could not clear the header row."; return; }
+                wwDataPrepApplyOverlaySummary(await response.json());
+                await wwDataPrepFetchPreview();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
+        }
+
+        async function wwDataPrepSetRegion(startRow, endRow) {
+            const status = wwDataPrepStructureStatusEl();
+            status.textContent = "";
+            try {
+                const response = await fetch(
+                    wwDataPrepSourceUrl("/working/data-region"),
+                    {
+                        method: "PUT", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ start_row: startRow, end_row: endRow }),
+                    }
+                );
+                if (!response.ok) {
+                    const body = await response.json().catch(() => null);
+                    status.textContent = (body && body.detail && body.detail.message) || "Could not set the data region.";
+                    return;
+                }
+                wwDataPrepApplyOverlaySummary(await response.json());
+                await wwDataPrepFetchPreview();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
+        }
+
+        async function wwDataPrepResetRegion() {
+            const status = wwDataPrepStructureStatusEl();
+            status.textContent = "";
+            try {
+                const response = await fetch(wwDataPrepSourceUrl("/working/data-region"), { method: "DELETE" });
+                if (!response.ok) { status.textContent = "Could not reset the data region."; return; }
+                wwDataPrepApplyOverlaySummary(await response.json());
+                await wwDataPrepFetchPreview();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
+        }
+
+        async function wwDataPrepSetColumnRole(columnIndex, role) {
+            const status = wwDataPrepStructureStatusEl();
+            status.textContent = "";
+            try {
+                const response = await fetch(
+                    wwDataPrepSourceUrl("/working/columns/" + columnIndex + "/role"),
+                    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: role }) }
+                );
+                if (!response.ok) {
+                    const body = await response.json().catch(() => null);
+                    status.textContent = (body && body.detail && body.detail.message) || "Could not set this column's role.";
+                    await wwDataPrepFetchPreview(); // re-render the select back to its actual (unchanged) role
+                    return;
+                }
+                wwDataPrepApplyOverlaySummary(await response.json());
+                await wwDataPrepFetchPreview();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
+        }
+
+        document.getElementById("wwDataPrepSetHeaderBtn").addEventListener("click", () => {
+            const value = parseInt(document.getElementById("wwDataPrepHeaderInput").value, 10);
+            if (!Number.isFinite(value)) { wwDataPrepStructureStatusEl().textContent = "Enter a row number first."; return; }
+            wwDataPrepSetHeader(value);
+        });
+        document.getElementById("wwDataPrepClearHeaderBtn").addEventListener("click", wwDataPrepClearHeader);
+        document.getElementById("wwDataPrepSetRegionBtn").addEventListener("click", () => {
+            const start = parseInt(document.getElementById("wwDataPrepRegionStartInput").value, 10);
+            const end = parseInt(document.getElementById("wwDataPrepRegionEndInput").value, 10);
+            if (!Number.isFinite(start) || !Number.isFinite(end)) {
+                wwDataPrepStructureStatusEl().textContent = "Enter both a start and an end row.";
+                return;
+            }
+            wwDataPrepSetRegion(start, end);
+        });
+        document.getElementById("wwDataPrepResetRegionBtn").addEventListener("click", wwDataPrepResetRegion);
+        document.getElementById("wwDataPrepColumnsTable").addEventListener("change", (event) => {
+            const select = event.target.closest(".ww-data-prep-role-select");
+            if (!select) return;
+            wwDataPrepSetColumnRole(parseInt(select.dataset.col, 10), select.value);
+        });
+
         // Click-to-edit: swaps ONE <td> for an <input> (never a
         // spreadsheet-grid library, per this slice's own explicit
         // guardrail). Enter/blur commits an EDIT; the small "Clear"
@@ -6893,6 +7159,11 @@
             const colToggle = event.target.closest(".ww-data-prep-col-toggle-btn");
             if (colToggle) {
                 wwDataPrepToggleColumnIgnored(parseInt(colToggle.dataset.col, 10), colToggle.dataset.ignored !== "true");
+                return;
+            }
+            const headerBtn = event.target.closest(".ww-data-prep-row-header-btn");
+            if (headerBtn) {
+                wwDataPrepSetHeader(parseInt(headerBtn.dataset.row, 10));
                 return;
             }
             const cell = event.target.closest("td.ww-data-prep-cell");
@@ -6968,6 +7239,8 @@
             const status = document.getElementById("wwDataPrepStatus");
             status.textContent = "";
             document.getElementById("wwDataPrepTable").innerHTML = "";
+            document.getElementById("wwDataPrepColumnsTable").innerHTML = "";
+            document.getElementById("wwDataPrepStructureStatus").textContent = "";
             document.getElementById("wwDataPrepFilename").textContent = "";
             document.getElementById("wwDataPrepRangeLabel").textContent = "";
 

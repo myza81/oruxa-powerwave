@@ -31,6 +31,15 @@ bodies (`CellWorkingValueRequest`/`RowExclusionRequest`/
 `ColumnIgnoreRequest`) are deliberately tiny and format-agnostic --
 worksheet identity is resolved server-side (Slice 4's own "backend is
 authoritative" requirement), never accepted from the client.
+
+Slice 5 extends the same shapes with header/data-region/column-role
+state: `WorkingOverlaySummaryOut` gains `header_row_number`/
+`data_start_row`/`data_end_row`; `PreparationRowOut` gains `is_header`/
+`in_active_region`; `PreparationSourcePreviewOut` gains the same three
+plus `column_labels`/`column_roles`. New request bodies
+(`HeaderRowRequest`/`DataRegionRequest`/`ColumnRoleRequest`) follow the
+same "tiny, format-agnostic, backend resolves worksheet identity"
+convention.
 """
 
 from __future__ import annotations
@@ -84,6 +93,9 @@ class WorkingOverlaySummaryOut(BaseModel):
     ignored_column_count: int = 0
     can_undo: bool = False
     can_redo: bool = False
+    header_row_number: int | None = None
+    data_start_row: int | None = None
+    data_end_row: int | None = None
 
     @classmethod
     def from_domain(cls, summary: WorkingOverlaySummary) -> "WorkingOverlaySummaryOut":
@@ -94,6 +106,9 @@ class WorkingOverlaySummaryOut(BaseModel):
             ignored_column_count=summary.ignored_column_count,
             can_undo=summary.can_undo,
             can_redo=summary.can_redo,
+            header_row_number=summary.header_row_number,
+            data_start_row=summary.data_start_row,
+            data_end_row=summary.data_end_row,
         )
 
 
@@ -170,6 +185,8 @@ class PreparationRowOut(BaseModel):
     cells: list[Any]
     excluded: bool = False
     modified_cells: list[ModifiedCellOut] = Field(default_factory=list)
+    is_header: bool = False
+    in_active_region: bool = True
 
     @classmethod
     def from_domain(cls, row: PreviewRow) -> "PreparationRowOut":
@@ -178,6 +195,8 @@ class PreparationRowOut(BaseModel):
             cells=row.cells,
             excluded=row.excluded,
             modified_cells=[ModifiedCellOut.from_domain(c) for c in row.modified_cells],
+            is_header=row.is_header,
+            in_active_region=row.in_active_region,
         )
 
 
@@ -206,6 +225,11 @@ class PreparationSourcePreviewOut(BaseModel):
     rows: list[PreparationRowOut]
     ignored_columns: list[int] = Field(default_factory=list)
     working_revision: int = 0
+    header_row_number: int | None = None
+    data_start_row: int | None = None
+    data_end_row: int | None = None
+    column_labels: list[str] = Field(default_factory=list)
+    column_roles: list[str] = Field(default_factory=list)
 
     @classmethod
     def from_domain(cls, result: PreviewResult) -> "PreparationSourcePreviewOut":
@@ -222,6 +246,11 @@ class PreparationSourcePreviewOut(BaseModel):
             rows=[PreparationRowOut.from_domain(r) for r in result.rows],
             ignored_columns=result.ignored_columns,
             working_revision=result.working_revision,
+            header_row_number=result.header_row_number,
+            data_start_row=result.data_start_row,
+            data_end_row=result.data_end_row,
+            column_labels=result.column_labels,
+            column_roles=result.column_roles,
         )
 
 
@@ -242,6 +271,34 @@ class RowExclusionRequest(BaseModel):
 
 
 class ColumnIgnoreRequest(BaseModel):
-    """Body of `PUT .../working/columns/{column_index}`."""
+    """Body of `PUT .../working/columns/{column_index}` -- Slice 4's own
+    legacy boolean ignore endpoint, preserved as an alias over Slice 5's
+    `column_roles` model (see
+    `app.services.working_overlay_service.set_column_ignored`'s own
+    docstring)."""
 
     ignored: bool
+
+
+class HeaderRowRequest(BaseModel):
+    """Body of `PUT .../working/header` (Slice 5)."""
+
+    row_number: int
+
+
+class DataRegionRequest(BaseModel):
+    """Body of `PUT .../working/data-region` (Slice 5). `start_row`/
+    `end_row` are both original raw row numbers, inclusive --
+    `start_row <= end_row` is enforced server-side
+    (`InvalidDataRegionError` otherwise)."""
+
+    start_row: int
+    end_row: int
+
+
+class ColumnRoleRequest(BaseModel):
+    """Body of `PUT .../working/columns/{column_index}/role` (Slice 5).
+    `role` must be one of `app.domain.working_overlay.KNOWN_COLUMN_ROLES`
+    -- never a free-text field."""
+
+    role: str

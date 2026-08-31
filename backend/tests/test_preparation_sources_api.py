@@ -702,6 +702,9 @@ class TestWorkingSummaryOnExistingEndpoints:
             "ignored_column_count": 0,
             "can_undo": False,
             "can_redo": False,
+            "header_row_number": None,
+            "data_start_row": None,
+            "data_end_row": None,
         }
 
     def test_upload_response_itself_includes_an_empty_working_overlay(self, client):
@@ -963,3 +966,306 @@ class TestWorkingOverlayDoesNotAffectWaveformOrOtherWorkspaces:
         )
 
         assert resp.status_code == 404
+
+
+# ---- CSV/Excel ingestion Slice 5 (DEC-072): Header/Data Region + Column Role Mapping API ----
+
+
+class TestHeaderEndpoints:
+    def test_put_header_and_preview_reflects_labels(self, client):
+        source_id = _upload_csv(client, content=b"Station: GPTH\nEvent: Trip\nTime,VR\n0.0,1\n")
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/header",
+            json={"row_number": 3},
+        )
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["header_row_number"] == 3
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["header_row_number"] == 3
+        assert rows["column_labels"] == ["Time", "VR"]
+        header_flags = {r["row_number"]: r["is_header"] for r in rows["rows"]}
+        assert header_flags == {1: False, 2: False, 3: True, 4: False}
+
+    def test_delete_header_reverts_to_letters(self, client):
+        source_id = _upload_csv(client, content=b"Time,VR\n0.0,1\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/header", json={"row_number": 1})
+
+        resp = client.delete(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/header")
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["header_row_number"] is None
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["column_labels"] == ["A", "B"]
+
+    def test_header_beyond_known_bounds_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/header",
+            json={"row_number": 999},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_working_coordinate"
+
+    def test_header_on_unknown_source_returns_404(self, client):
+        resp = client.put(
+            "/api/v1/workspaces/ws-1/preparation-sources/does-not-exist/working/header",
+            json={"row_number": 1},
+        )
+
+        assert resp.status_code == 404
+
+    def test_blank_and_duplicate_headers(self, client):
+        source_id = _upload_csv(client, content=b"Time,VR,,VR\n0.0,1,2,4\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/header", json={"row_number": 1})
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+
+        assert rows["column_labels"] == ["Time", "VR", "Column C", "VR"]
+
+    def test_working_header_edit_updates_label_and_reset_restores_it(self, client):
+        source_id = _upload_csv(client, content=b"Vr,Vy\n1,2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/header", json={"row_number": 1})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/0", json={"value": "VR"})
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["column_labels"][0] == "VR"
+
+        client.delete(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/0")
+        rows_after_reset = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows_after_reset["column_labels"][0] == "Vr"
+
+
+class TestDataRegionEndpoints:
+    def test_put_region_and_preview_reflects_flags(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n3,4\n5,6\n")
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/data-region",
+            json={"start_row": 2, "end_row": 3},
+        )
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["data_start_row"] == 2
+        assert resp.json()["data_end_row"] == 3
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        flags = {r["row_number"]: r["in_active_region"] for r in rows["rows"]}
+        assert flags == {1: False, 2: True, 3: True, 4: False}
+
+    def test_delete_region_reactivates_full_source(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n3,4\n")
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/data-region",
+            json={"start_row": 1, "end_row": 1},
+        )
+
+        resp = client.delete(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/data-region")
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["data_start_row"] is None
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert all(r["in_active_region"] for r in rows["rows"])
+
+    def test_start_greater_than_end_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n3,4\n")
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/data-region",
+            json={"start_row": 3, "end_row": 1},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_data_region"
+
+    def test_region_beyond_known_bounds_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/data-region",
+            json={"start_row": 1, "end_row": 999},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_working_coordinate"
+
+    def test_excluded_row_inside_region_reports_both_flags(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n3,4\n5,6\n")
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/data-region",
+            json={"start_row": 1, "end_row": 3},
+        )
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/rows/2", json={"excluded": True})
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        row2 = next(r for r in rows["rows"] if r["row_number"] == 2)
+        assert row2["in_active_region"] is True
+        assert row2["excluded"] is True
+
+
+class TestColumnRoleEndpoints:
+    def test_put_role_and_preview_reflects_it(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role",
+            json={"role": "time_axis"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["column_roles"] == ["time_axis", "unknown"]
+
+    def test_multiple_time_axis_columns_allowed(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role",
+            json={"role": "time_axis"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["column_roles"] == ["time_axis", "time_axis"]
+
+    def test_delete_role_resets_to_unknown(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "waveform"})
+
+        resp = client.delete(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role")
+
+        assert resp.status_code == 200, resp.text
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["column_roles"][0] == "unknown"
+
+    def test_ignore_role_resets_to_unknown_too(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "ignore"})
+
+        client.delete(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role")
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["column_roles"][0] == "unknown"
+
+    def test_invalid_role_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role",
+            json={"role": "voltage"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_column_role"
+
+    def test_role_column_beyond_known_bounds_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/99/role",
+            json={"role": "metadata"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_working_coordinate"
+
+
+class TestIgnoreMigrationCoherence:
+    """Slice 4's legacy boolean ignore endpoint and Slice 5's role
+    endpoint must always agree -- see
+    app.services.working_overlay_service.set_column_ignored's own
+    docstring for why there is exactly one underlying representation."""
+
+    def test_legacy_ignore_then_role_endpoint_agree(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1", json={"ignored": True})
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["column_roles"][1] == "ignore"
+        assert rows["ignored_columns"] == [1]
+
+    def test_role_ignore_then_legacy_unignore_agree(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "ignore"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1", json={"ignored": False})
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["column_roles"][1] == "unknown"
+        assert rows["ignored_columns"] == []
+
+    def test_legacy_unignore_never_disturbs_a_different_explicit_role(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1", json={"ignored": False})
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["column_roles"][1] == "waveform"
+
+
+class TestResetAllIncludesStructureMapping:
+    def test_reset_all_clears_header_region_and_roles(self, client):
+        source_id = _upload_csv(client, content=b"Time,VR\n0.0,1\n0.001,2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/header", json={"row_number": 1})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/data-region",
+            json={"start_row": 2, "end_row": 2},
+        )
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+
+        resp = client.delete(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working")
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["header_row_number"] is None
+        assert body["data_start_row"] is None
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["column_labels"] == ["A", "B"]
+        assert rows["column_roles"] == ["unknown", "unknown"]
+        assert all(r["in_active_region"] for r in rows["rows"])
+
+
+class TestExcelWorksheetIsolationForStructureMapping:
+    def test_configuring_one_sheet_does_not_affect_another(self, client):
+        content = _build_xlsx({
+            "A": [["Time", "VR"], [0.0, 1.0], [0.001, 2.0]],
+            "B": [["x"], [1], [2]],
+        })
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "m.xlsx"),
+        ).json()["source_id"]
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 0})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/header", json={"row_number": 1})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/data-region",
+            json={"start_row": 2, "end_row": 3},
+        )
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        # Sheet B starts completely unconfigured.
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 1})
+        rows_b = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows_b["header_row_number"] is None
+        assert rows_b["data_start_row"] is None
+        assert rows_b["column_roles"] == ["unknown"]
+
+        # Configure sheet B differently.
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/header", json={"row_number": 1})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "metadata"})
+
+        # Sheet A's own configuration remains intact.
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 0})
+        rows_a = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows_a["header_row_number"] == 1
+        assert rows_a["data_start_row"] == 2
+        assert rows_a["data_end_row"] == 3
+        assert rows_a["column_roles"] == ["time_axis", "unknown"]

@@ -186,8 +186,9 @@ re-confirmed by the TG-FINAL audit):
   critical upload/render/interaction paths — see
   [docs/development/BROWSER_SMOKE_TEST.md](../development/BROWSER_SMOKE_TEST.md).
 - **CSV/Excel preparation-source upload, Excel worksheet discovery, a
-  paged data-preview Data Preparation Workspace, and a non-destructive
-  Working Dataset overlay (CSV/Excel ingestion Slices 1-4, DEC-072)**:
+  paged data-preview Data Preparation Workspace, a non-destructive
+  Working Dataset overlay, and header/data-region/column-role mapping
+  (CSV/Excel ingestion Slices 1-5, DEC-072)**:
   the Upload Recording modal's CSV and
   Excel options are both enabled (`RECORDING_FORMATS`,
   `frontend/index.html`), each with its own "Upload & Prepare" action,
@@ -254,9 +255,36 @@ re-confirmed by the TG-FINAL audit):
   `<input>`, no spreadsheet-grid library), a per-cell reset action,
   row/column toggle buttons, Undo/Redo, and a "Reset All Changes"
   confirm dialog; the heading switches from "Raw Data Preview" to "Data
-  Preview (Edited)" once any change exists. Header/column-role/time-axis
-  inference and readiness validation are still explicitly NOT part of
-  any of these four slices — see
+  Preview (Edited)" once any change exists.
+
+  **Slice 5** extends the SAME `WorkingOverlay` (not a second model)
+  with header-row selection, data-region narrowing, and column
+  semantic-role assignment (`unknown`/`waveform`/`time_axis`/
+  `metadata`/`quality_status`/`ignore` — multiple `time_axis` columns
+  allowed; a role is a stated intent only, never validated/interpreted).
+  All three participate in the same bounded undo/redo history and
+  revision counter Slice 4 already built. Slice 4's own separate
+  `ignored_columns` set is retired — `column_roles`'s `ignore` value is
+  now the single authoritative representation, with Slice 4's own
+  boolean ignore endpoint kept working unchanged as a thin alias. Six
+  new endpoints (`PUT`/`DELETE .../working/header`,
+  `.../working/data-region`,
+  `.../working/columns/{column_index}/role`); the `working_overlay`
+  summary gains `header_row_number`/`data_start_row`/`data_end_row`;
+  the `GET .../rows` preview gains the same three plus
+  `column_labels`/`column_roles`, and each row gains `is_header`/
+  `in_active_region` flags (independent of, never conflated with,
+  `excluded`). Column labels come from the header row's own WORKING
+  values (Slice 4 edits included); a blank header cell falls back to
+  `"Column {letter}"`, no header at all falls back to the plain letter,
+  and duplicate header text is allowed verbatim (never disambiguated).
+  Reset All now also clears header/region/role state. Frontend: a new
+  "Structure" panel (header-row input, data-region start/end inputs, a
+  compact Column/Label/Role mapping table) plus a per-row "Header"
+  quick-select button and new row styling for the header row and rows
+  outside the active region. Time-axis interpretation and readiness
+  validation are still explicitly NOT part of any of these five slices
+  — see
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md).
 
 ## Known intentional constraints / deferred items
@@ -303,14 +331,14 @@ per owner direction, now in progress following the owner-revised 13-slice
 sequence recorded in
 [CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md)
 (itself grounded in [DECISIONS.md — DEC-072](DECISIONS.md#dec-072--csv-excel-ingestion-six-architectural-clarifications-approved--temporary-preparation-state-retention-preparation-scoped-severity-model-hybrid-rawworking-overlay-architecture-deferred-disturbancerecord-hardening-honest-non-absolute-time-preservation-and-an-open-ended-time-axis-format-list)).
-**Slices 1-4 (Preparation-session foundation + raw CSV ingestion; Excel
+**Slices 1-5 (Preparation-session foundation + raw CSV ingestion; Excel
 ingestion + worksheet discovery; paged raw-data preview + Data
-Preparation Workspace shell; Working Dataset / non-destructive overlay)
-are implemented (2026-08-31)** — see
-[Implemented capabilities](#implemented-capabilities) below for exactly
-what that covers. All four deliberately produce **no `DisturbanceRecord`
-and no waveform**: a CSV or Excel file is accepted as raw, immutable
-input into a new `PreparationSession` (in-memory,
+Preparation Workspace shell; Working Dataset / non-destructive overlay;
+Header/Data Region + Column Role Mapping) are implemented (2026-08-31)**
+— see [Implemented capabilities](#implemented-capabilities) below for
+exactly what that covers. All five deliberately produce **no
+`DisturbanceRecord` and no waveform**: a CSV or Excel file is accepted
+as raw, immutable input into a new `PreparationSession` (in-memory,
 `app.services.preparation_session_registry`) and surfaced in Recording
 Events with status `Needs Preparation` — structurally excluded from
 `GET .../sources` so it can never reach the Workspace Sidebar's
@@ -324,11 +352,16 @@ column-role/time-axis interpretation. Slice 4 layers a sparse,
 non-destructive Working Dataset overlay on top (cell edit/clear/reset,
 row exclude/include, column ignore/unignore, Reset All, undo/redo),
 merged into that same preview at read time only — raw bytes are never
-mutated, and the overlay never duplicates the dataset. Slices 5–13
-(column-role mapping, the Readiness Issue model, the extensible
-time-axis framework, canonical `DisturbanceRecord` conversion, export,
-and progressive automation) remain unimplemented and require their own
-explicit owner go-ahead before starting, per
+mutated, and the overlay never duplicates the dataset. Slice 5 extends
+that same overlay with manual header-row selection, data-region
+narrowing, and column semantic-role assignment (`unknown`/`waveform`/
+`time_axis`/`metadata`/`quality_status`/`ignore`) — still no time-axis
+FORMAT interpretation, still no automatic classification of anything.
+Slices 6–13 (the Readiness Issue model, the extensible time-axis
+framework, initial time-axis interpreters, canonical `DisturbanceRecord`
+conversion, existing waveform integration, export, and progressive
+automation) remain unimplemented and require their own explicit owner
+go-ahead before starting, per
 [Change governance](../../CLAUDE.md#change-governance) — being recorded
 in the architecture document's own slice sequence does not itself
 authorize starting any of them.

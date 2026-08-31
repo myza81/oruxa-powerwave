@@ -28,10 +28,15 @@ from app.services.preparation_preview_service import (
 )
 from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.working_overlay_service import (
+    clear_header_row,
     edit_cell,
     reset_all_working_changes,
     reset_cell,
+    reset_data_region,
     set_column_ignored,
+    set_column_role,
+    set_data_region,
+    set_header_row,
     set_row_excluded,
 )
 
@@ -543,3 +548,264 @@ class TestWorkingOverlayInExcelPreview:
         result_a = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
         assert result_a.rows[0].cells == ["from-a"]
 
+
+
+# ---- CSV/Excel ingestion Slice 5 (DEC-072): header/data-region/column-role preview integration ----
+
+
+class TestHeaderInPreview:
+    def test_header_row_flag_and_column_labels(self):
+        registry = PreparationSessionRegistry()
+        content = b"Station: GPTH\nEvent: Trip\nTime,VR,VY,VB\n0.0,1,2,3\n"
+        source_id = _add_csv(registry, content)
+
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=3, registry=registry)
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        assert result.header_row_number == 3
+        assert result.column_labels == ["Time", "VR", "VY", "VB"]
+        flags = {r.row_number: r.is_header for r in result.rows}
+        assert flags == {1: False, 2: False, 3: True, 4: False}
+        # Preamble rows remain preserved, not deleted/skipped.
+        assert result.rows[0].cells == ["Station: GPTH"]
+        assert result.rows[1].cells == ["Event: Trip"]
+
+    def test_clear_header_reverts_to_spreadsheet_letters(self):
+        registry = PreparationSessionRegistry()
+        content = b"Time,VR\n0.0,1\n"
+        source_id = _add_csv(registry, content)
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+
+        clear_header_row(workspace_id="ws-1", source_id=source_id, registry=registry)
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        assert result.header_row_number is None
+        assert result.column_labels == ["A", "B"]
+        assert all(not r.is_header for r in result.rows)
+
+    def test_no_header_selected_gives_spreadsheet_letter_labels(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b,c\n1,2,3\n")
+
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        assert result.column_labels == ["A", "B", "C"]
+
+    def test_blank_header_cell_gets_fallback_label(self):
+        registry = PreparationSessionRegistry()
+        content = b"Time,VR,,VR\n0.0,1,2,4\n"
+        source_id = _add_csv(registry, content)
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        assert result.column_labels == ["Time", "VR", "Column C", "VR"]
+
+    def test_duplicate_header_labels_are_allowed_verbatim(self):
+        registry = PreparationSessionRegistry()
+        content = b"Voltage,Voltage,Voltage\n1,2,3\n"
+        source_id = _add_csv(registry, content)
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        assert result.column_labels == ["Voltage", "Voltage", "Voltage"]
+
+    def test_header_row_on_a_different_page_still_resolves_labels(self):
+        registry = PreparationSessionRegistry()
+        # Build a file where the header (row 1) is NOT on the requested page (offset=10).
+        content = ("Time,VR\n" + "\n".join(f"{i},{i}" for i in range(1, 20))).encode()
+        source_id = _add_csv(registry, content)
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=10, limit=5, registry=registry)
+
+        assert result.header_row_number == 1
+        assert result.column_labels == ["Time", "VR"]
+        assert all(r.row_number != 1 for r in result.rows)  # header itself is not on this page
+
+    def test_working_edit_on_header_cell_updates_the_label(self):
+        registry = PreparationSessionRegistry()
+        content = b"Vr,Vy\n1,2\n"
+        source_id = _add_csv(registry, content)
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=1, column_index=0, value="VR", registry=registry)
+
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        assert result.column_labels[0] == "VR"
+
+    def test_resetting_the_header_cell_restores_the_original_label(self):
+        registry = PreparationSessionRegistry()
+        content = b"Vr,Vy\n1,2\n"
+        source_id = _add_csv(registry, content)
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=1, column_index=0, value="VR", registry=registry)
+
+        reset_cell(workspace_id="ws-1", source_id=source_id, row_number=1, column_index=0, registry=registry)
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        assert result.column_labels[0] == "Vr"
+
+    def test_header_selected_but_worksheet_starts_unconfigured_for_a_different_sheet(self):
+        registry = PreparationSessionRegistry()
+        content = _build_xlsx({"A": [["Time", "VR"], [0.0, 1.0]], "B": [["x"], [2]]})
+        source_id = _add_excel(registry, content)
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=0, registry=registry)
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=1, registry=registry)
+        result_b = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+        assert result_b.header_row_number is None
+        assert result_b.column_labels == ["A"]
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=0, registry=registry)
+        result_a = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+        assert result_a.header_row_number == 1
+        assert result_a.column_labels == ["Time", "VR"]
+
+
+class TestDataRegionInPreview:
+    def test_default_region_is_the_entire_source(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n3,4\n")
+
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        assert result.data_start_row is None
+        assert result.data_end_row is None
+        assert all(r.in_active_region for r in result.rows)
+
+    def test_rows_outside_region_are_flagged_not_removed(self):
+        registry = PreparationSessionRegistry()
+        content = b"Station\nEvent\nTime,VR\n0.0,1\n0.001,2\n"
+        source_id = _add_csv(registry, content)
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=3, registry=registry)
+        set_data_region(workspace_id="ws-1", source_id=source_id, start_row=4, end_row=5, registry=registry)
+
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        assert [r.row_number for r in result.rows] == [1, 2, 3, 4, 5]  # nothing removed
+        flags = {r.row_number: r.in_active_region for r in result.rows}
+        assert flags == {1: False, 2: False, 3: False, 4: True, 5: True}
+
+    def test_reset_region_reactivates_the_full_source(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n3,4\n5,6\n")
+        set_data_region(workspace_id="ws-1", source_id=source_id, start_row=2, end_row=2, registry=registry)
+
+        reset_data_region(workspace_id="ws-1", source_id=source_id, registry=registry)
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        assert result.data_start_row is None
+        assert all(r.in_active_region for r in result.rows)
+
+    def test_excluded_row_inside_region_is_both_flags_independently(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n3,4\n5,6\n")
+        set_data_region(workspace_id="ws-1", source_id=source_id, start_row=1, end_row=3, registry=registry)
+        set_row_excluded(workspace_id="ws-1", source_id=source_id, row_number=2, excluded=True, registry=registry)
+
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        row2 = next(r for r in result.rows if r.row_number == 2)
+        assert row2.in_active_region is True
+        assert row2.excluded is True  # independent concepts, both true at once
+
+
+class TestColumnRolesInPreview:
+    def test_default_roles_are_unknown(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b,c\n1,2,3\n")
+
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        assert result.column_roles == ["unknown", "unknown", "unknown"]
+
+    def test_assigned_roles_appear_in_preview(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b,c,d,e,f\n1,2,3,4,5,6\n")
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="time_axis", registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=2, role="waveform", registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=3, role="metadata", registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=4, role="quality_status", registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=5, role="ignore", registry=registry)
+
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        assert result.column_roles == [
+            "time_axis", "waveform", "waveform", "metadata", "quality_status", "ignore",
+        ]
+        assert result.ignored_columns == [5]
+
+    def test_multiple_time_axis_columns_both_reported(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="time_axis", registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="time_axis", registry=registry)
+
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        assert result.column_roles == ["time_axis", "time_axis"]
+
+    def test_role_survives_paging(self):
+        registry = PreparationSessionRegistry()
+        content = ("a,b\n" + "\n".join(f"{i},{i}" for i in range(1, 20))).encode()
+        source_id = _add_csv(registry, content)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry)
+
+        page1 = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=5, registry=registry)
+        page2 = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=10, limit=5, registry=registry)
+
+        assert page1.column_roles == ["unknown", "waveform"]
+        assert page2.column_roles == ["unknown", "waveform"]
+
+    def test_header_edit_does_not_change_role(self):
+        registry = PreparationSessionRegistry()
+        content = b"Vr,Vy\n1,2\n"
+        source_id = _add_csv(registry, content)
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="waveform", registry=registry)
+
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=1, column_index=0, value="VR", registry=registry)
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        assert result.column_labels[0] == "VR"
+        assert result.column_roles[0] == "waveform"
+
+    def test_roles_isolated_per_worksheet_in_preview(self):
+        registry = PreparationSessionRegistry()
+        content = _build_xlsx({"A": [["1"]], "B": [["2"]]})
+        source_id = _add_excel(registry, content)
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=0, registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="waveform", registry=registry)
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=1, registry=registry)
+        result_b = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+        assert result_b.column_roles == ["unknown"]
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=0, registry=registry)
+        result_a = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+        assert result_a.column_roles == ["waveform"]
+
+
+class TestResetAllIncludesStructureMapping:
+    def test_reset_all_clears_header_region_and_roles_from_preview(self):
+        registry = PreparationSessionRegistry()
+        content = b"Time,VR\n0.0,1\n0.001,2\n"
+        source_id = _add_csv(registry, content)
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+        set_data_region(workspace_id="ws-1", source_id=source_id, start_row=2, end_row=2, registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry)
+
+        reset_all_working_changes(workspace_id="ws-1", source_id=source_id, registry=registry)
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        assert result.header_row_number is None
+        assert result.column_labels == ["A", "B"]
+        assert result.data_start_row is None
+        assert all(r.in_active_region for r in result.rows)
+        assert result.column_roles == ["unknown", "unknown"]

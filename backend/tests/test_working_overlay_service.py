@@ -1,4 +1,4 @@
-"""Service-level tests for Working Dataset overlay orchestration (Slice 4, DEC-072).
+"""Service-level tests for Working Dataset overlay orchestration (Slices 4-5, DEC-072).
 
 Covers bounds validation, worksheet resolution, and the shared
 `WorkingOverlaySummary` -- the pure mutation semantics themselves are
@@ -16,6 +16,8 @@ from openpyxl import Workbook
 from starlette.datastructures import Headers
 
 from app.services.errors import (
+    InvalidColumnRoleError,
+    InvalidDataRegionError,
     InvalidWorkingCellValueError,
     InvalidWorkingCoordinateError,
     SourceNotFoundError,
@@ -28,11 +30,17 @@ from app.services.preparation_import_service import (
 )
 from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.working_overlay_service import (
+    clear_header_row,
     edit_cell,
     redo_working_change,
     reset_all_working_changes,
     reset_cell,
+    reset_column_role,
+    reset_data_region,
     set_column_ignored,
+    set_column_role,
+    set_data_region,
+    set_header_row,
     set_row_excluded,
     summarize_working_overlay,
     undo_working_change,
@@ -267,13 +275,42 @@ class TestResetAllAndUndoRedo:
         edit_cell(workspace_id="ws-1", source_id=source_id, row_number=1, column_index=0, value="X", registry=registry)
         set_row_excluded(workspace_id="ws-1", source_id=source_id, row_number=2, excluded=True, registry=registry)
         set_column_ignored(workspace_id="ws-1", source_id=source_id, column_index=1, ignored=True, registry=registry)
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+        set_data_region(workspace_id="ws-1", source_id=source_id, start_row=2, end_row=3, registry=registry)
 
         summary = reset_all_working_changes(workspace_id="ws-1", source_id=source_id, registry=registry)
 
         assert summary.edited_cell_count == 0
         assert summary.excluded_row_count == 0
         assert summary.ignored_column_count == 0
+        assert summary.header_row_number is None
+        assert summary.data_start_row is None
+        assert summary.data_end_row is None
         assert summary.can_undo is True  # reset_all itself remains undoable
+
+    def test_reset_all_works_even_without_a_selected_worksheet(self):
+        # Reset All is session-wide -- it must not require a worksheet
+        # selection the way cell/row/column/header/region edits do.
+        registry = PreparationSessionRegistry()
+        content = _build_xlsx({"A": [["x"]], "B": [["y"]]})
+        source_id = _add_excel(registry, content)
+
+        summary = reset_all_working_changes(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert summary.edited_cell_count == 0
+
+    def test_undo_after_reset_all_restores_header_and_region(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n3,4\n")
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+        set_data_region(workspace_id="ws-1", source_id=source_id, start_row=2, end_row=3, registry=registry)
+        reset_all_working_changes(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        summary = undo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert summary.header_row_number == 1
+        assert summary.data_start_row == 2
+        assert summary.data_end_row == 3
 
     def test_undo_after_reset_all_restores_everything(self):
         registry = PreparationSessionRegistry()
@@ -320,3 +357,205 @@ class TestWorkingOverlaySummary:
         assert summary.ignored_column_count == 0
         assert summary.can_undo is False
         assert summary.can_redo is False
+        assert summary.header_row_number is None
+        assert summary.data_start_row is None
+        assert summary.data_end_row is None
+
+
+class TestHeaderRow:
+    def test_set_and_read_back_via_summary(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\nc,d\n1,2\n")
+
+        summary = set_header_row(workspace_id="ws-1", source_id=source_id, row_number=2, registry=registry)
+
+        assert summary.header_row_number == 2
+
+    def test_clear_header_row(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\nc,d\n1,2\n")
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=2, registry=registry)
+
+        summary = clear_header_row(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert summary.header_row_number is None
+
+    def test_header_row_beyond_known_bounds_is_rejected(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        with pytest.raises(InvalidWorkingCoordinateError):
+            set_header_row(workspace_id="ws-1", source_id=source_id, row_number=999, registry=registry)
+
+    def test_header_row_excel_requires_worksheet_selection(self):
+        registry = PreparationSessionRegistry()
+        content = _build_xlsx({"A": [["x"]], "B": [["y"]]})
+        source_id = _add_excel(registry, content)
+
+        with pytest.raises(WorksheetNotSelectedError):
+            set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+
+    def test_header_row_isolated_per_worksheet(self):
+        registry = PreparationSessionRegistry()
+        content = _build_xlsx({"A": [["h-a"], ["1"]], "B": [["h-b"], ["2"]]})
+        source_id = _add_excel(registry, content)
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=0, registry=registry)
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=1, registry=registry)
+        summary_b = summarize_working_overlay(registry.get("ws-1", source_id), worksheet_index=1)
+
+        assert summary_b.header_row_number is None  # sheet B starts unconfigured
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=0, registry=registry)
+        summary_a = summarize_working_overlay(registry.get("ws-1", source_id), worksheet_index=0)
+        assert summary_a.header_row_number == 1  # sheet A's own configuration remains intact
+
+
+class TestDataRegion:
+    def test_set_and_read_back_via_summary(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n3,4\n5,6\n")
+
+        summary = set_data_region(workspace_id="ws-1", source_id=source_id, start_row=2, end_row=3, registry=registry)
+
+        assert summary.data_start_row == 2
+        assert summary.data_end_row == 3
+
+    def test_reset_data_region(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n3,4\n")
+        set_data_region(workspace_id="ws-1", source_id=source_id, start_row=1, end_row=2, registry=registry)
+
+        summary = reset_data_region(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert summary.data_start_row is None
+        assert summary.data_end_row is None
+
+    def test_start_greater_than_end_is_rejected(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n3,4\n")
+
+        with pytest.raises(InvalidDataRegionError):
+            set_data_region(workspace_id="ws-1", source_id=source_id, start_row=3, end_row=1, registry=registry)
+
+    def test_start_equal_to_end_is_accepted(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n3,4\n")
+
+        summary = set_data_region(workspace_id="ws-1", source_id=source_id, start_row=2, end_row=2, registry=registry)
+
+        assert summary.data_start_row == 2
+        assert summary.data_end_row == 2
+
+    def test_end_beyond_known_bounds_is_rejected(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        with pytest.raises(InvalidWorkingCoordinateError):
+            set_data_region(workspace_id="ws-1", source_id=source_id, start_row=1, end_row=999, registry=registry)
+
+    def test_region_isolated_per_worksheet(self):
+        registry = PreparationSessionRegistry()
+        content = _build_xlsx({"A": [["1"], ["2"], ["3"]], "B": [["4"], ["5"], ["6"]]})
+        source_id = _add_excel(registry, content)
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=0, registry=registry)
+        set_data_region(workspace_id="ws-1", source_id=source_id, start_row=1, end_row=2, registry=registry)
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=1, registry=registry)
+        summary_b = summarize_working_overlay(registry.get("ws-1", source_id), worksheet_index=1)
+        assert summary_b.data_start_row is None
+
+
+class TestColumnRole:
+    def test_assign_and_read_back_ignored_count(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        summary = set_column_role(
+            workspace_id="ws-1", source_id=source_id, column_index=1, role="ignore", registry=registry,
+        )
+
+        assert summary.ignored_column_count == 1
+
+    def test_reset_column_role(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry)
+
+        reset_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, registry=registry)
+
+        session = registry.get("ws-1", source_id)
+        from app.domain.working_overlay import column_key
+        assert column_key(None, 1) not in session.working_overlay.column_roles
+
+    def test_invalid_role_is_rejected(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        with pytest.raises(InvalidColumnRoleError):
+            set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="voltage", registry=registry)
+
+    def test_column_beyond_known_bounds_is_rejected(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        with pytest.raises(InvalidWorkingCoordinateError):
+            set_column_role(workspace_id="ws-1", source_id=source_id, column_index=99, role="metadata", registry=registry)
+
+    def test_multiple_time_axis_columns_allowed(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="time_axis", registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="time_axis", registry=registry)
+
+        session = registry.get("ws-1", source_id)
+        from app.domain.working_overlay import column_key
+        assert session.working_overlay.column_roles[column_key(None, 0)] == "time_axis"
+        assert session.working_overlay.column_roles[column_key(None, 1)] == "time_axis"
+
+    def test_role_isolated_per_worksheet(self):
+        registry = PreparationSessionRegistry()
+        content = _build_xlsx({"A": [["1"]], "B": [["2"]]})
+        source_id = _add_excel(registry, content)
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=0, registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="waveform", registry=registry)
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=1, registry=registry)
+        summary_b = summarize_working_overlay(registry.get("ws-1", source_id), worksheet_index=1)
+        assert summary_b.ignored_column_count == 0
+
+        session = registry.get("ws-1", source_id)
+        from app.domain.working_overlay import column_key
+        assert column_key(1, 0) not in session.working_overlay.column_roles
+        assert session.working_overlay.column_roles[column_key(0, 0)] == "waveform"
+
+    def test_legacy_ignore_endpoint_still_works_as_an_alias(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        set_column_ignored(workspace_id="ws-1", source_id=source_id, column_index=1, ignored=True, registry=registry)
+        session = registry.get("ws-1", source_id)
+        from app.domain.working_overlay import ROLE_IGNORE, column_key
+        assert session.working_overlay.column_roles[column_key(None, 1)] == ROLE_IGNORE
+
+        set_column_ignored(workspace_id="ws-1", source_id=source_id, column_index=1, ignored=False, registry=registry)
+        assert column_key(None, 1) not in session.working_overlay.column_roles
+
+    def test_legacy_unignore_does_not_disturb_a_different_explicit_role(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry)
+
+        # Calling the legacy "unignore" on a column that was never
+        # ignored (it has a different explicit role) must not silently
+        # reclassify it.
+        set_column_ignored(workspace_id="ws-1", source_id=source_id, column_index=1, ignored=False, registry=registry)
+
+        session = registry.get("ws-1", source_id)
+        from app.domain.working_overlay import column_key
+        assert session.working_overlay.column_roles[column_key(None, 1)] == "waveform"

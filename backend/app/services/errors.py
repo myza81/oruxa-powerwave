@@ -584,3 +584,32 @@ class InvalidWorkingCellValueError(ImportServiceError):
     verbatim)."""
 
     code = "invalid_working_cell_value"
+
+
+# ---- CSV/Excel ingestion Slice 5 (DEC-072): Header/Data Region + Column
+# Role Mapping (app.domain.working_overlay, app.services.
+# working_overlay_service). A submitted header/data-region row_number
+# outside this source's own known dimensions reuses
+# InvalidWorkingCoordinateError above (it is the same "row_number out of
+# range" check, not a distinct failure mode) -- only the two genuinely
+# new failure modes below get their own error class. Still no severity
+# model -- ordinary request/runtime errors, per this slice's own
+# explicit "do NOT introduce readiness severity yet" guardrail. ----
+
+
+class InvalidDataRegionError(ImportServiceError):
+    """A submitted data-region `start_row`/`end_row` pair is internally
+    inconsistent (`start_row > end_row`) -- a semantic error distinct
+    from either bound being out of this source's own known dimensions
+    (that case raises `InvalidWorkingCoordinateError` instead)."""
+
+    code = "invalid_data_region"
+
+
+class InvalidColumnRoleError(ImportServiceError):
+    """A submitted column `role` is not one of
+    `app.domain.working_overlay.KNOWN_COLUMN_ROLES` -- a deliberately
+    small, closed set (task section: "use stable internal enum-like
+    values"), never a free-text field."""
+
+    code = "invalid_column_role"

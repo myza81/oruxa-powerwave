@@ -1,4 +1,4 @@
-"""CSV/Excel preparation-source API (Slices 1-2, DEC-072).
+"""CSV/Excel preparation-source API (Slices 1-5, DEC-072).
 
 A deliberately separate, smaller router from `app.api.v1.sources` -- a
 preparation source is not a `SourceMetadata`/`ActiveSource` (it has no
@@ -26,6 +26,14 @@ pair) rather than inventing a new upload pattern for two formats.
 Only `.csv` and `.xlsx` are accepted -- legacy `.xls` is deliberately
 out of scope (see `app.domain.preparation_session`'s own module
 docstring).
+
+Slice 5 adds header-row/data-region/column-role endpoints under
+`.../working/header`, `.../working/data-region`, and
+`.../working/columns/{column_index}/role` -- the same "backend is
+authoritative, tiny format-agnostic request bodies" convention Slice 4
+already established for cell/row/column-ignore editing. See
+`app.services.working_overlay_service`'s own module docstring for the
+orchestration/bounds-validation layer these endpoints call into.
 """
 
 from __future__ import annotations
@@ -38,6 +46,9 @@ from app.config import Settings
 from app.schemas.preparation_session import (
     CellWorkingValueRequest,
     ColumnIgnoreRequest,
+    ColumnRoleRequest,
+    DataRegionRequest,
+    HeaderRowRequest,
     PreparationSessionSummaryOut,
     PreparationSourcePreviewOut,
     RowExclusionRequest,
@@ -58,11 +69,17 @@ from app.services.preparation_preview_service import (
 )
 from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.working_overlay_service import (
+    clear_header_row,
     edit_cell,
     redo_working_change,
     reset_all_working_changes,
     reset_cell,
+    reset_column_role,
+    reset_data_region,
     set_column_ignored,
+    set_column_role,
+    set_data_region,
+    set_header_row,
     set_row_excluded,
     summarize_working_overlay,
     undo_working_change,
@@ -89,6 +106,8 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "worksheet_not_selected": status.HTTP_400_BAD_REQUEST,
     "invalid_working_coordinate": status.HTTP_400_BAD_REQUEST,
     "invalid_working_cell_value": status.HTTP_400_BAD_REQUEST,
+    "invalid_data_region": status.HTTP_400_BAD_REQUEST,
+    "invalid_column_role": status.HTTP_400_BAD_REQUEST,
 }
 
 
@@ -400,6 +419,128 @@ def post_working_redo(
     workspace_id = _validate_workspace_id(workspace_id)
     try:
         summary = redo_working_change(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return WorkingOverlaySummaryOut.from_domain(summary)
+
+
+@router.put("/{source_id}/working/header", response_model=WorkingOverlaySummaryOut)
+def put_working_header(
+    workspace_id: str,
+    source_id: str,
+    body: HeaderRowRequest,
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> WorkingOverlaySummaryOut:
+    """Select which raw row supplies working column labels (Slice 5,
+    DEC-072). Rows 1..N remain fully preserved regardless of this
+    selection -- see `app.domain.working_overlay.set_header_row`'s own
+    docstring."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        summary = set_header_row(
+            workspace_id=workspace_id, source_id=source_id, row_number=body.row_number, registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return WorkingOverlaySummaryOut.from_domain(summary)
+
+
+@router.delete("/{source_id}/working/header", response_model=WorkingOverlaySummaryOut)
+def delete_working_header(
+    workspace_id: str,
+    source_id: str,
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> WorkingOverlaySummaryOut:
+    """Clear the header-row selection -- working column labels revert
+    to the neutral spreadsheet-letter fallback."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        summary = clear_header_row(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return WorkingOverlaySummaryOut.from_domain(summary)
+
+
+@router.put("/{source_id}/working/data-region", response_model=WorkingOverlaySummaryOut)
+def put_working_data_region(
+    workspace_id: str,
+    source_id: str,
+    body: DataRegionRequest,
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> WorkingOverlaySummaryOut:
+    """Narrow the active working dataset to `[start_row, end_row]`
+    inclusive (Slice 5, DEC-072). Rows outside this range remain fully
+    preserved/inspectable -- see
+    `app.domain.working_overlay.DataRegion`'s own docstring."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        summary = set_data_region(
+            workspace_id=workspace_id, source_id=source_id,
+            start_row=body.start_row, end_row=body.end_row, registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return WorkingOverlaySummaryOut.from_domain(summary)
+
+
+@router.delete("/{source_id}/working/data-region", response_model=WorkingOverlaySummaryOut)
+def delete_working_data_region(
+    workspace_id: str,
+    source_id: str,
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> WorkingOverlaySummaryOut:
+    """Remove the data-region narrowing -- the entire source range
+    becomes active again (the original default)."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        summary = reset_data_region(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return WorkingOverlaySummaryOut.from_domain(summary)
+
+
+@router.put("/{source_id}/working/columns/{column_index}/role", response_model=WorkingOverlaySummaryOut)
+def put_working_column_role(
+    workspace_id: str,
+    source_id: str,
+    body: ColumnRoleRequest,
+    column_index: int = Path(ge=0),
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> WorkingOverlaySummaryOut:
+    """Assign one column's semantic role (Slice 5, DEC-072) -- one of
+    `unknown`/`waveform`/`time_axis`/`metadata`/`quality_status`/
+    `ignore`. Purely a stated intent, never validated/interpreted (no
+    time-format parsing, no numeric-value checking) -- see
+    `app.services.working_overlay_service.set_column_role`'s own
+    docstring. Distinct from, but reconciled with, the legacy
+    `PUT .../working/columns/{column_index}` boolean ignore endpoint
+    above (both ultimately write the same `column_roles` state)."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        summary = set_column_role(
+            workspace_id=workspace_id, source_id=source_id,
+            column_index=column_index, role=body.role, registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return WorkingOverlaySummaryOut.from_domain(summary)
+
+
+@router.delete("/{source_id}/working/columns/{column_index}/role", response_model=WorkingOverlaySummaryOut)
+def delete_working_column_role(
+    workspace_id: str,
+    source_id: str,
+    column_index: int = Path(ge=0),
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> WorkingOverlaySummaryOut:
+    """Reset one column's role to `unknown` -- including a column
+    previously set to `ignore` (task section: "If role was Ignore,
+    reset should return to Unknown")."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        summary = reset_column_role(
+            workspace_id=workspace_id, source_id=source_id, column_index=column_index, registry=registry,
+        )
     except ImportServiceError as exc:
         raise _working_error(exc) from exc
     return WorkingOverlaySummaryOut.from_domain(summary)

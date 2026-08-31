@@ -8,11 +8,156 @@ Last updated: **2026-08-31**
 
 ## What was most recently done
 
-**CSV/Excel Ingestion Slice 4 — Working Dataset / Non-Destructive
-Overlay. Implemented and verified; NOT yet committed** (the task's own
+**CSV/Excel Ingestion Slice 5 — Header/Data Region + Column Role
+Mapping. Implemented and verified; NOT yet committed** (the task's own
 explicit closing instruction: "Do not commit or push unless explicitly
 asked" — awaiting a separate commit instruction, same pattern as every
-prior slice). Direct follow-up to Slice 3 (below) — the fourth
+prior slice). Direct follow-up to Slice 4 (below, committed as
+`32ba531`) — the fifth implementation slice of the owner's revised
+13-slice sequence (`CSV_EXCEL_INGESTION_ARCHITECTURE.md` §14). Owner
+confirmed Slice 4's own UAT as PASS before this slice began.
+
+**Core design decision**: extended the SAME `WorkingOverlay`
+(`app/domain/working_overlay.py`) Slice 4 already built, rather than a
+second, separate structure-mapping model — this lets header-row
+selection, data-region narrowing, and column-role assignment
+participate in the exact same bounded (200-entry) operation history,
+undo/redo, and revision counter Slice 4 already proved correct, instead
+of building a parallel mechanism.
+
+**Domain (`app/domain/working_overlay.py`)**: `WorkingOverlay` gains
+`header_row: dict[worksheet_index_or_None, int]`,
+`data_region: dict[worksheet_index_or_None, DataRegion(start_row,
+end_row)]`, and `column_roles: dict[ColumnKey, str]` — all sparse,
+absence-is-default (no header, entire source active, `unknown` role).
+Six new pure functions: `set_header_row`/`clear_header_row`/
+`set_data_region`/`reset_data_region`/`set_column_role`/
+`reset_column_role`. Roles: `unknown` (implicit, never written
+explicitly)/`waveform`/`time_axis`/`metadata`/`quality_status`/
+`ignore` — multiple columns may carry `time_axis` at once (no
+uniqueness/compatibility check, per the task's own explicit "do not
+assume exactly one physical time column" guidance). **Slice 4's own
+separate `ignored_columns` set was retired** — `column_roles`'s
+`ignore` value is now the single authoritative representation.
+`reset_all`'s own snapshot now covers all five collections (was three).
+
+**Service (`app/services/working_overlay_service.py`)**: seven new
+orchestration functions mirroring Slice 4's own pattern exactly —
+resolve session/worksheet, validate bounds via the SAME
+`_check_row_bound`/`_check_column_bound` helpers Slice 4 built (no
+second bounds-checking implementation), then call into the domain's
+pure functions. Two new errors: `InvalidDataRegionError`
+(`start_row > end_row`) and `InvalidColumnRoleError` (role outside the
+closed set) — both reuse `InvalidWorkingCoordinateError` for the
+"out of this source's own known dimensions" case, since that is the
+same check, not a new failure mode. `set_column_ignored` (Slice 4's own
+boolean endpoint) is preserved with its exact original signature/
+behavior but now implemented as a thin alias over `set_column_role` —
+verified permanently coherent with the new role endpoint by
+construction (tests confirm both directions never disagree, and a
+legacy "unignore" call never disturbs a column that already carries a
+different explicit role). `WorkingOverlaySummary` gains
+`header_row_number`/`data_start_row`/`data_end_row`, scoped to
+whichever worksheet the caller resolved (`summarize_working_overlay()`
+now takes an explicit `worksheet_index` parameter — every call site
+across the API/service layer was updated to pass the correct one,
+since a wrong default would have silently hidden real Excel
+header/region state).
+
+**Preview (`app/services/preparation_preview_service.py`)**: extended
+(not rewritten). `PreviewRow` gains `is_header`/`in_active_region`
+(independent of, never conflated with, Slice 4's own `excluded` — a row
+can be inside the active region and excluded at once, or outside the
+region and not excluded, per the task's own explicit "these are
+different concepts" distinction). `PreviewResult` gains
+`header_row_number`/`data_start_row`/`data_end_row`/`column_labels`/
+`column_roles` (each O(columns), never duplicated per row). A new
+`_apply_structure_mapping()` runs after Slice 4's own
+`_apply_working_overlay()`; column labels come from the header row's
+own WORKING cells via a new `_resolve_header_cells()` that reuses the
+current page when the header happens to be on it, or performs exactly
+one bounded single-row fetch (`_fetch_single_csv_row`/
+`_fetch_single_excel_row`) otherwise — never a second full-page read,
+and correctly reflects a Slice 4 working edit made to the header cell
+itself. Blank header cell → `"Column {letter}"` fallback; no header at
+all → plain spreadsheet letter; duplicate header text → returned
+verbatim, deliberately not disambiguated (task's own "keep
+implementation simple and stable-index-based" guidance).
+
+**API (`app/api/v1/preparation_sources.py`)**: six new endpoints —
+`PUT`/`DELETE .../working/header` (body `{row_number}` for PUT),
+`PUT`/`DELETE .../working/data-region` (body `{start_row, end_row}`),
+`PUT`/`DELETE .../working/columns/{column_index}/role` (body `{role}`)
+— each returning `WorkingOverlaySummaryOut`. New schemas
+`HeaderRowRequest`/`DataRegionRequest`/`ColumnRoleRequest`;
+`WorkingOverlaySummaryOut`/`PreparationRowOut`/
+`PreparationSourcePreviewOut` extended to match the service/preview
+layers above.
+
+**Frontend** (`frontend/index.html` only): a new "Structure" panel
+between the meta panel and the preview table — a header-row number
+input + Set/Clear buttons, a data-region start/end input pair +
+Set/Reset buttons, and a compact Column | Label | Role mapping table
+(one `<select>` per column, reusing the exact `.ww-data-prep-table`
+styling) — the task's own "may be easier to manage than configuring
+roles directly in the grid" suggestion. The preview table itself gained
+a per-row "Header" quick-select button (for a header row already
+visible on the current page) plus `ww-data-prep-row-is-header`/
+`ww-data-prep-row-inactive` styling, visually distinct from Slice 4's
+own excluded-row strike-through. Reset All's confirm-dialog copy was
+updated to mention header/region/role state. Every control calls its
+own backend endpoint and re-renders from the response — no local-first
+state, matching Slice 4's own "backend is authoritative" pattern
+exactly.
+
+**Verification**: full backend suite 2057 passed (83 new on top of
+Slice 4's 1974), 0 regressions; the committed browser smoke test
+(COMTRADE) still passes unchanged; two throwaway (not committed)
+live-browser Playwright scripts independently confirmed: selecting row
+3 as header on a CSV with two preamble rows correctly labels columns
+from row 3 while rows 1-2 stay visible; a blank+duplicate header row
+(`Time,VR,,VR`) produces `["Time","VR","Column C","VR"]`; clearing the
+header reverts to plain letters; a data region correctly flags rows
+outside it as inactive without removing them, and reset reactivates the
+full source; assigning `time_axis` to two different columns is accepted
+with no error; resetting a role returns it to `unknown`; and an Excel
+two-worksheet workbook keeps header/region/role configuration on one
+sheet completely invisible on, and unaffected by, the other — zero
+console/page errors across both runs.
+
+**Files changed**: Backend — modified `app/domain/working_overlay.py`
+(+`DataRegion`, +6 mutation functions, `ignored_columns` retired),
+`app/services/errors.py` (+2 error classes),
+`app/services/working_overlay_service.py` (+7 orchestration functions,
+`summarize_working_overlay()` signature extended),
+`app/services/preparation_preview_service.py` (structure-mapping
+integration), `app/schemas/preparation_session.py` (+3 request
+schemas, 3 response schemas extended),
+`app/api/v1/preparation_sources.py` (+6 endpoints). Tests — extended
+`tests/test_working_overlay_domain.py` (+20), `tests/test_working_overlay_service.py`
+(+21), `tests/test_preparation_preview_service.py` (+20),
+`tests/test_preparation_sources_api.py` (+22). Frontend —
+`frontend/index.html` only (Structure panel markup + CSS, `wwDataPrep`
+state extended, ~10 new/changed JS functions). Documentation —
+`CSV_EXCEL_INGESTION_ARCHITECTURE.md` (§14/§18 updated),
+`CURRENT_STATE.md`, here. No new `DECISIONS.md` entry — every open
+question this slice touched (header/region/role model shape, the
+ignore-migration approach, the default region, duplicate-header
+handling) was already resolved by the task's own explicit instructions,
+not a new owner-level decision.
+
+**Next step**: nothing beyond Slice 5 is pre-authorized, and Slice 5
+itself is implemented but not yet committed per the task's own explicit
+instruction. Slice 6 (Readiness Issue model) is the next candidate per
+the owner's revised sequence, but requires its own explicit go-ahead —
+as does committing Slice 5 itself.
+
+## What was done in the prior session — CSV/Excel Ingestion Slice 4: Working Dataset / Non-Destructive Overlay
+
+**CSV/Excel Ingestion Slice 4 — Working Dataset / Non-Destructive
+Overlay. Implemented, verified, and committed as `32ba531`** ("feat:
+add non-destructive data preparation edits"; NOT pushed). Direct
+follow-up to Slice 3 (below) — the fourth
 implementation slice of the owner's revised 13-slice sequence
 (`CSV_EXCEL_INGESTION_ARCHITECTURE.md` §14).
 

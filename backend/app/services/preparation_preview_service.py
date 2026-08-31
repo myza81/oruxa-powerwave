@@ -1,24 +1,26 @@
-"""Paged raw-data preview for CSV/Excel preparation sources (Slices 3-4, DEC-072).
+"""Paged raw-data preview for CSV/Excel preparation sources (Slices 3-5, DEC-072).
 
 Owns exactly one job: given an already-accepted `PreparationSession`
 (Slices 1-2), return a bounded WINDOW of its rows/cells -- never the
-whole dataset, never a header/data-region inference, never a type
-coercion beyond what the underlying reader naturally exposes. This is
-strictly an inspection surface:
+whole dataset, never a type coercion beyond what the underlying reader
+naturally exposes. This is strictly an inspection surface:
 
     PreparationSession (raw, immutable)
             |
     preview_preparation_source() (this module)
             |
-    raw page  +  Slice 4's own WorkingOverlay, applied at read time
+    raw page  +  WorkingOverlay (Slice 4 edits/exclusions, Slice 5
+    header/data-region/column-role state), applied at read time
             |
     a bounded page of WORKING rows -- never cached beyond one request,
     never mutates the session's own raw_bytes OR its working_overlay
 
 No `DisturbanceRecord` is read or produced here. Nothing in this module
-assumes a header row, infers column roles, or interprets timestamps --
-see this feature's own explicit non-goals in
-docs/project-memory/CSV_EXCEL_INGESTION_ARCHITECTURE.md.
+interprets timestamps, values, or engineering meaning -- see this
+feature's own explicit non-goals in
+docs/project-memory/CSV_EXCEL_INGESTION_ARCHITECTURE.md. Slice 5's own
+header/column-role state changes WHICH ROW SUPPLIES LABELS and WHAT A
+COLUMN IS CALLED, never what a cell's VALUE means.
 
 CSV strategy (task's own "avoid parsing the entire CSV into a full
 DataFrame just to return 200 rows"): the raw bytes are decoded once per
@@ -29,7 +31,7 @@ bounded" allowance) -- but the exact row/column TOTALS only need to be
 computed once per session: `PreparationSession.cached_row_count`/
 `cached_column_count` (see that dataclass's own docstring) are memoized
 on the first preview request (any page) via `ensure_csv_totals_cached()`
--- Slice 4's own coordinate-bounds validation
+-- Slice 4/5's own coordinate-bounds validation
 (`app.services.working_overlay_service`) reuses this exact same function
 rather than a second scan implementation.
 
@@ -56,11 +58,24 @@ that cell's displayed value (the row's own `cells` list is extended
 with `None` -- "raw blank" -- only as far as needed to show an override
 targeting a column beyond that specific row's own raw width, e.g. a
 short/ragged CSV row; every OTHER row's own length is left exactly as
-the raw reader produced it). The row's own `excluded` flag and the
-page-level `ignored_columns` list are looked up the same way. Overrides
-are pre-filtered by worksheet ONCE per preview call (`_overrides_for_worksheet`),
-not re-scanned per row, so this stays proportional to (page size +
-total edit count for this worksheet), never to the raw dataset's size.
+the raw reader produced it). The row's own `excluded` flag is looked up
+the same way. Overrides are pre-filtered by worksheet ONCE per preview
+call (`_overrides_for_worksheet`), not re-scanned per row, so this stays
+proportional to (page size + total edit count for this worksheet),
+never to the raw dataset's size.
+
+Slice 5 structure-mapping application (`_apply_structure_mapping`): a
+SECOND post-processing step, run after `_apply_working_overlay`, adding
+`is_header`/`in_active_region` flags to each row of the page and
+computing the page-independent `column_labels`/`column_roles` lists.
+Column labels need the header row's own WORKING cells regardless of
+which page was actually requested (task's own "header may be on a page
+not currently visible" acknowledgment) -- `_resolve_header_cells()`
+reuses the already-fetched page when the header row happens to be on
+it, and otherwise performs exactly one extra single-row fetch (never a
+second full-page read) and applies the SAME overlay-merge logic to that
+one row alone, so a working header edit is reflected in
+`column_labels` exactly like it is in the row's own `cells`.
 """
 
 from __future__ import annotations
@@ -74,7 +89,7 @@ from typing import Any
 from openpyxl import load_workbook
 
 from app.domain.preparation_session import FORMAT_CSV, FORMAT_EXCEL, PreparationSession
-from app.domain.working_overlay import OVERRIDE_KIND_CLEAR, WorkingOverlay
+from app.domain.working_overlay import OVERRIDE_KIND_CLEAR, ROLE_IGNORE, ROLE_UNKNOWN, WorkingOverlay
 from app.services.errors import SourceNotFoundError, WorkbookParseError, WorksheetNotSelectedError
 from app.services.preparation_session_registry import PreparationSessionRegistry
 
@@ -125,24 +140,38 @@ class ModifiedCell:
 
 @dataclass(slots=True)
 class PreviewRow:
-    """One row, as WORKING values (raw with Slice 4's overlay applied).
+    """One row, as WORKING values (raw with the overlay applied).
     `row_number` is 1-based and matches the source's own row position
     (CSV: `csv.reader`'s own enumeration; Excel: the worksheet's own row
     index) -- never renumbered/reindexed, including when `excluded` is
-    `True` (task's own explicit "provenance" requirement: exclusion is a
-    flag, never a removal or a renumbering). `cells` is the DISPLAYED
-    (working) value at each position: CSV cells are `str` unless
-    overridden; Excel cells keep their native JSON-safe type unless
-    overridden, with `datetime`/`date`/`time` raw values converted to
-    ISO-8601 strings purely for JSON transport. `modified_cells` lists
-    only the cells in THIS row with an active override, each carrying
-    the raw value alongside for provenance -- see `ModifiedCell`'s own
-    docstring."""
+    `True` or `in_active_region` is `False` (task's own explicit
+    "provenance" requirement: both are flags, never a removal or a
+    renumbering). `cells` is the DISPLAYED (working) value at each
+    position: CSV cells are `str` unless overridden; Excel cells keep
+    their native JSON-safe type unless overridden, with `datetime`/
+    `date`/`time` raw values converted to ISO-8601 strings purely for
+    JSON transport. `modified_cells` lists only the cells in THIS row
+    with an active override, each carrying the raw value alongside for
+    provenance -- see `ModifiedCell`'s own docstring.
+
+    Slice 5: `is_header` flags the currently-selected header row (at
+    most one row per page can ever have this `True`, since a source has
+    at most one header row per worksheet). `in_active_region` reflects
+    the current data-region narrowing -- `True` for every row when no
+    region has been set (Slice 4's own original "entire source is
+    active" default, unchanged by Slice 5 unless the user narrows it).
+    `excluded` (Slice 4) and `in_active_region` (Slice 5) are
+    independent: a row can be inside the active region and still
+    excluded, or outside the region and not excluded -- never
+    conflated (task's own explicit "these are different concepts"
+    guardrail)."""
 
     row_number: int
     cells: list[Any]
     excluded: bool = False
     modified_cells: list[ModifiedCell] = field(default_factory=list)
+    is_header: bool = False
+    in_active_region: bool = True
 
 
 @dataclass(slots=True)
@@ -150,11 +179,22 @@ class PreviewResult:
     """See this module's own docstring for the CSV/Excel strategies that
     produce this. `selected_worksheet_index` is `None` for CSV (no
     worksheet concept at all -- never fabricated). `ignored_columns`
-    lists column indices ignored for the CURRENT worksheet (or for CSV,
-    the source as a whole) -- page-independent, same set on every page.
-    `working_revision` is `WorkingOverlay.revision` at the moment this
-    page was read, for the frontend's own stale-page/refresh bookkeeping
-    (task's own "lightweight revision counter... stale-page detection")."""
+    lists column indices with role `ignore` for the CURRENT worksheet
+    (or for CSV, the source as a whole) -- page-independent, same set on
+    every page; kept as its own field for Slice 4 API backward
+    compatibility even though `column_roles` (Slice 5) now carries the
+    same information (and more) for every column, not just ignored
+    ones. `working_revision` is `WorkingOverlay.revision` at the moment
+    this page was read, for the frontend's own stale-page/refresh
+    bookkeeping (task's own "lightweight revision counter... stale-page
+    detection").
+
+    Slice 5: `header_row_number`/`data_start_row`/`data_end_row` mirror
+    `app.services.working_overlay_service.WorkingOverlaySummary`'s own
+    same-named fields for the worksheet/source this page belongs to
+    (`None` when unset). `column_labels`/`column_roles` are each sized
+    to `column_count` (empty when `column_count` is unknown) -- small,
+    O(columns) payloads, never duplicated per row."""
 
     source_id: str
     selected_worksheet_index: int | None
@@ -168,6 +208,11 @@ class PreviewResult:
     rows: list[PreviewRow]
     ignored_columns: list[int] = field(default_factory=list)
     working_revision: int = 0
+    header_row_number: int | None = None
+    data_start_row: int | None = None
+    data_end_row: int | None = None
+    column_labels: list[str] = field(default_factory=list)
+    column_roles: list[str] = field(default_factory=list)
 
 
 def _sniff_csv_delimiter(sample: str) -> str:
@@ -215,6 +260,42 @@ def ensure_csv_totals_cached(session: PreparationSession) -> None:
     session.cached_column_count = max_columns
 
 
+def _fetch_single_csv_row(session: PreparationSession, row_number: int) -> list[str] | None:
+    """Read exactly one raw CSV row (1-based) without materializing the
+    rest of the file into the returned page -- used only for a header
+    row that falls outside the currently requested page (see this
+    module's own docstring). Still an O(row_number) scan (no index
+    exists), but bounded to a single row's worth of work beyond that,
+    and only ever invoked once per preview request at most."""
+    reader = _open_csv_reader(session)
+    for i, row in enumerate(reader, start=1):
+        if i == row_number:
+            return list(row)
+        if i > row_number:
+            break
+    return None
+
+
+def _fetch_single_excel_row(session: PreparationSession, worksheet_index: int | None, row_number: int) -> list[Any] | None:
+    """Excel counterpart of `_fetch_single_csv_row` -- reopens the
+    workbook fresh (same "never held open across requests" policy as
+    `_preview_excel`) purely to read one row's values."""
+    if worksheet_index is None:
+        return None
+    worksheet_info = session.summary.worksheets[worksheet_index]
+    try:
+        workbook = load_workbook(io.BytesIO(session.raw_bytes), read_only=True, data_only=False)
+    except Exception:
+        return None
+    try:
+        worksheet = workbook[worksheet_info.name]
+        for row_values in worksheet.iter_rows(min_row=row_number, max_row=row_number, values_only=True):
+            return [_json_safe_excel_cell(v) for v in row_values]
+        return None
+    finally:
+        workbook.close()
+
+
 def _preview_csv(session: PreparationSession, *, offset: int, limit: int) -> PreviewResult:
     reader = _open_csv_reader(session)
 
@@ -251,6 +332,9 @@ def _preview_csv(session: PreparationSession, *, offset: int, limit: int) -> Pre
     column_count = session.cached_column_count if session.cached_column_count is not None else max_columns
 
     _apply_working_overlay(session, worksheet_index=None, rows=page)
+    header_row_number, data_start_row, data_end_row, column_labels, column_roles = _apply_structure_mapping(
+        session, worksheet_index=None, page=page, column_count=column_count,
+    )
 
     return PreviewResult(
         source_id=session.summary.source_id,
@@ -265,6 +349,11 @@ def _preview_csv(session: PreparationSession, *, offset: int, limit: int) -> Pre
         rows=page,
         ignored_columns=_ignored_columns_for_worksheet(session.working_overlay, None),
         working_revision=session.working_overlay.revision,
+        header_row_number=header_row_number,
+        data_start_row=data_start_row,
+        data_end_row=data_end_row,
+        column_labels=column_labels,
+        column_roles=column_roles,
     )
 
 
@@ -309,6 +398,10 @@ def _preview_excel(session: PreparationSession, *, offset: int, limit: int) -> P
         workbook.close()
 
     _apply_working_overlay(session, worksheet_index=worksheet_index, rows=page)
+    column_count = worksheet_info.column_count or 0
+    header_row_number, data_start_row, data_end_row, column_labels, column_roles = _apply_structure_mapping(
+        session, worksheet_index=worksheet_index, page=page, column_count=column_count,
+    )
 
     return PreviewResult(
         source_id=summary.source_id,
@@ -323,6 +416,11 @@ def _preview_excel(session: PreparationSession, *, offset: int, limit: int) -> P
         rows=page,
         ignored_columns=_ignored_columns_for_worksheet(session.working_overlay, worksheet_index),
         working_revision=session.working_overlay.revision,
+        header_row_number=header_row_number,
+        data_start_row=data_start_row,
+        data_end_row=data_end_row,
+        column_labels=column_labels,
+        column_roles=column_roles,
     )
 
 
@@ -345,7 +443,16 @@ def _excluded_rows_for_worksheet(overlay: WorkingOverlay, worksheet_index: int |
 
 
 def _ignored_columns_for_worksheet(overlay: WorkingOverlay, worksheet_index: int | None) -> list[int]:
-    return sorted(column_index for (ws, column_index) in overlay.ignored_columns if ws == worksheet_index)
+    """Slice 4 API-compatible view: which columns currently carry
+    `ROLE_IGNORE` (Slice 5's own authoritative representation -- see
+    `app.domain.working_overlay`'s own module docstring for why the
+    old, separate `ignored_columns` set was retired in favor of this
+    single source of truth)."""
+    return sorted(
+        column_index
+        for (ws, column_index), role in overlay.column_roles.items()
+        if ws == worksheet_index and role == ROLE_IGNORE
+    )
 
 
 def _apply_working_overlay(session: PreparationSession, *, worksheet_index: int | None, rows: list[PreviewRow]) -> None:
@@ -383,6 +490,128 @@ def _apply_working_overlay(session: PreparationSession, *, worksheet_index: int 
         row.modified_cells = modified
 
 
+def _spreadsheet_column_label(index: int) -> str:
+    """Same A, B, ..., Z, AA, AB, ... scheme the frontend's own
+    `wwSpreadsheetColumnLabel()` uses -- kept in sync deliberately (task
+    section: "do not destroy the existing A/B/C column coordinate
+    references")."""
+    label = ""
+    n = index
+    while n >= 0:
+        label = chr(65 + (n % 26)) + label
+        n = n // 26 - 1
+    return label
+
+
+def _build_column_labels(header_cells: list[Any] | None, column_count: int) -> list[str]:
+    """One display label per column (Slice 5). `header_cells is None`
+    means no header row is selected at all -- every label is the plain
+    spreadsheet letter (task section: "When no header selected:
+    column_labels = spreadsheet-style fallback"). When a header IS
+    selected, a genuinely blank cell (raw `None`, or a working edit to
+    `""`) gets the distinct `"Column {letter}"` fallback instead (task
+    section: "A blank header should receive a safe fallback display
+    label") -- so the two fallback cases stay visually distinguishable.
+    Duplicate labels are allowed verbatim, deliberately NOT
+    disambiguated here (task's own "keep implementation simple and
+    stable-index-based" guidance) -- the frontend already shows each
+    column's own stable letter alongside its label, which is enough to
+    tell duplicates apart without inventing suffixes."""
+    labels: list[str] = []
+    for c in range(column_count):
+        letter = _spreadsheet_column_label(c)
+        if header_cells is None:
+            labels.append(letter)
+            continue
+        raw = header_cells[c] if c < len(header_cells) else None
+        text = "" if raw is None else str(raw)
+        labels.append(text if text != "" else f"Column {letter}")
+    return labels
+
+
+def _build_column_roles(overlay: WorkingOverlay, worksheet_index: int | None, column_count: int) -> list[str]:
+    """One role per column (Slice 5), defaulting to `ROLE_UNKNOWN` for
+    any column with no explicit `column_roles` entry -- the model's own
+    "absence is the default, never automatically classified" guarantee
+    (see `app.domain.working_overlay`'s own module docstring), made
+    visible here as an explicit value per column rather than a sparse
+    dict the frontend would have to fill in itself."""
+    return [
+        overlay.column_roles.get((worksheet_index, c), ROLE_UNKNOWN)
+        for c in range(column_count)
+    ]
+
+
+def _resolve_header_cells(
+    session: PreparationSession,
+    *,
+    worksheet_index: int | None,
+    header_row_number: int | None,
+    page: list[PreviewRow],
+) -> list[Any] | None:
+    """Return the header row's WORKING cells, or `None` if no header is
+    selected. Reuses the row from `page` (already overlay-applied) when
+    the header happens to fall within the current page's own window --
+    the common case for a header near the top of a file being previewed
+    from its own first page; otherwise performs exactly one extra
+    single-row fetch (`_fetch_single_csv_row`/`_fetch_single_excel_row`)
+    and applies the SAME overlay-merge logic
+    (`_apply_working_overlay`) to that one row alone, so a working
+    header edit is reflected here exactly like it is in that row's own
+    `cells` when it IS on the current page (task section: "Header row
+    and working edits")."""
+    if header_row_number is None:
+        return None
+    for row in page:
+        if row.row_number == header_row_number:
+            return row.cells
+    if session.summary.source_format == FORMAT_CSV:
+        raw_cells = _fetch_single_csv_row(session, header_row_number)
+    else:
+        raw_cells = _fetch_single_excel_row(session, worksheet_index, header_row_number)
+    if raw_cells is None:
+        return None
+    header_row = PreviewRow(row_number=header_row_number, cells=list(raw_cells))
+    _apply_working_overlay(session, worksheet_index=worksheet_index, rows=[header_row])
+    return header_row.cells
+
+
+def _apply_structure_mapping(
+    session: PreparationSession,
+    *,
+    worksheet_index: int | None,
+    page: list[PreviewRow],
+    column_count: int,
+) -> tuple[int | None, int | None, int | None, list[str], list[str]]:
+    """Slice 5's own post-processing step, run after
+    `_apply_working_overlay` -- adds `is_header`/`in_active_region` to
+    every row of `page` (mutated in place, same convention as that
+    function) and returns the page-independent
+    `(header_row_number, data_start_row, data_end_row, column_labels,
+    column_roles)` tuple for the caller's own `PreviewResult`. Never
+    touches `cells`/`modified_cells`/`excluded` -- those stay exactly
+    as `_apply_working_overlay` left them."""
+    overlay = session.working_overlay
+    header_row_number = overlay.header_row.get(worksheet_index)
+    region = overlay.data_region.get(worksheet_index)
+    data_start_row = region.start_row if region else None
+    data_end_row = region.end_row if region else None
+
+    for row in page:
+        row.is_header = header_row_number is not None and row.row_number == header_row_number
+        row.in_active_region = (
+            (data_start_row is None or row.row_number >= data_start_row)
+            and (data_end_row is None or row.row_number <= data_end_row)
+        )
+
+    header_cells = _resolve_header_cells(
+        session, worksheet_index=worksheet_index, header_row_number=header_row_number, page=page,
+    )
+    column_labels = _build_column_labels(header_cells, column_count) if column_count else []
+    column_roles = _build_column_roles(overlay, worksheet_index, column_count) if column_count else []
+    return header_row_number, data_start_row, data_end_row, column_labels, column_roles
+
+
 def preview_preparation_source(
     *,
     workspace_id: str,
@@ -391,8 +620,8 @@ def preview_preparation_source(
     limit: int,
     registry: PreparationSessionRegistry,
 ) -> PreviewResult:
-    """Return one bounded page of WORKING rows (raw + Slice 4's overlay
-    applied) for a CSV or Excel preparation source. `offset`/`limit` are
+    """Return one bounded page of WORKING rows (raw + overlay applied)
+    for a CSV or Excel preparation source. `offset`/`limit` are
     trusted here to already be within bounds (see this module's own
     docstring: enforced by the API's own `Query(ge=..., le=...)`
     constraints, matching this codebase's existing `point_budget`

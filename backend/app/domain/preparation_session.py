@@ -1,4 +1,4 @@
-"""Preparation Session domain model (CSV/Excel ingestion Slices 1-4, DEC-072).
+"""Preparation Session domain model (CSV/Excel ingestion Slices 1-5, DEC-072).
 
 A `PreparationSession` represents one uploaded CSV/Excel file that has
 been accepted as *raw, immutable, temporary* preparation input -- it is
@@ -42,9 +42,20 @@ ignores, applied to a raw page only at preview-read time
 (`app.services.preparation_preview_service`), never merged back into
 `raw_bytes` and never a second full copy of the dataset.
 
-None of these slices model header mappings, column-role mappings,
-time-axis interpretation, or readiness findings -- those are later
-slices' own domain concepts and must not be speculatively added here.
+Slice 5 extends that SAME `WorkingOverlay` (not a second, separate
+model on this dataclass) with header-row selection, data-region
+narrowing, and column semantic-role assignment -- see
+`app.domain.working_overlay`'s own module docstring for why keeping all
+of this on one overlay object was preferred (it lets structural/
+semantic mutations participate in the exact same bounded undo/redo
+history and revision counter Slice 4 already built).
+
+None of these slices model time-axis interpretation or readiness
+findings -- those are later slices' own domain concepts and must not be
+speculatively added here. Column roles (Slice 5) are a stated INTENT
+only (e.g. "this column is meant to be the time axis"), never a
+validated or interpreted fact -- no time-format parsing, no numeric
+checking, no uniqueness enforcement happens anywhere in this slice.
 
 Zero framework dependencies, matching every other `app.domain` module's
 own layering contract (see `app.domain.source`'s own module docstring).
