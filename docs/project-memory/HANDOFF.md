@@ -8,11 +8,130 @@ Last updated: **2026-08-31**
 
 ## What was most recently done
 
+**CSV/Excel Ingestion Slice 6 — Preparation Readiness Issue Model.
+Implemented and verified; NOT yet committed** (the task's own explicit
+closing instruction: "Do not commit or push unless explicitly asked" —
+awaiting a separate commit instruction, same pattern as every prior
+slice). Direct follow-up to Slice 5 (below, committed as `fbfe824`) —
+the sixth implementation slice of the owner's revised 13-slice sequence
+(`CSV_EXCEL_INGESTION_ARCHITECTURE.md` §14). This slice is explicitly
+PLUMBING, not the full Readiness Validator (still Slice 9's own scope).
+
+**Core architectural rule preserved**: `app.services.errors.ImportServiceError`
+was NOT touched. A `PreparationIssue` is a structured finding, never an
+exception — it is returned in a list inside a `200 OK` response, never
+raised. A genuine runtime/request failure (source not found, worksheet
+not selected) still raises an ordinary `ImportServiceError` subclass
+and is still mapped to an HTTP error response the usual way; it is
+never represented as a `PreparationIssue`. Verified by dedicated tests
+in both directions.
+
+**Domain (new `app/domain/preparation_issue.py`)**:
+`PreparationIssue{severity, code, message, location, suggested_action,
+details}`. `severity` is one of `blocking`/`warning`/`info`
+(`KNOWN_SEVERITIES`) — `blocking`/`warning` are a CAPABILITY this slice
+establishes for a future validator; Slice 6's own issue production only
+ever emits `info`. `IssueLocation{worksheet_index, row_number,
+column_index, field}` — every field independently optional, so a
+dataset-level issue is valid with all four `None` (never forced to
+point at a cell). `details` is a small, bounded, JSON-safe dict (e.g.
+`{"unassigned_count": 4, "total_columns": 6}`) — never row lists.
+`PreparationIssueSummary{source_id, evaluated_revision,
+current_revision, is_stale, blocking_count, warning_count, info_count,
+issues}` — `evaluated_revision`/`current_revision`/`is_stale` exist for
+FUTURE caching compatibility; Slice 6 always derives issues live, so
+the two revisions are always equal and `is_stale` is always `False`
+today. Only three stable issue codes exist
+(`header_not_selected`/`data_region_unconfigured`/
+`column_roles_unassigned`, `KNOWN_ISSUE_CODES`) — deliberately not a
+preemptive registry of every future validator finding.
+
+**Service (new `app/services/preparation_issue_service.py`)**:
+`collect_preparation_issues(session, worksheet_index)` — a short,
+linear function checking already-known CONFIGURATION facts only (is a
+header selected? is a data region set? are all columns classified?),
+never data interpretation. Every issue is `SEVERITY_INFO`, never
+implying invalidity (task's own explicit "do NOT silently decide a
+header is mandatory" / "do NOT silently decide multiple time-axis
+columns are invalid" guardrails honored — the column-roles-unassigned
+issue only counts `unknown`-role columns, and multiple `time_axis`
+columns raise nothing at all). Column-count awareness reuses the exact
+same `ensure_csv_totals_cached()` (CSV) / `WorksheetInfo.column_count`
+(Excel) helpers Slice 4/5 already built — when genuinely unknown, the
+role-assignment issue is simply skipped, never fabricated.
+`build_issue_summary()` resolves the session + worksheet (raising
+`WorksheetNotSelectedError` for an unselected multi-sheet Excel
+workbook, mirroring the preview endpoint's own rule) and calls
+`summarize_issues()`. No caching, no new registry, no database — issues
+are recomputed on every call directly from the session's own current
+overlay state.
+
+**Schema (new `app/schemas/preparation_issue.py`)**: `IssueLocationOut`,
+`PreparationIssueOut`, `PreparationIssueSummaryOut` — mirror the domain
+shapes verbatim.
+
+**API**: one new endpoint, `GET .../preparation-sources/{id}/issues`,
+returning `PreparationIssueSummaryOut`. No separate per-worksheet issues
+endpoint and no separate navigation endpoint — the issue's own
+`location.worksheet_index` is enough for the frontend to jump there via
+the existing worksheet `<select>`.
+
+**Frontend** (`frontend/index.html` only): a new "Preparation Status"
+panel in the Data Preparation Workspace — a severity-count line ("N
+Blocking · N Warnings · N Info") plus grouped Blocking/Warning/Info
+lists, each item showing its message, suggested action, and (when the
+issue carries a worksheet) a "Go to worksheet" button that reuses the
+existing worksheet `<select>`'s own change handler rather than a second
+switch implementation. Refetched inside `wwDataPrepFetchPreview()`
+itself — covers "refetch issues after every mutation" for free, since
+every mutation already calls that function, plus initial load,
+pagination, and worksheet switching. No "Powerwave Ready" text, no
+"Open in Powerwave" action, and Recording Events status stays `Needs
+Preparation` throughout — verified directly in the browser.
+
+**Verification**: full backend suite 2101 passed (44 new on top of
+Slice 5's 2057), 0 regressions; the committed browser smoke test
+(COMTRADE) still passes unchanged; two throwaway (not committed)
+live-browser Playwright scripts independently confirmed: a freshly
+uploaded CSV shows all three info issues with correct counts, zero
+blocking/warning, status still "Needs Preparation", no "Open in
+Powerwave"/"Powerwave Ready" text anywhere; setting then clearing a
+header row correctly removes then restores the `header_not_selected`
+issue; `evaluated_revision`/`current_revision` both correctly track the
+session's own working revision after two mutations, with `is_stale`
+always `false`; and a multi-sheet Excel workbook with no worksheet
+selected yet leaves the issue panel safely empty until a sheet is
+chosen, after which each sheet's own issues render independently —
+zero console/page errors across both runs.
+
+**Files changed**: Backend — new `app/domain/preparation_issue.py`,
+`app/services/preparation_issue_service.py`,
+`app/schemas/preparation_issue.py`; modified
+`app/api/v1/preparation_sources.py` (+1 endpoint). Tests — new
+`tests/test_preparation_issue_domain.py` (17 tests),
+`tests/test_preparation_issue_service.py` (17 tests); extended
+`tests/test_preparation_sources_api.py` (+10). Frontend —
+`frontend/index.html` only (Preparation Status panel markup + CSS,
+`wwDataPrep.issueSummary` state, 4 new JS functions, 1 new call site
+inside `wwDataPrepFetchPreview()`). Documentation —
+`CSV_EXCEL_INGESTION_ARCHITECTURE.md` (§14 updated), `CURRENT_STATE.md`,
+here. No new `DECISIONS.md` entry — every choice made (the three-issue
+production set, live-derivation-no-cache, code naming) was already
+specified or pre-authorized by the task's own explicit instructions,
+not a new owner-level decision.
+
+**Next step**: nothing beyond Slice 6 is pre-authorized, and Slice 6
+itself is implemented but not yet committed per the task's own explicit
+instruction. Slice 7 (Extensible time-axis framework) is the next
+candidate per the owner's revised sequence, but requires its own
+explicit go-ahead — as does committing Slice 6 itself.
+
+## What was done in the prior session — CSV/Excel Ingestion Slice 5: Header/Data Region + Column Role Mapping
+
 **CSV/Excel Ingestion Slice 5 — Header/Data Region + Column Role
-Mapping. Implemented and verified; NOT yet committed** (the task's own
-explicit closing instruction: "Do not commit or push unless explicitly
-asked" — awaiting a separate commit instruction, same pattern as every
-prior slice). Direct follow-up to Slice 4 (below, committed as
+Mapping. Implemented, verified, and committed as `fbfe824`** ("feat:
+add preparation structure and column roles"; NOT pushed). Direct
+follow-up to Slice 4 (below, committed as
 `32ba531`) — the fifth implementation slice of the owner's revised
 13-slice sequence (`CSV_EXCEL_INGESTION_ARCHITECTURE.md` §14). Owner
 confirmed Slice 4's own UAT as PASS before this slice began.

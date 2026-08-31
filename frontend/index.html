@@ -871,6 +871,16 @@
            are independent and must stay visually distinguishable. */
         .ww-data-prep-table tr.ww-data-prep-row-is-header td, .ww-data-prep-table tr.ww-data-prep-row-is-header th { background: var(--accent-wash-soft); font-weight: 600; }
         .ww-data-prep-table tr.ww-data-prep-row-inactive td, .ww-data-prep-table tr.ww-data-prep-row-inactive th { opacity: 0.55; }
+        /* Slice 6 (DEC-072): Preparation Readiness Issue panel. Plain
+           grouped lists -- no severity gating UI, no "Ready" state. */
+        .ww-data-prep-issue-counts { font-size: 0.85rem; color: var(--text-dim); margin-bottom: 10px; }
+        .ww-data-prep-issue-group { margin-bottom: 12px; }
+        .ww-data-prep-issue-group-title { margin: 0 0 4px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
+        .ww-data-prep-issue-group ul { margin: 0; padding-left: 18px; }
+        .ww-data-prep-issue-item { font-size: 0.85rem; margin-bottom: 4px; }
+        .ww-data-prep-issue-item[data-severity="blocking"] { color: var(--error); }
+        .ww-data-prep-issue-item[data-severity="warning"] { color: var(--warn); }
+        .ww-data-prep-issue-goto-btn { font: inherit; font-size: 0.72rem; border: none; background: none; color: var(--accent); cursor: pointer; text-decoration: underline; padding: 0 0 0 6px; }
         .ww-cc-subtitle { margin: 3px 0 0; color: var(--text-dim); font-size: 0.85rem; }
         .ww-cc-panel { padding: 16px; }
         .ww-cc-panel h3 { margin: 0 0 12px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
@@ -4427,6 +4437,22 @@
                     </div>
                 </section>
 
+                <!-- Slice 6 (DEC-072): Preparation Readiness Issue panel.
+                     Plumbing only -- backend-derived, informational-only
+                     findings about the CURRENT preparation state, never a
+                     readiness gate. Status stays "Needs Preparation"
+                     regardless of what is shown here; there is no
+                     "Powerwave Ready" state and no "Open in Powerwave"
+                     action anywhere in this slice. Every issue/count here
+                     comes straight from GET .../issues -- the frontend
+                     never invents or classifies a finding itself. -->
+                <section class="panel ww-cc-panel">
+                    <h3>Preparation Status</h3>
+                    <p class="hint">Informational only -- this does not block or gate anything yet.</p>
+                    <div class="ww-data-prep-issue-counts" id="wwDataPrepIssueCounts"></div>
+                    <div id="wwDataPrepIssueGroups"></div>
+                </section>
+
                 <!-- Slice 5 (DEC-072): Header/Data Region + Column Role
                      Mapping. Manual-first: nothing here is ever guessed --
                      every field reflects backend state only, populated by
@@ -6593,6 +6619,12 @@
             dataEndRow: null,
             columnLabels: [],
             columnRoles: [],
+            // Slice 6 (DEC-072): Preparation Readiness Issue state --
+            // the full GET .../issues response body, or `null` before
+            // it has ever loaded (or when it could not be fetched, e.g.
+            // no worksheet selected yet). Never computed locally --
+            // the frontend only ever displays what the backend returns.
+            issueSummary: null,
         };
 
         function wwDataPrepSourceUrl(suffix) {
@@ -6860,10 +6892,89 @@
                 wwDataPrepRenderStructureControls();
                 wwDataPrepRenderColumnMapping();
                 wwDataPrepRenderToolbar();
+                // Slice 6: re-fetched alongside every preview load --
+                // covers the task's own "refetch issues after each
+                // successful mutation" requirement for free, since every
+                // mutation already calls wwDataPrepFetchPreview(), plus
+                // initial load and worksheet switching.
+                await wwDataPrepFetchIssues();
             } catch (error) {
                 status.textContent = "Could not reach the backend.";
             }
         }
+
+        // Slice 6 (DEC-072): Preparation Readiness Issue panel -- backend-
+        // derived, informational-only findings about the CURRENT
+        // preparation state. Never a readiness gate: no "Powerwave Ready"
+        // state, no "Open in Powerwave" action, status stays "Needs
+        // Preparation" regardless of what is shown here.
+        const WW_DATA_PREP_SEVERITY_LABELS = { blocking: "Blocking", warning: "Warnings", info: "Info" };
+
+        async function wwDataPrepFetchIssues() {
+            try {
+                const response = await fetch(wwDataPrepSourceUrl("/issues"));
+                wwDataPrep.issueSummary = response.ok ? await response.json() : null;
+            } catch (error) {
+                wwDataPrep.issueSummary = null;
+            }
+            wwDataPrepRenderIssues();
+        }
+
+        function wwDataPrepRenderIssues() {
+            const countsEl = document.getElementById("wwDataPrepIssueCounts");
+            const groupsEl = document.getElementById("wwDataPrepIssueGroups");
+            const summary = wwDataPrep.issueSummary;
+            if (!summary) {
+                countsEl.textContent = "";
+                groupsEl.innerHTML = "";
+                return;
+            }
+            countsEl.textContent = summary.blocking_count + " Blocking · " + summary.warning_count +
+                " Warnings · " + summary.info_count + " Info";
+
+            const bySeverity = { blocking: [], warning: [], info: [] };
+            for (const issue of summary.issues) {
+                (bySeverity[issue.severity] || bySeverity.info).push(issue);
+            }
+
+            let html = "";
+            for (const severity of ["blocking", "warning", "info"]) {
+                const items = bySeverity[severity];
+                if (!items.length) continue;
+                html += '<div class="ww-data-prep-issue-group"><h4 class="ww-data-prep-issue-group-title">' +
+                    WW_DATA_PREP_SEVERITY_LABELS[severity] + '</h4><ul>';
+                for (const issue of items) {
+                    const hasWorksheetNav = issue.location && issue.location.worksheet_index !== null &&
+                        issue.location.worksheet_index !== undefined;
+                    html += '<li class="ww-data-prep-issue-item" data-severity="' + severity + '">' +
+                        '<span>' + escapeHtml(issue.message) + '</span>' +
+                        (issue.suggested_action ? '<span class="hint"> — ' + escapeHtml(issue.suggested_action) + '</span>' : '') +
+                        (hasWorksheetNav
+                            ? ' <button type="button" class="ww-data-prep-issue-goto-btn" data-worksheet="' +
+                              issue.location.worksheet_index + '">Go to worksheet</button>'
+                            : '') +
+                        '</li>';
+                }
+                html += "</ul></div>";
+            }
+            groupsEl.innerHTML = html || '<p class="hint">No issues found.</p>';
+        }
+
+        // Reuses the existing worksheet <select>'s own change handler
+        // (PATCH selection -> re-fetch preview+issues) rather than a
+        // second, separate worksheet-switch implementation.
+        function wwDataPrepGoToIssueWorksheet(worksheetIndex) {
+            const select = document.getElementById("wwDataPrepWorksheetSelect");
+            if (parseInt(select.value, 10) === worksheetIndex) return;
+            select.value = String(worksheetIndex);
+            select.dispatchEvent(new Event("change"));
+        }
+
+        document.getElementById("wwDataPrepIssueGroups").addEventListener("click", (event) => {
+            const btn = event.target.closest(".ww-data-prep-issue-goto-btn");
+            if (!btn) return;
+            wwDataPrepGoToIssueWorksheet(parseInt(btn.dataset.worksheet, 10));
+        });
 
         document.getElementById("wwDataPrepPrevBtn").addEventListener("click", () => {
             wwDataPrep.offset = Math.max(0, wwDataPrep.offset - wwDataPrep.limit);
@@ -7243,6 +7354,8 @@
             document.getElementById("wwDataPrepStructureStatus").textContent = "";
             document.getElementById("wwDataPrepFilename").textContent = "";
             document.getElementById("wwDataPrepRangeLabel").textContent = "";
+            wwDataPrep.issueSummary = null;
+            wwDataPrepRenderIssues();
 
             try {
                 const response = await fetch(

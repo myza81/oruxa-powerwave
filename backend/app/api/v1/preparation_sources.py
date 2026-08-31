@@ -43,6 +43,7 @@ import logging
 from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, Request, UploadFile, status
 
 from app.config import Settings
+from app.schemas.preparation_issue import PreparationIssueSummaryOut
 from app.schemas.preparation_session import (
     CellWorkingValueRequest,
     ColumnIgnoreRequest,
@@ -62,6 +63,7 @@ from app.services.preparation_import_service import (
     import_excel_preparation_source,
     select_preparation_worksheet,
 )
+from app.services.preparation_issue_service import build_issue_summary
 from app.services.preparation_preview_service import (
     PREVIEW_DEFAULT_LIMIT,
     PREVIEW_MAX_LIMIT,
@@ -253,6 +255,40 @@ def get_preparation_source_rows(
         )
         raise _http_error(exc) from exc
     return PreparationSourcePreviewOut.from_domain(result)
+
+
+@router.get("/{source_id}/issues", response_model=PreparationIssueSummaryOut)
+def get_preparation_source_issues(
+    workspace_id: str,
+    source_id: str,
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> PreparationIssueSummaryOut:
+    """Slice 6 (DEC-072): the preparation-specific Readiness Issue
+    model's own transport endpoint -- structured, informational-only
+    findings about the CURRENT preparation state (see
+    app.services.preparation_issue_service's own module docstring for
+    exactly which ones Slice 6 itself produces). This is deliberately
+    NOT the full Powerwave Readiness Validator: no time-axis parsing,
+    no waveform-value validation, no `DisturbanceRecord` conversion,
+    and no readiness gate anywhere in this response -- `blocking`/
+    `warning` exist as a severity CAPABILITY only, never exercised by
+    this slice's own issue production.
+
+    An actual runtime/request failure (source not found, worksheet not
+    selected) still raises an ordinary `ImportServiceError` subclass
+    and is still mapped to an HTTP error response below -- it is never
+    itself returned as a `PreparationIssue` in a 200 response.
+    """
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        summary = build_issue_summary(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    except ImportServiceError as exc:
+        logger.info(
+            "Preparation-source issue lookup rejected (%s) for workspace %s source %s: %s",
+            exc.code, workspace_id, source_id, exc.message,
+        )
+        raise _http_error(exc) from exc
+    return PreparationIssueSummaryOut.from_domain(summary)
 
 
 @router.patch("/{source_id}", response_model=PreparationSessionSummaryOut)

@@ -1269,3 +1269,118 @@ class TestExcelWorksheetIsolationForStructureMapping:
         assert rows_a["data_start_row"] == 2
         assert rows_a["data_end_row"] == 3
         assert rows_a["column_roles"] == ["time_axis", "unknown"]
+
+
+# ---- CSV/Excel ingestion Slice 6 (DEC-072): Preparation Readiness Issue API ----
+
+
+class TestPreparationIssuesEndpoint:
+    def test_get_issues_returns_schema_and_counts(self, client):
+        source_id = _upload_csv(client, content=b"a,b,c\n1,2,3\n")
+
+        resp = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues")
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["source_id"] == source_id
+        assert body["evaluated_revision"] == 0
+        assert body["current_revision"] == 0
+        assert body["is_stale"] is False
+        assert body["blocking_count"] == 0
+        assert body["warning_count"] == 0
+        assert body["info_count"] == len(body["issues"])
+        codes = {i["code"] for i in body["issues"]}
+        assert codes == {"header_not_selected", "data_region_unconfigured", "column_roles_unassigned"}
+        assert all(i["severity"] == "info" for i in body["issues"])
+
+    def test_issue_codes_are_stable_and_locations_present(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        body = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues").json()
+
+        by_code = {i["code"]: i for i in body["issues"]}
+        assert by_code["header_not_selected"]["location"]["field"] == "header"
+        assert by_code["header_not_selected"]["location"]["worksheet_index"] is None
+        assert by_code["data_region_unconfigured"]["location"]["field"] == "data_region"
+        assert by_code["header_not_selected"]["suggested_action"]
+
+    def test_setting_header_removes_the_issue_and_bumps_revision(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/header", json={"row_number": 1})
+        body = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues").json()
+
+        assert "header_not_selected" not in {i["code"] for i in body["issues"]}
+        assert body["evaluated_revision"] == 1
+
+    def test_issues_on_unknown_source_returns_404(self, client):
+        resp = client.get("/api/v1/workspaces/ws-1/preparation-sources/does-not-exist/issues")
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["code"] == "source_not_found"
+
+    def test_issues_on_multi_sheet_excel_without_selection_returns_400(self, client):
+        content = _build_xlsx({"A": [["x"]], "B": [["y"]]})
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "m.xlsx"),
+        ).json()["source_id"]
+
+        resp = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues")
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "worksheet_not_selected"
+
+    def test_issues_scoped_to_selected_excel_worksheet(self, client):
+        content = _build_xlsx({"A": [["x"]], "B": [["y"]]})
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "m.xlsx"),
+        ).json()["source_id"]
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 0})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/header", json={"row_number": 1})
+
+        body_a = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues").json()
+        assert "header_not_selected" not in {i["code"] for i in body_a["issues"]}
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 1})
+        body_b = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues").json()
+        assert "header_not_selected" in {i["code"] for i in body_b["issues"]}
+
+    def test_issues_never_appear_via_runtime_error_response(self, client):
+        # Task's own explicit rule: a runtime failure must never be
+        # represented as a PreparationIssue in an error body.
+        resp = client.get("/api/v1/workspaces/ws-1/preparation-sources/does-not-exist/issues")
+
+        assert "severity" not in resp.text
+        assert resp.json()["detail"]["code"] == "source_not_found"
+
+    def test_reset_all_restores_all_three_issues(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/header", json={"row_number": 1})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/data-region",
+            json={"start_row": 1, "end_row": 1},
+        )
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "waveform"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+
+        client.delete(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working")
+        body = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues").json()
+
+        codes = {i["code"] for i in body["issues"]}
+        assert codes == {"header_not_selected", "data_region_unconfigured", "column_roles_unassigned"}
+
+    def test_recording_status_remains_needs_preparation(self, client):
+        # Slice 6 must not introduce a status transition.
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues")
+        summary = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}").json()
+
+        assert summary["status"] == "needs_preparation"
+
+    def test_issues_never_registers_a_waveform_ready_source(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues")
+
+        assert client.get("/api/v1/workspaces/ws-1/sources").json() == []

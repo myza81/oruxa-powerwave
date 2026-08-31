@@ -893,8 +893,70 @@ owner go-ahead before implementation begins.
    returns it to `unknown`; and an Excel two-worksheet workbook keeps
    header/region/role configuration on one sheet completely invisible
    on, and unaffected by, the other — all with zero console/page errors.
-6. **Readiness Issue model.** Preparation-specific blocking/warning/info
-   (DEC-072 point 2); does not alter existing `ImportServiceError`.
+6. **`[DONE, 2026-08-31]` Readiness Issue model.** Implemented: the
+   preparation-specific `blocking`/`warning`/`info` issue LANGUAGE AND
+   TRANSPORT MODEL (DEC-072 point 2) -- explicitly NOT the full
+   Powerwave Readiness Validator (slice 9), which alone will decide
+   when a `blocking`/`warning` finding is actually produced. New
+   `app.domain.preparation_issue`: `PreparationIssue{severity, code,
+   message, location, suggested_action, details}`,
+   `IssueLocation{worksheet_index, row_number, column_index, field}`
+   (every field independently optional -- a dataset-level issue is
+   valid with all four `None`), `PreparationIssueSummary{source_id,
+   evaluated_revision, current_revision, is_stale, blocking_count,
+   warning_count, info_count, issues}`. `ImportServiceError` itself was
+   NOT touched -- a `PreparationIssue` is never raised, and a genuine
+   runtime/request failure (source not found, worksheet not selected)
+   is never represented as one; the two taxonomies stay fully parallel,
+   confirmed by dedicated tests. Only three stable issue codes exist
+   (`header_not_selected`, `data_region_unconfigured`,
+   `column_roles_unassigned`), deliberately not a preemptive registry
+   of every future validator finding. `app.services.preparation_issue_service`
+   is a short, linear function (`collect_preparation_issues()`) checking
+   already-known CONFIGURATION facts only -- no data interpretation, no
+   time-axis parsing, no value validation -- and every issue it produces
+   is `SEVERITY_INFO`, never implying invalidity (task's own explicit
+   "do NOT silently decide a header is mandatory" /
+   "do NOT silently decide multiple time-axis columns are invalid"
+   guardrails honored: the column-roles-unassigned issue counts
+   `unknown`-role columns without ever asserting that classifying them
+   is required, and multiple `time_axis` columns raise nothing at all).
+   Issues are derived LIVE on every request -- no cache, no new
+   registry, no database; `evaluated_revision`/`current_revision` are
+   therefore always equal and `is_stale` is always `False` today (the
+   fields exist for a future caching layer's own wire-shape
+   compatibility, per the task's own explicit design request, not
+   because Slice 6 itself needs them to differ). New endpoint
+   `GET .../preparation-sources/{source_id}/issues`, mirroring the
+   existing `GET .../rows` endpoint's own worksheet-resolution rule
+   (raises `WorksheetNotSelectedError` for an unselected multi-sheet
+   Excel workbook, exactly like preview/working-overlay mutations
+   already do -- no separate per-worksheet issues endpoint). Frontend: a
+   new "Preparation Status" panel in the Data Preparation Workspace
+   (severity counts + grouped Blocking/Warning/Info lists, each item
+   showing its message/suggested action and, when the issue carries a
+   worksheet, a "Go to worksheet" action reusing the existing worksheet
+   `<select>`) -- refetched alongside every preview load, which already
+   covers "refetch after every mutation" for free since every mutation
+   already triggers a preview refetch. Recording Events status stays
+   `Needs Preparation` throughout; no `Ready`/`Preparation Error`
+   status, no "Open in Powerwave" action, and no readiness gate of any
+   kind exist anywhere in this slice.
+   Verified: 2101 backend tests passing (44 new on top of Slice 5's
+   2057), zero regressions; the committed browser smoke test (COMTRADE)
+   still passes unchanged; two throwaway (not committed) live-browser
+   Playwright UAT scripts confirmed: a freshly uploaded CSV shows all
+   three info issues with correct counts and no blocking/warning
+   anywhere, with status still reading "Needs Preparation" and no
+   "Open in Powerwave"/"Powerwave Ready" text anywhere on the page;
+   setting then clearing a header row correctly removes then restores
+   the `header_not_selected` issue; `evaluated_revision`/
+   `current_revision` both track the session's own actual working
+   revision after mutations, with `is_stale` always `false`; and a
+   multi-sheet Excel workbook with no worksheet selected yet leaves the
+   issue panel safely empty (no error, no corrupted state) until a
+   sheet is chosen, after which each sheet's own issues render
+   correctly and independently -- all with zero console/page errors.
 7. **Extensible time-axis framework.** Interpreter architecture; an
    explicit unknown/unsupported path; no closed format list (DEC-072
    point 6, §15).

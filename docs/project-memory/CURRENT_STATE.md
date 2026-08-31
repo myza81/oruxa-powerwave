@@ -187,8 +187,9 @@ re-confirmed by the TG-FINAL audit):
   [docs/development/BROWSER_SMOKE_TEST.md](../development/BROWSER_SMOKE_TEST.md).
 - **CSV/Excel preparation-source upload, Excel worksheet discovery, a
   paged data-preview Data Preparation Workspace, a non-destructive
-  Working Dataset overlay, and header/data-region/column-role mapping
-  (CSV/Excel ingestion Slices 1-5, DEC-072)**:
+  Working Dataset overlay, header/data-region/column-role mapping, and
+  a Preparation Readiness Issue model (CSV/Excel ingestion Slices 1-6,
+  DEC-072)**:
   the Upload Recording modal's CSV and
   Excel options are both enabled (`RECORDING_FORMATS`,
   `frontend/index.html`), each with its own "Upload & Prepare" action,
@@ -282,9 +283,38 @@ re-confirmed by the TG-FINAL audit):
   "Structure" panel (header-row input, data-region start/end inputs, a
   compact Column/Label/Role mapping table) plus a per-row "Header"
   quick-select button and new row styling for the header row and rows
-  outside the active region. Time-axis interpretation and readiness
-  validation are still explicitly NOT part of any of these five slices
-  — see
+  outside the active region.
+
+  **Slice 6** adds the preparation-specific Readiness Issue LANGUAGE AND
+  TRANSPORT model — explicitly NOT the full Readiness Validator (still
+  Slice 9's own scope). New `app/domain/preparation_issue.py`:
+  `PreparationIssue{severity, code, message, location, suggested_action,
+  details}` (severity one of `blocking`/`warning`/`info`;
+  `location`'s four fields — `worksheet_index`/`row_number`/
+  `column_index`/`field` — are each independently optional, so a
+  dataset-level issue is valid) and `PreparationIssueSummary{
+  evaluated_revision, current_revision, is_stale, blocking_count,
+  warning_count, info_count, issues}`. `ImportServiceError` itself is
+  untouched — a `PreparationIssue` is a structured finding, never an
+  exception, and a real runtime failure never becomes one. Only three
+  issue codes exist today (`header_not_selected`,
+  `data_region_unconfigured`, `column_roles_unassigned`), produced by a
+  short, linear `collect_preparation_issues()` that checks already-known
+  CONFIGURATION facts only — no data interpretation — and every one of
+  them is `info` severity, never implying invalidity. Issues are derived
+  LIVE on every request (no cache, no database); `evaluated_revision`
+  always equals `current_revision` and `is_stale` is always `false`
+  today. New `GET .../preparation-sources/{id}/issues` endpoint, scoped
+  to the selected worksheet the same way `GET .../rows` already is.
+  Frontend: a new "Preparation Status" panel showing severity counts and
+  a grouped Blocking/Warning/Info list, refetched alongside every
+  preview load (which already covers "refetch after every mutation" for
+  free). Recording Events status stays `Needs Preparation` throughout —
+  no `Ready`/`Preparation Error` status, no "Open in Powerwave" action,
+  and no readiness gate exist anywhere in this slice.
+
+  Time-axis interpretation and the full readiness validator are still
+  explicitly NOT part of any of these six slices — see
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md).
 
 ## Known intentional constraints / deferred items
@@ -331,12 +361,13 @@ per owner direction, now in progress following the owner-revised 13-slice
 sequence recorded in
 [CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md)
 (itself grounded in [DECISIONS.md — DEC-072](DECISIONS.md#dec-072--csv-excel-ingestion-six-architectural-clarifications-approved--temporary-preparation-state-retention-preparation-scoped-severity-model-hybrid-rawworking-overlay-architecture-deferred-disturbancerecord-hardening-honest-non-absolute-time-preservation-and-an-open-ended-time-axis-format-list)).
-**Slices 1-5 (Preparation-session foundation + raw CSV ingestion; Excel
+**Slices 1-6 (Preparation-session foundation + raw CSV ingestion; Excel
 ingestion + worksheet discovery; paged raw-data preview + Data
 Preparation Workspace shell; Working Dataset / non-destructive overlay;
-Header/Data Region + Column Role Mapping) are implemented (2026-08-31)**
+Header/Data Region + Column Role Mapping; Preparation Readiness Issue
+model) are implemented (2026-08-31)**
 — see [Implemented capabilities](#implemented-capabilities) below for
-exactly what that covers. All five deliberately produce **no
+exactly what that covers. All six deliberately produce **no
 `DisturbanceRecord` and no waveform**: a CSV or Excel file is accepted
 as raw, immutable input into a new `PreparationSession` (in-memory,
 `app.services.preparation_session_registry`) and surfaced in Recording
@@ -357,8 +388,12 @@ that same overlay with manual header-row selection, data-region
 narrowing, and column semantic-role assignment (`unknown`/`waveform`/
 `time_axis`/`metadata`/`quality_status`/`ignore`) — still no time-axis
 FORMAT interpretation, still no automatic classification of anything.
-Slices 6–13 (the Readiness Issue model, the extensible time-axis
-framework, initial time-axis interpreters, canonical `DisturbanceRecord`
+Slice 6 adds the Readiness Issue LANGUAGE AND TRANSPORT model
+(`blocking`/`warning`/`info` severities, three conservative `info`-only
+issue codes derived live from configuration state) — explicitly NOT the
+full Readiness Validator, no readiness gate, no status transition.
+Slices 7–13 (the extensible time-axis framework, initial time-axis
+interpreters, the full Readiness Validator, canonical `DisturbanceRecord`
 conversion, existing waveform integration, export, and progressive
 automation) remain unimplemented and require their own explicit owner
 go-ahead before starting, per
