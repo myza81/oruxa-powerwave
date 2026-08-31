@@ -881,6 +881,21 @@
         .ww-data-prep-issue-item[data-severity="blocking"] { color: var(--error); }
         .ww-data-prep-issue-item[data-severity="warning"] { color: var(--warn); }
         .ww-data-prep-issue-goto-btn { font: inherit; font-size: 0.72rem; border: none; background: none; color: var(--accent); cursor: pointer; text-decoration: underline; padding: 0 0 0 6px; }
+        /* UX refinement (post-Slice-6 UAT): progressive disclosure shell
+           shared by the Preparation Status and Structure panels -- a
+           title+hint block on the left, a single toggle button
+           ("View Issues"/"Hide Issues", "Configure"/"Hide") on the
+           right. Collapsed detail sections are plain [hidden] divs; no
+           accordion/drawer library. */
+        .ww-data-prep-panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+        /* Compact Header/Data range/Columns summary -- always visible,
+           replacing the permanently-expanded configuration controls as
+           the Structure panel's own default view. */
+        .ww-data-prep-structure-summary { display: flex; flex-wrap: wrap; gap: 20px; margin: 0; padding: 0; }
+        .ww-data-prep-structure-summary > div { display: flex; gap: 6px; align-items: baseline; margin: 0; }
+        .ww-data-prep-structure-summary dt { margin: 0; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.02em; color: var(--text-dim); }
+        .ww-data-prep-structure-summary dd { margin: 0; font-size: 0.85rem; }
+        #wwDataPrepStructureDetails { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--panel-border); }
         .ww-cc-subtitle { margin: 3px 0 0; color: var(--text-dim); font-size: 0.85rem; }
         .ww-cc-panel { padding: 16px; }
         .ww-cc-panel h3 { margin: 0 0 12px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
@@ -4445,12 +4460,27 @@
                      "Powerwave Ready" state and no "Open in Powerwave"
                      action anywhere in this slice. Every issue/count here
                      comes straight from GET .../issues -- the frontend
-                     never invents or classifies a finding itself. -->
+                     never invents or classifies a finding itself.
+
+                     UX refinement (post-Slice-6 UAT): progressive
+                     disclosure -- the compact counts line is always
+                     visible; the detailed grouped list is collapsed by
+                     default (wwDataPrepRenderIssues() toggles [hidden] on
+                     #wwDataPrepIssueGroups from wwDataPrep.issuesExpanded,
+                     a frontend-only, per-session flag reset every time
+                     openDataPreparationWorkspace() runs -- never
+                     persisted). No issue data, counts, or navigation
+                     behavior changed -- presentation only. -->
                 <section class="panel ww-cc-panel">
-                    <h3>Preparation Status</h3>
-                    <p class="hint">Informational only -- this does not block or gate anything yet.</p>
+                    <div class="ww-data-prep-panel-header">
+                        <div>
+                            <h3>Preparation Status</h3>
+                            <p class="hint">Informational only -- this does not block or gate anything yet.</p>
+                        </div>
+                        <button type="button" class="secondary" id="wwDataPrepIssuesToggleBtn">View Issues</button>
+                    </div>
                     <div class="ww-data-prep-issue-counts" id="wwDataPrepIssueCounts"></div>
-                    <div id="wwDataPrepIssueGroups"></div>
+                    <div id="wwDataPrepIssueGroups" hidden></div>
                 </section>
 
                 <!-- Slice 5 (DEC-072): Header/Data Region + Column Role
@@ -4459,34 +4489,58 @@
                      wwDataPrepRenderStructure()/wwDataPrepRenderColumnMapping()
                      after every preview fetch. Row numbers here are
                      ORIGINAL raw row numbers (never renumbered/positional),
-                     matching the preview table's own row-number column. -->
+                     matching the preview table's own row-number column.
+
+                     UX refinement (post-Slice-6 UAT): progressive
+                     disclosure -- a compact Header/Data range/Columns
+                     summary (wwDataPrepRenderStructureSummary()) is always
+                     visible; the actual input controls and the full
+                     column-role mapping table are collapsed inside
+                     #wwDataPrepStructureDetails by default, shown via
+                     "Configure" (wwDataPrep.structureExpanded, a
+                     frontend-only, per-session flag reset every time
+                     openDataPreparationWorkspace() runs -- never
+                     persisted). No header/region/role state, API, or
+                     undo/redo behavior changed -- presentation only. -->
                 <section class="panel ww-cc-panel">
-                    <h3>Structure</h3>
-                    <p class="hint">Manual only -- Powerwave never guesses a header row, data range, or column meaning.</p>
-                    <div class="ww-data-prep-structure-row">
-                        <div class="field ww-data-prep-structure-field">
-                            <label for="wwDataPrepHeaderInput">Header row</label>
-                            <div class="ww-data-prep-structure-controls">
-                                <input type="number" id="wwDataPrepHeaderInput" min="1" placeholder="row #">
-                                <button type="button" class="secondary" id="wwDataPrepSetHeaderBtn">Set as Header</button>
-                                <button type="button" class="secondary" id="wwDataPrepClearHeaderBtn">Clear Header</button>
+                    <div class="ww-data-prep-panel-header">
+                        <div>
+                            <h3>Structure</h3>
+                            <p class="hint">Manual only -- Powerwave never guesses a header row, data range, or column meaning.</p>
+                        </div>
+                        <button type="button" class="secondary" id="wwDataPrepStructureToggleBtn">Configure</button>
+                    </div>
+                    <dl class="ww-data-prep-structure-summary" id="wwDataPrepStructureSummary">
+                        <div><dt>Header</dt><dd id="wwDataPrepSummaryHeader">Not set</dd></div>
+                        <div><dt>Data range</dt><dd id="wwDataPrepSummaryRegion">All rows</dd></div>
+                        <div><dt>Columns</dt><dd id="wwDataPrepSummaryColumns">—</dd></div>
+                    </dl>
+                    <div id="wwDataPrepStructureDetails" hidden>
+                        <div class="ww-data-prep-structure-row">
+                            <div class="field ww-data-prep-structure-field">
+                                <label for="wwDataPrepHeaderInput">Header row</label>
+                                <div class="ww-data-prep-structure-controls">
+                                    <input type="number" id="wwDataPrepHeaderInput" min="1" placeholder="row #">
+                                    <button type="button" class="secondary" id="wwDataPrepSetHeaderBtn">Set as Header</button>
+                                    <button type="button" class="secondary" id="wwDataPrepClearHeaderBtn">Clear Header</button>
+                                </div>
+                            </div>
+                            <div class="field ww-data-prep-structure-field">
+                                <label>Data rows</label>
+                                <div class="ww-data-prep-structure-controls">
+                                    <input type="number" id="wwDataPrepRegionStartInput" min="1" placeholder="start">
+                                    <span class="hint">to</span>
+                                    <input type="number" id="wwDataPrepRegionEndInput" min="1" placeholder="end">
+                                    <button type="button" class="secondary" id="wwDataPrepSetRegionBtn">Set Region</button>
+                                    <button type="button" class="secondary" id="wwDataPrepResetRegionBtn">Reset Region</button>
+                                </div>
                             </div>
                         </div>
-                        <div class="field ww-data-prep-structure-field">
-                            <label>Data rows</label>
-                            <div class="ww-data-prep-structure-controls">
-                                <input type="number" id="wwDataPrepRegionStartInput" min="1" placeholder="start">
-                                <span class="hint">to</span>
-                                <input type="number" id="wwDataPrepRegionEndInput" min="1" placeholder="end">
-                                <button type="button" class="secondary" id="wwDataPrepSetRegionBtn">Set Region</button>
-                                <button type="button" class="secondary" id="wwDataPrepResetRegionBtn">Reset Region</button>
-                            </div>
+                        <div class="ww-data-prep-table-wrap">
+                            <table class="ww-data-prep-table ww-data-prep-columns-table" id="wwDataPrepColumnsTable"></table>
                         </div>
+                        <div class="upload-status" id="wwDataPrepStructureStatus" role="status" aria-live="polite"></div>
                     </div>
-                    <div class="ww-data-prep-table-wrap">
-                        <table class="ww-data-prep-table ww-data-prep-columns-table" id="wwDataPrepColumnsTable"></table>
-                    </div>
-                    <div class="upload-status" id="wwDataPrepStructureStatus" role="status" aria-live="polite"></div>
                 </section>
 
                 <section class="panel ww-cc-panel">
@@ -6625,6 +6679,13 @@
             // no worksheet selected yet). Never computed locally --
             // the frontend only ever displays what the backend returns.
             issueSummary: null,
+            // UX refinement (post-Slice-6 UAT): purely local, per-session
+            // progressive-disclosure state -- never sent to or read from
+            // the backend, and reset to `false` every time
+            // openDataPreparationWorkspace() runs (task's own
+            // "recommended default on opening... collapsed" guidance).
+            issuesExpanded: false,
+            structureExpanded: false,
         };
 
         function wwDataPrepSourceUrl(suffix) {
@@ -6769,6 +6830,7 @@
             wwDataPrep.dataEndRow = apiSummary.data_end_row;
             wwDataPrepRenderToolbar();
             wwDataPrepRenderStructureControls();
+            wwDataPrepRenderStructureSummary();
         }
 
         function wwDataPrepRenderToolbar() {
@@ -6847,6 +6909,43 @@
             table.innerHTML = columnCount ? html : "";
         }
 
+        // UX refinement (post-Slice-6 UAT): the Structure panel's own
+        // always-visible compact summary -- "show current state first,
+        // show detailed configuration only when the user chooses to
+        // change or inspect it." Reads the exact same
+        // wwDataPrep.headerRowNumber/dataStartRow/dataEndRow/columnRoles
+        // the detailed controls/table already use -- never a second,
+        // independently-derived source of truth.
+        const WW_DATA_PREP_ROLE_LABELS = Object.fromEntries(WW_DATA_PREP_ROLES);
+
+        function wwDataPrepSummarizeColumnRoles(roles) {
+            if (!roles.length) return "—";
+            const counts = {};
+            for (const role of roles) counts[role] = (counts[role] || 0) + 1;
+            const unknownCount = counts.unknown || 0;
+            if (unknownCount === roles.length) {
+                return roles.length + " total · " + unknownCount + " Unknown";
+            }
+            // Only non-zero roles are listed (task's own "may include
+            // only non-zero roles" guidance) -- "Unknown" still appears
+            // when some, but not all, columns remain unclassified.
+            return WW_DATA_PREP_ROLES
+                .filter(([value]) => counts[value])
+                .map(([value, label]) => counts[value] + " " + label)
+                .join(" · ");
+        }
+
+        function wwDataPrepRenderStructureSummary() {
+            document.getElementById("wwDataPrepSummaryHeader").textContent =
+                wwDataPrep.headerRowNumber != null ? "Row " + wwDataPrep.headerRowNumber : "Not set";
+            document.getElementById("wwDataPrepSummaryRegion").textContent =
+                wwDataPrep.dataStartRow != null
+                    ? "Rows " + wwDataPrep.dataStartRow + "–" + wwDataPrep.dataEndRow
+                    : "All rows";
+            document.getElementById("wwDataPrepSummaryColumns").textContent =
+                wwDataPrepSummarizeColumnRoles(wwDataPrep.columnRoles || []);
+        }
+
         function wwDataPrepRenderPagination(preview) {
             const total = wwDataPrep.totalRowCount;
             const firstShown = preview.rows.length > 0 ? preview.offset + 1 : 0;
@@ -6891,6 +6990,7 @@
                 wwDataPrepRenderPagination(preview);
                 wwDataPrepRenderStructureControls();
                 wwDataPrepRenderColumnMapping();
+                wwDataPrepRenderStructureSummary();
                 wwDataPrepRenderToolbar();
                 // Slice 6: re-fetched alongside every preview load --
                 // covers the task's own "refetch issues after each
@@ -6920,16 +7020,36 @@
             wwDataPrepRenderIssues();
         }
 
+        // UX refinement (post-Slice-6 UAT): progressive disclosure --
+        // the detailed grouped list is collapsed by default
+        // (wwDataPrep.issuesExpanded, reset to `false` every time
+        // openDataPreparationWorkspace() runs; never persisted). Toggled
+        // purely by re-rendering with the same already-fetched
+        // wwDataPrep.issueSummary -- no re-fetch needed to expand/collapse.
         function wwDataPrepRenderIssues() {
             const countsEl = document.getElementById("wwDataPrepIssueCounts");
             const groupsEl = document.getElementById("wwDataPrepIssueGroups");
+            const toggleBtn = document.getElementById("wwDataPrepIssuesToggleBtn");
             const summary = wwDataPrep.issueSummary;
             if (!summary) {
                 countsEl.textContent = "";
                 groupsEl.innerHTML = "";
+                groupsEl.hidden = true;
+                toggleBtn.hidden = true;
                 return;
             }
-            countsEl.textContent = summary.blocking_count + " Blocking · " + summary.warning_count +
+            toggleBtn.hidden = false;
+            toggleBtn.textContent = wwDataPrep.issuesExpanded ? "Hide Issues" : "View Issues";
+            groupsEl.hidden = !wwDataPrep.issuesExpanded;
+
+            // Shell for a future "Needs Attention" readiness state (task's
+            // own explicit "design the visual shell so this future state
+            // fits naturally" request) -- purely a text branch on counts
+            // the backend ALREADY returns; no new readiness logic, no
+            // gating, and blocking_count is always 0 in Slice 6's own
+            // issue production.
+            const leadIn = summary.blocking_count > 0 ? "Needs Attention — " : "";
+            countsEl.textContent = leadIn + summary.blocking_count + " Blocking · " + summary.warning_count +
                 " Warnings · " + summary.info_count + " Info";
 
             const bySeverity = { blocking: [], warning: [], info: [] };
@@ -6974,6 +7094,11 @@
             const btn = event.target.closest(".ww-data-prep-issue-goto-btn");
             if (!btn) return;
             wwDataPrepGoToIssueWorksheet(parseInt(btn.dataset.worksheet, 10));
+        });
+
+        document.getElementById("wwDataPrepIssuesToggleBtn").addEventListener("click", () => {
+            wwDataPrep.issuesExpanded = !wwDataPrep.issuesExpanded;
+            wwDataPrepRenderIssues();
         });
 
         document.getElementById("wwDataPrepPrevBtn").addEventListener("click", () => {
@@ -7212,6 +7337,21 @@
             wwDataPrepSetColumnRole(parseInt(select.dataset.col, 10), select.value);
         });
 
+        // UX refinement (post-Slice-6 UAT): progressive disclosure -- the
+        // detailed header/data-region/column-role controls stay
+        // collapsed behind "Configure" until the user actually wants to
+        // change something (task's own "show current state first" /
+        // "show detailed configuration only when the user chooses to
+        // change or inspect it" principle). Purely a visibility toggle --
+        // no state is fetched or mutated by opening/closing it.
+        document.getElementById("wwDataPrepStructureToggleBtn").addEventListener("click", () => {
+            wwDataPrep.structureExpanded = !wwDataPrep.structureExpanded;
+            const details = document.getElementById("wwDataPrepStructureDetails");
+            details.hidden = !wwDataPrep.structureExpanded;
+            document.getElementById("wwDataPrepStructureToggleBtn").textContent =
+                wwDataPrep.structureExpanded ? "Hide" : "Configure";
+        });
+
         // Click-to-edit: swaps ONE <td> for an <input> (never a
         // spreadsheet-grid library, per this slice's own explicit
         // guardrail). Enter/blur commits an EDIT; the small "Clear"
@@ -7355,7 +7495,24 @@
             document.getElementById("wwDataPrepFilename").textContent = "";
             document.getElementById("wwDataPrepRangeLabel").textContent = "";
             wwDataPrep.issueSummary = null;
+            // UX refinement (post-Slice-6 UAT): both progressive-
+            // disclosure sections default to collapsed on every fresh
+            // open, per the task's own explicit recommendation --
+            // never carried over from a previously opened source. Column
+            // roles/labels are also cleared here so the compact summary
+            // never briefly shows a stale count from whichever source was
+            // open before this one.
+            wwDataPrep.issuesExpanded = false;
+            wwDataPrep.structureExpanded = false;
+            wwDataPrep.columnRoles = [];
+            wwDataPrep.columnLabels = [];
+            wwDataPrep.headerRowNumber = null;
+            wwDataPrep.dataStartRow = null;
+            wwDataPrep.dataEndRow = null;
+            document.getElementById("wwDataPrepStructureDetails").hidden = true;
+            document.getElementById("wwDataPrepStructureToggleBtn").textContent = "Configure";
             wwDataPrepRenderIssues();
+            wwDataPrepRenderStructureSummary();
 
             try {
                 const response = await fetch(

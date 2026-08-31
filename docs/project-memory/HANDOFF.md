@@ -8,11 +8,116 @@ Last updated: **2026-08-31**
 
 ## What was most recently done
 
+**Data Preparation Workspace UX refinement — progressive disclosure for
+Preparation Status and Structure. Implemented and verified; NOT yet
+committed** (the task's own explicit closing instruction: "Do not
+commit or push unless explicitly asked" — awaiting a separate commit
+instruction, same pattern as every prior slice/task). This is a
+**presentation/interaction refinement, not a new implementation slice**
+— triggered by owner UAT feedback that Slice 6's own fully-expanded
+default layout ("too much information and too many controls at once")
+felt overwhelming. The underlying preparation architecture is
+completely unchanged: no preparation issue semantics, issue codes,
+severity logic, working-overlay behavior, header/data-region/column-role
+backend models, or API contracts were touched — this is
+`frontend/index.html` only.
+
+**Core principle applied**: "show current state first; show detailed
+configuration only when the user chooses to change or inspect it"
+(progressive disclosure).
+
+**Preparation Status panel**: the compact counts line ("N Blocking · N
+Warnings · N Info") stays always visible; the detailed grouped
+Blocking/Warning/Info list (`#wwDataPrepIssueGroups`) is now collapsed
+by default, toggled via a new "View Issues"/"Hide Issues" button
+(`wwDataPrep.issuesExpanded`, a frontend-only flag re-rendered by the
+existing `wwDataPrepRenderIssues()` — no re-fetch needed to expand or
+collapse, since the already-fetched `wwDataPrep.issueSummary` is simply
+shown or hidden). Also added: a `blocking_count > 0` lead-in
+("Needs Attention — ...") on the counts line — a presentation-only
+SHELL for a future readiness state, per the task's own explicit
+request; Slice 6's own issue production never emits `blocking`, so this
+branch is currently unreachable in practice and adds no new policy.
+
+**Structure panel**: the full header-row input / data-region inputs /
+column-role mapping table are now collapsed by default inside a new
+`#wwDataPrepStructureDetails` container, replaced in the default view
+by a compact `<dl>` summary (`Header: Row 3` or `Not set`; `Data range:
+Rows 4–5000` or `All rows`; `Columns: 1 Time Axis · 3 Waveform · 1
+Metadata`, or `5 total · 5 Unknown` when every column is still
+unclassified) — a single "Configure"/"Hide" button
+(`wwDataPrep.structureExpanded`) toggles the detailed section.
+`wwDataPrepRenderStructureSummary()` (new) computes the summary purely
+from the SAME `wwDataPrep.headerRowNumber`/`dataStartRow`/`dataEndRow`/
+`columnRoles` the detailed controls already used — never a second,
+independently-derived source of truth — and is called from every place
+that already refreshes those fields
+(`wwDataPrepFetchPreview()`/`wwDataPrepApplyOverlaySummary()`), so the
+summary never goes stale relative to the detailed controls.
+
+**Session-scoped state only**: both `issuesExpanded`/`structureExpanded`
+are plain frontend flags, reset to `false` every time
+`openDataPreparationWorkspace()` runs (task's own "recommended default
+on opening... collapsed" guidance) — never sent to the backend, never
+persisted across a reload. `wwDataPrep.columnRoles`/`columnLabels`/
+`headerRowNumber`/`dataStartRow`/`dataEndRow` are also now explicitly
+cleared on every fresh open, closing a minor pre-existing cosmetic gap
+where switching directly between two preparation sources could
+transiently show the previous source's own summary values before the
+first preview fetch completed.
+
+**Preserved unchanged**: the per-row "Set as Header" quick action in
+the preview table itself (task's own explicit "progressive disclosure
+should reduce form clutter, not remove useful contextual interactions"
+requirement); every column-role `<select>`; Set/Reset Region; Undo/Redo;
+Reset All; issue-driven "Go to worksheet" navigation; and all
+Slice 1-6 backend behavior (verified via a full, unmodified backend
+pytest re-run — 2101 passed, 0 regressions, since no backend file was
+touched).
+
+**Verification**: full backend suite re-run unchanged (2101 passed, 0
+regressions — no backend file touched); the committed browser smoke
+test (COMTRADE) still passes unchanged; one throwaway (not committed)
+live-browser Playwright UAT script confirmed: a freshly uploaded CSV
+shows the issue panel collapsed by default with correct counts,
+expands/collapses correctly on toggle; the Structure panel shows the
+correct collapsed summary (`Not set` / `All rows` / `3 total · 3
+Unknown`) with all detailed controls hidden; clicking "Configure"
+reveals the existing header/region/role controls, which still work
+exactly as before (setting a header, narrowing the region, assigning
+column roles), after which collapsing "Configure" shows a correctly
+updated summary (`Row 1` / `Rows 2–2` / role counts); the row-level
+"Set as Header" button and Undo remain functional; and a second
+throwaway script confirmed Excel worksheet isolation still works
+correctly under the new collapsed-by-default shell (each sheet's own
+Structure summary renders independently when switching) — zero
+console/page errors across both runs.
+
+**Files changed**: Frontend only — `frontend/index.html` (new
+`.ww-data-prep-panel-header`/`.ww-data-prep-structure-summary` CSS, new
+`wwDataPrep.issuesExpanded`/`structureExpanded` state, new
+`wwDataPrepRenderStructureSummary()`/`wwDataPrepSummarizeColumnRoles()`
+functions, updated `wwDataPrepRenderIssues()`, two new toggle-button
+event listeners, HTML restructuring of the Preparation Status and
+Structure panel markup). No backend file changed. Documentation —
+`CURRENT_STATE.md`, here. No `DECISIONS.md` entry — this is a UX/UAT
+outcome applying an owner-approved presentation principle already
+stated in the task itself, not a new owner-level architectural
+decision.
+
+**Next step**: nothing beyond this refinement is pre-authorized, and it
+is itself implemented but not yet committed per its own explicit
+instruction. Slice 7 (Extensible time-axis framework) remains the next
+implementation-slice candidate per the owner's revised sequence, but
+requires its own explicit go-ahead — as does committing this
+refinement itself.
+
+## What was done in the prior session — CSV/Excel Ingestion Slice 6: Preparation Readiness Issue Model
+
 **CSV/Excel Ingestion Slice 6 — Preparation Readiness Issue Model.
-Implemented and verified; NOT yet committed** (the task's own explicit
-closing instruction: "Do not commit or push unless explicitly asked" —
-awaiting a separate commit instruction, same pattern as every prior
-slice). Direct follow-up to Slice 5 (below, committed as `fbfe824`) —
+Implemented, verified, and committed as `a8b1fce`** ("feat: add
+preparation readiness issue model"; NOT pushed). Direct follow-up to
+Slice 5 (below, committed as `fbfe824`) —
 the sixth implementation slice of the owner's revised 13-slice sequence
 (`CSV_EXCEL_INGESTION_ARCHITECTURE.md` §14). This slice is explicitly
 PLUMBING, not the full Readiness Validator (still Slice 9's own scope).

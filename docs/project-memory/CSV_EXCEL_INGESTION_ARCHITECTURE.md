@@ -957,6 +957,40 @@ owner go-ahead before implementation begins.
    issue panel safely empty (no error, no corrupted state) until a
    sheet is chosen, after which each sheet's own issues render
    correctly and independently -- all with zero console/page errors.
+
+   **`[DONE, 2026-08-31]` Post-Slice-6 UX refinement (owner UAT,
+   presentation only).** Owner feedback: Slice 6's own fully-expanded
+   default layout for Preparation Status, combined with Slice 5's own
+   fully-expanded default Structure controls, made the Data Preparation
+   Workspace feel overwhelming. Applied progressive disclosure ("show
+   current state first; show detailed configuration only when the user
+   chooses to change or inspect it") to BOTH panels, `frontend/index.html`
+   only -- no preparation-issue semantics/codes/severity logic, no
+   working-overlay/header/data-region/column-role backend model, and no
+   API contract changed. Preparation Status: the counts line stays
+   always visible; the detailed grouped issue list collapses behind a
+   new "View Issues"/"Hide Issues" toggle (plus a presentation-only
+   `blocking_count > 0` "Needs Attention" lead-in shell for a FUTURE
+   readiness state -- unreachable today, since this slice's own issue
+   production never emits `blocking`). Structure: a compact `Header: …
+   / Data range: … / Columns: …` summary line replaces the
+   permanently-visible controls as the default view, with a single
+   "Configure"/"Hide" toggle revealing the exact same header-row input,
+   data-region inputs, and column-role mapping table Slice 5 already
+   built. Both expand states are frontend-only, session-scoped flags,
+   reset to collapsed on every fresh workspace open -- never persisted,
+   never sent to the backend. Every existing interaction (row-level
+   "Set as Header," column-role selects, Set/Reset Region, Undo/Redo,
+   Reset All, issue-driven worksheet navigation) is functionally
+   unchanged. Verified: full backend suite re-run unmodified (2101
+   passed, 0 regressions -- no backend file touched); the committed
+   browser smoke test (COMTRADE) still passes unchanged; two throwaway
+   (not committed) live-browser Playwright UAT scripts confirmed the
+   collapsed-by-default state, correct expand/collapse toggling for
+   both panels, a correctly updating Structure summary after
+   configuring header/region/roles, preserved row-level quick actions
+   and Undo, and correct per-worksheet summary isolation for a
+   multi-sheet Excel workbook -- zero console/page errors.
 7. **Extensible time-axis framework.** Interpreter architecture; an
    explicit unknown/unsupported path; no closed format list (DEC-072
    point 6, §15).

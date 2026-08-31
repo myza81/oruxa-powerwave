@@ -306,12 +306,38 @@ re-confirmed by the TG-FINAL audit):
   always equals `current_revision` and `is_stale` is always `false`
   today. New `GET .../preparation-sources/{id}/issues` endpoint, scoped
   to the selected worksheet the same way `GET .../rows` already is.
-  Frontend: a new "Preparation Status" panel showing severity counts and
-  a grouped Blocking/Warning/Info list, refetched alongside every
-  preview load (which already covers "refetch after every mutation" for
-  free). Recording Events status stays `Needs Preparation` throughout —
-  no `Ready`/`Preparation Error` status, no "Open in Powerwave" action,
-  and no readiness gate exist anywhere in this slice.
+  Frontend: a "Preparation Status" panel showing severity counts and a
+  grouped Blocking/Warning/Info list (see the UX-refinement paragraph
+  below for its own current, collapsed-by-default presentation),
+  refetched alongside every preview load (which already covers "refetch
+  after every mutation" for free). Recording Events status stays `Needs
+  Preparation` throughout — no `Ready`/`Preparation Error` status, no
+  "Open in Powerwave" action, and no readiness gate exist anywhere in
+  this slice.
+
+  **Post-Slice-6 UX refinement** (owner UAT, 2026-08-31, presentation
+  only — no preparation architecture/API/issue-semantics change):
+  both the Preparation Status and Structure panels now default to a
+  **compact summary**, expanded only on request (progressive
+  disclosure), per owner feedback that the fully-expanded default
+  layout felt overwhelming. Preparation Status shows its counts line
+  plus a "View Issues"/"Hide Issues" toggle — the detailed
+  Blocking/Warning/Info list is collapsed until requested (a
+  `blocking_count > 0` lead-in text, "Needs Attention — ...", is
+  wired into the same counts line as a presentation-only shell for a
+  future readiness state; Slice 6 itself never produces a `blocking`
+  issue, so this branch is currently unreachable in practice). Structure
+  shows a compact `Header: … / Data range: … / Columns: …` summary line
+  with a single "Configure"/"Hide" toggle; the header/data-region inputs
+  and the full column-role mapping table only render inside that
+  toggled section. Both expand/collapse flags are frontend-only,
+  session-scoped state (`wwDataPrep.issuesExpanded`/
+  `structureExpanded`), reset to collapsed every time the Data
+  Preparation Workspace is (re)opened — never persisted, never sent to
+  the backend. Every existing interaction (row-level "Set as Header,"
+  the column-role `<select>`s, Set/Reset Region, Undo/Redo, Reset All,
+  issue-driven worksheet navigation) is unchanged; only its default
+  visibility changed.
 
   Time-axis interpretation and the full readiness validator are still
   explicitly NOT part of any of these six slices — see
