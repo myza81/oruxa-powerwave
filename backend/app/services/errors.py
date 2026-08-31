@@ -476,3 +476,58 @@ class InvalidDetectionSensitivityError(ImportServiceError):
     field."""
 
     code = "invalid_sensitivity"
+
+
+# ---- CSV/Excel ingestion Slice 2 (DEC-072): Excel upload/worksheet
+# discovery (app.services.preparation_import_service). No new severity
+# model here -- these reuse the exact same binary
+# ImportServiceError/HTTP-status taxonomy Slice 1's CSV path already
+# uses (see app.api.v1.preparation_sources's own module docstring). ----
+
+
+class AmbiguousPreparationUploadError(ImportServiceError):
+    """Neither `csv_file` nor `excel_file` was submitted, or both were --
+    exactly one file field is required per request (section: "format-
+    aware upload handling" evolved from Slice 1's single `csv_file`
+    field without breaking it -- see the API's own docstring)."""
+
+    code = "ambiguous_preparation_upload"
+
+
+class WorkbookParseError(ImportServiceError):
+    """The uploaded bytes could not be opened as a valid Excel workbook
+    (corrupt, malformed, or not actually an .xlsx container at all --
+    e.g. a renamed non-Excel file). Mirrors
+    app.services.errors.ParseError's role for COMTRADE -- reuses the
+    existing runtime/import-error model verbatim, never a new severity
+    tier (that is Slice 6 scope, not this one)."""
+
+    code = "workbook_parse_error"
+
+
+class EmptyWorkbookError(ImportServiceError):
+    """A workbook opened successfully but contains zero worksheets --
+    structurally invalid as a preparation source (mirrors
+    app.services.errors.InvalidFileError's "empty file" role for
+    CSV/COMTRADE)."""
+
+    code = "empty_workbook"
+
+
+class WorksheetSelectionNotApplicableError(ImportServiceError):
+    """A worksheet-selection request (PATCH) was made against a
+    preparation source that has no worksheet concept at all (a CSV
+    source) -- rejected explicitly, never silently ignored, matching
+    this codebase's established "reject incorrect configuration
+    explicitly" convention (see e.g.
+    VoltageConfigurationNotApplicableError)."""
+
+    code = "worksheet_selection_not_applicable"
+
+
+class InvalidWorksheetIndexError(ImportServiceError):
+    """A submitted `selected_worksheet_index` is missing, non-integer, or
+    outside this workbook's own discovered worksheet range -- never
+    silently clamped to a valid index."""
+
+    code = "invalid_worksheet_index"

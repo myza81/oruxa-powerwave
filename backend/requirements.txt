@@ -17,3 +17,15 @@ pandas==3.0.2
 # migrations are out of scope for Milestone 1, but the dependency is pinned now
 # so the runtime image does not change when the database is introduced.
 psycopg[binary]==3.3.4
+
+# CSV/Excel ingestion Slice 2 (DEC-072): .xlsx workbook inspection
+# (app/services/preparation_import_service.py's worksheet discovery).
+# Pure-Python, minimal footprint (its only dependency is et_xmlfile, a
+# small stdlib-style XML helper -- no C extension, no GUI, no
+# LibreOffice). Supports read_only=True streaming mode, used here so
+# discovering a workbook's worksheets never fully materializes sheet
+# data into memory. Legacy .xls is deliberately NOT supported this
+# slice -- it requires a separate, unmaintained dependency (xlrd 2.x
+# dropped .xlsx support entirely and only reads legacy .xls) that is
+# not currently justified; see CSV_EXCEL_INGESTION_ARCHITECTURE.md.
+openpyxl==3.1.5

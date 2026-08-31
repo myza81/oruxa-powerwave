@@ -617,10 +617,67 @@ owner go-ahead before implementation begins.
    (COMTRADE unaffected; CSV upload → "Needs Preparation" row → correct
    File Format/File Size/Status/—/—/— → not openable as a waveform →
    removable) with zero console/page errors.
-2. **Excel ingestion + worksheet discovery.** XLSX/XLS ingestion
-   foundation as supported by chosen backend tooling; workbook metadata;
-   worksheet discovery/selection; sheets remain independent (principle
-   8); still no waveform conversion.
+2. **`[DONE, 2026-08-30]` Excel ingestion + worksheet discovery.**
+   Implemented: **`.xlsx` only** — legacy `.xls` is deliberately deferred
+   (would need a separate, unmaintained `xlrd` dependency; `xlrd` 2.x
+   dropped `.xlsx` support entirely and only reads legacy `.xls`, so it
+   would not even cover both formats with one library). Library:
+   `openpyxl==3.1.5` (newly declared in `backend/requirements.txt` — it
+   was already present in the dev environment but undeclared; its own
+   dependency footprint is just `et_xmlfile`, pure Python, no C
+   extension, no GUI, no LibreOffice), used in `read_only=True` streaming
+   mode — verified directly (not assumed) that opening an in-memory
+   `BytesIO` this way creates zero temporary files, and worksheet
+   discovery never materializes a sheet's cell grid.
+   `import_excel_preparation_source()` reuses the SAME
+   `PreparationSession`/`PreparationSessionSummary` shape Slice 1 already
+   established (per DEC-072's own "one preparation-session concept, not
+   one per format" architecture) — no `ExcelPreparationSession` type was
+   created. A new `WorksheetInfo` descriptor
+   (`index`/`name`/`visible`/`row_count`/`column_count`, the last two
+   best-effort/`None`-able, from `Worksheet.max_row`/`max_column`, never
+   a full-sheet scan) is discovered once at upload time and stored on
+   the summary; hidden sheets are discovered and reported, never merged
+   or dropped; sheets are never combined, concatenated, or cross-
+   referenced (principle 8, reaffirmed). A one-worksheet workbook is
+   auto-selected (`selected_worksheet_index=0`, deterministic, still
+   visibly reported) — a workbook with two or more worksheets (even one
+   visible + one hidden) requires an explicit selection. New
+   `PATCH .../preparation-sources/{id}` endpoint
+   (`WorksheetSelectionRequest`/`select_preparation_worksheet()`) stores
+   only the stable `index` already discovered, never a header row/data
+   region/column mapping. `POST .../preparation-sources` evolved from
+   Slice 1's single required `csv_file` field to two OPTIONAL fields
+   (`csv_file` xor `excel_file`, exactly one required) — chosen over a
+   generic `format`+`file` pair or a second endpoint family because it
+   mirrors this codebase's own existing `cfg_file`+`dat_file` convention
+   (`app.api.v1.sources.upload_comtrade_source`); Slice 1's own frontend
+   call sites and almost all of its own tests are unaffected (one Slice 1
+   edge-case test — "no file field at all" — deliberately migrated from
+   a generic 422 to an explicit `ambiguous_preparation_upload` 400,
+   disclosed in that test's own updated comment). Frontend: Excel enabled
+   in `RECORDING_FORMATS` (`.xlsx` accept only, label still reads
+   "Excel"), `submitExcelUpload()` parallel to `submitCsvUpload()`, and a
+   new minimal Worksheet Selection modal (`#wwWorksheetSelectOverlay`,
+   reusing the same `.confirm-overlay`/`.group-editor-box` shell) opened
+   by clicking a "Needs Preparation" Excel row — shows filename/size,
+   lists worksheet names with a hidden badge and best-effort row/column
+   counts, lets the user pick one via `PATCH`. Never renders cell
+   contents (Slice 3's own scope). A "Needs Preparation" CSV row's click
+   still does nothing at all (no worksheet concept) — only Excel rows get
+   this new interaction; the row-click-to-open-as-waveform gate itself is
+   unchanged (`status === "ready"`, still false for every preparation
+   source regardless of format).
+   Verified: 1848 backend tests passing (35 new on top of Slice 1's
+   1813), zero regressions; the committed browser smoke test (COMTRADE)
+   still passes unchanged; a live-browser manual UAT run confirmed all
+   four acceptance scenarios (COMTRADE unaffected; CSV regression
+   unaffected — click still does nothing, no worksheet modal; Excel
+   single-sheet — correct File Format/File Size/Status/—/—/—, click
+   opens the modal with the one sheet pre-selected, does not touch
+   channel-selection state; Excel multi-sheet — all four sheet names
+   discovered in order, none pre-selected, a chosen selection persists
+   across reopening the modal) with zero console/page errors.
 3. **Paged raw-data preview + Data Preparation Workspace shell.**
    Backend paging/windowing API; frontend preparation page/workspace;
    table preview designed for large data; no requirement to load the
@@ -762,6 +819,15 @@ not as open items any more:
 |---|---|---|
 | 1 (raw storage) | Exact temporary-storage mechanism for RAW CSV bytes | Resolved for Slice 1's own scope — `PreparationSessionRegistry`, an in-memory sibling registry (see §9's own `[FACT]` note). **Not yet resolved** for a future Working Dataset's own overlay/edit state (Slice 4) or paged/windowed large-file access (Slice 3) — those are separate storage questions this slice's raw-bytes-only registry does not answer. |
 
+**Resolved by Slice 2 implementation (2026-08-30)**:
+
+| # | Question | Resolution |
+|---|---|---|
+| 1 | Which Excel library/tooling, and does it extend to raw-bytes storage for Excel too? | `openpyxl==3.1.5`, `read_only=True` streaming discovery, zero temp files for an in-memory `BytesIO` source (verified directly). Raw workbook bytes reuse the SAME `PreparationSessionRegistry` Slice 1 already built for CSV — no second storage mechanism needed for the second format. |
+| 2 | Should `.xls` be supported alongside `.xlsx`? | No — deferred. `.xls` would need `xlrd`, a separate, unmaintained dependency (its 2.x line dropped `.xlsx` support entirely), not currently justified. `.xlsx` only, per the task's own pre-authorized fallback. |
+| 3 | Worksheet descriptor shape? | `WorksheetInfo{index, name, visible, row_count, column_count}` — the last two best-effort/`None`-able from `max_row`/`max_column`, never a full-sheet scan. |
+| 4 | Single-sheet auto-selection behavior? | Auto-selected (`selected_worksheet_index=0`) only when the workbook has exactly one worksheet total (visible or hidden); two or more (even one visible + one hidden) requires explicit selection — per the task's own pre-authorized convenience option. |
+
 **Genuinely unresolved — must not be resolved prematurely** (owner's own
 explicit list; do not pick a mechanism ahead of the implementation
 slices without further owner input):
@@ -770,12 +836,13 @@ slices without further owner input):
 |---|---|---|---|
 | 1 | Exact overlay/delta implementation for non-destructive edits | `[DECISION MODE: COMPARISON]` | Slice 4 |
 | 2 | Exact frontend grid/virtualization technology | `[DECISION MODE: COMPARISON]` | Slice 3 |
-| 3 | Exact API shapes (paging, mapping, readiness) beyond what Slice 1 already established for preparation-source identity/upload | `[DECISION MODE: ANALYSIS]`, once slice work actually starts | Slices 3, 5, 6 |
+| 3 | Exact API shapes (paging, mapping, readiness) beyond what Slices 1-2 already established for preparation-source identity/upload/worksheet selection | `[DECISION MODE: ANALYSIS]`, once slice work actually starts | Slices 3, 5, 6 |
 | 4 | Exact timestamp-interpreter list to build first | `[DECISION MODE: ANALYSIS]` — the *list itself* stays open per DEC-072 point 6; only the first-slice subset needs choosing | Slice 8 |
 | 5 | Exact saved-profile design (import-profile reuse across files) | `[DECISION MODE: DEFER]` | Slice 13 |
-| 6 | Whether/how a large raw CSV needs paging at the *storage* layer (Slice 1's in-memory registry holds the whole file's raw bytes at once — fine for Slice 1's own "safe acceptance only" scope, but a future large-file consideration for Slice 3's own paged preview) | `[DECISION MODE: DEFER]` | Slice 3 |
+| 6 | Whether/how a large raw CSV/Excel file needs paging at the *storage* layer (Slices 1-2's in-memory registry holds the whole file's raw bytes at once — fine for "safe acceptance/discovery only" scope, but a future large-workbook consideration for Slice 3's own paged preview; a large `.xlsx` is a compressed container that can expand substantially, so this matters more for Excel than CSV) | `[DECISION MODE: DEFER]` | Slice 3 |
 | 7 | Permanent persistence of uploaded CSV/XLSX (beyond an active preparation session) | `[DECISION MODE: DEFER]` — explicitly out of scope unless a future, separate decision introduces it (DEC-072 point 1) | Not currently scheduled |
 | 8 | Exact future `DisturbanceRecord.validate()` hardening (monotonicity/finiteness check) | `[DECISION MODE: DEFER]` — independent canonical-contract work, deliberately outside CSV/Excel scope (DEC-072 point 4) | Not currently scheduled |
+| 9 | Whether `.xls` legacy support is ever added later (would require an explicit owner decision to accept the `xlrd` dependency, since Slice 2 deliberately did not) | `[DECISION MODE: DEFER]` | Not currently scheduled |
 
 **`[FACT]`**: how a sample-index-only time axis is represented in the
 canonical contract (original item 4 — no field exists for it today, see

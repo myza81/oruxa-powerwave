@@ -1,4 +1,4 @@
-"""Preparation Session domain model (CSV/Excel ingestion Slice 1, DEC-072).
+"""Preparation Session domain model (CSV/Excel ingestion Slices 1-2, DEC-072).
 
 A `PreparationSession` represents one uploaded CSV/Excel file that has
 been accepted as *raw, immutable, temporary* preparation input -- it is
@@ -21,13 +21,23 @@ this implements:
             |
     Existing Powerwave behavior unchanged
 
-Slice 1 scope only (deliberately minimal -- see this module's own
-docstring history in git for the full guardrail list): identity,
-original filename, format, byte size, the raw bytes themselves, status,
-and creation time. Does NOT model header mappings, column mappings,
-edits/overlays, time-axis interpretation, or readiness findings -- those
-are later slices' own domain concepts and must not be speculatively
-added here.
+Slice 1 scope (deliberately minimal -- see this module's own docstring
+history in git for the full guardrail list): identity, original
+filename, format, byte size, the raw bytes themselves, status, and
+creation time.
+
+Slice 2 adds Excel (`.xlsx` only -- see `KNOWN_PREPARATION_FORMATS`'s
+own comment) as a second supported format, reusing this SAME
+`PreparationSession`/`PreparationSessionSummary` shape rather than a
+parallel `ExcelPreparationSession` type (per DEC-072's own architecture:
+one preparation-session concept, not one per format) -- plus a small,
+read-only `WorksheetInfo` descriptor list and a `selected_worksheet_index`
+field, both optional/empty for CSV (which has no worksheet concept at
+all -- see `WorksheetInfo`'s own docstring).
+
+Neither slice models header mappings, column mappings, edits/overlays,
+time-axis interpretation, or readiness findings -- those are later
+slices' own domain concepts and must not be speculatively added here.
 
 Zero framework dependencies, matching every other `app.domain` module's
 own layering contract (see `app.domain.source`'s own module docstring).
@@ -38,13 +48,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-#: Slice 1 supports CSV only. Excel is Slice 2 -- this constant is a
-#: closed set deliberately, unlike the time-axis format list (which
-#: DEC-072 point 6 keeps permanently open): a preparation *source
-#: format* is a small, enumerable, provider-registration-style concept,
-#: not an open-ended interpretation question.
+#: A preparation *source format* is a small, enumerable,
+#: provider-registration-style concept, not an open-ended interpretation
+#: question -- unlike the time-axis format list, which DEC-072 point 6
+#: deliberately keeps permanently open. Slice 2 adds Excel, `.xlsx` only:
+#: legacy `.xls` would need a separate, unmaintained dependency (`xlrd`
+#: 2.x dropped `.xlsx` support entirely and only reads legacy `.xls`) not
+#: currently justified -- see CSV_EXCEL_INGESTION_ARCHITECTURE.md.
 FORMAT_CSV = "CSV"
-KNOWN_PREPARATION_FORMATS = (FORMAT_CSV,)
+FORMAT_EXCEL = "Excel"
+KNOWN_PREPARATION_FORMATS = (FORMAT_CSV, FORMAT_EXCEL)
 
 #: The only status a Slice 1 preparation session can ever have. Later
 #: slices add more (e.g. once a Readiness Validator exists) -- this is
@@ -58,12 +71,47 @@ def preparation_format_valid(source_format: str) -> bool:
 
 
 @dataclass(slots=True)
+class WorksheetInfo:
+    """One worksheet's own discovered structural identity (Slice 2).
+
+    Read-only, structural metadata ONLY -- never cell values, never a
+    header row, never a data region. `index` (0-based, matching workbook
+    sheet order) is the stable internal identifier, never `name` alone:
+    Excel enforces unique names within one workbook today, but nothing
+    in this module relies on that -- `index` is what a future rename-
+    tolerant lookup would use (task's own "duplicate sheet names" /
+    "prefer an internal descriptor that can preserve sheet_index,
+    sheet_name" guidance). `row_count`/`column_count` are best-effort:
+    `None` whenever the workbook's own XML doesn't cheaply expose them
+    (see `preparation_import_service._discover_worksheets()`'s own
+    docstring) -- never worth a full-sheet scan just to populate them.
+    """
+
+    index: int
+    name: str
+    visible: bool
+    row_count: int | None = None
+    column_count: int | None = None
+
+
+@dataclass(slots=True)
 class PreparationSessionSummary:
     """Everything the preparation-sources list/detail API needs.
 
     Deliberately excludes the raw file bytes -- mirrors
     `app.domain.source.SourceMetadata`'s own "metadata never carries the
     heavy payload" convention.
+
+    Slice 2: `worksheets`/`selected_worksheet_index` are additive,
+    defaulted fields -- empty/`None` for CSV (which has no worksheet
+    concept at all; never populated with fake single-sheet metadata just
+    to keep a shape uniform, per this slice's own explicit guardrail).
+    For Excel, `worksheets` is populated once at upload time (never
+    re-discovered later) and `selected_worksheet_index` starts at `0`
+    when the workbook has exactly one worksheet (deterministic
+    convenience auto-selection -- see `preparation_import_service`'s own
+    docstring for the exact rule) or `None` otherwise, until an explicit
+    `PATCH .../preparation-sources/{id}` selection is made.
     """
 
     source_id: str
@@ -73,12 +121,15 @@ class PreparationSessionSummary:
     original_byte_size: int
     status: str
     created_at: datetime
+    worksheets: tuple[WorksheetInfo, ...] = ()
+    selected_worksheet_index: int | None = None
 
 
 @dataclass(slots=True)
 class PreparationSession:
-    """Everything the in-memory registry owns for one CSV preparation
-    source: the lightweight summary plus the immutable raw bytes.
+    """Everything the in-memory registry owns for one CSV or Excel
+    preparation source: the lightweight summary plus the immutable raw
+    bytes.
 
     Mirrors `app.domain.source.ActiveSource`'s summary+payload
     composition exactly, at Slice 1's much smaller scale (raw bytes

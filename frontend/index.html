@@ -528,6 +528,12 @@
         .recording-details-fact { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
         .recording-details-fact-label { font-size: 0.72rem; color: var(--text-dim); }
         .recording-details-fact-value { font-size: 0.88rem; color: var(--text); font-weight: 500; overflow-wrap: anywhere; white-space: normal; }
+        /* CSV/Excel ingestion Slice 2 (DEC-072): the minimal Worksheet
+           Selection modal's own sheet list -- deliberately plain radio
+           rows, no table/grid (that's Slice 3's own raw-preview scope,
+           not this modal's). */
+        .ww-worksheet-option { display: flex; align-items: center; gap: 8px; font-weight: normal; padding: 6px 0; }
+        .ww-worksheet-option .hint { margin: 0; }
         /* TIMING/SESSION zone: Trigger Time (source-level, timezone-naive
            COMTRADE timestamp) and Imported Time (session-level,
            timezone-aware backend timestamp -- a DIFFERENT kind of "when"
@@ -4825,6 +4831,31 @@
         </div>
     </div>
 
+    <!-- CSV/Excel ingestion Slice 2 (DEC-072): the minimal worksheet
+         selector -- reuses the SAME .confirm-overlay/.group-editor-box
+         shell as every other dialog in this app (no new modal
+         primitive). Opened by clicking a "Needs Preparation" Excel row
+         in Recording Events (see openWorksheetSelectModal()). Enough to
+         (1) confirm the workbook was accepted, (2) see its worksheet
+         names, (3) choose one -- deliberately NOT the raw table preview
+         or Data Preparation Workspace (Slice 3 scope): no cell contents
+         are ever rendered here. -->
+    <div class="confirm-overlay" id="wwWorksheetSelectOverlay" hidden>
+        <div class="group-editor-box" role="dialog" aria-modal="true" aria-labelledby="wwWorksheetSelectTitle">
+            <div class="group-editor-header">
+                <h3 id="wwWorksheetSelectTitle">Select worksheet</h3>
+                <button type="button" class="group-editor-close" id="wwWorksheetSelectCloseBtn" aria-label="Close">&times;</button>
+            </div>
+            <p class="hint" id="wwWorksheetSelectSubtitle"></p>
+            <div id="wwWorksheetSelectList"></div>
+            <div class="upload-status" id="wwWorksheetSelectStatus" role="status" aria-live="polite"></div>
+            <div class="group-editor-footer">
+                <button type="button" class="secondary" id="wwWorksheetSelectCancelBtn">Cancel</button>
+                <button type="button" id="wwWorksheetSelectConfirmBtn">Select</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Phase 5B UAT Fix: a single shared, body-level tooltip node for
          every `.ww-info-tip-trigger` on the page (currently the RMS
          parameter form's Nominal Frequency/Window/Method info-tips) --
@@ -4878,15 +4909,23 @@
         // A small, DATA-driven model the upload modal renders its file
         // inputs from, so adding a future format means adding an entry
         // here (plus its own backend endpoint) rather than rewriting the
-        // modal. COMTRADE and CSV are enabled; Excel remains a real,
-        // visible, disabled option (CSV/Excel ingestion Slice 2 scope --
-        // same visible-but-disabled convention already used for Table/
-        // Tools/Reports in the Main Sidebar Menu) -- proving the
-        // architecture without pretending it already works. `submitLabel`
-        // drives the modal's primary action text (Slice 1: CSV is not yet
-        // imported into Powerwave as a waveform, so its button reads
-        // "Upload & Prepare", never "Upload & Import" -- see
-        // renderUploadModalFileFields()).
+        // modal. COMTRADE, CSV, and Excel are all enabled as of CSV/Excel
+        // ingestion Slice 2. `submitLabel` drives the modal's primary
+        // action text (CSV/Excel are not yet imported into Powerwave as a
+        // waveform, so their button reads "Upload & Prepare", never
+        // "Upload & Import" -- see renderUploadModalFileFields()).
+        //
+        // Slice 2: Excel's own `accept` is deliberately `.xlsx` ONLY --
+        // the label still reads "Excel file" (matching the task's own
+        // "label may say Excel while accepted extensions accurately
+        // reflect what is actually supported"), but legacy `.xls` is not
+        // accepted: it would need a separate, unmaintained backend
+        // dependency (xlrd) not currently justified -- see
+        // app.domain.preparation_session's own module docstring and
+        // CSV_EXCEL_INGESTION_ARCHITECTURE.md. The backend rejects a
+        // `.xls` upload as `unsupported_file_type` regardless; this
+        // `accept` value only steers the browser's own file picker, it is
+        // not the authoritative check.
         // ------------------------------------------------------------------
         const RECORDING_FORMATS = [
             {
@@ -4908,9 +4947,15 @@
                     { key: "csv", label: "CSV file", accept: ".csv,.CSV" },
                 ],
             },
-            { id: "excel", label: "Excel (coming soon)", enabled: false, submitLabel: "Upload & Prepare", files: [
-                { key: "xlsx", label: "Excel file (.xlsx)", accept: ".xlsx,.xls" },
-            ] },
+            {
+                id: "excel",
+                label: "Excel",
+                enabled: true,
+                submitLabel: "Upload & Prepare",
+                files: [
+                    { key: "excel", label: "Excel file", accept: ".xlsx,.XLSX" },
+                ],
+            },
         ];
 
         // ------------------------------------------------------------------
@@ -5405,19 +5450,28 @@
             return knownMessages[code] || (message || "Import failed.");
         }
 
-        // CSV/Excel ingestion Slice 1: a SEPARATE small message map from
+        // CSV/Excel ingestion Slices 1-2: a SEPARATE small message map from
         // friendlyErrorMessage() above -- reusing that function's COMTRADE-
         // worded "doesn't look like a COMTRADE .cfg/.dat file" text for a
-        // rejected CSV would be actively misleading (section: same error
-        // codes, format-appropriate wording). The backend reuses the exact
-        // same error codes/taxonomy for both (unsupported_file_type/
-        // invalid_file/upload_too_large -- no new Readiness Issue model
-        // yet, that's Slice 6), so only the wording differs here.
+        // rejected CSV/Excel upload would be actively misleading (same
+        // error codes, format-appropriate wording). The backend reuses
+        // the exact same binary error taxonomy for both formats -- no new
+        // Readiness Issue severity model yet, that's Slice 6 -- so only
+        // the wording differs here. Deliberately format-neutral wording
+        // (both CSV and Excel now post to this SAME preparation-sources
+        // endpoint, see submitCsvUpload()/submitExcelUpload() below) plus
+        // the Slice 2 workbook-specific codes
+        // (workbook_parse_error/empty_workbook/ambiguous_preparation_upload
+        // -- the last one is unreachable via this UI, which always sends
+        // exactly one file field, but mapped anyway for completeness).
         function friendlyPreparationErrorMessage(code, message) {
             const knownMessages = {
-                unsupported_file_type: "That doesn't look like a .csv file. Check the file extension and try again.",
-                invalid_file: "That CSV file is empty or unreadable.",
+                unsupported_file_type: "That file type isn't supported for preparation. Check the file extension and try again.",
+                invalid_file: "That file is empty or unreadable.",
                 upload_too_large: message || ("This file is larger than the current " + CLIENT_SIZE_GUIDANCE_MB + " MB limit."),
+                workbook_parse_error: "That workbook couldn't be opened. It may be corrupted or not a real Excel file.",
+                empty_workbook: "That workbook doesn't contain any worksheets.",
+                ambiguous_preparation_upload: "Something went wrong with this upload. Please try again.",
                 invalid_workspace: "Something went wrong identifying your workspace. Try starting a new one.",
                 internal_error: "Something went wrong on our end. Please try again.",
             };
@@ -5514,16 +5568,16 @@
                 files[input.dataset.fileKey] = file;
             }
 
-            // CSV/Excel ingestion Slice 1: dispatch by format id -- COMTRADE's
-            // own branch below is the exact, unmodified body this handler
-            // always ran (just relocated), so COMTRADE's upload behavior is
-            // byte-for-byte unchanged. Excel has no branch yet (unreachable
-            // via the UI -- disabled <option> -- so falling through to
-            // nothing is correct, not a gap).
+            // CSV/Excel ingestion Slices 1-2: dispatch by format id --
+            // COMTRADE's own branch below is the exact, unmodified body
+            // this handler always ran (just relocated), so COMTRADE's
+            // upload behavior is byte-for-byte unchanged.
             if (format.id === "comtrade") {
                 await submitComtradeUpload(files.cfg, files.dat);
             } else if (format.id === "csv") {
                 await submitCsvUpload(files.csv);
+            } else if (format.id === "excel") {
+                await submitExcelUpload(files.excel);
             }
         });
 
@@ -5645,6 +5699,188 @@
             }
         }
 
+        // CSV/Excel ingestion Slice 2 (DEC-072): deliberately parallel to
+        // submitCsvUpload() above -- same guard/disable/status-message
+        // shape, posting `excel_file` to the SAME preparation-sources
+        // endpoint (app.api.v1.preparation_sources now accepts either
+        // field, exactly one per request). A workbook is accepted as raw
+        // input plus its own worksheet structure only -- never parsed
+        // into a waveform, never merges/interprets sheets.
+        async function submitExcelUpload(excelFile) {
+            const mb = excelFile.size / (1024 * 1024);
+            if (mb > CLIENT_SIZE_GUIDANCE_MB) {
+                setUploadStatus(
+                    "error",
+                    "This file is about " + mb.toFixed(1) + " MB, which is over the " +
+                    CLIENT_SIZE_GUIDANCE_MB + " MB guidance. You can still try -- the server will " +
+                    "confirm whether it fits the currently configured limit."
+                );
+            }
+
+            uploadModalSubmitting = true;
+            const submitBtn = document.getElementById("uploadModalSubmitBtn");
+            submitBtn.disabled = true;
+            document.getElementById("uploadModalCancelBtn").disabled = true;
+            document.getElementById("uploadModalCloseBtn").disabled = true;
+            setUploadStatus("busy", '<span class="spinner"></span>Uploading&hellip;');
+
+            const formData = new FormData();
+            formData.append("excel_file", excelFile, excelFile.name);
+
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                        "/preparation-sources",
+                    { method: "POST", body: formData }
+                );
+                const body = await response.json().catch(() => null);
+
+                if (!response.ok) {
+                    const detail = (body && body.detail) || {};
+                    setUploadStatus("error", friendlyPreparationErrorMessage(detail.code, detail.message));
+                    return;
+                }
+
+                await refreshAllSourceViews();
+                document.getElementById("uploadModalOverlay").hidden = true;
+                document.getElementById("uploadModalForm").reset();
+                clearUploadStatus();
+            } catch (error) {
+                setUploadStatus("error", "Could not reach the backend. Check your connection and try again.");
+            } finally {
+                uploadModalSubmitting = false;
+                submitBtn.disabled = false;
+                document.getElementById("uploadModalCancelBtn").disabled = false;
+                document.getElementById("uploadModalCloseBtn").disabled = false;
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // CSV/Excel ingestion Slice 2 (DEC-072): minimal Worksheet
+        // Selection modal. Opened by clicking a "Needs Preparation" Excel
+        // row in Recording Events (see renderRecordingsTable()'s own row
+        // click handler). Reuses the SAME .confirm-overlay/.group-editor-box
+        // shell as every other dialog -- no new modal primitive. Scope is
+        // deliberately the smallest useful shell: confirm the workbook was
+        // accepted, list worksheet names (with a hidden badge and best-
+        // effort row/column counts), let the user pick one, PATCH the
+        // selection. It never renders cell contents -- that is the Data
+        // Preparation Workspace's own job (Slice 3+), not this modal's.
+        // ------------------------------------------------------------------
+        let wwWorksheetSelectSourceId = null;
+        let wwWorksheetSelectPendingIndex = null;
+
+        function wwCloseWorksheetSelectModal() {
+            wwWorksheetSelectSourceId = null;
+            wwWorksheetSelectPendingIndex = null;
+            document.getElementById("wwWorksheetSelectOverlay").hidden = true;
+            document.getElementById("wwWorksheetSelectStatus").textContent = "";
+        }
+
+        document.getElementById("wwWorksheetSelectCloseBtn").addEventListener("click", wwCloseWorksheetSelectModal);
+        document.getElementById("wwWorksheetSelectCancelBtn").addEventListener("click", wwCloseWorksheetSelectModal);
+        document.getElementById("wwWorksheetSelectOverlay").addEventListener("click", (event) => {
+            if (event.target.id === "wwWorksheetSelectOverlay") wwCloseWorksheetSelectModal(); // backdrop
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            if (!document.getElementById("wwWorksheetSelectOverlay").hidden) wwCloseWorksheetSelectModal();
+        });
+
+        // Structural metadata only -- name/visible/row_count/column_count
+        // -- never cell values, never a header-row/data-region choice
+        // (later slices' own scope, see WorksheetInfoOut's own docstring).
+        function wwRenderWorksheetSelectList(worksheets, selectedIndex) {
+            const container = document.getElementById("wwWorksheetSelectList");
+            if (!worksheets || worksheets.length === 0) {
+                container.innerHTML = '<p class="hint">No worksheets were discovered in this workbook.</p>';
+                return;
+            }
+            container.innerHTML = worksheets.map((sheet) => {
+                const checked = sheet.index === selectedIndex ? " checked" : "";
+                const hiddenBadge = sheet.visible ? "" : ' <span class="hint">(hidden)</span>';
+                const dims = (sheet.row_count != null && sheet.column_count != null)
+                    ? ' <span class="hint">' + sheet.row_count + ' rows &times; ' + sheet.column_count + ' cols</span>'
+                    : "";
+                return '<label class="ww-worksheet-option">' +
+                    '<input type="radio" name="wwWorksheetSelectRadio" value="' + sheet.index + '"' + checked + '>' +
+                    escapeHtml(sheet.name) + hiddenBadge + dims +
+                '</label>';
+            }).join("");
+            container.querySelectorAll('input[name="wwWorksheetSelectRadio"]').forEach((radio) => {
+                radio.addEventListener("change", () => {
+                    wwWorksheetSelectPendingIndex = parseInt(radio.value, 10);
+                });
+            });
+        }
+
+        // Fetches the single preparation source fresh rather than reusing
+        // Recording Events' already-fetched list (section: this modal
+        // opens rarely, the payload is tiny metadata, and a fresh GET
+        // avoids a second piece of client state that could go stale).
+        async function openWorksheetSelectModal(sourceId) {
+            wwWorksheetSelectSourceId = sourceId;
+            wwWorksheetSelectPendingIndex = null;
+            document.getElementById("wwWorksheetSelectStatus").textContent = "";
+            document.getElementById("wwWorksheetSelectSubtitle").textContent = "";
+            document.getElementById("wwWorksheetSelectList").innerHTML = '<span class="spinner"></span>Loading&hellip;';
+            document.getElementById("wwWorksheetSelectOverlay").hidden = false;
+
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                        "/preparation-sources/" + encodeURIComponent(sourceId)
+                );
+                if (!response.ok) {
+                    document.getElementById("wwWorksheetSelectList").innerHTML = "";
+                    document.getElementById("wwWorksheetSelectStatus").textContent =
+                        "Could not load this workbook's worksheets.";
+                    return;
+                }
+                const body = await response.json();
+                document.getElementById("wwWorksheetSelectSubtitle").textContent =
+                    body.original_filename + " (" + formatFileSize(body.file_size_bytes) +
+                    ") — accepted, needs preparation.";
+                wwWorksheetSelectPendingIndex = body.selected_worksheet_index;
+                wwRenderWorksheetSelectList(body.worksheets, body.selected_worksheet_index);
+            } catch (error) {
+                document.getElementById("wwWorksheetSelectList").innerHTML = "";
+                document.getElementById("wwWorksheetSelectStatus").textContent = "Could not reach the backend.";
+            }
+        }
+
+        document.getElementById("wwWorksheetSelectConfirmBtn").addEventListener("click", async () => {
+            if (wwWorksheetSelectSourceId == null || wwWorksheetSelectPendingIndex == null) {
+                document.getElementById("wwWorksheetSelectStatus").textContent = "Choose a worksheet first.";
+                return;
+            }
+            const sourceId = wwWorksheetSelectSourceId;
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                        "/preparation-sources/" + encodeURIComponent(sourceId),
+                    {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ selected_worksheet_index: wwWorksheetSelectPendingIndex }),
+                    }
+                );
+                if (!response.ok) {
+                    document.getElementById("wwWorksheetSelectStatus").textContent = "Could not save this selection.";
+                    return;
+                }
+                wwCloseWorksheetSelectModal();
+                // Status/other Recording Events columns for this row are
+                // unaffected by worksheet selection (still "Needs
+                // Preparation" -- no new status is invented this slice),
+                // but refresh anyway for consistency with every other
+                // mutating action in this app.
+                await refreshAllSourceViews();
+            } catch (error) {
+                document.getElementById("wwWorksheetSelectStatus").textContent = "Could not reach the backend.";
+            }
+        });
+
         // ------------------------------------------------------------------
         // Source list
         // ------------------------------------------------------------------
@@ -5693,14 +5929,20 @@
         // renderRecordingsTable()'s existing helpers (recordingDisplayName,
         // recordingFormatLabel, formatRecordingDuration,
         // formatRecordingStartTime, formatSamplingRates) already expect
-        // from a SourceSummaryOut -- so a CSV preparation row renders
-        // through the exact same table-building code, not a second table
-        // implementation. `_recordingKind` is a frontend-only synthetic
-        // marker (never part of any API contract) used only to route the
-        // Remove action to the right DELETE endpoint (see
-        // requestRemoveSource()) -- row-click-to-open gating itself uses
-        // the real `status` field, not this marker (see
-        // renderRecordingsTable()).
+        // from a SourceSummaryOut -- so a CSV/Excel preparation row
+        // renders through the exact same table-building code, not a
+        // second table implementation. `_recordingKind` is a frontend-only
+        // synthetic marker (never part of any API contract) used to
+        // route (a) the Remove action to the right DELETE endpoint (see
+        // requestRemoveSource()) and (b) CSV/Excel-ingestion Slice 2: a
+        // non-ready row's click target -- "excel" opens the minimal
+        // Worksheet Selection modal, "csv" stays a no-op (no worksheet
+        // concept). Row-click-to-OPEN-AS-WAVEFORM gating itself still
+        // uses the real `status` field, never this marker (see
+        // renderRecordingsTable()). Worksheet data itself is NOT carried
+        // into this row object -- the modal re-fetches the single
+        // preparation source fresh when opened (small, infrequent,
+        // avoids a second piece of state that could go stale).
         function preparationSourceAsRecordingRow(prep) {
             return {
                 source_id: prep.source_id,
@@ -5714,7 +5956,7 @@
                 duration_seconds: null,
                 start_time: null,
                 sampling_rates: [],
-                _recordingKind: "csv",
+                _recordingKind: prep.file_format === "Excel" ? "excel" : "csv",
             };
         }
 
@@ -6012,14 +6254,22 @@
                 // focusable/operable -- see the click/keydown wiring
                 // below, which stops the row's own handler from firing
                 // for events that originate inside .recording-actions.
-                // A non-ready row (Slice 1: a CSV preparation source)
-                // omits role/tabindex/aria-label entirely -- it is not an
-                // Open/Analyse target, so it gets no such accessible name.
+                // A non-ready CSV row omits role/tabindex/aria-label
+                // entirely -- it is not an Open/Analyse target and has no
+                // other interaction, so it gets no accessible name at
+                // all. A non-ready EXCEL row (Slice 2) is still
+                // interactive -- clicking/activating it opens the
+                // Worksheet Selection modal -- so it gets its own,
+                // differently-worded accessible name/role for that
+                // action instead of "for analysis".
                 const openableAttrs = isReady
                     ? ' tabindex="0" role="button" aria-label="Open ' + escapeHtml(name) + ' for analysis"'
+                    : recordingKind === "excel"
+                    ? ' tabindex="0" role="button" aria-label="Select worksheet for ' + escapeHtml(name) + '"'
                     : "";
                 html += '<tr data-search="' + escapeHtml(searchText) + '" data-source-id="' + escapeHtml(source.source_id) +
-                    '" data-status="' + escapeHtml(source.status || "") + '"' +
+                    '" data-status="' + escapeHtml(source.status || "") +
+                    '" data-recording-kind="' + escapeHtml(recordingKind) + '"' +
                     ' class="' + (expanded ? "recording-row-expanded" : "") + '"' + openableAttrs + '>' +
                     '<td class="recording-name-cell">' +
                         '<div class="recording-name">' + escapeHtml(name) + '</div>' +
@@ -6101,18 +6351,28 @@
             // against opening a "Needs Preparation" row as a waveform --
             // it applies regardless of whether role="button"/tabindex
             // were rendered above, since a plain <tr> still fires a real
-            // click event on click.
+            // click event on click. Slice 2: a non-ready EXCEL row's
+            // click instead opens the minimal Worksheet Selection modal
+            // (openWorksheetSelectModal()) -- a non-ready CSV row still
+            // does nothing at all, since CSV has no worksheet concept.
             bodyEl.querySelectorAll('tr[data-source-id]').forEach((row) => {
                 row.addEventListener("click", () => {
-                    if (row.dataset.status !== "ready") return;
-                    openRecordingForAnalysis(row.dataset.sourceId);
+                    if (row.dataset.status === "ready") {
+                        openRecordingForAnalysis(row.dataset.sourceId);
+                    } else if (row.dataset.recordingKind === "excel") {
+                        openWorksheetSelectModal(row.dataset.sourceId);
+                    }
                 });
                 row.addEventListener("keydown", (event) => {
                     if (event.target !== row) return;
                     if (event.key !== "Enter" && event.key !== " ") return;
-                    if (row.dataset.status !== "ready") return;
+                    if (row.dataset.status !== "ready" && row.dataset.recordingKind !== "excel") return;
                     event.preventDefault();
-                    openRecordingForAnalysis(row.dataset.sourceId);
+                    if (row.dataset.status === "ready") {
+                        openRecordingForAnalysis(row.dataset.sourceId);
+                    } else {
+                        openWorksheetSelectModal(row.dataset.sourceId);
+                    }
                 });
             });
 

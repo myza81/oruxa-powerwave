@@ -8,6 +8,105 @@ Last updated: **2026-08-30**
 
 ## What was most recently done
 
+**CSV/Excel Ingestion Slice 2 — Excel Ingestion + Worksheet Discovery.
+Implemented and verified.** Direct follow-up to Slice 1 (below) — the
+second implementation slice of the owner's revised 13-slice sequence
+(`CSV_EXCEL_INGESTION_ARCHITECTURE.md` §14). Deliberately narrow, per
+the task's own explicit scope: Excel workbooks now enter the exact same
+`PreparationSession` lifecycle Slice 1 built for CSV, plus worksheet
+discovery/selection — still no `DisturbanceRecord`, no header/column/
+time-axis inference, no raw-table preview, no working-dataset editing.
+
+**Excel support**: `.xlsx` only. Legacy `.xls` deliberately deferred —
+would need `xlrd`, a separate, unmaintained dependency whose 2.x line
+dropped `.xlsx` support entirely (so it wouldn't even cover both formats
+with one library). Library: `openpyxl==3.1.5`, newly declared in
+`backend/requirements.txt` (it was already present in the dev
+environment but undeclared — a real gap this slice closed, not a new
+addition of convenience). Used in `read_only=True` streaming mode,
+verified directly (not assumed) to create zero temporary files for an
+in-memory `BytesIO` source and to never materialize a sheet's cell grid
+just for discovery.
+
+**Domain/architecture**: reused the SAME `PreparationSession`/
+`PreparationSessionSummary` shape Slice 1 built — no
+`ExcelPreparationSession` type, per DEC-072's own "one preparation-
+session concept, not one per format." New `WorksheetInfo` descriptor
+(`index`/`name`/`visible`/`row_count`/`column_count`, the last two
+best-effort/`None`-able, never a full-sheet scan) discovered once at
+upload time. Hidden sheets are discovered and reported, never merged or
+dropped. Sheets are never combined/concatenated/cross-referenced
+(principle 8, reaffirmed). A one-worksheet workbook auto-selects
+(`selected_worksheet_index=0`, deterministic, still visibly reported); a
+workbook with two or more worksheets (even one visible + one hidden)
+requires an explicit selection.
+
+**API evolution (disclosed, not silent)**: `POST .../preparation-sources`
+changed from Slice 1's single required `csv_file` field to two OPTIONAL
+fields (`csv_file` xor `excel_file`, exactly one required) — chosen to
+mirror this codebase's own existing `cfg_file`+`dat_file` two-field
+convention (`app.api.v1.sources.upload_comtrade_source`) rather than a
+generic `format`+`file` pair or a second endpoint family. Every real
+Slice 1 CSV upload call site (frontend and tests) is unaffected; exactly
+one Slice 1 edge-case test ("no file field at all") was deliberately
+migrated from a generic 422 to an explicit `ambiguous_preparation_upload`
+400, disclosed in that test's own updated comment — the only Slice 1
+behavior this slice touched at all. New
+`PATCH .../preparation-sources/{id}` endpoint
+(`WorksheetSelectionRequest`) stores only the stable worksheet `index`
+already discovered at upload time.
+
+**Frontend**: Excel enabled in `RECORDING_FORMATS` (`.xlsx` accept only,
+label still reads "Excel," per the task's own "label may say Excel while
+accepted extensions accurately reflect what is supported"),
+`submitExcelUpload()` parallel to `submitCsvUpload()`. New minimal
+Worksheet Selection modal (`#wwWorksheetSelectOverlay`, reusing the same
+`.confirm-overlay`/`.group-editor-box` shell as every other dialog) opened
+by clicking a "Needs Preparation" Excel row in Recording Events — shows
+filename/size, lists worksheet names with a hidden badge and best-effort
+row/column counts, lets the user pick one via `PATCH`. Never renders
+cell contents (Slice 3's own scope). A "Needs Preparation" CSV row's
+click still does nothing at all — only Excel rows get this new
+interaction; the row-click-to-open-as-waveform gate itself
+(`status === "ready"`) is completely unchanged.
+
+**Verification**: full backend suite 1848 passed (35 new on top of
+Slice 1's 1813), 0 regressions; the committed browser smoke test
+(COMTRADE) still passes unchanged; a throwaway (not committed)
+live-browser Playwright script independently walked all four UAT
+acceptance scenarios — COMTRADE unaffected; CSV regression unaffected
+(click still does nothing, no worksheet modal, stays on Recordings);
+Excel single-sheet (correct File Format/File Size/Status/—/—/—, click
+opens the modal with the one sheet pre-selected, does not touch
+channel-selection state); Excel multi-sheet (all four sheet names
+discovered in order, none pre-selected, a chosen selection persists
+across reopening the modal) — zero console/page errors across the whole
+run.
+
+**Files changed**: Backend — new nothing (all Slice 2 additions live in
+Slice 1's own new files, extended in place: `app/domain/preparation_session.py`,
+`app/schemas/preparation_session.py`, `app/services/preparation_import_service.py`,
+`app/api/v1/preparation_sources.py`); modified `app/services/errors.py`
+(6 new error classes), `backend/requirements.txt` (+`openpyxl==3.1.5`).
+Tests — extended `tests/test_preparation_import_service.py` (+21) and
+`tests/test_preparation_sources_api.py` (+14), one existing Slice 1 test
+updated for the disclosed API evolution above. Frontend —
+`frontend/index.html` only (RECORDING_FORMATS, submit dispatch,
+`submitExcelUpload()`, `friendlyPreparationErrorMessage()` generalized,
+`preparationSourceAsRecordingRow()`'s `_recordingKind`, row click/keydown
+routing, new Worksheet Selection modal HTML+JS+CSS). Documentation —
+`CSV_EXCEL_INGESTION_ARCHITECTURE.md` (§14/§18 updated), `CURRENT_STATE.md`,
+here. No new `DECISIONS.md` entry — both the `.xls` deferral and the
+single-sheet auto-selection behavior were pre-authorized by the task's
+own instructions, not new owner-level decisions.
+
+**Next step**: nothing beyond Slice 2 is pre-authorized. Slice 3 (paged
+raw-data preview + Data Preparation Workspace shell) is the next
+candidate per the owner's revised sequence, but requires its own
+explicit go-ahead.
+
+## What was done in the prior session — CSV/Excel Ingestion Slice 1: Preparation Session Foundation + Raw CSV Ingestion
+
 **CSV/Excel Ingestion Slice 1 — Preparation Session Foundation + Raw
 CSV Ingestion. Implemented and verified.** Direct follow-up to the
 CSV/Excel Ingestion Baseline decisions (DEC-072, below) — the first

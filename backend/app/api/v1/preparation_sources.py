@@ -1,4 +1,4 @@
-"""Slice 1 CSV preparation-source API (DEC-072).
+"""CSV/Excel preparation-source API (Slices 1-2, DEC-072).
 
 A deliberately separate, smaller router from `app.api.v1.sources` -- a
 preparation source is not a `SourceMetadata`/`ActiveSource` (it has no
@@ -6,13 +6,26 @@ parsed `DisturbanceRecord`, no channels, no waveform data), so it gets
 its own resource path rather than being force-fitted into the existing
 COMTRADE-shaped `.../sources` contract. This is also why the Workspace
 Sidebar's own channel-selection source list (which reads only
-`GET .../sources`) never sees a CSV preparation row at all -- a real,
-structural reason a `Needs Preparation` source cannot be selected for
-waveform display, not merely a UI convention (see this slice's own
-guardrail: "a Needs Preparation CSV must never reach normal waveform
+`GET .../sources`) never sees a CSV/Excel preparation row at all -- a
+real, structural reason a `Needs Preparation` source cannot be selected
+for waveform display, not merely a UI convention (see this slice's own
+guardrail: "a Needs Preparation source must never reach normal waveform
 loading").
 
-Only `.csv` is accepted in Slice 1 -- Excel is Slice 2 scope.
+Slice 2 upload-shape decision: `POST` still accepts a single `csv_file`
+field unchanged (Slice 1's own frontend/tests keep working, zero
+migration forced), and now ALSO accepts an optional `excel_file` field
+routed to the Excel importer -- exactly one of the two must be present
+per request. This was chosen over either (a) breaking Slice 1's request
+shape with a generic `file`+`format` pair, or (b) a second endpoint
+family, because it mirrors this codebase's own existing convention for
+a small, closed set of format-specific typed fields (see
+`app.api.v1.sources.upload_comtrade_source`'s own `cfg_file`+`dat_file`
+pair) rather than inventing a new upload pattern for two formats.
+
+Only `.csv` and `.xlsx` are accepted -- legacy `.xls` is deliberately
+out of scope (see `app.domain.preparation_session`'s own module
+docstring).
 """
 
 from __future__ import annotations
@@ -22,10 +35,14 @@ import logging
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 
 from app.config import Settings
-from app.schemas.preparation_session import PreparationSessionSummaryOut
+from app.schemas.preparation_session import PreparationSessionSummaryOut, WorksheetSelectionRequest
 from app.schemas.source import ErrorOut
-from app.services.errors import ImportServiceError
-from app.services.preparation_import_service import import_csv_preparation_source
+from app.services.errors import AmbiguousPreparationUploadError, ImportServiceError
+from app.services.preparation_import_service import (
+    import_csv_preparation_source,
+    import_excel_preparation_source,
+    select_preparation_worksheet,
+)
 from app.services.preparation_session_registry import PreparationSessionRegistry
 
 logger = logging.getLogger(__name__)
@@ -41,6 +58,11 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "invalid_workspace": status.HTTP_400_BAD_REQUEST,
     "source_not_found": status.HTTP_404_NOT_FOUND,
     "internal_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
+    "ambiguous_preparation_upload": status.HTTP_400_BAD_REQUEST,
+    "workbook_parse_error": status.HTTP_400_BAD_REQUEST,
+    "empty_workbook": status.HTTP_400_BAD_REQUEST,
+    "worksheet_selection_not_applicable": status.HTTP_400_BAD_REQUEST,
+    "invalid_worksheet_index": status.HTTP_400_BAD_REQUEST,
 }
 
 
@@ -67,27 +89,45 @@ def _http_error(exc: ImportServiceError) -> HTTPException:
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=PreparationSessionSummaryOut)
-async def upload_csv_preparation_source(
+async def upload_preparation_source(
     workspace_id: str,
-    csv_file: UploadFile = File(..., description="Raw CSV file to accept as preparation input"),
+    csv_file: UploadFile | None = File(None, description="Raw CSV file to accept as preparation input"),
+    excel_file: UploadFile | None = File(None, description="Raw .xlsx workbook to accept as preparation input"),
     settings: Settings = Depends(get_settings_dep),
     registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
 ) -> PreparationSessionSummaryOut:
+    """Accept exactly one of `csv_file`/`excel_file` per request -- see
+    this module's own docstring for why both fields live on one
+    endpoint rather than two."""
     workspace_id = _validate_workspace_id(workspace_id)
 
-    try:
-        summary = await import_csv_preparation_source(
-            workspace_id=workspace_id,
-            csv_upload=csv_file,
-            max_total_bytes=settings.max_event_upload_size_bytes,
-            registry=registry,
+    if (csv_file is None) == (excel_file is None):
+        exc = AmbiguousPreparationUploadError(
+            "Exactly one of csv_file or excel_file must be provided."
         )
+        raise _http_error(exc)
+
+    try:
+        if csv_file is not None:
+            summary = await import_csv_preparation_source(
+                workspace_id=workspace_id,
+                csv_upload=csv_file,
+                max_total_bytes=settings.max_event_upload_size_bytes,
+                registry=registry,
+            )
+        else:
+            summary = await import_excel_preparation_source(
+                workspace_id=workspace_id,
+                excel_upload=excel_file,
+                max_total_bytes=settings.max_event_upload_size_bytes,
+                registry=registry,
+            )
     except ImportServiceError as exc:
-        logger.info("CSV preparation upload rejected (%s): %s", exc.code, exc.message)
+        logger.info("Preparation-source upload rejected (%s): %s", exc.code, exc.message)
         raise _http_error(exc) from exc
     except Exception:
         logger.exception(
-            "Unexpected error accepting CSV preparation source for workspace %s", workspace_id
+            "Unexpected error accepting preparation source for workspace %s", workspace_id
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -126,6 +166,36 @@ def get_preparation_source(
     return PreparationSessionSummaryOut.from_domain(session.summary)
 
 
+@router.patch("/{source_id}", response_model=PreparationSessionSummaryOut)
+def patch_preparation_source(
+    workspace_id: str,
+    source_id: str,
+    body: WorksheetSelectionRequest,
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> PreparationSessionSummaryOut:
+    """Select the currently active worksheet for an Excel preparation
+    source (Slice 2). The only PATCH-able field this slice supports --
+    see `WorksheetSelectionRequest`'s own docstring for what is
+    deliberately NOT modeled here yet (header row, data region, column
+    mapping: later slices).
+    """
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        summary = select_preparation_worksheet(
+            workspace_id=workspace_id,
+            source_id=source_id,
+            worksheet_index=body.selected_worksheet_index,
+            registry=registry,
+        )
+    except ImportServiceError as exc:
+        logger.info(
+            "Worksheet selection rejected (%s) for workspace %s source %s: %s",
+            exc.code, workspace_id, source_id, exc.message,
+        )
+        raise _http_error(exc) from exc
+    return PreparationSessionSummaryOut.from_domain(summary)
+
+
 @router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_preparation_source(
     workspace_id: str,
@@ -134,7 +204,7 @@ def delete_preparation_source(
 ) -> None:
     """Release one preparation session's raw bytes.
 
-    A preparation session has no dependents in Slice 1 (no calculated
+    A preparation session has no dependents in Slices 1-2 (no calculated
     channels, no measurement groups, no synchronization state can ever
     reference it -- those all require a real `SourceMetadata`/
     `ActiveSource`), so this is a plain single-registry removal, unlike
