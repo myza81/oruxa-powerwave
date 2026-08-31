@@ -63,6 +63,13 @@ external ignore/unignore API contract
 preserved unchanged as a thin alias translating a boolean onto this
 same `column_roles` model -- see that function's own docstring.
 
+A later owner-UAT refinement (post-Slice-6) adds an END-MODE to
+`DataRegion` (`END_MODE_SOURCE_END`/`END_MODE_SPECIFIC`) so a region's
+own upper bound can float with the source/worksheet's own end rather
+than always requiring a manually-found numeric row -- see `DataRegion`'s
+own docstring. This stays a single, dataset-wide boundary per
+worksheet/source exactly as before; there is still no per-column end.
+
 Undo/redo (task's own "if it fits naturally... do not fake by
 snapshotting the entire dataset"): implemented here as a bounded
 operation history. Every recorded `WorkingOperation` carries only the
@@ -128,6 +135,23 @@ KNOWN_COLUMN_ROLES = (
     ROLE_IGNORE,
 )
 
+#: Data-region end-mode refinement (owner UAT, post-Slice-6): the owner
+#: found manually looking up the true last data row of a large source
+#: "unnecessarily burdensome" -- `END_MODE_SOURCE_END` lets a region's
+#: own upper bound FLOAT with the source/worksheet's own end rather than
+#: requiring a guessed numeric value. `END_MODE_SPECIFIC` is the
+#: original Slice 5 behavior (an explicit numeric `end_row`) --
+#: `DataRegion.end_row` is `None` for `END_MODE_SOURCE_END` (there is no
+#: stored numeric end to speak of; never a resolved/guessed value cached
+#: here) and a real row number for `END_MODE_SPECIFIC`. This is still
+#: ONE dataset-wide boundary per worksheet/source -- never a per-column
+#: end (task's own explicit "do NOT implement per-column data-region
+#: ends" guardrail; every active column shares the exact same row
+#: coordinates).
+END_MODE_SOURCE_END = "source_end"
+END_MODE_SPECIFIC = "specific"
+KNOWN_END_MODES = (END_MODE_SOURCE_END, END_MODE_SPECIFIC)
+
 
 def cell_key(worksheet_index: int | None, row_number: int, column_index: int) -> CellKey:
     return (worksheet_index, row_number, column_index)
@@ -165,13 +189,31 @@ class CellOverride:
 @dataclass(slots=True, frozen=True)
 class DataRegion:
     """The inclusive raw row range currently treated as this worksheet/
-    source's active working dataset (Slice 5). Both bounds are original
-    raw row numbers (1-based) -- never re-derived positions, and never
-    physically remove/renumber rows outside the range (task's own
-    "reversible... rows outside remain preserved" requirement)."""
+    source's active working dataset (Slice 5; end-mode added by a later
+    owner UAT refinement). `start_row` is an original raw row number
+    (1-based) -- never a re-derived position, and setting it never
+    physically removes/renumbers rows outside the range (task's own
+    "reversible... rows outside remain preserved" requirement).
+
+    `end_mode` is one of `KNOWN_END_MODES`:
+    - `END_MODE_SOURCE_END`: the region's own upper bound FLOATS with
+      the source/worksheet's own end -- `end_row` is `None` here; there
+      is no stored numeric value, deliberately never a resolved/guessed
+      one either (task's own explicit "Rows 2-end is not the same as
+      storing a guessed numeric last-data row" distinction). The
+      ACTUAL resolved boundary (used only to compute each row's own
+      `in_active_region` flag) is derived at preview-read time from
+      whatever this source/worksheet's own already-known row total is
+      (exact for CSV, best-effort or unknown for Excel) -- see
+      `app.services.preparation_preview_service._apply_structure_mapping`.
+    - `END_MODE_SPECIFIC`: the original Slice 5 behavior -- `end_row` is
+      a real, explicit raw row number the user chose after inspecting
+      the tail of the source themselves.
+    """
 
     start_row: int
-    end_row: int
+    end_mode: str
+    end_row: int | None
 
 
 @dataclass(slots=True)
@@ -324,14 +366,30 @@ def clear_header_row(overlay: WorkingOverlay, worksheet_index: int | None) -> bo
     return True
 
 
-def set_data_region(overlay: WorkingOverlay, worksheet_index: int | None, start_row: int, end_row: int) -> None:
-    """Narrow the active working dataset for this worksheet/source to
-    `[start_row, end_row]` inclusive (Slice 5). Range VALIDITY
-    (`start_row <= end_row`, both within this source's own known
-    dimensions) is enforced by `app.services.working_overlay_service`,
-    not here."""
+def set_data_region(
+    overlay: WorkingOverlay,
+    worksheet_index: int | None,
+    start_row: int,
+    end_row: int | None,
+    end_mode: str = END_MODE_SPECIFIC,
+) -> None:
+    """Narrow the active working dataset for this worksheet/source
+    (Slice 5; `end_mode` added by a later owner UAT refinement).
+    `end_mode` defaults to `END_MODE_SPECIFIC` so every pre-refinement
+    caller (positional `(overlay, worksheet_index, start_row, end_row)`)
+    keeps working completely unchanged -- this default is a real
+    backward-compatibility guarantee, not an arbitrary choice. Range
+    VALIDITY (`start_row <= end_row` for `END_MODE_SPECIFIC`, both
+    within this source's own known dimensions) is enforced by
+    `app.services.working_overlay_service`, not here -- this function
+    stays pure and never raises, matching every other mutation function
+    in this module. `undo`/`redo` need no changes at all to support the
+    new mode: `WorkingOperation.before`/`after` already stores the
+    whole (frozen) `DataRegion` object, so an end-mode change reverts
+    exactly like any other data-region change always has.
+    """
     before = overlay.data_region.get(worksheet_index)
-    after = DataRegion(start_row=start_row, end_row=end_row)
+    after = DataRegion(start_row=start_row, end_mode=end_mode, end_row=end_row)
     overlay.data_region[worksheet_index] = after
     _record(overlay, "data_region", worksheet_index, before, after)
 
