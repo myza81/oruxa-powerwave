@@ -528,12 +528,6 @@
         .recording-details-fact { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
         .recording-details-fact-label { font-size: 0.72rem; color: var(--text-dim); }
         .recording-details-fact-value { font-size: 0.75rem; color: var(--text); font-weight: 500; overflow-wrap: anywhere; white-space: normal; }
-        /* CSV/Excel ingestion Slice 2 (DEC-072): the minimal Worksheet
-           Selection modal's own sheet list -- deliberately plain radio
-           rows, no table/grid (that's Slice 3's own raw-preview scope,
-           not this modal's). */
-        .ww-worksheet-option { display: flex; align-items: center; gap: 8px; font-weight: normal; padding: 6px 0; }
-        .ww-worksheet-option .hint { margin: 0; }
         /* TIMING/SESSION zone: Trigger Time (source-level, timezone-naive
            COMTRADE timestamp) and Imported Time (session-level,
            timezone-aware backend timestamp -- a DIFFERENT kind of "when"
@@ -775,6 +769,58 @@
            this exact override (line 394 above) from when IT was first
            added -- this page simply never received the same treatment. */
         #pageCalculatedChannels[hidden] { display: none; }
+        /* CSV/Excel ingestion Slice 3 (DEC-072): Data Preparation
+           Workspace -- a FOURTH first-class page, same "hide, don't
+           destroy" mechanism (shellSetCurrentPage()) and the SAME
+           `display: flex` + `[hidden] { display: none }` override pair
+           #pageCalculatedChannels already needed above (that fix's own
+           comment explains exactly why the override is required --
+           applying the lesson here up front rather than rediscovering
+           it via the same bug a second time). Reuses section.panel/
+           .recordings-header/.field/<label>/.hint/.upload-status
+           unmodified -- only the table/pagination presentation below is
+           new. Not a Main Sidebar Menu destination -- reached only from
+           a "Needs Preparation" Recording Events row, never from
+           permanent navigation, so no #mainNav*Btn exists for it. */
+        #pageDataPreparation { display: flex; flex-direction: column; gap: 16px; padding: 20px 24px; overflow-y: auto; height: 100%; box-sizing: border-box; }
+        #pageDataPreparation[hidden] { display: none; }
+        .ww-data-prep-back-btn { margin-bottom: 8px; }
+        .ww-data-prep-status-badge {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            color: var(--text-dim);
+            border: 1px solid var(--panel-border);
+            border-radius: 999px;
+            padding: 4px 12px;
+            align-self: flex-start;
+            white-space: nowrap;
+        }
+        .ww-data-prep-meta-panel { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 24px; padding: 16px; }
+        .ww-data-prep-meta-panel .field { margin-bottom: 0; min-width: 200px; }
+        /* Raw preview table: spreadsheet-style, monospace for column
+           alignment, sticky header row AND sticky first (row-number)
+           column so both references stay visible while scrolling a
+           wide/tall page -- task's own "sticky/visible row and column
+           references where practical." Horizontal AND vertical scroll
+           live on the SAME wrapper (bounded height) since a page is
+           already row-bounded server-side (<=1000 rows) -- ordinary DOM
+           rendering, no virtualization library, per this slice's own
+           "server-side pagination alone is acceptable" guidance. */
+        .ww-data-prep-table-wrap { overflow: auto; max-height: 60vh; border: 1px solid var(--panel-border); border-radius: var(--radius); }
+        .ww-data-prep-table { border-collapse: collapse; font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.8rem; white-space: nowrap; }
+        .ww-data-prep-table th, .ww-data-prep-table td {
+            border: 1px solid var(--panel-border);
+            padding: 4px 10px;
+            max-width: 240px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .ww-data-prep-table thead th { position: sticky; top: 0; background: var(--panel); z-index: 2; color: var(--text-dim); font-weight: 500; }
+        .ww-data-prep-table tbody th { position: sticky; left: 0; background: var(--panel); z-index: 1; color: var(--text-dim); font-weight: 500; text-align: right; }
+        .ww-data-prep-table thead th:first-child { left: 0; z-index: 3; }
+        .ww-data-prep-table td.ww-data-prep-blank-cell { color: var(--text-dim); }
+        .ww-data-prep-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
         .ww-cc-subtitle { margin: 3px 0 0; color: var(--text-dim); font-size: 0.85rem; }
         .ww-cc-panel { padding: 16px; }
         .ww-cc-panel h3 { margin: 0 0 12px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
@@ -4294,6 +4340,60 @@
                 </section>
             </section>
 
+            <!-- CSV/Excel ingestion Slice 3 (DEC-072): Data Preparation
+                 Workspace shell. Reached only from a "Needs Preparation"
+                 Recording Events row (openDataPreparationWorkspace()) --
+                 never plots a waveform, never implies the source is
+                 Powerwave-ready (status always reads "Needs
+                 Preparation" here, never "Ready"). Raw inspection only:
+                 no edit controls, no header/column-role selection, no
+                 readiness panel -- those are later slices' own scope. -->
+            <section id="pageDataPreparation" aria-label="Data Preparation" hidden>
+                <div class="recordings-header">
+                    <div>
+                        <button type="button" id="wwDataPrepBackBtn" class="secondary ww-data-prep-back-btn">&larr; Recording Events</button>
+                        <h2>Data Preparation</h2>
+                        <p class="ww-cc-subtitle" id="wwDataPrepFilename"></p>
+                    </div>
+                    <span class="ww-data-prep-status-badge" id="wwDataPrepStatusBadge"></span>
+                </div>
+
+                <section class="panel ww-data-prep-meta-panel">
+                    <span class="recording-details-fact">
+                        <span class="recording-details-fact-label">Source</span>
+                        <span class="recording-details-fact-value" id="wwDataPrepFormat"></span>
+                    </span>
+                    <span class="recording-details-fact">
+                        <span class="recording-details-fact-label">Size</span>
+                        <span class="recording-details-fact-value" id="wwDataPrepSize"></span>
+                    </span>
+                    <!-- Excel only -- populated by
+                         wwDataPrepRenderWorksheetSelector(); stays
+                         hidden entirely for CSV (no worksheet concept,
+                         never a fabricated single-sheet selector). -->
+                    <div class="field" id="wwDataPrepWorksheetField" hidden>
+                        <label for="wwDataPrepWorksheetSelect">Worksheet</label>
+                        <select id="wwDataPrepWorksheetSelect"></select>
+                    </div>
+                </section>
+
+                <section class="panel ww-cc-panel">
+                    <h3>Raw Data Preview</h3>
+                    <p class="hint">Raw, uninterpreted source data. Row 1 is not assumed to be a header.</p>
+                    <div class="ww-data-prep-table-wrap">
+                        <table class="ww-data-prep-table" id="wwDataPrepTable"></table>
+                    </div>
+                    <div class="ww-data-prep-pagination">
+                        <span class="hint" id="wwDataPrepRangeLabel"></span>
+                        <div>
+                            <button type="button" class="secondary" id="wwDataPrepPrevBtn">Previous</button>
+                            <button type="button" class="secondary" id="wwDataPrepNextBtn">Next</button>
+                        </div>
+                    </div>
+                    <div class="upload-status" id="wwDataPrepStatus" role="status" aria-live="polite"></div>
+                </section>
+            </section>
+
             <!-- Redesign: right-side Signal Builder drawer, opened via
                  "+ New Channel" above -- same fixed/translateX/backdrop
                  mechanics as #wwAnnotationDrawer. Holds the SAME operation
@@ -4831,31 +4931,6 @@
         </div>
     </div>
 
-    <!-- CSV/Excel ingestion Slice 2 (DEC-072): the minimal worksheet
-         selector -- reuses the SAME .confirm-overlay/.group-editor-box
-         shell as every other dialog in this app (no new modal
-         primitive). Opened by clicking a "Needs Preparation" Excel row
-         in Recording Events (see openWorksheetSelectModal()). Enough to
-         (1) confirm the workbook was accepted, (2) see its worksheet
-         names, (3) choose one -- deliberately NOT the raw table preview
-         or Data Preparation Workspace (Slice 3 scope): no cell contents
-         are ever rendered here. -->
-    <div class="confirm-overlay" id="wwWorksheetSelectOverlay" hidden>
-        <div class="group-editor-box" role="dialog" aria-modal="true" aria-labelledby="wwWorksheetSelectTitle">
-            <div class="group-editor-header">
-                <h3 id="wwWorksheetSelectTitle">Select worksheet</h3>
-                <button type="button" class="group-editor-close" id="wwWorksheetSelectCloseBtn" aria-label="Close">&times;</button>
-            </div>
-            <p class="hint" id="wwWorksheetSelectSubtitle"></p>
-            <div id="wwWorksheetSelectList"></div>
-            <div class="upload-status" id="wwWorksheetSelectStatus" role="status" aria-live="polite"></div>
-            <div class="group-editor-footer">
-                <button type="button" class="secondary" id="wwWorksheetSelectCancelBtn">Cancel</button>
-                <button type="button" id="wwWorksheetSelectConfirmBtn">Select</button>
-            </div>
-        </div>
-    </div>
-
     <!-- Phase 5B UAT Fix: a single shared, body-level tooltip node for
          every `.ww-info-tip-trigger` on the page (currently the RMS
          parameter form's Nominal Frequency/Window/Method info-tips) --
@@ -5197,13 +5272,21 @@
             // same "hide, don't destroy" mechanism as Waveform/Recordings
             // (below), so navigating away and back never loses builder
             // state/refetches the registry (section 89 of the task).
-            if (page !== "waveform" && page !== "recordings" && page !== "calculated-channels") return;
+            // CSV/Excel ingestion Slice 3: a FOURTH page, "data-preparation"
+            // -- reached only from a Recording Events row, never from
+            // permanent navigation (no #mainNav*Btn exists for it, so no
+            // setShellNavCurrent() call below needs updating).
+            if (
+                page !== "waveform" && page !== "recordings" &&
+                page !== "calculated-channels" && page !== "data-preparation"
+            ) return;
             const wasWaveform = shell.currentPage === "waveform";
             shell.currentPage = page;
 
             document.getElementById("workspaceRow").hidden = page !== "waveform";
             document.getElementById("pageRecordings").hidden = page !== "recordings";
             document.getElementById("pageCalculatedChannels").hidden = page !== "calculated-channels";
+            document.getElementById("pageDataPreparation").hidden = page !== "data-preparation";
             // Phase 3B-UAT8 fix: the active-state CSS rule
             // (`.shell-nav-item[aria-current="page"]`) always expected
             // the token "page" (the ARIA APG convention for a current
@@ -5756,132 +5839,6 @@
         }
 
         // ------------------------------------------------------------------
-        // CSV/Excel ingestion Slice 2 (DEC-072): minimal Worksheet
-        // Selection modal. Opened by clicking a "Needs Preparation" Excel
-        // row in Recording Events (see renderRecordingsTable()'s own row
-        // click handler). Reuses the SAME .confirm-overlay/.group-editor-box
-        // shell as every other dialog -- no new modal primitive. Scope is
-        // deliberately the smallest useful shell: confirm the workbook was
-        // accepted, list worksheet names (with a hidden badge and best-
-        // effort row/column counts), let the user pick one, PATCH the
-        // selection. It never renders cell contents -- that is the Data
-        // Preparation Workspace's own job (Slice 3+), not this modal's.
-        // ------------------------------------------------------------------
-        let wwWorksheetSelectSourceId = null;
-        let wwWorksheetSelectPendingIndex = null;
-
-        function wwCloseWorksheetSelectModal() {
-            wwWorksheetSelectSourceId = null;
-            wwWorksheetSelectPendingIndex = null;
-            document.getElementById("wwWorksheetSelectOverlay").hidden = true;
-            document.getElementById("wwWorksheetSelectStatus").textContent = "";
-        }
-
-        document.getElementById("wwWorksheetSelectCloseBtn").addEventListener("click", wwCloseWorksheetSelectModal);
-        document.getElementById("wwWorksheetSelectCancelBtn").addEventListener("click", wwCloseWorksheetSelectModal);
-        document.getElementById("wwWorksheetSelectOverlay").addEventListener("click", (event) => {
-            if (event.target.id === "wwWorksheetSelectOverlay") wwCloseWorksheetSelectModal(); // backdrop
-        });
-        document.addEventListener("keydown", (event) => {
-            if (event.key !== "Escape") return;
-            if (!document.getElementById("wwWorksheetSelectOverlay").hidden) wwCloseWorksheetSelectModal();
-        });
-
-        // Structural metadata only -- name/visible/row_count/column_count
-        // -- never cell values, never a header-row/data-region choice
-        // (later slices' own scope, see WorksheetInfoOut's own docstring).
-        function wwRenderWorksheetSelectList(worksheets, selectedIndex) {
-            const container = document.getElementById("wwWorksheetSelectList");
-            if (!worksheets || worksheets.length === 0) {
-                container.innerHTML = '<p class="hint">No worksheets were discovered in this workbook.</p>';
-                return;
-            }
-            container.innerHTML = worksheets.map((sheet) => {
-                const checked = sheet.index === selectedIndex ? " checked" : "";
-                const hiddenBadge = sheet.visible ? "" : ' <span class="hint">(hidden)</span>';
-                const dims = (sheet.row_count != null && sheet.column_count != null)
-                    ? ' <span class="hint">' + sheet.row_count + ' rows &times; ' + sheet.column_count + ' cols</span>'
-                    : "";
-                return '<label class="ww-worksheet-option">' +
-                    '<input type="radio" name="wwWorksheetSelectRadio" value="' + sheet.index + '"' + checked + '>' +
-                    escapeHtml(sheet.name) + hiddenBadge + dims +
-                '</label>';
-            }).join("");
-            container.querySelectorAll('input[name="wwWorksheetSelectRadio"]').forEach((radio) => {
-                radio.addEventListener("change", () => {
-                    wwWorksheetSelectPendingIndex = parseInt(radio.value, 10);
-                });
-            });
-        }
-
-        // Fetches the single preparation source fresh rather than reusing
-        // Recording Events' already-fetched list (section: this modal
-        // opens rarely, the payload is tiny metadata, and a fresh GET
-        // avoids a second piece of client state that could go stale).
-        async function openWorksheetSelectModal(sourceId) {
-            wwWorksheetSelectSourceId = sourceId;
-            wwWorksheetSelectPendingIndex = null;
-            document.getElementById("wwWorksheetSelectStatus").textContent = "";
-            document.getElementById("wwWorksheetSelectSubtitle").textContent = "";
-            document.getElementById("wwWorksheetSelectList").innerHTML = '<span class="spinner"></span>Loading&hellip;';
-            document.getElementById("wwWorksheetSelectOverlay").hidden = false;
-
-            try {
-                const response = await fetch(
-                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
-                        "/preparation-sources/" + encodeURIComponent(sourceId)
-                );
-                if (!response.ok) {
-                    document.getElementById("wwWorksheetSelectList").innerHTML = "";
-                    document.getElementById("wwWorksheetSelectStatus").textContent =
-                        "Could not load this workbook's worksheets.";
-                    return;
-                }
-                const body = await response.json();
-                document.getElementById("wwWorksheetSelectSubtitle").textContent =
-                    body.original_filename + " (" + formatFileSize(body.file_size_bytes) +
-                    ") — accepted, needs preparation.";
-                wwWorksheetSelectPendingIndex = body.selected_worksheet_index;
-                wwRenderWorksheetSelectList(body.worksheets, body.selected_worksheet_index);
-            } catch (error) {
-                document.getElementById("wwWorksheetSelectList").innerHTML = "";
-                document.getElementById("wwWorksheetSelectStatus").textContent = "Could not reach the backend.";
-            }
-        }
-
-        document.getElementById("wwWorksheetSelectConfirmBtn").addEventListener("click", async () => {
-            if (wwWorksheetSelectSourceId == null || wwWorksheetSelectPendingIndex == null) {
-                document.getElementById("wwWorksheetSelectStatus").textContent = "Choose a worksheet first.";
-                return;
-            }
-            const sourceId = wwWorksheetSelectSourceId;
-            try {
-                const response = await fetch(
-                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
-                        "/preparation-sources/" + encodeURIComponent(sourceId),
-                    {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ selected_worksheet_index: wwWorksheetSelectPendingIndex }),
-                    }
-                );
-                if (!response.ok) {
-                    document.getElementById("wwWorksheetSelectStatus").textContent = "Could not save this selection.";
-                    return;
-                }
-                wwCloseWorksheetSelectModal();
-                // Status/other Recording Events columns for this row are
-                // unaffected by worksheet selection (still "Needs
-                // Preparation" -- no new status is invented this slice),
-                // but refresh anyway for consistency with every other
-                // mutating action in this app.
-                await refreshAllSourceViews();
-            } catch (error) {
-                document.getElementById("wwWorksheetSelectStatus").textContent = "Could not reach the backend.";
-            }
-        });
-
-        // ------------------------------------------------------------------
         // Source list
         // ------------------------------------------------------------------
         // Phase 3B: shared low-level fetch -- both the Workspace Sidebar's
@@ -6254,18 +6211,20 @@
                 // focusable/operable -- see the click/keydown wiring
                 // below, which stops the row's own handler from firing
                 // for events that originate inside .recording-actions.
-                // A non-ready CSV row omits role/tabindex/aria-label
-                // entirely -- it is not an Open/Analyse target and has no
-                // other interaction, so it gets no accessible name at
-                // all. A non-ready EXCEL row (Slice 2) is still
-                // interactive -- clicking/activating it opens the
-                // Worksheet Selection modal -- so it gets its own,
+                // CSV/Excel ingestion Slice 3: a non-ready row (CSV OR
+                // Excel -- both now, not just Excel) is still
+                // interactive -- clicking/activating it opens the Data
+                // Preparation Workspace -- so it gets its own,
                 // differently-worded accessible name/role for that
-                // action instead of "for analysis".
+                // action instead of "for analysis". A COMTRADE row can
+                // never be non-ready in practice, but the fallback below
+                // still omits any accessible name for that theoretical
+                // case rather than claiming a preparation action that
+                // doesn't exist for it.
                 const openableAttrs = isReady
                     ? ' tabindex="0" role="button" aria-label="Open ' + escapeHtml(name) + ' for analysis"'
-                    : recordingKind === "excel"
-                    ? ' tabindex="0" role="button" aria-label="Select worksheet for ' + escapeHtml(name) + '"'
+                    : (recordingKind === "csv" || recordingKind === "excel")
+                    ? ' tabindex="0" role="button" aria-label="Prepare ' + escapeHtml(name) + '"'
                     : "";
                 html += '<tr data-search="' + escapeHtml(searchText) + '" data-source-id="' + escapeHtml(source.source_id) +
                     '" data-status="' + escapeHtml(source.status || "") +
@@ -6351,27 +6310,29 @@
             // against opening a "Needs Preparation" row as a waveform --
             // it applies regardless of whether role="button"/tabindex
             // were rendered above, since a plain <tr> still fires a real
-            // click event on click. Slice 2: a non-ready EXCEL row's
-            // click instead opens the minimal Worksheet Selection modal
-            // (openWorksheetSelectModal()) -- a non-ready CSV row still
-            // does nothing at all, since CSV has no worksheet concept.
+            // click event on click. Slice 3: a non-ready CSV OR Excel
+            // row's click instead opens the Data Preparation Workspace
+            // (openDataPreparationWorkspace()) -- superseding Slice 2's
+            // own standalone Worksheet Selection modal, whose sheet
+            // picker now lives inside that workspace instead.
             bodyEl.querySelectorAll('tr[data-source-id]').forEach((row) => {
                 row.addEventListener("click", () => {
                     if (row.dataset.status === "ready") {
                         openRecordingForAnalysis(row.dataset.sourceId);
-                    } else if (row.dataset.recordingKind === "excel") {
-                        openWorksheetSelectModal(row.dataset.sourceId);
+                    } else if (row.dataset.recordingKind === "csv" || row.dataset.recordingKind === "excel") {
+                        openDataPreparationWorkspace(row.dataset.sourceId);
                     }
                 });
                 row.addEventListener("keydown", (event) => {
                     if (event.target !== row) return;
                     if (event.key !== "Enter" && event.key !== " ") return;
-                    if (row.dataset.status !== "ready" && row.dataset.recordingKind !== "excel") return;
+                    const kind = row.dataset.recordingKind;
+                    if (row.dataset.status !== "ready" && kind !== "csv" && kind !== "excel") return;
                     event.preventDefault();
                     if (row.dataset.status === "ready") {
                         openRecordingForAnalysis(row.dataset.sourceId);
                     } else {
-                        openWorksheetSelectModal(row.dataset.sourceId);
+                        openDataPreparationWorkspace(row.dataset.sourceId);
                     }
                 });
             });
@@ -6451,6 +6412,242 @@
         function openRecordingForAnalysis(sourceId) {
             shellSetCurrentPage("waveform");
             selectSource(sourceId);
+        }
+
+        // ------------------------------------------------------------------
+        // CSV/Excel ingestion Slice 3 (DEC-072): Data Preparation Workspace.
+        //
+        // Deliberately a SEPARATE state object from `ww` (the waveform
+        // workspace's own state) -- task's own "keep this state separate
+        // from waveform workspace state... do not reuse waveform source
+        // selection in a way that makes the preparation source look
+        // waveform-ready." Nothing here is read by, or written into, `ww`.
+        //
+        // Raw inspection only: no header/column-role inference, no
+        // editing, no readiness controls, no DisturbanceRecord anywhere
+        // in this module. `status` always reads "Needs Preparation" here
+        // -- this workspace never has a path to "Ready".
+        // ------------------------------------------------------------------
+        const wwDataPrep = {
+            sourceId: null,
+            format: null, // "CSV" | "Excel"
+            filename: null,
+            fileSizeBytes: null,
+            status: null,
+            worksheets: [],
+            selectedWorksheetIndex: null,
+            offset: 0,
+            limit: 200,
+            totalRowCount: null,
+            columnCount: null,
+        };
+
+        // Spreadsheet-style column identifiers (A, B, ..., Z, AA, AB, ...)
+        // -- task's own explicit requirement that column references stay
+        // neutral, never a real/inferred header name. 0-based `index` in,
+        // matching the backend's own 0-based column positions.
+        function wwSpreadsheetColumnLabel(index) {
+            let label = "";
+            let n = index;
+            while (n >= 0) {
+                label = String.fromCharCode(65 + (n % 26)) + label;
+                n = Math.floor(n / 26) - 1;
+            }
+            return label;
+        }
+
+        function wwDataPrepRenderMeta() {
+            document.getElementById("wwDataPrepFilename").textContent = wwDataPrep.filename || "";
+            document.getElementById("wwDataPrepFormat").textContent = wwDataPrep.format || "—";
+            document.getElementById("wwDataPrepSize").textContent = formatFileSize(wwDataPrep.fileSizeBytes);
+            // Task's own explicit requirement: this workspace must never
+            // show "Ready" or imply readiness -- formatRecordingStatus()
+            // is reused unchanged (same display mapping as Recording
+            // Events) purely because wwDataPrep.status is only ever
+            // "needs_preparation" in practice; nothing here invents a
+            // "Ready" path.
+            document.getElementById("wwDataPrepStatusBadge").textContent = formatRecordingStatus(wwDataPrep.status);
+        }
+
+        // Excel only -- CSV has no worksheet concept, so the whole field
+        // stays hidden and is never populated with a fabricated single
+        // "sheet" entry (task's own explicit guardrail).
+        function wwDataPrepRenderWorksheetSelector() {
+            const field = document.getElementById("wwDataPrepWorksheetField");
+            if (wwDataPrep.format !== "Excel") {
+                field.hidden = true;
+                return;
+            }
+            field.hidden = false;
+            const select = document.getElementById("wwDataPrepWorksheetSelect");
+            select.innerHTML = wwDataPrep.worksheets.map((sheet) =>
+                '<option value="' + sheet.index + '"' +
+                (sheet.index === wwDataPrep.selectedWorksheetIndex ? " selected" : "") + '>' +
+                escapeHtml(sheet.name) + (sheet.visible ? "" : " (hidden)") +
+                '</option>'
+            ).join("");
+        }
+
+        function wwDataPrepRenderTable(preview) {
+            const table = document.getElementById("wwDataPrepTable");
+            const columnCount = wwDataPrep.columnCount || 0;
+
+            let html = "<thead><tr><th></th>";
+            for (let c = 0; c < columnCount; c++) {
+                html += "<th>" + wwSpreadsheetColumnLabel(c) + "</th>";
+            }
+            html += "</tr></thead><tbody>";
+
+            for (const row of preview.rows) {
+                html += "<tr><th>" + row.row_number + "</th>";
+                for (let c = 0; c < columnCount; c++) {
+                    const value = row.cells[c];
+                    // Neutral blank rendering (task's own explicit
+                    // requirement): never substitute 0/null/"N/A" for an
+                    // empty source cell -- an absent/blank/empty-string
+                    // value all render as a plain empty cell, indistinguishable
+                    // from each other here (Slice 3 is raw structural
+                    // preview, not a data-quality/type report).
+                    const isBlank = value === null || value === undefined || value === "";
+                    const displayValue = isBlank ? "" : escapeHtml(String(value));
+                    const titleAttr = isBlank ? "" : ' title="' + escapeHtml(String(value)) + '"';
+                    html += "<td" + titleAttr + ">" + displayValue + "</td>";
+                }
+                html += "</tr>";
+            }
+            html += "</tbody>";
+            table.innerHTML = html;
+        }
+
+        function wwDataPrepRenderPagination(preview) {
+            const total = wwDataPrep.totalRowCount;
+            const firstShown = preview.rows.length > 0 ? preview.offset + 1 : 0;
+            const lastShown = preview.offset + preview.returned_row_count;
+            const totalLabel = total != null
+                ? total + (preview.total_row_count_basis === "exact" ? "" : "+")
+                : "unknown";
+            document.getElementById("wwDataPrepRangeLabel").textContent =
+                "Showing rows " + firstShown + "–" + lastShown + " of " + totalLabel;
+            document.getElementById("wwDataPrepPrevBtn").disabled = wwDataPrep.offset <= 0;
+            document.getElementById("wwDataPrepNextBtn").disabled =
+                total != null ? (wwDataPrep.offset + wwDataPrep.limit) >= total : preview.returned_row_count < wwDataPrep.limit;
+        }
+
+        async function wwDataPrepFetchPreview() {
+            const status = document.getElementById("wwDataPrepStatus");
+            status.textContent = "";
+            document.getElementById("wwDataPrepTable").innerHTML = "";
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                        "/preparation-sources/" + encodeURIComponent(wwDataPrep.sourceId) + "/rows" +
+                        "?offset=" + wwDataPrep.offset + "&limit=" + wwDataPrep.limit
+                );
+                if (!response.ok) {
+                    const body = await response.json().catch(() => null);
+                    const detail = (body && body.detail) || {};
+                    status.textContent = detail.message || "Could not load this preview.";
+                    return;
+                }
+                const preview = await response.json();
+                wwDataPrep.totalRowCount = preview.total_row_count;
+                wwDataPrep.columnCount = preview.column_count;
+                wwDataPrepRenderTable(preview);
+                wwDataPrepRenderPagination(preview);
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
+        }
+
+        document.getElementById("wwDataPrepPrevBtn").addEventListener("click", () => {
+            wwDataPrep.offset = Math.max(0, wwDataPrep.offset - wwDataPrep.limit);
+            wwDataPrepFetchPreview();
+        });
+        document.getElementById("wwDataPrepNextBtn").addEventListener("click", () => {
+            wwDataPrep.offset += wwDataPrep.limit;
+            wwDataPrepFetchPreview();
+        });
+        document.getElementById("wwDataPrepWorksheetSelect").addEventListener("change", async (event) => {
+            const newIndex = parseInt(event.target.value, 10);
+            const status = document.getElementById("wwDataPrepStatus");
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                        "/preparation-sources/" + encodeURIComponent(wwDataPrep.sourceId),
+                    {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ selected_worksheet_index: newIndex }),
+                    }
+                );
+                if (!response.ok) {
+                    status.textContent = "Could not switch worksheets.";
+                    return;
+                }
+                // Section F: switching sheet updates selected-worksheet
+                // state, resets the current preview window, and fetches
+                // rows from the new worksheet -- never a waveform/data
+                // interpretation step.
+                wwDataPrep.selectedWorksheetIndex = newIndex;
+                wwDataPrep.offset = 0;
+                await wwDataPrepFetchPreview();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
+        });
+
+        document.getElementById("wwDataPrepBackBtn").addEventListener("click", () => {
+            shellSetCurrentPage("recordings");
+        });
+
+        // Entry point -- called from a "Needs Preparation" Recording
+        // Events row (renderRecordingsTable()'s own row click/keydown
+        // handlers). Fetches the preparation source's own summary fresh
+        // (never reuses Recording Events' already-fetched list, which
+        // this function is itself called FROM and could be stale by the
+        // time the user clicks) before rendering anything.
+        async function openDataPreparationWorkspace(sourceId) {
+            shellSetCurrentPage("data-preparation");
+            wwDataPrep.sourceId = sourceId;
+            wwDataPrep.offset = 0;
+            const status = document.getElementById("wwDataPrepStatus");
+            status.textContent = "";
+            document.getElementById("wwDataPrepTable").innerHTML = "";
+            document.getElementById("wwDataPrepFilename").textContent = "";
+            document.getElementById("wwDataPrepRangeLabel").textContent = "";
+
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                        "/preparation-sources/" + encodeURIComponent(sourceId)
+                );
+                if (!response.ok) {
+                    status.textContent = "Could not load this preparation source.";
+                    return;
+                }
+                const summary = await response.json();
+                wwDataPrep.format = summary.file_format;
+                wwDataPrep.filename = summary.original_filename;
+                wwDataPrep.fileSizeBytes = summary.file_size_bytes;
+                wwDataPrep.status = summary.status;
+                wwDataPrep.worksheets = summary.worksheets || [];
+                wwDataPrep.selectedWorksheetIndex = summary.selected_worksheet_index;
+
+                wwDataPrepRenderMeta();
+                wwDataPrepRenderWorksheetSelector();
+
+                if (wwDataPrep.format === "Excel" && wwDataPrep.selectedWorksheetIndex == null) {
+                    // A multi-worksheet workbook with no selection yet --
+                    // never guess; ask the user to choose before fetching
+                    // any preview (mirrors the backend's own
+                    // worksheet_not_selected rejection).
+                    status.textContent = "Select a worksheet above to preview its rows.";
+                    return;
+                }
+                await wwDataPrepFetchPreview();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
         }
 
         // Section 22: simple client-side substring filter across the

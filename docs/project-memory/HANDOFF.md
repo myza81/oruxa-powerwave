@@ -4,9 +4,119 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-08-30**
+Last updated: **2026-08-31**
 
 ## What was most recently done
+
+**CSV/Excel Ingestion Slice 3 — Paged Raw-Data Preview + Data
+Preparation Workspace Shell. Implemented and verified.** Direct
+follow-up to Slice 2 (below) — the third implementation slice of the
+owner's revised 13-slice sequence (`CSV_EXCEL_INGESTION_ARCHITECTURE.md`
+§14). Deliberately still read-only, per the task's own explicit scope:
+the first user-facing preparation surface, but no editing, no header/
+column/time-axis interpretation, no `DisturbanceRecord`.
+
+**Backend**: new `app.services.preparation_preview_service` — one
+`preview_preparation_source()` entry point dispatching to `_preview_csv()`/
+`_preview_excel()`. CSV: streams the in-memory bytes through `csv.reader`
+(never `pandas.read_csv`, never a full DataFrame); a bounded dialect
+sniff (`csv.Sniffer`, restricted to `,;\t|`, comma fallback — verified
+directly that restricting the candidate set fixes a real failure mode
+where unrestricted sniffing can return a nonsense single-character
+"delimiter" from single-column data) picks the separator once per
+request; exact row/column totals need one full pass over the in-memory
+text, memoized on `PreparationSession.cached_row_count`/
+`cached_column_count` after the first request so later pages of the
+same session never re-derive them (still no row index — reaching a
+given offset still means iterating from the start, the task's own
+disclosed "acceptable initially" allowance). Excel: reuses Slice 2's
+`read_only=True` streaming approach, workbook reopened fresh per request
+and always closed in a `finally` (never held open across requests),
+`iter_rows(min_row=, max_row=, values_only=True)` to avoid materializing
+rows outside the window, `data_only=False` so a formula cell shows its
+stored formula text rather than a recalculated/cached value (verified
+directly); row/column totals reuse Slice 2's own best-effort
+`WorksheetInfo` fields, no new Excel-side scan. New endpoint
+`GET .../preparation-sources/{id}/rows?offset=&limit=` — bounds
+(0/default 200/max 1000) enforced via FastAPI's own `Query(ge=..., le=...)`
+constraints, matching the existing `point_budget` precedent in
+`app.api.v1.sources.get_source_waveform` exactly, so no new
+range-validation error class was needed; only one new error,
+`WorksheetNotSelectedError`, for an Excel source previewed before a
+sheet is chosen.
+
+**Frontend**: a new, fourth top-level page, `#pageDataPreparation`
+(`shell.currentPage = "data-preparation"`) — reached only from a "Needs
+Preparation" Recording Events row (both CSV and Excel now, not just
+Excel), never from permanent navigation. Its own `wwDataPrep` state
+object is completely separate from the waveform workspace's `ww`, per
+the task's own explicit requirement. Adding this page's CSS
+(`display: flex`) rediscovered — and proactively fixed up front this
+time — the exact `[hidden]`-vs-explicit-`display`-origin-specificity bug
+`#pageCalculatedChannels` had already hit once before (its own comment
+explains why the `#id[hidden] { display: none }` override is required).
+The raw preview itself is a plain, server-paginated `<table>` — no
+virtualization library (justified directly by the task's own "a simple
+paged table is preferable to over-engineering virtualization at this
+stage" guidance, safe here because the server already bounds every page
+to ≤1000 rows) — with spreadsheet-style column letters (A, B, C, ...,
+via a new `wwSpreadsheetColumnLabel()`), 1-based row numbers, sticky
+header row and sticky first column, and a `title` attribute on every
+non-blank cell for full-value-on-hover. Blank cells render as plain
+empty cells (never `0`/`null`/`"N/A"`, per the task's own explicit
+guardrail). **Slice 2's own standalone Worksheet Selection modal
+(`#wwWorksheetSelectOverlay` and its supporting JS/CSS) is removed
+entirely** — the task's own "move/evolve the minimal Slice 2 worksheet
+selector into the Data Preparation Workspace" instruction, not an
+addition alongside it — replaced by a plain `<select>` embedded in the
+workspace's own metadata panel; switching sheets resets the preview to
+offset 0, re-fetches, and never performs any waveform/data
+interpretation.
+
+**Verification**: full backend suite 1887 passed (39 new on top of
+Slice 2's 1848), 0 regressions; the committed browser smoke test
+(COMTRADE) still passes unchanged; a throwaway (not committed)
+live-browser Playwright script independently walked all four UAT
+acceptance scenarios — COMTRADE unaffected, no Data Preparation page
+involved; CSV (correct spreadsheet column headers, row 1 rendered as an
+ordinary raw row not a header, "Showing rows 1–200 of 250," Next
+correctly advances to row 201, Back returns to Recording Events, still
+not waveform-openable — clicking again reopens the preparation
+workspace, not a waveform); Excel single-sheet (worksheet field shows
+the one sheet, raw cells render correctly); Excel multi-sheet (prompts
+for an explicit worksheet choice rather than guessing, all four sheet
+names listed in order, switching sheets correctly changes the preview
+content) — zero console/page errors across the whole run.
+
+**Files changed**: Backend — new `app/services/preparation_preview_service.py`;
+modified `app/domain/preparation_session.py` (+2 cache fields),
+`app/schemas/preparation_session.py` (+`PreparationRowOut`/
+`PreparationSourcePreviewOut`), `app/api/v1/preparation_sources.py`
+(+`GET .../rows`), `app/services/errors.py` (+1 error class). Tests —
+new `tests/test_preparation_preview_service.py`; extended
+`tests/test_preparation_sources_api.py`. Frontend — `frontend/index.html`
+only (new `#pageDataPreparation` page + CSS, `wwDataPrep` state and its
+render/fetch/pagination/worksheet-switch functions, row-click routing
+updated for both CSV and Excel, Slice 2's worksheet modal removed).
+Documentation — `CSV_EXCEL_INGESTION_ARCHITECTURE.md` (§14/§18 updated),
+`CURRENT_STATE.md`, here. No new `DECISIONS.md` entry — every choice
+made (page-size defaults, delimiter-sniffing approach, no virtualization
+library, formula-as-text display) was already anticipated/pre-authorized
+by the task's own instructions, not a new owner-level decision.
+
+**Note, unrelated to this slice**: a small, pre-existing uncommitted CSS
+tweak to `frontend/index.html` (normalizing three Recording Details
+panel font-sizes to `0.75rem`) was found already staged at the start of
+this session, made by someone/something other than this agent. It was
+left untouched and is bundled into this slice's own `frontend/index.html`
+changes below simply because both touch the same file — flagged here
+for visibility, not something this slice's own work is responsible for.
+
+**Next step**: nothing beyond Slice 3 is pre-authorized. Slice 4
+(Working Dataset / non-destructive overlay) is the next candidate per
+the owner's revised sequence, but requires its own explicit go-ahead.
+
+## What was done in the prior session — CSV/Excel Ingestion Slice 2: Excel Ingestion + Worksheet Discovery
 
 **CSV/Excel Ingestion Slice 2 — Excel Ingestion + Worksheet Discovery.
 Implemented and verified.** Direct follow-up to Slice 1 (below) — the

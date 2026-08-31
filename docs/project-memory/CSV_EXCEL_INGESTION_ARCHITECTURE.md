@@ -678,10 +678,56 @@ owner go-ahead before implementation begins.
    channel-selection state; Excel multi-sheet — all four sheet names
    discovered in order, none pre-selected, a chosen selection persists
    across reopening the modal) with zero console/page errors.
-3. **Paged raw-data preview + Data Preparation Workspace shell.**
-   Backend paging/windowing API; frontend preparation page/workspace;
-   table preview designed for large data; no requirement to load the
-   entire dataset into browser memory (§8).
+3. **`[DONE, 2026-08-31]` Paged raw-data preview + Data Preparation
+   Workspace shell.** Implemented: a new `GET .../preparation-sources/{id}/rows`
+   endpoint (`app.services.preparation_preview_service`) returning a
+   bounded page of raw rows — default 200, server-enforced maximum
+   1000, via `Query(ge=0)`/`Query(gt=0, le=1000)` (matching the existing
+   `point_budget` precedent in `app.api.v1.sources.get_source_waveform`,
+   so no separate range-validation error class was needed). CSV: streamed
+   through `csv.reader` over the in-memory bytes (never `pandas.read_csv`,
+   never a full DataFrame); a bounded dialect sniff (`csv.Sniffer`,
+   restricted to `,;\t|`, falling back to comma) picks the delimiter once
+   per request; exact row/column totals require one full pass over the
+   in-memory text, memoized on the `PreparationSession` itself after the
+   first request so later pages never re-derive them (still no index —
+   reaching a given offset still means iterating from row 0, exactly the
+   "acceptable initially if documented" allowance this task's own brief
+   anticipated). Excel: reused Slice 2's `read_only=True` streaming
+   approach, reopened fresh per request (never held open across
+   requests), `iter_rows(min_row=, max_row=, values_only=True)` to avoid
+   materializing rows outside the window; `data_only=False` so a formula
+   cell shows its stored formula text, never a recalculated/cached
+   value; row/column totals reuse Slice 2's own best-effort
+   `WorksheetInfo.row_count`/`column_count` (no new Excel-side scan).
+   Frontend: a new `shell.currentPage = "data-preparation"` fourth page
+   (same "hide, don't destroy" mechanism, discovered and fixed the SAME
+   `[hidden]` CSS-origin-specificity bug `#pageCalculatedChannels`
+   already needed a fix for, applied proactively this time), a
+   completely separate `wwDataPrep` state object (never touches `ww`),
+   a plain server-paginated DOM table (no virtualization library — the
+   task's own "a simple paged table is preferable to over-engineering
+   virtualization at this stage" guidance, since each page is already
+   bounded to ≤1000 rows server-side) with spreadsheet-style column
+   letters (A, B, C, ...) and 1-based row numbers, sticky header row and
+   sticky first column, and a title attribute on every non-blank cell
+   for full-value-on-hover. A "Needs Preparation" CSV or Excel Recording
+   Events row now opens this workspace (superseding Slice 2's own
+   standalone Worksheet Selection modal, which is removed entirely — its
+   sheet picker now lives inside this workspace as a `<select>`,
+   switching sheets resets the preview to offset 0 and re-fetches).
+   Verified: 1887 backend tests passing (39 new on top of Slice 2's
+   1848), zero regressions; the committed browser smoke test (COMTRADE)
+   still passes unchanged; a live-browser manual UAT run confirmed all
+   four acceptance scenarios (COMTRADE unaffected, no Data Preparation
+   page involved; CSV — correct spreadsheet column headers, row 1 shown
+   as an ordinary raw row not a header, "Showing rows 1–200 of 250,"
+   Next correctly advances to row 201, Back returns to Recording Events,
+   still not waveform-openable; Excel single-sheet — worksheet field
+   shows the one sheet, raw cells render correctly; Excel multi-sheet —
+   prompts for an explicit selection rather than guessing, all four
+   sheet names listed in order, switching sheets correctly changes the
+   preview content) with zero console/page errors.
 4. **Working Dataset / non-destructive overlay.** Edit/correction
    overlay; reset behavior; row/column exclusion concepts; raw data
    remains immutable (§17).
@@ -828,6 +874,14 @@ not as open items any more:
 | 3 | Worksheet descriptor shape? | `WorksheetInfo{index, name, visible, row_count, column_count}` — the last two best-effort/`None`-able from `max_row`/`max_column`, never a full-sheet scan. |
 | 4 | Single-sheet auto-selection behavior? | Auto-selected (`selected_worksheet_index=0`) only when the workbook has exactly one worksheet total (visible or hidden); two or more (even one visible + one hidden) requires explicit selection — per the task's own pre-authorized convenience option. |
 
+**Resolved by Slice 3 implementation (2026-08-31)**:
+
+| # | Question | Resolution |
+|---|---|---|
+| 1 | Exact frontend grid/virtualization technology | None — a plain server-paginated DOM `<table>`, no library. Justified directly by the task's own guidance ("a simple paged table is preferable to over-engineering virtualization at this stage") and by the server-side bound itself (≤1000 rows/page) making naive rendering safe. Remains compatible with introducing real virtualization later if a future slice's own UX needs it. |
+| 2 | Exact preview API shape | `GET .../preparation-sources/{id}/rows?offset=&limit=` → `{source_id, selected_worksheet_index, offset, limit, returned_row_count, total_row_count, total_row_count_basis, column_count, column_count_basis, rows: [{row_number, cells}]}`. `offset`/`limit` bounds enforced via `Query(...)` constraints (0/1000 default/max), matching the existing `point_budget` precedent — no new range-validation error class needed. |
+| 3 | Whether/how a large raw CSV/Excel file needs paging at the *storage* layer | Resolved for Slice 3's own scope: CSV needs one full in-memory-text pass to get exact totals (memoized after the first request per session); Excel needs no extra scan at all (reuses Slice 2's own upload-time `WorksheetInfo` totals). Neither format's raw bytes are ever loaded a second, larger way — the existing Slice 1/2 in-memory registry already holds everything needed. **Still not resolved**: whether the registry's own "hold the whole file's raw bytes in memory" model itself needs to change for very large files — that remains a storage-layer question, not a preview-algorithm one (see the still-open items below). |
+
 **Genuinely unresolved — must not be resolved prematurely** (owner's own
 explicit list; do not pick a mechanism ahead of the implementation
 slices without further owner input):
@@ -835,14 +889,14 @@ slices without further owner input):
 | # | Question | Decision mode | Needed before |
 |---|---|---|---|
 | 1 | Exact overlay/delta implementation for non-destructive edits | `[DECISION MODE: COMPARISON]` | Slice 4 |
-| 2 | Exact frontend grid/virtualization technology | `[DECISION MODE: COMPARISON]` | Slice 3 |
-| 3 | Exact API shapes (paging, mapping, readiness) beyond what Slices 1-2 already established for preparation-source identity/upload/worksheet selection | `[DECISION MODE: ANALYSIS]`, once slice work actually starts | Slices 3, 5, 6 |
-| 4 | Exact timestamp-interpreter list to build first | `[DECISION MODE: ANALYSIS]` — the *list itself* stays open per DEC-072 point 6; only the first-slice subset needs choosing | Slice 8 |
-| 5 | Exact saved-profile design (import-profile reuse across files) | `[DECISION MODE: DEFER]` | Slice 13 |
-| 6 | Whether/how a large raw CSV/Excel file needs paging at the *storage* layer (Slices 1-2's in-memory registry holds the whole file's raw bytes at once — fine for "safe acceptance/discovery only" scope, but a future large-workbook consideration for Slice 3's own paged preview; a large `.xlsx` is a compressed container that can expand substantially, so this matters more for Excel than CSV) | `[DECISION MODE: DEFER]` | Slice 3 |
-| 7 | Permanent persistence of uploaded CSV/XLSX (beyond an active preparation session) | `[DECISION MODE: DEFER]` — explicitly out of scope unless a future, separate decision introduces it (DEC-072 point 1) | Not currently scheduled |
-| 8 | Exact future `DisturbanceRecord.validate()` hardening (monotonicity/finiteness check) | `[DECISION MODE: DEFER]` — independent canonical-contract work, deliberately outside CSV/Excel scope (DEC-072 point 4) | Not currently scheduled |
-| 9 | Whether `.xls` legacy support is ever added later (would require an explicit owner decision to accept the `xlrd` dependency, since Slice 2 deliberately did not) | `[DECISION MODE: DEFER]` | Not currently scheduled |
+| 2 | Exact API shapes for mapping/readiness beyond what Slices 1-3 already established for preparation-source identity/upload/worksheet selection/raw preview | `[DECISION MODE: ANALYSIS]`, once slice work actually starts | Slices 5, 6 |
+| 3 | Exact timestamp-interpreter list to build first | `[DECISION MODE: ANALYSIS]` — the *list itself* stays open per DEC-072 point 6; only the first-slice subset needs choosing | Slice 8 |
+| 4 | Exact saved-profile design (import-profile reuse across files) | `[DECISION MODE: DEFER]` | Slice 13 |
+| 5 | Whether the underlying in-memory "hold the whole raw file" registry model itself needs to change for a genuinely huge CSV/Excel file (Slice 3's own preview algorithm is bounded per-request, but the registry still holds the entire original upload in memory regardless of size — a separate storage-layer question from anything Slice 3 itself needed to solve) | `[DECISION MODE: DEFER]` | Not currently scheduled |
+| 6 | Permanent persistence of uploaded CSV/XLSX (beyond an active preparation session) | `[DECISION MODE: DEFER]` — explicitly out of scope unless a future, separate decision introduces it (DEC-072 point 1) | Not currently scheduled |
+| 7 | Exact future `DisturbanceRecord.validate()` hardening (monotonicity/finiteness check) | `[DECISION MODE: DEFER]` — independent canonical-contract work, deliberately outside CSV/Excel scope (DEC-072 point 4) | Not currently scheduled |
+| 8 | Whether `.xls` legacy support is ever added later (would require an explicit owner decision to accept the `xlrd` dependency, since Slice 2 deliberately did not) | `[DECISION MODE: DEFER]` | Not currently scheduled |
+| 9 | Encoding detection for CSV decoding (Slice 3 uses a fixed UTF-8-with-replacement decode, disclosed as a simplification, not a solved problem) | `[DECISION MODE: DEFER]` | Not currently scheduled |
 
 **`[FACT]`**: how a sample-index-only time axis is represented in the
 canonical contract (original item 4 — no field exists for it today, see

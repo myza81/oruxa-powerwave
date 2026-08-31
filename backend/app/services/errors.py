@@ -531,3 +531,23 @@ class InvalidWorksheetIndexError(ImportServiceError):
     silently clamped to a valid index."""
 
     code = "invalid_worksheet_index"
+
+
+# ---- CSV/Excel ingestion Slice 3 (DEC-072): paged raw-data preview
+# (app.services.preparation_preview_service). `offset`/`limit`
+# themselves are validated by FastAPI's own Query(ge=..., le=...)
+# constraints at the API layer (matching
+# app.api.v1.sources.get_source_waveform's own `point_budget: int =
+# Query(..., gt=0)` precedent) -- no separate service-level "invalid
+# range" error class was needed, since that precedent already fully
+# covers "reject negative offsets / non-positive or excessive limits"
+# with a single, simple bound per field. ----
+
+
+class WorksheetNotSelectedError(ImportServiceError):
+    """A row-preview request was made against an Excel preparation
+    source that has worksheets but no `selected_worksheet_index` yet
+    (a multi-worksheet workbook the user has not chosen a sheet for) --
+    the preview endpoint never guesses which sheet to show."""
+
+    code = "worksheet_not_selected"

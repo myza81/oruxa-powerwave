@@ -32,16 +32,25 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 
 from app.config import Settings
-from app.schemas.preparation_session import PreparationSessionSummaryOut, WorksheetSelectionRequest
+from app.schemas.preparation_session import (
+    PreparationSessionSummaryOut,
+    PreparationSourcePreviewOut,
+    WorksheetSelectionRequest,
+)
 from app.schemas.source import ErrorOut
 from app.services.errors import AmbiguousPreparationUploadError, ImportServiceError
 from app.services.preparation_import_service import (
     import_csv_preparation_source,
     import_excel_preparation_source,
     select_preparation_worksheet,
+)
+from app.services.preparation_preview_service import (
+    PREVIEW_DEFAULT_LIMIT,
+    PREVIEW_MAX_LIMIT,
+    preview_preparation_source,
 )
 from app.services.preparation_session_registry import PreparationSessionRegistry
 
@@ -63,6 +72,7 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "empty_workbook": status.HTTP_400_BAD_REQUEST,
     "worksheet_selection_not_applicable": status.HTTP_400_BAD_REQUEST,
     "invalid_worksheet_index": status.HTTP_400_BAD_REQUEST,
+    "worksheet_not_selected": status.HTTP_400_BAD_REQUEST,
 }
 
 
@@ -164,6 +174,46 @@ def get_preparation_source(
             ).model_dump(),
         )
     return PreparationSessionSummaryOut.from_domain(session.summary)
+
+
+@router.get("/{source_id}/rows", response_model=PreparationSourcePreviewOut)
+def get_preparation_source_rows(
+    workspace_id: str,
+    source_id: str,
+    offset: int = Query(
+        0, ge=0,
+        description="0-based row offset -- the first returned row has row_number = offset + 1.",
+    ),
+    limit: int = Query(
+        PREVIEW_DEFAULT_LIMIT, gt=0, le=PREVIEW_MAX_LIMIT,
+        description=f"Maximum rows to return, bounded server-side at {PREVIEW_MAX_LIMIT} regardless of what is requested.",
+    ),
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> PreparationSourcePreviewOut:
+    """Slice 3 (DEC-072): a bounded page of RAW rows -- never the whole
+    dataset (`offset`/`limit` are enforced by the `Query(...)` constraints
+    above, matching `app.api.v1.sources.get_source_waveform`'s own
+    `point_budget: int = Query(..., gt=0)` precedent -- an out-of-bounds
+    value is rejected by FastAPI itself before this function body ever
+    runs, so no separate service-level range-validation error exists).
+
+    No header row is assumed, no column mapping is inferred, no
+    DisturbanceRecord is read or produced -- see
+    app.services.preparation_preview_service's own module docstring for
+    the exact CSV/Excel reading strategy.
+    """
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        result = preview_preparation_source(
+            workspace_id=workspace_id, source_id=source_id, offset=offset, limit=limit, registry=registry,
+        )
+    except ImportServiceError as exc:
+        logger.info(
+            "Preparation-source preview rejected (%s) for workspace %s source %s: %s",
+            exc.code, workspace_id, source_id, exc.message,
+        )
+        raise _http_error(exc) from exc
+    return PreparationSourcePreviewOut.from_domain(result)
 
 
 @router.patch("/{source_id}", response_model=PreparationSessionSummaryOut)

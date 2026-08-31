@@ -25,9 +25,10 @@ COMTRADE upload/parse/browse, the app now has a full multi-source,
 multi-panel waveform workspace with Time-Group-aware synchronization,
 cursors, t0, annotations, a group-aware Per-Unit measurement model,
 calculated channels, and digital-channel display. CSV/Excel ingestion is
-the current workstream — Slices 1-2 (raw CSV/Excel preparation-source
-upload plus Excel worksheet discovery/selection, no waveform conversion
-yet) are implemented; the remaining slices are not (see
+the current workstream — Slices 1-3 (raw CSV/Excel preparation-source
+upload, Excel worksheet discovery/selection, and a paged raw-data
+preview Data Preparation Workspace, no waveform conversion yet) are
+implemented; the remaining slices are not (see
 [Current next workstream](#current-next-workstream)).
 
 ## Architecture
@@ -184,9 +185,10 @@ re-confirmed by the TG-FINAL audit):
 - A minimal committed real-browser smoke-test foundation now protects
   critical upload/render/interaction paths — see
   [docs/development/BROWSER_SMOKE_TEST.md](../development/BROWSER_SMOKE_TEST.md).
-- **CSV/Excel preparation-source upload + Excel worksheet discovery
-  (CSV/Excel ingestion Slices 1-2, DEC-072)**: the Upload Recording
-  modal's CSV and Excel options are both enabled (`RECORDING_FORMATS`,
+- **CSV/Excel preparation-source upload, Excel worksheet discovery, and
+  a paged raw-data-preview Data Preparation Workspace (CSV/Excel
+  ingestion Slices 1-3, DEC-072)**: the Upload Recording modal's CSV and
+  Excel options are both enabled (`RECORDING_FORMATS`,
   `frontend/index.html`), each with its own "Upload & Prepare" action,
   posting to `POST .../preparation-sources` (`app/api/v1/preparation_sources.py`
   — one endpoint, `csv_file` xor `excel_file`, exactly one per request)
@@ -201,9 +203,7 @@ re-confirmed by the TG-FINAL audit):
   and best-effort row/column counts, stored as `WorksheetInfo` on the
   same `PreparationSessionSummary`; a one-worksheet workbook is
   auto-selected, a multi-worksheet workbook requires an explicit
-  `PATCH .../preparation-sources/{id}` selection (surfaced via a new,
-  minimal Worksheet Selection modal opened by clicking a "Needs
-  Preparation" Excel row in Recording Events). Legacy `.xls` is
+  `PATCH .../preparation-sources/{id}` selection. Legacy `.xls` is
   deliberately not supported (would need a separate, unmaintained
   `xlrd` dependency). Both formats appear in Recording Events (File
   Format/File Size/Status columns, populated for COMTRADE too via an
@@ -211,15 +211,30 @@ re-confirmed by the TG-FINAL audit):
   Preparation`; Start Time/Duration/Sampling Rate(s) show `—` rather
   than fabricated values. A `Needs Preparation` row is structurally
   excluded from `GET .../sources` (so the Workspace Sidebar's
-  channel-selection list never sees it at all) and its own row
-  click/keydown handlers are additionally gated on `status === "ready"`
-  before opening a waveform — two independent reasons it can never be
-  opened, not one. Released on its own
+  channel-selection list never sees it at all).
+
+  Clicking a `Needs Preparation` row now opens a new, fourth top-level
+  page — the **Data Preparation Workspace** (`#pageDataPreparation`,
+  `shell.currentPage = "data-preparation"`, its own `wwDataPrep` state
+  object completely separate from the waveform workspace's `ww`) —
+  instead of opening a waveform (that row-click gate is still
+  `status === "ready"`, unchanged). It shows the source's filename/
+  format/size/status, a worksheet `<select>` for Excel (superseding
+  Slice 2's own standalone Worksheet Selection modal, now removed —
+  switching sheets resets the preview and re-fetches), and a paged raw
+  table (spreadsheet-style column letters, 1-based row numbers, no
+  header-row assumption) backed by a new
+  `GET .../preparation-sources/{id}/rows?offset=&limit=` endpoint
+  (default 200/max 1000 rows per page, server-enforced). CSV rows are
+  streamed via `csv.reader` (never a full `pandas.read_csv`); Excel rows
+  reuse `openpyxl`'s `read_only=True` `iter_rows(min_row=, max_row=)`,
+  reopened fresh per request. Released on its own
   `DELETE .../preparation-sources/{id}` or on whole-workspace
   `DELETE /api/v1/workspaces/{id}` (cascades into this registry too).
-  Header/column/time-axis inference, working-dataset editing, raw-table
-  preview, and readiness validation are explicitly NOT part of either
-  slice — see [CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md).
+  Header/column/time-axis inference, cell editing, working-dataset
+  overlay, and readiness validation are explicitly NOT part of any of
+  these three slices — see
+  [CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md).
 
 ## Known intentional constraints / deferred items
 
@@ -265,10 +280,11 @@ per owner direction, now in progress following the owner-revised 13-slice
 sequence recorded in
 [CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md)
 (itself grounded in [DECISIONS.md — DEC-072](DECISIONS.md#dec-072--csv-excel-ingestion-six-architectural-clarifications-approved--temporary-preparation-state-retention-preparation-scoped-severity-model-hybrid-rawworking-overlay-architecture-deferred-disturbancerecord-hardening-honest-non-absolute-time-preservation-and-an-open-ended-time-axis-format-list)).
-**Slices 1-2 (Preparation-session foundation + raw CSV ingestion; Excel
-ingestion + worksheet discovery) are implemented (2026-08-30)** — see
+**Slices 1-3 (Preparation-session foundation + raw CSV ingestion; Excel
+ingestion + worksheet discovery; paged raw-data preview + Data
+Preparation Workspace shell) are implemented (2026-08-31)** — see
 [Implemented capabilities](#implemented-capabilities) below for exactly
-what that covers. Both deliberately produce **no `DisturbanceRecord`
+what that covers. All three deliberately produce **no `DisturbanceRecord`
 and no waveform**: a CSV or Excel file is accepted as raw, immutable
 input into a new `PreparationSession` (in-memory,
 `app.services.preparation_session_registry`) and surfaced in Recording
@@ -276,15 +292,18 @@ Events with status `Needs Preparation` — structurally excluded from
 `GET .../sources` so it can never reach the Workspace Sidebar's
 channel-selection list or normal waveform loading. Excel additionally
 gets worksheet structure discovered (name/order/visible/best-effort
-row-column counts) and a selectable current worksheet, but no cell
-contents are ever read into the response. Slices 3–13 (paged preview
-workspace, working-dataset overlay, column-role mapping, the Readiness
-Issue model, the extensible time-axis framework, canonical
-`DisturbanceRecord` conversion, export, and progressive automation)
-remain unimplemented and require their own explicit owner go-ahead
-before starting, per [Change governance](../../CLAUDE.md#change-governance)
-— being recorded in the architecture document's own slice sequence does
-not itself authorize starting any of them.
+row-column counts) and a selectable current worksheet. Slice 3 adds a
+dedicated Data Preparation Workspace page where the user can page
+through the raw rows of a CSV or the currently selected Excel worksheet
+— server-paginated (≤1000 rows/request), no header-row assumption, no
+column-role/time-axis interpretation, no cell editing. Slices 4–13
+(working-dataset overlay, column-role mapping, the Readiness Issue
+model, the extensible time-axis framework, canonical `DisturbanceRecord`
+conversion, export, and progressive automation) remain unimplemented
+and require their own explicit owner go-ahead before starting, per
+[Change governance](../../CLAUDE.md#change-governance) — being recorded
+in the architecture document's own slice sequence does not itself
+authorize starting any of them.
 `SourceMetadata.timing_reference` still reserves a value other than
 `"absolute"` for a future importer with no trustworthy absolute
 recording timestamp — a CSV/Excel preparation source does not reach

@@ -490,3 +490,190 @@ class TestExcelLifecycle:
         assert (
             client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}").status_code == 404
         )
+
+
+# ---- CSV/Excel ingestion Slice 3 (DEC-072): paged raw-data preview ----
+
+
+class TestCsvRowsApi:
+    def test_response_schema_and_exact_offset_limit_and_row_numbering(self, client):
+        content = ("\n".join(f"{i},v{i}" for i in range(1, 11))).encode()
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_csv_file(content, "e.csv"),
+        ).json()["source_id"]
+
+        resp = client.get(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows",
+            params={"offset": 2, "limit": 3},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["source_id"] == source_id
+        assert body["selected_worksheet_index"] is None
+        assert body["offset"] == 2
+        assert body["limit"] == 3
+        assert body["returned_row_count"] == 3
+        assert [r["row_number"] for r in body["rows"]] == [3, 4, 5]
+        assert body["rows"][0]["cells"] == ["3", "v3"]
+        assert body["total_row_count"] == 10
+        assert body["total_row_count_basis"] == "exact"
+        assert body["column_count"] == 2
+        assert body["column_count_basis"] == "exact"
+        # No file path, no waveform-shaped fields anywhere.
+        assert "file_path" not in str(body)
+
+    def test_default_offset_and_limit(self, client):
+        content = b"a,b\n1,2\n"
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_csv_file(content, "e.csv"),
+        ).json()["source_id"]
+
+        resp = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows")
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["offset"] == 0
+        assert body["limit"] == 200
+
+    def test_negative_offset_is_rejected(self, client):
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_csv_file(),
+        ).json()["source_id"]
+
+        resp = client.get(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows", params={"offset": -1},
+        )
+
+        assert resp.status_code == 422
+
+    def test_zero_limit_is_rejected(self, client):
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_csv_file(),
+        ).json()["source_id"]
+
+        resp = client.get(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows", params={"limit": 0},
+        )
+
+        assert resp.status_code == 422
+
+    def test_excessive_limit_is_rejected(self, client):
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_csv_file(),
+        ).json()["source_id"]
+
+        resp = client.get(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows", params={"limit": 1001},
+        )
+
+        assert resp.status_code == 422
+
+    def test_preview_of_deleted_source_returns_404(self, client):
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_csv_file(),
+        ).json()["source_id"]
+        client.delete(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}")
+
+        resp = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows")
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["code"] == "source_not_found"
+
+    def test_preview_never_registers_a_waveform_ready_source(self, client):
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_csv_file(),
+        ).json()["source_id"]
+
+        client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows")
+
+        assert client.get("/api/v1/workspaces/ws-1/sources").json() == []
+
+
+class TestExcelRowsApi:
+    def test_single_sheet_preview_via_api(self, client):
+        content = _build_xlsx({"Only": [["time", "VA"], [0.0, 1.0]]})
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "e.xlsx"),
+        ).json()["source_id"]
+
+        resp = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows")
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["selected_worksheet_index"] == 0
+        assert body["rows"][0]["cells"] == ["time", "VA"]
+        assert body["total_row_count_basis"] == "best_effort"
+
+    def test_multi_sheet_requires_selection_first(self, client):
+        content = _build_xlsx({"A": [["x"]], "B": [["y"]]})
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "m.xlsx"),
+        ).json()["source_id"]
+
+        resp = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows")
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "worksheet_not_selected"
+
+    def test_preview_after_worksheet_selection(self, client):
+        content = _build_xlsx({"A": [["from-a"]], "B": [["from-b"]]})
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "m.xlsx"),
+        ).json()["source_id"]
+
+        client.patch(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}",
+            json={"selected_worksheet_index": 1},
+        )
+        resp = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows")
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["selected_worksheet_index"] == 1
+        assert body["rows"][0]["cells"] == ["from-b"]
+
+    def test_switching_worksheet_changes_the_preview(self, client):
+        content = _build_xlsx({"A": [["from-a"]], "B": [["from-b"]]})
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "m.xlsx"),
+        ).json()["source_id"]
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 0})
+        first = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert first["rows"][0]["cells"] == ["from-a"]
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 1})
+        second = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert second["rows"][0]["cells"] == ["from-b"]
+
+    def test_hidden_sheet_preview_after_selection(self, client):
+        content = _build_xlsx({"Visible": [["v"]], "Hidden": [["h"]]}, hidden=frozenset({"Hidden"}))
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "h.xlsx"),
+        ).json()["source_id"]
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 1})
+        resp = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows")
+
+        assert resp.json()["rows"][0]["cells"] == ["h"]
+
+    def test_preview_of_deleted_excel_source_returns_404(self, client):
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(),
+        ).json()["source_id"]
+        client.delete(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}")
+
+        resp = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows")
+
+        assert resp.status_code == 404
+
+    def test_preview_never_registers_a_waveform_ready_source(self, client):
+        content = _build_xlsx({"Only": [["a"]]})
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "e.xlsx"),
+        ).json()["source_id"]
+
+        client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows")
+
+        assert client.get("/api/v1/workspaces/ws-1/sources").json() == []

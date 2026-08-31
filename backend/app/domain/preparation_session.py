@@ -142,7 +142,19 @@ class PreparationSession:
     permitted; durable retention is not) without touching
     `StorageBackend` at all -- see that registry's own module docstring
     for why.
+
+    Slice 3: `cached_row_count`/`cached_column_count` are a lazy,
+    mutated-in-place cache -- CSV has no separate index structure
+    (`app.services.preparation_preview_service`'s own docstring for why),
+    so its exact row/column totals can only be known by scanning the
+    full in-memory text once. The first preview request pays that cost
+    and caches the result here; every subsequent request (any page)
+    reuses it rather than re-deriving it. Never used for Excel (whose
+    row/column counts already live on each `WorksheetInfo`, discovered
+    once at upload time in Slice 2) -- always `None` for that format.
     """
 
     summary: PreparationSessionSummary
     raw_bytes: bytes
+    cached_row_count: int | None = None
+    cached_column_count: int | None = None
