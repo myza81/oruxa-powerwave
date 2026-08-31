@@ -677,3 +677,289 @@ class TestExcelRowsApi:
         client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows")
 
         assert client.get("/api/v1/workspaces/ws-1/sources").json() == []
+
+
+# ---- CSV/Excel ingestion Slice 4 (DEC-072): Working Dataset overlay API ----
+
+
+def _upload_csv(client, content: bytes = b"a,b\n1,2\n3,4\n", filename: str = "e.csv") -> str:
+    return client.post(
+        "/api/v1/workspaces/ws-1/preparation-sources", files=_csv_file(content, filename),
+    ).json()["source_id"]
+
+
+class TestWorkingSummaryOnExistingEndpoints:
+    def test_freshly_uploaded_source_reports_an_empty_working_overlay(self, client):
+        source_id = _upload_csv(client)
+
+        resp = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}")
+
+        overlay = resp.json()["working_overlay"]
+        assert overlay == {
+            "working_revision": 0,
+            "edited_cell_count": 0,
+            "excluded_row_count": 0,
+            "ignored_column_count": 0,
+            "can_undo": False,
+            "can_redo": False,
+        }
+
+    def test_upload_response_itself_includes_an_empty_working_overlay(self, client):
+        resp = client.post("/api/v1/workspaces/ws-1/preparation-sources", files=_csv_file())
+
+        assert resp.json()["working_overlay"]["edited_cell_count"] == 0
+
+    def test_get_reflects_edits_made_via_the_working_endpoints(self, client):
+        source_id = _upload_csv(client)
+
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/0",
+            json={"value": "X"},
+        )
+
+        resp = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}")
+
+        assert resp.json()["working_overlay"]["edited_cell_count"] == 1
+        assert resp.json()["working_overlay"]["working_revision"] == 1
+
+    def test_list_reflects_edits_too(self, client):
+        source_id = _upload_csv(client)
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/0",
+            json={"value": "X"},
+        )
+
+        resp = client.get("/api/v1/workspaces/ws-1/preparation-sources")
+
+        assert resp.json()[0]["working_overlay"]["edited_cell_count"] == 1
+
+
+class TestCellWorkingEndpoints:
+    def test_put_cell_edits_and_preview_reflects_it(self, client):
+        source_id = _upload_csv(client)
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/0",
+            json={"value": "EDITED"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["edited_cell_count"] == 1
+        assert resp.json()["working_revision"] == 1
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["rows"][0]["cells"] == ["EDITED", "b"]
+        assert rows["working_revision"] == 1
+        assert rows["rows"][0]["modified_cells"] == [{"column_index": 0, "raw_value": "a"}]
+
+    def test_put_cell_clear_sets_none_in_preview(self, client):
+        source_id = _upload_csv(client)
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/1",
+            json={"value": None},
+        )
+
+        assert resp.status_code == 200, resp.text
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["rows"][0]["cells"] == ["a", None]
+
+    def test_delete_cell_resets_it(self, client):
+        source_id = _upload_csv(client)
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/0",
+            json={"value": "X"},
+        )
+
+        resp = client.delete(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/0")
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["edited_cell_count"] == 0
+
+    def test_put_cell_beyond_known_bounds_returns_400(self, client):
+        source_id = _upload_csv(client)
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/999/0",
+            json={"value": "X"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_working_coordinate"
+
+    def test_put_cell_negative_row_number_returns_422(self, client):
+        source_id = _upload_csv(client)
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/0/0",
+            json={"value": "X"},
+        )
+
+        assert resp.status_code == 422  # Path(ge=1) rejects row_number=0
+
+    def test_put_cell_negative_column_index_returns_422(self, client):
+        source_id = _upload_csv(client)
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/-1",
+            json={"value": "X"},
+        )
+
+        assert resp.status_code == 422  # Path(ge=0) rejects column_index=-1
+
+    def test_put_cell_oversized_value_returns_400(self, client):
+        source_id = _upload_csv(client)
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/0",
+            json={"value": "x" * 10_001},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_working_cell_value"
+
+    def test_put_cell_on_unknown_source_returns_404(self, client):
+        resp = client.put(
+            "/api/v1/workspaces/ws-1/preparation-sources/does-not-exist/working/cells/1/0",
+            json={"value": "X"},
+        )
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["code"] == "source_not_found"
+
+    def test_put_cell_on_multi_sheet_excel_without_selection_returns_400(self, client):
+        content = _build_xlsx({"A": [["x"]], "B": [["y"]]})
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "m.xlsx"),
+        ).json()["source_id"]
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/0",
+            json={"value": "X"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "worksheet_not_selected"
+
+
+class TestRowAndColumnWorkingEndpoints:
+    def test_put_row_exclusion_reflects_in_preview(self, client):
+        source_id = _upload_csv(client)
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/rows/2",
+            json={"excluded": True},
+        )
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["excluded_row_count"] == 1
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        excluded_flags = {r["row_number"]: r["excluded"] for r in rows["rows"]}
+        assert excluded_flags[2] is True
+        assert excluded_flags[1] is False
+
+    def test_put_row_beyond_known_bounds_returns_400(self, client):
+        source_id = _upload_csv(client)
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/rows/999",
+            json={"excluded": True},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_working_coordinate"
+
+    def test_put_column_ignore_reflects_in_preview(self, client):
+        source_id = _upload_csv(client)
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1",
+            json={"ignored": True},
+        )
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["ignored_column_count"] == 1
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["ignored_columns"] == [1]
+
+    def test_put_column_beyond_known_bounds_returns_400(self, client):
+        source_id = _upload_csv(client)
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/999",
+            json={"ignored": True},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_working_coordinate"
+
+
+class TestResetAllAndUndoRedoEndpoints:
+    def test_delete_working_resets_everything(self, client):
+        source_id = _upload_csv(client)
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/0", json={"value": "X"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/rows/2", json={"excluded": True})
+
+        resp = client.delete(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working")
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["edited_cell_count"] == 0
+        assert body["excluded_row_count"] == 0
+
+    def test_undo_after_edit_reverts_it(self, client):
+        source_id = _upload_csv(client)
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/0", json={"value": "X"})
+
+        resp = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/undo")
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["edited_cell_count"] == 0
+        assert resp.json()["can_redo"] is True
+
+    def test_redo_after_undo_reapplies_it(self, client):
+        source_id = _upload_csv(client)
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/0", json={"value": "X"})
+        client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/undo")
+
+        resp = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/redo")
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["edited_cell_count"] == 1
+
+    def test_undo_with_no_history_is_a_safe_no_op_200(self, client):
+        source_id = _upload_csv(client)
+
+        resp = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/undo")
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["can_undo"] is False
+
+    def test_reset_all_on_unknown_source_returns_404(self, client):
+        resp = client.delete("/api/v1/workspaces/ws-1/preparation-sources/does-not-exist/working")
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["code"] == "source_not_found"
+
+
+class TestWorkingOverlayDoesNotAffectWaveformOrOtherWorkspaces:
+    def test_editing_never_registers_a_waveform_ready_source(self, client):
+        source_id = _upload_csv(client)
+
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/0", json={"value": "X"})
+
+        assert client.get("/api/v1/workspaces/ws-1/sources").json() == []
+
+    def test_working_edits_are_workspace_isolated(self, client):
+        source_id_a = client.post(
+            "/api/v1/workspaces/ws-a/preparation-sources", files=_csv_file(),
+        ).json()["source_id"]
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-b/preparation-sources/{source_id_a}/working/cells/1/0",
+            json={"value": "X"},
+        )
+
+        assert resp.status_code == 404

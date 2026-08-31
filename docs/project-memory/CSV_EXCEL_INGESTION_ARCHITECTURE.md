@@ -728,9 +728,79 @@ owner go-ahead before implementation begins.
    prompts for an explicit selection rather than guessing, all four
    sheet names listed in order, switching sheets correctly changes the
    preview content) with zero console/page errors.
-4. **Working Dataset / non-destructive overlay.** Edit/correction
-   overlay; reset behavior; row/column exclusion concepts; raw data
-   remains immutable (§17).
+4. **`[DONE, 2026-08-31]` Working Dataset / non-destructive overlay.**
+   Implemented: `app.domain.working_overlay.WorkingOverlay` — a sparse
+   overlay (`cell_overrides: dict` keyed by
+   `(worksheet_index_or_None, row_number, column_index)`,
+   `excluded_rows: set` keyed by `(worksheet_index_or_None, row_number)`,
+   `ignored_columns: set` keyed by `(worksheet_index_or_None,
+   column_index)` — 1-based row/0-based column, matching the preview's
+   own coordinate space exactly), created empty alongside each
+   `PreparationSession` and
+   mutated in place — proportional to edit COUNT, never to dataset size,
+   confirming §17's own design reference (channel-presentation-override
+   precedent) as the chosen mechanism, closing open item 1 from §18.
+   `CellOverride{kind: edit|clear, value: str|None}` keeps an explicit
+   CLEAR distinct from an EDIT to `""`; a working edit is always a plain
+   string (no type inference, per DEC-072/principle 9). Undo/redo is
+   supported (task's own "if it fits naturally" allowance) via a bounded
+   (200-entry) operation history recording only each operation's own
+   before/after state — O(1) per cell/row/column op, O(edit-count) for
+   `reset_all` (a snapshot of the overlay's three collections, never of
+   the dataset). A monotonic `revision` counter increments on every
+   mutation (including undo/redo) for stale-page detection.
+   `app.services.working_overlay_service` adds bounds validation (CSV:
+   reuses the exact same full-scan function
+   (`ensure_csv_totals_cached`, extracted from Slice 3's own preview
+   logic) Slice 3 already proved correct, rather than a second,
+   possibly-divergent implementation; Excel: the selected worksheet's
+   own best-effort `WorksheetInfo.row_count`/`column_count`, never
+   enforced when unknown) and a 10,000-character cell-value sanity bound
+   (never an engineering-content check). Seven new endpoints under
+   `.../preparation-sources/{id}/working/...`
+   (`PUT`/`DELETE cells/{row}/{col}`, `PUT rows/{row}`,
+   `PUT columns/{col}`, `DELETE` for reset-all, `POST undo`/`redo`),
+   each returning a small `WorkingOverlaySummaryOut`
+   (`working_revision`, `edited_cell_count`, `excluded_row_count`,
+   `ignored_column_count`, `can_undo`, `can_redo`) — the same summary
+   shape now also appended to the existing
+   `GET .../preparation-sources` (list/detail) responses. The existing
+   `GET .../rows` preview now returns the WORKING view by default: raw
+   rows are merged with the overlay at read time only (never persisted,
+   never a raw+working duplication per cell) — each `PreparationRowOut`
+   gains `excluded: bool` and a sparse `modified_cells: [{column_index,
+   raw_value}]` (only cells that actually differ from raw; the raw value
+   is kept here purely for provenance/hover/reset, never duplicated as a
+   second visible cell), and `PreparationSourcePreviewOut` gains
+   `ignored_columns: [int]` and `working_revision: int`. Raw bytes and
+   `cached_row_count`/`cached_column_count` are never mutated by an
+   edit. Frontend: the Data Preparation workspace's preview table gained
+   click-to-edit cells (a plain `<input>` swapped into one `<td>` — no
+   spreadsheet-grid library), a small reset (↺) action on a modified
+   cell, per-row Exclude/Include and per-column Ignore/Unignore toggle
+   buttons, Undo/Redo buttons, and a "Reset All Changes" action reusing
+   the existing `.confirm-overlay`/`.confirm-box` shell; the heading and
+   hint text switch from "Raw Data Preview" to "Data Preview (Edited)"
+   once any working change exists (task's own explicit "wording must not
+   mislead" requirement), and a small change-count summary
+   ("N cells edited · M rows excluded · K columns ignored") is always
+   visible. Every control calls its own backend endpoint and re-renders
+   from the response — the browser never applies an edit locally first
+   (backend stays authoritative). No header/column-role inference, no
+   time-axis interpretation, no readiness logic, and no database/
+   permanent storage were introduced — exactly this slice's own scope.
+   Verified: 1974 backend tests passing (87 new on top of Slice 3's
+   1887), zero regressions; the committed browser smoke test (COMTRADE)
+   still passes unchanged; two throwaway live-browser Playwright UAT
+   scripts (deleted after verification, never committed) confirmed CSV
+   cell edit → working value shown → reset restores the raw value; row
+   exclude/include never renumbers surrounding rows; column ignore/
+   unignore is reported page-independently; undo/redo round-trips a cell
+   edit; Reset All (via its own confirm dialog) clears every kind of
+   change and restores the "Raw Data Preview" heading; and an Excel
+   two-worksheet workbook keeps edits made on one sheet completely
+   invisible on the other, restored correctly on switching back — all
+   with zero console/page errors.
 5. **Header/data-region + column-role mapping.** Header row selection;
    blank/non-standard headers; roles broader than waveform/no-waveform
    (Time Axis / Waveform Channel / Metadata / Quality-Status / Ignore /
@@ -882,14 +952,19 @@ not as open items any more:
 | 2 | Exact preview API shape | `GET .../preparation-sources/{id}/rows?offset=&limit=` → `{source_id, selected_worksheet_index, offset, limit, returned_row_count, total_row_count, total_row_count_basis, column_count, column_count_basis, rows: [{row_number, cells}]}`. `offset`/`limit` bounds enforced via `Query(...)` constraints (0/1000 default/max), matching the existing `point_budget` precedent — no new range-validation error class needed. |
 | 3 | Whether/how a large raw CSV/Excel file needs paging at the *storage* layer | Resolved for Slice 3's own scope: CSV needs one full in-memory-text pass to get exact totals (memoized after the first request per session); Excel needs no extra scan at all (reuses Slice 2's own upload-time `WorksheetInfo` totals). Neither format's raw bytes are ever loaded a second, larger way — the existing Slice 1/2 in-memory registry already holds everything needed. **Still not resolved**: whether the registry's own "hold the whole file's raw bytes in memory" model itself needs to change for very large files — that remains a storage-layer question, not a preview-algorithm one (see the still-open items below). |
 
+**Resolved by Slice 4 implementation (2026-08-31)**:
+
+| # | Question | Resolution |
+|---|---|---|
+| 1 | Exact overlay/delta implementation for non-destructive edits | `app.domain.working_overlay.WorkingOverlay` — a sparse, edit-count-proportional overlay (dict/set keyed by stable `(worksheet_index_or_None, row_number, column_index)`-shaped identity), merged with raw data only at preview-read time, exactly the §17 design reference's own "overlay map... merged with canonical raw data only at read time, fully reversible" shape. Undo/redo included (bounded 200-entry operation history). |
+
 **Genuinely unresolved — must not be resolved prematurely** (owner's own
 explicit list; do not pick a mechanism ahead of the implementation
 slices without further owner input):
 
 | # | Question | Decision mode | Needed before |
 |---|---|---|---|
-| 1 | Exact overlay/delta implementation for non-destructive edits | `[DECISION MODE: COMPARISON]` | Slice 4 |
-| 2 | Exact API shapes for mapping/readiness beyond what Slices 1-3 already established for preparation-source identity/upload/worksheet selection/raw preview | `[DECISION MODE: ANALYSIS]`, once slice work actually starts | Slices 5, 6 |
+| 2 | Exact API shapes for mapping/readiness beyond what Slices 1-4 already established for preparation-source identity/upload/worksheet selection/raw+working preview/working-overlay mutation | `[DECISION MODE: ANALYSIS]`, once slice work actually starts | Slices 5, 6 |
 | 3 | Exact timestamp-interpreter list to build first | `[DECISION MODE: ANALYSIS]` — the *list itself* stays open per DEC-072 point 6; only the first-slice subset needs choosing | Slice 8 |
 | 4 | Exact saved-profile design (import-profile reuse across files) | `[DECISION MODE: DEFER]` | Slice 13 |
 | 5 | Whether the underlying in-memory "hold the whole raw file" registry model itself needs to change for a genuinely huge CSV/Excel file (Slice 3's own preview algorithm is bounded per-request, but the registry still holds the entire original upload in memory regardless of size — a separate storage-layer question from anything Slice 3 itself needed to solve) | `[DECISION MODE: DEFER]` | Not currently scheduled |

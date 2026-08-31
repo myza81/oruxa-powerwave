@@ -18,6 +18,19 @@ paged raw-preview response shape -- see
 `app.services.preparation_preview_service`'s own module docstring for
 the CSV/Excel strategies that produce a `PreviewResult`/`PreviewRow`
 this module only re-shapes for the wire.
+
+Slice 4: `PreparationRowOut` gains `excluded`/`modified_cells`,
+`PreparationSourcePreviewOut` gains `ignored_columns`/`working_revision`
+(the preview now returns the WORKING view by default -- see
+`app.services.preparation_preview_service`'s own module docstring for
+the merge strategy). `WorkingOverlaySummaryOut` is the small counter
+block shared between `PreparationSessionSummaryOut` (so the sources
+list/detail views can show "N cells edited" without a separate request)
+and every working-overlay mutation endpoint's own response. The request
+bodies (`CellWorkingValueRequest`/`RowExclusionRequest`/
+`ColumnIgnoreRequest`) are deliberately tiny and format-agnostic --
+worksheet identity is resolved server-side (Slice 4's own "backend is
+authoritative" requirement), never accepted from the client.
 """
 
 from __future__ import annotations
@@ -28,7 +41,8 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.preparation_session import PreparationSessionSummary, WorksheetInfo
-from app.services.preparation_preview_service import PreviewResult, PreviewRow
+from app.services.preparation_preview_service import ModifiedCell, PreviewResult, PreviewRow
+from app.services.working_overlay_service import WorkingOverlaySummary
 
 
 class WorksheetInfoOut(BaseModel):
@@ -55,6 +69,34 @@ class WorksheetInfoOut(BaseModel):
         )
 
 
+class WorkingOverlaySummaryOut(BaseModel):
+    """Cheap counters describing one source's own Working Dataset overlay
+    -- never the overlay's full content (see
+    `app.services.working_overlay_service.WorkingOverlaySummary`'s own
+    docstring). Defaults to all-zero/`False`, which is exactly correct
+    for a freshly uploaded source (no edits made yet)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    working_revision: int = 0
+    edited_cell_count: int = 0
+    excluded_row_count: int = 0
+    ignored_column_count: int = 0
+    can_undo: bool = False
+    can_redo: bool = False
+
+    @classmethod
+    def from_domain(cls, summary: WorkingOverlaySummary) -> "WorkingOverlaySummaryOut":
+        return cls(
+            working_revision=summary.working_revision,
+            edited_cell_count=summary.edited_cell_count,
+            excluded_row_count=summary.excluded_row_count,
+            ignored_column_count=summary.ignored_column_count,
+            can_undo=summary.can_undo,
+            can_redo=summary.can_redo,
+        )
+
+
 class PreparationSessionSummaryOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -67,9 +109,14 @@ class PreparationSessionSummaryOut(BaseModel):
     created_at: datetime
     worksheets: list[WorksheetInfoOut] = Field(default_factory=list)
     selected_worksheet_index: int | None = None
+    working_overlay: WorkingOverlaySummaryOut = Field(default_factory=WorkingOverlaySummaryOut)
 
     @classmethod
-    def from_domain(cls, summary: PreparationSessionSummary) -> "PreparationSessionSummaryOut":
+    def from_domain(
+        cls,
+        summary: PreparationSessionSummary,
+        working_overlay_summary: WorkingOverlaySummary | None = None,
+    ) -> "PreparationSessionSummaryOut":
         return cls(
             source_id=summary.source_id,
             workspace_id=summary.workspace_id,
@@ -80,6 +127,11 @@ class PreparationSessionSummaryOut(BaseModel):
             created_at=summary.created_at,
             worksheets=[WorksheetInfoOut.from_domain(w) for w in summary.worksheets],
             selected_worksheet_index=summary.selected_worksheet_index,
+            working_overlay=(
+                WorkingOverlaySummaryOut.from_domain(working_overlay_summary)
+                if working_overlay_summary is not None
+                else WorkingOverlaySummaryOut()
+            ),
         )
 
 
@@ -92,27 +144,55 @@ class WorksheetSelectionRequest(BaseModel):
     selected_worksheet_index: int
 
 
+class ModifiedCellOut(BaseModel):
+    """One cell within a `PreparationRowOut` that currently has an
+    active working override -- see `ModifiedCell`'s own docstring.
+    `raw_value` is the ORIGINAL value, kept for provenance/hover/reset
+    display, never the working value (that already lives in the row's
+    own `cells`)."""
+
+    column_index: int
+    raw_value: Any
+
+    @classmethod
+    def from_domain(cls, cell: ModifiedCell) -> "ModifiedCellOut":
+        return cls(column_index=cell.column_index, raw_value=cell.raw_value)
+
+
 class PreparationRowOut(BaseModel):
-    """One raw row -- see `PreviewRow`'s own docstring for exactly what
-    `cells` does and does not contain (raw values only, no header/type
-    inference)."""
+    """One WORKING row (raw with Slice 4's overlay applied) -- see
+    `PreviewRow`'s own docstring for exactly what `cells` does and does
+    not contain. `excluded` and `modified_cells` are both sparse,
+    provenance-preserving flags added in Slice 4 -- `row_number` is
+    never renumbered because of either."""
 
     row_number: int
     cells: list[Any]
+    excluded: bool = False
+    modified_cells: list[ModifiedCellOut] = Field(default_factory=list)
 
     @classmethod
     def from_domain(cls, row: PreviewRow) -> "PreparationRowOut":
-        return cls(row_number=row.row_number, cells=row.cells)
+        return cls(
+            row_number=row.row_number,
+            cells=row.cells,
+            excluded=row.excluded,
+            modified_cells=[ModifiedCellOut.from_domain(c) for c in row.modified_cells],
+        )
 
 
 class PreparationSourcePreviewOut(BaseModel):
-    """`GET .../preparation-sources/{source_id}/rows` (Slice 3) -- one
-    bounded page of raw rows. `total_row_count`/`column_count` are
+    """`GET .../preparation-sources/{source_id}/rows` -- one bounded page
+    of the WORKING view by default (Slice 4: raw + the source's own
+    working overlay applied at read time -- see
+    `app.services.preparation_preview_service`'s own module docstring
+    for the exact merge strategy). `total_row_count`/`column_count` are
     always paired with their own `_basis` field
     (`"exact"`/`"best_effort"`/`"unknown"`) so the frontend never
-    presents an approximate total as if it were authoritative -- see
-    `app.services.preparation_preview_service`'s own module docstring
-    for exactly which formats produce which basis."""
+    presents an approximate total as if it were authoritative.
+    `ignored_columns` and `working_revision` are page-independent (same
+    on every page of the same source) -- `working_revision` lets the
+    frontend detect a page fetched before a since-applied edit."""
 
     source_id: str
     selected_worksheet_index: int | None = None
@@ -124,6 +204,8 @@ class PreparationSourcePreviewOut(BaseModel):
     column_count: int | None
     column_count_basis: str
     rows: list[PreparationRowOut]
+    ignored_columns: list[int] = Field(default_factory=list)
+    working_revision: int = 0
 
     @classmethod
     def from_domain(cls, result: PreviewResult) -> "PreparationSourcePreviewOut":
@@ -138,4 +220,28 @@ class PreparationSourcePreviewOut(BaseModel):
             column_count=result.column_count,
             column_count_basis=result.column_count_basis,
             rows=[PreparationRowOut.from_domain(r) for r in result.rows],
+            ignored_columns=result.ignored_columns,
+            working_revision=result.working_revision,
         )
+
+
+class CellWorkingValueRequest(BaseModel):
+    """Body of `PUT .../working/cells/{row_number}/{column_index}`.
+    `value=None` means an explicit CLEAR; any string (including `""`)
+    means an EDIT to that exact string -- see
+    `app.domain.working_overlay.CellOverride`'s own docstring for why
+    these stay distinct kinds."""
+
+    value: str | None = None
+
+
+class RowExclusionRequest(BaseModel):
+    """Body of `PUT .../working/rows/{row_number}`."""
+
+    excluded: bool
+
+
+class ColumnIgnoreRequest(BaseModel):
+    """Body of `PUT .../working/columns/{column_index}`."""
+
+    ignored: bool

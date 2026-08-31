@@ -821,6 +821,40 @@
         .ww-data-prep-table thead th:first-child { left: 0; z-index: 3; }
         .ww-data-prep-table td.ww-data-prep-blank-cell { color: var(--text-dim); }
         .ww-data-prep-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        /* Slice 4 (DEC-072): Working Dataset toolbar/table additions.
+           Never a heavy spreadsheet framework -- plain DOM + a click-to-
+           edit <input> swapped into a single <td>, matching this table's
+           own existing "ordinary DOM rendering" precedent above. */
+        .ww-data-prep-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+        .ww-data-prep-toolbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .ww-data-prep-change-summary { color: var(--text-dim); font-size: 0.8rem; white-space: nowrap; }
+        .ww-data-prep-row-toggle-btn, .ww-data-prep-col-toggle-btn, .ww-data-prep-cell-reset-btn, .ww-data-prep-cell-clear-btn {
+            font: inherit;
+            font-size: 0.68rem;
+            line-height: 1;
+            border: none;
+            background: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            padding: 0 0 0 6px;
+            text-decoration: underline;
+        }
+        .ww-data-prep-row-toggle-btn:hover, .ww-data-prep-col-toggle-btn:hover,
+        .ww-data-prep-cell-reset-btn:hover, .ww-data-prep-cell-clear-btn:hover { color: var(--accent); }
+        .ww-data-prep-cell-clear-btn { margin-left: 6px; text-decoration: none; border: 1px solid var(--panel-border); border-radius: 3px; padding: 1px 6px; }
+        /* A modified cell keeps showing its working value inline (no
+           separate raw-value column) -- the raw value is reachable via
+           this same cell's own `title` attribute (hover) and via the
+           reset (↺) button's own action, never duplicated as a
+           second visible cell (task's own "do not multiply payload/UI
+           size for every unchanged cell" guidance, extended to the DOM). */
+        .ww-data-prep-table td.ww-data-prep-cell-modified { background: var(--accent-wash-soft); box-shadow: inset 0 0 0 1px var(--accent-dim); }
+        .ww-data-prep-table tr.ww-data-prep-row-excluded td, .ww-data-prep-table tr.ww-data-prep-row-excluded th { opacity: 0.45; text-decoration: line-through; }
+        .ww-data-prep-table tr.ww-data-prep-row-excluded th .ww-data-prep-row-toggle-btn { text-decoration: underline; } /* keep the toggle itself legible/clickable under the row's own strike-through */
+        .ww-data-prep-table th.ww-data-prep-col-ignored, .ww-data-prep-table td.ww-data-prep-col-ignored-cell { opacity: 0.45; }
+        .ww-data-prep-table td.ww-data-prep-cell { cursor: text; }
+        .ww-data-prep-table td.ww-data-prep-cell:hover { background: var(--surface-tint); }
+        .ww-data-prep-cell-input { width: 100%; max-width: 200px; box-sizing: border-box; font: inherit; border: 1px solid var(--accent); border-radius: 3px; padding: 1px 4px; background: var(--panel); color: var(--text); }
         .ww-cc-subtitle { margin: 3px 0 0; color: var(--text-dim); font-size: 0.85rem; }
         .ww-cc-panel { padding: 16px; }
         .ww-cc-panel h3 { margin: 0 0 12px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
@@ -4378,8 +4412,26 @@
                 </section>
 
                 <section class="panel ww-cc-panel">
-                    <h3>Raw Data Preview</h3>
-                    <p class="hint">Raw, uninterpreted source data. Row 1 is not assumed to be a header.</p>
+                    <div class="ww-data-prep-toolbar">
+                        <div>
+                            <h3 id="wwDataPrepPreviewHeading">Raw Data Preview</h3>
+                            <p class="hint" id="wwDataPrepPreviewHint">Raw, uninterpreted source data. Row 1 is not assumed to be a header.</p>
+                        </div>
+                        <!-- Slice 4 (DEC-072): Working Dataset controls.
+                             Click a cell to edit it in place; a modified
+                             cell shows a small reset (↺) action; row/
+                             column header buttons exclude/ignore without
+                             ever renumbering or deleting anything. Backend
+                             is authoritative -- every button here calls an
+                             API endpoint and re-renders from its response,
+                             never mutates local state as if it were saved. -->
+                        <div class="ww-data-prep-toolbar-actions">
+                            <span class="ww-data-prep-change-summary" id="wwDataPrepChangeSummary">No changes</span>
+                            <button type="button" class="secondary" id="wwDataPrepUndoBtn" disabled>Undo</button>
+                            <button type="button" class="secondary" id="wwDataPrepRedoBtn" disabled>Redo</button>
+                            <button type="button" class="secondary" id="wwDataPrepResetAllBtn" disabled>Reset All Changes</button>
+                        </div>
+                    </div>
                     <div class="ww-data-prep-table-wrap">
                         <table class="ww-data-prep-table" id="wwDataPrepTable"></table>
                     </div>
@@ -4393,6 +4445,25 @@
                     <div class="upload-status" id="wwDataPrepStatus" role="status" aria-live="polite"></div>
                 </section>
             </section>
+
+            <!-- Slice 4 (DEC-072): Reset All Changes confirmation --
+                 reuses the exact same .confirm-overlay/.confirm-box shell
+                 as #newWorkspaceConfirmOverlay above (same blast-radius
+                 pattern: a single irreversible-feeling local action, not a
+                 multi-field editor). Never affects the raw source file or
+                 any other preparation source. -->
+            <div class="confirm-overlay" id="wwDataPrepResetAllOverlay" hidden>
+                <div class="confirm-box" role="alertdialog" aria-modal="true" aria-labelledby="wwDataPrepResetAllTitle">
+                    <p id="wwDataPrepResetAllTitle">Reset all working changes?</p>
+                    <p class="hint">Every cell edit/clear, row exclusion, and column ignore made in this
+                        Data Preparation workspace will be discarded. The original source file is never
+                        affected, and this can still be undone with Undo immediately afterwards.</p>
+                    <div class="confirm-actions">
+                        <button type="button" class="secondary" id="wwDataPrepResetAllCancelBtn">Cancel</button>
+                        <button type="button" class="danger-solid" id="wwDataPrepResetAllConfirmBtn">Reset All Changes</button>
+                    </div>
+                </div>
+            </div>
 
             <!-- Redesign: right-side Signal Builder drawer, opened via
                  "+ New Channel" above -- same fixed/translateX/backdrop
@@ -6440,7 +6511,28 @@
             limit: 200,
             totalRowCount: null,
             columnCount: null,
+            // Slice 4 (DEC-072): Working Dataset overlay state. `overlay`
+            // mirrors the backend's own WorkingOverlaySummaryOut verbatim
+            // (never computed/guessed locally) -- see
+            // wwDataPrepApplyOverlaySummary(). `ignoredColumns`/
+            // `workingRevision` come from the preview response itself
+            // (page-independent) and are refreshed on every
+            // wwDataPrepFetchPreview() call.
+            ignoredColumns: [],
+            workingRevision: 0,
+            overlay: {
+                editedCellCount: 0,
+                excludedRowCount: 0,
+                ignoredColumnCount: 0,
+                canUndo: false,
+                canRedo: false,
+            },
         };
+
+        function wwDataPrepSourceUrl(suffix) {
+            return apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                "/preparation-sources/" + encodeURIComponent(wwDataPrep.sourceId) + (suffix || "");
+        }
 
         // Spreadsheet-style column identifiers (A, B, ..., Z, AA, AB, ...)
         // -- task's own explicit requirement that column references stay
@@ -6491,32 +6583,99 @@
         function wwDataPrepRenderTable(preview) {
             const table = document.getElementById("wwDataPrepTable");
             const columnCount = wwDataPrep.columnCount || 0;
+            const ignoredColumns = new Set(wwDataPrep.ignoredColumns || []);
 
             let html = "<thead><tr><th></th>";
             for (let c = 0; c < columnCount; c++) {
-                html += "<th>" + wwSpreadsheetColumnLabel(c) + "</th>";
+                const ignored = ignoredColumns.has(c);
+                html += '<th class="' + (ignored ? "ww-data-prep-col-ignored" : "") + '">' +
+                    wwSpreadsheetColumnLabel(c) +
+                    ' <button type="button" class="ww-data-prep-col-toggle-btn" data-col="' + c +
+                    '" data-ignored="' + ignored + '">' + (ignored ? "Unignore" : "Ignore") + '</button>' +
+                    "</th>";
             }
             html += "</tr></thead><tbody>";
 
             for (const row of preview.rows) {
-                html += "<tr><th>" + row.row_number + "</th>";
+                // Slice 4: `row.excluded`/`row.modified_cells` come straight
+                // from the backend's own working-view merge -- never
+                // recomputed here from a locally-tracked edit list.
+                const modifiedCols = new Set((row.modified_cells || []).map((m) => m.column_index));
+                html += '<tr class="' + (row.excluded ? "ww-data-prep-row-excluded" : "") + '">';
+                html += '<th>' + row.row_number +
+                    ' <button type="button" class="ww-data-prep-row-toggle-btn" data-row="' + row.row_number +
+                    '" data-excluded="' + !!row.excluded + '">' + (row.excluded ? "Include" : "Exclude") + '</button>' +
+                    '</th>';
                 for (let c = 0; c < columnCount; c++) {
                     const value = row.cells[c];
                     // Neutral blank rendering (task's own explicit
                     // requirement): never substitute 0/null/"N/A" for an
                     // empty source cell -- an absent/blank/empty-string
                     // value all render as a plain empty cell, indistinguishable
-                    // from each other here (Slice 3 is raw structural
-                    // preview, not a data-quality/type report).
+                    // from each other here (raw structural preview, not a
+                    // data-quality/type report).
                     const isBlank = value === null || value === undefined || value === "";
                     const displayValue = isBlank ? "" : escapeHtml(String(value));
+                    const isModified = modifiedCols.has(c);
+                    const classes = ["ww-data-prep-cell"];
+                    if (isModified) classes.push("ww-data-prep-cell-modified");
+                    if (ignoredColumns.has(c)) classes.push("ww-data-prep-col-ignored-cell");
                     const titleAttr = isBlank ? "" : ' title="' + escapeHtml(String(value)) + '"';
-                    html += "<td" + titleAttr + ">" + displayValue + "</td>";
+                    // `data-value` carries the exact displayed working value
+                    // (raw text, not HTML-escaped) so click-to-edit can seed
+                    // its <input> without re-parsing the cell's own markup
+                    // (which also holds the reset button once modified).
+                    html += '<td class="' + classes.join(" ") + '" data-row="' + row.row_number +
+                        '" data-col="' + c + '" data-value="' + escapeHtml(isBlank ? "" : String(value)) + '"' +
+                        titleAttr + '>' + displayValue +
+                        (isModified
+                            ? ' <button type="button" class="ww-data-prep-cell-reset-btn" data-row="' + row.row_number +
+                              '" data-col="' + c + '" title="Reset to the raw value">&#8634;</button>'
+                            : '') +
+                        '</td>';
                 }
                 html += "</tr>";
             }
             html += "</tbody>";
             table.innerHTML = html;
+        }
+
+        // Slice 4 (DEC-072): reflects the backend's own
+        // WorkingOverlaySummaryOut verbatim -- never a locally re-derived
+        // count. Called after every mutation endpoint response AND once
+        // from the initial GET .../preparation-sources/{id} summary.
+        function wwDataPrepApplyOverlaySummary(apiSummary) {
+            wwDataPrep.overlay = {
+                editedCellCount: apiSummary.edited_cell_count,
+                excludedRowCount: apiSummary.excluded_row_count,
+                ignoredColumnCount: apiSummary.ignored_column_count,
+                canUndo: apiSummary.can_undo,
+                canRedo: apiSummary.can_redo,
+            };
+            wwDataPrep.workingRevision = apiSummary.working_revision;
+            wwDataPrepRenderToolbar();
+        }
+
+        function wwDataPrepRenderToolbar() {
+            const o = wwDataPrep.overlay;
+            const parts = [];
+            if (o.editedCellCount) parts.push(o.editedCellCount + (o.editedCellCount === 1 ? " cell edited" : " cells edited"));
+            if (o.excludedRowCount) parts.push(o.excludedRowCount + (o.excludedRowCount === 1 ? " row excluded" : " rows excluded"));
+            if (o.ignoredColumnCount) parts.push(o.ignoredColumnCount + (o.ignoredColumnCount === 1 ? " column ignored" : " columns ignored"));
+            document.getElementById("wwDataPrepChangeSummary").textContent = parts.length ? parts.join(" · ") : "No changes";
+            document.getElementById("wwDataPrepUndoBtn").disabled = !o.canUndo;
+            document.getElementById("wwDataPrepRedoBtn").disabled = !o.canRedo;
+            document.getElementById("wwDataPrepResetAllBtn").disabled = parts.length === 0;
+
+            // Task's own explicit requirement: once any working change
+            // exists, "Raw Data Preview" would mislead -- the heading/hint
+            // must say this is the WORKING view, not silently keep calling
+            // edited data "raw."
+            const hasChanges = parts.length > 0;
+            document.getElementById("wwDataPrepPreviewHeading").textContent = hasChanges ? "Data Preview (Edited)" : "Raw Data Preview";
+            document.getElementById("wwDataPrepPreviewHint").textContent = hasChanges
+                ? "Shows your working edits applied over the raw source. The original file is never modified. Row 1 is not assumed to be a header."
+                : "Raw, uninterpreted source data. Row 1 is not assumed to be a header.";
         }
 
         function wwDataPrepRenderPagination(preview) {
@@ -6552,6 +6711,8 @@
                 const preview = await response.json();
                 wwDataPrep.totalRowCount = preview.total_row_count;
                 wwDataPrep.columnCount = preview.column_count;
+                wwDataPrep.ignoredColumns = preview.ignored_columns || [];
+                wwDataPrep.workingRevision = preview.working_revision;
                 wwDataPrepRenderTable(preview);
                 wwDataPrepRenderPagination(preview);
             } catch (error) {
@@ -6566,6 +6727,200 @@
         document.getElementById("wwDataPrepNextBtn").addEventListener("click", () => {
             wwDataPrep.offset += wwDataPrep.limit;
             wwDataPrepFetchPreview();
+        });
+
+        // ---- Slice 4 (DEC-072): Working Dataset mutation calls ----
+        // Every one of these calls a backend endpoint and re-renders from
+        // its response (the returned WorkingOverlaySummaryOut, plus a
+        // fresh preview fetch) -- the browser never applies an edit to its
+        // own local copy first ("backend is authoritative," task's own
+        // explicit requirement).
+
+        async function wwDataPrepPutCellValue(rowNumber, columnIndex, value) {
+            const status = document.getElementById("wwDataPrepStatus");
+            try {
+                const response = await fetch(
+                    wwDataPrepSourceUrl("/working/cells/" + rowNumber + "/" + columnIndex),
+                    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: value }) }
+                );
+                if (!response.ok) {
+                    const body = await response.json().catch(() => null);
+                    status.textContent = (body && body.detail && body.detail.message) || "Could not save this cell.";
+                    await wwDataPrepFetchPreview();
+                    return;
+                }
+                wwDataPrepApplyOverlaySummary(await response.json());
+                status.textContent = "";
+                await wwDataPrepFetchPreview();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
+        }
+
+        async function wwDataPrepResetCell(rowNumber, columnIndex) {
+            const status = document.getElementById("wwDataPrepStatus");
+            try {
+                const response = await fetch(wwDataPrepSourceUrl("/working/cells/" + rowNumber + "/" + columnIndex), { method: "DELETE" });
+                if (!response.ok) { status.textContent = "Could not reset this cell."; return; }
+                wwDataPrepApplyOverlaySummary(await response.json());
+                await wwDataPrepFetchPreview();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
+        }
+
+        async function wwDataPrepToggleRowExcluded(rowNumber, excluded) {
+            const status = document.getElementById("wwDataPrepStatus");
+            try {
+                const response = await fetch(
+                    wwDataPrepSourceUrl("/working/rows/" + rowNumber),
+                    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ excluded: excluded }) }
+                );
+                if (!response.ok) { status.textContent = "Could not update this row."; return; }
+                wwDataPrepApplyOverlaySummary(await response.json());
+                await wwDataPrepFetchPreview();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
+        }
+
+        async function wwDataPrepToggleColumnIgnored(columnIndex, ignored) {
+            const status = document.getElementById("wwDataPrepStatus");
+            try {
+                const response = await fetch(
+                    wwDataPrepSourceUrl("/working/columns/" + columnIndex),
+                    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ignored: ignored }) }
+                );
+                if (!response.ok) { status.textContent = "Could not update this column."; return; }
+                wwDataPrepApplyOverlaySummary(await response.json());
+                await wwDataPrepFetchPreview();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
+        }
+
+        async function wwDataPrepResetAll() {
+            const status = document.getElementById("wwDataPrepStatus");
+            try {
+                const response = await fetch(wwDataPrepSourceUrl("/working"), { method: "DELETE" });
+                if (!response.ok) { status.textContent = "Could not reset working changes."; return; }
+                wwDataPrepApplyOverlaySummary(await response.json());
+                await wwDataPrepFetchPreview();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
+        }
+
+        async function wwDataPrepUndo() {
+            const status = document.getElementById("wwDataPrepStatus");
+            try {
+                const response = await fetch(wwDataPrepSourceUrl("/working/undo"), { method: "POST" });
+                if (!response.ok) { status.textContent = "Could not undo."; return; }
+                wwDataPrepApplyOverlaySummary(await response.json());
+                await wwDataPrepFetchPreview();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
+        }
+
+        async function wwDataPrepRedo() {
+            const status = document.getElementById("wwDataPrepStatus");
+            try {
+                const response = await fetch(wwDataPrepSourceUrl("/working/redo"), { method: "POST" });
+                if (!response.ok) { status.textContent = "Could not redo."; return; }
+                wwDataPrepApplyOverlaySummary(await response.json());
+                await wwDataPrepFetchPreview();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
+        }
+
+        // Click-to-edit: swaps ONE <td> for an <input> (never a
+        // spreadsheet-grid library, per this slice's own explicit
+        // guardrail). Enter/blur commits an EDIT; the small "Clear"
+        // button commits an explicit CLEAR (value: null) -- kept as its
+        // own control because a clear is a distinct action from editing
+        // to an empty string (see CellOverride's own docstring); Escape
+        // discards the in-progress text by simply re-fetching the
+        // still-unmodified server page, never a local rollback guess.
+        function wwDataPrepBeginCellEdit(cell) {
+            if (cell.querySelector("input")) return;
+            const rowNumber = parseInt(cell.dataset.row, 10);
+            const columnIndex = parseInt(cell.dataset.col, 10);
+            const currentValue = cell.dataset.value || "";
+            let settled = false;
+
+            cell.innerHTML =
+                '<input type="text" class="ww-data-prep-cell-input" value="' + escapeHtml(currentValue) + '">' +
+                '<button type="button" class="ww-data-prep-cell-clear-btn" title="Clear this cell (distinct from editing it to an empty value)">Clear</button>';
+            const input = cell.querySelector("input");
+            input.focus();
+            input.select();
+
+            function commit(value) {
+                if (settled) return;
+                settled = true;
+                wwDataPrepPutCellValue(rowNumber, columnIndex, value);
+            }
+            function cancelEdit() {
+                if (settled) return;
+                settled = true;
+                wwDataPrepFetchPreview();
+            }
+
+            input.addEventListener("keydown", (event) => {
+                if (event.key === "Enter") { event.preventDefault(); commit(input.value); }
+                else if (event.key === "Escape") { event.preventDefault(); cancelEdit(); }
+            });
+            input.addEventListener("blur", () => commit(input.value));
+            cell.querySelector(".ww-data-prep-cell-clear-btn").addEventListener("mousedown", (event) => {
+                event.preventDefault(); // keep the input focused so the Clear click never also fires a blur-commit
+                commit(null);
+            });
+        }
+
+        document.getElementById("wwDataPrepTable").addEventListener("click", (event) => {
+            const resetBtn = event.target.closest(".ww-data-prep-cell-reset-btn");
+            if (resetBtn) {
+                wwDataPrepResetCell(parseInt(resetBtn.dataset.row, 10), parseInt(resetBtn.dataset.col, 10));
+                return;
+            }
+            const rowToggle = event.target.closest(".ww-data-prep-row-toggle-btn");
+            if (rowToggle) {
+                wwDataPrepToggleRowExcluded(parseInt(rowToggle.dataset.row, 10), rowToggle.dataset.excluded !== "true");
+                return;
+            }
+            const colToggle = event.target.closest(".ww-data-prep-col-toggle-btn");
+            if (colToggle) {
+                wwDataPrepToggleColumnIgnored(parseInt(colToggle.dataset.col, 10), colToggle.dataset.ignored !== "true");
+                return;
+            }
+            const cell = event.target.closest("td.ww-data-prep-cell");
+            if (cell) wwDataPrepBeginCellEdit(cell);
+        });
+
+        document.getElementById("wwDataPrepUndoBtn").addEventListener("click", wwDataPrepUndo);
+        document.getElementById("wwDataPrepRedoBtn").addEventListener("click", wwDataPrepRedo);
+
+        function openWwDataPrepResetAllConfirm() {
+            document.getElementById("wwDataPrepResetAllOverlay").hidden = false;
+            document.getElementById("wwDataPrepResetAllCancelBtn").focus();
+        }
+        function closeWwDataPrepResetAllConfirm() {
+            document.getElementById("wwDataPrepResetAllOverlay").hidden = true;
+        }
+        document.getElementById("wwDataPrepResetAllBtn").addEventListener("click", openWwDataPrepResetAllConfirm);
+        document.getElementById("wwDataPrepResetAllCancelBtn").addEventListener("click", closeWwDataPrepResetAllConfirm);
+        document.getElementById("wwDataPrepResetAllOverlay").addEventListener("click", (event) => {
+            if (event.target.id === "wwDataPrepResetAllOverlay") closeWwDataPrepResetAllConfirm();
+        });
+        document.getElementById("wwDataPrepResetAllConfirmBtn").addEventListener("click", async () => {
+            closeWwDataPrepResetAllConfirm();
+            await wwDataPrepResetAll();
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            if (!document.getElementById("wwDataPrepResetAllOverlay").hidden) closeWwDataPrepResetAllConfirm();
         });
         document.getElementById("wwDataPrepWorksheetSelect").addEventListener("change", async (event) => {
             const newIndex = parseInt(event.target.value, 10);
@@ -6635,6 +6990,7 @@
 
                 wwDataPrepRenderMeta();
                 wwDataPrepRenderWorksheetSelector();
+                wwDataPrepApplyOverlaySummary(summary.working_overlay);
 
                 if (wwDataPrep.format === "Excel" && wwDataPrep.selectedWorksheetIndex == null) {
                     // A multi-worksheet workbook with no selection yet --

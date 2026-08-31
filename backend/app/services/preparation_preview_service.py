@@ -1,7 +1,7 @@
-"""Paged raw-data preview for CSV/Excel preparation sources (Slice 3, DEC-072).
+"""Paged raw-data preview for CSV/Excel preparation sources (Slices 3-4, DEC-072).
 
 Owns exactly one job: given an already-accepted `PreparationSession`
-(Slices 1-2), return a bounded WINDOW of its raw rows/cells -- never the
+(Slices 1-2), return a bounded WINDOW of its rows/cells -- never the
 whole dataset, never a header/data-region inference, never a type
 coercion beyond what the underlying reader naturally exposes. This is
 strictly an inspection surface:
@@ -10,8 +10,10 @@ strictly an inspection surface:
             |
     preview_preparation_source() (this module)
             |
-    a bounded page of raw rows -- never cached beyond one request,
-    never mutates the session's own raw_bytes
+    raw page  +  Slice 4's own WorkingOverlay, applied at read time
+            |
+    a bounded page of WORKING rows -- never cached beyond one request,
+    never mutates the session's own raw_bytes OR its working_overlay
 
 No `DisturbanceRecord` is read or produced here. Nothing in this module
 assumes a header row, infers column roles, or interprets timestamps --
@@ -26,11 +28,10 @@ iterating from row 0 (task's own "acceptable initially if documented and
 bounded" allowance) -- but the exact row/column TOTALS only need to be
 computed once per session: `PreparationSession.cached_row_count`/
 `cached_column_count` (see that dataclass's own docstring) are memoized
-on the first preview request (any page), so every later request already
-knows when it can stop early instead of re-scanning to the true end of
-the file. This is the one lightweight optimization considered
-"clearly necessary" for reasonable UX here -- not a general-purpose row
-index, which the task explicitly said not to build prematurely.
+on the first preview request (any page) via `ensure_csv_totals_cached()`
+-- Slice 4's own coordinate-bounds validation
+(`app.services.working_overlay_service`) reuses this exact same function
+rather than a second scan implementation.
 
 Excel strategy: reuses `openpyxl`'s `read_only=True` streaming mode
 (same choice as Slice 2's own worksheet discovery), reopening the
@@ -45,6 +46,21 @@ own explicit "do not attempt spreadsheet recalculation"). Excel's own
 row/column totals are never re-scanned here at all -- they already exist
 on the selected `WorksheetInfo` from Slice 2's own upload-time discovery
 (best-effort, exactly as already documented there).
+
+Slice 4 overlay application (`_apply_working_overlay`): a post-
+processing step run on the already-fetched raw page, AFTER either
+format's own raw-reading logic above -- it never touches how rows are
+read, only what gets returned. For each row in the page: any cell
+override at `(worksheet_index, row.row_number, column_index)` replaces
+that cell's displayed value (the row's own `cells` list is extended
+with `None` -- "raw blank" -- only as far as needed to show an override
+targeting a column beyond that specific row's own raw width, e.g. a
+short/ragged CSV row; every OTHER row's own length is left exactly as
+the raw reader produced it). The row's own `excluded` flag and the
+page-level `ignored_columns` list are looked up the same way. Overrides
+are pre-filtered by worksheet ONCE per preview call (`_overrides_for_worksheet`),
+not re-scanned per row, so this stays proportional to (page size +
+total edit count for this worksheet), never to the raw dataset's size.
 """
 
 from __future__ import annotations
@@ -52,12 +68,13 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import io
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from openpyxl import load_workbook
 
 from app.domain.preparation_session import FORMAT_CSV, FORMAT_EXCEL, PreparationSession
+from app.domain.working_overlay import OVERRIDE_KIND_CLEAR, WorkingOverlay
 from app.services.errors import SourceNotFoundError, WorkbookParseError, WorksheetNotSelectedError
 from app.services.preparation_session_registry import PreparationSessionRegistry
 
@@ -93,26 +110,51 @@ _CSV_SNIFF_SAMPLE_CHARS = 8192
 
 
 @dataclass(slots=True)
+class ModifiedCell:
+    """One cell within a `PreviewRow` that currently has an active
+    working override -- sparse by construction (task's own "do not
+    multiply payload size unnecessarily for every unchanged cell"):
+    only cells that actually differ from the raw source appear here.
+    `raw_value` is the ORIGINAL value at this position, in its native
+    type, preserved for provenance/hover/reset display -- never the
+    working value (that already lives in the row's own `cells`)."""
+
+    column_index: int
+    raw_value: Any
+
+
+@dataclass(slots=True)
 class PreviewRow:
-    """One raw row -- `row_number` is 1-based and matches the source's
-    own row position (CSV: `csv.reader`'s own enumeration; Excel:
-    the worksheet's own row index) -- never renumbered/reindexed as if a
-    header had been removed. `cells` is exactly what the reader
-    produced: CSV cells are always `str` (an empty string for a blank
-    field); Excel cells keep their native JSON-safe type (`str`/`float`/
-    `int`/`bool`/`None` for blank, with `datetime`/`date`/`time` values
-    converted to their ISO-8601 string form purely for JSON transport --
-    never reformatted/reinterpreted otherwise)."""
+    """One row, as WORKING values (raw with Slice 4's overlay applied).
+    `row_number` is 1-based and matches the source's own row position
+    (CSV: `csv.reader`'s own enumeration; Excel: the worksheet's own row
+    index) -- never renumbered/reindexed, including when `excluded` is
+    `True` (task's own explicit "provenance" requirement: exclusion is a
+    flag, never a removal or a renumbering). `cells` is the DISPLAYED
+    (working) value at each position: CSV cells are `str` unless
+    overridden; Excel cells keep their native JSON-safe type unless
+    overridden, with `datetime`/`date`/`time` raw values converted to
+    ISO-8601 strings purely for JSON transport. `modified_cells` lists
+    only the cells in THIS row with an active override, each carrying
+    the raw value alongside for provenance -- see `ModifiedCell`'s own
+    docstring."""
 
     row_number: int
     cells: list[Any]
+    excluded: bool = False
+    modified_cells: list[ModifiedCell] = field(default_factory=list)
 
 
 @dataclass(slots=True)
 class PreviewResult:
     """See this module's own docstring for the CSV/Excel strategies that
     produce this. `selected_worksheet_index` is `None` for CSV (no
-    worksheet concept at all -- never fabricated)."""
+    worksheet concept at all -- never fabricated). `ignored_columns`
+    lists column indices ignored for the CURRENT worksheet (or for CSV,
+    the source as a whole) -- page-independent, same set on every page.
+    `working_revision` is `WorkingOverlay.revision` at the moment this
+    page was read, for the frontend's own stale-page/refresh bookkeeping
+    (task's own "lightweight revision counter... stale-page detection")."""
 
     source_id: str
     selected_worksheet_index: int | None
@@ -124,6 +166,8 @@ class PreviewResult:
     column_count: int | None
     column_count_basis: str
     rows: list[PreviewRow]
+    ignored_columns: list[int] = field(default_factory=list)
+    working_revision: int = 0
 
 
 def _sniff_csv_delimiter(sample: str) -> str:
@@ -140,7 +184,7 @@ def _sniff_csv_delimiter(sample: str) -> str:
         return _CSV_DEFAULT_DELIMITER
 
 
-def _preview_csv(session: PreparationSession, *, offset: int, limit: int) -> PreviewResult:
+def _open_csv_reader(session: PreparationSession) -> csv.reader:
     # errors="replace" (never raises): task scope is raw structural
     # preview, not encoding detection -- an undecodable byte becomes a
     # visible replacement character rather than failing the whole
@@ -148,7 +192,31 @@ def _preview_csv(session: PreparationSession, *, offset: int, limit: int) -> Pre
     # encoding detection is solved.
     text = session.raw_bytes.decode("utf-8", errors="replace")
     delimiter = _sniff_csv_delimiter(text[:_CSV_SNIFF_SAMPLE_CHARS])
-    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+    return csv.reader(io.StringIO(text), delimiter=delimiter)
+
+
+def ensure_csv_totals_cached(session: PreparationSession) -> None:
+    """Populate `session.cached_row_count`/`cached_column_count` via one
+    full pass over the in-memory text, if not already cached. Shared by
+    `_preview_csv()` (below) and `app.services.working_overlay_service`'s
+    own coordinate-bounds validation, so there is exactly one CSV
+    row/column-counting implementation, never two that could disagree.
+    A no-op (zero cost) once already cached."""
+    if session.cached_row_count is not None:
+        return
+    reader = _open_csv_reader(session)
+    row_count = 0
+    max_columns = 0
+    for row_number, row in enumerate(reader, start=1):
+        row_count = row_number
+        if len(row) > max_columns:
+            max_columns = len(row)
+    session.cached_row_count = row_count
+    session.cached_column_count = max_columns
+
+
+def _preview_csv(session: PreparationSession, *, offset: int, limit: int) -> PreviewResult:
+    reader = _open_csv_reader(session)
 
     cached_total = session.cached_row_count
     stop_after = offset + limit  # 1-based inclusive row_number
@@ -182,6 +250,8 @@ def _preview_csv(session: PreparationSession, *, offset: int, limit: int) -> Pre
     total_row_count = session.cached_row_count if session.cached_row_count is not None else row_count
     column_count = session.cached_column_count if session.cached_column_count is not None else max_columns
 
+    _apply_working_overlay(session, worksheet_index=None, rows=page)
+
     return PreviewResult(
         source_id=session.summary.source_id,
         selected_worksheet_index=None,
@@ -193,6 +263,8 @@ def _preview_csv(session: PreparationSession, *, offset: int, limit: int) -> Pre
         column_count=column_count,
         column_count_basis=ROW_BASIS_EXACT,
         rows=page,
+        ignored_columns=_ignored_columns_for_worksheet(session.working_overlay, None),
+        working_revision=session.working_overlay.revision,
     )
 
 
@@ -209,7 +281,8 @@ def _preview_excel(session: PreparationSession, *, offset: int, limit: int) -> P
             "This workbook has more than one worksheet; select one with "
             "PATCH .../preparation-sources/{source_id} before requesting a preview."
         )
-    worksheet_info = summary.worksheets[summary.selected_worksheet_index]
+    worksheet_index = summary.selected_worksheet_index
+    worksheet_info = summary.worksheets[worksheet_index]
 
     try:
         workbook = load_workbook(io.BytesIO(session.raw_bytes), read_only=True, data_only=False)
@@ -235,9 +308,11 @@ def _preview_excel(session: PreparationSession, *, offset: int, limit: int) -> P
         # function returns, whether it succeeded or raised.
         workbook.close()
 
+    _apply_working_overlay(session, worksheet_index=worksheet_index, rows=page)
+
     return PreviewResult(
         source_id=summary.source_id,
-        selected_worksheet_index=summary.selected_worksheet_index,
+        selected_worksheet_index=worksheet_index,
         offset=offset,
         limit=limit,
         returned_row_count=len(page),
@@ -246,7 +321,66 @@ def _preview_excel(session: PreparationSession, *, offset: int, limit: int) -> P
         column_count=worksheet_info.column_count,
         column_count_basis=ROW_BASIS_BEST_EFFORT if worksheet_info.column_count is not None else ROW_BASIS_UNKNOWN,
         rows=page,
+        ignored_columns=_ignored_columns_for_worksheet(session.working_overlay, worksheet_index),
+        working_revision=session.working_overlay.revision,
     )
+
+
+def _overrides_for_worksheet(overlay: WorkingOverlay, worksheet_index: int | None) -> dict[int, dict[int, Any]]:
+    """Pre-filter the WHOLE overlay's cell overrides down to just this
+    worksheet, grouped by row -- done ONCE per preview call (not once
+    per row), so applying overrides to a page stays O(page size +
+    this-worksheet's own edit count), never O(page size x total edit
+    count)."""
+    by_row: dict[int, dict[int, Any]] = {}
+    for (ws, row_number, column_index), override in overlay.cell_overrides.items():
+        if ws != worksheet_index:
+            continue
+        by_row.setdefault(row_number, {})[column_index] = override
+    return by_row
+
+
+def _excluded_rows_for_worksheet(overlay: WorkingOverlay, worksheet_index: int | None) -> set[int]:
+    return {row_number for (ws, row_number) in overlay.excluded_rows if ws == worksheet_index}
+
+
+def _ignored_columns_for_worksheet(overlay: WorkingOverlay, worksheet_index: int | None) -> list[int]:
+    return sorted(column_index for (ws, column_index) in overlay.ignored_columns if ws == worksheet_index)
+
+
+def _apply_working_overlay(session: PreparationSession, *, worksheet_index: int | None, rows: list[PreviewRow]) -> None:
+    """Mutate `rows` (already-fetched RAW rows) in place into their
+    WORKING form -- see this module's own docstring for the exact
+    strategy. Never touches `session.raw_bytes` or the overlay itself
+    (read-only with respect to `session.working_overlay`)."""
+    overlay = session.working_overlay
+    if not overlay.cell_overrides and not overlay.excluded_rows:
+        return  # common case (no edits yet at all) -- skip the filtering work entirely
+
+    overrides_by_row = _overrides_for_worksheet(overlay, worksheet_index)
+    excluded_row_numbers = _excluded_rows_for_worksheet(overlay, worksheet_index)
+
+    for row in rows:
+        row.excluded = row.row_number in excluded_row_numbers
+        row_overrides = overrides_by_row.get(row.row_number)
+        if not row_overrides:
+            continue
+        # Extend this ONE row's own cells with raw-blank (None) padding
+        # only as far as needed to show an override targeting a column
+        # beyond its own raw width (a short/ragged row) -- every other
+        # row's own length is left exactly as the raw reader produced it
+        # (task's own "editing a blank raw cell must be supported"
+        # requirement, without silently padding every unmodified row).
+        needed_len = max(len(row.cells), max(row_overrides) + 1)
+        if needed_len > len(row.cells):
+            row.cells = row.cells + [None] * (needed_len - len(row.cells))
+        modified: list[ModifiedCell] = []
+        for column_index in sorted(row_overrides):
+            override = row_overrides[column_index]
+            raw_value = row.cells[column_index]
+            row.cells[column_index] = None if override.kind == OVERRIDE_KIND_CLEAR else override.value
+            modified.append(ModifiedCell(column_index=column_index, raw_value=raw_value))
+        row.modified_cells = modified
 
 
 def preview_preparation_source(
@@ -257,12 +391,12 @@ def preview_preparation_source(
     limit: int,
     registry: PreparationSessionRegistry,
 ) -> PreviewResult:
-    """Return one bounded page of raw rows for a CSV or Excel
-    preparation source. `offset`/`limit` are trusted here to already be
-    within bounds (see this module's own docstring: enforced by the
-    API's own `Query(ge=..., le=...)` constraints, matching this
-    codebase's existing `point_budget` precedent) -- this function does
-    not re-validate them a second time.
+    """Return one bounded page of WORKING rows (raw + Slice 4's overlay
+    applied) for a CSV or Excel preparation source. `offset`/`limit` are
+    trusted here to already be within bounds (see this module's own
+    docstring: enforced by the API's own `Query(ge=..., le=...)`
+    constraints, matching this codebase's existing `point_budget`
+    precedent) -- this function does not re-validate them a second time.
 
     Raises `SourceNotFoundError` if no such preparation session exists,
     `WorksheetNotSelectedError` for an Excel source with no worksheet

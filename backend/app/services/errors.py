@@ -551,3 +551,36 @@ class WorksheetNotSelectedError(ImportServiceError):
     the preview endpoint never guesses which sheet to show."""
 
     code = "worksheet_not_selected"
+
+
+# ---- CSV/Excel ingestion Slice 4 (DEC-072): Working Dataset / non-
+# destructive overlay (app.domain.working_overlay,
+# app.services.working_overlay_service). Still no severity model here
+# -- ordinary request/runtime errors, exactly like every prior slice
+# (task's own explicit "do NOT introduce Slice 6 severity findings
+# yet"). ----
+
+
+class InvalidWorkingCoordinateError(ImportServiceError):
+    """A submitted `row_number`/`column_index` is out of range -- either
+    structurally invalid (`row_number < 1`, `column_index < 0`) or
+    outside this source's own known raw dimensions (checked against
+    `PreparationSession.cached_row_count`/`cached_column_count` for CSV,
+    or the selected worksheet's own `WorksheetInfo.row_count`/
+    `column_count` for Excel -- only enforced when that total is
+    actually known; a `None`/unknown total is never treated as "no
+    limit," but a *missing best-effort* total for Excel is not
+    fabricated into a false bound either). Never silently clamped."""
+
+    code = "invalid_working_coordinate"
+
+
+class InvalidWorkingCellValueError(ImportServiceError):
+    """A submitted cell working value exceeds
+    `app.domain.working_overlay`'s own maximum length -- a sanity bound
+    against a pathological/accidental paste, not an engineering-content
+    validation (task's own "do not infer engineering types" guardrail
+    stays fully intact; any string within the length bound is accepted
+    verbatim)."""
+
+    code = "invalid_working_cell_value"

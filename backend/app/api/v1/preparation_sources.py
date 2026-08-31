@@ -32,12 +32,16 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, Request, UploadFile, status
 
 from app.config import Settings
 from app.schemas.preparation_session import (
+    CellWorkingValueRequest,
+    ColumnIgnoreRequest,
     PreparationSessionSummaryOut,
     PreparationSourcePreviewOut,
+    RowExclusionRequest,
+    WorkingOverlaySummaryOut,
     WorksheetSelectionRequest,
 )
 from app.schemas.source import ErrorOut
@@ -53,6 +57,16 @@ from app.services.preparation_preview_service import (
     preview_preparation_source,
 )
 from app.services.preparation_session_registry import PreparationSessionRegistry
+from app.services.working_overlay_service import (
+    edit_cell,
+    redo_working_change,
+    reset_all_working_changes,
+    reset_cell,
+    set_column_ignored,
+    set_row_excluded,
+    summarize_working_overlay,
+    undo_working_change,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +87,8 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "worksheet_selection_not_applicable": status.HTTP_400_BAD_REQUEST,
     "invalid_worksheet_index": status.HTTP_400_BAD_REQUEST,
     "worksheet_not_selected": status.HTTP_400_BAD_REQUEST,
+    "invalid_working_coordinate": status.HTTP_400_BAD_REQUEST,
+    "invalid_working_cell_value": status.HTTP_400_BAD_REQUEST,
 }
 
 
@@ -144,7 +160,9 @@ async def upload_preparation_source(
             detail=ErrorOut(code="internal_error", message="Upload failed unexpectedly.").model_dump(),
         )
 
-    return PreparationSessionSummaryOut.from_domain(summary)
+    session = registry.get(workspace_id, summary.source_id)
+    overlay_summary = summarize_working_overlay(session) if session is not None else None
+    return PreparationSessionSummaryOut.from_domain(summary, overlay_summary)
 
 
 @router.get("", response_model=list[PreparationSessionSummaryOut])
@@ -154,7 +172,9 @@ def list_preparation_sources(
 ) -> list[PreparationSessionSummaryOut]:
     workspace_id = _validate_workspace_id(workspace_id)
     sessions = registry.list_for_workspace(workspace_id)
-    return [PreparationSessionSummaryOut.from_domain(s.summary) for s in sessions]
+    return [
+        PreparationSessionSummaryOut.from_domain(s.summary, summarize_working_overlay(s)) for s in sessions
+    ]
 
 
 @router.get("/{source_id}", response_model=PreparationSessionSummaryOut)
@@ -173,7 +193,7 @@ def get_preparation_source(
                 message=f"No preparation source '{source_id}' in workspace '{workspace_id}'.",
             ).model_dump(),
         )
-    return PreparationSessionSummaryOut.from_domain(session.summary)
+    return PreparationSessionSummaryOut.from_domain(session.summary, summarize_working_overlay(session))
 
 
 @router.get("/{source_id}/rows", response_model=PreparationSourcePreviewOut)
@@ -243,7 +263,146 @@ def patch_preparation_source(
             exc.code, workspace_id, source_id, exc.message,
         )
         raise _http_error(exc) from exc
-    return PreparationSessionSummaryOut.from_domain(summary)
+    session = registry.get(workspace_id, source_id)
+    overlay_summary = summarize_working_overlay(session) if session is not None else None
+    return PreparationSessionSummaryOut.from_domain(summary, overlay_summary)
+
+
+def _working_error(exc: ImportServiceError) -> HTTPException:
+    logger.info("Working-dataset operation rejected (%s): %s", exc.code, exc.message)
+    return _http_error(exc)
+
+
+@router.put("/{source_id}/working/cells/{row_number}/{column_index}", response_model=WorkingOverlaySummaryOut)
+def put_working_cell(
+    workspace_id: str,
+    source_id: str,
+    row_number: int = Path(ge=1, description="1-based row number, matching PreparationRowOut.row_number."),
+    column_index: int = Path(ge=0, description="0-based column index, matching a row's own cells[] position."),
+    body: CellWorkingValueRequest = CellWorkingValueRequest(),
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> WorkingOverlaySummaryOut:
+    """Set (`value` a string) or clear (`value: null`) one cell's
+    working value -- see `CellWorkingValueRequest`'s own docstring."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        summary = edit_cell(
+            workspace_id=workspace_id, source_id=source_id, row_number=row_number,
+            column_index=column_index, value=body.value, registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return WorkingOverlaySummaryOut.from_domain(summary)
+
+
+@router.delete("/{source_id}/working/cells/{row_number}/{column_index}", response_model=WorkingOverlaySummaryOut)
+def delete_working_cell(
+    workspace_id: str,
+    source_id: str,
+    row_number: int = Path(ge=1),
+    column_index: int = Path(ge=0),
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> WorkingOverlaySummaryOut:
+    """Reset one cell to its raw value -- a safe no-op if it had no
+    working override."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        summary = reset_cell(
+            workspace_id=workspace_id, source_id=source_id, row_number=row_number,
+            column_index=column_index, registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return WorkingOverlaySummaryOut.from_domain(summary)
+
+
+@router.put("/{source_id}/working/rows/{row_number}", response_model=WorkingOverlaySummaryOut)
+def put_working_row(
+    workspace_id: str,
+    source_id: str,
+    body: RowExclusionRequest,
+    row_number: int = Path(ge=1),
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> WorkingOverlaySummaryOut:
+    """Exclude/include one row from the working view -- never
+    renumbers surrounding rows."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        summary = set_row_excluded(
+            workspace_id=workspace_id, source_id=source_id, row_number=row_number,
+            excluded=body.excluded, registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return WorkingOverlaySummaryOut.from_domain(summary)
+
+
+@router.put("/{source_id}/working/columns/{column_index}", response_model=WorkingOverlaySummaryOut)
+def put_working_column(
+    workspace_id: str,
+    source_id: str,
+    body: ColumnIgnoreRequest,
+    column_index: int = Path(ge=0),
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> WorkingOverlaySummaryOut:
+    """Ignore/unignore one column in the working view."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        summary = set_column_ignored(
+            workspace_id=workspace_id, source_id=source_id, column_index=column_index,
+            ignored=body.ignored, registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return WorkingOverlaySummaryOut.from_domain(summary)
+
+
+@router.delete("/{source_id}/working", response_model=WorkingOverlaySummaryOut)
+def delete_working_overlay(
+    workspace_id: str,
+    source_id: str,
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> WorkingOverlaySummaryOut:
+    """Reset all working changes (cell edits/clears, row exclusions,
+    column ignores) for this source in one step -- still undoable."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        summary = reset_all_working_changes(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return WorkingOverlaySummaryOut.from_domain(summary)
+
+
+@router.post("/{source_id}/working/undo", response_model=WorkingOverlaySummaryOut)
+def post_working_undo(
+    workspace_id: str,
+    source_id: str,
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> WorkingOverlaySummaryOut:
+    """Revert the most recent working-dataset operation. A safe no-op
+    when there is nothing to undo."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        summary = undo_working_change(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return WorkingOverlaySummaryOut.from_domain(summary)
+
+
+@router.post("/{source_id}/working/redo", response_model=WorkingOverlaySummaryOut)
+def post_working_redo(
+    workspace_id: str,
+    source_id: str,
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> WorkingOverlaySummaryOut:
+    """Reapply the most recently undone operation. A safe no-op when
+    there is nothing to redo."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        summary = redo_working_change(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return WorkingOverlaySummaryOut.from_domain(summary)
 
 
 @router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT)

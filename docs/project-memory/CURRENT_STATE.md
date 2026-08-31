@@ -185,9 +185,10 @@ re-confirmed by the TG-FINAL audit):
 - A minimal committed real-browser smoke-test foundation now protects
   critical upload/render/interaction paths — see
   [docs/development/BROWSER_SMOKE_TEST.md](../development/BROWSER_SMOKE_TEST.md).
-- **CSV/Excel preparation-source upload, Excel worksheet discovery, and
-  a paged raw-data-preview Data Preparation Workspace (CSV/Excel
-  ingestion Slices 1-3, DEC-072)**: the Upload Recording modal's CSV and
+- **CSV/Excel preparation-source upload, Excel worksheet discovery, a
+  paged data-preview Data Preparation Workspace, and a non-destructive
+  Working Dataset overlay (CSV/Excel ingestion Slices 1-4, DEC-072)**:
+  the Upload Recording modal's CSV and
   Excel options are both enabled (`RECORDING_FORMATS`,
   `frontend/index.html`), each with its own "Upload & Prepare" action,
   posting to `POST .../preparation-sources` (`app/api/v1/preparation_sources.py`
@@ -231,9 +232,31 @@ re-confirmed by the TG-FINAL audit):
   reopened fresh per request. Released on its own
   `DELETE .../preparation-sources/{id}` or on whole-workspace
   `DELETE /api/v1/workspaces/{id}` (cascades into this registry too).
-  Header/column/time-axis inference, cell editing, working-dataset
-  overlay, and readiness validation are explicitly NOT part of any of
-  these three slices — see
+
+  **Slice 4** adds a non-destructive Working Dataset overlay
+  (`app/domain/working_overlay.py` + `app/services/working_overlay_service.py`)
+  layered on top of each `PreparationSession`: cell edit/clear/reset, row
+  exclude/include, column ignore/unignore, and a Reset All action, each
+  a sparse dict/set entry proportional to edit COUNT — never a second
+  full copy of the dataset. Undo/redo is supported via a bounded
+  (200-entry) operation history; a `revision` counter increments on
+  every mutation. Seven new endpoints under
+  `.../preparation-sources/{id}/working/...`; each and the existing
+  `GET .../preparation-sources` (list/detail) responses now carry a
+  `working_overlay` summary (`working_revision`, `edited_cell_count`,
+  `excluded_row_count`, `ignored_column_count`, `can_undo`, `can_redo`).
+  The existing `GET .../rows` preview now returns the WORKING view by
+  default (raw merged with the overlay at read time only, never
+  persisted) — each row gains `excluded`/`modified_cells` (sparse,
+  provenance-preserving), and the page-level response gains
+  `ignored_columns`/`working_revision`. Raw bytes are never mutated. The
+  Data Preparation Workspace's table gained click-to-edit cells (a plain
+  `<input>`, no spreadsheet-grid library), a per-cell reset action,
+  row/column toggle buttons, Undo/Redo, and a "Reset All Changes"
+  confirm dialog; the heading switches from "Raw Data Preview" to "Data
+  Preview (Edited)" once any change exists. Header/column-role/time-axis
+  inference and readiness validation are still explicitly NOT part of
+  any of these four slices — see
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md).
 
 ## Known intentional constraints / deferred items
@@ -280,11 +303,12 @@ per owner direction, now in progress following the owner-revised 13-slice
 sequence recorded in
 [CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md)
 (itself grounded in [DECISIONS.md — DEC-072](DECISIONS.md#dec-072--csv-excel-ingestion-six-architectural-clarifications-approved--temporary-preparation-state-retention-preparation-scoped-severity-model-hybrid-rawworking-overlay-architecture-deferred-disturbancerecord-hardening-honest-non-absolute-time-preservation-and-an-open-ended-time-axis-format-list)).
-**Slices 1-3 (Preparation-session foundation + raw CSV ingestion; Excel
+**Slices 1-4 (Preparation-session foundation + raw CSV ingestion; Excel
 ingestion + worksheet discovery; paged raw-data preview + Data
-Preparation Workspace shell) are implemented (2026-08-31)** — see
+Preparation Workspace shell; Working Dataset / non-destructive overlay)
+are implemented (2026-08-31)** — see
 [Implemented capabilities](#implemented-capabilities) below for exactly
-what that covers. All three deliberately produce **no `DisturbanceRecord`
+what that covers. All four deliberately produce **no `DisturbanceRecord`
 and no waveform**: a CSV or Excel file is accepted as raw, immutable
 input into a new `PreparationSession` (in-memory,
 `app.services.preparation_session_registry`) and surfaced in Recording
@@ -294,13 +318,17 @@ channel-selection list or normal waveform loading. Excel additionally
 gets worksheet structure discovered (name/order/visible/best-effort
 row-column counts) and a selectable current worksheet. Slice 3 adds a
 dedicated Data Preparation Workspace page where the user can page
-through the raw rows of a CSV or the currently selected Excel worksheet
-— server-paginated (≤1000 rows/request), no header-row assumption, no
-column-role/time-axis interpretation, no cell editing. Slices 4–13
-(working-dataset overlay, column-role mapping, the Readiness Issue
-model, the extensible time-axis framework, canonical `DisturbanceRecord`
-conversion, export, and progressive automation) remain unimplemented
-and require their own explicit owner go-ahead before starting, per
+through the rows of a CSV or the currently selected Excel worksheet —
+server-paginated (≤1000 rows/request), no header-row assumption, no
+column-role/time-axis interpretation. Slice 4 layers a sparse,
+non-destructive Working Dataset overlay on top (cell edit/clear/reset,
+row exclude/include, column ignore/unignore, Reset All, undo/redo),
+merged into that same preview at read time only — raw bytes are never
+mutated, and the overlay never duplicates the dataset. Slices 5–13
+(column-role mapping, the Readiness Issue model, the extensible
+time-axis framework, canonical `DisturbanceRecord` conversion, export,
+and progressive automation) remain unimplemented and require their own
+explicit owner go-ahead before starting, per
 [Change governance](../../CLAUDE.md#change-governance) — being recorded
 in the architecture document's own slice sequence does not itself
 authorize starting any of them.

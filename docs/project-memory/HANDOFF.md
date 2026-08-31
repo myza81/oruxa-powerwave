@@ -8,6 +8,152 @@ Last updated: **2026-08-31**
 
 ## What was most recently done
 
+**CSV/Excel Ingestion Slice 4 — Working Dataset / Non-Destructive
+Overlay. Implemented and verified; NOT yet committed** (the task's own
+explicit closing instruction: "Do not commit or push unless explicitly
+asked" — awaiting a separate commit instruction, same pattern as every
+prior slice). Direct follow-up to Slice 3 (below) — the fourth
+implementation slice of the owner's revised 13-slice sequence
+(`CSV_EXCEL_INGESTION_ARCHITECTURE.md` §14).
+
+**Backend domain**: new `app/domain/working_overlay.py` —
+`WorkingOverlay{cell_overrides: dict, excluded_rows: set,
+ignored_columns: set, revision: int, history, redo_stack}`, keyed by a
+stable `(worksheet_index_or_None, row_number, column_index)`-shaped
+identity (1-based row, 0-based column, matching the preview's own
+coordinate space). `CellOverride{kind: edit|clear, value: str|None}`
+keeps an explicit CLEAR distinct from editing to `""`. Pure mutation
+functions only (`set_cell_value`/`reset_cell`/`set_row_excluded`/
+`set_column_ignored`/`reset_all`/`undo`/`redo`) — no I/O, no HTTP-
+mappable errors. Undo/redo via a bounded (200-entry) operation history;
+every op records only its own before/after state (O(1) per cell/row/
+column op; `reset_all`'s own snapshot is O(edit-count), never
+O(dataset-size)) — this is the mechanism that closes
+`CSV_EXCEL_INGESTION_ARCHITECTURE.md` §18's previously-open item 1
+("exact overlay/delta implementation"), confirming §17's own channel-
+presentation-override design reference as the actual approach taken.
+`PreparationSession` gains one new field,
+`working_overlay: WorkingOverlay = field(default_factory=WorkingOverlay)`.
+
+**Backend services**: new `app/services/working_overlay_service.py` —
+seven orchestration functions (`edit_cell`, `reset_cell`,
+`set_row_excluded`, `set_column_ignored`, `reset_all_working_changes`,
+`undo_working_change`, `redo_working_change`), each resolving the
+session + worksheet index (raising `WorksheetNotSelectedError` for a
+multi-sheet Excel workbook with no selection, exactly mirroring the
+preview endpoint's own rule), validating the coordinate's UPPER bound
+against this source's own known dimensions (CSV: a new
+`ensure_csv_totals_cached()`, extracted from Slice 3's own
+`_preview_csv` combined-pass logic so there is exactly one CSV
+row/column-counting implementation, not two that could disagree; Excel:
+the selected worksheet's own best-effort `WorksheetInfo.row_count`/
+`column_count`, never enforced when unknown — never fabricated into a
+false bound), and enforcing a 10,000-character cell-value sanity bound
+(`InvalidWorkingCellValueError` — never an engineering-content check).
+A shared `summarize_working_overlay()` produces the small
+`WorkingOverlaySummary` (`working_revision`, `edited_cell_count`,
+`excluded_row_count`, `ignored_column_count`, `can_undo`, `can_redo`)
+reused by every mutation endpoint's response AND by the existing
+`GET .../preparation-sources` (list/detail) endpoints, which now embed
+it as `working_overlay`. Two new errors:
+`InvalidWorkingCoordinateError`, `InvalidWorkingCellValueError`.
+
+**Preview integration**: `app/services/preparation_preview_service.py`
+extended (not rewritten) — `_open_csv_reader()` extracted so
+`ensure_csv_totals_cached()` and `_preview_csv()` share one decode/
+sniff/reader-construction path without duplicating `_preview_csv`'s own
+combined-pass-with-early-break optimization; new `ModifiedCell{
+column_index, raw_value}` dataclass; `PreviewRow` gains `excluded: bool`
+and `modified_cells: list[ModifiedCell]`; `PreviewResult` gains
+`ignored_columns: list[int]` and `working_revision: int`. A new
+`_apply_working_overlay()` runs AFTER either format's own raw-reading
+logic, as a post-processing step on the already-fetched page: overrides
+are pre-filtered by worksheet once per call (never re-scanned per row),
+a ragged CSV row is padded with `None` only as far as needed to show an
+override beyond its own raw width (every other row's own length is
+untouched — Slice 3's own existing behavior for unmodified rows is not
+regressed), and a common-case early-return skips all of this entirely
+when the overlay has no cell overrides or row exclusions yet. The
+existing `GET .../rows` endpoint therefore now returns the WORKING view
+by default with no new query parameter — raw bytes and
+`cached_row_count`/`cached_column_count` are read-only inputs to this
+merge, never mutated by it.
+
+**New API surface**: seven endpoints under
+`.../preparation-sources/{id}/working/...` — `PUT`/`DELETE
+cells/{row_number}/{column_index}` (body `{value: str|null}` for PUT;
+`value: null` is an explicit CLEAR, any string including `""` is an
+EDIT), `PUT rows/{row_number}` (body `{excluded: bool}`), `PUT
+columns/{column_index}` (body `{ignored: bool}`), `DELETE working` for
+Reset All, `POST working/undo`/`POST working/redo`. `row_number`/
+`column_index` path params use `Path(ge=1)`/`Path(ge=0)` for their
+structural lower bound (matching the existing `Query(ge=0)` precedent),
+so only the dataset-specific UPPER bound needed a service-level error.
+Every endpoint returns `WorkingOverlaySummaryOut`.
+
+**Frontend** (`frontend/index.html` only): the Data Preparation
+Workspace's preview table gained click-to-edit cells — clicking a `<td>`
+swaps in a plain `<input>` (no spreadsheet-grid library, per the task's
+own explicit guardrail); Enter/blur commits an EDIT, a small "Clear"
+button commits an explicit CLEAR, Escape discards by re-fetching the
+still-unmodified server page. A modified cell shows a small reset (↺)
+button (`DELETE .../working/cells/...`). New per-row Exclude/Include and
+per-column Ignore/Unignore toggle buttons in the table's own header
+cells. New toolbar above the table: a change-count summary ("N cells
+edited · M rows excluded · K columns ignored", or "No changes"),
+Undo/Redo buttons, and a "Reset All Changes" button reusing the existing
+`.confirm-overlay`/`.confirm-box` shell (a new `#wwDataPrepResetAllOverlay`).
+The heading/hint switch from "Raw Data Preview" to "Data Preview
+(Edited)" once any working change exists — the task's own explicit
+"wording must not mislead" requirement. Every control calls its own
+backend endpoint and re-renders the whole toolbar+table from the
+response (`wwDataPrepApplyOverlaySummary()` + a fresh
+`wwDataPrepFetchPreview()`) — the browser never applies an edit to its
+own state first; backend stays authoritative throughout.
+
+**Verification**: full backend suite 1974 passed (87 new on top of
+Slice 3's 1887), 0 regressions; the committed browser smoke test
+(COMTRADE) still passes unchanged; two throwaway (not committed)
+live-browser Playwright scripts independently confirmed: CSV cell edit
+shows the working value and updates the change summary/heading; the
+per-cell reset (↺) restores the raw value; row exclude/include toggles
+without renumbering; column ignore/unignore is reported page-
+independently; Undo reverts an edit and Redo reapplies it; Reset All
+(via its own confirm dialog) clears every kind of change and restores
+the "Raw Data Preview" heading; and a two-worksheet Excel workbook keeps
+an edit made on one sheet completely invisible on the other, correctly
+restored on switching back — zero console/page errors across both runs.
+
+**Files changed**: Backend — new `app/domain/working_overlay.py`,
+`app/services/working_overlay_service.py`; modified
+`app/domain/preparation_session.py` (+1 field), `app/services/errors.py`
+(+2 error classes), `app/services/preparation_preview_service.py`
+(overlay merge + `ensure_csv_totals_cached`/`ModifiedCell`),
+`app/schemas/preparation_session.py` (+`WorkingOverlaySummaryOut`/
+`CellWorkingValueRequest`/`RowExclusionRequest`/`ColumnIgnoreRequest`,
+extended `PreparationSessionSummaryOut`/`PreparationRowOut`/
+`PreparationSourcePreviewOut`), `app/api/v1/preparation_sources.py`
+(+7 endpoints). Tests — new `tests/test_working_overlay_domain.py`
+(27 tests), `tests/test_working_overlay_service.py` (22 tests); extended
+`tests/test_preparation_preview_service.py` (+12) and
+`tests/test_preparation_sources_api.py` (+26). Frontend —
+`frontend/index.html` only (toolbar/table markup + CSS, one new confirm
+modal, `wwDataPrep` state extended, ~15 new/changed JS functions).
+Documentation — `CSV_EXCEL_INGESTION_ARCHITECTURE.md` (§14/§18 updated),
+`CURRENT_STATE.md`, here. No new `DECISIONS.md` entry — every choice
+made (overlay shape, undo/redo history bound, cell-value length limit,
+bounds-validation reuse) was already anticipated/pre-authorized by the
+task's own instructions and DEC-072's own design reference (§17), not a
+new owner-level decision.
+
+**Next step**: nothing beyond Slice 4 is pre-authorized, and Slice 4
+itself is implemented but not yet committed per the task's own explicit
+instruction. Slice 5 (Header/data-region + column-role mapping) is the
+next candidate per the owner's revised sequence, but requires its own
+explicit go-ahead — as does committing Slice 4 itself.
+
+## What was done in the prior session — CSV/Excel Ingestion Slice 3: Paged Raw-Data Preview + Data Preparation Workspace Shell
+
 **CSV/Excel Ingestion Slice 3 — Paged Raw-Data Preview + Data
 Preparation Workspace Shell. Implemented and verified.** Direct
 follow-up to Slice 2 (below) — the third implementation slice of the
