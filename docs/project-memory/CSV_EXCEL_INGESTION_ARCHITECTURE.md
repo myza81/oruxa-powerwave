@@ -1061,11 +1061,24 @@ owner go-ahead before implementation begins.
    files (service/preview/schema/API layers, tests, frontend,
    documentation) remain normal uncommitted working-tree changes,
    pending a separate, explicit commit instruction.
-7. **Extensible time-axis framework.** Interpreter architecture; an
-   explicit unknown/unsupported path; no closed format list (DEC-072
-   point 6, §15).
-8. **Initial time-axis interpreters.** The safest initial cases only —
-   do not attempt every possible time-axis format at once.
+7. **`[DESIGN COMPLETE, 2026-09-01]` Extensible time-axis framework.**
+   Interpreter architecture; an explicit unknown/unsupported path; no
+   closed format list (DEC-072 point 6, §15). Full design specification
+   — semantic families, provenance model, fallback hierarchy,
+   confidence model, interpreter registry concept, and the exact
+   proposed Slice 7 implementation scope — is now authoritatively
+   recorded in
+   [CSV_EXCEL_TIME_INTERPRETATION.md](CSV_EXCEL_TIME_INTERPRETATION.md).
+   Not yet implemented; this is a design-only checkpoint, per that
+   document's own explicit status.
+8. **`[DESIGN COMPLETE, 2026-09-01]` Initial time-axis interpreters.**
+   The safest initial cases only — do not attempt every possible
+   time-axis format at once. Exact proposed initial interpreter set
+   (single-column absolute datetime; Date + Time; elapsed numeric time;
+   sample index; repeated-timestamp/lost-precision detection) recorded
+   in
+   [CSV_EXCEL_TIME_INTERPRETATION.md §19](CSV_EXCEL_TIME_INTERPRETATION.md#19-slice-8-scope--initial-interpreters).
+   Not yet implemented.
 9. **Full Powerwave Readiness Validator.** Structural validity; data
    validity; time-axis validity; compatibility with canonical Powerwave
    requirements (§4/§16).
@@ -1096,6 +1109,14 @@ monotonic time confirmed → Normalizer → DisturbanceRecord`).
 ---
 
 ## 15. Time-axis extensibility — explicit statement
+
+**See [CSV_EXCEL_TIME_INTERPRETATION.md](CSV_EXCEL_TIME_INTERPRETATION.md)
+(2026-09-01) for the full design specification this section's own
+finding was later formalized into** — semantic families, provenance,
+fallback hierarchy, confidence model, the interpreter registry concept,
+and the exact proposed Slice 7/Slice 8 scope. That document is now the
+authoritative reference for time-axis design; this section is retained
+for historical/audit continuity, not duplicated.
 
 **`[OWNER DECISION]` (DEC-072 point 6, 2026-08-30)**: the time-axis
 format list stays permanently open-ended; no future CSV/Excel work may

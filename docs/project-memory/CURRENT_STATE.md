@@ -450,6 +450,20 @@ go-ahead before starting, per
 [Change governance](../../CLAUDE.md#change-governance) — being recorded
 in the architecture document's own slice sequence does not itself
 authorize starting any of them.
+
+**`[DESIGN COMPLETE, 2026-09-01, not implemented]`**: the Slice 7/8
+design specification —
+[CSV_EXCEL_TIME_INTERPRETATION.md](CSV_EXCEL_TIME_INTERPRETATION.md) —
+is now written and settles semantic time families (absolute/elapsed/
+sample_index/partial/unknown), a four-state provenance model (native/
+reconstructed/user_specified/index_only), the owner-approved
+detect→suggest→confirm fallback hierarchy (never discarding samples for
+repeated timestamps, never fabricating an absolute anchor per DEC-072
+point 5), a qualitative confidence model, the interpreter-registry
+extensibility concept, and a progressive-disclosure Time Axis UI shell
+matching the existing Preparation Status/Structure pattern. No code was
+written for this task — it is documentation only, and does not itself
+authorize starting Slice 7.
 `SourceMetadata.timing_reference` still reserves a value other than
 `"absolute"` for a future importer with no trustworthy absolute
 recording timestamp — a CSV/Excel preparation source does not reach

@@ -1,0 +1,1029 @@
+# CSV/Excel Time Interpretation Framework — Design Specification
+
+Status: **Design only. Nothing in this document is implemented.**
+
+Date: 2026-09-01
+Source: owner-requested design checkpoint, preceding Slice 7. This
+document is the authoritative design reference for Slice 7 (framework)
+and Slice 8 (initial interpreters) of the owner-revised CSV/Excel
+ingestion sequence recorded in
+[CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin).
+
+This document does not reproduce `CSV_EXCEL_INGESTION_ARCHITECTURE.md`'s
+own content — it assumes Slices 1–6 plus the two owner-UAT refinements
+(progressive-disclosure UX; data-region end-selection) already exist
+exactly as documented there and in `CURRENT_STATE.md`. Where this
+document's design touches existing code, it cites the actual current
+file/line, not an assumed shape.
+
+---
+
+## 1. Purpose and scope
+
+**Purpose**: settle, before any implementation begins, how Powerwave
+will interpret time information found in a CSV/Excel preparation
+source — what semantic categories exist, who has final authority over
+interpretation, how uncertain or degraded timing evidence is handled,
+how the result is presented, and exactly where this stage's
+responsibility ends and the next stage's begins.
+
+**In scope**: the design of the time-interpretation domain model,
+provenance model, fallback hierarchy, confidence model, UI/UX
+organization, and the Slice 7/Slice 8 boundary.
+
+**Out of scope (design only, nothing built here)**: any actual
+timestamp parser, reconstruction algorithm, sampling-rate inference,
+readiness validation logic, new production preparation-issue codes,
+`DisturbanceRecord` conversion, waveform plotting, export, or automatic
+row/data repair. See §20 for the complete explicit non-goals list.
+
+**Architecture this design must fit inside, unchanged**:
+
+```text
+Immutable raw source (PreparationSession.raw_bytes)
+        +
+Sparse non-destructive Working Overlay (app.domain.working_overlay)
+        +
+Header row / dataset-wide Data Region / Column Roles (Slice 5)
+        +
+Preparation Readiness Issue model (Slice 6 — info-only today)
+        +
+Progressive-disclosure Data Preparation Workspace UI (owner UAT)
+        ↓  [Slice 7/8 — THIS DOCUMENT'S subject]
+Time Axis interpretation (candidate interpreted time, never canonical)
+        ↓  [Slice 9 — NOT this document's subject]
+Readiness Validator (decides acceptability, including time validity)
+        ↓  [Slice 10 — NOT this document's subject]
+Canonical DisturbanceRecord conversion
+        ↓
+Existing Powerwave waveform/Time-Group/synchronization behavior — UNCHANGED
+```
+
+This document proposes nothing that requires modifying
+`app/domain/disturbance_record.py`, `app/domain/timing.py`,
+`app/domain/time_grouping.py`, `app/services/synchronization_service.py`,
+or any waveform-rendering code. Verified directly against the current
+content of each file before writing this design (see §17).
+
+---
+
+## 2. Core principles
+
+These formalize the owner's own stated rules for this design. Every
+later section is subordinate to these.
+
+**Principle 1 — Preserve data first, interpret second.** Never
+automatically discard a non-empty source value. Only a genuinely empty
+cell (raw `None`, or a working edit to `""` — the exact same "blank"
+concept `app.services.preparation_preview_service` already uses for
+column labels, see that module's own `_build_column_labels()`) may be
+treated as missing. An ambiguous or suspicious non-empty value
+(`"N/A"`, `"ERR"`, `"#VALUE!"`, `"12.4?"`, unexpected text in a
+Time-Axis or Waveform-Channel column) is preserved byte-for-byte and
+surfaced as a diagnostic — never converted to zero, dropped, replaced
+with `NaN` in a way that loses the original value, interpolated,
+overwritten, merged, or silently coerced.
+
+**Principle 2 — Never discard samples because timestamps repeat.**
+Five rows sharing the literal timestamp `13:14:01` are five distinct
+samples. They are never collapsed to one, never deduplicated, never
+reduced to "keep the first," and never silently reordered or merged.
+Repetition is *evidence about the time axis's own precision*, not a
+data-quality defect to repair by removing rows.
+
+**Principle 3 — Never reorder source rows.** Row order may itself
+carry engineering meaning (this is already the exact rule Slice 4/5
+enforce for row exclusion/data-region narrowing — see
+`app.domain.working_overlay`'s own module docstring: "None of these
+ever renumber"). Time interpretation extends this rule to itself: even
+when timestamps appear out of order, rows are never reordered to make
+them monotonic. Non-monotonic time is a *diagnostic*, handled at the
+Readiness Validator stage (§13), never silently repaired here.
+
+**Principle 4 — Backend is authoritative; the frontend never
+manufactures a time interpretation.** Identical to the rule already
+established for Slice 5 structure state and Slice 6 issues: the
+frontend renders what the backend already decided/suggested/detected;
+it never independently classifies a time family or computes a
+reconstructed value client-side.
+
+**Principle 5 — Never fabricate an absolute anchor.** Directly
+reaffirms **DEC-072 point 5**, already binding: a source with no
+defensible absolute timestamp must never receive a fabricated
+`start_time` merely to satisfy `TimingInformation`'s non-`None` field —
+no `powerwave`-style `2000-01-01` sentinel (see
+[POWERWAVE_DISCOVERY.md — The 2000-01-01 sentinel](POWERWAVE_DISCOVERY.md#the-2000-01-01-sentinel--the-load-bearing-detail-behind-anchored-sources)),
+ever. This is the single most load-bearing constraint on the entire
+design below.
+
+**Principle 6 — The format list stays permanently open-ended.**
+Directly reaffirms **DEC-072 point 6**. Every semantic family, every
+interpreter, and every provenance state below is illustrative, not
+exhaustive. The interpreter-registry model (§17) exists specifically so
+a new format never requires touching `time_grouping.py`,
+`synchronization.py`, or waveform-rendering code — exactly the
+extensibility already proven for the existing two-value
+`timing_reference` signal (§4/§15 of the architecture document).
+
+**Principle 7 — Detect, suggest, preview, warn — never decide
+silently.** Formalized fully in §5.
+
+**Principle 8 — Progressive disclosure, always.** A compact summary is
+the default view; full interpreter mechanics are never permanently
+visible. Formalized fully in §15.
+
+---
+
+## 3. Time semantic families
+
+An open-ended set of conceptual categories a Time-Axis column (or
+column combination) can belong to. New families may be added later
+without changing this document's own model — only the registry's
+contents grow.
+
+| Family | Meaning | Example | Requires |
+|---|---|---|---|
+| `absolute` | A real calendar date+time exists or can be assembled from the selected column(s) | `2026-08-31 13:09:44.305` | A parseable date component (native or assembled from a multi-column combination, §10) |
+| `elapsed` | A relative/duration axis — "seconds/ms/µs since some reference," reference itself not necessarily known | `0.000, 0.001, 0.002` | An explicit unit (§9) |
+| `sample_index` | A plain integer sequence with no time semantics of its own | `1, 2, 3, 4` | Nothing to interpret time from directly; a rate may optionally be supplied to derive elapsed time (§9) |
+| `partial` | A real time-of-day (or other partial calendar component) with a REQUIRED piece missing — most commonly time-of-day with no date | `13:09:44.305` | Must NOT be silently promoted to `absolute`; promotion requires the user to explicitly supply or confirm the missing component (a date, a base day boundary, etc.) |
+| `unknown` | Powerwave cannot safely classify the column(s) at all | arbitrary/unrecognized text, or a plausible-looking but unparseable pattern | Nothing — must remain representable without destroying the source value (Principle 1) |
+
+Two structural notes:
+
+- **A family is a classification of the SOURCE representation, not a
+  claim about the resulting quality.** An `absolute` family with
+  precision-loss (repeated timestamps) is still `absolute` — its
+  *provenance* (§4) is what changes (`native` → `reconstructed`), not
+  its family.
+- **`partial` is deliberately its own family, not a sub-case of
+  `absolute` or `unknown`.** A time-only column is neither "a full
+  absolute timestamp" (it structurally cannot be, per Principle 5) nor
+  "meaningless" (it may carry real, useful ordering/interval
+  information once the missing piece is supplied). Collapsing it into
+  either neighbor would either violate Principle 5 or discard usable
+  evidence.
+
+---
+
+## 4. Time provenance / quality
+
+Every *resulting interpreted time value* (not the family classification
+itself — see §3's second note) carries how it was obtained. Four
+states, deliberately not more (see the reasoning after the table for
+why "inferred" was considered and folded in rather than added):
+
+| Provenance | Meaning |
+|---|---|
+| `native` | The value is exactly what a family-appropriate parse of the source cell(s) produced — no gap-filling, no user-supplied assumption |
+| `reconstructed` | Powerwave synthesized/adjusted the value (e.g. distributing repeated timestamps across a suggested interval) — ALWAYS shown alongside the original native value it was derived from, and ALWAYS requires the user's explicit acceptance before it becomes the active interpretation (§5, §7) |
+| `user_specified` | The user directly supplied the deciding piece of information (an interval, a sampling rate, a unit, an explicit override value) that produced this interpretation |
+| `index_only` | The fallback: no time semantics were established at all; the active plotting basis is the row's own sequential position, not a time value (§9) |
+
+**Why not a separate `inferred` state**: the task material raises this
+as a candidate. On inspection, everything "inferred" in this framework
+either (a) becomes a concrete `reconstructed` value once the user
+accepts a suggestion, or (b) is a *confidence label on a suggestion
+that has not yet been accepted at all* — which is not a provenance of
+an actual value, since no value is active yet. Confidence (§6) already
+carries that second meaning cleanly. Adding a fifth provenance state
+here would create two different words for the same "not yet real"
+concept. Kept to four, per the task's own "do not overcomplicate unless
+necessary" instruction.
+
+**Binding display rule** (directly from the task's own example):
+a reconstructed timestamp must never be presented as though it came
+natively from the source. Concretely: any UI or API surface showing a
+`reconstructed` time value must show it paired with its own source
+evidence and its own provenance label — never as a bare value
+indistinguishable from `native`.
+
+---
+
+## 5. User authority model
+
+Powerwave (the interpreter/detection layer) may only ever:
+
+```text
+detect       — classify a column/combination into a family, or fail to
+suggest      — propose a reconstructed value or a family/unit choice
+preview      — show a bounded before/after sample (§16)
+warn         — surface a diagnostic (§11)
+```
+
+The engineer alone may:
+
+```text
+accept        — confirm a suggestion, making it the active interpretation
+adjust        — change family, unit, columns, or a suggested value
+keep original — decline a suggestion; the native/partial value stands as-is
+use sample index — explicitly fall back, abandoning time semantics
+```
+
+**No silent engineering decision when ambiguity materially affects time
+interpretation.** This is the direct extension of the same principle
+already governing column roles (`app.domain.working_overlay`'s own "do
+NOT automatically classify columns" rule, Slice 5) and Slice 6's own
+issue model ("do NOT silently decide a header is mandatory"). Time
+interpretation is simply the highest-stakes instance of a rule this
+codebase already lives by everywhere else in preparation.
+
+A *non-ambiguous* detection (§7's "clean case," e.g. a single column of
+unambiguous ISO-8601 absolute timestamps with a strictly increasing,
+non-repeating sequence) may be shown as already `Ready` without
+requiring an explicit click — there is nothing to decide. The line is:
+**if two people could reasonably disagree about the correct
+interpretation, or if any information had to be invented to produce
+one, the engineer must be asked.** If not, showing a confirmed default
+is not a violation of this principle — it is simply reporting a fact.
+
+---
+
+## 6. Interpretation fallback hierarchy
+
+The owner-approved hierarchy, formalized:
+
+```text
+1. Use valid native time
+        ↓ (only if step 1 cannot produce a trustworthy result)
+2. Detect precision loss / repeated-timestamp pattern
+        ↓
+3. Suggest a reconstructed interval, IF cadence confidence supports it
+        ↓ (always available, at any point in this chain)
+4. Allow the user to enter an interval / sampling rate manually
+        ↓ (only if nothing above produced an accepted result)
+5. Preserve all rows; fall back to Sample Index
+```
+
+Two properties this hierarchy is designed to guarantee:
+
+- **Monotonic degradation of TRUST, never of DATA.** Every step down
+  this chain reduces how much Powerwave claims to know about real time
+  — it never reduces how many rows exist or what their original values
+  were.
+- **The user may enter at any rung, at any time, in either direction.**
+  A source that starts at step 5 (index fallback, because detection
+  found nothing usable) can move to step 4 the moment the user supplies
+  a rate. A source sitting at step 3 (an unaccepted suggestion) can be
+  overridden straight to step 4 (the user's own number) or abandoned
+  straight to step 5. This is not a one-way pipeline; it is a
+  configuration the user can revisit, matching the same
+  edit-anytime/undo-anytime posture already established for header,
+  data-region, and column-role state (Slice 5).
+
+**Confidence model** (step 3's own gate, kept deliberately simple per
+the task's own "do not make confidence mathematically elaborate unless
+justified" instruction):
+
+| Level | Informal meaning | Example evidence |
+|---|---|---|
+| High | The repeated-bucket pattern is stable across many consecutive transitions, with no irregular gaps | `5, 5, 5, 5, 5, 5, ...` rows per second-bucket, sustained |
+| Medium | The pattern is mostly stable but has some irregularity, or the sample size is small | `5, 5, 4, 5, 6, 5, 5` — close, not perfectly uniform |
+| Low | The pattern is inconsistent enough that automatic reconstruction should not be offered as a one-click action | `5, 4, 7, 3, 8, 2` |
+
+A `Low` confidence result is still SHOWN as a diagnostic (§11) — it is
+never hidden — but the UI does not present a one-click "Accept
+Suggestion" affordance for it; the user is directed toward manual entry
+(step 4) or Sample Index (step 5) instead. This is a UI-presentation
+distinction, not a data-visibility one — consistent with Principle 1.
+
+This confidence model is explicitly a *qualitative bucket*, not a
+numeric score with fixed thresholds — deferring the exact
+evidence-to-bucket rule to whichever interpreter implements it in
+Slice 8, since that rule is properly an *interpreter's own concern*
+(§17), not part of the framework contract itself.
+
+---
+
+## 7. Repeated timestamp / precision-loss handling
+
+This is the scenario the owner's own example walks through in detail,
+formalized as the framework's own worked case.
+
+**Detection concept**: group consecutive rows by identical native
+timestamp value, forming buckets. A bucket size greater than 1
+indicates the source's own recorded precision is coarser than its true
+sampling interval. This is computed only over the CURRENT bounded
+preview page/window (never a full-dataset scan) for the compact-panel
+summary and the review preview (§16); a wider (but still explicitly
+bounded, never whole-file) sample may be used by an interpreter to
+raise its own confidence level, at that interpreter's own discretion —
+the framework contract does not mandate a specific scan size, only that
+it must stay bounded (§18's own performance requirement).
+
+**Reconstruction suggestion**: when a stable bucket-count pattern
+supports it (§6's confidence model), the interpreter may propose
+distributing each bucket's own rows evenly across the interval implied
+by the transition to the NEXT distinct native timestamp. Example
+(directly from the task):
+
+```text
+Native            Suggested (reconstructed)
+13:14:01          13:14:01.000
+13:14:01          13:14:01.200
+13:14:01          13:14:01.400
+13:14:01          13:14:01.600
+13:14:01          13:14:01.800
+13:14:02          13:14:02.000
+```
+
+**Phase ambiguity is explicitly acknowledged, not hidden.** The
+evidence above supports a 200 ms SPACING; it does not by itself prove
+whether the first sample within the `13:14:01` bucket truly occurred at
+`.000` rather than, say, `.100` (a half-interval phase shift). The
+design's own response to this is definitional, not algorithmic: this
+output is called **reconstruction**, never **recovery** — the word
+"recovery" would imply the original value was found, when it was in
+fact synthesized under a stated assumption (even-spacing across the
+bucket, anchored at the bucket's own start). The UI (§15) must always
+show:
+
+1. the original native values, unmodified, alongside the suggestion;
+2. an explicit confidence level;
+3. a required user confirmation before this becomes the active
+   interpretation (never auto-applied, regardless of confidence level);
+4. the phase-anchoring assumption in plain language when the user
+   requests more detail (progressive disclosure — not in the compact
+   summary).
+
+**Sample-index fallback** for this exact scenario: if the user declines
+the suggestion, or confidence is too low to offer one, or the user
+simply prefers not to guess, Sample Index (§9) remains fully available
+and preserves every row without alteration.
+
+---
+
+## 8. Manual interval / sampling-rate handling
+
+The user may directly supply either:
+
+```text
+Sampling rate     (e.g. 20 Hz)
+Sample interval   (e.g. 50 ms)
+```
+
+**Canonical internal value**: sample interval, in seconds, as a
+floating-point value. Rationale: `TimingInformation`/`SamplingInformation`
+(`app/domain/timing.py`) already express rate in Hz for
+`SamplingInformation.sampling_rates`, but the actual per-sample
+placement math downstream (`elapsed_start_seconds`/`elapsed_end_seconds`,
+`disturbance_record.py:83-101`) is seconds-based throughout — storing
+the user's own input as seconds-per-sample avoids a repeated Hz→seconds
+conversion at every read site, while a rate is still trivially derived
+for display or for populating `SamplingInformation` later (Slice 10's
+own concern, not this one). Whichever unit the user actually types is
+preserved as `user_specified` provenance metadata (so the UI can echo
+back "20 Hz" rather than a converted "0.05 s" if that is what the user
+typed) — only the INTERNAL working value is canonicalized, never the
+user's own displayed input.
+
+**Units are never silently inferred.** A bare numeric column (§9) always
+requires an explicit unit choice from the user or a specific interpreter
+decision recorded with `user_specified`/`reconstructed` provenance —
+never a default assumption baked into the framework itself.
+
+---
+
+## 9. Sample-index fallback
+
+Available at all times, not merely as a last resort — the user may
+choose it directly even when a native/reconstructed interpretation
+exists, if they prefer not to rely on it.
+
+**Numeric elapsed-time units**: a plain numeric elapsed-time column is
+ambiguous without an explicit unit. The framework defines an
+open-ended (Principle 6) but presently-illustrated unit set:
+
+```text
+seconds
+milliseconds
+microseconds
+nanoseconds
+```
+
+matching `TimingInformation.time_axis_unit`'s own existing (currently
+dead — `app/domain/timing.py:44`, confirmed unused anywhere in
+`backend/app` by direct inspection) field, which this framework is the
+first real producer for. No default unit is ever assumed; the field
+stays required whenever family `elapsed` is selected, until the user
+picks one.
+
+**Sample Index semantics** (directly from the task): when index
+fallback is active, the ORIGINAL time column (if one existed at all —
+some sources may have no time-like column whatsoever) is preserved as
+source/provenance information, inspectable in the working preview
+exactly like any other column (nothing about it changes — it simply
+does not supply the active plotting basis). The active plotting basis
+becomes the row's own sequential position: `1, 2, 3, 4, ...`.
+
+**Consequences that must be documented to the user, not silently
+implied**:
+
+- No trustworthy real-time duration exists for this source.
+- No trustworthy absolute or relative-seconds axis exists.
+- No absolute synchronization with another source is possible (this is
+  not a new limitation — it is exactly the existing, already-tested
+  `elapsed_only` singleton-group behavior in
+  `app.domain.time_grouping.derive_time_groups()`, confirmed by direct
+  reading of that module: "every source whose `timing_reference !=
+  "absolute"` always gets its own singleton, unaligned group").
+- Any later feature that depends on a known, real sample interval
+  (e.g. an accurate RMS window in physical units) may be unavailable or
+  degraded for this source until real timing information is supplied —
+  this framework never pretends index spacing equals seconds.
+
+---
+
+## 10. Multiple Time Axis columns
+
+The `Time Axis` column role (Slice 5,
+`app.domain.working_overlay.ROLE_TIME_AXIS`) already explicitly permits
+more than one column to carry it simultaneously — verified directly:
+Slice 5's own service layer performs no uniqueness check across
+columns for this role (`app/services/working_overlay_service.py`'s
+`set_column_role()` validates only role-set membership, never
+cross-column exclusivity), and this was a deliberate Slice 5 design
+choice ("do not assume the future time basis must always come from
+exactly one physical column").
+
+This design treats a **Time Axis Input Set** — the ordered tuple of
+currently-selected `Time Axis` columns for one worksheet/source — as
+the unit an interpreter actually receives, rather than a single column.
+An interpreter declares which INPUT SHAPES it knows how to combine
+(§17); the framework itself does not hard-code combination rules.
+
+Illustrative (not exhaustive, per Principle 6) combinations:
+
+```text
+1 column   → a single absolute/elapsed/partial/index column
+2 columns  → Date + Time (assembling one absolute value from two cells)
+2 columns  → seconds + microseconds (assembling one elapsed value)
+N columns  → any future split-field convention a later interpreter defines
+```
+
+**Selecting more Time Axis columns than any known interpreter can
+combine is not an error.** It simply means no interpreter currently
+claims that input shape, and the interpretation family for that
+worksheet/source falls to `unknown` until either the user narrows the
+selection or a future interpreter is added (Principle 6) that
+understands it. This is never silently resolved by guessing which
+column "really" matters.
+
+---
+
+## 11. Ambiguous / irregular timing cases
+
+Represented as **diagnostics** — read-only findings surfaced to the
+user — never silently repaired. This mirrors exactly how Slice 6's own
+`PreparationIssue` model already works (informational findings about
+current state, never auto-fixes, never raised as an exception) and is
+expected to REUSE that same model rather than invent a second one (see
+§13 for the precise boundary and why these are not YET issued as real
+Slice 6 issues today).
+
+At minimum, the framework must be able to represent all of the
+following as distinct diagnostic conditions:
+
+| Condition | What it means | What Powerwave does |
+|---|---|---|
+| Time goes backward | A later row's native time precedes an earlier row's | Flag; never reorder (Principle 3) |
+| Timestamp reset | Time drops back to near-zero/near-start mid-file | Flag; never split into multiple sources automatically |
+| Midnight rollover | A time-only column wraps past `23:59:59` back to `00:00:00` | Flag as a `partial`-family concern; never silently add a day without user confirmation |
+| Large time gap | A much longer-than-typical interval between consecutive rows | Flag as a possible missing-sample region (§12); never insert a row |
+| Non-uniform sampling | Intervals vary beyond what confidence (§6) supports | Lowers confidence; never forces a reconstruction |
+| Repeated timestamps | Covered fully in §7 | — |
+| Mixed time formats | Different rows appear to use different representations in the same column | Flag as `unknown`/needs-attention for the affected rows; never silently normalize |
+| Ambiguous date locale | e.g. `03/04/2026` — DD/MM or MM/DD unclear | Flag; require explicit user confirmation of locale before treating as `absolute` |
+| Missing timestamp | A blank cell in an otherwise time-bearing column | Governed by Principle 1 (a genuinely blank cell is fine as "missing," per the exact same blank-handling convention already used for column labels) — never fabricated |
+| Time-only with no date | Covered fully as the `partial` family (§3) | — |
+
+None of these conditions are validated or acted upon automatically.
+They exist so a later Readiness Validator (§13) has something concrete
+to consume, and so the compact Time Axis panel (§15) has something
+honest to summarize ("Interpretation: repeated timestamps detected" is
+literally this table's own first row, worded for the user).
+
+---
+
+## 12. Non-empty ambiguous data-value preservation
+
+This section formalizes Principle 1's own boundary with time
+interpretation specifically, since the two interact directly (a
+Waveform Channel column can contain `"ERR"` in the very row whose time
+value is otherwise perfectly interpretable).
+
+**The rule is column-role-agnostic.** Whether the ambiguous value sits
+in a `Time Axis` column or a `Waveform Channel` column, the same
+handling applies: preserve the exact original value, never coerce it,
+and surface it as a diagnostic. A time interpreter that cannot parse
+one cell in an otherwise-parseable Time-Axis column does not fail the
+whole column — it flags that ONE row as unparseable/`unknown` for
+timing purposes while leaving the value itself completely untouched
+(consistent with `_apply_working_overlay`'s own existing per-row,
+per-cell granularity, `app/services/preparation_preview_service.py`).
+
+**The boundary this document draws explicitly** (directly requested by
+the task):
+
+```text
+Time interpreter's own job:
+    detect that a value is unparseable/ambiguous for time purposes
+    record it as a diagnostic with its own location (row/column)
+    NEVER decide whether this makes the dataset unacceptable
+
+Readiness Validator's own future job (Slice 9, NOT this document):
+    decide whether an ambiguous value is blocking for a given
+    column role (e.g. "ERR" in a Waveform Channel may become a
+    blocking finding once real severity policy exists;
+    an occasional non-critical text value in a Metadata column
+    may never be blocking at all)
+```
+
+No severity policy is decided here. This document only guarantees that
+whatever the Readiness Validator eventually decides, it will have
+complete, unmodified source values and complete diagnostic records to
+decide from — never a version of the data that has already been
+silently cleaned up on its behalf.
+
+---
+
+## 13. Diagnostics and readiness boundary
+
+**Time-interpretation diagnostics are not yet Slice 6
+`PreparationIssue`s.** This is a deliberate Slice 7 scope decision, not
+an oversight: Slice 6's own production issue set
+(`app/services/preparation_issue_service.py`) is currently a short,
+closed, conservative list (`header_not_selected` /
+`data_region_unconfigured` / `column_roles_unassigned`), all `info`
+severity, all derived from CONFIGURATION state, never from data
+content. A time-interpretation diagnostic (e.g. "repeated timestamps
+detected," "possible missing sample") is derived from DATA CONTENT, a
+qualitatively different and materially riskier thing to surface as a
+severity-carrying finding before real readiness policy exists for it.
+
+**Slice 7's own proposal**: time-interpretation diagnostics live in
+their own result shape (`TimeAxisDiagnostics`, §17) returned alongside
+the interpretation itself, consumed directly by the Time Axis panel
+(§15). They are NOT injected into `GET .../issues`'s own
+`PreparationIssueSummary` in Slice 7.
+
+**Why this boundary, concretely**: `PreparationIssue.severity` already
+has `blocking`/`warning` as real, modeled capabilities (Slice 6) that
+this codebase has explicitly and repeatedly declined to exercise until
+owner-approved validation semantics exist for them (Slice 6's own
+module docstring: "never invents that something is blocking or a
+warning without owner-approved validation semantics behind it"). A time
+diagnostic is exactly the kind of finding a future Readiness Validator
+will likely want to promote to `warning`/`blocking` — but deciding that
+mapping now, inside a framework-only slice, would be scope creep this
+document is specifically asked to avoid (see §19's own "no production
+issue rules" non-goal). **When Slice 9 (Readiness Validator) is
+actually scoped, whether/how time diagnostics feed into
+`PreparationIssue` is exactly the kind of decision that document should
+make explicitly** — flagged here as a genuinely open question (§21),
+not resolved by this document.
+
+**What IS shared today**: the transport shape. `TimeAxisDiagnostics`
+should structurally resemble `PreparationIssue` closely enough
+(severity-like label, code, message, location, suggested action) that
+promoting a subset of them into real `PreparationIssue`s later, once
+Slice 9 policy exists, is a mechanical mapping rather than a redesign.
+
+---
+
+## 14. Absolute vs non-absolute semantics
+
+Reuses `TimingInformation.timing_reference` (`app/domain/timing.py:43`)
+**verbatim** — no new field, no parallel enum. This is not a
+convenience choice; it is the ONLY way to satisfy Principle 6's own
+explicit test ("new interpreters must be addable... without altering
+`time_grouping.py`, `synchronization.py`, or any waveform-rendering
+code" — `CSV_EXCEL_INGESTION_ARCHITECTURE.md §15`).
+
+Mapping from this document's own semantic families (§3) to that
+existing two-value signal, established as an explicit design table so
+Slice 10 (canonical conversion, not this document's own scope) has an
+unambiguous contract to implement against later:
+
+| Family (§3) | Resulting `timing_reference` | Condition |
+|---|---|---|
+| `absolute` | `"absolute"` | ONLY when a real, defensible calendar date+time exists — never merely because the family label says "absolute"; see Principle 5 |
+| `elapsed` | non-`"absolute"` (`"relative_elapsed"`, the value `time_grouping.py` already anticipates) | Always |
+| `sample_index` | non-`"absolute"` | Always — an index has no calendar meaning regardless of any rate supplied |
+| `partial` | non-`"absolute"` | Always, UNLESS the user explicitly supplies/confirms the missing component, at which point the result is reclassified as `absolute` going forward (a user action, never automatic — Principle 5's own "unless the engineer explicitly supplies a valid absolute anchor" clause) |
+| `unknown` | non-`"absolute"` | Always |
+
+**No fake anchor dates, ever** — restates Principle 5 in this specific
+context: a `partial` (time-only) source is never silently promoted to
+`absolute` by attaching today's date, the upload date, or any other
+synthetic day boundary. The only path from `partial` to `absolute` is
+an explicit user-supplied or user-confirmed date component, recorded
+with `user_specified` (or `reconstructed`, if Powerwave suggested a
+specific date and the user accepted it) provenance — never `native`,
+since the date was never actually in the source.
+
+**Reserved downstream vocabulary already exists and is honored, not
+duplicated**: DEC-029 (`DECISIONS.md`) already reserves the names
+**"Synthetic Elapsed Time"** and **"Sample Index"** in the waveform
+workspace's own time-mode model, explicitly for "possible future
+CSV/Excel timing work." This document's `elapsed`/`sample_index`
+families are the producers those reserved waveform-side names are
+waiting for — the actual wiring between them is Slice 10's own
+canonical-conversion work, not this document's, but the naming is
+confirmed consistent end-to-end today.
+
+---
+
+## 15. UI/UX model
+
+Follows the exact progressive-disclosure pattern already shipped for
+Preparation Status and Structure (owner UAT refinement,
+`frontend/index.html`'s own `wwDataPrepRenderIssues()`/
+`wwDataPrepRenderStructureSummary()` + "Configure"/"View Issues" toggle
+pattern) — summary first, full controls only on request, no new
+interaction paradigm invented for this feature.
+
+### 15.1 Compact default panel
+
+A new "Time Axis" panel, positioned in the Data Preparation Workspace
+alongside (not replacing) the existing Preparation Status and Structure
+panels — same panel shell, same `.ww-data-prep-panel-header` pattern
+already established.
+
+Clean case (nothing to decide):
+
+```text
+TIME AXIS
+
+Source           Column A
+Interpretation   Absolute datetime
+Status           Ready
+```
+
+Needs attention:
+
+```text
+TIME AXIS
+
+Source           Column A
+Interpretation   Repeated timestamps detected
+Timing basis     Absolute, precision limited
+Status           Review suggested
+
+[Review]
+```
+
+Multi-column:
+
+```text
+TIME AXIS
+
+Source           Columns A + B
+Interpretation   Date + Time
+Status           Ready
+```
+
+No Time Axis column selected at all (the common starting state):
+
+```text
+TIME AXIS
+
+Source           Not selected
+Status           Unconfigured
+
+[Configure]
+```
+
+**Never exposed in this panel, at any disclosure level**: interpreter
+IDs, registry names, parser class names, or any other internal
+mechanism name. The user sees semantic families and plain-language
+interpretation summaries only (§3's own family names, in Title Case,
+e.g. "Absolute datetime," "Elapsed time," "Sample index" — never the
+literal `ROLE_TIME_AXIS`/`absolute`/`elapsed` code-level strings).
+
+### 15.2 Expanded review — context-specific only
+
+The expanded view shows ONLY the controls relevant to the currently
+detected/selected interpretation — never one large form covering every
+possible family at once.
+
+Repeated-timestamp review (§7's own worked case):
+
+```text
+TIME AXIS REVIEW
+
+Detected pattern
+5 samples per second (confidence: High)
+
+Suggested interval
+200 ms
+
+Original        Suggested
+13:14:01        13:14:01.000
+13:14:01        13:14:01.200
+...
+
+[Accept Suggestion]   [Adjust]   [Use Sample Index]
+```
+
+Elapsed-time configuration:
+
+```text
+Interpret as:  Elapsed Time
+Column:        [A]
+Unit:          [milliseconds ▼]
+
+[Apply]
+```
+
+Sample-index configuration:
+
+```text
+Interpret as:      Sample Index
+Column:            [A]
+Sampling rate:     [5000] Hz   (optional)
+
+[Apply]
+```
+
+### 15.3 State model
+
+A deliberately small user-facing state set (internal interpreter/
+detection state may be richer, but the UI never exposes more than
+this):
+
+```text
+Unconfigured      — no Time Axis column(s) selected yet
+Detected          — Powerwave classified a family, no issue found
+Review suggested  — a diagnostic exists and/or a reconstruction is offered
+Confirmed         — the user has explicitly accepted the active interpretation
+Needs attention   — a diagnostic exists that the user has not yet acted on
+Index fallback    — Sample Index is the active basis
+Unsupported       — the current column(s)/family combination has no interpreter (§10)
+```
+
+`Confirmed` and `Detected` may look identical when nothing was
+ambiguous (§5's own "clean case" clause) — the state exists mainly to
+let the compact panel say `Ready` truthfully once an explicit
+acceptance has actually happened for anything that WAS ambiguous.
+
+### 15.4 Visibility/collapse persistence
+
+Identical policy to the existing Preparation Status/Structure panels:
+frontend-only, session-scoped, reset to collapsed every time the Data
+Preparation Workspace is (re)opened — never persisted server-side,
+never a new backend field.
+
+---
+
+## 16. Preview model
+
+Every reconstruction or user-entered conversion is shown against a
+**bounded** sample before being applied — never a requirement to
+materialize the whole dataset.
+
+```text
+Original            Interpreted
+13:14:01             13:14:01.000
+13:14:01             13:14:01.200
+13:14:01             13:14:01.400
+```
+
+**Reuses the existing paged-preview mechanism, not a new one.** The
+bounded window is exactly the CURRENTLY loaded preview page
+(`app.services.preparation_preview_service`'s own `PreviewRow` list,
+already capped at `PREVIEW_MAX_LIMIT` = 1000 rows) — the same rows
+already on screen, with a parallel "interpreted" column computed
+alongside them. This requires no new fetch, no new pagination model,
+and no whole-file scan: if the interpretation-relevant rows (e.g. the
+repeated-timestamp bucket) are not on the currently loaded page, the
+existing "Go to Last Rows"-style navigation (owner-UAT refinement,
+`wwDataPrepFetchPreview()`) is the same mechanism the user already
+knows for moving to the region of interest before reviewing.
+
+The preview computation itself is **read-only and disposable** — it
+never mutates `PreparationSession.raw_bytes` or the Working Overlay
+until the user explicitly clicks Accept/Apply (§5). Declining or
+navigating away discards it with no residual state, matching the exact
+same "cancel/Escape discards, never commits" convention already used
+for cell click-to-edit (Slice 4, `wwDataPrepBeginCellEdit()`'s own
+Escape handling).
+
+---
+
+## 17. Extensibility / interpreter registry concept
+
+**Interpreter interface** (illustrative shape, not final code — Slice 7
+will formalize the exact signatures):
+
+```text
+TimeAxisInterpreter
+├── family: str                      — which semantic family (§3) this interpreter produces
+├── accepts(input_columns_shape) -> bool
+│                                     — does this interpreter know how to
+│                                       combine the CURRENTLY selected Time
+│                                       Axis Input Set (§10)?
+├── detect(session, worksheet_index, sample_window) -> DetectionResult
+│                                     — bounded-sample classification +
+│                                       confidence (§6) + diagnostics (§11)
+└── interpret(session, worksheet_index, config, page) -> list[InterpretedValue]
+                                      — bounded-page interpretation only,
+                                        never whole-dataset, mirroring every
+                                        existing preview/preparation
+                                        function's own paging discipline
+```
+
+**Registry**: a simple, explicit list of known interpreters (matching
+`app.domain.working_overlay.KNOWN_COLUMN_ROLES`'s own "small, explicit
+tuple, not a plugin-discovery mechanism" precedent) — no dynamic
+plugin-loading infrastructure, no configuration file, no new
+dependency. Adding an interpreter means adding one more entry to this
+list plus its own module, exactly like adding a new column role would.
+
+**Why this satisfies Principle 6/DEC-072 point 6 concretely**: every
+interpreter communicates with the rest of the system through EXACTLY
+two existing, already-stable surfaces —
+`TimingInformation.timing_reference` (§14) and the bounded
+`PreviewRow`/diagnostic shapes (§13/§16) this document defines once,
+generically. Neither `time_grouping.py` nor `synchronization.py` nor
+any waveform-rendering file needs to know an interpreter exists at all.
+
+**Illustrative future interpreters (Principle 6 — not exhaustive, none
+implemented here)**:
+
+```text
+Excel serial datetime (a numeric family requiring a specific epoch rule)
+device-specific timestamp encodings
+GPS week/seconds
+epoch seconds / epoch milliseconds
+custom split time fields beyond Date+Time (e.g. Day + Time-of-day + AM/PM flag)
+new locale-specific date formats
+```
+
+Each would be added as one new interpreter registration, satisfying the
+existing `family`/`accepts`/`detect`/`interpret` contract — no rewrite
+of the Time Axis panel, the preview model, or the domain storage
+location (§18) required.
+
+---
+
+## 18. Slice 7 scope — framework only
+
+Proposed exact scope, consistent with
+`CSV_EXCEL_INGESTION_ARCHITECTURE.md §14` item 7 ("Extensible time-axis
+framework. Interpreter architecture; an explicit unknown/unsupported
+path; no closed format list"):
+
+**Included**:
+
+1. **Domain model** — `app/domain/time_axis.py` (new module,
+   mirroring `app/domain/working_overlay.py`'s own layering
+   discipline: zero framework dependencies, pure dataclasses/functions
+   only): the semantic-family constants (§3), provenance constants
+   (§4), a `TimeAxisConfiguration` dataclass (family, the Time Axis
+   Input Set of column indices, unit-or-rate, provenance, any
+   user-confirmed override values), and a `TimeAxisDiagnostic`
+   dataclass (§11/§13's own shape).
+2. **Storage location**: `WorkingOverlay` gains
+   `time_axis: dict[worksheet_index_or_None, TimeAxisConfiguration]`
+   — the SAME sparse, per-worksheet-scoped dict pattern already used
+   for `header_row`/`data_region` (Slice 5), participating in the
+   exact same bounded undo/redo history and revision counter
+   (`WorkingOperation`) with zero new mechanism, mirroring the
+   data-region end-mode refinement's own proof that a new sub-state
+   fits into the existing overlay for free.
+3. **Interpreter interface + registry** (§17) — the contract only; no
+   concrete interpreter beyond a minimal `unknown`/pass-through one
+   needed to prove the registry mechanism works end-to-end.
+4. **Interpretation result / diagnostics model** (§13) — computed live
+   at preview-read time (matching Slice 6's own "derive live, no
+   cache" convention, `app.services.preparation_issue_service`'s own
+   module docstring reasoning applies identically here), never
+   persisted beyond the overlay's own configuration.
+5. **API**: extends the existing preparation-source API family the
+   same minimal way Slice 5/6 each did — a
+   `GET .../preparation-sources/{id}/time-axis` read endpoint
+   (mirroring `GET .../issues`) plus `PUT`/`DELETE
+   .../working/time-axis` mutation endpoints (mirroring
+   `PUT`/`DELETE .../working/header`) — no new endpoint family, no new
+   router.
+6. **Compact Time Axis UI shell** (§15.1) plus the `Unconfigured` and
+   `Unsupported` states fully working end-to-end — proving the
+   progressive-disclosure shell and the "no interpreter claims this
+   input shape" path, without yet having a real interpreter behind
+   most of it.
+7. **Explicit unknown/unsupported representation** — a Time Axis
+   Input Set that no registered interpreter accepts must render as
+   `Unsupported` cleanly (§15.3), never as an error, never as a crash,
+   never as a silently-ignored selection.
+
+**Explicitly excluded from Slice 7** (deferred to Slice 8 or later):
+any concrete family-specific parsing/detection logic beyond the
+minimal pass-through needed to prove the registry works; the
+repeated-timestamp reconstruction algorithm and its confidence
+computation (§6/§7); the expanded per-family review UI content (§15.2)
+beyond a generic placeholder; promotion of diagnostics into
+`PreparationIssue` (§13, deferred to Slice 9's own scope decision).
+
+---
+
+## 19. Slice 8 scope — initial interpreters
+
+Proposed exact scope, consistent with
+`CSV_EXCEL_INGESTION_ARCHITECTURE.md §14` item 8 ("Initial time-axis
+interpreters. The safest initial cases only"):
+
+**Included** (the task's own "strong candidates," adopted as the
+initial set):
+
+1. **Single-column absolute datetime** — the most common, least
+   ambiguous case; native `absolute` family, provenance `native` for
+   the clean sub-case, feeding directly into `timing_reference =
+   "absolute"` (§14).
+2. **Date + Time (two columns)** — the first concrete multi-column
+   Time Axis Input Set (§10), assembling one `absolute` value.
+3. **Elapsed numeric time** — with the required explicit unit
+   selection (§9), never a default unit.
+4. **Sample index** — including the optional sampling-rate input
+   (§8/§9).
+5. **Repeated-timestamp / lost-precision detection** — the full §6/§7
+   fallback hierarchy and confidence model, including the
+   reconstruction suggestion, the required user confirmation, and the
+   Sample Index fallback when declined.
+
+**Deliberately NOT included in Slice 8** (later, illustrative-only per
+Principle 6): Excel serial datetime, device-specific encodings, GPS
+week/seconds, epoch seconds/milliseconds, custom multi-field splits
+beyond Date+Time, additional locale formats — each remains a genuinely
+future interpreter addition (§17), not a Slice 8 commitment.
+
+---
+
+## 20. Explicit non-goals
+
+Confirmed NOT part of this document, and not to be implemented as a
+side effect of any future slice claiming to merely "follow this
+design":
+
+```text
+time interpreters (concrete parsing/detection code)
+timestamp parsing
+reconstruction algorithm implementation
+sampling-rate inference implementation
+readiness validator
+new production preparation-issue rules
+DisturbanceRecord conversion
+CSV/Excel waveform plotting
+export
+automatic row repair
+data interpolation
+synthetic waveform values
+sample insertion
+```
+
+This document is design and documentation only. No source file under
+`backend/app/` or `frontend/` is modified by this task.
+
+---
+
+## 21. Open questions / future decisions
+
+Genuinely unresolved matters this document deliberately does NOT
+settle, each requiring its own future owner decision at the point the
+relevant slice is actually scoped:
+
+1. **Whether/how time-interpretation diagnostics eventually feed into
+   `PreparationIssue`** (§13). This document establishes that they are
+   structurally compatible but does not decide the mapping, since that
+   mapping is inseparable from Slice 9's own severity-policy decisions
+   (which findings become `warning`/`blocking`, and under what
+   condition) — deciding it here would be exactly the "new production
+   issue rules" non-goal (§20).
+2. **The exact confidence-bucket computation** (§6) is left to whichever
+   interpreter implements repeated-timestamp detection in Slice 8 —
+   this document fixes the three-level vocabulary and the qualitative
+   evidence categories, not a specific formula/threshold.
+3. **Whether a `partial`-family time-only column, once a date is
+   user-confirmed, should be stored as a NEW `TimeAxisConfiguration`
+   entry or as an evolution of the existing one** (i.e. does
+   reclassifying `partial → absolute` count as the "same" time-axis
+   configuration for undo/redo purposes, or a distinct operation?) —
+   an implementation-level modeling question best resolved once Slice 7
+   is actually being written against real code, not abstractly here.
+4. **Exact API request/response field names** for
+   `TimeAxisConfiguration`/`TimeAxisDiagnostic` (§18) — this document
+   fixes the CONCEPTS and the storage/undo-redo/API-shape PATTERN
+   (mirroring Slice 5 exactly), not final JSON field names, consistent
+   with how prior slices' own exact schemas were only finalized during
+   their own implementation, not during the architecture audit that
+   preceded them.
+5. **Whether the interpreter registry ever needs to become genuinely
+   pluggable** (vs. the explicit small-list approach proposed in §17)
+   — deferred until a real need for third-party/runtime-configurable
+   interpreters materializes; no evidence for that need exists today.
+
+This registry follows the exact same `[DECISION MODE: ...]` convention
+already used in `CSV_EXCEL_INGESTION_ARCHITECTURE.md §18` — items above
+are `[DECISION MODE: ANALYSIS]` (item 1, once Slice 9 is scoped),
+`[DECISION MODE: ANALYSIS]` (items 2–4, once Slice 7/8 implementation
+actually begins), and `[DECISION MODE: DEFER]` (item 5).

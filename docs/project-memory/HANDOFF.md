@@ -8,8 +8,115 @@ Last updated: **2026-09-01**
 
 ## What was most recently done
 
+**CSV/Excel Time Interpretation Framework — design specification
+(design-only checkpoint, no implementation).** Owner-requested task,
+preceding Slice 7: produce the formal design for how Powerwave will
+interpret time information from CSV/Excel sources, so Slice 7
+(framework) and Slice 8 (initial interpreters) — both already named in
+`CSV_EXCEL_INGESTION_ARCHITECTURE.md §14`'s own slice sequence — have a
+concrete, owner-reviewable design to build against instead of being
+scoped from scratch mid-implementation.
+
+**Deliverable**: new
+[CSV_EXCEL_TIME_INTERPRETATION.md](CSV_EXCEL_TIME_INTERPRETATION.md),
+following the exact 21-section structure the task specified. Read the
+document itself for full detail; the highlights:
+
+- **Semantic families** (§3, open-ended per DEC-072 point 6):
+  `absolute`, `elapsed`, `sample_index`, `partial` (time-only, no
+  date — deliberately its own family, never silently promoted),
+  `unknown`.
+- **Provenance model** (§4, four states, not five — "inferred" was
+  considered and folded into the confidence model instead, since it
+  would otherwise duplicate that concept): `native`, `reconstructed`,
+  `user_specified`, `index_only`. A reconstructed value must never be
+  shown as though it were native.
+- **Fallback hierarchy** (§6): native → detect precision loss →
+  suggest reconstruction (gated by confidence) → manual interval/rate
+  entry → Sample Index. Degrades TRUST, never DATA — every rung
+  preserves every row.
+- **Repeated-timestamp handling** (§7): the owner's own 5-Hz worked
+  example, formalized — reconstruction, not "recovery" (the phase
+  ambiguity is real and disclosed, never hidden), always requires
+  explicit user confirmation, Sample Index always available as an
+  alternative.
+- **Confidence model** (§6): a deliberately simple High/Medium/Low
+  qualitative bucket, not a numeric formula — the exact evidence rule
+  is left to whichever interpreter implements it in Slice 8.
+- **User authority** (§5): Powerwave may detect/suggest/preview/warn
+  only; the engineer accepts/adjusts/keeps-original/uses-index. A
+  genuinely unambiguous case may show `Ready` without a forced click.
+- **Absolute vs non-absolute** (§14): reuses
+  `TimingInformation.timing_reference` (`app/domain/timing.py:43`)
+  **verbatim** — no new field, no parallel enum. Verified this is
+  consistent with DEC-029's own reserved "Synthetic Elapsed Time"/
+  "Sample Index" waveform-side names and with
+  `time_grouping.py`'s own existing `elapsed_only` singleton-group
+  behavior (nothing there needs to change).
+- **Diagnostics/readiness boundary** (§13): time-interpretation
+  diagnostics are explicitly NOT yet `PreparationIssue`s in Slice 7 —
+  structurally compatible for a future promotion, but that mapping is
+  left as an open question for whenever Slice 9 (Readiness Validator)
+  is actually scoped, not decided here.
+- **UI/UX** (§15): a new "Time Axis" panel using the EXACT same
+  progressive-disclosure shell already shipped for Preparation
+  Status/Structure (compact summary + "Configure"/"Review" toggle) —
+  no new interaction paradigm. Interpreter internals (registry names,
+  parser classes) are never exposed to the user.
+- **Multiple Time Axis columns / interpreter registry** (§10/§17):
+  confirmed the existing Slice 5 `ROLE_TIME_AXIS` role already permits
+  multiple columns with zero uniqueness check (verified directly in
+  `working_overlay_service.set_column_role()`) — this design treats
+  the selected columns as one "Time Axis Input Set" an interpreter
+  either accepts or doesn't; a small explicit interpreter list, not a
+  plugin system.
+- **Slice 7 scope proposed** (§18): domain model + `WorkingOverlay`
+  storage (same sparse per-worksheet dict pattern as `header_row`/
+  `data_region`, free undo/redo) + interpreter interface/registry +
+  diagnostics model + minimal API + compact UI shell +
+  Unconfigured/Unsupported states. No concrete parsing logic beyond a
+  pass-through needed to prove the registry.
+- **Slice 8 scope proposed** (§19): single-column absolute datetime;
+  Date + Time; elapsed numeric time; sample index; repeated-timestamp
+  detection — the task's own "strong candidates," adopted verbatim.
+
+**Verified before writing, not assumed**: read
+`app/domain/disturbance_record.py`, `app/domain/timing.py`,
+`app/domain/time_grouping.py` (there is no
+`app/services/time_grouping.py` — the task named a path that doesn't
+exist; the real module is `app/domain/time_grouping.py`, read in full
+instead), `app/api/v1/preparation_sources.py`, `frontend/index.html`,
+and `DECISIONS.md`'s DEC-072/DEC-029 entries in full before finalizing
+this design, so every cross-reference in the document points at real,
+current code — not an assumed shape.
+
+**No new `DECISIONS.md` entry** — this document formalizes and extends
+DEC-072 points 5/6, already binding; it makes no new owner-level
+architectural decision that isn't already either owner-supplied by this
+task's own instructions or a direct restatement of an existing decision.
+
+**Files changed**: documentation only —
+`docs/project-memory/CSV_EXCEL_TIME_INTERPRETATION.md` (new),
+`CSV_EXCEL_INGESTION_ARCHITECTURE.md` (§14 items 7/8 marked
+`[DESIGN COMPLETE]`, §15 cross-referenced), `CURRENT_STATE.md`, here.
+Zero files under `backend/app/` or `frontend/` touched — verified via
+`git status` before and after.
+
+**Next step**: nothing is pre-authorized by this design document alone.
+Slice 7 (Extensible time-axis framework) is the next implementation
+candidate per the owner's revised sequence, and now has a concrete
+design to build against — but still requires its own explicit
+go-ahead to begin, per
+[Change governance](../../CLAUDE.md#change-governance).
+
+## What was done in the prior session — Data-region end-selection UX refinement: "To end of file/sheet" vs. "Specific row," plus "Go to Last Rows"
+
 **Data-region end-selection UX refinement — "To end of file/sheet" vs.
-"Specific row," plus "Go to Last Rows" navigation.** Owner UAT found
+"Specific row," plus "Go to Last Rows" navigation. Implemented,
+verified, and committed as `be1ec95`** ("feat: improve data region end
+selection"; NOT pushed; `app/domain/working_overlay.py`'s own portion
+already delivered separately via owner commit `db72885`, see that
+commit's own note below). Owner UAT found
 the data-region END-ROW workflow "unnecessarily burdensome" for large
 sources (manually finding the true last row). Split across two states
 -- see the explicit split below, per owner instruction, since part of
