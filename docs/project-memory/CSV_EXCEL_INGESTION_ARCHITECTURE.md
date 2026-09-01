@@ -991,6 +991,76 @@ owner go-ahead before implementation begins.
    configuring header/region/roles, preserved row-level quick actions
    and Undo, and correct per-worksheet summary isolation for a
    multi-sheet Excel workbook -- zero console/page errors.
+
+   **`[DONE, 2026-09-01]` Data-region end-selection UX refinement
+   (owner UAT, presentation + minimal model evolution).** Owner
+   feedback: manually finding the true last data row of a large source
+   was "unnecessarily burdensome." `app.domain.working_overlay.DataRegion`
+   gains `end_mode` (`END_MODE_SOURCE_END` / `END_MODE_SPECIFIC`,
+   defaulting to `END_MODE_SPECIFIC` so every pre-refinement call site
+   keeps working completely unchanged) -- `end_row` is `None` for
+   `END_MODE_SOURCE_END` (a genuinely floating boundary, deliberately
+   NEVER resolved into a stored numeric guess, even though the actual
+   total may already be known). This stays ONE dataset-wide boundary
+   per worksheet/source, exactly as Slice 5 established -- no per-column
+   end was introduced, and a source with columns of differing effective
+   lengths still resolves to a single shared region (verified directly).
+   `app.services.working_overlay_service.set_data_region()`/
+   `WorkingOverlaySummary` and `app.services.preparation_preview_service`'s
+   `PreviewResult`/`_apply_structure_mapping()` extend the same way
+   (`data_end_mode` alongside the existing `data_end_row`); the actual
+   RESOLVED upper bound used only to compute each row's own
+   `in_active_region` flag (CSV: exact via the existing
+   `ensure_csv_totals_cached()`; Excel: the existing best-effort
+   `WorksheetInfo.row_count`, or unbounded when unknown) is an internal
+   detail never itself exposed on the wire. `DataRegionRequest` gains
+   `end_mode` (defaulting to `"specific"`, preserving the original
+   `{start_row, end_row}` request shape verbatim). "Go to Last Rows" is
+   frontend-only NAVIGATION -- computed from the existing
+   `GET .../rows` response's own `total_row_count` and the existing
+   paging state, reusing `wwDataPrepFetchPreview()` -- no new endpoint,
+   no data-region mutation, no revision change. Undo/redo needed ZERO
+   domain-code changes to support an end-mode change, since
+   `WorkingOperation.before`/`after` already stores the whole frozen
+   `DataRegion` object. The optional per-column "last populated row"
+   diagnostic from this task's own spec was evaluated and DEFERRED --
+   see this document's own "Genuinely unresolved" register below for
+   why. Frontend: the "Data rows" controls became a Start row input plus
+   an End radio group ("To end of file" for CSV / "To end of sheet" for
+   Excel, or "Specific row" with its own input, disabled unless
+   selected) and a "Go to Last Rows" button; the Structure summary's
+   "Data range" line reads "Rows N–end" for a floating boundary,
+   "Rows N–M" for a specific one, and "All rows" when no region is
+   configured at all.
+   Verified: full backend suite 2125 passed (24 new on top of the
+   post-Slice-6 UX refinement's 2101), zero regressions; the committed
+   browser smoke test (COMTRADE) still passes unchanged; two throwaway
+   (not committed) live-browser Playwright UAT scripts confirmed: the
+   default end mode is "To end of file" with the specific-row input
+   correctly disabled; setting a region with only a start row produces
+   "Rows N–end"; "Go to Last Rows" jumps to the true final page without
+   changing the region, the working overlay, or the revision counter;
+   switching to "Specific row" and entering a numeric end correctly
+   trims the region to "Rows N–M," with rows beyond it flagged
+   `in_active_region: false` but still fully visible; undo/redo
+   correctly round-trips an end-mode change; and an Excel workbook
+   shows "To end of sheet" wording with fully independent per-worksheet
+   region configuration -- all with zero console/page errors.
+
+   **Note on commit `db72885`** ("fix: resize the font-size", owner
+   commit): this commit unintentionally contains BOTH the owner's own
+   CSS font-size changes AND the completed `app/domain/working_overlay.py`
+   portion of this refinement (the `end_mode`/`DataRegion` domain
+   changes), because both were present in the shared working tree at
+   the moment the owner's commit was created. This is a commit-history
+   attribution/message mismatch only -- not a code defect, and not
+   something this session created or committed itself. Per explicit
+   owner direction, `db72885` is left exactly as-is (not amended,
+   reverted, or rebased); the domain-layer portion of this refinement
+   is treated as already delivered via that commit, while the remaining
+   files (service/preview/schema/API layers, tests, frontend,
+   documentation) remain normal uncommitted working-tree changes,
+   pending a separate, explicit commit instruction.
 7. **Extensible time-axis framework.** Interpreter architecture; an
    explicit unknown/unsupported path; no closed format list (DEC-072
    point 6, §15).
@@ -1156,6 +1226,7 @@ slices without further owner input):
 | 7 | Exact future `DisturbanceRecord.validate()` hardening (monotonicity/finiteness check) | `[DECISION MODE: DEFER]` — independent canonical-contract work, deliberately outside CSV/Excel scope (DEC-072 point 4) | Not currently scheduled |
 | 8 | Whether `.xls` legacy support is ever added later (would require an explicit owner decision to accept the `xlrd` dependency, since Slice 2 deliberately did not) | `[DECISION MODE: DEFER]` | Not currently scheduled |
 | 9 | Encoding detection for CSV decoding (Slice 3 uses a fixed UTF-8-with-replacement decode, disclosed as a simplification, not a solved problem) | `[DECISION MODE: DEFER]` | Not currently scheduled |
+| 10 | Optional per-column "last populated row" diagnostic (data-region end-selection UX refinement's own explicitly optional scope item) — deferred because computing it correctly requires a genuinely NEW, more expensive scan than anything already cached: CSV would need an O(rows × columns) per-cell blankness pass (today's `ensure_csv_totals_cached()` only counts rows/max-width, never inspects individual cell content), and Excel would need a full-sheet materialization, contradicting that format's own established "never a full-sheet scan" principle (§ Excel strategy) | `[DECISION MODE: DEFER]` — revisit only if a future slice's own scope already requires a comparable scan for an unrelated reason | Not currently scheduled |
 
 **`[FACT]`**: how a sample-index-only time axis is represented in the
 canonical contract (original item 4 — no field exists for it today, see

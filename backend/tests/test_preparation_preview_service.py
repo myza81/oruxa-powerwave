@@ -714,6 +714,75 @@ class TestDataRegionInPreview:
         assert row2.excluded is True  # independent concepts, both true at once
 
 
+class TestDataRegionEndModeInPreview:
+    """Owner-UAT refinement: `end_mode="source_end"` lets the region's
+    own upper bound float with the source's own known total rather than
+    requiring a manually-found numeric row. `data_end_row` stays `None`
+    on the wire for this mode -- never a resolved/guessed value -- while
+    `in_active_region` is still computed correctly using the source's
+    own actual (CSV: exact; Excel: best-effort) row total internally."""
+
+    def test_source_end_mode_reports_null_end_row_but_correct_active_flags(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n3,4\n5,6\n")  # rows 1-4
+        set_data_region(workspace_id="ws-1", source_id=source_id, start_row=2, end_mode="source_end", registry=registry)
+
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        assert result.data_start_row == 2
+        assert result.data_end_mode == "source_end"
+        assert result.data_end_row is None  # never a resolved/guessed numeric value
+        flags = {r.row_number: r.in_active_region for r in result.rows}
+        assert flags == {1: False, 2: True, 3: True, 4: True}  # correctly resolved to the true last row (4)
+
+    def test_specific_mode_still_reports_the_stored_end_row(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n3,4\n")
+        set_data_region(workspace_id="ws-1", source_id=source_id, start_row=1, end_row=2, registry=registry)
+
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        assert result.data_end_mode == "specific"
+        assert result.data_end_row == 2
+
+    def test_no_region_at_all_reports_null_end_mode(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        assert result.data_end_mode is None
+        assert result.data_end_row is None
+
+    def test_source_end_mode_on_excel_uses_best_effort_worksheet_total(self):
+        registry = PreparationSessionRegistry()
+        content = _build_xlsx({"Only": [["1"], ["2"], ["3"]]})
+        source_id = _add_excel(registry, content)
+        set_data_region(workspace_id="ws-1", source_id=source_id, start_row=2, end_mode="source_end", registry=registry)
+
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        assert result.data_end_mode == "source_end"
+        assert result.data_end_row is None
+        flags = {r.row_number: r.in_active_region for r in result.rows}
+        assert flags == {1: False, 2: True, 3: True}
+
+    def test_different_column_lengths_do_not_change_region_semantics(self):
+        # A ragged CSV (columns of different effective lengths) must
+        # still resolve ONE dataset-wide end -- never a per-column one.
+        registry = PreparationSessionRegistry()
+        content = b"a,b,c\n1,2,3\n4,5\n6\n"  # row 4 ("6") is much shorter than row 2
+        source_id = _add_csv(registry, content)
+        set_data_region(workspace_id="ws-1", source_id=source_id, start_row=1, end_mode="source_end", registry=registry)
+
+        result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+
+        # The resolved end is the source's own total row count (4),
+        # regardless of any individual row/column being shorter.
+        assert all(r.in_active_region for r in result.rows)
+        assert result.total_row_count == 4
+
+
 class TestColumnRolesInPreview:
     def test_default_roles_are_unknown(self):
         registry = PreparationSessionRegistry()

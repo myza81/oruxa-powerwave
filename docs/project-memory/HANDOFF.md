@@ -4,15 +4,142 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-08-31**
+Last updated: **2026-09-01**
 
 ## What was most recently done
 
+**Data-region end-selection UX refinement — "To end of file/sheet" vs.
+"Specific row," plus "Go to Last Rows" navigation.** Owner UAT found
+the data-region END-ROW workflow "unnecessarily burdensome" for large
+sources (manually finding the true last row). Split across two states
+-- see the explicit split below, per owner instruction, since part of
+this refinement's own code is now already committed (through no
+deliberate commit action by this session) while the rest remains
+uncommitted, per the task's own "Do not commit or push unless
+explicitly asked" instruction.
+
+**IMPORTANT — commit-history note (owner-confirmed, not a code
+defect)**: commit `db72885` ("fix: resize the font-size", authored by
+the owner directly) unintentionally contains BOTH the owner's own CSS
+font-size changes in `frontend/index.html` AND the fully completed
+`app/domain/working_overlay.py` portion of this refinement (the
+`end_mode`/`DataRegion` domain changes) -- both were present in the
+shared working tree at the moment the owner's own commit was created.
+This session did not run that commit. Per explicit owner direction:
+`db72885` is left exactly as-is (not amended/reverted/rebased), the
+`working_overlay.py` change is treated as already delivered through
+that commit, and this is purely a commit-message/attribution mismatch
+-- the code itself is correct, tested, and byte-for-byte identical to
+what this session produced.
+
+**1. Already committed (via `db72885`, alongside the owner's own CSS
+change)**: `app/domain/working_overlay.py` -- `DataRegion` gains
+`end_mode` (`END_MODE_SOURCE_END`/`END_MODE_SPECIFIC`, defaulting to
+`END_MODE_SPECIFIC` so every pre-refinement positional call site keeps
+working completely unchanged); `end_row` is `None` for
+`END_MODE_SOURCE_END` -- a genuinely floating boundary, deliberately
+NEVER resolved into a stored numeric guess even when the actual total
+is already known. `set_data_region()` gained an `end_mode` keyword
+parameter (default `END_MODE_SPECIFIC`). Undo/redo needed ZERO
+additional code to support an end-mode change, since
+`WorkingOperation.before`/`after` already stores the whole frozen
+`DataRegion` object.
+
+**2. Implemented and verified this session, NOT yet committed** (the
+task's own explicit closing instruction -- awaiting a separate commit
+instruction, same pattern as every prior slice/task):
+
+- `app/services/working_overlay_service.py`: `WorkingOverlaySummary`
+  gains `data_end_mode`; `set_data_region()` validates `end_mode` (one
+  of `KNOWN_END_MODES`), requires `end_row` only for
+  `END_MODE_SPECIFIC` (never stores a stray `end_row` for
+  `END_MODE_SOURCE_END`, even if the client sends one), and reuses the
+  exact same `_check_row_bound` helper Slice 4/5 already built (no
+  second bounds-checking implementation, and no false rejection when a
+  total is genuinely unknown).
+- `app/services/preparation_preview_service.py`: `PreviewResult` gains
+  `data_end_mode`; `_apply_structure_mapping()` resolves the ACTUAL
+  upper bound (CSV: exact; Excel: best-effort or unbounded) purely
+  internally, to compute each row's own `in_active_region` flag --
+  never exposing that resolved number on the wire for
+  `END_MODE_SOURCE_END` (the reported `data_end_row` stays `None`
+  regardless). Verified directly that a source with columns of
+  differing effective lengths still resolves to exactly ONE
+  dataset-wide region, never a per-column one.
+- `app/schemas/preparation_session.py` / `app/api/v1/preparation_sources.py`:
+  `WorkingOverlaySummaryOut`/`PreparationSourcePreviewOut` gain
+  `data_end_mode`; `DataRegionRequest` gains `end_mode` (defaulting to
+  `"specific"`, so the ORIGINAL Slice 5 request shape --
+  `{"start_row", "end_row"}`, no `end_mode` key at all -- keeps working
+  completely unchanged).
+- `frontend/index.html`: the "Data rows" controls became a Start-row
+  input plus an End radio group ("To end of file" for CSV / "To end of
+  sheet" for Excel -- task's own explicit wording requirement -- or
+  "Specific row" with its own input, disabled unless selected) and a
+  new "Go to Last Rows" button. That button is PURE NAVIGATION --
+  computed from the existing `GET .../rows` response's own
+  `total_row_count` and the existing offset/limit paging state, via the
+  existing `wwDataPrepFetchPreview()` -- no new endpoint, no
+  data-region mutation, no revision change (verified directly: revision
+  before/after the click is identical). The Structure summary's "Data
+  range" line now reads "Rows N–end" for a floating boundary,
+  "Rows N–M" for a specific one, "All rows" when unconfigured.
+- The optional per-column "last populated row" diagnostic from this
+  same task's own scope was evaluated and DEFERRED: it would require a
+  genuinely NEW, more expensive scan than anything already cached --
+  CSV would need an O(rows × columns) per-cell blankness pass (today's
+  `ensure_csv_totals_cached()` only counts rows/max-width, never
+  inspects individual cell content), and Excel would need a full-sheet
+  materialization, contradicting that format's own established "never
+  a full-sheet scan" principle. Recorded as open item 10 in
+  `CSV_EXCEL_INGESTION_ARCHITECTURE.md` §18.
+
+**Verification**: full backend suite 2125 passed (24 new on top of the
+post-Slice-6 UX refinement's 2101), zero regressions; the committed
+browser smoke test (COMTRADE) still passes unchanged; two throwaway
+(not committed) live-browser Playwright UAT scripts confirmed: default
+end mode "To end of file" with the specific-row input correctly
+disabled; a start-only region renders "Rows N–end"; "Go to Last Rows"
+jumps to the true final page without changing the region/overlay/
+revision; switching to "Specific row" with an explicit end correctly
+trims to "Rows N–M" with rows beyond it flagged `in_active_region:
+false` but still fully visible/inspectable; undo/redo correctly
+round-trips an end-mode change; and an Excel workbook shows "To end of
+sheet" wording with fully independent per-worksheet region
+configuration -- zero console/page errors across both runs.
+
+**Files changed**: Backend — `app/domain/working_overlay.py` (already
+committed via `db72885`, see above); modified (uncommitted)
+`app/services/working_overlay_service.py`,
+`app/services/preparation_preview_service.py`,
+`app/schemas/preparation_session.py`,
+`app/api/v1/preparation_sources.py`. Tests (uncommitted) — extended
+`tests/test_working_overlay_domain.py` (+8),
+`tests/test_working_overlay_service.py` (+8),
+`tests/test_preparation_preview_service.py` (+5),
+`tests/test_preparation_sources_api.py` (+6). Frontend (uncommitted) —
+`frontend/index.html` only (End radio group + Go to Last Rows markup/
+CSS -- new selectors only, the owner's own font-size values in this
+same area left completely untouched; `wwDataPrep.dataEndMode` state;
+~6 new/changed JS functions). Documentation — `CSV_EXCEL_INGESTION_ARCHITECTURE.md`
+(§14/§18 updated), `CURRENT_STATE.md`, here. No new `DECISIONS.md`
+entry -- every choice made (the end-mode shape, the backward-compatible
+default, deferring the per-column diagnostic) was already specified or
+pre-authorized by the task's own explicit instructions.
+
+**Next step**: commit the remaining (non-`db72885`) files for this
+refinement once explicitly asked -- `working_overlay.py` itself needs
+no further action (already delivered via `db72885`, left as-is per
+owner direction). Beyond that, nothing is pre-authorized; Slice 7
+(Extensible time-axis framework) remains the next implementation-slice
+candidate per the owner's revised sequence.
+
+## What was done in the prior session — Data Preparation Workspace UX refinement: progressive disclosure for Preparation Status and Structure
+
 **Data Preparation Workspace UX refinement — progressive disclosure for
-Preparation Status and Structure. Implemented and verified; NOT yet
-committed** (the task's own explicit closing instruction: "Do not
-commit or push unless explicitly asked" — awaiting a separate commit
-instruction, same pattern as every prior slice/task). This is a
+Preparation Status and Structure. Implemented, verified, and committed
+as `233469b`** ("ux: simplify data preparation workspace"; NOT pushed).
+This is a
 **presentation/interaction refinement, not a new implementation slice**
 — triggered by owner UAT feedback that Slice 6's own fully-expanded
 default layout ("too much information and too many controls at once")

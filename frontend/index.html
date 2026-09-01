@@ -863,6 +863,15 @@
         .ww-data-prep-structure-field { margin-bottom: 0; }
         .ww-data-prep-structure-controls { display: flex; align-items: center; gap: 6px; }
         .ww-data-prep-structure-controls input[type="number"] { width: 80px; font-size: 0.75rem; }
+        /* Owner-UAT refinement: End-mode radio group (To end of file/
+           sheet vs. Specific row) -- new selectors only, deliberately
+           matching the owner's own 0.75rem number-input sizing above for
+           visual consistency, never altering that existing rule. */
+        .ww-data-prep-region-field { min-width: 260px; }
+        .ww-data-prep-region-end-options { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
+        .ww-data-prep-radio-option { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; }
+        .ww-data-prep-region-end-options input[type="number"] { width: 80px; font-size: 0.75rem; margin-left: 4px; }
+        .ww-data-prep-radio-option input[type="number"]:disabled { opacity: 0.5; }
         .ww-data-prep-columns-table { width: 100%; }
         .ww-data-prep-columns-table th, .ww-data-prep-columns-table td { white-space: normal; }
         .ww-data-prep-columns-table select { font: inherit; background: var(--panel); color: var(--text); border: 1px solid var(--panel-border); border-radius: 3px; padding: 2px 4px; }
@@ -4525,12 +4534,33 @@
                                     <button type="button" class="secondary" id="wwDataPrepClearHeaderBtn">Clear Header</button>
                                 </div>
                             </div>
-                            <div class="field ww-data-prep-structure-field">
+                            <!-- Owner-UAT refinement: manually finding the true
+                                 last row of a large source was "unnecessarily
+                                 burdensome" -- End now defaults to "To end of
+                                 file/sheet" (a floating boundary, never a
+                                 guessed numeric row) with an optional
+                                 "Specific row" override, plus a "Go to Last
+                                 Rows" navigation-only shortcut for inspecting
+                                 the tail before deciding to trim. -->
+                            <div class="field ww-data-prep-structure-field ww-data-prep-region-field">
                                 <label>Data rows</label>
                                 <div class="ww-data-prep-structure-controls">
+                                    <span class="hint">Start</span>
                                     <input type="number" id="wwDataPrepRegionStartInput" min="1" placeholder="start">
-                                    <span class="hint">to</span>
-                                    <input type="number" id="wwDataPrepRegionEndInput" min="1" placeholder="end">
+                                </div>
+                                <div class="ww-data-prep-region-end-options">
+                                    <label class="ww-data-prep-radio-option">
+                                        <input type="radio" name="wwDataPrepEndMode" value="source_end" id="wwDataPrepEndModeSourceEnd" checked>
+                                        <span id="wwDataPrepEndModeSourceEndLabel">To end of file</span>
+                                    </label>
+                                    <label class="ww-data-prep-radio-option">
+                                        <input type="radio" name="wwDataPrepEndMode" value="specific" id="wwDataPrepEndModeSpecific">
+                                        <span>Specific row</span>
+                                        <input type="number" id="wwDataPrepRegionEndInput" min="1" placeholder="end row" disabled>
+                                    </label>
+                                </div>
+                                <div class="ww-data-prep-structure-controls">
+                                    <button type="button" class="secondary" id="wwDataPrepGoToLastRowsBtn">Go to Last Rows</button>
                                     <button type="button" class="secondary" id="wwDataPrepSetRegionBtn">Set Region</button>
                                     <button type="button" class="secondary" id="wwDataPrepResetRegionBtn">Reset Region</button>
                                 </div>
@@ -6670,6 +6700,12 @@
             // carry). Never computed/guessed locally.
             headerRowNumber: null,
             dataStartRow: null,
+            // Owner-UAT refinement: dataEndMode is "source_end" |
+            // "specific" | null (no region configured at all) --
+            // dataEndRow stays null for "source_end" (never a resolved/
+            // guessed numeric value; see the backend's own DataRegion
+            // docstring for why).
+            dataEndMode: null,
             dataEndRow: null,
             columnLabels: [],
             columnRoles: [],
@@ -6827,6 +6863,7 @@
             wwDataPrep.workingRevision = apiSummary.working_revision;
             wwDataPrep.headerRowNumber = apiSummary.header_row_number;
             wwDataPrep.dataStartRow = apiSummary.data_start_row;
+            wwDataPrep.dataEndMode = apiSummary.data_end_mode;
             wwDataPrep.dataEndRow = apiSummary.data_end_row;
             wwDataPrepRenderToolbar();
             wwDataPrepRenderStructureControls();
@@ -6869,7 +6906,26 @@
         function wwDataPrepRenderStructureControls() {
             document.getElementById("wwDataPrepHeaderInput").value = wwDataPrep.headerRowNumber ?? "";
             document.getElementById("wwDataPrepRegionStartInput").value = wwDataPrep.dataStartRow ?? "";
-            document.getElementById("wwDataPrepRegionEndInput").value = wwDataPrep.dataEndRow ?? "";
+
+            // Owner-UAT refinement: reflect the CURRENT end-mode into the
+            // radio group + end-row input. Absence of a region at all
+            // (dataEndMode === null) is shown as the "To end of..."
+            // default -- matching the task's own "default data-region
+            // end = end of source/sheet" behavior for an unconfigured
+            // source, without fabricating a stored region that doesn't
+            // exist yet.
+            const isSpecific = wwDataPrep.dataEndMode === "specific";
+            document.getElementById("wwDataPrepEndModeSourceEnd").checked = !isSpecific;
+            document.getElementById("wwDataPrepEndModeSpecific").checked = isSpecific;
+            const endInput = document.getElementById("wwDataPrepRegionEndInput");
+            endInput.disabled = !isSpecific;
+            endInput.value = isSpecific ? (wwDataPrep.dataEndRow ?? "") : "";
+
+            // CSV wording says "To end of file"; Excel says "To end of
+            // sheet" -- task's own explicit "do not use misleading
+            // wording" requirement.
+            document.getElementById("wwDataPrepEndModeSourceEndLabel").textContent =
+                wwDataPrep.format === "Excel" ? "To end of sheet" : "To end of file";
         }
 
         // Slice 5 (DEC-072): the compact Column | Label | Role mapping
@@ -6938,10 +6994,17 @@
         function wwDataPrepRenderStructureSummary() {
             document.getElementById("wwDataPrepSummaryHeader").textContent =
                 wwDataPrep.headerRowNumber != null ? "Row " + wwDataPrep.headerRowNumber : "Not set";
-            document.getElementById("wwDataPrepSummaryRegion").textContent =
-                wwDataPrep.dataStartRow != null
-                    ? "Rows " + wwDataPrep.dataStartRow + "–" + wwDataPrep.dataEndRow
-                    : "All rows";
+            // Owner-UAT refinement: "Rows N–end" for a floating
+            // source_end boundary -- NEVER resolved to a numeric guess
+            // here, even though the actual total may be known (task's
+            // own explicit "Rows 2-end is not the same as storing a
+            // guessed numeric last-data row" distinction).
+            let regionText = "All rows";
+            if (wwDataPrep.dataStartRow != null) {
+                const endText = wwDataPrep.dataEndMode === "specific" ? String(wwDataPrep.dataEndRow) : "end";
+                regionText = "Rows " + wwDataPrep.dataStartRow + "–" + endText;
+            }
+            document.getElementById("wwDataPrepSummaryRegion").textContent = regionText;
             document.getElementById("wwDataPrepSummaryColumns").textContent =
                 wwDataPrepSummarizeColumnRoles(wwDataPrep.columnRoles || []);
         }
@@ -6983,6 +7046,7 @@
                 wwDataPrep.workingRevision = preview.working_revision;
                 wwDataPrep.headerRowNumber = preview.header_row_number;
                 wwDataPrep.dataStartRow = preview.data_start_row;
+                wwDataPrep.dataEndMode = preview.data_end_mode;
                 wwDataPrep.dataEndRow = preview.data_end_row;
                 wwDataPrep.columnLabels = preview.column_labels || [];
                 wwDataPrep.columnRoles = preview.column_roles || [];
@@ -7258,7 +7322,7 @@
             }
         }
 
-        async function wwDataPrepSetRegion(startRow, endRow) {
+        async function wwDataPrepSetRegion(startRow, endMode, endRow) {
             const status = wwDataPrepStructureStatusEl();
             status.textContent = "";
             try {
@@ -7266,7 +7330,7 @@
                     wwDataPrepSourceUrl("/working/data-region"),
                     {
                         method: "PUT", headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ start_row: startRow, end_row: endRow }),
+                        body: JSON.stringify({ start_row: startRow, end_mode: endMode, end_row: endRow }),
                     }
                 );
                 if (!response.ok) {
@@ -7323,14 +7387,49 @@
         document.getElementById("wwDataPrepClearHeaderBtn").addEventListener("click", wwDataPrepClearHeader);
         document.getElementById("wwDataPrepSetRegionBtn").addEventListener("click", () => {
             const start = parseInt(document.getElementById("wwDataPrepRegionStartInput").value, 10);
-            const end = parseInt(document.getElementById("wwDataPrepRegionEndInput").value, 10);
-            if (!Number.isFinite(start) || !Number.isFinite(end)) {
-                wwDataPrepStructureStatusEl().textContent = "Enter both a start and an end row.";
+            if (!Number.isFinite(start)) {
+                wwDataPrepStructureStatusEl().textContent = "Enter a start row first.";
                 return;
             }
-            wwDataPrepSetRegion(start, end);
+            const useSpecificEnd = document.getElementById("wwDataPrepEndModeSpecific").checked;
+            if (!useSpecificEnd) {
+                wwDataPrepSetRegion(start, "source_end", null);
+                return;
+            }
+            const end = parseInt(document.getElementById("wwDataPrepRegionEndInput").value, 10);
+            if (!Number.isFinite(end)) {
+                wwDataPrepStructureStatusEl().textContent = "Enter an end row, or choose “To end of file/sheet” instead.";
+                return;
+            }
+            wwDataPrepSetRegion(start, "specific", end);
         });
         document.getElementById("wwDataPrepResetRegionBtn").addEventListener("click", wwDataPrepResetRegion);
+        // Radio toggle only enables/disables the end-row input locally --
+        // no backend call happens until "Set Region" is actually clicked.
+        document.getElementById("wwDataPrepEndModeSourceEnd").addEventListener("change", () => {
+            document.getElementById("wwDataPrepRegionEndInput").disabled = true;
+        });
+        document.getElementById("wwDataPrepEndModeSpecific").addEventListener("change", () => {
+            document.getElementById("wwDataPrepRegionEndInput").disabled = false;
+            document.getElementById("wwDataPrepRegionEndInput").focus();
+        });
+        // "Go to Last Rows" (owner-UAT refinement): NAVIGATION ONLY -- it
+        // never touches the data region, the working overlay, or the
+        // revision counter (task's own explicit requirement). Reuses the
+        // existing paged-preview state/fetch function verbatim rather
+        // than a second, duplicate paging implementation; total_row_count
+        // already comes from the existing GET .../rows response (exact
+        // for CSV, best-effort -- possibly unknown -- for Excel).
+        document.getElementById("wwDataPrepGoToLastRowsBtn").addEventListener("click", () => {
+            const total = wwDataPrep.totalRowCount;
+            if (total == null || total <= 0) {
+                wwDataPrepStructureStatusEl().textContent =
+                    "The row count for this " + (wwDataPrep.format === "Excel" ? "sheet" : "file") + " is not known yet.";
+                return;
+            }
+            wwDataPrep.offset = Math.max(0, Math.floor((total - 1) / wwDataPrep.limit) * wwDataPrep.limit);
+            wwDataPrepFetchPreview();
+        });
         document.getElementById("wwDataPrepColumnsTable").addEventListener("change", (event) => {
             const select = event.target.closest(".ww-data-prep-role-select");
             if (!select) return;
@@ -7508,6 +7607,7 @@
             wwDataPrep.columnLabels = [];
             wwDataPrep.headerRowNumber = null;
             wwDataPrep.dataStartRow = null;
+            wwDataPrep.dataEndMode = null;
             wwDataPrep.dataEndRow = null;
             document.getElementById("wwDataPrepStructureDetails").hidden = true;
             document.getElementById("wwDataPrepStructureToggleBtn").textContent = "Configure";

@@ -35,6 +35,13 @@ operations already are: a structural lower bound at the API's own
 source's own known row/column totals (reusing `_row_total`/
 `_check_row_bound`/`_check_column_bound` -- the exact same helpers
 Slice 4 built, not a second parallel bounds-checking implementation).
+
+A later owner-UAT refinement extends `set_data_region()` with
+`end_mode` (`END_MODE_SOURCE_END`/`END_MODE_SPECIFIC`) so a region's
+own upper bound can float with the source/worksheet's own end instead
+of always requiring a manually-found numeric row -- see
+`app.domain.working_overlay.DataRegion`'s own docstring. This stays a
+single, dataset-wide boundary; there is still no per-column end.
 """
 
 from __future__ import annotations
@@ -67,12 +74,23 @@ class WorkingOverlaySummary:
     `edited_cell_count`/`excluded_row_count`/`ignored_column_count`/
     `can_undo`/`can_redo` are GLOBAL across every worksheet of this
     source (unchanged from Slice 4). `header_row_number`/
-    `data_start_row`/`data_end_row` are, by contrast, scoped to ONE
-    worksheet (Slice 5) -- whichever `worksheet_index` the caller
-    resolved for its own operation (`None` for CSV; the selected sheet,
-    or `None` if none is selected yet, for Excel). This intentional
-    mix is why every caller of `summarize_working_overlay()` must pass
-    the worksheet scope it actually resolved, never a fixed default.
+    `data_start_row`/`data_end_mode`/`data_end_row` are, by contrast,
+    scoped to ONE worksheet (Slice 5) -- whichever `worksheet_index` the
+    caller resolved for its own operation (`None` for CSV; the selected
+    sheet, or `None` if none is selected yet, for Excel). This
+    intentional mix is why every caller of `summarize_working_overlay()`
+    must pass the worksheet scope it actually resolved, never a fixed
+    default.
+
+    `data_end_mode`/`data_end_row` mirror
+    `app.domain.working_overlay.DataRegion`'s own two fields verbatim
+    (a later owner-UAT refinement) -- `data_end_row` is `None` for
+    `END_MODE_SOURCE_END` (there is no stored numeric end to report,
+    deliberately never a resolved/guessed one) and a real row number for
+    `END_MODE_SPECIFIC`. Both are `None` when no region is configured at
+    all (distinct from `END_MODE_SOURCE_END` -- see that constant's own
+    docstring for why "no region" and "region with a floating end" are
+    different states).
     """
 
     working_revision: int
@@ -83,6 +101,7 @@ class WorkingOverlaySummary:
     can_redo: bool
     header_row_number: int | None
     data_start_row: int | None
+    data_end_mode: str | None
     data_end_row: int | None
 
 
@@ -93,10 +112,10 @@ def summarize_working_overlay(session: PreparationSession, worksheet_index: int 
     is exactly one place that defines what these counters mean.
 
     `worksheet_index` scopes ONLY `header_row_number`/`data_start_row`/
-    `data_end_row` (Slice 5) -- pass `None` for CSV, or for an Excel
-    source with no worksheet selected yet (in which case these three
-    fields correctly come back `None`, since Slice 5 mutations can only
-    ever write under a REAL worksheet index for Excel -- see
+    `data_end_mode`/`data_end_row` (Slice 5) -- pass `None` for CSV, or
+    for an Excel source with no worksheet selected yet (in which case
+    these fields correctly come back `None`, since Slice 5 mutations can
+    only ever write under a REAL worksheet index for Excel -- see
     `_resolve_worksheet_index`'s own docstring)."""
     overlay = session.working_overlay
     region = overlay.data_region.get(worksheet_index)
@@ -109,6 +128,7 @@ def summarize_working_overlay(session: PreparationSession, worksheet_index: int 
         can_redo=bool(overlay.redo_stack),
         header_row_number=overlay.header_row.get(worksheet_index),
         data_start_row=region.start_row if region else None,
+        data_end_mode=region.end_mode if region else None,
         data_end_row=region.end_row if region else None,
     )
 
@@ -327,22 +347,55 @@ def clear_header_row(
 
 
 def set_data_region(
-    *, workspace_id: str, source_id: str, start_row: int, end_row: int, registry: PreparationSessionRegistry,
+    *,
+    workspace_id: str,
+    source_id: str,
+    start_row: int,
+    end_row: int | None = None,
+    end_mode: str = overlay_domain.END_MODE_SPECIFIC,
+    registry: PreparationSessionRegistry,
 ) -> WorkingOverlaySummary:
-    """Narrow the active working dataset to `[start_row, end_row]`
-    inclusive (Slice 5). Raises `InvalidDataRegionError` if
-    `start_row > end_row` (a semantic error, distinct from either bound
-    being outside this source's own known dimensions, which raises
-    `InvalidWorkingCoordinateError` via `_check_row_bound` instead)."""
+    """Narrow the active working dataset (Slice 5; `end_mode` added by a
+    later owner-UAT refinement -- owner feedback that manually finding
+    the true last row of a large source was "unnecessarily burdensome").
+
+    `end_mode` defaults to `END_MODE_SPECIFIC` so every pre-refinement
+    caller (`start_row`/`end_row` only, no `end_mode`) keeps working
+    completely unchanged -- a real backward-compatibility guarantee, not
+    an arbitrary default. For `END_MODE_SOURCE_END`, `end_row` is
+    ignored (never stored -- see `app.domain.working_overlay.DataRegion`'s
+    own docstring for why a floating end is never resolved into a stored
+    guess) and no upper-bound validation applies to it at all, since
+    there is no numeric end to validate.
+
+    Raises `InvalidDataRegionError` for an unrecognized `end_mode`, for
+    `END_MODE_SPECIFIC` with no `end_row` supplied, or for
+    `start_row > end_row` under `END_MODE_SPECIFIC` (a semantic error,
+    distinct from either bound being outside this source's own known
+    dimensions, which raises `InvalidWorkingCoordinateError` via
+    `_check_row_bound` instead -- task's own explicit "if the source/
+    sheet extent is uncertain... do not falsely reject a valid row"
+    guardrail: an unknown total simply skips that bound check, exactly
+    as `_check_row_bound` already does for every other coordinate).
+    """
     session = _resolve_session(workspace_id=workspace_id, source_id=source_id, registry=registry)
     worksheet_index = _resolve_worksheet_index(session)
-    if start_row > end_row:
+    if end_mode not in overlay_domain.KNOWN_END_MODES:
         raise InvalidDataRegionError(
-            f"start_row ({start_row}) must be <= end_row ({end_row})."
+            f"end_mode must be one of {overlay_domain.KNOWN_END_MODES}; got {end_mode!r}."
         )
+    if end_mode == overlay_domain.END_MODE_SPECIFIC:
+        if end_row is None:
+            raise InvalidDataRegionError("end_row is required when end_mode is 'specific'.")
+        if start_row > end_row:
+            raise InvalidDataRegionError(
+                f"start_row ({start_row}) must be <= end_row ({end_row})."
+            )
+        _check_row_bound(session, worksheet_index, end_row)
+    else:
+        end_row = None  # never store a stray numeric value for a floating end
     _check_row_bound(session, worksheet_index, start_row)
-    _check_row_bound(session, worksheet_index, end_row)
-    overlay_domain.set_data_region(session.working_overlay, worksheet_index, start_row, end_row)
+    overlay_domain.set_data_region(session.working_overlay, worksheet_index, start_row, end_row, end_mode=end_mode)
     return summarize_working_overlay(session, worksheet_index)
 
 

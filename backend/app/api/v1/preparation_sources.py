@@ -504,15 +504,20 @@ def put_working_data_region(
     body: DataRegionRequest,
     registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
 ) -> WorkingOverlaySummaryOut:
-    """Narrow the active working dataset to `[start_row, end_row]`
-    inclusive (Slice 5, DEC-072). Rows outside this range remain fully
-    preserved/inspectable -- see
-    `app.domain.working_overlay.DataRegion`'s own docstring."""
+    """Narrow the active working dataset (Slice 5, DEC-072; `end_mode`
+    added by a later owner-UAT refinement). `end_mode="source_end"`
+    (the default action from the frontend's own "To end of file/sheet"
+    radio) lets the region's own upper bound float with the source/
+    worksheet's own end rather than requiring a manually-found numeric
+    row; `end_mode="specific"` (the original Slice 5 behavior, and the
+    default when `end_mode` is omitted entirely) requires `end_row`.
+    Rows outside the resulting range remain fully preserved/inspectable
+    -- see `app.domain.working_overlay.DataRegion`'s own docstring."""
     workspace_id = _validate_workspace_id(workspace_id)
     try:
         summary = set_data_region(
             workspace_id=workspace_id, source_id=source_id,
-            start_row=body.start_row, end_row=body.end_row, registry=registry,
+            start_row=body.start_row, end_row=body.end_row, end_mode=body.end_mode, registry=registry,
         )
     except ImportServiceError as exc:
         raise _working_error(exc) from exc

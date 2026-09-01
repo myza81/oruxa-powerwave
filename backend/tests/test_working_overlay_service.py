@@ -469,6 +469,95 @@ class TestDataRegion:
         assert summary_b.data_start_row is None
 
 
+class TestDataRegionEndMode:
+    """Owner-UAT refinement: an explicit `end_mode`, defaulting to
+    `"specific"` so every pre-refinement call site above keeps working
+    unchanged (see TestDataRegion, which never passes `end_mode` at
+    all)."""
+
+    def test_default_end_mode_is_specific(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n3,4\n")
+
+        summary = set_data_region(workspace_id="ws-1", source_id=source_id, start_row=2, end_row=3, registry=registry)
+
+        assert summary.data_end_mode == "specific"
+        assert summary.data_end_row == 3
+
+    def test_source_end_mode_stores_no_numeric_end_row(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n3,4\n5,6\n")
+
+        summary = set_data_region(workspace_id="ws-1", source_id=source_id, start_row=2, end_mode="source_end", registry=registry)
+
+        assert summary.data_start_row == 2
+        assert summary.data_end_mode == "source_end"
+        assert summary.data_end_row is None
+
+    def test_source_end_mode_ignores_a_stray_end_row_value(self):
+        # end_row is never stored for source_end -- even if a client
+        # sends one anyway, it must not leak into the domain model.
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n3,4\n")
+
+        summary = set_data_region(
+            workspace_id="ws-1", source_id=source_id, start_row=1, end_row=999, end_mode="source_end", registry=registry,
+        )
+
+        assert summary.data_end_row is None
+
+    def test_specific_mode_without_end_row_is_rejected(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        with pytest.raises(InvalidDataRegionError):
+            set_data_region(workspace_id="ws-1", source_id=source_id, start_row=1, end_mode="specific", registry=registry)
+
+    def test_invalid_end_mode_is_rejected(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        with pytest.raises(InvalidDataRegionError):
+            set_data_region(workspace_id="ws-1", source_id=source_id, start_row=1, end_mode="last_page", registry=registry)
+
+    def test_source_end_mode_start_row_still_bounds_checked(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        with pytest.raises(InvalidWorkingCoordinateError):
+            set_data_region(workspace_id="ws-1", source_id=source_id, start_row=999, end_mode="source_end", registry=registry)
+
+    def test_source_end_mode_never_requires_a_full_extra_scan_beyond_existing_totals_cache(self):
+        # No new scan mechanism was introduced for this refinement --
+        # source_end mode reuses whatever CSV total-count caching
+        # already existed (ensure_csv_totals_cached, via _check_row_bound
+        # for start_row) rather than deriving a separate resolved bound
+        # at mutation time.
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n3,4\n")
+
+        set_data_region(workspace_id="ws-1", source_id=source_id, start_row=1, end_mode="source_end", registry=registry)
+
+        session = registry.get("ws-1", source_id)
+        assert session.cached_row_count == 3  # populated by the existing start_row bound check, nothing extra
+
+    def test_excel_source_end_mode_isolated_per_worksheet(self):
+        registry = PreparationSessionRegistry()
+        content = _build_xlsx({"A": [["1"], ["2"]], "B": [["3"], ["4"]]})
+        source_id = _add_excel(registry, content)
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=0, registry=registry)
+        set_data_region(workspace_id="ws-1", source_id=source_id, start_row=1, end_mode="source_end", registry=registry)
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=1, registry=registry)
+        summary_b = summarize_working_overlay(registry.get("ws-1", source_id), worksheet_index=1)
+        assert summary_b.data_end_mode is None
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=0, registry=registry)
+        summary_a = summarize_working_overlay(registry.get("ws-1", source_id), worksheet_index=0)
+        assert summary_a.data_end_mode == "source_end"
+
+
 class TestColumnRole:
     def test_assign_and_read_back_ignored_count(self):
         registry = PreparationSessionRegistry()

@@ -704,6 +704,7 @@ class TestWorkingSummaryOnExistingEndpoints:
             "can_redo": False,
             "header_row_number": None,
             "data_start_row": None,
+            "data_end_mode": None,
             "data_end_row": None,
         }
 
@@ -1105,6 +1106,118 @@ class TestDataRegionEndpoints:
         row2 = next(r for r in rows["rows"] if r["row_number"] == 2)
         assert row2["in_active_region"] is True
         assert row2["excluded"] is True
+
+
+class TestDataRegionEndModeEndpoints:
+    """Owner-UAT refinement: default data-region end = end of source/
+    sheet, with an optional explicit override -- see task's own
+    "End: (o) To end of file/sheet (o) Specific row" direction."""
+
+    def test_source_end_mode_via_api(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n3,4\n5,6\n")
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/data-region",
+            json={"start_row": 2, "end_mode": "source_end"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["data_start_row"] == 2
+        assert resp.json()["data_end_mode"] == "source_end"
+        assert resp.json()["data_end_row"] is None
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["data_end_mode"] == "source_end"
+        assert rows["data_end_row"] is None
+        flags = {r["row_number"]: r["in_active_region"] for r in rows["rows"]}
+        assert flags == {1: False, 2: True, 3: True, 4: True}
+
+    def test_old_request_shape_without_end_mode_still_works(self, client):
+        # Backward compatibility: the original Slice 5 request body
+        # ({"start_row", "end_row"}, no "end_mode" key at all) must keep
+        # producing "specific" mode exactly as before.
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n3,4\n")
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/data-region",
+            json={"start_row": 1, "end_row": 2},
+        )
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["data_end_mode"] == "specific"
+        assert resp.json()["data_end_row"] == 2
+
+    def test_specific_mode_without_end_row_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/data-region",
+            json={"start_row": 1, "end_mode": "specific"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_data_region"
+
+    def test_invalid_end_mode_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/data-region",
+            json={"start_row": 1, "end_mode": "not_a_real_mode"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_data_region"
+
+    def test_undo_redo_across_end_mode_change(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n3,4\n5,6\n")
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/data-region",
+            json={"start_row": 2, "end_mode": "source_end"},
+        )
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/data-region",
+            json={"start_row": 2, "end_row": 3, "end_mode": "specific"},
+        )
+
+        undo_resp = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/undo")
+        assert undo_resp.json()["data_end_mode"] == "source_end"
+        assert undo_resp.json()["data_end_row"] is None
+
+        redo_resp = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/redo")
+        assert redo_resp.json()["data_end_mode"] == "specific"
+        assert redo_resp.json()["data_end_row"] == 3
+
+    def test_excel_source_end_mode_isolated_per_worksheet(self, client):
+        content = _build_xlsx({"A": [["1"], ["2"]], "B": [["3"], ["4"]]})
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "m.xlsx"),
+        ).json()["source_id"]
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 0})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/data-region",
+            json={"start_row": 1, "end_mode": "source_end"},
+        )
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 1})
+        rows_b = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows_b["data_end_mode"] is None
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 0})
+        rows_a = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows_a["data_end_mode"] == "source_end"
+
+    def test_go_to_last_rows_is_pure_frontend_navigation_no_backend_change_needed(self, client):
+        # "Go to Last Rows" is implemented entirely in the frontend using
+        # the EXISTING GET .../rows endpoint's own total_row_count -- no
+        # new endpoint or parameter exists for it, and none should.
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n3,4\n5,6\n")
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+
+        assert rows["total_row_count"] == 4
+        assert rows["total_row_count_basis"] == "exact"
 
 
 class TestColumnRoleEndpoints:

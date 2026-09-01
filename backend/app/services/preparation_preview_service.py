@@ -89,7 +89,13 @@ from typing import Any
 from openpyxl import load_workbook
 
 from app.domain.preparation_session import FORMAT_CSV, FORMAT_EXCEL, PreparationSession
-from app.domain.working_overlay import OVERRIDE_KIND_CLEAR, ROLE_IGNORE, ROLE_UNKNOWN, WorkingOverlay
+from app.domain.working_overlay import (
+    END_MODE_SPECIFIC,
+    OVERRIDE_KIND_CLEAR,
+    ROLE_IGNORE,
+    ROLE_UNKNOWN,
+    WorkingOverlay,
+)
 from app.services.errors import SourceNotFoundError, WorkbookParseError, WorksheetNotSelectedError
 from app.services.preparation_session_registry import PreparationSessionRegistry
 
@@ -189,12 +195,23 @@ class PreviewResult:
     bookkeeping (task's own "lightweight revision counter... stale-page
     detection").
 
-    Slice 5: `header_row_number`/`data_start_row`/`data_end_row` mirror
+    Slice 5: `header_row_number`/`data_start_row`/`data_end_mode`/
+    `data_end_row` mirror
     `app.services.working_overlay_service.WorkingOverlaySummary`'s own
     same-named fields for the worksheet/source this page belongs to
     (`None` when unset). `column_labels`/`column_roles` are each sized
     to `column_count` (empty when `column_count` is unknown) -- small,
-    O(columns) payloads, never duplicated per row."""
+    O(columns) payloads, never duplicated per row.
+
+    `data_end_mode`/`data_end_row` (a later owner-UAT refinement) mirror
+    `app.domain.working_overlay.DataRegion`'s own two fields verbatim --
+    `data_end_row` is `None` for `END_MODE_SOURCE_END` (never a
+    resolved/guessed numeric value; see that constant's own docstring).
+    The ACTUAL resolved upper bound used to compute each row's own
+    `in_active_region` flag is an internal-only detail of
+    `_apply_structure_mapping()`, never itself exposed as a separate
+    field -- the frontend renders "end" literally for
+    `END_MODE_SOURCE_END`, it never needs the resolved number."""
 
     source_id: str
     selected_worksheet_index: int | None
@@ -210,6 +227,7 @@ class PreviewResult:
     working_revision: int = 0
     header_row_number: int | None = None
     data_start_row: int | None = None
+    data_end_mode: str | None = None
     data_end_row: int | None = None
     column_labels: list[str] = field(default_factory=list)
     column_roles: list[str] = field(default_factory=list)
@@ -332,8 +350,8 @@ def _preview_csv(session: PreparationSession, *, offset: int, limit: int) -> Pre
     column_count = session.cached_column_count if session.cached_column_count is not None else max_columns
 
     _apply_working_overlay(session, worksheet_index=None, rows=page)
-    header_row_number, data_start_row, data_end_row, column_labels, column_roles = _apply_structure_mapping(
-        session, worksheet_index=None, page=page, column_count=column_count,
+    header_row_number, data_start_row, data_end_mode, data_end_row, column_labels, column_roles = _apply_structure_mapping(
+        session, worksheet_index=None, page=page, column_count=column_count, known_row_total=total_row_count,
     )
 
     return PreviewResult(
@@ -351,6 +369,7 @@ def _preview_csv(session: PreparationSession, *, offset: int, limit: int) -> Pre
         working_revision=session.working_overlay.revision,
         header_row_number=header_row_number,
         data_start_row=data_start_row,
+        data_end_mode=data_end_mode,
         data_end_row=data_end_row,
         column_labels=column_labels,
         column_roles=column_roles,
@@ -399,8 +418,9 @@ def _preview_excel(session: PreparationSession, *, offset: int, limit: int) -> P
 
     _apply_working_overlay(session, worksheet_index=worksheet_index, rows=page)
     column_count = worksheet_info.column_count or 0
-    header_row_number, data_start_row, data_end_row, column_labels, column_roles = _apply_structure_mapping(
+    header_row_number, data_start_row, data_end_mode, data_end_row, column_labels, column_roles = _apply_structure_mapping(
         session, worksheet_index=worksheet_index, page=page, column_count=column_count,
+        known_row_total=worksheet_info.row_count,
     )
 
     return PreviewResult(
@@ -418,6 +438,7 @@ def _preview_excel(session: PreparationSession, *, offset: int, limit: int) -> P
         working_revision=session.working_overlay.revision,
         header_row_number=header_row_number,
         data_start_row=data_start_row,
+        data_end_mode=data_end_mode,
         data_end_row=data_end_row,
         column_labels=column_labels,
         column_roles=column_roles,
@@ -582,26 +603,45 @@ def _apply_structure_mapping(
     worksheet_index: int | None,
     page: list[PreviewRow],
     column_count: int,
-) -> tuple[int | None, int | None, int | None, list[str], list[str]]:
+    known_row_total: int | None,
+) -> tuple[int | None, int | None, str | None, int | None, list[str], list[str]]:
     """Slice 5's own post-processing step, run after
     `_apply_working_overlay` -- adds `is_header`/`in_active_region` to
     every row of `page` (mutated in place, same convention as that
     function) and returns the page-independent
-    `(header_row_number, data_start_row, data_end_row, column_labels,
-    column_roles)` tuple for the caller's own `PreviewResult`. Never
-    touches `cells`/`modified_cells`/`excluded` -- those stay exactly
-    as `_apply_working_overlay` left them."""
+    `(header_row_number, data_start_row, data_end_mode, data_end_row,
+    column_labels, column_roles)` tuple for the caller's own
+    `PreviewResult`. Never touches `cells`/`modified_cells`/`excluded`
+    -- those stay exactly as `_apply_working_overlay` left them.
+
+    `known_row_total` (a later owner-UAT refinement) is this source/
+    worksheet's own already-known row total -- exact for CSV, best-
+    effort or `None` for Excel -- passed in by the caller rather than
+    re-derived here, since both callers already have it on hand from
+    their own raw-reading pass. It is used ONLY to resolve
+    `END_MODE_SOURCE_END`'s own floating upper bound for the
+    `in_active_region` flag; the reported `data_end_row` for that mode
+    stays `None` regardless (never a resolved/guessed value -- see
+    `app.domain.working_overlay.DataRegion`'s own docstring)."""
     overlay = session.working_overlay
     header_row_number = overlay.header_row.get(worksheet_index)
     region = overlay.data_region.get(worksheet_index)
     data_start_row = region.start_row if region else None
+    data_end_mode = region.end_mode if region else None
     data_end_row = region.end_row if region else None
+
+    if region is None:
+        resolved_end = None  # no region configured at all -- entire source active
+    elif region.end_mode == END_MODE_SPECIFIC:
+        resolved_end = region.end_row
+    else:  # END_MODE_SOURCE_END -- floats with whatever total is actually known
+        resolved_end = known_row_total
 
     for row in page:
         row.is_header = header_row_number is not None and row.row_number == header_row_number
         row.in_active_region = (
             (data_start_row is None or row.row_number >= data_start_row)
-            and (data_end_row is None or row.row_number <= data_end_row)
+            and (resolved_end is None or row.row_number <= resolved_end)
         )
 
     header_cells = _resolve_header_cells(
@@ -609,7 +649,7 @@ def _apply_structure_mapping(
     )
     column_labels = _build_column_labels(header_cells, column_count) if column_count else []
     column_roles = _build_column_roles(overlay, worksheet_index, column_count) if column_count else []
-    return header_row_number, data_start_row, data_end_row, column_labels, column_roles
+    return header_row_number, data_start_row, data_end_mode, data_end_row, column_labels, column_roles
 
 
 def preview_preparation_source(

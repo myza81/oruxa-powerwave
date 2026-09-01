@@ -339,6 +339,30 @@ re-confirmed by the TG-FINAL audit):
   issue-driven worksheet navigation) is unchanged; only its default
   visibility changed.
 
+  **Data-region end-selection UX refinement** (owner UAT, 2026-09-01):
+  `DataRegion` gains `end_mode` (`source_end`/`specific`, defaulting to
+  `specific` so every pre-refinement call/request shape keeps working
+  unchanged) — `end_mode="source_end"` lets the region's own upper
+  bound float with the source/worksheet's own end instead of requiring
+  a manually-found numeric row; `end_row` stays `None` for that mode
+  (never a resolved/guessed value). Still ONE dataset-wide boundary per
+  worksheet/source — no per-column end, verified directly against a
+  source whose columns end on different rows. A new "Go to Last Rows"
+  frontend action is pure navigation (reuses the existing paged-preview
+  fetch and the existing `total_row_count`) — it never touches the
+  region, the working overlay, or the revision counter. The Structure
+  summary's "Data range" line now reads "Rows N–end" for a floating
+  boundary, "Rows N–M" for a specific one. An optional per-column
+  "last populated row" diagnostic from this same refinement's own scope
+  was evaluated and deferred (would need a new, more expensive scan
+  than anything already cached/established for either format — see
+  [CSV_EXCEL_INGESTION_ARCHITECTURE.md §18](CSV_EXCEL_INGESTION_ARCHITECTURE.md),
+  open item 10). Note: commit `db72885` ("fix: resize the font-size")
+  unintentionally contains both the owner's own CSS change and the
+  completed `app/domain/working_overlay.py` portion of this refinement
+  — a commit-history attribution/message mismatch only, not a code
+  defect; left as-is per explicit owner direction.
+
   Time-axis interpretation and the full readiness validator are still
   explicitly NOT part of any of these six slices — see
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md).

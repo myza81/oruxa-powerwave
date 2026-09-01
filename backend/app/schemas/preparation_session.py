@@ -40,6 +40,13 @@ plus `column_labels`/`column_roles`. New request bodies
 (`HeaderRowRequest`/`DataRegionRequest`/`ColumnRoleRequest`) follow the
 same "tiny, format-agnostic, backend resolves worksheet identity"
 convention.
+
+A later owner-UAT refinement adds `data_end_mode` alongside
+`data_end_row` on `WorkingOverlaySummaryOut`/`PreparationSourcePreviewOut`,
+and an `end_mode` field (defaulting to `"specific"`, preserving the
+original request shape) on `DataRegionRequest` -- see
+`app.domain.working_overlay.DataRegion`'s own docstring for the
+`source_end`/`specific` distinction this mirrors.
 """
 
 from __future__ import annotations
@@ -50,6 +57,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.preparation_session import PreparationSessionSummary, WorksheetInfo
+from app.domain.working_overlay import END_MODE_SPECIFIC
 from app.services.preparation_preview_service import ModifiedCell, PreviewResult, PreviewRow
 from app.services.working_overlay_service import WorkingOverlaySummary
 
@@ -95,6 +103,7 @@ class WorkingOverlaySummaryOut(BaseModel):
     can_redo: bool = False
     header_row_number: int | None = None
     data_start_row: int | None = None
+    data_end_mode: str | None = None
     data_end_row: int | None = None
 
     @classmethod
@@ -108,6 +117,7 @@ class WorkingOverlaySummaryOut(BaseModel):
             can_redo=summary.can_redo,
             header_row_number=summary.header_row_number,
             data_start_row=summary.data_start_row,
+            data_end_mode=summary.data_end_mode,
             data_end_row=summary.data_end_row,
         )
 
@@ -227,6 +237,7 @@ class PreparationSourcePreviewOut(BaseModel):
     working_revision: int = 0
     header_row_number: int | None = None
     data_start_row: int | None = None
+    data_end_mode: str | None = None
     data_end_row: int | None = None
     column_labels: list[str] = Field(default_factory=list)
     column_roles: list[str] = Field(default_factory=list)
@@ -248,6 +259,7 @@ class PreparationSourcePreviewOut(BaseModel):
             working_revision=result.working_revision,
             header_row_number=result.header_row_number,
             data_start_row=result.data_start_row,
+            data_end_mode=result.data_end_mode,
             data_end_row=result.data_end_row,
             column_labels=result.column_labels,
             column_roles=result.column_roles,
@@ -287,13 +299,23 @@ class HeaderRowRequest(BaseModel):
 
 
 class DataRegionRequest(BaseModel):
-    """Body of `PUT .../working/data-region` (Slice 5). `start_row`/
-    `end_row` are both original raw row numbers, inclusive --
+    """Body of `PUT .../working/data-region` (Slice 5; `end_mode` added
+    by a later owner-UAT refinement -- manually finding the true last
+    row of a large source was "unnecessarily burdensome"). `end_mode`
+    defaults to `"specific"` so the ORIGINAL Slice 5 request shape
+    (`{"start_row": ..., "end_row": ...}`, no `end_mode` at all) keeps
+    working completely unchanged -- a real backward-compatibility
+    guarantee. For `end_mode="source_end"`, `end_row` is ignored
+    (never stored -- see `app.domain.working_overlay.DataRegion`'s own
+    docstring for why a floating end is never resolved into a stored
+    guess); omit it or leave it `null`. For `end_mode="specific"`
+    (explicit or defaulted), `end_row` is required and
     `start_row <= end_row` is enforced server-side
     (`InvalidDataRegionError` otherwise)."""
 
     start_row: int
-    end_row: int
+    end_row: int | None = None
+    end_mode: str = END_MODE_SPECIFIC
 
 
 class ColumnRoleRequest(BaseModel):

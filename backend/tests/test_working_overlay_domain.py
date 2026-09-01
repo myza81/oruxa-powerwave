@@ -6,6 +6,8 @@ Pure data-structure tests -- no registry, no CSV/Excel I/O, no HTTP.
 from __future__ import annotations
 
 from app.domain.working_overlay import (
+    END_MODE_SOURCE_END,
+    END_MODE_SPECIFIC,
     MAX_OPERATION_HISTORY,
     OVERRIDE_KIND_CLEAR,
     OVERRIDE_KIND_EDIT,
@@ -243,6 +245,26 @@ class TestDataRegion:
         assert overlay.data_region[None].start_row == 4
         assert overlay.data_region[None].end_row == 5000
 
+    def test_set_data_region_defaults_to_specific_end_mode(self):
+        # Backward compatibility: every pre-refinement positional call
+        # site (no end_mode argument at all) must keep producing exactly
+        # the original Slice 5 shape.
+        overlay = WorkingOverlay()
+
+        set_data_region(overlay, None, 4, 5000)
+
+        assert overlay.data_region[None].end_mode == END_MODE_SPECIFIC
+
+    def test_source_end_mode_stores_no_numeric_end_row(self):
+        overlay = WorkingOverlay()
+
+        set_data_region(overlay, None, 4, None, end_mode=END_MODE_SOURCE_END)
+
+        region = overlay.data_region[None]
+        assert region.start_row == 4
+        assert region.end_mode == END_MODE_SOURCE_END
+        assert region.end_row is None
+
     def test_reset_data_region(self):
         overlay = WorkingOverlay()
         set_data_region(overlay, None, 4, 5000)
@@ -275,6 +297,35 @@ class TestDataRegion:
 
         assert overlay.data_region[None].start_row == 7
         assert overlay.data_region[None].end_row == 7
+
+    def test_switching_from_specific_to_source_end_replaces_the_whole_region(self):
+        overlay = WorkingOverlay()
+        set_data_region(overlay, None, 4, 100)
+
+        set_data_region(overlay, None, 4, None, end_mode=END_MODE_SOURCE_END)
+
+        region = overlay.data_region[None]
+        assert region.end_mode == END_MODE_SOURCE_END
+        assert region.end_row is None
+
+    def test_undo_redo_across_end_mode_change(self):
+        # WorkingOperation.before/after already stores the whole frozen
+        # DataRegion object, so an end-mode change reverts exactly like
+        # any other data-region change -- no domain code change needed
+        # to support this; this test exists to prove it.
+        overlay = WorkingOverlay()
+        set_data_region(overlay, None, 2, None, end_mode=END_MODE_SOURCE_END)
+        set_data_region(overlay, None, 2, 1000, end_mode=END_MODE_SPECIFIC)
+
+        undo(overlay)
+        region_after_undo = overlay.data_region[None]
+        assert region_after_undo.end_mode == END_MODE_SOURCE_END
+        assert region_after_undo.end_row is None
+
+        redo(overlay)
+        region_after_redo = overlay.data_region[None]
+        assert region_after_redo.end_mode == END_MODE_SPECIFIC
+        assert region_after_redo.end_row == 1000
 
 
 class TestResetAll:
