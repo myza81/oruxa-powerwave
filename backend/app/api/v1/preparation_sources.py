@@ -57,6 +57,11 @@ from app.schemas.preparation_session import (
     WorksheetSelectionRequest,
 )
 from app.schemas.source import ErrorOut
+from app.schemas.time_axis import (
+    TimeAxisConfigurationRequest,
+    TimeAxisInterpretationResultOut,
+    TimeAxisInterpreterOut,
+)
 from app.services.errors import AmbiguousPreparationUploadError, ImportServiceError
 from app.services.preparation_import_service import (
     import_csv_preparation_source,
@@ -70,6 +75,12 @@ from app.services.preparation_preview_service import (
     preview_preparation_source,
 )
 from app.services.preparation_session_registry import PreparationSessionRegistry
+from app.services.time_axis_service import (
+    clear_time_axis_configuration,
+    get_time_axis_summary,
+    list_time_axis_interpreters,
+    set_time_axis_configuration,
+)
 from app.services.working_overlay_service import (
     clear_header_row,
     edit_cell,
@@ -110,6 +121,8 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "invalid_working_cell_value": status.HTTP_400_BAD_REQUEST,
     "invalid_data_region": status.HTTP_400_BAD_REQUEST,
     "invalid_column_role": status.HTTP_400_BAD_REQUEST,
+    "invalid_time_axis_configuration": status.HTTP_400_BAD_REQUEST,
+    "unknown_time_axis_interpreter": status.HTTP_400_BAD_REQUEST,
 }
 
 
@@ -585,6 +598,86 @@ def delete_working_column_role(
     except ImportServiceError as exc:
         raise _working_error(exc) from exc
     return WorkingOverlaySummaryOut.from_domain(summary)
+
+
+@router.get("/{source_id}/time-axis/interpreters", response_model=list[TimeAxisInterpreterOut])
+def get_time_axis_interpreters() -> list[TimeAxisInterpreterOut]:
+    """Slice 7 (DEC-072): the FRAMEWORK's own explicit interpreter
+    registry, exposed read-only for the frontend's Time Axis panel.
+    Deliberately not workspace/source-scoped (the registry is global and
+    static) -- `source_id` in the path only keeps this endpoint under
+    the same resource family as every other time-axis route."""
+    return [TimeAxisInterpreterOut(interpreter_id=i) for i in list_time_axis_interpreters()]
+
+
+@router.get("/{source_id}/time-axis", response_model=TimeAxisInterpretationResultOut)
+def get_source_time_axis(
+    workspace_id: str,
+    source_id: str,
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> TimeAxisInterpretationResultOut:
+    """Slice 7 (DEC-072): the current Time-Axis interpretation state for
+    this source/worksheet -- derived LIVE on every call from the stored
+    `TimeAxisConfiguration` plus the CURRENT `column_roles` state, never
+    itself cached (see `app.services.time_axis_service`'s own module
+    docstring). FRAMEWORK ONLY: no real datetime/elapsed parsing, no
+    confidence calculation, `preview_supported` is always `false`."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        result = get_time_axis_summary(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return TimeAxisInterpretationResultOut.from_domain(result)
+
+
+@router.put("/{source_id}/working/time-axis", response_model=TimeAxisInterpretationResultOut)
+def put_working_time_axis(
+    workspace_id: str,
+    source_id: str,
+    body: TimeAxisConfigurationRequest,
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> TimeAxisInterpretationResultOut:
+    """Set this worksheet/source's Time-Axis configuration (Slice 7,
+    DEC-072). Every referenced column in `column_indices` must currently
+    carry the `time_axis` column role (task section N) --
+    `InvalidTimeAxisConfigurationError` otherwise. `family`/`provenance`
+    must each be one of `app.domain.time_axis`'s own known closed sets.
+    Undoable via the existing `POST .../working/undo` endpoint, exactly
+    like every other working-dataset mutation (Slice 7 adds no second
+    history mechanism)."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        result = set_time_axis_configuration(
+            workspace_id=workspace_id,
+            source_id=source_id,
+            column_indices=tuple(body.column_indices),
+            family=body.family,
+            provenance=body.provenance,
+            unit=body.unit,
+            interval_seconds=body.interval_seconds,
+            confirmed=body.confirmed,
+            interpreter_id=body.interpreter_id,
+            registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return TimeAxisInterpretationResultOut.from_domain(result)
+
+
+@router.delete("/{source_id}/working/time-axis", response_model=TimeAxisInterpretationResultOut)
+def delete_working_time_axis(
+    workspace_id: str,
+    source_id: str,
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> TimeAxisInterpretationResultOut:
+    """Clear this worksheet/source's Time-Axis configuration entirely --
+    a safe no-op if none was set. Reverts to `unconfigured`."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        result = clear_time_axis_configuration(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return TimeAxisInterpretationResultOut.from_domain(result)
 
 
 @router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT)

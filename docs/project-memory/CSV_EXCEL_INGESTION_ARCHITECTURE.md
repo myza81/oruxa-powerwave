@@ -1061,16 +1061,105 @@ owner go-ahead before implementation begins.
    files (service/preview/schema/API layers, tests, frontend,
    documentation) remain normal uncommitted working-tree changes,
    pending a separate, explicit commit instruction.
-7. **`[DESIGN COMPLETE, 2026-09-01]` Extensible time-axis framework.**
-   Interpreter architecture; an explicit unknown/unsupported path; no
-   closed format list (DEC-072 point 6, §15). Full design specification
-   — semantic families, provenance model, fallback hierarchy,
-   confidence model, interpreter registry concept, and the exact
-   proposed Slice 7 implementation scope — is now authoritatively
-   recorded in
-   [CSV_EXCEL_TIME_INTERPRETATION.md](CSV_EXCEL_TIME_INTERPRETATION.md).
-   Not yet implemented; this is a design-only checkpoint, per that
-   document's own explicit status.
+7. **`[DONE, 2026-09-01]` Extensible time-axis framework (Slice 7).**
+   Implemented the FRAMEWORK from
+   [CSV_EXCEL_TIME_INTERPRETATION.md](CSV_EXCEL_TIME_INTERPRETATION.md)
+   -- interpreter architecture, an explicit unknown/unsupported path, no
+   closed format list (DEC-072 point 6, §15) -- with deliberately NO real
+   datetime/elapsed/sample-index parsing, no reconstruction algorithm, no
+   confidence calculation, and no readiness gating (all Slice 8+). New
+   `app.domain.time_axis`: five open-ended semantic families
+   (`absolute`/`elapsed`/`sample_index`/`partial`/`unknown`), four -- not
+   five -- provenance states (`native`/`reconstructed`/`user_specified`/
+   `index_only`; "inferred" deliberately excluded, folded into
+   `confidence` instead per the design doc's own §4), qualitative
+   confidence (`high`/`medium`/`low`/`unknown`, always `unknown` today),
+   a seven-state status model (`unconfigured`/`detected`/
+   `review_required`/`confirmed`/`needs_attention`/`index_fallback`/
+   `unsupported` -- `review_required` is a currently-unreachable-by-
+   `resolve_status()` but valid value, reserved for Slice 8), and a
+   `TimeAxisDiagnostic` model that is a SEPARATE transport from
+   `PreparationIssue` (borrows the `blocking`/`warning`/`info`
+   vocabulary informally only, never counted into
+   `PreparationIssueSummary`). `TimeAxisConfiguration{column_indices,
+   family, provenance, interpreter_id, unit, interval_seconds, confirmed,
+   options}` is stored per-worksheet/source in a new
+   `WorkingOverlay.time_axis: dict[worksheet_index_or_None,
+   TimeAxisConfiguration]` -- the exact same sparse-dict/frozen-
+   replace-on-change/`None`-scoped-for-CSV pattern as `header_row`/
+   `data_region`/`column_roles` before it, sharing the SAME bounded
+   undo/redo history and revision counter (`set_time_axis_configuration`/
+   `clear_time_axis_configuration` add one new `"time_axis"`
+   `WorkingOperation` kind; `reset_all()` clears it too) -- no second
+   history mechanism. Column-role relationship (task's own explicit
+   requirement): a configuration may only be CREATED referencing columns
+   currently carrying `ROLE_TIME_AXIS` (enforced at write time by
+   `app.services.time_axis_service`); if a column's role later changes
+   away from Time Axis, the stored configuration is deliberately left
+   untouched (no auto-clearing, which was considered and rejected to
+   avoid a compound, harder-to-undo mutation) -- staleness is instead
+   detected LIVE on every read and reported as `unsupported`, never
+   presented as valid. `app.services.time_axis_service` provides a
+   small, explicit, hand-written interpreter registry (no plugin
+   discovery, matching `KNOWN_COLUMN_ROLES`'s own precedent) with
+   exactly two non-parsing interpreters: `manual` (stores whatever
+   family/provenance/unit/interval the caller states, accepts any
+   non-empty column set) and `unsupported` (the universal fallback
+   sentinel, always `family=None, provenance=None`) --
+   `resolve_interpreter()` falls back to `unsupported` when no real
+   interpreter accepts a request, directly unit-tested via a synthetic
+   fake interpreter (Slice 8 adds real interpreters to this same
+   registry without changing its shape). `TimeAxisInterpretationResult`
+   is derived LIVE on every call from stored state + current
+   `column_roles` (never cached, mirroring
+   `preparation_issue_service`'s own "derive live" choice) and echoes
+   `unit`/`interval_seconds`/`confirmed` verbatim from the stored
+   configuration (a presentation convenience for the frontend's own edit
+   form, not a new calculation). New endpoints, extending the existing
+   `.../preparation-sources/{source_id}/...` pattern: `GET .../time-axis`
+   (the live interpretation result), `PUT .../working/time-axis` (create/
+   replace; full schema validation -- non-empty/unique/in-bounds
+   `column_indices`, all currently Time-Axis-role, known
+   `family`/`provenance`, positive `interval_seconds` if given, known
+   `interpreter_id` if given), `DELETE .../working/time-axis` (clear,
+   safe no-op), `GET .../time-axis/interpreters` (registry metadata).
+   Two new error codes: `invalid_time_axis_configuration`,
+   `unknown_time_axis_interpreter`. `time_grouping.py` and
+   `DisturbanceRecord` were NOT touched (task's own explicit
+   requirement) -- absolute/non-absolute compatibility is fully
+   preserved since nothing in this slice feeds `timing_reference` yet.
+   Frontend: a new compact, progressive-disclosure "Time Axis" panel in
+   the Data Preparation Workspace (same shell as Preparation Status/
+   Structure: an always-visible Columns/Interpretation/Status summary, a
+   "Configure"/"Hide" toggle revealing a form) that CONSUMES -- never
+   duplicates -- the Structure panel's own `column_roles` state: eligible
+   columns are always exactly the current `time_axis`-role columns,
+   rendered as checkboxes (supporting multiple Time Axis columns in one
+   configuration); an explicit "No Time Axis columns selected" hint
+   replaces the form when none exist; family selection toggles
+   unit/interval field visibility (elapsed → unit, sample_index →
+   interval, never both). `preview_supported` is always `false` on the
+   wire -- the frontend never renders a fabricated reconstructed-
+   timestamp preview (a seam only, per this slice's own explicit
+   guardrail).
+   Verified: full backend suite 2206 passed (81 new on top of the
+   data-region end-selection refinement's 2125), zero regressions (new
+   domain/WorkingOverlay/service/API test files/classes added for
+   families/provenance/statuses, `resolve_status()` precedence, registry
+   resolution and fallback, column-role staleness, worksheet isolation,
+   and undo/redo); the committed browser smoke test (COMTRADE) still
+   passes unchanged; two throwaway (not committed) live-browser
+   Playwright UAT scripts confirmed: the panel is collapsed by default;
+   expanding with no Time Axis columns shows the Structure-first hint;
+   assigning the Time Axis role in Structure immediately makes a column
+   eligible here; configuring one and then multiple columns updates the
+   compact summary correctly (`"A"` then `"A, B"`); `sample_index`+
+   `index_only` reports `index_fallback`; Undo/Redo correctly round-trips
+   a configuration change; changing a configured column's role away from
+   Time Axis reports `unsupported` without touching the stored
+   configuration; Clear reverts to `unconfigured`; and a multi-sheet
+   Excel workbook keeps one sheet's configuration completely invisible
+   on, and unaffected by, another -- all with zero console/page errors.
 8. **`[DESIGN COMPLETE, 2026-09-01]` Initial time-axis interpreters.**
    The safest initial cases only — do not attempt every possible
    time-axis format at once. Exact proposed initial interpreter set

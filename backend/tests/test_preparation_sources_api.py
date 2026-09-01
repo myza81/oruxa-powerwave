@@ -1497,3 +1497,244 @@ class TestPreparationIssuesEndpoint:
         client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues")
 
         assert client.get("/api/v1/workspaces/ws-1/sources").json() == []
+
+
+# ---- CSV/Excel ingestion Slice 7 (DEC-072): Time-Axis interpretation FRAMEWORK API ----
+
+
+class TestTimeAxisInterpretersEndpoint:
+    def test_lists_manual_and_unsupported(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        resp = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis/interpreters")
+
+        assert resp.status_code == 200, resp.text
+        ids = {row["interpreter_id"] for row in resp.json()}
+        assert ids == {"manual", "unsupported"}
+
+
+class TestTimeAxisGetEndpoint:
+    def test_unconfigured_source_returns_unconfigured(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        resp = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis")
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "unconfigured"
+        assert body["column_indices"] == []
+        assert body["preview_supported"] is False
+
+    def test_unknown_source_returns_404(self, client):
+        resp = client.get("/api/v1/workspaces/ws-1/preparation-sources/does-not-exist/time-axis")
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["code"] == "source_not_found"
+
+
+class TestTimeAxisPutEndpoint:
+    def test_configure_one_column(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "family": "absolute", "provenance": "native"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "detected"
+        assert body["column_indices"] == [0]
+        assert body["interpreter_id"] == "manual"
+        assert body["confirmation_required"] is True
+
+    def test_configure_multiple_columns(self, client):
+        source_id = _upload_csv(client, content=b"a,b,c\n1,2,3\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0, 1], "family": "absolute", "provenance": "native"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["column_indices"] == [0, 1]
+
+    def test_confirmed_configuration_returns_confirmed_status(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "family": "absolute", "provenance": "native", "confirmed": True},
+        )
+
+        assert resp.json()["status"] == "confirmed"
+
+    def test_sample_index_null_rate_returns_index_fallback(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "family": "sample_index", "provenance": "index_only"},
+        )
+
+        assert resp.json()["status"] == "index_fallback"
+
+    def test_column_without_time_axis_role_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "family": "absolute", "provenance": "native"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_time_axis_configuration"
+
+    def test_unknown_family_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "family": "not_real", "provenance": "native"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_time_axis_configuration"
+
+    def test_unknown_interpreter_id_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "family": "absolute", "provenance": "native", "interpreter_id": "ghost"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "unknown_time_axis_interpreter"
+
+    def test_column_beyond_known_bounds_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [99], "family": "absolute", "provenance": "native"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_working_coordinate"
+
+
+class TestTimeAxisDeleteEndpoint:
+    def test_clear_reverts_to_unconfigured(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "family": "absolute", "provenance": "native"},
+        )
+
+        resp = client.delete(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis")
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["status"] == "unconfigured"
+
+    def test_clear_with_none_set_is_a_safe_no_op(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        resp = client.delete(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis")
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["status"] == "unconfigured"
+
+
+class TestTimeAxisColumnRoleStalenessViaApi:
+    def test_role_change_away_from_time_axis_reports_unsupported(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "family": "absolute", "provenance": "native", "confirmed": True},
+        )
+
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "waveform"})
+
+        resp = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis")
+        assert resp.json()["status"] == "unsupported"
+
+
+class TestTimeAxisUndoRedoViaApi:
+    def test_undo_reverts_configuration_and_redo_reapplies_it(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "family": "absolute", "provenance": "native"},
+        )
+
+        client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/undo")
+        after_undo = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis").json()
+        assert after_undo["status"] == "unconfigured"
+
+        client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/redo")
+        after_redo = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis").json()
+        assert after_redo["status"] == "detected"
+
+
+class TestTimeAxisResetAllIncludesTimeAxis:
+    def test_reset_all_clears_time_axis_configuration(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "family": "absolute", "provenance": "native"},
+        )
+
+        client.delete(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working")
+
+        resp = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis")
+        assert resp.json()["status"] == "unconfigured"
+
+
+class TestTimeAxisExcelWorksheetIsolationViaApi:
+    def test_configuration_isolated_per_worksheet(self, client):
+        content = _build_xlsx({
+            "A": [["Time", "VR"], [0.0, 1.0], [0.001, 2.0]],
+            "B": [["x"], [1], [2]],
+        })
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "m.xlsx"),
+        ).json()["source_id"]
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 0})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "family": "absolute", "provenance": "native"},
+        )
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 1})
+        resp_b = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis")
+        assert resp_b.json()["status"] == "unconfigured"
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 0})
+        resp_a = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis")
+        assert resp_a.json()["status"] == "detected"
+
+
+class TestTimeAxisComtradeRegressionUnaffected:
+    def test_comtrade_sources_endpoint_still_empty(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "family": "absolute", "provenance": "native"},
+        )
+
+        assert client.get("/api/v1/workspaces/ws-1/sources").json() == []

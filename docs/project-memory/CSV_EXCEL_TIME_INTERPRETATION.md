@@ -1,6 +1,10 @@
 # CSV/Excel Time Interpretation Framework — Design Specification
 
-Status: **Design only. Nothing in this document is implemented.**
+Status: **Slice 7 (framework) is `[DONE, 2026-09-01]` — implemented
+exactly as designed below, with zero real parsing/detection/confidence
+logic (see [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 7](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
+for the full implementation summary). Slice 8 (§19, initial
+interpreters) remains design-only / not yet implemented.**
 
 Date: 2026-09-01
 Source: owner-requested design checkpoint, preceding Slice 7. This
@@ -924,6 +928,26 @@ repeated-timestamp reconstruction algorithm and its confidence
 computation (§6/§7); the expanded per-family review UI content (§15.2)
 beyond a generic placeholder; promotion of diagnostics into
 `PreparationIssue` (§13, deferred to Slice 9's own scope decision).
+
+**`[DONE, 2026-09-01]` Implementation note**: built exactly as scoped
+above, item-for-item, with two small naming/shape resolutions made
+during implementation (both consistent with, not deviating from, this
+section's own proposal): (a) item 3's "minimal `unknown`/pass-through"
+interpreter became two concrete registry entries — `manual` (the
+`pass_through` concept: stores whatever the user states, unconditional
+`accepts()`) and `unsupported` (the universal fallback sentinel) —
+since the task's own examples (`pass_through`/`unsupported`/`manual`)
+read as alternative names for the same one non-parsing concept, not
+three distinct interpreters; (b) the read endpoint
+(`GET .../time-axis`) additionally echoes `unit`/`interval_seconds`/
+`confirmed` verbatim from the stored `TimeAxisConfiguration` (not
+listed explicitly above) so the frontend's own edit form can prefill
+without a second, parallel "raw configuration" endpoint — a wire-level
+convenience only, not a new calculated value. See
+[CSV_EXCEL_INGESTION_ARCHITECTURE.md item 7](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
+for the full file-by-file/test-by-test implementation summary; this
+document's own design content above is otherwise unchanged and remains
+the authoritative reference for the shapes themselves.
 
 ---
 

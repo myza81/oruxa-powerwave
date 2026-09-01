@@ -905,6 +905,16 @@
         .ww-data-prep-structure-summary dt { margin: 0; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.02em; color: var(--text-dim); font-weight: 600; }
         .ww-data-prep-structure-summary dd { margin: 0; font-size: 0.75rem; }
         #wwDataPrepStructureDetails { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--panel-border); }
+        /* Slice 7 (DEC-072): Time Axis panel -- reuses the exact same
+           progressive-disclosure shell (.ww-data-prep-panel-header,
+           .ww-data-prep-structure-summary, .ww-data-prep-structure-row/
+           -field/-controls, .ww-data-prep-radio-option) as the Structure
+           panel above; only the two selectors genuinely new to this
+           panel are added here, matching the Structure panel's own
+           already-committed values exactly rather than diverging. */
+        #wwDataPrepTimeAxisDetails { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--panel-border); }
+        .ww-data-prep-time-axis-controls select { font: inherit; font-size: 0.75rem; background: var(--panel); color: var(--text); border: 1px solid var(--panel-border); border-radius: 3px; padding: 2px 4px; }
+        .ww-data-prep-time-axis-columns { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 12px; }
         .ww-cc-subtitle { margin: 3px 0 0; color: var(--text-dim); font-size: 0.85rem; }
         .ww-cc-panel { padding: 16px; }
         .ww-cc-panel h3 { margin: 0 0 12px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
@@ -4573,6 +4583,88 @@
                     </div>
                 </section>
 
+                <!-- Slice 7 (DEC-072): Time-Axis interpretation FRAMEWORK
+                     panel. Consumes -- never duplicates -- the Structure
+                     panel's own column_roles state above: eligible
+                     columns here are always exactly the current
+                     `time_axis`-role columns, computed from
+                     wwDataPrep.columnRoles. Same progressive-disclosure
+                     shell as Preparation Status/Structure: a compact,
+                     always-visible summary; a "Configure" toggle
+                     (wwDataPrep.timeAxisExpanded, frontend-only, reset
+                     every openDataPreparationWorkspace() run) revealing
+                     the actual family/provenance/unit/interval/confirmed
+                     form. FRAMEWORK ONLY: no real datetime/elapsed/
+                     sample-index parsing happens anywhere here or in the
+                     backend it calls -- `family`/`provenance` are always
+                     exactly what the user states, never detected. -->
+                <section class="panel ww-cc-panel">
+                    <div class="ww-data-prep-panel-header">
+                        <div>
+                            <h3>Time Axis</h3>
+                            <p class="hint">Framework only -- Powerwave does not yet parse dates, elapsed time, or sample index values.</p>
+                        </div>
+                        <button type="button" class="secondary" id="wwDataPrepTimeAxisToggleBtn">Configure</button>
+                    </div>
+                    <dl class="ww-data-prep-structure-summary" id="wwDataPrepTimeAxisSummary">
+                        <div><dt>Columns</dt><dd id="wwDataPrepTimeAxisSummaryColumns">None selected</dd></div>
+                        <div><dt>Interpretation</dt><dd id="wwDataPrepTimeAxisSummaryInterpretation">—</dd></div>
+                        <div><dt>Status</dt><dd id="wwDataPrepTimeAxisSummaryStatus">Unconfigured</dd></div>
+                    </dl>
+                    <div id="wwDataPrepTimeAxisDetails" hidden>
+                        <p class="hint" id="wwDataPrepTimeAxisNoColumnsHint" hidden>No Time Axis columns selected -- assign the "Time Axis" role to one or more columns in Structure first.</p>
+                        <div id="wwDataPrepTimeAxisForm">
+                            <div class="ww-data-prep-time-axis-columns" id="wwDataPrepTimeAxisColumnChecks"></div>
+                            <div class="ww-data-prep-structure-row">
+                                <div class="field ww-data-prep-structure-field">
+                                    <label for="wwDataPrepTimeAxisFamilySelect">Family</label>
+                                    <div class="ww-data-prep-structure-controls ww-data-prep-time-axis-controls">
+                                        <select id="wwDataPrepTimeAxisFamilySelect">
+                                            <option value="absolute">Absolute</option>
+                                            <option value="elapsed">Elapsed</option>
+                                            <option value="sample_index">Sample Index</option>
+                                            <option value="partial">Partial</option>
+                                            <option value="unknown">Unknown</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="field ww-data-prep-structure-field">
+                                    <label for="wwDataPrepTimeAxisProvenanceSelect">Provenance</label>
+                                    <div class="ww-data-prep-structure-controls ww-data-prep-time-axis-controls">
+                                        <select id="wwDataPrepTimeAxisProvenanceSelect">
+                                            <option value="native">Native</option>
+                                            <option value="reconstructed">Reconstructed</option>
+                                            <option value="user_specified">User Specified</option>
+                                            <option value="index_only">Index Only</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="field ww-data-prep-structure-field" id="wwDataPrepTimeAxisUnitField" hidden>
+                                    <label for="wwDataPrepTimeAxisUnitInput">Unit</label>
+                                    <div class="ww-data-prep-structure-controls">
+                                        <input type="text" id="wwDataPrepTimeAxisUnitInput" placeholder="e.g. milliseconds">
+                                    </div>
+                                </div>
+                                <div class="field ww-data-prep-structure-field" id="wwDataPrepTimeAxisIntervalField" hidden>
+                                    <label for="wwDataPrepTimeAxisIntervalInput">Interval (seconds)</label>
+                                    <div class="ww-data-prep-structure-controls">
+                                        <input type="number" id="wwDataPrepTimeAxisIntervalInput" min="0" step="any" placeholder="optional">
+                                    </div>
+                                </div>
+                            </div>
+                            <label class="ww-data-prep-radio-option">
+                                <input type="checkbox" id="wwDataPrepTimeAxisConfirmedCheckbox">
+                                <span>Confirmed</span>
+                            </label>
+                            <div class="ww-data-prep-structure-controls">
+                                <button type="button" class="secondary" id="wwDataPrepTimeAxisSaveBtn">Save</button>
+                                <button type="button" class="secondary" id="wwDataPrepTimeAxisClearBtn">Clear</button>
+                            </div>
+                        </div>
+                        <div class="upload-status" id="wwDataPrepTimeAxisStatus" role="status" aria-live="polite"></div>
+                    </div>
+                </section>
+
                 <section class="panel ww-cc-panel">
                     <div class="ww-data-prep-toolbar">
                         <div>
@@ -6722,6 +6814,17 @@
             // "recommended default on opening... collapsed" guidance).
             issuesExpanded: false,
             structureExpanded: false,
+            // Slice 7 (DEC-072): Time-Axis interpretation FRAMEWORK
+            // state -- `timeAxisSummary` is the full
+            // GET .../time-axis response body (a
+            // TimeAxisInterpretationResultOut), or `null` before it has
+            // ever loaded. Never computed locally -- the frontend only
+            // ever displays what the backend derived. `timeAxisExpanded`
+            // is purely local progressive-disclosure state, reset every
+            // openDataPreparationWorkspace() run, exactly like
+            // issuesExpanded/structureExpanded above.
+            timeAxisSummary: null,
+            timeAxisExpanded: false,
         };
 
         function wwDataPrepSourceUrl(suffix) {
@@ -7062,6 +7165,14 @@
                 // mutation already calls wwDataPrepFetchPreview(), plus
                 // initial load and worksheet switching.
                 await wwDataPrepFetchIssues();
+                // Slice 7: re-fetched alongside every preview load, for
+                // the same reason issues are (above) -- covers every
+                // mutation (they all end in wwDataPrepFetchPreview()),
+                // initial load, and worksheet switching, and is also how
+                // a column-role change away from Time Axis (elsewhere in
+                // this same panel set) gets reflected as `unsupported`
+                // here without a second, bespoke refresh call.
+                await wwDataPrepFetchTimeAxis();
             } catch (error) {
                 status.textContent = "Could not reach the backend.";
             }
@@ -7163,6 +7274,240 @@
         document.getElementById("wwDataPrepIssuesToggleBtn").addEventListener("click", () => {
             wwDataPrep.issuesExpanded = !wwDataPrep.issuesExpanded;
             wwDataPrepRenderIssues();
+        });
+
+        // ---- Slice 7 (DEC-072): Time-Axis interpretation FRAMEWORK panel ----
+        // Same "backend is authoritative" convention as every earlier
+        // panel: every render function here only ever displays
+        // wwDataPrep.timeAxisSummary/wwDataPrep.columnRoles, and every
+        // mutation calls the backend then re-fetches before rendering.
+        // No datetime/elapsed/sample-index parsing happens here -- the
+        // form only ever collects the user's own stated family/
+        // provenance/unit/interval, exactly as Slice 7's backend stores
+        // them verbatim.
+
+        const WW_DATA_PREP_TIME_AXIS_FAMILY_LABELS = {
+            absolute: "Absolute", elapsed: "Elapsed", sample_index: "Sample Index", partial: "Partial", unknown: "Unknown",
+        };
+        const WW_DATA_PREP_TIME_AXIS_PROVENANCE_LABELS = {
+            native: "Native", reconstructed: "Reconstructed", user_specified: "User Specified", index_only: "Index Only",
+        };
+        const WW_DATA_PREP_TIME_AXIS_STATUS_LABELS = {
+            unconfigured: "Unconfigured",
+            detected: "Detected",
+            review_required: "Review Required",
+            confirmed: "Confirmed",
+            needs_attention: "Needs Attention",
+            index_fallback: "Index Fallback (Sample Index)",
+            unsupported: "Unsupported -- columns no longer marked Time Axis",
+        };
+
+        // Eligible columns are always exactly the CURRENT `time_axis`-
+        // role columns from the Structure panel's own column_roles state
+        // -- never a second, independently-tracked list (task's own
+        // "consume, do not duplicate, Structure's column-role
+        // assignments" requirement).
+        function wwDataPrepTimeAxisEligibleColumns() {
+            const roles = wwDataPrep.columnRoles || [];
+            const eligible = [];
+            for (let c = 0; c < roles.length; c++) {
+                if (roles[c] === "time_axis") eligible.push(c);
+            }
+            return eligible;
+        }
+
+        function wwDataPrepTimeAxisSelectedColumns() {
+            return Array.from(document.querySelectorAll(".ww-data-prep-time-axis-col-check:checked"))
+                .map((el) => parseInt(el.value, 10));
+        }
+
+        function wwDataPrepRenderTimeAxisSummary() {
+            const summary = wwDataPrep.timeAxisSummary;
+            const columnsEl = document.getElementById("wwDataPrepTimeAxisSummaryColumns");
+            const interpretationEl = document.getElementById("wwDataPrepTimeAxisSummaryInterpretation");
+            const statusEl = document.getElementById("wwDataPrepTimeAxisSummaryStatus");
+
+            const columnIndices = (summary && summary.column_indices) || [];
+            columnsEl.textContent = columnIndices.length ? columnIndices.map(wwSpreadsheetColumnLabel).join(", ") : "None selected";
+
+            if (summary && summary.family) {
+                const familyLabel = WW_DATA_PREP_TIME_AXIS_FAMILY_LABELS[summary.family] || summary.family;
+                const provenanceLabel = summary.provenance
+                    ? (WW_DATA_PREP_TIME_AXIS_PROVENANCE_LABELS[summary.provenance] || summary.provenance)
+                    : null;
+                interpretationEl.textContent = provenanceLabel ? familyLabel + " (" + provenanceLabel + ")" : familyLabel;
+            } else {
+                interpretationEl.textContent = "—";
+            }
+
+            const status = summary ? summary.status : "unconfigured";
+            statusEl.textContent = WW_DATA_PREP_TIME_AXIS_STATUS_LABELS[status] || status;
+        }
+
+        // Owner-only unit/interval fields (task's own progressive-
+        // disclosure requirement): `unit` only matters for `elapsed`,
+        // `interval_seconds` only for `sample_index` -- shown/hidden by
+        // family selection alone, never both, never neither is possible
+        // to fill in when it would not apply.
+        function wwDataPrepRenderTimeAxisFieldVisibility() {
+            const family = document.getElementById("wwDataPrepTimeAxisFamilySelect").value;
+            document.getElementById("wwDataPrepTimeAxisUnitField").hidden = family !== "elapsed";
+            document.getElementById("wwDataPrepTimeAxisIntervalField").hidden = family !== "sample_index";
+        }
+
+        function wwDataPrepRenderTimeAxisEligibleColumns() {
+            const container = document.getElementById("wwDataPrepTimeAxisColumnChecks");
+            const noColumnsHint = document.getElementById("wwDataPrepTimeAxisNoColumnsHint");
+            const form = document.getElementById("wwDataPrepTimeAxisForm");
+            const eligible = wwDataPrepTimeAxisEligibleColumns();
+
+            if (!eligible.length) {
+                noColumnsHint.hidden = false;
+                form.hidden = true;
+                container.innerHTML = "";
+                return;
+            }
+            noColumnsHint.hidden = true;
+            form.hidden = false;
+
+            const summary = wwDataPrep.timeAxisSummary;
+            const selected = new Set((summary && summary.column_indices) || []);
+            container.innerHTML = eligible.map((c) =>
+                '<label class="ww-data-prep-radio-option">' +
+                '<input type="checkbox" class="ww-data-prep-time-axis-col-check" value="' + c + '"' +
+                (selected.has(c) ? " checked" : "") + '>' +
+                '<span>' + wwSpreadsheetColumnLabel(c) + '</span></label>'
+            ).join("");
+        }
+
+        // Reflects the CURRENT stored configuration (echoed verbatim by
+        // GET .../time-axis -- see TimeAxisInterpretationResultOut's own
+        // docstring) into the form's own inputs -- never invents a
+        // default the backend did not actually report, except where an
+        // unconfigured source needs SOME starting selection
+        // (`family`/`provenance` default to the first option, matching
+        // this codebase's own <select> convention elsewhere).
+        function wwDataPrepRenderTimeAxisForm() {
+            const summary = wwDataPrep.timeAxisSummary;
+            document.getElementById("wwDataPrepTimeAxisFamilySelect").value = (summary && summary.family) || "absolute";
+            document.getElementById("wwDataPrepTimeAxisProvenanceSelect").value = (summary && summary.provenance) || "native";
+            document.getElementById("wwDataPrepTimeAxisUnitInput").value = (summary && summary.unit) || "";
+            document.getElementById("wwDataPrepTimeAxisIntervalInput").value =
+                summary && summary.interval_seconds != null ? summary.interval_seconds : "";
+            document.getElementById("wwDataPrepTimeAxisConfirmedCheckbox").checked = !!(summary && summary.confirmed);
+            wwDataPrepRenderTimeAxisFieldVisibility();
+        }
+
+        async function wwDataPrepFetchTimeAxis() {
+            try {
+                const response = await fetch(wwDataPrepSourceUrl("/time-axis"));
+                wwDataPrep.timeAxisSummary = response.ok ? await response.json() : null;
+            } catch (error) {
+                wwDataPrep.timeAxisSummary = null;
+            }
+            wwDataPrepRenderTimeAxisSummary();
+            wwDataPrepRenderTimeAxisEligibleColumns();
+            wwDataPrepRenderTimeAxisForm();
+        }
+
+        // A Time-Axis mutation's own response is a
+        // TimeAxisInterpretationResultOut, not a WorkingOverlaySummaryOut
+        // -- it never carries can_undo/can_redo. This lightweight,
+        // best-effort refresh (reusing the plain session-summary
+        // endpoint's own embedded `working_overlay`, exactly like the
+        // worksheet-selection PATCH handler's own equivalent
+        // `summarize_working_overlay()` call server-side) is what keeps
+        // the toolbar's Undo/Redo buttons correct after configuring or
+        // clearing a time axis, without a second full preview re-fetch.
+        async function wwDataPrepRefreshOverlayToolbarOnly() {
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                        "/preparation-sources/" + encodeURIComponent(wwDataPrep.sourceId)
+                );
+                if (response.ok) {
+                    const summary = await response.json();
+                    wwDataPrepApplyOverlaySummary(summary.working_overlay);
+                }
+            } catch (error) {
+                // Best-effort only -- Undo/Redo button state is not a
+                // critical path; the next full preview fetch corrects it.
+            }
+        }
+
+        function wwDataPrepTimeAxisStatusEl() {
+            return document.getElementById("wwDataPrepTimeAxisStatus");
+        }
+
+        async function wwDataPrepSetTimeAxis() {
+            const status = wwDataPrepTimeAxisStatusEl();
+            status.textContent = "";
+            const columnIndices = wwDataPrepTimeAxisSelectedColumns();
+            if (!columnIndices.length) {
+                status.textContent = "Select at least one Time Axis column first.";
+                return;
+            }
+            const family = document.getElementById("wwDataPrepTimeAxisFamilySelect").value;
+            const provenance = document.getElementById("wwDataPrepTimeAxisProvenanceSelect").value;
+            const unitInput = document.getElementById("wwDataPrepTimeAxisUnitInput").value.trim();
+            const intervalInput = document.getElementById("wwDataPrepTimeAxisIntervalInput").value;
+            const confirmed = document.getElementById("wwDataPrepTimeAxisConfirmedCheckbox").checked;
+            const body = {
+                column_indices: columnIndices,
+                family: family,
+                provenance: provenance,
+                unit: family === "elapsed" && unitInput ? unitInput : null,
+                interval_seconds: family === "sample_index" && intervalInput !== "" ? parseFloat(intervalInput) : null,
+                confirmed: confirmed,
+            };
+            try {
+                const response = await fetch(
+                    wwDataPrepSourceUrl("/working/time-axis"),
+                    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+                );
+                if (!response.ok) {
+                    const errorBody = await response.json().catch(() => null);
+                    status.textContent = (errorBody && errorBody.detail && errorBody.detail.message) || "Could not save the time axis configuration.";
+                    return;
+                }
+                wwDataPrep.timeAxisSummary = await response.json();
+                wwDataPrepRenderTimeAxisSummary();
+                wwDataPrepRenderTimeAxisEligibleColumns();
+                wwDataPrepRenderTimeAxisForm();
+                await wwDataPrepRefreshOverlayToolbarOnly();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
+        }
+
+        async function wwDataPrepClearTimeAxis() {
+            const status = wwDataPrepTimeAxisStatusEl();
+            status.textContent = "";
+            try {
+                const response = await fetch(wwDataPrepSourceUrl("/working/time-axis"), { method: "DELETE" });
+                if (!response.ok) { status.textContent = "Could not clear the time axis configuration."; return; }
+                wwDataPrep.timeAxisSummary = await response.json();
+                wwDataPrepRenderTimeAxisSummary();
+                wwDataPrepRenderTimeAxisEligibleColumns();
+                wwDataPrepRenderTimeAxisForm();
+                await wwDataPrepRefreshOverlayToolbarOnly();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
+        }
+
+        document.getElementById("wwDataPrepTimeAxisSaveBtn").addEventListener("click", wwDataPrepSetTimeAxis);
+        document.getElementById("wwDataPrepTimeAxisClearBtn").addEventListener("click", wwDataPrepClearTimeAxis);
+        document.getElementById("wwDataPrepTimeAxisFamilySelect").addEventListener("change", wwDataPrepRenderTimeAxisFieldVisibility);
+
+        // Progressive disclosure -- identical toggle behavior to the
+        // Structure panel's own "Configure"/"Hide" button above: purely
+        // a visibility flip, no fetch or mutation.
+        document.getElementById("wwDataPrepTimeAxisToggleBtn").addEventListener("click", () => {
+            wwDataPrep.timeAxisExpanded = !wwDataPrep.timeAxisExpanded;
+            document.getElementById("wwDataPrepTimeAxisDetails").hidden = !wwDataPrep.timeAxisExpanded;
+            document.getElementById("wwDataPrepTimeAxisToggleBtn").textContent =
+                wwDataPrep.timeAxisExpanded ? "Hide" : "Configure";
         });
 
         document.getElementById("wwDataPrepPrevBtn").addEventListener("click", () => {
@@ -7603,6 +7948,8 @@
             // open before this one.
             wwDataPrep.issuesExpanded = false;
             wwDataPrep.structureExpanded = false;
+            wwDataPrep.timeAxisExpanded = false;
+            wwDataPrep.timeAxisSummary = null;
             wwDataPrep.columnRoles = [];
             wwDataPrep.columnLabels = [];
             wwDataPrep.headerRowNumber = null;
@@ -7611,8 +7958,12 @@
             wwDataPrep.dataEndRow = null;
             document.getElementById("wwDataPrepStructureDetails").hidden = true;
             document.getElementById("wwDataPrepStructureToggleBtn").textContent = "Configure";
+            document.getElementById("wwDataPrepTimeAxisDetails").hidden = true;
+            document.getElementById("wwDataPrepTimeAxisToggleBtn").textContent = "Configure";
             wwDataPrepRenderIssues();
             wwDataPrepRenderStructureSummary();
+            wwDataPrepRenderTimeAxisSummary();
+            wwDataPrepRenderTimeAxisEligibleColumns();
 
             try {
                 const response = await fetch(

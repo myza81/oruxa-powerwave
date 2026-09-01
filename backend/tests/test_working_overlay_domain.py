@@ -5,6 +5,12 @@ Pure data-structure tests -- no registry, no CSV/Excel I/O, no HTTP.
 
 from __future__ import annotations
 
+from app.domain.time_axis import (
+    FAMILY_ABSOLUTE,
+    INTERPRETER_ID_MANUAL,
+    PROVENANCE_NATIVE,
+    TimeAxisConfiguration,
+)
 from app.domain.working_overlay import (
     END_MODE_SOURCE_END,
     END_MODE_SPECIFIC,
@@ -20,6 +26,7 @@ from app.domain.working_overlay import (
     WorkingOverlay,
     cell_key,
     clear_header_row,
+    clear_time_axis_configuration,
     column_key,
     redo,
     reset_all,
@@ -32,6 +39,7 @@ from app.domain.working_overlay import (
     set_data_region,
     set_header_row,
     set_row_excluded,
+    set_time_axis_configuration,
     undo,
 )
 
@@ -328,6 +336,85 @@ class TestDataRegion:
         assert region_after_redo.end_row == 1000
 
 
+class TestTimeAxis:
+    def _configuration(self, column_indices=(0,), *, confirmed=False):
+        return TimeAxisConfiguration(
+            column_indices=column_indices,
+            family=FAMILY_ABSOLUTE,
+            provenance=PROVENANCE_NATIVE,
+            interpreter_id=INTERPRETER_ID_MANUAL,
+            confirmed=confirmed,
+        )
+
+    def test_set_time_axis_configuration(self):
+        overlay = WorkingOverlay()
+
+        set_time_axis_configuration(overlay, None, self._configuration())
+
+        assert overlay.time_axis[None].column_indices == (0,)
+        assert overlay.time_axis[None].family == FAMILY_ABSOLUTE
+
+    def test_set_replaces_the_whole_configuration(self):
+        overlay = WorkingOverlay()
+        set_time_axis_configuration(overlay, None, self._configuration((0,)))
+
+        set_time_axis_configuration(overlay, None, self._configuration((0, 1)))
+
+        assert overlay.time_axis[None].column_indices == (0, 1)
+
+    def test_clear_time_axis_configuration(self):
+        overlay = WorkingOverlay()
+        set_time_axis_configuration(overlay, None, self._configuration())
+
+        was_cleared = clear_time_axis_configuration(overlay, None)
+
+        assert was_cleared is True
+        assert None not in overlay.time_axis
+
+    def test_clear_with_none_set_is_a_safe_no_op(self):
+        overlay = WorkingOverlay()
+
+        was_cleared = clear_time_axis_configuration(overlay, None)
+
+        assert was_cleared is False
+        assert overlay.revision == 0
+
+    def test_time_axis_is_worksheet_scoped(self):
+        overlay = WorkingOverlay()
+        set_time_axis_configuration(overlay, 0, self._configuration((0,)))
+        set_time_axis_configuration(overlay, 1, self._configuration((2,)))
+
+        assert overlay.time_axis[0].column_indices == (0,)
+        assert overlay.time_axis[1].column_indices == (2,)
+
+    def test_multiple_time_axis_columns_are_representable(self):
+        overlay = WorkingOverlay()
+
+        set_time_axis_configuration(overlay, None, self._configuration((0, 1, 2)))
+
+        assert overlay.time_axis[None].column_indices == (0, 1, 2)
+
+    def test_undo_redo_across_configuration_change(self):
+        overlay = WorkingOverlay()
+        set_time_axis_configuration(overlay, None, self._configuration((0,), confirmed=False))
+        set_time_axis_configuration(overlay, None, self._configuration((0,), confirmed=True))
+
+        undo(overlay)
+        assert overlay.time_axis[None].confirmed is False
+
+        redo(overlay)
+        assert overlay.time_axis[None].confirmed is True
+
+    def test_undo_across_clear_restores_the_configuration(self):
+        overlay = WorkingOverlay()
+        set_time_axis_configuration(overlay, None, self._configuration())
+        clear_time_axis_configuration(overlay, None)
+
+        undo(overlay)
+
+        assert overlay.time_axis[None].column_indices == (0,)
+
+
 class TestResetAll:
     def test_clears_every_collection(self):
         overlay = WorkingOverlay()
@@ -336,6 +423,13 @@ class TestResetAll:
         set_column_role(overlay, column_key(None, 1), ROLE_IGNORE)
         set_header_row(overlay, None, 3)
         set_data_region(overlay, None, 4, 100)
+        set_time_axis_configuration(
+            overlay, None,
+            TimeAxisConfiguration(
+                column_indices=(0,), family=FAMILY_ABSOLUTE, provenance=PROVENANCE_NATIVE,
+                interpreter_id=INTERPRETER_ID_MANUAL,
+            ),
+        )
 
         reset_all(overlay)
 
@@ -344,6 +438,7 @@ class TestResetAll:
         assert overlay.column_roles == {}
         assert overlay.header_row == {}
         assert overlay.data_region == {}
+        assert overlay.time_axis == {}
 
     def test_reset_all_on_an_empty_overlay_does_not_error(self):
         overlay = WorkingOverlay()
@@ -549,6 +644,6 @@ class TestUndoRedo:
 
         op = overlay.history[-1]
         assert set(op.before.keys()) == {
-            "cell_overrides", "excluded_rows", "column_roles", "header_row", "data_region",
+            "cell_overrides", "excluded_rows", "column_roles", "header_row", "data_region", "time_axis",
         }
         assert len(op.before["cell_overrides"]) == 5

@@ -8,6 +8,112 @@ Last updated: **2026-09-01**
 
 ## What was most recently done
 
+**CSV/Excel Ingestion Slice 7 — Extensible Time-Axis Framework
+(implemented).** Owner-authorized implementation of the FRAMEWORK
+designed in the prior session's own
+[CSV_EXCEL_TIME_INTERPRETATION.md](CSV_EXCEL_TIME_INTERPRETATION.md) —
+deliberately zero real datetime/elapsed/sample-index parsing, zero
+reconstruction algorithm, zero confidence calculation, zero readiness
+gating, zero `DisturbanceRecord` conversion (all Slice 8+ scope).
+
+**Domain** (`app/domain/time_axis.py`, new): five open-ended semantic
+families (`absolute`/`elapsed`/`sample_index`/`partial`/`unknown`), a
+four-state (not five — "inferred" deliberately excluded, per the design
+doc's own §4) provenance model (`native`/`reconstructed`/
+`user_specified`/`index_only`), qualitative confidence
+(`high`/`medium`/`low`/`unknown`, always `unknown` today), a seven-state
+status model (`unconfigured`/`detected`/`review_required`/`confirmed`/
+`needs_attention`/`index_fallback`/`unsupported` — `review_required` is
+valid but currently unreachable by `resolve_status()`, reserved for
+Slice 8), `TimeAxisConfiguration{column_indices, family, provenance,
+interpreter_id, unit, interval_seconds, confirmed, options}`, and
+`TimeAxisDiagnostic` (a SEPARATE model from `PreparationIssue`, never
+merged into `PreparationIssueSummary`'s counts).
+
+**Storage/undo-redo**: `WorkingOverlay` gains
+`time_axis: dict[worksheet_index_or_None, TimeAxisConfiguration]` — the
+same sparse, frozen-replace-on-change, `None`-scoped-for-CSV pattern as
+`header_row`/`data_region`/`column_roles`, sharing the SAME bounded
+undo/redo history and revision counter (one new `"time_axis"`
+`WorkingOperation` kind; `reset_all()` clears it too) — no second
+history mechanism.
+
+**Column-role relationship**: a configuration may only be CREATED
+referencing columns currently carrying the `time_axis` column role
+(enforced at write time). If that role later changes away from Time
+Axis, the stored configuration is deliberately left untouched — no
+auto-clearing (considered and rejected to avoid a compound,
+harder-to-undo mutation) — staleness is instead detected LIVE on every
+read and reported as `unsupported`.
+
+**Interpreter registry** (`app/services/time_axis_service.py`, new): a
+small, explicit, hand-written registry (no plugin discovery) with
+exactly two non-parsing interpreters — `manual` (stores whatever
+family/provenance/unit/interval the caller states) and `unsupported`
+(the universal fallback sentinel, always `family=None,
+provenance=None`) — `resolve_interpreter()` falls back to `unsupported`
+when nothing accepts a request, unit-tested via a synthetic fake
+interpreter. Slice 8 adds real interpreters to this same registry
+without changing its shape.
+
+**API**: `GET .../preparation-sources/{id}/time-axis` (the live
+interpretation result, derived fresh on every call, never cached —
+echoes `unit`/`interval_seconds`/`confirmed` verbatim from the stored
+configuration so the frontend can prefill its edit form),
+`PUT`/`DELETE .../working/time-axis` (create/replace/clear, full schema
+validation), `GET .../time-axis/interpreters` (registry metadata). Two
+new error codes: `invalid_time_axis_configuration`,
+`unknown_time_axis_interpreter`.
+
+**Frontend**: a new compact, progressive-disclosure "Time Axis" panel
+in the Data Preparation Workspace (same shell as Preparation
+Status/Structure), CONSUMING — never duplicating — the Structure
+panel's own `column_roles` state: eligible columns are always exactly
+the current `time_axis`-role columns, rendered as checkboxes
+(supporting multiple Time Axis columns in one configuration); an
+explicit "No Time Axis columns selected" hint replaces the form when
+none exist; family selection toggles unit/interval field visibility.
+
+**`time_grouping.py` and `DisturbanceRecord` were NOT touched** — task's
+own explicit requirement; absolute/non-absolute compatibility is fully
+preserved since nothing here feeds `timing_reference` yet.
+
+**Files changed**: `backend/app/domain/time_axis.py` (new),
+`backend/app/domain/working_overlay.py`, `backend/app/services/
+time_axis_service.py` (new), `backend/app/services/errors.py`,
+`backend/app/schemas/time_axis.py` (new), `backend/app/api/v1/
+preparation_sources.py`, `frontend/index.html`; new tests
+`backend/tests/test_time_axis_domain.py`, `test_time_axis_service.py`,
+plus new classes in `test_working_overlay_domain.py` and
+`test_preparation_sources_api.py`.
+
+**Verified**: full backend suite 2206 passed (81 new on top of the
+data-region end-selection refinement's 2125), zero regressions; the
+committed browser smoke test (COMTRADE) still passes unchanged; two
+throwaway (not committed) live-browser Playwright UAT scripts confirmed
+the panel's collapsed-by-default state, the no-Time-Axis-columns hint,
+single- and multiple-column configuration, `sample_index`+`index_only`
+reporting `index_fallback`, Undo/Redo round-tripping a configuration
+change, a role change away from Time Axis reporting `unsupported`
+without mutating the stored configuration, Clear reverting to
+`unconfigured`, and full Excel worksheet isolation — all with zero
+console/page errors.
+
+**Next step**: Slice 8 (initial concrete time-axis interpreters —
+single-column absolute datetime, Date + Time, elapsed numeric time,
+sample index, repeated-timestamp detection, per
+[CSV_EXCEL_TIME_INTERPRETATION.md §19](CSV_EXCEL_TIME_INTERPRETATION.md#19-slice-8-scope--initial-interpreters))
+is the next implementation candidate per the owner's revised sequence,
+and still requires its own explicit go-ahead to begin, per
+[Change governance](../../CLAUDE.md#change-governance).
+
+**Commit status**: not committed — per this task's own explicit closing
+instruction ("Do not commit or push unless explicitly asked"), all of
+the above are normal uncommitted working-tree changes pending a
+separate, explicit commit instruction.
+
+## What was done in the prior session — CSV/Excel Time Interpretation Framework design specification (design-only checkpoint)
+
 **CSV/Excel Time Interpretation Framework — design specification
 (design-only checkpoint, no implementation).** Owner-requested task,
 preceding Slice 7: produce the formal design for how Powerwave will

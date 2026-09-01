@@ -70,6 +70,17 @@ than always requiring a manually-found numeric row -- see `DataRegion`'s
 own docstring. This stays a single, dataset-wide boundary per
 worksheet/source exactly as before; there is still no per-column end.
 
+Slice 7 (DEC-072, `docs/project-memory/CSV_EXCEL_TIME_INTERPRETATION.md`)
+adds ONE more sparse, worksheet-scoped dict, `time_axis: dict[
+worksheet_index_or_None, app.domain.time_axis.TimeAxisConfiguration]`
+-- the exact same pattern as `header_row`/`data_region`, participating
+in the exact same undo/redo history and revision counter with zero new
+mechanism. This module stores `TimeAxisConfiguration` opaquely (as a
+frozen value object it merely records/restores, exactly like
+`DataRegion`) and never itself interprets what a configuration means --
+see `app.domain.time_axis`'s own module docstring for the full
+framework design.
+
 Undo/redo (task's own "if it fits naturally... do not fake by
 snapshotting the entire dataset"): implemented here as a bounded
 operation history. Every recorded `WorkingOperation` carries only the
@@ -87,6 +98,10 @@ whole-overlay operation.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.domain.time_axis import TimeAxisConfiguration
 
 OVERRIDE_KIND_EDIT = "edit"
 OVERRIDE_KIND_CLEAR = "clear"
@@ -221,10 +236,11 @@ class WorkingOperation:
     """One undoable/redoable mutation.
 
     `kind` is `"cell"` / `"row"` / `"column_role"` / `"header"` /
-    `"data_region"` / `"reset_all"`. `key` is the affected
-    `CellKey`/`RowKey`/`ColumnKey`, or the bare `worksheet_index` (an
-    `int | None`) for `"header"`/`"data_region"`, or `None` for
-    `reset_all`. `before`/`after` hold whatever this module's own
+    `"data_region"` / `"time_axis"` / `"reset_all"`. `key` is the
+    affected `CellKey`/`RowKey`/`ColumnKey`, or the bare
+    `worksheet_index` (an `int | None`) for `"header"`/`"data_region"`/
+    `"time_axis"`, or `None` for `reset_all`. `before`/`after` hold
+    whatever this module's own
     `_apply_state()` needs to reverse/reapply the operation -- see this
     module's own docstring for why this stays O(edit count), never
     O(dataset size).
@@ -253,6 +269,7 @@ class WorkingOverlay:
     column_roles: dict[ColumnKey, str] = field(default_factory=dict)
     header_row: dict[object, int] = field(default_factory=dict)
     data_region: dict[object, DataRegion] = field(default_factory=dict)
+    time_axis: dict[object, "TimeAxisConfiguration"] = field(default_factory=dict)
     revision: int = 0
     history: list[WorkingOperation] = field(default_factory=list)
     redo_stack: list[WorkingOperation] = field(default_factory=list)
@@ -406,13 +423,40 @@ def reset_data_region(overlay: WorkingOverlay, worksheet_index: int | None) -> b
     return True
 
 
+def set_time_axis_configuration(
+    overlay: WorkingOverlay, worksheet_index: int | None, configuration: "TimeAxisConfiguration",
+) -> None:
+    """Store (or replace) this worksheet/source's own time-axis
+    configuration (Slice 7). Column-role compatibility and every other
+    validity check are enforced by `app.services.time_axis_service`,
+    not here -- this function stays pure and never raises, matching
+    every other mutation function in this module. `configuration` is
+    always the whole, already-fully-built (frozen) object -- never
+    partially merged with whatever was stored before."""
+    before = overlay.time_axis.get(worksheet_index)
+    overlay.time_axis[worksheet_index] = configuration
+    _record(overlay, "time_axis", worksheet_index, before, configuration)
+
+
+def clear_time_axis_configuration(overlay: WorkingOverlay, worksheet_index: int | None) -> bool:
+    """Remove the time-axis configuration for this worksheet/source --
+    returns to `unconfigured` (Slice 7). Returns `False` (a safe no-op)
+    if none was set."""
+    if worksheet_index not in overlay.time_axis:
+        return False
+    before = overlay.time_axis.pop(worksheet_index)
+    _record(overlay, "time_axis", worksheet_index, before, None)
+    return True
+
+
 def reset_all(overlay: WorkingOverlay) -> None:
     """Clear every cell override, row exclusion, column role, header
-    selection, and data-region narrowing -- the raw preview returns to
-    exactly its original, unconfigured state (Slice 5's own "Reset All
-    returns the preparation session to the original raw/unconfigured
-    state" requirement). The `before` snapshot recorded here is bounded
-    by the number of edits/mappings made so far (never the raw
+    selection, data-region narrowing, and time-axis configuration --
+    the raw preview returns to exactly its original, unconfigured state
+    (Slice 5's own "Reset All returns the preparation session to the
+    original raw/unconfigured state" requirement, extended by Slice 7 to
+    cover its own new state). The `before` snapshot recorded here is
+    bounded by the number of edits/mappings made so far (never the raw
     dataset's own size), preserving undo support for this operation
     too."""
     before = {
@@ -421,12 +465,14 @@ def reset_all(overlay: WorkingOverlay) -> None:
         "column_roles": dict(overlay.column_roles),
         "header_row": dict(overlay.header_row),
         "data_region": dict(overlay.data_region),
+        "time_axis": dict(overlay.time_axis),
     }
     overlay.cell_overrides.clear()
     overlay.excluded_rows.clear()
     overlay.column_roles.clear()
     overlay.header_row.clear()
     overlay.data_region.clear()
+    overlay.time_axis.clear()
     _record(overlay, "reset_all", None, before, None)
 
 
@@ -456,6 +502,11 @@ def _apply_state(overlay: WorkingOverlay, kind: str, key, state) -> None:
             overlay.data_region.pop(key, None)
         else:
             overlay.data_region[key] = state
+    elif kind == "time_axis":
+        if state is None:
+            overlay.time_axis.pop(key, None)
+        else:
+            overlay.time_axis[key] = state
     elif kind == "reset_all":
         if state is None:
             overlay.cell_overrides.clear()
@@ -463,12 +514,14 @@ def _apply_state(overlay: WorkingOverlay, kind: str, key, state) -> None:
             overlay.column_roles.clear()
             overlay.header_row.clear()
             overlay.data_region.clear()
+            overlay.time_axis.clear()
         else:
             overlay.cell_overrides = dict(state["cell_overrides"])
             overlay.excluded_rows = set(state["excluded_rows"])
             overlay.column_roles = dict(state["column_roles"])
             overlay.header_row = dict(state["header_row"])
             overlay.data_region = dict(state["data_region"])
+            overlay.time_axis = dict(state["time_axis"])
 
 
 def undo(overlay: WorkingOverlay) -> bool:

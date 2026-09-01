@@ -363,8 +363,40 @@ re-confirmed by the TG-FINAL audit):
   — a commit-history attribution/message mismatch only, not a code
   defect; left as-is per explicit owner direction.
 
-  Time-axis interpretation and the full readiness validator are still
-  explicitly NOT part of any of these six slices — see
+  **Slice 7** (2026-09-01) implements the extensible time-axis
+  interpretation FRAMEWORK from
+  [CSV_EXCEL_TIME_INTERPRETATION.md](CSV_EXCEL_TIME_INTERPRETATION.md) —
+  deliberately zero real datetime/elapsed/sample-index parsing, zero
+  reconstruction/confidence-calculation logic, zero readiness gating
+  (all Slice 8+). New `app/domain/time_axis.py`: five open-ended
+  semantic families (`absolute`/`elapsed`/`sample_index`/`partial`/
+  `unknown`), a four-state (not five — "inferred" was deliberately
+  excluded) provenance model, a seven-state status model, and a
+  `TimeAxisDiagnostic` model kept SEPARATE from `PreparationIssue`
+  (never counted into `PreparationIssueSummary`). `TimeAxisConfiguration`
+  is stored per-worksheet/source in a new `WorkingOverlay.time_axis`
+  dict — the same sparse/frozen-replace pattern as `header_row`/
+  `data_region`/`column_roles`, sharing the same bounded undo/redo
+  history and revision counter. A configuration may only reference
+  columns currently carrying the `time_axis` column role; if that role
+  changes later, the stored configuration is left untouched but reported
+  as `unsupported` on every live read (no auto-clearing). A small,
+  explicit interpreter registry (`app/services/time_axis_service.py`)
+  holds exactly two non-parsing interpreters — `manual` (stores whatever
+  the user states) and `unsupported` (the universal fallback) — with
+  Slice 8 adding real interpreters to the same registry later. New
+  endpoints: `GET .../time-axis`, `PUT`/`DELETE .../working/time-axis`,
+  `GET .../time-axis/interpreters`. Frontend: a compact,
+  progressive-disclosure "Time Axis" panel consuming (never duplicating)
+  the Structure panel's own column-role state, supporting multiple Time
+  Axis columns. `time_grouping.py` and `DisturbanceRecord` were not
+  touched. See
+  [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 7](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
+  for the full implementation summary.
+
+  Initial time-axis interpreters (Slice 8) and the full readiness
+  validator are still explicitly NOT part of any slice implemented so
+  far — see
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md).
 
 ## Known intentional constraints / deferred items
@@ -442,28 +474,29 @@ Slice 6 adds the Readiness Issue LANGUAGE AND TRANSPORT model
 (`blocking`/`warning`/`info` severities, three conservative `info`-only
 issue codes derived live from configuration state) — explicitly NOT the
 full Readiness Validator, no readiness gate, no status transition.
-Slices 7–13 (the extensible time-axis framework, initial time-axis
-interpreters, the full Readiness Validator, canonical `DisturbanceRecord`
-conversion, existing waveform integration, export, and progressive
-automation) remain unimplemented and require their own explicit owner
-go-ahead before starting, per
+Slice 7 (the extensible time-axis interpretation FRAMEWORK, see above)
+is now implemented. Slices 8–13 (initial time-axis interpreters, the
+full Readiness Validator, canonical `DisturbanceRecord` conversion,
+existing waveform integration, export, and progressive automation)
+remain unimplemented and require their own explicit owner go-ahead
+before starting, per
 [Change governance](../../CLAUDE.md#change-governance) — being recorded
 in the architecture document's own slice sequence does not itself
 authorize starting any of them.
 
-**`[DESIGN COMPLETE, 2026-09-01, not implemented]`**: the Slice 7/8
+**`[DESIGN COMPLETE, 2026-09-01]`**: the Slice 7/8
 design specification —
 [CSV_EXCEL_TIME_INTERPRETATION.md](CSV_EXCEL_TIME_INTERPRETATION.md) —
-is now written and settles semantic time families (absolute/elapsed/
+settles semantic time families (absolute/elapsed/
 sample_index/partial/unknown), a four-state provenance model (native/
 reconstructed/user_specified/index_only), the owner-approved
 detect→suggest→confirm fallback hierarchy (never discarding samples for
 repeated timestamps, never fabricating an absolute anchor per DEC-072
 point 5), a qualitative confidence model, the interpreter-registry
 extensibility concept, and a progressive-disclosure Time Axis UI shell
-matching the existing Preparation Status/Structure pattern. No code was
-written for this task — it is documentation only, and does not itself
-authorize starting Slice 7.
+matching the existing Preparation Status/Structure pattern. Slice 7 (the
+framework portion) is now implemented, per above; Slice 8 (initial
+concrete interpreters, §19) remains design-only.
 `SourceMetadata.timing_reference` still reserves a value other than
 `"absolute"` for a future importer with no trustworthy absolute
 recording timestamp — a CSV/Excel preparation source does not reach

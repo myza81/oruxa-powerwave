@@ -613,3 +613,40 @@ class InvalidColumnRoleError(ImportServiceError):
     values"), never a free-text field."""
 
     code = "invalid_column_role"
+
+
+# ---- CSV/Excel ingestion Slice 7 (DEC-072): Time-Axis interpretation
+# FRAMEWORK (app.domain.time_axis, app.services.time_axis_service). Still
+# no promotion into the Slice 6 severity/PreparationIssue model -- these
+# are ordinary request/runtime validation errors, exactly like every
+# prior slice's own configuration-input errors above. ----
+
+
+class InvalidTimeAxisConfigurationError(ImportServiceError):
+    """A submitted Time-Axis configuration is structurally or
+    referentially invalid: `column_indices` is empty, contains a
+    duplicate, or references a column index outside this source's own
+    known dimensions; one or more referenced columns does not currently
+    carry the Time Axis column role (task section N -- a
+    `TimeAxisConfiguration` may only reference columns presently marked
+    Time Axis); `family`/`provenance` is not one of the known closed
+    sets (`app.domain.time_axis.KNOWN_TIME_FAMILIES`/
+    `KNOWN_PROVENANCES`); or a submitted `interval_seconds` is present
+    but not finite/positive. One consolidated error class for every one
+    of these input-shape failures, matching this file's own established
+    "minimal evolution" precedent for a single configuration object
+    (`InvalidDataRegionError`) rather than one class per field."""
+
+    code = "invalid_time_axis_configuration"
+
+
+class UnknownTimeAxisInterpreterError(ImportServiceError):
+    """A submitted `interpreter_id` is not registered in
+    `app.services.time_axis_service`'s own explicit interpreter
+    registry. Kept distinct from `InvalidTimeAxisConfigurationError`
+    because it names a specific, separately-documented registry lookup
+    failure (task sections F/G: "interpreter id exists" is its own
+    schema-validation requirement), not a malformed configuration
+    shape."""
+
+    code = "unknown_time_axis_interpreter"
