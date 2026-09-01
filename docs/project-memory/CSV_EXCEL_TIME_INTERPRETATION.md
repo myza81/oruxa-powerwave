@@ -1,10 +1,14 @@
 # CSV/Excel Time Interpretation Framework — Design Specification
 
-Status: **Slice 7 (framework) is `[DONE, 2026-09-01]` — implemented
-exactly as designed below, with zero real parsing/detection/confidence
-logic (see [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 7](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
-for the full implementation summary). Slice 8 (§19, initial
-interpreters) remains design-only / not yet implemented.**
+Status: **Slice 7 (framework) is `[DONE, 2026-09-01]`. Slice 8A — the
+first two of §19's five initial interpreters (single-column absolute
+datetime, Date + Time) — is also `[DONE, 2026-09-01]`, implemented as
+real, deterministic (non-fuzzy) interpreters (see
+[CSV_EXCEL_INGESTION_ARCHITECTURE.md item 8](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
+for the full implementation summary). §19's remaining three items
+(elapsed numeric time, sample index, repeated-timestamp/lost-precision
+detection) remain design-only / not yet implemented (a future
+Slice 8B/8C).**
 
 Date: 2026-09-01
 Source: owner-requested design checkpoint, preceding Slice 7. This
@@ -980,6 +984,59 @@ Principle 6): Excel serial datetime, device-specific encodings, GPS
 week/seconds, epoch seconds/milliseconds, custom multi-field splits
 beyond Date+Time, additional locale formats — each remains a genuinely
 future interpreter addition (§17), not a Slice 8 commitment.
+
+**`[DONE, 2026-09-01]` Slice 8A implementation note**: items 1-2 above
+(single-column absolute datetime, Date + Time) are implemented exactly
+as scoped, as `absolute_datetime`/`split_date_time` in
+`app.services.time_axis_interpreters`. Items 3-5 (elapsed numeric time,
+sample index, repeated-timestamp/lost-precision detection) remain
+NOT implemented — a future Slice 8B/8C, per this task's own explicit
+non-goals list (§20 below still applies to those three in full: no
+elapsed-unit handling, no sampling-rate inference, no reconstruction
+algorithm exist anywhere in the current codebase).
+
+Concrete choices made during implementation, all consistent with this
+section's own scope (none widen it):
+
+- **Deterministic, not fuzzy.** A small, explicit `datetime.strptime`
+  pattern table per date order (`dmy`/`mdy`/`ymd`) plus
+  `datetime.fromisoformat`'s own ISO-8601 fast path (Python 3.13 --
+  handles the space/`T` separator, fractional seconds, and a trailing
+  `Z`/`±HH:MM` offset natively) -- no `dateutil`/free-form parsing
+  anywhere, per §2's own "controlled parsing strategy" principle,
+  restated explicitly by the Slice 8A task itself.
+- **Ambiguity resolved by elimination first, by the user second.**
+  Every known date order is tried against the WHOLE bounded sample;
+  `strptime` already rejects an invalid calendar date, so a day value
+  over 12 alone resolves `31/08/2026` to `dmy` with `native` provenance
+  and no diagnostic at all -- only when 2+ orders validly parse the
+  ENTIRE sample does the `ambiguous_date_order` diagnostic fire and
+  `STATUS_REVIEW_REQUIRED` (§15.3, reserved since Slice 7, now real)
+  apply. `set_time_axis_configuration()` rejects `confirmed=true`
+  outright while that diagnostic is present -- §5's own "no silent
+  engineering decision" rule enforced at the API boundary, not only in
+  UI copy.
+- **A NEW `ambiguity` axis, separate from confidence** (§6's own
+  vocabulary untouched): `unambiguous`/`ambiguous`/`invalid` on
+  `TimeAxisDiagnostic` answers "could a reasonable person read this
+  differently," while `confidence` (§6) still answers "how much
+  evidence supports this reading" -- the two were kept deliberately
+  distinct rather than overloading confidence's own three-level bucket
+  to also carry ambiguity.
+- **Bare time-of-day stays `partial`.** A single-column interpreter
+  given only time-of-day values (no date component at all) reports
+  `family=partial` with a `time_only_not_absolute` diagnostic --
+  §3's own "family is a classification of the SOURCE representation"
+  rule applied literally: the interpreter reports the TRUE family even
+  though its own name is "Absolute Datetime."
+- **Preview reuses a fresh bounded sample, not the currently-loaded
+  page.** §16 suggested reusing whatever preview page the frontend
+  already has loaded; Slice 8A's own task spec explicitly listed "an
+  explicit reasonable cap" as an equally acceptable alternative (its
+  own §H) and this was chosen instead, for a preview/detection result
+  that never depends on unrelated pagination state -- capped at 50
+  sample rows for detection, 20 formatted rows in the dry-run preview
+  response.
 
 ---
 

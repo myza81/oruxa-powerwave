@@ -1503,14 +1503,14 @@ class TestPreparationIssuesEndpoint:
 
 
 class TestTimeAxisInterpretersEndpoint:
-    def test_lists_manual_and_unsupported(self, client):
+    def test_lists_all_registered_interpreters(self, client):
         source_id = _upload_csv(client, content=b"a,b\n1,2\n")
 
         resp = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis/interpreters")
 
         assert resp.status_code == 200, resp.text
         ids = {row["interpreter_id"] for row in resp.json()}
-        assert ids == {"manual", "unsupported"}
+        assert ids == {"manual", "unsupported", "absolute_datetime", "split_date_time"}
 
 
 class TestTimeAxisGetEndpoint:
@@ -1738,3 +1738,252 @@ class TestTimeAxisComtradeRegressionUnaffected:
         )
 
         assert client.get("/api/v1/workspaces/ws-1/sources").json() == []
+
+
+# ---- CSV/Excel ingestion Slice 8A (DEC-072): deterministic absolute-time
+# interpreters -- API-level coverage for the real `absolute_datetime`/
+# `split_date_time` interpreters and the new dry-run
+# POST .../working/time-axis/interpret action. Every CSV fixture below is
+# headerless (no `working/header` call) so row 1 is genuine sample data.
+
+
+class TestTimeAxisAbsoluteDatetimePutEndpoint:
+    def test_unambiguous_iso_column_is_detected(self, client):
+        source_id = _upload_csv(client, content=b"2026-08-31 13:09:44.305\n2026-08-31 13:09:45.505\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "detected"
+        assert body["family"] == "absolute"
+        assert body["provenance"] == "native"
+        assert body["options"]["date_order"] == "ymd"
+
+    def test_ambiguous_date_order_returns_review_required(self, client):
+        source_id = _upload_csv(client, content=b"01/02/2026 13:09:44\n03/04/2026 13:09:45\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "review_required"
+        codes = {d["code"] for d in body["diagnostics"]}
+        assert "ambiguous_date_order" in codes
+        ambiguous_diag = next(d for d in body["diagnostics"] if d["code"] == "ambiguous_date_order")
+        assert ambiguous_diag["ambiguity"] == "ambiguous"
+
+    def test_confirming_while_ambiguous_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"01/02/2026 13:09:44\n03/04/2026 13:09:45\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime", "confirmed": True},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_time_axis_configuration"
+
+    def test_explicit_date_order_resolves_and_allows_confirm(self, client):
+        source_id = _upload_csv(client, content=b"01/02/2026 13:09:44\n03/04/2026 13:09:45\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={
+                "column_indices": [0], "interpreter_id": "absolute_datetime",
+                "options": {"date_order": "dmy"}, "confirmed": True,
+            },
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "confirmed"
+        assert body["provenance"] == "user_specified"
+
+    def test_time_only_column_reports_partial_family(self, client):
+        source_id = _upload_csv(client, content=b"13:09:44.305\n13:09:45.000\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime"},
+        )
+
+        assert resp.json()["family"] == "partial"
+
+    def test_wrong_column_count_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"2026-08-31 13:09:44,x\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0, 1], "interpreter_id": "absolute_datetime"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_time_axis_configuration"
+
+
+class TestTimeAxisSplitDateTimePutEndpoint:
+    def test_valid_split_date_time(self, client):
+        source_id = _upload_csv(client, content=b"31/08/2026,13:09:44.305\n30/08/2026,13:09:45.505\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0, 1], "interpreter_id": "split_date_time"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "detected"
+        assert body["family"] == "absolute"
+        assert body["column_indices"] == [0, 1]
+
+
+class TestTimeAxisInterpretEndpoint:
+    def test_interpret_does_not_store_anything(self, client):
+        source_id = _upload_csv(client, content=b"2026-08-31 13:09:44.305\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.post(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis/interpret",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["family"] == "absolute"
+        assert body["preview_rows"]
+
+        summary = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis")
+        assert summary.json()["status"] == "unconfigured"
+
+    def test_interpret_preview_row_shape(self, client):
+        source_id = _upload_csv(client, content=b"2026-08-31 13:09:44.305\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.post(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis/interpret",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime"},
+        )
+
+        row = resp.json()["preview_rows"][0]
+        assert row["row_number"] == 1
+        assert row["original"] == ["2026-08-31 13:09:44.305"]
+        assert row["interpreted"] == "2026-08-31T13:09:44.305000"
+
+    def test_interpret_rejects_manual(self, client):
+        source_id = _upload_csv(client, content=b"x\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.post(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis/interpret",
+            json={"column_indices": [0], "interpreter_id": "manual"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_time_axis_configuration"
+
+    def test_interpret_requires_time_axis_role(self, client):
+        source_id = _upload_csv(client, content=b"2026-08-31 13:09:44\n")
+
+        resp = client.post(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis/interpret",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_time_axis_configuration"
+
+    def test_interpret_on_unknown_source_returns_404(self, client):
+        resp = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources/does-not-exist/working/time-axis/interpret",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime"},
+        )
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"]["code"] == "source_not_found"
+
+    def test_interpret_ambiguous_shows_unresolved_options(self, client):
+        source_id = _upload_csv(client, content=b"01/02/2026 13:09:44\n03/04/2026 13:09:45\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.post(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis/interpret",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime"},
+        )
+
+        body = resp.json()
+        assert body["resolved_options"]["date_order"] == "auto"
+        assert all(r["interpreted"] is None for r in body["preview_rows"])
+
+
+class TestTimeAxisAbsoluteDatetimeUndoRedoViaApi:
+    def test_undo_redo_round_trips_absolute_datetime_configuration(self, client):
+        source_id = _upload_csv(client, content=b"2026-08-31 13:09:44.305\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime"},
+        )
+
+        client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/undo")
+        after_undo = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis").json()
+        assert after_undo["status"] == "unconfigured"
+
+        client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/redo")
+        after_redo = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis").json()
+        assert after_redo["status"] == "detected"
+
+
+class TestTimeAxisAbsoluteDatetimeExcelWorksheetIsolationViaApi:
+    def test_configuration_and_detection_isolated_per_worksheet(self, client):
+        content = _build_xlsx({
+            "A": [["2026-08-31 13:09:44.305"], ["2026-08-31 13:09:45.505"]],
+            "B": [["not-a-date"]],
+        })
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "m.xlsx"),
+        ).json()["source_id"]
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 0})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime"},
+        )
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 1})
+        resp_b = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis")
+        assert resp_b.json()["status"] == "unconfigured"
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 0})
+        resp_a = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis")
+        assert resp_a.json()["status"] == "detected"
+
+
+class TestTimeAxisAbsoluteDatetimeDataPreservationViaApi:
+    def test_invalid_row_and_row_order_preserved(self, client):
+        source_id = _upload_csv(client, content=b"2026-08-31 13:09:46\ngarbage\n2026-08-31 13:09:44\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime"},
+        )
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()["rows"]
+        assert [r["cells"][0] for r in rows] == ["2026-08-31 13:09:46", "garbage", "2026-08-31 13:09:44"]

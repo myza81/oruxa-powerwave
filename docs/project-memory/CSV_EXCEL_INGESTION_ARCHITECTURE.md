@@ -1160,14 +1160,118 @@ owner go-ahead before implementation begins.
    configuration; Clear reverts to `unconfigured`; and a multi-sheet
    Excel workbook keeps one sheet's configuration completely invisible
    on, and unaffected by, another -- all with zero console/page errors.
-8. **`[DESIGN COMPLETE, 2026-09-01]` Initial time-axis interpreters.**
-   The safest initial cases only — do not attempt every possible
-   time-axis format at once. Exact proposed initial interpreter set
-   (single-column absolute datetime; Date + Time; elapsed numeric time;
-   sample index; repeated-timestamp/lost-precision detection) recorded
-   in
+8. **`[IN PROGRESS]` Initial time-axis interpreters.** The safest
+   initial cases only — do not attempt every possible time-axis format
+   at once. Full proposed initial interpreter set (single-column
+   absolute datetime; Date + Time; elapsed numeric time; sample index;
+   repeated-timestamp/lost-precision detection) recorded in
    [CSV_EXCEL_TIME_INTERPRETATION.md §19](CSV_EXCEL_TIME_INTERPRETATION.md#19-slice-8-scope--initial-interpreters).
-   Not yet implemented.
+
+   **`[DONE, 2026-09-01]` Slice 8A — the two deterministic absolute-time
+   cases.** Implemented exactly the first two items of that set —
+   single-column absolute datetime and Date + Time — as REAL,
+   deterministic (non-fuzzy) interpreters on top of the Slice 7
+   framework. Elapsed numeric time, sample index, and repeated-
+   timestamp/lost-precision detection (items 3-5) remain
+   `[NOT YET IMPLEMENTED]`, deferred to a future Slice 8B/8C, per this
+   task's own explicit non-goals.
+
+   New interpreter ids registered in `app.services.time_axis_service`'s
+   own registry: `absolute_datetime` (accepts exactly 1 column) and
+   `split_date_time` (accepts exactly 2 columns, `column_indices`
+   documented as `(date_column_index, time_column_index)` in that
+   order) — both implemented in new
+   `app/services/time_axis_interpreters.py`, a small, explicit,
+   deterministic `datetime.strptime`/`datetime.fromisoformat` pattern
+   table (`%d/%m/%Y`, `%m/%d/%Y`, `%Y/%m/%d` × a bounded time-pattern
+   set with fractional seconds and AM/PM) — no `dateutil`/fuzzy parsing
+   anywhere. `manual` stays the default when `interpreter_id` is
+   omitted (explicitly checked by id, not by registry iteration order
+   -- a real fragility was found and fixed here: a test's own
+   `monkeypatch.delitem`/re-add of `manual` silently reordered the
+   dict, which an order-dependent auto-select would have gotten wrong).
+
+   **Ambiguity by elimination, never by guessing.** For `01/02/2026`-
+   style input, every known date order (`dmy`/`mdy`/`ymd`) is tried
+   against the WHOLE bounded sample; `strptime` itself already rejects
+   an invalid calendar date (day=31 rules out `mdy`), so a single
+   surviving order is reported `native`/`unambiguous` with `high`
+   confidence, while two or more surviving orders produce an
+   `ambiguous_date_order` diagnostic (`ambiguity: "ambiguous"`) and the
+   NEW `review_required` status (Slice 7's own reserved-but-unreachable
+   status is now real) — never auto-confirmed. The user's own explicit
+   `options.date_order` choice resolves it (`provenance` becomes
+   `user_specified`); `set_time_axis_configuration()` outright REJECTS
+   `confirmed=true` while an `ambiguous_date_order` diagnostic remains,
+   enforced server-side, not only in UI copy. A bare time-of-day column
+   (no date component) is reported `family=partial`, never silently
+   promoted to `absolute` (a `time_only_not_absolute` diagnostic). ISO-
+   8601 timestamps preserve a trailing `Z`/`±HH:MM` offset verbatim
+   (via `datetime.fromisoformat`, Python 3.13's own native support) --
+   a value with NO timezone stays naive, never defaulted to the
+   server's or browser's own local timezone.
+
+   New domain vocabulary (`app/domain/time_axis.py`): `DATE_ORDER_DMY`/
+   `MDY`/`YMD`/`AUTO`, `AMBIGUITY_UNAMBIGUOUS`/`AMBIGUOUS`/`INVALID`
+   (a SEPARATE axis from `confidence` -- ambiguity is "could a
+   reasonable person read this differently," confidence is "how much
+   evidence supports this reading"), six diagnostic codes
+   (`ambiguous_date_order`, `unparseable_datetime`,
+   `mixed_datetime_format`, `missing_datetime_value`,
+   `timezone_inconsistent` reserved for a future interpreter,
+   `time_only_not_absolute`), and a new `TimeAxisDetectionResult`/
+   `TimeAxisSampleRow`/`TimeAxisPreviewRow` shape set feeding the
+   interpreter contract's own two-method split the design doc's §17
+   already anticipated (`detect()` for classification, a bounded
+   `build_preview_rows()` for the {original, interpreted} preview).
+   `TimeAxisDiagnostic` gained `ambiguity`/`details` fields (both
+   optional, defaulting to backward-compatible values);
+   `TimeAxisInterpretationResult` gained an `options` echo field.
+
+   **Bounded sampling, never a full scan** (task §H/§U): a NEW
+   `_fetch_time_axis_samples()` in `time_axis_service.py` reuses
+   `preparation_preview_service.preview_preparation_source()` verbatim
+   (never a second raw-reading implementation), capped at 50 rows
+   starting at the configured data region's own start row, with
+   excluded/out-of-region/header rows dropped before an interpreter
+   ever sees them. A dry-run preview response caps its own formatted
+   {original, interpreted} rows at 20 (a second, smaller bound purely
+   for response size) — detection itself still considers the full
+   50-row sample regardless.
+
+   New API: `POST .../working/time-axis/interpret` (task's own
+   suggested route, kept verbatim) — a read-only, disposable dry-run
+   action returning family/provenance/confidence/diagnostics/
+   resolved_options/a bounded preview, storing nothing, never touching
+   the revision counter or undo/redo. `PUT .../working/time-axis`
+   extended: `family`/`provenance` are now OPTIONAL (required only for
+   `manual`; a SAMPLE interpreter's own `detect()` always overrides
+   whatever hint was supplied, since the interpreter's own identity
+   already IS the family it produces) and a new `options` field is
+   accepted and echoed back.
+
+   Frontend: the Time Axis panel's expanded form gained an "Interpreter"
+   `<select>` (Manual / Absolute Datetime / Date + Time) switching
+   between Slice 7's own plain family/provenance fields and a new
+   Detect → review ambiguity (a date-order radio group, shown ONLY when
+   genuinely ambiguous) → bounded preview table → Confirm flow; `split_
+   date_time` additionally shows two small "Date column"/"Time column"
+   selects populated from whichever Time Axis columns are currently
+   checked (task §Q's own "without duplicating the full Structure role
+   table"). No internal parser/class names are ever exposed to the
+   user.
+   Verified: full backend suite 2284 passed (78 new on top of Slice 7's
+   2206), zero regressions; the committed browser smoke test
+   (COMTRADE) still passes unchanged; three throwaway (not committed)
+   live-browser Playwright UAT scripts confirmed: an unambiguous ISO
+   column detects cleanly with a correct preview and Save→Confirm works;
+   an ambiguous `01/02/2026`-style column shows the date-order radios,
+   blocks `confirmed=true` server-side with the rejection message
+   surfaced in the panel's own status line, and resolves cleanly once an
+   explicit order is chosen; `split_date_time` correctly combines two
+   columns via its own Date/Time selects; and Excel worksheet isolation
+   and the COMTRADE regression both remain intact -- all with zero
+   console/page errors.
 9. **Full Powerwave Readiness Validator.** Structural validity; data
    validity; time-axis validity; compatibility with canonical Powerwave
    requirements (§4/§16).

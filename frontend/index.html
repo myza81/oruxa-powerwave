@@ -915,6 +915,11 @@
         #wwDataPrepTimeAxisDetails { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--panel-border); }
         .ww-data-prep-time-axis-controls select { font: inherit; font-size: 0.75rem; background: var(--panel); color: var(--text); border: 1px solid var(--panel-border); border-radius: 3px; padding: 2px 4px; }
         .ww-data-prep-time-axis-columns { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 12px; }
+        /* Slice 8A (DEC-072): Detect/preview diagnostics list -- same
+           font-size/color convention as the Preparation Status panel's
+           own .ww-data-prep-issue-item above, new selector only. */
+        .ww-data-prep-time-axis-diagnostics { margin: 0 0 10px; padding-left: 18px; font-size: 0.85rem; }
+        .ww-data-prep-time-axis-diagnostics li { margin-bottom: 4px; }
         .ww-cc-subtitle { margin: 3px 0 0; color: var(--text-dim); font-size: 0.85rem; }
         .ww-cc-panel { padding: 16px; }
         .ww-cc-panel h3 { margin: 0 0 12px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
@@ -4593,16 +4598,21 @@
                      always-visible summary; a "Configure" toggle
                      (wwDataPrep.timeAxisExpanded, frontend-only, reset
                      every openDataPreparationWorkspace() run) revealing
-                     the actual family/provenance/unit/interval/confirmed
-                     form. FRAMEWORK ONLY: no real datetime/elapsed/
-                     sample-index parsing happens anywhere here or in the
-                     backend it calls -- `family`/`provenance` are always
-                     exactly what the user states, never detected. -->
+                     the actual configuration form. Slice 8A adds two
+                     real, deterministic interpreters (Absolute Datetime,
+                     Date + Time) alongside Slice 7's own Manual entry --
+                     an "Interpreter" selector switches the form between
+                     Manual's plain family/provenance fields and the two
+                     real interpreters' own Detect -> review ambiguity ->
+                     preview -> Confirm flow (task §P/§Q). Nothing here
+                     ever guesses a date order silently -- an ambiguous
+                     detection always requires an explicit user choice
+                     before "Confirmed" is offered. -->
                 <section class="panel ww-cc-panel">
                     <div class="ww-data-prep-panel-header">
                         <div>
                             <h3>Time Axis</h3>
-                            <p class="hint">Framework only -- Powerwave does not yet parse dates, elapsed time, or sample index values.</p>
+                            <p class="hint">Powerwave never guesses a date order or invents a timezone -- ambiguous cases always require your explicit choice.</p>
                         </div>
                         <button type="button" class="secondary" id="wwDataPrepTimeAxisToggleBtn">Configure</button>
                     </div>
@@ -4615,43 +4625,89 @@
                         <p class="hint" id="wwDataPrepTimeAxisNoColumnsHint" hidden>No Time Axis columns selected -- assign the "Time Axis" role to one or more columns in Structure first.</p>
                         <div id="wwDataPrepTimeAxisForm">
                             <div class="ww-data-prep-time-axis-columns" id="wwDataPrepTimeAxisColumnChecks"></div>
-                            <div class="ww-data-prep-structure-row">
-                                <div class="field ww-data-prep-structure-field">
-                                    <label for="wwDataPrepTimeAxisFamilySelect">Family</label>
-                                    <div class="ww-data-prep-structure-controls ww-data-prep-time-axis-controls">
-                                        <select id="wwDataPrepTimeAxisFamilySelect">
-                                            <option value="absolute">Absolute</option>
-                                            <option value="elapsed">Elapsed</option>
-                                            <option value="sample_index">Sample Index</option>
-                                            <option value="partial">Partial</option>
-                                            <option value="unknown">Unknown</option>
-                                        </select>
-                                    </div>
+
+                            <div class="field ww-data-prep-structure-field">
+                                <label for="wwDataPrepTimeAxisInterpreterSelect">Interpreter</label>
+                                <div class="ww-data-prep-structure-controls ww-data-prep-time-axis-controls">
+                                    <select id="wwDataPrepTimeAxisInterpreterSelect">
+                                        <option value="manual">Manual</option>
+                                        <option value="absolute_datetime">Absolute Datetime (1 column)</option>
+                                        <option value="split_date_time">Date + Time (2 columns)</option>
+                                    </select>
                                 </div>
-                                <div class="field ww-data-prep-structure-field">
-                                    <label for="wwDataPrepTimeAxisProvenanceSelect">Provenance</label>
-                                    <div class="ww-data-prep-structure-controls ww-data-prep-time-axis-controls">
-                                        <select id="wwDataPrepTimeAxisProvenanceSelect">
-                                            <option value="native">Native</option>
-                                            <option value="reconstructed">Reconstructed</option>
-                                            <option value="user_specified">User Specified</option>
-                                            <option value="index_only">Index Only</option>
-                                        </select>
+                            </div>
+
+                            <!-- Manual: Slice 7's own plain family/provenance/unit/interval fields, unchanged. -->
+                            <div id="wwDataPrepTimeAxisManualFields">
+                                <div class="ww-data-prep-structure-row">
+                                    <div class="field ww-data-prep-structure-field">
+                                        <label for="wwDataPrepTimeAxisFamilySelect">Family</label>
+                                        <div class="ww-data-prep-structure-controls ww-data-prep-time-axis-controls">
+                                            <select id="wwDataPrepTimeAxisFamilySelect">
+                                                <option value="absolute">Absolute</option>
+                                                <option value="elapsed">Elapsed</option>
+                                                <option value="sample_index">Sample Index</option>
+                                                <option value="partial">Partial</option>
+                                                <option value="unknown">Unknown</option>
+                                            </select>
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="field ww-data-prep-structure-field" id="wwDataPrepTimeAxisUnitField" hidden>
-                                    <label for="wwDataPrepTimeAxisUnitInput">Unit</label>
-                                    <div class="ww-data-prep-structure-controls">
-                                        <input type="text" id="wwDataPrepTimeAxisUnitInput" placeholder="e.g. milliseconds">
+                                    <div class="field ww-data-prep-structure-field">
+                                        <label for="wwDataPrepTimeAxisProvenanceSelect">Provenance</label>
+                                        <div class="ww-data-prep-structure-controls ww-data-prep-time-axis-controls">
+                                            <select id="wwDataPrepTimeAxisProvenanceSelect">
+                                                <option value="native">Native</option>
+                                                <option value="reconstructed">Reconstructed</option>
+                                                <option value="user_specified">User Specified</option>
+                                                <option value="index_only">Index Only</option>
+                                            </select>
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="field ww-data-prep-structure-field" id="wwDataPrepTimeAxisIntervalField" hidden>
-                                    <label for="wwDataPrepTimeAxisIntervalInput">Interval (seconds)</label>
-                                    <div class="ww-data-prep-structure-controls">
-                                        <input type="number" id="wwDataPrepTimeAxisIntervalInput" min="0" step="any" placeholder="optional">
+                                    <div class="field ww-data-prep-structure-field" id="wwDataPrepTimeAxisUnitField" hidden>
+                                        <label for="wwDataPrepTimeAxisUnitInput">Unit</label>
+                                        <div class="ww-data-prep-structure-controls">
+                                            <input type="text" id="wwDataPrepTimeAxisUnitInput" placeholder="e.g. milliseconds">
+                                        </div>
+                                    </div>
+                                    <div class="field ww-data-prep-structure-field" id="wwDataPrepTimeAxisIntervalField" hidden>
+                                        <label for="wwDataPrepTimeAxisIntervalInput">Interval (seconds)</label>
+                                        <div class="ww-data-prep-structure-controls">
+                                            <input type="number" id="wwDataPrepTimeAxisIntervalInput" min="0" step="any" placeholder="optional">
+                                        </div>
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- Absolute Datetime / Date + Time: Slice 8A's own Detect -> review -> preview flow. -->
+                            <div id="wwDataPrepTimeAxisDetectFields" hidden>
+                                <div class="ww-data-prep-structure-row" id="wwDataPrepTimeAxisSplitColumnsRow" hidden>
+                                    <div class="field ww-data-prep-structure-field">
+                                        <label for="wwDataPrepTimeAxisDateColumnSelect">Date column</label>
+                                        <div class="ww-data-prep-structure-controls ww-data-prep-time-axis-controls">
+                                            <select id="wwDataPrepTimeAxisDateColumnSelect"></select>
+                                        </div>
+                                    </div>
+                                    <div class="field ww-data-prep-structure-field">
+                                        <label for="wwDataPrepTimeAxisTimeColumnSelect">Time column</label>
+                                        <div class="ww-data-prep-structure-controls ww-data-prep-time-axis-controls">
+                                            <select id="wwDataPrepTimeAxisTimeColumnSelect"></select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="ww-data-prep-structure-controls">
+                                    <button type="button" class="secondary" id="wwDataPrepTimeAxisDetectBtn">Detect</button>
+                                </div>
+                                <p id="wwDataPrepTimeAxisDetectedSummary" class="hint"></p>
+                                <div id="wwDataPrepTimeAxisDateOrderField" hidden>
+                                    <p class="hint">The date order is ambiguous -- choose the correct format:</p>
+                                    <div id="wwDataPrepTimeAxisDateOrderOptions"></div>
+                                </div>
+                                <ul id="wwDataPrepTimeAxisDiagnostics" class="ww-data-prep-time-axis-diagnostics"></ul>
+                                <div class="ww-data-prep-table-wrap">
+                                    <table class="ww-data-prep-table" id="wwDataPrepTimeAxisPreviewTable"></table>
+                                </div>
+                            </div>
+
                             <label class="ww-data-prep-radio-option">
                                 <input type="checkbox" id="wwDataPrepTimeAxisConfirmedCheckbox">
                                 <span>Confirmed</span>
@@ -7276,15 +7332,16 @@
             wwDataPrepRenderIssues();
         });
 
-        // ---- Slice 7 (DEC-072): Time-Axis interpretation FRAMEWORK panel ----
+        // ---- Slice 7-8A (DEC-072): Time-Axis interpretation panel ----
         // Same "backend is authoritative" convention as every earlier
         // panel: every render function here only ever displays
         // wwDataPrep.timeAxisSummary/wwDataPrep.columnRoles, and every
         // mutation calls the backend then re-fetches before rendering.
-        // No datetime/elapsed/sample-index parsing happens here -- the
-        // form only ever collects the user's own stated family/
-        // provenance/unit/interval, exactly as Slice 7's backend stores
-        // them verbatim.
+        // Slice 8A adds two REAL interpreters (absolute_datetime,
+        // split_date_time) alongside Slice 7's own manual entry -- this
+        // frontend never parses a date itself; every detected family/
+        // provenance/confidence/diagnostic/preview value comes straight
+        // from a backend response.
 
         const WW_DATA_PREP_TIME_AXIS_FAMILY_LABELS = {
             absolute: "Absolute", elapsed: "Elapsed", sample_index: "Sample Index", partial: "Partial", unknown: "Unknown",
@@ -7301,6 +7358,17 @@
             index_fallback: "Index Fallback (Sample Index)",
             unsupported: "Unsupported -- columns no longer marked Time Axis",
         };
+        const WW_DATA_PREP_TIME_AXIS_CONFIDENCE_LABELS = {
+            high: "High", medium: "Medium", low: "Low", unknown: "Unknown",
+        };
+        // Slice 8A: date-order choices offered when detection reports
+        // `ambiguous_date_order` -- never presented as a default/
+        // pre-selected guess (task's own "do not auto-confirm merely
+        // because one locale is more common" rule).
+        const WW_DATA_PREP_DATE_ORDER_LABELS = {
+            dmy: "DD/MM/YYYY", mdy: "MM/DD/YYYY", ymd: "YYYY/MM/DD",
+        };
+        const WW_DATA_PREP_SAMPLE_INTERPRETERS = ["absolute_datetime", "split_date_time"];
 
         // Eligible columns are always exactly the CURRENT `time_axis`-
         // role columns from the Structure panel's own column_roles state
@@ -7316,9 +7384,24 @@
             return eligible;
         }
 
-        function wwDataPrepTimeAxisSelectedColumns() {
+        function wwDataPrepTimeAxisCheckedColumns() {
             return Array.from(document.querySelectorAll(".ww-data-prep-time-axis-col-check:checked"))
                 .map((el) => parseInt(el.value, 10));
+        }
+
+        // The actual `column_indices` order to submit -- identical to
+        // the checked checkboxes for every interpreter EXCEPT
+        // `split_date_time`, where order is the semantic (date, time)
+        // assignment from its own two dedicated selects (task §Q: "Date
+        // column [A] / Time column [B]" without duplicating the full
+        // Structure role table).
+        function wwDataPrepTimeAxisColumnIndicesForSubmit() {
+            const interpreterId = document.getElementById("wwDataPrepTimeAxisInterpreterSelect").value;
+            if (interpreterId !== "split_date_time") return wwDataPrepTimeAxisCheckedColumns();
+            const dateCol = document.getElementById("wwDataPrepTimeAxisDateColumnSelect").value;
+            const timeCol = document.getElementById("wwDataPrepTimeAxisTimeColumnSelect").value;
+            if (dateCol === "" || timeCol === "") return [];
+            return [parseInt(dateCol, 10), parseInt(timeCol, 10)];
         }
 
         function wwDataPrepRenderTimeAxisSummary() {
@@ -7348,11 +7431,48 @@
         // disclosure requirement): `unit` only matters for `elapsed`,
         // `interval_seconds` only for `sample_index` -- shown/hidden by
         // family selection alone, never both, never neither is possible
-        // to fill in when it would not apply.
+        // to fill in when it would not apply. Manual-interpreter-only.
         function wwDataPrepRenderTimeAxisFieldVisibility() {
             const family = document.getElementById("wwDataPrepTimeAxisFamilySelect").value;
             document.getElementById("wwDataPrepTimeAxisUnitField").hidden = family !== "elapsed";
             document.getElementById("wwDataPrepTimeAxisIntervalField").hidden = family !== "sample_index";
+        }
+
+        // Slice 8A: switches the form between Manual's plain fields and
+        // the two real interpreters' own Detect/review/preview flow --
+        // purely a visibility flip driven by the Interpreter <select>,
+        // never a backend call by itself.
+        function wwDataPrepRenderTimeAxisInterpreterFields() {
+            const interpreterId = document.getElementById("wwDataPrepTimeAxisInterpreterSelect").value;
+            const isSample = WW_DATA_PREP_SAMPLE_INTERPRETERS.includes(interpreterId);
+            document.getElementById("wwDataPrepTimeAxisManualFields").hidden = isSample;
+            document.getElementById("wwDataPrepTimeAxisDetectFields").hidden = !isSample;
+            document.getElementById("wwDataPrepTimeAxisSplitColumnsRow").hidden = interpreterId !== "split_date_time";
+            if (interpreterId === "split_date_time") wwDataPrepRenderTimeAxisSplitColumnSelects();
+        }
+
+        // Populates the Date/Time column selects from whichever Time
+        // Axis columns are currently CHECKED (never the full eligible
+        // list) -- order in `column_indices` on submit is (date, time),
+        // taken from these two selects, not checkbox order.
+        function wwDataPrepRenderTimeAxisSplitColumnSelects() {
+            const checked = wwDataPrepTimeAxisCheckedColumns();
+            const dateSelect = document.getElementById("wwDataPrepTimeAxisDateColumnSelect");
+            const timeSelect = document.getElementById("wwDataPrepTimeAxisTimeColumnSelect");
+            const priorDate = dateSelect.value;
+            const priorTime = timeSelect.value;
+            const optionsHtml = checked.map((c) => '<option value="' + c + '">' + wwSpreadsheetColumnLabel(c) + '</option>').join("");
+            dateSelect.innerHTML = optionsHtml;
+            timeSelect.innerHTML = optionsHtml;
+            if (checked.map(String).includes(priorDate)) dateSelect.value = priorDate;
+            if (checked.map(String).includes(priorTime)) timeSelect.value = priorTime;
+            // Default to a stored split configuration's own (date, time)
+            // order when nothing has been picked locally yet.
+            const summary = wwDataPrep.timeAxisSummary;
+            if (dateSelect.value === "" && summary && summary.interpreter_id === "split_date_time" && summary.column_indices.length === 2) {
+                dateSelect.value = String(summary.column_indices[0]);
+                timeSelect.value = String(summary.column_indices[1]);
+            }
         }
 
         function wwDataPrepRenderTimeAxisEligibleColumns() {
@@ -7380,13 +7500,75 @@
             ).join("");
         }
 
+        // Renders a detection-shaped object (either the live GET summary
+        // for an already-stored sample-interpreter configuration, or a
+        // fresh POST .../interpret dry-run response) into the shared
+        // Detect-fields UI: a plain-language summary line, a date-order
+        // radio group ONLY when genuinely ambiguous, and the diagnostics
+        // list. `previewRows` is `null` for the GET-summary case (no
+        // preview is ever fetched merely by loading the panel -- task's
+        // own "avoid returning fake preview rows... never materialize
+        // unless needed" guardrail) and the actual bounded rows for a
+        // real dry-run response.
+        function wwDataPrepRenderTimeAxisDetectResult(detection, previewRows) {
+            const summaryEl = document.getElementById("wwDataPrepTimeAxisDetectedSummary");
+            const diagnosticsEl = document.getElementById("wwDataPrepTimeAxisDiagnostics");
+            const dateOrderField = document.getElementById("wwDataPrepTimeAxisDateOrderField");
+            const dateOrderOptions = document.getElementById("wwDataPrepTimeAxisDateOrderOptions");
+            const previewTable = document.getElementById("wwDataPrepTimeAxisPreviewTable");
+
+            if (!detection) {
+                summaryEl.textContent = "Click Detect to classify the selected column(s).";
+                diagnosticsEl.innerHTML = "";
+                dateOrderField.hidden = true;
+                previewTable.innerHTML = "";
+                return;
+            }
+
+            const familyLabel = detection.family ? (WW_DATA_PREP_TIME_AXIS_FAMILY_LABELS[detection.family] || detection.family) : "—";
+            const confidenceLabel = WW_DATA_PREP_TIME_AXIS_CONFIDENCE_LABELS[detection.confidence] || detection.confidence;
+            const resolvedOptions = detection.resolved_options || detection.options || {};
+            const formatText = resolvedOptions.detected_format ? " · Format: " + resolvedOptions.detected_format : "";
+            summaryEl.textContent = "Detected: " + familyLabel + " · Confidence: " + confidenceLabel + formatText;
+
+            const diagnostics = detection.diagnostics || [];
+            diagnosticsEl.innerHTML = diagnostics.length
+                ? diagnostics.map((d) => "<li>" + escapeHtml(d.message) + "</li>").join("")
+                : "";
+
+            const isAmbiguous = diagnostics.some((d) => d.ambiguity === "ambiguous");
+            dateOrderField.hidden = !isAmbiguous;
+            if (isAmbiguous) {
+                const currentOrder = resolvedOptions.date_order || "";
+                dateOrderOptions.innerHTML = Object.entries(WW_DATA_PREP_DATE_ORDER_LABELS).map(([value, label]) =>
+                    '<label class="ww-data-prep-radio-option">' +
+                    '<input type="radio" name="wwDataPrepTimeAxisDateOrder" value="' + value + '"' +
+                    (value === currentOrder ? " checked" : "") + '>' +
+                    '<span>' + label + '</span></label>'
+                ).join("");
+            }
+
+            if (!previewRows) {
+                previewTable.innerHTML = "";
+                return;
+            }
+            let html = "<thead><tr><th>Original</th><th>Interpreted</th></tr></thead><tbody>";
+            for (const row of previewRows) {
+                const original = row.original.map((v) => (v === null || v === undefined ? "" : String(v))).join(" ");
+                html += "<tr><td>" + escapeHtml(original) + "</td><td>" + escapeHtml(row.interpreted || "—") + "</td></tr>";
+            }
+            html += "</tbody>";
+            previewTable.innerHTML = html;
+        }
+
         // Reflects the CURRENT stored configuration (echoed verbatim by
         // GET .../time-axis -- see TimeAxisInterpretationResultOut's own
         // docstring) into the form's own inputs -- never invents a
         // default the backend did not actually report, except where an
         // unconfigured source needs SOME starting selection
-        // (`family`/`provenance` default to the first option, matching
-        // this codebase's own <select> convention elsewhere).
+        // (`family`/`provenance`/`interpreter` default to the first
+        // option, matching this codebase's own <select> convention
+        // elsewhere).
         function wwDataPrepRenderTimeAxisForm() {
             const summary = wwDataPrep.timeAxisSummary;
             document.getElementById("wwDataPrepTimeAxisFamilySelect").value = (summary && summary.family) || "absolute";
@@ -7396,6 +7578,22 @@
                 summary && summary.interval_seconds != null ? summary.interval_seconds : "";
             document.getElementById("wwDataPrepTimeAxisConfirmedCheckbox").checked = !!(summary && summary.confirmed);
             wwDataPrepRenderTimeAxisFieldVisibility();
+
+            const interpreterId = (summary && WW_DATA_PREP_SAMPLE_INTERPRETERS.includes(summary.interpreter_id))
+                ? summary.interpreter_id : "manual";
+            document.getElementById("wwDataPrepTimeAxisInterpreterSelect").value = interpreterId;
+            wwDataPrepRenderTimeAxisInterpreterFields();
+
+            // A stored sample-interpreter configuration already carries
+            // its own diagnostics/confidence/options on the plain GET
+            // response -- shown immediately, with no preview rows (the
+            // preview itself is only ever fetched on an explicit Detect
+            // click, never automatically on load).
+            if (summary && WW_DATA_PREP_SAMPLE_INTERPRETERS.includes(summary.interpreter_id)) {
+                wwDataPrepRenderTimeAxisDetectResult(summary, null);
+            } else {
+                wwDataPrepRenderTimeAxisDetectResult(null, null);
+            }
         }
 
         async function wwDataPrepFetchTimeAxis() {
@@ -7408,6 +7606,46 @@
             wwDataPrepRenderTimeAxisSummary();
             wwDataPrepRenderTimeAxisEligibleColumns();
             wwDataPrepRenderTimeAxisForm();
+        }
+
+        // Slice 8A dry-run: POST .../working/time-axis/interpret --
+        // never stores anything, never touches the revision counter
+        // (design doc §16's own "read-only and disposable" preview
+        // model). Re-run whenever the user clicks Detect or changes the
+        // date-order choice, always against the CURRENTLY selected
+        // column(s) -- never the last-saved configuration's own columns.
+        async function wwDataPrepDetectTimeAxis() {
+            const status = wwDataPrepTimeAxisStatusEl();
+            status.textContent = "";
+            const interpreterId = document.getElementById("wwDataPrepTimeAxisInterpreterSelect").value;
+            const columnIndices = wwDataPrepTimeAxisColumnIndicesForSubmit();
+            if (!columnIndices.length || columnIndices.some((c) => Number.isNaN(c))) {
+                status.textContent = interpreterId === "split_date_time"
+                    ? "Select both a Date column and a Time column first."
+                    : "Select a Time Axis column first.";
+                return;
+            }
+            const checkedDateOrder = document.querySelector('input[name="wwDataPrepTimeAxisDateOrder"]:checked');
+            const options = checkedDateOrder ? { date_order: checkedDateOrder.value } : {};
+            try {
+                const response = await fetch(
+                    wwDataPrepSourceUrl("/working/time-axis/interpret"),
+                    {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ column_indices: columnIndices, interpreter_id: interpreterId, options: options }),
+                    }
+                );
+                if (!response.ok) {
+                    const errorBody = await response.json().catch(() => null);
+                    status.textContent = (errorBody && errorBody.detail && errorBody.detail.message) || "Could not detect this Time Axis configuration.";
+                    wwDataPrepRenderTimeAxisDetectResult(null, null);
+                    return;
+                }
+                const preview = await response.json();
+                wwDataPrepRenderTimeAxisDetectResult(preview, preview.preview_rows);
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
         }
 
         // A Time-Axis mutation's own response is a
@@ -7442,24 +7680,39 @@
         async function wwDataPrepSetTimeAxis() {
             const status = wwDataPrepTimeAxisStatusEl();
             status.textContent = "";
-            const columnIndices = wwDataPrepTimeAxisSelectedColumns();
+            const interpreterId = document.getElementById("wwDataPrepTimeAxisInterpreterSelect").value;
+            const columnIndices = wwDataPrepTimeAxisColumnIndicesForSubmit();
             if (!columnIndices.length) {
-                status.textContent = "Select at least one Time Axis column first.";
+                status.textContent = interpreterId === "split_date_time"
+                    ? "Select both a Date column and a Time column first."
+                    : "Select at least one Time Axis column first.";
                 return;
             }
-            const family = document.getElementById("wwDataPrepTimeAxisFamilySelect").value;
-            const provenance = document.getElementById("wwDataPrepTimeAxisProvenanceSelect").value;
-            const unitInput = document.getElementById("wwDataPrepTimeAxisUnitInput").value.trim();
-            const intervalInput = document.getElementById("wwDataPrepTimeAxisIntervalInput").value;
             const confirmed = document.getElementById("wwDataPrepTimeAxisConfirmedCheckbox").checked;
-            const body = {
-                column_indices: columnIndices,
-                family: family,
-                provenance: provenance,
-                unit: family === "elapsed" && unitInput ? unitInput : null,
-                interval_seconds: family === "sample_index" && intervalInput !== "" ? parseFloat(intervalInput) : null,
-                confirmed: confirmed,
-            };
+
+            let body;
+            if (WW_DATA_PREP_SAMPLE_INTERPRETERS.includes(interpreterId)) {
+                // family/provenance are computed by the interpreter's own
+                // detect() from the actual sampled data -- never sent
+                // from this form (see TimeAxisConfigurationRequest's own
+                // docstring for why they are optional here).
+                const checkedDateOrder = document.querySelector('input[name="wwDataPrepTimeAxisDateOrder"]:checked');
+                const options = checkedDateOrder ? { date_order: checkedDateOrder.value } : {};
+                body = { column_indices: columnIndices, interpreter_id: interpreterId, options: options, confirmed: confirmed };
+            } else {
+                const family = document.getElementById("wwDataPrepTimeAxisFamilySelect").value;
+                const provenance = document.getElementById("wwDataPrepTimeAxisProvenanceSelect").value;
+                const unitInput = document.getElementById("wwDataPrepTimeAxisUnitInput").value.trim();
+                const intervalInput = document.getElementById("wwDataPrepTimeAxisIntervalInput").value;
+                body = {
+                    column_indices: columnIndices,
+                    family: family,
+                    provenance: provenance,
+                    unit: family === "elapsed" && unitInput ? unitInput : null,
+                    interval_seconds: family === "sample_index" && intervalInput !== "" ? parseFloat(intervalInput) : null,
+                    confirmed: confirmed,
+                };
+            }
             try {
                 const response = await fetch(
                     wwDataPrepSourceUrl("/working/time-axis"),
@@ -7499,6 +7752,31 @@
         document.getElementById("wwDataPrepTimeAxisSaveBtn").addEventListener("click", wwDataPrepSetTimeAxis);
         document.getElementById("wwDataPrepTimeAxisClearBtn").addEventListener("click", wwDataPrepClearTimeAxis);
         document.getElementById("wwDataPrepTimeAxisFamilySelect").addEventListener("change", wwDataPrepRenderTimeAxisFieldVisibility);
+
+        // Slice 8A: switching interpreter re-renders which fields show,
+        // and clears any stale detect result from a previous interpreter
+        // (never carries a leftover preview across an interpreter switch).
+        document.getElementById("wwDataPrepTimeAxisInterpreterSelect").addEventListener("change", () => {
+            wwDataPrepRenderTimeAxisInterpreterFields();
+            wwDataPrepRenderTimeAxisDetectResult(null, null);
+        });
+        document.getElementById("wwDataPrepTimeAxisDetectBtn").addEventListener("click", wwDataPrepDetectTimeAxis);
+        // A date-order choice only means something once re-detected
+        // against it -- auto re-run for immediate feedback rather than
+        // requiring a second explicit click.
+        document.getElementById("wwDataPrepTimeAxisDateOrderOptions").addEventListener("change", (event) => {
+            if (event.target.name === "wwDataPrepTimeAxisDateOrder") wwDataPrepDetectTimeAxis();
+        });
+        // Checking/unchecking a Time Axis column, or switching to
+        // split_date_time, must keep the Date/Time selects in sync --
+        // event delegation since the checkboxes are re-rendered wholesale
+        // by wwDataPrepRenderTimeAxisEligibleColumns().
+        document.getElementById("wwDataPrepTimeAxisColumnChecks").addEventListener("change", (event) => {
+            if (!event.target.classList.contains("ww-data-prep-time-axis-col-check")) return;
+            if (document.getElementById("wwDataPrepTimeAxisInterpreterSelect").value === "split_date_time") {
+                wwDataPrepRenderTimeAxisSplitColumnSelects();
+            }
+        });
 
         // Progressive disclosure -- identical toggle behavior to the
         // Structure panel's own "Configure"/"Hide" button above: purely
@@ -7960,6 +8238,11 @@
             document.getElementById("wwDataPrepStructureToggleBtn").textContent = "Configure";
             document.getElementById("wwDataPrepTimeAxisDetails").hidden = true;
             document.getElementById("wwDataPrepTimeAxisToggleBtn").textContent = "Configure";
+            document.getElementById("wwDataPrepTimeAxisInterpreterSelect").value = "manual";
+            document.getElementById("wwDataPrepTimeAxisDateColumnSelect").innerHTML = "";
+            document.getElementById("wwDataPrepTimeAxisTimeColumnSelect").innerHTML = "";
+            wwDataPrepRenderTimeAxisInterpreterFields();
+            wwDataPrepRenderTimeAxisDetectResult(null, null);
             wwDataPrepRenderIssues();
             wwDataPrepRenderStructureSummary();
             wwDataPrepRenderTimeAxisSummary();

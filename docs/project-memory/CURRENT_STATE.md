@@ -394,9 +394,36 @@ re-confirmed by the TG-FINAL audit):
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 7](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
   for the full implementation summary.
 
-  Initial time-axis interpreters (Slice 8) and the full readiness
-  validator are still explicitly NOT part of any slice implemented so
-  far — see
+  **Slice 8A** (2026-09-01) implements the first two of Slice 8's five
+  proposed initial interpreters — single-column absolute datetime and
+  Date + Time — as REAL, deterministic (non-fuzzy) interpreters
+  registered as `absolute_datetime`/`split_date_time` in
+  `app/services/time_axis_interpreters.py`, on top of the Slice 7
+  framework with zero framework-shape changes beyond what it already
+  anticipated. A small, explicit `datetime.strptime` pattern table per
+  date order (`dmy`/`mdy`/`ymd`) plus `datetime.fromisoformat`'s own
+  ISO-8601 fast path — no fuzzy/`dateutil` parsing. Date-order ambiguity
+  is resolved BY ELIMINATION first (`strptime` already rejects an
+  invalid calendar date, so a day value over 12 alone makes
+  `31/08/2026` unambiguous) and only genuinely 2-or-more-order-valid
+  input produces an `ambiguous_date_order` diagnostic and the new
+  `review_required` status (Slice 7's own reserved-but-unreachable
+  status is now real) — `confirmed=true` is rejected server-side while
+  that diagnostic remains. A bare time-of-day column is reported
+  `family=partial`, never silently promoted to `absolute`. A new,
+  bounded (50-row) sample-fetch reuses the existing paged-preview
+  mechanism verbatim; a new `POST .../working/time-axis/interpret`
+  dry-run action returns a bounded (20-row) {original, interpreted}
+  preview without storing anything. Frontend: the Time Axis panel
+  gained an "Interpreter" selector switching between Manual's plain
+  fields and a Detect → review ambiguity → preview → Confirm flow. See
+  [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 8](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
+  for the full implementation summary.
+
+  Elapsed numeric time, sample index, and repeated-timestamp/lost-
+  precision detection (Slice 8's remaining three items, a future
+  Slice 8B/8C) and the full readiness validator are still explicitly
+  NOT part of any slice implemented so far — see
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md).
 
 ## Known intentional constraints / deferred items
@@ -474,12 +501,14 @@ Slice 6 adds the Readiness Issue LANGUAGE AND TRANSPORT model
 (`blocking`/`warning`/`info` severities, three conservative `info`-only
 issue codes derived live from configuration state) — explicitly NOT the
 full Readiness Validator, no readiness gate, no status transition.
-Slice 7 (the extensible time-axis interpretation FRAMEWORK, see above)
-is now implemented. Slices 8–13 (initial time-axis interpreters, the
-full Readiness Validator, canonical `DisturbanceRecord` conversion,
-existing waveform integration, export, and progressive automation)
-remain unimplemented and require their own explicit owner go-ahead
-before starting, per
+Slice 7 (the extensible time-axis interpretation FRAMEWORK) and Slice 8A
+(the first two deterministic time-axis interpreters, see above) are now
+implemented. Slice 8's remaining three items (elapsed numeric time,
+sample index, repeated-timestamp/lost-precision detection), and
+Slices 9–13 (the full Readiness Validator, canonical
+`DisturbanceRecord` conversion, existing waveform integration, export,
+and progressive automation) remain unimplemented and require their own
+explicit owner go-ahead before starting, per
 [Change governance](../../CLAUDE.md#change-governance) — being recorded
 in the architecture document's own slice sequence does not itself
 authorize starting any of them.
@@ -495,8 +524,10 @@ repeated timestamps, never fabricating an absolute anchor per DEC-072
 point 5), a qualitative confidence model, the interpreter-registry
 extensibility concept, and a progressive-disclosure Time Axis UI shell
 matching the existing Preparation Status/Structure pattern. Slice 7 (the
-framework portion) is now implemented, per above; Slice 8 (initial
-concrete interpreters, §19) remains design-only.
+framework portion) is now implemented, per above; Slice 8A (§19 items
+1-2, the two deterministic absolute-time interpreters) is also now
+implemented; Slice 8's remaining three items (§19 items 3-5) remain
+design-only.
 `SourceMetadata.timing_reference` still reserves a value other than
 `"absolute"` for a future importer with no trustworthy absolute
 recording timestamp — a CSV/Excel preparation source does not reach

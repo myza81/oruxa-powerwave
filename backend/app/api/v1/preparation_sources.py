@@ -60,7 +60,9 @@ from app.schemas.source import ErrorOut
 from app.schemas.time_axis import (
     TimeAxisConfigurationRequest,
     TimeAxisInterpretationResultOut,
+    TimeAxisInterpretPreviewOut,
     TimeAxisInterpreterOut,
+    TimeAxisInterpretRequest,
 )
 from app.services.errors import AmbiguousPreparationUploadError, ImportServiceError
 from app.services.preparation_import_service import (
@@ -78,6 +80,7 @@ from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.time_axis_service import (
     clear_time_axis_configuration,
     get_time_axis_summary,
+    interpret_time_axis,
     list_time_axis_interpreters,
     set_time_axis_configuration,
 )
@@ -638,13 +641,20 @@ def put_working_time_axis(
     registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
 ) -> TimeAxisInterpretationResultOut:
     """Set this worksheet/source's Time-Axis configuration (Slice 7,
-    DEC-072). Every referenced column in `column_indices` must currently
-    carry the `time_axis` column role (task section N) --
-    `InvalidTimeAxisConfigurationError` otherwise. `family`/`provenance`
-    must each be one of `app.domain.time_axis`'s own known closed sets.
-    Undoable via the existing `POST .../working/undo` endpoint, exactly
-    like every other working-dataset mutation (Slice 7 adds no second
-    history mechanism)."""
+    extended by Slice 8A's real interpreters, DEC-072). Every referenced
+    column in `column_indices` must currently carry the `time_axis`
+    column role (task section N) -- `InvalidTimeAxisConfigurationError`
+    otherwise. `family`/`provenance` are required and validated against
+    `app.domain.time_axis`'s own known closed sets ONLY for the `manual`
+    interpreter -- for a SAMPLE interpreter (`absolute_datetime`/
+    `split_date_time`) they are optional hints the interpreter's own
+    `detect()` may override with what the data actually says (see
+    `app.services.time_axis_service.set_time_axis_configuration`'s own
+    docstring). Setting `confirmed=true` while the sampled data is still
+    genuinely ambiguous (an unresolved `ambiguous_date_order` diagnostic)
+    is rejected outright. Undoable via the existing
+    `POST .../working/undo` endpoint, exactly like every other
+    working-dataset mutation (no second history mechanism)."""
     workspace_id = _validate_workspace_id(workspace_id)
     try:
         result = set_time_axis_configuration(
@@ -657,6 +667,7 @@ def put_working_time_axis(
             interval_seconds=body.interval_seconds,
             confirmed=body.confirmed,
             interpreter_id=body.interpreter_id,
+            options=body.options,
             registry=registry,
         )
     except ImportServiceError as exc:
@@ -678,6 +689,39 @@ def delete_working_time_axis(
     except ImportServiceError as exc:
         raise _working_error(exc) from exc
     return TimeAxisInterpretationResultOut.from_domain(result)
+
+
+@router.post("/{source_id}/working/time-axis/interpret", response_model=TimeAxisInterpretPreviewOut)
+def post_working_time_axis_interpret(
+    workspace_id: str,
+    source_id: str,
+    body: TimeAxisInterpretRequest,
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> TimeAxisInterpretPreviewOut:
+    """Dry-run detect/preview action for a SAMPLE interpreter
+    (`absolute_datetime`/`split_date_time`, Slice 8A, task §T) --
+    computes family/provenance/confidence/diagnostics and a bounded
+    {original, interpreted} preview WITHOUT storing anything and without
+    requiring `confirmed`. Never mutates the Working Overlay, never
+    bumps the revision counter, never appears in undo/redo -- a
+    read-only, disposable action the frontend calls before the user
+    ever commits to a real `PUT .../working/time-axis` (design doc
+    §16's own "read-only and disposable... discarded with no residual
+    state" preview model). Rejects `manual`/`unsupported` outright --
+    there is nothing to detect or preview for either."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        preview = interpret_time_axis(
+            workspace_id=workspace_id,
+            source_id=source_id,
+            column_indices=tuple(body.column_indices),
+            interpreter_id=body.interpreter_id,
+            options=body.options,
+            registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return TimeAxisInterpretPreviewOut.from_domain(preview)
 
 
 @router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT)

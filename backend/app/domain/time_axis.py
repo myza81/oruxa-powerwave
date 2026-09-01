@@ -126,11 +126,11 @@ KNOWN_CONFIDENCE_LEVELS = (CONFIDENCE_HIGH, CONFIDENCE_MEDIUM, CONFIDENCE_LOW, C
 #: User-facing status model (CSV_EXCEL_TIME_INTERPRETATION.md §15.3) --
 #: deliberately small; internal interpreter state may be richer, but
 #: nothing richer than this is ever shown to the user. `REVIEW_REQUIRED`
-#: is a currently-UNREACHABLE status in Slice 7's own `resolve_status()`
-#: below (see that function's own docstring) -- it is a valid, real
-#: value the type supports, reserved for Slice 8, once a diagnostic can
-#: carry an actionable suggestion worth distinguishing from a plain
-#: "needs attention" finding.
+#: was UNREACHABLE in Slice 7's own `resolve_status()` (no interpreter
+#: produced a diagnostic yet) -- Slice 8A's deterministic absolute-time
+#: interpreters are the first real producers, for the specific case of
+#: an unresolved `ambiguous_date_order` diagnostic (see
+#: `resolve_status()` below).
 STATUS_UNCONFIGURED = "unconfigured"
 STATUS_DETECTED = "detected"
 STATUS_REVIEW_REQUIRED = "review_required"
@@ -148,17 +148,68 @@ KNOWN_TIME_AXIS_STATUSES = (
     STATUS_UNSUPPORTED,
 )
 
-#: The two Slice 7 interpreter identifiers -- see
+#: The Slice 7 framework interpreter identifiers, plus the two Slice 8A
+#: deterministic absolute-time interpreters -- see
 #: `app.services.time_axis_service`'s own module docstring for what
-#: each actually does. Declared here (not only in the service module)
-#: so domain-level code (`resolve_status()` below) can recognize the
-#: `unsupported` sentinel without importing the service layer.
+#: `manual`/`unsupported` do, and `app.services.time_axis_interpreters`
+#: for what the two real ones do. Declared here (not only in the
+#: service module) so domain-level code (`resolve_status()` below) can
+#: recognize the `unsupported` sentinel without importing the service
+#: layer.
 INTERPRETER_ID_MANUAL = "manual"
 INTERPRETER_ID_UNSUPPORTED = "unsupported"
+INTERPRETER_ID_ABSOLUTE_DATETIME = "absolute_datetime"
+INTERPRETER_ID_SPLIT_DATE_TIME = "split_date_time"
 
 #: Borrowed vocabulary ONLY (see this module's own docstring) -- never
 #: wired into `PreparationIssueSummary`'s own counts.
 KNOWN_DIAGNOSTIC_SEVERITY_HINTS = (SEVERITY_BLOCKING, SEVERITY_WARNING, SEVERITY_INFO)
+
+#: Date-component ordering for the two-digit/four-digit slash-or-dash
+#: date styles a deterministic (non-fuzzy) absolute-datetime interpreter
+#: has to disambiguate (CSV_EXCEL_TIME_INTERPRETATION.md §3's own
+#: "01/02/2026" worked example) -- `auto` means "not yet chosen; try
+#: every known order and see whether the sample data itself resolves
+#: the ambiguity by elimination" (Slice 8A's own §D/§E: a day value >12
+#: already rules out `mdy` without needing a locale guess). Kept as an
+#: open-ended tuple like every other vocabulary in this module, not a
+#: hard-coded two-way switch.
+DATE_ORDER_DMY = "dmy"
+DATE_ORDER_MDY = "mdy"
+DATE_ORDER_YMD = "ymd"
+DATE_ORDER_AUTO = "auto"
+KNOWN_DATE_ORDERS = (DATE_ORDER_DMY, DATE_ORDER_MDY, DATE_ORDER_YMD, DATE_ORDER_AUTO)
+
+#: Ambiguity classification (Slice 8A §D) -- a SEPARATE axis from
+#: `confidence` above: confidence is "how much evidence supports this
+#: reading," ambiguity is "could a reasonable person read this
+#: differently, or is it simply broken." `unambiguous` covers both a
+#: self-describing format (ISO-8601) and a format resolved BY
+#: ELIMINATION (only one candidate order parses every sampled value) --
+#: neither is a guess. `ambiguous` means two or more candidate orders
+#: each parse the ENTIRE sample validly and only the user can pick.
+#: `invalid` means the sample could not be parsed as a coherent absolute
+#: timestamp under any candidate at all (or only partially, under the
+#: currently selected order) -- a data-quality finding, not a decision
+#: for the user to make.
+AMBIGUITY_UNAMBIGUOUS = "unambiguous"
+AMBIGUITY_AMBIGUOUS = "ambiguous"
+AMBIGUITY_INVALID = "invalid"
+KNOWN_AMBIGUITY_LEVELS = (AMBIGUITY_UNAMBIGUOUS, AMBIGUITY_AMBIGUOUS, AMBIGUITY_INVALID)
+
+#: Diagnostic codes the Slice 8A deterministic interpreters may produce
+#: (§K). Not an exhaustive closed set for all time -- future
+#: interpreters may add their own codes exactly like `KNOWN_TIME_FAMILIES`
+#: grows -- but these are the ones THIS slice's own two interpreters are
+#: capable of emitting, kept here (not string-literal scattered through
+#: the service module) so tests and documentation have one place to
+#: read the vocabulary from.
+DIAGNOSTIC_AMBIGUOUS_DATE_ORDER = "ambiguous_date_order"
+DIAGNOSTIC_UNPARSEABLE_DATETIME = "unparseable_datetime"
+DIAGNOSTIC_MIXED_DATETIME_FORMAT = "mixed_datetime_format"
+DIAGNOSTIC_MISSING_DATETIME_VALUE = "missing_datetime_value"
+DIAGNOSTIC_TIMEZONE_INCONSISTENT = "timezone_inconsistent"
+DIAGNOSTIC_TIME_ONLY_NOT_ABSOLUTE = "time_only_not_absolute"
 
 
 @dataclass(slots=True, frozen=True)
@@ -217,14 +268,94 @@ class TimeAxisDiagnostic:
     own docstring for why this is a SEPARATE model from
     `app.domain.preparation_issue.PreparationIssue`, not a reuse of it.
     Never raised as an exception; always returned in a plain list.
-    Slice 7 never constructs one in production code -- this shape
-    exists for Slice 8's own detection logic to populate."""
+    Slice 7 never constructed one in production code; Slice 8A's own
+    two deterministic interpreters are the first real producers.
+
+    `ambiguity` (Slice 8A, default `AMBIGUITY_UNAMBIGUOUS` for backward
+    compatibility with a hypothetical pre-8A diagnostic) drives
+    `resolve_status()`'s own `review_required` vs `needs_attention`
+    split below -- `AMBIGUITY_AMBIGUOUS` is the ONLY value that routes
+    to `review_required` (a genuine "the user must choose" case);
+    `AMBIGUITY_INVALID` (broken/unparseable data) and
+    `AMBIGUITY_UNAMBIGUOUS` (a diagnostic that is not about ambiguity at
+    all, e.g. a missing-value count) both fall through to the existing
+    generic `needs_attention` path -- one axis, reused, not a second
+    parallel severity system.
+
+    `details` mirrors `PreparationIssue.details`'s own role (a small,
+    optional, structured data bag -- e.g. `{"unparsed_count": 3,
+    "sample_size": 12}`) for a UI that wants more than the human-
+    readable `message` alone; never required, never load-bearing for
+    `resolve_status()`."""
 
     severity_hint: str
     code: str
     message: str
     location: IssueLocation | None = None
     suggested_action: str | None = None
+    ambiguity: str = AMBIGUITY_UNAMBIGUOUS
+    details: dict[str, Any] | None = None
+
+
+@dataclass(slots=True, frozen=True)
+class TimeAxisSampleRow:
+    """One bounded-sample row handed to an interpreter's own `detect()`/
+    `build_preview_rows()` -- fetched ONCE by
+    `app.services.time_axis_service` (via the existing
+    `app.services.preparation_preview_service.preview_preparation_source`,
+    never a second raw-reading implementation) and reused for both
+    calls, per this module's own "bounded, no second fetch" requirement
+    (§H). `values` holds exactly one raw (working-view) cell value per
+    the configuration's own `column_indices`, IN THAT ORDER -- for
+    `split_date_time`, `values[0]` is the date column's cell and
+    `values[1]` is the time column's cell, since `column_indices` is
+    itself documented as `(date_column_index, time_column_index)` for
+    that interpreter specifically."""
+
+    row_number: int
+    values: tuple[Any, ...]
+
+
+@dataclass(slots=True, frozen=True)
+class TimeAxisPreviewRow:
+    """One bounded preview row (§16/§J) -- `original` echoes
+    `TimeAxisSampleRow.values` verbatim (never re-derived), `interpreted`
+    is the resulting absolute-datetime value as an ISO-8601 string, or
+    `None` when this particular row could not be interpreted under the
+    resolved format (a per-row failure, never silently dropped -- the
+    row still appears here with `interpreted=None`)."""
+
+    row_number: int
+    original: tuple[Any, ...]
+    interpreted: str | None
+
+
+@dataclass(slots=True, frozen=True)
+class TimeAxisDetectionResult:
+    """The pure output of one interpreter's own `detect()` call (§17's
+    own illustrative `detect(...) -> DetectionResult` contract) --
+    classification + confidence + diagnostics, computed from an
+    already-fetched bounded sample, no I/O of its own. Used identically
+    by `app.services.time_axis_service` at THREE call sites: (a) writing
+    a new/changed configuration, (b) recomputing live diagnostics for an
+    already-stored configuration on every `GET`, and (c) the dry-run
+    `POST .../working/time-axis/interpret` preview action -- one
+    function, three callers, never three detection implementations.
+
+    `family`/`provenance` are `None` only for `unsupported`'s own
+    output, matching `TimeAxisConfiguration`'s own same rule.
+    `resolved_options` is the options bag to actually STORE (§C) -- for
+    `manual` this simply echoes whatever the caller supplied; for a real
+    interpreter it is the ACTUAL resolved configuration (e.g.
+    `{"date_order": "dmy"}` once elimination or user confirmation
+    settled it, still `{"date_order": "auto"}` while genuinely
+    unresolved)."""
+
+    family: str | None
+    provenance: str | None
+    confidence: str
+    diagnostics: list[TimeAxisDiagnostic]
+    resolved_options: dict[str, Any]
 
 
 @dataclass(slots=True)
@@ -253,14 +384,17 @@ class TimeAxisInterpretationResult:
     "clean case" exception is left for Slice 8, once real detection can
     actually tell the difference).
 
-    `unit`/`interval_seconds`/`confirmed` are plain, uninterpreted
-    ECHOES of the stored `TimeAxisConfiguration`'s own same-named
-    fields (verbatim, never recalculated) -- included so a caller (the
-    frontend's own edit form in particular) can prefill from the one
-    read endpoint this framework exposes, without a second "give me the
-    raw stored configuration" API. This is presentation convenience
-    only, not new derived state: exactly like `column_indices` above,
-    which was already an echo rather than a calculation."""
+    `unit`/`interval_seconds`/`confirmed`/`options` are plain,
+    uninterpreted ECHOES of the stored `TimeAxisConfiguration`'s own
+    same-named fields (verbatim, never recalculated) -- included so a
+    caller (the frontend's own edit form in particular) can prefill from
+    the one read endpoint this framework exposes, without a second
+    "give me the raw stored configuration" API. This is presentation
+    convenience only, not new derived state: exactly like
+    `column_indices` above, which was already an echo rather than a
+    calculation. `options` (Slice 8A) is how a caller learns the
+    resolved `date_order`/similar interpreter-specific settings without
+    a second endpoint."""
 
     status: str
     family: str | None
@@ -274,6 +408,11 @@ class TimeAxisInterpretationResult:
     unit: str | None = None
     interval_seconds: float | None = None
     confirmed: bool = False
+    options: dict[str, Any] = field(default_factory=dict)
+
+
+def _has_ambiguous_diagnostic(diagnostics: list[TimeAxisDiagnostic]) -> bool:
+    return any(d.ambiguity == AMBIGUITY_AMBIGUOUS for d in diagnostics)
 
 
 def resolve_status(
@@ -285,7 +424,9 @@ def resolve_status(
     """Pure function computing the user-facing `status` (§15.3) from
     already-known inputs -- no I/O, no session access (the caller,
     `app.services.time_axis_service`, resolves `columns_still_time_axis`
-    against the CURRENT `column_roles` state before calling this).
+    against the CURRENT `column_roles` state, and `diagnostics` via a
+    fresh `detect()` call for a sample-needing interpreter, before
+    calling this).
 
     Precedence, most specific first:
     1. No configuration at all -> `unconfigured`.
@@ -295,14 +436,19 @@ def resolve_status(
        `unsupported`.
     3. `family == FAMILY_SAMPLE_INDEX` and
        `provenance == PROVENANCE_INDEX_ONLY` -> `index_fallback`.
-    4. Any diagnostics present and not yet confirmed -> `needs_attention`
-       (see `STATUS_REVIEW_REQUIRED`'s own docstring for why THAT status,
-       not this one, is what Slice 8 will use for an actionable
-       suggestion specifically -- Slice 7 never produces a diagnostic
-       that could make that distinction, so this function never returns
-       `review_required`).
-    5. `confirmed` -> `confirmed`.
-    6. Otherwise -> `detected`.
+    4. (Slice 8A) Any diagnostic carries `ambiguity == AMBIGUITY_AMBIGUOUS`
+       and the configuration is not yet confirmed -> `review_required`
+       -- a genuine "the user must pick one" case (e.g.
+       `ambiguous_date_order`), distinct from a plain data-quality
+       finding. This is the first production path that actually reaches
+       `STATUS_REVIEW_REQUIRED` (Slice 7 never did -- see that
+       constant's own docstring, now superseded by this rule).
+    5. Any OTHER diagnostics present and not yet confirmed ->
+       `needs_attention` (e.g. `unparseable_datetime`,
+       `missing_datetime_value` -- a finding worth surfacing, but not
+       one with a specific choice for the user to make).
+    6. `confirmed` -> `confirmed`.
+    7. Otherwise -> `detected`.
     """
     if configuration is None:
         return STATUS_UNCONFIGURED
@@ -310,6 +456,8 @@ def resolve_status(
         return STATUS_UNSUPPORTED
     if configuration.family == FAMILY_SAMPLE_INDEX and configuration.provenance == PROVENANCE_INDEX_ONLY:
         return STATUS_INDEX_FALLBACK
+    if not configuration.confirmed and _has_ambiguous_diagnostic(diagnostics):
+        return STATUS_REVIEW_REQUIRED
     if diagnostics:
         return STATUS_NEEDS_ATTENTION
     if configuration.confirmed:
@@ -322,10 +470,17 @@ def build_interpretation_result(
     *,
     columns_still_time_axis: bool,
     diagnostics: list[TimeAxisDiagnostic] | None = None,
+    confidence: str = CONFIDENCE_UNKNOWN,
+    preview_supported: bool = False,
 ) -> TimeAxisInterpretationResult:
     """The one place `TimeAxisInterpretationResult` is assembled, so
     `status`/`confirmation_required` can never drift out of sync with
-    each other across call sites."""
+    each other across call sites. `confidence`/`preview_supported`
+    (Slice 8A) are supplied by the caller -- `app.services.
+    time_axis_service`, which alone knows (via the interpreter
+    registry) whether the resolved interpreter actually computed a real
+    confidence value or supports a preview; this module never imports
+    the service layer to look that up itself."""
     diagnostics = diagnostics or []
     status = resolve_status(configuration, columns_still_time_axis=columns_still_time_axis, diagnostics=diagnostics)
     return TimeAxisInterpretationResult(
@@ -334,11 +489,12 @@ def build_interpretation_result(
         provenance=configuration.provenance if configuration else None,
         interpreter_id=configuration.interpreter_id if configuration else None,
         column_indices=configuration.column_indices if configuration else (),
-        confidence=CONFIDENCE_UNKNOWN,
+        confidence=confidence,
         diagnostics=diagnostics,
-        preview_supported=False,
+        preview_supported=preview_supported,
         confirmation_required=bool(configuration and not configuration.confirmed),
         unit=configuration.unit if configuration else None,
         interval_seconds=configuration.interval_seconds if configuration else None,
         confirmed=configuration.confirmed if configuration else False,
+        options=dict(configuration.options) if configuration else {},
     )

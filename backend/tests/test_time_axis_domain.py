@@ -9,15 +9,22 @@ the FRAMEWORK'S OWN shapes and `resolve_status()`/
 from __future__ import annotations
 
 from app.domain.time_axis import (
+    AMBIGUITY_AMBIGUOUS,
+    AMBIGUITY_INVALID,
+    AMBIGUITY_UNAMBIGUOUS,
+    CONFIDENCE_HIGH,
     CONFIDENCE_UNKNOWN,
     FAMILY_ABSOLUTE,
     FAMILY_ELAPSED,
     FAMILY_PARTIAL,
     FAMILY_SAMPLE_INDEX,
     FAMILY_UNKNOWN,
+    INTERPRETER_ID_ABSOLUTE_DATETIME,
     INTERPRETER_ID_MANUAL,
     INTERPRETER_ID_UNSUPPORTED,
+    KNOWN_AMBIGUITY_LEVELS,
     KNOWN_CONFIDENCE_LEVELS,
+    KNOWN_DATE_ORDERS,
     KNOWN_PROVENANCES,
     KNOWN_TIME_AXIS_STATUSES,
     KNOWN_TIME_FAMILIES,
@@ -29,6 +36,7 @@ from app.domain.time_axis import (
     STATUS_DETECTED,
     STATUS_INDEX_FALLBACK,
     STATUS_NEEDS_ATTENTION,
+    STATUS_REVIEW_REQUIRED,
     STATUS_UNCONFIGURED,
     STATUS_UNSUPPORTED,
     TimeAxisConfiguration,
@@ -234,6 +242,62 @@ class TestResolveStatus:
 
         assert status == STATUS_DETECTED
 
+    def test_ambiguous_diagnostic_and_unconfirmed_is_review_required(self):
+        # Slice 8A: the first production path that actually reaches
+        # STATUS_REVIEW_REQUIRED -- an `ambiguous_date_order`-class
+        # diagnostic, distinct from a plain data-quality finding.
+        config = TimeAxisConfiguration(
+            column_indices=(0,), family=FAMILY_ABSOLUTE, provenance=PROVENANCE_USER_SPECIFIED,
+            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, confirmed=False,
+        )
+        diagnostic = TimeAxisDiagnostic(
+            severity_hint="warning", code="ambiguous_date_order", message="msg", ambiguity=AMBIGUITY_AMBIGUOUS,
+        )
+
+        status = resolve_status(config, columns_still_time_axis=True, diagnostics=[diagnostic])
+
+        assert status == STATUS_REVIEW_REQUIRED
+
+    def test_ambiguous_diagnostic_with_confirmed_true_falls_through_to_needs_attention(self):
+        # Confirming while genuinely ambiguous is rejected by the
+        # SERVICE layer (see test_time_axis_service.py), so this
+        # combination should not arise from real stored state -- but
+        # this pure function still has a defined, non-crashing answer
+        # for it: `review_required` specifically requires `not
+        # confirmed` (a resolved/accepted ambiguity is no longer "needs
+        # a choice"), so a confirmed config with a lingering ambiguous
+        # diagnostic falls through to the SAME generic "diagnostics
+        # present -> needs_attention" rule every other diagnostic
+        # already uses, exactly like `test_diagnostics_present_and_
+        # unconfirmed_is_needs_attention` above -- `confirmed` alone
+        # never suppresses a non-empty diagnostics list.
+        config = TimeAxisConfiguration(
+            column_indices=(0,), family=FAMILY_ABSOLUTE, provenance=PROVENANCE_USER_SPECIFIED,
+            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, confirmed=True,
+        )
+        diagnostic = TimeAxisDiagnostic(
+            severity_hint="warning", code="ambiguous_date_order", message="msg", ambiguity=AMBIGUITY_AMBIGUOUS,
+        )
+
+        status = resolve_status(config, columns_still_time_axis=True, diagnostics=[diagnostic])
+
+        assert status == STATUS_NEEDS_ATTENTION
+
+    def test_non_ambiguous_diagnostic_still_falls_through_to_needs_attention(self):
+        # An `invalid`/plain diagnostic must NOT trigger review_required
+        # -- only AMBIGUITY_AMBIGUOUS does.
+        config = TimeAxisConfiguration(
+            column_indices=(0,), family=FAMILY_ABSOLUTE, provenance=PROVENANCE_NATIVE,
+            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, confirmed=False,
+        )
+        diagnostic = TimeAxisDiagnostic(
+            severity_hint="warning", code="unparseable_datetime", message="msg", ambiguity=AMBIGUITY_INVALID,
+        )
+
+        status = resolve_status(config, columns_still_time_axis=True, diagnostics=[diagnostic])
+
+        assert status == STATUS_NEEDS_ATTENTION
+
 
 class TestBuildInterpretationResult:
     def test_unconfigured_result_shape(self):
@@ -319,3 +383,56 @@ class TestBuildInterpretationResult:
         assert result.unit is None
         assert result.interval_seconds is None
         assert result.confirmed is False
+
+    def test_options_echoed_verbatim(self):
+        config = TimeAxisConfiguration(
+            column_indices=(0,), family=FAMILY_ABSOLUTE, provenance=PROVENANCE_NATIVE,
+            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, options={"date_order": "dmy"},
+        )
+
+        result = build_interpretation_result(config, columns_still_time_axis=True)
+
+        assert result.options == {"date_order": "dmy"}
+
+    def test_options_default_empty_when_unconfigured(self):
+        result = build_interpretation_result(None, columns_still_time_axis=True)
+
+        assert result.options == {}
+
+    def test_confidence_and_preview_supported_are_caller_supplied(self):
+        # Slice 8A: the caller (time_axis_service) supplies real values
+        # for a sample interpreter -- this module never looks up the
+        # registry itself to decide.
+        config = TimeAxisConfiguration(
+            column_indices=(0,), family=FAMILY_ABSOLUTE, provenance=PROVENANCE_NATIVE,
+            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME,
+        )
+
+        result = build_interpretation_result(
+            config, columns_still_time_axis=True, confidence=CONFIDENCE_HIGH, preview_supported=True,
+        )
+
+        assert result.confidence == CONFIDENCE_HIGH
+        assert result.preview_supported is True
+
+
+class TestSlice8AVocabulary:
+    def test_four_ambiguity_levels_not_more(self):
+        assert KNOWN_AMBIGUITY_LEVELS == (AMBIGUITY_UNAMBIGUOUS, AMBIGUITY_AMBIGUOUS, AMBIGUITY_INVALID)
+
+    def test_four_date_orders_including_auto(self):
+        assert KNOWN_DATE_ORDERS == ("dmy", "mdy", "ymd", "auto")
+
+    def test_diagnostic_ambiguity_defaults_to_unambiguous(self):
+        diagnostic = TimeAxisDiagnostic(severity_hint="info", code="x", message="msg")
+
+        assert diagnostic.ambiguity == AMBIGUITY_UNAMBIGUOUS
+        assert diagnostic.details is None
+
+    def test_diagnostic_details_bag_is_optional_and_structured(self):
+        diagnostic = TimeAxisDiagnostic(
+            severity_hint="warning", code="unparseable_datetime", message="msg",
+            ambiguity=AMBIGUITY_INVALID, details={"matched": 1, "sample_size": 3},
+        )
+
+        assert diagnostic.details == {"matched": 1, "sample_size": 3}
