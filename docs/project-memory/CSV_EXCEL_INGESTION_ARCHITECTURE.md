@@ -1171,10 +1171,14 @@ owner go-ahead before implementation begins.
    cases.** Implemented exactly the first two items of that set —
    single-column absolute datetime and Date + Time — as REAL,
    deterministic (non-fuzzy) interpreters on top of the Slice 7
-   framework. Elapsed numeric time, sample index, and repeated-
-   timestamp/lost-precision detection (items 3-5) remain
-   `[NOT YET IMPLEMENTED]`, deferred to a future Slice 8B/8C, per this
-   task's own explicit non-goals.
+   framework.
+
+   **`[DONE, 2026-09-02]` Slice 8B — elapsed numeric time + sample
+   index.** Implemented items 3-4 of that set. Repeated-timestamp/
+   lost-precision detection (item 5) remains `[NOT YET IMPLEMENTED]`,
+   deferred to a future Slice 8C, per this task's own explicit
+   non-goals (see this document's own Slice 8B entry below for the
+   full implementation summary).
 
    New interpreter ids registered in `app.services.time_axis_service`'s
    own registry: `absolute_datetime` (accepts exactly 1 column) and
@@ -1271,6 +1275,110 @@ owner go-ahead before implementation begins.
    explicit order is chosen; `split_date_time` correctly combines two
    columns via its own Date/Time selects; and Excel worksheet isolation
    and the COMTRADE regression both remain intact -- all with zero
+   console/page errors.
+
+   **`[DONE, 2026-09-02]` Slice 8B — elapsed numeric time + sample
+   index, full implementation summary.** New interpreter ids in the
+   SAME `app.services.time_axis_service` registry: `elapsed_numeric`
+   (accepts exactly 1 column) and `sample_index` (accepts exactly 1
+   column) -- both implemented in `app/services/time_axis_interpreters.py`
+   alongside Slice 8A's own two, reusing the identical `detect()`/
+   `build_preview_rows()` interpreter contract (extended with two new
+   optional parameters, `requested_unit`/`requested_interval_seconds`,
+   accepted and ignored by `absolute_datetime`/`split_date_time`).
+
+   **No new top-level fields needed.** `TimeAxisConfiguration.unit`/
+   `.interval_seconds` already existed since Slice 7, anticipating
+   exactly this -- `elapsed_numeric` resolves `unit` only,
+   `sample_index` resolves `interval_seconds` only; neither needed a new
+   `options` key. `TimeAxisDetectionResult` gained matching
+   `resolved_unit`/`resolved_interval_seconds` fields (both default
+   `None`, backward-compatible with Slice 8A's own two interpreters).
+
+   **Elapsed numeric time** (task §A/§B/§C/§D): `family` is always
+   `FAMILY_ELAPSED`, `provenance` is always `PROVENANCE_USER_SPECIFIED`
+   once a unit is set (units are never silently inferred, per
+   CSV_EXCEL_TIME_INTERPRETATION.md §8/§9's own pre-existing rule) --
+   supports `seconds`/`milliseconds`/`microseconds`/`nanoseconds`
+   (`app.domain.time_axis.KNOWN_ELAPSED_UNITS`), validated at the
+   service layer SCOPED TO `elapsed_numeric` specifically (never
+   narrowing `manual`'s own deliberately open-ended `unit` field, per
+   DEC-072 point 6). An absent unit produces a NEW `missing_elapsed_unit`
+   diagnostic with `ambiguity: "ambiguous"` -- reusing Slice 8A's own
+   `review_required`-via-ambiguity precedence verbatim (a second
+   producer of a mechanism already built, not a new status branch).
+   `set_time_axis_configuration()` rejects `confirmed=true` while that
+   diagnostic remains, exactly like an unresolved date order. Detected
+   once a unit exists: `non_numeric_elapsed_value`,
+   `missing_elapsed_value`, `elapsed_time_goes_backward`,
+   `repeated_elapsed_time`, `non_uniform_elapsed_interval` (a ±1%
+   relative-tolerance check against the first observed delta) -- all
+   informational (`ambiguity: "unambiguous"`, except the non-numeric
+   case which is `"invalid"`), routing through the existing generic
+   `needs_attention` precedence. Preview values are always canonical
+   SECONDS (`"0.010000 s"`), converted via one fixed per-unit factor
+   table -- never the original unit re-displayed.
+
+   **Sample index** (task §E-§L/§F/§G/§H): `family` is always
+   `FAMILY_SAMPLE_INDEX`. Absent `interval_seconds` is
+   `provenance=index_only` -- a COMPLETE, valid, non-diagnostic state
+   (task's own explicit "not an error... the approved fallback"),
+   reusing Slice 7's own pre-existing `STATUS_INDEX_FALLBACK` precedent
+   verbatim (`family=sample_index` + `provenance=index_only` already
+   forced this status unconditionally, even before Slice 8B existed).
+   A present `interval_seconds` (already validated positive by the
+   SAME generic top-level check every other interpreter's `interval_seconds`
+   already used) is `provenance=user_specified`, `confidence=high`, and
+   status falls through to the ordinary detected/confirmed/
+   needs_attention rules. Detected regardless: `non_numeric_sample_index`,
+   `missing_sample_index`, `sample_index_goes_backward`,
+   `repeated_sample_index`, `sample_index_gap` (any consecutive delta
+   `>1`) -- comparing each sampled value only to the PREVIOUS one, in
+   original row order, never sorted or renumbered. A rate/interval
+   choice is a FRONTEND-ONLY display toggle -- only `interval_seconds`
+   (seconds-per-sample) is ever stored; a "Sampling rate (Hz)" input is
+   converted client-side (`interval_seconds = 1/rate_hz`) before
+   submission, never a second stored representation (task §I's own
+   "do not maintain two conflicting authoritative values" instruction).
+   Preview `relative_seconds = (index - first_valid_index_in_sample) *
+   interval_seconds` (task §G's own recommended rule, generalized to
+   interval form) -- `first_valid_index` is the first non-missing,
+   numeric value in the bounded sample itself, never assumed `0`, never
+   a whole-dataset scan.
+
+   New API: `POST .../working/time-axis/interpret` and
+   `PUT .../working/time-axis` both extended with the pre-existing
+   `unit`/`interval_seconds` fields already accepted by the schema
+   since Slice 7 (no new schema fields for the request bodies) --
+   `TimeAxisInterpretPreviewOut`/`TimeAxisInterpretRequest` gained
+   `resolved_unit`/`resolved_interval_seconds` (response) and `unit`/
+   `interval_seconds` (request) respectively.
+
+   Frontend: the Interpreter `<select>` gained "Elapsed Time (1 column)"
+   and "Sample Index (1 column)"; Elapsed Time shows a required Unit
+   `<select>` (no unit pre-selected); Sample Index shows a progressive-
+   disclosure Timing radio group (Unknown / Sampling rate Hz / Sample
+   interval ms, task §N) that converts to `interval_seconds` client-side
+   before every Detect/Save call and always redisplays a stored
+   configuration as "Sample interval" (the backend never remembers which
+   input mode the user originally used). The shared Detect → diagnostics
+   → preview → Confirm flow (Slice 8A) is reused verbatim; the date-order
+   review UI is shown ONLY for the specific `ambiguous_date_order`
+   diagnostic, never for `missing_elapsed_unit` (whose own resolution
+   control is the Unit select, already visible).
+   Verified: full backend suite 2362 passed (78 new on top of Slice 8A's
+   2284), zero regressions; the committed browser smoke test (COMTRADE)
+   still passes unchanged; three throwaway (not committed) live-browser
+   Playwright UAT scripts confirmed: an elapsed column with no unit shows
+   "Review Required" and a `missing_elapsed_unit` diagnostic, resolves
+   cleanly to "Detected"/"Confirmed" once Milliseconds is chosen, with a
+   correct canonical-seconds preview; a sample-index column with a gap
+   shows the gap diagnostic while still reporting Index Fallback with no
+   fabricated seconds column, accepts `confirmed=true` immediately (not
+   an error), and correctly resolves a real-time interval once a
+   Sampling rate is entered (surfacing the gap as "Needs Attention" once
+   provenance is no longer `index_only`); and Excel worksheet isolation
+   plus the COMTRADE regression both remain intact -- all with zero
    console/page errors.
 9. **Full Powerwave Readiness Validator.** Structural validity; data
    validity; time-axis validity; compatibility with canonical Powerwave

@@ -420,10 +420,40 @@ re-confirmed by the TG-FINAL audit):
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 8](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
   for the full implementation summary.
 
-  Elapsed numeric time, sample index, and repeated-timestamp/lost-
-  precision detection (Slice 8's remaining three items, a future
-  Slice 8B/8C) and the full readiness validator are still explicitly
-  NOT part of any slice implemented so far — see
+  **Slice 8B** (2026-09-02) implements the next two of Slice 8's five
+  proposed initial interpreters — elapsed numeric time and sample
+  index — as `elapsed_numeric`/`sample_index` in the SAME
+  `app/services/time_axis_interpreters.py`, reusing Slice 8A's own
+  interpreter contract unchanged (two new optional `detect()`
+  parameters, `requested_unit`/`requested_interval_seconds`, ignored by
+  the two Slice 8A interpreters). Neither needed a new stored field:
+  `TimeAxisConfiguration.unit`/`.interval_seconds` already existed
+  since Slice 7 anticipating exactly this. `elapsed_numeric` requires
+  an explicit unit (`seconds`/`milliseconds`/`microseconds`/
+  `nanoseconds`) — an absent unit produces a `missing_elapsed_unit`
+  diagnostic reusing Slice 8A's own ambiguity→`review_required`
+  mechanism verbatim; `confirmed=true` is rejected while it remains.
+  `sample_index` treats an absent `interval_seconds` as
+  `provenance=index_only`, a COMPLETE non-error state reusing Slice 7's
+  own pre-existing `STATUS_INDEX_FALLBACK` precedent (already forced by
+  that exact family/provenance combination before any real interpreter
+  existed to produce it) — a present, positive `interval_seconds`
+  (user-supplied rate or interval, converted to seconds-per-sample
+  CLIENT-SIDE — never a second stored representation) is
+  `provenance=user_specified` instead. Both interpreters detect
+  backward/repeated/gap/non-numeric/missing findings by comparing each
+  sampled value only to the previous one, in original row order —
+  never sorting, dropping, or synthesizing a row. Frontend: the
+  Interpreter selector gained "Elapsed Time"/"Sample Index" entries;
+  Elapsed Time shows a required Unit select, Sample Index shows a
+  progressive-disclosure Timing radio group (Unknown / Sampling rate Hz
+  / Sample interval ms). See
+  [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 8](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
+  for the full implementation summary.
+
+  Repeated-timestamp/lost-precision detection (Slice 8's remaining
+  item, a future Slice 8C) and the full readiness validator are still
+  explicitly NOT part of any slice implemented so far — see
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md).
 
 ## Known intentional constraints / deferred items
@@ -501,14 +531,14 @@ Slice 6 adds the Readiness Issue LANGUAGE AND TRANSPORT model
 (`blocking`/`warning`/`info` severities, three conservative `info`-only
 issue codes derived live from configuration state) — explicitly NOT the
 full Readiness Validator, no readiness gate, no status transition.
-Slice 7 (the extensible time-axis interpretation FRAMEWORK) and Slice 8A
-(the first two deterministic time-axis interpreters, see above) are now
-implemented. Slice 8's remaining three items (elapsed numeric time,
-sample index, repeated-timestamp/lost-precision detection), and
-Slices 9–13 (the full Readiness Validator, canonical
-`DisturbanceRecord` conversion, existing waveform integration, export,
-and progressive automation) remain unimplemented and require their own
-explicit owner go-ahead before starting, per
+Slice 7 (the extensible time-axis interpretation FRAMEWORK), Slice 8A
+(the first two deterministic time-axis interpreters), and Slice 8B (the
+next two -- elapsed numeric time, sample index, see above) are now
+implemented. Slice 8's remaining item (repeated-timestamp/lost-precision
+detection, a future Slice 8C), and Slices 9–13 (the full Readiness
+Validator, canonical `DisturbanceRecord` conversion, existing waveform
+integration, export, and progressive automation) remain unimplemented
+and require their own explicit owner go-ahead before starting, per
 [Change governance](../../CLAUDE.md#change-governance) — being recorded
 in the architecture document's own slice sequence does not itself
 authorize starting any of them.
@@ -525,9 +555,9 @@ point 5), a qualitative confidence model, the interpreter-registry
 extensibility concept, and a progressive-disclosure Time Axis UI shell
 matching the existing Preparation Status/Structure pattern. Slice 7 (the
 framework portion) is now implemented, per above; Slice 8A (§19 items
-1-2, the two deterministic absolute-time interpreters) is also now
-implemented; Slice 8's remaining three items (§19 items 3-5) remain
-design-only.
+1-2, the two deterministic absolute-time interpreters) and Slice 8B
+(§19 items 3-4, elapsed numeric time + sample index) are also now
+implemented; Slice 8's remaining item (§19 item 5) remains design-only.
 `SourceMetadata.timing_reference` still reserves a value other than
 `"absolute"` for a future importer with no trustworthy absolute
 recording timestamp — a CSV/Excel preparation source does not reach

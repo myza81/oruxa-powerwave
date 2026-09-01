@@ -1510,7 +1510,9 @@ class TestTimeAxisInterpretersEndpoint:
 
         assert resp.status_code == 200, resp.text
         ids = {row["interpreter_id"] for row in resp.json()}
-        assert ids == {"manual", "unsupported", "absolute_datetime", "split_date_time"}
+        assert ids == {
+            "manual", "unsupported", "absolute_datetime", "split_date_time", "elapsed_numeric", "sample_index",
+        }
 
 
 class TestTimeAxisGetEndpoint:
@@ -1987,3 +1989,262 @@ class TestTimeAxisAbsoluteDatetimeDataPreservationViaApi:
 
         rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()["rows"]
         assert [r["cells"][0] for r in rows] == ["2026-08-31 13:09:46", "garbage", "2026-08-31 13:09:44"]
+
+
+# ---- CSV/Excel ingestion Slice 8B (DEC-072): elapsed numeric time +
+# sample index -- API-level coverage for the real `elapsed_numeric`/
+# `sample_index` interpreters. Every CSV fixture below is headerless.
+
+
+class TestTimeAxisElapsedNumericPutEndpoint:
+    def test_no_unit_returns_review_required(self, client):
+        source_id = _upload_csv(client, content=b"0\n0.001\n0.002\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "elapsed_numeric"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "review_required"
+        assert body["family"] == "elapsed"
+        codes = {d["code"] for d in body["diagnostics"]}
+        assert "missing_elapsed_unit" in codes
+
+    def test_confirming_without_unit_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"0\n0.001\n0.002\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "elapsed_numeric", "confirmed": True},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_time_axis_configuration"
+
+    def test_valid_unit_can_be_confirmed(self, client):
+        source_id = _upload_csv(client, content=b"0\n0.001\n0.002\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "elapsed_numeric", "unit": "seconds", "confirmed": True},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "confirmed"
+        assert body["unit"] == "seconds"
+
+    def test_invalid_unit_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"0\n1\n2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "elapsed_numeric", "unit": "fortnights"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_time_axis_configuration"
+
+    def test_wrong_column_count_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"0,x\n1,y\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0, 1], "interpreter_id": "elapsed_numeric", "unit": "seconds"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_time_axis_configuration"
+
+
+class TestTimeAxisSampleIndexPutEndpoint:
+    def test_index_only_is_valid_and_confirmable(self, client):
+        source_id = _upload_csv(client, content=b"1\n2\n3\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "sample_index", "confirmed": True},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "index_fallback"
+        assert body["provenance"] == "index_only"
+        assert body["confirmed"] is True
+
+    def test_with_interval_seconds(self, client):
+        source_id = _upload_csv(client, content=b"1001\n1002\n1003\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "sample_index", "interval_seconds": 0.0002},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "detected"
+        assert body["provenance"] == "user_specified"
+        assert body["interval_seconds"] == 0.0002
+
+    def test_invalid_interval_seconds_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"1\n2\n3\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "sample_index", "interval_seconds": -1},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_time_axis_configuration"
+
+    def test_gap_diagnostic_present(self, client):
+        source_id = _upload_csv(client, content=b"1\n2\n3\n5\n6\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "sample_index"},
+        )
+
+        codes = {d["code"] for d in resp.json()["diagnostics"]}
+        assert "sample_index_gap" in codes
+
+
+class TestTimeAxisElapsedAndIndexInterpretEndpoint:
+    def test_dry_run_elapsed(self, client):
+        source_id = _upload_csv(client, content=b"0\n10\n20\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.post(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis/interpret",
+            json={"column_indices": [0], "interpreter_id": "elapsed_numeric", "unit": "milliseconds"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["family"] == "elapsed"
+        assert body["resolved_unit"] == "milliseconds"
+        assert body["preview_rows"][0]["interpreted"] == "0.000000 s"
+        assert body["preview_rows"][1]["interpreted"] == "0.010000 s"
+
+        summary = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis")
+        assert summary.json()["status"] == "unconfigured"
+
+    def test_dry_run_index_with_rate(self, client):
+        source_id = _upload_csv(client, content=b"1001\n1002\n1003\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.post(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis/interpret",
+            json={"column_indices": [0], "interpreter_id": "sample_index", "interval_seconds": 0.0002},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["resolved_interval_seconds"] == 0.0002
+        assert body["preview_rows"][0]["interpreted"] == "0.000000 s"
+
+    def test_dry_run_index_without_rate_never_fabricates_seconds(self, client):
+        source_id = _upload_csv(client, content=b"1001\n1002\n1003\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.post(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis/interpret",
+            json={"column_indices": [0], "interpreter_id": "sample_index"},
+        )
+
+        body = resp.json()
+        assert all(r["interpreted"] is None for r in body["preview_rows"])
+
+    def test_dry_run_invalid_elapsed_unit_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"0\n1\n2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.post(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis/interpret",
+            json={"column_indices": [0], "interpreter_id": "elapsed_numeric", "unit": "fortnights"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_time_axis_configuration"
+
+
+class TestTimeAxisElapsedAndIndexExcelWorksheetIsolationViaApi:
+    def test_isolated_per_worksheet(self, client):
+        content = _build_xlsx({
+            "A": [["0"], ["0.001"], ["0.002"]],
+            "B": [["1"], ["2"], ["3"]],
+        })
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "m.xlsx"),
+        ).json()["source_id"]
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 0})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "elapsed_numeric", "unit": "seconds"},
+        )
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 1})
+        resp_b = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis")
+        assert resp_b.json()["status"] == "unconfigured"
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 0})
+        resp_a = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis")
+        assert resp_a.json()["unit"] == "seconds"
+
+
+class TestTimeAxisElapsedAndIndexUndoRedoViaApi:
+    def test_undo_redo_round_trips_elapsed_configuration(self, client):
+        source_id = _upload_csv(client, content=b"0\n0.001\n0.002\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "elapsed_numeric", "unit": "seconds"},
+        )
+
+        client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/undo")
+        after_undo = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis").json()
+        assert after_undo["status"] == "unconfigured"
+
+        client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/redo")
+        after_redo = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis").json()
+        assert after_redo["unit"] == "seconds"
+
+
+class TestTimeAxisElapsedAndIndexDataPreservationViaApi:
+    def test_original_values_and_row_order_preserved(self, client):
+        source_id = _upload_csv(client, content=b"0\n2\n1\n3\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "elapsed_numeric", "unit": "seconds"},
+        )
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()["rows"]
+        assert [r["cells"][0] for r in rows] == ["0", "2", "1", "3"]
+
+    def test_repeated_sample_index_rows_never_collapsed(self, client):
+        source_id = _upload_csv(client, content=b"1\n2\n2\n3\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "sample_index"},
+        )
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()["rows"]
+        assert [r["cells"][0] for r in rows] == ["1", "2", "2", "3"]

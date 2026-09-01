@@ -211,6 +211,48 @@ DIAGNOSTIC_MISSING_DATETIME_VALUE = "missing_datetime_value"
 DIAGNOSTIC_TIMEZONE_INCONSISTENT = "timezone_inconsistent"
 DIAGNOSTIC_TIME_ONLY_NOT_ABSOLUTE = "time_only_not_absolute"
 
+#: The two Slice 8B interpreter identifiers -- see
+#: `app.services.time_axis_interpreters` for what each actually does.
+INTERPRETER_ID_ELAPSED_NUMERIC = "elapsed_numeric"
+INTERPRETER_ID_SAMPLE_INDEX = "sample_index"
+
+#: Elapsed-time units (CSV_EXCEL_TIME_INTERPRETATION.md §9) -- matches
+#: `TimingInformation.time_axis_unit`'s own existing (previously dead)
+#: field, which `elapsed_numeric` (Slice 8B) is the first real producer
+#: for. Deliberately open-ended like every other vocabulary in this
+#: module (a future interpreter may recognize more units), but THIS
+#: interpreter's own contract only ever accepts these four -- see
+#: `app.services.time_axis_service.set_time_axis_configuration`'s own
+#: unit-set validation, scoped to `elapsed_numeric` specifically so it
+#: never narrows `manual`'s deliberately open-ended `unit` field.
+UNIT_SECONDS = "seconds"
+UNIT_MILLISECONDS = "milliseconds"
+UNIT_MICROSECONDS = "microseconds"
+UNIT_NANOSECONDS = "nanoseconds"
+KNOWN_ELAPSED_UNITS = (UNIT_SECONDS, UNIT_MILLISECONDS, UNIT_MICROSECONDS, UNIT_NANOSECONDS)
+
+#: Diagnostic codes the Slice 8B deterministic interpreters may produce
+#: (§C/§J). `DIAGNOSTIC_MISSING_ELAPSED_UNIT` is the ONE Slice 8B
+#: diagnostic that ever carries `AMBIGUITY_AMBIGUOUS` -- an elapsed
+#: column with no unit chosen is not "broken data," it is a genuine
+#: unresolved CHOICE the user must make (§8/§9's own "units are never
+#: silently inferred... the field stays required" rule), so it routes
+#: through the exact same `STATUS_REVIEW_REQUIRED` precedence Slice 8A's
+#: `ambiguous_date_order` already established -- no new status logic
+#: needed. Every other diagnostic below is a plain data-quality finding
+#: (`unambiguous`/`invalid`), never a "the user must choose" case.
+DIAGNOSTIC_MISSING_ELAPSED_UNIT = "missing_elapsed_unit"
+DIAGNOSTIC_NON_NUMERIC_ELAPSED_VALUE = "non_numeric_elapsed_value"
+DIAGNOSTIC_MISSING_ELAPSED_VALUE = "missing_elapsed_value"
+DIAGNOSTIC_ELAPSED_TIME_GOES_BACKWARD = "elapsed_time_goes_backward"
+DIAGNOSTIC_REPEATED_ELAPSED_TIME = "repeated_elapsed_time"
+DIAGNOSTIC_NON_UNIFORM_ELAPSED_INTERVAL = "non_uniform_elapsed_interval"
+DIAGNOSTIC_NON_NUMERIC_SAMPLE_INDEX = "non_numeric_sample_index"
+DIAGNOSTIC_MISSING_SAMPLE_INDEX = "missing_sample_index"
+DIAGNOSTIC_SAMPLE_INDEX_GOES_BACKWARD = "sample_index_goes_backward"
+DIAGNOSTIC_REPEATED_SAMPLE_INDEX = "repeated_sample_index"
+DIAGNOSTIC_SAMPLE_INDEX_GAP = "sample_index_gap"
+
 
 @dataclass(slots=True, frozen=True)
 class TimeAxisConfiguration:
@@ -349,13 +391,27 @@ class TimeAxisDetectionResult:
     interpreter it is the ACTUAL resolved configuration (e.g.
     `{"date_order": "dmy"}` once elimination or user confirmation
     settled it, still `{"date_order": "auto"}` while genuinely
-    unresolved)."""
+    unresolved).
+
+    `resolved_unit`/`resolved_interval_seconds` (Slice 8B) mirror
+    `TimeAxisConfiguration`'s own same-named TOP-LEVEL fields (never
+    `options` -- both already existed on that dataclass since Slice 7,
+    anticipating exactly this) -- `elapsed_numeric` resolves `unit`
+    only, `sample_index` resolves `interval_seconds` only,
+    `absolute_datetime`/`split_date_time`/`manual`/`unsupported` leave
+    both `None`. Kept as two explicit fields here (not folded into
+    `resolved_options`) so the write path can assign them directly onto
+    `TimeAxisConfiguration.unit`/`.interval_seconds` without the
+    service layer needing to know which key means what per
+    interpreter."""
 
     family: str | None
     provenance: str | None
     confidence: str
     diagnostics: list[TimeAxisDiagnostic]
     resolved_options: dict[str, Any]
+    resolved_unit: str | None = None
+    resolved_interval_seconds: float | None = None
 
 
 @dataclass(slots=True)

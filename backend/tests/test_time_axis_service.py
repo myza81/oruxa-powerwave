@@ -20,10 +20,13 @@ from starlette.datastructures import Headers
 from app.domain.time_axis import (
     DIAGNOSTIC_AMBIGUOUS_DATE_ORDER,
     FAMILY_ABSOLUTE,
+    FAMILY_ELAPSED,
     FAMILY_PARTIAL,
     FAMILY_SAMPLE_INDEX,
     INTERPRETER_ID_ABSOLUTE_DATETIME,
+    INTERPRETER_ID_ELAPSED_NUMERIC,
     INTERPRETER_ID_MANUAL,
+    INTERPRETER_ID_SAMPLE_INDEX,
     INTERPRETER_ID_SPLIT_DATE_TIME,
     INTERPRETER_ID_UNSUPPORTED,
     PROVENANCE_INDEX_ONLY,
@@ -386,13 +389,15 @@ class TestRegistryResolution:
 
         # Every OTHER real interpreter must also be removed for this to
         # genuinely test "nothing accepts" -- `manual` accepts any
-        # column_count>=1 and Slice 8A's own absolute_datetime/
-        # split_date_time also accept 1/2 columns respectively, so all
-        # three have to be out of the way, not just `manual`.
+        # column_count>=1 and every Slice 8A/8B real interpreter also
+        # accepts a 1-column request, so all of them have to be out of
+        # the way, not just `manual`.
         monkeypatch.setitem(_INTERPRETERS, "fake", _NeverAccepts())
         monkeypatch.delitem(_INTERPRETERS, INTERPRETER_ID_MANUAL)
         monkeypatch.delitem(_INTERPRETERS, INTERPRETER_ID_ABSOLUTE_DATETIME)
         monkeypatch.delitem(_INTERPRETERS, INTERPRETER_ID_SPLIT_DATE_TIME)
+        monkeypatch.delitem(_INTERPRETERS, INTERPRETER_ID_ELAPSED_NUMERIC)
+        monkeypatch.delitem(_INTERPRETERS, INTERPRETER_ID_SAMPLE_INDEX)
 
         interpreter = resolve_interpreter(column_count=1, requested_interpreter_id=None)
 
@@ -764,3 +769,391 @@ class TestAbsoluteDatetimeDataPreservation:
         preview = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
         assert [row.cells[0] for row in preview.rows] == ["2026-08-31 13:09:44", "garbage"]
         assert preview.rows[1].excluded is True
+
+
+# ---- CSV/Excel ingestion Slice 8B (DEC-072): elapsed numeric time +
+# sample index -- service-layer wiring. Pure detection/preview logic is
+# covered by tests/test_time_axis_interpreters.py. Every fixture below
+# is headerless so row 1 is genuine sample data. ----
+
+
+class TestElapsedNumericSetAndGet:
+    def test_no_unit_is_review_required(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"0\n0.001\n0.002\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_ELAPSED_NUMERIC, registry=registry,
+        )
+
+        assert result.status == STATUS_REVIEW_REQUIRED
+        assert result.family == FAMILY_ELAPSED
+
+    def test_confirming_without_a_unit_is_rejected(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"0\n0.001\n0.002\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        with pytest.raises(InvalidTimeAxisConfigurationError):
+            set_time_axis_configuration(
+                workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+                interpreter_id=INTERPRETER_ID_ELAPSED_NUMERIC, confirmed=True, registry=registry,
+            )
+
+    def test_valid_unit_resolves_and_allows_confirm(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"0\n0.001\n0.002\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,), unit="seconds",
+            interpreter_id=INTERPRETER_ID_ELAPSED_NUMERIC, confirmed=True, registry=registry,
+        )
+
+        assert result.status == STATUS_CONFIRMED
+        assert result.unit == "seconds"
+
+    def test_invalid_unit_is_rejected(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"0\n1\n2\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        with pytest.raises(InvalidTimeAxisConfigurationError):
+            set_time_axis_configuration(
+                workspace_id="ws-1", source_id=source_id, column_indices=(0,), unit="fortnights",
+                interpreter_id=INTERPRETER_ID_ELAPSED_NUMERIC, registry=registry,
+            )
+
+    def test_manual_interpreter_unit_field_stays_open_ended(self):
+        # The elapsed_numeric-specific unit-set validation must never
+        # leak into `manual`'s own deliberately open-ended `unit` field.
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            family="elapsed", provenance="native", unit="fortnights", registry=registry,
+        )
+
+        assert result.unit == "fortnights"
+
+    def test_backward_value_reports_needs_attention(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"0\n2\n1\n3\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,), unit="seconds",
+            interpreter_id=INTERPRETER_ID_ELAPSED_NUMERIC, registry=registry,
+        )
+
+        assert result.status == STATUS_NEEDS_ATTENTION
+
+    def test_diagnostics_recomputed_live_on_every_get(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"0\n0.001\n0.002\n")
+        _mark_time_axis(registry, source_id, 0)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_ELAPSED_NUMERIC, registry=registry,
+        )
+
+        first = get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        second = get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert first.status == second.status == STATUS_REVIEW_REQUIRED
+
+    def test_wrong_column_count_is_rejected(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"0,x\n1,y\n")
+        _mark_time_axis(registry, source_id, 0, 1)
+
+        with pytest.raises(InvalidTimeAxisConfigurationError):
+            set_time_axis_configuration(
+                workspace_id="ws-1", source_id=source_id, column_indices=(0, 1),
+                interpreter_id=INTERPRETER_ID_ELAPSED_NUMERIC, registry=registry,
+            )
+
+
+class TestSampleIndexSetAndGet:
+    def test_index_only_is_a_valid_complete_state(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"1\n2\n3\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_SAMPLE_INDEX, registry=registry,
+        )
+
+        assert result.status == STATUS_INDEX_FALLBACK
+        assert result.provenance == "index_only"
+        assert result.diagnostics == []
+
+    def test_index_only_can_be_confirmed_immediately(self):
+        # Not an error, not ambiguous -- confirmable right away, unlike
+        # elapsed_numeric's own missing-unit case.
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"1\n2\n3\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_SAMPLE_INDEX, confirmed=True, registry=registry,
+        )
+
+        assert result.confirmed is True
+
+    def test_known_interval_seconds_is_user_specified(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"1001\n1002\n1003\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,), interval_seconds=0.0002,
+            interpreter_id=INTERPRETER_ID_SAMPLE_INDEX, registry=registry,
+        )
+
+        assert result.status == STATUS_DETECTED
+        assert result.provenance == "user_specified"
+        assert result.interval_seconds == 0.0002
+
+    def test_non_positive_interval_seconds_is_rejected(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"1\n2\n3\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        with pytest.raises(InvalidTimeAxisConfigurationError):
+            set_time_axis_configuration(
+                workspace_id="ws-1", source_id=source_id, column_indices=(0,), interval_seconds=0.0,
+                interpreter_id=INTERPRETER_ID_SAMPLE_INDEX, registry=registry,
+            )
+
+    def test_gap_is_reported_but_still_index_fallback_status(self):
+        # index_fallback fires unconditionally on family=sample_index +
+        # provenance=index_only, regardless of any OTHER diagnostic --
+        # the diagnostic is still attached and inspectable either way.
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"1\n2\n3\n5\n6\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_SAMPLE_INDEX, registry=registry,
+        )
+
+        assert result.status == STATUS_INDEX_FALLBACK
+        codes = [d.code for d in result.diagnostics]
+        assert "sample_index_gap" in codes
+
+    def test_starting_index_is_never_assumed(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"1001\n1002\n1003\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_SAMPLE_INDEX, registry=registry,
+        )
+
+        assert result.diagnostics == []  # no gap/backward false positive for a non-zero/non-one start
+
+
+class TestElapsedAndSampleIndexInterpretDryRun:
+    def test_dry_run_elapsed_does_not_store_anything(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"0\n0.001\n0.002\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        preview = interpret_time_axis(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_ELAPSED_NUMERIC, unit="seconds", registry=registry,
+        )
+
+        assert preview.family == FAMILY_ELAPSED
+        assert preview.resolved_unit == "seconds"
+        assert preview.preview_rows
+        summary = get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert summary.status == STATUS_UNCONFIGURED
+
+    def test_dry_run_elapsed_invalid_unit_rejected(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"0\n1\n2\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        with pytest.raises(InvalidTimeAxisConfigurationError):
+            interpret_time_axis(
+                workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+                interpreter_id=INTERPRETER_ID_ELAPSED_NUMERIC, unit="fortnights", registry=registry,
+            )
+
+    def test_dry_run_index_only(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"1\n2\n3\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        preview = interpret_time_axis(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_SAMPLE_INDEX, registry=registry,
+        )
+
+        assert preview.family == FAMILY_SAMPLE_INDEX
+        assert preview.provenance == "index_only"
+        assert all(r.interpreted is None for r in preview.preview_rows)
+
+    def test_dry_run_index_with_rate(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"1001\n1002\n1003\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        preview = interpret_time_axis(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,), interval_seconds=0.0002,
+            interpreter_id=INTERPRETER_ID_SAMPLE_INDEX, registry=registry,
+        )
+
+        assert preview.resolved_interval_seconds == 0.0002
+        assert all(r.interpreted is not None for r in preview.preview_rows)
+
+
+class TestElapsedAndSampleIndexUndoRedo:
+    def test_elapsed_configuration_undo_redo(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"0\n0.001\n0.002\n")
+        _mark_time_axis(registry, source_id, 0)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,), unit="seconds",
+            interpreter_id=INTERPRETER_ID_ELAPSED_NUMERIC, registry=registry,
+        )
+
+        undo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry).status == STATUS_UNCONFIGURED
+
+        redo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
+        after_redo = get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert after_redo.unit == "seconds"
+
+    def test_index_only_undo_redo(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"1\n2\n3\n")
+        _mark_time_axis(registry, source_id, 0)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_SAMPLE_INDEX, registry=registry,
+        )
+
+        undo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry).status == STATUS_UNCONFIGURED
+
+        redo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry).status == STATUS_INDEX_FALLBACK
+
+    def test_rate_configuration_undo_redo(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"1001\n1002\n1003\n")
+        _mark_time_axis(registry, source_id, 0)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,), interval_seconds=0.0002,
+            interpreter_id=INTERPRETER_ID_SAMPLE_INDEX, registry=registry,
+        )
+
+        undo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry).interval_seconds is None
+
+        redo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry).interval_seconds == 0.0002
+
+    def test_clear_reverts_to_unconfigured(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"0\n0.001\n0.002\n")
+        _mark_time_axis(registry, source_id, 0)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,), unit="seconds",
+            interpreter_id=INTERPRETER_ID_ELAPSED_NUMERIC, registry=registry,
+        )
+
+        clear_time_axis_configuration(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry).status == STATUS_UNCONFIGURED
+
+
+class TestElapsedAndSampleIndexExcelWorksheetIsolation:
+    def test_elapsed_configuration_isolated_per_worksheet(self):
+        registry = PreparationSessionRegistry()
+        content = _build_xlsx({
+            "A": [["0"], ["0.001"], ["0.002"]],
+            "B": [["not-numeric"]],
+        })
+        source_id = _add_excel(registry, content)
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=0, registry=registry)
+        _mark_time_axis(registry, source_id, 0)
+        result_a = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,), unit="seconds",
+            interpreter_id=INTERPRETER_ID_ELAPSED_NUMERIC, registry=registry,
+        )
+        assert result_a.status == STATUS_REVIEW_REQUIRED or result_a.status == STATUS_DETECTED
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=1, registry=registry)
+        result_b = get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert result_b.status == STATUS_UNCONFIGURED
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=0, registry=registry)
+        result_a_again = get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert result_a_again.unit == "seconds"
+
+
+class TestElapsedAndSampleIndexDataPreservation:
+    def test_original_numeric_values_never_overwritten(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"0\n10\n20\n30\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,), unit="milliseconds",
+            interpreter_id=INTERPRETER_ID_ELAPSED_NUMERIC, registry=registry,
+        )
+
+        preview = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+        assert [row.cells[0] for row in preview.rows] == ["0", "10", "20", "30"]
+
+    def test_rows_never_reordered_for_backward_elapsed_time(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"0\n2\n1\n3\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,), unit="seconds",
+            interpreter_id=INTERPRETER_ID_ELAPSED_NUMERIC, registry=registry,
+        )
+
+        preview = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+        assert [row.cells[0] for row in preview.rows] == ["0", "2", "1", "3"]
+
+    def test_sample_index_gap_never_synthesizes_a_row(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"1\n2\n3\n5\n6\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_SAMPLE_INDEX, registry=registry,
+        )
+
+        preview = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+        assert [row.cells[0] for row in preview.rows] == ["1", "2", "3", "5", "6"]
+
+    def test_repeated_sample_index_rows_never_collapsed(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"1\n2\n2\n3\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_SAMPLE_INDEX, registry=registry,
+        )
+
+        preview = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+        assert [row.cells[0] for row in preview.rows] == ["1", "2", "2", "3"]

@@ -154,16 +154,22 @@ class TimeAxisInterpreter(Protocol):
         samples: list[TimeAxisSampleRow],
         requested_family: str | None,
         requested_provenance: str | None,
+        requested_unit: str | None,
+        requested_interval_seconds: float | None,
         requested_options: dict[str, Any],
     ) -> TimeAxisDetectionResult:
         """Sample interpreters only (`needs_sample_data = True`) --
         classifies `family`/`provenance`/`confidence`/diagnostics from
-        an already-fetched bounded sample. Never called for a
-        non-sample interpreter."""
+        an already-fetched bounded sample. `requested_unit`/
+        `requested_interval_seconds` (Slice 8B) are the ONE place
+        `elapsed_numeric`/`sample_index` receive their own required/
+        optional configuration -- `absolute_datetime`/`split_date_time`
+        simply ignore both. Never called for a non-sample interpreter."""
         ...
 
     def build_preview_rows(
-        self, *, samples: list[TimeAxisSampleRow], resolved_options: dict[str, Any], limit: int,
+        self, *, samples: list[TimeAxisSampleRow], resolved_options: dict[str, Any],
+        resolved_unit: str | None, resolved_interval_seconds: float | None, limit: int,
     ) -> list[TimeAxisPreviewRow]:
         """Sample interpreters only -- bounded {original, interpreted}
         rows for the dry-run preview action. Never called for a
@@ -264,13 +270,15 @@ class _AbsoluteDatetimeInterpreter:
 
     def detect(
         self, *, samples: list[TimeAxisSampleRow], requested_family: str | None,
-        requested_provenance: str | None, requested_options: dict[str, Any],
+        requested_provenance: str | None, requested_unit: str | None,
+        requested_interval_seconds: float | None, requested_options: dict[str, Any],
     ) -> TimeAxisDetectionResult:
         raw = [(s.row_number, s.values[0] if s.values else None) for s in samples]
         return time_axis_interpreters.detect_absolute_datetime(raw, requested_options=requested_options)
 
     def build_preview_rows(
-        self, *, samples: list[TimeAxisSampleRow], resolved_options: dict[str, Any], limit: int,
+        self, *, samples: list[TimeAxisSampleRow], resolved_options: dict[str, Any],
+        resolved_unit: str | None, resolved_interval_seconds: float | None, limit: int,
     ) -> list[TimeAxisPreviewRow]:
         raw = [(s.row_number, s.values) for s in samples]
         built = time_axis_interpreters.build_absolute_datetime_preview(raw, resolved_options=resolved_options, limit=limit)
@@ -295,17 +303,88 @@ class _SplitDateTimeInterpreter:
 
     def detect(
         self, *, samples: list[TimeAxisSampleRow], requested_family: str | None,
-        requested_provenance: str | None, requested_options: dict[str, Any],
+        requested_provenance: str | None, requested_unit: str | None,
+        requested_interval_seconds: float | None, requested_options: dict[str, Any],
     ) -> TimeAxisDetectionResult:
         date_values = [(s.row_number, s.values[0] if len(s.values) > 0 else None) for s in samples]
         time_values = [(s.row_number, s.values[1] if len(s.values) > 1 else None) for s in samples]
         return time_axis_interpreters.detect_split_date_time(date_values, time_values, requested_options=requested_options)
 
     def build_preview_rows(
-        self, *, samples: list[TimeAxisSampleRow], resolved_options: dict[str, Any], limit: int,
+        self, *, samples: list[TimeAxisSampleRow], resolved_options: dict[str, Any],
+        resolved_unit: str | None, resolved_interval_seconds: float | None, limit: int,
     ) -> list[TimeAxisPreviewRow]:
         raw = [(s.row_number, s.values) for s in samples]
         built = time_axis_interpreters.build_split_date_time_preview(raw, resolved_options=resolved_options, limit=limit)
+        return [TimeAxisPreviewRow(row_number=rn, original=original, interpreted=interpreted) for rn, original, interpreted in built]
+
+
+@dataclass(slots=True, frozen=True)
+class _ElapsedNumericInterpreter:
+    """Single-column elapsed/relative numeric time (task §A) -- accepts
+    exactly one column. `unit` (already an existing top-level
+    `TimeAxisConfiguration` field since Slice 7, anticipating exactly
+    this) is the ONE piece of caller-supplied configuration this
+    interpreter actually needs -- see `app.services.
+    time_axis_interpreters.detect_elapsed_numeric`'s own docstring for
+    why a missing unit produces `review_required` rather than a guess."""
+
+    interpreter_id: str = time_axis_domain.INTERPRETER_ID_ELAPSED_NUMERIC
+    needs_sample_data: bool = True
+
+    def accepts(self, *, column_count: int) -> bool:
+        return column_count == 1
+
+    def detect(
+        self, *, samples: list[TimeAxisSampleRow], requested_family: str | None,
+        requested_provenance: str | None, requested_unit: str | None,
+        requested_interval_seconds: float | None, requested_options: dict[str, Any],
+    ) -> TimeAxisDetectionResult:
+        raw = [(s.row_number, s.values[0] if s.values else None) for s in samples]
+        return time_axis_interpreters.detect_elapsed_numeric(raw, requested_unit=requested_unit)
+
+    def build_preview_rows(
+        self, *, samples: list[TimeAxisSampleRow], resolved_options: dict[str, Any],
+        resolved_unit: str | None, resolved_interval_seconds: float | None, limit: int,
+    ) -> list[TimeAxisPreviewRow]:
+        raw = [(s.row_number, s.values) for s in samples]
+        built = time_axis_interpreters.build_elapsed_preview(raw, resolved_unit=resolved_unit, limit=limit)
+        return [TimeAxisPreviewRow(row_number=rn, original=original, interpreted=interpreted) for rn, original, interpreted in built]
+
+
+@dataclass(slots=True, frozen=True)
+class _SampleIndexInterpreter:
+    """Single-column sample index (task §E-§L) -- accepts exactly one
+    column. `interval_seconds` (already an existing top-level
+    `TimeAxisConfiguration` field since Slice 7) is OPTIONAL -- absent
+    means index-only (the approved fallback, task §F), present means a
+    user-supplied sampling interval/rate already converted to canonical
+    seconds by the caller (see `app.services.time_axis_service`'s own
+    module docstring for why a rate-vs-interval UI choice is never a
+    second stored representation)."""
+
+    interpreter_id: str = time_axis_domain.INTERPRETER_ID_SAMPLE_INDEX
+    needs_sample_data: bool = True
+
+    def accepts(self, *, column_count: int) -> bool:
+        return column_count == 1
+
+    def detect(
+        self, *, samples: list[TimeAxisSampleRow], requested_family: str | None,
+        requested_provenance: str | None, requested_unit: str | None,
+        requested_interval_seconds: float | None, requested_options: dict[str, Any],
+    ) -> TimeAxisDetectionResult:
+        raw = [(s.row_number, s.values[0] if s.values else None) for s in samples]
+        return time_axis_interpreters.detect_sample_index(raw, requested_interval_seconds=requested_interval_seconds)
+
+    def build_preview_rows(
+        self, *, samples: list[TimeAxisSampleRow], resolved_options: dict[str, Any],
+        resolved_unit: str | None, resolved_interval_seconds: float | None, limit: int,
+    ) -> list[TimeAxisPreviewRow]:
+        raw = [(s.row_number, s.values) for s in samples]
+        built = time_axis_interpreters.build_sample_index_preview(
+            raw, resolved_interval_seconds=resolved_interval_seconds, limit=limit,
+        )
         return [TimeAxisPreviewRow(row_number=rn, original=original, interpreted=interpreted) for rn, original, interpreted in built]
 
 
@@ -322,6 +401,8 @@ _INTERPRETERS: dict[str, TimeAxisInterpreter] = {
     time_axis_domain.INTERPRETER_ID_UNSUPPORTED: _UnsupportedInterpreter(),
     time_axis_domain.INTERPRETER_ID_ABSOLUTE_DATETIME: _AbsoluteDatetimeInterpreter(),
     time_axis_domain.INTERPRETER_ID_SPLIT_DATE_TIME: _SplitDateTimeInterpreter(),
+    time_axis_domain.INTERPRETER_ID_ELAPSED_NUMERIC: _ElapsedNumericInterpreter(),
+    time_axis_domain.INTERPRETER_ID_SAMPLE_INDEX: _SampleIndexInterpreter(),
 }
 
 
@@ -500,7 +581,8 @@ def get_time_axis_summary(
                 )
                 detection = interpreter.detect(
                     samples=samples, requested_family=configuration.family,
-                    requested_provenance=configuration.provenance, requested_options=configuration.options,
+                    requested_provenance=configuration.provenance, requested_unit=configuration.unit,
+                    requested_interval_seconds=configuration.interval_seconds, requested_options=configuration.options,
                 )
                 diagnostics = detection.diagnostics
                 confidence = detection.confidence
@@ -552,9 +634,21 @@ def set_time_axis_configuration(
     IS the family it produces (an `absolute_datetime` reading is never
     going to legitimately come back `elapsed`). Requesting `confirmed`
     while the sample data is still genuinely ambiguous (an
-    `ambiguous_date_order`-class diagnostic) is rejected outright --
-    the same "no silent auto-confirm" rule the design doc's own §5
-    states, enforced at the API boundary, not only in UI copy.
+    `ambiguous_date_order`-class diagnostic, OR Slice 8B's own
+    `missing_elapsed_unit`) is rejected outright -- the same "no silent
+    auto-confirm" rule the design doc's own §5 states, enforced at the
+    API boundary, not only in UI copy.
+
+    **Slice 8B**: `unit`/`interval_seconds` are the SAME pre-existing
+    top-level parameters Slice 7 always had (never a new `options` key)
+    -- `elapsed_numeric` reads `unit` (required eventually, but a
+    caller MAY save without one first, landing in `review_required`
+    exactly like an unresolved date order); `sample_index` reads
+    `interval_seconds` (entirely optional -- absent means index-only,
+    the approved fallback, never an error). `elapsed_numeric`'s own
+    `unit`, if given at all, must be one of `KNOWN_ELAPSED_UNITS` --
+    checked here, scoped to that one interpreter, so `manual`'s own
+    deliberately open-ended `unit` field is untouched.
     """
     session = _resolve_session(workspace_id=workspace_id, source_id=source_id, registry=registry)
     worksheet_index = _resolve_worksheet_index(session)
@@ -577,6 +671,18 @@ def set_time_axis_configuration(
         raise InvalidTimeAxisConfigurationError(
             f"'{interpreter.interpreter_id}' does not accept {len(column_indices)} column(s)."
         )
+    # Slice 8B: `elapsed_numeric` is a deliberately CLOSED-vocabulary
+    # interpreter (unlike `manual`'s own open-ended `unit` field, per
+    # DEC-072 point 6) -- validated here, scoped to this one
+    # interpreter, so `manual`'s existing freedom is untouched.
+    if (
+        interpreter.interpreter_id == time_axis_domain.INTERPRETER_ID_ELAPSED_NUMERIC
+        and unit is not None
+        and unit not in time_axis_domain.KNOWN_ELAPSED_UNITS
+    ):
+        raise InvalidTimeAxisConfigurationError(
+            f"unit must be one of {time_axis_domain.KNOWN_ELAPSED_UNITS} for '{interpreter.interpreter_id}'; got {unit!r}."
+        )
     options = dict(options or {})
 
     if interpreter.needs_sample_data:
@@ -585,20 +691,21 @@ def set_time_axis_configuration(
             column_indices=tuple(column_indices), session=session, registry=registry,
         )
         detection = interpreter.detect(
-            samples=samples, requested_family=family, requested_provenance=provenance, requested_options=options,
+            samples=samples, requested_family=family, requested_provenance=provenance,
+            requested_unit=unit, requested_interval_seconds=interval_seconds, requested_options=options,
         )
         if confirmed and _has_ambiguous_diagnostic(detection.diagnostics):
             raise InvalidTimeAxisConfigurationError(
-                "Cannot confirm this Time Axis configuration while the date order is ambiguous -- "
-                "choose an explicit date order first."
+                "Cannot confirm this Time Axis configuration while it is still ambiguous -- "
+                "resolve the ambiguity first (e.g. choose an explicit date order or unit)."
             )
         configuration = TimeAxisConfiguration(
             column_indices=tuple(column_indices),
             family=detection.family,
             provenance=detection.provenance,
             interpreter_id=interpreter.interpreter_id,
-            unit=None,
-            interval_seconds=None,
+            unit=detection.resolved_unit,
+            interval_seconds=detection.resolved_interval_seconds,
             confirmed=confirmed,
             options=detection.resolved_options,
         )
@@ -652,6 +759,8 @@ class TimeAxisInterpretPreview:
     confidence: str
     diagnostics: list[TimeAxisDiagnostic] = field(default_factory=list)
     resolved_options: dict[str, Any] = field(default_factory=dict)
+    resolved_unit: str | None = None
+    resolved_interval_seconds: float | None = None
     preview_rows: list[TimeAxisPreviewRow] = field(default_factory=list)
 
 
@@ -661,6 +770,8 @@ def interpret_time_axis(
     source_id: str,
     column_indices: tuple[int, ...],
     interpreter_id: str,
+    unit: str | None = None,
+    interval_seconds: float | None = None,
     options: dict[str, Any] | None = None,
     registry: PreparationSessionRegistry,
 ) -> TimeAxisInterpretPreview:
@@ -673,7 +784,9 @@ def interpret_time_axis(
     as the real write path) so a preview always reflects the exact
     input a subsequent save would use. Rejects a non-sample
     `interpreter_id` (`manual`/`unsupported`) outright -- there is
-    nothing to detect or preview for either."""
+    nothing to detect or preview for either. `unit`/`interval_seconds`
+    (Slice 8B) let a caller try a specific elapsed unit or sample-index
+    interval before committing to it via the real PUT."""
     session = _resolve_session(workspace_id=workspace_id, source_id=source_id, registry=registry)
     worksheet_index = _resolve_worksheet_index(session)
 
@@ -687,6 +800,8 @@ def interpret_time_axis(
         raise InvalidTimeAxisConfigurationError(
             "Every column in column_indices must currently carry the Time Axis column role."
         )
+    if interval_seconds is not None and not (interval_seconds > 0):
+        raise InvalidTimeAxisConfigurationError("interval_seconds must be a positive number when given.")
 
     interpreter = resolve_interpreter(column_count=len(column_indices), requested_interpreter_id=interpreter_id)
     if not interpreter.accepts(column_count=len(column_indices)):
@@ -697,16 +812,27 @@ def interpret_time_axis(
         raise InvalidTimeAxisConfigurationError(
             f"'{interpreter.interpreter_id}' does not support detection/preview."
         )
+    if (
+        interpreter.interpreter_id == time_axis_domain.INTERPRETER_ID_ELAPSED_NUMERIC
+        and unit is not None
+        and unit not in time_axis_domain.KNOWN_ELAPSED_UNITS
+    ):
+        raise InvalidTimeAxisConfigurationError(
+            f"unit must be one of {time_axis_domain.KNOWN_ELAPSED_UNITS} for '{interpreter.interpreter_id}'; got {unit!r}."
+        )
 
     samples = _fetch_time_axis_samples(
         workspace_id=workspace_id, source_id=source_id, worksheet_index=worksheet_index,
         column_indices=tuple(column_indices), session=session, registry=registry,
     )
     detection = interpreter.detect(
-        samples=samples, requested_family=None, requested_provenance=None, requested_options=dict(options or {}),
+        samples=samples, requested_family=None, requested_provenance=None,
+        requested_unit=unit, requested_interval_seconds=interval_seconds, requested_options=dict(options or {}),
     )
     preview_rows = interpreter.build_preview_rows(
-        samples=samples, resolved_options=detection.resolved_options, limit=_TIME_AXIS_PREVIEW_LIMIT,
+        samples=samples, resolved_options=detection.resolved_options,
+        resolved_unit=detection.resolved_unit, resolved_interval_seconds=detection.resolved_interval_seconds,
+        limit=_TIME_AXIS_PREVIEW_LIMIT,
     )
     return TimeAxisInterpretPreview(
         interpreter_id=interpreter.interpreter_id,
@@ -716,5 +842,7 @@ def interpret_time_axis(
         confidence=detection.confidence,
         diagnostics=detection.diagnostics,
         resolved_options=detection.resolved_options,
+        resolved_unit=detection.resolved_unit,
+        resolved_interval_seconds=detection.resolved_interval_seconds,
         preview_rows=preview_rows,
     )

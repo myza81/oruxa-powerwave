@@ -4,18 +4,112 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-01**
+Last updated: **2026-09-02**
 
 ## What was most recently done
 
-**CSV/Excel Ingestion Slice 8A — Deterministic Absolute-Time
+**CSV/Excel Ingestion Slice 8B — Elapsed / Relative Time + Sample Index
 Interpreters (implemented).** Owner-authorized implementation of the
-first two of Slice 7/8's own five proposed initial interpreters
-(§19 items 1-2) — single-column absolute datetime and Date + Time — as
-REAL, deterministic (non-fuzzy) interpreters on top of the Slice 7
-framework, with zero framework-shape changes beyond what that
-framework already anticipated (its own `options` bag, its own
-currently-unreachable `review_required` status, its own two-method
+next two of Slice 7/8's own five proposed initial interpreters
+(§19 items 3-4) — elapsed numeric time and sample index — as REAL,
+deterministic interpreters on top of Slice 7's framework and Slice 8A's
+own absolute-time path, with zero framework-shape changes beyond what
+those already anticipated (`TimeAxisConfiguration.unit`/
+`.interval_seconds` existed since Slice 7 for exactly this;
+`detect()`'s own contract just gained two new optional parameters that
+Slice 8A's own two interpreters simply ignore).
+
+**New interpreters** (`app/services/time_axis_interpreters.py`,
+extended): `elapsed_numeric` (accepts exactly 1 column, requires an
+explicit unit — `seconds`/`milliseconds`/`microseconds`/`nanoseconds`)
+and `sample_index` (accepts exactly 1 column, an optional
+`interval_seconds`). Neither needed a new stored field or a new
+`options` key.
+
+**Missing unit reuses Slice 8A's own ambiguity mechanism verbatim.** No
+unit chosen produces a NEW `missing_elapsed_unit` diagnostic with
+`ambiguity: "ambiguous"`, routing through the exact same
+`STATUS_REVIEW_REQUIRED` precedence `ambiguous_date_order` already
+established — a second producer of one mechanism, not a new status
+branch. `confirmed=true` is rejected server-side while it remains.
+
+**"No rate" reuses Slice 7's own pre-existing `index_fallback`
+precedent verbatim.** `family=sample_index` + `provenance=index_only`
+already forced `STATUS_INDEX_FALLBACK` unconditionally since Slice 7 —
+`sample_index`'s own "approved fallback" state (task's own "not an
+error" wording) needed zero new domain-layer status logic. A present,
+positive `interval_seconds` (user-supplied rate/interval, converted to
+canonical seconds-per-sample CLIENT-SIDE — never a second stored
+representation) is `provenance=user_specified` instead.
+
+**Diagnostics compare only to the previous sampled value, in original
+row order** — `non_numeric_*`/`missing_*`/`*_goes_backward`/
+`repeated_*` for both interpreters, plus `sample_index_gap` (any
+consecutive positive delta `>1`) and `non_uniform_elapsed_interval` (a
+±1% relative-tolerance check) — never sorting, dropping, or
+synthesizing a row. Preview values are always canonical SECONDS
+(`"0.010000 s"`) for elapsed, or `relative_seconds = (index -
+first_valid_index_in_sample) * interval_seconds` for a rated sample
+index — `None` (never a fabricated number) when nothing is resolved
+yet.
+
+**Frontend**: the Interpreter `<select>` gained "Elapsed Time"/"Sample
+Index" entries; Elapsed Time shows a required Unit select (no default
+pre-selected); Sample Index shows a progressive-disclosure Timing radio
+group (Unknown / Sampling rate Hz / Sample interval ms) that converts
+to `interval_seconds` client-side before every Detect/Save call and
+always redisplays a stored configuration as "Sample interval" (the
+backend has no memory of which input mode was originally used). The
+shared Detect → diagnostics → preview → Confirm flow (Slice 8A) is
+reused verbatim; the date-order review UI is shown ONLY for
+`ambiguous_date_order` specifically, never for `missing_elapsed_unit`
+(whose own resolution control is the Unit select, already visible).
+
+**Files changed**: `backend/app/domain/time_axis.py`,
+`backend/app/services/time_axis_interpreters.py`,
+`backend/app/services/time_axis_service.py`,
+`backend/app/schemas/time_axis.py`,
+`backend/app/api/v1/preparation_sources.py`, `frontend/index.html`;
+extended `backend/tests/test_time_axis_interpreters.py`,
+`test_time_axis_domain.py`, `test_time_axis_service.py`,
+`test_preparation_sources_api.py` — no new test files this slice (all
+new coverage landed in the same files Slice 8A already created).
+
+**Verified**: full backend suite 2362 passed (78 new on top of Slice
+8A's 2284), zero regressions; the committed browser smoke test
+(COMTRADE) still passes unchanged; three throwaway (not committed)
+live-browser Playwright UAT scripts confirmed: an elapsed column with
+no unit shows "Review Required" with a `missing_elapsed_unit`
+diagnostic and resolves cleanly to "Detected"/"Confirmed" once
+Milliseconds is chosen, with a correct canonical-seconds preview; a
+sample-index column with a gap shows the gap diagnostic while still
+reporting Index Fallback with no fabricated seconds column, accepts
+`confirmed=true` immediately (not an error), and correctly resolves a
+real-time interval once a Sampling rate is entered; and Excel worksheet
+isolation plus the COMTRADE regression both remain intact — all with
+zero console/page errors.
+
+**Next step**: a future Slice 8C — repeated-timestamp/lost-precision
+detection, the full §6/§7 fallback hierarchy and confidence model, per
+[CSV_EXCEL_TIME_INTERPRETATION.md §19](CSV_EXCEL_TIME_INTERPRETATION.md#19-slice-8-scope--initial-interpreters)
+— still requires its own explicit go-ahead to begin, per
+[Change governance](../../CLAUDE.md#change-governance).
+
+**Commit status**: not committed — per this task's own explicit closing
+instruction ("Do not commit or push unless explicitly asked"), all of
+the above are normal uncommitted working-tree changes pending a
+separate, explicit commit instruction.
+
+## What was done in the prior session — CSV/Excel Ingestion Slice 8A: Deterministic Absolute-Time Interpreters
+
+**CSV/Excel Ingestion Slice 8A — Deterministic Absolute-Time
+Interpreters (implemented, committed as `f3cbf82`).** Owner-authorized
+implementation of the first two of Slice 7/8's own five proposed
+initial interpreters (§19 items 1-2) — single-column absolute datetime
+and Date + Time — as REAL, deterministic (non-fuzzy) interpreters on
+top of the Slice 7 framework, with zero framework-shape changes beyond
+what that framework already anticipated (its own `options` bag, its
+own currently-unreachable `review_required` status, its own two-method
 `detect()`/preview interpreter-contract sketch in the design doc's
 §17).
 
@@ -86,15 +180,6 @@ ambiguous) → bounded preview table → Confirm flow; `split_date_time`
 additionally shows two small "Date column"/"Time column" selects
 populated from whichever Time Axis columns are currently checked.
 
-**Files changed**: `backend/app/domain/time_axis.py`,
-`backend/app/services/time_axis_interpreters.py` (new),
-`backend/app/services/time_axis_service.py`,
-`backend/app/schemas/time_axis.py`,
-`backend/app/api/v1/preparation_sources.py`, `frontend/index.html`;
-new tests `backend/tests/test_time_axis_interpreters.py`, plus new
-classes in `test_time_axis_domain.py`, `test_time_axis_service.py`,
-`test_preparation_sources_api.py`.
-
 **Verified**: full backend suite 2284 passed (78 new on top of Slice
 7's 2206), zero regressions; the committed browser smoke test
 (COMTRADE) still passes unchanged; three throwaway (not committed)
@@ -107,17 +192,10 @@ is chosen; `split_date_time` correctly combines two columns via its
 own Date/Time selects; Excel worksheet isolation and the COMTRADE
 regression both remain intact — all with zero console/page errors.
 
-**Next step**: a future Slice 8B/8C — the remaining three Slice 8 items
-(elapsed numeric time, sample index, repeated-timestamp/lost-precision
-detection with its own confidence-gated reconstruction suggestion, per
-[CSV_EXCEL_TIME_INTERPRETATION.md §19](CSV_EXCEL_TIME_INTERPRETATION.md#19-slice-8-scope--initial-interpreters))
-— still requires its own explicit go-ahead to begin, per
-[Change governance](../../CLAUDE.md#change-governance).
-
-**Commit status**: not committed — per this task's own explicit closing
-instruction ("Do not commit or push unless explicitly asked"), all of
-the above are normal uncommitted working-tree changes pending a
-separate, explicit commit instruction.
+**Commit status**: committed as `f3cbf82` ("feat: add absolute time
+interpreters") — not pushed at the time. (Superseded: Slice 8B, the
+entry directly above this one, has since added the next two real
+interpreters on top of this same framework.)
 
 ## What was done in the prior session — CSV/Excel Ingestion Slice 7: Extensible Time-Axis Framework
 

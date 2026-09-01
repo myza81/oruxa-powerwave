@@ -2,13 +2,13 @@
 
 Status: **Slice 7 (framework) is `[DONE, 2026-09-01]`. Slice 8A — the
 first two of §19's five initial interpreters (single-column absolute
-datetime, Date + Time) — is also `[DONE, 2026-09-01]`, implemented as
-real, deterministic (non-fuzzy) interpreters (see
+datetime, Date + Time) — is `[DONE, 2026-09-01]`. Slice 8B — the next
+two (elapsed numeric time, sample index) — is `[DONE, 2026-09-02]`, all
+implemented as real, deterministic (non-fuzzy) interpreters (see
 [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 8](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
-for the full implementation summary). §19's remaining three items
-(elapsed numeric time, sample index, repeated-timestamp/lost-precision
-detection) remain design-only / not yet implemented (a future
-Slice 8B/8C).**
+for the full implementation summaries). §19's remaining item
+(repeated-timestamp/lost-precision detection) remains design-only / not
+yet implemented (a future Slice 8C).**
 
 Date: 2026-09-01
 Source: owner-requested design checkpoint, preceding Slice 7. This
@@ -988,12 +988,62 @@ future interpreter addition (§17), not a Slice 8 commitment.
 **`[DONE, 2026-09-01]` Slice 8A implementation note**: items 1-2 above
 (single-column absolute datetime, Date + Time) are implemented exactly
 as scoped, as `absolute_datetime`/`split_date_time` in
-`app.services.time_axis_interpreters`. Items 3-5 (elapsed numeric time,
-sample index, repeated-timestamp/lost-precision detection) remain
-NOT implemented — a future Slice 8B/8C, per this task's own explicit
-non-goals list (§20 below still applies to those three in full: no
-elapsed-unit handling, no sampling-rate inference, no reconstruction
-algorithm exist anywhere in the current codebase).
+`app.services.time_axis_interpreters`.
+
+**`[DONE, 2026-09-02]` Slice 8B implementation note**: items 3-4 above
+(elapsed numeric time, sample index) are ALSO implemented exactly as
+scoped, as `elapsed_numeric`/`sample_index` in the SAME
+`app.services.time_axis_interpreters` module, reusing the identical
+interpreter contract Slice 8A established (no shape change beyond two
+new optional `detect()`/`build_preview_rows()` parameters,
+`requested_unit`/`requested_interval_seconds` — Slice 8A's own two
+interpreters simply ignore both). Item 5 (repeated-timestamp/lost-
+precision detection) remains NOT implemented — a future Slice 8C, per
+this task's own explicit non-goals list (§20 below still applies to it
+in full: no reconstruction algorithm, no confidence-gated suggestion,
+no cadence inference exist anywhere in the current codebase).
+
+Concrete choices made during the Slice 8B implementation, all
+consistent with this section's own §8/§9 scope (none widen it):
+
+- **No new top-level fields.** `TimeAxisConfiguration.unit`/
+  `.interval_seconds` already existed since Slice 7 anticipating
+  exactly this (§8's own "canonical internal value: sample interval, in
+  seconds" and §9's own "the field stays required whenever family
+  `elapsed` is selected" already named these two fields) — Slice 8B
+  needed zero new `options` keys, zero new dataclass fields on
+  `TimeAxisConfiguration` itself.
+- **Missing unit reuses the SAME ambiguity mechanism as an unresolved
+  date order.** An `elapsed_numeric` column with no unit chosen
+  produces a NEW `missing_elapsed_unit` diagnostic with `ambiguity:
+  "ambiguous"` — routing through `STATUS_REVIEW_REQUIRED` via the exact
+  precedence rule Slice 8A already built for `ambiguous_date_order`, a
+  second producer of one mechanism rather than a new status branch.
+  `confirmed=true` is rejected server-side while it remains, exactly
+  like an unresolved date order (§5's own "no silent engineering
+  decision" rule, restated).
+- **Sample index's own "no rate" state reuses Slice 7's own
+  pre-existing `index_fallback` precedent verbatim.** `family=
+  sample_index` + `provenance=index_only` already forced
+  `STATUS_INDEX_FALLBACK` unconditionally since Slice 7 (built before
+  any real interpreter existed to produce that combination) — Slice 8B
+  needed no new domain-layer status logic at all for its own "approved
+  fallback" case (§F).
+- **Rate vs interval is a display choice, never a second stored value**
+  (§I's own "do not maintain two conflicting authoritative values"
+  instruction, taken literally): the frontend's own "Sampling rate
+  (Hz)" input converts to `interval_seconds` client-side
+  (`1 / rate_hz`) before ever reaching the backend; only
+  `interval_seconds` is ever transmitted or stored. A stored
+  configuration always redisplays as "Sample interval," never
+  "Sampling rate" — the backend has no memory of which the user
+  originally typed, by design.
+- **Gap/backward/repeat detection compares only to the previous sampled
+  value, in original row order** — never sorted, never a whole-column
+  statistical pass. A gap is any consecutive positive delta `>1`; this
+  is deliberately naive (no attempt to infer an expected step other
+  than 1) since sample-index semantics (§E) never define a step other
+  than "the next one."
 
 Concrete choices made during implementation, all consistent with this
 section's own scope (none widen it):

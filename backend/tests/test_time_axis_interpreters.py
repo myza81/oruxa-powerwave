@@ -1,6 +1,7 @@
-"""Unit tests for the deterministic absolute-time parsing/detection
-functions (CSV/Excel ingestion Slice 8A, DEC-072). Pure functions only
--- no session, no registry, no HTTP; service-layer wiring is covered by
+"""Unit tests for the deterministic absolute-time (Slice 8A) and
+elapsed-time/sample-index (Slice 8B) parsing/detection functions
+(CSV/Excel ingestion, DEC-072). Pure functions only -- no session, no
+registry, no HTTP; service-layer wiring is covered by
 tests/test_time_axis_service.py's own new test classes.
 """
 
@@ -13,19 +14,37 @@ from app.domain.time_axis import (
     CONFIDENCE_HIGH,
     CONFIDENCE_UNKNOWN,
     DIAGNOSTIC_AMBIGUOUS_DATE_ORDER,
+    DIAGNOSTIC_ELAPSED_TIME_GOES_BACKWARD,
     DIAGNOSTIC_MISSING_DATETIME_VALUE,
+    DIAGNOSTIC_MISSING_ELAPSED_UNIT,
+    DIAGNOSTIC_MISSING_ELAPSED_VALUE,
+    DIAGNOSTIC_MISSING_SAMPLE_INDEX,
     DIAGNOSTIC_MIXED_DATETIME_FORMAT,
+    DIAGNOSTIC_NON_NUMERIC_ELAPSED_VALUE,
+    DIAGNOSTIC_NON_NUMERIC_SAMPLE_INDEX,
+    DIAGNOSTIC_NON_UNIFORM_ELAPSED_INTERVAL,
+    DIAGNOSTIC_REPEATED_ELAPSED_TIME,
+    DIAGNOSTIC_REPEATED_SAMPLE_INDEX,
+    DIAGNOSTIC_SAMPLE_INDEX_GAP,
+    DIAGNOSTIC_SAMPLE_INDEX_GOES_BACKWARD,
     DIAGNOSTIC_TIME_ONLY_NOT_ABSOLUTE,
     DIAGNOSTIC_UNPARSEABLE_DATETIME,
     FAMILY_ABSOLUTE,
+    FAMILY_ELAPSED,
     FAMILY_PARTIAL,
+    FAMILY_SAMPLE_INDEX,
+    PROVENANCE_INDEX_ONLY,
     PROVENANCE_NATIVE,
     PROVENANCE_USER_SPECIFIED,
 )
 from app.services.time_axis_interpreters import (
     build_absolute_datetime_preview,
+    build_elapsed_preview,
+    build_sample_index_preview,
     build_split_date_time_preview,
     detect_absolute_datetime,
+    detect_elapsed_numeric,
+    detect_sample_index,
     detect_split_date_time,
 )
 
@@ -294,3 +313,279 @@ class TestPreviewBuilders:
         assert preview[0][2] == "2026-08-31T13:09:44.305000"
         assert preview[1][2] is None
         assert preview[1][1] == ("30/08/2026", None)  # original preserved even on failure
+
+
+# ---- CSV/Excel ingestion Slice 8B (DEC-072): elapsed numeric time + sample index ----
+
+
+def _rows(values):
+    return list(enumerate(values, start=1))
+
+
+class TestElapsedNumericMissingUnit:
+    def test_no_unit_is_ambiguous_review_required(self):
+        result = detect_elapsed_numeric(_rows(["0", "0.001", "0.002"]), requested_unit=None)
+
+        assert result.family == FAMILY_ELAPSED
+        assert result.confidence == CONFIDENCE_UNKNOWN
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_MISSING_ELAPSED_UNIT in codes
+        diag = next(d for d in result.diagnostics if d.code == DIAGNOSTIC_MISSING_ELAPSED_UNIT)
+        assert diag.ambiguity == AMBIGUITY_AMBIGUOUS
+        assert result.resolved_unit is None
+
+    def test_no_unit_does_not_compute_other_diagnostics(self):
+        # Nothing safe to say about backward/repeated/non-uniform before
+        # the unit itself is known -- see detect_elapsed_numeric's own
+        # docstring.
+        result = detect_elapsed_numeric(_rows(["5", "1", "1", "9"]), requested_unit=None)
+
+        codes = [d.code for d in result.diagnostics]
+        assert codes == [DIAGNOSTIC_MISSING_ELAPSED_UNIT]
+
+
+class TestElapsedNumericUnits:
+    def test_seconds(self):
+        result = detect_elapsed_numeric(_rows(["0", "1", "2", "3"]), requested_unit="seconds")
+
+        assert result.family == FAMILY_ELAPSED
+        assert result.provenance == PROVENANCE_USER_SPECIFIED
+        assert result.resolved_unit == "seconds"
+        assert result.diagnostics == []
+
+    def test_milliseconds(self):
+        result = detect_elapsed_numeric(_rows(["0", "10", "20", "30"]), requested_unit="milliseconds")
+
+        assert result.resolved_unit == "milliseconds"
+        assert result.diagnostics == []
+
+    def test_microseconds(self):
+        result = detect_elapsed_numeric(_rows(["0", "1000", "2000"]), requested_unit="microseconds")
+
+        assert result.resolved_unit == "microseconds"
+        assert result.diagnostics == []
+
+    def test_nanoseconds(self):
+        result = detect_elapsed_numeric(_rows(["0", "1000000", "2000000"]), requested_unit="nanoseconds")
+
+        assert result.resolved_unit == "nanoseconds"
+        assert result.diagnostics == []
+
+    def test_negative_values_are_accepted_as_numeric(self):
+        result = detect_elapsed_numeric(_rows(["-2", "-1", "0", "1"]), requested_unit="seconds")
+
+        assert result.diagnostics == []
+        assert result.family == FAMILY_ELAPSED
+
+
+class TestElapsedNumericDataQuality:
+    def test_missing_value_retained_as_diagnostic(self):
+        result = detect_elapsed_numeric(_rows(["0", None, "2"]), requested_unit="seconds")
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_MISSING_ELAPSED_VALUE in codes
+        diag = next(d for d in result.diagnostics if d.code == DIAGNOSTIC_MISSING_ELAPSED_VALUE)
+        assert diag.details == {"missing_count": 1, "sample_size": 3}
+
+    def test_non_numeric_value(self):
+        result = detect_elapsed_numeric(_rows(["0", "abc", "2"]), requested_unit="seconds")
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_NON_NUMERIC_ELAPSED_VALUE in codes
+        diag = next(d for d in result.diagnostics if d.code == DIAGNOSTIC_NON_NUMERIC_ELAPSED_VALUE)
+        assert diag.ambiguity == AMBIGUITY_INVALID
+
+    def test_repeated_elapsed_value(self):
+        result = detect_elapsed_numeric(_rows(["0", "1", "1", "2"]), requested_unit="seconds")
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_REPEATED_ELAPSED_TIME in codes
+
+    def test_backward_elapsed_value(self):
+        result = detect_elapsed_numeric(_rows(["0", "2", "1", "3"]), requested_unit="seconds")
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_ELAPSED_TIME_GOES_BACKWARD in codes
+
+    def test_non_uniform_interval(self):
+        result = detect_elapsed_numeric(_rows(["0.000", "0.001", "0.0025", "0.004"]), requested_unit="seconds")
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_NON_UNIFORM_ELAPSED_INTERVAL in codes
+
+    def test_uniform_interval_has_no_non_uniform_diagnostic(self):
+        result = detect_elapsed_numeric(_rows(["0.000", "0.001", "0.002", "0.003"]), requested_unit="seconds")
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_NON_UNIFORM_ELAPSED_INTERVAL not in codes
+
+    def test_diagnostics_never_reorder_or_drop(self):
+        # This is a detection-only function -- it never returns rows,
+        # only diagnostics -- proven here by confirming a backward +
+        # repeated + missing combination all surface simultaneously
+        # without raising or dropping information.
+        result = detect_elapsed_numeric(_rows(["0", None, "2", "1", "1"]), requested_unit="seconds")
+
+        codes = {d.code for d in result.diagnostics}
+        assert DIAGNOSTIC_MISSING_ELAPSED_VALUE in codes
+        assert DIAGNOSTIC_ELAPSED_TIME_GOES_BACKWARD in codes
+        assert DIAGNOSTIC_REPEATED_ELAPSED_TIME in codes
+
+
+class TestElapsedPreview:
+    def test_seconds_conversion(self):
+        samples = [(1, ("0",)), (2, ("10",)), (3, ("20",))]
+
+        preview = build_elapsed_preview(samples, resolved_unit="milliseconds", limit=10)
+
+        assert preview[0] == (1, ("0",), "0.000000 s")
+        assert preview[1] == (2, ("10",), "0.010000 s")
+        assert preview[2] == (3, ("20",), "0.020000 s")
+
+    def test_no_unit_never_fabricates_seconds(self):
+        samples = [(1, ("0",)), (2, ("10",))]
+
+        preview = build_elapsed_preview(samples, resolved_unit=None, limit=10)
+
+        assert all(interpreted is None for _, _, interpreted in preview)
+
+    def test_non_numeric_row_is_none_not_dropped(self):
+        samples = [(1, ("0",)), (2, ("garbage",)), (3, ("20",))]
+
+        preview = build_elapsed_preview(samples, resolved_unit="seconds", limit=10)
+
+        assert len(preview) == 3
+        assert preview[1] == (2, ("garbage",), None)
+
+
+class TestSampleIndexStartingValues:
+    def test_starts_at_zero(self):
+        result = detect_sample_index(_rows(["0", "1", "2", "3"]), requested_interval_seconds=None)
+
+        assert result.family == FAMILY_SAMPLE_INDEX
+        assert result.diagnostics == []
+
+    def test_starts_at_one(self):
+        result = detect_sample_index(_rows(["1", "2", "3", "4"]), requested_interval_seconds=None)
+
+        assert result.diagnostics == []
+
+    def test_starts_at_arbitrary_value(self):
+        result = detect_sample_index(_rows(["1001", "1002", "1003"]), requested_interval_seconds=None)
+
+        assert result.diagnostics == []
+
+
+class TestSampleIndexTiming:
+    def test_unknown_rate_is_index_only_not_an_error(self):
+        result = detect_sample_index(_rows(["1", "2", "3"]), requested_interval_seconds=None)
+
+        assert result.family == FAMILY_SAMPLE_INDEX
+        assert result.provenance == PROVENANCE_INDEX_ONLY
+        assert result.confidence == CONFIDENCE_UNKNOWN
+        assert result.diagnostics == []  # not an error -- the approved fallback
+        assert result.resolved_interval_seconds is None
+
+    def test_known_sampling_interval(self):
+        result = detect_sample_index(_rows(["1001", "1002", "1003"]), requested_interval_seconds=0.0002)
+
+        assert result.provenance == PROVENANCE_USER_SPECIFIED
+        assert result.confidence == CONFIDENCE_HIGH
+        assert result.resolved_interval_seconds == 0.0002
+
+    def test_known_sampling_rate_converted_to_interval_by_caller(self):
+        # 5000 Hz -> 1/5000 s per sample; the CALLER is responsible for
+        # this conversion (never a second stored representation) -- this
+        # test proves the interpreter accepts the resulting canonical
+        # value transparently.
+        rate_hz = 5000
+        result = detect_sample_index(_rows(["1", "2", "3"]), requested_interval_seconds=1 / rate_hz)
+
+        assert result.resolved_interval_seconds == 1 / rate_hz
+        assert result.provenance == PROVENANCE_USER_SPECIFIED
+
+
+class TestSampleIndexDataQuality:
+    def test_repeated_index(self):
+        result = detect_sample_index(_rows(["1", "2", "2", "3"]), requested_interval_seconds=None)
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_REPEATED_SAMPLE_INDEX in codes
+
+    def test_backward_index(self):
+        result = detect_sample_index(_rows(["1", "3", "2", "4"]), requested_interval_seconds=None)
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_SAMPLE_INDEX_GOES_BACKWARD in codes
+
+    def test_gap(self):
+        result = detect_sample_index(_rows(["1", "2", "3", "5", "6"]), requested_interval_seconds=None)
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_SAMPLE_INDEX_GAP in codes
+
+    def test_no_gap_for_consecutive_sequence(self):
+        result = detect_sample_index(_rows(["1", "2", "3", "4"]), requested_interval_seconds=None)
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_SAMPLE_INDEX_GAP not in codes
+
+    def test_non_numeric_value(self):
+        result = detect_sample_index(_rows(["1", "abc", "3"]), requested_interval_seconds=None)
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_NON_NUMERIC_SAMPLE_INDEX in codes
+
+    def test_missing_value(self):
+        result = detect_sample_index(_rows(["1", None, "3"]), requested_interval_seconds=None)
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_MISSING_SAMPLE_INDEX in codes
+
+    def test_repeated_index_rows_never_collapsed(self):
+        # This is a detection-only function -- proving it reports rather
+        # than removes: the diagnostic exists, but nothing here ever
+        # returns a shorter row list (this function returns no rows at
+        # all, only diagnostics -- collapsing would have to happen
+        # elsewhere, and nothing elsewhere in this module does it).
+        result = detect_sample_index(_rows(["1", "2", "2", "2", "3"]), requested_interval_seconds=None)
+
+        diag = next(d for d in result.diagnostics if d.code == DIAGNOSTIC_REPEATED_SAMPLE_INDEX)
+        assert diag.details["repeated_count"] == 2
+
+
+class TestSampleIndexPreview:
+    def test_no_rate_never_fabricates_seconds(self):
+        samples = [(1, ("1001",)), (2, ("1002",)), (3, ("1003",))]
+
+        preview = build_sample_index_preview(samples, resolved_interval_seconds=None, limit=10)
+
+        assert all(interpreted is None for _, _, interpreted in preview)
+
+    def test_known_rate_relative_to_first_valid_sample_value(self):
+        samples = [(1, ("1001",)), (2, ("1002",)), (3, ("1003",))]
+
+        preview = build_sample_index_preview(samples, resolved_interval_seconds=0.0002, limit=10)
+
+        assert preview[0] == (1, ("1001",), "0.000000 s")
+        assert preview[1] == (2, ("1002",), "0.000200 s")
+        assert preview[2] == (3, ("1003",), "0.000400 s")
+
+    def test_first_valid_value_skips_a_leading_missing_row(self):
+        # First valid index is 1002 (row 1 is missing) -- relative
+        # seconds are computed from THAT reference, never assumed 0.
+        samples = [(1, (None,)), (2, ("1002",)), (3, ("1003",))]
+
+        preview = build_sample_index_preview(samples, resolved_interval_seconds=0.0002, limit=10)
+
+        assert preview[0] == (1, (None,), None)
+        assert preview[1] == (2, ("1002",), "0.000000 s")
+        assert preview[2] == (3, ("1003",), "0.000200 s")
+
+    def test_non_numeric_row_is_none_not_dropped(self):
+        samples = [(1, ("1001",)), (2, ("garbage",)), (3, ("1003",))]
+
+        preview = build_sample_index_preview(samples, resolved_interval_seconds=0.0002, limit=10)
+
+        assert len(preview) == 3
+        assert preview[1] == (2, ("garbage",), None)

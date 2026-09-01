@@ -641,20 +641,23 @@ def put_working_time_axis(
     registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
 ) -> TimeAxisInterpretationResultOut:
     """Set this worksheet/source's Time-Axis configuration (Slice 7,
-    extended by Slice 8A's real interpreters, DEC-072). Every referenced
-    column in `column_indices` must currently carry the `time_axis`
-    column role (task section N) -- `InvalidTimeAxisConfigurationError`
-    otherwise. `family`/`provenance` are required and validated against
-    `app.domain.time_axis`'s own known closed sets ONLY for the `manual`
-    interpreter -- for a SAMPLE interpreter (`absolute_datetime`/
-    `split_date_time`) they are optional hints the interpreter's own
-    `detect()` may override with what the data actually says (see
+    extended by Slice 8A/8B's real interpreters, DEC-072). Every
+    referenced column in `column_indices` must currently carry the
+    `time_axis` column role (task section N) --
+    `InvalidTimeAxisConfigurationError` otherwise. `family`/`provenance`
+    are required and validated against `app.domain.time_axis`'s own
+    known closed sets ONLY for the `manual` interpreter -- for a SAMPLE
+    interpreter (`absolute_datetime`/`split_date_time`/
+    `elapsed_numeric`/`sample_index`) they are optional hints the
+    interpreter's own `detect()` may override with what the data
+    actually says (see
     `app.services.time_axis_service.set_time_axis_configuration`'s own
-    docstring). Setting `confirmed=true` while the sampled data is still
-    genuinely ambiguous (an unresolved `ambiguous_date_order` diagnostic)
-    is rejected outright. Undoable via the existing
-    `POST .../working/undo` endpoint, exactly like every other
-    working-dataset mutation (no second history mechanism)."""
+    docstring). Setting `confirmed=true` while the configuration is
+    still genuinely ambiguous (an unresolved `ambiguous_date_order` or
+    `missing_elapsed_unit` diagnostic) is rejected outright. Undoable
+    via the existing `POST .../working/undo` endpoint, exactly like
+    every other working-dataset mutation (no second history
+    mechanism)."""
     workspace_id = _validate_workspace_id(workspace_id)
     try:
         result = set_time_axis_configuration(
@@ -699,7 +702,8 @@ def post_working_time_axis_interpret(
     registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
 ) -> TimeAxisInterpretPreviewOut:
     """Dry-run detect/preview action for a SAMPLE interpreter
-    (`absolute_datetime`/`split_date_time`, Slice 8A, task §T) --
+    (`absolute_datetime`/`split_date_time` from Slice 8A;
+    `elapsed_numeric`/`sample_index` from Slice 8B, task §T) --
     computes family/provenance/confidence/diagnostics and a bounded
     {original, interpreted} preview WITHOUT storing anything and without
     requiring `confirmed`. Never mutates the Working Overlay, never
@@ -716,6 +720,8 @@ def post_working_time_axis_interpret(
             source_id=source_id,
             column_indices=tuple(body.column_indices),
             interpreter_id=body.interpreter_id,
+            unit=body.unit,
+            interval_seconds=body.interval_seconds,
             options=body.options,
             registry=registry,
         )

@@ -1,13 +1,18 @@
-"""Deterministic absolute-time interpreters (CSV/Excel ingestion Slice
-8A, DEC-072). Authoritative design source:
-docs/project-memory/CSV_EXCEL_TIME_INTERPRETATION.md, this slice's own
-task spec.
+"""Deterministic absolute-time, elapsed-time, and sample-index
+interpreters (CSV/Excel ingestion Slices 8A-8B, DEC-072). Authoritative
+design source: docs/project-memory/CSV_EXCEL_TIME_INTERPRETATION.md,
+each slice's own task spec.
 
-Implements the first two REAL (non-`manual`) entries the Slice 7
-registry always anticipated:
+Implements four REAL (non-`manual`) entries the Slice 7 registry always
+anticipated:
 
-    `absolute_datetime`  -- one Time Axis column, a full timestamp
-    `split_date_time`    -- two Time Axis columns, Date + Time combined
+    `absolute_datetime`  -- one Time Axis column, a full timestamp (8A)
+    `split_date_time`    -- two Time Axis columns, Date + Time combined (8A)
+    `elapsed_numeric`    -- one Time Axis column, a relative numeric
+                            value with an explicit, required unit (8B)
+    `sample_index`       -- one Time Axis column, a plain ordinal
+                            sequence, optionally paired with a
+                            user-supplied sampling interval (8B)
 
 Both are deterministic, bounded, non-fuzzy parsers -- a small, explicit
 table of `datetime.strptime` patterns (plus `datetime.fromisoformat`'s
@@ -49,6 +54,26 @@ ALREADY-FETCHED, already-bounded list of sample values (see
 `app.services.time_axis_service`'s own module docstring for exactly
 how that bound is enforced) -- nothing here ever reads a session, a
 file, or a database row itself.
+
+**Slice 8B: no invented absolute time, no silent unit guessing.**
+`elapsed_numeric` NEVER anchors its values to a fabricated date (no
+`2000-01-01`, no file-open time, no browser/local time) -- its own
+`family` is always `FAMILY_ELAPSED`, never promoted to `absolute`.
+`detect_elapsed_numeric()` requires an EXPLICIT unit before it will
+report anything but a `missing_elapsed_unit` diagnostic (`ambiguity:
+"ambiguous"`, routing through the same `STATUS_REVIEW_REQUIRED`
+precedence Slice 8A's own `ambiguous_date_order` established -- one
+mechanism, two producers). `detect_sample_index()` treats "no sampling
+interval supplied" as a first-class, complete, NON-diagnostic state
+(`provenance=index_only`) -- this is the approved fallback (§F), never
+an error to report or a gap to fill.
+
+**Preserve source order, never repair.** Both `elapsed_numeric` and
+`sample_index` only ever REPORT backward/repeated/gap findings as
+diagnostics -- neither ever reorders, drops, collapses, or synthesizes
+a row. `sample_index`'s own gap/backward/repeat check compares each
+value only to the PREVIOUS one in the bounded sample, in original row
+order -- never sorted first.
 """
 
 from __future__ import annotations
@@ -71,14 +96,32 @@ from app.domain.time_axis import (
     DATE_ORDER_MDY,
     DATE_ORDER_YMD,
     DIAGNOSTIC_AMBIGUOUS_DATE_ORDER,
+    DIAGNOSTIC_ELAPSED_TIME_GOES_BACKWARD,
     DIAGNOSTIC_MISSING_DATETIME_VALUE,
+    DIAGNOSTIC_MISSING_ELAPSED_UNIT,
+    DIAGNOSTIC_MISSING_ELAPSED_VALUE,
+    DIAGNOSTIC_MISSING_SAMPLE_INDEX,
     DIAGNOSTIC_MIXED_DATETIME_FORMAT,
+    DIAGNOSTIC_NON_NUMERIC_ELAPSED_VALUE,
+    DIAGNOSTIC_NON_NUMERIC_SAMPLE_INDEX,
+    DIAGNOSTIC_NON_UNIFORM_ELAPSED_INTERVAL,
+    DIAGNOSTIC_REPEATED_ELAPSED_TIME,
+    DIAGNOSTIC_REPEATED_SAMPLE_INDEX,
+    DIAGNOSTIC_SAMPLE_INDEX_GAP,
+    DIAGNOSTIC_SAMPLE_INDEX_GOES_BACKWARD,
     DIAGNOSTIC_TIME_ONLY_NOT_ABSOLUTE,
     DIAGNOSTIC_UNPARSEABLE_DATETIME,
     FAMILY_ABSOLUTE,
+    FAMILY_ELAPSED,
     FAMILY_PARTIAL,
+    FAMILY_SAMPLE_INDEX,
+    PROVENANCE_INDEX_ONLY,
     PROVENANCE_NATIVE,
     PROVENANCE_USER_SPECIFIED,
+    UNIT_MICROSECONDS,
+    UNIT_MILLISECONDS,
+    UNIT_NANOSECONDS,
+    UNIT_SECONDS,
     TimeAxisDetectionResult,
     TimeAxisDiagnostic,
 )
@@ -463,4 +506,313 @@ def build_split_date_time_preview(
             continue
         combined = _combine_date_and_time(str(date_value), str(time_value), date_order=date_order)
         rows.append((row_number, values, combined.isoformat() if combined else None))
+    return rows
+
+
+# ---- Slice 8B: elapsed numeric time + sample index -------------------
+
+#: Canonical-seconds conversion factor per known unit (§B) -- the ONLY
+#: place a unit-to-seconds ratio is defined; `interval_seconds`/derived
+#: preview values are always computed through this table, never a second
+#: ad-hoc conversion elsewhere.
+_ELAPSED_UNIT_SECONDS_FACTOR: dict[str, float] = {
+    UNIT_SECONDS: 1.0,
+    UNIT_MILLISECONDS: 1e-3,
+    UNIT_MICROSECONDS: 1e-6,
+    UNIT_NANOSECONDS: 1e-9,
+}
+
+
+def _to_float(value: Any) -> float | None:
+    """A bounded, deterministic numeric parse -- accepts anything
+    `float()` accepts (including a numeric string from a CSV cell or a
+    native `int`/`float` from an Excel cell), rejects everything else.
+    Never raises; `None` means "not a number," handled by the caller as
+    a `non_numeric_*` diagnostic rather than a crash."""
+    if isinstance(value, bool):  # bool is technically an int subtype -- never treated as a numeric sample here
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def detect_elapsed_numeric(
+    raw_values_by_row: list[tuple[int, Any]], *, requested_unit: str | None,
+) -> TimeAxisDetectionResult:
+    """Single-column elapsed/relative numeric time detection (task §A).
+    `family` is always `FAMILY_ELAPSED` -- this interpreter never
+    invents an absolute anchor (task §3's own explicit guardrail).
+
+    `requested_unit` must already be validated as either `None` or a
+    member of `KNOWN_ELAPSED_UNITS` by the caller (`app.services.
+    time_axis_service.set_time_axis_configuration`'s own unit-set
+    check) -- this function only ever distinguishes "no unit yet"
+    (`None`) from "a real unit," it never itself rejects a garbage
+    string.
+
+    `None` produces `missing_elapsed_unit` (`ambiguity: "ambiguous"`,
+    §8/§9's own "units are never silently inferred" rule) and NOTHING
+    else is computed -- there is nothing safe to say about backward/
+    repeated/non-uniform elapsed time before even knowing what a "1"
+    in this column means (a "1" could be 1 second or 1 nanosecond;
+    "goes backward" is not even well-defined without a unit since the
+    comparison itself doesn't depend on unit -- but reporting data-
+    quality findings for values whose meaning is not yet settled would
+    imply more confidence than the framework actually has)."""
+    total = len(raw_values_by_row)
+    non_empty = [(row_number, value) for row_number, value in raw_values_by_row if value not in (None, "")]
+    missing_count = total - len(non_empty)
+    diagnostics: list[TimeAxisDiagnostic] = []
+    if missing_count:
+        diagnostics.append(
+            TimeAxisDiagnostic(
+                severity_hint=SEVERITY_WARNING,
+                code=DIAGNOSTIC_MISSING_ELAPSED_VALUE,
+                message=f"{missing_count} of {total} sampled row(s) have no value in this Time Axis column.",
+                ambiguity=AMBIGUITY_UNAMBIGUOUS,
+                details={"missing_count": missing_count, "sample_size": total},
+            )
+        )
+
+    if requested_unit is None:
+        diagnostics.append(
+            TimeAxisDiagnostic(
+                severity_hint=SEVERITY_WARNING,
+                code=DIAGNOSTIC_MISSING_ELAPSED_UNIT,
+                message="This column's values could mean seconds, milliseconds, microseconds, or nanoseconds -- a unit is required.",
+                suggested_action="Choose the unit this column's numbers are expressed in.",
+                ambiguity=AMBIGUITY_AMBIGUOUS,
+            )
+        )
+        return TimeAxisDetectionResult(
+            family=FAMILY_ELAPSED, provenance=PROVENANCE_USER_SPECIFIED, confidence=CONFIDENCE_UNKNOWN,
+            diagnostics=diagnostics, resolved_options={}, resolved_unit=None, resolved_interval_seconds=None,
+        )
+
+    numeric_by_row: list[tuple[int, float]] = []
+    non_numeric_count = 0
+    for row_number, value in non_empty:
+        parsed = _to_float(value)
+        if parsed is None:
+            non_numeric_count += 1
+        else:
+            numeric_by_row.append((row_number, parsed))
+    if non_numeric_count:
+        diagnostics.append(
+            TimeAxisDiagnostic(
+                severity_hint=SEVERITY_WARNING,
+                code=DIAGNOSTIC_NON_NUMERIC_ELAPSED_VALUE,
+                message=f"{non_numeric_count} of {len(non_empty)} sampled value(s) are not numeric.",
+                ambiguity=AMBIGUITY_INVALID,
+                details={"non_numeric_count": non_numeric_count, "sample_size": len(non_empty)},
+            )
+        )
+
+    backward_count = 0
+    repeated_count = 0
+    deltas: list[float] = []
+    for (_, prev), (_, curr) in zip(numeric_by_row, numeric_by_row[1:]):
+        delta = curr - prev
+        if delta < 0:
+            backward_count += 1
+        elif delta == 0:
+            repeated_count += 1
+        else:
+            deltas.append(delta)
+    if backward_count:
+        diagnostics.append(
+            TimeAxisDiagnostic(
+                severity_hint=SEVERITY_WARNING,
+                code=DIAGNOSTIC_ELAPSED_TIME_GOES_BACKWARD,
+                message=f"Elapsed time decreases at {backward_count} point(s) in the sampled rows.",
+                ambiguity=AMBIGUITY_UNAMBIGUOUS,
+                details={"backward_count": backward_count},
+            )
+        )
+    if repeated_count:
+        diagnostics.append(
+            TimeAxisDiagnostic(
+                severity_hint=SEVERITY_WARNING,
+                code=DIAGNOSTIC_REPEATED_ELAPSED_TIME,
+                message=f"{repeated_count} consecutive sampled row(s) repeat the same elapsed value.",
+                ambiguity=AMBIGUITY_UNAMBIGUOUS,
+                details={"repeated_count": repeated_count},
+            )
+        )
+    if len(deltas) >= 2:
+        reference = deltas[0]
+        tolerance = max(1e-12, abs(reference) * 0.01)
+        if any(abs(d - reference) > tolerance for d in deltas):
+            diagnostics.append(
+                TimeAxisDiagnostic(
+                    severity_hint=SEVERITY_WARNING,
+                    code=DIAGNOSTIC_NON_UNIFORM_ELAPSED_INTERVAL,
+                    message="The spacing between consecutive elapsed values is not uniform across the sampled rows.",
+                    ambiguity=AMBIGUITY_UNAMBIGUOUS,
+                )
+            )
+
+    return TimeAxisDetectionResult(
+        family=FAMILY_ELAPSED, provenance=PROVENANCE_USER_SPECIFIED, confidence=CONFIDENCE_HIGH,
+        diagnostics=diagnostics, resolved_options={}, resolved_unit=requested_unit, resolved_interval_seconds=None,
+    )
+
+
+def build_elapsed_preview(
+    samples: list[tuple[int, tuple[Any, ...]]], *, resolved_unit: str | None, limit: int,
+) -> list[tuple[int, tuple[Any, ...], str | None]]:
+    """Bounded {original, interpreted-seconds} rows (§Q) -- `interpreted`
+    is always a canonical-SECONDS string (`"0.010000 s"`), never the
+    original unit re-displayed, so the preview always shows what this
+    configuration would actually mean downstream. `None` (not `0`) for
+    a missing/non-numeric row or while no unit is resolved yet -- a
+    failed/undetermined row is never silently treated as zero elapsed
+    time."""
+    factor = _ELAPSED_UNIT_SECONDS_FACTOR.get(resolved_unit) if resolved_unit else None
+    rows = []
+    for row_number, values in samples[:limit]:
+        value = values[0] if values else None
+        parsed = _to_float(value) if value not in (None, "") else None
+        if factor is None or parsed is None:
+            rows.append((row_number, values, None))
+            continue
+        rows.append((row_number, values, f"{parsed * factor:.6f} s"))
+    return rows
+
+
+def detect_sample_index(
+    raw_values_by_row: list[tuple[int, Any]], *, requested_interval_seconds: float | None,
+) -> TimeAxisDetectionResult:
+    """Single-column sample-index detection (task §E-§L). `family` is
+    always `FAMILY_SAMPLE_INDEX`. Unlike `elapsed_numeric`'s required
+    unit, an ABSENT `requested_interval_seconds` is a complete, valid,
+    NON-diagnostic outcome (task §F: "This is not an error. It is the
+    approved fallback") -- `provenance` alone communicates the
+    difference (`index_only` vs `user_specified`), never a diagnostic.
+
+    Never assumes the index starts at 0 or 1, never renumbers, never
+    sorts -- backward/repeated/gap checks all compare each sampled
+    value only to the PREVIOUS one, in the ORIGINAL row order the
+    sample arrived in."""
+    total = len(raw_values_by_row)
+    non_empty = [(row_number, value) for row_number, value in raw_values_by_row if value not in (None, "")]
+    missing_count = total - len(non_empty)
+    diagnostics: list[TimeAxisDiagnostic] = []
+    if missing_count:
+        diagnostics.append(
+            TimeAxisDiagnostic(
+                severity_hint=SEVERITY_WARNING,
+                code=DIAGNOSTIC_MISSING_SAMPLE_INDEX,
+                message=f"{missing_count} of {total} sampled row(s) have no value in this Time Axis column.",
+                ambiguity=AMBIGUITY_UNAMBIGUOUS,
+                details={"missing_count": missing_count, "sample_size": total},
+            )
+        )
+
+    numeric_by_row: list[tuple[int, float]] = []
+    non_numeric_count = 0
+    for row_number, value in non_empty:
+        parsed = _to_float(value)
+        if parsed is None:
+            non_numeric_count += 1
+        else:
+            numeric_by_row.append((row_number, parsed))
+    if non_numeric_count:
+        diagnostics.append(
+            TimeAxisDiagnostic(
+                severity_hint=SEVERITY_WARNING,
+                code=DIAGNOSTIC_NON_NUMERIC_SAMPLE_INDEX,
+                message=f"{non_numeric_count} of {len(non_empty)} sampled value(s) are not numeric.",
+                ambiguity=AMBIGUITY_INVALID,
+                details={"non_numeric_count": non_numeric_count, "sample_size": len(non_empty)},
+            )
+        )
+
+    backward_count = 0
+    repeated_count = 0
+    gap_count = 0
+    for (_, prev), (_, curr) in zip(numeric_by_row, numeric_by_row[1:]):
+        delta = curr - prev
+        if delta < 0:
+            backward_count += 1
+        elif delta == 0:
+            repeated_count += 1
+        elif delta > 1:
+            gap_count += 1
+    if backward_count:
+        diagnostics.append(
+            TimeAxisDiagnostic(
+                severity_hint=SEVERITY_WARNING,
+                code=DIAGNOSTIC_SAMPLE_INDEX_GOES_BACKWARD,
+                message=f"The sample index decreases at {backward_count} point(s) in the sampled rows.",
+                ambiguity=AMBIGUITY_UNAMBIGUOUS,
+                details={"backward_count": backward_count},
+            )
+        )
+    if repeated_count:
+        diagnostics.append(
+            TimeAxisDiagnostic(
+                severity_hint=SEVERITY_WARNING,
+                code=DIAGNOSTIC_REPEATED_SAMPLE_INDEX,
+                message=f"{repeated_count} consecutive sampled row(s) repeat the same sample index.",
+                ambiguity=AMBIGUITY_UNAMBIGUOUS,
+                details={"repeated_count": repeated_count},
+            )
+        )
+    if gap_count:
+        diagnostics.append(
+            TimeAxisDiagnostic(
+                severity_hint=SEVERITY_WARNING,
+                code=DIAGNOSTIC_SAMPLE_INDEX_GAP,
+                message=f"Possible sample-index gap at {gap_count} point(s) in the sampled rows.",
+                ambiguity=AMBIGUITY_UNAMBIGUOUS,
+                details={"gap_count": gap_count},
+            )
+        )
+
+    if requested_interval_seconds is not None:
+        provenance = PROVENANCE_USER_SPECIFIED
+        confidence = CONFIDENCE_HIGH
+    else:
+        provenance = PROVENANCE_INDEX_ONLY
+        confidence = CONFIDENCE_UNKNOWN
+
+    return TimeAxisDetectionResult(
+        family=FAMILY_SAMPLE_INDEX, provenance=provenance, confidence=confidence,
+        diagnostics=diagnostics, resolved_options={},
+        resolved_unit=None, resolved_interval_seconds=requested_interval_seconds,
+    )
+
+
+def build_sample_index_preview(
+    samples: list[tuple[int, tuple[Any, ...]]], *, resolved_interval_seconds: float | None, limit: int,
+) -> list[tuple[int, tuple[Any, ...], str | None]]:
+    """Bounded {index, relative-seconds} rows (§Q). When
+    `resolved_interval_seconds` is `None` (index-only), every
+    `interpreted` value is `None` -- NEVER a fabricated seconds column
+    (task's own explicit "no fake seconds column" instruction). When a
+    rate/interval IS known, `relative_seconds = (index - first_valid_
+    index) * interval_seconds` (task §G's own recommended rule,
+    generalized to interval form) -- `first_valid_index` is the first
+    non-missing, numeric value in THIS bounded sample (never assumed to
+    be `0`; also never a whole-dataset scan, consistent with this
+    module's own bounded-sampling guarantee)."""
+    rows: list[tuple[int, tuple[Any, ...], str | None]] = []
+    first_value: float | None = None
+    if resolved_interval_seconds is not None:
+        for _, values in samples:
+            candidate = _to_float(values[0]) if values and values[0] not in (None, "") else None
+            if candidate is not None:
+                first_value = candidate
+                break
+
+    for row_number, values in samples[:limit]:
+        value = values[0] if values else None
+        parsed = _to_float(value) if value not in (None, "") else None
+        if resolved_interval_seconds is None or parsed is None or first_value is None:
+            rows.append((row_number, values, None))
+            continue
+        relative_seconds = (parsed - first_value) * resolved_interval_seconds
+        rows.append((row_number, values, f"{relative_seconds:.6f} s"))
     return rows

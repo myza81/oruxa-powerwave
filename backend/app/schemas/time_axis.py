@@ -1,5 +1,5 @@
 """API request/response DTOs for the Time-Axis interpretation FRAMEWORK
-(CSV/Excel ingestion Slices 7-8A, DEC-072).
+(CSV/Excel ingestion Slices 7-8B, DEC-072).
 
 Mirrors `app.schemas.preparation_issue`'s own wire-shape pattern
 verbatim: never adds a field the domain layer does not already carry,
@@ -107,13 +107,20 @@ class TimeAxisConfigurationRequest(BaseModel):
     `family`/`provenance` are REQUIRED only for the `manual` interpreter
     (`InvalidTimeAxisConfigurationError` if missing or not one of
     `app.domain.time_axis`'s own known closed sets); for a SAMPLE
-    interpreter (Slice 8A's `absolute_datetime`/`split_date_time`) they
-    are optional hints only -- the interpreter's own `detect()` always
-    computes the real values from the actual sampled data. `options`
-    (Slice 8A) carries interpreter-specific settings -- e.g.
-    `{"date_order": "dmy"}` -- and is always optional; omitting it (or
-    leaving `date_order` as `"auto"`/absent) means "not yet resolved,"
-    exactly like every other unconfirmed state in this framework."""
+    interpreter (Slice 8A's `absolute_datetime`/`split_date_time`,
+    Slice 8B's `elapsed_numeric`/`sample_index`) they are optional
+    hints only -- the interpreter's own `detect()` always computes the
+    real values from the actual sampled data. `options` (Slice 8A)
+    carries interpreter-specific settings -- e.g. `{"date_order":
+    "dmy"}` -- and is always optional; omitting it (or leaving
+    `date_order` as `"auto"`/absent) means "not yet resolved," exactly
+    like every other unconfirmed state in this framework. `unit`
+    (Slice 8B, `elapsed_numeric` only) must be one of
+    `app.domain.time_axis.KNOWN_ELAPSED_UNITS` if given at all --
+    omitting it saves a `review_required` configuration, exactly like
+    an unresolved date order. `interval_seconds` (Slice 8B,
+    `sample_index` only) is entirely optional -- omitting it means
+    index-only, the approved fallback, never an error."""
 
     column_indices: list[int]
     family: str | None = None
@@ -138,10 +145,15 @@ class TimeAxisInterpretRequest(BaseModel):
     "auto-resolve" for a preview the caller is explicitly asking for by
     trying a specific interpreter; `options` carries the same
     interpreter-specific settings as the PUT body (e.g. an explicit
-    `date_order` the user is trying before committing to it)."""
+    `date_order` the user is trying before committing to it). `unit`/
+    `interval_seconds` (Slice 8B) let a caller try a specific elapsed
+    unit or sample-index interval before committing to it via the real
+    PUT -- the same pre-existing fields the PUT body already has."""
 
     column_indices: list[int]
     interpreter_id: str
+    unit: str | None = None
+    interval_seconds: float | None = None
     options: dict[str, Any] | None = None
 
 
@@ -170,6 +182,8 @@ class TimeAxisInterpretPreviewOut(BaseModel):
     confidence: str
     diagnostics: list[TimeAxisDiagnosticOut] = Field(default_factory=list)
     resolved_options: dict[str, Any] = Field(default_factory=dict)
+    resolved_unit: str | None = None
+    resolved_interval_seconds: float | None = None
     preview_rows: list[TimeAxisPreviewRowOut] = Field(default_factory=list)
 
     @classmethod
@@ -182,5 +196,7 @@ class TimeAxisInterpretPreviewOut(BaseModel):
             confidence=preview.confidence,
             diagnostics=[TimeAxisDiagnosticOut.from_domain(d) for d in preview.diagnostics],
             resolved_options=dict(preview.resolved_options),
+            resolved_unit=preview.resolved_unit,
+            resolved_interval_seconds=preview.resolved_interval_seconds,
             preview_rows=[TimeAxisPreviewRowOut.from_domain(r) for r in preview.preview_rows],
         )

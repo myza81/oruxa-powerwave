@@ -4633,6 +4633,8 @@
                                         <option value="manual">Manual</option>
                                         <option value="absolute_datetime">Absolute Datetime (1 column)</option>
                                         <option value="split_date_time">Date + Time (2 columns)</option>
+                                        <option value="elapsed_numeric">Elapsed Time (1 column)</option>
+                                        <option value="sample_index">Sample Index (1 column)</option>
                                     </select>
                                 </div>
                             </div>
@@ -4678,7 +4680,7 @@
                                 </div>
                             </div>
 
-                            <!-- Absolute Datetime / Date + Time: Slice 8A's own Detect -> review -> preview flow. -->
+                            <!-- Absolute Datetime / Date + Time / Elapsed / Sample Index: shared Detect -> review -> preview flow (Slice 8A/8B). -->
                             <div id="wwDataPrepTimeAxisDetectFields" hidden>
                                 <div class="ww-data-prep-structure-row" id="wwDataPrepTimeAxisSplitColumnsRow" hidden>
                                     <div class="field ww-data-prep-structure-field">
@@ -4693,6 +4695,42 @@
                                             <select id="wwDataPrepTimeAxisTimeColumnSelect"></select>
                                         </div>
                                     </div>
+                                </div>
+                                <!-- Elapsed Time (Slice 8B, task §A/§M): a unit is REQUIRED before
+                                     anything can be detected -- no default is ever pre-selected. -->
+                                <div class="field ww-data-prep-structure-field" id="wwDataPrepTimeAxisElapsedUnitField" hidden>
+                                    <label for="wwDataPrepTimeAxisElapsedUnitSelect">Unit</label>
+                                    <div class="ww-data-prep-structure-controls ww-data-prep-time-axis-controls">
+                                        <select id="wwDataPrepTimeAxisElapsedUnitSelect">
+                                            <option value="" selected>Choose a unit…</option>
+                                            <option value="seconds">Seconds</option>
+                                            <option value="milliseconds">Milliseconds</option>
+                                            <option value="microseconds">Microseconds</option>
+                                            <option value="nanoseconds">Nanoseconds</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <!-- Sample Index (Slice 8B, task §F/§G/§H/§N): progressive
+                                     disclosure -- "Unknown" is the approved, complete default;
+                                     a rate or interval is an optional refinement, never required. -->
+                                <div id="wwDataPrepTimeAxisIndexTimingField" hidden>
+                                    <p class="hint">Timing</p>
+                                    <label class="ww-data-prep-radio-option">
+                                        <input type="radio" name="wwDataPrepTimeAxisIndexTiming" value="unknown" id="wwDataPrepTimeAxisIndexTimingUnknown" checked>
+                                        <span>Unknown / index only</span>
+                                    </label>
+                                    <label class="ww-data-prep-radio-option">
+                                        <input type="radio" name="wwDataPrepTimeAxisIndexTiming" value="rate" id="wwDataPrepTimeAxisIndexTimingRate">
+                                        <span>Sampling rate</span>
+                                        <input type="number" id="wwDataPrepTimeAxisIndexRateInput" min="0" step="any" placeholder="Hz" disabled>
+                                        <span class="hint">Hz</span>
+                                    </label>
+                                    <label class="ww-data-prep-radio-option">
+                                        <input type="radio" name="wwDataPrepTimeAxisIndexTiming" value="interval" id="wwDataPrepTimeAxisIndexTimingInterval">
+                                        <span>Sample interval</span>
+                                        <input type="number" id="wwDataPrepTimeAxisIndexIntervalInput" min="0" step="any" placeholder="ms" disabled>
+                                        <span class="hint">ms</span>
+                                    </label>
                                 </div>
                                 <div class="ww-data-prep-structure-controls">
                                     <button type="button" class="secondary" id="wwDataPrepTimeAxisDetectBtn">Detect</button>
@@ -7368,7 +7406,7 @@
         const WW_DATA_PREP_DATE_ORDER_LABELS = {
             dmy: "DD/MM/YYYY", mdy: "MM/DD/YYYY", ymd: "YYYY/MM/DD",
         };
-        const WW_DATA_PREP_SAMPLE_INTERPRETERS = ["absolute_datetime", "split_date_time"];
+        const WW_DATA_PREP_SAMPLE_INTERPRETERS = ["absolute_datetime", "split_date_time", "elapsed_numeric", "sample_index"];
 
         // Eligible columns are always exactly the CURRENT `time_axis`-
         // role columns from the Structure panel's own column_roles state
@@ -7448,7 +7486,28 @@
             document.getElementById("wwDataPrepTimeAxisManualFields").hidden = isSample;
             document.getElementById("wwDataPrepTimeAxisDetectFields").hidden = !isSample;
             document.getElementById("wwDataPrepTimeAxisSplitColumnsRow").hidden = interpreterId !== "split_date_time";
+            document.getElementById("wwDataPrepTimeAxisElapsedUnitField").hidden = interpreterId !== "elapsed_numeric";
+            document.getElementById("wwDataPrepTimeAxisIndexTimingField").hidden = interpreterId !== "sample_index";
             if (interpreterId === "split_date_time") wwDataPrepRenderTimeAxisSplitColumnSelects();
+        }
+
+        // Slice 8B: converts whichever Timing input the user has chosen
+        // (Unknown / Sampling rate Hz / Sample interval ms) into the ONE
+        // canonical value the backend ever stores -- `interval_seconds`
+        // (task's own "do not maintain two conflicting authoritative
+        // values" instruction). `null` for "Unknown," the approved
+        // index-only fallback, never an error.
+        function wwDataPrepTimeAxisIndexIntervalSecondsFromForm() {
+            const mode = document.querySelector('input[name="wwDataPrepTimeAxisIndexTiming"]:checked').value;
+            if (mode === "rate") {
+                const hz = parseFloat(document.getElementById("wwDataPrepTimeAxisIndexRateInput").value);
+                return Number.isFinite(hz) && hz > 0 ? 1 / hz : null;
+            }
+            if (mode === "interval") {
+                const ms = parseFloat(document.getElementById("wwDataPrepTimeAxisIndexIntervalInput").value);
+                return Number.isFinite(ms) && ms > 0 ? ms / 1000 : null;
+            }
+            return null;
         }
 
         // Populates the Date/Time column selects from whichever Time
@@ -7529,16 +7588,34 @@
             const confidenceLabel = WW_DATA_PREP_TIME_AXIS_CONFIDENCE_LABELS[detection.confidence] || detection.confidence;
             const resolvedOptions = detection.resolved_options || detection.options || {};
             const formatText = resolvedOptions.detected_format ? " · Format: " + resolvedOptions.detected_format : "";
-            summaryEl.textContent = "Detected: " + familyLabel + " · Confidence: " + confidenceLabel + formatText;
+            // Section N's own "Timing: Interval unknown" / a real
+            // interval readout -- `resolved_interval_seconds` (dry-run
+            // response) or `interval_seconds` (plain GET summary), same
+            // dual-shape handling `resolvedOptions` above already uses.
+            let timingText = "";
+            if (detection.family === "sample_index") {
+                const intervalSeconds = detection.resolved_interval_seconds != null
+                    ? detection.resolved_interval_seconds : detection.interval_seconds;
+                timingText = intervalSeconds != null
+                    ? " · Real-time interval: " + intervalSeconds + " s/sample"
+                    : " · Real-time interval: Unknown";
+            }
+            summaryEl.textContent = "Detected: " + familyLabel + " · Confidence: " + confidenceLabel + formatText + timingText;
 
             const diagnostics = detection.diagnostics || [];
             diagnosticsEl.innerHTML = diagnostics.length
                 ? diagnostics.map((d) => "<li>" + escapeHtml(d.message) + "</li>").join("")
                 : "";
 
-            const isAmbiguous = diagnostics.some((d) => d.ambiguity === "ambiguous");
-            dateOrderField.hidden = !isAmbiguous;
-            if (isAmbiguous) {
+            // The date-order radio group is shown ONLY for the specific
+            // `ambiguous_date_order` diagnostic -- Slice 8B's own
+            // `missing_elapsed_unit` is ALSO `ambiguity: "ambiguous"`
+            // (it drives the exact same `review_required` status), but
+            // its own resolution control is the Unit <select> already
+            // visible above, never a date-order choice.
+            const hasAmbiguousDateOrder = diagnostics.some((d) => d.code === "ambiguous_date_order");
+            dateOrderField.hidden = !hasAmbiguousDateOrder;
+            if (hasAmbiguousDateOrder) {
                 const currentOrder = resolvedOptions.date_order || "";
                 dateOrderOptions.innerHTML = Object.entries(WW_DATA_PREP_DATE_ORDER_LABELS).map(([value, label]) =>
                     '<label class="ww-data-prep-radio-option">' +
@@ -7569,6 +7646,33 @@
         // (`family`/`provenance`/`interpreter` default to the first
         // option, matching this codebase's own <select> convention
         // elsewhere).
+        // Slice 8B: prefills the Elapsed unit select and the Sample
+        // Index timing radios/inputs from the STORED configuration --
+        // `rate` vs `interval` display mode is a purely local choice
+        // (see `wwDataPrepTimeAxisIndexIntervalSecondsFromForm`'s own
+        // docstring for why only `interval_seconds` is ever the
+        // canonical stored value); a stored config always redisplays as
+        // "Sample interval," never "Sampling rate," since the backend
+        // itself never remembers which the user originally typed.
+        function wwDataPrepRenderTimeAxisElapsedAndIndexFields(summary) {
+            document.getElementById("wwDataPrepTimeAxisElapsedUnitSelect").value = (summary && summary.unit) || "";
+
+            const intervalSeconds = summary && summary.interval_seconds != null ? summary.interval_seconds : null;
+            const rateInput = document.getElementById("wwDataPrepTimeAxisIndexRateInput");
+            const intervalInput = document.getElementById("wwDataPrepTimeAxisIndexIntervalInput");
+            rateInput.value = "";
+            rateInput.disabled = true;
+            if (intervalSeconds != null) {
+                document.getElementById("wwDataPrepTimeAxisIndexTimingInterval").checked = true;
+                intervalInput.value = String(intervalSeconds * 1000);
+                intervalInput.disabled = false;
+            } else {
+                document.getElementById("wwDataPrepTimeAxisIndexTimingUnknown").checked = true;
+                intervalInput.value = "";
+                intervalInput.disabled = true;
+            }
+        }
+
         function wwDataPrepRenderTimeAxisForm() {
             const summary = wwDataPrep.timeAxisSummary;
             document.getElementById("wwDataPrepTimeAxisFamilySelect").value = (summary && summary.family) || "absolute";
@@ -7583,6 +7687,7 @@
                 ? summary.interpreter_id : "manual";
             document.getElementById("wwDataPrepTimeAxisInterpreterSelect").value = interpreterId;
             wwDataPrepRenderTimeAxisInterpreterFields();
+            wwDataPrepRenderTimeAxisElapsedAndIndexFields(summary);
 
             // A stored sample-interpreter configuration already carries
             // its own diagnostics/confidence/options on the plain GET
@@ -7614,6 +7719,21 @@
         // model). Re-run whenever the user clicks Detect or changes the
         // date-order choice, always against the CURRENTLY selected
         // column(s) -- never the last-saved configuration's own columns.
+        // Slice 8B: the ONE place `unit` (elapsed_numeric)/
+        // `interval_seconds` (sample_index) are read from the form --
+        // used identically by both the Detect dry-run and the real Save,
+        // so the two calls never disagree about what the user chose.
+        function wwDataPrepTimeAxisUnitAndIntervalFromForm(interpreterId) {
+            if (interpreterId === "elapsed_numeric") {
+                const unit = document.getElementById("wwDataPrepTimeAxisElapsedUnitSelect").value;
+                return { unit: unit || null, interval_seconds: null };
+            }
+            if (interpreterId === "sample_index") {
+                return { unit: null, interval_seconds: wwDataPrepTimeAxisIndexIntervalSecondsFromForm() };
+            }
+            return { unit: null, interval_seconds: null };
+        }
+
         async function wwDataPrepDetectTimeAxis() {
             const status = wwDataPrepTimeAxisStatusEl();
             status.textContent = "";
@@ -7627,12 +7747,16 @@
             }
             const checkedDateOrder = document.querySelector('input[name="wwDataPrepTimeAxisDateOrder"]:checked');
             const options = checkedDateOrder ? { date_order: checkedDateOrder.value } : {};
+            const { unit, interval_seconds } = wwDataPrepTimeAxisUnitAndIntervalFromForm(interpreterId);
             try {
                 const response = await fetch(
                     wwDataPrepSourceUrl("/working/time-axis/interpret"),
                     {
                         method: "POST", headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ column_indices: columnIndices, interpreter_id: interpreterId, options: options }),
+                        body: JSON.stringify({
+                            column_indices: columnIndices, interpreter_id: interpreterId,
+                            unit: unit, interval_seconds: interval_seconds, options: options,
+                        }),
                     }
                 );
                 if (!response.ok) {
@@ -7695,10 +7819,17 @@
                 // family/provenance are computed by the interpreter's own
                 // detect() from the actual sampled data -- never sent
                 // from this form (see TimeAxisConfigurationRequest's own
-                // docstring for why they are optional here).
+                // docstring for why they are optional here). unit
+                // (elapsed_numeric)/interval_seconds (sample_index) ARE
+                // sent -- they are the one real piece of configuration
+                // these two interpreters need from the user.
                 const checkedDateOrder = document.querySelector('input[name="wwDataPrepTimeAxisDateOrder"]:checked');
                 const options = checkedDateOrder ? { date_order: checkedDateOrder.value } : {};
-                body = { column_indices: columnIndices, interpreter_id: interpreterId, options: options, confirmed: confirmed };
+                const { unit, interval_seconds } = wwDataPrepTimeAxisUnitAndIntervalFromForm(interpreterId);
+                body = {
+                    column_indices: columnIndices, interpreter_id: interpreterId,
+                    unit: unit, interval_seconds: interval_seconds, options: options, confirmed: confirmed,
+                };
             } else {
                 const family = document.getElementById("wwDataPrepTimeAxisFamilySelect").value;
                 const provenance = document.getElementById("wwDataPrepTimeAxisProvenanceSelect").value;
@@ -7776,6 +7907,30 @@
             if (document.getElementById("wwDataPrepTimeAxisInterpreterSelect").value === "split_date_time") {
                 wwDataPrepRenderTimeAxisSplitColumnSelects();
             }
+        });
+        // Elapsed Time: a unit choice only means something once
+        // re-detected against it -- same auto re-run convention as the
+        // date-order radios above.
+        document.getElementById("wwDataPrepTimeAxisElapsedUnitSelect").addEventListener("change", () => {
+            if (document.getElementById("wwDataPrepTimeAxisElapsedUnitSelect").value) wwDataPrepDetectTimeAxis();
+        });
+        // Sample Index Timing radios: only enable/disable the relevant
+        // input locally -- no backend call happens until Detect/Save is
+        // actually clicked (same convention as the Data Region end-mode
+        // radios elsewhere in this panel).
+        document.getElementById("wwDataPrepTimeAxisIndexTimingUnknown").addEventListener("change", () => {
+            document.getElementById("wwDataPrepTimeAxisIndexRateInput").disabled = true;
+            document.getElementById("wwDataPrepTimeAxisIndexIntervalInput").disabled = true;
+        });
+        document.getElementById("wwDataPrepTimeAxisIndexTimingRate").addEventListener("change", () => {
+            document.getElementById("wwDataPrepTimeAxisIndexRateInput").disabled = false;
+            document.getElementById("wwDataPrepTimeAxisIndexIntervalInput").disabled = true;
+            document.getElementById("wwDataPrepTimeAxisIndexRateInput").focus();
+        });
+        document.getElementById("wwDataPrepTimeAxisIndexTimingInterval").addEventListener("change", () => {
+            document.getElementById("wwDataPrepTimeAxisIndexIntervalInput").disabled = false;
+            document.getElementById("wwDataPrepTimeAxisIndexRateInput").disabled = true;
+            document.getElementById("wwDataPrepTimeAxisIndexIntervalInput").focus();
         });
 
         // Progressive disclosure -- identical toggle behavior to the
@@ -8242,6 +8397,7 @@
             document.getElementById("wwDataPrepTimeAxisDateColumnSelect").innerHTML = "";
             document.getElementById("wwDataPrepTimeAxisTimeColumnSelect").innerHTML = "";
             wwDataPrepRenderTimeAxisInterpreterFields();
+            wwDataPrepRenderTimeAxisElapsedAndIndexFields(null);
             wwDataPrepRenderTimeAxisDetectResult(null, null);
             wwDataPrepRenderIssues();
             wwDataPrepRenderStructureSummary();
