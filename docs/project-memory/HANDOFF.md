@@ -8,13 +8,137 @@ Last updated: **2026-09-02**
 
 ## What was most recently done
 
+**CSV/Excel Ingestion Slice 8D — Time Irregularity Diagnostics
+(implemented).** Owner-authorized implementation of a DIAGNOSTIC-ONLY
+normalization layer over the irregular-timing conditions
+CSV_EXCEL_TIME_INTERPRETATION.md §11's own table already named — never
+a new interpreter (no new `interpreter_id`, no new
+`TimeAxisConfiguration`/`TimeAxisDetectionResult` field), never
+readiness policy (no `blocking`/`warning`/`info` mapping, no
+`PreparationIssue` promotion — both remain Slice 9's own decision). The
+intended flow: `Time interpreter/timing analysis -> Structured time
+diagnostics -> later Slice 9 Readiness Validator`.
+
+**The one real gap this slice fills**: `absolute_datetime`/
+`split_date_time` (Slice 8A) never checked row-to-row timing QUALITY at
+all — only `elapsed_numeric`/`sample_index` (Slice 8B) and
+`repeated_timestamp_precision_loss`'s own bucket cadence (Slice 8C)
+ever did. A new shared, family-agnostic `_analyze_time_sequence()` in
+`app/services/time_axis_interpreters.py` fills that gap, called only
+once `absolute_datetime`/`split_date_time` already has a RESOLVED
+(non-ambiguous, non-unparseable) reading — never for a still-open case.
+For `split_date_time` specifically, the sequence analyzed is the
+COMBINED per-row date+time value, never the date-only column's own
+sequence (always midnight-anchored, not a meaningful timing signal by
+itself) — a new `include_sequence_diagnostics` parameter on
+`detect_absolute_datetime()` suppresses its own analysis when reused
+internally as `split_date_time`'s date-only sub-detection, so the two
+never double-report the same finding.
+
+**Five genuinely new diagnostic codes** (`app/domain/time_axis.py`):
+`time_goes_backward`, `large_time_gap`, `timestamp_reset_suspected`,
+`partial_midnight_rollover_suspected`, `non_uniform_interval`. Every
+OTHER condition in §11's table already had an established code from an
+earlier slice — reused verbatim, per this slice's own "prefer
+consolidation... do not rename existing public codes unnecessarily"
+instruction. All five new codes are `SEVERITY_WARNING`/
+`AMBIGUITY_UNAMBIGUOUS` (the exact combination
+`elapsed_time_goes_backward`/`sample_index_gap` already use) — so
+`resolve_status()` needed ZERO new precedence rules for this slice.
+
+**The exact detection rule** (deliberately simple, per the task's own
+"do not overengineer statistical detection" instruction): the reference
+"expected local interval" is the MINIMUM positive consecutive delta
+observed in the bounded sample — robust to a large outlier inflating
+its own comparison point, without a second statistical pass. A
+transition at least 5x that reference is "large" in either direction
+(`large_time_gap` forward, `timestamp_reset_suspected` backward); a
+smaller negative delta is the plain `time_goes_backward`; a `partial`-
+family transition from within 2 seconds of the end of the day to within
+2 seconds of the start of the day is checked FIRST, taking priority
+over both, and reported as `partial_midnight_rollover_suspected`
+instead — never a fabricated date, never an automatic day increment,
+never treated as ordinary backward-time corruption. `non_uniform_
+interval` is a single, dataset-level finding (never per-transition) for
+the softer case where the remaining ordinary forward steps still vary
+by more than a ±20% tolerance of their own median. Exact repeats
+(`delta == 0`) are deliberately never flagged by this new logic at all
+— `repeated_timestamp_precision_loss` (Slice 8C) already owns that
+condition in full.
+
+**Bounded, sample-based, never a full scan** — every new diagnostic is
+computed over the SAME already-bounded (≤50-row) sample every
+interpreter here already receives; a gap or reset outside the sampled
+window is simply not seen, documented explicitly as sample-based, not a
+full-dataset guarantee.
+
+**A new `category` axis** (`format`/`ordering`/`gap`/`repeat`/
+`sampling`/`ambiguity`) is available on every `TimeAxisDiagnostic` — a
+COMPUTED property (`app.domain.time_axis.diagnostic_category()`), never
+a stored field, so every diagnostic construction anywhere in the
+codebase (Slices 7/8A/8B/8C included) already has a correct category
+with ZERO call-site changes. Internal/UX grouping only, never mapped to
+readiness severity. `TimeAxisDiagnosticOut.category` (schema) echoes
+it.
+
+**New API**: NONE — `GET`/`PUT .../time-axis` and dry-run
+`POST .../interpret` are reused verbatim; the only schema change is the
+additive `category` field above.
+
+**Frontend**: the compact Time Axis summary gained one new row,
+"Diagnostics" ("2 findings"), hidden entirely when there are none — the
+findings THEMSELVES stay inside the existing expanded-review
+diagnostics list, never a new permanently-expanded panel. Message text
+already embeds a row-level "near row N" reference, so no frontend
+string duplication was needed.
+
+**Files changed**: `backend/app/domain/time_axis.py`,
+`backend/app/services/time_axis_interpreters.py`,
+`backend/app/schemas/time_axis.py`, `frontend/index.html`; extended
+`backend/tests/test_time_axis_interpreters.py`,
+`test_time_axis_domain.py`, `test_preparation_sources_api.py` — plus a
+chronological-order fixup to three PRE-EXISTING fixtures across
+`test_time_axis_interpreters.py`/`test_time_axis_service.py`/
+`test_preparation_sources_api.py` (each was an artificial day-
+elimination example that happened to also be backward in time; now
+genuinely ascending) — no new test files, no unrelated production code
+touched.
+
+**Verified**: full backend suite 2469 passed (30 new on top of Slice
+8C's 2439), zero regressions; the committed browser smoke test
+(COMTRADE) still passes unchanged; a throwaway (not committed)
+live-browser Playwright UAT script confirmed: a backward-time column
+shows a "2 findings" compact count and the correct "near row 3" finding
+in the expanded review; a midnight-rollover column is distinguished
+from generic backward time with neutral wording ("consistent with an
+ordinary midnight rollover"); a large-gap column shows neutral wording
+(never "missing data"); and no second top-level panel was introduced
+anywhere — all with zero console/page errors.
+
+**Next step**: Slices 9–13 (the full Readiness Validator, canonical
+`DisturbanceRecord` conversion, existing waveform integration, export,
+and progressive automation) — each still requires its own explicit
+owner go-ahead to begin, per
+[Change governance](../../CLAUDE.md#change-governance). Slice 9 in
+particular is the first place any of Slice 8D's own diagnostics could
+ever be mapped to `blocking`/`warning`/`info` or promoted into
+`PreparationIssue` — an explicit, owner-approved decision, not an
+automatic consequence of this slice.
+
+**Commit status**: not committed — per this task's own explicit closing
+instruction ("Do not commit or push unless explicitly asked"), all of
+the above are normal uncommitted working-tree changes pending a
+separate, explicit commit instruction.
+
+## What was done in the prior session — CSV/Excel Ingestion Slice 8C: Repeated Timestamp / Precision-Loss Reconstruction
+
 **CSV/Excel Ingestion Slice 8C — Repeated Timestamp / Precision-Loss
-Reconstruction (implemented).** Owner-authorized implementation of the
-fifth and FINAL of Slice 7/8's own five proposed initial interpreters
-(§19 item 5) — repeated-timestamp/precision-loss detection and
-user-approved reconstruction — as REAL, deterministic interpreters on
-top of Slice 7's framework and Slice 8A/8B's own path, with zero
-framework-shape changes beyond what those already anticipated
+Reconstruction (implemented, committed as `f3b400f`).** Owner-authorized
+implementation of the fifth and FINAL of Slice 7/8's own five proposed
+initial interpreters (§19 item 5) — repeated-timestamp/precision-loss
+detection and user-approved reconstruction — as REAL, deterministic
+interpreters on top of Slice 7's framework and Slice 8A/8B's own path,
+with zero framework-shape changes beyond what those already anticipated
 (`TimeAxisConfiguration.unit`/`.interval_seconds`/`.options` existed
 since Slice 7 for exactly this; `detect()`'s own contract needed no new
 parameters at all — Slice 8B's own `requested_interval_seconds`/
@@ -108,17 +232,11 @@ the interpreter select; and an unstable-cadence column shows "Low"
 confidence with no fabricated interval and a server-rejected confirm
 attempt — all with zero unexpected console/page errors.
 
-**Next step**: Slice 8's full five-interpreter set (§19) is now
-complete. The next authorized work is Slices 9–13 (the full Readiness
-Validator, canonical `DisturbanceRecord` conversion, existing waveform
-integration, export, and progressive automation) — each still requires
-its own explicit owner go-ahead to begin, per
-[Change governance](../../CLAUDE.md#change-governance).
-
-**Commit status**: not committed — per this task's own explicit closing
-instruction ("Do not commit or push unless explicitly asked"), all of
-the above are normal uncommitted working-tree changes pending a
-separate, explicit commit instruction.
+**Commit status**: committed as `f3b400f` ("feat: add repeated
+timestamp reconstruction") — not pushed at the time. (Superseded: Slice
+8D, the entry directly above this one, has since added a diagnostic-
+only normalization layer over this and every earlier Slice 8
+interpreter's own irregular-timing conditions.)
 
 ## What was done in the prior session — CSV/Excel Ingestion Slice 8B: Elapsed / Relative Time + Sample Index Interpreters
 

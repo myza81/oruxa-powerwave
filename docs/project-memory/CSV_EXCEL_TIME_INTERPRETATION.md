@@ -12,7 +12,11 @@ precision-loss detection and user-approved reconstruction) — is
 for the full implementation summaries). §19's own five-interpreter list
 is now fully implemented; segmented/variable-cadence reconstruction
 (§7's own scope boundary) remains explicitly deferred, not a Slice 8C
-gap.**
+gap. Slice 8D — Time Irregularity Diagnostics, a diagnostic-only
+normalization layer over §11's own irregular-timing table (never a new
+interpreter, never readiness policy) — is `[DONE, 2026-09-02]`; see
+[CSV_EXCEL_INGESTION_ARCHITECTURE.md item 8](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
+for its own full implementation summary.**
 
 Date: 2026-09-01
 Source: owner-requested design checkpoint, preceding Slice 7. This
@@ -515,6 +519,85 @@ to consume, and so the compact Time Axis panel (§15) has something
 honest to summarize ("Interpretation: repeated timestamps detected" is
 literally this table's own first row, worded for the user).
 
+**`[DONE, 2026-09-02]` Slice 8D implementation note**: every row of this
+table now has a real, structured `TimeAxisDiagnostic` producer. Final
+code, per row, and which interpreter(s) produce it:
+
+| Table row | Final diagnostic code | Producer(s) |
+|---|---|---|
+| Time goes backward | `time_goes_backward` (new) / `elapsed_time_goes_backward` / `sample_index_goes_backward` (pre-existing) | `absolute_datetime`/`split_date_time` (new); `elapsed_numeric`/`sample_index` (Slice 8B, unchanged) |
+| Timestamp reset | `timestamp_reset_suspected` (new) | `absolute_datetime`/`split_date_time` |
+| Midnight rollover | `partial_midnight_rollover_suspected` (new) | `absolute_datetime`/`split_date_time`, `partial` family only |
+| Large time gap | `large_time_gap` (new) | `absolute_datetime`/`split_date_time` |
+| Non-uniform sampling | `non_uniform_interval` (new) / `non_uniform_elapsed_interval` (pre-existing) | `absolute_datetime`/`split_date_time` (new); `elapsed_numeric` (Slice 8B, unchanged) |
+| Repeated timestamps | `repeated_timestamp_detected` (pre-existing, §7) | `repeated_timestamp_precision_loss` (Slice 8C, unchanged) |
+| Mixed time formats | `mixed_datetime_format` (pre-existing) | `absolute_datetime`/`split_date_time` (Slice 8A, unchanged) |
+| Ambiguous date locale | `ambiguous_date_order` (pre-existing) | `absolute_datetime`/`split_date_time` (Slice 8A, unchanged) |
+| Missing timestamp | `missing_datetime_value` / `missing_elapsed_value` / `missing_sample_index` (pre-existing, one per family) | every interpreter (unchanged) |
+| Time-only with no date | `time_only_not_absolute` (pre-existing) | `absolute_datetime` (Slice 8A, unchanged) |
+
+Only FIVE codes were genuinely new — `absolute_datetime`/`split_date_time`
+were this framework's one real gap (Slice 8B's elapsed/sample-index and
+Slice 8C's own bucket cadence already checked backward/gap/non-uniform
+conditions for their own families). Every other row already had an
+established code from an earlier slice, reused verbatim per this
+slice's own "prefer consolidation... do not rename existing public
+codes unnecessarily" instruction.
+
+**The exact detection rule** (deliberately simple, per this slice's own
+"do not overengineer statistical detection" instruction): a resolved
+row-to-row sequence (only ever computed once a format is ALREADY
+resolved — never for a still-ambiguous or still-unparseable reading) is
+walked once. The reference "expected local interval" is the SMALLEST
+positive consecutive delta observed anywhere in the bounded sample —
+deliberately the minimum, not the mean or median, since a large outlier
+delta can never inflate its own comparison point this way, without a
+second statistical pass. A transition at least 5× that reference is
+"large" in either direction (`large_time_gap` forward,
+`timestamp_reset_suspected` backward); anything smaller but still
+negative is the plain `time_goes_backward`; a `partial`-family
+transition from within 2 seconds of the end of the day to within 2
+seconds of the start of the day is checked FIRST and reported as
+`partial_midnight_rollover_suspected` instead, taking priority over
+both — the exact "distinguish a likely reset from a small ordinary
+irregularity" and "must NOT automatically be treated as generic
+backward-time corruption" requirements this section's own table already
+named. `non_uniform_interval` is a single, dataset-level finding (never
+per-transition) for the softer case where the remaining ordinary
+forward steps still vary by more than a ±20% tolerance of their own
+median.
+
+**Exact repeats (`delta == 0`) are deliberately never flagged by this
+new logic** — `repeated_timestamp_precision_loss` (§7) already owns
+that condition in full; duplicating even a bare presence check here
+would be exactly the "duplicate the detection algorithm" this slice's
+own task said not to do.
+
+**All five new codes are `SEVERITY_WARNING`/`AMBIGUITY_UNAMBIGUOUS`** —
+attention-worthy once present (via the existing `needs_attention`
+path), never blocking `confirmed=true` (only `AMBIGUITY_AMBIGUOUS`
+does that). No new `resolve_status()` precedence rule was needed for
+this slice at all — "flag; never force a decision," this table's own
+recurring wording, was already exactly what the framework's existing
+severity/ambiguity axes express.
+
+**Bounded, sample-based, never a full scan.** Every diagnostic this
+slice adds is computed over the SAME already-bounded (≤50-row) sample
+every interpreter here already receives — never a second, wider read of
+the source. This means a genuinely large gap or a reset OUTSIDE the
+sampled window is simply not seen; these are sample-based findings, not
+full-dataset guarantees, exactly like every other diagnostic in this
+framework since Slice 8A.
+
+**A new, lightweight `category` axis** (`format`/`ordering`/`gap`/
+`repeat`/`sampling`/`ambiguity`) is now available on every
+`TimeAxisDiagnostic` — computed from `code` via
+`app.domain.time_axis.diagnostic_category()`, never a stored field, so
+no existing diagnostic construction anywhere needed to change.
+Internal/UX grouping only; never mapped to `blocking`/`warning`/`info`
+readiness severity (that mapping, if any, remains Slice 9's own
+decision, per §13 below, untouched).
+
 ---
 
 ## 12. Non-empty ambiguous data-value preservation
@@ -597,9 +680,23 @@ not resolved by this document.
 
 **What IS shared today**: the transport shape. `TimeAxisDiagnostics`
 should structurally resemble `PreparationIssue` closely enough
-(severity-like label, code, message, location, suggested action) that
+(severity-label, code, message, location, suggested action) that
 promoting a subset of them into real `PreparationIssue`s later, once
 Slice 9 policy exists, is a mechanical mapping rather than a redesign.
+
+**`[DONE, 2026-09-02]` Slice 8D confirmation**: this boundary is
+UNCHANGED by Slice 8D. Every new diagnostic (§11) is added to the SAME
+`TimeAxisDiagnostic` list returned through the SAME existing
+`GET`/`PUT .../time-axis` and dry-run `POST .../interpret` endpoints —
+still never injected into `GET .../issues`'s own
+`PreparationIssueSummary`, still never mapped to `blocking`/`warning`/
+`info`. The new `category` field (§11's own implementation note) adds
+one more structurally-shared property (alongside severity-label, code,
+message, location, suggested action) that a future promotion mapping
+could reuse — it does not itself perform or authorize any promotion.
+Whether/how these diagnostics eventually feed into `PreparationIssue`
+remains exactly as open as before (§21), still Slice 9's own decision
+to make.
 
 ---
 

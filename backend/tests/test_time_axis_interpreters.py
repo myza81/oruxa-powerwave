@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.domain.preparation_issue import SEVERITY_WARNING
 from app.domain.time_axis import (
     AMBIGUITY_AMBIGUOUS,
     AMBIGUITY_INVALID,
@@ -23,6 +24,7 @@ from app.domain.time_axis import (
     DIAGNOSTIC_CADENCE_NOT_RELIABLE,
     DIAGNOSTIC_ELAPSED_TIME_GOES_BACKWARD,
     DIAGNOSTIC_INCONSISTENT_BUCKET_COUNT,
+    DIAGNOSTIC_LARGE_TIME_GAP,
     DIAGNOSTIC_MISSING_DATETIME_VALUE,
     DIAGNOSTIC_MISSING_ELAPSED_UNIT,
     DIAGNOSTIC_MISSING_ELAPSED_VALUE,
@@ -31,6 +33,8 @@ from app.domain.time_axis import (
     DIAGNOSTIC_NON_NUMERIC_ELAPSED_VALUE,
     DIAGNOSTIC_NON_NUMERIC_SAMPLE_INDEX,
     DIAGNOSTIC_NON_UNIFORM_ELAPSED_INTERVAL,
+    DIAGNOSTIC_NON_UNIFORM_INTERVAL,
+    DIAGNOSTIC_PARTIAL_MIDNIGHT_ROLLOVER_SUSPECTED,
     DIAGNOSTIC_POSSIBLE_MISSING_SAMPLE,
     DIAGNOSTIC_PRECISION_LOSS_SUSPECTED,
     DIAGNOSTIC_REPEATED_ELAPSED_TIME,
@@ -38,7 +42,9 @@ from app.domain.time_axis import (
     DIAGNOSTIC_REPEATED_TIMESTAMP_DETECTED,
     DIAGNOSTIC_SAMPLE_INDEX_GAP,
     DIAGNOSTIC_SAMPLE_INDEX_GOES_BACKWARD,
+    DIAGNOSTIC_TIME_GOES_BACKWARD,
     DIAGNOSTIC_TIME_ONLY_NOT_ABSOLUTE,
+    DIAGNOSTIC_TIMESTAMP_RESET_SUSPECTED,
     DIAGNOSTIC_UNEXPECTED_BUCKET_SAMPLE_COUNT,
     DIAGNOSTIC_UNPARSEABLE_DATETIME,
     FAMILY_ABSOLUTE,
@@ -112,8 +118,12 @@ class TestSingleColumnIsoDatetime:
 
 class TestSingleColumnSlashDashOrders:
     def test_dmy_unambiguous_by_elimination_day_over_twelve(self):
+        # Chronologically ascending (day 30 then day 31) -- day=31 alone
+        # is what rules out `mdy` here; ordering is irrelevant to that,
+        # and ascending avoids also exercising Slice 8D's own new
+        # backward-time detection, which is covered by its own tests.
         result = detect_absolute_datetime(
-            _rows(["31/08/2026 13:09:44.305", "30/08/2026 13:09:45.505"]), requested_options={},
+            _rows(["30/08/2026 13:09:44.305", "31/08/2026 13:09:45.505"]), requested_options={},
         )
 
         assert result.family == FAMILY_ABSOLUTE
@@ -129,8 +139,10 @@ class TestSingleColumnSlashDashOrders:
         assert result.diagnostics == []
 
     def test_mdy_am_pm_form(self):
+        # Chronologically ascending -- see the dmy elimination test's own
+        # comment above for why order matters now that Slice 8D checks it.
         result = detect_absolute_datetime(
-            _rows(["08/31/2026 1:09:44 PM", "08/30/2026 2:15:00 AM"]), requested_options={},
+            _rows(["08/30/2026 2:15:00 AM", "08/31/2026 1:09:44 PM"]), requested_options={},
         )
 
         assert result.family == FAMILY_ABSOLUTE
@@ -205,10 +217,147 @@ class TestSingleColumnTimeOnly:
 
     def test_midnight_rollover_is_not_inferred_for_time_only(self):
         # Section O's own explicit scope boundary: no rollover inference
-        # for a bare time-of-day column in this slice.
+        # for a bare time-of-day column in this slice -- Slice 8D adds a
+        # DIAGNOSTIC for this pattern (see TestTimingIrregularities below)
+        # but still never fabricates a date or promotes to absolute.
         result = detect_absolute_datetime(_rows(["23:59:59.900", "00:00:00.100"]), requested_options={})
 
         assert result.family == FAMILY_PARTIAL
+
+
+# ---- CSV/Excel ingestion Slice 8D (DEC-072): shared timing-irregularity
+# diagnostics for `absolute_datetime`/`split_date_time` -- backward time,
+# midnight rollover (partial only), timestamp reset, large gaps, and
+# non-uniform spacing. Detect-only: nothing here ever sorts, rewrites, or
+# drops a row. Elapsed/sample-index/repeated-timestamp diagnostics are
+# unchanged (already covered by their own existing test classes above/
+# below) -- Slice 8D's job for those three is normalization/consolidation
+# only, not new detection logic.
+
+
+class TestTimingIrregularitiesBackward:
+    def test_small_backward_step_is_generic_backward(self):
+        # 13:14:01.500 -> .600 -> .400 -- a small backward jitter, NOT a
+        # reset (its own magnitude is comparable to the +0.1s normal step).
+        result = detect_absolute_datetime(
+            _rows(["13:14:01.500", "13:14:01.600", "13:14:01.400"]), requested_options={},
+        )
+
+        assert result.family == FAMILY_PARTIAL
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_TIME_GOES_BACKWARD in codes
+        assert DIAGNOSTIC_TIMESTAMP_RESET_SUSPECTED not in codes
+        diag = next(d for d in result.diagnostics if d.code == DIAGNOSTIC_TIME_GOES_BACKWARD)
+        assert diag.location.row_number == 3
+        assert diag.ambiguity == AMBIGUITY_UNAMBIGUOUS
+        assert diag.severity_hint == SEVERITY_WARNING
+
+    def test_clear_reset_like_jump_is_reset_suspected_not_generic_backward(self):
+        # 13:14:30 -> :31 -> 00:00:00 -> :01 -- a sharp drop to near the
+        # start of the day, NOT near the end of the day (not a rollover).
+        result = detect_absolute_datetime(
+            _rows(["13:14:30", "13:14:31", "00:00:00", "00:00:01"]), requested_options={},
+        )
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_TIMESTAMP_RESET_SUSPECTED in codes
+        assert DIAGNOSTIC_TIME_GOES_BACKWARD not in codes
+        assert DIAGNOSTIC_PARTIAL_MIDNIGHT_ROLLOVER_SUSPECTED not in codes
+        diag = next(d for d in result.diagnostics if d.code == DIAGNOSTIC_TIMESTAMP_RESET_SUSPECTED)
+        assert diag.location.row_number == 3
+
+    def test_row_order_is_never_reordered_or_rewritten(self):
+        original = ["13:14:01.500", "13:14:01.600", "13:14:01.400"]
+        result = detect_absolute_datetime(_rows(original), requested_options={})
+        # Nothing about detection ever touches the caller's own values --
+        # this pure function has no output surface for that at all beyond
+        # diagnostics; asserting the input list itself is untouched.
+        assert original == ["13:14:01.500", "13:14:01.600", "13:14:01.400"]
+        assert result.family == FAMILY_PARTIAL
+
+
+class TestTimingIrregularitiesPartialMidnightRollover:
+    def test_rollover_pattern_is_distinguished_from_generic_backward(self):
+        result = detect_absolute_datetime(
+            _rows(["23:59:59", "23:59:59", "00:00:00", "00:00:00"]), requested_options={},
+        )
+
+        assert result.family == FAMILY_PARTIAL
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_PARTIAL_MIDNIGHT_ROLLOVER_SUSPECTED in codes
+        assert DIAGNOSTIC_TIME_GOES_BACKWARD not in codes
+        assert DIAGNOSTIC_TIMESTAMP_RESET_SUSPECTED not in codes
+        diag = next(d for d in result.diagnostics if d.code == DIAGNOSTIC_PARTIAL_MIDNIGHT_ROLLOVER_SUSPECTED)
+        assert diag.location.row_number == 3
+        assert "date" not in diag.suggested_action.lower() or "no date is invented" in diag.suggested_action.lower()
+
+    def test_no_date_is_fabricated_family_stays_partial(self):
+        result = detect_absolute_datetime(
+            _rows(["23:59:59.900", "00:00:00.100"]), requested_options={},
+        )
+
+        assert result.family == FAMILY_PARTIAL
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_PARTIAL_MIDNIGHT_ROLLOVER_SUSPECTED in codes
+
+
+class TestTimingIrregularitiesLargeGap:
+    def test_uniform_cadence_then_large_jump_is_flagged(self):
+        result = detect_absolute_datetime(
+            _rows(["13:14:01", "13:14:02", "13:20:00"]), requested_options={},
+        )
+
+        assert result.family == FAMILY_PARTIAL
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_LARGE_TIME_GAP in codes
+        diag = next(d for d in result.diagnostics if d.code == DIAGNOSTIC_LARGE_TIME_GAP)
+        assert diag.location.row_number == 3
+
+    def test_irregular_but_reasonable_timing_is_not_flagged_as_a_large_gap(self):
+        # Deltas of 1.0s, 1.2s, 0.9s -- ordinary jitter, nowhere near the
+        # 5x-of-the-smallest-delta threshold.
+        result = detect_absolute_datetime(
+            _rows(["13:14:01.0", "13:14:02.0", "13:14:03.2", "13:14:04.1"]), requested_options={},
+        )
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_LARGE_TIME_GAP not in codes
+
+    def test_no_synthetic_repair_row_count_and_values_unchanged(self):
+        samples = [(1, ("13:14:01",)), (2, ("13:14:02",)), (3, ("13:20:00",))]
+        preview = build_absolute_datetime_preview(samples, resolved_options={"date_order": "auto"}, limit=10)
+
+        # The gap is a DIAGNOSTIC only -- the preview never inserts,
+        # deletes, or interpolates a row to "fill" it.
+        assert len(preview) == 3
+        assert [row[1] for row in preview] == [("13:14:01",), ("13:14:02",), ("13:20:00",)]
+
+
+class TestTimingIrregularitiesNonUniformInterval:
+    def test_non_uniform_spacing_flagged_without_large_gap(self):
+        # 1.0s, then 1.3s, then 0.7s -- each individually within the
+        # ordinary range but the overall spread is not tight (>20% of
+        # the median), so this is the SOFTER non_uniform_interval finding.
+        result = detect_absolute_datetime(
+            _rows(["13:14:01.0", "13:14:02.0", "13:14:03.3", "13:14:04.0"]), requested_options={},
+        )
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_NON_UNIFORM_INTERVAL in codes
+        assert DIAGNOSTIC_LARGE_TIME_GAP not in codes
+
+
+class TestTimingIrregularitiesMissingTimestamp:
+    def test_empty_cell_is_missing_timestamp_row_preserved(self):
+        result = detect_absolute_datetime(
+            _rows(["2026-08-31 13:09:44", "", "2026-08-31 13:09:46"]), requested_options={},
+        )
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_MISSING_DATETIME_VALUE in codes
+        # A missing row is never synthesized -- only 2 of the 3 rows
+        # ever entered the sequence analysis, and nothing crashes.
+        assert result.family == FAMILY_ABSOLUTE
 
 
 class TestSingleColumnMissingValues:
@@ -235,7 +384,9 @@ class TestSingleColumnMissingValues:
 
 class TestSplitDateTime:
     def test_valid_dmy_date_plus_time(self):
-        dates = _rows(["31/08/2026", "30/08/2026"])
+        # Chronologically ascending -- see TestSingleColumnSlashDashOrders'
+        # own comment for why order matters now that Slice 8D checks it.
+        dates = _rows(["30/08/2026", "31/08/2026"])
         times = _rows(["13:09:44.305", "13:09:45.505"])
 
         result = detect_split_date_time(dates, times, requested_options={})
@@ -300,6 +451,59 @@ class TestSplitDateTime:
         result = detect_split_date_time(dates, times, requested_options={})
 
         assert result.family == FAMILY_ABSOLUTE
+        assert result.diagnostics == []
+
+
+class TestSplitDateTimeTimingIrregularities:
+    """(Slice 8D) Timing-quality analysis runs over the COMBINED
+    date+time value per row, never the date-only column's own value
+    sequence (which is always midnight-anchored and not a meaningful
+    timing signal by itself)."""
+
+    def test_backward_combined_datetime_is_flagged(self):
+        # Same calendar day both rows, but the TIME goes backward --
+        # the date-only sequence alone (31/08 both times) would never
+        # reveal this; only the combined value does.
+        dates = _rows(["31/08/2026", "31/08/2026"])
+        times = _rows(["13:09:46", "13:09:44"])
+
+        result = detect_split_date_time(dates, times, requested_options={})
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_TIME_GOES_BACKWARD in codes
+
+    def test_date_only_backward_pattern_alone_is_not_double_reported(self):
+        # 31/08 then 30/08 (day decreasing) but the TIME moves forward
+        # enough to make the COMBINED datetime also move backward -- this
+        # must produce exactly ONE time_goes_backward/reset finding from
+        # the combined analysis, never a second one from the date-only
+        # column's own (unrelated) sequence.
+        dates = _rows(["31/08/2026", "30/08/2026"])
+        times = _rows(["13:09:44.305", "13:09:45.505"])
+
+        result = detect_split_date_time(dates, times, requested_options={})
+
+        backward_like_codes = [
+            d.code for d in result.diagnostics
+            if d.code in (DIAGNOSTIC_TIME_GOES_BACKWARD, DIAGNOSTIC_TIMESTAMP_RESET_SUSPECTED)
+        ]
+        assert len(backward_like_codes) == 1
+
+    def test_large_gap_in_combined_datetime_is_flagged(self):
+        dates = _rows(["31/08/2026", "31/08/2026", "31/08/2026"])
+        times = _rows(["13:14:01", "13:14:02", "13:20:00"])
+
+        result = detect_split_date_time(dates, times, requested_options={})
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_LARGE_TIME_GAP in codes
+
+    def test_well_behaved_split_date_time_has_no_timing_diagnostics(self):
+        dates = _rows(["31/08/2026", "31/08/2026", "31/08/2026"])
+        times = _rows(["13:14:01", "13:14:02", "13:14:03"])
+
+        result = detect_split_date_time(dates, times, requested_options={})
+
         assert result.diagnostics == []
 
 

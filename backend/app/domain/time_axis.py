@@ -286,6 +286,108 @@ DIAGNOSTIC_UNEXPECTED_BUCKET_SAMPLE_COUNT = "unexpected_bucket_sample_count"
 DIAGNOSTIC_CADENCE_NOT_RELIABLE = "cadence_not_reliable"
 DIAGNOSTIC_ANCHOR_ASSUMPTION_REQUIRED = "anchor_assumption_required"
 
+#: Slice 8D (DEC-072, "Time Irregularity Diagnostics") -- the small set
+#: of GENUINELY NEW diagnostic codes this slice adds, filling the one
+#: real gap left by Slices 8A-8C: `absolute_datetime`/`split_date_time`
+#: never checked row-to-row timing quality at all (only elapsed_numeric/
+#: sample_index, and repeated_timestamp_precision_loss's own bucket
+#: cadence, ever did). Every OTHER condition Slice 8D's own task asks
+#: for already has an established code from an earlier slice --
+#: `missing_datetime_value`/`missing_elapsed_value`/`missing_sample_index`
+#: (missing timestamp), `unparseable_datetime` (unparseable timestamp),
+#: `mixed_datetime_format` (mixed format), `ambiguous_date_order`
+#: (ambiguous date order), `repeated_timestamp_detected`/
+#: `elapsed_time_goes_backward`/`repeated_elapsed_time`/
+#: `non_uniform_elapsed_interval`/`sample_index_gap`/
+#: `repeated_sample_index`/`sample_index_goes_backward`/
+#: `possible_missing_sample`/`unexpected_bucket_sample_count`/
+#: `cadence_not_reliable` (their own respective family's repeat/backward/
+#: gap/cadence findings) -- reused verbatim, never renamed, per this
+#: slice's own "prefer consolidation... do not rename existing public
+#: codes unnecessarily" instruction.
+#:
+#: `DIAGNOSTIC_PARTIAL_MIDNIGHT_ROLLOVER_SUSPECTED` is checked BEFORE
+#: `DIAGNOSTIC_TIMESTAMP_RESET_SUSPECTED` for a `partial`-family
+#: backward transition specifically -- a time-of-day column wrapping
+#: `23:59:59 -> 00:00:00` is a distinct, well-understood condition
+#: (§D), never generic backward-time corruption, and never implies a
+#: fabricated date or an automatic day increment.
+#:
+#: All five are `SEVERITY_WARNING`/`AMBIGUITY_UNAMBIGUOUS` -- the exact
+#: same combination `elapsed_time_goes_backward`/`sample_index_gap`
+#: already use: attention-worthy once surfaced (via the existing
+#: `_has_attention_worthy_diagnostic` -> `needs_attention` path), but
+#: NEVER blocking `confirmed=true` (only `AMBIGUITY_AMBIGUOUS` does
+#: that) -- these are "flag, never force a decision" findings per
+#: CSV_EXCEL_TIME_INTERPRETATION.md §11's own table, not a "the user
+#: must choose" case. No new `resolve_status()` rule was needed for
+#: this slice at all.
+DIAGNOSTIC_TIME_GOES_BACKWARD = "time_goes_backward"
+DIAGNOSTIC_LARGE_TIME_GAP = "large_time_gap"
+DIAGNOSTIC_TIMESTAMP_RESET_SUSPECTED = "timestamp_reset_suspected"
+DIAGNOSTIC_PARTIAL_MIDNIGHT_ROLLOVER_SUSPECTED = "partial_midnight_rollover_suspected"
+DIAGNOSTIC_NON_UNIFORM_INTERVAL = "non_uniform_interval"
+
+#: Slice 8D (§N/§O): lightweight, INTERNAL/UX grouping labels only --
+#: never mapped to `blocking`/`warning`/`info` (that mapping, if any,
+#: remains Slice 9's own decision, per this module's own docstring on
+#: `KNOWN_DIAGNOSTIC_SEVERITY_HINTS`). Computed from `code` via
+#: `diagnostic_category()` below, never stored as a second, independently
+#: settable field -- one canonical mapping, not N call sites each having
+#: to remember to set it correctly.
+CATEGORY_FORMAT = "format"
+CATEGORY_ORDERING = "ordering"
+CATEGORY_GAP = "gap"
+CATEGORY_REPEAT = "repeat"
+CATEGORY_SAMPLING = "sampling"
+CATEGORY_AMBIGUITY = "ambiguity"
+KNOWN_DIAGNOSTIC_CATEGORIES = (
+    CATEGORY_FORMAT, CATEGORY_ORDERING, CATEGORY_GAP, CATEGORY_REPEAT, CATEGORY_SAMPLING, CATEGORY_AMBIGUITY,
+)
+
+#: One central code->category table (Slice 8D) -- covers every
+#: diagnostic code produced anywhere in Slices 8A-8D. A code not listed
+#: here (future slice) simply has no category yet (`None`), never a
+#: crash -- see `diagnostic_category()`.
+_DIAGNOSTIC_CATEGORY_BY_CODE: dict[str, str] = {
+    DIAGNOSTIC_AMBIGUOUS_DATE_ORDER: CATEGORY_AMBIGUITY,
+    DIAGNOSTIC_UNPARSEABLE_DATETIME: CATEGORY_FORMAT,
+    DIAGNOSTIC_MIXED_DATETIME_FORMAT: CATEGORY_FORMAT,
+    DIAGNOSTIC_MISSING_DATETIME_VALUE: CATEGORY_FORMAT,
+    DIAGNOSTIC_TIMEZONE_INCONSISTENT: CATEGORY_FORMAT,
+    DIAGNOSTIC_TIME_ONLY_NOT_ABSOLUTE: CATEGORY_FORMAT,
+    DIAGNOSTIC_MISSING_ELAPSED_UNIT: CATEGORY_AMBIGUITY,
+    DIAGNOSTIC_NON_NUMERIC_ELAPSED_VALUE: CATEGORY_FORMAT,
+    DIAGNOSTIC_MISSING_ELAPSED_VALUE: CATEGORY_FORMAT,
+    DIAGNOSTIC_ELAPSED_TIME_GOES_BACKWARD: CATEGORY_ORDERING,
+    DIAGNOSTIC_REPEATED_ELAPSED_TIME: CATEGORY_REPEAT,
+    DIAGNOSTIC_NON_UNIFORM_ELAPSED_INTERVAL: CATEGORY_SAMPLING,
+    DIAGNOSTIC_NON_NUMERIC_SAMPLE_INDEX: CATEGORY_FORMAT,
+    DIAGNOSTIC_MISSING_SAMPLE_INDEX: CATEGORY_FORMAT,
+    DIAGNOSTIC_SAMPLE_INDEX_GOES_BACKWARD: CATEGORY_ORDERING,
+    DIAGNOSTIC_REPEATED_SAMPLE_INDEX: CATEGORY_REPEAT,
+    DIAGNOSTIC_SAMPLE_INDEX_GAP: CATEGORY_GAP,
+    DIAGNOSTIC_REPEATED_TIMESTAMP_DETECTED: CATEGORY_REPEAT,
+    DIAGNOSTIC_PRECISION_LOSS_SUSPECTED: CATEGORY_REPEAT,
+    DIAGNOSTIC_INCONSISTENT_BUCKET_COUNT: CATEGORY_SAMPLING,
+    DIAGNOSTIC_POSSIBLE_MISSING_SAMPLE: CATEGORY_SAMPLING,
+    DIAGNOSTIC_UNEXPECTED_BUCKET_SAMPLE_COUNT: CATEGORY_SAMPLING,
+    DIAGNOSTIC_CADENCE_NOT_RELIABLE: CATEGORY_SAMPLING,
+    DIAGNOSTIC_ANCHOR_ASSUMPTION_REQUIRED: CATEGORY_REPEAT,
+    DIAGNOSTIC_TIME_GOES_BACKWARD: CATEGORY_ORDERING,
+    DIAGNOSTIC_TIMESTAMP_RESET_SUSPECTED: CATEGORY_ORDERING,
+    DIAGNOSTIC_PARTIAL_MIDNIGHT_ROLLOVER_SUSPECTED: CATEGORY_ORDERING,
+    DIAGNOSTIC_LARGE_TIME_GAP: CATEGORY_GAP,
+    DIAGNOSTIC_NON_UNIFORM_INTERVAL: CATEGORY_SAMPLING,
+}
+
+
+def diagnostic_category(code: str) -> str | None:
+    """The Slice 8D UX-grouping category for a diagnostic `code`, or
+    `None` if this code predates the category concept entirely (never
+    raises)."""
+    return _DIAGNOSTIC_CATEGORY_BY_CODE.get(code)
+
 
 @dataclass(slots=True, frozen=True)
 class TimeAxisConfiguration:
@@ -361,7 +463,14 @@ class TimeAxisDiagnostic:
     optional, structured data bag -- e.g. `{"unparsed_count": 3,
     "sample_size": 12}`) for a UI that wants more than the human-
     readable `message` alone; never required, never load-bearing for
-    `resolve_status()`."""
+    `resolve_status()`.
+
+    `category` (Slice 8D, §N/§O) is a COMPUTED property, not a stored
+    field -- looked up from `code` via `diagnostic_category()` above, so
+    every diagnostic ever constructed (including every one from Slices
+    7/8A/8B/8C, none of which needed to change) already has a correct
+    `category` with zero call-site churn. Internal/UX grouping only,
+    never mapped to `blocking`/`warning`/`info`."""
 
     severity_hint: str
     code: str
@@ -370,6 +479,10 @@ class TimeAxisDiagnostic:
     suggested_action: str | None = None
     ambiguity: str = AMBIGUITY_UNAMBIGUOUS
     details: dict[str, Any] | None = None
+
+    @property
+    def category(self) -> str | None:
+        return diagnostic_category(self.code)
 
 
 @dataclass(slots=True, frozen=True)

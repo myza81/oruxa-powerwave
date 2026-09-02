@@ -12,8 +12,22 @@ from app.domain.time_axis import (
     AMBIGUITY_AMBIGUOUS,
     AMBIGUITY_INVALID,
     AMBIGUITY_UNAMBIGUOUS,
+    CATEGORY_AMBIGUITY,
+    CATEGORY_FORMAT,
+    CATEGORY_GAP,
+    CATEGORY_ORDERING,
+    CATEGORY_REPEAT,
+    CATEGORY_SAMPLING,
     CONFIDENCE_HIGH,
     CONFIDENCE_UNKNOWN,
+    DIAGNOSTIC_AMBIGUOUS_DATE_ORDER,
+    DIAGNOSTIC_LARGE_TIME_GAP,
+    DIAGNOSTIC_MIXED_DATETIME_FORMAT,
+    DIAGNOSTIC_NON_UNIFORM_INTERVAL,
+    DIAGNOSTIC_PARTIAL_MIDNIGHT_ROLLOVER_SUSPECTED,
+    DIAGNOSTIC_REPEATED_TIMESTAMP_DETECTED,
+    DIAGNOSTIC_TIME_GOES_BACKWARD,
+    DIAGNOSTIC_TIMESTAMP_RESET_SUSPECTED,
     FAMILY_ABSOLUTE,
     FAMILY_ELAPSED,
     FAMILY_PARTIAL,
@@ -26,6 +40,7 @@ from app.domain.time_axis import (
     KNOWN_AMBIGUITY_LEVELS,
     KNOWN_CONFIDENCE_LEVELS,
     KNOWN_DATE_ORDERS,
+    KNOWN_DIAGNOSTIC_CATEGORIES,
     KNOWN_PROVENANCES,
     KNOWN_TIME_AXIS_STATUSES,
     KNOWN_TIME_FAMILIES,
@@ -43,6 +58,7 @@ from app.domain.time_axis import (
     TimeAxisConfiguration,
     TimeAxisDiagnostic,
     build_interpretation_result,
+    diagnostic_category,
     resolve_status,
 )
 
@@ -516,6 +532,97 @@ class TestResolveStatusAttentionWorthyFilter:
             interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, confirmed=False,
         )
         diagnostic = TimeAxisDiagnostic(severity_hint="warning", code="mixed_datetime_format", message="msg")
+
+        status = resolve_status(config, columns_still_time_axis=True, diagnostics=[diagnostic])
+
+        assert status == STATUS_NEEDS_ATTENTION
+
+
+# ---- CSV/Excel ingestion Slice 8D (DEC-072): time-irregularity
+# diagnostic vocabulary/category infrastructure. Detection logic itself
+# lives in app.services.time_axis_interpreters -- these tests cover only
+# the domain-layer shapes: the five new diagnostic codes, and the
+# `category` COMPUTED property (never a stored field, so no existing
+# diagnostic construction anywhere needed to change).
+
+
+class TestSlice8DDiagnosticCodesExist:
+    def test_five_new_codes_are_distinct_strings(self):
+        codes = {
+            DIAGNOSTIC_TIME_GOES_BACKWARD,
+            DIAGNOSTIC_LARGE_TIME_GAP,
+            DIAGNOSTIC_TIMESTAMP_RESET_SUSPECTED,
+            DIAGNOSTIC_PARTIAL_MIDNIGHT_ROLLOVER_SUSPECTED,
+            DIAGNOSTIC_NON_UNIFORM_INTERVAL,
+        }
+        assert len(codes) == 5
+        assert all(isinstance(c, str) and c for c in codes)
+
+
+class TestDiagnosticCategory:
+    def test_new_slice_8d_codes_have_a_category(self):
+        assert diagnostic_category(DIAGNOSTIC_TIME_GOES_BACKWARD) == CATEGORY_ORDERING
+        assert diagnostic_category(DIAGNOSTIC_TIMESTAMP_RESET_SUSPECTED) == CATEGORY_ORDERING
+        assert diagnostic_category(DIAGNOSTIC_PARTIAL_MIDNIGHT_ROLLOVER_SUSPECTED) == CATEGORY_ORDERING
+        assert diagnostic_category(DIAGNOSTIC_LARGE_TIME_GAP) == CATEGORY_GAP
+        assert diagnostic_category(DIAGNOSTIC_NON_UNIFORM_INTERVAL) == CATEGORY_SAMPLING
+
+    def test_pre_existing_codes_also_get_a_category_with_zero_call_site_changes(self):
+        # These diagnostics were constructed by Slices 8A/8C long before
+        # `category` existed -- proving the computed-property design
+        # needed no changes to any existing `TimeAxisDiagnostic(...)`
+        # call site anywhere in the codebase.
+        assert diagnostic_category(DIAGNOSTIC_AMBIGUOUS_DATE_ORDER) == CATEGORY_AMBIGUITY
+        assert diagnostic_category(DIAGNOSTIC_MIXED_DATETIME_FORMAT) == CATEGORY_FORMAT
+        assert diagnostic_category(DIAGNOSTIC_REPEATED_TIMESTAMP_DETECTED) == CATEGORY_REPEAT
+
+    def test_unknown_code_returns_none_never_raises(self):
+        assert diagnostic_category("some_future_code_not_yet_categorized") is None
+
+    def test_every_known_category_is_a_stable_string(self):
+        assert len(KNOWN_DIAGNOSTIC_CATEGORIES) == 6
+        assert all(isinstance(c, str) and c for c in KNOWN_DIAGNOSTIC_CATEGORIES)
+
+    def test_diagnostic_own_category_property_matches_the_module_function(self):
+        diagnostic = TimeAxisDiagnostic(severity_hint="warning", code=DIAGNOSTIC_TIME_GOES_BACKWARD, message="msg")
+
+        assert diagnostic.category == diagnostic_category(DIAGNOSTIC_TIME_GOES_BACKWARD) == CATEGORY_ORDERING
+
+    def test_a_pre_existing_diagnostic_instance_gets_a_category_too(self):
+        # Constructed exactly the way Slice 8A code already does, with
+        # no `category` argument at all -- the property still resolves
+        # correctly since it is never a stored field.
+        diagnostic = TimeAxisDiagnostic(severity_hint="warning", code=DIAGNOSTIC_MIXED_DATETIME_FORMAT, message="msg")
+
+        assert diagnostic.category == CATEGORY_FORMAT
+
+
+class TestSlice8DDiagnosticsNeverBlockConfirm:
+    """Every new Slice 8D diagnostic is SEVERITY_WARNING/AMBIGUITY_
+    UNAMBIGUOUS -- attention-worthy once present, but never one of the
+    `AMBIGUITY_AMBIGUOUS` findings that block `confirmed=true` at the
+    service layer. Confirmed here at the `resolve_status()` level: a
+    confirmed configuration whose only diagnostic is one of these five
+    still reaches `needs_attention`, never `review_required` (only an
+    ambiguous diagnostic routes there while unconfirmed)."""
+
+    def test_time_goes_backward_does_not_force_review_required(self):
+        config = TimeAxisConfiguration(
+            column_indices=(0,), family=FAMILY_PARTIAL, provenance=PROVENANCE_NATIVE,
+            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, confirmed=False,
+        )
+        diagnostic = TimeAxisDiagnostic(severity_hint="warning", code=DIAGNOSTIC_TIME_GOES_BACKWARD, message="msg")
+
+        status = resolve_status(config, columns_still_time_axis=True, diagnostics=[diagnostic])
+
+        assert status == STATUS_NEEDS_ATTENTION
+
+    def test_large_time_gap_confirmed_still_shows_needs_attention(self):
+        config = TimeAxisConfiguration(
+            column_indices=(0,), family=FAMILY_ABSOLUTE, provenance=PROVENANCE_NATIVE,
+            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, confirmed=True,
+        )
+        diagnostic = TimeAxisDiagnostic(severity_hint="warning", code=DIAGNOSTIC_LARGE_TIME_GAP, message="msg")
 
         status = resolve_status(config, columns_still_time_axis=True, diagnostics=[diagnostic])
 

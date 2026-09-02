@@ -1840,7 +1840,9 @@ class TestTimeAxisAbsoluteDatetimePutEndpoint:
 
 class TestTimeAxisSplitDateTimePutEndpoint:
     def test_valid_split_date_time(self, client):
-        source_id = _upload_csv(client, content=b"31/08/2026,13:09:44.305\n30/08/2026,13:09:45.505\n")
+        # Chronologically ascending -- avoids also exercising Slice 8D's
+        # own backward-time detection, covered by its own tests.
+        source_id = _upload_csv(client, content=b"30/08/2026,13:09:44.305\n31/08/2026,13:09:45.505\n")
         client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
         client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "time_axis"})
 
@@ -1990,6 +1992,134 @@ class TestTimeAxisAbsoluteDatetimeDataPreservationViaApi:
 
         rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()["rows"]
         assert [r["cells"][0] for r in rows] == ["2026-08-31 13:09:46", "garbage", "2026-08-31 13:09:44"]
+
+
+# ---- CSV/Excel ingestion Slice 8D (DEC-072): time-irregularity
+# diagnostics -- API-level coverage confirming diagnostics flow through
+# the EXISTING `PUT`/`GET .../time-axis` and dry-run `POST .../interpret`
+# endpoints (no new endpoint, no schema beyond the additive `category`
+# field). Every CSV fixture below is headerless.
+
+
+class TestTimeAxisTimingIrregularityDiagnosticsViaApi:
+    def test_backward_time_diagnostic_returned_through_put_endpoint(self, client):
+        source_id = _upload_csv(client, content=b"13:14:01.500\n13:14:01.600\n13:14:01.400\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        codes = {d["code"] for d in body["diagnostics"]}
+        assert "time_goes_backward" in codes
+        diag = next(d for d in body["diagnostics"] if d["code"] == "time_goes_backward")
+        assert diag["category"] == "ordering"
+        assert diag["location"]["row_number"] == 3
+
+    def test_partial_midnight_rollover_returned_through_get_endpoint(self, client):
+        source_id = _upload_csv(client, content=b"23:59:59\n23:59:59\n00:00:00\n00:00:00\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime"},
+        )
+
+        resp = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis")
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["family"] == "partial"
+        codes = {d["code"] for d in body["diagnostics"]}
+        assert "partial_midnight_rollover_suspected" in codes
+        assert "time_goes_backward" not in codes
+
+    def test_large_time_gap_returned_through_dry_run_interpret_endpoint(self, client):
+        source_id = _upload_csv(client, content=b"13:14:01\n13:14:02\n13:20:00\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.post(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis/interpret",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        codes = {d["code"] for d in body["diagnostics"]}
+        assert "large_time_gap" in codes
+
+        # Dry-run remains non-mutating.
+        summary = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis")
+        assert summary.json()["status"] == "unconfigured"
+
+    def test_missing_timestamp_row_preserved(self, client):
+        source_id = _upload_csv(client, content=b"2026-08-31 13:09:44\n\n2026-08-31 13:09:46\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime"},
+        )
+        codes = {d["code"] for d in resp.json()["diagnostics"]}
+        assert "missing_datetime_value" in codes
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()["rows"]
+        assert len(rows) == 3
+
+    def test_this_slice_never_gates_readiness_or_promotes_issues(self, client):
+        source_id = _upload_csv(client, content=b"13:14:01\n13:14:02\n13:20:00\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime"},
+        )
+
+        issues = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues")
+        assert issues.status_code == 200
+        codes = {issue["code"] for issue in issues.json()["issues"]}
+        assert "large_time_gap" not in codes
+        assert "time_goes_backward" not in codes
+
+
+class TestTimeAxisTimingIrregularityExcelWorksheetIsolationViaApi:
+    def test_isolated_per_worksheet(self, client):
+        content = _build_xlsx({
+            "A": [["13:14:01.500"], ["13:14:01.600"], ["13:14:01.400"]],
+            "B": [["not-a-time"]],
+        })
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "m.xlsx"),
+        ).json()["source_id"]
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 0})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime"},
+        )
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 1})
+        resp_b = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis")
+        assert resp_b.json()["status"] == "unconfigured"
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 0})
+        resp_a = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis")
+        codes = {d["code"] for d in resp_a.json()["diagnostics"]}
+        assert "time_goes_backward" in codes
+
+
+class TestTimeAxisTimingIrregularityComtradeRegressionUnaffected:
+    def test_comtrade_sources_endpoint_still_empty(self, client):
+        source_id = _upload_csv(client, content=b"13:14:01\n13:14:02\n13:20:00\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime"},
+        )
+
+        assert client.get("/api/v1/workspaces/ws-1/sources").json() == []
 
 
 # ---- CSV/Excel ingestion Slice 8B (DEC-072): elapsed numeric time +

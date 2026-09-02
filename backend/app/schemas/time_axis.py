@@ -15,6 +15,13 @@ the dry-run `TimeAxisInterpretRequest`/`TimeAxisInterpretPreviewOut`
 pair for `POST .../working/time-axis/interpret`
 (`app.services.time_axis_service.interpret_time_axis`) and
 `TimeAxisPreviewRowOut` for its own bounded preview rows.
+
+Slice 8D adds `TimeAxisDiagnosticOut.category` -- an echo of
+`TimeAxisDiagnostic.category`'s own COMPUTED property
+(`app.domain.time_axis.diagnostic_category()`), optional/`None` for any
+diagnostic code that predates the category concept. Purely an
+internal/UX grouping aid for the frontend, never mapped to
+`blocking`/`warning`/`info` readiness severity.
 """
 
 from __future__ import annotations
@@ -42,6 +49,7 @@ class TimeAxisDiagnosticOut(BaseModel):
     suggested_action: str | None = None
     ambiguity: str = "unambiguous"
     details: dict[str, Any] | None = None
+    category: str | None = None
 
     @classmethod
     def from_domain(cls, diagnostic: TimeAxisDiagnostic) -> "TimeAxisDiagnosticOut":
@@ -53,6 +61,7 @@ class TimeAxisDiagnosticOut(BaseModel):
             suggested_action=diagnostic.suggested_action,
             ambiguity=diagnostic.ambiguity,
             details=diagnostic.details,
+            category=diagnostic.category,
         )
 
 

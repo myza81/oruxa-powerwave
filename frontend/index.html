@@ -4620,6 +4620,13 @@
                         <div><dt>Columns</dt><dd id="wwDataPrepTimeAxisSummaryColumns">None selected</dd></div>
                         <div><dt>Interpretation</dt><dd id="wwDataPrepTimeAxisSummaryInterpretation">—</dd></div>
                         <div><dt>Status</dt><dd id="wwDataPrepTimeAxisSummaryStatus">Unconfigured</dd></div>
+                        <!-- Slice 8D: a compact finding COUNT only -- the
+                             actual findings are never shown here, only
+                             inside the expanded review (the shared
+                             #wwDataPrepTimeAxisDiagnostics list further
+                             down), per this slice's own "diagnostics
+                             should not overwhelm" requirement. -->
+                        <div id="wwDataPrepTimeAxisSummaryDiagnosticsRow" hidden><dt>Diagnostics</dt><dd id="wwDataPrepTimeAxisSummaryDiagnostics">—</dd></div>
                     </dl>
                     <div id="wwDataPrepTimeAxisDetails" hidden>
                         <p class="hint" id="wwDataPrepTimeAxisNoColumnsHint" hidden>No Time Axis columns selected -- assign the "Time Axis" role to one or more columns in Structure first.</p>
@@ -7507,6 +7514,18 @@
 
             const status = summary ? summary.status : "unconfigured";
             statusEl.textContent = WW_DATA_PREP_TIME_AXIS_STATUS_LABELS[status] || status;
+
+            // Slice 8D: a compact COUNT only ("2 findings") -- never the
+            // findings themselves, which stay inside the expanded review
+            // (the existing #wwDataPrepTimeAxisDiagnostics list) so this
+            // always-visible summary never grows unbounded.
+            const diagnosticsRow = document.getElementById("wwDataPrepTimeAxisSummaryDiagnosticsRow");
+            const diagnosticCount = (summary && summary.diagnostics && summary.diagnostics.length) || 0;
+            diagnosticsRow.hidden = diagnosticCount === 0;
+            if (diagnosticCount > 0) {
+                document.getElementById("wwDataPrepTimeAxisSummaryDiagnostics").textContent =
+                    diagnosticCount + (diagnosticCount === 1 ? " finding" : " findings");
+            }
         }
 
         // Owner-only unit/interval fields (task's own progressive-

@@ -569,7 +569,9 @@ class TestAbsoluteDatetimeSetAndGet:
 class TestSplitDateTimeSetAndGet:
     def test_valid_split_date_time(self):
         registry = PreparationSessionRegistry()
-        source_id = _add_csv(registry, b"31/08/2026,13:09:44.305\n30/08/2026,13:09:45.505\n")
+        # Chronologically ascending -- avoids also exercising Slice 8D's
+        # own backward-time detection, covered by its own tests.
+        source_id = _add_csv(registry, b"30/08/2026,13:09:44.305\n31/08/2026,13:09:45.505\n")
         _mark_time_axis(registry, source_id, 0, 1)
 
         result = set_time_axis_configuration(

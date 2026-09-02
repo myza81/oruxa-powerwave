@@ -112,6 +112,65 @@ sample aligned to the displayed timestamp") -- this is disclosed as a
 STATED ASSUMPTION, never presented as recovered original phase (task's
 own "reconstruction, never recovery" framing, restated from
 CSV_EXCEL_TIME_INTERPRETATION.md §7).
+
+**Slice 8D: detect, normalize, structure, report -- never repair.**
+`absolute_datetime`/`split_date_time` are the ONE place this module
+never checked row-to-row timing QUALITY at all (Slice 8B's
+`elapsed_numeric`/`sample_index` and Slice 8C's own bucket-cadence
+analysis already did). `_analyze_time_sequence()` fills that gap with
+ONE shared, family-agnostic analyzer, called only once a resolved
+absolute/partial reading already exists (never for a still-ambiguous or
+still-unparseable one, where no single trustworthy sequence exists to
+walk). It never sorts, rewrites, or drops a row -- every finding is
+purely diagnostic, added to the SAME `diagnostics` list every other
+finding in this module already returns through.
+
+A backward transition is classified into exactly one of three
+DISTINCT conditions, most specific first: (1) for `partial` sources
+only, a transition from within `_MIDNIGHT_ROLLOVER_WINDOW_SECONDS` of
+the end of the day to within that same window of the start of the day
+is `partial_midnight_rollover_suspected` -- a distinct, well-understood
+condition, never generic corruption, and never a fabricated date or an
+automatic day increment (§D); (2) otherwise, a backward jump whose own
+magnitude is at least `_LARGE_GAP_MULTIPLIER` times the SMALLEST
+positive consecutive delta observed elsewhere in the sample (the best
+available proxy for "the expected local interval" without a separately
+declared cadence -- §F) is `timestamp_reset_suspected` -- "looks like a
+clock reset, not ordinary jitter," never claimed with certainty (§C);
+(3) any other backward step is the plain `time_goes_backward` (§B). A
+FORWARD step at least that same multiple of the reference is
+`large_time_gap` (§E/§F) -- deliberately the SAME multiplier in both
+directions, since a disproportionate jump is disproportionate
+regardless of sign. Using the MINIMUM (not the mean or median) of the
+positive deltas as the reference is a deliberate, simple, documented
+choice: it is naturally robust to a single large outlier inflating its
+own comparison point, without requiring a second, more elaborate
+statistical pass (task's own "do not overengineer statistical
+detection" instruction). A single, dataset-level `non_uniform_interval`
+finding (mirroring `non_uniform_elapsed_interval`'s own once-per-call
+shape, never once per transition) covers the softer case where the
+remaining ordinary forward steps still vary beyond a moderate ±20%
+tolerance of their own median -- looser than `elapsed_numeric`'s own
+±1%, since absolute/partial timestamps are typically second-granularity
+and naturally jitter by whole seconds even under an otherwise-uniform
+real-world cadence.
+
+Exact repeats (`delta == 0`) are deliberately NOT flagged here at all --
+Slice 8C's own `repeated_timestamp_precision_loss` interpreter already
+owns that condition in full (bucket detection, confidence, suggested
+reconstruction); duplicating even a bare presence check here would be
+exactly the "duplicate the detection algorithm" this slice's own task
+explicitly says not to do. A user who cares about repeated timestamps
+specifically is expected to switch interpreters, not read it off of
+`absolute_datetime`/`split_date_time`'s own diagnostics.
+
+Every new diagnostic here is `SEVERITY_WARNING`/`AMBIGUITY_UNAMBIGUOUS`
+-- the exact combination `elapsed_time_goes_backward`/`sample_index_gap`
+already use: surfaced via the existing `needs_attention` path once
+present, but never blocking `confirmed=true` (only `AMBIGUITY_AMBIGUOUS`
+does that) -- CSV_EXCEL_TIME_INTERPRETATION.md §11's own "flag; never
+force a decision" table, not a "the user must choose" case. No new
+`resolve_status()` rule was needed for this slice at all.
 """
 
 from __future__ import annotations
@@ -122,7 +181,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
-from app.domain.preparation_issue import SEVERITY_INFO, SEVERITY_WARNING
+from app.domain.preparation_issue import SEVERITY_INFO, SEVERITY_WARNING, IssueLocation
 from app.domain.time_axis import (
     AMBIGUITY_AMBIGUOUS,
     AMBIGUITY_INVALID,
@@ -140,6 +199,7 @@ from app.domain.time_axis import (
     DIAGNOSTIC_CADENCE_NOT_RELIABLE,
     DIAGNOSTIC_ELAPSED_TIME_GOES_BACKWARD,
     DIAGNOSTIC_INCONSISTENT_BUCKET_COUNT,
+    DIAGNOSTIC_LARGE_TIME_GAP,
     DIAGNOSTIC_MISSING_DATETIME_VALUE,
     DIAGNOSTIC_MISSING_ELAPSED_UNIT,
     DIAGNOSTIC_MISSING_ELAPSED_VALUE,
@@ -148,6 +208,8 @@ from app.domain.time_axis import (
     DIAGNOSTIC_NON_NUMERIC_ELAPSED_VALUE,
     DIAGNOSTIC_NON_NUMERIC_SAMPLE_INDEX,
     DIAGNOSTIC_NON_UNIFORM_ELAPSED_INTERVAL,
+    DIAGNOSTIC_NON_UNIFORM_INTERVAL,
+    DIAGNOSTIC_PARTIAL_MIDNIGHT_ROLLOVER_SUSPECTED,
     DIAGNOSTIC_POSSIBLE_MISSING_SAMPLE,
     DIAGNOSTIC_PRECISION_LOSS_SUSPECTED,
     DIAGNOSTIC_REPEATED_ELAPSED_TIME,
@@ -155,7 +217,9 @@ from app.domain.time_axis import (
     DIAGNOSTIC_REPEATED_TIMESTAMP_DETECTED,
     DIAGNOSTIC_SAMPLE_INDEX_GAP,
     DIAGNOSTIC_SAMPLE_INDEX_GOES_BACKWARD,
+    DIAGNOSTIC_TIME_GOES_BACKWARD,
     DIAGNOSTIC_TIME_ONLY_NOT_ABSOLUTE,
+    DIAGNOSTIC_TIMESTAMP_RESET_SUSPECTED,
     DIAGNOSTIC_UNEXPECTED_BUCKET_SAMPLE_COUNT,
     DIAGNOSTIC_UNPARSEABLE_DATETIME,
     FAMILY_ABSOLUTE,
@@ -248,6 +312,186 @@ def _parse_time_only(value: str) -> dt.time | None:
     return None
 
 
+# ---- Slice 8D: shared timing-irregularity analysis (§B-§F) -----------
+
+#: A transition (forward OR backward) is "large"/reset-scale when its
+#: own magnitude is at least this many times the smallest positive
+#: consecutive delta observed elsewhere in the bounded sample -- see
+#: this module's own docstring for why the MINIMUM (not mean/median) is
+#: used as the reference, and why one shared multiplier covers both
+#: `large_time_gap` and `timestamp_reset_suspected`.
+_LARGE_GAP_MULTIPLIER = 5.0
+
+#: How close to the day boundary (on both sides, in seconds) a
+#: `partial`-family backward transition must land to be treated as a
+#: midnight-rollover CANDIDATE rather than an ordinary/reset backward
+#: step (§D).
+_MIDNIGHT_ROLLOVER_WINDOW_SECONDS = 2.0
+
+#: Relative tolerance for the softer, dataset-level `non_uniform_interval`
+#: finding -- looser than `elapsed_numeric`'s own ±1% (see this module's
+#: own docstring for why).
+_NON_UNIFORM_INTERVAL_TOLERANCE = 0.2
+
+
+def _seconds_sequence_from_datetimes(pairs: list[tuple[int, dt.datetime | None]]) -> list[tuple[int, float]]:
+    """(Slice 8D) `absolute`-family rows -> `(row_number, seconds)` pairs,
+    relative to the FIRST successfully-parsed row's own value (only the
+    relative spacing ever matters to `_analyze_time_sequence`, so an
+    arbitrary but stable zero-point avoids any `datetime.timestamp()`
+    timezone/epoch concern). Rows that failed to parse are silently
+    excluded -- they already have their own missing/unparseable
+    diagnostic elsewhere; this sequence only ever walks rows it can
+    actually compare."""
+    resolved = [(row_number, value) for row_number, value in pairs if value is not None]
+    if not resolved:
+        return []
+    base = resolved[0][1]
+    return [(row_number, (value - base).total_seconds()) for row_number, value in resolved]
+
+
+def _seconds_sequence_from_times(pairs: list[tuple[int, dt.time | None]]) -> list[tuple[int, float]]:
+    """(Slice 8D) `partial`-family counterpart of
+    `_seconds_sequence_from_datetimes` -- seconds-from-midnight via the
+    SAME `_seconds_from_midnight` helper Slice 8C's own bucket analysis
+    already uses, never a second conversion."""
+    return [(row_number, _seconds_from_midnight(value)) for row_number, value in pairs if value is not None]
+
+
+def _analyze_time_sequence(ordered_seconds: list[tuple[int, float]], *, family: str) -> list[TimeAxisDiagnostic]:
+    """(Slice 8D, §B-§F) Shared, family-agnostic row-to-row timing
+    analysis over an already-RESOLVED sequence of `(row_number, seconds)`
+    pairs, in ORIGINAL row order -- never sorted, never used to repair
+    anything (Principle 3). Only ever called once `absolute_datetime`/
+    `split_date_time` already has a resolved, non-ambiguous reading --
+    see this module's own docstring for the full backward/reset/
+    rollover/gap/non-uniform classification rules and their rationale.
+    """
+    diagnostics: list[TimeAxisDiagnostic] = []
+    if len(ordered_seconds) < 2:
+        return diagnostics
+
+    deltas = [
+        (ordered_seconds[i][0], ordered_seconds[i + 1][0], ordered_seconds[i + 1][1] - ordered_seconds[i][1])
+        for i in range(len(ordered_seconds) - 1)
+    ]
+    positive_deltas = [delta for _, _, delta in deltas if delta > 0]
+    reference = min(positive_deltas) if positive_deltas else None
+
+    backward_rows: list[int] = []
+    reset_rows: list[int] = []
+    rollover_rows: list[int] = []
+    gap_rows: list[int] = []
+    normal_forward_deltas: list[float] = []
+
+    for index, (_prev_row, curr_row, delta) in enumerate(deltas):
+        if delta == 0:
+            # Exact repeats are Slice 8C's own condition -- see this
+            # module's own docstring for why this is deliberately never
+            # flagged here.
+            continue
+        if delta < 0:
+            prev_seconds = ordered_seconds[index][1]
+            curr_seconds = ordered_seconds[index + 1][1]
+            if (
+                family == FAMILY_PARTIAL
+                and prev_seconds >= 86400 - _MIDNIGHT_ROLLOVER_WINDOW_SECONDS
+                and curr_seconds <= _MIDNIGHT_ROLLOVER_WINDOW_SECONDS
+            ):
+                rollover_rows.append(curr_row)
+            elif reference is not None and abs(delta) >= reference * _LARGE_GAP_MULTIPLIER:
+                reset_rows.append(curr_row)
+            else:
+                backward_rows.append(curr_row)
+        elif reference is not None and delta >= reference * _LARGE_GAP_MULTIPLIER:
+            gap_rows.append(curr_row)
+        else:
+            normal_forward_deltas.append(delta)
+
+    if rollover_rows:
+        diagnostics.append(
+            TimeAxisDiagnostic(
+                severity_hint=SEVERITY_WARNING, code=DIAGNOSTIC_PARTIAL_MIDNIGHT_ROLLOVER_SUSPECTED,
+                message=(
+                    f"Time wraps from late in the day to early in the day near row {rollover_rows[0]} -- "
+                    "consistent with an ordinary midnight rollover in a time-of-day reading."
+                ),
+                suggested_action="No date is invented automatically -- this remains a time-of-day reading only.",
+                location=IssueLocation(row_number=rollover_rows[0]),
+                ambiguity=AMBIGUITY_UNAMBIGUOUS,
+                details={"rollover_count": len(rollover_rows)},
+            )
+        )
+    if reset_rows:
+        diagnostics.append(
+            TimeAxisDiagnostic(
+                severity_hint=SEVERITY_WARNING, code=DIAGNOSTIC_TIMESTAMP_RESET_SUSPECTED,
+                message=(
+                    f"A sharp backward jump near row {reset_rows[0]} looks like a possible clock reset, "
+                    "not ordinary backward jitter."
+                ),
+                suggested_action="Review the source recording for a restart or file concatenation around this point.",
+                location=IssueLocation(row_number=reset_rows[0]),
+                ambiguity=AMBIGUITY_UNAMBIGUOUS,
+                details={"reset_count": len(reset_rows)},
+            )
+        )
+    if backward_rows:
+        diagnostics.append(
+            TimeAxisDiagnostic(
+                severity_hint=SEVERITY_WARNING, code=DIAGNOSTIC_TIME_GOES_BACKWARD,
+                message=f"Interpreted time decreases at {len(backward_rows)} point(s) in the sampled rows, near row {backward_rows[0]}.",
+                location=IssueLocation(row_number=backward_rows[0]),
+                ambiguity=AMBIGUITY_UNAMBIGUOUS,
+                details={"backward_count": len(backward_rows)},
+            )
+        )
+    if gap_rows:
+        diagnostics.append(
+            TimeAxisDiagnostic(
+                severity_hint=SEVERITY_WARNING, code=DIAGNOSTIC_LARGE_TIME_GAP,
+                message=f"A timing gap near row {gap_rows[0]} is much larger than the typical interval in the sampled rows.",
+                location=IssueLocation(row_number=gap_rows[0]),
+                ambiguity=AMBIGUITY_UNAMBIGUOUS,
+                details={"gap_count": len(gap_rows)},
+            )
+        )
+    if len(normal_forward_deltas) >= 2:
+        median_normal = statistics.median(normal_forward_deltas)
+        tolerance = max(1e-9, median_normal * _NON_UNIFORM_INTERVAL_TOLERANCE)
+        if any(abs(d - median_normal) > tolerance for d in normal_forward_deltas):
+            diagnostics.append(
+                TimeAxisDiagnostic(
+                    severity_hint=SEVERITY_WARNING, code=DIAGNOSTIC_NON_UNIFORM_INTERVAL,
+                    message="The spacing between consecutive interpreted timestamps is not uniform across the sampled rows.",
+                    ambiguity=AMBIGUITY_UNAMBIGUOUS,
+                )
+            )
+    return diagnostics
+
+
+def _sequence_diagnostics_for_datetime_column(
+    non_empty: list[tuple[int, str]], *, family: str, date_order: str | None,
+) -> list[TimeAxisDiagnostic]:
+    """(Slice 8D) Builds the resolved per-row sequence for an ALREADY-
+    resolved `absolute_datetime` reading and runs `_analyze_time_sequence`
+    over it -- shared by every success branch of `detect_absolute_datetime`
+    below (never called for a still-ambiguous/mixed/unparseable reading,
+    where no single resolved sequence exists to walk safely). Reuses
+    `parse_absolute_datetime()` verbatim for the `absolute` case -- the
+    EXACT same parse path `build_absolute_datetime_preview` already
+    uses, never a second, potentially-divergent parsing implementation."""
+    if family == FAMILY_PARTIAL:
+        ordered = _seconds_sequence_from_times([(rn, _parse_time_only(v)) for rn, v in non_empty])
+        return _analyze_time_sequence(ordered, family=FAMILY_PARTIAL)
+    if family == FAMILY_ABSOLUTE and date_order and date_order != DATE_ORDER_AUTO:
+        ordered = _seconds_sequence_from_datetimes(
+            [(rn, parse_absolute_datetime(v, date_order=date_order)) for rn, v in non_empty]
+        )
+        return _analyze_time_sequence(ordered, family=FAMILY_ABSOLUTE)
+    return []
+
+
 @dataclass(slots=True, frozen=True)
 class _FormatMatch:
     """How well ONE candidate pattern explains the WHOLE sample --
@@ -310,6 +554,7 @@ def detect_absolute_datetime(
     *,
     requested_options: dict[str, Any],
     sample_size_label: str = "column",
+    include_sequence_diagnostics: bool = True,
 ) -> TimeAxisDetectionResult:
     """Single-column absolute datetime detection (task §A). Never
     scans anything beyond the already-bounded `raw_values_by_row` list
@@ -322,6 +567,16 @@ def detect_absolute_datetime(
     unambiguous-by-elimination or ISO reading always wins regardless of
     what was requested, since that is simply what the data says, not a
     preference to override.
+
+    `include_sequence_diagnostics` (Slice 8D) is `False` ONLY when
+    `detect_split_date_time()` reuses this function for its own DATE-only
+    sub-detection below -- a bare date column's own value sequence
+    (always midnight-anchored, one entry per calendar day) is not a
+    meaningful timing signal on its own; `detect_split_date_time()` runs
+    its OWN `_analyze_time_sequence()` pass over the COMBINED date+time
+    values instead, so this flag exists purely to avoid running (and
+    duplicating) the wrong sequence's own analysis, never to disable it
+    for a genuine single-column `absolute_datetime` caller.
     """
     diagnostics: list[TimeAxisDiagnostic] = []
     total = len(raw_values_by_row)
@@ -354,6 +609,8 @@ def detect_absolute_datetime(
                 ambiguity=AMBIGUITY_INVALID,
             )
         )
+        if include_sequence_diagnostics:
+            diagnostics.extend(_sequence_diagnostics_for_datetime_column(non_empty, family=FAMILY_PARTIAL, date_order=None))
         return TimeAxisDetectionResult(
             family=FAMILY_PARTIAL, provenance=PROVENANCE_NATIVE, confidence=CONFIDENCE_HIGH,
             diagnostics=diagnostics, resolved_options={},
@@ -361,6 +618,8 @@ def detect_absolute_datetime(
 
     iso_match = _score_pattern(raw_values, "iso8601", parser=lambda v, _p: _parse_iso(v))
     if iso_match.is_full_match:
+        if include_sequence_diagnostics:
+            diagnostics.extend(_sequence_diagnostics_for_datetime_column(non_empty, family=FAMILY_ABSOLUTE, date_order=DATE_ORDER_YMD))
         return TimeAxisDetectionResult(
             family=FAMILY_ABSOLUTE, provenance=PROVENANCE_NATIVE, confidence=CONFIDENCE_HIGH,
             diagnostics=diagnostics,
@@ -372,6 +631,8 @@ def detect_absolute_datetime(
 
     if len(candidate_orders) == 1:
         order = candidate_orders[0]
+        if include_sequence_diagnostics:
+            diagnostics.extend(_sequence_diagnostics_for_datetime_column(non_empty, family=FAMILY_ABSOLUTE, date_order=order))
         return TimeAxisDetectionResult(
             family=FAMILY_ABSOLUTE, provenance=PROVENANCE_NATIVE, confidence=CONFIDENCE_HIGH,
             diagnostics=diagnostics,
@@ -386,6 +647,8 @@ def detect_absolute_datetime(
             # open ambiguity, so no `ambiguous_date_order` diagnostic
             # is emitted for this outcome.
             match = per_order_match[requested_order]
+            if include_sequence_diagnostics:
+                diagnostics.extend(_sequence_diagnostics_for_datetime_column(non_empty, family=FAMILY_ABSOLUTE, date_order=requested_order))
             return TimeAxisDetectionResult(
                 family=FAMILY_ABSOLUTE, provenance=PROVENANCE_USER_SPECIFIED, confidence=CONFIDENCE_HIGH,
                 diagnostics=diagnostics,
@@ -450,8 +713,17 @@ def detect_split_date_time(
     unparseable time-of-day values) -- never a second ambiguity axis,
     since a time-of-day alone has no locale-dependent ordering to
     disambiguate.
+
+    Slice 8D: row-to-row timing-quality analysis (backward/reset/gap/
+    non-uniform) runs over the COMBINED date+time value per row, never
+    the date-only sequence `detect_absolute_datetime()` itself would
+    otherwise analyze -- see that function's own `include_sequence_
+    diagnostics` parameter docstring for why it is disabled here.
     """
-    date_result = detect_absolute_datetime(date_values_by_row, requested_options=requested_options, sample_size_label="date column")
+    date_result = detect_absolute_datetime(
+        date_values_by_row, requested_options=requested_options, sample_size_label="date column",
+        include_sequence_diagnostics=False,
+    )
 
     total = len(time_values_by_row)
     non_empty_times = [(row_number, str(value)) for row_number, value in time_values_by_row if value not in (None, "")]
@@ -485,6 +757,33 @@ def detect_split_date_time(
                     details={"matched": time_match.match_count, "sample_size": time_match.total_count},
                 )
             )
+
+    # Slice 8D: only run the combined-sequence analysis once the DATE
+    # column's own order is genuinely resolved (never for an unresolved
+    # ambiguity, an unparseable/mixed date column, or a bare time-only
+    # date column) -- exactly the same "only a trustworthy resolved
+    # reading gets walked" guardrail `detect_absolute_datetime()` itself
+    # applies to its own single-column case.
+    resolved_date_order = date_result.resolved_options.get("date_order")
+    has_blocking_date_issue = any(
+        d.code in (DIAGNOSTIC_AMBIGUOUS_DATE_ORDER, DIAGNOSTIC_MIXED_DATETIME_FORMAT, DIAGNOSTIC_UNPARSEABLE_DATETIME)
+        for d in date_result.diagnostics
+    )
+    if (
+        date_result.family == FAMILY_ABSOLUTE
+        and resolved_date_order
+        and resolved_date_order != DATE_ORDER_AUTO
+        and not has_blocking_date_issue
+    ):
+        combined_pairs: list[tuple[int, dt.datetime | None]] = []
+        for (row_number, date_value), (_, time_value) in zip(date_values_by_row, time_values_by_row):
+            if date_value in (None, "") or time_value in (None, ""):
+                continue
+            combined_pairs.append(
+                (row_number, _combine_date_and_time(str(date_value), str(time_value), date_order=resolved_date_order))
+            )
+        ordered = _seconds_sequence_from_datetimes(combined_pairs)
+        diagnostics.extend(_analyze_time_sequence(ordered, family=FAMILY_ABSOLUTE))
 
     return TimeAxisDetectionResult(
         family=date_result.family, provenance=date_result.provenance, confidence=date_result.confidence,

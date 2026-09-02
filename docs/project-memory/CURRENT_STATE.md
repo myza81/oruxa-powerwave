@@ -488,8 +488,46 @@ re-confirmed by the TG-FINAL audit):
   for the full implementation summary.
 
   Slice 8's five proposed initial interpreters are now all implemented
-  (8A/8B/8C); the full readiness validator (Slice 9+) is still
-  explicitly NOT part of any slice implemented so far — see
+  (8A/8B/8C).
+
+  **Slice 8D** (2026-09-02) implements Time Irregularity Diagnostics — a
+  DIAGNOSTIC-ONLY normalization layer over the irregular-timing
+  conditions CSV_EXCEL_TIME_INTERPRETATION.md §11's own table already
+  named, never a new interpreter and never readiness policy. The one
+  real gap it fills: `absolute_datetime`/`split_date_time` (Slice 8A)
+  never checked row-to-row timing quality at all — only
+  `elapsed_numeric`/`sample_index` (8B) and `repeated_timestamp_
+  precision_loss`'s own bucket cadence (8C) ever did. A new shared
+  `_analyze_time_sequence()` fills that gap, called only once a resolved
+  (non-ambiguous) reading already exists; for `split_date_time`
+  specifically it walks the COMBINED per-row date+time value, never the
+  date-only column's own sequence. Five genuinely new diagnostic codes
+  (`time_goes_backward`, `large_time_gap`, `timestamp_reset_suspected`,
+  `partial_midnight_rollover_suspected`, `non_uniform_interval`) — every
+  other condition already had an established code from an earlier
+  slice, reused verbatim. The reference "expected local interval" is the
+  MINIMUM positive consecutive delta in the bounded sample (robust to a
+  large outlier inflating its own comparison point); a transition at
+  least 5x that reference is "large" in either direction; a `partial`-
+  family transition from near the end of the day to near the start is
+  checked FIRST and reported as a midnight rollover instead — never a
+  fabricated date, never generic backward-time corruption. Exact repeats
+  are deliberately never flagged here (Slice 8C's own interpreter owns
+  that). All five new codes are `SEVERITY_WARNING`/`AMBIGUITY_UNAMBIGUOUS`
+  (the same combination `elapsed_time_goes_backward` already uses) — no
+  new `resolve_status()` rule was needed. A new `category` axis
+  (`format`/`ordering`/`gap`/`repeat`/`sampling`/`ambiguity`) is a
+  COMPUTED property on every `TimeAxisDiagnostic`, never a stored field,
+  so zero existing diagnostic construction anywhere needed to change.
+  No new API, no new endpoint. Frontend: the compact Time Axis summary
+  gained one "Diagnostics" row ("2 findings," hidden when none) — the
+  findings themselves stay inside the existing expanded-review list,
+  never a new top-level panel. See
+  [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 8](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
+  for the full implementation summary.
+
+  The full readiness validator (Slice 9+) is still explicitly NOT part
+  of any slice implemented so far — see
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md).
 
 ## Known intentional constraints / deferred items
@@ -569,13 +607,15 @@ issue codes derived live from configuration state) — explicitly NOT the
 full Readiness Validator, no readiness gate, no status transition.
 Slice 7 (the extensible time-axis interpretation FRAMEWORK), Slice 8A
 (the first two deterministic time-axis interpreters), Slice 8B (the
-next two -- elapsed numeric time, sample index), and Slice 8C (the
-fifth and final one -- repeated-timestamp/precision-loss detection and
-reconstruction, see above) are now implemented -- Slice 8's full
-five-interpreter set is complete. Slices 9–13 (the full Readiness
-Validator, canonical `DisturbanceRecord` conversion, existing waveform
-integration, export, and progressive automation) remain unimplemented
-and require their own explicit owner go-ahead before starting, per
+next two -- elapsed numeric time, sample index), Slice 8C (the fifth
+and final one -- repeated-timestamp/precision-loss detection and
+reconstruction), and Slice 8D (Time Irregularity Diagnostics -- a
+diagnostic-only normalization layer over Slices 8A-8C's own irregular-
+timing conditions, never a new interpreter, never readiness policy, see
+above) are now implemented. Slices 9–13 (the full Readiness Validator,
+canonical `DisturbanceRecord` conversion, existing waveform integration,
+export, and progressive automation) remain unimplemented and require
+their own explicit owner go-ahead before starting, per
 [Change governance](../../CLAUDE.md#change-governance) — being recorded
 in the architecture document's own slice sequence does not itself
 authorize starting any of them.
