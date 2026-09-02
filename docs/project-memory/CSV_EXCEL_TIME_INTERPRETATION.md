@@ -3,12 +3,16 @@
 Status: **Slice 7 (framework) is `[DONE, 2026-09-01]`. Slice 8A — the
 first two of §19's five initial interpreters (single-column absolute
 datetime, Date + Time) — is `[DONE, 2026-09-01]`. Slice 8B — the next
-two (elapsed numeric time, sample index) — is `[DONE, 2026-09-02]`, all
-implemented as real, deterministic (non-fuzzy) interpreters (see
+two (elapsed numeric time, sample index) — is `[DONE, 2026-09-02]`.
+Slice 8C — the fifth and final §19 interpreter (repeated-timestamp /
+precision-loss detection and user-approved reconstruction) — is
+`[DONE, 2026-09-02]`, all implemented as real, deterministic
+(non-fuzzy) interpreters (see
 [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 8](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
-for the full implementation summaries). §19's remaining item
-(repeated-timestamp/lost-precision detection) remains design-only / not
-yet implemented (a future Slice 8C).**
+for the full implementation summaries). §19's own five-interpreter list
+is now fully implemented; segmented/variable-cadence reconstruction
+(§7's own scope boundary) remains explicitly deferred, not a Slice 8C
+gap.**
 
 Date: 2026-09-01
 Source: owner-requested design checkpoint, preceding Slice 7. This
@@ -1045,6 +1049,102 @@ consistent with this section's own §8/§9 scope (none widen it):
   than 1) since sample-index semantics (§E) never define a step other
   than "the next one."
 
+**`[DONE, 2026-09-02]` Slice 8C implementation note**: item 5 above
+(repeated-timestamp/precision-loss detection) is implemented exactly as
+scoped in §7, as `repeated_timestamp_precision_loss` in the SAME
+`app.services.time_axis_interpreters` module — the framework's fifth
+and final §19 interpreter. No new top-level `TimeAxisConfiguration`/
+`TimeAxisDetectionResult` fields were needed anywhere (`unit`/
+`interval_seconds`/`options` already existed since Slice 7); the one
+new interpreter-specific setting, `anchor_offset_seconds`, lives in the
+pre-existing generic `options` bag.
+
+Concrete choices made during the Slice 8C implementation, all
+consistent with §7's own scope (none widen it):
+
+- **Bucket analysis groups CONSECUTIVE identical native-timestamp rows
+  only, in original row order** — never a full-dataset scan, never
+  sorted (§7's own "computed only over the CURRENT bounded... window"
+  rule, reused verbatim from the bounded-sampling architecture Slice
+  8A/8B already built). Both `absolute` and `partial` (time-of-day)
+  families are supported; `partial` never has a date invented for it.
+- **First and last buckets never penalize confidence.** They may be
+  truncated by the sample window's own edge, so only `interior_sizes =
+  bucket_sizes[1:-1]` (excluding both ends) feeds the stability check —
+  a sample that happens to start or end mid-bucket reads as no worse
+  than one that doesn't.
+- **The exact confidence rule** (§21's open question 2, now settled):
+  HIGH requires at least 2 equal-sized interior buckets; MEDIUM covers
+  either too few interior buckets to compare (but the buckets that do
+  exist are fully consistent) or an interior spread of at most 1; LOW
+  covers everything else, including fewer than 2 buckets total (no
+  transition to measure at all). Confidence is always qualitative
+  (High/Medium/Low) — never a percentage, per §6.
+- **Interval estimation excludes the first bucket's own estimate.**
+  Only the first bucket's row count can be a truncated undercount (the
+  sample window may start mid-bucket); its own
+  `span_to_next_bucket / bucket_size` estimate is excluded from the
+  `statistics.median()` fed by every other transition, falling back to
+  including it only when no other estimate exists at all.
+- **Reconstruction offered is a genuinely SEPARATE `review_required`
+  trigger from ambiguity, not a reuse of it.** Marking the "a
+  reconstruction is offered" diagnostic as `ambiguity: "ambiguous"`
+  (Slice 8A's own mechanism) would have made an accepted reconstruction
+  permanently unconfirmable, since the diagnostic disclosing the
+  suggestion is always present alongside it. Instead,
+  `provenance == PROVENANCE_RECONSTRUCTED` is its own new
+  `resolve_status()` precedence rule that ALSO routes to
+  `STATUS_REVIEW_REQUIRED` while unconfirmed, but does not block
+  `confirmed=true` from succeeding — directly implementing §15.3's "a
+  diagnostic exists AND/OR a reconstruction is offered" wording as two
+  independent triggers for the same status value.
+- **A NEW diagnostic severity, `SEVERITY_INFO`, distinguishes always-
+  true disclosure notes from real data-quality warnings.** Slice 8C is
+  the first producer of purely informational diagnostics
+  (`repeated_timestamp_detected`, `anchor_assumption_required` — the
+  §7-mandated anchor disclosure); the framework's own pre-existing
+  `if diagnostics: needs_attention` rule was unconditional on
+  `confirmed`, which would have permanently prevented any confirmed
+  reconstruction from ever reaching `STATUS_CONFIRMED`. Fixed by a
+  `_has_attention_worthy_diagnostic()` filter
+  (`severity_hint != SEVERITY_INFO`) — 100% backward compatible, since
+  no diagnostic before Slice 8C ever used `SEVERITY_INFO`. A genuine
+  `SEVERITY_WARNING` (e.g. `inconsistent_bucket_count`,
+  `unexpected_bucket_sample_count`) still surfaces as
+  `needs_attention` even after confirmation, exactly like every other
+  interpreter's own "confirmed never suppresses a real warning" rule.
+- **The anchor assumption is always disclosed, never implicit** (§7
+  point 4): `anchor_assumption_required` names the default explicitly
+  ("first sample in each bucket aligns with the displayed timestamp,
+  unless adjusted") on every reconstruction, and `options.anchor_offset_seconds`
+  (default 0) lets the user shift it — reusing the framework's existing
+  generic `options` bag, never a new top-level field.
+- **A manual interval/rate override is `provenance=user_specified`,
+  never `reconstructed`** — the same provenance Slice 8B's own manual
+  Sample Index interval uses, since a value the user typed in is
+  decisive, not inferred. Missing/extra-sample diagnostics
+  (`possible_missing_sample`, `unexpected_bucket_sample_count`) are
+  still computed and attached even under a manual override, since they
+  describe genuine facts about the underlying data independent of
+  which interval the user chose to apply.
+- **Missing/extra-sample bucket-count anomalies are diagnostics only**
+  — never insert, delete, or reorder a row (the framework's own
+  preservation guarantee, restated for this interpreter specifically).
+- **Variable/unstable cadence is explicitly deferred, not silently
+  guessed at.** A bucket-size pattern with no reliable transition
+  (fewer than 2 comparable buckets, or an interior spread too wide to
+  trust ANY suggestion) reports `cadence_not_reliable`
+  (`ambiguity: "ambiguous"`) instead of a segmented/piecewise
+  reconstruction — `confirmed=true` is rejected server-side while it
+  remains, and Sample Index (§7's own documented fallback) stays fully
+  available.
+- **Midnight rollover for a `partial` family is left unaddressed, not
+  misclassified.** A `23:59:59` → `00:00:00` transition is not treated
+  as ordinary backward-time corruption and no date is fabricated to
+  resolve it; full rollover inference is out of scope for this slice,
+  matching §7's own "never invent a date for partial" rule taken to its
+  logical edge case.
+
 Concrete choices made during implementation, all consistent with this
 section's own scope (none widen it):
 
@@ -1130,10 +1230,11 @@ relevant slice is actually scoped:
    (which findings become `warning`/`blocking`, and under what
    condition) — deciding it here would be exactly the "new production
    issue rules" non-goal (§20).
-2. **The exact confidence-bucket computation** (§6) is left to whichever
-   interpreter implements repeated-timestamp detection in Slice 8 —
-   this document fixes the three-level vocabulary and the qualitative
-   evidence categories, not a specific formula/threshold.
+2. **`[RESOLVED, 2026-09-02, Slice 8C]`** ~~The exact confidence-bucket
+   computation (§6) is left to whichever interpreter implements
+   repeated-timestamp detection in Slice 8~~ — see the Slice 8C
+   implementation note above (§19) for the final HIGH/MEDIUM/LOW rule
+   (interior-bucket stability, first/last buckets excluded).
 3. **Whether a `partial`-family time-only column, once a date is
    user-confirmed, should be stored as a NEW `TimeAxisConfiguration`
    entry or as an evolution of the existing one** (i.e. does

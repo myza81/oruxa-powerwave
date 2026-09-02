@@ -4635,6 +4635,7 @@
                                         <option value="split_date_time">Date + Time (2 columns)</option>
                                         <option value="elapsed_numeric">Elapsed Time (1 column)</option>
                                         <option value="sample_index">Sample Index (1 column)</option>
+                                        <option value="repeated_timestamp_precision_loss">Repeated Timestamp (Precision Loss) (1 column)</option>
                                     </select>
                                 </div>
                             </div>
@@ -4731,6 +4732,46 @@
                                         <input type="number" id="wwDataPrepTimeAxisIndexIntervalInput" min="0" step="any" placeholder="ms" disabled>
                                         <span class="hint">ms</span>
                                     </label>
+                                </div>
+                                <!-- Repeated Timestamp / Precision Loss (Slice 8C): Powerwave
+                                     may detect, analyse, suggest, and preview a reconstructed
+                                     timing -- it never silently applies one. "Confirmed" +
+                                     Save is the only way to accept a suggestion; "Use Sample
+                                     Index" is the always-available, honest fallback that never
+                                     invents a real-time interval. "Adjust" is hidden by
+                                     default (progressive disclosure) and only overrides
+                                     timing/anchor when the user explicitly opens it. -->
+                                <div id="wwDataPrepTimeAxisRepeatedTimestampField" hidden>
+                                    <div class="ww-data-prep-structure-controls">
+                                        <button type="button" class="secondary" id="wwDataPrepTimeAxisRepeatedTimestampAdjustBtn">Adjust</button>
+                                        <button type="button" class="secondary" id="wwDataPrepTimeAxisRepeatedTimestampUseIndexBtn">Use Sample Index</button>
+                                    </div>
+                                    <div id="wwDataPrepTimeAxisRepeatedTimestampAdjustFields" hidden>
+                                        <p class="hint">Timing source</p>
+                                        <label class="ww-data-prep-radio-option">
+                                            <input type="radio" name="wwDataPrepTimeAxisRepeatedTimestampTiming" value="suggested" id="wwDataPrepTimeAxisRepeatedTimestampTimingSuggested" checked>
+                                            <span>Suggested interval</span>
+                                        </label>
+                                        <label class="ww-data-prep-radio-option">
+                                            <input type="radio" name="wwDataPrepTimeAxisRepeatedTimestampTiming" value="interval" id="wwDataPrepTimeAxisRepeatedTimestampTimingInterval">
+                                            <span>Manual interval</span>
+                                            <input type="number" id="wwDataPrepTimeAxisRepeatedTimestampIntervalInput" min="0" step="any" placeholder="ms" disabled>
+                                            <span class="hint">ms</span>
+                                        </label>
+                                        <label class="ww-data-prep-radio-option">
+                                            <input type="radio" name="wwDataPrepTimeAxisRepeatedTimestampTiming" value="rate" id="wwDataPrepTimeAxisRepeatedTimestampTimingRate">
+                                            <span>Manual sampling rate</span>
+                                            <input type="number" id="wwDataPrepTimeAxisRepeatedTimestampRateInput" min="0" step="any" placeholder="Hz" disabled>
+                                            <span class="hint">Hz</span>
+                                        </label>
+                                        <div class="field ww-data-prep-structure-field">
+                                            <label for="wwDataPrepTimeAxisRepeatedTimestampAnchorInput">First sample offset</label>
+                                            <div class="ww-data-prep-structure-controls">
+                                                <input type="number" id="wwDataPrepTimeAxisRepeatedTimestampAnchorInput" step="any" placeholder="0" value="0">
+                                                <span class="hint">ms</span>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="ww-data-prep-structure-controls">
                                     <button type="button" class="secondary" id="wwDataPrepTimeAxisDetectBtn">Detect</button>
@@ -7406,7 +7447,10 @@
         const WW_DATA_PREP_DATE_ORDER_LABELS = {
             dmy: "DD/MM/YYYY", mdy: "MM/DD/YYYY", ymd: "YYYY/MM/DD",
         };
-        const WW_DATA_PREP_SAMPLE_INTERPRETERS = ["absolute_datetime", "split_date_time", "elapsed_numeric", "sample_index"];
+        const WW_DATA_PREP_SAMPLE_INTERPRETERS = [
+            "absolute_datetime", "split_date_time", "elapsed_numeric", "sample_index",
+            "repeated_timestamp_precision_loss",
+        ];
 
         // Eligible columns are always exactly the CURRENT `time_axis`-
         // role columns from the Structure panel's own column_roles state
@@ -7488,6 +7532,7 @@
             document.getElementById("wwDataPrepTimeAxisSplitColumnsRow").hidden = interpreterId !== "split_date_time";
             document.getElementById("wwDataPrepTimeAxisElapsedUnitField").hidden = interpreterId !== "elapsed_numeric";
             document.getElementById("wwDataPrepTimeAxisIndexTimingField").hidden = interpreterId !== "sample_index";
+            document.getElementById("wwDataPrepTimeAxisRepeatedTimestampField").hidden = interpreterId !== "repeated_timestamp_precision_loss";
             if (interpreterId === "split_date_time") wwDataPrepRenderTimeAxisSplitColumnSelects();
         }
 
@@ -7508,6 +7553,35 @@
                 return Number.isFinite(ms) && ms > 0 ? ms / 1000 : null;
             }
             return null;
+        }
+
+        // Slice 8C: the Repeated Timestamp interpreter's own Adjust flow
+        // -- "Suggested interval" sends no `interval_seconds` at all (the
+        // interpreter's own bucket-analysis suggestion decides it, and
+        // stays `provenance=reconstructed`); a manual interval/rate
+        // choice converts to the one canonical `interval_seconds` value
+        // and becomes `provenance=user_specified` server-side, exactly
+        // like Sample Index's own manual override.
+        function wwDataPrepTimeAxisRepeatedTimestampIntervalSecondsFromForm() {
+            const mode = document.querySelector('input[name="wwDataPrepTimeAxisRepeatedTimestampTiming"]:checked').value;
+            if (mode === "rate") {
+                const hz = parseFloat(document.getElementById("wwDataPrepTimeAxisRepeatedTimestampRateInput").value);
+                return Number.isFinite(hz) && hz > 0 ? 1 / hz : null;
+            }
+            if (mode === "interval") {
+                const ms = parseFloat(document.getElementById("wwDataPrepTimeAxisRepeatedTimestampIntervalInput").value);
+                return Number.isFinite(ms) && ms > 0 ? ms / 1000 : null;
+            }
+            return null;
+        }
+
+        // The anchor offset is always sent (default 0 ms == "first
+        // sample aligned to the displayed timestamp," the documented
+        // default assumption) -- never omitted, since the backend has no
+        // other way to distinguish "no adjustment" from "not yet known."
+        function wwDataPrepTimeAxisRepeatedTimestampAnchorOffsetSecondsFromForm() {
+            const ms = parseFloat(document.getElementById("wwDataPrepTimeAxisRepeatedTimestampAnchorInput").value);
+            return Number.isFinite(ms) ? ms / 1000 : 0;
         }
 
         // Populates the Date/Time column selects from whichever Time
@@ -7600,7 +7674,24 @@
                     ? " · Real-time interval: " + intervalSeconds + " s/sample"
                     : " · Real-time interval: Unknown";
             }
-            summaryEl.textContent = "Detected: " + familyLabel + " · Confidence: " + confidenceLabel + formatText + timingText;
+            // Slice 8C: the compact summary line also carries the
+            // reconstruction's own Suggested interval/Anchor -- the
+            // anchor assumption itself ("first sample aligned to the
+            // displayed timestamp," or the user's own adjusted offset)
+            // is disclosed here in plain language, never left implicit.
+            let precisionLossText = "";
+            if (detection.interpreter_id === "repeated_timestamp_precision_loss") {
+                const intervalSeconds = detection.resolved_interval_seconds != null
+                    ? detection.resolved_interval_seconds : detection.interval_seconds;
+                const anchorOffsetSeconds = (resolvedOptions && resolvedOptions.anchor_offset_seconds) || 0;
+                const anchorText = anchorOffsetSeconds
+                    ? "First sample offset " + (anchorOffsetSeconds * 1000) + " ms from the displayed timestamp"
+                    : "First sample aligned to the displayed timestamp";
+                precisionLossText = intervalSeconds != null
+                    ? " · Suggested interval: " + intervalSeconds + " s/sample · Anchor: " + anchorText
+                    : " · Suggested interval: none (confidence too low) · Anchor: " + anchorText;
+            }
+            summaryEl.textContent = "Detected: " + familyLabel + " · Confidence: " + confidenceLabel + formatText + timingText + precisionLossText;
 
             const diagnostics = detection.diagnostics || [];
             diagnosticsEl.innerHTML = diagnostics.length
@@ -7673,6 +7764,38 @@
             }
         }
 
+        // Slice 8C: prefills the Repeated Timestamp Adjust flow from the
+        // STORED configuration -- `provenance=user_specified` means the
+        // user's own manual interval/rate is the canonical value (always
+        // redisplayed as "Manual interval," never "Manual rate," same
+        // convention as Sample Index's own redisplay rule above);
+        // anything else (unconfigured, or `provenance=reconstructed`)
+        // redisplays as "Suggested interval" with the inputs disabled --
+        // a suggestion is never something this form pretends the user
+        // typed in themselves. The Adjust panel itself stays collapsed
+        // until the user explicitly opens it (task's own progressive-
+        // disclosure requirement) even when a manual override is stored.
+        function wwDataPrepRenderTimeAxisRepeatedTimestampFields(summary) {
+            const intervalSeconds = summary && summary.interval_seconds != null ? summary.interval_seconds : null;
+            const isUserSpecified = !!(summary && summary.provenance === "user_specified" && intervalSeconds != null);
+            const intervalInput = document.getElementById("wwDataPrepTimeAxisRepeatedTimestampIntervalInput");
+            const rateInput = document.getElementById("wwDataPrepTimeAxisRepeatedTimestampRateInput");
+            rateInput.value = "";
+            rateInput.disabled = true;
+            if (isUserSpecified) {
+                document.getElementById("wwDataPrepTimeAxisRepeatedTimestampTimingInterval").checked = true;
+                intervalInput.value = String(intervalSeconds * 1000);
+                intervalInput.disabled = false;
+            } else {
+                document.getElementById("wwDataPrepTimeAxisRepeatedTimestampTimingSuggested").checked = true;
+                intervalInput.value = "";
+                intervalInput.disabled = true;
+            }
+            const anchorOffsetSeconds = (summary && summary.options && summary.options.anchor_offset_seconds) || 0;
+            document.getElementById("wwDataPrepTimeAxisRepeatedTimestampAnchorInput").value = String(anchorOffsetSeconds * 1000);
+            document.getElementById("wwDataPrepTimeAxisRepeatedTimestampAdjustFields").hidden = true;
+        }
+
         function wwDataPrepRenderTimeAxisForm() {
             const summary = wwDataPrep.timeAxisSummary;
             document.getElementById("wwDataPrepTimeAxisFamilySelect").value = (summary && summary.family) || "absolute";
@@ -7688,6 +7811,7 @@
             document.getElementById("wwDataPrepTimeAxisInterpreterSelect").value = interpreterId;
             wwDataPrepRenderTimeAxisInterpreterFields();
             wwDataPrepRenderTimeAxisElapsedAndIndexFields(summary);
+            wwDataPrepRenderTimeAxisRepeatedTimestampFields(summary);
 
             // A stored sample-interpreter configuration already carries
             // its own diagnostics/confidence/options on the plain GET
@@ -7731,7 +7855,22 @@
             if (interpreterId === "sample_index") {
                 return { unit: null, interval_seconds: wwDataPrepTimeAxisIndexIntervalSecondsFromForm() };
             }
+            if (interpreterId === "repeated_timestamp_precision_loss") {
+                return { unit: null, interval_seconds: wwDataPrepTimeAxisRepeatedTimestampIntervalSecondsFromForm() };
+            }
             return { unit: null, interval_seconds: null };
+        }
+
+        // The anchor offset is the one Slice 8C setting that lives in
+        // `options` (not a top-level field) -- merged into whichever
+        // `options` object the date-order/manual-family logic already
+        // built, so a Detect/Save call for this interpreter never loses
+        // the other options it may also carry.
+        function wwDataPrepTimeAxisOptionsWithAnchorOffset(interpreterId, options) {
+            if (interpreterId !== "repeated_timestamp_precision_loss") return options;
+            return Object.assign({}, options, {
+                anchor_offset_seconds: wwDataPrepTimeAxisRepeatedTimestampAnchorOffsetSecondsFromForm(),
+            });
         }
 
         async function wwDataPrepDetectTimeAxis() {
@@ -7746,7 +7885,9 @@
                 return;
             }
             const checkedDateOrder = document.querySelector('input[name="wwDataPrepTimeAxisDateOrder"]:checked');
-            const options = checkedDateOrder ? { date_order: checkedDateOrder.value } : {};
+            const options = wwDataPrepTimeAxisOptionsWithAnchorOffset(
+                interpreterId, checkedDateOrder ? { date_order: checkedDateOrder.value } : {},
+            );
             const { unit, interval_seconds } = wwDataPrepTimeAxisUnitAndIntervalFromForm(interpreterId);
             try {
                 const response = await fetch(
@@ -7824,7 +7965,9 @@
                 // sent -- they are the one real piece of configuration
                 // these two interpreters need from the user.
                 const checkedDateOrder = document.querySelector('input[name="wwDataPrepTimeAxisDateOrder"]:checked');
-                const options = checkedDateOrder ? { date_order: checkedDateOrder.value } : {};
+                const options = wwDataPrepTimeAxisOptionsWithAnchorOffset(
+                    interpreterId, checkedDateOrder ? { date_order: checkedDateOrder.value } : {},
+                );
                 const { unit, interval_seconds } = wwDataPrepTimeAxisUnitAndIntervalFromForm(interpreterId);
                 body = {
                     column_indices: columnIndices, interpreter_id: interpreterId,
@@ -7931,6 +8074,40 @@
             document.getElementById("wwDataPrepTimeAxisIndexIntervalInput").disabled = false;
             document.getElementById("wwDataPrepTimeAxisIndexRateInput").disabled = true;
             document.getElementById("wwDataPrepTimeAxisIndexIntervalInput").focus();
+        });
+
+        // Slice 8C: "Adjust" is the one explicit gesture that reveals
+        // the manual Timing-source/anchor-offset controls -- collapsed
+        // by default so the compact summary + Accept-Suggestion path
+        // (just "Confirmed" + Save) stays the primary flow, never
+        // requiring a user who accepts the suggestion to see this panel
+        // at all.
+        document.getElementById("wwDataPrepTimeAxisRepeatedTimestampAdjustBtn").addEventListener("click", () => {
+            const panel = document.getElementById("wwDataPrepTimeAxisRepeatedTimestampAdjustFields");
+            panel.hidden = !panel.hidden;
+        });
+        // "Use Sample Index" is the documented, always-safe fallback --
+        // it never invents a real-time interval; switching interpreters
+        // reuses the exact same change handler a manual <select> pick
+        // would trigger, so nothing here duplicates that logic.
+        document.getElementById("wwDataPrepTimeAxisRepeatedTimestampUseIndexBtn").addEventListener("click", () => {
+            const select = document.getElementById("wwDataPrepTimeAxisInterpreterSelect");
+            select.value = "sample_index";
+            select.dispatchEvent(new Event("change"));
+        });
+        document.getElementById("wwDataPrepTimeAxisRepeatedTimestampTimingSuggested").addEventListener("change", () => {
+            document.getElementById("wwDataPrepTimeAxisRepeatedTimestampIntervalInput").disabled = true;
+            document.getElementById("wwDataPrepTimeAxisRepeatedTimestampRateInput").disabled = true;
+        });
+        document.getElementById("wwDataPrepTimeAxisRepeatedTimestampTimingInterval").addEventListener("change", () => {
+            document.getElementById("wwDataPrepTimeAxisRepeatedTimestampIntervalInput").disabled = false;
+            document.getElementById("wwDataPrepTimeAxisRepeatedTimestampRateInput").disabled = true;
+            document.getElementById("wwDataPrepTimeAxisRepeatedTimestampIntervalInput").focus();
+        });
+        document.getElementById("wwDataPrepTimeAxisRepeatedTimestampTimingRate").addEventListener("change", () => {
+            document.getElementById("wwDataPrepTimeAxisRepeatedTimestampRateInput").disabled = false;
+            document.getElementById("wwDataPrepTimeAxisRepeatedTimestampIntervalInput").disabled = true;
+            document.getElementById("wwDataPrepTimeAxisRepeatedTimestampRateInput").focus();
         });
 
         // Progressive disclosure -- identical toggle behavior to the

@@ -1,5 +1,6 @@
-"""Unit tests for the deterministic absolute-time (Slice 8A) and
-elapsed-time/sample-index (Slice 8B) parsing/detection functions
+"""Unit tests for the deterministic absolute-time (Slice 8A),
+elapsed-time/sample-index (Slice 8B), and repeated-timestamp/
+precision-loss reconstruction (Slice 8C) parsing/detection functions
 (CSV/Excel ingestion, DEC-072). Pure functions only -- no session, no
 registry, no HTTP; service-layer wiring is covered by
 tests/test_time_axis_service.py's own new test classes.
@@ -7,14 +8,21 @@ tests/test_time_axis_service.py's own new test classes.
 
 from __future__ import annotations
 
+import pytest
+
 from app.domain.time_axis import (
     AMBIGUITY_AMBIGUOUS,
     AMBIGUITY_INVALID,
     AMBIGUITY_UNAMBIGUOUS,
     CONFIDENCE_HIGH,
+    CONFIDENCE_LOW,
+    CONFIDENCE_MEDIUM,
     CONFIDENCE_UNKNOWN,
     DIAGNOSTIC_AMBIGUOUS_DATE_ORDER,
+    DIAGNOSTIC_ANCHOR_ASSUMPTION_REQUIRED,
+    DIAGNOSTIC_CADENCE_NOT_RELIABLE,
     DIAGNOSTIC_ELAPSED_TIME_GOES_BACKWARD,
+    DIAGNOSTIC_INCONSISTENT_BUCKET_COUNT,
     DIAGNOSTIC_MISSING_DATETIME_VALUE,
     DIAGNOSTIC_MISSING_ELAPSED_UNIT,
     DIAGNOSTIC_MISSING_ELAPSED_VALUE,
@@ -23,11 +31,15 @@ from app.domain.time_axis import (
     DIAGNOSTIC_NON_NUMERIC_ELAPSED_VALUE,
     DIAGNOSTIC_NON_NUMERIC_SAMPLE_INDEX,
     DIAGNOSTIC_NON_UNIFORM_ELAPSED_INTERVAL,
+    DIAGNOSTIC_POSSIBLE_MISSING_SAMPLE,
+    DIAGNOSTIC_PRECISION_LOSS_SUSPECTED,
     DIAGNOSTIC_REPEATED_ELAPSED_TIME,
     DIAGNOSTIC_REPEATED_SAMPLE_INDEX,
+    DIAGNOSTIC_REPEATED_TIMESTAMP_DETECTED,
     DIAGNOSTIC_SAMPLE_INDEX_GAP,
     DIAGNOSTIC_SAMPLE_INDEX_GOES_BACKWARD,
     DIAGNOSTIC_TIME_ONLY_NOT_ABSOLUTE,
+    DIAGNOSTIC_UNEXPECTED_BUCKET_SAMPLE_COUNT,
     DIAGNOSTIC_UNPARSEABLE_DATETIME,
     FAMILY_ABSOLUTE,
     FAMILY_ELAPSED,
@@ -35,15 +47,18 @@ from app.domain.time_axis import (
     FAMILY_SAMPLE_INDEX,
     PROVENANCE_INDEX_ONLY,
     PROVENANCE_NATIVE,
+    PROVENANCE_RECONSTRUCTED,
     PROVENANCE_USER_SPECIFIED,
 )
 from app.services.time_axis_interpreters import (
     build_absolute_datetime_preview,
     build_elapsed_preview,
+    build_repeated_timestamp_preview,
     build_sample_index_preview,
     build_split_date_time_preview,
     detect_absolute_datetime,
     detect_elapsed_numeric,
+    detect_repeated_timestamp_precision_loss,
     detect_sample_index,
     detect_split_date_time,
 )
@@ -589,3 +604,364 @@ class TestSampleIndexPreview:
 
         assert len(preview) == 3
         assert preview[1] == (2, ("garbage",), None)
+
+
+# ---- CSV/Excel ingestion Slice 8C (DEC-072): repeated timestamp / precision-loss reconstruction ----
+
+
+def _repeat(value: str, count: int) -> list[str]:
+    return [value] * count
+
+
+def _detect(values, requested_interval_seconds=None, options=None):
+    return detect_repeated_timestamp_precision_loss(
+        _rows(values), requested_interval_seconds=requested_interval_seconds, requested_options=options or {},
+    )
+
+
+class TestRepeatedTimestampDetectionStableCadence:
+    def test_stable_5_rows_per_second(self):
+        values = _repeat("13:14:01", 5) + _repeat("13:14:02", 5) + _repeat("13:14:03", 5) + _repeat("13:14:04", 5)
+
+        result = _detect(values)
+
+        assert result.family == FAMILY_PARTIAL
+        assert result.provenance == PROVENANCE_RECONSTRUCTED
+        assert result.confidence == CONFIDENCE_HIGH
+        assert result.resolved_interval_seconds == pytest.approx(0.2)
+
+    def test_stable_10_rows_per_second_with_few_buckets_is_medium(self):
+        # Only 3 buckets total (1 interior) -- perfectly stable, but
+        # limited evidence, per §F's own "small sample size" factor.
+        values = _repeat("13:14:01", 10) + _repeat("13:14:02", 10) + _repeat("13:14:03", 10)
+
+        result = _detect(values)
+
+        assert result.confidence == CONFIDENCE_MEDIUM
+        assert result.resolved_interval_seconds == pytest.approx(0.1)
+
+    def test_stable_10_rows_per_second_with_enough_interior_buckets_is_high(self):
+        values = (
+            _repeat("13:14:01", 10) + _repeat("13:14:02", 10) + _repeat("13:14:03", 10)
+            + _repeat("13:14:04", 10) + _repeat("13:14:05", 10)
+        )
+
+        result = _detect(values)
+
+        assert result.confidence == CONFIDENCE_HIGH
+        assert result.resolved_interval_seconds == pytest.approx(0.1)
+
+
+class TestRepeatedTimestampPartialBuckets:
+    def test_partial_first_bucket_does_not_reduce_confidence(self):
+        # First bucket truncated (2 rows instead of the "true" 5) --
+        # interior buckets (all 5) are still perfectly stable -> HIGH.
+        values = _repeat("13:14:00", 2) + _repeat("13:14:01", 5) + _repeat("13:14:02", 5) + _repeat("13:14:03", 5)
+
+        result = _detect(values)
+
+        assert result.confidence == CONFIDENCE_HIGH
+        assert result.resolved_interval_seconds == pytest.approx(0.2)
+
+    def test_partial_last_bucket_does_not_reduce_confidence(self):
+        values = _repeat("13:14:01", 5) + _repeat("13:14:02", 5) + _repeat("13:14:03", 5) + _repeat("13:14:04", 3)
+
+        result = _detect(values)
+
+        assert result.confidence == CONFIDENCE_HIGH
+
+    def test_partial_first_and_last_buckets_both_present(self):
+        values = (
+            _repeat("13:14:00", 2) + _repeat("13:14:01", 5) + _repeat("13:14:02", 5)
+            + _repeat("13:14:03", 5) + _repeat("13:14:04", 3)
+        )
+
+        result = _detect(values)
+
+        assert result.confidence == CONFIDENCE_HIGH
+        assert result.resolved_interval_seconds == pytest.approx(0.2)
+
+
+class TestRepeatedTimestampInconsistentCadence:
+    def test_inconsistent_bucket_counts_is_low_confidence(self):
+        values = _repeat("13:14:01", 5) + _repeat("13:14:02", 2) + _repeat("13:14:03", 8) + _repeat("13:14:04", 4)
+
+        result = _detect(values)
+
+        assert result.confidence == CONFIDENCE_LOW
+        assert result.resolved_interval_seconds is None
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_CADENCE_NOT_RELIABLE in codes
+        assert DIAGNOSTIC_INCONSISTENT_BUCKET_COUNT in codes
+
+    def test_too_few_buckets_is_low_confidence(self):
+        # A single bucket -- no transition to measure a span from at all.
+        result = _detect(_repeat("13:14:01", 5))
+
+        assert result.confidence == CONFIDENCE_LOW
+        assert result.resolved_interval_seconds is None
+
+
+class TestRepeatedTimestampFractionalPrecision:
+    def test_repeated_fractional_timestamp_precision(self):
+        # Two EQUAL-sized buckets -- limited evidence (no interior
+        # bucket at all) but perfectly consistent across what exists ->
+        # MEDIUM per §F's own "small sample size" factor.
+        values = _repeat("13:14:01.20", 3) + _repeat("13:14:01.30", 3)
+
+        result = _detect(values)
+
+        assert result.family == FAMILY_PARTIAL
+        assert result.confidence == CONFIDENCE_MEDIUM
+        assert result.resolved_interval_seconds is not None
+
+    def test_repeated_fractional_timestamp_with_differing_bucket_sizes_is_low(self):
+        # Different bucket sizes with no interior evidence either way --
+        # genuinely too little to trust.
+        values = _repeat("13:14:01.20", 3) + _repeat("13:14:01.30", 1)
+
+        result = _detect(values)
+
+        assert result.family == FAMILY_PARTIAL
+        assert result.confidence == CONFIDENCE_LOW
+        assert result.resolved_interval_seconds is None
+
+
+class TestRepeatedTimestampAbsoluteSource:
+    def test_absolute_datetime_source(self):
+        values = (
+            _repeat("2026-09-02 13:14:01", 5) + _repeat("2026-09-02 13:14:02", 5)
+            + _repeat("2026-09-02 13:14:03", 5) + _repeat("2026-09-02 13:14:04", 5)
+        )
+
+        result = _detect(values)
+
+        assert result.family == FAMILY_ABSOLUTE
+        assert result.provenance == PROVENANCE_RECONSTRUCTED
+        assert result.confidence == CONFIDENCE_HIGH
+        assert result.resolved_options["date_order"] == "ymd"
+
+    def test_ambiguous_date_order_among_bucket_values(self):
+        values = _repeat("01/02/2026 13:14:01", 5) + _repeat("03/04/2026 13:14:02", 5) + _repeat("05/06/2026 13:14:03", 5)
+
+        result = _detect(values)
+
+        assert result.family == FAMILY_ABSOLUTE
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_AMBIGUOUS_DATE_ORDER in codes
+        assert result.resolved_interval_seconds is None
+
+    def test_ambiguous_date_order_resolved_by_explicit_choice(self):
+        values = _repeat("01/02/2026 13:14:01", 5) + _repeat("03/04/2026 13:14:02", 5) + _repeat("05/06/2026 13:14:03", 5)
+
+        result = _detect(values, options={"date_order": "dmy"})
+
+        assert result.family == FAMILY_ABSOLUTE
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_AMBIGUOUS_DATE_ORDER not in codes
+
+
+class TestRepeatedTimestampPartialSource:
+    def test_partial_family_preserved_never_promoted_to_absolute(self):
+        values = _repeat("13:14:01", 5) + _repeat("13:14:02", 5) + _repeat("13:14:03", 5) + _repeat("13:14:04", 5)
+
+        result = _detect(values)
+
+        assert result.family == FAMILY_PARTIAL
+
+
+class TestRepeatedTimestampReconstruction:
+    def test_5_hz_gives_200ms_interval(self):
+        values = _repeat("13:14:01", 5) + _repeat("13:14:02", 5) + _repeat("13:14:03", 5) + _repeat("13:14:04", 5)
+
+        result = _detect(values)
+
+        assert result.resolved_interval_seconds == pytest.approx(0.2)
+
+    def test_10_hz_gives_100ms_interval(self):
+        values = (
+            _repeat("13:14:01", 10) + _repeat("13:14:02", 10) + _repeat("13:14:03", 10)
+            + _repeat("13:14:04", 10) + _repeat("13:14:05", 10)
+        )
+
+        result = _detect(values)
+
+        assert result.resolved_interval_seconds == pytest.approx(0.1)
+
+    def test_default_anchor_is_zero_offset(self):
+        values = _repeat("13:14:01", 5) + _repeat("13:14:02", 5) + _repeat("13:14:03", 5) + _repeat("13:14:04", 5)
+
+        result = _detect(values)
+
+        assert result.resolved_options["anchor_offset_seconds"] == 0.0
+
+    def test_custom_anchor_offset(self):
+        values = _repeat("13:14:01", 5) + _repeat("13:14:02", 5) + _repeat("13:14:03", 5) + _repeat("13:14:04", 5)
+
+        result = _detect(values, options={"anchor_offset_seconds": 0.1})
+
+        assert result.resolved_options["anchor_offset_seconds"] == 0.1
+
+    def test_anchor_assumption_diagnostic_always_disclosed(self):
+        values = _repeat("13:14:01", 5) + _repeat("13:14:02", 5) + _repeat("13:14:03", 5) + _repeat("13:14:04", 5)
+
+        result = _detect(values)
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_ANCHOR_ASSUMPTION_REQUIRED in codes
+
+    def test_user_manual_interval_overrides_inference(self):
+        values = _repeat("13:14:01", 5) + _repeat("13:14:02", 2) + _repeat("13:14:03", 8) + _repeat("13:14:04", 4)
+
+        result = _detect(values, requested_interval_seconds=0.25)
+
+        assert result.provenance == PROVENANCE_USER_SPECIFIED
+        assert result.confidence == CONFIDENCE_HIGH
+        assert result.resolved_interval_seconds == 0.25
+
+    def test_user_manual_sampling_rate_converted_by_caller(self):
+        # 4 Hz -> 0.25 s/sample; caller is responsible for the Hz->seconds
+        # conversion (never a second stored representation).
+        values = _repeat("13:14:01", 5) + _repeat("13:14:02", 5) + _repeat("13:14:03", 5) + _repeat("13:14:04", 5)
+
+        result = _detect(values, requested_interval_seconds=1 / 4)
+
+        assert result.provenance == PROVENANCE_USER_SPECIFIED
+        assert result.resolved_interval_seconds == pytest.approx(0.25)
+
+
+class TestRepeatedTimestampPreservation:
+    def test_detection_never_returns_rows_only_diagnostics(self):
+        # This module is detection-only -- it has no mechanism to drop,
+        # reorder, or collapse a row; proven structurally by the return
+        # type carrying no row list at all, only counts/diagnostics.
+        result = _detect(_repeat("13:14:01", 5) + _repeat("13:14:02", 5) + _repeat("13:14:03", 5) + _repeat("13:14:04", 5))
+
+        assert not hasattr(result, "rows")
+
+    def test_missing_value_reported_not_silently_skipped(self):
+        values = ["13:14:01", None, "13:14:01", "13:14:02", "13:14:02"]
+
+        result = _detect(values)
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_MISSING_DATETIME_VALUE in codes
+
+
+class TestRepeatedTimestampMissingExtraSample:
+    def test_possible_missing_sample_diagnostic(self):
+        values = (
+            _repeat("13:14:01", 5) + _repeat("13:14:02", 4) + _repeat("13:14:03", 5)
+            + _repeat("13:14:04", 5) + _repeat("13:14:05", 5)
+        )
+
+        result = _detect(values)
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_POSSIBLE_MISSING_SAMPLE in codes
+        assert result.resolved_interval_seconds is not None
+
+    def test_unexpected_extra_sample_diagnostic(self):
+        values = (
+            _repeat("13:14:01", 5) + _repeat("13:14:02", 6) + _repeat("13:14:03", 5)
+            + _repeat("13:14:04", 5) + _repeat("13:14:05", 5)
+        )
+
+        result = _detect(values)
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_UNEXPECTED_BUCKET_SAMPLE_COUNT in codes
+
+    def test_no_missing_or_extra_diagnostic_when_perfectly_stable(self):
+        values = (
+            _repeat("13:14:01", 5) + _repeat("13:14:02", 5) + _repeat("13:14:03", 5)
+            + _repeat("13:14:04", 5) + _repeat("13:14:05", 5)
+        )
+
+        result = _detect(values)
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_POSSIBLE_MISSING_SAMPLE not in codes
+        assert DIAGNOSTIC_UNEXPECTED_BUCKET_SAMPLE_COUNT not in codes
+
+
+class TestRepeatedTimestampNoRepetition:
+    def test_no_repeats_is_clean_pass_through(self):
+        result = _detect(["13:14:01", "13:14:02", "13:14:03"])
+
+        assert result.family == FAMILY_PARTIAL
+        assert result.provenance == PROVENANCE_NATIVE
+        assert result.diagnostics == []
+        assert result.resolved_interval_seconds is None
+
+
+class TestRepeatedTimestampPreviewBuilder:
+    def test_bounded_preview_preserves_row_order_and_bucket_spacing(self):
+        samples = [
+            (i, (v,)) for i, v in enumerate(
+                _repeat("13:14:01", 5) + _repeat("13:14:02", 5), start=1,
+            )
+        ]
+
+        preview = build_repeated_timestamp_preview(
+            samples, resolved_options={"anchor_offset_seconds": 0.0}, resolved_interval_seconds=0.2, limit=20,
+        )
+
+        assert [r[0] for r in preview] == list(range(1, 11))  # row order preserved
+        assert preview[0] == (1, ("13:14:01",), "13:14:01.000000")
+        assert preview[1][2] == "13:14:01.200000"
+        assert preview[4][2] == "13:14:01.800000"
+        assert preview[5][2] == "13:14:02.000000"
+
+    def test_preview_never_mutates_original_tuple(self):
+        samples = [(1, ("13:14:01",)), (2, ("13:14:01",))]
+
+        preview = build_repeated_timestamp_preview(
+            samples, resolved_options={}, resolved_interval_seconds=0.2, limit=10,
+        )
+
+        assert preview[0][1] == ("13:14:01",)
+        assert preview[1][1] == ("13:14:01",)
+
+    def test_custom_anchor_offset_shifts_preview(self):
+        samples = [(i, (v,)) for i, v in enumerate(_repeat("13:14:01", 3), start=1)]
+
+        preview = build_repeated_timestamp_preview(
+            samples, resolved_options={"anchor_offset_seconds": 0.1}, resolved_interval_seconds=0.2, limit=10,
+        )
+
+        assert preview[0][2] == "13:14:01.100000"
+        assert preview[1][2] == "13:14:01.300000"
+
+    def test_no_interval_never_fabricates_preview_values(self):
+        samples = [(i, (v,)) for i, v in enumerate(_repeat("13:14:01", 3), start=1)]
+
+        preview = build_repeated_timestamp_preview(
+            samples, resolved_options={}, resolved_interval_seconds=None, limit=10,
+        )
+
+        assert all(interpreted is None for _, _, interpreted in preview)
+
+    def test_bounded_preview_respects_limit(self):
+        samples = [(i, (v,)) for i, v in enumerate(_repeat("13:14:01", 30), start=1)]
+
+        preview = build_repeated_timestamp_preview(
+            samples, resolved_options={}, resolved_interval_seconds=0.03, limit=20,
+        )
+
+        assert len(preview) == 20
+
+    def test_absolute_family_preview_isoformat(self):
+        samples = [
+            (i, (v,)) for i, v in enumerate(
+                _repeat("2026-09-02 13:14:01", 2) + _repeat("2026-09-02 13:14:02", 2), start=1,
+            )
+        ]
+
+        preview = build_repeated_timestamp_preview(
+            samples, resolved_options={"anchor_offset_seconds": 0.0, "date_order": "ymd"},
+            resolved_interval_seconds=0.5, limit=10,
+        )
+
+        assert preview[0][2] == "2026-09-02T13:14:01"
+        assert preview[1][2] == "2026-09-02T13:14:01.500000"

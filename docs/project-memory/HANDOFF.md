@@ -8,13 +8,127 @@ Last updated: **2026-09-02**
 
 ## What was most recently done
 
+**CSV/Excel Ingestion Slice 8C — Repeated Timestamp / Precision-Loss
+Reconstruction (implemented).** Owner-authorized implementation of the
+fifth and FINAL of Slice 7/8's own five proposed initial interpreters
+(§19 item 5) — repeated-timestamp/precision-loss detection and
+user-approved reconstruction — as REAL, deterministic interpreters on
+top of Slice 7's framework and Slice 8A/8B's own path, with zero
+framework-shape changes beyond what those already anticipated
+(`TimeAxisConfiguration.unit`/`.interval_seconds`/`.options` existed
+since Slice 7 for exactly this; `detect()`'s own contract needed no new
+parameters at all — Slice 8B's own `requested_interval_seconds`/
+`requested_options` already cover this interpreter's manual-override
+and anchor-offset needs). Powerwave may detect, analyse, suggest, and
+preview a reconstructed timing — it never silently applies one.
+
+**New interpreter** (`app/services/time_axis_interpreters.py`,
+extended): `repeated_timestamp_precision_loss` (accepts exactly 1
+column). The one new interpreter-specific setting,
+`anchor_offset_seconds` (seconds, default 0), lives in the pre-existing
+generic `options` bag — no new dataclass fields anywhere.
+
+**Bucket analysis** groups consecutive rows sharing an identical native
+timestamp, in original row order, over the same bounded ≤50-row sample
+every other interpreter already uses. First and last buckets never
+penalize confidence (they may be sample-window-truncated) — only
+`interior_sizes = bucket_sizes[1:-1]` feeds the stability check. Both
+`absolute` and `partial` (time-of-day, no date ever invented) families
+are supported via one family-agnostic `seconds_from_first` float
+representation.
+
+**Confidence rule (qualitative only, no percentages)**: High requires
+≥2 equal-sized interior buckets; Medium covers too few interior buckets
+to compare (but fully consistent) or a spread of ≤1; Low covers
+everything else, including fewer than 2 total buckets. The suggested
+interval is `statistics.median()` of every transition's own
+`span / bucket_size` EXCEPT the first (its own bucket count may be a
+truncated undercount).
+
+**Reconstruction offered is a genuinely SEPARATE `review_required`
+trigger from ambiguity, not a reuse of it.** Marking "a suggestion
+exists" as `ambiguity: "ambiguous"` (Slice 8A's own mechanism) would
+have made an accepted reconstruction permanently unconfirmable, since
+that diagnostic never disappears. Instead, a NEW `resolve_status()`
+rule — `provenance == PROVENANCE_RECONSTRUCTED and not confirmed` →
+`review_required` — does not block `confirmed=true`. A genuinely
+unreliable cadence (`cadence_not_reliable`, `ambiguity: "ambiguous"`)
+still uses the EXISTING ambiguity mechanism and correctly blocks
+confirmation; segmented/variable-cadence reconstruction is deferred,
+never guessed at.
+
+**A new diagnostic severity, `SEVERITY_INFO`, was required.** Slice 8C
+is the first to attach always-true disclosure notes
+(`repeated_timestamp_detected`, `anchor_assumption_required`) that
+never resolve away; the framework's pre-existing `if diagnostics:
+needs_attention` check was unconditional on `confirmed`, which would
+have permanently capped every confirmed reconstruction below
+`confirmed`. Fixed with a `_has_attention_worthy_diagnostic()` filter
+excluding `SEVERITY_INFO` — 100% backward compatible (no diagnostic
+before Slice 8C ever used it). A genuine `SEVERITY_WARNING`
+(`inconsistent_bucket_count`, `unexpected_bucket_sample_count` —
+missing/extra-sample anomalies, diagnostics only, never inserted/
+deleted rows) still surfaces post-confirmation, unchanged from every
+other interpreter's own precedent.
+
+**Manual override and Sample Index fallback**: an explicit
+`interval_seconds` is `provenance=user_specified` (never
+`reconstructed`), with missing/extra-sample diagnostics still computed
+and attached regardless. Switching to `sample_index` remains the
+always-available, honest fallback that never fabricates a real-time
+interval.
+
+**Frontend**: the Interpreter `<select>` gained "Repeated Timestamp
+(Precision Loss)"; the shared Detect → diagnostics → preview → Confirm
+flow (Slice 8A) is reused verbatim, with the compact summary extended
+to show the suggested interval and anchor assumption in plain language.
+A collapsed-by-default "Adjust" panel reveals a Timing-source radio
+(Suggested / Manual interval / Manual rate) plus a First sample offset
+(ms) input feeding `options.anchor_offset_seconds`; a "Use Sample
+Index" button switches the Interpreter select directly.
+
+**Files changed**: `backend/app/domain/time_axis.py`,
+`backend/app/services/time_axis_interpreters.py`,
+`backend/app/services/time_axis_service.py`, `frontend/index.html`;
+extended `backend/tests/test_time_axis_interpreters.py`,
+`test_time_axis_domain.py`, `test_time_axis_service.py`,
+`test_preparation_sources_api.py` — no new test files, no schema/API
+changes this slice (both endpoints and both request/response shapes
+were already fully general enough to need zero edits).
+
+**Verified**: full backend suite 2439 passed (44 new on top of Slice
+8B's 2395), zero regressions; the committed browser smoke test
+(COMTRADE) still passes unchanged; a throwaway (not committed)
+live-browser Playwright UAT script confirmed: a stable-cadence column
+shows "High" confidence with the correct suggested interval and anchor
+disclosure; Accept Suggestion (Confirmed + Save) reaches "Confirmed"/
+"Reconstructed"; the Adjust flow's manual-interval override correctly
+switches provenance to "User Specified"; "Use Sample Index" switches
+the interpreter select; and an unstable-cadence column shows "Low"
+confidence with no fabricated interval and a server-rejected confirm
+attempt — all with zero unexpected console/page errors.
+
+**Next step**: Slice 8's full five-interpreter set (§19) is now
+complete. The next authorized work is Slices 9–13 (the full Readiness
+Validator, canonical `DisturbanceRecord` conversion, existing waveform
+integration, export, and progressive automation) — each still requires
+its own explicit owner go-ahead to begin, per
+[Change governance](../../CLAUDE.md#change-governance).
+
+**Commit status**: not committed — per this task's own explicit closing
+instruction ("Do not commit or push unless explicitly asked"), all of
+the above are normal uncommitted working-tree changes pending a
+separate, explicit commit instruction.
+
+## What was done in the prior session — CSV/Excel Ingestion Slice 8B: Elapsed / Relative Time + Sample Index Interpreters
+
 **CSV/Excel Ingestion Slice 8B — Elapsed / Relative Time + Sample Index
-Interpreters (implemented).** Owner-authorized implementation of the
-next two of Slice 7/8's own five proposed initial interpreters
-(§19 items 3-4) — elapsed numeric time and sample index — as REAL,
-deterministic interpreters on top of Slice 7's framework and Slice 8A's
-own absolute-time path, with zero framework-shape changes beyond what
-those already anticipated (`TimeAxisConfiguration.unit`/
+Interpreters (implemented, committed as `7ffaa59`).** Owner-authorized
+implementation of the next two of Slice 7/8's own five proposed initial
+interpreters (§19 items 3-4) — elapsed numeric time and sample index —
+as REAL, deterministic interpreters on top of Slice 7's framework and
+Slice 8A's own absolute-time path, with zero framework-shape changes
+beyond what those already anticipated (`TimeAxisConfiguration.unit`/
 `.interval_seconds` existed since Slice 7 for exactly this;
 `detect()`'s own contract just gained two new optional parameters that
 Slice 8A's own two interpreters simply ignore).
@@ -95,10 +209,10 @@ detection, the full §6/§7 fallback hierarchy and confidence model, per
 — still requires its own explicit go-ahead to begin, per
 [Change governance](../../CLAUDE.md#change-governance).
 
-**Commit status**: not committed — per this task's own explicit closing
-instruction ("Do not commit or push unless explicitly asked"), all of
-the above are normal uncommitted working-tree changes pending a
-separate, explicit commit instruction.
+**Commit status**: committed as `7ffaa59` ("feat: add elapsed and
+sample index interpreters") — not pushed at the time. (Superseded:
+Slice 8C, the entry directly above this one, has since added the fifth
+and final interpreter, completing §19's full set.)
 
 ## What was done in the prior session — CSV/Excel Ingestion Slice 8A: Deterministic Absolute-Time Interpreters
 

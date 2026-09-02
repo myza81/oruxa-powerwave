@@ -21,6 +21,7 @@ from app.domain.time_axis import (
     FAMILY_UNKNOWN,
     INTERPRETER_ID_ABSOLUTE_DATETIME,
     INTERPRETER_ID_MANUAL,
+    INTERPRETER_ID_REPEATED_TIMESTAMP,
     INTERPRETER_ID_UNSUPPORTED,
     KNOWN_AMBIGUITY_LEVELS,
     KNOWN_CONFIDENCE_LEVELS,
@@ -436,3 +437,86 @@ class TestSlice8AVocabulary:
         )
 
         assert diagnostic.details == {"matched": 1, "sample_size": 3}
+
+
+class TestResolveStatusReconstructionOffered:
+    """(Slice 8C) `provenance == PROVENANCE_RECONSTRUCTED` is a SEPARATE
+    `review_required` trigger from the ambiguity mechanism -- unlike an
+    ambiguous diagnostic, it must never block `confirmed=true` from
+    succeeding."""
+
+    def test_reconstructed_unconfirmed_is_review_required(self):
+        config = TimeAxisConfiguration(
+            column_indices=(0,), family=FAMILY_PARTIAL, provenance=PROVENANCE_RECONSTRUCTED,
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, interval_seconds=0.2, confirmed=False,
+        )
+        diagnostic = TimeAxisDiagnostic(severity_hint="info", code="anchor_assumption_required", message="msg")
+
+        status = resolve_status(config, columns_still_time_axis=True, diagnostics=[diagnostic])
+
+        assert status == STATUS_REVIEW_REQUIRED
+
+    def test_reconstructed_confirmed_reaches_confirmed_despite_info_diagnostics(self):
+        config = TimeAxisConfiguration(
+            column_indices=(0,), family=FAMILY_PARTIAL, provenance=PROVENANCE_RECONSTRUCTED,
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, interval_seconds=0.2, confirmed=True,
+        )
+        diagnostics = [
+            TimeAxisDiagnostic(severity_hint="info", code="repeated_timestamp_detected", message="msg"),
+            TimeAxisDiagnostic(severity_hint="info", code="anchor_assumption_required", message="msg"),
+        ]
+
+        status = resolve_status(config, columns_still_time_axis=True, diagnostics=diagnostics)
+
+        assert status == STATUS_CONFIRMED
+
+    def test_reconstructed_confirmed_still_shows_needs_attention_for_a_real_warning(self):
+        # An INFO-only diagnostic never blocks reaching `confirmed`, but
+        # a genuine WARNING (e.g. inconsistent_bucket_count) still does
+        # -- exactly like every other interpreter's own warnings.
+        config = TimeAxisConfiguration(
+            column_indices=(0,), family=FAMILY_PARTIAL, provenance=PROVENANCE_RECONSTRUCTED,
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, interval_seconds=0.2, confirmed=True,
+        )
+        diagnostics = [
+            TimeAxisDiagnostic(severity_hint="info", code="repeated_timestamp_detected", message="msg"),
+            TimeAxisDiagnostic(severity_hint="warning", code="inconsistent_bucket_count", message="msg"),
+        ]
+
+        status = resolve_status(config, columns_still_time_axis=True, diagnostics=diagnostics)
+
+        assert status == STATUS_NEEDS_ATTENTION
+
+    def test_user_specified_does_not_trigger_the_reconstructed_rule(self):
+        config = TimeAxisConfiguration(
+            column_indices=(0,), family=FAMILY_PARTIAL, provenance=PROVENANCE_USER_SPECIFIED,
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, interval_seconds=0.2, confirmed=False,
+        )
+
+        status = resolve_status(config, columns_still_time_axis=True, diagnostics=[])
+
+        assert status == STATUS_DETECTED
+
+
+class TestResolveStatusAttentionWorthyFilter:
+    def test_info_only_diagnostics_reach_detected_when_unconfirmed(self):
+        config = TimeAxisConfiguration(
+            column_indices=(0,), family=FAMILY_PARTIAL, provenance=PROVENANCE_NATIVE,
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, confirmed=False,
+        )
+        diagnostic = TimeAxisDiagnostic(severity_hint="info", code="repeated_timestamp_detected", message="msg")
+
+        status = resolve_status(config, columns_still_time_axis=True, diagnostics=[diagnostic])
+
+        assert status == STATUS_DETECTED
+
+    def test_warning_diagnostic_still_reaches_needs_attention(self):
+        config = TimeAxisConfiguration(
+            column_indices=(0,), family=FAMILY_ABSOLUTE, provenance=PROVENANCE_NATIVE,
+            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, confirmed=False,
+        )
+        diagnostic = TimeAxisDiagnostic(severity_hint="warning", code="mixed_datetime_format", message="msg")
+
+        status = resolve_status(config, columns_still_time_axis=True, diagnostics=[diagnostic])
+
+        assert status == STATUS_NEEDS_ATTENTION

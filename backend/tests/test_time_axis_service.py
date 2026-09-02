@@ -18,7 +18,13 @@ from openpyxl import Workbook
 from starlette.datastructures import Headers
 
 from app.domain.time_axis import (
+    CONFIDENCE_HIGH,
+    CONFIDENCE_LOW,
+    CONFIDENCE_MEDIUM,
     DIAGNOSTIC_AMBIGUOUS_DATE_ORDER,
+    DIAGNOSTIC_ANCHOR_ASSUMPTION_REQUIRED,
+    DIAGNOSTIC_CADENCE_NOT_RELIABLE,
+    DIAGNOSTIC_REPEATED_TIMESTAMP_DETECTED,
     FAMILY_ABSOLUTE,
     FAMILY_ELAPSED,
     FAMILY_PARTIAL,
@@ -26,11 +32,13 @@ from app.domain.time_axis import (
     INTERPRETER_ID_ABSOLUTE_DATETIME,
     INTERPRETER_ID_ELAPSED_NUMERIC,
     INTERPRETER_ID_MANUAL,
+    INTERPRETER_ID_REPEATED_TIMESTAMP,
     INTERPRETER_ID_SAMPLE_INDEX,
     INTERPRETER_ID_SPLIT_DATE_TIME,
     INTERPRETER_ID_UNSUPPORTED,
     PROVENANCE_INDEX_ONLY,
     PROVENANCE_NATIVE,
+    PROVENANCE_RECONSTRUCTED,
     PROVENANCE_USER_SPECIFIED,
     STATUS_CONFIRMED,
     STATUS_DETECTED,
@@ -398,6 +406,7 @@ class TestRegistryResolution:
         monkeypatch.delitem(_INTERPRETERS, INTERPRETER_ID_SPLIT_DATE_TIME)
         monkeypatch.delitem(_INTERPRETERS, INTERPRETER_ID_ELAPSED_NUMERIC)
         monkeypatch.delitem(_INTERPRETERS, INTERPRETER_ID_SAMPLE_INDEX)
+        monkeypatch.delitem(_INTERPRETERS, INTERPRETER_ID_REPEATED_TIMESTAMP)
 
         interpreter = resolve_interpreter(column_count=1, requested_interpreter_id=None)
 
@@ -1157,3 +1166,396 @@ class TestElapsedAndSampleIndexDataPreservation:
 
         preview = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
         assert [row.cells[0] for row in preview.rows] == ["1", "2", "2", "3"]
+
+
+# ---- CSV/Excel ingestion Slice 8C (DEC-072): repeated timestamp /
+# precision-loss reconstruction -- service-layer wiring. Pure detection/
+# preview logic is covered by tests/test_time_axis_interpreters.py.
+# Every fixture below is headerless. ----
+
+
+def _repeated_timestamp_csv(pattern: list[int], base_hour: str = "13:14:0") -> bytes:
+    lines = []
+    for i, count in enumerate(pattern):
+        for _ in range(count):
+            lines.append(f"{base_hour}{i}")
+    return ("\n".join(lines) + "\n").encode()
+
+
+class TestRepeatedTimestampSetAndGet:
+    def test_high_confidence_suggestion_is_review_required_until_confirmed(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, _repeated_timestamp_csv([5, 5, 5, 5]))
+        _mark_time_axis(registry, source_id, 0)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, registry=registry,
+        )
+
+        assert result.status == STATUS_REVIEW_REQUIRED
+        assert result.provenance == PROVENANCE_RECONSTRUCTED
+        assert result.confidence == CONFIDENCE_HIGH
+        assert result.interval_seconds == pytest.approx(0.2)
+
+    def test_confirming_a_high_confidence_suggestion_succeeds(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, _repeated_timestamp_csv([5, 5, 5, 5]))
+        _mark_time_axis(registry, source_id, 0)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, confirmed=True, registry=registry,
+        )
+
+        assert result.status == STATUS_CONFIRMED
+        assert result.provenance == PROVENANCE_RECONSTRUCTED
+
+    def test_low_confidence_confirm_is_rejected(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, _repeated_timestamp_csv([5, 2, 8, 4]))
+        _mark_time_axis(registry, source_id, 0)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, registry=registry,
+        )
+        assert result.status == STATUS_REVIEW_REQUIRED
+        assert result.confidence == CONFIDENCE_LOW
+
+        with pytest.raises(InvalidTimeAxisConfigurationError):
+            set_time_axis_configuration(
+                workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+                interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, confirmed=True, registry=registry,
+            )
+
+    def test_manual_interval_override_uses_user_specified_provenance(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, _repeated_timestamp_csv([5, 2, 8, 4]))
+        _mark_time_axis(registry, source_id, 0)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,), interval_seconds=0.25,
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, confirmed=True, registry=registry,
+        )
+
+        assert result.provenance == PROVENANCE_USER_SPECIFIED
+        assert result.interval_seconds == 0.25
+        # confirmed=true succeeds even though the underlying data is
+        # still irregular -- the WARNING-level finding about that stays
+        # surfaced regardless (matches every other interpreter's own
+        # "confirmed never suppresses a real warning" precedent).
+        assert result.status == STATUS_NEEDS_ATTENTION
+
+    def test_manual_sampling_rate_converted_by_caller(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, _repeated_timestamp_csv([5, 5, 5, 5]))
+        _mark_time_axis(registry, source_id, 0)
+
+        rate_hz = 4
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,), interval_seconds=1 / rate_hz,
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, registry=registry,
+        )
+
+        assert result.interval_seconds == pytest.approx(0.25)
+        assert result.provenance == PROVENANCE_USER_SPECIFIED
+
+    def test_custom_anchor_offset_is_stored_in_options(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, _repeated_timestamp_csv([5, 5, 5, 5]))
+        _mark_time_axis(registry, source_id, 0)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, options={"anchor_offset_seconds": 0.1},
+            registry=registry,
+        )
+
+        assert result.options["anchor_offset_seconds"] == 0.1
+
+    def test_diagnostics_recomputed_live_on_every_get(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, _repeated_timestamp_csv([5, 5, 5, 5]))
+        _mark_time_axis(registry, source_id, 0)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, registry=registry,
+        )
+
+        first = get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        second = get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert first.status == second.status == STATUS_REVIEW_REQUIRED
+        assert first.interval_seconds == second.interval_seconds
+
+    def test_absolute_datetime_source_supported(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(
+            registry,
+            _repeated_timestamp_csv([5, 5, 5, 5], base_hour="2026-09-02 13:14:0"),
+        )
+        _mark_time_axis(registry, source_id, 0)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, registry=registry,
+        )
+
+        assert result.family == FAMILY_ABSOLUTE
+        assert result.provenance == PROVENANCE_RECONSTRUCTED
+
+    def test_partial_time_only_source_stays_partial(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, _repeated_timestamp_csv([5, 5, 5, 5]))
+        _mark_time_axis(registry, source_id, 0)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, registry=registry,
+        )
+
+        assert result.family == FAMILY_PARTIAL
+
+    def test_wrong_column_count_is_rejected(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"13:14:01,x\n13:14:02,y\n")
+        _mark_time_axis(registry, source_id, 0, 1)
+
+        with pytest.raises(InvalidTimeAxisConfigurationError):
+            set_time_axis_configuration(
+                workspace_id="ws-1", source_id=source_id, column_indices=(0, 1),
+                interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, registry=registry,
+            )
+
+
+class TestRepeatedTimestampInterpretDryRun:
+    def test_dry_run_does_not_store_anything(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, _repeated_timestamp_csv([5, 5, 5, 5]))
+        _mark_time_axis(registry, source_id, 0)
+
+        preview = interpret_time_axis(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, registry=registry,
+        )
+
+        assert preview.confidence == CONFIDENCE_HIGH
+        assert preview.resolved_interval_seconds == pytest.approx(0.2)
+        assert preview.preview_rows
+        summary = get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert summary.status == STATUS_UNCONFIGURED
+
+    def test_dry_run_high_confidence_suggestion(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, _repeated_timestamp_csv([5, 5, 5, 5]))
+        _mark_time_axis(registry, source_id, 0)
+
+        preview = interpret_time_axis(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, registry=registry,
+        )
+
+        codes = [d.code for d in preview.diagnostics]
+        assert DIAGNOSTIC_REPEATED_TIMESTAMP_DETECTED in codes
+        assert DIAGNOSTIC_ANCHOR_ASSUMPTION_REQUIRED in codes
+        assert all(r.interpreted is not None for r in preview.preview_rows)
+
+    def test_dry_run_low_confidence_fallback(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, _repeated_timestamp_csv([5, 2, 8, 4]))
+        _mark_time_axis(registry, source_id, 0)
+
+        preview = interpret_time_axis(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, registry=registry,
+        )
+
+        assert preview.confidence == CONFIDENCE_LOW
+        assert preview.resolved_interval_seconds is None
+        codes = [d.code for d in preview.diagnostics]
+        assert DIAGNOSTIC_CADENCE_NOT_RELIABLE in codes
+        assert all(r.interpreted is None for r in preview.preview_rows)
+
+    def test_dry_run_manual_override(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, _repeated_timestamp_csv([5, 2, 8, 4]))
+        _mark_time_axis(registry, source_id, 0)
+
+        preview = interpret_time_axis(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,), interval_seconds=0.25,
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, registry=registry,
+        )
+
+        assert preview.resolved_interval_seconds == 0.25
+        assert all(r.interpreted is not None for r in preview.preview_rows)
+
+    def test_dry_run_requires_time_axis_role(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, _repeated_timestamp_csv([5, 5, 5, 5]))
+
+        with pytest.raises(InvalidTimeAxisConfigurationError):
+            interpret_time_axis(
+                workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+                interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, registry=registry,
+            )
+
+
+class TestRepeatedTimestampUndoRedo:
+    def test_accepted_reconstruction_undo_redo(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, _repeated_timestamp_csv([5, 5, 5, 5]))
+        _mark_time_axis(registry, source_id, 0)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, confirmed=True, registry=registry,
+        )
+
+        undo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry).status == STATUS_UNCONFIGURED
+
+        redo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry).status == STATUS_CONFIRMED
+
+    def test_anchor_change_undo_redo(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, _repeated_timestamp_csv([5, 5, 5, 5]))
+        _mark_time_axis(registry, source_id, 0)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, registry=registry,
+        )
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, options={"anchor_offset_seconds": 0.1},
+            registry=registry,
+        )
+
+        undo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
+        after_undo = get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert after_undo.options.get("anchor_offset_seconds") == 0.0
+
+        redo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
+        after_redo = get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert after_redo.options.get("anchor_offset_seconds") == 0.1
+
+    def test_manual_timing_undo_redo(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, _repeated_timestamp_csv([5, 5, 5, 5]))
+        _mark_time_axis(registry, source_id, 0)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,), interval_seconds=0.25,
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, registry=registry,
+        )
+
+        undo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry).status == STATUS_UNCONFIGURED
+
+        redo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
+        summary = get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert summary.interval_seconds == 0.25
+        assert summary.provenance == PROVENANCE_USER_SPECIFIED
+
+    def test_sample_index_fallback_undo_redo(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, _repeated_timestamp_csv([5, 5, 5, 5]))
+        _mark_time_axis(registry, source_id, 0)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, registry=registry,
+        )
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_SAMPLE_INDEX, registry=registry,
+        )
+
+        assert get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry).status == STATUS_INDEX_FALLBACK
+
+        undo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
+        after_undo = get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert after_undo.interpreter_id == INTERPRETER_ID_REPEATED_TIMESTAMP
+
+    def test_clear_reverts_to_unconfigured(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, _repeated_timestamp_csv([5, 5, 5, 5]))
+        _mark_time_axis(registry, source_id, 0)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, confirmed=True, registry=registry,
+        )
+
+        clear_time_axis_configuration(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry).status == STATUS_UNCONFIGURED
+
+
+class TestRepeatedTimestampExcelWorksheetIsolation:
+    def test_isolated_per_worksheet(self):
+        registry = PreparationSessionRegistry()
+        content = _build_xlsx({
+            "A": [[v] for v in ["13:14:01"] * 5 + ["13:14:02"] * 5 + ["13:14:03"] * 5 + ["13:14:04"] * 5],
+            "B": [["not-a-time"]],
+        })
+        source_id = _add_excel(registry, content)
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=0, registry=registry)
+        _mark_time_axis(registry, source_id, 0)
+        result_a = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, registry=registry,
+        )
+        assert result_a.status == STATUS_REVIEW_REQUIRED
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=1, registry=registry)
+        result_b = get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert result_b.status == STATUS_UNCONFIGURED
+
+        select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=0, registry=registry)
+        result_a_again = get_time_axis_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert result_a_again.interval_seconds == pytest.approx(0.2)
+
+
+class TestRepeatedTimestampDataPreservation:
+    def test_original_timestamps_never_overwritten(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, _repeated_timestamp_csv([5, 5, 5, 5]))
+        _mark_time_axis(registry, source_id, 0)
+
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, confirmed=True, registry=registry,
+        )
+
+        preview = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=25, registry=registry)
+        values = [row.cells[0] for row in preview.rows]
+        assert values == (
+            ["13:14:00"] * 5 + ["13:14:01"] * 5 + ["13:14:02"] * 5 + ["13:14:03"] * 5
+        )
+
+    def test_identical_and_distinct_rows_all_preserved_no_row_count_change(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, _repeated_timestamp_csv([5, 5, 5, 5]))
+        _mark_time_axis(registry, source_id, 0)
+
+        before = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=25, registry=registry)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, confirmed=True, registry=registry,
+        )
+        after = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=25, registry=registry)
+
+        assert before.total_row_count == after.total_row_count == 20
+
+    def test_no_row_reordering(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, _repeated_timestamp_csv([5, 5, 5, 5]))
+        _mark_time_axis(registry, source_id, 0)
+
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, confirmed=True, registry=registry,
+        )
+
+        preview = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=25, registry=registry)
+        row_numbers = [row.row_number for row in preview.rows]
+        assert row_numbers == sorted(row_numbers)

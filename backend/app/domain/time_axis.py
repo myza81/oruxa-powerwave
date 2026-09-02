@@ -253,6 +253,39 @@ DIAGNOSTIC_SAMPLE_INDEX_GOES_BACKWARD = "sample_index_goes_backward"
 DIAGNOSTIC_REPEATED_SAMPLE_INDEX = "repeated_sample_index"
 DIAGNOSTIC_SAMPLE_INDEX_GAP = "sample_index_gap"
 
+#: The one Slice 8C interpreter identifier -- see
+#: `app.services.time_axis_interpreters` for what it does. Accepts
+#: exactly 1 column, same as `absolute_datetime`/`elapsed_numeric`.
+INTERPRETER_ID_REPEATED_TIMESTAMP = "repeated_timestamp_precision_loss"
+
+#: Diagnostic codes the Slice 8C interpreter may produce (§R).
+#: `DIAGNOSTIC_CADENCE_NOT_RELIABLE` is the ONE Slice 8C diagnostic that
+#: ever carries `AMBIGUITY_AMBIGUOUS` -- when confidence is too low to
+#: offer any concrete suggestion at all, there is nothing yet to accept
+#: (the user must actively choose manual timing or Sample Index), so it
+#: routes through the same `STATUS_REVIEW_REQUIRED`-blocks-`confirmed`
+#: precedence `ambiguous_date_order`/`missing_elapsed_unit` already
+#: established. A HIGH/MEDIUM-confidence suggestion is a fundamentally
+#: DIFFERENT situation -- a concrete, actionable proposal already
+#: exists, and `confirmed=true` accepting it must be ALLOWED to
+#: succeed -- so `repeated_timestamp_detected`/`precision_loss_suspected`/
+#: `anchor_assumption_required` (always attached whenever a real
+#: suggestion is offered) are deliberately `unambiguous`; instead,
+#: `resolve_status()` gets its own SEPARATE new precedence rule keying
+#: off `provenance == PROVENANCE_RECONSTRUCTED` directly (§15.3's own
+#: "Review suggested — a diagnostic exists AND/OR a reconstruction is
+#: offered" wording, taken literally as a second, independent trigger
+#: for the same `STATUS_REVIEW_REQUIRED` value -- not a re-use of the
+#: ambiguity-blocks-confirm mechanism, which would make an offered
+#: suggestion impossible to ever accept).
+DIAGNOSTIC_REPEATED_TIMESTAMP_DETECTED = "repeated_timestamp_detected"
+DIAGNOSTIC_PRECISION_LOSS_SUSPECTED = "precision_loss_suspected"
+DIAGNOSTIC_INCONSISTENT_BUCKET_COUNT = "inconsistent_bucket_count"
+DIAGNOSTIC_POSSIBLE_MISSING_SAMPLE = "possible_missing_sample"
+DIAGNOSTIC_UNEXPECTED_BUCKET_SAMPLE_COUNT = "unexpected_bucket_sample_count"
+DIAGNOSTIC_CADENCE_NOT_RELIABLE = "cadence_not_reliable"
+DIAGNOSTIC_ANCHOR_ASSUMPTION_REQUIRED = "anchor_assumption_required"
+
 
 @dataclass(slots=True, frozen=True)
 class TimeAxisConfiguration:
@@ -471,6 +504,23 @@ def _has_ambiguous_diagnostic(diagnostics: list[TimeAxisDiagnostic]) -> bool:
     return any(d.ambiguity == AMBIGUITY_AMBIGUOUS for d in diagnostics)
 
 
+def _has_attention_worthy_diagnostic(diagnostics: list[TimeAxisDiagnostic]) -> bool:
+    """(Slice 8C) A diagnostic counts toward `needs_attention` only when
+    it is NOT purely informational (`severity_hint != SEVERITY_INFO`).
+    Slice 8C is the first producer of `SEVERITY_INFO` diagnostics --
+    always-present disclosure notes (`repeated_timestamp_detected`,
+    `anchor_assumption_required`) that describe a TRUE, permanent fact
+    about an ACCEPTED reconstruction, never a problem to attend to. Without
+    this filter, a confirmed reconstruction could never reach
+    `STATUS_CONFIRMED` at all, since its own disclosure notes never go
+    away. A genuine data-quality WARNING (e.g. `mixed_datetime_format`,
+    `cadence_not_reliable`) still blocks `confirmed` from ever being
+    reported, exactly as it always has for every earlier slice -- this
+    filter changes nothing for Slice 7/8A/8B, which never produced an
+    INFO-severity diagnostic."""
+    return any(d.severity_hint != SEVERITY_INFO for d in diagnostics)
+
+
 def resolve_status(
     configuration: TimeAxisConfiguration | None,
     *,
@@ -495,16 +545,35 @@ def resolve_status(
     4. (Slice 8A) Any diagnostic carries `ambiguity == AMBIGUITY_AMBIGUOUS`
        and the configuration is not yet confirmed -> `review_required`
        -- a genuine "the user must pick one" case (e.g.
-       `ambiguous_date_order`), distinct from a plain data-quality
+       `ambiguous_date_order`, Slice 8B's `missing_elapsed_unit`, Slice
+       8C's `cadence_not_reliable`), distinct from a plain data-quality
        finding. This is the first production path that actually reaches
        `STATUS_REVIEW_REQUIRED` (Slice 7 never did -- see that
        constant's own docstring, now superseded by this rule).
-    5. Any OTHER diagnostics present and not yet confirmed ->
-       `needs_attention` (e.g. `unparseable_datetime`,
+    5. (Slice 8C) `provenance == PROVENANCE_RECONSTRUCTED` and the
+       configuration is not yet confirmed -> `review_required` -- §15.3's
+       own "a diagnostic exists AND/OR a reconstruction is offered"
+       wording, taken as a SEPARATE trigger for the same status value.
+       Deliberately NOT folded into rule 4's ambiguity mechanism: an
+       offered reconstruction is a concrete, actionable proposal (not an
+       unresolved choice), and `confirmed=true` accepting it must
+       succeed -- which rule 4's own confirm-blocking behavior would
+       otherwise prevent forever. See
+       `DIAGNOSTIC_CADENCE_NOT_RELIABLE`'s own docstring for why the
+       "nothing reliable to suggest" case uses rule 4 instead.
+    6. Any OTHER ATTENTION-WORTHY diagnostic present (`severity_hint !=
+       SEVERITY_INFO`) -> `needs_attention` (e.g. `unparseable_datetime`,
        `missing_datetime_value` -- a finding worth surfacing, but not
-       one with a specific choice for the user to make).
-    6. `confirmed` -> `confirmed`.
-    7. Otherwise -> `detected`.
+       one with a specific choice for the user to make). This rule is
+       NOT gated on `not confirmed` -- a genuine data-quality warning
+       stays surfaced even after confirmation, exactly as it always
+       has. A purely informational diagnostic (Slice 8C's own
+       `SEVERITY_INFO` disclosure notes) never triggers this rule at
+       all -- see `_has_attention_worthy_diagnostic`'s own docstring
+       for why (otherwise an accepted reconstruction could never reach
+       `confirmed`, since its own disclosure notes never disappear).
+    7. `confirmed` -> `confirmed`.
+    8. Otherwise -> `detected`.
     """
     if configuration is None:
         return STATUS_UNCONFIGURED
@@ -514,7 +583,9 @@ def resolve_status(
         return STATUS_INDEX_FALLBACK
     if not configuration.confirmed and _has_ambiguous_diagnostic(diagnostics):
         return STATUS_REVIEW_REQUIRED
-    if diagnostics:
+    if not configuration.confirmed and configuration.provenance == PROVENANCE_RECONSTRUCTED:
+        return STATUS_REVIEW_REQUIRED
+    if _has_attention_worthy_diagnostic(diagnostics):
         return STATUS_NEEDS_ATTENTION
     if configuration.confirmed:
         return STATUS_CONFIRMED

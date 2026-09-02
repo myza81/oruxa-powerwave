@@ -1160,12 +1160,15 @@ owner go-ahead before implementation begins.
    configuration; Clear reverts to `unconfigured`; and a multi-sheet
    Excel workbook keeps one sheet's configuration completely invisible
    on, and unaffected by, another -- all with zero console/page errors.
-8. **`[IN PROGRESS]` Initial time-axis interpreters.** The safest
+8. **`[DONE, 2026-09-02]` Initial time-axis interpreters.** The safest
    initial cases only — do not attempt every possible time-axis format
    at once. Full proposed initial interpreter set (single-column
    absolute datetime; Date + Time; elapsed numeric time; sample index;
    repeated-timestamp/lost-precision detection) recorded in
-   [CSV_EXCEL_TIME_INTERPRETATION.md §19](CSV_EXCEL_TIME_INTERPRETATION.md#19-slice-8-scope--initial-interpreters).
+   [CSV_EXCEL_TIME_INTERPRETATION.md §19](CSV_EXCEL_TIME_INTERPRETATION.md#19-slice-8-scope--initial-interpreters)
+   — all five now implemented (Slices 8A/8B/8C below); segmented/
+   variable-cadence reconstruction remains explicitly deferred (see the
+   Slice 8C entry's own scope note), not a gap in this item.
 
    **`[DONE, 2026-09-01]` Slice 8A — the two deterministic absolute-time
    cases.** Implemented exactly the first two items of that set —
@@ -1174,11 +1177,15 @@ owner go-ahead before implementation begins.
    framework.
 
    **`[DONE, 2026-09-02]` Slice 8B — elapsed numeric time + sample
-   index.** Implemented items 3-4 of that set. Repeated-timestamp/
-   lost-precision detection (item 5) remains `[NOT YET IMPLEMENTED]`,
-   deferred to a future Slice 8C, per this task's own explicit
-   non-goals (see this document's own Slice 8B entry below for the
-   full implementation summary).
+   index.** Implemented items 3-4 of that set (see this document's own
+   Slice 8B entry below for the full implementation summary).
+
+   **`[DONE, 2026-09-02]` Slice 8C — repeated-timestamp / precision-loss
+   detection and reconstruction.** Implemented item 5, the fifth and
+   final item of that set (see this document's own Slice 8C entry below
+   for the full implementation summary). Powerwave may detect, analyse,
+   suggest, and preview a reconstructed timing — it never silently
+   applies one.
 
    New interpreter ids registered in `app.services.time_axis_service`'s
    own registry: `absolute_datetime` (accepts exactly 1 column) and
@@ -1380,6 +1387,117 @@ owner go-ahead before implementation begins.
    provenance is no longer `index_only`); and Excel worksheet isolation
    plus the COMTRADE regression both remain intact -- all with zero
    console/page errors.
+
+   **`[DONE, 2026-09-02]` Slice 8C — repeated-timestamp / precision-loss
+   detection and reconstruction, full implementation summary.** New
+   interpreter id in the SAME `app.services.time_axis_service` registry:
+   `repeated_timestamp_precision_loss` (accepts exactly 1 column) --
+   implemented in `app/services/time_axis_interpreters.py` alongside
+   Slice 8A/8B's own four, reusing the identical `detect()`/
+   `build_preview_rows()` interpreter contract with no signature change
+   at all (the same `requested_interval_seconds`/`requested_options`
+   Slice 8B already added cover this interpreter's own manual-override
+   and anchor-offset needs).
+
+   **No new top-level fields needed anywhere.** `TimeAxisConfiguration.
+   unit`/`.interval_seconds`/`.options` and `TimeAxisDetectionResult`'s
+   own `resolved_interval_seconds`/`resolved_options` all already
+   existed since Slice 7/8B, anticipating exactly this. The one new
+   interpreter-specific setting, `anchor_offset_seconds` (seconds,
+   default 0), lives in the pre-existing generic `options` bag -- zero
+   new dataclass fields anywhere.
+
+   **Bucket analysis** (CSV_EXCEL_TIME_INTERPRETATION.md §7): consecutive
+   rows sharing an identical native timestamp string form one bucket, in
+   original row order, over the SAME bounded ≤50-row sample every other
+   interpreter already uses -- never a full-dataset scan, never sorted.
+   Both `absolute` and `partial` (time-of-day, no date ever invented)
+   families are supported via one family-agnostic `seconds_from_first:
+   list[float]` representation computed once after parsing, so every
+   downstream statistic (confidence, interval estimation) is written
+   once regardless of family. First and last buckets never penalize
+   confidence (they may be sample-window-truncated) -- only
+   `interior_sizes = bucket_sizes[1:-1]` feeds the stability check.
+
+   **Confidence rule** (qualitative only, per
+   CSV_EXCEL_TIME_INTERPRETATION.md §6, no percentages): HIGH requires
+   at least 2 equal-sized interior buckets; MEDIUM covers either too few
+   interior buckets to compare (but fully consistent) or an interior
+   spread of at most 1; LOW covers everything else, including fewer
+   than 2 total buckets. Suggested `interval_seconds` is
+   `statistics.median()` of `span_to_next_bucket / bucket_size` across
+   every transition EXCEPT the first (the first bucket's own count may
+   be a truncated undercount), falling back to including it only when no
+   other estimate exists.
+
+   **Reconstruction is offered, never silently applied** (the task's own
+   governing rule, restated in code): a NEW `resolve_status()`
+   precedence rule -- `provenance == PROVENANCE_RECONSTRUCTED and not
+   confirmed` routes to `STATUS_REVIEW_REQUIRED` -- is GENUINELY SEPARATE
+   from the ambiguity mechanism Slice 8A built (`ambiguous_date_order`/
+   `missing_elapsed_unit`). Marking the "a suggestion exists" diagnostic
+   as `ambiguity: "ambiguous"` would have made an accepted reconstruction
+   permanently unconfirmable (the diagnostic disclosing it never
+   disappears); the new rule instead lets `confirmed=true` succeed once
+   the user accepts. A genuinely unreliable case
+   (`cadence_not_reliable`, `ambiguity: "ambiguous"`) still uses the
+   EXISTING ambiguity mechanism and correctly blocks confirmation --
+   segmented/variable-cadence reconstruction is deferred, returning this
+   review/low-confidence state instead of guessing.
+
+   **A new diagnostic severity, `SEVERITY_INFO`, was required.** Slice
+   8C is the first interpreter to attach always-true disclosure notes
+   (`repeated_timestamp_detected`, `anchor_assumption_required` -- the
+   design doc's own mandatory anchor disclosure) that never resolve away.
+   The framework's pre-existing `if diagnostics: needs_attention` check
+   was unconditional on `confirmed`, which would have permanently capped
+   every confirmed reconstruction at `needs_attention`. Fixed with a
+   `_has_attention_worthy_diagnostic()` filter excluding `SEVERITY_INFO`
+   -- verified 100% backward compatible (no diagnostic before Slice 8C
+   ever used it). A genuine `SEVERITY_WARNING`
+   (`inconsistent_bucket_count`, `unexpected_bucket_sample_count` --
+   missing/extra-sample bucket-count anomalies, diagnostics only, never
+   inserted/deleted rows) still surfaces as `needs_attention` post-
+   confirmation, matching every other interpreter's existing precedent.
+
+   **Manual override and Sample Index fallback** (task §J/§N): an
+   explicit `interval_seconds` is `provenance=user_specified` (never
+   `reconstructed`) and `confidence=high`, with missing/extra-sample
+   diagnostics still computed and attached regardless (they describe the
+   underlying data, independent of which interval the user applied).
+   Switching `interpreter_id` to `sample_index` remains the always-
+   available, honest fallback that never fabricates a real-time
+   interval -- unchanged from Slice 8B, needing no new code.
+
+   New API: no new endpoints -- `POST .../working/time-axis/interpret`
+   and `PUT .../working/time-axis` are reused verbatim, exactly like
+   Slice 8B, with `options.anchor_offset_seconds` traveling through the
+   already-generic `options` field.
+
+   Frontend: the Interpreter `<select>` gained "Repeated Timestamp
+   (Precision Loss) (1 column)"; the shared Detect → diagnostics →
+   preview → Confirm flow (Slice 8A) is reused verbatim, with the
+   compact summary line extended to show the Suggested interval and the
+   anchor assumption in plain language whenever this interpreter is
+   active. A collapsed-by-default "Adjust" panel (progressive
+   disclosure) reveals a Timing-source radio (Suggested interval /
+   Manual interval / Manual rate, converting to `interval_seconds`
+   client-side exactly like Sample Index's own Hz/ms toggle) plus a
+   "First sample offset" (ms) input feeding `options.anchor_offset_seconds`;
+   a "Use Sample Index" button switches the Interpreter select directly.
+   Verified: full backend suite 2439 passed (44 new on top of Slice 8B's
+   2395), zero regressions; the committed browser smoke test (COMTRADE)
+   still passes unchanged; a throwaway (not committed) live-browser
+   Playwright UAT script confirmed: a stable-cadence column shows "High"
+   confidence with the correct suggested interval and anchor disclosure
+   in the compact summary and the diagnostics list; Accept Suggestion
+   (Confirmed + Save) reaches "Confirmed"/"Reconstructed"; the Adjust
+   flow's manual-interval override correctly switches provenance to
+   "User Specified"; "Use Sample Index" switches the interpreter select;
+   and an unstable-cadence column shows "Low" confidence with no
+   fabricated interval, a `cadence_not_reliable`-driven diagnostic, and a
+   server-rejected confirm attempt -- all with zero unexpected console/
+   page errors.
 9. **Full Powerwave Readiness Validator.** Structural validity; data
    validity; time-axis validity; compatibility with canonical Powerwave
    requirements (§4/§16).

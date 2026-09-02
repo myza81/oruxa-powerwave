@@ -1512,6 +1512,7 @@ class TestTimeAxisInterpretersEndpoint:
         ids = {row["interpreter_id"] for row in resp.json()}
         assert ids == {
             "manual", "unsupported", "absolute_datetime", "split_date_time", "elapsed_numeric", "sample_index",
+            "repeated_timestamp_precision_loss",
         }
 
 
@@ -2248,3 +2249,246 @@ class TestTimeAxisElapsedAndIndexDataPreservationViaApi:
 
         rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()["rows"]
         assert [r["cells"][0] for r in rows] == ["1", "2", "2", "3"]
+
+
+# ---- CSV/Excel ingestion Slice 8C (DEC-072): repeated timestamp /
+# precision-loss reconstruction -- API-level wiring only. Detection/
+# confidence/preview logic is covered by tests/test_time_axis_interpreters.py
+# and service-layer orchestration by tests/test_time_axis_service.py. ----
+
+
+def _repeated_timestamp_csv(pattern: list[int], base_hour: str = "13:14:0") -> bytes:
+    lines = []
+    for i, count in enumerate(pattern):
+        for _ in range(count):
+            lines.append(f"{base_hour}{i}")
+    return ("\n".join(lines) + "\n").encode()
+
+
+class TestTimeAxisRepeatedTimestampPutEndpoint:
+    def test_high_confidence_suggestion_is_review_required(self, client):
+        source_id = _upload_csv(client, content=_repeated_timestamp_csv([5, 5, 5, 5]))
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "repeated_timestamp_precision_loss"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "review_required"
+        assert body["provenance"] == "reconstructed"
+        assert body["confidence"] == "high"
+        assert body["interval_seconds"] == pytest.approx(0.2)
+        codes = {d["code"] for d in body["diagnostics"]}
+        assert "repeated_timestamp_detected" in codes
+        assert "anchor_assumption_required" in codes
+
+    def test_accepting_the_suggestion_reaches_confirmed(self, client):
+        source_id = _upload_csv(client, content=_repeated_timestamp_csv([5, 5, 5, 5]))
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "repeated_timestamp_precision_loss", "confirmed": True},
+        )
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["status"] == "confirmed"
+
+    def test_low_confidence_cannot_be_confirmed(self, client):
+        source_id = _upload_csv(client, content=_repeated_timestamp_csv([5, 2, 8, 4]))
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        review = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "repeated_timestamp_precision_loss"},
+        )
+        assert review.json()["confidence"] == "low"
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "repeated_timestamp_precision_loss", "confirmed": True},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_time_axis_configuration"
+
+    def test_manual_interval_override_is_user_specified(self, client):
+        source_id = _upload_csv(client, content=_repeated_timestamp_csv([5, 2, 8, 4]))
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={
+                "column_indices": [0], "interpreter_id": "repeated_timestamp_precision_loss",
+                "interval_seconds": 0.25, "confirmed": True,
+            },
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["provenance"] == "user_specified"
+        assert body["interval_seconds"] == 0.25
+
+    def test_custom_anchor_offset_round_trips_via_options(self, client):
+        source_id = _upload_csv(client, content=_repeated_timestamp_csv([5, 5, 5, 5]))
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={
+                "column_indices": [0], "interpreter_id": "repeated_timestamp_precision_loss",
+                "options": {"anchor_offset_seconds": 0.1},
+            },
+        )
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["options"]["anchor_offset_seconds"] == 0.1
+
+    def test_switching_to_sample_index_is_the_documented_fallback(self, client):
+        source_id = _upload_csv(client, content=_repeated_timestamp_csv([5, 2, 8, 4]))
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "sample_index", "confirmed": True},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "index_fallback"
+        assert body["provenance"] == "index_only"
+
+    def test_wrong_column_count_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"13:14:01,x\n13:14:02,y\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "time_axis"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0, 1], "interpreter_id": "repeated_timestamp_precision_loss"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_time_axis_configuration"
+
+
+class TestTimeAxisRepeatedTimestampInterpretEndpoint:
+    def test_dry_run_does_not_store_anything(self, client):
+        source_id = _upload_csv(client, content=_repeated_timestamp_csv([5, 5, 5, 5]))
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.post(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis/interpret",
+            json={"column_indices": [0], "interpreter_id": "repeated_timestamp_precision_loss"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["confidence"] == "high"
+        assert body["resolved_interval_seconds"] == pytest.approx(0.2)
+        assert all(r["interpreted"] is not None for r in body["preview_rows"])
+
+        summary = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis")
+        assert summary.json()["status"] == "unconfigured"
+
+    def test_dry_run_low_confidence_never_fabricates_a_reconstruction(self, client):
+        source_id = _upload_csv(client, content=_repeated_timestamp_csv([5, 2, 8, 4]))
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.post(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis/interpret",
+            json={"column_indices": [0], "interpreter_id": "repeated_timestamp_precision_loss"},
+        )
+
+        body = resp.json()
+        assert body["confidence"] == "low"
+        assert body["resolved_interval_seconds"] is None
+        assert all(r["interpreted"] is None for r in body["preview_rows"])
+
+    def test_dry_run_manual_interval(self, client):
+        source_id = _upload_csv(client, content=_repeated_timestamp_csv([5, 2, 8, 4]))
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        resp = client.post(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis/interpret",
+            json={"column_indices": [0], "interpreter_id": "repeated_timestamp_precision_loss", "interval_seconds": 0.25},
+        )
+
+        body = resp.json()
+        assert body["resolved_interval_seconds"] == 0.25
+        assert all(r["interpreted"] is not None for r in body["preview_rows"])
+
+
+class TestTimeAxisRepeatedTimestampExcelWorksheetIsolationViaApi:
+    def test_isolated_per_worksheet(self, client):
+        content = _build_xlsx({
+            "A": [[v] for v in ["13:14:00"] * 5 + ["13:14:01"] * 5 + ["13:14:02"] * 5 + ["13:14:03"] * 5],
+            "B": [["not-a-time"]],
+        })
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "m.xlsx"),
+        ).json()["source_id"]
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 0})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "repeated_timestamp_precision_loss"},
+        )
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 1})
+        resp_b = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis")
+        assert resp_b.json()["status"] == "unconfigured"
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 0})
+        resp_a = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis")
+        assert resp_a.json()["interval_seconds"] == pytest.approx(0.2)
+
+
+class TestTimeAxisRepeatedTimestampUndoRedoViaApi:
+    def test_undo_redo_round_trips_the_accepted_reconstruction(self, client):
+        source_id = _upload_csv(client, content=_repeated_timestamp_csv([5, 5, 5, 5]))
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "repeated_timestamp_precision_loss", "confirmed": True},
+        )
+
+        client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/undo")
+        after_undo = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis").json()
+        assert after_undo["status"] == "unconfigured"
+
+        client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/redo")
+        after_redo = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/time-axis").json()
+        assert after_redo["status"] == "confirmed"
+
+
+class TestTimeAxisRepeatedTimestampDataPreservationViaApi:
+    def test_original_values_and_row_order_preserved(self, client):
+        source_id = _upload_csv(client, content=_repeated_timestamp_csv([5, 5, 5, 5]))
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "repeated_timestamp_precision_loss", "confirmed": True},
+        )
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()["rows"]
+        assert [r["cells"][0] for r in rows] == (
+            ["13:14:00"] * 5 + ["13:14:01"] * 5 + ["13:14:02"] * 5 + ["13:14:03"] * 5
+        )
+
+
+class TestTimeAxisRepeatedTimestampComtradeRegressionUnaffected:
+    def test_comtrade_sources_endpoint_still_empty(self, client):
+        source_id = _upload_csv(client, content=_repeated_timestamp_csv([5, 5, 5, 5]))
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "repeated_timestamp_precision_loss", "confirmed": True},
+        )
+
+        assert client.get("/api/v1/workspaces/ws-1/sources").json() == []

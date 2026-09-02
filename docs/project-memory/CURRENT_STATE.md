@@ -451,8 +451,44 @@ re-confirmed by the TG-FINAL audit):
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 8](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
   for the full implementation summary.
 
-  Repeated-timestamp/lost-precision detection (Slice 8's remaining
-  item, a future Slice 8C) and the full readiness validator are still
+  **Slice 8C** (2026-09-02) implements the fifth and final Slice 8
+  proposed initial interpreter — repeated-timestamp/precision-loss
+  detection and user-approved reconstruction — as
+  `repeated_timestamp_precision_loss` in the SAME
+  `app/services/time_axis_interpreters.py`, reusing Slice 8A/8B's own
+  interpreter contract unchanged. Powerwave may detect, analyse,
+  suggest, and preview a reconstructed timing — it never silently
+  applies one. Consecutive rows sharing an identical native timestamp
+  (in original row order, over the same bounded sample) form a bucket;
+  first/last buckets never penalize confidence since they may be
+  sample-window-truncated. Confidence is qualitative only (High/Medium/
+  Low): High requires ≥2 equal-sized interior buckets, Medium covers too
+  few interior buckets to compare (but consistent) or a spread of ≤1,
+  Low covers everything else. An accepted suggestion is
+  `provenance=reconstructed` and always discloses its anchor assumption
+  (first sample aligned to the displayed timestamp, by default) via a
+  new `anchor_offset_seconds` option — no new stored field was needed
+  otherwise (`unit`/`interval_seconds`/`options` already existed since
+  Slice 7). A NEW `resolve_status()` rule routes an unconfirmed
+  reconstruction to `review_required` WITHOUT blocking confirmation
+  (deliberately separate from the ambiguity mechanism Slice 8A built,
+  which WOULD have blocked it forever); a genuinely unreliable cadence
+  still uses that existing ambiguity mechanism and correctly blocks
+  `confirmed=true`, deferring segmented/variable-cadence reconstruction
+  rather than guessing. A manual interval/rate override is
+  `provenance=user_specified`, never `reconstructed`; missing/extra-
+  sample bucket-count anomalies are diagnostics only, never inserted/
+  deleted rows; Sample Index remains the always-available, honest
+  fallback. Frontend: the Interpreter selector gained "Repeated
+  Timestamp (Precision Loss)"; the compact summary shows the suggested
+  interval and anchor assumption in plain language, with a collapsed-
+  by-default "Adjust" panel (Timing source radio + First sample offset
+  ms) for a manual override. See
+  [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 8](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
+  for the full implementation summary.
+
+  Slice 8's five proposed initial interpreters are now all implemented
+  (8A/8B/8C); the full readiness validator (Slice 9+) is still
   explicitly NOT part of any slice implemented so far — see
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md).
 
@@ -532,10 +568,11 @@ Slice 6 adds the Readiness Issue LANGUAGE AND TRANSPORT model
 issue codes derived live from configuration state) — explicitly NOT the
 full Readiness Validator, no readiness gate, no status transition.
 Slice 7 (the extensible time-axis interpretation FRAMEWORK), Slice 8A
-(the first two deterministic time-axis interpreters), and Slice 8B (the
-next two -- elapsed numeric time, sample index, see above) are now
-implemented. Slice 8's remaining item (repeated-timestamp/lost-precision
-detection, a future Slice 8C), and Slices 9–13 (the full Readiness
+(the first two deterministic time-axis interpreters), Slice 8B (the
+next two -- elapsed numeric time, sample index), and Slice 8C (the
+fifth and final one -- repeated-timestamp/precision-loss detection and
+reconstruction, see above) are now implemented -- Slice 8's full
+five-interpreter set is complete. Slices 9–13 (the full Readiness
 Validator, canonical `DisturbanceRecord` conversion, existing waveform
 integration, export, and progressive automation) remain unimplemented
 and require their own explicit owner go-ahead before starting, per
@@ -555,9 +592,12 @@ point 5), a qualitative confidence model, the interpreter-registry
 extensibility concept, and a progressive-disclosure Time Axis UI shell
 matching the existing Preparation Status/Structure pattern. Slice 7 (the
 framework portion) is now implemented, per above; Slice 8A (§19 items
-1-2, the two deterministic absolute-time interpreters) and Slice 8B
-(§19 items 3-4, elapsed numeric time + sample index) are also now
-implemented; Slice 8's remaining item (§19 item 5) remains design-only.
+1-2, the two deterministic absolute-time interpreters), Slice 8B (§19
+items 3-4, elapsed numeric time + sample index), and Slice 8C (§19
+item 5, repeated-timestamp/precision-loss detection and reconstruction)
+are also now implemented -- §19's full five-interpreter set is
+complete; segmented/variable-cadence reconstruction remains explicitly
+deferred, per Slice 8C's own scope note above.
 `SourceMetadata.timing_reference` still reserves a value other than
 `"absolute"` for a future importer with no trustworthy absolute
 recording timestamp — a CSV/Excel preparation source does not reach

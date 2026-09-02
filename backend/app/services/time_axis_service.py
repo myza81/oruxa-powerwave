@@ -388,6 +388,48 @@ class _SampleIndexInterpreter:
         return [TimeAxisPreviewRow(row_number=rn, original=original, interpreted=interpreted) for rn, original, interpreted in built]
 
 
+@dataclass(slots=True, frozen=True)
+class _RepeatedTimestampInterpreter:
+    """Repeated-timestamp / precision-loss reconstruction (task §A-§L)
+    -- accepts exactly one column. `interval_seconds`, if the CALLER
+    supplies it, is a user override (§J) -- bypasses this interpreter's
+    own cadence inference entirely, `provenance=user_specified`,
+    matching `sample_index`'s own precedent. Otherwise the interpreter
+    analyses bounded consecutive-run buckets itself; see
+    `app.services.time_axis_interpreters.detect_repeated_timestamp_
+    precision_loss`'s own docstring for the full confidence/anchor/
+    provenance rules. `options.anchor_offset_seconds` (default `0.0`)
+    is the ONE interpreter-specific setting stored -- no other new
+    field was needed (`unit`/`interval_seconds` were both already
+    top-level `TimeAxisConfiguration` fields since Slice 7)."""
+
+    interpreter_id: str = time_axis_domain.INTERPRETER_ID_REPEATED_TIMESTAMP
+    needs_sample_data: bool = True
+
+    def accepts(self, *, column_count: int) -> bool:
+        return column_count == 1
+
+    def detect(
+        self, *, samples: list[TimeAxisSampleRow], requested_family: str | None,
+        requested_provenance: str | None, requested_unit: str | None,
+        requested_interval_seconds: float | None, requested_options: dict[str, Any],
+    ) -> TimeAxisDetectionResult:
+        raw = [(s.row_number, s.values[0] if s.values else None) for s in samples]
+        return time_axis_interpreters.detect_repeated_timestamp_precision_loss(
+            raw, requested_interval_seconds=requested_interval_seconds, requested_options=requested_options,
+        )
+
+    def build_preview_rows(
+        self, *, samples: list[TimeAxisSampleRow], resolved_options: dict[str, Any],
+        resolved_unit: str | None, resolved_interval_seconds: float | None, limit: int,
+    ) -> list[TimeAxisPreviewRow]:
+        raw = [(s.row_number, s.values) for s in samples]
+        built = time_axis_interpreters.build_repeated_timestamp_preview(
+            raw, resolved_options=resolved_options, resolved_interval_seconds=resolved_interval_seconds, limit=limit,
+        )
+        return [TimeAxisPreviewRow(row_number=rn, original=original, interpreted=interpreted) for rn, original, interpreted in built]
+
+
 # Small, explicit, hand-written registry -- no dynamic loading, no entry
 # points, no external config (task section G: "Do NOT build dynamic
 # plugin discovery... An explicit registry/list is sufficient").
@@ -403,6 +445,7 @@ _INTERPRETERS: dict[str, TimeAxisInterpreter] = {
     time_axis_domain.INTERPRETER_ID_SPLIT_DATE_TIME: _SplitDateTimeInterpreter(),
     time_axis_domain.INTERPRETER_ID_ELAPSED_NUMERIC: _ElapsedNumericInterpreter(),
     time_axis_domain.INTERPRETER_ID_SAMPLE_INDEX: _SampleIndexInterpreter(),
+    time_axis_domain.INTERPRETER_ID_REPEATED_TIMESTAMP: _RepeatedTimestampInterpreter(),
 }
 
 

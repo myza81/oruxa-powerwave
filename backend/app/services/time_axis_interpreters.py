@@ -1,9 +1,10 @@
-"""Deterministic absolute-time, elapsed-time, and sample-index
-interpreters (CSV/Excel ingestion Slices 8A-8B, DEC-072). Authoritative
-design source: docs/project-memory/CSV_EXCEL_TIME_INTERPRETATION.md,
-each slice's own task spec.
+"""Deterministic absolute-time, elapsed-time, sample-index, and
+repeated-timestamp-reconstruction interpreters (CSV/Excel ingestion
+Slices 8A-8C, DEC-072). Authoritative design source:
+docs/project-memory/CSV_EXCEL_TIME_INTERPRETATION.md, each slice's own
+task spec.
 
-Implements four REAL (non-`manual`) entries the Slice 7 registry always
+Implements five REAL (non-`manual`) entries the Slice 7 registry always
 anticipated:
 
     `absolute_datetime`  -- one Time Axis column, a full timestamp (8A)
@@ -13,6 +14,14 @@ anticipated:
     `sample_index`       -- one Time Axis column, a plain ordinal
                             sequence, optionally paired with a
                             user-supplied sampling interval (8B)
+    `repeated_timestamp_precision_loss` -- one Time Axis column whose
+                            own displayed precision is coarser than its
+                            true sampling cadence (repeated native
+                            values); analyses bounded groups ("buckets")
+                            of consecutive identical values and, when
+                            confidence supports it, SUGGESTS (never
+                            silently applies) an even sub-interval
+                            reconstruction (8C)
 
 Both are deterministic, bounded, non-fuzzy parsers -- a small, explicit
 table of `datetime.strptime` patterns (plus `datetime.fromisoformat`'s
@@ -74,15 +83,46 @@ diagnostics -- neither ever reorders, drops, collapses, or synthesizes
 a row. `sample_index`'s own gap/backward/repeat check compares each
 value only to the PREVIOUS one in the bounded sample, in original row
 order -- never sorted first.
+
+**Slice 8C: detect, suggest, preview -- never silently apply.**
+`detect_repeated_timestamp_precision_loss()` groups CONSECUTIVE rows
+sharing an identical native timestamp string into "buckets" (never a
+whole-dataset scan -- the SAME bounded sample every other interpreter
+here already receives). A bucket size greater than 1 means the
+source's own recorded precision is coarser than its true sampling
+interval. When enough INTERIOR buckets (excluding the first and last,
+which may be truncated by the sample window's own edges -- §E) show a
+stable size, a per-sample interval is suggested by dividing each
+bucket's own span-to-the-next-bucket by its own row count; the FIRST
+bucket's own count is never used for this estimate either (it may
+itself be truncated). This is always reported as a PENDING
+`PROVENANCE_RECONSTRUCTED` suggestion -- `resolve_status()` routes it
+to `review_required` until the caller explicitly sends `confirmed=true`
+in the same request that also carries the resolved interval; nothing
+in this module ever sets `confirmed` itself. A confidence too low to
+trust ANY suggestion reports `cadence_not_reliable` instead (no
+`resolved_interval_seconds` at all), which the caller must resolve via
+either a user-supplied manual interval/rate (`provenance=
+user_specified`, matching `sample_index`'s own precedent) or a fallback
+to `sample_index` itself (a completely separate interpreter switch,
+not something this module performs on the caller's behalf). Every
+reconstructed value also states its own anchor assumption explicitly
+(`resolved_options["anchor_offset_seconds"]`, default `0.0` -- "first
+sample aligned to the displayed timestamp") -- this is disclosed as a
+STATED ASSUMPTION, never presented as recovered original phase (task's
+own "reconstruction, never recovery" framing, restated from
+CSV_EXCEL_TIME_INTERPRETATION.md §7).
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import statistics
+from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
-from app.domain.preparation_issue import SEVERITY_WARNING
+from app.domain.preparation_issue import SEVERITY_INFO, SEVERITY_WARNING
 from app.domain.time_axis import (
     AMBIGUITY_AMBIGUOUS,
     AMBIGUITY_INVALID,
@@ -96,7 +136,10 @@ from app.domain.time_axis import (
     DATE_ORDER_MDY,
     DATE_ORDER_YMD,
     DIAGNOSTIC_AMBIGUOUS_DATE_ORDER,
+    DIAGNOSTIC_ANCHOR_ASSUMPTION_REQUIRED,
+    DIAGNOSTIC_CADENCE_NOT_RELIABLE,
     DIAGNOSTIC_ELAPSED_TIME_GOES_BACKWARD,
+    DIAGNOSTIC_INCONSISTENT_BUCKET_COUNT,
     DIAGNOSTIC_MISSING_DATETIME_VALUE,
     DIAGNOSTIC_MISSING_ELAPSED_UNIT,
     DIAGNOSTIC_MISSING_ELAPSED_VALUE,
@@ -105,11 +148,15 @@ from app.domain.time_axis import (
     DIAGNOSTIC_NON_NUMERIC_ELAPSED_VALUE,
     DIAGNOSTIC_NON_NUMERIC_SAMPLE_INDEX,
     DIAGNOSTIC_NON_UNIFORM_ELAPSED_INTERVAL,
+    DIAGNOSTIC_POSSIBLE_MISSING_SAMPLE,
+    DIAGNOSTIC_PRECISION_LOSS_SUSPECTED,
     DIAGNOSTIC_REPEATED_ELAPSED_TIME,
     DIAGNOSTIC_REPEATED_SAMPLE_INDEX,
+    DIAGNOSTIC_REPEATED_TIMESTAMP_DETECTED,
     DIAGNOSTIC_SAMPLE_INDEX_GAP,
     DIAGNOSTIC_SAMPLE_INDEX_GOES_BACKWARD,
     DIAGNOSTIC_TIME_ONLY_NOT_ABSOLUTE,
+    DIAGNOSTIC_UNEXPECTED_BUCKET_SAMPLE_COUNT,
     DIAGNOSTIC_UNPARSEABLE_DATETIME,
     FAMILY_ABSOLUTE,
     FAMILY_ELAPSED,
@@ -117,6 +164,7 @@ from app.domain.time_axis import (
     FAMILY_SAMPLE_INDEX,
     PROVENANCE_INDEX_ONLY,
     PROVENANCE_NATIVE,
+    PROVENANCE_RECONSTRUCTED,
     PROVENANCE_USER_SPECIFIED,
     UNIT_MICROSECONDS,
     UNIT_MILLISECONDS,
@@ -186,6 +234,18 @@ def _parse_with_pattern(value: str, pattern: str) -> dt.datetime | None:
 def _is_time_only(value: str) -> bool:
     stripped = value.strip()
     return any(_parse_with_pattern(stripped, pattern) is not None for pattern in _TIME_PATTERNS)
+
+
+def _parse_time_only(value: str) -> dt.time | None:
+    """Same bounded `_TIME_PATTERNS` table `_is_time_only` already
+    checks against, but returning the actual parsed `time` (Slice 8C
+    needs the value itself, not just a yes/no)."""
+    stripped = value.strip()
+    for pattern in _TIME_PATTERNS:
+        parsed = _parse_with_pattern(stripped, pattern)
+        if parsed is not None:
+            return parsed.time()
+    return None
 
 
 @dataclass(slots=True, frozen=True)
@@ -815,4 +875,391 @@ def build_sample_index_preview(
             continue
         relative_seconds = (parsed - first_value) * resolved_interval_seconds
         rows.append((row_number, values, f"{relative_seconds:.6f} s"))
+    return rows
+
+
+# ---- Slice 8C: repeated timestamp / precision-loss reconstruction ----
+
+
+@dataclass(slots=True, frozen=True)
+class _BucketAnalysis:
+    """Internal, shared result of grouping+parsing one column's own
+    bounded sample -- used identically by `detect_repeated_timestamp_
+    precision_loss()` (classification) and
+    `build_repeated_timestamp_preview()` (formatting), so there is
+    exactly one bucket-grouping/parsing implementation, never two that
+    could disagree about which rows belong to which bucket.
+
+    `buckets` is `[(native_value, [row_number, ...]), ...]` in
+    ENCOUNTER order -- consecutive rows sharing the exact same native
+    string form one bucket; the SAME string appearing again later
+    (non-consecutively) starts a NEW bucket, matching
+    CSV_EXCEL_TIME_INTERPRETATION.md §7's own "group CONSECUTIVE rows"
+    definition. `seconds_from_first` is one float per bucket -- the
+    bucket's own parsed time value minus the FIRST bucket's own parsed
+    time value -- computed identically whether the underlying family is
+    `absolute` (real calendar arithmetic) or `partial` (bare seconds-
+    from-midnight arithmetic), so every statistic downstream (spans,
+    confidence, suggested interval) is family-agnostic. `anchor_reference`
+    is bucket 0's own parsed value in its NATIVE representation
+    (`datetime` for absolute, `float` seconds-from-midnight for
+    partial) -- needed only for FORMATTING a reconstructed value back
+    into a display string, never for the statistics themselves."""
+
+    family: str | None
+    ambiguous_date_order: bool
+    candidate_orders: list[str]
+    unparseable: bool
+    buckets: list[tuple[str, list[int]]]
+    seconds_from_first: list[float]
+    anchor_reference: Any
+    missing_count: int
+    date_order_used: str | None
+
+
+def _seconds_from_midnight(value: dt.time) -> float:
+    return value.hour * 3600 + value.minute * 60 + value.second + value.microsecond / 1_000_000
+
+
+def _analyze_buckets(raw_values_by_row: list[tuple[int, Any]], *, requested_options: dict[str, Any]) -> _BucketAnalysis:
+    """Bounded, single-pass grouping + deterministic parsing -- never
+    scans anything beyond the already-bounded `raw_values_by_row` this
+    function receives (see this module's own docstring). Tries, in
+    order: bare time-of-day (`partial`), ISO-8601 (`absolute`,
+    unambiguous), then `dmy`/`mdy`/`ymd` elimination among the DISTINCT
+    bucket values only (a naturally smaller, already-deduplicated-by-
+    run set) -- the exact same machinery `detect_absolute_datetime`
+    uses, never a second parsing implementation."""
+    total = len(raw_values_by_row)
+    non_empty = [(row_number, str(value)) for row_number, value in raw_values_by_row if value not in (None, "")]
+    missing_count = total - len(non_empty)
+
+    def _give_up(family: str | None = None, *, unparseable: bool = True, date_order_used: str | None = None) -> _BucketAnalysis:
+        return _BucketAnalysis(
+            family=family, ambiguous_date_order=False, candidate_orders=[], unparseable=unparseable,
+            buckets=buckets, seconds_from_first=[], anchor_reference=None,
+            missing_count=missing_count, date_order_used=date_order_used,
+        )
+
+    buckets: list[tuple[str, list[int]]] = []
+    for row_number, value in non_empty:
+        if buckets and buckets[-1][0] == value:
+            buckets[-1][1].append(row_number)
+        else:
+            buckets.append((value, [row_number]))
+
+    if not buckets:
+        return _give_up()
+
+    distinct_values = [value for value, _ in buckets]
+
+    if all(_is_time_only(v) for v in distinct_values):
+        parsed_times = [_parse_time_only(v) for v in distinct_values]
+        if any(p is None for p in parsed_times):
+            return _give_up()
+        seconds = [_seconds_from_midnight(p) for p in parsed_times]
+        return _BucketAnalysis(
+            family=FAMILY_PARTIAL, ambiguous_date_order=False, candidate_orders=[], unparseable=False,
+            buckets=buckets, seconds_from_first=[s - seconds[0] for s in seconds], anchor_reference=seconds[0],
+            missing_count=missing_count, date_order_used=None,
+        )
+
+    iso_parsed = [_parse_iso(v) for v in distinct_values]
+    if all(p is not None for p in iso_parsed):
+        base = iso_parsed[0]
+        return _BucketAnalysis(
+            family=FAMILY_ABSOLUTE, ambiguous_date_order=False, candidate_orders=[], unparseable=False,
+            buckets=buckets, seconds_from_first=[(p - base).total_seconds() for p in iso_parsed], anchor_reference=base,
+            missing_count=missing_count, date_order_used=DATE_ORDER_YMD,
+        )
+
+    per_order_match = {order: _best_match_for_order(distinct_values, order) for order in _KNOWN_ORDERS}
+    candidate_orders = sorted(order for order, m in per_order_match.items() if m.is_full_match)
+    requested_order = requested_options.get("date_order")
+
+    resolved_order: str | None = None
+    if len(candidate_orders) == 1:
+        resolved_order = candidate_orders[0]
+    elif len(candidate_orders) >= 2:
+        if requested_order in candidate_orders:
+            resolved_order = requested_order
+        else:
+            return _BucketAnalysis(
+                family=FAMILY_ABSOLUTE, ambiguous_date_order=True, candidate_orders=candidate_orders, unparseable=False,
+                buckets=buckets, seconds_from_first=[], anchor_reference=None,
+                missing_count=missing_count, date_order_used=None,
+            )
+
+    if resolved_order is None:
+        return _give_up(family=FAMILY_ABSOLUTE)
+
+    parsed = [parse_absolute_datetime(v, date_order=resolved_order) for v in distinct_values]
+    if any(p is None for p in parsed):
+        return _give_up(family=FAMILY_ABSOLUTE, date_order_used=resolved_order)
+
+    base = parsed[0]
+    return _BucketAnalysis(
+        family=FAMILY_ABSOLUTE, ambiguous_date_order=False, candidate_orders=[], unparseable=False,
+        buckets=buckets, seconds_from_first=[(p - base).total_seconds() for p in parsed], anchor_reference=base,
+        missing_count=missing_count, date_order_used=resolved_order,
+    )
+
+
+def _bucket_confidence(bucket_sizes: list[int], interior_sizes: list[int]) -> str:
+    """The exact, documented evidence rule (task §F, deliberately not
+    overengineered):
+
+    - HIGH: at least 2 full INTERIOR buckets (excluding the first and
+      last, which may be truncated by the sample window's own edges --
+      §E) and every one of them has the SAME size. "Interior" is what
+      makes this trustworthy -- an edge bucket's own count is never
+      used to judge stability.
+    - MEDIUM: either (a) too few interior buckets to judge on their own
+      (fewer than 2), but EVERY bucket including the edges happens to
+      already agree, or (b) 2+ interior buckets exist but vary by at
+      most 1 row from each other (a small, plausible amount of
+      real-world jitter, not a structurally different pattern).
+    - LOW: anything else -- fewer than 2 total buckets (no transition
+      to measure at all), or an interior spread of more than 1 row.
+    """
+    if len(bucket_sizes) < 2:
+        return CONFIDENCE_LOW
+    if len(interior_sizes) >= 2 and len(set(interior_sizes)) == 1:
+        return CONFIDENCE_HIGH
+    if len(set(bucket_sizes)) == 1:
+        return CONFIDENCE_MEDIUM
+    if len(interior_sizes) >= 2 and (max(interior_sizes) - min(interior_sizes)) <= 1:
+        return CONFIDENCE_MEDIUM
+    return CONFIDENCE_LOW
+
+
+def detect_repeated_timestamp_precision_loss(
+    raw_values_by_row: list[tuple[int, Any]], *, requested_interval_seconds: float | None, requested_options: dict[str, Any],
+) -> TimeAxisDetectionResult:
+    """Repeated-timestamp / precision-loss detection (task §A-§L, §O-§R).
+    Never mutates or reorders anything -- a pure classification over an
+    already-bounded sample. See this module's own docstring for the
+    full "detect, suggest, preview -- never silently apply" contract.
+    """
+    analysis = _analyze_buckets(raw_values_by_row, requested_options=requested_options)
+    diagnostics: list[TimeAxisDiagnostic] = []
+    if analysis.missing_count:
+        diagnostics.append(
+            TimeAxisDiagnostic(
+                severity_hint=SEVERITY_WARNING, code=DIAGNOSTIC_MISSING_DATETIME_VALUE,
+                message=f"{analysis.missing_count} sampled row(s) have no value in this Time Axis column.",
+                ambiguity=AMBIGUITY_UNAMBIGUOUS, details={"missing_count": analysis.missing_count},
+            )
+        )
+
+    if analysis.ambiguous_date_order:
+        diagnostics.append(
+            TimeAxisDiagnostic(
+                severity_hint=SEVERITY_WARNING, code=DIAGNOSTIC_AMBIGUOUS_DATE_ORDER,
+                message=f"The date order is ambiguous -- {' and '.join(analysis.candidate_orders)} both fit every distinct timestamp.",
+                suggested_action="Choose the correct date order to analyze this column's own repeated timestamps.",
+                ambiguity=AMBIGUITY_AMBIGUOUS, details={"candidate_orders": analysis.candidate_orders},
+            )
+        )
+        return TimeAxisDetectionResult(
+            family=FAMILY_ABSOLUTE, provenance=PROVENANCE_USER_SPECIFIED, confidence=CONFIDENCE_LOW,
+            diagnostics=diagnostics, resolved_options={"date_order": DATE_ORDER_AUTO},
+            resolved_unit=None, resolved_interval_seconds=None,
+        )
+
+    if analysis.unparseable or analysis.family is None:
+        diagnostics.append(
+            TimeAxisDiagnostic(
+                severity_hint=SEVERITY_WARNING, code=DIAGNOSTIC_UNPARSEABLE_DATETIME,
+                message="This column's values could not be parsed as a consistent timestamp.",
+                ambiguity=AMBIGUITY_INVALID,
+            )
+        )
+        return TimeAxisDetectionResult(
+            family=analysis.family or FAMILY_ABSOLUTE, provenance=PROVENANCE_NATIVE, confidence=CONFIDENCE_UNKNOWN,
+            diagnostics=diagnostics, resolved_options={}, resolved_unit=None, resolved_interval_seconds=None,
+        )
+
+    bucket_sizes = [len(row_numbers) for _, row_numbers in analysis.buckets]
+
+    if max(bucket_sizes) <= 1:
+        # No repetition anywhere in the sample -- nothing to reconstruct;
+        # a clean, unambiguous pass-through (§5's own "clean case").
+        return TimeAxisDetectionResult(
+            family=analysis.family, provenance=PROVENANCE_NATIVE, confidence=CONFIDENCE_HIGH,
+            diagnostics=diagnostics, resolved_options={}, resolved_unit=None, resolved_interval_seconds=None,
+        )
+
+    repeated_bucket_count = sum(1 for size in bucket_sizes if size > 1)
+    diagnostics.append(
+        TimeAxisDiagnostic(
+            severity_hint=SEVERITY_INFO, code=DIAGNOSTIC_REPEATED_TIMESTAMP_DETECTED,
+            message=f"{repeated_bucket_count} of {len(bucket_sizes)} distinct timestamp value(s) in the sampled rows repeat across multiple rows.",
+            ambiguity=AMBIGUITY_UNAMBIGUOUS, details={"repeated_bucket_count": repeated_bucket_count, "bucket_count": len(bucket_sizes)},
+        )
+    )
+    diagnostics.append(
+        TimeAxisDiagnostic(
+            severity_hint=SEVERITY_INFO, code=DIAGNOSTIC_PRECISION_LOSS_SUSPECTED,
+            message="Repeated timestamps suggest the source's own recorded precision is coarser than its true sampling interval.",
+            ambiguity=AMBIGUITY_UNAMBIGUOUS,
+        )
+    )
+
+    interior_sizes = bucket_sizes[1:-1]
+    confidence = _bucket_confidence(bucket_sizes, interior_sizes)
+
+    if len(interior_sizes) >= 2 and len(set(interior_sizes)) > 1:
+        diagnostics.append(
+            TimeAxisDiagnostic(
+                severity_hint=SEVERITY_WARNING, code=DIAGNOSTIC_INCONSISTENT_BUCKET_COUNT,
+                message=f"The number of rows sharing each timestamp varies across the sampled buckets ({sorted(set(interior_sizes))}).",
+                ambiguity=AMBIGUITY_UNAMBIGUOUS, details={"observed_bucket_sizes": sorted(set(interior_sizes))},
+            )
+        )
+
+    # One interval estimate per bucket transition (span to the NEXT
+    # bucket, divided by THIS bucket's own row count) -- never using a
+    # negative/zero span (goes-backward or, for `partial`, a midnight
+    # rollover -- §Y: never auto-corrected, simply excluded as
+    # unreliable evidence, never treated as ordinary corruption).
+    # Estimate index 0 (built from the FIRST bucket's own count, which
+    # may itself be truncated by the sample window -- §E) is excluded
+    # from confidence-driving statistics specifically, falling back to
+    # using it only if literally nothing else is available.
+    spans = [analysis.seconds_from_first[i + 1] - analysis.seconds_from_first[i] for i in range(len(analysis.buckets) - 1)]
+    raw_estimates = [(i, spans[i] / bucket_sizes[i]) for i in range(len(spans)) if spans[i] > 0]
+    confidence_estimates = [estimate for index, estimate in raw_estimates if index != 0] or [estimate for _, estimate in raw_estimates]
+
+    if requested_interval_seconds is not None:
+        resolved_interval = requested_interval_seconds
+        provenance = PROVENANCE_USER_SPECIFIED
+        result_confidence = CONFIDENCE_HIGH
+    elif confidence == CONFIDENCE_LOW or not confidence_estimates:
+        diagnostics.append(
+            TimeAxisDiagnostic(
+                severity_hint=SEVERITY_WARNING, code=DIAGNOSTIC_CADENCE_NOT_RELIABLE,
+                message="Repeated timestamps were detected, but a reliable sampling interval could not be determined from the sampled rows.",
+                suggested_action="Enter timing manually, or use Sample Index instead.",
+                ambiguity=AMBIGUITY_AMBIGUOUS,
+            )
+        )
+        return TimeAxisDetectionResult(
+            family=analysis.family, provenance=PROVENANCE_NATIVE, confidence=CONFIDENCE_LOW,
+            diagnostics=diagnostics,
+            resolved_options={"date_order": analysis.date_order_used} if analysis.family == FAMILY_ABSOLUTE else {},
+            resolved_unit=None, resolved_interval_seconds=None,
+        )
+    else:
+        resolved_interval = statistics.median(confidence_estimates)
+        provenance = PROVENANCE_RECONSTRUCTED
+        result_confidence = confidence
+
+    # Missing/extra-sample diagnostics (§O/§P) -- only meaningful once a
+    # real "expected" interior size exists; the first/last buckets are
+    # never flagged (they may be legitimately truncated, §E).
+    if interior_sizes:
+        expected_size = Counter(interior_sizes).most_common(1)[0][0]
+        missing_bucket_count = sum(1 for size in interior_sizes if size < expected_size)
+        extra_bucket_count = sum(1 for size in interior_sizes if size > expected_size)
+        if missing_bucket_count:
+            diagnostics.append(
+                TimeAxisDiagnostic(
+                    severity_hint=SEVERITY_WARNING, code=DIAGNOSTIC_POSSIBLE_MISSING_SAMPLE,
+                    message=f"{missing_bucket_count} timestamp bucket(s) have fewer rows than the expected {expected_size}.",
+                    ambiguity=AMBIGUITY_UNAMBIGUOUS,
+                    details={"expected_bucket_size": expected_size, "affected_buckets": missing_bucket_count},
+                )
+            )
+        if extra_bucket_count:
+            diagnostics.append(
+                TimeAxisDiagnostic(
+                    severity_hint=SEVERITY_WARNING, code=DIAGNOSTIC_UNEXPECTED_BUCKET_SAMPLE_COUNT,
+                    message=f"{extra_bucket_count} timestamp bucket(s) have more rows than the expected {expected_size}.",
+                    ambiguity=AMBIGUITY_UNAMBIGUOUS,
+                    details={"expected_bucket_size": expected_size, "affected_buckets": extra_bucket_count},
+                )
+            )
+
+    anchor_offset_seconds = requested_options.get("anchor_offset_seconds", 0.0)
+    try:
+        anchor_offset_seconds = float(anchor_offset_seconds)
+    except (TypeError, ValueError):
+        anchor_offset_seconds = 0.0
+
+    diagnostics.append(
+        TimeAxisDiagnostic(
+            severity_hint=SEVERITY_INFO, code=DIAGNOSTIC_ANCHOR_ASSUMPTION_REQUIRED,
+            message=(
+                "Reconstructed timestamps assume the first sample in each repeated-timestamp "
+                "group aligns with the displayed timestamp, unless adjusted -- spacing is "
+                "reconstructed, the original sub-second phase is not recovered."
+            ),
+            ambiguity=AMBIGUITY_UNAMBIGUOUS, details={"anchor_offset_seconds": anchor_offset_seconds},
+        )
+    )
+
+    resolved_options: dict[str, Any] = {"anchor_offset_seconds": anchor_offset_seconds}
+    if analysis.family == FAMILY_ABSOLUTE:
+        resolved_options["date_order"] = analysis.date_order_used
+
+    return TimeAxisDetectionResult(
+        family=analysis.family, provenance=provenance, confidence=result_confidence,
+        diagnostics=diagnostics, resolved_options=resolved_options,
+        resolved_unit=None, resolved_interval_seconds=resolved_interval,
+    )
+
+
+def _format_seconds_from_midnight(total_seconds: float) -> str:
+    total_seconds = total_seconds % 86400  # partial has no date -- never invent a day boundary beyond wrapping for display
+    hours = int(total_seconds // 3600)
+    minutes = int((total_seconds % 3600) // 60)
+    seconds = total_seconds % 60
+    return f"{hours:02d}:{minutes:02d}:{seconds:09.6f}"
+
+
+def build_repeated_timestamp_preview(
+    samples: list[tuple[int, tuple[Any, ...]]], *, resolved_options: dict[str, Any],
+    resolved_interval_seconds: float | None, limit: int,
+) -> list[tuple[int, tuple[Any, ...], str | None]]:
+    """Bounded {original, interpreted} preview (§S) -- re-derives the
+    SAME bucket grouping `detect_repeated_timestamp_precision_loss()`
+    itself computed (cheap, over the same already-bounded sample; never
+    a second, divergent grouping implementation) so each row's own
+    bucket/position is known, then formats using the resolved interval
+    and the resolved (or default `0.0`) anchor offset. `None` (never a
+    fabricated value) for any row whose bucket/position could not be
+    established, or when no interval is resolved yet at all."""
+    raw = [(row_number, values[0] if values else None) for row_number, values in samples]
+    analysis = _analyze_buckets(raw, requested_options=resolved_options)
+    if resolved_interval_seconds is None or analysis.unparseable or analysis.ambiguous_date_order or analysis.family is None:
+        return [(row_number, values, None) for row_number, values in samples[:limit]]
+
+    anchor_offset_seconds = resolved_options.get("anchor_offset_seconds", 0.0)
+    try:
+        anchor_offset_seconds = float(anchor_offset_seconds)
+    except (TypeError, ValueError):
+        anchor_offset_seconds = 0.0
+
+    row_position: dict[int, tuple[int, int]] = {}
+    for bucket_index, (_, row_numbers) in enumerate(analysis.buckets):
+        for position, row_number in enumerate(row_numbers):
+            row_position[row_number] = (bucket_index, position)
+
+    rows: list[tuple[int, tuple[Any, ...], str | None]] = []
+    for row_number, values in samples[:limit]:
+        location = row_position.get(row_number)
+        if location is None:
+            rows.append((row_number, values, None))
+            continue
+        bucket_index, position = location
+        offset = analysis.seconds_from_first[bucket_index] + anchor_offset_seconds + position * resolved_interval_seconds
+        try:
+            if analysis.family == FAMILY_ABSOLUTE:
+                interpreted = (analysis.anchor_reference + dt.timedelta(seconds=offset)).isoformat()
+            else:
+                interpreted = _format_seconds_from_midnight(analysis.anchor_reference + offset)
+        except (OverflowError, ValueError):
+            interpreted = None
+        rows.append((row_number, values, interpreted))
     return rows
