@@ -1,36 +1,35 @@
-"""Preparation Readiness Issue production (CSV/Excel ingestion Slice 6, DEC-072).
+"""Preparation Readiness Issue production (CSV/Excel ingestion Slices 6
+and 9, DEC-072).
 
 Owns the ONLY seam that turns current preparation state into
-`app.domain.preparation_issue.PreparationIssue` findings. Deliberately
-NOT a rules engine: `collect_preparation_issues()` is a short, linear
-function checking a handful of already-known CONFIGURATION facts (is a
-header selected? is a data region set? are all columns classified?) --
-never data interpretation (no time-axis parsing, no value validation,
-no monotonicity/duplicate-timestamp/missing-sample analysis). Those
-belong to a later, genuinely full Readiness Validator slice; this one
-proves the issue-transport plumbing works end to end using only issues
-that are safe to state today.
+`app.domain.preparation_issue.PreparationIssue` findings.
+`collect_preparation_issues()` (Slice 6, UNCHANGED by Slice 9) stays a
+short, linear function checking a handful of already-known
+CONFIGURATION facts (is a header selected? is a data region set? are
+all columns classified?) -- never data interpretation. Every issue it
+produces is still `SEVERITY_INFO` -- purely descriptive, never implying
+a source is invalid or blocked (task's own explicit "do NOT silently
+decide that a header is mandatory" guardrail).
 
-Every issue this function produces is `SEVERITY_INFO` -- purely
-descriptive, never implying that a source is invalid or blocked from
-some future conversion (task's own explicit "do NOT silently decide
-that a header is mandatory" / "do NOT silently decide that multiple
-time-axis columns are invalid" guardrails). If a genuinely new product
-rule is ever owner-approved to raise one of these to `warning` or
-`blocking`, that is a `DECISIONS.md`-worthy change, not a quiet
-severity bump here.
+`build_issue_summary()` (the ONE entry point `GET .../issues` calls)
+now ALSO calls `app.services.readiness_service.collect_readiness_
+issues()` -- the genuinely full Readiness Validator this module's own
+docstring used to describe as "a later slice." That module owns ALL
+real `blocking`/`warning` policy (time-axis coherence, time-axis cell
+validity, waveform cell validity); this module still only ever produces
+`SEVERITY_INFO` findings of its own. Both lists are merged into ONE
+`PreparationIssueSummary` via `summarize_issues()` -- there is still
+only one issue TRANSPORT model, never two independently-shaped ones.
 
-No caching: `build_issue_summary()` recomputes the issue list on every
-call, directly from the session's own current overlay state --
-`app.domain.preparation_session.PreparationSession.working_overlay`
-never needs a special "recompute issues" trigger, because nothing is
-ever stored. This means `evaluated_revision` always equals
-`current_revision` and `is_stale` is always `False` today (see
-`app.domain.preparation_issue`'s own module docstring for why those
-fields exist anyway) -- recomputing three dict lookups plus, at most,
-one already-memoized total-count check is cheap enough that a cache
-would add complexity for no measurable benefit at this scale (task's
-own "do not over-engineer caching" guidance).
+No caching: `build_issue_summary()` recomputes the FULL issue list
+(Slice 6 + Slice 9) on every call, directly from the session's own
+current overlay state -- nothing is ever stored, so `evaluated_revision`
+always equals `current_revision` and `is_stale` is always `False`
+(see `app.domain.preparation_issue`'s own module docstring for why
+those fields exist anyway, and `app.services.readiness_service`'s own
+docstring for why a cache was deliberately not introduced there
+either, despite doing meaningfully more work than Slice 6's own three
+dict lookups).
 
 Column-count awareness reuses the exact same helpers
 `app.services.working_overlay_service` already built
@@ -58,6 +57,7 @@ from app.domain.working_overlay import ROLE_UNKNOWN
 from app.services.errors import SourceNotFoundError, WorksheetNotSelectedError
 from app.services.preparation_preview_service import ensure_csv_totals_cached
 from app.services.preparation_session_registry import PreparationSessionRegistry
+from app.services.readiness_service import collect_readiness_issues
 
 
 def _resolve_worksheet_index(session: PreparationSession) -> int | None:
@@ -153,4 +153,7 @@ def build_issue_summary(
 
     worksheet_index = _resolve_worksheet_index(session)
     issues = collect_preparation_issues(session, worksheet_index)
+    issues += collect_readiness_issues(
+        session, worksheet_index, workspace_id=workspace_id, source_id=source_id, registry=registry,
+    )
     return summarize_issues(source_id=source_id, revision=session.working_overlay.revision, issues=issues)

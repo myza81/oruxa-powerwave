@@ -84,7 +84,7 @@ import csv
 import datetime as dt
 import io
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Iterator
 
 from openpyxl import load_workbook
 
@@ -684,3 +684,87 @@ def preview_preparation_source(
     # app.domain.preparation_session.KNOWN_PREPARATION_FORMATS) --
     # nothing else can have reached this registry.
     return _preview_excel(session, offset=offset, limit=limit)
+
+
+def iterate_active_region_rows(
+    session: PreparationSession, *, worksheet_index: int | None,
+) -> Iterator[PreviewRow]:
+    """(Slice 9, DEC-072) Single-PASS streaming iterator over this
+    worksheet/source's own CURRENT active data region, in original row
+    order, with the SAME working-overlay application (cell overrides,
+    row exclusion) and `is_header`/`in_active_region` flags
+    `preview_preparation_source()` itself computes -- but never
+    materializing more than one row at a time, and never re-scanning
+    the source once per page the way repeated `preview_preparation_
+    source()` calls would. This is `app.services.readiness_service`'s
+    own row source for the full-active-region validation checks Slice 9
+    requires (a bounded ≤1000-row PAGE is this module's OWN job, never
+    a substitute for a genuine readiness gate -- see that service
+    module's own docstring for exactly why).
+
+    Rows strictly before the region's own start are never yielded at
+    all (task section P: "do not scan or validate unused footer/header
+    rows merely because they exist in the raw source") -- CSV still has
+    to read past them sequentially (no index exists; the same accepted
+    tradeoff `_fetch_single_csv_row()` already documents) but does no
+    override/flag work for them. The loop stops as soon as it passes a
+    KNOWN, explicit `END_MODE_SPECIFIC` end row; `END_MODE_SOURCE_END`
+    (or no region at all) reads through to the source's own true end,
+    since that IS the resolved boundary in that case. The header row
+    (if configured) and excluded rows ARE yielded (their own flags set)
+    -- exactly like `_fetch_time_axis_samples()`'s own established
+    convention, this one iterator lets each caller filter for its own
+    slightly different need rather than hard-coding one skip policy
+    here.
+    """
+    overlay = session.working_overlay
+    region = overlay.data_region.get(worksheet_index)
+    start_row = region.start_row if region else 1
+    specific_end = region.end_row if (region and region.end_mode == END_MODE_SPECIFIC) else None
+    header_row_number = overlay.header_row.get(worksheet_index)
+
+    overrides_by_row = _overrides_for_worksheet(overlay, worksheet_index)
+    excluded_row_numbers = _excluded_rows_for_worksheet(overlay, worksheet_index)
+
+    def _finalize(row: PreviewRow) -> PreviewRow:
+        row.excluded = row.row_number in excluded_row_numbers
+        row.is_header = header_row_number is not None and row.row_number == header_row_number
+        row.in_active_region = row.row_number >= start_row and (specific_end is None or row.row_number <= specific_end)
+        row_overrides = overrides_by_row.get(row.row_number)
+        if row_overrides:
+            needed_len = max(len(row.cells), max(row_overrides) + 1)
+            if needed_len > len(row.cells):
+                row.cells = row.cells + [None] * (needed_len - len(row.cells))
+            modified: list[ModifiedCell] = []
+            for column_index in sorted(row_overrides):
+                override = row_overrides[column_index]
+                raw_value = row.cells[column_index]
+                row.cells[column_index] = None if override.kind == OVERRIDE_KIND_CLEAR else override.value
+                modified.append(ModifiedCell(column_index=column_index, raw_value=raw_value))
+            row.modified_cells = modified
+        return row
+
+    if session.summary.source_format == FORMAT_CSV:
+        reader = _open_csv_reader(session)
+        for row_number, raw_row in enumerate(reader, start=1):
+            if row_number < start_row:
+                continue
+            if specific_end is not None and row_number > specific_end:
+                break
+            yield _finalize(PreviewRow(row_number=row_number, cells=list(raw_row)))
+        return
+
+    # FORMAT_EXCEL
+    worksheet_info = session.summary.worksheets[worksheet_index]
+    try:
+        workbook = load_workbook(io.BytesIO(session.raw_bytes), read_only=True, data_only=False)
+    except Exception as exc:
+        raise WorkbookParseError(f"Could not re-open the Excel workbook for readiness validation: {exc}") from exc
+    try:
+        worksheet = workbook[worksheet_info.name]
+        for row_number, row_values in enumerate(
+            worksheet.iter_rows(min_row=start_row, max_row=specific_end, values_only=True), start=start_row,
+        ):
+            yield _finalize(PreviewRow(row_number=row_number, cells=[_json_safe_excel_cell(v) for v in row_values]))
+    finally:
+        workbook.close()

@@ -229,14 +229,19 @@ class TestBuildIssueSummary:
         assert summary.is_stale is False
 
     def test_summary_counts_match_issue_list(self):
+        # A totally-unconfigured source now also carries Slice 9's own
+        # "no Time Axis" / "no Waveform Channel" blocking findings
+        # alongside Slice 6's three original info findings.
         registry = PreparationSessionRegistry()
         source_id = _add_csv(registry, b"a,b\n1,2\n")
 
         summary = build_issue_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
 
-        assert summary.info_count == len(summary.issues)
-        assert summary.blocking_count == 0
+        assert summary.info_count + summary.blocking_count + summary.warning_count == len(summary.issues)
+        assert summary.info_count == 3
+        assert summary.blocking_count == 2
         assert summary.warning_count == 0
+        assert summary.is_ready is False
 
     def test_unknown_source_raises_source_not_found(self):
         registry = PreparationSessionRegistry()

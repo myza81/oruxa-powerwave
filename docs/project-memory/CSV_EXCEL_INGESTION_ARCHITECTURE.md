@@ -1613,9 +1613,152 @@ owner go-ahead before implementation begins.
    a large-gap column shows neutral wording (never "missing data"); and
    no second top-level panel was introduced anywhere -- all with zero
    console/page errors.
-9. **Full Powerwave Readiness Validator.** Structural validity; data
-   validity; time-axis validity; compatibility with canonical Powerwave
-   requirements (§4/§16).
+9. **`[DONE, 2026-09-02]` Full Powerwave Readiness Validator.**
+   Structural validity; data validity; time-axis validity;
+   compatibility with canonical Powerwave requirements (§4/§16).
+   Answers exactly one question -- **is the current prepared dataset
+   ready to be converted into Powerwave?** -- using the SAME
+   `blocking`/`warning`/`info` severity model Slice 6 already
+   established, never a second, parallel readiness model:
+   **Blocking** = Powerwave cannot safely build or trust the canonical
+   waveform dataset; **Warning** = the dataset may proceed, but timing/
+   data quality is degraded or imperfect; **Info** = setup/context
+   only. Does NOT perform `DisturbanceRecord` conversion, canonical
+   waveform creation, plotting, or export -- all explicitly Slice 10+.
+
+   **Extends, never replaces, Slice 6's own transport.** New module
+   `app/services/readiness_service.py` -- `collect_readiness_issues()`
+   is called ADDITIONALLY by `preparation_issue_service.build_issue_
+   summary()` (the SAME function `GET .../issues` already called),
+   merged with Slice 6's own unchanged, still-`info`-only
+   `collect_preparation_issues()` output into ONE
+   `PreparationIssueSummary` via the SAME `summarize_issues()`. No new
+   endpoint, no new request/response shape beyond one additive field:
+   `PreparationIssueSummary.is_ready` (`blocking_count == 0`, computed
+   once so it can never drift out of sync with the counts).
+
+   **Live, never cached** -- exactly Slice 6's own precedent, extended:
+   every mutation (cell edit, row exclude/include, header/data-region/
+   column-role change, time-axis reconfiguration, undo, redo, reset)
+   already bumps `WorkingOverlay.revision`, and `get_time_axis_
+   summary()`/`collect_readiness_issues()` both recompute fresh on
+   every call -- `evaluated_revision` always equals `current_revision`,
+   `is_stale` is always `False`. One frontend gap was found and fixed:
+   the Time Axis panel's own Save/Clear handlers previously only called
+   a lightweight toolbar-only refresh, never `wwDataPrepFetchIssues()`
+   -- now both explicitly re-fetch readiness immediately after a
+   time-axis mutation, matching every other mutation path (which
+   already refreshes issues via the shared `wwDataPrepFetchPreview()`
+   flow).
+
+   **Structure rules** (§C/§D/§E): no Time Axis columns configured at
+   all (`time_axis_unconfigured`), a stale/no-longer-Time-Axis column
+   reference (`time_axis_unsupported`), or zero columns currently
+   carrying the Waveform Channel role (`waveform_channel_missing`) are
+   all BLOCKING -- checked directly against `working_overlay.column_
+   roles`'s own sparse dict, needing no column-count/dimension lookup
+   at all for the waveform-presence check specifically. `header_not_
+   selected`/`data_region_unconfigured`/`column_roles_unassigned`
+   (Slice 6) are UNCHANGED, still `info` -- `DataRegion`'s own "absent
+   means the entire source is active" is a valid, complete semantic,
+   never relabeled as a problem (§AG).
+
+   **Time-axis policy is a REUSE, not a re-derivation**: `get_time_axis_
+   summary()` (Slice 7-8D, unchanged) is called once per readiness
+   check; `UNCONFIGURED`/`UNSUPPORTED`/`REVIEW_REQUIRED` status is its
+   own BLOCKING issue (`time_axis_unconfigured`/`_unsupported`/
+   `_unresolved`) with no further inspection. For a resolved
+   (`CONFIRMED`/`NEEDS_ATTENTION`/`INDEX_FALLBACK`) reading, EVERY
+   diagnostic on it is promoted into a `PreparationIssue` reusing that
+   diagnostic's OWN code/message/location/`suggested_action`/`details`
+   VERBATIM, through one explicit, reviewable policy table:
+   `_BLOCKING_TIME_DIAGNOSTIC_CODES` (`unparseable_datetime`,
+   `mixed_datetime_format`, `non_numeric_elapsed_value`, `non_numeric_
+   sample_index`, `missing_datetime_value`/`_elapsed_value`/`_sample_
+   index`, `time_goes_backward`, `elapsed_time_goes_backward`,
+   `sample_index_goes_backward`, `timestamp_reset_suspected`) vs
+   `_WARNING_TIME_DIAGNOSTIC_CODES` (`large_time_gap`, `non_uniform_
+   interval`, `non_uniform_elapsed_interval`, `possible_missing_
+   sample`, `unexpected_bucket_sample_count`, `precision_loss_
+   suspected`, `partial_midnight_rollover_suspected`, `inconsistent_
+   bucket_count`, `repeated_timestamp_detected`, `sample_index_gap`,
+   `repeated_elapsed_time`, `repeated_sample_index`, `anchor_
+   assumption_required`, `time_only_not_absolute`). Plus one WARNING
+   per resolved state that is degraded-but-usable: `sample_index_
+   fallback` (§AC), `reconstructed_time` (§AE), `user_specified_time`
+   (§AF), `partial_time_reference` (§AD) -- an accepted reconstruction,
+   a manual rate/interval/date-order, an index-only fallback, or a
+   bare time-of-day reading can all reach `is_ready=True`. Interpreters
+   themselves encode NO severity opinion at all -- readiness OWNS
+   policy (§W), never the interpreter.
+
+   **Two DELIBERATELY different validation scopes** (§S, the slice's
+   own most important rule): the diagnostic promotion above is
+   necessarily SAMPLE-based (whatever `get_time_axis_summary()`'s own
+   bounded ≤50-row window already saw) -- reused as-is, documented as
+   such, never claimed as a full-dataset guarantee. On top of that,
+   readiness independently BLOCKS on two full-active-region scans a
+   bounded sample cannot cover: `time_value_missing`/`time_value_
+   invalid` (every Time Axis cell in the ENTIRE active region, under
+   the already-resolved family/date_order) and `waveform_value_
+   missing`/`waveform_value_invalid` (every CURRENT Waveform Channel
+   cell). A single new streaming generator,
+   `app.services.preparation_preview_service.iterate_active_region_
+   rows()`, powers both -- ONE single pass per readiness check (never
+   two), yielding one row at a time with the SAME working-overlay
+   application/`is_header`/`in_active_region` flags the bounded preview
+   already computes, never a second materialized copy of the dataset
+   and never repeated re-scans-per-page the way chunked `preview_
+   preparation_source()` calls would cause for CSV. Excluded rows, the
+   header row, and out-of-region rows are all skipped, matching every
+   other row-level check in this codebase. `ERR`/`N/A`/`#VALUE!`/
+   `12.3?`/arbitrary text in a Waveform Channel cell is preserved
+   byte-for-byte and reported (never coerced to zero/null) -- reusing
+   `_to_float()` verbatim, the exact same numeric-parse function Slice
+   8B's own elapsed/sample-index diagnostics already use.
+
+   **Digital channels are explicitly deferred** (§N) -- the column-role
+   model has no dedicated digital role today; `digital_value_invalid`
+   exists in the controlled vocabulary for when one does, but is never
+   produced this slice. A digital-style column today is classified
+   `waveform` (or left `unknown`/`metadata`) and gets the SAME numeric
+   policy as any other column of that role -- no invented `TRUE`/
+   `FALSE`/`ON`/`OFF` mapping.
+
+   **Never repairs anything** -- no row is ever deleted, inserted,
+   sorted, or reordered; no timestamp is ever synthesized; no waveform
+   value is ever interpolated or coerced. Readiness only ever APPENDS
+   `PreparationIssue` entries and returns them; the engineer resolves
+   every finding by editing, excluding, or reconfiguring.
+
+   Frontend: the EXISTING Preparation Status panel (Slice 6's own
+   shell, which already had a documented "shell for a future Needs
+   Attention readiness state" comment anticipating exactly this) gained
+   a real two-state headline -- "Needs Attention" (`N issue(s) must be
+   fixed · M warnings`) or "Ready for Powerwave" (`N Blocking · M
+   Warnings · K Info`), colored via `--ok`/`--error` -- with NO
+   "Continue to Powerwave" button anywhere (task's own "prefer not to
+   expose a working action that cannot yet complete... choose the least
+   misleading UX" instruction, taken literally: the headline text alone
+   communicates the state). The detailed grouped issue list stays
+   collapsed by default, unchanged; a new "Go to row" jump (alongside
+   the existing "Go to worksheet" one) reuses the SAME paged-preview
+   offset mechanism "Go to Last Rows" already established -- no second
+   navigation framework.
+   Verified: full backend suite 2515 passed (46 new on top of Slice
+   8D's 2469), zero regressions (four pre-existing Slice 6/8D tests
+   updated for the new, correctly-blocking default state of a totally
+   unconfigured source); the committed browser smoke test (COMTRADE)
+   still passes unchanged; a throwaway (not committed) live-browser
+   Playwright UAT script confirmed: an unconfigured source shows "Needs
+   Attention" with both new blocking findings listed in the (initially
+   collapsed) detail view; configuring Time Axis + Waveform Channel
+   reaches "Ready for Powerwave" (with a `timezone_unspecified` warning
+   for the naive-datetime fixture used); editing a bad waveform cell
+   (or excluding its row) immediately clears readiness back to Ready,
+   with NO extra manual refresh needed; a Sample Index fallback source
+   reaches Ready with its own warning, never blocking -- all with zero
+   console/page errors.
 10. **Canonical `DisturbanceRecord` conversion.** Only Powerwave-ready
     working datasets may convert; no downstream CSV/Excel special-casing
     (§13).

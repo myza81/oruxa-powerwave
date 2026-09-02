@@ -1,13 +1,19 @@
-"""Preparation Readiness Issue domain model (CSV/Excel ingestion Slice 6, DEC-072).
+"""Preparation Readiness Issue domain model (CSV/Excel ingestion Slices
+6 and 9, DEC-072).
 
-This slice's own explicit scope: the ISSUE LANGUAGE AND TRANSPORT MODEL
-that a future, full Powerwave Readiness Validator will eventually
-produce findings through -- NOT that validator itself. Nothing in this
-module parses a time axis, validates a waveform value, or decides
-whether a preparation source is "ready." See
-`app.services.preparation_issue_service`'s own module docstring for
-exactly which (deliberately conservative, informational-only) issues
-Slice 6 itself produces.
+Slice 6's own explicit scope was the ISSUE LANGUAGE AND TRANSPORT MODEL
+a future, full Powerwave Readiness Validator would eventually produce
+findings through -- not that validator itself. This module still parses
+nothing and validates no waveform value directly; it stays the plain,
+unvalidated SHAPE every producer returns through. Slice 9 is that
+"future validator" arriving: `app.services.readiness_service` is the
+new seam that actually decides blocking/warning/info for time-axis
+coherence, time-axis cell values, and waveform cell values, alongside
+Slice 6's own unchanged configuration-only checks (still produced by
+`app.services.preparation_issue_service.collect_preparation_issues()`)
+-- see that new service module's own docstring for the full policy.
+`PreparationIssueSummary.is_ready` (Slice 9) is the one readiness
+verdict this model now carries; see that field's own docstring.
 
 Critical distinction this module exists to preserve (task's own
 explicit architectural rule): a `PreparationIssue` is a STRUCTURED
@@ -89,10 +95,58 @@ KNOWN_SEVERITIES = (SEVERITY_BLOCKING, SEVERITY_WARNING, SEVERITY_INFO)
 ISSUE_HEADER_NOT_SELECTED = "header_not_selected"
 ISSUE_DATA_REGION_UNCONFIGURED = "data_region_unconfigured"
 ISSUE_COLUMN_ROLES_UNASSIGNED = "column_roles_unassigned"
+
+#: Slice 9 (Full Powerwave Readiness Validator, DEC-072) -- the real
+#: BLOCKING/WARNING findings a stored preparation source may now carry,
+#: produced by `app.services.readiness_service.collect_readiness_issues()`
+#: (never by this module, which stays a pure, unvalidated data carrier --
+#: see this module's own docstring). Genuinely NEW codes only; a
+#: readiness finding whose condition ALREADY has an established
+#: `app.domain.time_axis.DIAGNOSTIC_*` code (e.g. `time_goes_backward`,
+#: `large_time_gap`, `missing_datetime_value`, `non_uniform_elapsed_interval`,
+#: `repeated_timestamp_detected`, ...) is PROMOTED into a
+#: `PreparationIssue` reusing that EXACT string verbatim (task's own
+#: "reuse existing preparation/time diagnostic codes where it improves
+#: clarity" instruction) -- deliberately NOT re-declared here a second
+#: time, to avoid two independently-maintained copies of the same
+#: string. `ISSUE_DIGITAL_VALUE_INVALID` is listed for the controlled
+#: vocabulary but never actually PRODUCED this slice -- the column-role
+#: model has no dedicated digital role yet (see
+#: `app.services.readiness_service`'s own module docstring for why this
+#: is deliberately deferred, not silently invented).
+ISSUE_TIME_AXIS_UNCONFIGURED = "time_axis_unconfigured"
+ISSUE_TIME_AXIS_UNSUPPORTED = "time_axis_unsupported"
+ISSUE_TIME_AXIS_UNRESOLVED = "time_axis_unresolved"
+ISSUE_TIME_VALUE_MISSING = "time_value_missing"
+ISSUE_TIME_VALUE_INVALID = "time_value_invalid"
+ISSUE_WAVEFORM_CHANNEL_MISSING = "waveform_channel_missing"
+ISSUE_WAVEFORM_VALUE_MISSING = "waveform_value_missing"
+ISSUE_WAVEFORM_VALUE_INVALID = "waveform_value_invalid"
+ISSUE_DIGITAL_VALUE_INVALID = "digital_value_invalid"
+ISSUE_SAMPLE_INDEX_FALLBACK = "sample_index_fallback"
+ISSUE_PARTIAL_TIME_REFERENCE = "partial_time_reference"
+ISSUE_RECONSTRUCTED_TIME = "reconstructed_time"
+ISSUE_USER_SPECIFIED_TIME = "user_specified_time"
+ISSUE_TIMEZONE_UNSPECIFIED = "timezone_unspecified"
+
 KNOWN_ISSUE_CODES = (
     ISSUE_HEADER_NOT_SELECTED,
     ISSUE_DATA_REGION_UNCONFIGURED,
     ISSUE_COLUMN_ROLES_UNASSIGNED,
+    ISSUE_TIME_AXIS_UNCONFIGURED,
+    ISSUE_TIME_AXIS_UNSUPPORTED,
+    ISSUE_TIME_AXIS_UNRESOLVED,
+    ISSUE_TIME_VALUE_MISSING,
+    ISSUE_TIME_VALUE_INVALID,
+    ISSUE_WAVEFORM_CHANNEL_MISSING,
+    ISSUE_WAVEFORM_VALUE_MISSING,
+    ISSUE_WAVEFORM_VALUE_INVALID,
+    ISSUE_DIGITAL_VALUE_INVALID,
+    ISSUE_SAMPLE_INDEX_FALLBACK,
+    ISSUE_PARTIAL_TIME_REFERENCE,
+    ISSUE_RECONSTRUCTED_TIME,
+    ISSUE_USER_SPECIFIED_TIME,
+    ISSUE_TIMEZONE_UNSPECIFIED,
 )
 
 
@@ -139,8 +193,17 @@ class PreparationIssueSummary:
     """The full response shape for one preparation source's own current
     issue set. `evaluated_revision`/`current_revision`/`is_stale` exist
     for future-caching compatibility (see this module's own docstring)
-    -- Slice 6 always computes issues live, so `evaluated_revision ==
-    current_revision` and `is_stale is False` on every response."""
+    -- issues are always computed LIVE against the CURRENT
+    `WorkingOverlay.revision` (Slice 6 and Slice 9 alike -- see
+    `app.services.readiness_service`'s own module docstring for why no
+    caching was introduced there either), so `evaluated_revision ==
+    current_revision` and `is_stale is False` on every response today.
+
+    `is_ready` (Slice 9) is the ONE readiness verdict Powerwave
+    conversion (a LATER slice, not this one) would act on --
+    `blocking_count == 0`, computed here so it can never drift out of
+    sync with the counts above. Warnings and info findings never affect
+    it (task's own explicit "warnings do not block" rule)."""
 
     source_id: str
     evaluated_revision: int
@@ -149,6 +212,7 @@ class PreparationIssueSummary:
     blocking_count: int
     warning_count: int
     info_count: int
+    is_ready: bool = False
     issues: list[PreparationIssue] = field(default_factory=list)
 
 
@@ -156,9 +220,8 @@ def summarize_issues(
     *, source_id: str, revision: int, issues: list[PreparationIssue],
 ) -> PreparationIssueSummary:
     """Build a `PreparationIssueSummary` from an already-collected issue
-    list -- the one place severity counts are computed, so
-    `app.services.preparation_issue_service` never has to re-derive
-    them independently."""
+    list -- the one place severity counts (and `is_ready`) are computed,
+    so no caller ever has to re-derive them independently."""
     blocking_count = sum(1 for issue in issues if issue.severity == SEVERITY_BLOCKING)
     warning_count = sum(1 for issue in issues if issue.severity == SEVERITY_WARNING)
     info_count = sum(1 for issue in issues if issue.severity == SEVERITY_INFO)
@@ -170,5 +233,6 @@ def summarize_issues(
         blocking_count=blocking_count,
         warning_count=warning_count,
         info_count=info_count,
+        is_ready=blocking_count == 0,
         issues=list(issues),
     )

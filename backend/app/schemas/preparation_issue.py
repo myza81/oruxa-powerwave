@@ -68,12 +68,15 @@ class PreparationIssueOut(BaseModel):
 
 
 class PreparationIssueSummaryOut(BaseModel):
-    """`GET .../preparation-sources/{source_id}/issues` (Slice 6).
+    """`GET .../preparation-sources/{source_id}/issues` (Slice 6, now
+    carrying real Slice 9 readiness policy too -- see
+    `app.services.readiness_service`'s own module docstring).
     `evaluated_revision`/`current_revision` are always equal and
     `is_stale` is always `False` today -- see
     `app.domain.preparation_issue`'s own module docstring for why the
     fields exist regardless (future-caching compatibility, not a
-    Slice 6 behavior)."""
+    behavior either slice exercises). `is_ready` (Slice 9) is
+    `blocking_count == 0` -- warnings and info never affect it."""
 
     source_id: str
     evaluated_revision: int
@@ -82,6 +85,7 @@ class PreparationIssueSummaryOut(BaseModel):
     blocking_count: int
     warning_count: int
     info_count: int
+    is_ready: bool = False
     issues: list[PreparationIssueOut] = Field(default_factory=list)
 
     @classmethod
@@ -94,5 +98,6 @@ class PreparationIssueSummaryOut(BaseModel):
             blocking_count=summary.blocking_count,
             warning_count=summary.warning_count,
             info_count=summary.info_count,
+            is_ready=summary.is_ready,
             issues=[PreparationIssueOut.from_domain(i) for i in summary.issues],
         )

@@ -880,8 +880,13 @@
            are independent and must stay visually distinguishable. */
         .ww-data-prep-table tr.ww-data-prep-row-is-header td, .ww-data-prep-table tr.ww-data-prep-row-is-header th { background: var(--accent-wash-soft); font-weight: 600; }
         .ww-data-prep-table tr.ww-data-prep-row-inactive td, .ww-data-prep-table tr.ww-data-prep-row-inactive th { opacity: 0.55; }
-        /* Slice 6 (DEC-072): Preparation Readiness Issue panel. Plain
-           grouped lists -- no severity gating UI, no "Ready" state. */
+        /* Slice 6 (DEC-072) established this panel's own plain grouped
+           lists; Slice 9 adds the real "Needs Attention"/"Ready for
+           Powerwave" headline -- [data-ready] only ever colors that ONE
+           line, never the detailed grouped list below it. */
+        .ww-data-prep-issue-headline { margin: 0 0 2px; font-size: 0.9rem; font-weight: 600; }
+        .ww-data-prep-issue-headline[data-ready="true"] { color: var(--ok); }
+        .ww-data-prep-issue-headline[data-ready="false"] { color: var(--error); }
         .ww-data-prep-issue-counts { font-size: 0.7rem; color: var(--text-dim); margin-bottom: 10px; }
         .ww-data-prep-issue-group { margin-bottom: 12px; }
         .ww-data-prep-issue-group-title { margin: 0 0 4px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
@@ -4499,10 +4504,11 @@
                     <div class="ww-data-prep-panel-header">
                         <div>
                             <h3>Preparation Status</h3>
-                            <p class="hint">Informational only -- this does not block or gate anything yet.</p>
+                            <p class="hint">Reports whether the current preparation is ready to convert into Powerwave.</p>
                         </div>
                         <button type="button" class="secondary" id="wwDataPrepIssuesToggleBtn">View Issues</button>
                     </div>
+                    <p class="ww-data-prep-issue-headline" id="wwDataPrepIssueHeadline"></p>
                     <div class="ww-data-prep-issue-counts" id="wwDataPrepIssueCounts"></div>
                     <div id="wwDataPrepIssueGroups" hidden></div>
                 </section>
@@ -7320,11 +7326,18 @@
             }
         }
 
-        // Slice 6 (DEC-072): Preparation Readiness Issue panel -- backend-
-        // derived, informational-only findings about the CURRENT
-        // preparation state. Never a readiness gate: no "Powerwave Ready"
-        // state, no "Open in Powerwave" action, status stays "Needs
-        // Preparation" regardless of what is shown here.
+        // Slice 6 (DEC-072) established this panel's own plumbing;
+        // Slice 9 (the full Powerwave Readiness Validator) is what now
+        // makes `blocking_count`/`is_ready` real -- this frontend still
+        // never classifies or decides anything itself, it only ever
+        // renders whatever GET .../issues already returned. Recording
+        // status stays "Needs Preparation" regardless (no status
+        // transition anywhere in this slice either) -- and there is
+        // still no "Continue to Powerwave"/"Open in Powerwave" ACTION
+        // here: canonical conversion itself is a later slice, and
+        // exposing a button that cannot yet complete would be more
+        // misleading than a plain "Ready for Powerwave" headline with
+        // nothing to click.
         const WW_DATA_PREP_SEVERITY_LABELS = { blocking: "Blocking", warning: "Warnings", info: "Info" };
 
         async function wwDataPrepFetchIssues() {
@@ -7344,11 +7357,14 @@
         // purely by re-rendering with the same already-fetched
         // wwDataPrep.issueSummary -- no re-fetch needed to expand/collapse.
         function wwDataPrepRenderIssues() {
+            const headlineEl = document.getElementById("wwDataPrepIssueHeadline");
             const countsEl = document.getElementById("wwDataPrepIssueCounts");
             const groupsEl = document.getElementById("wwDataPrepIssueGroups");
             const toggleBtn = document.getElementById("wwDataPrepIssuesToggleBtn");
             const summary = wwDataPrep.issueSummary;
             if (!summary) {
+                headlineEl.textContent = "";
+                delete headlineEl.dataset.ready;
                 countsEl.textContent = "";
                 groupsEl.innerHTML = "";
                 groupsEl.hidden = true;
@@ -7359,15 +7375,26 @@
             toggleBtn.textContent = wwDataPrep.issuesExpanded ? "Hide Issues" : "View Issues";
             groupsEl.hidden = !wwDataPrep.issuesExpanded;
 
-            // Shell for a future "Needs Attention" readiness state (task's
-            // own explicit "design the visual shell so this future state
-            // fits naturally" request) -- purely a text branch on counts
-            // the backend ALREADY returns; no new readiness logic, no
-            // gating, and blocking_count is always 0 in Slice 6's own
-            // issue production.
-            const leadIn = summary.blocking_count > 0 ? "Needs Attention — " : "";
-            countsEl.textContent = leadIn + summary.blocking_count + " Blocking · " + summary.warning_count +
-                " Warnings · " + summary.info_count + " Info";
+            // Slice 9: a real two-state headline, driven entirely by
+            // `is_ready` (== blocking_count == 0) the backend already
+            // computed -- "Needs Attention" gets its own short "N
+            // issue(s) must be fixed" line (task section X's own
+            // wording), "Ready for Powerwave" keeps the full Blocking/
+            // Warnings/Info breakdown, matching each state's own mockup.
+            headlineEl.dataset.ready = summary.is_ready ? "true" : "false";
+            if (summary.is_ready) {
+                headlineEl.textContent = "Ready for Powerwave";
+                countsEl.textContent = summary.blocking_count + " Blocking · " + summary.warning_count +
+                    " Warnings · " + summary.info_count + " Info";
+            } else {
+                headlineEl.textContent = "Needs Attention";
+                const issueWord = summary.blocking_count === 1 ? "issue" : "issues";
+                let countsText = summary.blocking_count + " " + issueWord + " must be fixed";
+                if (summary.warning_count > 0) {
+                    countsText += " · " + summary.warning_count + " warning" + (summary.warning_count === 1 ? "" : "s");
+                }
+                countsEl.textContent = countsText;
+            }
 
             const bySeverity = { blocking: [], warning: [], info: [] };
             for (const issue of summary.issues) {
@@ -7383,12 +7410,23 @@
                 for (const issue of items) {
                     const hasWorksheetNav = issue.location && issue.location.worksheet_index !== null &&
                         issue.location.worksheet_index !== undefined;
+                    // Slice 9: a location with a row_number (most
+                    // time-axis/waveform findings) gets its own "Go to
+                    // row" jump -- reuses the SAME paged preview offset
+                    // mechanism "Go to Last Rows" already established,
+                    // never a second navigation framework.
+                    const hasRowNav = issue.location && issue.location.row_number !== null &&
+                        issue.location.row_number !== undefined;
                     html += '<li class="ww-data-prep-issue-item" data-severity="' + severity + '">' +
                         '<span>' + escapeHtml(issue.message) + '</span>' +
                         (issue.suggested_action ? '<span class="hint"> — ' + escapeHtml(issue.suggested_action) + '</span>' : '') +
                         (hasWorksheetNav
                             ? ' <button type="button" class="ww-data-prep-issue-goto-btn" data-worksheet="' +
                               issue.location.worksheet_index + '">Go to worksheet</button>'
+                            : '') +
+                        (hasRowNav
+                            ? ' <button type="button" class="ww-data-prep-issue-goto-btn" data-row="' +
+                              issue.location.row_number + '">Go to row</button>'
                             : '') +
                         '</li>';
                 }
@@ -7407,10 +7445,20 @@
             select.dispatchEvent(new Event("change"));
         }
 
+        // Slice 9: jumps the EXISTING paged preview to whichever page
+        // contains this row number, reusing the same offset/limit state
+        // "Go to Last Rows" already established -- never a second,
+        // bespoke navigation mechanism.
+        function wwDataPrepGoToIssueRow(rowNumber) {
+            wwDataPrep.offset = Math.max(0, Math.floor((rowNumber - 1) / wwDataPrep.limit) * wwDataPrep.limit);
+            wwDataPrepFetchPreview();
+        }
+
         document.getElementById("wwDataPrepIssueGroups").addEventListener("click", (event) => {
             const btn = event.target.closest(".ww-data-prep-issue-goto-btn");
             if (!btn) return;
-            wwDataPrepGoToIssueWorksheet(parseInt(btn.dataset.worksheet, 10));
+            if (btn.dataset.worksheet !== undefined) wwDataPrepGoToIssueWorksheet(parseInt(btn.dataset.worksheet, 10));
+            if (btn.dataset.row !== undefined) wwDataPrepGoToIssueRow(parseInt(btn.dataset.row, 10));
         });
 
         document.getElementById("wwDataPrepIssuesToggleBtn").addEventListener("click", () => {
@@ -8021,6 +8069,11 @@
                 wwDataPrepRenderTimeAxisEligibleColumns();
                 wwDataPrepRenderTimeAxisForm();
                 await wwDataPrepRefreshOverlayToolbarOnly();
+                // Slice 9: Preparation Status (blocking/warning/ready) is
+                // recomputed live from the CURRENT time-axis configuration
+                // -- a save here must refresh it immediately, not wait for
+                // the next unrelated preview fetch to happen to run it.
+                await wwDataPrepFetchIssues();
             } catch (error) {
                 status.textContent = "Could not reach the backend.";
             }
@@ -8037,6 +8090,7 @@
                 wwDataPrepRenderTimeAxisEligibleColumns();
                 wwDataPrepRenderTimeAxisForm();
                 await wwDataPrepRefreshOverlayToolbarOnly();
+                await wwDataPrepFetchIssues();
             } catch (error) {
                 status.textContent = "Could not reach the backend.";
             }

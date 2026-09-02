@@ -1389,6 +1389,10 @@ class TestExcelWorksheetIsolationForStructureMapping:
 
 class TestPreparationIssuesEndpoint:
     def test_get_issues_returns_schema_and_counts(self, client):
+        # Slice 6's own three info findings are unchanged; Slice 9 (the
+        # full Readiness Validator) additionally reports this totally-
+        # unconfigured source as blocking on two independent grounds --
+        # no Time Axis configured, and no Waveform Channel assigned.
         source_id = _upload_csv(client, content=b"a,b,c\n1,2,3\n")
 
         resp = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues")
@@ -1399,12 +1403,15 @@ class TestPreparationIssuesEndpoint:
         assert body["evaluated_revision"] == 0
         assert body["current_revision"] == 0
         assert body["is_stale"] is False
-        assert body["blocking_count"] == 0
+        assert body["blocking_count"] == 2
         assert body["warning_count"] == 0
-        assert body["info_count"] == len(body["issues"])
+        assert body["info_count"] == 3
+        assert body["is_ready"] is False
         codes = {i["code"] for i in body["issues"]}
-        assert codes == {"header_not_selected", "data_region_unconfigured", "column_roles_unassigned"}
-        assert all(i["severity"] == "info" for i in body["issues"])
+        assert codes == {
+            "header_not_selected", "data_region_unconfigured", "column_roles_unassigned",
+            "time_axis_unconfigured", "waveform_channel_missing",
+        }
 
     def test_issue_codes_are_stable_and_locations_present(self, client):
         source_id = _upload_csv(client, content=b"a,b\n1,2\n")
@@ -1479,8 +1486,14 @@ class TestPreparationIssuesEndpoint:
         client.delete(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working")
         body = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues").json()
 
+        # Reset All wipes the waveform-role assignment too, so Slice 9's
+        # own "no waveform channel"/"no time axis" blocking issues are
+        # ALSO back, alongside Slice 6's original three info findings.
         codes = {i["code"] for i in body["issues"]}
-        assert codes == {"header_not_selected", "data_region_unconfigured", "column_roles_unassigned"}
+        assert codes == {
+            "header_not_selected", "data_region_unconfigured", "column_roles_unassigned",
+            "time_axis_unconfigured", "waveform_channel_missing",
+        }
 
     def test_recording_status_remains_needs_preparation(self, client):
         # Slice 6 must not introduce a status transition.
@@ -1495,6 +1508,159 @@ class TestPreparationIssuesEndpoint:
         source_id = _upload_csv(client, content=b"a,b\n1,2\n")
 
         client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues")
+
+        assert client.get("/api/v1/workspaces/ws-1/sources").json() == []
+
+
+# ---- CSV/Excel ingestion Slice 9 (DEC-072): Full Powerwave Readiness
+# Validator -- API-level coverage. Reuses the EXISTING
+# GET .../issues endpoint verbatim (no new route); pure-function/
+# service-level rule coverage lives in tests/test_readiness_service.py.
+# Every fixture below is headerless.
+
+
+def _ready_csv_source(client, *, rows: int = 5) -> str:
+    lines = [f"2026-08-31 13:00:{i:02d},{i}.0" for i in range(rows)]
+    source_id = _upload_csv(client, content=("\n".join(lines) + "\n").encode())
+    client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+    client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+    client.put(
+        f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+        json={"column_indices": [0], "interpreter_id": "absolute_datetime", "confirmed": True},
+    )
+    return source_id
+
+
+class TestReadinessValidatorApi:
+    def test_fully_ready_source_reports_is_ready_true(self, client):
+        source_id = _ready_csv_source(client)
+
+        body = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues").json()
+
+        assert body["is_ready"] is True
+        assert body["blocking_count"] == 0
+
+    def test_unconfigured_source_reports_is_ready_false_with_counts(self, client):
+        source_id = _upload_csv(client, content=b"1,2\n3,4\n")
+
+        body = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues").json()
+
+        assert body["is_ready"] is False
+        assert body["blocking_count"] >= 2
+        codes = {i["code"] for i in body["issues"]}
+        assert "time_axis_unconfigured" in codes
+        assert "waveform_channel_missing" in codes
+
+    def test_evaluated_and_current_revision_match_live_state(self, client):
+        source_id = _ready_csv_source(client)
+
+        body = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues").json()
+
+        assert body["evaluated_revision"] == body["current_revision"]
+        assert body["is_stale"] is False
+
+    def test_blocking_finding_carries_a_row_level_location(self, client):
+        lines = [f"2026-08-31 13:00:{i:02d},{i}.0" for i in range(8)]
+        lines[3] = "2026-08-31 13:00:03,ERR"
+        source_id = _upload_csv(client, content=("\n".join(lines) + "\n").encode())
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime", "confirmed": True},
+        )
+
+        body = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues").json()
+
+        invalid = next(i for i in body["issues"] if i["code"] == "waveform_value_invalid")
+        assert invalid["severity"] == "blocking"
+        assert invalid["location"]["row_number"] == 4
+        assert invalid["location"]["column_index"] == 1
+
+    def test_editing_the_bad_cell_clears_readiness(self, client):
+        lines = [f"2026-08-31 13:00:{i:02d},{i}.0" for i in range(8)]
+        lines[3] = "2026-08-31 13:00:03,ERR"
+        source_id = _upload_csv(client, content=("\n".join(lines) + "\n").encode())
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime", "confirmed": True},
+        )
+        assert client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues").json()["is_ready"] is False
+
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/4/1",
+            json={"value": "3.5"},
+        )
+
+        body = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues").json()
+        assert body["is_ready"] is True
+
+    def test_excluding_the_bad_row_clears_readiness(self, client):
+        lines = [f"2026-08-31 13:00:{i:02d},{i}.0" for i in range(8)]
+        lines[3] = "2026-08-31 13:00:03,ERR"
+        source_id = _upload_csv(client, content=("\n".join(lines) + "\n").encode())
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime", "confirmed": True},
+        )
+        assert client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues").json()["is_ready"] is False
+
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/rows/4", json={"excluded": True})
+
+        body = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues").json()
+        assert body["is_ready"] is True
+
+    def test_sample_index_fallback_source_is_ready_with_warning(self, client):
+        source_id = _upload_csv(client, content=b"1,1.0\n2,2.0\n3,3.0\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "sample_index"},
+        )
+
+        body = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues").json()
+
+        assert body["is_ready"] is True
+        codes = {i["code"] for i in body["issues"]}
+        assert "sample_index_fallback" in codes
+        warning_issue = next(i for i in body["issues"] if i["code"] == "sample_index_fallback")
+        assert warning_issue["severity"] == "warning"
+
+
+class TestReadinessValidatorExcelWorksheetIsolationViaApi:
+    def test_isolated_per_worksheet(self, client):
+        content = _build_xlsx({
+            "A": [["2026-08-31 13:00:00", 1.0], ["2026-08-31 13:00:01", 2.0]],
+            "B": [["not-a-date", "ERR"]],
+        })
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "m.xlsx"),
+        ).json()["source_id"]
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 0})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime", "confirmed": True},
+        )
+
+        body_a = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues").json()
+        assert body_a["is_ready"] is True
+
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 1})
+        body_b = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues").json()
+        assert body_b["is_ready"] is False
+
+
+class TestReadinessValidatorComtradeRegressionUnaffected:
+    def test_comtrade_sources_endpoint_still_empty(self, client):
+        source_id = _ready_csv_source(client)
 
         assert client.get("/api/v1/workspaces/ws-1/sources").json() == []
 
@@ -2068,7 +2234,12 @@ class TestTimeAxisTimingIrregularityDiagnosticsViaApi:
         rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()["rows"]
         assert len(rows) == 3
 
-    def test_this_slice_never_gates_readiness_or_promotes_issues(self, client):
+    def test_large_time_gap_promotes_to_a_warning_readiness_issue_never_blocking(self, client):
+        # Slice 8D itself introduced no readiness mapping at all; Slice 9
+        # (the full Readiness Validator) is what maps this diagnostic to
+        # a real severity -- WARNING, per its own explicit policy, since
+        # a large gap is a disclosed degradation, never a coherence
+        # failure that would make the reading itself untrustworthy.
         source_id = _upload_csv(client, content=b"13:14:01\n13:14:02\n13:20:00\n")
         client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
         client.put(
@@ -2078,9 +2249,10 @@ class TestTimeAxisTimingIrregularityDiagnosticsViaApi:
 
         issues = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues")
         assert issues.status_code == 200
-        codes = {issue["code"] for issue in issues.json()["issues"]}
-        assert "large_time_gap" not in codes
-        assert "time_goes_backward" not in codes
+        body = issues.json()
+        gap_issue = next(i for i in body["issues"] if i["code"] == "large_time_gap")
+        assert gap_issue["severity"] == "warning"
+        assert all(i["code"] != "time_goes_backward" for i in body["issues"])
 
 
 class TestTimeAxisTimingIrregularityExcelWorksheetIsolationViaApi:

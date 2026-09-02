@@ -526,8 +526,46 @@ re-confirmed by the TG-FINAL audit):
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 8](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
   for the full implementation summary.
 
-  The full readiness validator (Slice 9+) is still explicitly NOT part
-  of any slice implemented so far — see
+  **Slice 9** (2026-09-02) implements the Full Powerwave Readiness
+  Validator — answers exactly one question, is the current prepared
+  dataset ready to convert into Powerwave, using the SAME `blocking`/
+  `warning`/`info` model Slice 6 already established (never a second,
+  parallel readiness model). `app.services.readiness_service` extends
+  `preparation_issue_service.build_issue_summary()` (the SAME `GET
+  .../issues` endpoint, no new route) with real policy: no Time Axis
+  configured/unsupported/unresolved, or zero Waveform Channel columns,
+  is BLOCKING; a resolved time-axis reading's own diagnostics are
+  promoted into `PreparationIssue`s through one explicit policy table
+  (`_BLOCKING_TIME_DIAGNOSTIC_CODES`/`_WARNING_TIME_DIAGNOSTIC_CODES`) —
+  interpreters themselves still encode no severity opinion at all.
+  Sample Index fallback, an accepted reconstruction, manual/user-
+  specified timing, and bare time-of-day (partial) readings are all
+  WARNING, never blocking — each can reach `is_ready=True`. Two
+  DELIBERATELY different validation scopes: time-axis diagnostics stay
+  SAMPLE-based (whatever the interpreter's own bounded ≤50-row window
+  already saw), but missing/invalid TIME-AXIS and WAVEFORM CHANNEL cell
+  values are checked across the ENTIRE active data region via a new
+  single-pass streaming generator,
+  `preparation_preview_service.iterate_active_region_rows()` — never a
+  second materialized copy of the dataset, never a bounded-sample
+  guarantee mistaken for a full one. `ERR`/`N/A`/`#VALUE!`/malformed
+  numeric text in a Waveform Channel cell is preserved and reported,
+  never coerced to zero. Digital-channel validation is explicitly
+  deferred (no dedicated column role exists yet). Nothing here ever
+  deletes, sorts, or reorders a row, or synthesizes/interpolates a
+  value — readiness only ever reports; the engineer resolves. New
+  `PreparationIssueSummary.is_ready` field (`blocking_count == 0`).
+  Frontend: the EXISTING Preparation Status panel (which already had a
+  Slice-6-era "shell for a future Needs Attention state" comment) now
+  shows a real "Needs Attention"/"Ready for Powerwave" headline, with
+  deliberately NO "Continue to Powerwave" button (canonical conversion
+  is Slice 10, not this one) — detailed issues stay collapsed by
+  default, unchanged. See
+  [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 9](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
+  for the full implementation summary.
+
+  Canonical `DisturbanceRecord` conversion (Slice 10+) is still
+  explicitly NOT part of any slice implemented so far — see
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md).
 
 ## Known intentional constraints / deferred items
@@ -609,13 +647,15 @@ Slice 7 (the extensible time-axis interpretation FRAMEWORK), Slice 8A
 (the first two deterministic time-axis interpreters), Slice 8B (the
 next two -- elapsed numeric time, sample index), Slice 8C (the fifth
 and final one -- repeated-timestamp/precision-loss detection and
-reconstruction), and Slice 8D (Time Irregularity Diagnostics -- a
+reconstruction), Slice 8D (Time Irregularity Diagnostics -- a
 diagnostic-only normalization layer over Slices 8A-8C's own irregular-
-timing conditions, never a new interpreter, never readiness policy, see
-above) are now implemented. Slices 9–13 (the full Readiness Validator,
-canonical `DisturbanceRecord` conversion, existing waveform integration,
-export, and progressive automation) remain unimplemented and require
-their own explicit owner go-ahead before starting, per
+timing conditions, never a new interpreter, never readiness policy),
+and Slice 9 (the Full Powerwave Readiness Validator -- the REAL
+`blocking`/`warning`/`info` policy Slice 6 always deferred, see above)
+are now implemented. Slices 10–13 (canonical `DisturbanceRecord`
+conversion, existing waveform integration, export, and progressive
+automation) remain unimplemented and require their own explicit owner
+go-ahead before starting, per
 [Change governance](../../CLAUDE.md#change-governance) — being recorded
 in the architecture document's own slice sequence does not itself
 authorize starting any of them.

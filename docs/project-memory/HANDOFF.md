@@ -8,6 +8,115 @@ Last updated: **2026-09-02**
 
 ## What was most recently done
 
+**CSV/Excel Ingestion Slice 9 — Full Powerwave Readiness Validator
+(implemented).** Owner-authorized implementation of the REAL
+`blocking`/`warning`/`info` readiness policy Slice 6 always deferred —
+answers exactly one question: is the current prepared dataset ready to
+convert into Powerwave? Does NOT perform `DisturbanceRecord`
+conversion, canonical waveform creation, plotting, or export — all
+explicitly Slice 10+.
+
+**Extends, never replaces, Slice 6's own transport.** New module
+`app/services/readiness_service.py` — `collect_readiness_issues()` is
+called ADDITIONALLY by `preparation_issue_service.build_issue_
+summary()` (the SAME function `GET .../issues` already called), merged
+with Slice 6's own unchanged, still-`info`-only issues into ONE
+`PreparationIssueSummary`. No new endpoint. One additive field:
+`PreparationIssueSummary.is_ready` (`blocking_count == 0`).
+
+**Structure rules**: no Time Axis columns configured
+(`time_axis_unconfigured`), a stale role reference
+(`time_axis_unsupported`), or zero Waveform Channel columns
+(`waveform_channel_missing`) are all BLOCKING. `header_not_selected`/
+`data_region_unconfigured`/`column_roles_unassigned` (Slice 6) stay
+UNCHANGED, still `info`.
+
+**Time-axis policy reuses `get_time_axis_summary()` verbatim** —
+`UNCONFIGURED`/`UNSUPPORTED`/`REVIEW_REQUIRED` status is its own
+BLOCKING issue; for a resolved reading, every diagnostic is promoted
+into a `PreparationIssue` reusing its own code/message/location
+VERBATIM, through one explicit table:
+`_BLOCKING_TIME_DIAGNOSTIC_CODES` (backward/reset/missing/unparseable/
+mixed/non-numeric) vs `_WARNING_TIME_DIAGNOSTIC_CODES` (large gap,
+non-uniform interval, possible missing sample, precision loss,
+midnight rollover, repeated-timestamp/bucket findings). Plus one
+WARNING per degraded-but-usable state: `sample_index_fallback`,
+`reconstructed_time`, `user_specified_time`, `partial_time_reference`
+— all of which can reach `is_ready=True`. Interpreters encode NO
+severity opinion at all; readiness OWNS policy.
+
+**Two deliberately different validation scopes** (the slice's own most
+important rule): diagnostic promotion stays SAMPLE-based (whatever the
+interpreter's own bounded ≤50-row window saw). On top of that,
+readiness independently BLOCKS on two full-ACTIVE-REGION scans a
+bounded sample cannot cover — `time_value_missing`/`time_value_invalid`
+and `waveform_value_missing`/`waveform_value_invalid` — powered by one
+new single-pass streaming generator,
+`preparation_preview_service.iterate_active_region_rows()` (never a
+second materialized copy of the dataset, never repeated re-scans).
+`ERR`/`N/A`/`#VALUE!`/malformed numeric text in a Waveform Channel cell
+is preserved and reported, never coerced to zero.
+
+**Digital channels explicitly deferred** — no dedicated column role
+exists yet; a digital-style column today gets the SAME numeric policy
+as any other column of its actual role, no invented mapping.
+
+**Never repairs anything** — no row deleted/inserted/sorted/reordered,
+no timestamp synthesized, no value interpolated or coerced. Readiness
+only ever reports; the engineer resolves.
+
+**Live, never cached** — every mutation already bumps
+`WorkingOverlay.revision`; readiness recomputes fresh on every call. A
+real frontend staleness gap was found and fixed: the Time Axis panel's
+Save/Clear handlers previously only refreshed the toolbar, never
+issues — both now explicitly re-fetch readiness immediately.
+
+**Frontend**: the EXISTING Preparation Status panel (which already had
+a Slice-6-era "shell for a future Needs Attention state" comment) now
+shows a real "Needs Attention"/"Ready for Powerwave" headline
+(colored via `--ok`/`--error`), with deliberately NO "Continue to
+Powerwave" button (canonical conversion is Slice 10, not this one —
+the headline text alone communicates the state, per the task's own
+"choose the least misleading UX" instruction). Detailed issues stay
+collapsed by default, unchanged; a new "Go to row" jump reuses the
+same paged-preview offset mechanism "Go to Last Rows" already
+established.
+
+**Files changed**: `backend/app/domain/preparation_issue.py`,
+`backend/app/services/preparation_issue_service.py` (extended),
+`backend/app/services/preparation_preview_service.py` (new streaming
+iterator), `backend/app/schemas/preparation_issue.py`,
+`frontend/index.html`; extended `backend/tests/test_preparation_issue_
+service.py`, `test_preparation_sources_api.py`. NEW files:
+`backend/app/services/readiness_service.py`,
+`backend/tests/test_readiness_service.py`.
+
+**Verified**: full backend suite 2515 passed (46 new on top of Slice
+8D's 2469), zero regressions (four pre-existing Slice 6/8D tests
+updated for the new, correctly-blocking default state of a totally
+unconfigured source); the committed browser smoke test (COMTRADE)
+still passes unchanged; a throwaway (not committed) live-browser
+Playwright UAT script confirmed: an unconfigured source shows "Needs
+Attention" with both new blocking findings listed in the collapsed-by-
+default detail view; configuring Time Axis + Waveform Channel reaches
+"Ready for Powerwave" (with a `timezone_unspecified` warning for a
+naive-datetime fixture); editing a bad waveform cell (or excluding its
+row) immediately clears readiness back to Ready with no extra manual
+refresh; a Sample Index fallback source reaches Ready with its own
+warning, never blocking — all with zero console/page errors.
+
+**Next step**: Slices 10–13 (canonical `DisturbanceRecord` conversion,
+existing waveform integration, export, and progressive automation) —
+each still requires its own explicit owner go-ahead to begin, per
+[Change governance](../../CLAUDE.md#change-governance).
+
+**Commit status**: not committed — per this task's own explicit closing
+instruction ("Do not commit or push unless explicitly asked"), all of
+the above are normal uncommitted working-tree changes pending a
+separate, explicit commit instruction.
+
+## What was done in the prior session — CSV/Excel Ingestion Slice 8D: Time Irregularity Diagnostics
+
 **CSV/Excel Ingestion Slice 8D — Time Irregularity Diagnostics
 (implemented).** Owner-authorized implementation of a DIAGNOSTIC-ONLY
 normalization layer over the irregular-timing conditions
@@ -115,20 +224,11 @@ ordinary midnight rollover"); a large-gap column shows neutral wording
 (never "missing data"); and no second top-level panel was introduced
 anywhere — all with zero console/page errors.
 
-**Next step**: Slices 9–13 (the full Readiness Validator, canonical
-`DisturbanceRecord` conversion, existing waveform integration, export,
-and progressive automation) — each still requires its own explicit
-owner go-ahead to begin, per
-[Change governance](../../CLAUDE.md#change-governance). Slice 9 in
-particular is the first place any of Slice 8D's own diagnostics could
-ever be mapped to `blocking`/`warning`/`info` or promoted into
-`PreparationIssue` — an explicit, owner-approved decision, not an
-automatic consequence of this slice.
-
-**Commit status**: not committed — per this task's own explicit closing
-instruction ("Do not commit or push unless explicitly asked"), all of
-the above are normal uncommitted working-tree changes pending a
-separate, explicit commit instruction.
+**Commit status**: committed as `e8a9413` ("feat: add time irregularity
+diagnostics") — not pushed at the time. (Superseded: Slice 9, the entry
+directly above this one, is the first place any of this slice's own
+diagnostics were actually mapped to `blocking`/`warning`/`info` and
+promoted into `PreparationIssue`.)
 
 ## What was done in the prior session — CSV/Excel Ingestion Slice 8C: Repeated Timestamp / Precision-Loss Reconstruction
 

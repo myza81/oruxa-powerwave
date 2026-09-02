@@ -14,9 +14,13 @@ is now fully implemented; segmented/variable-cadence reconstruction
 (§7's own scope boundary) remains explicitly deferred, not a Slice 8C
 gap. Slice 8D — Time Irregularity Diagnostics, a diagnostic-only
 normalization layer over §11's own irregular-timing table (never a new
-interpreter, never readiness policy) — is `[DONE, 2026-09-02]`; see
-[CSV_EXCEL_INGESTION_ARCHITECTURE.md item 8](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
-for its own full implementation summary.**
+interpreter, never readiness policy) — is `[DONE, 2026-09-02]`. Slice 9
+— the Full Powerwave Readiness Validator, the REAL `blocking`/
+`warning`/`info` policy this document's own §13 always deferred — is
+ALSO `[DONE, 2026-09-02]`; see
+[CSV_EXCEL_INGESTION_ARCHITECTURE.md item 9](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
+for its own full implementation summary. Canonical `DisturbanceRecord`
+conversion (Slice 10) remains explicitly NOT implemented.**
 
 Date: 2026-09-01
 Source: owner-requested design checkpoint, preceding Slice 7. This
@@ -684,19 +688,35 @@ should structurally resemble `PreparationIssue` closely enough
 promoting a subset of them into real `PreparationIssue`s later, once
 Slice 9 policy exists, is a mechanical mapping rather than a redesign.
 
-**`[DONE, 2026-09-02]` Slice 8D confirmation**: this boundary is
-UNCHANGED by Slice 8D. Every new diagnostic (§11) is added to the SAME
+**`[DONE, 2026-09-02]` Slice 8D confirmation**: this boundary was
+UNCHANGED by Slice 8D. Every new diagnostic (§11) was added to the SAME
 `TimeAxisDiagnostic` list returned through the SAME existing
 `GET`/`PUT .../time-axis` and dry-run `POST .../interpret` endpoints —
 still never injected into `GET .../issues`'s own
 `PreparationIssueSummary`, still never mapped to `blocking`/`warning`/
-`info`. The new `category` field (§11's own implementation note) adds
-one more structurally-shared property (alongside severity-label, code,
-message, location, suggested action) that a future promotion mapping
-could reuse — it does not itself perform or authorize any promotion.
-Whether/how these diagnostics eventually feed into `PreparationIssue`
-remains exactly as open as before (§21), still Slice 9's own decision
-to make.
+`info` AT THAT TIME. The new `category` field (§11's own implementation
+note) added one more structurally-shared property (alongside severity-
+label, code, message, location, suggested action) that a future
+promotion mapping could reuse — it did not itself perform or authorize
+any promotion.
+
+**`[DONE, 2026-09-02]` Slice 9 resolution**: the promotion this section
+(and §21's own open question 1) deferred is now real.
+`app.services.readiness_service.collect_readiness_issues()` is the ONE
+place a `TimeAxisDiagnostic.code` is mapped onto a real
+`PreparationIssue` severity — reusing the diagnostic's OWN code,
+message, location, `suggested_action`, and `details` VERBATIM (the
+"structurally-shared property" this section always anticipated made
+this a mechanical mapping, not a redesign, exactly as predicted).
+Interpreters themselves still encode NO severity opinion of their own
+-- `_BLOCKING_TIME_DIAGNOSTIC_CODES`/`_WARNING_TIME_DIAGNOSTIC_CODES`
+in that module are the complete, explicit, reviewable POLICY table
+(never scattered `if` statements inside a time interpreter). This
+covers the DIAGNOSTIC-promotion half of readiness only; readiness also
+independently validates full-active-region time-axis CELL values (a
+different concern from any bounded-sample diagnostic) -- see
+`docs/project-memory/CSV_EXCEL_INGESTION_ARCHITECTURE.md` item 9 for
+the complete Slice 9 policy and implementation summary.
 
 ---
 
@@ -1320,13 +1340,13 @@ Genuinely unresolved matters this document deliberately does NOT
 settle, each requiring its own future owner decision at the point the
 relevant slice is actually scoped:
 
-1. **Whether/how time-interpretation diagnostics eventually feed into
-   `PreparationIssue`** (§13). This document establishes that they are
-   structurally compatible but does not decide the mapping, since that
-   mapping is inseparable from Slice 9's own severity-policy decisions
-   (which findings become `warning`/`blocking`, and under what
-   condition) — deciding it here would be exactly the "new production
-   issue rules" non-goal (§20).
+1. **`[RESOLVED, 2026-09-02, Slice 9]`** ~~Whether/how time-
+   interpretation diagnostics eventually feed into `PreparationIssue`~~
+   — see §13's own Slice 9 resolution note above:
+   `app.services.readiness_service`'s explicit
+   `_BLOCKING_TIME_DIAGNOSTIC_CODES`/`_WARNING_TIME_DIAGNOSTIC_CODES`
+   mapping table, and `docs/project-memory/CSV_EXCEL_INGESTION_
+   ARCHITECTURE.md` item 9 for the complete policy.
 2. **`[RESOLVED, 2026-09-02, Slice 8C]`** ~~The exact confidence-bucket
    computation (§6) is left to whichever interpreter implements
    repeated-timestamp detection in Slice 8~~ — see the Slice 8C
