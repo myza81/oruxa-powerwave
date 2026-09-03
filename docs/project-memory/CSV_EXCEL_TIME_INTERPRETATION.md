@@ -20,7 +20,11 @@ interpreter, never readiness policy) — is `[DONE, 2026-09-02]`. Slice 9
 ALSO `[DONE, 2026-09-02]`; see
 [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 9](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
 for its own full implementation summary. Canonical `DisturbanceRecord`
-conversion (Slice 10) remains explicitly NOT implemented.**
+conversion — Slice 10 — is ALSO `[DONE, 2026-09-03]`; see
+[CSV_EXCEL_INGESTION_ARCHITECTURE.md item 10](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
+for its own full implementation summary, and §14 below for the specific
+family→`timing_reference` mapping table this document proposed and
+Slice 10 implemented verbatim.**
 
 Date: 2026-09-01
 Source: owner-requested design checkpoint, preceding Slice 7. This
@@ -73,7 +77,7 @@ Progressive-disclosure Data Preparation Workspace UI (owner UAT)
 Time Axis interpretation (candidate interpreted time, never canonical)
         ↓  [Slice 9 — NOT this document's subject]
 Readiness Validator (decides acceptability, including time validity)
-        ↓  [Slice 10 — NOT this document's subject]
+        ↓  [Slice 10 — NOT this document's subject, now DONE]
 Canonical DisturbanceRecord conversion
         ↓
 Existing Powerwave waveform/Time-Group/synchronization behavior — UNCHANGED
@@ -82,8 +86,15 @@ Existing Powerwave waveform/Time-Group/synchronization behavior — UNCHANGED
 This document proposes nothing that requires modifying
 `app/domain/disturbance_record.py`, `app/domain/timing.py`,
 `app/domain/time_grouping.py`, `app/services/synchronization_service.py`,
-or any waveform-rendering code. Verified directly against the current
-content of each file before writing this design (see §17).
+or any waveform-rendering code — a claim scoped to Slices 7-9 (this
+document's own subject), verified directly against the current content
+of each file before writing this design (see §17). Slice 10 (a LATER
+document's scope, not this one) did minimally widen
+`app/domain/timing.py`'s `TimingInformation.start_time`/`.trigger_time`
+to `datetime | None` — see
+[CSV_EXCEL_INGESTION_ARCHITECTURE.md item 10](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
+for why that one change was necessary and why `time_grouping.py`/
+`synchronization_service.py` needed none.
 
 ---
 
@@ -760,6 +771,27 @@ families are the producers those reserved waveform-side names are
 waiting for — the actual wiring between them is Slice 10's own
 canonical-conversion work, not this document's, but the naming is
 confirmed consistent end-to-end today.
+
+**`[DONE, 2026-09-03, Slice 10]`** the table above is now implemented
+exactly as specified —
+`app/services/preparation_conversion_service.py` produces
+`timing_reference == "relative_elapsed"` for every `elapsed`/`partial`/
+`sample_index` source, and `"absolute"` (with the real first
+interpreted timestamp as `start_time`) only for a genuine `absolute`
+source. One design point this document left open for Slice 10 to settle
+is now decided: for `elapsed` family, **canonical waveform time
+(`waveform_data["time"]`) is relative to the first ACTIVE sample**
+(`canonical[i] = raw_elapsed[i] - raw_elapsed[0]`), never the raw
+source offset verbatim — a source starting at elapsed `5.000s` produces
+canonical `[0.0, 0.02, 0.04, ...]`, not `[5.0, 5.02, 5.04, ...]`. The
+original non-zero source offset is NOT discarded — it is preserved
+losslessly in `SourceMetadata.preparation_provenance
+["source_time_offset_seconds"]`, so an engineer who needs the original
+elapsed-time reference can still recover it, while every OTHER
+canonical-time family (`absolute`, `partial`, `sample_index`) already
+follows this exact same "relative to first active sample" convention
+for consistency — a single uniform canonical-time rule across all four
+convertible families, not a family-specific special case.
 
 ---
 

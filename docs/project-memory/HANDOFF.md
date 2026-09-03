@@ -4,9 +4,147 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-02**
+Last updated: **2026-09-03**
 
 ## What was most recently done
+
+**CSV/Excel Ingestion Slice 10 — Canonical `DisturbanceRecord`
+Conversion (implemented).** Owner-authorized implementation of the
+third and final stage of "Slice 8 → interpret; Slice 9 → validate;
+Slice 10 → convert" — a Ready prepared CSV/Excel dataset can now
+actually convert into a real Powerwave source and open in the EXISTING
+waveform workflow. No new inference occurs in this slice; conversion
+adapts already-confirmed preparation state to Powerwave's existing
+waveform contract.
+
+**Three owner-approved rules governed everything**: (1) readiness is
+RE-CHECKED against the CURRENT working revision at conversion time —
+never trusts stale frontend state; (2) index-only (Sample Index without
+a known interval) is NOT canonical-seconds-ready — refused with a
+conversion-specific error, never silently treated as `sample N == N
+seconds`; (3) no fake dates or trigger timestamps — an unknown absolute
+start/trigger stays `None`, never a `2000-01-01`/`1970-01-01`/
+`trigger_time = start_time` sentinel.
+
+**New service** `app/services/preparation_conversion_service.py`
+(`convert_preparation_source()`) — never mixed into route handlers.
+Re-runs `build_issue_summary()` (Slice 9, unchanged) fresh; refuses with
+`ConversionNotReadyError` if no longer ready. Time-axis conversion
+REUSES the SAME `TimeAxisInterpreter.build_preview_rows()` the Time
+Axis review UI already calls (over the FULL active region, not the
+bounded ≤50-row sample) — no per-family parsing logic is
+re-implemented. One uniform canonical-time rule across every
+convertible family: `canonical[i] = raw[i] - raw[0]` (relative to the
+first active sample). `sample_index` with a known interval computes
+`(index - first_index) * interval_seconds`; with an unknown interval,
+refuses via `ConversionRequiresIntervalError` (a capability constraint,
+not a Slice 9 readiness change — the source stays `is_ready=True` with
+only its existing WARNING). A Manual-family configuration (no
+`build_preview_rows()` at all) refuses via
+`ConversionUnsupportedInterpreterError`.
+
+**Canonical-model hardening, minimal and traced, not assumed**:
+`TimingInformation.start_time`/`.trigger_time` widened `datetime` →
+`datetime | None` — the ONLY required change, since every downstream
+consumer (`time_grouping.py`, `synchronization_service.py`,
+`calculated_channel_service.py`) already branches on `is None` (thanks
+to `SourceMetadata`'s own pre-existing Optional fields, Phase 5B/
+DEC-048) — zero changes needed to "existing waveform integration."
+`nominal_frequency` deliberately NOT widened (still consumed as a
+required float by `synchronization_service.py`'s event-detection code)
+— a converted source gets a documented 50 Hz default plus an explicit
+`nominal_frequency_assumed: true` provenance flag instead. New additive
+`SamplingInformation.is_uniform` (defaults `True`, COMTRADE unchanged)
+flags genuinely irregular canonical timing honestly, using a ±1%
+relative-interval tolerance (matching Slice 8B's own
+`non_uniform_elapsed_interval` precedent) — an irregular source keeps
+its true per-sample time array, never one fabricated average rate.
+`DisturbanceRecord.validate()` gained a finite/non-decreasing
+time-column check and a `samples_per_rate` row-count consistency
+check — both a no-op for every real COMTRADE record.
+
+**Waveform channels**: exactly active-region minus excluded rows plus
+working overrides, in source column order, Metadata/Quality-Status/
+Ignore/Unknown columns never included. Channel names use the configured
+header label when available, else a deterministic spreadsheet-letter
+name; a duplicate label never loses a channel — first occurrence keeps
+its label, later ones get a `__<column-letter>` suffix (`Voltage`,
+`Voltage__C`, `Voltage__D`), original label preserved as each channel's
+own `description`.
+
+**Provenance**: new, purely additive
+`SourceMetadata.preparation_provenance: dict | None` (following the
+`waveform_form`/DEC-048 "additive, defaulted" precedent) retains source
+format, filename, worksheet, preparation revision, time family/
+provenance, interpreter id, header row, data region, excluded-row
+count — no CSV/Excel-specific field added to any core waveform schema.
+
+**Idempotency needed zero new code** — a successful conversion removes
+the `PreparationSession` from its registry (mirroring COMTRADE's own
+upload flow), so a repeated `POST .../convert` naturally 404s via the
+existing `SourceNotFoundError` path.
+
+**New API** `POST .../preparation-sources/{source_id}/convert`,
+returning the SAME `SourceSummaryOut` shape a COMTRADE upload returns.
+New `Conversion*Error` taxonomy in `app/services/errors.py` (5 classes,
+4× HTTP 409, 1× HTTP 500 for `conversion_validation_failed`) — readiness
+issues stay `PreparationIssue`s, runtime conversion failures stay these
+distinct exception types.
+
+**Frontend**: the EXISTING Preparation Status panel gained the actual
+"Continue to Powerwave" action, shown only when `is_ready` AND
+conversion-capable; the index-only case instead shows a "Ready with
+limitations" notice plus a "Configure Time Axis" shortcut — never an
+enabled Continue action that would mislead. On success: registers via
+the SAME `refreshAllSourceViews()` every upload path already calls,
+then navigates into the EXISTING waveform workflow via
+`openRecordingForAnalysis()` — the SAME entry point a COMTRADE
+"Open / Analyse" row uses, never a CSV/Excel-specific plotting page. On
+failure: user stays in Data Preparation with every control intact.
+
+**A real bug caught by the throwaway browser UAT, not by unit tests**:
+`.ww-data-prep-conversion-action { display: flex }` beat the `[hidden]`
+attribute by author-vs-UA-stylesheet origin (the SAME class of bug
+already fixed elsewhere in this file for `#workspaceRow[hidden]`),
+which meant an ENABLED-looking Continue button briefly rendered even in
+the index-only "limited" state during manual testing — fixed with the
+same `.ww-data-prep-conversion-action[hidden] { display: none; }`
+override pattern already established.
+
+**Files changed**: `backend/app/domain/timing.py` (Optional start/
+trigger, `is_uniform`), `backend/app/domain/disturbance_record.py`
+(validate() hardening), `backend/app/domain/source.py`
+(`preparation_provenance`), `backend/app/services/errors.py` (5 new
+Conversion* classes), `backend/app/services/time_axis_interpreters.py`
+(fixed a pre-existing `partial`-family preview gap in
+`build_absolute_datetime_preview()`), `backend/app/api/v1/
+preparation_sources.py` (new `/convert` endpoint), `frontend/index.html`
+(Continue to Powerwave / Ready-with-limitations UI). NEW files:
+`backend/app/services/preparation_conversion_service.py`,
+`backend/tests/test_disturbance_record_domain.py`,
+`backend/tests/test_preparation_conversion_service.py`; extended
+`backend/tests/test_preparation_sources_api.py`.
+
+**Verified**: full backend suite 2583 passed (68 new: 21 domain
+hardening + 39 conversion-service + 8 API), zero regressions; the
+committed browser smoke test (COMTRADE) still passes unchanged with
+zero console/page errors; a throwaway (not committed) live-browser
+Playwright UAT confirmed: Ready → Continue → existing waveform flow
+with a plottable channel; index-only Ready shows the limitation message
+with no enabled Continue (after the CSS fix above); a not-ready
+source's failed conversion leaves the preparation source fully intact.
+
+**Next step**: Slices 11–13 (existing waveform integration
+verification, cleaned-data export, and progressive automation) — each
+still requires its own explicit owner go-ahead to begin, per
+[Change governance](../../CLAUDE.md#change-governance).
+
+**Commit status**: not committed — per this task's own explicit closing
+instruction ("Do not commit or push unless explicitly asked"), all of
+the above are normal uncommitted working-tree changes pending a
+separate, explicit commit instruction.
+
+## What was done in the prior session — CSV/Excel Ingestion Slice 9: Full Powerwave Readiness Validator
 
 **CSV/Excel Ingestion Slice 9 — Full Powerwave Readiness Validator
 (implemented).** Owner-authorized implementation of the REAL

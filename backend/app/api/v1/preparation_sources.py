@@ -56,7 +56,7 @@ from app.schemas.preparation_session import (
     WorkingOverlaySummaryOut,
     WorksheetSelectionRequest,
 )
-from app.schemas.source import ErrorOut
+from app.schemas.source import ErrorOut, SourceSummaryOut
 from app.schemas.time_axis import (
     TimeAxisConfigurationRequest,
     TimeAxisInterpretationResultOut,
@@ -70,6 +70,7 @@ from app.services.preparation_import_service import (
     import_excel_preparation_source,
     select_preparation_worksheet,
 )
+from app.services.preparation_conversion_service import convert_preparation_source
 from app.services.preparation_issue_service import build_issue_summary
 from app.services.preparation_preview_service import (
     PREVIEW_DEFAULT_LIMIT,
@@ -100,6 +101,7 @@ from app.services.working_overlay_service import (
     summarize_working_overlay,
     undo_working_change,
 )
+from app.services.workspace_registry import WorkspaceRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +128,16 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "invalid_column_role": status.HTTP_400_BAD_REQUEST,
     "invalid_time_axis_configuration": status.HTTP_400_BAD_REQUEST,
     "unknown_time_axis_interpreter": status.HTTP_400_BAD_REQUEST,
+    # Slice 10 (DEC-072): conversion runtime/capability failures --
+    # every one of these means "the current preparation state cannot
+    # honor this request yet," a genuine state-conflict semantic (409),
+    # distinct from a malformed request body (400). See
+    # app.services.errors's own new Conversion* classes.
+    "conversion_not_ready": status.HTTP_409_CONFLICT,
+    "conversion_requires_interval": status.HTTP_409_CONFLICT,
+    "conversion_unsupported_interpreter": status.HTTP_409_CONFLICT,
+    "conversion_revision_changed": status.HTTP_409_CONFLICT,
+    "conversion_validation_failed": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
 
@@ -135,6 +147,16 @@ def get_settings_dep(request: Request) -> Settings:
 
 def get_preparation_session_registry(request: Request) -> PreparationSessionRegistry:
     return request.app.state.preparation_session_registry
+
+
+def get_workspace_registry(request: Request) -> WorkspaceRegistry:
+    """Slice 10 (DEC-072): the SAME dependency `app.api.v1.sources` own
+    module already exposes -- both point at the one process-wide
+    `request.app.state.workspace_registry` instance. Duplicated here
+    (rather than importing `app.api.v1.sources.get_workspace_registry`
+    directly) purely to avoid a cross-router import for a one-line
+    function; the underlying registry object is identical either way."""
+    return request.app.state.workspace_registry
 
 
 def _validate_workspace_id(workspace_id: str) -> str:
@@ -728,6 +750,49 @@ def post_working_time_axis_interpret(
     except ImportServiceError as exc:
         raise _working_error(exc) from exc
     return TimeAxisInterpretPreviewOut.from_domain(preview)
+
+
+@router.post("/{source_id}/convert", response_model=SourceSummaryOut)
+def post_convert_preparation_source(
+    workspace_id: str,
+    source_id: str,
+    preparation_registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+    workspace_registry: WorkspaceRegistry = Depends(get_workspace_registry),
+) -> SourceSummaryOut:
+    """Slice 10 (DEC-072): canonical conversion into Powerwave's own
+    `DisturbanceRecord`. Readiness is re-checked live here regardless of
+    whatever the frontend last displayed (never trusts stale state);
+    see `app.services.preparation_conversion_service`'s own module
+    docstring for the full policy, and `app.services.errors`'s new
+    `Conversion*` classes for every way this can refuse.
+
+    Reuses the EXACT SAME response shape a COMTRADE upload already
+    returns (`SourceSummaryOut`) -- the frontend never needs a second,
+    CSV/Excel-specific source shape to identify the newly canonicalized
+    source and transition into the existing waveform workflow.
+
+    On success, the preparation session is released (mirroring how a
+    COMTRADE upload never leaves a "Needs Preparation" row behind
+    either) -- a repeated request against the same, now-gone
+    `source_id` simply 404s like any other unknown source (this
+    module's own minimal, deliberate idempotency behavior; see that
+    service module's own docstring). On ANY failure, the preparation
+    session and its current working state are left completely
+    untouched.
+    """
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        metadata = convert_preparation_source(
+            workspace_id=workspace_id, source_id=source_id,
+            preparation_registry=preparation_registry, workspace_registry=workspace_registry,
+        )
+    except ImportServiceError as exc:
+        logger.info(
+            "Preparation-source conversion rejected (%s) for workspace %s source %s: %s",
+            exc.code, workspace_id, source_id, exc.message,
+        )
+        raise _http_error(exc) from exc
+    return SourceSummaryOut.from_domain(metadata)
 
 
 @router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT)

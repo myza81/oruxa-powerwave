@@ -2794,3 +2794,92 @@ class TestTimeAxisRepeatedTimestampComtradeRegressionUnaffected:
         )
 
         assert client.get("/api/v1/workspaces/ws-1/sources").json() == []
+
+
+# ---- CSV/Excel ingestion Slice 10 (DEC-072): canonical conversion API ----
+
+
+class TestConversionApi:
+    def test_successful_conversion_returns_source_summary(self, client):
+        source_id = _ready_csv_source(client)
+
+        response = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/convert")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["source_id"] != source_id
+        assert body["sample_count"] == 5
+
+    def test_conversion_registers_into_existing_sources_endpoint(self, client):
+        source_id = _ready_csv_source(client)
+
+        converted = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/convert").json()
+
+        sources = client.get("/api/v1/workspaces/ws-1/sources").json()
+        assert any(s["source_id"] == converted["source_id"] for s in sources)
+
+    def test_conversion_removes_preparation_source(self, client):
+        source_id = _ready_csv_source(client)
+
+        client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/convert")
+
+        assert client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}").status_code == 404
+
+    def test_repeated_conversion_of_same_source_404s(self, client):
+        source_id = _ready_csv_source(client)
+        client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/convert")
+
+        response = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/convert")
+
+        assert response.status_code == 404
+
+    def test_missing_source_returns_404(self, client):
+        response = client.post("/api/v1/workspaces/ws-1/preparation-sources/does-not-exist/convert")
+
+        assert response.status_code == 404
+
+    def test_not_ready_source_refuses_conversion_with_409(self, client):
+        source_id = _upload_csv(client, content=b"1,2\n3,4\n")
+
+        response = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/convert")
+
+        assert response.status_code == 409
+        assert response.json()["detail"]["code"] == "conversion_not_ready"
+        assert client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}").status_code == 200
+
+    def test_index_only_ready_source_refuses_conversion_with_409(self, client):
+        source_id = _upload_csv(client, content=b"1,1.0\n2,2.0\n3,3.0\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "sample_index"},
+        )
+        assert client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues").json()["is_ready"] is True
+
+        response = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/convert")
+
+        assert response.status_code == 409
+        assert response.json()["detail"]["code"] == "conversion_requires_interval"
+        assert client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}").status_code == 200
+
+    def test_excel_worksheet_conversion_isolated(self, client):
+        content = _build_xlsx({
+            "A": [["2026-08-31 13:00:00", 1.0], ["2026-08-31 13:00:01", 2.0]],
+            "B": [["not-a-date", "ERR"]],
+        })
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "m.xlsx"),
+        ).json()["source_id"]
+        client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 0})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime", "confirmed": True},
+        )
+
+        response = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/convert")
+
+        assert response.status_code == 200
+        assert response.json()["sample_count"] == 2

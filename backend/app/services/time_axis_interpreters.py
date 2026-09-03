@@ -832,10 +832,25 @@ def build_absolute_datetime_preview(
 ) -> list[tuple[int, tuple[Any, ...], str | None]]:
     """Bounded {row_number, original, interpreted} rows for the
     single-column interpreter (§J/§16) -- `original` is the raw sample
-    value(s) verbatim, `interpreted` is the resulting ISO-8601 string or
-    `None` for a row that failed to parse under the resolved format
-    (never dropped -- see `app.domain.time_axis.TimeAxisPreviewRow`'s
-    own docstring)."""
+    value(s) verbatim, `interpreted` is the resulting ISO-8601 string
+    (`absolute` family) or an `"HH:MM:SS.ffffff"` string (`partial`
+    family, Slice 10 fix -- see below), or `None` for a row that failed
+    to parse under the resolved format (never dropped -- see
+    `app.domain.time_axis.TimeAxisPreviewRow`'s own docstring).
+
+    Slice 10 (DEC-072) fix: a bare time-of-day value never parses under
+    ANY `date_order` (it has no date component at all) -- prior to this
+    fix, every row of a genuinely `partial`-family column produced
+    `interpreted=None` unconditionally, even though `detect_absolute_
+    datetime()`'s own time-only branch correctly reports `family=
+    FAMILY_PARTIAL` for exactly this data. This was a real, previously
+    unexercised gap (no earlier slice's own preview needed a partial-
+    family value to be non-`None`) -- fixed here by falling back to
+    `_parse_time_only()`/`_format_seconds_from_midnight()`, the EXACT
+    same helpers Slice 8C's own `build_repeated_timestamp_preview()`
+    already uses for its own partial-family case, so there is still
+    only one time-of-day formatting convention in this module, not two.
+    """
     date_order = resolved_options.get("date_order", DATE_ORDER_AUTO)
     rows = []
     for row_number, values in samples[:limit]:
@@ -843,8 +858,14 @@ def build_absolute_datetime_preview(
         if value in (None, ""):
             rows.append((row_number, values, None))
             continue
-        parsed = parse_absolute_datetime(str(value), date_order=date_order) if date_order != DATE_ORDER_AUTO else _parse_iso(str(value))
-        rows.append((row_number, values, parsed.isoformat() if parsed else None))
+        text = str(value)
+        parsed = parse_absolute_datetime(text, date_order=date_order) if date_order != DATE_ORDER_AUTO else _parse_iso(text)
+        if parsed is not None:
+            rows.append((row_number, values, parsed.isoformat()))
+            continue
+        time_only = _parse_time_only(text)
+        interpreted = _format_seconds_from_midnight(_seconds_from_midnight(time_only)) if time_only is not None else None
+        rows.append((row_number, values, interpreted))
     return rows
 
 

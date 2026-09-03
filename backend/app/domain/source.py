@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import Any
 
 from app.domain.channel_classification import WAVEFORM_FORM_UNKNOWN
 from app.domain.disturbance_record import DisturbanceRecord
@@ -99,6 +100,20 @@ class SourceMetadata:
     # only a pre-existing test helper that never expected this field
     # would ever observe the `0` default.
     file_size_bytes: int = 0
+
+    # Slice 10 (CSV/Excel ingestion, DEC-072): a small, generic, JSON-
+    # safe provenance bag -- `None` for every EXISTING provider
+    # (COMTRADE never sets this; zero behavior change to any current
+    # source). Populated only by `app.services.preparation_conversion_
+    # service` for a CSV/Excel source converted into a canonical
+    # DisturbanceRecord, so a later question ("where did this waveform
+    # come from, and how was its time axis established?") is always
+    # answerable without inventing a second, CSV/Excel-specific
+    # metadata model -- see that module's own docstring for the exact
+    # keys it writes. Mirrors `waveform_form`'s own established
+    # "additive, defaulted, no current provider sets it away from the
+    # default" precedent above.
+    preparation_provenance: dict[str, Any] | None = None
 
 
 @dataclass(slots=True)

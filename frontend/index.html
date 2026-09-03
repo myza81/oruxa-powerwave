@@ -895,6 +895,20 @@
         .ww-data-prep-issue-item[data-severity="blocking"] { color: var(--error); }
         .ww-data-prep-issue-item[data-severity="warning"] { color: var(--warn); }
         .ww-data-prep-issue-goto-btn { font: inherit; font-size: 0.72rem; border: none; background: none; color: var(--accent); cursor: pointer; text-decoration: underline; padding: 0 0 0 6px; }
+        /* CSV/Excel ingestion Slice 10 (DEC-072): the conversion action
+           itself -- deliberately styled distinctly from the headline
+           above it (a colored status line) rather than as another list
+           item, since this is the one actual ACTION in this panel. */
+        .ww-data-prep-conversion-limitation { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+        .ww-data-prep-conversion-limitation .ww-data-prep-issue-headline[data-ready="limited"] { color: var(--warn); }
+        .ww-data-prep-conversion-action { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+        /* Same author-CSS-beats-UA-[hidden] bug already fixed for
+           #workspaceRow[hidden]/#pageRecordings[hidden] elsewhere in this
+           file -- the `display: flex` above would otherwise win over the
+           UA stylesheet's `[hidden] { display: none }` by origin alone. */
+        .ww-data-prep-conversion-action[hidden] { display: none; }
+        .ww-data-prep-conversion-status { font-size: 0.8rem; color: var(--text-dim); margin: 0; }
+        .ww-data-prep-conversion-status[data-state="error"] { color: var(--error); }
         /* UX refinement (post-Slice-6 UAT): progressive disclosure shell
            shared by the Preparation Status and Structure panels -- a
            title+hint block on the left, a single toggle button
@@ -4447,11 +4461,11 @@
             <!-- CSV/Excel ingestion Slice 3 (DEC-072): Data Preparation
                  Workspace shell. Reached only from a "Needs Preparation"
                  Recording Events row (openDataPreparationWorkspace()) --
-                 never plots a waveform, never implies the source is
-                 Powerwave-ready (status always reads "Needs
-                 Preparation" here, never "Ready"). Raw inspection only:
-                 no edit controls, no header/column-role selection, no
-                 readiness panel -- those are later slices' own scope. -->
+                 never plots a waveform itself. The header badge here
+                 (wwDataPrepStatusBadge) always reads "Needs Preparation"
+                 regardless of readiness; the actual "Ready"/"Continue to
+                 Powerwave" state lives entirely inside the Preparation
+                 Status panel below (Slices 6/9/10), never on this badge. -->
             <section id="pageDataPreparation" aria-label="Data Preparation" hidden>
                 <div class="recordings-header">
                     <div>
@@ -4484,12 +4498,17 @@
                 <!-- Slice 6 (DEC-072): Preparation Readiness Issue panel.
                      Plumbing only -- backend-derived, informational-only
                      findings about the CURRENT preparation state, never a
-                     readiness gate. Status stays "Needs Preparation"
-                     regardless of what is shown here; there is no
-                     "Powerwave Ready" state and no "Open in Powerwave"
-                     action anywhere in this slice. Every issue/count here
-                     comes straight from GET .../issues -- the frontend
-                     never invents or classifies a finding itself.
+                     readiness gate the frontend itself computes. The
+                     header badge stays "Needs Preparation" regardless of
+                     what is shown here; the actual "Continue to
+                     Powerwave" conversion action (Slice 10) lives at the
+                     bottom of this SAME panel, gated on `is_ready` plus
+                     the conversion-specific Sample-Index-without-interval
+                     capability constraint -- see
+                     wwDataPrepRenderConversionAction(). Every issue/count
+                     here comes straight from GET .../issues -- the
+                     frontend never invents or classifies a finding
+                     itself.
 
                      UX refinement (post-Slice-6 UAT): progressive
                      disclosure -- the compact counts line is always
@@ -4511,6 +4530,33 @@
                     <p class="ww-data-prep-issue-headline" id="wwDataPrepIssueHeadline"></p>
                     <div class="ww-data-prep-issue-counts" id="wwDataPrepIssueCounts"></div>
                     <div id="wwDataPrepIssueGroups" hidden></div>
+
+                    <!-- CSV/Excel ingestion Slice 10 (DEC-072): the actual
+                         canonical-conversion action, gated on BOTH
+                         `is_ready` (Slice 9) and the conversion-specific
+                         "Sample Index without a real interval" capability
+                         constraint (task section W) -- a Ready source is
+                         not automatically convert-eligible. Three
+                         mutually-exclusive states, all hidden until the
+                         first issues/time-axis fetch resolves:
+                         - not ready: nothing shown here (the headline/
+                           counts above already say what's needed).
+                         - ready but index-only/unknown-interval: a
+                           "Ready with limitations" notice plus
+                           "Configure Time Axis" (never an enabled
+                           Continue action that would silently pretend
+                           sample index == seconds).
+                         - ready and convertible: the actual
+                           "Continue to Powerwave" action. -->
+                    <div id="wwDataPrepConversionLimitation" class="ww-data-prep-conversion-limitation" hidden>
+                        <p class="ww-data-prep-issue-headline" data-ready="limited">Ready with limitations</p>
+                        <p class="hint">Sample Index is currently used without a real-time interval. Add a sampling rate or interval before continuing to Powerwave.</p>
+                        <button type="button" class="secondary" id="wwDataPrepConfigureTimeAxisBtn">Configure Time Axis</button>
+                    </div>
+                    <div id="wwDataPrepConversionAction" class="ww-data-prep-conversion-action" hidden>
+                        <button type="button" id="wwDataPrepConvertBtn">Continue to Powerwave</button>
+                        <p class="ww-data-prep-conversion-status" id="wwDataPrepConversionStatus"></p>
+                    </div>
                 </section>
 
                 <!-- Slice 5 (DEC-072): Header/Data Region + Column Role
@@ -4614,7 +4660,7 @@
                      ever guesses a date order silently -- an ambiguous
                      detection always requires an explicit user choice
                      before "Confirmed" is offered. -->
-                <section class="panel ww-cc-panel">
+                <section class="panel ww-cc-panel" id="wwDataPrepTimeAxisPanel">
                     <div class="ww-data-prep-panel-header">
                         <div>
                             <h3>Time Axis</h3>
@@ -7327,17 +7373,17 @@
         }
 
         // Slice 6 (DEC-072) established this panel's own plumbing;
-        // Slice 9 (the full Powerwave Readiness Validator) is what now
-        // makes `blocking_count`/`is_ready` real -- this frontend still
-        // never classifies or decides anything itself, it only ever
-        // renders whatever GET .../issues already returned. Recording
-        // status stays "Needs Preparation" regardless (no status
-        // transition anywhere in this slice either) -- and there is
-        // still no "Continue to Powerwave"/"Open in Powerwave" ACTION
-        // here: canonical conversion itself is a later slice, and
-        // exposing a button that cannot yet complete would be more
-        // misleading than a plain "Ready for Powerwave" headline with
-        // nothing to click.
+        // Slice 9 (the full Powerwave Readiness Validator) made
+        // `blocking_count`/`is_ready` real; Slice 10 adds the actual
+        // "Continue to Powerwave" conversion action gated on that same
+        // `is_ready` flag (see wwDataPrepRenderConversionAction() below)
+        // -- this frontend still never classifies or decides readiness
+        // itself, it only ever renders whatever GET .../issues already
+        // returned and POSTs the conversion request when the user clicks.
+        // The header badge stays "Needs Preparation" regardless (no
+        // status transition on the badge itself -- successful conversion
+        // instead navigates the user away into the existing waveform
+        // workflow via openRecordingForAnalysis()).
         const WW_DATA_PREP_SEVERITY_LABELS = { blocking: "Blocking", warning: "Warnings", info: "Info" };
 
         async function wwDataPrepFetchIssues() {
@@ -7433,6 +7479,103 @@
                 html += "</ul></div>";
             }
             groupsEl.innerHTML = html || '<p class="hint">No issues found.</p>';
+            wwDataPrepRenderConversionAction();
+        }
+
+        // CSV/Excel ingestion Slice 10 (DEC-072): decides which of the
+        // three conversion-action states (see the HTML comment above
+        // #wwDataPrepConversionLimitation) applies right now, from
+        // whichever of `issueSummary`/`timeAxisSummary` have already been
+        // fetched -- never a separate readiness computation of its own
+        // (task's own "no new readiness policy" guardrail: `is_ready`
+        // stays exactly Slice 9's own field). The index-only-without-a-
+        // real-interval constraint is read the SAME way the backend's own
+        // `ConversionRequiresIntervalError` decides it: family is
+        // `sample_index` and `interval_seconds` is still null -- i.e. the
+        // interpreter never had an interval/rate confirmed, not merely
+        // "the sample_index_fallback WARNING issue is present" (that
+        // warning also fires for other reasons and is not itself the
+        // conversion-blocking condition).
+        function wwDataPrepIsIndexOnlyWithoutInterval() {
+            const timeAxis = wwDataPrep.timeAxisSummary;
+            return !!(timeAxis && timeAxis.family === "sample_index" && timeAxis.interval_seconds === null);
+        }
+
+        function wwDataPrepRenderConversionAction() {
+            const limitationEl = document.getElementById("wwDataPrepConversionLimitation");
+            const actionEl = document.getElementById("wwDataPrepConversionAction");
+            const summary = wwDataPrep.issueSummary;
+            if (!summary || !summary.is_ready) {
+                limitationEl.hidden = true;
+                actionEl.hidden = true;
+                return;
+            }
+            if (wwDataPrepIsIndexOnlyWithoutInterval()) {
+                limitationEl.hidden = false;
+                actionEl.hidden = true;
+                return;
+            }
+            limitationEl.hidden = true;
+            actionEl.hidden = false;
+        }
+
+        // Deliberately a SEPARATE small message map from
+        // friendlyPreparationErrorMessage() -- those codes are upload-time
+        // rejections; these are Slice 10's own runtime conversion
+        // failures (app.services.errors's Conversion* taxonomy), which
+        // read very differently to a user ("the file was fine, converting
+        // it right now didn't work").
+        function wwDataPrepConversionErrorMessage(code, message) {
+            const knownMessages = {
+                conversion_not_ready: "This source is no longer ready to convert -- check Preparation Status for what changed.",
+                conversion_requires_interval: "Sample Index still has no real-time interval -- add one in Time Axis before continuing.",
+                conversion_unsupported_interpreter: "The current Time Axis configuration can't be converted yet -- choose Absolute Datetime, Date + Time, Elapsed, or Sample Index.",
+                conversion_revision_changed: "The preparation changed while converting -- please try again.",
+                conversion_validation_failed: "Something went wrong building the Powerwave record. " + (message || ""),
+                source_not_found: "This source is no longer available.",
+            };
+            return knownMessages[code] || (message || "Conversion failed.");
+        }
+
+        // On success: register the new canonical source into the SAME
+        // source lists everything else already reads (refreshAllSourceViews()
+        // -- no separate CSV/Excel source list ever existed), then reuse
+        // the EXISTING waveform entry point (openRecordingForAnalysis(),
+        // the same function a COMTRADE "Open / Analyse" row uses) --
+        // task's own explicit architectural goal that there is no
+        // CSV/Excel-specific plotting page. On failure: leave the user in
+        // Data Preparation with every existing preparation control intact
+        // -- no navigation, no state mutation beyond showing the error.
+        async function wwDataPrepConvert() {
+            const btn = document.getElementById("wwDataPrepConvertBtn");
+            const statusEl = document.getElementById("wwDataPrepConversionStatus");
+            btn.disabled = true;
+            delete statusEl.dataset.state;
+            statusEl.textContent = "Converting…";
+            try {
+                const response = await fetch(wwDataPrepSourceUrl("/convert"), { method: "POST" });
+                const body = await response.json().catch(() => null);
+                if (!response.ok) {
+                    const detail = (body && body.detail) || {};
+                    statusEl.dataset.state = "error";
+                    statusEl.textContent = wwDataPrepConversionErrorMessage(detail.code, detail.message);
+                    btn.disabled = false;
+                    return;
+                }
+                await refreshAllSourceViews();
+                openRecordingForAnalysis(body.source_id);
+            } catch (error) {
+                statusEl.dataset.state = "error";
+                statusEl.textContent = "Could not reach the backend. Check your connection and try again.";
+                btn.disabled = false;
+            }
+        }
+
+        function wwDataPrepConfigureTimeAxis() {
+            wwDataPrep.timeAxisExpanded = true;
+            document.getElementById("wwDataPrepTimeAxisDetails").hidden = false;
+            document.getElementById("wwDataPrepTimeAxisToggleBtn").textContent = "Hide";
+            document.getElementById("wwDataPrepTimeAxisPanel").scrollIntoView({ behavior: "smooth", block: "start" });
         }
 
         // Reuses the existing worksheet <select>'s own change handler
@@ -7574,6 +7717,7 @@
                 document.getElementById("wwDataPrepTimeAxisSummaryDiagnostics").textContent =
                     diagnosticCount + (diagnosticCount === 1 ? " finding" : " findings");
             }
+            wwDataPrepRenderConversionAction();
         }
 
         // Owner-only unit/interval fields (task's own progressive-
@@ -8604,6 +8748,9 @@
             shellSetCurrentPage("recordings");
         });
 
+        document.getElementById("wwDataPrepConvertBtn").addEventListener("click", () => { wwDataPrepConvert(); });
+        document.getElementById("wwDataPrepConfigureTimeAxisBtn").addEventListener("click", wwDataPrepConfigureTimeAxis);
+
         // Entry point -- called from a "Needs Preparation" Recording
         // Events row (renderRecordingsTable()'s own row click/keydown
         // handlers). Fetches the preparation source's own summary fresh
@@ -8649,6 +8796,10 @@
             wwDataPrepRenderTimeAxisInterpreterFields();
             wwDataPrepRenderTimeAxisElapsedAndIndexFields(null);
             wwDataPrepRenderTimeAxisDetectResult(null, null);
+            document.getElementById("wwDataPrepConvertBtn").disabled = false;
+            const conversionStatusEl = document.getElementById("wwDataPrepConversionStatus");
+            conversionStatusEl.textContent = "";
+            delete conversionStatusEl.dataset.state;
             wwDataPrepRenderIssues();
             wwDataPrepRenderStructureSummary();
             wwDataPrepRenderTimeAxisSummary();

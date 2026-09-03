@@ -1759,9 +1759,166 @@ owner go-ahead before implementation begins.
    with NO extra manual refresh needed; a Sample Index fallback source
    reaches Ready with its own warning, never blocking -- all with zero
    console/page errors.
-10. **Canonical `DisturbanceRecord` conversion.** Only Powerwave-ready
-    working datasets may convert; no downstream CSV/Excel special-casing
-    (§13).
+10. **`[DONE, 2026-09-03]` Canonical `DisturbanceRecord` conversion.**
+    The third and final stage of "Slice 8 → interpret; Slice 9 →
+    validate; Slice 10 → convert" -- no new inference occurs here; the
+    conversion adapts an already-Ready prepared dataset to Powerwave's
+    existing waveform contract, never weakens that contract.
+
+    **Three owner-approved rules governed this slice, all enforced by
+    `app/services/preparation_conversion_service.py`
+    (`convert_preparation_source()`)**: (1) readiness is RE-CHECKED
+    against the current working revision at conversion time -- never
+    trusts stale frontend state -- by calling the SAME `build_issue_
+    summary()` Slice 9 already built, raising `ConversionNotReadyError`
+    if `is_ready` is now `False`; (2) index-only is NOT canonical-
+    seconds-ready -- a `sample_index` family with `interval_seconds is
+    None` (Sample Index fallback, still only a Slice 9 WARNING, still
+    `is_ready=True`) is REFUSED with `ConversionRequiresIntervalError`,
+    a conversion-capability constraint, never a readiness-policy change;
+    (3) no fake dates or trigger timestamps -- an unknown absolute start
+    or trigger is represented as `None`, never a `2000-01-01`/
+    `1970-01-01`/`trigger_time = start_time` sentinel.
+
+    **Time-axis conversion is a REUSE, not a re-derivation** (mirroring
+    Slice 9's own precedent): the SAME `TimeAxisInterpreter.build_
+    preview_rows()` the Time Axis review UI already calls is invoked
+    over the FULL active region (never the bounded ≤50-row sample) to
+    get each row's already-interpreted string, which conversion then
+    parses into a raw float and maps to canonical seconds via ONE
+    uniform rule across every convertible family:
+    `canonical[i] = raw[i] - raw[0]` (relative to the first active
+    sample). `absolute` additionally preserves the real first absolute
+    timestamp (with timezone/offset, when present) in `TimingInformation.
+    start_time`; `elapsed`/`partial` preserve the true relative values
+    with no fabricated calendar time, `start_time=None`; `sample_index`
+    with a known `interval_seconds` computes
+    `time_seconds = (index - first_active_index) * interval_seconds`,
+    never assuming the first index is 0 or 1; `sample_index` with an
+    unknown interval is refused per rule (2) above; a Manual-family
+    configuration (which implements no `build_preview_rows()` at all) is
+    refused with `ConversionUnsupportedInterpreterError`. Reconstructed
+    (`repeated_timestamp_precision_loss`) and user-specified
+    (manually-entered rate/interval) timing are consumed as already
+    confirmed -- conversion never recalculates cadence or reinterprets
+    date order.
+
+    **Canonical-model hardening, deliberately minimal** (§Q/§F of the
+    owner task spec): the ONLY required change turned out to be
+    widening `TimingInformation.start_time`/`.trigger_time` from
+    required `datetime` to `datetime | None` -- discovered, not assumed,
+    by tracing every consumer of `.start_time`/`.trigger_time`
+    (`time_grouping.derive_time_groups()`, `timestamp_placement_
+    offset_s()`, `synchronization_service.py`,
+    `calculated_channel_service.py`): every one of them ALREADY branches
+    on `is None`, because `SourceMetadata.start_time`/`.trigger_time`
+    were already `Optional` since Phase 5B/DEC-048 -- "existing waveform
+    integration" needed zero changes, a major scope de-risking finding.
+    `nominal_frequency` was deliberately NOT widened (unlike `start_
+    time`/`trigger_time`) because `synchronization_service.py` consumes
+    it as a required float for event-detection sensitivity -- widening
+    it would be exactly the "redesign existing waveform integration"
+    the task forbade. A converted source instead gets a documented
+    conventional default (`_DEFAULT_NOMINAL_FREQUENCY_HZ = 50.0`) plus
+    an explicit `nominal_frequency_assumed: true` flag in provenance.
+    New additive `SamplingInformation.is_uniform` (defaults `True`,
+    matching COMTRADE's unchanged existing behavior) flags genuinely
+    irregular canonical timing honestly, using a ±1% relative interval
+    tolerance (matching Slice 8B's own `non_uniform_elapsed_interval`
+    precedent) -- an irregular source keeps its true per-sample
+    `waveform_data["time"]` array (always authoritative, per
+    `DisturbanceRecord.duration_seconds()`'s own pre-existing "prefer
+    the time column" behavior) and never claims one fabricated average
+    rate. `DisturbanceRecord.validate()` itself gained the finite/
+    non-decreasing time-column check and a `samples_per_rate` row-count
+    consistency check the "deliberately not part of this sequence" note
+    below used to defer -- both needed directly to satisfy this slice's
+    own §Q requirement ("after construction, run `validate()`... time
+    finite; time ordering valid; sampling metadata internally
+    consistent") and both verified to be a no-op for every real COMTRADE
+    record (`TestComtradeRegressionUnaffected`,
+    `test_disturbance_record_domain.py`).
+
+    **Waveform channels**: exactly `active data region - excluded rows +
+    current working cell overrides`, in source column order (never
+    reordered); Metadata/Quality-Status/Ignore/Unknown-role columns
+    never become channels. Channel names use the configured header
+    label when available, else a deterministic neutral name (the
+    spreadsheet column letter, e.g. `"B"`); a duplicate label never
+    loses a channel -- the first occurrence keeps its label verbatim,
+    every later occurrence gets a `__<spreadsheet-column-letter>` suffix
+    (e.g. `Voltage`, `Voltage__C`, `Voltage__D`), with the original
+    label preserved as each channel's own `description`.
+
+    **Provenance**: a new, purely additive `SourceMetadata.preparation_
+    provenance: dict | None` field (following the same "additive,
+    defaulted, no existing provider sets it away from `None`" precedent
+    `waveform_form`/DEC-048 already established) retains source format,
+    original filename, worksheet name/index, preparation revision, time
+    family/provenance, interpreter id, header row, data region, and
+    excluded-row count -- enough to answer "where did this waveform come
+    from and how was its time axis established?" without hard-coding a
+    single CSV/Excel-specific field into any core waveform schema.
+
+    **Idempotency needed zero new code**: a successful conversion
+    removes the `PreparationSession` from its registry (mirroring
+    COMTRADE's own upload flow, which never leaves a "Needs Preparation"
+    ghost row behind either), so a repeated `POST .../convert` against
+    the same, now-gone source naturally 404s via the ALREADY-EXISTING
+    `SourceNotFoundError` path.
+
+    **Revision-race protection**: readiness is re-evaluated and the
+    canonical record is built from the SAME resolved session/revision;
+    since this backend has no separate "commit" step and the in-memory
+    registries are not concurrently mutated mid-request, no observed
+    revision-changed race was reproducible in testing -- the
+    `ConversionRevisionChangedError` class exists in the taxonomy for a
+    future concurrent-mutation scenario but is not yet a reachable path.
+
+    **API**: `POST .../preparation-sources/{source_id}/convert`, returning
+    the SAME `SourceSummaryOut` shape a COMTRADE upload's `POST
+    .../sources` already returns -- no bespoke response shape. New
+    `Conversion*Error` taxonomy in `app/services/errors.py`
+    (`ConversionNotReadyError`/`ConversionRequiresIntervalError`/
+    `ConversionUnsupportedInterpreterError`/
+    `ConversionRevisionChangedError`/`ConversionValidationError`), mapped
+    to HTTP 409 (state conflict) except `ConversionValidationError`
+    (HTTP 500, an unexpected internal contradiction) -- readiness issues
+    stay `PreparationIssue`s, runtime conversion failures stay these
+    distinct exception types, never blurred together.
+
+    **Frontend**: the EXISTING Preparation Status panel (Slice 6/9's own
+    shell) gained the actual "Continue to Powerwave" action, shown only
+    when `is_ready` AND conversion-capable; the index-only-without-
+    interval case instead shows a "Ready with limitations" notice
+    ("Sample Index is currently used without a real-time interval. Add a
+    sampling rate or interval before continuing to Powerwave.") plus a
+    "Configure Time Axis" shortcut that expands the existing Time Axis
+    panel -- never an enabled Continue action that would silently
+    pretend `sample N == N seconds`. On success, the new source is
+    registered via the SAME `refreshAllSourceViews()` every other
+    upload path already calls, then the user is navigated into the
+    EXISTING waveform workflow via `openRecordingForAnalysis()` -- the
+    SAME entry point a COMTRADE "Open / Analyse" row uses -- never a
+    CSV/Excel-specific plotting page (this slice's own explicit
+    architectural goal). On failure, the user stays in Data Preparation
+    with every existing preparation control intact; no partial
+    registration.
+
+    Verified: full backend suite 2583 passed (68 new: 21 domain-hardening
+    + 39 conversion-service + 8 API), zero regressions; the committed
+    browser smoke test (COMTRADE) still passes unchanged with zero
+    console/page errors; a throwaway (not committed) live-browser
+    Playwright UAT confirmed: a Ready source shows "Continue to
+    Powerwave" and converting it opens the existing waveform workflow
+    with a plottable channel; an index-only Ready source shows the
+    "Ready with limitations" notice with NO enabled Continue action
+    (a real CSS bug -- an unguarded `display: flex` on the action
+    container beating the `[hidden]` attribute by author-vs-UA-
+    stylesheet origin, the SAME class of bug already fixed elsewhere in
+    this file for `#workspaceRow[hidden]` -- was caught and fixed by
+    this exact UAT run); a not-ready source's failed conversion attempt
+    leaves the preparation source fully intact afterward.
 11. **Existing waveform integration.** Normal existing Powerwave
     behavior — plotting, source handling, Time Groups, synchronization,
     calculated-channel compatibility, measurement/per-unit compatibility
@@ -1775,13 +1932,19 @@ owner go-ahead before implementation begins.
     performance hardening. Automation remains a convenience layer over a
     correct manual workflow, never a replacement for it.
 
-**Deliberately not part of this sequence, per DEC-072 point 4**:
-hardening `DisturbanceRecord.validate()` itself with the new
-monotonicity/finiteness check is deferred, independent future canonical-
-contract work — not slice 1, and not bundled into any slice above. Time
-validity for CSV/Excel data is enforced first by slice 9's Readiness
+**Per DEC-072 point 4**: hardening `DisturbanceRecord.validate()` itself
+with a monotonicity/finiteness check was deliberately deferred out of
+slice 1 and every slice through Slice 9 — not independent, freestanding
+canonical-contract work, but Slice 10's own conversion-time defensive
+check (§Q of that slice's task spec: "conversion must still fail
+defensively if canonical construction encounters contradiction"). Time
+validity for CSV/Excel data is enforced FIRST by Slice 9's Readiness
 Validator (`Working Dataset → Readiness Validator → finite/valid/
-monotonic time confirmed → Normalizer → DisturbanceRecord`).
+monotonic time confirmed → Slice 10's conversion service →
+DisturbanceRecord.validate()` as a final defensive check, not the
+primary gate) — see Slice 10 above for the exact minimal check added
+(finite + non-decreasing time column, `samples_per_rate` row-count
+consistency) and its zero-impact COMTRADE regression verification.
 
 ---
 

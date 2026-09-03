@@ -9,11 +9,11 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-08-30**. The Time Group architecture
-migration is declared **architecturally complete** (DEC-069, "TG-FINAL"
-closure audit — see [Architecture](#architecture) below), and the
-RECORDINGS sidebar now shows each source's canonical recording-start
-timestamp (see [Implemented capabilities](#implemented-capabilities)).
+Last meaningful update: **2026-09-03**. CSV/Excel ingestion Slice 10
+(canonical `DisturbanceRecord` conversion — see
+[Implemented capabilities](#implemented-capabilities)) is now implemented:
+a Ready prepared CSV/Excel source can convert into a real Powerwave
+source and open in the existing waveform workflow.
 
 ## Current status
 
@@ -25,10 +25,11 @@ COMTRADE upload/parse/browse, the app now has a full multi-source,
 multi-panel waveform workspace with Time-Group-aware synchronization,
 cursors, t0, annotations, a group-aware Per-Unit measurement model,
 calculated channels, and digital-channel display. CSV/Excel ingestion is
-the current workstream — Slices 1-3 (raw CSV/Excel preparation-source
-upload, Excel worksheet discovery/selection, and a paged raw-data
-preview Data Preparation Workspace, no waveform conversion yet) are
-implemented; the remaining slices are not (see
+the current workstream — Slices 1-10 (raw preparation-source upload
+through the Full Powerwave Readiness Validator and now canonical
+`DisturbanceRecord` conversion into a real Powerwave source) are
+implemented; existing-waveform-integration verification, export, and
+progressive automation (Slices 11-13) are not (see
 [Current next workstream](#current-next-workstream)).
 
 ## Architecture
@@ -185,11 +186,9 @@ re-confirmed by the TG-FINAL audit):
 - A minimal committed real-browser smoke-test foundation now protects
   critical upload/render/interaction paths — see
   [docs/development/BROWSER_SMOKE_TEST.md](../development/BROWSER_SMOKE_TEST.md).
-- **CSV/Excel preparation-source upload, Excel worksheet discovery, a
-  paged data-preview Data Preparation Workspace, a non-destructive
-  Working Dataset overlay, header/data-region/column-role mapping, and
-  a Preparation Readiness Issue model (CSV/Excel ingestion Slices 1-6,
-  DEC-072)**:
+- **CSV/Excel preparation-source upload through canonical
+  `DisturbanceRecord` conversion into a real Powerwave source (CSV/Excel
+  ingestion Slices 1-10, DEC-072)**:
   the Upload Recording modal's CSV and
   Excel options are both enabled (`RECORDING_FORMATS`,
   `frontend/index.html`), each with its own "Upload & Prepare" action,
@@ -564,8 +563,82 @@ re-confirmed by the TG-FINAL audit):
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 9](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
   for the full implementation summary.
 
-  Canonical `DisturbanceRecord` conversion (Slice 10+) is still
-  explicitly NOT part of any slice implemented so far — see
+  **Slice 10** (2026-09-03) implements canonical `DisturbanceRecord`
+  conversion — the third and final stage of "Slice 8 → interpret; Slice
+  9 → validate; Slice 10 → convert." New
+  `app/services/preparation_conversion_service.py`
+  (`convert_preparation_source()`) re-runs readiness against the
+  CURRENT working revision at conversion time (never trusts stale
+  frontend state — the three owner-approved rules this slice opened
+  with), builds the canonical time axis by reusing the SAME
+  `TimeAxisInterpreter.build_preview_rows()` the Time Axis review UI
+  already calls (over the full active region, never the bounded ≤50-row
+  sample) — so conversion never re-implements or re-decides any
+  per-family parsing/reconstruction logic Slice 8 already settled — then
+  constructs a `DisturbanceRecord` and registers it into the SAME
+  `WorkspaceRegistry`/`GET .../sources` a COMTRADE upload uses, with
+  zero CSV/Excel-specific plotting page. Canonical time is always
+  `raw[i] - raw[0]` (relative to the first active sample) for every
+  convertible family; `sample_index` additionally requires a known
+  `interval_seconds` — an index-only source with `interval_seconds is
+  None` is REFUSED at conversion (`ConversionRequiresIntervalError`),
+  not because Slice 9 marks it not-ready (it is still `is_ready=True`,
+  Sample Index fallback is only a WARNING) but because converting an
+  unscaled index into seconds would fabricate a sample-rate that was
+  never confirmed. Canonical-model hardening (deliberately minimal, see
+  [CSV_EXCEL_INGESTION_ARCHITECTURE.md](CSV_EXCEL_INGESTION_ARCHITECTURE.md)
+  for the full rationale): `TimingInformation.start_time`/`.trigger_time`
+  widened from required `datetime` to `datetime | None` (an unknown
+  absolute start or trigger is `None`, never a fabricated
+  `2000-01-01`/`1970-01-01`/`trigger_time = start_time` sentinel) —
+  discovered to be the ONLY required change, since `SourceMetadata`'s
+  own `start_time`/`trigger_time` fields were already `Optional`
+  (Phase 5B/DEC-048) and every downstream consumer
+  (`time_grouping.derive_time_groups()`, `synchronization_service.py`,
+  `calculated_channel_service.py`) already branches on `is None` —
+  "existing waveform integration" needed zero changes. New
+  `SamplingInformation.is_uniform` (defaults `True`, matching COMTRADE's
+  existing behavior unchanged) flags genuinely irregular canonical
+  timing honestly rather than claiming one fabricated average rate;
+  ±1% relative tolerance (matching Slice 8B's own
+  `non_uniform_elapsed_interval` precedent) decides uniform vs.
+  irregular. `nominal_frequency` was deliberately NOT widened to
+  Optional (unlike `start_time`/`trigger_time`) because
+  `synchronization_service.py` consumes it as a required float for
+  event-detection sensitivity — a converted source instead gets a
+  documented conventional default (50 Hz) plus an explicit
+  `nominal_frequency_assumed: true` provenance flag. Duplicate channel
+  labels never lose a channel: first occurrence keeps its label
+  verbatim, every later occurrence gets a `__<spreadsheet-column-letter>`
+  suffix (e.g. `Voltage`, `Voltage__C`, `Voltage__D`), with the original
+  label preserved as each channel's own `description`. Provenance
+  (source format, filename, worksheet, preparation revision, time
+  family/provenance, interpreter id, header row, data region, excluded
+  row count, etc.) is retained in a new, purely additive
+  `SourceMetadata.preparation_provenance` dict — no CSV/Excel-specific
+  field added to any core waveform schema. Idempotency needed zero new
+  code: a successful conversion removes the `PreparationSession` from
+  its registry (mirroring COMTRADE's own upload flow, which never
+  leaves a stale row behind either), so a repeated `POST .../convert`
+  against the same source naturally 404s via the existing
+  `SourceNotFoundError` path. New API: `POST
+  .../preparation-sources/{source_id}/convert`, returning the SAME
+  `SourceSummaryOut` shape a COMTRADE upload returns — never a bespoke
+  response. Frontend: the Preparation Status panel now shows the actual
+  "Continue to Powerwave" action when `is_ready` AND conversion-capable,
+  or a "Ready with limitations" notice with a "Configure Time Axis"
+  shortcut for the index-only-without-interval case (never a misleadingly
+  enabled Continue button); on success the user is navigated into the
+  EXISTING waveform workflow via `openRecordingForAnalysis()` — the same
+  entry point a COMTRADE "Open / Analyse" row uses — never a
+  CSV/Excel-specific plotting page; on failure the user stays in Data
+  Preparation with every preparation control intact. See
+  [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 10](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
+  for the full implementation summary.
+
+  Existing-waveform-integration verification, export, and progressive
+  automation (Slices 11-13) are still explicitly NOT part of any slice
+  implemented so far — see
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md).
 
 ## Known intentional constraints / deferred items
@@ -650,15 +723,15 @@ and final one -- repeated-timestamp/precision-loss detection and
 reconstruction), Slice 8D (Time Irregularity Diagnostics -- a
 diagnostic-only normalization layer over Slices 8A-8C's own irregular-
 timing conditions, never a new interpreter, never readiness policy),
-and Slice 9 (the Full Powerwave Readiness Validator -- the REAL
-`blocking`/`warning`/`info` policy Slice 6 always deferred, see above)
-are now implemented. Slices 10–13 (canonical `DisturbanceRecord`
-conversion, existing waveform integration, export, and progressive
-automation) remain unimplemented and require their own explicit owner
-go-ahead before starting, per
-[Change governance](../../CLAUDE.md#change-governance) — being recorded
-in the architecture document's own slice sequence does not itself
-authorize starting any of them.
+Slice 9 (the Full Powerwave Readiness Validator -- the REAL
+`blocking`/`warning`/`info` policy Slice 6 always deferred, see above),
+and Slice 10 (canonical `DisturbanceRecord` conversion -- see above for
+the full summary) are now implemented. Slices 11–13 (existing waveform
+integration verification, export, and progressive automation) remain
+unimplemented and require their own explicit owner go-ahead before
+starting, per [Change governance](../../CLAUDE.md#change-governance) —
+being recorded in the architecture document's own slice sequence does
+not itself authorize starting any of them.
 
 **`[DESIGN COMPLETE, 2026-09-01]`**: the Slice 7/8
 design specification —
@@ -678,11 +751,12 @@ item 5, repeated-timestamp/precision-loss detection and reconstruction)
 are also now implemented -- §19's full five-interpreter set is
 complete; segmented/variable-cadence reconstruction remains explicitly
 deferred, per Slice 8C's own scope note above.
-`SourceMetadata.timing_reference` still reserves a value other than
-`"absolute"` for a future importer with no trustworthy absolute
-recording timestamp — a CSV/Excel preparation source does not reach
-`SourceMetadata` at all yet (see above), so this remains genuinely
-unreached until a later slice actually produces a `DisturbanceRecord`.
+`SourceMetadata.timing_reference` reserving a value other than
+`"absolute"` for an importer with no trustworthy absolute recording
+timestamp is no longer merely reserved — Slice 10's conversion service
+is the first real producer of `"relative_elapsed"` (or `None`
+`start_time`), for every non-absolute-family CSV/Excel source (see the
+Slice 10 summary above).
 
 ## Repository identity
 

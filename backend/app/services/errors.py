@@ -650,3 +650,76 @@ class UnknownTimeAxisInterpreterError(ImportServiceError):
     shape."""
 
     code = "unknown_time_axis_interpreter"
+
+
+# ---- CSV/Excel ingestion Slice 10 (DEC-072): canonical conversion ----
+# Every one of these is a RUNTIME/capability failure, never a
+# `PreparationIssue` (task section U's own explicit "do not blur
+# readiness issues with runtime exceptions" rule) -- readiness policy
+# (blocking/warning/info) stays entirely `app.services.readiness_
+# service`'s job; these classes only ever fire from
+# `app.services.preparation_conversion_service`, at the moment an
+# actual `POST .../convert` request cannot be honored.
+
+
+class ConversionNotReadyError(ImportServiceError):
+    """Readiness was re-checked at conversion time (task's own explicit
+    "never trust stale frontend state" rule) and at least one BLOCKING
+    issue is present. Distinct from a stale readiness read on the
+    frontend -- this is the backend's own authoritative, freshly
+    recomputed verdict, always evaluated again immediately before
+    conversion, never assumed from an earlier request."""
+
+    code = "conversion_not_ready"
+
+
+class ConversionRequiresIntervalError(ImportServiceError):
+    """The active Time Axis is `sample_index` with no real interval/rate
+    (`provenance=index_only`) -- an explicit, owner-approved CONVERSION
+    capability constraint (task section 2), distinct from Slice 9's own
+    readiness policy: `index_only` is legitimately Preparation-Ready
+    (a WARNING, not blocking), but it is NOT canonical-seconds-ready --
+    converting it would mean pretending `sample 5 = 5 seconds`, which
+    this codebase never does. The user can return to Time Axis
+    configuration and supply a real interval/rate, or accept a
+    different interpreter, then retry conversion."""
+
+    code = "conversion_requires_interval"
+
+
+class ConversionUnsupportedInterpreterError(ImportServiceError):
+    """The active Time Axis resolved to `manual` (or `unsupported`) --
+    an interpreter that never parses real per-row values from the
+    source columns at all (see `app.services.time_axis_service`'s own
+    `_ManualInterpreter`). Slice 10 must not infer anything new (task's
+    own explicit rule) -- there is nothing for conversion to honestly
+    consume from a manual family/provenance declaration alone. The user
+    must assign a real, sample-based interpreter (Absolute Datetime,
+    Elapsed Time, Sample Index, Date + Time, or Repeated Timestamp)
+    before conversion can proceed."""
+
+    code = "conversion_unsupported_interpreter"
+
+
+class ConversionRevisionChangedError(ImportServiceError):
+    """The preparation source's own `WorkingOverlay.revision` changed
+    between when conversion began (readiness re-check, canonical
+    construction) and the moment it was about to register the result
+    (task section V's own explicit revision-race protection). Never
+    converts "half from one revision and half from another" -- the
+    entire attempt is discarded and the preparation state is left
+    completely untouched; the user simply retries."""
+
+    code = "conversion_revision_changed"
+
+
+class ConversionValidationError(ImportServiceError):
+    """Canonical `DisturbanceRecord` construction produced a record that
+    fails `DisturbanceRecord.validate()`'s own consistency checks --
+    an UNEXPECTED contradiction Slice 9's readiness policy should
+    already have prevented (task section E's own "readiness should
+    already guarantee this, but conversion must still fail defensively"
+    instruction). Never silently repaired (no sorting, no coercion) --
+    the attempt is discarded and preparation state is left untouched."""
+
+    code = "conversion_validation_failed"
