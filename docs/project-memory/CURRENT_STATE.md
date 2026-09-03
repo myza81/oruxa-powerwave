@@ -9,14 +9,19 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-04**. A UAT fix to the Slice 8A
-absolute/split-date-time interpreters: 2-digit years (`3/6/26`,
-`03-06-26`, etc.) are now recognized for `dmy`/`mdy` date orders, and a
-genuinely ambiguous-but-viable date reads as "Date format needs
-confirmation" (not a generic parse failure) — see
-[Implemented capabilities](#implemented-capabilities). CSV/Excel
-ingestion Slice 12 (cleaned data export, 2026-09-03) remains the
-current end of the implemented slice sequence.
+Last meaningful update: **2026-09-04**. A second same-day UAT fix
+simplifies the Time Axis confirmation UX: the generic "☐ Confirmed"
+checkbox now appears ONLY when Powerwave is asking the engineer to
+accept a derived/reconstructed timing suggestion — never for a plain
+native reading, an ambiguity already resolved by an explicit date-
+order/unit choice, or directly user-entered timing, all of which Save
+alone already persists as usable (the BACKEND readiness policy already
+worked this way; only the frontend unconditionally showed the checkbox
+regardless). See [Implemented capabilities](#implemented-capabilities).
+An earlier same-day fix recognized 2-digit years (`3/6/26`, `03-06-26`,
+etc.) for `dmy`/`mdy` date orders. CSV/Excel ingestion Slice 12
+(cleaned data export, 2026-09-03) remains the current end of the
+implemented slice sequence.
 
 ## Current status
 
@@ -443,6 +448,31 @@ re-confirmed by the TG-FINAL audit):
   own `details`, rendered by the existing Time Axis diagnostics list.
   See `docs/project-memory/CSV_EXCEL_TIME_INTERPRETATION.md`'s own
   Slice 8A section for the full account.
+
+  **`[UAT FIX, 2026-09-04]`** a second same-day fix: the generic "☐
+  Confirmed" checkbox previously appeared under EVERY sample-
+  interpreter result, including a plain native reading with nothing
+  actually uncertain about it. Investigation (before any code change)
+  found `app.domain.time_axis.resolve_status()` already implements the
+  desired policy end to end: `provenance == "reconstructed"` (Slice
+  8C's own repeated-timestamp suggestion) is the ONLY route to
+  `review_required` that function gates on `confirmed` — native
+  readings, ambiguities resolved by an explicit date-order/unit choice,
+  and direct user-entered interval/rate all ALREADY reach
+  `is_ready=True` with `confirmed=False`, verified directly against
+  live `set_time_axis_configuration()`/`build_issue_summary()` calls,
+  not assumed. Zero backend code changed. Frontend gained one
+  centralized rule, `wwDataPrepTimeAxisRequiresExplicitConfirmation()`,
+  mirroring that same single condition — the confirmation control now
+  appears ONLY for a reconstructed suggestion, labelled "I confirm this
+  reconstructed timing" (never the generic word "Confirmed"); every
+  other case shows `[Save]` alone. The Manual interpreter (a separate,
+  lower-level path, out of this fix's scope) keeps its own original
+  always-shown generic checkbox unchanged. See
+  `docs/project-memory/CSV_EXCEL_TIME_INTERPRETATION.md`'s own Slice 8A
+  section for the full investigation/fix account and
+  `backend/tests/test_time_axis_service.py::TestConfirmationPolicy` for
+  the regression coverage locking in the (unchanged) backend policy.
 
   **Slice 8B** (2026-09-02) implements the next two of Slice 8's five
   proposed initial interpreters — elapsed numeric time and sample

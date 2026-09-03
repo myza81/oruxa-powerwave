@@ -953,6 +953,14 @@
            second permanent panel. */
         .ww-data-prep-time-axis-diagnostic-examples { margin: 2px 0 0; padding-left: 16px; font-size: 0.78rem; color: var(--text-dim); }
         .ww-data-prep-time-axis-diagnostic-examples li { margin-bottom: 0; }
+        /* UAT fix (2026-09-04): same author-CSS-beats-UA-[hidden] bug
+           already fixed elsewhere in this file for #workspaceRow[hidden]/
+           .ww-data-prep-conversion-action[hidden] -- `.ww-data-prep-
+           radio-option`'s own `display: flex` would otherwise win over
+           the `[hidden]` attribute by origin alone. Scoped to this one
+           element (not the whole class) since no other `.ww-data-prep-
+           radio-option` instance is ever given `hidden` directly today. */
+        #wwDataPrepTimeAxisConfirmedField[hidden] { display: none; }
         .ww-cc-subtitle { margin: 3px 0 0; color: var(--text-dim); font-size: 0.85rem; }
         .ww-cc-panel { padding: 16px; }
         .ww-cc-panel h3 { margin: 0 0 12px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
@@ -4876,9 +4884,30 @@
                                 </div>
                             </div>
 
-                            <label class="ww-data-prep-radio-option">
+                            <!-- UAT fix (2026-09-04): shown ONLY when the
+                                 CURRENT detection's own `provenance ===
+                                 "reconstructed"` (see
+                                 wwDataPrepTimeAxisRequiresExplicitConfirmation())
+                                 -- the ONE case `resolve_status()` (backend)
+                                 actually gates on this flag. Every other
+                                 route to "needs a decision" (ambiguous date
+                                 order, missing elapsed unit, unreliable
+                                 cadence) is resolved by its own dedicated
+                                 control (date-order radios, Unit select,
+                                 manual interval/rate, Use Sample Index) --
+                                 never this generic checkbox, and Save alone
+                                 already persists a usable Time Axis for
+                                 those cases (verified directly against
+                                 readiness: `confirmed=false` + an explicit
+                                 date_order/unit/interval already reaches
+                                 `is_ready=true`). Label text is specific to
+                                 what is actually being accepted, never the
+                                 generic word "Confirmed" -- see
+                                 wwDataPrepRenderTimeAxisDetectResult()'s own
+                                 rendering of this label's text. -->
+                            <label class="ww-data-prep-radio-option" id="wwDataPrepTimeAxisConfirmedField" hidden>
                                 <input type="checkbox" id="wwDataPrepTimeAxisConfirmedCheckbox">
-                                <span>Confirmed</span>
+                                <span id="wwDataPrepTimeAxisConfirmedLabel">I confirm this reconstructed timing</span>
                             </label>
                             <div class="ww-data-prep-structure-controls">
                                 <button type="button" class="secondary" id="wwDataPrepTimeAxisSaveBtn">Save</button>
@@ -7941,6 +7970,25 @@
         // own "avoid returning fake preview rows... never materialize
         // unless needed" guardrail) and the actual bounded rows for a
         // real dry-run response.
+        // UAT fix (2026-09-04): the ONE centralized semantic rule this
+        // panel uses to decide whether the generic confirmation control
+        // is shown at all -- mirrors (never re-derives independently)
+        // the backend's OWN existing `app.domain.time_axis.resolve_
+        // status()` policy: `provenance == "reconstructed"` is the ONLY
+        // route to `review_required` this codebase resolves via a
+        // generic accept/decline checkbox (rule 5 of that function's own
+        // docstring). Every other route -- ambiguous date order, missing
+        // elapsed unit, unreliable cadence -- is resolved by ITS OWN
+        // dedicated control already rendered elsewhere in this panel
+        // (date-order radios, Unit select, manual interval/rate, Use
+        // Sample Index), never this one; `set_time_axis_configuration()`
+        // already accepts `confirmed=false` for all of those and still
+        // reaches `is_ready=true` (verified directly against readiness,
+        // not assumed) -- Save alone is sufficient for them.
+        function wwDataPrepTimeAxisRequiresExplicitConfirmation(detection) {
+            return !!(detection && detection.provenance === "reconstructed");
+        }
+
         function wwDataPrepRenderTimeAxisDetectResult(detection, previewRows) {
             const summaryEl = document.getElementById("wwDataPrepTimeAxisDetectedSummary");
             const diagnosticsEl = document.getElementById("wwDataPrepTimeAxisDiagnostics");
@@ -7953,6 +8001,30 @@
                 diagnosticsEl.innerHTML = "";
                 dateOrderField.hidden = true;
                 previewTable.innerHTML = "";
+                // UAT fix (2026-09-04): the Manual interpreter has no
+                // automatic detection at all -- its own `provenance`
+                // comes directly from the Provenance <select> below, and
+                // the SAME "reconstructed provenance needs explicit
+                // acceptance" backend rule (resolve_status()'s rule 5)
+                // still applies to it, so this control keeps its
+                // original, always-shown behavior for Manual (never
+                // newly hidden by this fix, which is scoped to the 5
+                // REAL/sample interpreters' own detection results). For
+                // a sample interpreter with no detection result YET
+                // (fresh selection, not yet Detected), there is nothing
+                // to confirm yet -- hidden until Detect actually runs.
+                const isManual = document.getElementById("wwDataPrepTimeAxisInterpreterSelect").value === "manual";
+                document.getElementById("wwDataPrepTimeAxisConfirmedField").hidden = !isManual;
+                // Manual mode's own confirmation semantics/wording are
+                // unchanged by this fix (out of its explicit scope --
+                // the task concerns the 5 REAL/sample interpreters'
+                // detection results only) -- restores the original
+                // generic label whenever this control is shown for
+                // Manual, since a manually-typed provenance need not be
+                // "reconstructed" at all.
+                if (isManual) {
+                    document.getElementById("wwDataPrepTimeAxisConfirmedLabel").textContent = "Confirmed";
+                }
                 return;
             }
 
@@ -8025,6 +8097,22 @@
                     (value === currentOrder ? " checked" : "") + '>' +
                     '<span>' + label + '</span></label>'
                 ).join("");
+            }
+
+            // UAT fix (2026-09-04): progressive disclosure -- the generic
+            // confirmation control only ever appears for a reconstructed
+            // suggestion (see wwDataPrepTimeAxisRequiresExplicitConfirmation()'s
+            // own docstring for why every other case is resolved by its
+            // own dedicated control instead). Unchecked whenever it
+            // (re)appears for a NEW detection result -- never silently
+            // pre-accepting a suggestion the user has not looked at yet.
+            const confirmedField = document.getElementById("wwDataPrepTimeAxisConfirmedField");
+            const needsExplicitConfirmation = wwDataPrepTimeAxisRequiresExplicitConfirmation(detection);
+            confirmedField.hidden = !needsExplicitConfirmation;
+            if (needsExplicitConfirmation) {
+                document.getElementById("wwDataPrepTimeAxisConfirmedLabel").textContent = "I confirm this reconstructed timing";
+            } else {
+                document.getElementById("wwDataPrepTimeAxisConfirmedCheckbox").checked = false;
             }
 
             if (!previewRows) {

@@ -8,6 +8,95 @@ Last updated: **2026-09-04**
 
 ## What was most recently done
 
+**UAT Fix — Simplify Time-Axis Confirmation UX (implemented).** Owner
+UAT reported that a generic "☐ Confirmed" checkbox appeared under
+EVERY sample-interpreter result -- including a plain, unambiguous
+native reading (`Detected: Absolute · Confidence: High · Format:
+DD/MM/YY`) -- with no explanation of what was actually being confirmed,
+and the checkbox was required even when nothing was genuinely
+uncertain.
+
+**Owner-approved policy**: `native + unambiguous -> no confirmation`;
+`ambiguity resolved by an explicit user choice (date order, elapsed
+unit) -> that choice itself is sufficient, no second checkbox`; `direct
+user-entered timing (manual interval/rate) -> the input itself is
+sufficient`; `Powerwave-derived reconstructed timing -> explicit
+acceptance is still required`, with wording specific to what is being
+accepted ("I confirm this reconstructed timing"), never the generic
+word "Confirmed."
+
+**Investigation finding (task's own explicit "inspect before changing
+code" instruction) -- the most important result of this fix**:
+`app.domain.time_axis.resolve_status()` ALREADY implements exactly
+this policy. Verified directly against real `set_time_axis_
+configuration()`/`build_issue_summary()` calls, not assumed: a native
+unambiguous reading with `confirmed=False` already reaches `is_ready=
+True`; an ambiguity resolved by an explicit `date_order` (or `unit`)
+that matches a genuinely valid candidate already drops the ambiguity
+diagnostic entirely (the interpreter's own "the user's own explicit
+choice resolves what the data alone could not" branch), so the one
+`resolve_status()` rule that blocks on that diagnostic never fires
+either, and `confirmed=False` already reaches `is_ready=True`; direct
+user-entered `sample_index`/`elapsed_numeric` timing is not gated on
+`confirmed` anywhere in that function at all. `provenance ==
+"reconstructed"` (Slice 8C's own repeated-timestamp suggestion) is the
+ONLY route to `review_required` that IS gated on `confirmed` --
+confirmed by a direct before/after test (unconfirmed stays blocking,
+confirmed becomes usable).
+
+**Conclusion: this was a FRONTEND-ONLY defect. Zero backend code was
+changed.** The checkbox was simply shown unconditionally, regardless of
+whether the backend's own already-correct policy needed it at all.
+`frontend/index.html` gained one centralized rule,
+`wwDataPrepTimeAxisRequiresExplicitConfirmation(detection)` (task's own
+"one centralized semantic rule rather than scattered frontend
+conditions" instruction), mirroring the SAME single condition
+`resolve_status()`'s own gating rule uses (`provenance ===
+"reconstructed"`) -- never re-derived independently. The confirmation
+control is hidden by default, shown only when that rule is true, with
+its own label text set specifically for that case; unchecked
+automatically whenever a new detection result no longer needs it
+(never silently pre-accepting a suggestion the engineer has not seen).
+The Manual interpreter (a separate, lower-level path where the
+engineer can declare ANY provenance directly, out of this fix's
+explicit scope) deliberately keeps its own original, always-shown
+generic checkbox unchanged -- avoiding a UX change the task never
+asked for.
+
+**Files changed**: `frontend/index.html` (confirmation-field
+visibility/label logic, one new `[hidden]`-vs-author-CSS fix caught and
+fixed proactively before the browser UAT, matching the SAME class of
+bug already fixed twice before in this file). Extended `backend/tests/
+test_time_axis_service.py` (new `TestConfirmationPolicy` class, 9
+tests -- regression coverage locking in the UNCHANGED backend policy,
+not new behavior). No backend production code changed; no readiness-
+policy change.
+
+**Verified**: full backend suite 2685 passed (9 new), zero
+regressions; the committed browser smoke test (COMTRADE) still passes
+unchanged with zero console/page errors; a throwaway (not committed)
+live-browser Playwright UAT (4 scenarios) confirmed: a native
+unambiguous reading (`13/6/26`) shows no confirmation checkbox and
+Save alone reaches `is_ready=true`; an ambiguous reading (`3/6/26`)
+shows no checkbox either before OR after the DMY date-order choice,
+and Save resolves the `time_axis_unresolved` blocker; a reconstructed
+suggestion shows the checkbox with the exact wording "I confirm this
+reconstructed timing," stays blocking when Saved unconfirmed, and
+clears once confirmed and Saved; a manually-entered `sample_index`
+interval shows no checkbox and Save reaches `is_ready=true` -- all
+four scenarios with zero console/page errors.
+
+**Next step**: no new slice was opened by this fix — Slice 13
+(progressive automation) remains the next unauthorized item, per
+[Change governance](../../CLAUDE.md#change-governance).
+
+**Commit status**: not committed — per this task's own explicit closing
+instruction ("Do not commit or push unless explicitly asked"), all of
+the above are normal uncommitted working-tree changes pending a
+separate, explicit commit instruction.
+
+## What was done in the prior session — UAT Fix: Make Time-Axis Parsing Failures Actionable
+
 **UAT Fix — Make Time-Axis Parsing Failures Actionable (implemented).**
 Owner UAT reported that a real source shape (`3/6/26` +
 `18:04:00.000`, via Date + Time) produced a generic "50 of 50 sampled

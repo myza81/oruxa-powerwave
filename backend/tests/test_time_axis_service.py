@@ -60,6 +60,7 @@ from app.services.preparation_import_service import (
     import_excel_preparation_source,
     select_preparation_worksheet,
 )
+from app.services.preparation_issue_service import build_issue_summary
 from app.services.preparation_preview_service import preview_preparation_source
 from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.time_axis_service import (
@@ -672,6 +673,175 @@ class TestTwoDigitYearUatFixServiceLevel:
         )
         assert resolved.status == STATUS_CONFIRMED
         assert resolved.options["date_order"] == "mdy"
+
+
+class TestConfirmationPolicy:
+    """UAT fix (2026-09-04): "Confirmed" was shown as a generic
+    checkbox for EVERY sample-interpreter result, confusing the
+    engineer about what was actually being accepted. Investigation
+    (task section A) found the BACKEND policy already correctly
+    implements the desired UX rule end to end -- `app.domain.time_axis.
+    resolve_status()`'s rule 5 is the ONLY route to `review_required`
+    that is gated on `confirmed`; every other route (ambiguous date
+    order, missing elapsed unit, unreliable cadence) is resolved by its
+    OWN dedicated choice (date_order/unit/interval), never the generic
+    flag, and `set_time_axis_configuration(confirmed=False)` already
+    reaches `is_ready=True` for all of them. This class is regression
+    coverage LOCKING IN that pre-existing backend behavior (zero backend
+    code changed by this fix) -- the actual fix is frontend-only:
+    conditionally hiding the checkbox to match this already-correct
+    policy. See `frontend/index.html`'s own
+    `wwDataPrepTimeAxisRequiresExplicitConfirmation()` for the mirrored
+    frontend-side rule."""
+
+    def test_native_unambiguous_high_confidence_saved_without_confirmed(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"2026-08-31 13:09:44.305,1.0\n2026-08-31 13:09:45.505,2.0\n")
+        _mark_time_axis(registry, source_id, 0)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, confirmed=False, registry=registry,
+        )
+
+        assert result.status == STATUS_DETECTED
+        assert result.confidence == CONFIDENCE_HIGH
+        assert result.provenance == PROVENANCE_NATIVE
+        issues = build_issue_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert issues.is_ready is True
+        assert issues.blocking_count == 0
+
+    def test_ambiguous_date_order_unresolved_blocks_readiness(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"3/6/26,18:04:00.000,1.0\n3/6/26,18:04:00.020,2.0\n")
+        _mark_time_axis(registry, source_id, 0, 1)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=2, role="waveform", registry=registry)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0, 1),
+            interpreter_id=INTERPRETER_ID_SPLIT_DATE_TIME, confirmed=False, registry=registry,
+        )
+
+        assert result.status == STATUS_REVIEW_REQUIRED
+        issues = build_issue_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert issues.is_ready is False
+        assert any(i.code == "time_axis_unresolved" for i in issues.issues if i.severity == "blocking")
+
+    @pytest.mark.parametrize("date_order,expected_iso", [("dmy", "2026-06-03T18:04:00"), ("mdy", "2026-03-06T18:04:00")])
+    def test_explicit_date_order_choice_accepted_without_confirmed_flag(self, date_order, expected_iso):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"3/6/26,18:04:00.000,1.0\n3/6/26,18:04:00.020,2.0\n")
+        _mark_time_axis(registry, source_id, 0, 1)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=2, role="waveform", registry=registry)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0, 1),
+            interpreter_id=INTERPRETER_ID_SPLIT_DATE_TIME, options={"date_order": date_order},
+            confirmed=False, registry=registry,
+        )
+
+        assert result.status == STATUS_DETECTED
+        assert result.provenance == PROVENANCE_USER_SPECIFIED
+        assert all(d.code != DIAGNOSTIC_AMBIGUOUS_DATE_ORDER for d in result.diagnostics)
+        issues = build_issue_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert issues.is_ready is True
+
+        preview = interpret_time_axis(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0, 1),
+            interpreter_id=INTERPRETER_ID_SPLIT_DATE_TIME, options={"date_order": date_order}, registry=registry,
+        )
+        assert preview.preview_rows[0].interpreted == expected_iso
+
+    def test_reconstructed_suggestion_without_confirmation_stays_blocking(self):
+        registry = PreparationSessionRegistry()
+        lines = []
+        for i in range(4):
+            lines += [f"13:14:0{i}"] * 5
+        content = ("\n".join(f"{t},1.0" for t in lines) + "\n").encode()
+        source_id = _add_csv(registry, content)
+        _mark_time_axis(registry, source_id, 0)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, confirmed=False, registry=registry,
+        )
+
+        assert result.status == STATUS_REVIEW_REQUIRED
+        assert result.provenance == PROVENANCE_RECONSTRUCTED
+        issues = build_issue_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert issues.is_ready is False
+        assert any(i.code == "time_axis_unresolved" for i in issues.issues if i.severity == "blocking")
+
+    def test_reconstructed_suggestion_with_explicit_confirmation_becomes_usable(self):
+        registry = PreparationSessionRegistry()
+        lines = []
+        for i in range(4):
+            lines += [f"13:14:0{i}"] * 5
+        content = ("\n".join(f"{t},1.0" for t in lines) + "\n").encode()
+        source_id = _add_csv(registry, content)
+        _mark_time_axis(registry, source_id, 0)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, confirmed=True, registry=registry,
+        )
+
+        assert result.status == STATUS_CONFIRMED
+        issues = build_issue_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert issues.is_ready is True
+
+    def test_user_entered_sample_index_interval_accepted_without_confirmed_flag(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"1,1.0\n2,2.0\n3,3.0\n")
+        _mark_time_axis(registry, source_id, 0)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_SAMPLE_INDEX, interval_seconds=0.02,
+            confirmed=False, registry=registry,
+        )
+
+        assert result.status == STATUS_DETECTED
+        assert result.provenance == PROVENANCE_USER_SPECIFIED
+        issues = build_issue_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert issues.is_ready is True
+
+    def test_user_entered_elapsed_unit_accepted_without_confirmed_flag(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"0.0,1.0\n0.02,2.0\n")
+        _mark_time_axis(registry, source_id, 0)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_ELAPSED_NUMERIC, unit="seconds",
+            confirmed=False, registry=registry,
+        )
+
+        assert result.status == STATUS_DETECTED
+        assert result.provenance == PROVENANCE_USER_SPECIFIED
+        issues = build_issue_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert issues.is_ready is True
+
+    def test_partial_family_native_reading_does_not_require_confirmation(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"13:14:01,1.0\n13:14:02,2.0\n")
+        _mark_time_axis(registry, source_id, 0)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, confirmed=False, registry=registry,
+        )
+
+        assert result.family == FAMILY_PARTIAL
+        assert result.provenance == PROVENANCE_NATIVE
+        issues = build_issue_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert issues.is_ready is True
 
 
 class TestInterpretTimeAxisDryRun:

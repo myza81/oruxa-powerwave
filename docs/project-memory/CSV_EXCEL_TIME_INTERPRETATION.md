@@ -1238,6 +1238,82 @@ not touched. See `backend/tests/test_time_axis_interpreters.py::
 TestTwoDigitYear` and `backend/tests/test_time_axis_service.py::
 TestTwoDigitYearUatFixServiceLevel` for the regression coverage.
 
+**`[DONE, 2026-09-04]` UAT fix — simplify the confirmation UX**: owner
+UAT reported that a generic "☐ Confirmed" checkbox appeared under
+EVERY sample-interpreter result -- including a plain, unambiguous
+native reading such as `Detected: Absolute · Confidence: High ·
+Format: DD/MM/YY` -- with no explanation of what was actually being
+confirmed, and the checkbox was required even when nothing about the
+interpretation was actually uncertain.
+
+**Owner-approved policy**: `native + unambiguous -> no confirmation`;
+`ambiguity resolved by an explicit user choice (date order, elapsed
+unit, ...) -> that choice itself is sufficient confirmation, no second
+checkbox`; `direct user-entered timing (manual interval/rate) -> the
+input itself is sufficient confirmation`; `Powerwave-derived
+reconstructed timing -> explicit acceptance is still required`, with
+specific wording ("I confirm this reconstructed timing"), never the
+generic word "Confirmed."
+
+**Investigation finding (task's own explicit "inspect before changing
+code" instruction)**: `app.domain.time_axis.resolve_status()` ALREADY
+implements exactly this policy, verified directly against real
+`set_time_axis_configuration()`/`build_issue_summary()` calls before
+writing any code, not assumed:
+
+- A native, unambiguous reading (`confirmed=False`) already reaches
+  `STATUS_DETECTED` and `is_ready=True` -- confirmation was NEVER
+  actually required for it at the backend level.
+- An ambiguity resolved by an explicit `date_order` (or `unit`, for
+  `elapsed_numeric`) that matches a genuinely valid candidate ALREADY
+  drops the `ambiguous_date_order`/`missing_elapsed_unit` diagnostic
+  entirely (see `detect_absolute_datetime()`'s own "the user's own
+  explicit choice resolves what the data alone could not... no
+  diagnostic is emitted for this outcome" branch) -- so
+  `resolve_status()`'s rule 4 (which blocks ONLY while that diagnostic
+  is present) never fires, and `confirmed=False` already reaches
+  `is_ready=True`.
+- Direct user-entered `sample_index`/`elapsed_numeric` timing
+  (`provenance=user_specified`) is not gated on `confirmed` anywhere in
+  `resolve_status()` at all -- it was already accepted immediately.
+- `provenance == PROVENANCE_RECONSTRUCTED` (Slice 8C's own repeated-
+  timestamp suggestion) is the ONLY route to `STATUS_REVIEW_REQUIRED`
+  that `resolve_status()` actually gates on `confirmed` (its own rule
+  5) -- confirmed by a direct before/after test:
+  `confirmed=False` stays `review_required`/blocking,
+  `confirmed=True` reaches `STATUS_CONFIRMED`/usable.
+
+**Conclusion: this was a FRONTEND-ONLY defect.** Zero backend code was
+changed -- the checkbox was simply shown unconditionally, regardless of
+whether the backend's own already-correct policy actually needed it.
+`frontend/index.html` gained one centralized rule,
+`wwDataPrepTimeAxisRequiresExplicitConfirmation(detection)` (task's own
+"one centralized semantic rule rather than scattered frontend
+conditions" instruction), returning `detection.provenance ===
+"reconstructed"` -- the SAME single condition `resolve_status()`'s own
+rule 5 keys off of, mirrored rather than re-derived independently. The
+confirmation control (`#wwDataPrepTimeAxisConfirmedField`) is hidden by
+default and shown only when that rule is true, with its own label text
+set to "I confirm this reconstructed timing" specifically for that
+case; unchecked automatically whenever a NEW detection result no longer
+needs it (never silently pre-accepting a suggestion the user has not
+seen). The Manual interpreter (a separate, lower-level path where the
+engineer can declare ANY provenance directly, including
+`reconstructed`) deliberately keeps its own original, always-shown
+generic "Confirmed" checkbox -- out of this fix's explicit scope (the
+task concerns the 5 REAL/sample interpreters' own detection results),
+and changing it was judged an unnecessary risk of a UX regression the
+task never asked for.
+
+Regression coverage locking in the (unchanged) backend policy:
+`backend/tests/test_time_axis_service.py::TestConfirmationPolicy` (9
+tests: native-unambiguous-without-confirmed, ambiguous-unresolved-
+blocks, DMY/MDY-resolved-without-confirmed [parametrized], reconstructed-
+without-confirmation-blocks, reconstructed-with-confirmation-usable,
+user-entered-sample-index-interval-without-confirmed, user-entered-
+elapsed-unit-without-confirmed, partial-family-native-without-
+confirmed).
+
 **`[DONE, 2026-09-02]` Slice 8B implementation note**: items 3-4 above
 (elapsed numeric time, sample index) are ALSO implemented exactly as
 scoped, as `elapsed_numeric`/`sample_index` in the SAME
