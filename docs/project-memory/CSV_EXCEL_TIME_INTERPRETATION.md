@@ -813,6 +813,22 @@ timezone. See
 [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 11](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
 for the full defect/fix account.
 
+**`[DONE, 2026-09-03, Slice 12]`** cleaned data export
+(`app.services.preparation_export_service`) deliberately does NOT
+consume any of this document's own interpreted/reconstructed time
+machinery for the exported table itself — a Time Axis column's
+CURRENT WORKING value (the same raw source text an untouched cell
+would show, or the engineer's own explicit edit) is exported verbatim,
+byte-for-byte identical to what `preview_preparation_source()` already
+shows the user, never Slice 8's own interpreted `HH:MM:SS.ffffff`-style
+value and never Slice 8C's own reconstructed timestamp. This is a
+DELIBERATE simplification for Slice 12's own explicit scope (never add
+an interpreted-time column in this slice) — a converted-CSV's
+`preparation_provenance` (Slice 10) is where interpreted/reconstructed
+timing actually gets consumed; the cleaned export's own manifest merely
+RECORDS which family/provenance/interpreter was active at export time,
+purely for context, never applying it to the table.
+
 ---
 
 ## 15. UI/UX model

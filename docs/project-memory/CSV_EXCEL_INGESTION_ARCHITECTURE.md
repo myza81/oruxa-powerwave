@@ -2041,8 +2041,155 @@ owner go-ahead before implementation begins.
     internals unless needed." No resampling, interpolation, new
     synchronization algorithm, new calculated-channel operation, new
     Time Group policy, or new readiness policy was added anywhere.
-12. **Cleaned-data export.** Export working/prepared data as CSV/XLSX;
-    original source remains unchanged (§10).
+12. **`[DONE, 2026-09-03]` Cleaned-data export.** **Governing principle:
+    "Cleaned export = the current Working Dataset as prepared by the
+    engineer"** -- not the untouched raw source, not the canonical
+    `DisturbanceRecord` (Slice 10), not a silently repaired dataset.
+
+    **Available regardless of Powerwave readiness** (a deliberately
+    SEPARATE capability from Slice 10's own canonical conversion) -- an
+    engineer may use Powerwave purely to clean up a CSV/Excel file and
+    export the result, never intending to convert it into a waveform at
+    all. New `app/services/preparation_export_service.py`
+    (`export_preparation_source()`) therefore never calls readiness as a
+    GATE -- only to capture a live snapshot for the manifest (recomputed
+    at export time, never trusting stale frontend state, matching Slice
+    10's own precedent).
+
+    **Row/column selection is a REUSE, not a re-derivation**: the exact
+    same `iterate_active_region_rows()` single-pass streaming generator
+    Slice 9's readiness validator and Slice 10's conversion service
+    already use, filtered to non-excluded, non-header, in-active-region
+    rows -- identical filter to Slice 10's own conversion. Column labels
+    reuse `preview_preparation_source()`'s own already-computed `column_
+    labels`/`column_roles` (which already encode the header-row-value /
+    neutral-spreadsheet-letter fallback the task's own sections E/F ask
+    for -- when NO header is configured, labels are the bare letters
+    `A`/`B`/`C` the preview table already shows the user, matching this
+    codebase's own EXISTING convention over the task's own illustrative
+    `"Column A"` wording, which that convention reserves specifically
+    for a genuinely BLANK cell within a CONFIGURED header) -- this
+    module adds only ONE new piece of logic on top: deduplicating those
+    labels for the columns actually being exported, via the SAME stable
+    `__{SpreadsheetLetter}` suffix strategy Slice 10's own `_unique_
+    channel_names()` established, generalized to every non-`ignore`
+    column rather than only Waveform Channel ones. A header row that
+    falls INSIDE the active data region is never exported as a data row
+    (deterministic, documented: "header is schema, not an exported data
+    row").
+
+    **Time columns are never touched** -- a Time Axis column exports its
+    own CURRENT WORKING value verbatim, exactly like every other column;
+    this module never calls into the time-axis interpreter/preview
+    machinery to compute an interpreted or reconstructed value for the
+    table itself, and never adds an extra derived-time column.
+    Interpretation/reconstruction STATE (family/provenance/interpreter
+    id/unit/interval) is read once, for the manifest's own provenance
+    section only.
+
+    **Manifest** (`<base>_cleaned.manifest.json`, sidecar to the cleaned
+    file): `manifest_version`, `exported_at`, `exported_file`, `source_
+    format`, `original_filename`, `worksheet_name`/`worksheet_index`,
+    `preparation_revision`, `header_row`, `data_region`, `exported_row_
+    count`, `excluded_row_count` + `excluded_rows` (bounded to 200
+    listed row numbers, matching `app.domain.working_overlay.MAX_
+    OPERATION_HISTORY`'s own "generous but not unlimited" bound, plus an
+    `excluded_rows_truncated` flag beyond that) + `omitted_columns`,
+    `column_roles`, `edited_cell_count`/`cleared_cell_count` (one cheap
+    pass over just this worksheet's own sparse overrides -- counts only,
+    never a full audit journal), `time_family`/`time_provenance`/
+    `interpreter_id`/`time_unit`/`time_interval_seconds`/`reconstructed_
+    timing`, and a `readiness` snapshot (`is_ready`/`blocking_count`/
+    `warning_count`/`info_count`). Never a raw Python object repr; never
+    an attempt to recreate the raw source (which stays separately
+    immutable in the `PreparationSession`).
+
+    **Excel export**: only the currently selected/prepared worksheet, as
+    ONE clean tabular worksheet in a NEW workbook -- no original-workbook
+    styling/formulas/charts/macros/merged-cells preservation, no formula
+    recalculation (the WORKING cell value, exactly as the preparation
+    overlay represents it, is written verbatim). Worksheet naming:
+    preserve the original selected name when practical; sanitize `:
+    \ / ? * [ ]` and truncate to Excel's own real 31-character limit; an
+    empty result after sanitization falls back to the deterministic
+    `Sheet1`. `openpyxl.Workbook(write_only=True)` streams each row
+    directly into the underlying zip/XML rather than building an
+    in-memory cell-object graph, matching this module's own "never build
+    raw + working + export full copies simultaneously" requirement --
+    verified with a 20,000-row synthetic export.
+
+    **CSV export**: a normalized, deterministic dialect (comma
+    delimiter, UTF-8, the stdlib `csv` module's own standard newline
+    handling) -- never an attempt to preserve whatever dialect the
+    ORIGINAL source file happened to use. A cheap `io.StringIO` buffer
+    over one streaming pass -- verified with a 50,000-row synthetic
+    export.
+
+    **Read-only, by construction**: calls no `app.domain.working_
+    overlay` mutation function anywhere; captures/re-verifies `Working
+    Overlay.revision` around the whole export (mirroring Slice 10's own
+    `ConversionRevisionChangedError` precedent exactly via a new
+    `ExportRevisionChangedError`) -- never mutates the preparation
+    session, the working overlay, or the raw source. Idempotent by
+    construction: repeated export of the same, unchanged session
+    produces byte-identical cleaned-table content every time (no
+    registry mutation occurs at all, so there is nothing that could
+    drift between calls the way Slice 10's own conversion needed an
+    explicit removal-based idempotency story for).
+
+    **Packaging**: a single ZIP bundle (`<base>_cleaned.zip`, stdlib
+    `zipfile` only) containing the cleaned CSV/XLSX plus the manifest --
+    one download action, no packaging framework. Filenames are
+    sanitized from the original upload name (`event.csv` -> `event_
+    cleaned.zip`) -- only safe characters survive (alphanumerics, dash,
+    underscore, space), everything else (including path separators) is
+    stripped, never trusted from the raw uploaded filename.
+
+    **API**: `POST .../preparation-sources/{source_id}/export` returns
+    the ZIP bytes directly as the HTTP response body (`Content-
+    Disposition: attachment`) -- no new response schema, no separate
+    manifest-fetch call.
+
+    **A real defect found and fixed by the browser UAT, invisible to
+    every backend-only test**: `Content-Disposition` is not one of the
+    CORS-safelisted response headers a browser exposes to JavaScript by
+    default. Without an explicit `expose_headers=["Content-Disposition"]`
+    on the existing `CORSMiddleware` configuration (`app/main.py`), the
+    frontend's cross-origin `fetch()` to `.../export` could read the ZIP
+    body but `response.headers.get("content-disposition")` silently
+    returned `null` in a real browser -- every download fell back to the
+    generic `recording_cleaned.zip` name regardless of the actual source
+    filename. A same-process `TestClient` call enforces no CORS
+    restriction at all, so this gap was completely invisible to the
+    targeted/full backend pytest suites; only the live-browser UAT
+    (which drives a genuinely cross-origin `fetch()`, frontend on 8101
+    against backend on 8000, exactly like production) could catch it.
+    Fixed with one line; regression coverage added directly:
+    `test_content_disposition_is_exposed_for_cross_origin_downloads` in
+    `backend/tests/test_main.py`.
+
+    **Frontend**: a new, always-visible (regardless of readiness)
+    "Export Cleaned Data" secondary action in the SAME Preparation
+    Status panel Slice 10's "Continue to Powerwave" action lives in --
+    styled and positioned so it never visually competes with Continue
+    when both are shown together for a Ready source. Triggers a real
+    browser download via a throwaway `<a download>` element (the
+    response is a binary ZIP, not JSON, so this is a genuinely different
+    fetch-handling path from every other `wwDataPrep*` action). Never
+    navigates away from Data Preparation, never mutates preparation
+    state.
+
+    Verified: full backend suite 2665 passed (52 new on top of Slice
+    11's own 2613: 43 export-service + 8 API + 1 CORS regression), zero
+    regressions; the committed
+    browser smoke test (COMTRADE) still passes unchanged; a throwaway
+    (not committed) live-browser Playwright UAT confirmed: export
+    succeeds from both a not-ready and a Ready source with the correct
+    real filename (after the CORS fix above); the downloaded ZIP
+    contains a correct cleaned CSV/XLSX plus manifest with an accurate
+    readiness snapshot; preparation state is completely unchanged after
+    export; "Continue to Powerwave" still works normally afterward; zero
+    console/page errors throughout.
 13. **Progressive automation and hardening** (future scope, illustrative
     not exhaustive): header suggestions; time-column suggestions; column
     classification suggestions; saved import profiles; vendor-specific

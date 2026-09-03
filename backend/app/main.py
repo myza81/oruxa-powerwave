@@ -100,6 +100,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        # CSV/Excel ingestion Slice 12 (DEC-072): `Content-Disposition`
+        # is NOT one of the CORS-safelisted response headers browsers
+        # expose to JavaScript by default -- without this, the frontend's
+        # cross-origin `fetch()` to `.../export` can read the response
+        # BODY but `response.headers.get("content-disposition")` silently
+        # returns `null`, so every downloaded file falls back to the
+        # generic "recording_cleaned.zip" name regardless of the real
+        # source filename. Caught live by the Slice 12 browser UAT (the
+        # backend's own synchronous TestClient check does not enforce
+        # CORS at all, so this gap was invisible to every non-browser
+        # test) -- see docs/project-memory/CSV_EXCEL_INGESTION_
+        # ARCHITECTURE.md item 12 for the full defect/fix account.
+        expose_headers=["Content-Disposition"],
     )
 
     @app.middleware("http")

@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, Request, Response, UploadFile, status
 
 from app.config import Settings
 from app.schemas.preparation_issue import PreparationIssueSummaryOut
@@ -71,6 +71,7 @@ from app.services.preparation_import_service import (
     select_preparation_worksheet,
 )
 from app.services.preparation_conversion_service import convert_preparation_source
+from app.services.preparation_export_service import export_preparation_source
 from app.services.preparation_issue_service import build_issue_summary
 from app.services.preparation_preview_service import (
     PREVIEW_DEFAULT_LIMIT,
@@ -138,6 +139,10 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "conversion_unsupported_interpreter": status.HTTP_409_CONFLICT,
     "conversion_revision_changed": status.HTTP_409_CONFLICT,
     "conversion_validation_failed": status.HTTP_500_INTERNAL_SERVER_ERROR,
+    # Slice 12 (DEC-072): cleaned-export revision race -- the same
+    # state-conflict semantic (409) Slice 10's own revision-changed
+    # error already uses.
+    "export_revision_changed": status.HTTP_409_CONFLICT,
 }
 
 
@@ -793,6 +798,40 @@ def post_convert_preparation_source(
         )
         raise _http_error(exc) from exc
     return SourceSummaryOut.from_domain(metadata)
+
+
+@router.post("/{source_id}/export")
+def post_export_preparation_source(
+    workspace_id: str,
+    source_id: str,
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> Response:
+    """Slice 12 (DEC-072): cleaned Working Dataset export -- a ZIP
+    bundle containing the cleaned CSV/XLSX plus a sidecar provenance
+    manifest (`app.services.preparation_export_service`'s own module
+    docstring for the full "Working Dataset, not raw source, not
+    canonical DisturbanceRecord" semantics).
+
+    Deliberately available regardless of Powerwave readiness (task
+    section A) -- never gated on `is_ready`, unlike `/convert` above.
+    Read-only: never mutates the preparation session, the working
+    overlay, or the raw source in any way; a live readiness snapshot is
+    captured into the manifest only, never used as a gate.
+    """
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        result = export_preparation_source(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    except ImportServiceError as exc:
+        logger.info(
+            "Preparation-source export rejected (%s) for workspace %s source %s: %s",
+            exc.code, workspace_id, source_id, exc.message,
+        )
+        raise _http_error(exc) from exc
+    return Response(
+        content=result.content,
+        media_type=result.media_type,
+        headers={"Content-Disposition": f'attachment; filename="{result.filename}"'},
+    )
 
 
 @router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT)

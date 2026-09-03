@@ -9,13 +9,11 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-03**. CSV/Excel ingestion Slice 11
-(existing-waveform-integration verification — see
+Last meaningful update: **2026-09-03**. CSV/Excel ingestion Slice 12
+(cleaned data export — see
 [Implemented capabilities](#implemented-capabilities)) is now complete:
-a Slice-10-converted CSV/Excel source is confirmed to behave like any
-other Powerwave source across Time Groups, synchronization, and
-calculated channels, and two pre-existing (COMTRADE-era) timezone-
-awareness defects this verification pass exposed have been fixed.
+the current Working Dataset can be exported as a cleaned CSV/Excel file
+plus a provenance manifest, regardless of Powerwave readiness.
 
 ## Current status
 
@@ -27,10 +25,10 @@ COMTRADE upload/parse/browse, the app now has a full multi-source,
 multi-panel waveform workspace with Time-Group-aware synchronization,
 cursors, t0, annotations, a group-aware Per-Unit measurement model,
 calculated channels, and digital-channel display. CSV/Excel ingestion is
-the current workstream — Slices 1-11 (raw preparation-source upload
-through canonical `DisturbanceRecord` conversion and existing-waveform-
-integration verification) are implemented; cleaned-data export and
-progressive automation (Slices 12-13) are not (see
+the current workstream — Slices 1-12 (raw preparation-source upload
+through canonical `DisturbanceRecord` conversion, existing-waveform-
+integration verification, and cleaned data export) are implemented;
+progressive automation (Slice 13) is not (see
 [Current next workstream](#current-next-workstream)).
 
 ## Architecture
@@ -188,9 +186,10 @@ re-confirmed by the TG-FINAL audit):
   critical upload/render/interaction paths — see
   [docs/development/BROWSER_SMOKE_TEST.md](../development/BROWSER_SMOKE_TEST.md).
 - **CSV/Excel preparation-source upload through canonical
-  `DisturbanceRecord` conversion, verified to behave like any other
+  `DisturbanceRecord` conversion (verified to behave like any other
   Powerwave source across Time Groups/synchronization/calculated
-  channels (CSV/Excel ingestion Slices 1-11, DEC-072)**:
+  channels) and cleaned-data export (CSV/Excel ingestion Slices 1-12,
+  DEC-072)**:
   the Upload Recording modal's CSV and
   Excel options are both enabled (`RECORDING_FORMATS`,
   `frontend/index.html`), each with its own "Upload & Prepare" action,
@@ -718,8 +717,82 @@ re-confirmed by the TG-FINAL audit):
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 11](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
   for the full implementation summary.
 
-  Cleaned-data export and progressive automation (Slices 12-13) are
-  still explicitly NOT part of any slice implemented so far — see
+  **Slice 12** (2026-09-03) implements Cleaned Data Export. Governing
+  principle: **"Cleaned export = the current Working Dataset as
+  prepared by the engineer"** — not the raw source, not the canonical
+  `DisturbanceRecord`, not a silently repaired dataset. New
+  `app/services/preparation_export_service.py`
+  (`export_preparation_source()`) exports `active data region -
+  excluded rows - ignored columns + working cell overrides`, preserving
+  remaining source column order, into a cleaned CSV or single-worksheet
+  XLSX bundled with a sidecar `<base>_cleaned.manifest.json` inside one
+  `<base>_cleaned.zip`. Available regardless of Powerwave readiness
+  (never gated on `is_ready`) — a deliberately separate capability from
+  Slice 10's own canonical conversion, since an engineer may use
+  Powerwave purely to clean up a file with no intention of ever
+  converting it. Row/column selection and column-label fallback logic
+  are pure REUSE of Slice 9's `iterate_active_region_rows()` and
+  `preview_preparation_source()`'s own already-computed labels; the only
+  new logic is deduplicating those labels for exported columns via the
+  same `__{SpreadsheetLetter}` suffix strategy Slice 10 established.
+  Time columns are never touched — a Time Axis column exports its own
+  current WORKING value verbatim; interpretation/reconstruction state
+  is recorded in the manifest only, never injected as an extra column.
+  Manifest fields: `manifest_version`, `exported_at`, `exported_file`,
+  `source_format`, `original_filename`, `worksheet_name`/`worksheet_
+  index`, `preparation_revision`, `header_row`, `data_region`,
+  `exported_row_count`, `excluded_row_count`/`excluded_rows` (bounded to
+  200 listed rows + a truncation flag)/`omitted_columns`/`column_roles`,
+  `edited_cell_count`/`cleared_cell_count`, `time_family`/`time_
+  provenance`/`interpreter_id`/`time_unit`/`time_interval_seconds`/
+  `reconstructed_timing`, and a live `readiness` snapshot. Excel export
+  writes one clean tabular worksheet via `openpyxl.Workbook(write_
+  only=True)` (streaming, no original styling/formulas/charts/macros
+  preserved, no formula recalculation) into a NEW workbook — never a
+  full original-workbook round-trip; an invalid worksheet name is
+  sanitized (strip `: \ / ? * [ ]`, truncate to 31 chars) with a
+  deterministic `Sheet1` fallback. CSV export uses a normalized comma/
+  UTF-8 dialect, never the original file's own dialect. Read-only by
+  construction — no `working_overlay` mutation function is ever called;
+  `WorkingOverlay.revision` is captured and re-verified around the
+  export (`ExportRevisionChangedError` mirrors Slice 10's own revision-
+  race precedent). New API: `POST .../preparation-sources/{source_id}/
+  export`, returning the ZIP bytes directly as the response body.
+  Frontend: an always-visible "Export Cleaned Data" secondary action in
+  the same Preparation Status panel Slice 10's "Continue to Powerwave"
+  lives in, never competing visually when both are shown; triggers a
+  real browser download via a throwaway `<a download>` element; never
+  navigates away or mutates preparation state.
+
+  **One real defect found and fixed by the browser UAT, invisible to
+  every backend-only test**: `Content-Disposition` is not a CORS-
+  safelisted response header a browser exposes to JavaScript by
+  default. Without an explicit `expose_headers=["Content-Disposition"]`
+  on the existing `CORSMiddleware` config (`app/main.py`), the
+  frontend's cross-origin download `fetch()` could read the ZIP body
+  but not the real filename, silently falling back to a generic
+  `recording_cleaned.zip` name — invisible to a same-process
+  `TestClient` call (which enforces no CORS at all), caught only by the
+  live-browser UAT's genuinely cross-origin request. Fixed with one
+  line; regression test added:
+  `test_content_disposition_is_exposed_for_cross_origin_downloads` in
+  `backend/tests/test_main.py`.
+
+  Verified: full backend suite 2665 passed (52 new on top of Slice 11's
+  own 2613: 43 export-service + 8 API + 1 CORS regression), zero
+  regressions; the committed browser
+  smoke test (COMTRADE) still passes unchanged; a throwaway (not
+  committed) live-browser Playwright UAT confirmed export from both a
+  not-ready and a Ready source with the correct filename, correct ZIP
+  contents (cleaned CSV/XLSX + manifest with an accurate readiness
+  snapshot), unchanged preparation state afterward, and "Continue to
+  Powerwave" still working normally afterward — all with zero console/
+  page errors. See
+  [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 12](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
+  for the full implementation summary.
+
+  Progressive automation (Slice 13) is still explicitly NOT part of any
+  slice implemented so far — see
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md).
 
 ## Known intentional constraints / deferred items
@@ -806,12 +879,13 @@ diagnostic-only normalization layer over Slices 8A-8C's own irregular-
 timing conditions, never a new interpreter, never readiness policy),
 Slice 9 (the Full Powerwave Readiness Validator -- the REAL
 `blocking`/`warning`/`info` policy Slice 6 always deferred, see above),
-Slice 10 (canonical `DisturbanceRecord` conversion), and Slice 11
+Slice 10 (canonical `DisturbanceRecord` conversion), Slice 11
 (existing-waveform-integration verification, including two real
-timezone-awareness defects found and fixed -- see above for the full
-summary) are now implemented. Slices 12–13 (cleaned-data export and
-progressive automation) remain unimplemented and require their own
-explicit owner go-ahead before starting, per
+timezone-awareness defects found and fixed), and Slice 12 (Cleaned Data
+Export, including one real CORS defect found and fixed -- see above for
+the full summaries) are now implemented. Slice 13 (progressive
+automation) remains unimplemented and requires its own explicit owner
+go-ahead before starting, per
 [Change governance](../../CLAUDE.md#change-governance) — being recorded
 in the architecture document's own slice sequence does not itself
 authorize starting any of them.

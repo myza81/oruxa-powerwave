@@ -8,6 +8,135 @@ Last updated: **2026-09-03**
 
 ## What was most recently done
 
+**CSV/Excel Ingestion Slice 12 — Cleaned Data Export (implemented).**
+Owner-authorized implementation of export of the current Working
+Dataset into a cleaned CSV or Excel file plus a provenance manifest.
+Governing principle: **"Cleaned export = the current Working Dataset as
+prepared by the engineer"** — not the untouched raw source, not the
+canonical `DisturbanceRecord` (Slice 10), not a silently repaired
+dataset.
+
+**Available regardless of Powerwave readiness** — a deliberately
+SEPARATE capability from Slice 10's own canonical conversion: an
+engineer may use Powerwave purely to clean up a CSV/Excel file with no
+intention of ever converting it into a waveform. New
+`app/services/preparation_export_service.py`
+(`export_preparation_source()`) never gates on `is_ready` — readiness is
+captured live for the manifest snapshot only (recomputed at export
+time, never trusting stale frontend state, matching Slice 10's own
+precedent).
+
+**Row/column selection is a REUSE, not a re-derivation**: the exact
+same `iterate_active_region_rows()` single-pass streaming generator
+Slice 9's readiness validator and Slice 10's conversion service already
+use, filtered to non-excluded, non-header, in-active-region rows —
+identical filter to Slice 10's own conversion. Column labels reuse
+`preview_preparation_source()`'s own already-computed `column_labels`/
+`column_roles` (already encoding the header-row-value / neutral-
+spreadsheet-letter fallback) — this module adds only ONE new piece of
+logic: deduplicating those labels for exported columns via the SAME
+`__{SpreadsheetLetter}` suffix strategy Slice 10's own `_unique_
+channel_names()` established. A header row falling inside the active
+data region is never exported as a data row (header is schema, not a
+data row).
+
+**Time columns are never touched** — a Time Axis column exports its own
+current WORKING value verbatim; interpretation/reconstruction state is
+recorded in the manifest only (`time_family`/`time_provenance`/
+`interpreter_id`/`time_unit`/`time_interval_seconds`/`reconstructed_
+timing`), never injected as an extra derived-time column.
+
+**Manifest** (`<base>_cleaned.manifest.json`): `manifest_version`,
+`exported_at`, `exported_file`, `source_format`, `original_filename`,
+`worksheet_name`/`worksheet_index`, `preparation_revision`, `header_
+row`, `data_region`, `exported_row_count`, `excluded_row_count`/
+`excluded_rows` (bounded to 200 listed rows + a truncation flag)/
+`omitted_columns`/`column_roles`, `edited_cell_count`/`cleared_cell_
+count`, time provenance fields, and a live `readiness` snapshot
+(`is_ready`/`blocking_count`/`warning_count`/`info_count`).
+
+**Excel export**: one clean tabular worksheet in a NEW workbook via
+`openpyxl.Workbook(write_only=True)` (streaming, no original workbook
+styling/formulas/charts/macros preserved, no formula recalculation) —
+never a full original-workbook round-trip. Worksheet naming: preserve
+the original name when practical; sanitize `: \ / ? * [ ]` and truncate
+to Excel's own real 31-character limit; falls back to deterministic
+`Sheet1`. **CSV export**: normalized comma/UTF-8 dialect, never the
+original file's own dialect.
+
+**Read-only by construction**: no `working_overlay` mutation function
+is ever called; `WorkingOverlay.revision` is captured and re-verified
+around the export (new `ExportRevisionChangedError` mirrors Slice 10's
+own revision-race precedent). Idempotent by construction — repeated
+export of an unchanged session produces byte-identical content every
+time (no registry mutation occurs at all).
+
+**Packaging**: a single ZIP bundle (`<base>_cleaned.zip`, stdlib
+`zipfile` only) containing the cleaned file plus the manifest.
+Filenames sanitized from the original upload name (`event.csv` ->
+`event_cleaned.zip`) — only safe characters survive, never trusted from
+the raw uploaded filename.
+
+**New API**: `POST .../preparation-sources/{source_id}/export` returns
+the ZIP bytes directly as the response body (`Content-Disposition:
+attachment`).
+
+**Frontend**: a new, always-visible "Export Cleaned Data" secondary
+action in the SAME Preparation Status panel Slice 10's "Continue to
+Powerwave" lives in — never competing visually when both are shown.
+Triggers a real browser download via a throwaway `<a download>` element
+(the response is a binary ZIP, a genuinely different fetch-handling
+path from every other `wwDataPrep*` action). Never navigates away from
+Data Preparation, never mutates preparation state.
+
+**A real defect found and fixed by the browser UAT, invisible to every
+backend-only test**: `Content-Disposition` is not a CORS-safelisted
+response header a browser exposes to JavaScript by default. Without an
+explicit `expose_headers=["Content-Disposition"]` on the existing
+`CORSMiddleware` config (`app/main.py`), the frontend's cross-origin
+download `fetch()` could read the ZIP body but not the real filename —
+every download silently fell back to the generic `recording_cleaned.zip`
+name. A same-process `TestClient` call enforces no CORS restriction at
+all, so this gap was completely invisible to the targeted/full backend
+pytest suites; only the live-browser UAT's genuinely cross-origin
+`fetch()` (frontend on 8101 against backend on 8000, exactly like
+production) could catch it. Fixed with one line; regression coverage
+added: `test_content_disposition_is_exposed_for_cross_origin_downloads`
+in `backend/tests/test_main.py`.
+
+**Files changed**: `backend/app/api/v1/preparation_sources.py` (new
+`/export` endpoint), `backend/app/main.py` (CORS `expose_headers` fix),
+`backend/app/services/errors.py` (new `ExportRevisionChangedError`),
+`backend/tests/test_main.py` (CORS regression test), `backend/tests/
+test_preparation_sources_api.py` (extended), `frontend/index.html`
+(Export Cleaned Data UI). NEW files:
+`backend/app/services/preparation_export_service.py`,
+`backend/tests/test_preparation_export_service.py`.
+
+**Verified**: full backend suite 2665 passed (52 new on top of Slice
+11's own 2613: 43 export-service + 8 API + 1 CORS regression), zero
+regressions; the committed browser
+smoke test (COMTRADE) still passes unchanged with zero console/page
+errors; a throwaway (not committed) live-browser Playwright UAT (2
+scenarios) confirmed: export succeeds from both a not-ready and a Ready
+source with the correct real filename (after the CORS fix); the
+downloaded ZIP contains a correct cleaned CSV/XLSX plus a manifest with
+an accurate readiness snapshot; preparation state is completely
+unchanged after export; "Continue to Powerwave" still works normally
+afterward; an Excel source exports a correct cleaned XLSX — all with
+zero console/page errors.
+
+**Next step**: Slice 13 (progressive automation) — requires its own
+explicit owner go-ahead to begin, per
+[Change governance](../../CLAUDE.md#change-governance).
+
+**Commit status**: not committed — per this task's own explicit closing
+instruction ("Do not commit or push unless explicitly asked"), all of
+the above are normal uncommitted working-tree changes pending a
+separate, explicit commit instruction.
+
+## What was done in the prior session — CSV/Excel Ingestion Slice 11: Existing Waveform Integration Verification
+
 **CSV/Excel Ingestion Slice 11 — Existing Waveform Integration
 Verification (implemented).** Owner-authorized verification pass, with
 an explicit zero-new-feature bias: proves a Slice-10-converted CSV/Excel

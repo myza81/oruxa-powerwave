@@ -84,3 +84,28 @@ def test_unconfigured_origin_is_not_allowed(settings):
         )
 
     assert "access-control-allow-origin" not in response.headers
+
+
+def test_content_disposition_is_exposed_for_cross_origin_downloads(settings):
+    """CSV/Excel ingestion Slice 12 (DEC-072) regression: `Content-
+    Disposition` is not one of the CORS-safelisted response headers a
+    browser exposes to JavaScript by default -- without an explicit
+    `expose_headers` on `CORSMiddleware`, the frontend's cross-origin
+    `.../preparation-sources/{id}/export` download silently loses the
+    real filename and falls back to a generic default (a real defect
+    caught live by the Slice 12 browser UAT, invisible to a same-process
+    `TestClient` call that enforces no CORS restriction at all -- see
+    docs/project-memory/CSV_EXCEL_INGESTION_ARCHITECTURE.md item 12)."""
+    with TestClient(create_app(settings)) as client:
+        files = {"csv_file": ("event.csv", b"1,2\n", "text/csv")}
+        upload = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=files,
+            headers={"Origin": "http://localhost:8101"},
+        )
+        source_id = upload.json()["source_id"]
+        response = client.post(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/export",
+            headers={"Origin": "http://localhost:8101"},
+        )
+
+    assert "Content-Disposition" in response.headers.get("access-control-expose-headers", "")

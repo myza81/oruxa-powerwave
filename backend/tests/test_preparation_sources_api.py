@@ -2883,3 +2883,98 @@ class TestConversionApi:
 
         assert response.status_code == 200
         assert response.json()["sample_count"] == 2
+
+
+# ---- CSV/Excel ingestion Slice 12 (DEC-072): cleaned data export API ----
+
+
+class TestExportApi:
+    def test_successful_csv_export_returns_zip(self, client):
+        source_id = _upload_csv(client, content=b"Time,VR\n1,2\n3,4\n", filename="event.csv")
+
+        response = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/export")
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/zip"
+        assert response.headers["content-disposition"] == 'attachment; filename="event_cleaned.zip"'
+        import io
+        import zipfile
+        zf = zipfile.ZipFile(io.BytesIO(response.content))
+        names = zf.namelist()
+        assert any(n.endswith(".csv") for n in names)
+        assert any(n.endswith(".manifest.json") for n in names)
+
+    def test_successful_excel_export_returns_zip(self, client):
+        content = _build_xlsx({"Sheet1": [["a", "b"], [1, 2]]})
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "m.xlsx"),
+        ).json()["source_id"]
+
+        response = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/export")
+
+        assert response.status_code == 200
+        import io
+        import zipfile
+        zf = zipfile.ZipFile(io.BytesIO(response.content))
+        assert any(n.endswith(".xlsx") for n in zf.namelist())
+        assert any(n.endswith(".manifest.json") for n in zf.namelist())
+
+    def test_export_available_even_when_not_ready(self, client):
+        source_id = _upload_csv(client, content=b"1,2\n3,4\n")  # totally unconfigured
+
+        response = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/export")
+
+        assert response.status_code == 200
+        import io
+        import json
+        import zipfile
+        zf = zipfile.ZipFile(io.BytesIO(response.content))
+        manifest_name = next(n for n in zf.namelist() if n.endswith(".manifest.json"))
+        manifest = json.loads(zf.read(manifest_name))
+        assert manifest["readiness"]["is_ready"] is False
+        assert manifest["readiness"]["blocking_count"] > 0
+
+    def test_export_available_when_ready(self, client):
+        source_id = _ready_csv_source(client)
+
+        response = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/export")
+
+        assert response.status_code == 200
+        # Source must still be a live preparation source afterward --
+        # export never converts/consumes it (unlike /convert).
+        assert client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}").status_code == 200
+
+    def test_missing_source_returns_404(self, client):
+        response = client.post("/api/v1/workspaces/ws-1/preparation-sources/does-not-exist/export")
+
+        assert response.status_code == 404
+
+    def test_excel_worksheet_not_selected_returns_error(self, client):
+        content = _build_xlsx({"A": [["a"]], "B": [["b"]]})
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "m.xlsx"),
+        ).json()["source_id"]
+
+        response = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/export")
+
+        assert response.status_code == 400
+        assert response.json()["detail"]["code"] == "worksheet_not_selected"
+
+    def test_export_preserves_preparation_state(self, client):
+        source_id = _upload_csv(client, content=b"1,2\n3,4\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/1", json={"value": "99"})
+        before = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}").json()
+
+        client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/export")
+
+        after = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}").json()
+        assert before == after
+
+    def test_safe_filename_from_unsafe_original(self, client):
+        source_id = _upload_csv(client, content=b"1,2\n", filename="weird name (1).csv")
+
+        response = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/export")
+
+        assert response.status_code == 200
+        disposition = response.headers["content-disposition"]
+        assert "(" not in disposition and ")" not in disposition

@@ -723,3 +723,19 @@ class ConversionValidationError(ImportServiceError):
     the attempt is discarded and preparation state is left untouched."""
 
     code = "conversion_validation_failed"
+
+
+# ---- CSV/Excel ingestion Slice 12 (DEC-072): cleaned data export ----
+
+
+class ExportRevisionChangedError(ImportServiceError):
+    """The preparation source's own `WorkingOverlay.revision` changed
+    while a cleaned export was being built (task section W's own
+    explicit revision-race protection, mirroring Slice 10's
+    `ConversionRevisionChangedError` exactly). Export never persists or
+    registers anything, so there is no partial state to leave behind
+    either way -- this simply refuses to hand back a ZIP that may mix
+    rows/manifest fields from two different working-overlay states. The
+    user simply retries."""
+
+    code = "export_revision_changed"

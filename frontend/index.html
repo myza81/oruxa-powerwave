@@ -909,6 +909,15 @@
         .ww-data-prep-conversion-action[hidden] { display: none; }
         .ww-data-prep-conversion-status { font-size: 0.8rem; color: var(--text-dim); margin: 0; }
         .ww-data-prep-conversion-status[data-state="error"] { color: var(--error); }
+        /* CSV/Excel ingestion Slice 12 (DEC-072): cleaned-export action --
+           deliberately ALWAYS visible (never conditionally hidden like
+           the conversion action above it), so no [hidden]-vs-author-CSS
+           override is needed here. A plain "secondary" button plus a
+           short hint, never visually competing with "Continue to
+           Powerwave" when both are shown together. */
+        .ww-data-prep-export-action { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+        .ww-data-prep-export-action .hint { margin: 4px 0 0; }
+        .ww-data-prep-export-action .ww-data-prep-conversion-status { margin-top: 4px; }
         /* UX refinement (post-Slice-6 UAT): progressive disclosure shell
            shared by the Preparation Status and Structure panels -- a
            title+hint block on the left, a single toggle button
@@ -4557,6 +4566,22 @@
                         <button type="button" id="wwDataPrepConvertBtn">Continue to Powerwave</button>
                         <p class="ww-data-prep-conversion-status" id="wwDataPrepConversionStatus"></p>
                     </div>
+
+                    <!-- CSV/Excel ingestion Slice 12 (DEC-072): cleaned
+                         Working Dataset export -- deliberately ALWAYS
+                         visible here, regardless of readiness (task
+                         section A: "readiness blocking issues != export
+                         blocked") and styled as a secondary action (a
+                         "secondary" button, never competing visually
+                         with "Continue to Powerwave" above it when both
+                         are shown). Exports the CURRENT working dataset
+                         as prepared -- never implies "Powerwave Ready" /
+                         "Validated" / "Canonical". -->
+                    <div class="ww-data-prep-export-action">
+                        <button type="button" class="secondary" id="wwDataPrepExportBtn">Export Cleaned Data</button>
+                        <p class="hint">Exports the current working dataset as a cleaned CSV/Excel file. This does not mean the dataset is Powerwave-ready.</p>
+                        <p class="ww-data-prep-conversion-status" id="wwDataPrepExportStatus"></p>
+                    </div>
                 </section>
 
                 <!-- Slice 5 (DEC-072): Header/Data Region + Column Role
@@ -7578,6 +7603,63 @@
             document.getElementById("wwDataPrepTimeAxisPanel").scrollIntoView({ behavior: "smooth", block: "start" });
         }
 
+        // CSV/Excel ingestion Slice 12 (DEC-072): a SEPARATE small message
+        // map, same rationale as wwDataPrepConversionErrorMessage() above
+        // -- these are Slice 12's own runtime export failures (there is no
+        // "not ready" failure mode here at all, since export is never
+        // gated on readiness; task section A).
+        function wwDataPrepExportErrorMessage(code, message) {
+            const knownMessages = {
+                export_revision_changed: "The preparation changed while exporting -- please try again.",
+                source_not_found: "This source is no longer available.",
+                worksheet_not_selected: "Select a worksheet before exporting.",
+            };
+            return knownMessages[code] || (message || "Export failed.");
+        }
+
+        // Export never navigates, never mutates preparation state, and
+        // is available regardless of readiness (task sections A/AG) --
+        // the response is a binary ZIP, not JSON, so this reads it as a
+        // blob and triggers a normal browser download via a throwaway
+        // <a download> element, rather than the JSON-response pattern
+        // every other wwDataPrep* action here uses.
+        async function wwDataPrepExport() {
+            const btn = document.getElementById("wwDataPrepExportBtn");
+            const statusEl = document.getElementById("wwDataPrepExportStatus");
+            btn.disabled = true;
+            delete statusEl.dataset.state;
+            statusEl.textContent = "Exporting…";
+            try {
+                const response = await fetch(wwDataPrepSourceUrl("/export"), { method: "POST" });
+                if (!response.ok) {
+                    const body = await response.json().catch(() => null);
+                    const detail = (body && body.detail) || {};
+                    statusEl.dataset.state = "error";
+                    statusEl.textContent = wwDataPrepExportErrorMessage(detail.code, detail.message);
+                    return;
+                }
+                const blob = await response.blob();
+                const disposition = response.headers.get("content-disposition") || "";
+                const match = disposition.match(/filename="([^"]+)"/);
+                const filename = match ? match[1] : "recording_cleaned.zip";
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(url);
+                statusEl.dataset.state = "";
+                statusEl.textContent = "Exported " + filename;
+            } catch (error) {
+                statusEl.dataset.state = "error";
+                statusEl.textContent = "Could not reach the backend. Check your connection and try again.";
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
         // Reuses the existing worksheet <select>'s own change handler
         // (PATCH selection -> re-fetch preview+issues) rather than a
         // second, separate worksheet-switch implementation.
@@ -8750,6 +8832,7 @@
 
         document.getElementById("wwDataPrepConvertBtn").addEventListener("click", () => { wwDataPrepConvert(); });
         document.getElementById("wwDataPrepConfigureTimeAxisBtn").addEventListener("click", wwDataPrepConfigureTimeAxis);
+        document.getElementById("wwDataPrepExportBtn").addEventListener("click", () => { wwDataPrepExport(); });
 
         // Entry point -- called from a "Needs Preparation" Recording
         // Events row (renderRecordingsTable()'s own row click/keydown
@@ -8800,6 +8883,10 @@
             const conversionStatusEl = document.getElementById("wwDataPrepConversionStatus");
             conversionStatusEl.textContent = "";
             delete conversionStatusEl.dataset.state;
+            document.getElementById("wwDataPrepExportBtn").disabled = false;
+            const exportStatusEl = document.getElementById("wwDataPrepExportStatus");
+            exportStatusEl.textContent = "";
+            delete exportStatusEl.dataset.state;
             wwDataPrepRenderIssues();
             wwDataPrepRenderStructureSummary();
             wwDataPrepRenderTimeAxisSummary();
