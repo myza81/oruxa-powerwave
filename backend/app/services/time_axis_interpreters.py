@@ -255,20 +255,64 @@ _TIME_PATTERNS: tuple[str, ...] = (
 #: both for the same `dmy` order) -- a genuinely different separator is
 #: not treated as a genuinely different "order," only as a different
 #: literal pattern to try under that order.
+#:
+#: UAT fix (2026-09-04): a 2-digit-year (`%y`) variant is added for
+#: `dmy`/`mdy` ONLY -- a real owner-reported source ("3/6/26 18:04:00.000",
+#: interpreted via Date + Time / split_date_time) previously fell all
+#: the way to a generic `unparseable_datetime` failure, because
+#: `_DATE_PATTERNS_BY_ORDER` had NO 2-digit-year candidate at all
+#: (`%Y` correctly refuses to match a bare 2-digit token like "26" --
+#: verified directly: `strptime("3/6/26", "%d/%m/%Y")` raises
+#: `ValueError`). This was a missing-format-family gap, not an
+#: ambiguity-detection bug and not a split-date-time-specific bug --
+#: every candidate order genuinely had zero matches, so the case never
+#: reached the existing ambiguity-by-elimination logic at all.
+#:
+#: Deliberately NOT added for `ymd`: a 2-digit-year-FIRST format is not
+#: among any of the task's own reported examples (all are day-or-month-
+#: first, year-LAST), and adding one would risk spurious full-matches
+#: against unrelated short numeric sequences (e.g. a `sample_index`-like
+#: column) that this module has no way to distinguish from a genuine
+#: date -- exactly the "do not introduce unrestricted fuzzy parsing"
+#: guardrail this module's own docstring already establishes.
+#:
+#: `%y`'s own 2-digit-to-4-digit century mapping goes through
+#: `_parse_with_pattern()` below, not Python's native `%y` inference
+#: directly -- see that function's own docstring for why.
 _DATE_PATTERNS_BY_ORDER: dict[str, tuple[str, ...]] = {
-    DATE_ORDER_DMY: ("%d/%m/%Y", "%d-%m-%Y"),
-    DATE_ORDER_MDY: ("%m/%d/%Y", "%m-%d-%Y"),
+    DATE_ORDER_DMY: ("%d/%m/%Y", "%d-%m-%Y", "%d/%m/%y", "%d-%m-%y"),
+    DATE_ORDER_MDY: ("%m/%d/%Y", "%m-%d-%Y", "%m/%d/%y", "%m-%d-%y"),
     DATE_ORDER_YMD: ("%Y/%m/%d", "%Y-%m-%d"),
 }
 
 _KNOWN_ORDERS: tuple[str, ...] = (DATE_ORDER_DMY, DATE_ORDER_MDY, DATE_ORDER_YMD)
+
+#: UAT fix (2026-09-04): plain-language labels for the diagnostic
+#: MESSAGE only -- the frontend's own `WW_DATA_PREP_DATE_ORDER_LABELS`
+#: (`frontend/index.html`) independently renders the actual radio-
+#: button choices as format patterns ("DD/MM/YYYY") rather than these
+#: words; both are just different renderings of the SAME `date_order`
+#: value, never a second stored representation.
+_ORDER_DISPLAY_LABELS: dict[str, str] = {
+    DATE_ORDER_DMY: "Day/Month/Year",
+    DATE_ORDER_MDY: "Month/Day/Year",
+    DATE_ORDER_YMD: "Year/Month/Day",
+}
+
+#: UAT fix (2026-09-04): task section D.3 -- "where practical, show
+#: representative failing rows rather than only a count." Bounded (never
+#: unbounded) to keep a diagnostic's own `details` payload small,
+#: mirroring every other "generous but not unlimited" bound already
+#: established in this codebase (e.g. `app.domain.working_overlay.
+#: MAX_OPERATION_HISTORY`).
+_MAX_DIAGNOSTIC_EXAMPLES = 5
 
 #: strptime directive -> friendly display token, purely for the
 #: human-readable `detected_format` option value shown in the UI (§P) --
 #: never itself used to parse anything; parsing always goes back through
 #: the real strptime pattern.
 _DISPLAY_TOKENS: dict[str, str] = {
-    "%Y": "YYYY", "%m": "MM", "%d": "DD",
+    "%Y": "YYYY", "%y": "YY", "%m": "MM", "%d": "DD",
     "%H": "HH", "%M": "mm", "%S": "ss", "%f": "SSS",
     "%I": "hh", "%p": "A",
 }
@@ -288,11 +332,36 @@ def _parse_iso(value: str) -> dt.datetime | None:
         return None
 
 
+#: UAT fix (2026-09-04): the explicit, documented 2-digit-year century
+#: rule for this application -- `00-69 -> 2000-2069`, `70-99 ->
+#: 1970-1999`. Python's own native `%y` strptime inference is ALMOST
+#: this rule (it pivots at 68/69, giving `00-68 -> 2000-2068`, `69-99 ->
+#: 1969-1999` -- verified directly), differing from this application's
+#: own preferred boundary at EXACTLY one value: a 2-digit year of `69`.
+#: Rather than silently accept Python's own slightly different pivot
+#: (which this module's own docstring explicitly warns against --
+#: "do not silently invent a different century rule" cuts both ways:
+#: it also means not silently DEFERRING to a convention the task never
+#: asked for), `_parse_with_pattern()` below applies this ONE explicit
+#: correction after Python's own `%y` parse: a resulting year of `1969`
+#: (which `%y` only ever produces from a literal 2-digit token of `69`)
+#: is corrected to `2069`. Every other 2-digit value (`00`-`68`,
+#: `70`-`99`) already agrees between Python's own convention and this
+#: rule, so this is the ONLY case that needs a post-hoc override.
+def _apply_two_digit_year_century_rule(parsed: dt.datetime) -> dt.datetime:
+    if parsed.year == 1969:
+        return parsed.replace(year=2069)
+    return parsed
+
+
 def _parse_with_pattern(value: str, pattern: str) -> dt.datetime | None:
     try:
-        return dt.datetime.strptime(value.strip(), pattern)
+        parsed = dt.datetime.strptime(value.strip(), pattern)
     except ValueError:
         return None
+    if "%y" in pattern:
+        return _apply_two_digit_year_century_rule(parsed)
+    return parsed
 
 
 def _is_time_only(value: str) -> bool:
@@ -541,6 +610,25 @@ def _best_match_for_order(values: list[str], order: str) -> _FormatMatch:
     return max(scored, key=lambda m: m.match_count)
 
 
+def _failing_examples(
+    non_empty: list[tuple[int, str]], *, pattern: str, limit: int = _MAX_DIAGNOSTIC_EXAMPLES,
+) -> list[dict[str, Any]]:
+    """UAT fix (2026-09-04), task section D.3: a handful of REAL
+    `(row_number, value)` pairs that do not match `pattern` (the
+    best-explaining candidate a `mixed`/`unparseable` diagnostic is
+    already reporting a match RATE for) -- so the resulting UI can show
+    concrete failing rows, not only a count. Bounded to `limit`; never a
+    second, separate re-scan beyond this one pass over the already-
+    bounded sample."""
+    examples: list[dict[str, Any]] = []
+    for row_number, value in non_empty:
+        if _parse_with_pattern(value, pattern) is None:
+            examples.append({"row_number": row_number, "value": value})
+            if len(examples) >= limit:
+                break
+    return examples
+
+
 def _confidence_for_partial(match: _FormatMatch) -> str:
     if match.match_count == 0:
         return CONFIDENCE_UNKNOWN
@@ -654,14 +742,24 @@ def detect_absolute_datetime(
                 diagnostics=diagnostics,
                 resolved_options={"date_order": requested_order, "detected_format": _display_format(match.pattern)},
             )
+        # UAT fix (2026-09-04), task section G: specific, actionable
+        # wording -- "needs confirmation," not a generic parse failure --
+        # since a viable interpretation genuinely exists for every
+        # sampled value under 2+ orders; only the CHOICE between them is
+        # unresolved. Names one real example value so the message reads
+        # concretely against the engineer's own data, not abstractly.
+        order_labels = " or ".join(_ORDER_DISPLAY_LABELS.get(o, o) for o in candidate_orders)
         diagnostics.append(
             TimeAxisDiagnostic(
                 severity_hint=SEVERITY_WARNING,
                 code=DIAGNOSTIC_AMBIGUOUS_DATE_ORDER,
-                message=f"The date order is ambiguous -- {' and '.join(candidate_orders)} both fit every sampled value.",
+                message=(
+                    f"Date format needs confirmation. The value \"{raw_values[0]}\" can be interpreted as "
+                    f"{order_labels}. Choose the intended date order below."
+                ),
                 suggested_action="Choose the correct date order to confirm this Time Axis configuration.",
                 ambiguity=AMBIGUITY_AMBIGUOUS,
-                details={"candidate_orders": candidate_orders},
+                details={"candidate_orders": candidate_orders, "example_value": raw_values[0]},
             )
         )
         return TimeAxisDetectionResult(
@@ -672,17 +770,37 @@ def detect_absolute_datetime(
     # No order, and no ISO reading, fully explains the sample -- report
     # the single best-explaining candidate (by match count) as a
     # mixed/unparseable finding, never silently normalized (task §L).
+    # UAT fix (2026-09-04), task section G/D.3: this generic failure
+    # wording is now reserved for the case it actually describes --
+    # genuinely no supported controlled format explains the sample
+    # (never reached for a viable-but-ambiguous case any more, since
+    # that is handled by the branch above) -- and names concrete
+    # examples rather than only a count.
     best_order, best_match = max(per_order_match.items(), key=lambda kv: kv[1].match_count)
     code = DIAGNOSTIC_MIXED_DATETIME_FORMAT if best_match.match_count > 0 else DIAGNOSTIC_UNPARSEABLE_DATETIME
     unmatched = best_match.total_count - best_match.match_count
+    examples = _failing_examples(non_empty, pattern=best_match.pattern)
+    if code == DIAGNOSTIC_UNPARSEABLE_DATETIME:
+        message = (
+            f"{unmatched} of {best_match.total_count} sampled date/time value(s) could not be interpreted "
+            "using the supported formats. Review the examples below or choose a different interpreter."
+        )
+    else:
+        message = (
+            f"{unmatched} of {best_match.total_count} sampled value(s) do not match one consistent format -- "
+            "the column may mix formats or contain invalid entries. Review the examples below."
+        )
     diagnostics.append(
         TimeAxisDiagnostic(
             severity_hint=SEVERITY_WARNING,
             code=code,
-            message=f"{unmatched} of {best_match.total_count} sampled value(s) could not be parsed under a consistent format.",
+            message=message,
             suggested_action="Review the sampled values -- the column may mix formats or contain invalid entries.",
             ambiguity=AMBIGUITY_INVALID,
-            details={"matched": best_match.match_count, "sample_size": best_match.total_count, "best_candidate_order": best_order},
+            details={
+                "matched": best_match.match_count, "sample_size": best_match.total_count,
+                "best_candidate_order": best_order, "examples": examples,
+            },
         )
     )
     return TimeAxisDetectionResult(
@@ -748,13 +866,18 @@ def detect_split_date_time(
         if not time_match.is_full_match:
             unmatched = time_match.total_count - time_match.match_count
             code = DIAGNOSTIC_MIXED_DATETIME_FORMAT if time_match.match_count > 0 else DIAGNOSTIC_UNPARSEABLE_DATETIME
+            # UAT fix (2026-09-04), task D.3: concrete failing examples,
+            # not only a count -- same treatment as the DATE column's
+            # own unparseable/mixed branch above.
+            time_examples = _failing_examples(non_empty_times, pattern=time_match.pattern)
             diagnostics.append(
                 TimeAxisDiagnostic(
                     severity_hint=SEVERITY_WARNING,
                     code=code,
                     message=f"{unmatched} of {time_match.total_count} sampled Time column value(s) could not be parsed as a time-of-day.",
+                    suggested_action="Review the examples below -- the Time column may mix formats or contain invalid entries.",
                     ambiguity=AMBIGUITY_INVALID,
-                    details={"matched": time_match.match_count, "sample_size": time_match.total_count},
+                    details={"matched": time_match.match_count, "sample_size": time_match.total_count, "examples": time_examples},
                 )
             )
 

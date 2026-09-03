@@ -454,6 +454,123 @@ class TestSplitDateTime:
         assert result.diagnostics == []
 
 
+class TestTwoDigitYear:
+    """UAT fix: `3/6/26 + 18:04:00.000` (a real owner-reported source
+    shape) previously fell all the way to `unparseable_datetime` --
+    root cause was that `_DATE_PATTERNS_BY_ORDER` had NO 2-digit-year
+    (`%y`) candidate patterns at all (only `%Y`, which `strptime`
+    correctly refuses to match against a bare 2-digit token like "26").
+    This was a missing-format-family gap, not an ambiguity-detection
+    bug and not a split-date-time matching bug specifically -- both
+    `dmy` and `mdy` genuinely had ZERO matching candidates before this
+    fix, so the case never even reached the ambiguity-by-elimination
+    logic. See `app.services.time_axis_interpreters`'s own module
+    docstring for the exact 2-digit-year century rule this class
+    verifies (00-69 -> 2000-2069, 70-99 -> 1970-1999)."""
+
+    def test_owner_reported_shape_is_ambiguous_not_unparseable(self):
+        dates = _rows(["3/6/26", "3/6/26", "3/6/26"])
+        times = _rows(["18:04:00.000", "18:04:00.020", "18:04:00.040"])
+
+        result = detect_split_date_time(dates, times, requested_options={})
+
+        assert result.family == FAMILY_ABSOLUTE
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_AMBIGUOUS_DATE_ORDER in codes
+        assert DIAGNOSTIC_UNPARSEABLE_DATETIME not in codes
+        ambiguous = next(d for d in result.diagnostics if d.code == DIAGNOSTIC_AMBIGUOUS_DATE_ORDER)
+        assert ambiguous.ambiguity == AMBIGUITY_AMBIGUOUS
+        assert set(ambiguous.details["candidate_orders"]) == {"dmy", "mdy"}
+        assert result.resolved_options["date_order"] == "auto"
+        # UAT fix (task section G): specific, actionable wording --
+        # never the generic "could not be parsed" message for a value
+        # that IS viably interpretable, just not yet chosen between.
+        assert "needs confirmation" in ambiguous.message
+        assert '"3/6/26"' in ambiguous.message
+        assert "Day/Month/Year" in ambiguous.message and "Month/Day/Year" in ambiguous.message
+
+    def test_explicit_dmy_choice_resolves_to_june_third(self):
+        from app.services.time_axis_interpreters import build_split_date_time_preview
+
+        result = detect_split_date_time(
+            _rows(["3/6/26"]), _rows(["18:04:00.000"]), requested_options={"date_order": "dmy"},
+        )
+        assert result.provenance == PROVENANCE_USER_SPECIFIED
+        assert result.resolved_options["date_order"] == "dmy"
+        assert all(d.code != DIAGNOSTIC_AMBIGUOUS_DATE_ORDER for d in result.diagnostics)
+
+        preview = build_split_date_time_preview(
+            [(1, ("3/6/26", "18:04:00.000"))], resolved_options=result.resolved_options, limit=10,
+        )
+        assert preview[0][2] == "2026-06-03T18:04:00"
+
+    def test_explicit_mdy_choice_resolves_to_march_sixth(self):
+        from app.services.time_axis_interpreters import build_split_date_time_preview
+
+        result = detect_split_date_time(
+            _rows(["3/6/26"]), _rows(["18:04:00.000"]), requested_options={"date_order": "mdy"},
+        )
+        assert result.provenance == PROVENANCE_USER_SPECIFIED
+        assert result.resolved_options["date_order"] == "mdy"
+
+        preview = build_split_date_time_preview(
+            [(1, ("3/6/26", "18:04:00.000"))], resolved_options=result.resolved_options, limit=10,
+        )
+        assert preview[0][2] == "2026-03-06T18:04:00"
+
+    def test_day_over_twelve_is_unambiguous_dmy_only(self):
+        result = detect_split_date_time(
+            _rows(["13/6/26"]), _rows(["18:04:00.000"]), requested_options={},
+        )
+
+        assert result.provenance == PROVENANCE_NATIVE
+        assert result.resolved_options["date_order"] == "dmy"
+        assert all(d.code != DIAGNOSTIC_AMBIGUOUS_DATE_ORDER for d in result.diagnostics)
+
+    def test_dash_separated_two_digit_year_also_supported(self):
+        result = detect_split_date_time(
+            _rows(["13-6-26"]), _rows(["18:04:00.000"]), requested_options={},
+        )
+
+        assert result.resolved_options["date_order"] == "dmy"
+        assert all(d.code != DIAGNOSTIC_AMBIGUOUS_DATE_ORDER for d in result.diagnostics)
+
+    def test_zero_padded_two_digit_year_supported(self):
+        result = detect_split_date_time(
+            _rows(["13/06/26"]), _rows(["18:04:00.000"]), requested_options={},
+        )
+
+        assert result.resolved_options["date_order"] == "dmy"
+
+    def test_century_pivot_00_to_69_maps_to_2000s(self):
+        from app.services.time_axis_interpreters import parse_absolute_datetime
+
+        assert parse_absolute_datetime("1/1/00", date_order="dmy").year == 2000
+        assert parse_absolute_datetime("1/1/69", date_order="dmy").year == 2069
+
+    def test_century_pivot_70_to_99_maps_to_1900s(self):
+        from app.services.time_axis_interpreters import parse_absolute_datetime
+
+        assert parse_absolute_datetime("1/1/70", date_order="dmy").year == 1970
+        assert parse_absolute_datetime("1/1/99", date_order="dmy").year == 1999
+
+    def test_genuinely_malformed_value_remains_a_real_parsing_failure(self):
+        result = detect_split_date_time(
+            _rows(["not-a-date"]), _rows(["18:04:00.000"]), requested_options={},
+        )
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_UNPARSEABLE_DATETIME in codes
+        assert DIAGNOSTIC_AMBIGUOUS_DATE_ORDER not in codes
+        # UAT fix (task section G/D.3): the genuine-failure wording
+        # mentions "supported formats" (never "needs confirmation") and
+        # carries concrete failing examples, not only a count.
+        unparseable = next(d for d in result.diagnostics if d.code == DIAGNOSTIC_UNPARSEABLE_DATETIME)
+        assert "supported formats" in unparseable.message
+        assert "needs confirmation" not in unparseable.message
+        assert unparseable.details["examples"] == [{"row_number": 1, "value": "not-a-date"}]
+
+
 class TestSplitDateTimeTimingIrregularities:
     """(Slice 8D) Timing-quality analysis runs over the COMBINED
     date+time value per row, never the date-only column's own value

@@ -9,11 +9,14 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-03**. CSV/Excel ingestion Slice 12
-(cleaned data export — see
-[Implemented capabilities](#implemented-capabilities)) is now complete:
-the current Working Dataset can be exported as a cleaned CSV/Excel file
-plus a provenance manifest, regardless of Powerwave readiness.
+Last meaningful update: **2026-09-04**. A UAT fix to the Slice 8A
+absolute/split-date-time interpreters: 2-digit years (`3/6/26`,
+`03-06-26`, etc.) are now recognized for `dmy`/`mdy` date orders, and a
+genuinely ambiguous-but-viable date reads as "Date format needs
+confirmation" (not a generic parse failure) — see
+[Implemented capabilities](#implemented-capabilities). CSV/Excel
+ingestion Slice 12 (cleaned data export, 2026-09-03) remains the
+current end of the implemented slice sequence.
 
 ## Current status
 
@@ -419,6 +422,27 @@ re-confirmed by the TG-FINAL audit):
   fields and a Detect → review ambiguity → preview → Confirm flow. See
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 8](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
   for the full implementation summary.
+
+  **`[UAT FIX, 2026-09-04]`** a real owner-reported source
+  (`3/6/26`+`18:04:00.000`, Date + Time) previously fell all the way to
+  a generic "could not be parsed" failure — root cause: the date-order
+  pattern table had NO 2-digit-year (`%y`) candidate at all, only
+  4-digit-year, so `strptime` genuinely rejected every candidate before
+  ever reaching the ambiguity-by-elimination logic above. Fixed:
+  `dmy`/`mdy` (not `ymd` — no reported example uses a year-first
+  2-digit shape) gained `%y` candidates, with an explicit century rule
+  (`00-69 -> 2000-2069`, `70-99 -> 1970-1999`) applied as one documented
+  post-hoc correction to Python's own native `%y` inference (which
+  differs by exactly one value, `69`). `3/6/26` now correctly reaches
+  the EXISTING `ambiguous_date_order`/`review_required` mechanism above
+  — zero new ambiguity system. Diagnostic wording was also sharpened:
+  a viable-but-undecided reading now says "Date format needs
+  confirmation... Choose the intended date order below" (never the
+  generic failure wording), and a genuinely unsupported reading now
+  names up to 5 concrete failing `(row_number, value)` examples in its
+  own `details`, rendered by the existing Time Axis diagnostics list.
+  See `docs/project-memory/CSV_EXCEL_TIME_INTERPRETATION.md`'s own
+  Slice 8A section for the full account.
 
   **Slice 8B** (2026-09-02) implements the next two of Slice 8's five
   proposed initial interpreters — elapsed numeric time and sample

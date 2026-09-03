@@ -4,9 +4,111 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-03**
+Last updated: **2026-09-04**
 
 ## What was most recently done
+
+**UAT Fix — Make Time-Axis Parsing Failures Actionable (implemented).**
+Owner UAT reported that a real source shape (`3/6/26` +
+`18:04:00.000`, via Date + Time) produced a generic "50 of 50 sampled
+value(s) could not be parsed under a consistent format." message with
+no actionable next step. Root cause, confirmed by direct reproduction
+BEFORE any fix was written: `app.services.time_axis_interpreters.
+_DATE_PATTERNS_BY_ORDER` had NO 2-digit-year (`%y`) candidate pattern
+at all for any date order — only 4-digit-year (`%Y`), which `strptime`
+correctly refuses to match against a bare 2-digit token like `"26"`.
+This was a missing-format-family gap, not an ambiguity-detection bug
+and not a split-date-time-specific bug — every candidate order
+genuinely had zero matches, so the case never reached the EXISTING
+`ambiguous_date_order`/`review_required` mechanism (built in Slice 8A)
+at all.
+
+**Fix**: `_DATE_PATTERNS_BY_ORDER` gained `%d/%m/%y`/`%d-%m-%y` (`dmy`)
+and `%m/%d/%y`/`%m-%d-%y` (`mdy`) candidates — deliberately NOT for
+`ymd` (no reported/example source uses a year-first 2-digit shape, and
+adding one would risk spurious matches against unrelated short numeric
+sequences like a `sample_index` column). Explicit, documented 2-digit-
+year century rule for this application: **`00-69 -> 2000-2069`, `70-99
+-> 1970-1999`** — Python's own native `%y` strptime inference differs
+from this by exactly one value (`69`: Python says `1969`, this
+application wants `2069`), so `_parse_with_pattern()` applies one
+explicit post-hoc correction rather than silently deferring to Python's
+own slightly different pivot. With the fix, `3/6/26` now correctly
+reaches the SAME existing ambiguity mechanism every other ambiguous
+date already used (`01/02/2026` and its own kind) — zero new ambiguity
+system, per the task's own explicit "reuse the existing mechanism"
+instruction.
+
+**Diagnostic wording sharpened** to distinguish the three user-facing
+states the task introduced: a viable-but-undecided reading now reads
+`Date format needs confirmation. The value "3/6/26" can be interpreted
+as Day/Month/Year or Month/Day/Year. Choose the intended date order
+below.` (never the generic parse-failure wording); a genuinely
+unsupported reading now reads `N of N sampled date/time value(s) could
+not be interpreted using the supported formats. Review the examples
+below or choose a different interpreter.` and its own diagnostic
+`details` gained a bounded (≤5) `examples` list of real `(row_number,
+value)` failing pairs, rendered by the EXISTING Time Axis diagnostics
+list in the frontend (purely additive — small CSS/JS addition, no new
+panel).
+
+**Zero new frontend mechanism was needed** for the "Needs confirmation"
+UX itself — the DMY/MDY radio-button chooser, the live dry-run preview,
+and the "resolve → readiness clears" flow were ALL already fully built
+in Slice 8A; they simply never activated for this input because the
+backend never reached the ambiguity branch at all. This is a clean
+confirmation of the "no second ambiguity system" design the original
+Slice 8A task already established.
+
+**Readiness interaction unchanged (by design)**: unresolved ambiguity
+was ALREADY blocking via the existing `time_axis_unresolved` issue
+(triggered by `STATUS_REVIEW_REQUIRED`, which routes through BEFORE
+any diagnostic-code promotion table is even consulted) — confirmed by
+inspection and by a new service-level test, not assumed. Zero changes
+to `app/services/readiness_service.py` were needed or made.
+
+**Data preservation confirmed**: date-order selection is interpretation
+metadata only (`WorkingOverlay.time_axis`), never touches
+`WorkingOverlay.cell_overrides` or `PreparationSession.raw_bytes` —
+verified directly (byte-for-byte raw/overlay comparison before and
+after resolving the ambiguity, both at the service-test level and live
+in the browser UAT).
+
+**Files changed**: `backend/app/services/time_axis_interpreters.py`
+(2-digit-year patterns, century-correction helper, sharpened
+diagnostic wording, bounded failing-examples helper), `frontend/
+index.html` (renders `details.examples` when present). Extended
+`backend/tests/test_time_axis_interpreters.py` (new `TestTwoDigitYear`
+class, 9 tests) and `backend/tests/test_time_axis_service.py` (new
+`TestTwoDigitYearUatFixServiceLevel` class, 2 tests). No backend API/
+schema changes, no readiness-policy changes.
+
+**Verified**: full backend suite 2676 passed (11 new: 9 pure-
+interpreter + 2 service-level), zero regressions, including zero
+regressions across every previously-supported absolute-date case (ISO,
+4-digit DMY/MDY/YMD, AM/PM, fractional seconds, timezone offsets, Z
+suffix, split Date + Time); the committed browser smoke test (COMTRADE)
+still passes unchanged with zero console/page errors; a throwaway (not
+committed) live-browser Playwright UAT confirmed the EXACT owner-
+reported scenario end-to-end: Date + Time interpreter with columns A
+(date) and B (time) → Detect → "Date format needs confirmation" wording
+(never the generic failure) with both DD/MM/YYYY and MM/DD/YYYY choices
+shown → Save while still unresolved → `time_axis_unresolved` correctly
+blocking (`is_ready: false`) → selecting DMY shows a live preview of
+`2026-06-03` → Save with DMY + Confirmed → `time_axis_unresolved`
+clears → the raw/working `"3/6/26"` cell text is byte-for-byte
+unchanged throughout — all with zero console/page errors.
+
+**Next step**: no new slice was opened by this fix — Slice 13
+(progressive automation) remains the next unauthorized item, per
+[Change governance](../../CLAUDE.md#change-governance).
+
+**Commit status**: not committed — per this task's own explicit closing
+instruction ("Do not commit or push unless explicitly asked"), all of
+the above are normal uncommitted working-tree changes pending a
+separate, explicit commit instruction.
+
+## What was done in the prior session — CSV/Excel Ingestion Slice 12: Cleaned Data Export
 
 **CSV/Excel Ingestion Slice 12 — Cleaned Data Export (implemented).**
 Owner-authorized implementation of export of the current Working

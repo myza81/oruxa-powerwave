@@ -1179,6 +1179,65 @@ future interpreter addition (§17), not a Slice 8 commitment.
 as scoped, as `absolute_datetime`/`split_date_time` in
 `app.services.time_axis_interpreters`.
 
+**`[DONE, 2026-09-04]` UAT fix — 2-digit years and actionable
+parsing-failure wording**: owner UAT reported that a real source shape
+(`3/6/26` + `18:04:00.000`, via Date + Time) produced a generic "50 of
+50 sampled value(s) could not be parsed under a consistent format."
+message with no actionable next step. Root cause, confirmed by direct
+reproduction before any fix was written: `_DATE_PATTERNS_BY_ORDER` had
+NO 2-digit-year (`%y`) candidate pattern at all for any order — only
+4-digit-year (`%Y`) patterns, which `strptime` correctly refuses to
+match against a bare 2-digit token like `"26"`. This was a missing-
+format-family gap, not an ambiguity-detection bug and not a split-
+date-time-specific bug -- every candidate order genuinely had zero
+matches, so the case never even reached this section's own §6
+ambiguity-by-elimination logic.
+
+**Fix**: `_DATE_PATTERNS_BY_ORDER` gained `%d/%m/%y`/`%d-%m-%y`
+(`dmy`) and `%m/%d/%y`/`%m-%d-%y` (`mdy`) candidates — deliberately
+NOT added for `ymd` (a 2-digit-year-FIRST format is not among any
+example this document or the owner ever gave, and would risk spurious
+matches against unrelated short numeric sequences, e.g. a
+`sample_index`-like column). The explicit, documented 2-digit-year
+century rule for this application: **`00-69 -> 2000-2069`, `70-99 ->
+1970-1999`** — Python's own native `%y` strptime inference is ALMOST
+this rule (it pivots at 68/69: `00-68 -> 2000-2068`, `69-99 ->
+1969-1999`, verified directly), differing at exactly one value (a
+2-digit year of `69`); rather than silently defer to Python's own
+slightly different pivot, `_parse_with_pattern()` applies one explicit
+post-hoc correction (a parsed year of `1969` -- which `%y` only ever
+produces from a literal `69` token -- is corrected to `2069`) so this
+application's own stated boundary holds exactly. Every other 2-digit
+value already agreed between the two conventions before this
+correction.
+
+With the fix, `3/6/26` + `18:04:00.000` now correctly reaches this
+section's own existing `ambiguous_date_order` mechanism (BOTH `dmy` and
+`mdy` are genuinely full matches for every sampled row) -- exactly the
+outcome this document's own §6 already specifies for a genuinely
+ambiguous non-ISO date, with ZERO new ambiguity mechanism introduced
+(the EXISTING `date_order` resolution flow, already fully built in
+Slice 8A/8B's own frontend UI, handles it automatically once the
+backend produces the right diagnostic). Diagnostic wording was also
+sharpened to distinguish the three user-facing states this task
+introduced: a viable-but-undecided reading now reads "Date format needs
+confirmation. The value \"X\" can be interpreted as Day/Month/Year or
+Month/Day/Year. Choose the intended date order below." (never the
+generic parse-failure wording); a genuinely unsupported reading now
+reads "N of N sampled date/time value(s) could not be interpreted
+using the supported formats. Review the examples below or choose a
+different interpreter." and its own `TimeAxisDiagnostic.details`
+gained a bounded (≤5) `examples` list of real `(row_number, value)`
+pairs that failed to match the best-explaining candidate, so the UI can
+show concrete failing rows rather than only a count — rendered by the
+EXISTING diagnostics list in the Time Axis panel, purely additive, no
+new panel. This fix stays entirely within Slice 8A's own already-
+documented scope (no new interpreter, no new ambiguity mechanism, no
+readiness-policy change), so `CSV_EXCEL_INGESTION_ARCHITECTURE.md` was
+not touched. See `backend/tests/test_time_axis_interpreters.py::
+TestTwoDigitYear` and `backend/tests/test_time_axis_service.py::
+TestTwoDigitYearUatFixServiceLevel` for the regression coverage.
+
 **`[DONE, 2026-09-02]` Slice 8B implementation note**: items 3-4 above
 (elapsed numeric time, sample index) are ALSO implemented exactly as
 scoped, as `elapsed_numeric`/`sample_index` in the SAME

@@ -595,6 +595,85 @@ class TestSplitDateTimeSetAndGet:
             )
 
 
+class TestTwoDigitYearUatFixServiceLevel:
+    """UAT fix (2026-09-04): the exact owner-reported source shape,
+    exercised through the real service (not just the pure interpreter
+    functions already covered in test_time_axis_interpreters.py) --
+    confirms readiness blocks the unresolved ambiguity and clears once
+    the engineer explicitly picks a date order, and that neither the
+    raw source nor the working overlay's own cell values are ever
+    touched merely by that choice (task sections I/J)."""
+
+    def test_owner_scenario_blocks_readiness_until_date_order_chosen(self):
+        from app.services.preparation_issue_service import build_issue_summary
+
+        registry = PreparationSessionRegistry()
+        content = (
+            b"3/6/26,18:04:00.000,1.0\n"
+            b"3/6/26,18:04:00.020,2.0\n"
+            b"3/6/26,18:04:00.040,3.0\n"
+        )
+        source_id = _add_csv(registry, content)
+        _mark_time_axis(registry, source_id, 0, 1)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=2, role="waveform", registry=registry)
+
+        detected = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0, 1),
+            interpreter_id=INTERPRETER_ID_SPLIT_DATE_TIME, registry=registry,
+        )
+        assert detected.status == STATUS_REVIEW_REQUIRED
+        assert any(d.code == DIAGNOSTIC_AMBIGUOUS_DATE_ORDER for d in detected.diagnostics)
+
+        before_issues = build_issue_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert before_issues.is_ready is False
+        assert any(i.code == "time_axis_unresolved" for i in before_issues.issues if i.severity == "blocking")
+
+        raw_bytes_before = registry.get("ws-1", source_id).raw_bytes
+        overlay_before = dict(registry.get("ws-1", source_id).working_overlay.cell_overrides)
+
+        resolved = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0, 1),
+            interpreter_id=INTERPRETER_ID_SPLIT_DATE_TIME, options={"date_order": "dmy"},
+            confirmed=True, registry=registry,
+        )
+        assert resolved.status == STATUS_CONFIRMED
+        assert resolved.provenance == PROVENANCE_USER_SPECIFIED
+        assert all(d.code != DIAGNOSTIC_AMBIGUOUS_DATE_ORDER for d in resolved.diagnostics)
+
+        after_issues = build_issue_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert after_issues.is_ready is True
+        assert after_issues.blocking_count == 0
+
+        session = registry.get("ws-1", source_id)
+        assert session.raw_bytes == raw_bytes_before
+        assert session.working_overlay.cell_overrides == overlay_before
+
+    def test_dmy_and_mdy_choices_produce_the_correct_distinct_interpretations(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"3/6/26,18:04:00.000\n")
+        _mark_time_axis(registry, source_id, 0, 1)
+
+        dmy_preview = interpret_time_axis(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0, 1),
+            interpreter_id=INTERPRETER_ID_SPLIT_DATE_TIME, options={"date_order": "dmy"}, registry=registry,
+        )
+        assert dmy_preview.preview_rows[0].interpreted == "2026-06-03T18:04:00"
+
+        mdy_preview = interpret_time_axis(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0, 1),
+            interpreter_id=INTERPRETER_ID_SPLIT_DATE_TIME, options={"date_order": "mdy"}, registry=registry,
+        )
+        assert mdy_preview.preview_rows[0].interpreted == "2026-03-06T18:04:00"
+
+        resolved = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0, 1),
+            interpreter_id=INTERPRETER_ID_SPLIT_DATE_TIME, options={"date_order": "mdy"},
+            confirmed=True, registry=registry,
+        )
+        assert resolved.status == STATUS_CONFIRMED
+        assert resolved.options["date_order"] == "mdy"
+
+
 class TestInterpretTimeAxisDryRun:
     def test_dry_run_does_not_store_anything(self):
         registry = PreparationSessionRegistry()

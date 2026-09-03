@@ -948,6 +948,11 @@
            own .ww-data-prep-issue-item above, new selector only. */
         .ww-data-prep-time-axis-diagnostics { margin: 0 0 10px; padding-left: 18px; font-size: 0.85rem; }
         .ww-data-prep-time-axis-diagnostics li { margin-bottom: 4px; }
+        /* UAT fix (2026-09-04): representative failing-row examples
+           (task section D.3) -- compact, indented, dimmed, never a
+           second permanent panel. */
+        .ww-data-prep-time-axis-diagnostic-examples { margin: 2px 0 0; padding-left: 16px; font-size: 0.78rem; color: var(--text-dim); }
+        .ww-data-prep-time-axis-diagnostic-examples li { margin-bottom: 0; }
         .ww-cc-subtitle { margin: 3px 0 0; color: var(--text-dim); font-size: 0.85rem; }
         .ww-cc-panel { padding: 16px; }
         .ww-cc-panel h3 { margin: 0 0 12px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
@@ -7986,9 +7991,22 @@
             }
             summaryEl.textContent = "Detected: " + familyLabel + " · Confidence: " + confidenceLabel + formatText + timingText + precisionLossText;
 
+            // UAT fix (2026-09-04), task section D.3: show representative
+            // failing rows (backend's own `details.examples`, bounded to
+            // a handful) rather than only the count already baked into
+            // the diagnostic's own message text -- purely additive, only
+            // rendered when the backend actually provided examples.
             const diagnostics = detection.diagnostics || [];
             diagnosticsEl.innerHTML = diagnostics.length
-                ? diagnostics.map((d) => "<li>" + escapeHtml(d.message) + "</li>").join("")
+                ? diagnostics.map((d) => {
+                    const examples = (d.details && d.details.examples) || [];
+                    const examplesHtml = examples.length
+                        ? '<ul class="ww-data-prep-time-axis-diagnostic-examples">' +
+                          examples.map((ex) => "<li>Row " + ex.row_number + ": " + escapeHtml(String(ex.value)) + "</li>").join("") +
+                          "</ul>"
+                        : "";
+                    return "<li>" + escapeHtml(d.message) + examplesHtml + "</li>";
+                }).join("")
                 : "";
 
             // The date-order radio group is shown ONLY for the specific
