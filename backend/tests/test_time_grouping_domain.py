@@ -7,7 +7,7 @@ covers the ActiveSource/registry-aware layer built on top of this one.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -311,3 +311,49 @@ class TestMissingStartTimeDefensiveFallback:
         assert len(groups) == 2
         by_id = {g.group_id: g for g in groups}
         assert by_id["B"].source_ids == ["B"]
+
+
+class TestMixedTimezoneAwarenessIntegration:
+    """CSV/Excel ingestion Slice 11 (DEC-072): a converted CSV/Excel
+    absolute source may carry a genuinely timezone-AWARE `start_time`
+    (Slice 10 preserves a real declared offset) while a COMTRADE source
+    is always naive -- mixing the two previously raised `TypeError`
+    (Python refuses to compare/subtract aware vs naive datetimes). This
+    is the regression test for that fix (`normalize_absolute_datetime()`
+    in this module)."""
+
+    def test_naive_and_aware_absolute_sources_do_not_crash(self):
+        naive = T0
+        aware = T0.replace(tzinfo=timezone(timedelta(hours=8)))
+        groups = derive_time_groups([
+            _abs_source("comtrade", start=naive),
+            _abs_source("csv", start=aware),
+        ])
+        assert {g.group_id for g in groups} == {"comtrade", "csv"}
+
+    def test_two_aware_sources_representing_the_same_instant_still_overlap(self):
+        # 10:00 UTC and 18:00+08:00 are the SAME true instant.
+        utc_source = datetime(2026, 3, 6, 10, 0, 0, tzinfo=timezone.utc)
+        plus8_source = datetime(2026, 3, 6, 18, 0, 0, tzinfo=timezone(timedelta(hours=8)))
+        groups = derive_time_groups([
+            _abs_source("a", start=utc_source),
+            _abs_source("b", start=plus8_source),
+        ])
+        assert len(groups) == 1
+        assert set(groups[0].source_ids) == {"a", "b"}
+
+    def test_naive_treated_as_utc_never_changes_pure_naive_behavior(self):
+        # Every existing (pre-Slice-10) COMTRADE-only workspace is
+        # entirely naive datetimes -- confirms the fix is a no-op there.
+        groups_before_reasoning = derive_time_groups([
+            _abs_source("a", start=T0),
+            _abs_source("b", start=T0 + timedelta(seconds=1)),
+        ])
+        assert len(groups_before_reasoning) == 1
+        assert set(groups_before_reasoning[0].source_ids) == {"a", "b"}
+
+    def test_timestamp_placement_offset_handles_mixed_awareness(self):
+        naive_origin = T0
+        aware_source = T0.replace(tzinfo=timezone.utc) + timedelta(seconds=5)
+        offset = timestamp_placement_offset_s(source_start_time=aware_source, origin_start_time=naive_origin)
+        assert offset == pytest.approx(5.0)

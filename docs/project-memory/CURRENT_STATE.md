@@ -9,11 +9,13 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-03**. CSV/Excel ingestion Slice 10
-(canonical `DisturbanceRecord` conversion — see
-[Implemented capabilities](#implemented-capabilities)) is now implemented:
-a Ready prepared CSV/Excel source can convert into a real Powerwave
-source and open in the existing waveform workflow.
+Last meaningful update: **2026-09-03**. CSV/Excel ingestion Slice 11
+(existing-waveform-integration verification — see
+[Implemented capabilities](#implemented-capabilities)) is now complete:
+a Slice-10-converted CSV/Excel source is confirmed to behave like any
+other Powerwave source across Time Groups, synchronization, and
+calculated channels, and two pre-existing (COMTRADE-era) timezone-
+awareness defects this verification pass exposed have been fixed.
 
 ## Current status
 
@@ -25,11 +27,10 @@ COMTRADE upload/parse/browse, the app now has a full multi-source,
 multi-panel waveform workspace with Time-Group-aware synchronization,
 cursors, t0, annotations, a group-aware Per-Unit measurement model,
 calculated channels, and digital-channel display. CSV/Excel ingestion is
-the current workstream — Slices 1-10 (raw preparation-source upload
-through the Full Powerwave Readiness Validator and now canonical
-`DisturbanceRecord` conversion into a real Powerwave source) are
-implemented; existing-waveform-integration verification, export, and
-progressive automation (Slices 11-13) are not (see
+the current workstream — Slices 1-11 (raw preparation-source upload
+through canonical `DisturbanceRecord` conversion and existing-waveform-
+integration verification) are implemented; cleaned-data export and
+progressive automation (Slices 12-13) are not (see
 [Current next workstream](#current-next-workstream)).
 
 ## Architecture
@@ -187,8 +188,9 @@ re-confirmed by the TG-FINAL audit):
   critical upload/render/interaction paths — see
   [docs/development/BROWSER_SMOKE_TEST.md](../development/BROWSER_SMOKE_TEST.md).
 - **CSV/Excel preparation-source upload through canonical
-  `DisturbanceRecord` conversion into a real Powerwave source (CSV/Excel
-  ingestion Slices 1-10, DEC-072)**:
+  `DisturbanceRecord` conversion, verified to behave like any other
+  Powerwave source across Time Groups/synchronization/calculated
+  channels (CSV/Excel ingestion Slices 1-11, DEC-072)**:
   the Upload Recording modal's CSV and
   Excel options are both enabled (`RECORDING_FORMATS`,
   `frontend/index.html`), each with its own "Upload & Prepare" action,
@@ -636,9 +638,88 @@ re-confirmed by the TG-FINAL audit):
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 10](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
   for the full implementation summary.
 
-  Existing-waveform-integration verification, export, and progressive
-  automation (Slices 11-13) are still explicitly NOT part of any slice
-  implemented so far — see
+  **Slice 11** (2026-09-03) implements existing-waveform-integration
+  VERIFICATION — zero-new-feature bias: proves a Slice-10-converted
+  CSV/Excel source behaves like any other Powerwave source across Time
+  Groups, synchronization, and calculated channels, fixing production
+  code ONLY where an integration defect was actually demonstrated (per
+  this slice's own "observed failure → is conversion wrong? → is
+  downstream code unnecessarily COMTRADE-specific? → minimally
+  generalize" decision sequence). Verified via a new
+  `tests/test_slice11_waveform_integration.py` (24 tests): converted-
+  source waveform open/range-fetch/cursor-values; multiple converted
+  sources (CSV+CSV, CSV+Excel) coexisting independently; COMTRADE +
+  converted-CSV coexistence with COMTRADE completely unaffected;
+  absolute+absolute Time Group overlap, absolute+elapsed staying
+  separate, two elapsed sources each singleton, `partial`-family
+  correctly `elapsed_only`; synchronization alignment views (including
+  `trigger_time=None`) raising no exceptions; same-source and aligned
+  cross-source calculated-channel Addition; cross-source rejection with
+  zero resampling for both an elapsed-vs-absolute mismatch and a
+  genuinely-different absolute-start mismatch; irregular-timing
+  range-fetch preserving the true time array with no fabricated uniform
+  rate; `preparation_provenance` surviving a `WorkspaceRegistry`
+  round-trip; convert→open→remove→reopen lifecycle coherence with
+  calculated-channel removal cascade; repeated-conversion idempotency
+  re-confirmed at this layer; a 50,000-row source converting in well
+  under a second with its display range-fetch still using the existing
+  min/max-envelope reduction.
+
+  **Two real production defects were found and fixed** (both in
+  PRE-EXISTING code, not in Slice 10's own conversion logic, and both
+  reproduced by a minimal script BEFORE any fix was written): `app.
+  domain.time_grouping` and `app.services.calculated_channel_service`
+  implicitly assumed every absolute source's `start_time` shared the
+  same naive/timezone-aware status — true by construction while COMTRADE
+  was the only absolute-time producer (`app.providers.comtrade` never
+  attaches a timezone), false the moment a Slice-10-converted CSV/Excel
+  source can honestly preserve a real declared timezone offset. (1) A
+  genuine crash — `TypeError: can't compare offset-naive and
+  offset-aware datetimes` — from `time_grouping.py`'s own interval-
+  overlap comparison and placement-offset subtraction, reachable by any
+  workspace mixing one naive absolute source (COMTRADE, or a
+  timezone-unspecified CSV/Excel one) with one genuinely timezone-aware
+  CSV/Excel absolute source; this would 500 `GET .../synchronization/
+  time-groups` and every other Time-Group-aware endpoint. (2) A silent,
+  SERVER-TIMEZONE-DEPENDENT correctness defect in `calculated_channel_
+  service._source_start_epoch()`, which called the naive
+  `datetime.timestamp()` directly (interpreting a naive value as the
+  server's own local system timezone) — harmless while both compared
+  sources were always naive COMTRADE (the arbitrary offset cancels out
+  in the difference), but silently wrong and non-deterministic across
+  deployment environments once one side is a genuinely timezone-aware
+  converted source; this could have silently accepted a misaligned
+  cross-source calculated channel or rejected an aligned one, depending
+  purely on the backend server's own local timezone. Fix for both: one
+  new pure function, `app.domain.time_grouping.normalize_absolute_
+  datetime()` — an aware value's real declared offset is honored
+  untouched; a naive value is labelled UTC without converting its
+  wall-clock numbers, purely so it becomes comparable — applied at
+  every point an absolute `start_time` enters comparison/arithmetic in
+  both modules. For the previously-only-reachable all-naive (pure
+  COMTRADE) case this is a verified no-op: every value gets the
+  identical label, so every comparison/subtraction result is
+  numerically unchanged. Regression coverage: `TestMixedTimezone
+  AwarenessIntegration` in `tests/test_time_grouping_domain.py` and
+  `TestMixedTimezoneAwarenessCrossSourceAlignment` in
+  `tests/test_calculated_channel_service.py`.
+
+  Zero new `if source_format == "CSV"/"Excel"` branches exist anywhere
+  in `waveform_service.py`, `synchronization_service.py`,
+  `time_grouping.py`, or `calculated_channel_service.py` (grepped
+  directly). No resampling, interpolation, new synchronization
+  algorithm, new calculated-channel operation, new Time Group policy,
+  or new readiness policy was added. `preparation_provenance` remains a
+  domain-layer-only (`SourceMetadata`) field, deliberately NOT exposed
+  via `SourceSummaryOut` or any other waveform-facing schema this slice
+  — a legitimate deferred item, not a defect (this slice's own task
+  explicitly says downstream waveform services need not understand
+  preparation internals). See
+  [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 11](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
+  for the full implementation summary.
+
+  Cleaned-data export and progressive automation (Slices 12-13) are
+  still explicitly NOT part of any slice implemented so far — see
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md §14](CSV_EXCEL_INGESTION_ARCHITECTURE.md).
 
 ## Known intentional constraints / deferred items
@@ -725,13 +806,15 @@ diagnostic-only normalization layer over Slices 8A-8C's own irregular-
 timing conditions, never a new interpreter, never readiness policy),
 Slice 9 (the Full Powerwave Readiness Validator -- the REAL
 `blocking`/`warning`/`info` policy Slice 6 always deferred, see above),
-and Slice 10 (canonical `DisturbanceRecord` conversion -- see above for
-the full summary) are now implemented. Slices 11–13 (existing waveform
-integration verification, export, and progressive automation) remain
-unimplemented and require their own explicit owner go-ahead before
-starting, per [Change governance](../../CLAUDE.md#change-governance) —
-being recorded in the architecture document's own slice sequence does
-not itself authorize starting any of them.
+Slice 10 (canonical `DisturbanceRecord` conversion), and Slice 11
+(existing-waveform-integration verification, including two real
+timezone-awareness defects found and fixed -- see above for the full
+summary) are now implemented. Slices 12–13 (cleaned-data export and
+progressive automation) remain unimplemented and require their own
+explicit owner go-ahead before starting, per
+[Change governance](../../CLAUDE.md#change-governance) — being recorded
+in the architecture document's own slice sequence does not itself
+authorize starting any of them.
 
 **`[DESIGN COMPLETE, 2026-09-01]`**: the Slice 7/8
 design specification —

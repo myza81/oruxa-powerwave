@@ -1919,10 +1919,128 @@ owner go-ahead before implementation begins.
     this file for `#workspaceRow[hidden]` -- was caught and fixed by
     this exact UAT run); a not-ready source's failed conversion attempt
     leaves the preparation source fully intact afterward.
-11. **Existing waveform integration.** Normal existing Powerwave
-    behavior — plotting, source handling, Time Groups, synchronization,
-    calculated-channel compatibility, measurement/per-unit compatibility
-    where applicable. No weakening of existing rules (principle 5).
+11. **`[DONE, 2026-09-03]` Existing waveform integration verification.**
+    Zero-new-feature bias, per this slice's own explicit governing
+    principle: proves a Slice-10-converted CSV/Excel source behaves like
+    any other Powerwave source across the existing waveform/Time-Group/
+    synchronization/calculated-channel stack, WITHOUT adding a new
+    feature -- only fixing a defect if one is actually demonstrated.
+
+    **Verification matrix** (all confirmed working, zero-new-code, via
+    `tests/test_slice11_waveform_integration.py`): CSV waveform open/
+    channel-listing/range-fetch/cursor-values; Excel waveform open
+    (same code path, format-agnostic); multiple converted sources
+    coexisting (CSV+CSV, CSV+Excel) with independent removal; COMTRADE +
+    converted-CSV coexistence with COMTRADE completely unaffected;
+    absolute+absolute Time Group overlap grouping; absolute+elapsed
+    staying separate (non-absolute never force-grouped); two elapsed
+    sources each getting their own singleton; a `partial`-family source
+    correctly classified `elapsed_only`; synchronization alignment views
+    for a converted absolute source (including the reference-source
+    zero-offset rule and a `trigger_time=None` composition, both
+    exception-free); same-source calculated-channel Addition on two
+    converted waveform columns; cross-source calculated-channel Addition
+    between two absolute conversions with identical true timing;
+    cross-source rejection (`IncompatibleTimeBaseError`, zero
+    resampling/interpolation, zero orphaned registry state) for an
+    elapsed CSV vs. an absolute COMTRADE source, and for two absolute
+    CSV sources with genuinely different start times; irregular-timing
+    range-fetch preserving the true per-sample time array (never a
+    fabricated uniform rate) including through a same-source calculated
+    channel; `preparation_provenance` surviving a full
+    `WorkspaceRegistry` round-trip; convert→open→remove→reopen lifecycle
+    coherence with a calculated-channel removal cascade; repeated
+    conversion of an already-converted (now-gone) preparation source
+    still 404ing (Slice 10's own idempotency, re-confirmed at this
+    layer); a 50,000-row converted source completing conversion in well
+    under a second and its display range-fetch still engaging the
+    EXISTING min/max-envelope reduction (never handed the full dataset).
+
+    **Two production defects found and fixed** -- both demonstrated by
+    reproduction BEFORE any fix was written, per this slice's own
+    "Observed downstream failure → is conversion wrong? → is downstream
+    code unnecessarily COMTRADE-specific? → minimally generalize"
+    decision sequence. Root cause of both: `app.domain.time_grouping`
+    and `app.services.calculated_channel_service` implicitly assumed
+    every absolute source's `start_time` shared the same tzinfo
+    awareness -- true by construction for COMTRADE alone (`app.
+    providers.comtrade` never attaches a timezone, always naive), but no
+    longer true once Slice 10 can honestly preserve a CSV/Excel source's
+    real, timezone-AWARE declared offset (task's own explicit
+    requirement: "do not lose timezone/offset information when
+    present"). Conversion itself was NOT wrong; the pre-existing
+    downstream code was unnecessarily naive-only.
+
+    1. **Crash**: mixing one naive-`start_time` absolute source (any
+       COMTRADE recording, or a timezone-unspecified CSV/Excel one) with
+       one timezone-AWARE absolute source in the same workspace raised
+       `TypeError: can't compare offset-naive and offset-aware
+       datetimes` from `app.domain.time_grouping`'s own interval-overlap
+       comparison and `timestamp_placement_offset_s()` subtraction --
+       reproduced directly with a two-line synthetic-tuple script before
+       any fix existed. This meant `GET .../synchronization/time-groups`
+       (and every other Time-Group-aware endpoint) would 500 for ANY
+       workspace mixing a genuinely-offset CSV/Excel absolute source
+       with a COMTRADE recording.
+       **Fix**: new `app.domain.time_grouping.normalize_absolute_
+       datetime()` -- an already timezone-aware value is returned
+       completely untouched (its real declared offset is honored); a
+       naive value (no declared offset at all) is labelled UTC WITHOUT
+       converting its wall-clock numbers, purely so it becomes
+       comparable -- applied at the two points `start_time` values enter
+       comparison/arithmetic (`derive_time_groups()`'s own `_AbsoluteSource`
+       construction, `timestamp_placement_offset_s()`). For the
+       previously-only-reachable all-naive case (pure COMTRADE, or
+       COMTRADE + a timezone-unspecified CSV source), every value gets
+       the identical UTC label, so every comparison/subtraction result
+       is numerically IDENTICAL to before this fix -- verified by
+       `TestMixedTimezoneAwarenessIntegration.
+       test_naive_treated_as_utc_never_changes_pure_naive_behavior` in
+       `tests/test_time_grouping_domain.py`.
+    2. **Silent, non-deterministic correctness defect**: `app.services.
+       calculated_channel_service._source_start_epoch()` called the
+       naive `datetime.timestamp()` directly, which interprets a naive
+       value as the SERVER's own local system timezone -- harmless (if
+       accidental) while every absolute source was COMTRADE (both sides
+       of any comparison got the identical, if arbitrary, offset, which
+       cancels out in a difference), but SILENTLY WRONG and
+       platform/deployment-timezone-DEPENDENT once one side is a
+       Slice-10-converted, genuinely timezone-aware CSV/Excel source --
+       reproduced directly by running the identical comparison under
+       `TZ=UTC` vs. `TZ=America/New_York` and observing a materially
+       different (and wrong) epoch delta before any fix existed. This
+       could have silently ACCEPTED a genuinely misaligned cross-source
+       calculated channel, or REJECTED a genuinely aligned one,
+       depending purely on which timezone the backend server process
+       happened to be running in -- a correctness bug strictly worse
+       than a crash, since it would never surface as a visible error.
+       **Fix**: the SAME `normalize_absolute_datetime()` applied before
+       `.timestamp()` -- deterministic and correct regardless of server
+       timezone, with zero behavior change for the all-naive (pure
+       COMTRADE) case, per the identical "same label, cancels in the
+       difference" reasoning above. Regression coverage:
+       `TestMixedTimezoneAwarenessCrossSourceAlignment` in
+       `tests/test_calculated_channel_service.py`, including a
+       same-true-instant naive+aware pair that now correctly ALIGNS and
+       combines, and a genuinely-different-instant naive+aware pair that
+       is correctly REJECTED.
+
+    **Downstream canonicality confirmed**: zero new `if source_format ==
+    "CSV"`/`"Excel"` branches were found or introduced anywhere in
+    `waveform_service.py`, `synchronization_service.py`, `time_grouping.py`,
+    or `calculated_channel_service.py` (grepped directly, not assumed).
+    `waveform_reduction.build_min_max_envelope()`'s own docstring already
+    documents "equal-COUNT buckets need no assumption about uniform
+    sample spacing" -- genuinely irregular canonical timing already
+    range-fetches and reduces correctly with zero changes needed.
+    `preparation_provenance` remains a `SourceMetadata`-only (domain-
+    layer) field, deliberately NOT added to `SourceSummaryOut` or any
+    other waveform-facing API schema this slice -- exposing it would be
+    a new API surface/feature, and this slice's own task explicitly says
+    "do not require waveform services to understand preparation
+    internals unless needed." No resampling, interpolation, new
+    synchronization algorithm, new calculated-channel operation, new
+    Time Group policy, or new readiness policy was added anywhere.
 12. **Cleaned-data export.** Export working/prepared data as CSV/XLSX;
     original source remains unchanged (§10).
 13. **Progressive automation and hardening** (future scope, illustrative

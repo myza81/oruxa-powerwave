@@ -96,12 +96,57 @@ Sampling rate is never a grouping input (task section 16) -- two
 sources at different native rates share a group exactly when their
 timing relationship says so; nothing here ever resamples or reads a
 sampling rate at all.
+
+**CSV/Excel ingestion Slice 11 (DEC-072) integration finding**:
+`start_time` comparison/arithmetic below (interval overlap,
+`timestamp_placement_offset_s`) previously assumed every
+`recorded_absolute` source's `start_time` shared the same tzinfo
+awareness -- true by construction for COMTRADE alone (`app.providers.
+comtrade` never attaches a timezone, always naive) but no longer true
+once a CSV/Excel source can honestly carry a real, timezone-AWARE
+`start_time` (Slice 10 preserves a genuine source-declared offset
+rather than discarding it). Comparing (or subtracting) an aware
+`datetime` against a naive one raises `TypeError` in Python -- a real,
+demonstrated crash reproduced by mixing one naive COMTRADE-style source
+with one timezone-aware CSV source in the same workspace. Root cause is
+this module being unnecessarily COMTRADE-specific (implicitly "every
+absolute source is naive"), not a Slice 10 conversion defect (preserving
+a real declared offset is correct). Minimal fix: `normalize_absolute_
+datetime()` below -- a naive value has no declared reference at all, so
+it is treated as already being in this comparison's own reference frame
+(UTC-labelled, not converted) purely so it becomes comparable; an
+already-aware value is left completely untouched (its real declared
+offset is honored). For the previously-only-reachable all-naive case
+(pure COMTRADE, or COMTRADE + a timezone-unspecified CSV source), every
+value gets the identical UTC label, so every comparison/subtraction
+result is numerically IDENTICAL to before this fix -- zero behavior
+change for that case, verified in
+`tests/test_time_grouping_timezone_integration.py`.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+
+def normalize_absolute_datetime(value: datetime) -> datetime:
+    """Make an absolute `start_time` safe to compare/subtract against
+    another one, regardless of which one (if either) carries a real
+    declared timezone offset -- see this module's own docstring for the
+    full "CSV/Excel ingestion Slice 11" rationale. A naive value (no
+    declared offset at all, e.g. every COMTRADE recording today) is
+    given the UTC label WITHOUT converting its wall-clock numbers --
+    this is not a claim that the value truly IS UTC, only that "no
+    declared offset" must resolve to SOME consistent reference so two
+    such values remain directly comparable exactly as they always were
+    (both get the same label, so their difference is unchanged). An
+    already timezone-aware value is returned completely unmodified --
+    its genuine declared offset is never overridden or reinterpreted.
+    """
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
 
 TIME_REFERENCE_RECORDED_ABSOLUTE = "recorded_absolute"
 TIME_REFERENCE_ELAPSED_ONLY = "elapsed_only"
@@ -230,6 +275,9 @@ def derive_time_groups(
     for source_id, timing_reference, start_time, elapsed_start_seconds, elapsed_end_seconds in sources:
         reference_type = time_reference_type_for_source(timing_reference)
         if reference_type == TIME_REFERENCE_RECORDED_ABSOLUTE and start_time is not None:
+            # Slice 11 fix: normalize BEFORE any interval arithmetic/
+            # comparison -- see this module's own docstring.
+            start_time = normalize_absolute_datetime(start_time)
             interval_start, interval_end = _absolute_interval(
                 start_time=start_time, elapsed_start_seconds=elapsed_start_seconds, elapsed_end_seconds=elapsed_end_seconds
             )
@@ -295,7 +343,12 @@ def timestamp_placement_offset_s(*, source_start_time: datetime | None, origin_s
     `0.0` whenever either timestamp is unavailable (the source IS the
     origin, or this is an elapsed-only source with no absolute anchor at
     all) -- never a fabricated placement (task section 14: "do not
-    assume elapsed 0 = absolute group start")."""
+    assume elapsed 0 = absolute group start"). Slice 11 fix: both inputs
+    are normalized (see `normalize_absolute_datetime()`) before
+    subtraction -- mixing a naive and a timezone-aware `datetime`
+    otherwise raises `TypeError`."""
     if source_start_time is None or origin_start_time is None:
         return 0.0
+    source_start_time = normalize_absolute_datetime(source_start_time)
+    origin_start_time = normalize_absolute_datetime(origin_start_time)
     return (source_start_time - origin_start_time).total_seconds()

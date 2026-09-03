@@ -793,6 +793,26 @@ follows this exact same "relative to first active sample" convention
 for consistency — a single uniform canonical-time rule across all four
 convertible families, not a family-specific special case.
 
+**`[DONE, 2026-09-03, Slice 11]`** integration finding directly
+concerning this document's own §4/§14 "preserve timezone/offset
+information when present" design intent: Slice 10 honestly preserving
+a genuine timezone-aware `start_time` for an `absolute`-family source
+(this document's own explicit requirement) exposed a PRE-EXISTING
+downstream assumption in `app.domain.time_grouping`/`app.services.
+calculated_channel_service` that every absolute source's `start_time`
+shared the same naive/aware status — true only while COMTRADE (always
+naive) was the sole absolute-time producer. Mixing a naive absolute
+source with a genuinely timezone-aware one previously crashed Time
+Group derivation (`TypeError`) and silently mis-computed cross-source
+calculated-channel alignment (a server-timezone-dependent epoch). Fixed
+in Slice 11 by normalizing awareness at the comparison boundary
+(`app.domain.time_grouping.normalize_absolute_datetime()`) — never by
+weakening this document's own "preserve the real offset" design intent,
+and never by discarding or reinterpreting a genuinely declared
+timezone. See
+[CSV_EXCEL_INGESTION_ARCHITECTURE.md item 11](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
+for the full defect/fix account.
+
 ---
 
 ## 15. UI/UX model

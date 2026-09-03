@@ -71,6 +71,7 @@ from app.domain.rms_detector import (
     classify_waveform_form,
 )
 from app.domain.source import ActiveSource
+from app.domain.time_grouping import normalize_absolute_datetime
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_group_aware_per_unit import resolve_calculated_group_aware_per_unit
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
@@ -156,9 +157,28 @@ class _ResolvedInput:
 
 
 def _source_start_epoch(active: ActiveSource) -> float | None:
+    """CSV/Excel ingestion Slice 11 (DEC-072) integration fix: a naive
+    `datetime.timestamp()` interprets its value as the SERVER's own
+    local system timezone -- harmless (if accidental) while every
+    absolute source was COMTRADE, whose `start_time` is always naive
+    (both sides of any comparison got the identical, if arbitrary,
+    local-timezone offset, which cancels out in a difference). Once a
+    Slice-10-converted CSV/Excel source can carry a genuinely
+    timezone-AWARE `start_time`, comparing its correct, deterministic
+    UTC-based epoch against a naive COMTRADE source's platform-dependent
+    epoch silently produces a WRONG, non-deterministic (server-timezone-
+    dependent) `timebases_aligned()` result -- reproduced directly by
+    running the same comparison under two different `TZ` environments.
+    `normalize_absolute_datetime()` (the SAME fix `app.domain.
+    time_grouping` applies for the analogous Time Group crash) removes
+    the ambiguity: an aware value's genuine declared offset is honored
+    untouched; a naive value is labelled UTC (not converted) purely so
+    `.timestamp()` becomes deterministic -- for the previously-only-
+    reachable all-naive case this is a no-op relative difference, so
+    COMTRADE-only alignment decisions are completely unchanged."""
     if active.metadata.start_time is None:
         return None
-    return active.metadata.start_time.timestamp()
+    return normalize_absolute_datetime(active.metadata.start_time).timestamp()
 
 
 def _resolve_input(

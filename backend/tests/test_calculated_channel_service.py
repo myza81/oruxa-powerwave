@@ -366,6 +366,62 @@ class TestTimeBaseCompatibility:
             )
 
 
+class TestMixedTimezoneAwarenessCrossSourceAlignment:
+    """CSV/Excel ingestion Slice 11 (DEC-072) integration fix: a
+    Slice-10-converted CSV/Excel absolute source may carry a genuinely
+    timezone-AWARE `start_time` (a real declared offset from the source
+    text) while a COMTRADE source's `start_time` is always naive.
+    `_source_start_epoch()` used to call the naive `.timestamp()`
+    directly, which silently produced a SERVER-TIMEZONE-DEPENDENT (and
+    potentially wrong) alignment decision when compared against a
+    correctly-deterministic aware epoch -- this is the regression
+    coverage for that fix."""
+
+    def test_naive_and_aware_same_true_instant_align_and_combine(self, registries):
+        naive_start = datetime(2026, 1, 1, 10, 0, 0)  # no declared offset (e.g. COMTRADE)
+        aware_start = datetime(2026, 1, 1, 10, 0, 0, tzinfo=timezone.utc)  # same clock face, declared UTC
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1]), channels={"A": np.array([1.0, 2.0])},
+            units={"A": "V"}, start_time=naive_start,
+        ))
+        _add_source(source_registry, _active_source(
+            source_id="src2", time=np.array([0.0, 0.1]), channels={"B": np.array([10.0, 20.0])},
+            units={"B": "V"}, start_time=aware_start,
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="A+B", operation=OP_ADDITION,
+            inputs=[
+                ChannelRef(kind="source", source_id="src1", channel_name="A"),
+                ChannelRef(kind="source", source_id="src2", channel_name="B"),
+            ],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert channel.values.tolist() == [11.0, 22.0]
+
+    def test_naive_and_aware_genuinely_different_instants_rejected(self, registries):
+        naive_start = datetime(2026, 1, 1, 10, 0, 0)
+        aware_different = datetime(2026, 1, 1, 10, 0, 5, tzinfo=timezone.utc)  # 5s later true instant
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1]), channels={"A": np.array([1.0, 2.0])},
+            units={"A": "V"}, start_time=naive_start,
+        ))
+        _add_source(source_registry, _active_source(
+            source_id="src2", time=np.array([0.0, 0.1]), channels={"B": np.array([10.0, 20.0])},
+            units={"B": "V"}, start_time=aware_different,
+        ))
+        with pytest.raises(IncompatibleTimeBaseError):
+            create_calculated_channel(
+                workspace_id=WS, name="bad", operation=OP_ADDITION,
+                inputs=[
+                    ChannelRef(kind="source", source_id="src1", channel_name="A"),
+                    ChannelRef(kind="source", source_id="src2", channel_name="B"),
+                ],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            )
+
+
 class TestNameValidation:
     def test_empty_name_rejected(self, registries):
         source_registry, calc_registry = registries
