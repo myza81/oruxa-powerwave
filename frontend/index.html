@@ -15674,11 +15674,25 @@
                 return;
             }
 
+            // UAT fix (Manage Per-Unit Bases modal-close): a confirmed
+            // successful save closes the modal FIRST, matching the
+            // already-correct wwSaveMgDrawer() pattern for the newer
+            // Measurement Group drawer ("persist -> close -> non-
+            // critical refreshes"). wwClosePerUnitProfilesModal() itself
+            // resets perUnitEditorState to null and hides the overlay,
+            // so the modal-only re-sync calls that used to run here
+            // (wwRenderPerUnitSourceSelect()/wwRenderPerUnitProfileEditor(),
+            // and re-deriving perUnitEditorState from the saved response)
+            // are genuinely redundant now -- both only ever wrote into
+            // this modal's own DOM, which wwOpenPerUnitProfilesModal()
+            // already rebuilds from fresh backend state on next open.
+            // ww.perUnitSourceConfigs/wwUpdateUnitModeWarningBadge()/
+            // the channel refresh are workspace-wide state consumed
+            // OUTSIDE this modal (the unit-mode badge, currently
+            // displayed waveforms) and are retained unchanged.
             const saved = await response.json();
+            wwClosePerUnitProfilesModal();
             ww.perUnitSourceConfigs.set(saved.source_id, saved);
-            perUnitEditorState = wwPerUnitConfigToEditorState(saved.source_id, saved);
-            wwRenderPerUnitSourceSelect();
-            wwRenderPerUnitProfileEditor();
             wwUpdateUnitModeWarningBadge();
             await wwRefreshDisplayedChannelsForPerUnitChange();
         }
@@ -15698,10 +15712,12 @@
                 return;
             }
             if (!response.ok) return;
+            // UAT fix (Manage Per-Unit Bases modal-close): same "close
+            // on confirmed success" fix as wwApplyPerUnitProfileEditor()
+            // above -- see that function's own comment for why the
+            // modal-only re-sync calls this used to run are dropped.
+            wwClosePerUnitProfilesModal();
             await wwFetchPerUnitSourceConfigs();
-            perUnitEditorState = wwPerUnitConfigToEditorState(state.sourceId, ww.perUnitSourceConfigs.get(state.sourceId));
-            wwRenderPerUnitSourceSelect();
-            wwRenderPerUnitProfileEditor();
             wwUpdateUnitModeWarningBadge();
             await wwRefreshDisplayedChannelsForPerUnitChange();
         }
