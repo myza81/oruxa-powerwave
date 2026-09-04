@@ -388,6 +388,16 @@
             flex-direction: column;
             gap: 10px;
         }
+        /* UAT fix (Waveform/Table/Split visibility): same author-CSS-
+           beats-UA-[hidden] bug already fixed for #workspaceRow[hidden]/
+           #pageRecordings[hidden]/.ww-data-prep-conversion-action[hidden]
+           elsewhere in this file -- the `display: flex` above wins over
+           the UA stylesheet's `[hidden] { display: none }` by CSS origin
+           alone, regardless of shellSetActiveView() correctly setting
+           `#viewTable.hidden = true` in Waveform/Split mode. Without
+           this, #viewTable stayed visually rendered (as a flex box)
+           underneath #viewWaveform even while `hidden`. */
+        .ww-table-view[hidden] { display: none; }
         .ww-table-toolbar {
             display: flex;
             align-items: flex-end;
