@@ -9,7 +9,35 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-04**. A tenth same-day enhancement
+Last meaningful update: **2026-09-04**. A same-day correctness fix
+(no DEC — a bug fix implementing already-expected behavior, not a new
+owner-level product decision) closes a confirmed Data Preparation
+Workspace concurrency race: rapid metadata edits (column role/
+Engineering Quantity/Measured Unit, header row, data region, cell
+edits, row exclusions, undo/redo/reset, worksheet switching) could
+previously have their frontend state silently regressed or corrupted
+because `wwDataPrepFetchPreview()` (the ONE function ~30 call sites
+funnel through) applied whichever `/rows` response arrived last over
+the network, not whichever request was fired last. Fixed entirely in
+`frontend/index.html`, with **zero backend changes** — the backend's
+own `WorkingOverlay` was already correct; every accepted edit was
+already durable, just sometimes displayed out of order. Four layered
+guards now protect every path through that one function: a monotonic
+`previewRequestSeq` counter (only the latest request's response may
+ever apply, the same pattern `wwTable.requestSeq`/
+`channelEntry.requestSeq` already use elsewhere), explicit source/
+worksheet-identity checks captured at request time, and a
+`working_revision` monotonicity check (an older revision never
+overwrites a newer one, even across the mutation-response path via
+`wwDataPrepApplyOverlaySummary()`). A separate, per-column write-
+serialization mechanism (`wwDataPrepEnqueueColumnWrite()`) closes the
+confirmed Engineering-Quantity/Measured-Unit dependency race (a rapid
+Quantity→Unit edit could previously reach the backend out of order and
+be rejected with `400 invalid_measured_unit` since Measured Unit
+validation depends on the column's current Quantity) — writes for the
+SAME column (role/quantity/unit) are now strictly ordered, while
+different columns continue to progress fully independently. A tenth
+same-day enhancement
 ([DECISIONS.md — DEC-080](DECISIONS.md#dec-080--csvexcel-waveform-columns-may-carry-an-explicit-measured-unit-quantity-dependent-and-never-guessed-from-engineering-quantity-cleaned-exports-encode-it-as-an-additional-strict-suffix-a-re-upload-restores-analogchannelunit-now-reaches-per-unit-conversion-for-csvexcel-closing-the-dec-077-conversion-gap))
 adds an explicit, user-selected **Measured Unit** for CSV/Excel
 Waveform columns — a closed, quantity-dependent list (e.g. Voltage:

@@ -8,6 +8,114 @@ Last updated: **2026-09-04**
 
 ## What was most recently done
 
+**Fix — Data Preparation Metadata Concurrency / Stale Preview Race
+(implemented, no DEC).** A confirmed frontend-only correctness bug fix,
+not a new architectural decision (matches the requesting task's own
+explicit preference) -- rapid Data Preparation edits could previously
+have their frontend state silently regressed or corrupted by out-of-
+order network responses. **The backend `WorkingOverlay` was already
+correct** (confirmed by investigation before starting): every accepted
+edit was already durable and correctly ordered server-side; the bug was
+purely in how the frontend APPLIED responses that could legitimately
+arrive out of the order their requests were sent in.
+
+**Root cause**: `wwDataPrepFetchPreview()` is the ONE function roughly
+30 call sites across the entire Data Preparation Workspace funnel
+through (every metadata mutation, pagination, header/region/time-axis
+change, undo/redo/reset, worksheet switch, and the initial open) -- it
+had no ordering protection at all, so whichever `/rows` response
+happened to arrive over the network LAST was applied, regardless of
+which REQUEST was actually sent last. Three concrete, reproducible
+failure modes: (1) a fast follow-up edit's response arriving before an
+earlier edit's own slower response, regressing the UI to older state
+while the backend was already correct at the newer revision; (2)
+switching Excel worksheets while a request for the PREVIOUS worksheet
+was still in flight, letting its late response repaint the NEW
+worksheet with the OLD worksheet's data; (3) rapidly setting Engineering
+Quantity then Measured Unit for the same column, where the Unit PUT
+could reach the backend before the Quantity PUT had been processed,
+failing with `400 invalid_measured_unit` since Measured Unit validation
+depends on the column's CURRENT Quantity.
+
+**Fix, one central guard (task's own explicit "one central preview-
+response guard is preferred")**: `wwDataPrepFetchPreview()` now applies
+FOUR layered, independent guards before touching any state -- (1) a
+monotonic `wwDataPrep.previewRequestSeq` counter, the SAME pattern
+`wwTable.requestSeq`/`channelEntry.requestSeq` already use elsewhere in
+this file (only the LATEST call's own response may ever apply); (2)/(3)
+explicit source-id and `selectedWorksheetIndex` identity, captured at
+request time and re-checked after each `await` (structural confirmation
+of the same invariant sequencing alone already provides, so the
+guarantee holds even if a future call site is added that forgets this
+function is the sole choke point); (4) a `working_revision`
+monotonicity check (a response reporting an OLDER revision than what is
+already known is never applied). A response failing ANY guard has ZERO
+visible effect -- state, loading indicator, and error text are all left
+untouched, so a newer in-flight request's own "Loading…" state is never
+clobbered by an older request's belated finish. The SAME revision-
+monotonicity guard was added to `wwDataPrepApplyOverlaySummary()` (the
+function every mutation's own PUT/DELETE response applies through) --
+protects against two DIFFERENT columns' mutation responses arriving out
+of submission order, which per-column serialization alone (below)
+cannot catch since different columns are deliberately independent.
+`wwDataPrepFetchIssues()`/`wwDataPrepFetchTimeAxis()` (each their own
+separate, unguarded GET fetch, called from inside
+`wwDataPrepFetchPreview()` and, for issues, two more places) received
+their own dedicated `requestSeq` counters for the same reason.
+
+**Per-column write serialization** (task's own "smallest robust
+mechanism... not a global edit queue"): a new
+`wwDataPrepEnqueueColumnWrite(columnIndex, writeFn)` helper maintains one
+Promise chain per column index (`wwDataPrep.columnWriteChains`, a
+`Map`) -- `wwDataPrepSetColumnRole()`/`wwDataPrepSetColumnEngineering
+Quantity()`/`wwDataPrepSetColumnMeasuredUnit()` are now thin wrappers
+that enqueue their real implementation (renamed with an `Impl` suffix)
+onto that column's own chain. Writes for the SAME column now always
+settle in submission order (closing the Quantity→Unit race above);
+writes for DIFFERENT columns continue to progress fully independently
+(task section V's own "cross-column independence" -- confirmed by a
+dedicated rapid-multi-column regression, see Validation below). A
+failed write in a column's chain never jams that column's future edits.
+
+**Explicitly NOT done** (task's own non-goals, all confirmed
+unnecessary): no batched metadata endpoint, no backend
+`expected_revision` optimistic locking, no global edit queue, no new
+save button/manual "Apply" workflow, no debounced batch save, no
+preparation autosave redesign, no backend overlay redesign -- the
+frontend-only fix proved sufficient for every confirmed root cause.
+
+**Validation**: full backend suite unaffected by this frontend-only
+fix -- **3039 passed, 0 failed**, both before and after (zero backend
+files touched; `git status` shows only `frontend/index.html` modified).
+The committed browser smoke test (COMTRADE) still passes unchanged with
+zero console/page errors. A throwaway (not committed, deleted after
+use) live-browser Playwright UAT covering all 6 task-specified
+scenarios plus the mandatory worksheet-isolation scenario passed:
+rapid same-quantity batch across three columns settles to the correct
+value on both frontend and backend; rapid same-unit batch likewise;
+a rapid role→quantity→unit chain for one column never produces a 400
+and settles correctly; an artificially-delayed `/rows` response (via
+Playwright route interception) is provably ignored once a newer one has
+already applied; a delayed Sheet-A response never repaints Sheet B
+after switching away and back (verified via each sheet's own distinct
+column count, since neither sheet had a header row configured); and
+frontend state matches a fresh backend fetch after a batch of rapid,
+mixed-column edits. A separate sequential-usage regression test (plain
+click-through: role → quantity → unit → undo → redo, no artificial
+delay) confirmed the fix does not change ordinary, non-racing behavior
+-- undo/redo continue to work exactly as before.
+
+**Next step**: no new slice was opened by this fix.
+
+**Commit status**: not committed — per this task's own explicit closing
+instruction ("Do not commit or push"), the single-file change
+(`frontend/index.html`) is a normal uncommitted working-tree change
+pending a separate, explicit commit instruction. Sits on top of the
+already-committed `2320072 feat: add canonical table view and measured
+units`.
+
+## What was done in the prior session — Enhancement: Measured Unit Metadata + Self-Describing Unit Round-Trip
+
 **Enhancement — Measured Unit Metadata + Self-Describing Unit Round-Trip
 (implemented, DEC-080).** Builds directly on DEC-077's Engineering
 Quantity model and closes a real conversion gap that model's own

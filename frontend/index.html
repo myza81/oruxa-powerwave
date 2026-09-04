@@ -7290,6 +7290,28 @@
             // issuesExpanded/structureExpanded above.
             timeAxisSummary: null,
             timeAxisExpanded: false,
+            // Concurrency/stale-response race fix: monotonic request-
+            // generation counters, the SAME pattern wwTable.requestSeq/
+            // channelEntry.requestSeq already use elsewhere -- only the
+            // latest call to wwDataPrepFetchPreview()/wwDataPrepFetchIssues()/
+            // wwDataPrepFetchTimeAxis() may ever apply its response.
+            // Never reset per-source/per-worksheet: a strictly-increasing
+            // global counter already invalidates every prior in-flight
+            // request the instant ANY new one starts (a source switch, a
+            // worksheet switch, a mutation's own trailing refresh --
+            // every one of these already calls through the same guarded
+            // functions), so no per-scope bookkeeping is needed.
+            previewRequestSeq: 0,
+            issuesRequestSeq: 0,
+            timeAxisRequestSeq: 0,
+            // columnIndex -> Promise chain: serializes role/quantity/unit
+            // writes for the SAME column (task section H/I/J) so a
+            // dependent write (e.g. Measured Unit) never reaches the
+            // backend before an earlier write for that same column (e.g.
+            // Engineering Quantity) has actually completed. Different
+            // columns chain independently -- see
+            // wwDataPrepEnqueueColumnWrite().
+            columnWriteChains: new Map(),
         };
 
         function wwDataPrepSourceUrl(suffix) {
@@ -7442,7 +7464,20 @@
         // scoped to whichever worksheet the backend resolved for that
         // particular response -- always the CURRENTLY selected one, so
         // it is safe to always overwrite wwDataPrep's own copy here.
+        // Concurrency/stale-response race fix (task section F): a
+        // revision-monotonicity guard layered on TOP of per-column write
+        // serialization above -- that serialization only orders writes
+        // WITHIN one column (task section V's own "cross-column
+        // independence"), so two DIFFERENT columns' mutation requests
+        // (e.g. VA's and VB's own Engineering Quantity PUTs) can still
+        // resolve out of submission order. Without this guard, an
+        // earlier-fired-but-later-resolving mutation's own summary could
+        // overwrite a later-fired-but-earlier-resolving one's already-
+        // newer workingRevision/overlay counts. Applied as an all-or-
+        // nothing check (task section G) -- an out-of-order summary is
+        // ignored entirely, never partially applied.
         function wwDataPrepApplyOverlaySummary(apiSummary) {
+            if (apiSummary.working_revision != null && apiSummary.working_revision < wwDataPrep.workingRevision) return;
             wwDataPrep.overlay = {
                 editedCellCount: apiSummary.edited_cell_count,
                 excludedRowCount: apiSummary.excluded_row_count,
@@ -7740,23 +7775,69 @@
             wwDataPrepFetchPreview();
         }
 
+        // Concurrency/stale-response race fix: this is the ONE function
+        // ~30 call sites across Data Preparation all funnel through
+        // (every metadata mutation, pagination, header/region/time-axis
+        // change, undo/redo/reset, worksheet switch, and the initial
+        // open) -- a single guard here protects all of them, rather than
+        // a bespoke fix per call site (task section P/Q's own explicit
+        // "one central preview-response guard" preference).
+        //
+        // Four layered, independent guards, checked AFTER each await
+        // (network response arrival is never synchronous with the call
+        // that started it, so state can legitimately move between "now"
+        // and "when this response arrives"):
+        //   1. requestSeq -- only the LATEST call's own response may
+        //      apply (mirrors wwTable.requestSeq/channelEntry.requestSeq
+        //      elsewhere in this file). Since literally every reason to
+        //      want a fresh preview already routes through this one
+        //      function, this alone already invalidates stale responses
+        //      from a switched-away-from source OR worksheet.
+        //   2 & 3. source/worksheet identity -- explicit, structural
+        //      confirmation of the same invariant (task sections D/E),
+        //      so the guarantee holds even if a future call site is
+        //      added that forgets this function is the sole choke
+        //      point, not merely by convention.
+        //   4. working_revision monotonicity -- a response that reports
+        //      an OLDER revision than what this session already knows
+        //      about (e.g. set via a still-in-flight mutation's own
+        //      wwDataPrepApplyOverlaySummary(), which can legitimately
+        //      resolve before this slower preview fetch does) is never
+        //      applied (task section F) -- an additional guard on top
+        //      of the other three, not a replacement for them.
+        // A response failing ANY guard has ZERO visible effect (task
+        // section G) -- neither state nor the loading/error status line
+        // is touched, so a newer, still-loading request's own "Loading…"
+        // state is never clobbered by an older request's belated finish
+        // (task section S/T).
         async function wwDataPrepFetchPreview() {
+            const requestedSourceId = wwDataPrep.sourceId;
+            const requestedWorksheetIndex = wwDataPrep.selectedWorksheetIndex;
+            const seq = ++wwDataPrep.previewRequestSeq;
+            const isCurrent = () =>
+                seq === wwDataPrep.previewRequestSeq &&
+                requestedSourceId === wwDataPrep.sourceId &&
+                requestedWorksheetIndex === wwDataPrep.selectedWorksheetIndex;
             const status = document.getElementById("wwDataPrepStatus");
             status.textContent = "";
             document.getElementById("wwDataPrepTable").innerHTML = "";
             try {
                 const response = await fetch(
                     apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
-                        "/preparation-sources/" + encodeURIComponent(wwDataPrep.sourceId) + "/rows" +
+                        "/preparation-sources/" + encodeURIComponent(requestedSourceId) + "/rows" +
                         "?offset=" + wwDataPrep.offset + "&limit=" + wwDataPrep.limit
                 );
+                if (!isCurrent()) return; // superseded while the request was in flight
                 if (!response.ok) {
                     const body = await response.json().catch(() => null);
+                    if (!isCurrent()) return;
                     const detail = (body && body.detail) || {};
                     status.textContent = detail.message || "Could not load this preview.";
                     return;
                 }
                 const preview = await response.json();
+                if (!isCurrent()) return;
+                if (preview.working_revision != null && preview.working_revision < wwDataPrep.workingRevision) return;
                 wwDataPrep.totalRowCount = preview.total_row_count;
                 wwDataPrep.columnCount = preview.column_count;
                 wwDataPrep.workingRevision = preview.working_revision;
@@ -7789,6 +7870,7 @@
                 // here without a second, bespoke refresh call.
                 await wwDataPrepFetchTimeAxis();
             } catch (error) {
+                if (!isCurrent()) return;
                 status.textContent = "Could not reach the backend.";
             }
         }
@@ -7807,11 +7889,21 @@
         // workflow via openRecordingForAnalysis()).
         const WW_DATA_PREP_SEVERITY_LABELS = { blocking: "Blocking", warning: "Warnings", info: "Info" };
 
+        // Concurrency/stale-response race fix (task section R): called
+        // from three places (inside wwDataPrepFetchPreview() and after
+        // both time-axis save/clear), so two calls can genuinely
+        // overlap -- same requestSeq guard as wwDataPrepFetchPreview()
+        // itself, dedicated to this endpoint since it has no revision
+        // field of its own to cross-check.
         async function wwDataPrepFetchIssues() {
+            const seq = ++wwDataPrep.issuesRequestSeq;
             try {
                 const response = await fetch(wwDataPrepSourceUrl("/issues"));
-                wwDataPrep.issueSummary = response.ok ? await response.json() : null;
+                const summary = response.ok ? await response.json() : null;
+                if (seq !== wwDataPrep.issuesRequestSeq) return;
+                wwDataPrep.issueSummary = summary;
             } catch (error) {
+                if (seq !== wwDataPrep.issuesRequestSeq) return;
                 wwDataPrep.issueSummary = null;
             }
             wwDataPrepRenderIssues();
@@ -8666,11 +8758,26 @@
             }
         }
 
+        // Concurrency/stale-response race fix (task section R): called
+        // only from inside wwDataPrepFetchPreview(), but that function
+        // can itself be re-entered before a prior call's own trailing
+        // wwDataPrepFetchTimeAxis() has resolved -- same requestSeq
+        // guard as wwDataPrepFetchIssues() above, dedicated to this
+        // endpoint (a plain GET with no revision field of its own).
+        // Note: the mutation-response path (wwDataPrepSaveTimeAxis()/
+        // wwDataPrepClearTimeAxis()) applies its OWN just-returned
+        // response directly, the same "apply the response to the
+        // action that produced it" pattern wwDataPrepApplyOverlaySummary()
+        // uses -- not this GET-and-poll function, so it is unaffected.
         async function wwDataPrepFetchTimeAxis() {
+            const seq = ++wwDataPrep.timeAxisRequestSeq;
             try {
                 const response = await fetch(wwDataPrepSourceUrl("/time-axis"));
-                wwDataPrep.timeAxisSummary = response.ok ? await response.json() : null;
+                const summary = response.ok ? await response.json() : null;
+                if (seq !== wwDataPrep.timeAxisRequestSeq) return;
+                wwDataPrep.timeAxisSummary = summary;
             } catch (error) {
+                if (seq !== wwDataPrep.timeAxisRequestSeq) return;
                 wwDataPrep.timeAxisSummary = null;
             }
             wwDataPrepRenderTimeAxisSummary();
@@ -9190,7 +9297,37 @@
             }
         }
 
+        // Concurrency/stale-response race fix (task section H/I/J/V):
+        // serializes role/quantity/unit writes for ONE column, so a
+        // dependent write (e.g. Measured Unit, which the backend
+        // validates against the column's CURRENT Engineering Quantity)
+        // never reaches the backend before an earlier write for that
+        // SAME column has actually completed -- closing the confirmed
+        // "unit request evaluated against a stale/not-yet-committed
+        // quantity" race. Columns other than `columnIndex` are never
+        // affected (a fresh Promise chain per column key, task section
+        // V's own "cross-column independence" requirement) -- this is
+        // deliberately NOT a global edit queue (task section AC).
+        // `writeFn` always runs, even if the previous write in this
+        // column's own chain failed -- ordering is preserved, but one
+        // failed write must never permanently jam this column's future
+        // edits (task section AA: the UI must stay responsive).
+        function wwDataPrepEnqueueColumnWrite(columnIndex, writeFn) {
+            const previous = wwDataPrep.columnWriteChains.get(columnIndex) || Promise.resolve();
+            const next = previous.then(writeFn, writeFn);
+            // Swallow so a failed write never becomes an unhandled
+            // rejection merely because it is sitting in this chain map
+            // (the caller's own await on `next` still sees the real
+            // outcome/throw normally).
+            wwDataPrep.columnWriteChains.set(columnIndex, next.catch(() => {}));
+            return next;
+        }
+
         async function wwDataPrepSetColumnRole(columnIndex, role) {
+            return wwDataPrepEnqueueColumnWrite(columnIndex, () => wwDataPrepSetColumnRoleImpl(columnIndex, role));
+        }
+
+        async function wwDataPrepSetColumnRoleImpl(columnIndex, role) {
             const status = wwDataPrepStructureStatusEl();
             status.textContent = "";
             try {
@@ -9216,7 +9353,19 @@
         // sparse default), matching wwDataPrepSetColumnRole()'s own
         // "not_assigned" convention -- never PUT the literal string
         // "Undefined" as a stored value.
+        //
+        // Concurrency/stale-response race fix: serialized per-column
+        // (see wwDataPrepEnqueueColumnWrite()'s own docstring above) --
+        // shares the SAME column chain as role/measured-unit, so this
+        // write always lands (and its response is applied) before a
+        // dependent Measured Unit write for the same column proceeds.
         async function wwDataPrepSetColumnEngineeringQuantity(columnIndex, engineeringQuantity) {
+            return wwDataPrepEnqueueColumnWrite(
+                columnIndex, () => wwDataPrepSetColumnEngineeringQuantityImpl(columnIndex, engineeringQuantity)
+            );
+        }
+
+        async function wwDataPrepSetColumnEngineeringQuantityImpl(columnIndex, engineeringQuantity) {
             const status = wwDataPrepStructureStatusEl();
             status.textContent = "";
             try {
@@ -9251,7 +9400,22 @@
         // sparse default), matching wwDataPrepSetColumnEngineeringQuantity()'s
         // own "Undefined always DELETEs" convention -- never PUT the
         // literal empty string as a stored value.
+        //
+        // Concurrency/stale-response race fix: serialized per-column
+        // (see wwDataPrepEnqueueColumnWrite()'s own docstring above) --
+        // shares the SAME column chain as role/engineering-quantity, so
+        // this write never reaches the backend before an earlier
+        // Engineering Quantity write for the same column has actually
+        // completed (task section H's own confirmed race: a unit write
+        // arriving before quantity would otherwise validate against a
+        // stale/still-Undefined quantity and fail with 400).
         async function wwDataPrepSetColumnMeasuredUnit(columnIndex, measuredUnit) {
+            return wwDataPrepEnqueueColumnWrite(
+                columnIndex, () => wwDataPrepSetColumnMeasuredUnitImpl(columnIndex, measuredUnit)
+            );
+        }
+
+        async function wwDataPrepSetColumnMeasuredUnitImpl(columnIndex, measuredUnit) {
             const status = wwDataPrepStructureStatusEl();
             status.textContent = "";
             try {
@@ -9526,6 +9690,21 @@
             wwDataPrep.dataStartRow = null;
             wwDataPrep.dataEndMode = null;
             wwDataPrep.dataEndRow = null;
+            // Concurrency/stale-response race fix: workingRevision is a
+            // NEW source's own separate WorkingOverlay revision counter
+            // (starts at 0), never continuous with whatever the
+            // previously open source's revision happened to reach --
+            // reset here so wwDataPrepFetchPreview()/
+            // wwDataPrepApplyOverlaySummary()'s own revision-
+            // monotonicity guard (task section F) does not wrongly
+            // reject this new source's first, legitimate response
+            // merely because its revision is lower than the old
+            // source's. columnWriteChains is reset too -- a new source
+            // has an entirely different column index space, so no
+            // pending chain from the previous source is meaningful here
+            // (its own promises still resolve harmlessly on their own).
+            wwDataPrep.workingRevision = 0;
+            wwDataPrep.columnWriteChains = new Map();
             document.getElementById("wwDataPrepStructureDetails").hidden = true;
             document.getElementById("wwDataPrepStructureToggleBtn").textContent = "Configure";
             document.getElementById("wwDataPrepTimeAxisDetails").hidden = true;
