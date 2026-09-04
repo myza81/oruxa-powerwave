@@ -7142,6 +7142,9 @@
             dataEndRow: null,
             columnLabels: [],
             columnRoles: [],
+            // Engineering Quantity enhancement (DEC-077): additive, same
+            // shape/lifecycle as columnRoles above.
+            columnEngineeringQuantities: [],
             // Slice 6 (DEC-072): Preparation Readiness Issue state --
             // the full GET .../issues response body, or `null` before
             // it has ever loaded (or when it could not be fetched, e.g.
@@ -7412,22 +7415,47 @@
             ["waveform", "Waveform"],
         ];
 
+        // Engineering Quantity enhancement (DEC-077): a closed, controlled
+        // set matching app.domain.channel_classification.KNOWN_ENGINEERING_
+        // QUANTITIES exactly (order matches that constant) -- exact-cased
+        // strings sent verbatim on the wire, never free text. "Undefined"
+        // is always first/default, mirroring WW_DATA_PREP_ROLES's own
+        // "Not Assigned first" convention.
+        const WW_DATA_PREP_ENGINEERING_QUANTITIES = [
+            "Undefined", "Voltage", "Voltage Angle", "Current", "Current Angle",
+            "Active Power", "Reactive Power", "Frequency", "ROCOF",
+        ];
+
         function wwDataPrepRenderColumnMapping() {
             const table = document.getElementById("wwDataPrepColumnsTable");
             const columnCount = wwDataPrep.columnCount || 0;
             const labels = wwDataPrep.columnLabels || [];
             const roles = wwDataPrep.columnRoles || [];
+            const quantities = wwDataPrep.columnEngineeringQuantities || [];
 
-            let html = "<thead><tr><th>Column</th><th>Label</th><th>Role</th></tr></thead><tbody>";
+            let html = "<thead><tr><th>Column</th><th>Label</th><th>Role</th><th>Engineering Quantity</th></tr></thead><tbody>";
             for (let c = 0; c < columnCount; c++) {
                 const role = roles[c] || "not_assigned";
                 const optionsHtml = WW_DATA_PREP_ROLES.map(([value, label]) =>
                     '<option value="' + value + '"' + (value === role ? " selected" : "") + '>' + label + '</option>'
                 ).join("");
+                // Engineering Quantity enhancement (DEC-077, task section
+                // F/G): the selector is shown ONLY for a Waveform-role
+                // column -- Time Axis/Not Assigned rows get a plain "—"
+                // cell instead, never cluttering every row (task's own
+                // "keep compact" requirement).
+                const quantityCell = role === "waveform"
+                    ? '<select class="ww-data-prep-engineering-quantity-select" data-col="' + c + '">' +
+                        WW_DATA_PREP_ENGINEERING_QUANTITIES.map((q) =>
+                            '<option value="' + q + '"' + (q === (quantities[c] || "Undefined") ? " selected" : "") + '>' + q + '</option>'
+                        ).join("") +
+                        '</select>'
+                    : '<span class="hint">—</span>';
                 html += "<tr>" +
                     "<td>" + wwSpreadsheetColumnLabel(c) + "</td>" +
                     "<td>" + escapeHtml(labels[c] != null ? String(labels[c]) : wwSpreadsheetColumnLabel(c)) + "</td>" +
                     '<td><select class="ww-data-prep-role-select" data-col="' + c + '">' + optionsHtml + "</select></td>" +
+                    "<td>" + quantityCell + "</td>" +
                     "</tr>";
             }
             html += "</tbody>";
@@ -7575,6 +7603,7 @@
                 wwDataPrep.dataEndRow = preview.data_end_row;
                 wwDataPrep.columnLabels = preview.column_labels || [];
                 wwDataPrep.columnRoles = preview.column_roles || [];
+                wwDataPrep.columnEngineeringQuantities = preview.column_engineering_quantities || [];
                 wwDataPrepRenderTable(preview);
                 wwDataPrepRenderPagination(preview);
                 wwDataPrepRenderStructureControls();
@@ -9018,6 +9047,41 @@
             }
         }
 
+        // Engineering Quantity enhancement (DEC-077): "Undefined" (the
+        // selector's own default option) always DELETEs (resets to the
+        // sparse default), matching wwDataPrepSetColumnRole()'s own
+        // "not_assigned" convention -- never PUT the literal string
+        // "Undefined" as a stored value.
+        async function wwDataPrepSetColumnEngineeringQuantity(columnIndex, engineeringQuantity) {
+            const status = wwDataPrepStructureStatusEl();
+            status.textContent = "";
+            try {
+                const response = engineeringQuantity === "Undefined"
+                    ? await fetch(
+                        wwDataPrepSourceUrl("/working/columns/" + columnIndex + "/engineering-quantity"),
+                        { method: "DELETE" }
+                    )
+                    : await fetch(
+                        wwDataPrepSourceUrl("/working/columns/" + columnIndex + "/engineering-quantity"),
+                        {
+                            method: "PUT", headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ engineering_quantity: engineeringQuantity }),
+                        }
+                    );
+                if (!response.ok) {
+                    const body = await response.json().catch(() => null);
+                    status.textContent = (body && body.detail && body.detail.message) ||
+                        "Could not set this column's Engineering Quantity.";
+                    await wwDataPrepFetchPreview(); // re-render the select back to its actual (unchanged) value
+                    return;
+                }
+                wwDataPrepApplyOverlaySummary(await response.json());
+                await wwDataPrepFetchPreview();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
+        }
+
         document.getElementById("wwDataPrepSetHeaderBtn").addEventListener("click", () => {
             const value = parseInt(document.getElementById("wwDataPrepHeaderInput").value, 10);
             if (!Number.isFinite(value)) { wwDataPrepStructureStatusEl().textContent = "Enter a row number first."; return; }
@@ -9070,9 +9134,15 @@
             wwDataPrepFetchPreview();
         });
         document.getElementById("wwDataPrepColumnsTable").addEventListener("change", (event) => {
-            const select = event.target.closest(".ww-data-prep-role-select");
-            if (!select) return;
-            wwDataPrepSetColumnRole(parseInt(select.dataset.col, 10), select.value);
+            const roleSelect = event.target.closest(".ww-data-prep-role-select");
+            if (roleSelect) {
+                wwDataPrepSetColumnRole(parseInt(roleSelect.dataset.col, 10), roleSelect.value);
+                return;
+            }
+            const quantitySelect = event.target.closest(".ww-data-prep-engineering-quantity-select");
+            if (quantitySelect) {
+                wwDataPrepSetColumnEngineeringQuantity(parseInt(quantitySelect.dataset.col, 10), quantitySelect.value);
+            }
         });
 
         // UX refinement (post-Slice-6 UAT): progressive disclosure -- the
@@ -9245,6 +9315,7 @@
             wwDataPrep.timeAxisExpanded = false;
             wwDataPrep.timeAxisSummary = null;
             wwDataPrep.columnRoles = [];
+            wwDataPrep.columnEngineeringQuantities = [];
             wwDataPrep.columnLabels = [];
             wwDataPrep.headerRowNumber = null;
             wwDataPrep.dataStartRow = null;
@@ -10151,7 +10222,21 @@
         function analogChannelNameCellHtml(source, channel) {
             const color = wwColorForChannel(source.source_id, channel.name);
             const displayName = wwChannelDisplayName(source.source_id, channel.name);
-            const label = channel.unit ? displayName + " (" + channel.unit + ")" : displayName;
+            // Engineering Quantity enhancement (DEC-077): show the richer
+            // quantity (e.g. "Voltage Angle") only when it adds
+            // information beyond the group's own broad engineering_type
+            // heading this row is already grouped under -- never a
+            // redundant "(Voltage)" repeated for a plain Voltage channel,
+            // and never anything for COMTRADE/calculated channels (whose
+            // engineering_quantity stays "Undefined", unaffected by this
+            // enhancement).
+            const quantity = channel.engineering_quantity;
+            const parenParts = [];
+            if (channel.unit) parenParts.push(channel.unit);
+            if (quantity && quantity !== "Undefined" && quantity !== channel.engineering_type) {
+                parenParts.push(quantity);
+            }
+            const label = parenParts.length ? displayName + " (" + parenParts.join(", ") + ")" : displayName;
             return '<span class="channel-name-cell">' +
                 '<span class="channel-color-dot" style="background:' + escapeHtml(color) + '" aria-hidden="true"></span>' +
                 '<span class="channel-name-text">' + escapeHtml(label) + '</span>' +

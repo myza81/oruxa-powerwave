@@ -119,7 +119,7 @@ from typing import Any
 
 import pandas as pd
 
-from app.domain.channel_classification import classify_analog_channel
+from app.domain.channel_classification import UNDEFINED, canonical_engineering_quantity, classify_analog_channel
 from app.domain.channels import AnalogChannel
 from app.domain.disturbance_record import DisturbanceRecord
 from app.domain.metadata import RecordingMetadata
@@ -382,8 +382,21 @@ def convert_preparation_source(
     for position, column_index in enumerate(waveform_column_indices):
         canonical_name, display_label = name_by_column[column_index]
         data[canonical_name] = [waveform_values_by_row[row_number][column_index] for row_number in row_order]
+        # Engineering Quantity enhancement (DEC-077): the engineer's own
+        # per-column selection, if any, becomes AnalogChannel.parameter_
+        # type -- classify_analog_channel()'s existing Tier 1 already
+        # resolves it to a broad engineering_type (task section K); no
+        # new inference happens here, and an "Undefined" selection stores
+        # `None` (matches every other column's own default), never the
+        # literal string "Undefined" as a parameter_type value.
+        engineering_quantity = session.working_overlay.column_engineering_quantities.get(
+            (worksheet_index, column_index), UNDEFINED,
+        )
         analog_channels.append(
-            AnalogChannel(name=canonical_name, unit="", index=position, description=display_label)
+            AnalogChannel(
+                name=canonical_name, unit="", index=position, description=display_label,
+                parameter_type=engineering_quantity if engineering_quantity != UNDEFINED else None,
+            )
         )
     waveform_data = pd.DataFrame(data)
 
@@ -500,6 +513,7 @@ def convert_preparation_source(
             AnalogChannelSummary(
                 name=ch.name, index=ch.index, unit=ch.unit,
                 engineering_type=classify_analog_channel(parameter_type=ch.parameter_type, unit=ch.unit),
+                engineering_quantity=canonical_engineering_quantity(ch.parameter_type),
                 phase=ch.phase, scale=ch.scale, offset=ch.offset,
             )
             for ch in analog_channels

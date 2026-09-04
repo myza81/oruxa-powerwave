@@ -1342,6 +1342,95 @@ class TestColumnRoleEndpoints:
         assert resp.json()["detail"]["code"] == "invalid_working_coordinate"
 
 
+class TestEngineeringQuantityEndpoints:
+    """DEC-077: PUT/DELETE .../working/columns/{column_index}/engineering-quantity."""
+
+    def test_put_quantity_and_preview_reflects_it(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/engineering-quantity",
+            json={"engineering_quantity": "Voltage"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["column_engineering_quantities"] == ["Undefined", "Voltage"]
+
+    def test_delete_quantity_resets_to_undefined(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/engineering-quantity",
+            json={"engineering_quantity": "Current"},
+        )
+
+        resp = client.delete(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/engineering-quantity"
+        )
+
+        assert resp.status_code == 200, resp.text
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["column_engineering_quantities"] == ["Undefined", "Undefined"]
+
+    def test_invalid_quantity_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/engineering-quantity",
+            json={"engineering_quantity": "Power Factor"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_engineering_quantity"
+
+    def test_lowercase_is_rejected_exact_casing_only(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/engineering-quantity",
+            json={"engineering_quantity": "voltage"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_engineering_quantity"
+
+    def test_quantity_column_beyond_known_bounds_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/99/engineering-quantity",
+            json={"engineering_quantity": "Voltage"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_working_coordinate"
+
+    def test_default_preview_quantities_are_all_undefined(self, client):
+        source_id = _upload_csv(client, content=b"a,b,c\n1,2,3\n")
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+
+        assert rows["column_engineering_quantities"] == ["Undefined", "Undefined", "Undefined"]
+
+    def test_assigning_waveform_to_a_self_describing_header_restores_quantity(self, client):
+        source_id = _upload_csv(client, content=b"Time,CBDK_V1 Magnitude (Voltage)\n0.0,1.0\n0.02,2.0\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/header", json={"row_number": 1})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role",
+            json={"role": "waveform"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["column_engineering_quantities"][1] == "Voltage"
+        # Role assignment itself is never auto-triggered by a suffix --
+        # only column 1 (explicitly assigned above) is waveform.
+        assert rows["column_roles"][1] == "waveform"
+
+
 class TestResetAllIncludesStructureMapping:
     def test_reset_all_clears_header_region_and_roles(self, client):
         source_id = _upload_csv(client, content=b"Time,VR\n0.0,1\n0.001,2\n")

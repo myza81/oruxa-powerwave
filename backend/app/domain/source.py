@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from app.domain.channel_classification import WAVEFORM_FORM_UNKNOWN
+from app.domain.channel_classification import UNDEFINED, WAVEFORM_FORM_UNKNOWN
 from app.domain.disturbance_record import DisturbanceRecord
 
 
@@ -44,6 +44,18 @@ class AnalogChannelSummary:
     # app.domain.channel_classification's own module docstring for the
     # taxonomy). Zero behavior change to any existing code path.
     waveform_form: str = WAVEFORM_FORM_UNKNOWN
+    # Engineering Quantity enhancement (DEC-077): trailing, fully additive
+    # field, same non-invasive pattern as waveform_form above -- COMTRADE
+    # (import_service.py) is never touched to populate this; its channels'
+    # own AnalogChannel.parameter_type stays None, so
+    # channel_classification.canonical_engineering_quantity(None) always
+    # resolves UNDEFINED here, by construction, with zero lines changed in
+    # that provider. Only app.services.preparation_conversion_service (the
+    # CSV/Excel path) ever passes a non-default value. See
+    # app.domain.channel_classification's own "Engineering Quantity"
+    # section for the full taxonomy and its broad_engineering_type()
+    # backward-compatibility mapping.
+    engineering_quantity: str = UNDEFINED
 
 
 @dataclass(slots=True)

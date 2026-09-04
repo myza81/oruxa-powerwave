@@ -56,6 +56,7 @@ from app.schemas.preparation_session import (
     ColumnRoleRequest,
     ConfiguredTimePreviewOut,
     DataRegionRequest,
+    EngineeringQuantityRequest,
     HeaderRowRequest,
     PreparationSessionSummaryOut,
     PreparationSourcePreviewOut,
@@ -104,8 +105,10 @@ from app.services.working_overlay_service import (
     redo_working_change,
     reset_all_working_changes,
     reset_cell,
+    reset_column_engineering_quantity,
     reset_column_role,
     reset_data_region,
+    set_column_engineering_quantity,
     set_column_role,
     set_data_region,
     set_header_row,
@@ -138,6 +141,7 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "invalid_working_cell_value": status.HTTP_400_BAD_REQUEST,
     "invalid_data_region": status.HTTP_400_BAD_REQUEST,
     "invalid_column_role": status.HTTP_400_BAD_REQUEST,
+    "invalid_engineering_quantity": status.HTTP_400_BAD_REQUEST,
     "invalid_time_axis_configuration": status.HTTP_400_BAD_REQUEST,
     "unknown_time_axis_interpreter": status.HTTP_400_BAD_REQUEST,
     # Slice 10 (DEC-072): conversion runtime/capability failures --
@@ -636,6 +640,59 @@ def delete_working_column_role(
     workspace_id = _validate_workspace_id(workspace_id)
     try:
         summary = reset_column_role(
+            workspace_id=workspace_id, source_id=source_id, column_index=column_index, registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return WorkingOverlaySummaryOut.from_domain(summary)
+
+
+@router.put(
+    "/{source_id}/working/columns/{column_index}/engineering-quantity", response_model=WorkingOverlaySummaryOut,
+)
+def put_working_column_engineering_quantity(
+    workspace_id: str,
+    source_id: str,
+    body: EngineeringQuantityRequest,
+    column_index: int = Path(ge=0),
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> WorkingOverlaySummaryOut:
+    """Assign one column's Engineering Quantity (DEC-077) -- one of the
+    exact, canonical-cased strings in `app.domain.channel_classification.
+    KNOWN_ENGINEERING_QUANTITIES` (`"Voltage"`, `"Voltage Angle"`,
+    `"Current"`, `"Current Angle"`, `"Active Power"`, `"Reactive Power"`,
+    `"Frequency"`, `"ROCOF"`, `"Undefined"`) -- this endpoint validates an
+    EXACT match, never case-insensitively (unlike the exporter's own
+    suffix PARSER, which is deliberately case-insensitive on read; see
+    that function's own docstring for why the two need not match).
+    Meaningful only for a column currently carrying the Waveform role;
+    see `app.services.working_overlay_service.set_column_engineering_
+    quantity`'s own docstring."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        summary = set_column_engineering_quantity(
+            workspace_id=workspace_id, source_id=source_id,
+            column_index=column_index, engineering_quantity=body.engineering_quantity, registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return WorkingOverlaySummaryOut.from_domain(summary)
+
+
+@router.delete(
+    "/{source_id}/working/columns/{column_index}/engineering-quantity", response_model=WorkingOverlaySummaryOut,
+)
+def delete_working_column_engineering_quantity(
+    workspace_id: str,
+    source_id: str,
+    column_index: int = Path(ge=0),
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> WorkingOverlaySummaryOut:
+    """Reset one column's Engineering Quantity to `Undefined` -- the
+    single neutral default state."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        summary = reset_column_engineering_quantity(
             workspace_id=workspace_id, source_id=source_id, column_index=column_index, registry=registry,
         )
     except ImportServiceError as exc:

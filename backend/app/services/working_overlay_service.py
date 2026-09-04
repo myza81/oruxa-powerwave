@@ -49,16 +49,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.domain import working_overlay as overlay_domain
+from app.domain.channel_classification import (
+    KNOWN_ENGINEERING_QUANTITIES,
+    parse_engineering_quantity_suffix,
+)
 from app.domain.preparation_session import PreparationSession
 from app.services.errors import (
     InvalidColumnRoleError,
     InvalidDataRegionError,
+    InvalidEngineeringQuantityError,
     InvalidWorkingCellValueError,
     InvalidWorkingCoordinateError,
     SourceNotFoundError,
     WorksheetNotSelectedError,
 )
-from app.services.preparation_preview_service import ensure_csv_totals_cached
+from app.services.preparation_preview_service import ensure_csv_totals_cached, resolve_single_column_label
 from app.services.preparation_session_registry import PreparationSessionRegistry
 
 
@@ -282,6 +287,26 @@ def set_column_role(
     _check_column_bound(session, worksheet_index, column_index)
     key = overlay_domain.column_key(worksheet_index, column_index)
     overlay_domain.set_column_role(session.working_overlay, key, role)
+    # Engineering Quantity suffix restoration (DEC-077, task section S):
+    # the ONE place this fires. Only when the column is newly being
+    # assigned ROLE_WAVEFORM AND has no EXPLICIT quantity of its own yet
+    # (never overwrites a prior explicit choice, including an explicit
+    # "Undefined") -- parses the column's current WORKING label via the
+    # SAME deterministic suffix grammar the exporter itself writes
+    # (app.domain.channel_classification.parse_engineering_quantity_
+    # suffix()), never a second, looser guess. Recorded as its OWN
+    # separate WorkingOperation (a documented, intentional simplification:
+    # reverting this specific restoration takes one extra Undo click
+    # beyond reverting the role assignment itself -- every OTHER mutation
+    # in this module stays a strict one-action-one-undo-step operation;
+    # only this rare, first-time-only auto-suggestion path does not).
+    # Role=Waveform itself is NEVER auto-assigned by this suffix match --
+    # only the already-user-chosen role's own Engineering Quantity is.
+    if role == overlay_domain.ROLE_WAVEFORM and key not in session.working_overlay.column_engineering_quantities:
+        label = resolve_single_column_label(session, worksheet_index=worksheet_index, column_index=column_index)
+        _, suggested_quantity = parse_engineering_quantity_suffix(label)
+        if suggested_quantity is not None:
+            overlay_domain.set_column_engineering_quantity(session.working_overlay, key, suggested_quantity)
     return summarize_working_overlay(session, worksheet_index)
 
 
@@ -290,11 +315,53 @@ def reset_column_role(
 ) -> WorkingOverlaySummary:
     """Return one column's role to `ROLE_NOT_ASSIGNED` (a safe no-op if
     it already had no explicit role) -- the single neutral default
-    state, never any other implicit value."""
+    state, never any other implicit value. The column's own Engineering
+    Quantity (if any) is deliberately left untouched -- see
+    `app.domain.working_overlay.WorkingOverlay.column_engineering_
+    quantities`'s own docstring for why (task section J: "ignored," not
+    cleared, so it survives if the column returns to Waveform later)."""
     session = _resolve_session(workspace_id=workspace_id, source_id=source_id, registry=registry)
     worksheet_index = _resolve_worksheet_index(session)
     key = overlay_domain.column_key(worksheet_index, column_index)
     overlay_domain.reset_column_role(session.working_overlay, key)
+    return summarize_working_overlay(session, worksheet_index)
+
+
+def set_column_engineering_quantity(
+    *, workspace_id: str, source_id: str, column_index: int, engineering_quantity: str,
+    registry: PreparationSessionRegistry,
+) -> WorkingOverlaySummary:
+    """Assign one column's Engineering Quantity (DEC-077). `engineering_
+    quantity` must be one of `app.domain.channel_classification.
+    KNOWN_ENGINEERING_QUANTITIES` -- never a free-text field. Meaningful
+    only for a column currently carrying `ROLE_WAVEFORM` (task section C)
+    -- this function does not itself check the column's current role
+    (matching `set_column_role()`'s own "no cross-field validation"
+    precedent); a value stored for a non-Waveform column is simply
+    ignored by every downstream reader until the column becomes Waveform
+    again."""
+    session = _resolve_session(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    worksheet_index = _resolve_worksheet_index(session)
+    if engineering_quantity not in KNOWN_ENGINEERING_QUANTITIES:
+        raise InvalidEngineeringQuantityError(
+            f"engineering_quantity must be one of {KNOWN_ENGINEERING_QUANTITIES}; got {engineering_quantity!r}."
+        )
+    _check_column_bound(session, worksheet_index, column_index)
+    key = overlay_domain.column_key(worksheet_index, column_index)
+    overlay_domain.set_column_engineering_quantity(session.working_overlay, key, engineering_quantity)
+    return summarize_working_overlay(session, worksheet_index)
+
+
+def reset_column_engineering_quantity(
+    *, workspace_id: str, source_id: str, column_index: int, registry: PreparationSessionRegistry,
+) -> WorkingOverlaySummary:
+    """Return one column's Engineering Quantity to `Undefined` (a safe
+    no-op if it already had no explicit value) -- the single neutral
+    default state, never any other implicit value."""
+    session = _resolve_session(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    worksheet_index = _resolve_worksheet_index(session)
+    key = overlay_domain.column_key(worksheet_index, column_index)
+    overlay_domain.reset_column_engineering_quantity(session.working_overlay, key)
     return summarize_working_overlay(session, worksheet_index)
 
 

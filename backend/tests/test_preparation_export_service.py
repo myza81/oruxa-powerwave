@@ -43,10 +43,12 @@ from app.services.preparation_import_service import (
     import_excel_preparation_source,
     select_preparation_worksheet,
 )
+from app.domain.working_overlay import column_key
 from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.time_axis_service import interpret_time_axis, set_time_axis_configuration
 from app.services.working_overlay_service import (
     edit_cell,
+    set_column_engineering_quantity,
     set_column_role,
     set_data_region,
     set_header_row,
@@ -1046,3 +1048,168 @@ class TestModeEquivalence:
 
         assert data_only.filename == "e_cleaned.csv"
         assert with_provenance.filename == "e_cleaned.zip"
+
+
+class TestEngineeringQuantityExportLabels:
+    """DEC-077 task sections N-U, AK-AM: cleaned CSV/XLSX waveform column
+    labels encode the Engineering Quantity as a strict suffix; the
+    optional manifest may continue recording it too, but restoration
+    never depends on the manifest."""
+
+    def _labeled_source(self, prep, *, quantity: str | None) -> str:
+        content = b"Time,CBDK_V1 Magnitude\n2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n"
+        sid = _add_csv(prep, content)
+        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=3, registry=prep)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        if quantity is not None:
+            set_column_engineering_quantity(
+                workspace_id=WS, source_id=sid, column_index=1, engineering_quantity=quantity, registry=prep,
+            )
+        _confirm_absolute(prep, sid, column_index=0)
+        return sid
+
+    def test_known_quantity_appends_suffix_to_header(self):
+        prep = PreparationSessionRegistry()
+        sid = self._labeled_source(prep, quantity="Voltage")
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY)
+
+        rows = list(csv.reader(io.StringIO(result.content.decode("utf-8"))))
+        assert rows[0] == ["Time", "CBDK_V1 Magnitude (Voltage)"]
+
+    @pytest.mark.parametrize(
+        "quantity,expected_suffix",
+        [
+            ("Voltage", "(Voltage)"),
+            ("Voltage Angle", "(Voltage Angle)"),
+            ("Current", "(Current)"),
+            ("Current Angle", "(Current Angle)"),
+            ("Active Power", "(Active Power)"),
+            ("Reactive Power", "(Reactive Power)"),
+            ("Frequency", "(Frequency)"),
+            ("ROCOF", "(ROCOF)"),
+        ],
+    )
+    def test_every_known_quantity_produces_its_own_exact_suffix(self, quantity, expected_suffix):
+        prep = PreparationSessionRegistry()
+        sid = self._labeled_source(prep, quantity=quantity)
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY)
+
+        rows = list(csv.reader(io.StringIO(result.content.decode("utf-8"))))
+        assert rows[0][1] == f"CBDK_V1 Magnitude {expected_suffix}"
+
+    def test_undefined_quantity_never_gets_a_suffix(self):
+        prep = PreparationSessionRegistry()
+        sid = self._labeled_source(prep, quantity=None)
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY)
+
+        rows = list(csv.reader(io.StringIO(result.content.decode("utf-8"))))
+        assert rows[0] == ["Time", "CBDK_V1 Magnitude"]
+        assert "(Undefined)" not in rows[0][1]
+
+    def test_configured_time_column_header_never_gets_a_quantity_suffix(self):
+        # Task section T: the Configured Time column's own "(s)"-style
+        # header is never confused with an Engineering Quantity suffix --
+        # it is produced entirely separately (_build_configured_time_column)
+        # and never passed through encode_engineering_quantity_suffix().
+        prep = PreparationSessionRegistry()
+        sid = self._labeled_source(prep, quantity="Voltage")
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY)
+
+        rows = list(csv.reader(io.StringIO(result.content.decode("utf-8"))))
+        assert rows[0][0] == "Time"
+
+    def test_manifest_may_still_record_engineering_quantities(self):
+        prep = PreparationSessionRegistry()
+        sid = self._labeled_source(prep, quantity="Voltage")
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
+
+        manifest = _read_manifest(_unzip(result.content))
+        assert manifest["column_engineering_quantities"][1] == "Voltage"
+
+    def test_data_only_export_needs_no_manifest_to_carry_the_quantity(self):
+        # The header suffix alone is the carrier -- EXPORT_MODE_DATA_ONLY
+        # builds no manifest at all, and the suffix is still present.
+        prep = PreparationSessionRegistry()
+        sid = self._labeled_source(prep, quantity="ROCOF")
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY)
+
+        with pytest.raises(zipfile.BadZipFile):
+            _unzip(result.content)
+        rows = list(csv.reader(io.StringIO(result.content.decode("utf-8"))))
+        assert rows[0][1] == "CBDK_V1 Magnitude (ROCOF)"
+
+
+class TestEngineeringQuantityReUploadRoundTrip:
+    """DEC-077 task sections S, AL: re-uploading a cleaned export restores
+    Engineering Quantity deterministically from the header suffix, and
+    exporting again is stable (never a duplicated suffix)."""
+
+    def test_full_round_trip_restores_and_re_exports_identically(self):
+        prep = PreparationSessionRegistry()
+        first_sid = self._first_export_sid(prep)
+        first_result = export_preparation_source(
+            workspace_id=WS, source_id=first_sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY,
+        )
+        assert first_result.content.decode("utf-8").splitlines()[0] == "Time,CBDK_V1 Magnitude (Voltage)"
+
+        # Re-upload the cleaned export as a brand-new preparation source.
+        second_sid = _add_csv(prep, first_result.content, filename="re-uploaded.csv")
+        set_header_row(workspace_id=WS, source_id=second_sid, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=second_sid, start_row=2, end_row=3, registry=prep)
+        _mark_time_axis(prep, second_sid, 0)
+        _mark_waveform(prep, second_sid, 1)  # restoration fires here
+        _confirm_absolute(prep, second_sid, column_index=0)
+
+        session = prep.get(WS, second_sid)
+        assert session.working_overlay.column_engineering_quantities[column_key(None, 1)] == "Voltage"
+
+        second_result = export_preparation_source(
+            workspace_id=WS, source_id=second_sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY,
+        )
+        second_header = second_result.content.decode("utf-8").splitlines()[0]
+        # Stable, never duplicated -- "... (Voltage) (Voltage)" would be a bug.
+        assert second_header == "Time,CBDK_V1 Magnitude (Voltage)"
+
+    def _first_export_sid(self, prep) -> str:
+        content = b"Time,CBDK_V1 Magnitude\n2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n"
+        sid = _add_csv(prep, content)
+        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=3, registry=prep)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_column_engineering_quantity(
+            workspace_id=WS, source_id=sid, column_index=1, engineering_quantity="Voltage", registry=prep,
+        )
+        _confirm_absolute(prep, sid, column_index=0)
+        return sid
+
+    def test_time_header_suffix_never_confused_with_engineering_quantity_on_reupload(self):
+        # "Time (s)" (a non-absolute Configured Time header) must never
+        # be misparsed as an Engineering Quantity suffix on re-upload.
+        prep = PreparationSessionRegistry()
+        content = b"Elapsed,Value\n0.0,1.0\n0.02,2.0\n"
+        sid = _add_csv(prep, content)
+        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=3, registry=prep)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_elapsed(prep, sid, column_index=0)
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY)
+        assert result.content.decode("utf-8").splitlines()[0] == "Time (s),Value"
+
+        second_sid = _add_csv(prep, result.content, filename="re-uploaded.csv")
+        set_header_row(workspace_id=WS, source_id=second_sid, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=second_sid, start_row=2, end_row=3, registry=prep)
+        _mark_waveform(prep, second_sid, 0)  # "Time (s)" column, misassigned Waveform on purpose
+
+        session = prep.get(WS, second_sid)
+        assert column_key(None, 0) not in session.working_overlay.column_engineering_quantities

@@ -14,6 +14,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from app.domain.channel_classification import UNDEFINED
 from app.domain.source import SourceMetadata
 
 
@@ -25,6 +26,14 @@ class AnalogChannelOut(BaseModel):
     docs/project-memory/MIGRATION_PLAN.md's Phase 1 refinement record.
     `engineering_type` is computed once, backend-side (app.domain.channel_classification),
     never re-derived client-side.
+
+    `engineering_quantity` (Engineering Quantity enhancement, DEC-077) is a
+    trailing, fully additive field carrying the richer, user-selected
+    quantity (e.g. "Voltage Angle") a CSV/Excel Waveform column may now
+    carry -- `"Undefined"` for every COMTRADE/calculated channel today
+    (neither provider sets it), and for a CSV/Excel channel the engineer
+    never classified. Always resolves to the same `engineering_type` via
+    `app.domain.channel_classification.broad_engineering_type()`.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -33,6 +42,7 @@ class AnalogChannelOut(BaseModel):
     index: int
     unit: str
     engineering_type: str
+    engineering_quantity: str = UNDEFINED
     phase: str | None = None
     scale: float
     offset: float

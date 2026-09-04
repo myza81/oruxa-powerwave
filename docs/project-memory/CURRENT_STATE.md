@@ -9,9 +9,25 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-04**. A same-day UX refinement (no
-DECISIONS entry — a straightforward navigation improvement, not an
-architectural decision) gives the Data Preparation Workspace's raw
+Last meaningful update: **2026-09-04**. A seventh same-day enhancement
+([DECISIONS.md — DEC-077](DECISIONS.md#dec-077--csvexcel-waveform-columns-may-carry-an-explicit-engineering-quantity-cleaned-exports-encode-it-as-a-strict-deterministic-label-suffix-that-a-re-upload-restores-without-depending-on-the-manifest))
+adds an explicit, user-SELECTED "Engineering Quantity" for CSV/Excel
+Waveform columns (Voltage/Voltage Angle/Current/Current Angle/Active
+Power/Reactive Power/Frequency/ROCOF/Undefined), fixing the root cause
+a prior-session investigation found: the existing channel classifier
+(`classify_analog_channel()`) was never broken, CSV/Excel simply never
+fed it a signal. Selecting a quantity flows straight into canonical
+channel metadata (`AnalogChannel.parameter_type`) at conversion time,
+reusing that SAME classifier unchanged — COMTRADE and calculated
+channels are completely unaffected. Cleaned exports encode a known
+quantity as a strict `<label> (<Engineering Quantity>)` header suffix
+(e.g. `CBDK_V1 Magnitude (Voltage)`), which a re-upload restores
+deterministically once the column is assigned the Waveform role — the
+manifest is never required for restoration. See
+[Implemented capabilities](#implemented-capabilities). A same-day UX
+refinement (no DECISIONS entry — a straightforward navigation
+improvement, not an architectural decision) gives the Data Preparation
+Workspace's raw
 preview pager First/Last buttons and direct page-number entry
 alongside the existing Previous/Next: `[First] [Previous]  Page
 [__] of N  [Next] [Last]`. First/Last jump straight to the target page
@@ -374,6 +390,35 @@ re-confirmed by the TG-FINAL audit):
   "Derived" badge and tooltip), refreshed immediately after every Time
   Axis Save/Clear (alongside the existing refresh-on-cell-edit
   behavior) so it never shows a stale value.
+
+  **DEC-077 (2026-09-04) adds an explicit, user-selected "Engineering
+  Quantity" to a Waveform-role column's own configuration**, shown as a
+  fourth column-mapping-table selector (`Voltage`/`Voltage Angle`/
+  `Current`/`Current Angle`/`Active Power`/`Reactive Power`/
+  `Frequency`/`ROCOF`/`Undefined`), stored sparsely on the working
+  overlay's new `column_engineering_quantities` (mirrors `column_roles`
+  exactly — absence means `Undefined`, meaningful only for a Waveform
+  column, participates in the same undo/redo/revision history). The
+  selection flows into `AnalogChannel.parameter_type` at conversion
+  time and is classified by the EXISTING, unmodified-in-behavior
+  `app.domain.channel_classification.classify_analog_channel()` — the
+  same function COMTRADE already used — never a second, CSV-specific
+  classifier; a new additive `engineering_quantity` field (default
+  `"Undefined"`) rides alongside the existing broad `engineering_type`
+  on every channel summary, with a deterministic mapping between the
+  two (`broad_engineering_type()`) so every existing downstream
+  consumer (channel-browsing groups, calculated-channel type
+  inheritance, per-unit measurement-group eligibility) is completely
+  unaffected. Cleaned exports encode a known quantity as a strict
+  `<label> (<Engineering Quantity>)` header suffix (never `"
+  (Undefined)"`); re-uploading that file restores the quantity
+  deterministically once the column is (re-)assigned the Waveform role
+  — via the SAME suffix grammar the exporter writes, exact-match only,
+  never confused with the Configured Time column's own `"(s)"` suffix.
+  Role=Waveform itself is never auto-assigned by a self-describing
+  label — investigated per the task's own instruction; no existing
+  precedent for automatic role assignment was found, so only the
+  quantity restores, never the role.
 
   **A same-day UX refinement (2026-09-04, no DECISIONS entry) adds
   First/Last and direct page-number entry to this same preview's

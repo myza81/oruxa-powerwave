@@ -10740,6 +10740,173 @@ COMTRADE handling.
 
 ---
 
+## DEC-077 — CSV/Excel Waveform columns may carry an explicit Engineering Quantity; cleaned exports encode it as a strict, deterministic label suffix that a re-upload restores without depending on the manifest
+
+Date: 2026-09-04
+Status: Approved
+Source: explicit project-owner enhancement request ("Engineering
+Quantity Metadata + Self-Describing Export Labels") -- a direct
+follow-on to the prior session's investigation-only audit of why
+CSV/Excel-imported channels display "Undefined" for their channel
+type, which found the classifier itself (`classify_analog_channel()`)
+already works correctly and is shared with COMTRADE; the CSV/Excel
+conversion path simply never supplied it a signal (`AnalogChannel.unit`
+hardcoded `""`, `parameter_type` never set).
+
+Decision:
+
+**A new, richer, user-SELECTED "Engineering Quantity" concept is added
+for CSV/Excel Waveform columns**, distinct from (but deterministically
+mapping to) the existing broad `engineering_type` categories:
+
+```text
+Voltage        -> Voltage
+Voltage Angle  -> Voltage
+Current        -> Current
+Current Angle  -> Current
+Active Power   -> Power
+Reactive Power -> Power
+Frequency      -> Frequency
+ROCOF          -> ROCOF
+Undefined      -> Undefined
+```
+
+Stored sparsely on `WorkingOverlay.column_engineering_quantities`
+(mirrors `column_roles`'s own "absence is Undefined, never written
+explicitly" convention exactly), meaningful only for a column currently
+carrying the Waveform role. Selecting a quantity flows straight into
+canonical channel metadata at conversion time -- `AnalogChannel.
+parameter_type` -- and is classified via the EXISTING, unmodified-in-
+behavior `classify_analog_channel()` (extended only with four new Tier-1
+map entries: `"voltage angle"`/`"current angle"`/`"active power"`/
+`"reactive power"`), never a second, CSV-specific classifier. A new,
+strictly additive `engineering_quantity` field (default `"Undefined"`)
+appears alongside the existing `engineering_type` on `AnalogChannelSummary`/
+`AnalogChannelOut` -- COMTRADE and calculated channels are never touched
+to populate it and always report `"Undefined"`.
+
+**Cleaned exports encode a known, non-Undefined quantity as a strict
+label suffix**: `<original label> (<Engineering Quantity>)`, e.g.
+`CBDK_V1 Magnitude (Voltage)`, `df/dt (ROCOF)`, `P (Active Power)`. An
+`"Undefined"` column exports its bare original label -- never a noisy
+`"(Undefined)"` suffix. Re-exporting an already-suffixed label is
+stable (parse-then-append, never `"... (Voltage) (Voltage)"`).
+
+**Re-upload restores the quantity deterministically from that exact
+suffix** -- the SAME `encode_engineering_quantity_suffix()`/
+`parse_engineering_quantity_suffix()` pair in `app.domain.channel_
+classification` (exact match only, case-insensitive on parse,
+canonical-cased on encode; `"Time (s)"` and ordinary parenthesized text
+never match). Restoration fires at exactly one point: when a column is
+newly assigned the Waveform role (never overwriting an existing
+explicit selection, including an explicit "Undefined"). **Role=Waveform
+itself is never auto-assigned** -- the investigation this enhancement
+found no existing precedent for automatic role assignment anywhere in
+the current architecture, so extending automation to role selection
+was judged out of scope; only the quantity is restored once the
+engineer has explicitly chosen Waveform. The optional provenance
+manifest may still record `column_engineering_quantities`, but
+restoration never depends on it -- the cleaned CSV/XLSX header alone
+carries it, confirmed by a dedicated `EXPORT_MODE_DATA_ONLY` round-trip
+test (no manifest built at all).
+
+**Engineering Quantity never blocks readiness** -- a Waveform column
+left at "Undefined" (the default) is exactly as Ready as before this
+enhancement; selecting a quantity introduces no new gate.
+
+Reason:
+
+The prior session's investigation established that the classifier
+itself was never broken -- CSV/Excel simply never fed it a signal.
+Rather than inventing automatic label guessing (rejected outright, see
+below), the owner's approved design puts the engineer in control:
+explicit selection during preparation, encoded losslessly into the
+cleaned file's own header so the classification round-trips without a
+manifest, matching the project's broader "cleaned CSV/XLSX should be
+usable and self-describing on its own" direction.
+
+Alternatives considered:
+
+Automatic label-pattern classification (rejected -- explicit non-goal;
+the existing classifier's own module docstring already documents why a
+naming-pattern tier was deliberately never built: e.g. a channel named
+"VA" is genuinely ambiguous between "voltage, phase A" and the unit
+"VA"). Storing the rich quantity as the ONLY engineering-type field,
+replacing the broad one (rejected -- would force every existing
+downstream consumer -- channel-browsing group headings, calculated-
+channel `derive_engineering_type()` inheritance, per-unit measurement-
+group eligibility -- to understand nine values instead of six;
+`broad_engineering_type()`'s deterministic mapping keeps both audiences
+served without widening any existing compatibility surface). Treating
+"Voltage Angle"/"Current Angle" as a new first-class broad category
+(rejected -- the codebase has no first-class Angle representation
+anywhere today, not in `engineering_type` nor in the separate
+`waveform_form` taxonomy; introducing one was judged a larger,
+unrequested redesign, so Angle stays richer METADATA ONLY for now,
+mapping to its magnitude's own broad family). Auto-assigning
+Role=Waveform for a self-describing label (rejected for this
+enhancement -- investigated per the task's own explicit instruction;
+no existing precedent for automatic role assignment was found anywhere
+in the current architecture, so only the quantity restores, never the
+role). A composite, single-history-entry undo for the rare
+"assign-Waveform-and-restore-quantity-together" path (rejected --
+`app.domain.working_overlay`'s own established "one WorkingOperation
+per pure mutation function" invariant was kept instead; this one,
+first-time-only auto-suggestion path is a documented exception needing
+one extra Undo click to fully revert, not a correctness issue).
+
+Impact:
+
+Backend: `app/domain/channel_classification.py` -- new Engineering
+Quantity taxonomy (`ENGINEERING_QUANTITY_*` constants,
+`KNOWN_ENGINEERING_QUANTITIES`), `broad_engineering_type()`,
+`canonical_engineering_quantity()`, `parse_engineering_quantity_
+suffix()`/`encode_engineering_quantity_suffix()`, four new `_PARAMETER_
+TYPE_TO_CATEGORY` entries. `app/domain/source.py`/`app/schemas/
+source.py` -- additive `engineering_quantity` field (default
+`"Undefined"`) on `AnalogChannelSummary`/`AnalogChannelOut`, matching
+the existing `waveform_form` field's own non-invasive precedent (zero
+lines changed in `import_service.py`). `app/domain/working_overlay.py`
+-- new sparse `column_engineering_quantities` dict, `set_column_
+engineering_quantity()`/`reset_column_engineering_quantity()`, wired
+into `reset_all()`/undo-redo exactly like `column_roles`.
+`app/services/working_overlay_service.py` -- new `set_column_
+engineering_quantity()`/`reset_column_engineering_quantity()`, and the
+suffix-restoration step inside `set_column_role()`. `app/services/
+preparation_preview_service.py` -- `column_engineering_quantities`
+added to `PreviewResult` (mirrors `column_roles`), new `resolve_single_
+column_label()` helper. `app/services/preparation_conversion_service.py`
+-- the selected quantity flows into `AnalogChannel.parameter_type` and
+`AnalogChannelSummary.engineering_quantity`. `app/services/
+preparation_export_service.py` -- waveform header labels gain the
+suffix before uniqueness dedup; manifest gains `column_engineering_
+quantities`. `app/api/v1/preparation_sources.py` -- new
+`PUT`/`DELETE .../working/columns/{column_index}/engineering-quantity`
+routes; `invalid_engineering_quantity` (400) error code. `app/services/
+errors.py` -- new `InvalidEngineeringQuantityError`. Frontend:
+`frontend/index.html` -- a fourth "Engineering Quantity" column in the
+Structure panel's column-mapping table, shown only for a Waveform-role
+row (a plain "—" otherwise); the main channel-browsing view shows the
+richer quantity next to a channel's name only when it adds information
+beyond its own broad-type group heading (e.g. "CBDK_V1 Angle (Voltage
+Angle)"), never for COMTRADE/calculated channels. No change to
+COMTRADE (`app/providers/comtrade.py`/`import_service.py` untouched),
+calculated-channel inheritance (`app/domain/calculated_channel.py`
+untouched), per-unit/measurement-group eligibility (DEC-050/DEC-052
+untouched), or readiness gating. Tests: new/extended coverage across
+`test_channel_classification.py`, `test_working_overlay_domain.py`,
+`test_working_overlay_service.py`, `test_preparation_conversion_
+service.py`, `test_preparation_export_service.py`,
+`test_preparation_sources_api.py`, `test_sources_api.py` (COMTRADE
+regression), `test_readiness_service.py` (readiness regression). Full
+backend suite: 2846 passed, 0 failed (baseline immediately before this
+enhancement, confirmed fresh rather than assumed: 2731 passed). The
+committed browser smoke test (COMTRADE) still passes unchanged; a
+throwaway (not committed) live-browser Playwright UAT covering all 7
+task-specified scenarios passed with zero console/page errors.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

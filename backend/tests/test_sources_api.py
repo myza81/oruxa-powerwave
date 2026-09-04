@@ -212,6 +212,27 @@ class TestReadEndpoints:
         # see tests/fixtures/comtrade/synth_ascii.cfg.
         assert types_by_name == {"VA": "Voltage", "VB": "Voltage", "IA": "Current"}
 
+    def test_engineering_quantity_enhancement_leaves_comtrade_completely_unaffected(
+        self, client, comtrade_fixtures_dir
+    ):
+        # DEC-077, task section X: COMTRADE is never touched to populate
+        # the richer field -- its channels' own AnalogChannel.
+        # parameter_type stays None, so canonical_engineering_quantity(None)
+        # resolves "Undefined" by construction, with zero lines changed in
+        # app.services.import_service/app.providers.comtrade. The broad
+        # `engineering_type` above is completely unaffected (still
+        # Voltage/Voltage/Current, asserted above).
+        cfg = _read(comtrade_fixtures_dir / "synth_ascii.cfg")
+        dat = _read(comtrade_fixtures_dir / "synth_ascii.dat")
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/sources", files=_files(cfg, dat)
+        ).json()["source_id"]
+
+        body = client.get(f"/api/v1/workspaces/ws-1/sources/{source_id}/channels").json()
+
+        quantities = {c["engineering_quantity"] for c in body["analog_channels"]}
+        assert quantities == {"Undefined"}
+
     def test_get_unknown_source_is_404(self, client):
         resp = client.get("/api/v1/workspaces/ws-1/sources/does-not-exist/channels")
 

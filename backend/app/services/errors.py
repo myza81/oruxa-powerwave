@@ -615,6 +615,14 @@ class InvalidColumnRoleError(ImportServiceError):
     code = "invalid_column_role"
 
 
+class InvalidEngineeringQuantityError(ImportServiceError):
+    """A submitted `engineering_quantity` is not one of
+    `app.domain.channel_classification.KNOWN_ENGINEERING_QUANTITIES` --
+    a deliberately closed set (DEC-077), never a free-text field."""
+
+    code = "invalid_engineering_quantity"
+
+
 # ---- CSV/Excel ingestion Slice 7 (DEC-072): Time-Axis interpretation
 # FRAMEWORK (app.domain.time_axis, app.services.time_axis_service). Still
 # no promotion into the Slice 6 severity/PreparationIssue model -- these

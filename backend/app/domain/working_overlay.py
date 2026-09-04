@@ -115,6 +115,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from app.domain.channel_classification import ENGINEERING_QUANTITY_UNDEFINED
+
 if TYPE_CHECKING:
     from app.domain.time_axis import TimeAxisConfiguration
 
@@ -279,6 +281,15 @@ class WorkingOverlay:
     cell_overrides: dict[CellKey, CellOverride] = field(default_factory=dict)
     excluded_rows: set[RowKey] = field(default_factory=set)
     column_roles: dict[ColumnKey, str] = field(default_factory=dict)
+    # Engineering Quantity enhancement (DEC-077): sparse, same "absence is
+    # the default (Undefined)" convention as column_roles above -- never
+    # cleared merely because a column's role later moves away from
+    # ROLE_WAVEFORM (see set_column_role()'s own docstring for why: the
+    # quantity is simply IGNORED, not read, by every downstream consumer
+    # for a non-Waveform column, so a stale-but-unused stored value is
+    # harmless and preserves the user's prior selection if they switch
+    # back). Keyed by the SAME ColumnKey column_roles uses.
+    column_engineering_quantities: dict[ColumnKey, str] = field(default_factory=dict)
     header_row: dict[object, int] = field(default_factory=dict)
     data_region: dict[object, DataRegion] = field(default_factory=dict)
     time_axis: dict[object, "TimeAxisConfiguration"] = field(default_factory=dict)
@@ -366,6 +377,37 @@ def reset_column_role(overlay: WorkingOverlay, key: ColumnKey) -> bool:
         return False
     before = overlay.column_roles.pop(key)
     _record(overlay, "column_role", key, before, None)
+    return True
+
+
+def set_column_engineering_quantity(overlay: WorkingOverlay, key: ColumnKey, engineering_quantity: str) -> None:
+    """Set one column's Engineering Quantity (DEC-077). `engineering_
+    quantity == ENGINEERING_QUANTITY_UNDEFINED` removes any stored entry
+    rather than writing the default explicitly -- `column_engineering_
+    quantities` stays sparse, matching `column_roles`'s own "absence is
+    the default" convention. Value validity (must be one of
+    `app.domain.channel_classification.KNOWN_ENGINEERING_QUANTITIES`) is
+    enforced by `app.services.working_overlay_service`, not here -- this
+    function stays pure and never raises, matching every other mutation
+    function in this module."""
+    before = overlay.column_engineering_quantities.get(key)
+    if engineering_quantity == ENGINEERING_QUANTITY_UNDEFINED:
+        overlay.column_engineering_quantities.pop(key, None)
+        after = None
+    else:
+        overlay.column_engineering_quantities[key] = engineering_quantity
+        after = engineering_quantity
+    _record(overlay, "column_engineering_quantity", key, before, after)
+
+
+def reset_column_engineering_quantity(overlay: WorkingOverlay, key: ColumnKey) -> bool:
+    """Equivalent to `set_column_engineering_quantity(overlay, key,
+    ENGINEERING_QUANTITY_UNDEFINED)` but matches `reset_column_role()`'s
+    own "return whether anything actually changed" signature."""
+    if key not in overlay.column_engineering_quantities:
+        return False
+    before = overlay.column_engineering_quantities.pop(key)
+    _record(overlay, "column_engineering_quantity", key, before, None)
     return True
 
 
@@ -475,6 +517,7 @@ def reset_all(overlay: WorkingOverlay) -> None:
         "cell_overrides": dict(overlay.cell_overrides),
         "excluded_rows": set(overlay.excluded_rows),
         "column_roles": dict(overlay.column_roles),
+        "column_engineering_quantities": dict(overlay.column_engineering_quantities),
         "header_row": dict(overlay.header_row),
         "data_region": dict(overlay.data_region),
         "time_axis": dict(overlay.time_axis),
@@ -482,6 +525,7 @@ def reset_all(overlay: WorkingOverlay) -> None:
     overlay.cell_overrides.clear()
     overlay.excluded_rows.clear()
     overlay.column_roles.clear()
+    overlay.column_engineering_quantities.clear()
     overlay.header_row.clear()
     overlay.data_region.clear()
     overlay.time_axis.clear()
@@ -504,6 +548,11 @@ def _apply_state(overlay: WorkingOverlay, kind: str, key, state) -> None:
             overlay.column_roles.pop(key, None)
         else:
             overlay.column_roles[key] = state
+    elif kind == "column_engineering_quantity":
+        if state is None:
+            overlay.column_engineering_quantities.pop(key, None)
+        else:
+            overlay.column_engineering_quantities[key] = state
     elif kind == "header":
         if state is None:
             overlay.header_row.pop(key, None)
@@ -524,6 +573,7 @@ def _apply_state(overlay: WorkingOverlay, kind: str, key, state) -> None:
             overlay.cell_overrides.clear()
             overlay.excluded_rows.clear()
             overlay.column_roles.clear()
+            overlay.column_engineering_quantities.clear()
             overlay.header_row.clear()
             overlay.data_region.clear()
             overlay.time_axis.clear()
@@ -531,6 +581,7 @@ def _apply_state(overlay: WorkingOverlay, kind: str, key, state) -> None:
             overlay.cell_overrides = dict(state["cell_overrides"])
             overlay.excluded_rows = set(state["excluded_rows"])
             overlay.column_roles = dict(state["column_roles"])
+            overlay.column_engineering_quantities = dict(state["column_engineering_quantities"])
             overlay.header_row = dict(state["header_row"])
             overlay.data_region = dict(state["data_region"])
             overlay.time_axis = dict(state["time_axis"])

@@ -88,6 +88,7 @@ from typing import Any, Iterator
 
 from openpyxl import load_workbook
 
+from app.domain.channel_classification import ENGINEERING_QUANTITY_UNDEFINED
 from app.domain.preparation_session import FORMAT_CSV, FORMAT_EXCEL, PreparationSession
 from app.domain.working_overlay import (
     END_MODE_SPECIFIC,
@@ -233,6 +234,17 @@ class PreviewResult:
     data_end_row: int | None = None
     column_labels: list[str] = field(default_factory=list)
     column_roles: list[str] = field(default_factory=list)
+    # Engineering Quantity enhancement (DEC-077): one Engineering Quantity
+    # per column, sized/aligned exactly like column_labels/column_roles
+    # above, defaulting to ENGINEERING_QUANTITY_UNDEFINED for any column
+    # with no explicit column_engineering_quantities entry -- the SAME
+    # "absence is the default" convention column_roles already uses. The
+    # frontend only ever SHOWS this for a column whose role is currently
+    # `waveform`; the value is still reported for every column so a prior
+    # selection survives a column's role moving away from Waveform and
+    # back (see app.domain.working_overlay.set_column_role's own
+    # docstring for why nothing here clears it automatically).
+    column_engineering_quantities: list[str] = field(default_factory=list)
 
 
 def _sniff_csv_delimiter(sample: str) -> str:
@@ -352,7 +364,10 @@ def _preview_csv(session: PreparationSession, *, offset: int, limit: int) -> Pre
     column_count = session.cached_column_count if session.cached_column_count is not None else max_columns
 
     _apply_working_overlay(session, worksheet_index=None, rows=page)
-    header_row_number, data_start_row, data_end_mode, data_end_row, column_labels, column_roles = _apply_structure_mapping(
+    (
+        header_row_number, data_start_row, data_end_mode, data_end_row,
+        column_labels, column_roles, column_engineering_quantities,
+    ) = _apply_structure_mapping(
         session, worksheet_index=None, page=page, column_count=column_count, known_row_total=total_row_count,
     )
 
@@ -374,6 +389,7 @@ def _preview_csv(session: PreparationSession, *, offset: int, limit: int) -> Pre
         data_end_row=data_end_row,
         column_labels=column_labels,
         column_roles=column_roles,
+        column_engineering_quantities=column_engineering_quantities,
     )
 
 
@@ -419,7 +435,10 @@ def _preview_excel(session: PreparationSession, *, offset: int, limit: int) -> P
 
     _apply_working_overlay(session, worksheet_index=worksheet_index, rows=page)
     column_count = worksheet_info.column_count or 0
-    header_row_number, data_start_row, data_end_mode, data_end_row, column_labels, column_roles = _apply_structure_mapping(
+    (
+        header_row_number, data_start_row, data_end_mode, data_end_row,
+        column_labels, column_roles, column_engineering_quantities,
+    ) = _apply_structure_mapping(
         session, worksheet_index=worksheet_index, page=page, column_count=column_count,
         known_row_total=worksheet_info.row_count,
     )
@@ -442,6 +461,7 @@ def _preview_excel(session: PreparationSession, *, offset: int, limit: int) -> P
         data_end_row=data_end_row,
         column_labels=column_labels,
         column_roles=column_roles,
+        column_engineering_quantities=column_engineering_quantities,
     )
 
 
@@ -539,6 +559,29 @@ def _build_column_labels(header_cells: list[Any] | None, column_count: int) -> l
     return labels
 
 
+def resolve_single_column_label(
+    session: PreparationSession, *, worksheet_index: int | None, column_index: int,
+) -> str:
+    """One column's current WORKING display label -- the exact same value
+    `_build_column_labels()` would produce for this column, without
+    requiring a full preview page fetch. Used by
+    `app.services.working_overlay_service`'s own Engineering-Quantity-
+    suffix-restoration step (DEC-077, `set_column_role()`) -- reuses the
+    SAME header-resolution/fallback logic `_apply_structure_mapping()`
+    already established (`_resolve_header_cells()`/`_build_column_labels()`),
+    never a second, independent label-lookup implementation. Passing an
+    empty `page=[]` forces `_resolve_header_cells()` down its own
+    single-row-fetch fallback path (the header row is virtually never
+    already in hand here, since this is called from a column-role
+    mutation, not a preview read)."""
+    overlay = session.working_overlay
+    header_row_number = overlay.header_row.get(worksheet_index)
+    header_cells = _resolve_header_cells(
+        session, worksheet_index=worksheet_index, header_row_number=header_row_number, page=[],
+    )
+    return _build_column_labels(header_cells, column_index + 1)[column_index]
+
+
 def _build_column_roles(overlay: WorkingOverlay, worksheet_index: int | None, column_count: int) -> list[str]:
     """One role per column (Slice 5), defaulting to `ROLE_NOT_ASSIGNED`
     for any column with no explicit `column_roles` entry -- the model's
@@ -549,6 +592,19 @@ def _build_column_roles(overlay: WorkingOverlay, worksheet_index: int | None, co
     itself."""
     return [
         overlay.column_roles.get((worksheet_index, c), ROLE_NOT_ASSIGNED)
+        for c in range(column_count)
+    ]
+
+
+def _build_column_engineering_quantities(
+    overlay: WorkingOverlay, worksheet_index: int | None, column_count: int,
+) -> list[str]:
+    """One Engineering Quantity per column (DEC-077), defaulting to
+    `ENGINEERING_QUANTITY_UNDEFINED` for any column with no explicit
+    `column_engineering_quantities` entry -- mirrors `_build_column_roles()`
+    above exactly, same sparse-dict-to-dense-list shape."""
+    return [
+        overlay.column_engineering_quantities.get((worksheet_index, c), ENGINEERING_QUANTITY_UNDEFINED)
         for c in range(column_count)
     ]
 
@@ -594,7 +650,7 @@ def _apply_structure_mapping(
     page: list[PreviewRow],
     column_count: int,
     known_row_total: int | None,
-) -> tuple[int | None, int | None, str | None, int | None, list[str], list[str]]:
+) -> tuple[int | None, int | None, str | None, int | None, list[str], list[str], list[str]]:
     """Slice 5's own post-processing step, run after
     `_apply_working_overlay` -- adds `is_header`/`in_active_region` to
     every row of `page` (mutated in place, same convention as that
@@ -639,7 +695,13 @@ def _apply_structure_mapping(
     )
     column_labels = _build_column_labels(header_cells, column_count) if column_count else []
     column_roles = _build_column_roles(overlay, worksheet_index, column_count) if column_count else []
-    return header_row_number, data_start_row, data_end_mode, data_end_row, column_labels, column_roles
+    column_engineering_quantities = (
+        _build_column_engineering_quantities(overlay, worksheet_index, column_count) if column_count else []
+    )
+    return (
+        header_row_number, data_start_row, data_end_mode, data_end_row,
+        column_labels, column_roles, column_engineering_quantities,
+    )
 
 
 def preview_preparation_source(

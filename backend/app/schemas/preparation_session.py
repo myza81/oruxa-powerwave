@@ -285,6 +285,12 @@ class PreparationSourcePreviewOut(BaseModel):
     data_end_row: int | None = None
     column_labels: list[str] = Field(default_factory=list)
     column_roles: list[str] = Field(default_factory=list)
+    # Engineering Quantity enhancement (DEC-077): additive, sized/aligned
+    # exactly like column_labels/column_roles above -- see
+    # app.services.preparation_preview_service.PreviewResult's own
+    # docstring for why every column (not just Waveform-role ones) is
+    # reported.
+    column_engineering_quantities: list[str] = Field(default_factory=list)
     configured_time: ConfiguredTimePreviewOut | None = None
 
     @classmethod
@@ -307,6 +313,7 @@ class PreparationSourcePreviewOut(BaseModel):
             data_end_row=result.data_end_row,
             column_labels=result.column_labels,
             column_roles=result.column_roles,
+            column_engineering_quantities=result.column_engineering_quantities,
         )
 
 
@@ -358,3 +365,12 @@ class ColumnRoleRequest(BaseModel):
     -- never a free-text field."""
 
     role: str
+
+
+class EngineeringQuantityRequest(BaseModel):
+    """Body of `PUT .../working/columns/{column_index}/engineering-quantity`
+    (DEC-077). `engineering_quantity` must be one of
+    `app.domain.channel_classification.KNOWN_ENGINEERING_QUANTITIES` --
+    never a free-text field."""
+
+    engineering_quantity: str

@@ -36,6 +36,7 @@ from app.services.time_axis_service import set_time_axis_configuration
 from app.services.working_overlay_service import (
     redo_working_change,
     reset_all_working_changes,
+    set_column_engineering_quantity,
     set_column_role,
     set_data_region,
     set_row_excluded,
@@ -714,5 +715,35 @@ class TestPerformanceStreaming:
         )
 
         summary = _issues(registry, source_id)
+        assert summary.blocking_count == 0
+        assert summary.is_ready is True
+
+
+class TestEngineeringQuantityNeverBlocksReadiness:
+    """DEC-077, task section AD: Engineering Quantity is initially
+    optional -- a Waveform column left at the "Undefined" default (never
+    selected) is still Powerwave Ready, exactly as before this
+    enhancement. Explicitly selecting a quantity must not introduce a
+    NEW blocking condition either."""
+
+    def test_undefined_engineering_quantity_is_still_ready(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry)
+
+        summary = _issues(registry, source_id)
+
+        assert summary.blocking_count == 0
+        assert summary.is_ready is True
+
+    def test_explicit_engineering_quantity_selection_does_not_change_readiness(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry)
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=source_id, column_index=1,
+            engineering_quantity="Voltage", registry=registry,
+        )
+
+        summary = _issues(registry, source_id)
+
         assert summary.blocking_count == 0
         assert summary.is_ready is True

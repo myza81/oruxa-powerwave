@@ -32,6 +32,7 @@ from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.time_axis_service import set_time_axis_configuration
 from app.services.working_overlay_service import (
     edit_cell,
+    set_column_engineering_quantity,
     set_column_role,
     set_data_region,
     set_row_excluded,
@@ -418,6 +419,119 @@ class TestWaveformChannels:
         metadata = _convert(prep, ws, sid)
 
         assert len(metadata.analog_channels) == 1
+
+
+class TestEngineeringQuantityConversion:
+    """DEC-077, task section AJ: the engineer's own per-column Engineering
+    Quantity selection reaches canonical channel metadata directly --
+    no CSV-specific frontend classifier, reusing the SAME
+    classify_analog_channel() every other channel source already uses."""
+
+    def test_voltage_quantity_produces_matching_broad_engineering_type(self):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=sid, column_index=1, engineering_quantity="Voltage", registry=prep,
+        )
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+
+        channel = metadata.analog_channels[0]
+        assert channel.engineering_quantity == "Voltage"
+        assert channel.engineering_type == "Voltage"
+
+    def test_voltage_angle_retains_richer_quantity_while_broad_type_stays_voltage(self):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=sid, column_index=1, engineering_quantity="Voltage Angle", registry=prep,
+        )
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+
+        channel = metadata.analog_channels[0]
+        assert channel.engineering_quantity == "Voltage Angle"
+        assert channel.engineering_type == "Voltage"
+
+    @pytest.mark.parametrize(
+        "quantity,expected_broad",
+        [
+            ("Current", "Current"),
+            ("Current Angle", "Current"),
+            ("Active Power", "Power"),
+            ("Reactive Power", "Power"),
+            ("Frequency", "Frequency"),
+            ("ROCOF", "ROCOF"),
+        ],
+    )
+    def test_every_known_quantity_converts(self, quantity, expected_broad):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=sid, column_index=1, engineering_quantity=quantity, registry=prep,
+        )
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+
+        channel = metadata.analog_channels[0]
+        assert channel.engineering_quantity == quantity
+        assert channel.engineering_type == expected_broad
+
+    def test_undefined_quantity_is_the_default_when_never_selected(self):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+
+        channel = metadata.analog_channels[0]
+        assert channel.engineering_quantity == "Undefined"
+        assert channel.engineering_type == "Undefined"
+
+    def test_unit_stays_empty_engineering_quantity_is_the_only_signal(self):
+        # Task section H/K: CSV/Excel never fabricates a unit string --
+        # AnalogChannel.unit stays "" regardless of Engineering Quantity.
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=sid, column_index=1, engineering_quantity="Voltage", registry=prep,
+        )
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+
+        assert metadata.analog_channels[0].unit == ""
+
+    def test_multiple_waveform_columns_each_keep_their_own_quantity(self):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,1.0,2.0\n2026-08-31 13:00:01,3.0,4.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1, 2)
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=sid, column_index=1, engineering_quantity="Voltage", registry=prep,
+        )
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=sid, column_index=2, engineering_quantity="Current", registry=prep,
+        )
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+
+        assert metadata.analog_channels[0].engineering_quantity == "Voltage"
+        assert metadata.analog_channels[1].engineering_quantity == "Current"
 
 
 class TestNumericIntegrity:

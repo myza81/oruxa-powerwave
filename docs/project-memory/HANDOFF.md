@@ -8,6 +8,96 @@ Last updated: **2026-09-04**
 
 ## What was most recently done
 
+**Enhancement — Engineering Quantity Metadata + Self-Describing Export
+Labels (implemented, DEC-077).** Direct follow-on to the prior
+session's investigation-only audit of why CSV/Excel-imported channels
+display "Undefined" for their channel type: that audit found the
+classifier (`app.domain.channel_classification.classify_analog_
+channel()`) was never broken and is already shared with COMTRADE --
+the CSV/Excel conversion path simply never fed it a signal
+(`AnalogChannel.unit` hardcoded `""`, `parameter_type` never set).
+
+**Change**: a new, richer, user-SELECTED "Engineering Quantity"
+concept for CSV/Excel Waveform columns -- `Voltage`/`Voltage Angle`/
+`Current`/`Current Angle`/`Active Power`/`Reactive Power`/`Frequency`/
+`ROCOF`/`Undefined` -- shown as a fourth column in the Structure
+panel's column-mapping table, visible ONLY for a Waveform-role column.
+Stored sparsely on a new `WorkingOverlay.column_engineering_quantities`
+dict (mirrors `column_roles` exactly: absence means `Undefined`, never
+written explicitly, participates in the same undo/redo/revision
+history; changing a column's role away from Waveform deliberately
+leaves its stored quantity untouched -- "ignored," not cleared, so it
+survives if the column returns to Waveform later). The selection flows
+into `AnalogChannel.parameter_type` at conversion time and is
+classified by the SAME, unmodified-in-behavior `classify_analog_
+channel()` (extended only with four new Tier-1 map entries -- `"voltage
+angle"`/`"current angle"`/`"active power"`/`"reactive power"`), never a
+second CSV-specific classifier. A new additive `engineering_quantity`
+field (default `"Undefined"`) rides alongside the existing broad
+`engineering_type` on every channel summary -- COMTRADE/calculated
+channels are never touched to populate it (zero lines changed in
+`import_service.py`/`app/providers/comtrade.py`/`calculated_channel.py`)
+and always report `"Undefined"` for it, confirmed by a dedicated
+regression test, not merely assumed.
+
+**Cleaned exports encode a known quantity as a strict label suffix**:
+`<original label> (<Engineering Quantity>)`, e.g. `CBDK_V1 Magnitude
+(Voltage)`, `df/dt (ROCOF)`, `P (Active Power)`. An `Undefined` column
+exports its bare original label -- never a noisy `"(Undefined)"`
+suffix. Re-exporting an already-suffixed label is stable (parse-then-
+append, verified never to duplicate). **Re-upload restores the
+quantity deterministically from that exact suffix** -- the same
+`encode_engineering_quantity_suffix()`/`parse_engineering_quantity_
+suffix()` pair, exact-match only, case-insensitive on parse,
+canonical-cased on encode; `"Time (s)"` (the Configured Time column's
+own header) and ordinary parenthesized text never match. Restoration
+fires only when a column is newly assigned the Waveform role, never
+overwriting an existing explicit selection. **Role=Waveform itself is
+never auto-assigned** by a self-describing label -- investigated per
+the task's own explicit instruction; no existing precedent for
+automatic role assignment was found anywhere in the current
+architecture, so only the quantity restores, never the role (a
+deliberate, documented scope boundary, not an oversight). The optional
+provenance manifest may still record `column_engineering_quantities`,
+but restoration never depends on it, confirmed by a dedicated
+`EXPORT_MODE_DATA_ONLY` (no-manifest-built-at-all) round-trip test.
+Engineering Quantity never blocks readiness -- an `Undefined` Waveform
+column is exactly as Ready as before this enhancement.
+
+**Validation**: full backend suite -- baseline immediately before this
+enhancement (confirmed via a fresh full run, not assumed): **2731
+passed, 0 failed**. After this enhancement: **2846 passed, 0 failed**
+(115 new tests across `test_channel_classification.py`,
+`test_working_overlay_domain.py`, `test_working_overlay_service.py`,
+`test_preparation_conversion_service.py`,
+`test_preparation_export_service.py`, `test_preparation_sources_api.py`,
+plus explicit COMTRADE (`test_sources_api.py`) and readiness
+(`test_readiness_service.py`) regression tests). The committed browser
+smoke test (COMTRADE) still passes unchanged with zero console/page
+errors. A throwaway (not committed, deleted after use) live-browser
+Playwright UAT covered all 7 task-specified scenarios: Voltage
+magnitude no longer shows Undefined; Voltage Angle survives as a
+richer distinction while the broad type stays Voltage; ROCOF displays
+correctly; Active Power/Reactive Power both group under the unified
+broad "Power" type while keeping their own distinct richer labels; a
+cleaned export's headers carry the exact canonical suffixes; a
+re-uploaded cleaned export restores Engineering Quantity automatically
+once the self-describing column is assigned Waveform; and an
+`Undefined` channel still plots normally and exports with its bare
+original label, never a `"(Undefined)"` suffix -- all with zero
+console/page errors.
+
+**Next step**: no new slice was opened by this enhancement -- Slice 13
+(progressive automation) remains the next unauthorized item, per
+[Change governance](../../CLAUDE.md#change-governance).
+
+**Commit status**: not committed — per this task's own explicit closing
+instruction ("Do not commit or push unless explicitly asked"), all of
+the above are normal uncommitted working-tree changes pending a
+separate, explicit commit instruction.
+
+## What was done in the prior session — UAT Enhancement: Improve Data Preview Pagination Controls
+
 **UAT Enhancement — Improve Data Preview Pagination Controls
 (implemented; no DECISIONS entry — a straightforward navigation
 improvement, not an architectural decision).** Owner-reported UX
@@ -71,10 +161,8 @@ page-by-page traversal.
 (progressive automation) remains the next unauthorized item, per
 [Change governance](../../CLAUDE.md#change-governance).
 
-**Commit status**: not committed — per this task's own explicit closing
-instruction ("Do not commit or push unless explicitly asked"), all of
-the above are normal uncommitted working-tree changes pending a
-separate, explicit commit instruction.
+**Commit status**: committed as `21e81f0 feat: improve data preview
+pagination`.
 
 ## What was done in the prior session — UAT Enhancement: Cleaned Export UX: manifest/provenance is now optional
 

@@ -15,9 +15,11 @@ from fastapi import UploadFile
 from openpyxl import Workbook
 from starlette.datastructures import Headers
 
+from app.domain.working_overlay import column_key
 from app.services.errors import (
     InvalidColumnRoleError,
     InvalidDataRegionError,
+    InvalidEngineeringQuantityError,
     InvalidWorkingCellValueError,
     InvalidWorkingCoordinateError,
     SourceNotFoundError,
@@ -35,8 +37,10 @@ from app.services.working_overlay_service import (
     redo_working_change,
     reset_all_working_changes,
     reset_cell,
+    reset_column_engineering_quantity,
     reset_column_role,
     reset_data_region,
+    set_column_engineering_quantity,
     set_column_role,
     set_data_region,
     set_header_row,
@@ -613,3 +617,160 @@ class TestColumnRole:
         from app.domain.working_overlay import column_key
         assert column_key(1, 0) not in session.working_overlay.column_roles
         assert session.working_overlay.column_roles[column_key(0, 0)] == "waveform"
+
+
+class TestColumnEngineeringQuantity:
+    """DEC-077: direct PUT/DELETE-equivalent service calls, independent
+    of any suffix-restoration behavior (covered separately below)."""
+
+    def test_assign_and_read_back(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=source_id, column_index=1,
+            engineering_quantity="Voltage", registry=registry,
+        )
+
+        session = registry.get("ws-1", source_id)
+        assert session.working_overlay.column_engineering_quantities[column_key(None, 1)] == "Voltage"
+
+    def test_invalid_quantity_is_rejected(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        with pytest.raises(InvalidEngineeringQuantityError):
+            set_column_engineering_quantity(
+                workspace_id="ws-1", source_id=source_id, column_index=0,
+                engineering_quantity="Power Factor", registry=registry,
+            )
+
+    def test_lowercase_is_rejected_exact_casing_only(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        with pytest.raises(InvalidEngineeringQuantityError):
+            set_column_engineering_quantity(
+                workspace_id="ws-1", source_id=source_id, column_index=0,
+                engineering_quantity="voltage", registry=registry,
+            )
+
+    def test_column_beyond_known_bounds_is_rejected(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        with pytest.raises(InvalidWorkingCoordinateError):
+            set_column_engineering_quantity(
+                workspace_id="ws-1", source_id=source_id, column_index=99,
+                engineering_quantity="Voltage", registry=registry,
+            )
+
+    def test_reset_column_engineering_quantity(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=source_id, column_index=1,
+            engineering_quantity="Current", registry=registry,
+        )
+
+        reset_column_engineering_quantity(
+            workspace_id="ws-1", source_id=source_id, column_index=1, registry=registry,
+        )
+
+        session = registry.get("ws-1", source_id)
+        assert column_key(None, 1) not in session.working_overlay.column_engineering_quantities
+
+    def test_role_changing_away_from_waveform_preserves_stored_quantity(self):
+        # DEC-077 task section J's chosen behavior, verified end-to-end
+        # through the service layer this time (not just the pure domain
+        # function) -- "ignored," not cleared.
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="waveform", registry=registry)
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=source_id, column_index=0,
+            engineering_quantity="Voltage", registry=registry,
+        )
+
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="not_assigned", registry=registry)
+
+        session = registry.get("ws-1", source_id)
+        assert session.working_overlay.column_engineering_quantities[column_key(None, 0)] == "Voltage"
+
+
+class TestEngineeringQuantitySuffixRestoration:
+    """DEC-077 task section S: assigning ROLE_WAVEFORM to a column whose
+    current WORKING label carries a recognized suffix restores the
+    Engineering Quantity automatically -- the ONE place this fires."""
+
+    def test_assigning_waveform_restores_quantity_from_labeled_header(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"CBDK_V1 Magnitude (Voltage),Time\n1.0,0.0\n2.0,0.02\n")
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="waveform", registry=registry)
+
+        session = registry.get("ws-1", source_id)
+        assert session.working_overlay.column_engineering_quantities[column_key(None, 0)] == "Voltage"
+
+    def test_no_header_configured_means_label_is_a_plain_letter_never_matches(self):
+        # Without a header row selected, the column's own "label" is just
+        # its neutral spreadsheet letter ("A") -- never mistaken for a
+        # suffix.
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"CBDK_V1 Magnitude (Voltage),Time\n1.0,0.0\n")
+
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="waveform", registry=registry)
+
+        session = registry.get("ws-1", source_id)
+        assert column_key(None, 0) not in session.working_overlay.column_engineering_quantities
+
+    def test_ordinary_label_without_suffix_does_not_restore_anything(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"Voltage Sensor,Time\n1.0,0.0\n")
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="waveform", registry=registry)
+
+        session = registry.get("ws-1", source_id)
+        assert column_key(None, 0) not in session.working_overlay.column_engineering_quantities
+
+    def test_role_never_auto_assigned_merely_because_a_label_looks_self_describing(self):
+        # Only the QUANTITY is restored; ROLE_WAVEFORM must still be an
+        # explicit user action (task section S: "do not silently broaden
+        # auto-role detection").
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"CBDK_V1 Magnitude (Voltage),Time\n1.0,0.0\n")
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+
+        session = registry.get("ws-1", source_id)
+        assert column_key(None, 0) not in session.working_overlay.column_roles
+
+    def test_does_not_overwrite_an_explicit_prior_quantity(self):
+        # Assign Waveform, override the auto-suggestion, remove the role,
+        # re-assign Waveform -- the user's own explicit override must
+        # survive, never silently re-suggested over.
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"CBDK_V1 Magnitude (Voltage),Time\n1.0,0.0\n")
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="waveform", registry=registry)
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=source_id, column_index=0,
+            engineering_quantity="Current", registry=registry,
+        )
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="time_axis", registry=registry)
+
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="waveform", registry=registry)
+
+        session = registry.get("ws-1", source_id)
+        assert session.working_overlay.column_engineering_quantities[column_key(None, 0)] == "Current"
+
+    def test_assigning_time_axis_role_never_restores_a_quantity(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"CBDK_V1 Magnitude (Voltage),Time\n1.0,0.0\n")
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="time_axis", registry=registry)
+
+        session = registry.get("ws-1", source_id)
+        assert column_key(None, 0) not in session.working_overlay.column_engineering_quantities

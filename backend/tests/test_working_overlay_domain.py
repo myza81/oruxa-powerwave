@@ -11,6 +11,12 @@ from app.domain.time_axis import (
     PROVENANCE_NATIVE,
     TimeAxisConfiguration,
 )
+from app.domain.channel_classification import (
+    ENGINEERING_QUANTITY_CURRENT,
+    ENGINEERING_QUANTITY_UNDEFINED,
+    ENGINEERING_QUANTITY_VOLTAGE,
+    ENGINEERING_QUANTITY_VOLTAGE_ANGLE,
+)
 from app.domain.working_overlay import (
     END_MODE_SOURCE_END,
     END_MODE_SPECIFIC,
@@ -28,10 +34,12 @@ from app.domain.working_overlay import (
     redo,
     reset_all,
     reset_cell,
+    reset_column_engineering_quantity,
     reset_column_role,
     reset_data_region,
     row_key,
     set_cell_value,
+    set_column_engineering_quantity,
     set_column_role,
     set_data_region,
     set_header_row,
@@ -199,6 +207,114 @@ class TestColumnRoles:
 
         assert overlay.column_roles[column_key(0, 0)] == ROLE_WAVEFORM
         assert overlay.column_roles[column_key(1, 0)] == ROLE_TIME_AXIS
+
+    def test_changing_role_away_from_waveform_never_touches_engineering_quantity(self):
+        # DEC-077, task section J's own chosen behavior: the domain-level
+        # set_column_role() is a pure, single-field mutation -- it never
+        # reaches into column_engineering_quantities at all (clearing on
+        # role-change-away is a documented non-behavior, not merely
+        # untested).
+        overlay = WorkingOverlay()
+        key = column_key(None, 0)
+        set_column_role(overlay, key, ROLE_WAVEFORM)
+        set_column_engineering_quantity(overlay, key, ENGINEERING_QUANTITY_VOLTAGE)
+
+        set_column_role(overlay, key, ROLE_TIME_AXIS)
+
+        assert overlay.column_engineering_quantities[key] == ENGINEERING_QUANTITY_VOLTAGE
+
+
+class TestColumnEngineeringQuantities:
+    """DEC-077: CSV/Excel Engineering Quantity metadata. Mirrors
+    TestColumnRoles's own structure -- the SAME sparse "absence is the
+    default" convention, the SAME undo/redo/revision participation."""
+
+    def test_assign_each_known_non_default_quantity(self):
+        overlay = WorkingOverlay()
+        for i, quantity in enumerate([ENGINEERING_QUANTITY_VOLTAGE, ENGINEERING_QUANTITY_VOLTAGE_ANGLE]):
+            key = column_key(None, i)
+            set_column_engineering_quantity(overlay, key, quantity)
+            assert overlay.column_engineering_quantities[key] == quantity
+
+    def test_undefined_quantity_is_never_stored_explicitly(self):
+        overlay = WorkingOverlay()
+        key = column_key(None, 0)
+        set_column_engineering_quantity(overlay, key, ENGINEERING_QUANTITY_VOLTAGE)
+
+        set_column_engineering_quantity(overlay, key, ENGINEERING_QUANTITY_UNDEFINED)
+
+        assert key not in overlay.column_engineering_quantities
+
+    def test_reset_removes_the_entry(self):
+        overlay = WorkingOverlay()
+        key = column_key(None, 1)
+        set_column_engineering_quantity(overlay, key, ENGINEERING_QUANTITY_CURRENT)
+
+        removed = reset_column_engineering_quantity(overlay, key)
+
+        assert removed is True
+        assert key not in overlay.column_engineering_quantities
+
+    def test_reset_with_no_quantity_is_a_safe_no_op(self):
+        overlay = WorkingOverlay()
+        key = column_key(None, 1)
+
+        removed = reset_column_engineering_quantity(overlay, key)
+
+        assert removed is False
+        assert overlay.revision == 0
+
+    def test_worksheet_index_keeps_quantities_isolated(self):
+        overlay = WorkingOverlay()
+        set_column_engineering_quantity(overlay, column_key(0, 0), ENGINEERING_QUANTITY_VOLTAGE)
+        set_column_engineering_quantity(overlay, column_key(1, 0), ENGINEERING_QUANTITY_CURRENT)
+
+        assert overlay.column_engineering_quantities[column_key(0, 0)] == ENGINEERING_QUANTITY_VOLTAGE
+        assert overlay.column_engineering_quantities[column_key(1, 0)] == ENGINEERING_QUANTITY_CURRENT
+
+    def test_revision_increments(self):
+        overlay = WorkingOverlay()
+        set_column_engineering_quantity(overlay, column_key(None, 0), ENGINEERING_QUANTITY_VOLTAGE)
+        assert overlay.revision == 1
+
+    def test_undo_reverts_a_quantity_assignment(self):
+        overlay = WorkingOverlay()
+        key = column_key(None, 0)
+        set_column_engineering_quantity(overlay, key, ENGINEERING_QUANTITY_VOLTAGE)
+
+        undone = undo(overlay)
+
+        assert undone is True
+        assert key not in overlay.column_engineering_quantities
+
+    def test_redo_reapplies_a_quantity_assignment(self):
+        overlay = WorkingOverlay()
+        key = column_key(None, 0)
+        set_column_engineering_quantity(overlay, key, ENGINEERING_QUANTITY_VOLTAGE)
+        undo(overlay)
+
+        redone = redo(overlay)
+
+        assert redone is True
+        assert overlay.column_engineering_quantities[key] == ENGINEERING_QUANTITY_VOLTAGE
+
+    def test_reset_all_clears_engineering_quantities_too(self):
+        overlay = WorkingOverlay()
+        set_column_engineering_quantity(overlay, column_key(None, 0), ENGINEERING_QUANTITY_VOLTAGE)
+
+        reset_all(overlay)
+
+        assert overlay.column_engineering_quantities == {}
+
+    def test_undo_after_reset_all_restores_engineering_quantities(self):
+        overlay = WorkingOverlay()
+        key = column_key(None, 0)
+        set_column_engineering_quantity(overlay, key, ENGINEERING_QUANTITY_VOLTAGE)
+        reset_all(overlay)
+
+        undo(overlay)
+
+        assert overlay.column_engineering_quantities[key] == ENGINEERING_QUANTITY_VOLTAGE
 
 
 class TestHeaderRow:
@@ -644,6 +760,7 @@ class TestUndoRedo:
 
         op = overlay.history[-1]
         assert set(op.before.keys()) == {
-            "cell_overrides", "excluded_rows", "column_roles", "header_row", "data_region", "time_axis",
+            "cell_overrides", "excluded_rows", "column_roles", "column_engineering_quantities",
+            "header_row", "data_region", "time_axis",
         }
         assert len(op.before["cell_overrides"]) == 5

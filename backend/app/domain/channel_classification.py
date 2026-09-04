@@ -95,6 +95,19 @@ _PARAMETER_TYPE_TO_CATEGORY: dict[str, str] = {
     "frequency": FREQUENCY,
     "rocof": ROCOF,
     "unknown": UNDEFINED,
+    # CSV/Excel Engineering Quantity enhancement (DEC-077): richer values
+    # the Data Preparation Workspace may now write into
+    # AnalogChannel.parameter_type. Each still resolves to the exact same
+    # broad category the plain form already does -- "voltage angle" ->
+    # VOLTAGE, same as "voltage" -- because this Tier-1 classifier only
+    # ever draws the SIX broad KNOWN_CATEGORIES distinctions; a richer
+    # Angle/Active-vs-Reactive distinction lives one level up, in
+    # ENGINEERING QUANTITY below, never here (see that section's own
+    # docstring for why the two stay deliberately separate).
+    "voltage angle": VOLTAGE,
+    "current angle": CURRENT,
+    "active power": POWER,
+    "reactive power": POWER,
 }
 
 # Tier 2: base engineering unit, after stripping an optional single-letter
@@ -194,3 +207,164 @@ def derive_waveform_form(operation: str, input_forms: list[str]) -> str:
     if operation in _WAVEFORM_FORM_INHERIT_IF_UNANIMOUS_OPERATIONS:
         return _unanimous_known_value(input_forms, WAVEFORM_FORM_UNKNOWN)
     return WAVEFORM_FORM_UNKNOWN
+
+
+# ---------------------------------------------------------------------------
+# Engineering Quantity (DEC-077): CSV/Excel Waveform-column metadata,
+# ---------------------------------------------------------------------------
+#
+# A richer, user-SELECTED (never guessed) taxonomy than the six broad
+# KNOWN_CATEGORIES above -- e.g. distinguishing "Voltage Angle" from plain
+# "Voltage", or "Active Power"/"Reactive Power" from the unified "Power"
+# category. Every Engineering Quantity maps to EXACTLY ONE broad category
+# via broad_engineering_type() below, so every existing engineering_type
+# consumer (channel-browsing group headings, calculated-channel
+# derive_engineering_type() inheritance, per-unit measurement-group
+# eligibility) keeps working completely unchanged -- this module never
+# forces the old broad field to carry more meaning than that code already
+# expects.
+#
+# Deliberately still no first-class "Angle" broad category (see
+# broad_engineering_type()'s own docstring): "Voltage Angle" maps to plain
+# VOLTAGE, not a new family, matching the owner's own explicit instruction
+# not to widen broad-family compatibility assumptions (measurement-group/
+# per-unit eligibility, RMS/magnitude waveform_form assumptions) merely
+# because a richer label now exists. A channel carrying an Angle quantity
+# is metadata-only richer for now -- nothing downstream treats it any
+# differently than a plain Voltage/Current channel of the same broad type.
+ENGINEERING_QUANTITY_VOLTAGE = "Voltage"
+ENGINEERING_QUANTITY_VOLTAGE_ANGLE = "Voltage Angle"
+ENGINEERING_QUANTITY_CURRENT = "Current"
+ENGINEERING_QUANTITY_CURRENT_ANGLE = "Current Angle"
+ENGINEERING_QUANTITY_ACTIVE_POWER = "Active Power"
+ENGINEERING_QUANTITY_REACTIVE_POWER = "Reactive Power"
+ENGINEERING_QUANTITY_FREQUENCY = "Frequency"
+ENGINEERING_QUANTITY_ROCOF = "ROCOF"
+#: Same literal as the broad UNDEFINED above -- one constant, reused, never
+#: two independent "undefined" strings that could silently drift apart.
+ENGINEERING_QUANTITY_UNDEFINED = UNDEFINED
+
+#: Every value classify_analog_channel()/the Data Preparation Workspace's
+#: own selector may use. Deliberately closed -- no Power Factor, Energy,
+#: Impedance, Digital, or Temperature (explicit non-goals; add later, when
+#: actually needed, never speculatively).
+KNOWN_ENGINEERING_QUANTITIES = (
+    ENGINEERING_QUANTITY_VOLTAGE,
+    ENGINEERING_QUANTITY_VOLTAGE_ANGLE,
+    ENGINEERING_QUANTITY_CURRENT,
+    ENGINEERING_QUANTITY_CURRENT_ANGLE,
+    ENGINEERING_QUANTITY_ACTIVE_POWER,
+    ENGINEERING_QUANTITY_REACTIVE_POWER,
+    ENGINEERING_QUANTITY_FREQUENCY,
+    ENGINEERING_QUANTITY_ROCOF,
+    ENGINEERING_QUANTITY_UNDEFINED,
+)
+
+_ENGINEERING_QUANTITY_TO_BROAD_TYPE: dict[str, str] = {
+    ENGINEERING_QUANTITY_VOLTAGE: VOLTAGE,
+    ENGINEERING_QUANTITY_VOLTAGE_ANGLE: VOLTAGE,
+    ENGINEERING_QUANTITY_CURRENT: CURRENT,
+    ENGINEERING_QUANTITY_CURRENT_ANGLE: CURRENT,
+    ENGINEERING_QUANTITY_ACTIVE_POWER: POWER,
+    ENGINEERING_QUANTITY_REACTIVE_POWER: POWER,
+    ENGINEERING_QUANTITY_FREQUENCY: FREQUENCY,
+    ENGINEERING_QUANTITY_ROCOF: ROCOF,
+    ENGINEERING_QUANTITY_UNDEFINED: UNDEFINED,
+}
+
+#: Case-insensitive reverse lookup, keyed by lowercased quantity text ->
+#: the exact canonical-cased member of KNOWN_ENGINEERING_QUANTITIES.
+_NORMALIZED_TO_ENGINEERING_QUANTITY: dict[str, str] = {
+    quantity.lower(): quantity for quantity in KNOWN_ENGINEERING_QUANTITIES
+}
+
+
+def broad_engineering_type(engineering_quantity: str) -> str:
+    """Deterministic Engineering Quantity -> broad `engineering_type`
+    mapping (task section C), the ONE place this compatibility rule is
+    ever expressed. Unrecognized input maps to UNDEFINED, never raises --
+    matching classify_analog_channel()'s own "never raise, only report
+    not-confidently-known" contract."""
+    return _ENGINEERING_QUANTITY_TO_BROAD_TYPE.get(engineering_quantity, UNDEFINED)
+
+
+def canonical_engineering_quantity(parameter_type: str | None) -> str:
+    """Return the exact `KNOWN_ENGINEERING_QUANTITIES` member `parameter_type`
+    names (case-insensitively), or `UNDEFINED` if it does not name one.
+
+    Deliberately STRICTER than classify_analog_channel()'s own Tier-1 unit
+    lookup: legacy/compatibility-only parameter_type values such as "mw"/
+    "mvar" (kept working for broad `engineering_type` classification, see
+    `_PARAMETER_TYPE_TO_CATEGORY`) are NOT themselves one of the nine
+    canonical Engineering Quantity strings, so this returns UNDEFINED for
+    them -- only an EXACT (case-insensitive) canonical quantity name (as
+    the Data Preparation Workspace's own selector writes) restores the
+    richer value. This is why a COMTRADE channel (parameter_type always
+    `None`) or a channel whose parameter_type is one of the older bare
+    keys always reports `engineering_quantity = "Undefined"` even when its
+    broad `engineering_type` is confidently Voltage/Current/Power -- the
+    richer field is additive, never a replacement for the broad one.
+    """
+    if not parameter_type:
+        return UNDEFINED
+    return _NORMALIZED_TO_ENGINEERING_QUANTITY.get(parameter_type.strip().lower(), UNDEFINED)
+
+
+#: Strict "<base label> (<suffix text>)" grammar -- the suffix must be the
+#: very end of the string, in exactly one trailing parenthesized group.
+#: `(.*)` is greedy, so a label with unrelated internal parentheses (task
+#: section R's own "Line 1 (North)" kind of case) still only ever matches
+#: the LAST parenthesized group; whether that group's text turns out to be
+#: a recognized quantity is decided afterward by the canonical lookup, not
+#: by this pattern.
+_ENGINEERING_QUANTITY_SUFFIX_PATTERN = re.compile(r"^(.*) \(([^()]+)\)$")
+
+
+def parse_engineering_quantity_suffix(label: str) -> tuple[str, str | None]:
+    """Parse a strict, case-insensitive `" (<Engineering Quantity>)"`
+    suffix off the END of `label` (task section Q/R). Returns
+    `(base_label, matched_quantity)`: `matched_quantity` is the exact
+    canonical-cased `KNOWN_ENGINEERING_QUANTITIES` member if -- and only
+    if -- the parenthesized text is an EXACT (case-insensitive) match for
+    one of the eight non-Undefined quantities; otherwise returns
+    `(label, None)` completely UNCHANGED, deliberately conservative:
+
+    - `"Time (s)"` never matches -- `"s"` is not a known quantity, so this
+      returns `("Time (s)", None)` (task section T: never confused with
+      the Configured Time header's own `(s)` suffix).
+    - `"Voltage Sensor"` (no parenthesis at all) never matches.
+    - `"Voltage Sensor (Voltage)"` matches: `("Voltage Sensor", "Voltage")`.
+    - `"Phase A"`, `"Quality"`, ordinary text containing quantity-ish
+      substrings but no exact recognized suffix, never match (task section
+      AM) -- this is an exact-suffix parser, never a substring/fuzzy
+      guesser (task section R).
+
+    Never guesses, never raises.
+    """
+    match = _ENGINEERING_QUANTITY_SUFFIX_PATTERN.match(label)
+    if not match:
+        return label, None
+    base, suffix_text = match.group(1), match.group(2)
+    canonical = _NORMALIZED_TO_ENGINEERING_QUANTITY.get(suffix_text.strip().lower())
+    if canonical is None or canonical == UNDEFINED:
+        return label, None
+    return base, canonical
+
+
+def encode_engineering_quantity_suffix(label: str, engineering_quantity: str) -> str:
+    """The exporter's own inverse of `parse_engineering_quantity_suffix()`
+    (task sections N/O/P): returns `"<base label> (<Engineering
+    Quantity>)"` for a known, non-Undefined quantity, or `label` UNCHANGED
+    for `UNDEFINED`/an unrecognized value (task section O -- never a noisy
+    literal `"(Undefined)"` suffix).
+
+    Round-trip-stable by construction (task section P): ANY existing
+    recognized suffix is stripped via `parse_engineering_quantity_suffix()`
+    FIRST, so re-exporting an already-suffixed label (from a prior cleaned
+    export, re-uploaded and re-exported unchanged) normalizes to exactly
+    one suffix, never `"... (Voltage) (Voltage)"`.
+    """
+    if engineering_quantity not in KNOWN_ENGINEERING_QUANTITIES or engineering_quantity == UNDEFINED:
+        return label
+    base_label, _ = parse_engineering_quantity_suffix(label)
+    return f"{base_label} ({engineering_quantity})"
