@@ -1,17 +1,20 @@
 """Shared Time-Axis value normalization (CSV/Excel ingestion, DEC-072/
-DEC-074).
+DEC-074/DEC-075).
 
 The ONE place an already-CONFIRMED time-axis interpreter's own
 `interpreted` preview strings (produced by
 `app.services.time_axis_service`'s own interpreter registry, via
 `build_preview_rows()`) are turned back into native Python values and,
-where needed, canonical elapsed-seconds relative to the first active
-row. Extracted out of `app.services.preparation_conversion_service`
-(Slice 10) so that module and `app.services.preparation_export_service`'s
-own "export the resolved Time Axis" enhancement share exactly ONE
-implementation of this logic -- the two features must never silently
-disagree about what a configured Time Axis MEANS (task's own explicit
-"canonical conversion and cleaned export must agree" requirement).
+where needed, canonical elapsed-seconds relative to a first/anchor row.
+Extracted out of `app.services.preparation_conversion_service`
+(Slice 10) so that module, `app.services.preparation_export_service`'s
+own "export the resolved Time Axis" enhancement (DEC-074), and
+`app.services.time_axis_service.build_configured_time_values()`'s own
+"show the resolved Time Axis in Data Preview" enhancement (DEC-075)
+share exactly ONE implementation of this logic -- none of the three may
+ever silently disagree about what a configured Time Axis MEANS (each
+task's own explicit "must agree"/"reuse existing resolved-time logic"
+requirement).
 
 **No new inference happens here.** Every function in this module only
 re-parses a string an interpreter's own `build_preview_rows()` ALREADY
@@ -67,29 +70,46 @@ def seconds_from_midnight(value: dt.time) -> float:
     return value.hour * 3600 + value.minute * 60 + value.second + value.microsecond / 1_000_000
 
 
+def relative_seconds_with_anchor(natives: list[Any], anchor: Any, *, family: str) -> list[float]:
+    """Canonical elapsed seconds for each already-parsed native value,
+    relative to an EXTERNALLY supplied `anchor` (rather than assuming
+    `natives[0]` -- see `relative_seconds()` below for that common
+    case). The Data Preview's own "Configured Time" column needs this
+    generalized form: a later preview PAGE must still normalize against
+    the true FIRST ACTIVE ROW of the whole dataset, never that page's
+    own first row (a critical guardrail -- see
+    `app.services.time_axis_service.build_configured_time_values`'s own
+    docstring). Every `natives` entry must be non-`None` -- callers
+    raise their own typed error for a `None` BEFORE calling this, so
+    the failing row number is always reported specifically rather than
+    surfacing here as a generic `TypeError`/`ValueError`.
+
+    For `FAMILY_ABSOLUTE`, raises `TypeError` if a `natives` entry mixes
+    timezone-awareness with `anchor` (or vice-versa) -- exactly Python's
+    own `datetime` subtraction behavior, left unwrapped so each caller
+    can attach its own row-specific context."""
+    if not natives:
+        return []
+    if family == FAMILY_ABSOLUTE:
+        return [(n - anchor).total_seconds() for n in natives]
+    if family == FAMILY_PARTIAL:
+        anchor_seconds = seconds_from_midnight(anchor)
+        return [seconds_from_midnight(n) - anchor_seconds for n in natives]
+    anchor_value = float(anchor)
+    return [float(n) - anchor_value for n in natives]
+
+
 def relative_seconds(natives: list[Any], *, family: str) -> list[float]:
     """Canonical elapsed seconds for each already-parsed native value,
     relative to the FIRST one -- the one "preferred direction" every
     family uses (originally Slice 10's own `_canonical_time_and_anchor`
-    rule, unchanged here). Every `natives` entry must be non-`None` --
-    callers raise their own typed error for a `None` BEFORE calling
-    this, so the failing row number is always reported specifically
-    rather than surfacing here as a generic `TypeError`/`ValueError`.
-
-    For `FAMILY_ABSOLUTE`, raises `TypeError` if `natives` mixes a
-    timezone-aware value with the first (naive) one or vice-versa --
-    exactly Python's own `datetime` subtraction behavior, left
-    unwrapped so each caller can attach its own row-specific context."""
+    rule, unchanged here). A thin convenience wrapper around
+    `relative_seconds_with_anchor()` using `natives[0]` as the anchor;
+    every `natives` entry must be non-`None`, matching that function's
+    own contract."""
     if not natives:
         return []
-    if family == FAMILY_ABSOLUTE:
-        first = natives[0]
-        return [(n - first).total_seconds() for n in natives]
-    if family == FAMILY_PARTIAL:
-        first_seconds = seconds_from_midnight(natives[0])
-        return [seconds_from_midnight(n) - first_seconds for n in natives]
-    first_value = float(natives[0])
-    return [float(n) - first_value for n in natives]
+    return relative_seconds_with_anchor(natives, natives[0], family=family)
 
 
 def format_absolute_iso(value: dt.datetime) -> str:

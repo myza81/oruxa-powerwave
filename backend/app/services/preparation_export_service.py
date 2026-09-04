@@ -114,6 +114,29 @@ rows()` itself already performs.
 (`<base>_cleaned.zip`) containing the cleaned CSV/XLSX plus a sidecar
 `<base>_cleaned.manifest.json` -- one download action, no separate
 packaging framework (`zipfile`, stdlib only).
+
+**UAT enhancement (2026-09-04): manifest/provenance is now OPTIONAL,
+not forced on every download.** Owner-approved problem: a normal
+engineer only wants the reusable cleaned CSV/XLSX itself and should
+never be handed a `.zip` (let alone have to understand a sidecar
+`manifest.json`) merely to get it. `export_preparation_source()` now
+takes an explicit `mode` -- `EXPORT_MODE_DATA_ONLY` (the new default:
+returns the cleaned CSV/XLSX bytes directly, no ZIP, no manifest built
+at all) or `EXPORT_MODE_WITH_PROVENANCE` (the original Slice 12/DEC-074
+behavior, unchanged: cleaned CSV/XLSX + manifest inside one ZIP).
+Provenance capability is NOT removed -- every manifest field, the
+gating rules, and the configured-Time-Axis derivation are identical to
+before; only the DEFAULT shape of what a plain "Export Cleaned Data"
+click returns has changed. Both modes share the exact same gating
+(`_ensure_exportable()`), the exact same configured-Time-Axis/waveform
+row construction, and therefore always contain byte-identical cleaned
+data for the same working-overlay revision -- `mode` only decides
+whether that same artifact is handed back directly or bundled with a
+manifest. The manifest is built and serialized ONLY for
+`EXPORT_MODE_WITH_PROVENANCE` (task section M's own "don't build/
+serialize the manifest unnecessarily for the default path" efficiency
+note) -- `EXPORT_MODE_DATA_ONLY` never constructs `_build_manifest()`'s
+own edited/cleared-cell provenance counts or JSON payload at all.
 """
 
 from __future__ import annotations
@@ -134,11 +157,11 @@ from app.domain.preparation_session import FORMAT_CSV, PreparationSession
 from app.domain.time_axis import (
     FAMILY_ABSOLUTE,
     FAMILY_PARTIAL,
-    FAMILY_SAMPLE_INDEX,
     INTERPRETER_ID_MANUAL,
     INTERPRETER_ID_UNSUPPORTED,
     PROVENANCE_RECONSTRUCTED,
     TimeAxisSampleRow,
+    is_time_axis_resolved,
 )
 from app.domain.working_overlay import OVERRIDE_KIND_CLEAR, OVERRIDE_KIND_EDIT, ROLE_NOT_ASSIGNED, ROLE_WAVEFORM
 from app.services.errors import (
@@ -195,14 +218,29 @@ _DEFAULT_BASE_FILENAME = "recording"
 
 MANIFEST_VERSION = 1
 
+#: `export_preparation_source()`'s own `mode` values (2026-09-04 UAT
+#: enhancement, above). `EXPORT_MODE_DATA_ONLY` is the new default --
+#: matches the owner-approved "give me the cleaned reusable file, not a
+#: ZIP" default action; `EXPORT_MODE_WITH_PROVENANCE` is the unchanged
+#: Slice 12/DEC-074 ZIP+manifest bundle, kept as an explicit opt-in.
+EXPORT_MODE_DATA_ONLY = "data_only"
+EXPORT_MODE_WITH_PROVENANCE = "with_provenance"
+
+_CSV_CONTENT_TYPE = "text/csv"
+_XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
 
 @dataclass(slots=True)
 class ExportResult:
-    """The finished, ready-to-return export bundle -- a single ZIP
-    containing the cleaned CSV/XLSX plus its own manifest JSON. Never a
-    filesystem path (task section Z: no durable storage is introduced
-    by this module) -- the caller (the API route) returns `content`
-    directly as an HTTP response body."""
+    """The finished, ready-to-return export artifact. For
+    `EXPORT_MODE_DATA_ONLY`, `content` is the cleaned CSV/XLSX bytes
+    directly (`media_type` is the real CSV/XLSX content type); for
+    `EXPORT_MODE_WITH_PROVENANCE`, `content` is a ZIP bundle containing
+    the cleaned CSV/XLSX plus its own manifest JSON
+    (`media_type="application/zip"`). Never a filesystem path (task
+    section Z: no durable storage is introduced by this module) -- the
+    caller (the API route) returns `content` directly as an HTTP
+    response body."""
 
     filename: str
     content: bytes
@@ -296,27 +334,34 @@ def _ensure_exportable(*, issue_summary, time_axis_summary) -> None:
     `is_ready` directly as the primary gate (never a second, narrower
     readiness policy of its own -- see this module's own docstring for
     why that verdict already covers exactly Time-Axis/Waveform-Channel
-    blocking conditions), plus the SAME two additional capability
-    constraints `app.services.preparation_conversion_service.
-    convert_preparation_source()` already enforces for the identical
-    underlying reason: a standardized Time column can only honestly be
-    built from an already-resolved, sample-based interpretation."""
+    blocking conditions), plus `app.domain.time_axis.
+    is_time_axis_resolved()` -- the SAME shared eligibility check the
+    Data Preview's own "Configured Time" column now reuses too (a
+    2026-09-04, DEC-075 enhancement) -- to decide WHETHER a standardized
+    Time column can honestly be built at all. The two specific checks
+    below stay separate only to pick the right, specific error message;
+    by the time either is reached, `is_ready` has already ruled out
+    every OTHER way `is_time_axis_resolved()` could be `False` (an
+    unconfigured/unresolved/stale-role-reference Time Axis is always
+    itself a BLOCKING readiness issue -- see
+    `app.services.readiness_service`'s own module docstring)."""
     if not issue_summary.is_ready:
         blocking_messages = [i.message for i in issue_summary.issues if i.severity == SEVERITY_BLOCKING]
         raise ExportNotReadyError(
             "This source is not yet ready for a reusable cleaned export: " + " ".join(blocking_messages)
         )
+    if is_time_axis_resolved(time_axis_summary):
+        return
     if time_axis_summary.interpreter_id in (INTERPRETER_ID_MANUAL, INTERPRETER_ID_UNSUPPORTED):
         raise ExportUnsupportedInterpreterError(
             "The active Time Axis configuration does not parse real per-row values from this source's own "
             "columns -- assign a real interpreter (Absolute Datetime, Date + Time, Elapsed Time, Sample Index, "
             "or Repeated Timestamp) before exporting a reusable cleaned file."
         )
-    if time_axis_summary.family == FAMILY_SAMPLE_INDEX and time_axis_summary.interval_seconds is None:
-        raise ExportRequiresIntervalError(
-            "A sampling interval or sampling rate is required before a reusable cleaned file can be exported. "
-            "Return to Time Axis configuration and provide one."
-        )
+    raise ExportRequiresIntervalError(
+        "A sampling interval or sampling rate is required before a reusable cleaned file can be exported. "
+        "Return to Time Axis configuration and provide one."
+    )
 
 
 @dataclass(slots=True)
@@ -400,18 +445,29 @@ def _build_configured_time_column(
 
 def export_preparation_source(
     *, workspace_id: str, source_id: str, registry: PreparationSessionRegistry,
+    mode: str = EXPORT_MODE_DATA_ONLY,
 ) -> ExportResult:
     """Export the CURRENT Working Dataset of one CSV/Excel preparation
-    source as a cleaned CSV or single-worksheet XLSX, bundled into one
-    ZIP with a provenance manifest. Requires a usable, resolved Time
-    Axis plus at least one Waveform column (see `_ensure_exportable()`
-    -- a 2026-09-04, DEC-074 change from the earlier "available
-    regardless of readiness" policy, once export started serializing a
-    RESOLVED Time Axis rather than the raw source columns verbatim).
-    Raises an `ImportServiceError` subclass (never a `PreparationIssue`)
-    for every runtime failure; never mutates the preparation session,
-    the working overlay, or the raw source in any way.
+    source. Requires a usable, resolved Time Axis plus at least one
+    Waveform column (see `_ensure_exportable()` -- a 2026-09-04,
+    DEC-074 change from the earlier "available regardless of readiness"
+    policy, once export started serializing a RESOLVED Time Axis rather
+    than the raw source columns verbatim). Raises an
+    `ImportServiceError` subclass (never a `PreparationIssue`) for every
+    runtime failure; never mutates the preparation session, the working
+    overlay, or the raw source in any way, in either mode.
+
+    `mode=EXPORT_MODE_DATA_ONLY` (the default): returns the cleaned
+    CSV/XLSX bytes directly -- no ZIP, no manifest built at all (task
+    section M). `mode=EXPORT_MODE_WITH_PROVENANCE`: returns the same
+    cleaned CSV/XLSX bundled with a sidecar provenance manifest inside
+    one ZIP -- the original Slice 12/DEC-074 behavior, unchanged. Both
+    modes share identical gating and identical cleaned-data construction
+    (task section J's own "must agree" requirement) -- only the return
+    shape differs.
     """
+    if mode not in (EXPORT_MODE_DATA_ONLY, EXPORT_MODE_WITH_PROVENANCE):
+        raise ValueError(f"Unknown export mode: {mode!r}")
     session = _resolve_session(workspace_id=workspace_id, source_id=source_id, registry=registry)
     worksheet_index = _resolve_worksheet_index(session)
     captured_revision = session.working_overlay.revision
@@ -497,21 +553,29 @@ def export_preparation_source(
     if session.summary.source_format == FORMAT_CSV:
         artifact_bytes = _build_csv_artifact(header_names, exported_rows)
         artifact_filename = f"{base_name}_cleaned.csv"
+        artifact_content_type = _CSV_CONTENT_TYPE
     else:
         sheet_name = _sanitize_sheet_name(session.summary.worksheets[worksheet_index].name)
         artifact_bytes = _build_xlsx_artifact(sheet_name, header_names, exported_rows)
         artifact_filename = f"{base_name}_cleaned.xlsx"
+        artifact_content_type = _XLSX_CONTENT_TYPE
 
-    manifest = _build_manifest(
-        session=session, worksheet_index=worksheet_index, captured_revision=captured_revision,
-        issue_summary=issue_summary, time_axis_summary=time_axis_summary,
-        omitted_columns=omitted_columns, column_roles=column_roles,
-        edited_cell_count=edited_cell_count, cleared_cell_count=cleared_cell_count,
-        excluded_row_numbers=excluded_row_numbers, exported_row_count=len(exported_rows),
-        artifact_filename=artifact_filename, configured_time=configured_time, column_labels=column_labels,
-    )
-    manifest_filename = f"{base_name}_cleaned.manifest.json"
-    manifest_bytes = json.dumps(manifest, indent=2, sort_keys=False).encode("utf-8")
+    # `EXPORT_MODE_DATA_ONLY` (the default): the manifest is never built
+    # or serialized at all (task section M's own "don't build/serialize
+    # the manifest unnecessarily for the default path" efficiency note)
+    # -- only the revision race check below still applies, identically
+    # to `EXPORT_MODE_WITH_PROVENANCE`.
+    if mode == EXPORT_MODE_WITH_PROVENANCE:
+        manifest = _build_manifest(
+            session=session, worksheet_index=worksheet_index, captured_revision=captured_revision,
+            issue_summary=issue_summary, time_axis_summary=time_axis_summary,
+            omitted_columns=omitted_columns, column_roles=column_roles,
+            edited_cell_count=edited_cell_count, cleared_cell_count=cleared_cell_count,
+            excluded_row_numbers=excluded_row_numbers, exported_row_count=len(exported_rows),
+            artifact_filename=artifact_filename, configured_time=configured_time, column_labels=column_labels,
+        )
+        manifest_filename = f"{base_name}_cleaned.manifest.json"
+        manifest_bytes = json.dumps(manifest, indent=2, sort_keys=False).encode("utf-8")
 
     # Revision race protection (task section W) -- verify nothing
     # mutated the working overlay while this export was being built,
@@ -519,11 +583,15 @@ def export_preparation_source(
     # precedent exactly. Export never registers/persists anything, so
     # there is no "half from one revision" state to leave behind either
     # way -- this simply refuses to hand back a bundle that may have
-    # mixed two different working-overlay states.
+    # mixed two different working-overlay states. Applies identically to
+    # both modes.
     if session.working_overlay.revision != captured_revision:
         raise ExportRevisionChangedError(
             "This preparation source changed while the export was being built -- please retry."
         )
+
+    if mode != EXPORT_MODE_WITH_PROVENANCE:
+        return ExportResult(filename=artifact_filename, content=artifact_bytes, media_type=artifact_content_type)
 
     zip_bytes = _build_zip(artifact_filename, artifact_bytes, manifest_filename, manifest_bytes)
     return ExportResult(filename=f"{base_name}_cleaned.zip", content=zip_bytes)

@@ -1032,6 +1032,36 @@ same "cancel/Escape discards, never commits" convention already used
 for cell click-to-edit (Slice 4, `wwDataPrepBeginCellEdit()`'s own
 Escape handling).
 
+**`[DONE, 2026-09-04, DEC-075]`** A SEPARATE, later enhancement ("Show
+the Resolved/Configured Time Axis in Data Preview") adds a DIFFERENT
+preview surface -- do not confuse the two. This §16 model is the Time
+Axis PANEL's own bounded detect-preview ({original, interpreted} pairs,
+shown only while reviewing a detection result before Save). DEC-075
+instead adds a derived, read-only "Configured Time" COLUMN inside the
+main Data Preparation Workspace TABLE itself (the raw/working row grid
+Slice 3/4/5 already render), visible on every page once the Time Axis
+is resolved -- not only during an active detect review. It answers a
+different question ("what will Powerwave actually use for THIS row,
+right now, on whichever page I'm looking at"), rather than "what would
+this interpreter produce for a bounded sample I am currently
+reviewing."
+
+The two surfaces intentionally reuse the SAME underlying values where
+they overlap (both are ultimately derived from the same confirmed
+interpreter's own `build_preview_rows()` output, through the same
+`app.services.time_axis_normalization` module), but compute them
+differently: §16's own bounded-sample preview only ever looks at
+`_TIME_AXIS_SAMPLE_LIMIT` (50) rows starting at the data region's own
+start, while DEC-075's Data Preview column (`app.services.
+time_axis_service.build_configured_time_values()`) processes the FULL
+active region on every request -- required so a later preview PAGE's
+own relative-seconds values stay anchored to the dataset's TRUE first
+active row, never reset to zero merely because that page's own first
+row is not the dataset's first row (a critical guardrail; see that
+function's own docstring). See
+[DECISIONS.md — DEC-075](DECISIONS.md#dec-075--data-preview-shows-a-read-only-derived-configured-time-column-once-the-time-axis-is-resolved-using-the-same-standardized-representation-and-normalization-semantics-as-cleaned-export-dec-074-and-canonical-conversion)
+for the full decision.
+
 ---
 
 ## 17. Extensibility / interpreter registry concept

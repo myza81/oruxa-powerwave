@@ -57,8 +57,10 @@ from app.domain.time_axis import (
     STATUS_UNSUPPORTED,
     TimeAxisConfiguration,
     TimeAxisDiagnostic,
+    TimeAxisInterpretationResult,
     build_interpretation_result,
     diagnostic_category,
+    is_time_axis_resolved,
     resolve_status,
 )
 
@@ -627,3 +629,95 @@ class TestSlice8DDiagnosticsNeverBlockConfirm:
         status = resolve_status(config, columns_still_time_axis=True, diagnostics=[diagnostic])
 
         assert status == STATUS_NEEDS_ATTENTION
+
+
+class TestIsTimeAxisResolved:
+    """UAT enhancement (2026-09-04, DEC-075): the ONE shared eligibility
+    check reused by cleaned export's own `_ensure_exportable()` and the
+    Data Preview's own "Configured Time" column
+    (`app.services.time_axis_service.build_configured_time_values`).
+    Constructs `TimeAxisInterpretationResult` fixtures directly (rather
+    than only via `resolve_status()`) so every combination task section
+    C's own "show"/"do not show" lists require is exercised precisely,
+    including ones `resolve_status()` alone would not obviously produce
+    (e.g. a CONFIRMED `manual` interpreter)."""
+
+    def _result(self, **overrides) -> TimeAxisInterpretationResult:
+        defaults = dict(
+            status=STATUS_CONFIRMED, family=FAMILY_ABSOLUTE, provenance=PROVENANCE_NATIVE,
+            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, column_indices=(0,), confidence=CONFIDENCE_UNKNOWN,
+        )
+        defaults.update(overrides)
+        return TimeAxisInterpretationResult(**defaults)
+
+    def test_unconfigured_is_not_resolved(self):
+        assert is_time_axis_resolved(self._result(status=STATUS_UNCONFIGURED, family=None, provenance=None, interpreter_id=None)) is False
+
+    def test_unsupported_status_is_not_resolved(self):
+        assert is_time_axis_resolved(self._result(status=STATUS_UNSUPPORTED)) is False
+
+    def test_review_required_is_not_resolved(self):
+        assert is_time_axis_resolved(self._result(status=STATUS_REVIEW_REQUIRED)) is False
+
+    def test_confirmed_is_resolved(self):
+        assert is_time_axis_resolved(self._result(status=STATUS_CONFIRMED)) is True
+
+    def test_detected_is_resolved(self):
+        # A native/unambiguous reading Save alone persists (never
+        # explicitly confirmed) still reaches STATUS_DETECTED, not
+        # STATUS_CONFIRMED -- this is still a real, usable reading.
+        assert is_time_axis_resolved(self._result(status=STATUS_DETECTED)) is True
+
+    def test_needs_attention_is_resolved(self):
+        # A genuine, usable reading that also carries a data-quality
+        # warning -- still resolved enough to derive a value from.
+        assert is_time_axis_resolved(self._result(status=STATUS_NEEDS_ATTENTION)) is True
+
+    def test_manual_interpreter_is_never_resolved_even_when_confirmed(self):
+        result = self._result(
+            status=STATUS_CONFIRMED, interpreter_id=INTERPRETER_ID_MANUAL, family=FAMILY_ABSOLUTE,
+        )
+        assert is_time_axis_resolved(result) is False
+
+    def test_unsupported_interpreter_is_never_resolved(self):
+        result = self._result(status=STATUS_CONFIRMED, interpreter_id=INTERPRETER_ID_UNSUPPORTED)
+        assert is_time_axis_resolved(result) is False
+
+    def test_sample_index_without_interval_is_index_fallback_and_not_resolved(self):
+        result = self._result(
+            status=STATUS_INDEX_FALLBACK, family=FAMILY_SAMPLE_INDEX, provenance=PROVENANCE_INDEX_ONLY,
+            interpreter_id="sample_index", interval_seconds=None,
+        )
+        assert is_time_axis_resolved(result) is False
+
+    def test_sample_index_with_interval_is_resolved(self):
+        result = self._result(
+            status=STATUS_CONFIRMED, family=FAMILY_SAMPLE_INDEX, provenance=PROVENANCE_USER_SPECIFIED,
+            interpreter_id="sample_index", interval_seconds=0.02,
+        )
+        assert is_time_axis_resolved(result) is True
+
+    def test_elapsed_with_known_unit_is_resolved(self):
+        result = self._result(
+            status=STATUS_CONFIRMED, family=FAMILY_ELAPSED, provenance=PROVENANCE_NATIVE,
+            interpreter_id="elapsed_numeric", unit="seconds",
+        )
+        assert is_time_axis_resolved(result) is True
+
+    def test_accepted_reconstruction_is_resolved(self):
+        result = self._result(
+            status=STATUS_CONFIRMED, family=FAMILY_ABSOLUTE, provenance=PROVENANCE_RECONSTRUCTED,
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, confirmed=True,
+        )
+        assert is_time_axis_resolved(result) is True
+
+    def test_unconfirmed_reconstruction_is_review_required_and_not_resolved(self):
+        result = self._result(
+            status=STATUS_REVIEW_REQUIRED, family=FAMILY_ABSOLUTE, provenance=PROVENANCE_RECONSTRUCTED,
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, confirmed=False,
+        )
+        assert is_time_axis_resolved(result) is False
+
+    def test_usable_partial_timing_is_resolved(self):
+        result = self._result(status=STATUS_CONFIRMED, family=FAMILY_PARTIAL, provenance=PROVENANCE_NATIVE)
+        assert is_time_axis_resolved(result) is True

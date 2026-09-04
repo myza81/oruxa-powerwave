@@ -65,7 +65,9 @@ from app.services.preparation_preview_service import preview_preparation_source
 from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.time_axis_service import (
     _INTERPRETERS,
+    build_configured_time_values,
     clear_time_axis_configuration,
+    configured_time_for_preview_page,
     get_time_axis_summary,
     interpret_time_axis,
     list_time_axis_interpreters,
@@ -76,6 +78,8 @@ from app.services.working_overlay_service import (
     redo_working_change,
     reset_all_working_changes,
     set_column_role,
+    set_data_region,
+    set_header_row,
     set_row_excluded,
     undo_working_change,
 )
@@ -127,6 +131,13 @@ def _mark_time_axis(registry: PreparationSessionRegistry, source_id: str, *colum
     for column_index in column_indices:
         set_column_role(
             workspace_id="ws-1", source_id=source_id, column_index=column_index, role="time_axis", registry=registry,
+        )
+
+
+def _mark_waveform(registry: PreparationSessionRegistry, source_id: str, *column_indices: int) -> None:
+    for column_index in column_indices:
+        set_column_role(
+            workspace_id="ws-1", source_id=source_id, column_index=column_index, role="waveform", registry=registry,
         )
 
 
@@ -1810,3 +1821,333 @@ class TestRepeatedTimestampDataPreservation:
         preview = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=25, registry=registry)
         row_numbers = [row.row_number for row in preview.rows]
         assert row_numbers == sorted(row_numbers)
+
+
+class TestConfiguredTimeAbsolute:
+    """UAT enhancement (2026-09-04, DEC-075): Data Preview's own
+    "Configured Time" column. Task section V's own worked example."""
+
+    def test_ambiguous_date_order_resolved_shows_iso_timestamps(self):
+        registry = PreparationSessionRegistry()
+        content = b"Date,Time,Voltage\n3/6/26,18:04:00.000,1.0\n3/6/26,18:04:00.020,2.0\n3/6/26,18:04:00.040,3.0\n"
+        source_id = _add_csv(registry, content)
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+        set_data_region(workspace_id="ws-1", source_id=source_id, start_row=2, end_row=4, registry=registry)
+        _mark_time_axis(registry, source_id, 0, 1)
+        _mark_waveform(registry, source_id, 2)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0, 1),
+            interpreter_id=INTERPRETER_ID_SPLIT_DATE_TIME, options={"date_order": "dmy"}, confirmed=True,
+            registry=registry,
+        )
+
+        computed = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert computed.column_name == "Time"
+        assert computed.family == FAMILY_ABSOLUTE
+        assert computed.values_by_row_number == {
+            2: "2026-06-03T18:04:00.000", 3: "2026-06-03T18:04:00.020", 4: "2026-06-03T18:04:00.040",
+        }
+        # The header row itself never gets a derived value.
+        assert 1 not in computed.values_by_row_number
+
+    def test_original_source_columns_remain_untouched(self):
+        registry = PreparationSessionRegistry()
+        content = b"2026-08-31 13:00:00,1.0\n"
+        source_id = _add_csv(registry, content)
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, confirmed=True, registry=registry,
+        )
+
+        build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        session = registry.get("ws-1", source_id)
+        assert session.raw_bytes == content
+        assert session.working_overlay.cell_overrides == {}
+        # The preview's own raw/working column view is unaffected --
+        # the Time Axis source column(s) are still exactly present.
+        preview = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+        assert preview.rows[0].cells[0] == "2026-08-31 13:00:00"
+
+
+class TestConfiguredTimeElapsed:
+    def test_relative_to_first_active_row(self):
+        # Task section W's own worked example.
+        registry = PreparationSessionRegistry()
+        content = b"5.000,1.0\n5.020,2.0\n5.040,3.0\n"
+        source_id = _add_csv(registry, content)
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_ELAPSED_NUMERIC, unit="seconds", confirmed=True, registry=registry,
+        )
+
+        computed = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert computed.column_name == "Time (s)"
+        assert computed.values_by_row_number == {1: "0.000", 2: "0.020", 3: "0.040"}
+
+
+class TestConfiguredTimeSampleIndex:
+    def test_known_interval_produces_relative_seconds(self):
+        # Task section X's own worked example.
+        registry = PreparationSessionRegistry()
+        content = b"100,1.0\n101,2.0\n102,3.0\n"
+        source_id = _add_csv(registry, content)
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_SAMPLE_INDEX, interval_seconds=0.02, confirmed=True, registry=registry,
+        )
+
+        computed = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert computed.values_by_row_number == {1: "0.000", 2: "0.020", 3: "0.040"}
+
+    def test_without_interval_derived_column_absent(self):
+        registry = PreparationSessionRegistry()
+        content = b"100,1.0\n101,2.0\n"
+        source_id = _add_csv(registry, content)
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_SAMPLE_INDEX, interval_seconds=None, confirmed=False, registry=registry,
+        )
+
+        computed = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert computed is None
+
+
+class TestConfiguredTimeReconstructed:
+    def test_unconfirmed_reconstruction_shows_no_derived_column(self):
+        registry = PreparationSessionRegistry()
+        lines = [f"2026-08-31 13:00:{i // 2:02d},{i}.0" for i in range(6)]
+        source_id = _add_csv(registry, ("\n".join(lines) + "\n").encode())
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, confirmed=False, registry=registry,
+        )
+
+        computed = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert computed is None
+
+    def test_accepted_reconstruction_shows_resolved_cadence(self):
+        registry = PreparationSessionRegistry()
+        lines = [f"2026-08-31 13:00:{i // 2:02d},{i}.0" for i in range(6)]
+        source_id = _add_csv(registry, ("\n".join(lines) + "\n").encode())
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_REPEATED_TIMESTAMP, confirmed=True, registry=registry,
+        )
+
+        computed = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert computed is not None
+        values = list(computed.values_by_row_number.values())
+        assert len(set(values)) == len(values)  # no longer all-identical coarse timestamps
+
+
+class TestConfiguredTimePartial:
+    def test_time_only_column_no_fabricated_date(self):
+        registry = PreparationSessionRegistry()
+        content = b"18:04:00.000,1.0\n18:04:00.020,2.0\n18:04:00.040,3.0\n"
+        source_id = _add_csv(registry, content)
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, confirmed=True, registry=registry,
+        )
+
+        computed = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert computed.column_name == "Time (s)"
+        assert computed.family == FAMILY_PARTIAL
+        assert computed.values_by_row_number == {1: "0.000", 2: "0.020", 3: "0.040"}
+        assert all("T" not in v for v in computed.values_by_row_number.values())
+
+
+class TestConfiguredTimeUnresolvedStates:
+    def test_unconfigured_time_axis_has_no_derived_column(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"1,2\n")
+
+        assert build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry) is None
+
+    def test_manual_interpreter_has_no_derived_column(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"2026-08-31 13:00:00,1\n")
+        _mark_time_axis(registry, source_id, 0)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,), interpreter_id=INTERPRETER_ID_MANUAL,
+            family=FAMILY_ABSOLUTE, provenance=PROVENANCE_NATIVE, confirmed=True, registry=registry,
+        )
+
+        assert build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry) is None
+
+    def test_unresolved_ambiguity_has_no_derived_column(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"01/02/2026 13:09:44,1\n03/04/2026 13:09:45,2\n")
+        _mark_time_axis(registry, source_id, 0)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, registry=registry,
+        )
+
+        assert build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry) is None
+
+
+class TestConfiguredTimePaging:
+    """Task section M/Z's own critical guardrail: relative time must
+    always be anchored to the TRUE first active row of the dataset,
+    never merely the first row of whatever preview page is requested."""
+
+    def test_later_page_does_not_reset_relative_time_to_zero(self):
+        registry = PreparationSessionRegistry()
+        rows = 500
+        lines = [f"{i},{float(i)}" for i in range(rows)]
+        source_id = _add_csv(registry, ("\n".join(lines) + "\n").encode())
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_SAMPLE_INDEX, interval_seconds=0.02, confirmed=True, registry=registry,
+        )
+
+        page1 = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
+        result1 = configured_time_for_preview_page(
+            workspace_id="ws-1", source_id=source_id, page_rows=page1.rows, registry=registry,
+        )
+        page2 = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=200, limit=10, registry=registry)
+        result2 = configured_time_for_preview_page(
+            workspace_id="ws-1", source_id=source_id, page_rows=page2.rows, registry=registry,
+        )
+
+        _, _, values1 = result1
+        _, _, values2 = result2
+        assert values1[0] == "0.000"
+        # Row 201 (0-based offset 200) is 200 samples past the first
+        # active row -- 200 * 0.02 = 4.000, NEVER reset to "0.000".
+        assert values2[0] == "4.000"
+
+    def test_excluded_row_never_shifts_other_rows_own_values(self):
+        registry = PreparationSessionRegistry()
+        lines = [f"2026-08-31 13:00:{i:02d},{i}.0" for i in range(5)]
+        source_id = _add_csv(registry, ("\n".join(lines) + "\n").encode())
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, confirmed=True, registry=registry,
+        )
+        before = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        set_row_excluded(workspace_id="ws-1", source_id=source_id, row_number=3, excluded=True, registry=registry)
+        after = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert 3 not in after.values_by_row_number
+        # Row 4's own value is unchanged by row 3's exclusion -- never
+        # silently re-indexed/compressed (task section N).
+        assert after.values_by_row_number[4] == before.values_by_row_number[4]
+
+
+class TestConfiguredTimeStateRefresh:
+    def test_save_produces_a_derived_column(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"2026-08-31 13:00:00,1\n")
+        _mark_time_axis(registry, source_id, 0)
+        assert build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry) is None
+
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, confirmed=True, registry=registry,
+        )
+
+        assert build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry) is not None
+
+    def test_clear_removes_the_derived_column(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"2026-08-31 13:00:00,1\n")
+        _mark_time_axis(registry, source_id, 0)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, confirmed=True, registry=registry,
+        )
+        assert build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry) is not None
+
+        clear_time_axis_configuration(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry) is None
+
+    def test_source_cell_override_updates_derived_values(self):
+        from app.services.working_overlay_service import edit_cell
+
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"2026-08-31 13:00:00,1\n")
+        _mark_time_axis(registry, source_id, 0)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, confirmed=True, registry=registry,
+        )
+        before = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert before.values_by_row_number[1] == "2026-08-31T13:00:00.000"
+
+        edit_cell(workspace_id="ws-1", source_id=source_id, row_number=1, column_index=0, value="2026-08-31 14:00:00", registry=registry)
+
+        after = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert after.values_by_row_number[1] == "2026-08-31T14:00:00.000"
+
+
+class TestConfiguredTimeConsistencyWithExport:
+    """Task section U: preview's own configured time, cleaned export's
+    own configured time, and canonical conversion's own canonical time
+    must all agree for the same preparation revision."""
+
+    def test_absolute_matches_export_and_conversion(self):
+        from app.services.preparation_export_service import EXPORT_MODE_WITH_PROVENANCE, export_preparation_source
+        from app.services.preparation_conversion_service import convert_preparation_source
+        from app.services.workspace_registry import WorkspaceRegistry
+        import io as _io
+        import zipfile as _zipfile
+
+        registry = PreparationSessionRegistry()
+        content = b"2026-08-31 13:00:00.000,1.0\n2026-08-31 13:00:00.020,2.0\n"
+        source_id = _add_csv(registry, content)
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, confirmed=True, registry=registry,
+        )
+
+        preview_values = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
+        assert preview_values.values_by_row_number[2] == "2026-08-31T13:00:00.020"
+
+        export_result = export_preparation_source(
+            workspace_id="ws-1", source_id=source_id, registry=registry, mode=EXPORT_MODE_WITH_PROVENANCE,
+        )
+        zf = _zipfile.ZipFile(_io.BytesIO(export_result.content))
+        csv_name = next(n for n in zf.namelist() if n.endswith(".csv"))
+        export_rows = zf.read(csv_name).decode("utf-8").strip().splitlines()
+        assert export_rows[2] == "2026-08-31T13:00:00.020,2.0"
+
+        workspace_registry = WorkspaceRegistry()
+        metadata = convert_preparation_source(
+            workspace_id="ws-1", source_id=source_id, preparation_registry=registry, workspace_registry=workspace_registry,
+        )
+        active = workspace_registry.get("ws-1", metadata.source_id)
+        # Canonical time is relative-seconds-from-first-row; the preview/
+        # export's own second row (0.020s after the first) must agree.
+        assert active.record.waveform_data["time"].iloc[1] == pytest.approx(0.020)

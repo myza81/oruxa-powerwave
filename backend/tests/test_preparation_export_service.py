@@ -1,8 +1,16 @@
-"""Tests for cleaned data export (CSV/Excel ingestion Slice 12, and the
-2026-09-04 "export the resolved Time Axis" enhancement, DEC-074). Pure
+"""Tests for cleaned data export (CSV/Excel ingestion Slice 12, the
+2026-09-04 "export the resolved Time Axis" enhancement (DEC-074), and
+the 2026-09-04 "manifest/provenance is optional" enhancement). Pure
 service-level tests -- no HTTP; API-level coverage (response shape,
 headers, HTTP status codes) lives in tests/test_preparation_sources_api.py's
 own Slice 12 test classes.
+
+Every pre-existing test in this file calls `export_preparation_source()`
+with an explicit `mode=EXPORT_MODE_WITH_PROVENANCE` -- they test ZIP/
+manifest contents, so they keep testing exactly that mode unchanged.
+`TestDataOnlyExport` below covers the NEW default (`EXPORT_MODE_DATA_ONLY`)
+mode; `TestModeEquivalence` confirms both modes agree on the cleaned
+data itself.
 """
 
 from __future__ import annotations
@@ -25,7 +33,11 @@ from app.services.errors import (
     SourceNotFoundError,
     WorksheetNotSelectedError,
 )
-from app.services.preparation_export_service import export_preparation_source
+from app.services.preparation_export_service import (
+    EXPORT_MODE_DATA_ONLY,
+    EXPORT_MODE_WITH_PROVENANCE,
+    export_preparation_source,
+)
 from app.services.preparation_import_service import (
     import_csv_preparation_source,
     import_excel_preparation_source,
@@ -161,7 +173,7 @@ class TestExportGating:
         _mark_waveform(prep, sid, 1)
 
         with pytest.raises(ExportNotReadyError):
-            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
 
     def test_missing_waveform_column_blocks_export(self):
         prep = PreparationSessionRegistry()
@@ -170,7 +182,7 @@ class TestExportGating:
         _confirm_absolute(prep, sid, column_index=0)
 
         with pytest.raises(ExportNotReadyError):
-            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
 
     def test_manual_interpreter_blocks_export(self):
         prep = PreparationSessionRegistry()
@@ -183,7 +195,7 @@ class TestExportGating:
         )
 
         with pytest.raises(ExportUnsupportedInterpreterError):
-            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
 
     def test_sample_index_without_interval_blocks_export(self):
         prep = PreparationSessionRegistry()
@@ -193,7 +205,7 @@ class TestExportGating:
         _confirm_sample_index(prep, sid, interval_seconds=None)
 
         with pytest.raises(ExportRequiresIntervalError):
-            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
 
     def test_unconfirmed_reconstruction_blocks_export(self):
         prep = PreparationSessionRegistry()
@@ -207,13 +219,13 @@ class TestExportGating:
         )
 
         with pytest.raises(ExportNotReadyError):
-            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
 
     def test_ready_absolute_source_exports_successfully(self):
         prep = PreparationSessionRegistry()
         sid = _ready_absolute_source(prep, b"2026-08-31 13:00:00,1.0\n")
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
 
         assert result.filename.endswith(".zip")
 
@@ -230,7 +242,7 @@ class TestAbsoluteTimeExport:
         _mark_waveform(prep, sid, 2)
         _confirm_split_date_time(prep, sid, date_column=0, time_column=1, date_order="dmy")
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         rows = _read_csv_rows(_unzip(result.content))
 
         assert rows[0] == ["Time", "Voltage"]
@@ -245,7 +257,7 @@ class TestAbsoluteTimeExport:
         content = b"2026-08-31 13:00:00,1.0\n"
         sid = _ready_absolute_source(prep, content)
 
-        export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
 
         session = prep.get(WS, sid)
         assert session.raw_bytes == content
@@ -257,7 +269,7 @@ class TestTimezoneExport:
         content = b"2026-06-03T18:04:00.000+08:00,1.0\n2026-06-03T18:04:00.020+08:00,2.0\n"
         sid = _ready_absolute_source(prep, content)
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         rows = _read_csv_rows(_unzip(result.content))
         manifest = _read_manifest(_unzip(result.content))
 
@@ -269,7 +281,7 @@ class TestTimezoneExport:
         content = b"2026-06-03 18:04:00,1.0\n"
         sid = _ready_absolute_source(prep, content)
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         rows = _read_csv_rows(_unzip(result.content))
         manifest = _read_manifest(_unzip(result.content))
 
@@ -286,7 +298,7 @@ class TestPrecisionExport:
         content = b"2026-06-03 18:04:00.020,1.0\n"
         sid = _ready_absolute_source(prep, content)
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         rows = _read_csv_rows(_unzip(result.content))
 
         assert rows[1][0] == "2026-06-03T18:04:00.020"
@@ -296,7 +308,7 @@ class TestPrecisionExport:
         content = b"2026-06-03 18:04:00.123456,1.0\n"
         sid = _ready_absolute_source(prep, content)
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         rows = _read_csv_rows(_unzip(result.content))
 
         assert rows[1][0] == "2026-06-03T18:04:00.123456"
@@ -312,7 +324,7 @@ class TestElapsedTimeExport:
         _mark_waveform(prep, sid, 1)
         _confirm_elapsed(prep, sid, unit="seconds")
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         rows = _read_csv_rows(_unzip(result.content))
         manifest = _read_manifest(_unzip(result.content))
 
@@ -329,7 +341,7 @@ class TestElapsedTimeExport:
         _mark_waveform(prep, sid, 1)
         _confirm_elapsed(prep, sid, unit="milliseconds")
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         rows = _read_csv_rows(_unzip(result.content))
 
         assert [r[0] for r in rows[1:]] == ["0.000", "0.020"]
@@ -345,7 +357,7 @@ class TestSampleIndexTimeExport:
         _mark_waveform(prep, sid, 1)
         _confirm_sample_index(prep, sid, interval_seconds=0.02)
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         rows = _read_csv_rows(_unzip(result.content))
         manifest = _read_manifest(_unzip(result.content))
 
@@ -362,7 +374,7 @@ class TestSampleIndexTimeExport:
         _confirm_sample_index(prep, sid, interval_seconds=None)
 
         with pytest.raises(ExportRequiresIntervalError) as excinfo:
-            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         assert "interval" in str(excinfo.value.message).lower()
 
 
@@ -387,7 +399,7 @@ class TestReconstructedTimeExport:
             interpreter_id="repeated_timestamp_precision_loss", confirmed=True, registry=prep,
         )
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         rows = _read_csv_rows(_unzip(result.content))
         manifest = _read_manifest(_unzip(result.content))
 
@@ -407,7 +419,7 @@ class TestPartialTimeExport:
         _mark_waveform(prep, sid, 1)
         _confirm_absolute(prep, sid, column_index=0)  # resolves to FAMILY_PARTIAL
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         rows = _read_csv_rows(_unzip(result.content))
         manifest = _read_manifest(_unzip(result.content))
 
@@ -423,7 +435,7 @@ class TestWaveformDataIntegrity:
         sid = _ready_absolute_source(prep, b"2026-08-31 13:00:00,ERR\n")
         edit_cell(workspace_id=WS, source_id=sid, row_number=1, column_index=1, value="2.5", registry=prep)
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         rows = _read_csv_rows(_unzip(result.content))
 
         assert rows[1][1] == "2.5"
@@ -439,7 +451,7 @@ class TestWaveformDataIntegrity:
         edit_cell(workspace_id=WS, source_id=sid, row_number=1, column_index=1, value=None, registry=prep)
 
         with pytest.raises(ExportNotReadyError):
-            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
 
     def test_cleared_cell_in_an_excluded_row_never_blocks_export(self):
         # The one legitimate "cleared and still exportable" case: the
@@ -452,7 +464,7 @@ class TestWaveformDataIntegrity:
         edit_cell(workspace_id=WS, source_id=sid, row_number=1, column_index=1, value=None, registry=prep)
         set_row_excluded(workspace_id=WS, source_id=sid, row_number=1, excluded=True, registry=prep)
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         rows = _read_csv_rows(_unzip(result.content))
 
         assert len(rows) == 2  # header + the one remaining (non-cleared) row
@@ -464,7 +476,7 @@ class TestWaveformDataIntegrity:
         sid = _ready_absolute_source(prep, content)
         set_row_excluded(workspace_id=WS, source_id=sid, row_number=2, excluded=True, registry=prep)
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         rows = _read_csv_rows(_unzip(result.content))
 
         assert len(rows) == 3  # header + 2 data rows
@@ -481,7 +493,7 @@ class TestWaveformDataIntegrity:
         # column_index=2 ("Status") is left at its default (not_assigned)
         _confirm_absolute(prep, sid, column_index=0)
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         rows = _read_csv_rows(_unzip(result.content))
         manifest = _read_manifest(_unzip(result.content))
 
@@ -496,7 +508,7 @@ class TestWaveformDataIntegrity:
         set_row_excluded(workspace_id=WS, source_id=sid, row_number=3, excluded=True, registry=prep)
         set_row_excluded(workspace_id=WS, source_id=sid, row_number=7, excluded=True, registry=prep)
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         rows = _read_csv_rows(_unzip(result.content))
 
         assert len(rows) - 1 == 8  # 10 rows - 2 excluded
@@ -509,7 +521,7 @@ class TestWaveformDataIntegrity:
         _mark_waveform(prep, sid, 1, 2, 3)
         _confirm_absolute(prep, sid, column_index=0)
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         rows = _read_csv_rows(_unzip(result.content))
 
         assert rows[0] == ["Time", "B", "C", "D"]
@@ -526,7 +538,7 @@ class TestWaveformDataIntegrity:
         _mark_time_axis(prep, sid, 1, 3)
         _confirm_split_date_time(prep, sid, date_column=1, time_column=3, date_order="ymd")
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         rows = _read_csv_rows(_unzip(result.content))
 
         assert rows[0] == ["Time", "Voltage", "Current"]
@@ -541,7 +553,7 @@ class TestWaveformDataIntegrity:
         _mark_waveform(prep, sid, 1, 2)
         _confirm_absolute(prep, sid, column_index=0)
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         rows = _read_csv_rows(_unzip(result.content))
 
         assert rows[0] == ["Time", "Voltage", "Voltage__C"]
@@ -558,7 +570,7 @@ class TestManifestExportedTime:
         _mark_waveform(prep, sid, 2)
         _confirm_split_date_time(prep, sid, date_column=0, time_column=1, date_order="dmy")
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         manifest = _read_manifest(_unzip(result.content))
         exported_time = manifest["exported_time"]
 
@@ -582,7 +594,7 @@ class TestManifestExportedTime:
         _mark_waveform(prep, sid, 1)
         _confirm_absolute(prep, sid, column_index=0)
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         manifest = _read_manifest(_unzip(result.content))
 
         for key in (
@@ -612,7 +624,7 @@ class TestExcelExport:
         _mark_waveform(prep, sid, 1)
         _confirm_absolute(prep, sid, column_index=0)
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         assert result.filename.endswith(".zip")
         rows = _read_xlsx_rows(_unzip(result.content))
 
@@ -627,7 +639,7 @@ class TestExcelExport:
         _mark_waveform(prep, sid, 1)
         _confirm_absolute(prep, sid, column_index=0)
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         name = next(n for n in _unzip(result.content).namelist() if n.endswith(".xlsx"))
         wb = load_workbook(io.BytesIO(_unzip(result.content).read(name)))
 
@@ -641,7 +653,7 @@ class TestExcelExport:
         _mark_waveform(prep, sid, 1)
         _confirm_absolute(prep, sid, column_index=0)
 
-        export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
 
         session = prep.get(WS, sid)
         assert session.raw_bytes == content
@@ -654,7 +666,7 @@ class TestExcelExport:
         _mark_waveform(prep, sid, 1)
         _confirm_absolute(prep, sid, column_index=0)
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         name = next(n for n in _unzip(result.content).namelist() if n.endswith(".xlsx"))
         wb = load_workbook(io.BytesIO(_unzip(result.content).read(name)))
 
@@ -668,7 +680,7 @@ class TestExportIsReadOnly:
         session = prep.get(WS, sid)
         before = session.working_overlay.revision
 
-        export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
 
         assert session.working_overlay.revision == before
 
@@ -676,7 +688,7 @@ class TestExportIsReadOnly:
         prep = PreparationSessionRegistry()
         sid = _ready_absolute_source(prep, b"2026-08-31 13:00:00,1\n")
 
-        export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
 
         assert prep.get(WS, sid) is not None
 
@@ -684,8 +696,8 @@ class TestExportIsReadOnly:
         prep = PreparationSessionRegistry()
         sid = _ready_absolute_source(prep, b"2026-08-31 13:00:00,1\n")
 
-        first = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        second = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        first = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
+        second = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
 
         rows_first = _read_csv_rows(_unzip(first.content))
         rows_second = _read_csv_rows(_unzip(second.content))
@@ -697,14 +709,14 @@ class TestApiLevelErrors:
     def test_missing_source_raises_source_not_found(self):
         prep = PreparationSessionRegistry()
         with pytest.raises(SourceNotFoundError):
-            export_preparation_source(workspace_id=WS, source_id="does-not-exist", registry=prep)
+            export_preparation_source(workspace_id=WS, source_id="does-not-exist", registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
 
     def test_excel_worksheet_not_selected_raises(self):
         prep = PreparationSessionRegistry()
         content = _build_xlsx({"A": [["a"]], "B": [["b"]]})
         sid = _add_excel(prep, content)
         with pytest.raises(WorksheetNotSelectedError):
-            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
 
 
 class TestFilenameSanitization:
@@ -715,7 +727,7 @@ class TestFilenameSanitization:
         _mark_waveform(prep, sid, 1)
         _confirm_absolute(prep, sid, column_index=0)
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
 
         assert result.filename == "event_cleaned.zip"
         names = _unzip(result.content).namelist()
@@ -730,7 +742,7 @@ class TestFilenameSanitization:
         _mark_waveform(prep, sid, 1)
         _confirm_absolute(prep, sid, column_index=0)
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
 
         assert result.filename == "event_cleaned.zip"
         names = _unzip(result.content).namelist()
@@ -743,7 +755,7 @@ class TestFilenameSanitization:
         _mark_waveform(prep, sid, 1)
         _confirm_absolute(prep, sid, column_index=0)
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
 
         assert "/" not in result.filename
         assert ":" not in result.filename
@@ -760,7 +772,7 @@ class TestPerformanceLargeExport:
         _mark_waveform(prep, sid, 1)
         _confirm_absolute(prep, sid, column_index=0)
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         rows_out = _read_csv_rows(_unzip(result.content))
 
         assert len(rows_out) == rows + 1  # header + all rows
@@ -779,7 +791,7 @@ class TestPerformanceLargeExport:
         _mark_waveform(prep, sid, 1)
         _confirm_absolute(prep, sid, column_index=0)
 
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         rows_out = _read_xlsx_rows(_unzip(result.content))
 
         assert len(rows_out) == rows + 1  # header + all rows
@@ -800,7 +812,7 @@ class TestReUploadRoundTrip:
         _mark_time_axis(prep, sid, 0, 1)
         _mark_waveform(prep, sid, 2)
         _confirm_split_date_time(prep, sid, date_column=0, time_column=1, date_order="dmy")
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         csv_bytes = _unzip(result.content).read(next(n for n in _unzip(result.content).namelist() if n.endswith(".csv")))
 
         # Re-upload the cleaned CSV as a brand-new preparation source.
@@ -824,7 +836,7 @@ class TestReUploadRoundTrip:
         _mark_time_axis(prep, sid, 0)
         _mark_waveform(prep, sid, 1)
         _confirm_elapsed(prep, sid, unit="seconds")
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         csv_bytes = _unzip(result.content).read(next(n for n in _unzip(result.content).namelist() if n.endswith(".csv")))
 
         sid2 = _add_csv(prep, csv_bytes, filename="reuploaded.csv")
@@ -846,7 +858,7 @@ class TestReUploadRoundTrip:
         _mark_time_axis(prep, sid, 0)
         _mark_waveform(prep, sid, 1)
         _confirm_sample_index(prep, sid, interval_seconds=0.02)
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         csv_bytes = _unzip(result.content).read(next(n for n in _unzip(result.content).namelist() if n.endswith(".csv")))
 
         sid2 = _add_csv(prep, csv_bytes, filename="reuploaded.csv")
@@ -863,3 +875,174 @@ class TestReUploadRoundTrip:
         # no interval/rate re-entry required (unlike the ORIGINAL
         # sample-index source, which had none at all).
         assert preview.family == "elapsed"
+
+
+# ---- 2026-09-04 UAT enhancement: manifest/provenance is optional ----
+
+
+def _read_xlsx_rows_direct(content: bytes) -> list[tuple]:
+    """Like `_read_xlsx_rows()` above, but for a DATA-ONLY export result
+    -- `content` is the raw XLSX workbook bytes themselves, never a ZIP
+    member."""
+    return list(load_workbook(io.BytesIO(content)).active.iter_rows(values_only=True))
+
+
+class TestDataOnlyExport:
+    """`EXPORT_MODE_DATA_ONLY` is the new DEFAULT -- the plain "Export
+    Cleaned Data" action returns the cleaned CSV/XLSX bytes directly,
+    never a ZIP, never a manifest. Provenance capability itself is not
+    removed (see `TestExportGating`/every other class above, all still
+    exercising `EXPORT_MODE_WITH_PROVENANCE` unchanged) -- only the
+    DEFAULT shape changes."""
+
+    def test_default_mode_is_data_only(self):
+        prep = PreparationSessionRegistry()
+        sid = _ready_absolute_source(prep, b"2026-08-31 13:00:00,1.0\n")
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+
+        assert result.filename == "e_cleaned.csv"
+        assert result.media_type == "text/csv"
+
+    def test_csv_default_returns_csv_not_zip(self):
+        prep = PreparationSessionRegistry()
+        sid = _ready_absolute_source(prep, b"2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n")
+
+        result = export_preparation_source(
+            workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY,
+        )
+
+        assert result.filename == "e_cleaned.csv"
+        assert result.media_type == "text/csv"
+        with pytest.raises(zipfile.BadZipFile):
+            _unzip(result.content)
+        rows = list(csv.reader(io.StringIO(result.content.decode("utf-8"))))
+        # No header row is configured by `_ready_absolute_source()` --
+        # the Waveform column's own label falls back to its plain
+        # spreadsheet letter, same as every other no-header case in this
+        # file (see e.g. TestWaveformIntegrity's own `["Time (s)", "B"]`).
+        assert rows[0] == ["Time", "B"]
+        assert rows[1][0] == "2026-08-31T13:00:00.000"
+        assert rows[2][0] == "2026-08-31T13:00:01.000"
+
+    def test_excel_default_returns_xlsx_not_zip(self):
+        prep = PreparationSessionRegistry()
+        content = _build_xlsx({"Sheet1": [["Time", "VR"], ["2026-08-31 13:00:00", 1.0], ["2026-08-31 13:00:01", 2.0]]})
+        sid = _add_excel(prep, content)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=3, registry=prep)
+        _confirm_absolute(prep, sid, column_index=0)
+
+        result = export_preparation_source(
+            workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY,
+        )
+
+        assert result.filename == "e_cleaned.xlsx"
+        assert result.media_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        # An XLSX is technically a ZIP container internally, so the real
+        # proof of "export/HTTP semantics, not a provenance bundle" is
+        # the filename/media_type above (never `.zip`/`application/zip`)
+        # plus the absence of a manifest member below -- never an
+        # assertion that the bytes aren't ZIP-formatted at all.
+        assert not any(n.endswith(".manifest.json") for n in zipfile.ZipFile(io.BytesIO(result.content)).namelist())
+        rows = _read_xlsx_rows_direct(result.content)
+        assert rows[0] == ("Time", "VR")
+        assert rows[1] == ("2026-08-31T13:00:00.000", 1.0)
+
+    def test_data_only_export_gated_identically_to_with_provenance(self):
+        # Same gating fixture as TestExportGating.test_unconfigured_time_axis_blocks_export.
+        prep = PreparationSessionRegistry()
+        sid = _add_csv(prep, b"1,2\n")
+        _mark_waveform(prep, sid, 1)
+
+        with pytest.raises(ExportNotReadyError):
+            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY)
+
+    def test_data_only_export_requires_interval_gate_identical(self):
+        prep = PreparationSessionRegistry()
+        sid = _add_csv(prep, b"100,1.0\n101,2.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_sample_index(prep, sid, interval_seconds=None)
+
+        with pytest.raises(ExportRequiresIntervalError):
+            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY)
+
+    def test_data_only_export_preserves_preparation_state(self):
+        prep = PreparationSessionRegistry()
+        sid = _ready_absolute_source(prep, b"2026-08-31 13:00:00,1.0\n")
+        before_revision = prep.get(WS, sid).working_overlay.revision
+
+        export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY)
+
+        after = prep.get(WS, sid)
+        assert after.working_overlay.revision == before_revision
+        assert after.raw_bytes == b"2026-08-31 13:00:00,1.0\n"
+
+    def test_unknown_mode_rejected(self):
+        prep = PreparationSessionRegistry()
+        sid = _ready_absolute_source(prep, b"2026-08-31 13:00:00,1.0\n")
+
+        with pytest.raises(ValueError):
+            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode="not-a-real-mode")
+
+
+class TestModeEquivalence:
+    """Task section J: both export modes must contain the exact same
+    cleaned data -- `mode` only changes the return SHAPE (direct bytes
+    vs. ZIP+manifest), never the cleaned-data construction itself (both
+    share `_ensure_exportable()`/the same row-assembly code path)."""
+
+    def test_csv_data_only_matches_with_provenance_bundle(self):
+        prep = PreparationSessionRegistry()
+        content = b"Date,Time,Voltage\n3/6/26,18:04:00.000,132.1\n3/6/26,18:04:00.020,132.2\n3/6/26,18:04:00.040,132.0\n"
+        sid = _add_csv(prep, content)
+        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=4, registry=prep)
+        _mark_time_axis(prep, sid, 0, 1)
+        _mark_waveform(prep, sid, 2)
+        _confirm_split_date_time(prep, sid, date_column=0, time_column=1, date_order="dmy")
+
+        data_only = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY)
+        with_provenance = export_preparation_source(
+            workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE,
+        )
+
+        bundled_csv_bytes = _unzip(with_provenance.content).read(
+            next(n for n in _unzip(with_provenance.content).namelist() if n.endswith(".csv"))
+        )
+        assert data_only.content == bundled_csv_bytes
+
+    def test_excel_data_only_matches_with_provenance_bundle(self):
+        prep = PreparationSessionRegistry()
+        content = _build_xlsx({"Sheet1": [["Time", "VR"], ["2026-08-31 13:00:00", 1.0], ["2026-08-31 13:00:01", 2.0]]})
+        sid = _add_excel(prep, content)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=3, registry=prep)
+        _confirm_absolute(prep, sid, column_index=0)
+
+        data_only = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY)
+        with_provenance = export_preparation_source(
+            workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE,
+        )
+
+        bundled_xlsx_bytes = _unzip(with_provenance.content).read(
+            next(n for n in _unzip(with_provenance.content).namelist() if n.endswith(".xlsx"))
+        )
+        assert _read_xlsx_rows_direct(data_only.content) == _read_xlsx_rows_direct(bundled_xlsx_bytes)
+
+    def test_filenames_differ_by_mode_same_base_name(self):
+        prep = PreparationSessionRegistry()
+        sid = _ready_absolute_source(prep, b"2026-08-31 13:00:00,1.0\n")
+
+        data_only = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY)
+        with_provenance = export_preparation_source(
+            workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE,
+        )
+
+        assert data_only.filename == "e_cleaned.csv"
+        assert with_provenance.filename == "e_cleaned.zip"

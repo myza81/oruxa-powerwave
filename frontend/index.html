@@ -856,6 +856,20 @@
         .ww-data-prep-table td.ww-data-prep-cell { cursor: text; }
         .ww-data-prep-table td.ww-data-prep-cell:hover { background: var(--surface-tint); }
         .ww-data-prep-cell-input { width: 100%; max-width: 200px; box-sizing: border-box; font: inherit; border: 1px solid var(--accent); border-radius: 3px; padding: 1px 4px; background: var(--panel); color: var(--text); }
+        /* UAT enhancement (2026-09-04, DEC-075): the derived, read-only
+           "Configured Time" preview column -- a subtle tint + italic to
+           read as "computed, not raw data," `cursor: default` (never
+           `text`, unlike a real `.ww-data-prep-cell`) so nothing invites
+           a click-to-edit attempt on a virtual field. */
+        .ww-data-prep-table th.ww-data-prep-configured-time-cell,
+        .ww-data-prep-table td.ww-data-prep-configured-time-cell {
+            background: var(--surface-tint); font-style: italic; cursor: default;
+        }
+        .ww-data-prep-derived-badge {
+            font-style: normal; font-size: 0.62rem; font-weight: 500; text-transform: uppercase;
+            letter-spacing: 0.03em; color: var(--text-dim); border: 1px solid var(--panel-border);
+            border-radius: 3px; padding: 0 4px; margin-left: 4px; vertical-align: middle;
+        }
         /* Slice 5 (DEC-072): Structure panel (header/data-region/column
            roles). Manual-only controls -- plain number inputs and a
            small mapping table, no new framework. */
@@ -918,6 +932,19 @@
         .ww-data-prep-export-action { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
         .ww-data-prep-export-action .hint { margin: 4px 0 0; }
         .ww-data-prep-export-action .ww-data-prep-conversion-status { margin-top: 4px; }
+        /* UAT enhancement (2026-09-04, DEC-076): "Download with manifest"
+           -- the optional, secondary provenance export action, styled as
+           a plain text link (never a bordered button) so it reads as
+           visually subordinate to the primary "Export Cleaned Data"
+           button immediately above it, matching task section D/F's own
+           "main click = cleaned file only; secondary action stays
+           visually secondary" requirement. */
+        .ww-data-prep-export-provenance-link {
+            display: block; margin-top: 6px; padding: 0; background: none; border: none;
+            font-size: 0.75rem; color: var(--text-dim); text-decoration: underline; cursor: pointer;
+        }
+        .ww-data-prep-export-provenance-link:hover:not(:disabled) { color: var(--accent); }
+        .ww-data-prep-export-provenance-link:disabled { color: var(--text-dim); opacity: 0.5; cursor: not-allowed; text-decoration: none; }
         /* UX refinement (post-Slice-6 UAT): progressive disclosure shell
            shared by the Preparation Status and Structure panels -- a
            title+hint block on the left, a single toggle button
@@ -930,6 +957,7 @@
            the Structure panel's own default view. */
         .ww-data-prep-structure-summary { display: flex; flex-wrap: wrap; gap: 20px; margin: 0; padding: 0; }
         .ww-data-prep-structure-summary > div { display: flex; gap: 6px; align-items: baseline; margin: 0; }
+        .ww-data-prep-structure-summary > div[hidden] { display: none; }
         .ww-data-prep-structure-summary dt { margin: 0; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.02em; color: var(--text-dim); font-weight: 600; }
         .ww-data-prep-structure-summary dd { margin: 0; font-size: 0.75rem; }
         #wwDataPrepStructureDetails { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--panel-border); }
@@ -4598,11 +4626,32 @@
                          (wwDataPrepRenderExportAction()) until that is
                          true, mirroring "Continue to Powerwave"'s own
                          limitation-notice pattern rather than a large new
-                         warning panel. -->
+                         warning panel.
+
+                         UAT enhancement (2026-09-04, DEC-076): the DEFAULT
+                         click now downloads the cleaned CSV/XLSX directly
+                         -- never a ZIP, never a forced manifest.json (a
+                         normal engineer should never have to understand
+                         that file). Provenance/traceability is NOT
+                         removed -- "Download with manifest" below is a
+                         visually secondary, explicit opt-in that performs
+                         the ORIGINAL Slice 12/DEC-074 ZIP+manifest export
+                         unchanged (POST .../export?include_manifest=true).
+                         Both buttons share the exact same gated enabled/
+                         disabled state (wwDataPrepRenderExportAction()) --
+                         provenance was never a separately-gated
+                         capability. -->
                     <div class="ww-data-prep-export-action">
                         <button type="button" class="secondary" id="wwDataPrepExportBtn" disabled>Export Cleaned Data</button>
-                        <p class="hint">Exports the resolved Time Axis and current Waveform values as a cleaned, re-upload-friendly CSV/Excel file.</p>
+                        <p class="hint">Downloads the resolved Time Axis and current Waveform values as a cleaned, re-upload-friendly CSV/Excel file.</p>
                         <p class="hint" id="wwDataPrepExportGuidance" hidden></p>
+                        <button
+                            type="button"
+                            class="ww-data-prep-export-provenance-link"
+                            id="wwDataPrepExportWithProvenanceBtn"
+                            disabled
+                            title="Provenance records how the cleaned file was prepared -- original source, preparation revision, excluded rows, Time Axis derivation, and more, as a sidecar manifest.json alongside the same cleaned file."
+                        >Download with manifest (cleaned file + provenance)</button>
                         <p class="ww-data-prep-conversion-status" id="wwDataPrepExportStatus"></p>
                     </div>
                 </section>
@@ -7155,7 +7204,23 @@
             // Axis/Waveform/Not Assigned.
             const isNotAssigned = (c) => (wwDataPrep.columnRoles[c] || "not_assigned") === "not_assigned";
 
+            // UAT enhancement (2026-09-04, DEC-075): the RESOLVED/
+            // CONFIGURED Time Axis, as a VIRTUAL, read-only, always-
+            // FIRST preview column -- never a real source column (never
+            // counted in columnCount, never given a data-col, never
+            // matched by the click-to-edit/role-select/exclude-column
+            // handlers below, which all key off `.ww-data-prep-cell`/
+            // `data-col`). `preview.configured_time` is `null` whenever
+            // the current Time Axis is not resolved enough to derive a
+            // value from -- this whole column is simply omitted then,
+            // never rendered with empty cells (task section Q).
+            const configuredTime = preview.configured_time || null;
+
             let html = "<thead><tr><th></th>";
+            if (configuredTime) {
+                html += '<th class="ww-data-prep-configured-time-cell" title="Derived from the current Time Axis configuration. Read-only.">' +
+                    escapeHtml(configuredTime.column_name) + ' <span class="ww-data-prep-derived-badge">Derived</span></th>';
+            }
             for (let c = 0; c < columnCount; c++) {
                 html += '<th class="' + (isNotAssigned(c) ? "ww-data-prep-col-ignored" : "") + '">' +
                     wwSpreadsheetColumnLabel(c) +
@@ -7163,7 +7228,7 @@
             }
             html += "</tr></thead><tbody>";
 
-            for (const row of preview.rows) {
+            preview.rows.forEach((row, rowIndex) => {
                 // Slice 4/5: `row.excluded`/`row.modified_cells`/
                 // `row.is_header`/`row.in_active_region` come straight
                 // from the backend's own working-view merge -- never
@@ -7182,6 +7247,11 @@
                         : ' <button type="button" class="ww-data-prep-row-header-btn" data-row="' + row.row_number +
                           '" title="Use this row as the header">Header</button>') +
                     '</th>';
+                if (configuredTime) {
+                    const derivedValue = configuredTime.values[rowIndex];
+                    html += '<td class="ww-data-prep-configured-time-cell">' +
+                        (derivedValue == null ? "" : escapeHtml(derivedValue)) + '</td>';
+                }
                 for (let c = 0; c < columnCount; c++) {
                     const value = row.cells[c];
                     // Neutral blank rendering (task's own explicit
@@ -7211,7 +7281,7 @@
                         '</td>';
                 }
                 html += "</tr>";
-            }
+            });
             html += "</tbody>";
             table.innerHTML = html;
         }
@@ -7612,25 +7682,34 @@
         // signals `wwDataPrepRenderConversionAction()` already computes,
         // plus the one extra `manual`/`unsupported` check above (never a
         // second, independently-derived readiness policy).
+        //
+        // UAT enhancement (2026-09-04, DEC-076): also drives the
+        // secondary "Download with manifest" button -- provenance was
+        // never a separately-gated capability, so both buttons always
+        // share the exact same enabled/disabled state and guidance text.
         function wwDataPrepRenderExportAction() {
             const btn = document.getElementById("wwDataPrepExportBtn");
+            const provenanceBtn = document.getElementById("wwDataPrepExportWithProvenanceBtn");
             const guidanceEl = document.getElementById("wwDataPrepExportGuidance");
             const summary = wwDataPrep.issueSummary;
             const ready = !!(summary && summary.is_ready);
 
             if (!ready || !wwDataPrepIsExportTimeAxisUsable()) {
                 btn.disabled = true;
+                provenanceBtn.disabled = true;
                 guidanceEl.hidden = false;
                 guidanceEl.textContent = "Resolve the Time Axis before exporting a reusable cleaned file.";
                 return;
             }
             if (wwDataPrepIsIndexOnlyWithoutInterval()) {
                 btn.disabled = true;
+                provenanceBtn.disabled = true;
                 guidanceEl.hidden = false;
                 guidanceEl.textContent = "Add a sampling rate or interval before exporting.";
                 return;
             }
             btn.disabled = false;
+            provenanceBtn.disabled = false;
             guidanceEl.hidden = true;
         }
 
@@ -7717,19 +7796,34 @@
             return knownMessages[code] || (message || "Export failed.");
         }
 
-        // Export never navigates, never mutates preparation state --
-        // the response is a binary ZIP, not JSON, so this reads it as a
+        // Export never navigates, never mutates preparation state -- the
+        // response body (CSV/XLSX bytes by default, or a ZIP when
+        // provenance is requested) is never JSON, so this reads it as a
         // blob and triggers a normal browser download via a throwaway
         // <a download> element, rather than the JSON-response pattern
-        // every other wwDataPrep* action here uses.
-        async function wwDataPrepExport() {
+        // every other wwDataPrep* action here uses. The real filename
+        // (and therefore the real extension -- .csv/.xlsx/.zip) always
+        // comes from the server's own Content-Disposition header (task
+        // section O: "do not hard-code .zip" -- the old Slice 12 code
+        // assumed every export was a ZIP; it no longer is).
+        //
+        // UAT enhancement (2026-09-04, DEC-076): `includeManifest`
+        // selects the export mode -- `false` (the default "Export
+        // Cleaned Data" button): the cleaned CSV/XLSX directly. `true`
+        // (the secondary "Download with manifest" button):
+        // `?include_manifest=true`, the original Slice 12/DEC-074
+        // ZIP+manifest bundle, unchanged.
+        async function wwDataPrepExport(includeManifest) {
             const btn = document.getElementById("wwDataPrepExportBtn");
+            const provenanceBtn = document.getElementById("wwDataPrepExportWithProvenanceBtn");
             const statusEl = document.getElementById("wwDataPrepExportStatus");
             btn.disabled = true;
+            provenanceBtn.disabled = true;
             delete statusEl.dataset.state;
-            statusEl.textContent = "Exporting…";
+            statusEl.textContent = includeManifest ? "Exporting with provenance…" : "Exporting…";
             try {
-                const response = await fetch(wwDataPrepSourceUrl("/export"), { method: "POST" });
+                const endpoint = wwDataPrepSourceUrl("/export") + (includeManifest ? "?include_manifest=true" : "");
+                const response = await fetch(endpoint, { method: "POST" });
                 if (!response.ok) {
                     const body = await response.json().catch(() => null);
                     const detail = (body && body.detail) || {};
@@ -7740,7 +7834,7 @@
                 const blob = await response.blob();
                 const disposition = response.headers.get("content-disposition") || "";
                 const match = disposition.match(/filename="([^"]+)"/);
-                const filename = match ? match[1] : "recording_cleaned.zip";
+                const filename = match ? match[1] : (includeManifest ? "recording_cleaned.zip" : "recording_cleaned.csv");
                 const url = URL.createObjectURL(blob);
                 const link = document.createElement("a");
                 link.href = url;
@@ -8477,6 +8571,14 @@
                 // -- a save here must refresh it immediately, not wait for
                 // the next unrelated preview fetch to happen to run it.
                 await wwDataPrepFetchIssues();
+                // UAT enhancement (2026-09-04, DEC-075): the Data Preview's
+                // own derived "Configured Time" column is likewise
+                // recomputed live from the CURRENT time-axis configuration
+                // -- re-fetch the current page immediately so it appears/
+                // updates without requiring a full browser reload (task
+                // section P), rather than waiting for the next unrelated
+                // preview interaction.
+                await wwDataPrepFetchPreview();
             } catch (error) {
                 status.textContent = "Could not reach the backend.";
             }
@@ -8494,6 +8596,11 @@
                 wwDataPrepRenderTimeAxisForm();
                 await wwDataPrepRefreshOverlayToolbarOnly();
                 await wwDataPrepFetchIssues();
+                // UAT enhancement (2026-09-04, DEC-075): Clear must make
+                // the derived "Configured Time" column disappear
+                // immediately -- never leave a stale derived value
+                // visible (task section P).
+                await wwDataPrepFetchPreview();
             } catch (error) {
                 status.textContent = "Could not reach the backend.";
             }
@@ -8990,7 +9097,8 @@
 
         document.getElementById("wwDataPrepConvertBtn").addEventListener("click", () => { wwDataPrepConvert(); });
         document.getElementById("wwDataPrepConfigureTimeAxisBtn").addEventListener("click", wwDataPrepConfigureTimeAxis);
-        document.getElementById("wwDataPrepExportBtn").addEventListener("click", () => { wwDataPrepExport(); });
+        document.getElementById("wwDataPrepExportBtn").addEventListener("click", () => { wwDataPrepExport(false); });
+        document.getElementById("wwDataPrepExportWithProvenanceBtn").addEventListener("click", () => { wwDataPrepExport(true); });
 
         // Entry point -- called from a "Needs Preparation" Recording
         // Events row (renderRecordingsTable()'s own row click/keydown
@@ -9049,6 +9157,7 @@
             // issues/time-axis fetch resolves and calls
             // wwDataPrepRenderExportAction() with the actual state.
             document.getElementById("wwDataPrepExportBtn").disabled = true;
+            document.getElementById("wwDataPrepExportWithProvenanceBtn").disabled = true;
             document.getElementById("wwDataPrepExportGuidance").hidden = true;
             const exportStatusEl = document.getElementById("wwDataPrepExportStatus");
             exportStatusEl.textContent = "";

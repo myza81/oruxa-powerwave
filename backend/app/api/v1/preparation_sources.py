@@ -54,6 +54,7 @@ from app.schemas.preparation_issue import PreparationIssueSummaryOut
 from app.schemas.preparation_session import (
     CellWorkingValueRequest,
     ColumnRoleRequest,
+    ConfiguredTimePreviewOut,
     DataRegionRequest,
     HeaderRowRequest,
     PreparationSessionSummaryOut,
@@ -77,7 +78,11 @@ from app.services.preparation_import_service import (
     select_preparation_worksheet,
 )
 from app.services.preparation_conversion_service import convert_preparation_source
-from app.services.preparation_export_service import export_preparation_source
+from app.services.preparation_export_service import (
+    EXPORT_MODE_DATA_ONLY,
+    EXPORT_MODE_WITH_PROVENANCE,
+    export_preparation_source,
+)
 from app.services.preparation_issue_service import build_issue_summary
 from app.services.preparation_preview_service import (
     PREVIEW_DEFAULT_LIMIT,
@@ -87,6 +92,7 @@ from app.services.preparation_preview_service import (
 from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.time_axis_service import (
     clear_time_axis_configuration,
+    configured_time_for_preview_page,
     get_time_axis_summary,
     interpret_time_axis,
     list_time_axis_interpreters,
@@ -299,11 +305,23 @@ def get_preparation_source_rows(
     DisturbanceRecord is read or produced -- see
     app.services.preparation_preview_service's own module docstring for
     the exact CSV/Excel reading strategy.
+
+    UAT enhancement (2026-09-04, DEC-075): the response additionally
+    carries `configured_time` -- a VIRTUAL, derived, read-only preview
+    of the RESOLVED Time Axis for exactly this page's own rows (`None`
+    when the Time Axis is not currently resolved enough to derive one;
+    see `app.services.time_axis_service.configured_time_for_preview_page`'s
+    own docstring for the full semantics). Computed AFTER the raw
+    preview above, from that SAME page's own rows -- never a second,
+    independent row fetch.
     """
     workspace_id = _validate_workspace_id(workspace_id)
     try:
         result = preview_preparation_source(
             workspace_id=workspace_id, source_id=source_id, offset=offset, limit=limit, registry=registry,
+        )
+        configured_time = configured_time_for_preview_page(
+            workspace_id=workspace_id, source_id=source_id, page_rows=result.rows, registry=registry,
         )
     except ImportServiceError as exc:
         logger.info(
@@ -311,7 +329,11 @@ def get_preparation_source_rows(
             exc.code, workspace_id, source_id, exc.message,
         )
         raise _http_error(exc) from exc
-    return PreparationSourcePreviewOut.from_domain(result)
+    body = PreparationSourcePreviewOut.from_domain(result)
+    if configured_time is not None:
+        column_name, family, values = configured_time
+        body.configured_time = ConfiguredTimePreviewOut(column_name=column_name, family=family, values=values)
+    return body
 
 
 @router.get("/{source_id}/issues", response_model=PreparationIssueSummaryOut)
@@ -795,13 +817,19 @@ def post_convert_preparation_source(
 def post_export_preparation_source(
     workspace_id: str,
     source_id: str,
+    include_manifest: bool = Query(
+        False,
+        description=(
+            "False (default): return the cleaned CSV/XLSX bytes directly -- no ZIP, no manifest. "
+            "True: return the cleaned CSV/XLSX bundled with a sidecar provenance manifest inside one ZIP."
+        ),
+    ),
     registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
 ) -> Response:
-    """Slice 12 (DEC-072): cleaned Working Dataset export -- a ZIP
-    bundle containing the cleaned CSV/XLSX plus a sidecar provenance
-    manifest (`app.services.preparation_export_service`'s own module
-    docstring for the full "Working Dataset, not raw source, not
-    canonical DisturbanceRecord" semantics).
+    """Slice 12 (DEC-072): cleaned Working Dataset export
+    (`app.services.preparation_export_service`'s own module docstring
+    for the full "Working Dataset, not raw source, not canonical
+    DisturbanceRecord" semantics).
 
     UAT enhancement (2026-09-04, DEC-074): the exported table now
     serializes the RESOLVED/CONFIGURED Time Axis (one standardized
@@ -813,10 +841,23 @@ def post_export_preparation_source(
     `export_requires_interval` for `sample_index` with no real
     interval). Still read-only: never mutates the preparation session,
     the working overlay, or the raw source in any way.
+
+    **UAT enhancement (2026-09-04): manifest/provenance is now OPTIONAL.**
+    `include_manifest=false` (the default -- an ordinary "Export Cleaned
+    Data" click): returns the cleaned CSV/XLSX bytes directly, with the
+    real `Content-Type` (`text/csv` or the XLSX spreadsheet MIME type)
+    and a `Content-Disposition` filename of `<name>_cleaned.csv`/
+    `.xlsx` -- never a ZIP. `include_manifest=true` (an explicit,
+    secondary "Cleaned file + provenance" choice): returns the original
+    Slice 12/DEC-074 ZIP bundle (`<name>_cleaned.zip`, `application/zip`)
+    containing the same cleaned CSV/XLSX plus its own manifest JSON.
+    Both are gated identically and always contain byte-identical cleaned
+    data for the same preparation revision.
     """
     workspace_id = _validate_workspace_id(workspace_id)
+    mode = EXPORT_MODE_WITH_PROVENANCE if include_manifest else EXPORT_MODE_DATA_ONLY
     try:
-        result = export_preparation_source(workspace_id=workspace_id, source_id=source_id, registry=registry)
+        result = export_preparation_source(workspace_id=workspace_id, source_id=source_id, registry=registry, mode=mode)
     except ImportServiceError as exc:
         logger.info(
             "Preparation-source export rejected (%s) for workspace %s source %s: %s",

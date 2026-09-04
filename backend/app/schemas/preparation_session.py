@@ -54,6 +54,14 @@ three-role column-model simplification that makes all three redundant
 (`column_roles`, already on the wire, carries the same information for
 every column, not just previously-"ignored" ones; "ignore" is no longer
 a distinct action from simply never assigning a role).
+
+UAT enhancement (2026-09-04, DEC-075): `PreparationSourcePreviewOut`
+gains an additive `configured_time: ConfiguredTimePreviewOut | None`
+field -- a VIRTUAL, derived, read-only preview of the RESOLVED Time
+Axis for this page's own rows (see that schema's own docstring), never
+a real source column. Populated by the API route itself, not by
+`from_domain()` here (see `PreparationSourcePreviewOut`'s own
+docstring for why).
 """
 
 from __future__ import annotations
@@ -215,6 +223,29 @@ class PreparationRowOut(BaseModel):
         )
 
 
+class ConfiguredTimePreviewOut(BaseModel):
+    """UAT enhancement (2026-09-04, DEC-075): the RESOLVED/CONFIGURED
+    Time Axis, standardized exactly like cleaned export's own Time
+    column, for exactly this page's own rows -- a VIRTUAL, derived,
+    read-only preview field, never a real source column (never counted
+    in `column_count`, never assigned an index, never editable). `None`
+    on `PreparationSourcePreviewOut.configured_time` (the field this
+    schema fills) means the current Time Axis is not resolved enough to
+    derive one yet -- the frontend shows no derived column at all
+    rather than an empty one. `values` is exactly `len(rows)` long, in
+    the SAME order, with `None` for any row that itself has no
+    configured value (excluded, the header row, outside the active
+    region, or an unparseable cell) -- see
+    `app.services.time_axis_service.build_configured_time_values`'s own
+    docstring for the full semantics, in particular the critical
+    "always anchored to the true first active row, never this page's
+    own first row" guardrail."""
+
+    column_name: str
+    family: str
+    values: list[str | None] = Field(default_factory=list)
+
+
 class PreparationSourcePreviewOut(BaseModel):
     """`GET .../preparation-sources/{source_id}/rows` -- one bounded page
     of the WORKING view by default (Slice 4: raw + the source's own
@@ -226,7 +257,16 @@ class PreparationSourcePreviewOut(BaseModel):
     presents an approximate total as if it were authoritative.
     `working_revision` is page-independent (same on every page of the
     same source) -- lets the frontend detect a page fetched before a
-    since-applied edit."""
+    since-applied edit.
+
+    `configured_time` (2026-09-04, DEC-075) is populated by the API
+    route itself (`app.api.v1.preparation_sources.
+    get_preparation_source_rows`), never by `from_domain()` here --
+    computing it requires the separate Time-Axis service layer
+    (`app.services.time_axis_service`), which this schema module
+    deliberately does not import (mirroring `PreviewResult`'s own
+    "never interprets timestamps" boundary -- see that module's own
+    docstring)."""
 
     source_id: str
     selected_worksheet_index: int | None = None
@@ -245,6 +285,7 @@ class PreparationSourcePreviewOut(BaseModel):
     data_end_row: int | None = None
     column_labels: list[str] = Field(default_factory=list)
     column_roles: list[str] = Field(default_factory=list)
+    configured_time: ConfiguredTimePreviewOut | None = None
 
     @classmethod
     def from_domain(cls, result: PreviewResult) -> "PreparationSourcePreviewOut":

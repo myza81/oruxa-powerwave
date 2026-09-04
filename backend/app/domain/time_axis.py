@@ -705,6 +705,39 @@ def resolve_status(
     return STATUS_DETECTED
 
 
+def is_time_axis_resolved(result: TimeAxisInterpretationResult) -> bool:
+    """Whether `result`'s own Time Axis is resolved enough to derive a
+    real, standardized time value from -- the ONE shared eligibility
+    check reused by cleaned export
+    (`app.services.preparation_export_service._ensure_exportable`) and
+    the Data Preview's own derived "Configured Time" column
+    (`app.services.time_axis_service.build_configured_time_values`), so
+    the two features can never silently disagree about what counts as
+    "resolved" (a 2026-09-04 UAT enhancement's own explicit "reuse
+    existing resolved-time logic" rule).
+
+    `True` for `STATUS_DETECTED`/`STATUS_CONFIRMED`/
+    `STATUS_NEEDS_ATTENTION`/`STATUS_INDEX_FALLBACK` -- a genuine,
+    usable reading exists even if it also carries a data-quality
+    warning, was never explicitly confirmed (the prior confirmation-UX
+    UAT fix's own "native/unambiguous needs no confirmation" policy),
+    or floats on sample-index-only fallback. `False` for
+    `STATUS_UNCONFIGURED`/`STATUS_UNSUPPORTED`/`STATUS_REVIEW_REQUIRED`
+    (no coherent reading exists yet -- unconfigured, a stale role
+    reference, an unresolved ambiguity, or an unconfirmed reconstruction
+    suggestion), for a `manual`/`unsupported` interpreter (neither ever
+    parses a real per-row value from the source's own columns), and for
+    `sample_index` with no real interval/rate (index-only can never
+    honestly become a seconds value -- `sample 5 != 5 seconds`)."""
+    if result.status in (STATUS_UNCONFIGURED, STATUS_UNSUPPORTED, STATUS_REVIEW_REQUIRED):
+        return False
+    if result.interpreter_id in (INTERPRETER_ID_MANUAL, INTERPRETER_ID_UNSUPPORTED):
+        return False
+    if result.family == FAMILY_SAMPLE_INDEX and result.interval_seconds is None:
+        return False
+    return True
+
+
 def build_interpretation_result(
     configuration: TimeAxisConfiguration | None,
     *,

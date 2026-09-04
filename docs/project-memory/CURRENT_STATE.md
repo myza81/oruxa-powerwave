@@ -9,7 +9,29 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-04**. A fourth same-day enhancement
+Last meaningful update: **2026-09-04**. A sixth same-day enhancement
+([DECISIONS.md — DEC-076](DECISIONS.md#dec-076--cleaned-exports-manifestprovenance-bundle-is-now-optional-the-default-export-cleaned-data-action-returns-the-cleaned-csvxlsx-directly-never-a-zip))
+makes cleaned export's manifest/provenance bundle OPTIONAL: the default
+"Export Cleaned Data" click now downloads the cleaned CSV/XLSX directly
+(no ZIP, no forced `manifest.json`); a new, visually secondary
+"Download with manifest" action performs the original DEC-074
+ZIP+manifest export unchanged. Provenance capability itself is not
+removed, only demoted from the default to an explicit opt-in — see
+[Implemented capabilities](#implemented-capabilities). A fifth
+same-day enhancement
+([DECISIONS.md — DEC-075](DECISIONS.md#dec-075--data-preview-shows-a-read-only-derived-configured-time-column-once-the-time-axis-is-resolved-using-the-same-standardized-representation-and-normalization-semantics-as-cleaned-export-dec-074-and-canonical-conversion))
+adds a read-only, virtual "Configured Time" column to the Data
+Preparation Workspace's own raw/working preview TABLE (`GET .../rows`
+gains an additive `configured_time` field) — once the Time Axis is
+resolved, the engineer can directly SEE the exact standardized values
+(ISO-8601 for absolute, relative seconds for every other family)
+Powerwave will actually use, alongside the still-fully-editable
+original source Date/Time columns, on every preview page (always
+correctly anchored to the dataset's true first active row, never reset
+by pagination). Reuses DEC-074's own representation/normalization
+exactly — the two can never disagree. See
+[Implemented capabilities](#implemented-capabilities). A fourth
+same-day enhancement
 ([DECISIONS.md — DEC-074](DECISIONS.md#dec-074--cleaned-export-serializes-the-resolvedconfigured-time-axis-a-standardized-timetime-s-column-not-the-original-source-time-axis-columns-a-usable-time-axis-plus-at-least-one-waveform-column-is-now-required-before-a-reusable-cleaned-export-can-be-produced))
 supersedes Slice 12's own original export-time policy: cleaned export
 now serializes the RESOLVED/CONFIGURED Time Axis (one standardized
@@ -18,8 +40,7 @@ exactly like Slice 10's own canonical conversion does) instead of the
 original source Time Axis columns verbatim — a reusable cleaned export
 now REQUIRES a usable Time Axis plus at least one Waveform column (a
 real behavior change from "export available regardless of readiness").
-See [Implemented capabilities](#implemented-capabilities). A third
-same-day UAT fix
+A third same-day UAT fix
 ([DECISIONS.md — DEC-073](DECISIONS.md#dec-073--csvexcel-preparation-uses-only-three-column-roles-time-axis-waveform-and-not-assigned-not-assigned-is-the-default-and-is-omitted-from-cleaned-export))
 simplifies the CSV/Excel column-role model to exactly three roles —
 `Not Assigned` (the default), `Time Axis`, `Waveform` — retiring
@@ -311,6 +332,32 @@ re-confirmed by the TG-FINAL audit):
   new row styling for the header row and rows outside the active
   region. The Structure panel's own compact summary line reads e.g.
   "3 Not Assigned · 1 Time Axis · 2 Waveform."
+
+  **DEC-075 (2026-09-04) adds a read-only, VIRTUAL "Configured Time"
+  column to this same preview table** — once the current Time Axis is
+  resolved (`app/domain/time_axis.py`'s new `is_time_axis_resolved()`,
+  the SAME shared eligibility check DEC-074's own export gate reuses),
+  `GET .../rows` gains an additive `configured_time: {column_name,
+  family, values}` field, computed by a NEW `app/services/time_axis_
+  service.build_configured_time_values()` (full-active-region, single
+  streaming pass, matching `readiness_service`'s own full-region-scan
+  shape) narrowed to the requested page by `configured_time_for_
+  preview_page()`. Values use the EXACT SAME standardized
+  representation DEC-074's cleaned export already established (ISO-8601
+  for absolute, fixed 3-decimal relative seconds otherwise) via the
+  SAME shared `time_axis_normalization` module (which gained
+  `relative_seconds_with_anchor()` for this — a later preview PAGE's
+  own relative values stay anchored to the dataset's TRUE first active
+  row, never that page's own first row, so row 201 of a paginated
+  dataset still reads e.g. `4.000`, never resets to `0.000`). Never
+  counted in `column_count`/`column_labels`/`column_roles` and never
+  editable/clearable/excludable/role-assignable — a wrong derived value
+  is corrected by changing the Time Axis configuration, never by
+  editing the derived cell. Frontend: rendered as the FIRST column in
+  the preview table (a distinct dimmed/italic style plus a small
+  "Derived" badge and tooltip), refreshed immediately after every Time
+  Axis Save/Clear (alongside the existing refresh-on-cell-edit
+  behavior) so it never shows a stale value.
 
   **Slice 6** adds the preparation-specific Readiness Issue LANGUAGE AND
   TRANSPORT model — explicitly NOT the full Readiness Validator (still
@@ -878,23 +925,72 @@ re-confirmed by the TG-FINAL audit):
   `edited_cell_count`/`cleared_cell_count`, `time_family`/`time_
   provenance`/`interpreter_id`/`time_unit`/`time_interval_seconds`/
   `reconstructed_timing`, `exported_time` (new), and a live `readiness`
-  snapshot. Excel export still writes one clean tabular worksheet via
-  `openpyxl.Workbook(write_only=True)` (streaming, no original styling/
-  formulas/charts/macros preserved) into a NEW workbook; CSV export
-  still uses a normalized comma/UTF-8 dialect. Still read-only by
-  construction — no `working_overlay` mutation function is ever called;
-  `WorkingOverlay.revision` is still captured and re-verified around the
-  export (`ExportRevisionChangedError`). API unchanged: `POST
-  .../preparation-sources/{source_id}/export`, returning the ZIP bytes
-  directly as the response body. Frontend: the "Export Cleaned Data"
-  secondary action (same Preparation Status panel "Continue to
-  Powerwave" lives in) is now disabled-by-default with a short,
+  snapshot (built ONLY when a manifest is actually requested — see
+  DEC-076 immediately below). Excel export still writes one clean
+  tabular worksheet via `openpyxl.Workbook(write_only=True)` (streaming,
+  no original styling/formulas/charts/macros preserved) into a NEW
+  workbook; CSV export still uses a normalized comma/UTF-8 dialect.
+  Still read-only by construction — no `working_overlay` mutation
+  function is ever called; `WorkingOverlay.revision` is still captured
+  and re-verified around the export (`ExportRevisionChangedError`).
+  API: `POST .../preparation-sources/{source_id}/export` — see DEC-076
+  immediately below for its current `include_manifest` query parameter
+  and default response shape (superseding this paragraph's original
+  "always returns the ZIP bytes" description). Frontend: the "Export
+  Cleaned Data" secondary action (same Preparation Status panel
+  "Continue to Powerwave" lives in) is disabled-by-default with a short,
   single-line guidance message (`wwDataPrepRenderExportAction()`) until
   a resolved, usable Time Axis plus at least one Waveform column exists
   — mirroring "Continue to Powerwave"'s own limitation-notice pattern,
   never a large new warning panel; still triggers a real browser
   download via a throwaway `<a download>` element and never navigates
   away or mutates preparation state.
+
+  **DEC-076 (2026-09-04): the manifest/provenance bundle is now
+  OPTIONAL — the default "Export Cleaned Data" click downloads the
+  cleaned CSV/XLSX directly, never a ZIP, never a forced sidecar
+  `manifest.json`.** Owner-approved UX problem: an ordinary engineer
+  only wants the reusable cleaned file and should never be handed a
+  ZIP — let alone be expected to understand `manifest.json` — merely to
+  get it. `app/services/preparation_export_service.export_preparation_
+  source()` gains an explicit `mode` (`EXPORT_MODE_DATA_ONLY`, the new
+  default, vs. `EXPORT_MODE_WITH_PROVENANCE`, the original Slice
+  12/DEC-074 ZIP+manifest bundle, byte-for-byte unchanged); the API
+  exposes the same choice as `POST .../export?include_manifest=true`
+  (default `false`). Both modes share identical gating
+  (`_ensure_exportable()`, unchanged from DEC-074) and identical
+  cleaned-data construction, so they always produce byte-identical
+  cleaned data for the same working-overlay revision — `mode` only
+  changes the RETURN SHAPE. `EXPORT_MODE_DATA_ONLY` never builds or
+  serializes the manifest at all (an efficiency requirement, not merely
+  discarding a built manifest). Data-only responses carry the real
+  `Content-Type` (`text/csv` or the XLSX spreadsheet MIME type) and a
+  `<name>_cleaned.csv`/`.xlsx` filename; the existing
+  `expose_headers=["Content-Disposition"]` CORS fix (below) already
+  covers every response shape, no CORS change was needed. Frontend: the
+  export action is now a split action — the primary "Export Cleaned
+  Data" button (`wwDataPrepExport(false)`) is the data-only default; a
+  new, visually secondary, underlined-text "Download with manifest
+  (cleaned file + provenance)" button (`wwDataPrepExport(true)`,
+  `#wwDataPrepExportWithProvenanceBtn`) performs the with-provenance
+  export — both share the exact same gated enabled/disabled state
+  (`wwDataPrepRenderExportAction()`), since provenance was never a
+  separately-gated capability. The download-handling code no longer
+  assumes every export is a ZIP (task's own "old frontend expected
+  every export to be ZIP" regression note) — the real filename/
+  extension always comes from the server's own `Content-Disposition`
+  header regardless of mode. Manifest schema/contents are unchanged;
+  provenance capability itself is not removed, only demoted from the
+  default to an explicit opt-in. Verified: full backend suite 2731
+  passed, 0 failed (the same baseline DEC-075 already established,
+  confirming no regression from either same-day enhancement); the
+  committed browser smoke test (COMTRADE) still passes unchanged; a
+  throwaway (not committed) live-browser Playwright UAT confirmed both
+  a CSV and an Excel source's default export downloads the cleaned file
+  directly (not a ZIP, correct `Content-Type`, correct source-derived
+  filename), "Download with manifest" downloads a real ZIP containing
+  both the cleaned file and `manifest.json`, and the two exports'
+  cleaned data is byte-identical — all with zero console/page errors.
 
   **One real defect found and fixed by the browser UAT, invisible to
   every backend-only test**: `Content-Disposition` is not a CORS-

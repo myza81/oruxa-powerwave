@@ -9,6 +9,7 @@ guardrail that a preparation source never becomes waveform-ready.
 from __future__ import annotations
 
 import io
+import zipfile
 
 import pytest
 from fastapi.testclient import TestClient
@@ -843,6 +844,65 @@ class TestCellWorkingEndpoints:
 
         assert resp.status_code == 400
         assert resp.json()["detail"]["code"] == "worksheet_not_selected"
+
+
+class TestConfiguredTimePreviewApi:
+    """UAT enhancement (2026-09-04, DEC-075): `GET .../rows` gains an
+    additive, virtual `configured_time` field -- the RESOLVED/CONFIGURED
+    Time Axis for exactly the returned page, never a real source
+    column."""
+
+    def test_resolved_time_axis_populates_configured_time(self, client):
+        source_id = _ready_csv_source(client)
+
+        body = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+
+        assert body["configured_time"] is not None
+        assert body["configured_time"]["column_name"] == "Time"
+        assert body["configured_time"]["family"] == "absolute"
+        assert len(body["configured_time"]["values"]) == body["returned_row_count"]
+
+    def test_unconfigured_time_axis_has_no_configured_time(self, client):
+        source_id = _upload_csv(client, content=b"1,2\n3,4\n")
+
+        body = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+
+        assert body["configured_time"] is None
+
+    def test_configured_time_never_shifts_column_count_or_labels(self, client):
+        source_id = _ready_csv_source(client)
+
+        body = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+
+        # column_count/column_labels/column_roles describe only the two
+        # REAL source columns -- the virtual configured_time column is
+        # never counted among them.
+        assert body["column_count"] == 2
+        assert len(body["column_labels"]) == 2
+        assert len(body["column_roles"]) == 2
+
+    def test_sample_index_without_interval_has_no_configured_time(self, client):
+        source_id = _upload_csv(client, content=b"100,1.0\n101,2.0\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "sample_index"},
+        )
+
+        body = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+
+        assert body["configured_time"] is None
+
+    def test_clearing_time_axis_removes_configured_time(self, client):
+        source_id = _ready_csv_source(client)
+        before = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert before["configured_time"] is not None
+
+        client.delete(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis")
+
+        after = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert after["configured_time"] is None
 
 
 class TestRowAndColumnWorkingEndpoints:
@@ -2850,22 +2910,25 @@ class TestConversionApi:
 
 
 class TestExportApi:
-    def test_successful_csv_export_returns_zip(self, client):
+    """2026-09-04 UAT enhancement: manifest/provenance is now OPTIONAL.
+    The default `POST .../export` (no query param, or `include_manifest=false`)
+    returns the cleaned CSV/XLSX bytes directly -- never a ZIP.
+    `?include_manifest=true` returns the original Slice 12/DEC-074 ZIP+
+    manifest bundle, unchanged. See `TestWithProvenanceExportApi` below
+    for that opt-in coverage; this class covers the new default."""
+
+    def test_default_csv_export_returns_csv_not_zip(self, client):
         source_id = _ready_csv_source(client)
 
         response = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/export")
 
         assert response.status_code == 200
-        assert response.headers["content-type"] == "application/zip"
-        assert response.headers["content-disposition"] == 'attachment; filename="e_cleaned.zip"'
-        import io
-        import zipfile
-        zf = zipfile.ZipFile(io.BytesIO(response.content))
-        names = zf.namelist()
-        assert any(n.endswith(".csv") for n in names)
-        assert any(n.endswith(".manifest.json") for n in names)
+        assert response.headers["content-type"].startswith("text/csv")
+        assert response.headers["content-disposition"] == 'attachment; filename="e_cleaned.csv"'
+        with pytest.raises(zipfile.BadZipFile):
+            zipfile.ZipFile(io.BytesIO(response.content))
 
-    def test_successful_excel_export_returns_zip(self, client):
+    def test_default_excel_export_returns_xlsx_not_zip(self, client):
         content = _build_xlsx({"Sheet1": [["2026-08-31 13:00:00", 1], ["2026-08-31 13:00:01", 2]]})
         source_id = client.post(
             "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "m.xlsx"),
@@ -2880,18 +2943,24 @@ class TestExportApi:
         response = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/export")
 
         assert response.status_code == 200
-        import io
-        import zipfile
-        zf = zipfile.ZipFile(io.BytesIO(response.content))
-        assert any(n.endswith(".xlsx") for n in zf.namelist())
-        assert any(n.endswith(".manifest.json") for n in zf.namelist())
+        assert response.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        assert response.headers["content-disposition"] == 'attachment; filename="m_cleaned.xlsx"'
+        # No manifest member inside the (technically ZIP-based) XLSX --
+        # test export/HTTP semantics, not raw byte format (an XLSX is a
+        # valid ZIP internally either way).
+        assert not any(n.endswith(".manifest.json") for n in zipfile.ZipFile(io.BytesIO(response.content)).namelist())
+        from openpyxl import load_workbook
+        rows = list(load_workbook(io.BytesIO(response.content)).active.iter_rows(values_only=True))
+        assert rows[0][0] == "Time"
+        assert rows[1][0] == "2026-08-31T13:00:00.000"
 
     def test_export_blocked_when_not_ready(self, client):
         # UAT enhancement (2026-09-04, DEC-074): supersedes the earlier
         # Slice 12 "export available even when not ready" policy --
         # cleaned export now serializes a RESOLVED Time Axis, so a
         # totally-unconfigured source is correctly refused (409), not
-        # silently exported with empty/meaningless time values.
+        # silently exported with empty/meaningless time values. Same
+        # gate applies to the default (data-only) mode used here.
         source_id = _upload_csv(client, content=b"1,2\n3,4\n")  # totally unconfigured
 
         response = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/export")
@@ -2949,3 +3018,73 @@ class TestExportApi:
         assert response.status_code == 200
         disposition = response.headers["content-disposition"]
         assert "(" not in disposition and ")" not in disposition
+        assert disposition == 'attachment; filename="weird_name_1_cleaned.csv"'
+
+
+class TestWithProvenanceExportApi:
+    """`?include_manifest=true` -- the optional, secondary "Cleaned file
+    + provenance" export action. Original Slice 12/DEC-074 ZIP+manifest
+    behavior, unchanged; provenance capability is not removed, only
+    demoted from the default to an explicit opt-in."""
+
+    def test_csv_with_provenance_returns_zip(self, client):
+        source_id = _ready_csv_source(client)
+
+        response = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/export?include_manifest=true")
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/zip"
+        assert response.headers["content-disposition"] == 'attachment; filename="e_cleaned.zip"'
+        zf = zipfile.ZipFile(io.BytesIO(response.content))
+        names = zf.namelist()
+        assert any(n.endswith(".csv") for n in names)
+        assert any(n.endswith(".manifest.json") for n in names)
+
+    def test_excel_with_provenance_returns_zip(self, client):
+        content = _build_xlsx({"Sheet1": [["2026-08-31 13:00:00", 1], ["2026-08-31 13:00:01", 2]]})
+        source_id = client.post(
+            "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "m.xlsx"),
+        ).json()["source_id"]
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime", "confirmed": True},
+        )
+
+        response = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/export?include_manifest=true")
+
+        assert response.status_code == 200
+        zf = zipfile.ZipFile(io.BytesIO(response.content))
+        assert any(n.endswith(".xlsx") for n in zf.namelist())
+        assert any(n.endswith(".manifest.json") for n in zf.namelist())
+
+    def test_with_provenance_blocked_when_not_ready(self, client):
+        # Same gate as the default mode -- task section K's own
+        # "identical gating across both modes" requirement.
+        source_id = _upload_csv(client, content=b"1,2\n3,4\n")
+
+        response = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/export?include_manifest=true")
+
+        assert response.status_code == 409
+        assert response.json()["detail"]["code"] == "export_not_ready"
+
+    def test_with_provenance_preserves_preparation_state(self, client):
+        source_id = _upload_csv(client, content=b"1,2\n3,4\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/cells/1/1", json={"value": "99"})
+        before = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}").json()
+
+        client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/export?include_manifest=true")
+
+        after = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}").json()
+        assert before == after
+
+    def test_default_and_with_provenance_cleaned_data_agree(self, client):
+        source_id = _ready_csv_source(client)
+
+        data_only = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/export")
+        with_provenance = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/export?include_manifest=true")
+
+        zf = zipfile.ZipFile(io.BytesIO(with_provenance.content))
+        bundled_csv = zf.read(next(n for n in zf.namelist() if n.endswith(".csv")))
+        assert data_only.content == bundled_csv

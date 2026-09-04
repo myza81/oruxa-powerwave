@@ -10489,6 +10489,257 @@ own prior UAT fix), or COMTRADE handling.
 
 ---
 
+## DEC-075 — Data Preview shows a read-only, derived "Configured Time" column once the Time Axis is resolved, using the same standardized representation and normalization semantics as cleaned export (DEC-074) and canonical conversion
+
+Date: 2026-09-04
+Status: Approved
+Source: explicit project-owner UAT feedback ("Show the Resolved/
+Configured Time Axis in Data Preview" enhancement), delivered as a
+direct follow-on to DEC-074 (export the resolved Time Axis) — the
+owner's own stated problem: an engineer can configure and resolve the
+Time Axis, but the Data Preview kept showing only the original source
+Date/Time columns, so there was no way to directly verify the exact
+time values Powerwave will actually use before converting or
+exporting.
+
+Decision:
+
+**Data Preview gains one VIRTUAL, derived, READ-ONLY "Configured Time"
+column, shown as the FIRST preview column, once the current Time Axis
+is resolved enough to derive a real value from.** "Resolved enough" is
+the SAME shared eligibility check cleaned export's own gate already
+uses (`app.domain.time_axis.is_time_axis_resolved()`) — a genuine,
+usable reading (including one that was never explicitly confirmed,
+per the confirmation-UX policy, or that also carries a data-quality
+warning) counts; an unconfigured/unresolved/stale-role-reference Time
+Axis, a `manual`/`unsupported` interpreter, an unconfirmed
+reconstruction suggestion, or `sample_index` with no real interval/rate
+does not — no column is shown at all in those cases, never one with
+fabricated or empty-looking cells.
+
+**Representation is identical to cleaned export's own** (DEC-074): one
+standardized ISO-8601 timestamp per row for a resolved absolute
+reading (header `Time`), or fixed 3-decimal-place seconds relative to
+the dataset's TRUE first active row for every other resolved family
+(header `Time (s)`) — never the current preview PAGE's own first row,
+a critical guardrail: a later page (e.g. rows 201-400) must still show
+values continuing from the true start (e.g. `4.000`, `4.020`, ...),
+never resetting to `0.000`. Computed by re-calling the ALREADY-
+CONFIRMED interpreter's own `build_preview_rows()` over the FULL active
+region (matching canonical conversion's and cleaned export's own
+approach, for the same reason those two already process the full
+region rather than a bounded page: `sample_index`/repeated-timestamp
+reconstruction compute their own values relative to whatever row window
+they are given, so that window must be the true full active region for
+"first" to mean the dataset's real first active row), through the SAME
+shared `app.services.time_axis_normalization` module DEC-074 already
+established — never a third, independently re-derived parsing/cadence
+algorithm.
+
+**Strictly read-only and virtual.** The column is never assignable a
+role, never editable, never clearable, never excludable, and is never
+counted in `column_count`/`column_labels`/`column_roles` or given a
+real column index — a wrong derived value is corrected by changing the
+Time Axis configuration, never by editing the derived cell itself. The
+original source Date/Time columns remain fully visible and editable
+alongside it, for direct comparison and troubleshooting. Computing it
+never mutates the raw source, the `WorkingOverlay`, or the Time Axis
+configuration itself.
+
+**Refreshed live, never cached across a Time Axis or working-cell
+change.** Saving or clearing the Time Axis configuration, changing a
+resolved date order, or editing a source Time Axis cell all trigger an
+immediate preview re-fetch so the derived column appears/updates/
+disappears without requiring a full browser reload.
+
+Reason:
+
+Closes the direct verification gap DEC-074 left open: an engineer could
+configure and export/convert a resolved Time Axis, but had no way to
+SEE the resulting values before doing so — the cleaned export was the
+only place the resolved timing was ever visible, after the fact. Data
+Preview is the natural place to show it, since it is already where the
+engineer reviews and edits the working dataset before either action.
+Reusing DEC-074's own representation/normalization semantics exactly
+(rather than inventing a second display convention) means an engineer
+never has to reconcile two different-looking timelines for what is
+provably the same interpretation.
+
+Alternatives considered:
+
+Computing the derived column purely in frontend JavaScript from the
+raw source cells (rejected outright by the task's own explicit
+guardrail — the backend's `time_axis_interpreters`/`time_axis_
+normalization` modules are the ONLY place date-order/cadence/
+reconstruction logic may live; a frontend reimplementation would be
+exactly the "third, independently re-derived" algorithm this decision
+explicitly forbids). Replacing the original source Date/Time columns
+with the derived one in Data Preview (rejected — the task's own
+explicit "do not replace or hide original source columns" instruction;
+direct comparison against the source is the whole point of showing
+both). Computing relative time per-page (anchored to that page's own
+first row) to avoid a full-active-region computation on every preview
+request (rejected outright — this is the exact defect the task's own
+section M explicitly guards against: a later page must never appear to
+restart at zero). Caching the full-active-region computation across
+requests (rejected — every other Slice 6/9 readiness/issue computation
+in this codebase already derives live, uncached, on every request; a
+new caching layer here would be the one inconsistent exception, and the
+computation is already bounded by the same single-pass-over-the-active-
+region shape `app.services.readiness_service`'s own full-region scan
+already performs on every preview/issues interaction).
+
+Impact:
+
+Backend: `app/domain/time_axis.py` gains `is_time_axis_resolved()`
+(shared with, and DEC-074's `preparation_export_service._ensure_
+exportable()` refactored to reuse, rather than keeping its own
+duplicate inline checks). `app/services/time_axis_normalization.py`
+gains `relative_seconds_with_anchor()` (a generalization of the
+existing `relative_seconds()`, which becomes a thin wrapper over it).
+`app/services/time_axis_service.py` gains `ConfiguredTimeValues`/
+`build_configured_time_values()` (the full-active-region computation)
+and `configured_time_for_preview_page()` (the page-narrowing wrapper
+`GET .../rows` calls). `app/schemas/preparation_session.py` gains
+`ConfiguredTimePreviewOut` and an additive `PreparationSourcePreviewOut.
+configured_time` field, populated by `app/api/v1/preparation_sources.py`'s
+own `get_preparation_source_rows()` route, layered on top of the
+existing raw-preview response (`column_count` and friends remain
+exactly as before — the derived column is never counted among them).
+Frontend: `frontend/index.html`'s `wwDataPrepRenderTable()` renders the
+derived column first when `preview.configured_time` is present (a
+distinct `.ww-data-prep-configured-time-cell` style, a small "Derived"
+badge, and a tooltip explaining it), and the Time Axis Save/Clear
+handlers now also re-fetch the preview so it updates immediately. Test
+suites cover the new domain predicate, the full-region computation
+(every time family, the paging/anchor guardrail, row-exclusion
+handling, state-refresh, and cross-feature consistency with cleaned
+export and canonical conversion), and the new API field. No change to
+canonical `DisturbanceRecord` conversion, cleaned export's own
+behavior, readiness policy, or the three-role column model (DEC-073).
+
+---
+
+## DEC-076 — Cleaned export's manifest/provenance bundle is now optional; the default "Export Cleaned Data" action returns the cleaned CSV/XLSX directly, never a ZIP
+
+Date: 2026-09-04
+Status: Approved
+Source: explicit project-owner UAT feedback ("Cleaned Export UX --
+manifest/provenance should be optional" enhancement) -- a direct
+owner-approved amendment to the export PACKAGING policy DEC-074
+established (DEC-074's own Time-Axis-resolution/gating decisions are
+unchanged and remain fully in force).
+
+Decision:
+
+**The default cleaned-export action now returns the cleaned CSV/XLSX
+bytes directly -- never a ZIP, never a forced sidecar
+`manifest.json`.** Provenance/traceability capability itself is not
+removed: `export_preparation_source()` gains an explicit `mode`
+(`EXPORT_MODE_DATA_ONLY` -- the new default; `EXPORT_MODE_WITH_
+PROVENANCE` -- the original Slice 12/DEC-074 ZIP+manifest bundle,
+unchanged) and the same choice is exposed on the API as
+`POST .../export?include_manifest=true|false` (default `false`). Both
+modes share identical gating (`_ensure_exportable()`, unchanged from
+DEC-074) and identical cleaned-data construction, so they always
+produce byte-identical cleaned data for the same working-overlay
+revision -- `mode`/`include_manifest` only decides the RETURN SHAPE.
+
+Frontend: the "Export Cleaned Data" button's default click now performs
+the data-only export; a secondary, visually subordinate "Download with
+manifest" action performs the with-provenance export. Neither the
+manifest schema nor the manifest CONTENTS changed.
+
+Reason:
+
+Owner-reported UX problem: an ordinary engineer only wants the reusable
+cleaned CSV/XLSX and should never be handed a `.zip` -- let alone be
+expected to understand a sidecar `manifest.json` -- merely to get it.
+DEC-074 never intended to force a ZIP+manifest on every download; it
+simply hadn't yet separated "what a cleaned export contains" from "what
+the default click returns." This decision makes that separation
+explicit without weakening the underlying provenance capability, which
+remains available on request.
+
+Alternatives considered:
+
+Removing manifest/provenance generation entirely (rejected outright --
+explicit non-goal; the manifest's own engineering traceability,
+including the DEC-074 `exported_time` section, remains valuable and is
+still produced on request). A new/different manifest schema (rejected
+-- explicit non-goal; the SAME manifest-building code path is reused
+unchanged for `EXPORT_MODE_WITH_PROVENANCE`). Building two separate
+export pipelines, one per mode (rejected -- both modes share the exact
+same gating and cleaned-data-assembly code; only manifest construction
+and final packaging are mode-conditional, so a second competing
+pipeline would only risk the two modes silently disagreeing about what
+"cleaned data" means). Always building the manifest even for the
+data-only path "just in case" (rejected -- task's own efficiency note;
+`EXPORT_MODE_DATA_ONLY` skips `_build_manifest()`/its own edited/
+cleared-cell provenance counts and JSON serialization entirely, not
+merely discarding the result after building it). A dropdown/split
+"Export Cleaned Data ▾" button (the owner's own first-preference UI)
+was evaluated against this codebase's existing button vocabulary (plain
+`<button>`/`button.secondary`, no dropdown/menu component anywhere
+else in the Data Preparation Workspace) and judged disproportionately
+complex to introduce for one action; the owner's own documented
+fallback -- a primary button plus a visually secondary text-link-style
+second action -- was used instead.
+
+Impact:
+
+Backend: `app/services/preparation_export_service.py` -- new
+`EXPORT_MODE_DATA_ONLY`/`EXPORT_MODE_WITH_PROVENANCE` constants,
+`export_preparation_source()` gains a `mode` parameter (default
+`EXPORT_MODE_DATA_ONLY`), manifest construction is now conditional on
+`mode == EXPORT_MODE_WITH_PROVENANCE`, `ExportResult` can now carry the
+real CSV/XLSX `Content-Type` directly (`text/csv` /
+`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`)
+instead of always `application/zip`. `app/api/v1/preparation_sources.py`
+-- `POST .../export` gains an `include_manifest: bool = Query(False, ...)`
+query parameter mapping to the two modes; the endpoint docstring
+updated. No new error classes; gating (`export_not_ready`/
+`export_requires_interval`/`export_unsupported_interpreter`/
+`export_revision_changed`) is identical across both modes. Frontend:
+`frontend/index.html` -- the export action markup gains a second
+button, `#wwDataPrepExportWithProvenanceBtn` ("Download with manifest
+(cleaned file + provenance)"), styled as a plain underlined text link
+(new `.ww-data-prep-export-provenance-link` CSS, deliberately not a
+bordered `button.secondary`, so it reads as subordinate to the primary
+"Export Cleaned Data" button); `wwDataPrepExport()` gains an
+`includeManifest` parameter (`false`/`true` wired to the two buttons'
+own click handlers) and appends `?include_manifest=true` to the
+request URL only for the provenance action; the real filename/
+extension is always read from the response's own `Content-Disposition`
+header (never hard-coded `.zip`) with mode-aware fallback names for the
+rare missing-header case; `wwDataPrepRenderExportAction()` now drives
+both buttons' shared enabled/disabled state. Tests:
+`test_preparation_export_service.py` -- every pre-existing test now
+calls `export_preparation_source(..., mode=EXPORT_MODE_WITH_PROVENANCE)`
+explicitly (unchanged behavior/assertions); new `TestDataOnlyExport`
+and `TestModeEquivalence` classes cover the new default mode and
+cross-mode data equivalence. `test_preparation_sources_api.py` --
+`TestExportApi` rewritten around the new default (data-only) response
+shape; new `TestWithProvenanceExportApi` class covers the
+`?include_manifest=true` opt-in (moved from the old `TestExportApi`
+assertions, unchanged). Full backend suite: 2731 passed, 0 failed (the
+same combined baseline DEC-075 already established -- this enhancement
+added/rewrote tests without changing the total pass count materially,
+since it mostly re-scoped existing assertions across two modes rather
+than adding a large new surface). The committed browser smoke test
+(COMTRADE) still passes unchanged; a throwaway (not committed)
+live-browser Playwright UAT confirmed a CSV and an Excel source's
+default export both download the cleaned file directly (correct
+`Content-Type`, correct source-derived filename, never a ZIP),
+"Download with manifest" downloads a real ZIP containing both the
+cleaned file and `manifest.json`, and the two exports' cleaned data is
+byte-identical -- all with zero console/page errors. No change to
+DEC-074's own Time-Axis resolution/gating logic, `DisturbanceRecord`/
+canonical conversion, DEC-075's Configured Time preview column, or
+COMTRADE handling.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

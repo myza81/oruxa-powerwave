@@ -103,8 +103,19 @@ from app.services.errors import (
     UnknownTimeAxisInterpreterError,
     WorksheetNotSelectedError,
 )
-from app.services.preparation_preview_service import ensure_csv_totals_cached, preview_preparation_source
+from app.services.preparation_preview_service import (
+    PreviewRow,
+    ensure_csv_totals_cached,
+    iterate_active_region_rows,
+    preview_preparation_source,
+)
 from app.services.preparation_session_registry import PreparationSessionRegistry
+from app.services.time_axis_normalization import (
+    format_absolute_iso,
+    format_relative_seconds,
+    parse_native_time_value,
+    relative_seconds_with_anchor,
+)
 
 #: Bounded row-sample cap for every SAMPLE interpreter's own `detect()`/
 #: `build_preview_rows()` call -- task's own explicit "bounded sample
@@ -889,3 +900,140 @@ def interpret_time_axis(
         resolved_interval_seconds=detection.resolved_interval_seconds,
         preview_rows=preview_rows,
     )
+
+
+@dataclass(slots=True)
+class ConfiguredTimeValues:
+    """The RESOLVED/CONFIGURED Time Axis, standardized exactly like
+    cleaned export's own Time column, for every row of the CURRENT
+    active data region -- the Data Preview's own "show what Powerwave
+    will actually use" enhancement (2026-09-04, DEC-075).
+    `values_by_row_number` is keyed by the source's own 1-based
+    `row_number` (never a page-relative index), so a caller can look up
+    exactly the rows it needs regardless of which preview page they
+    belong to -- see `configured_time_for_preview_page()` below, the
+    ONE place this full-region dict is narrowed down to one page's own
+    rows. A row absent from this dict (excluded, the header row, or
+    outside the active region) or present with value `None` (its own
+    Time Axis cell failed to interpret) both mean "no configured time
+    for this row" -- the caller renders a blank cell either way, never
+    a fabricated value."""
+
+    column_name: str
+    family: str
+    values_by_row_number: dict[int, str | None]
+
+
+def build_configured_time_values(
+    *, workspace_id: str, source_id: str, registry: PreparationSessionRegistry,
+) -> ConfiguredTimeValues | None:
+    """Computes the standardized Configured Time value for EVERY row of
+    the current active data region, in ONE single streaming pass over
+    `app.services.preparation_preview_service.iterate_active_region_rows()`
+    -- the SAME row source, and the SAME single-pass shape,
+    `app.services.readiness_service`'s own full-region scan already uses
+    on every preview/issues interaction, so this is not a NEW class of
+    per-request cost, merely one more pass of the same kind.
+
+    Returns `None` when the current Time Axis is not resolved enough to
+    derive a value from at all
+    (`app.domain.time_axis.is_time_axis_resolved()` -- the SAME shared
+    check `app.services.preparation_export_service._ensure_exportable()`
+    uses, so Data Preview and cleaned export can never silently
+    disagree about when a Configured Time exists).
+
+    **Critical guardrail (task section M)**: for every non-absolute
+    family, each row's own value is normalized relative to the TRUE
+    FIRST ACTIVE ROW of the whole active region -- never merely the
+    first row of whatever page a caller later asks for. This function
+    always processes the FULL active region for exactly this reason:
+    `sample_index`/`repeated_timestamp_precision_loss`'s own
+    `build_preview_rows()` computes ITS OWN relative-to-first-of-the-
+    given-window value (see `app.services.time_axis_interpreters`'s own
+    docstrings), so the given window must always BE the full active
+    region for that "first" to mean the dataset's true first active
+    row -- exactly the same reason `app.services.preparation_
+    conversion_service`/`preparation_export_service` also always pass
+    the FULL active region to `build_preview_rows()` in one call,
+    never a bounded sample, for their own canonical/exported time.
+
+    No new inference happens here: every value comes from re-calling
+    the ALREADY-CONFIRMED interpreter's own `build_preview_rows()` (the
+    exact same call canonical conversion and cleaned export already
+    make), through the SAME shared `app.services.time_axis_
+    normalization` parse/format helpers those two features use --
+    canonical conversion, cleaned export, and this preview can never
+    disagree about what a configured Time Axis means (task's own
+    explicit "must agree" requirement)."""
+    session = _resolve_session(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    worksheet_index = _resolve_worksheet_index(session)
+    summary = get_time_axis_summary(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    if not time_axis_domain.is_time_axis_resolved(summary):
+        return None
+
+    interpreter = resolve_interpreter(
+        column_count=len(summary.column_indices), requested_interpreter_id=summary.interpreter_id,
+    )
+    family = summary.family
+    column_name = "Time" if family == time_axis_domain.FAMILY_ABSOLUTE else "Time (s)"
+
+    time_axis_samples: list[TimeAxisSampleRow] = []
+    for row in iterate_active_region_rows(session, worksheet_index=worksheet_index):
+        if row.excluded or row.is_header or not row.in_active_region:
+            continue
+        values = tuple(row.cells[c] if c < len(row.cells) else None for c in summary.column_indices)
+        time_axis_samples.append(TimeAxisSampleRow(row_number=row.row_number, values=values))
+
+    if not time_axis_samples:
+        return ConfiguredTimeValues(column_name=column_name, family=family, values_by_row_number={})
+
+    preview_rows = interpreter.build_preview_rows(
+        samples=time_axis_samples, resolved_options=summary.options, resolved_unit=summary.unit,
+        resolved_interval_seconds=summary.interval_seconds, limit=len(time_axis_samples),
+    )
+
+    natives_by_row: dict[int, Any] = {
+        pr.row_number: (parse_native_time_value(pr.interpreted, family=family) if pr.interpreted is not None else None)
+        for pr in preview_rows
+    }
+
+    values_by_row_number: dict[int, str | None] = {}
+    if family == time_axis_domain.FAMILY_ABSOLUTE:
+        for row_number, native in natives_by_row.items():
+            values_by_row_number[row_number] = format_absolute_iso(native) if native is not None else None
+    else:
+        # The anchor is the FIRST successfully-parsed native value, in
+        # row order -- never assumed to be row_order[0] itself (that
+        # row may have failed to interpret; task's own "the correct
+        # action is to fix the Time Axis configuration, never silently
+        # skip to a later anchor" is honored by still deriving relative
+        # values for every OTHER row once a real anchor is found).
+        anchor = next((natives_by_row[pr.row_number] for pr in preview_rows if natives_by_row[pr.row_number] is not None), None)
+        for row_number, native in natives_by_row.items():
+            if native is None or anchor is None:
+                values_by_row_number[row_number] = None
+                continue
+            try:
+                rel = relative_seconds_with_anchor([native], anchor, family=family)[0]
+            except TypeError:
+                values_by_row_number[row_number] = None
+                continue
+            values_by_row_number[row_number] = format_relative_seconds(rel)
+
+    return ConfiguredTimeValues(column_name=column_name, family=family, values_by_row_number=values_by_row_number)
+
+
+def configured_time_for_preview_page(
+    *, workspace_id: str, source_id: str, page_rows: list[PreviewRow], registry: PreparationSessionRegistry,
+) -> tuple[str, str, list[str | None]] | None:
+    """Narrows `build_configured_time_values()`'s own full-active-region
+    result down to exactly `page_rows`' own rows, in the SAME order --
+    the one function `GET .../rows` calls to build its own additive
+    `configured_time` response field. Returns `(column_name, family,
+    values)`, or `None` (never an empty column) when the Time Axis is
+    not currently resolved enough to derive a value from at all."""
+    computed = build_configured_time_values(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    if computed is None:
+        return None
+    values = [computed.values_by_row_number.get(row.row_number) for row in page_rows]
+    return computed.column_name, computed.family, values
