@@ -392,9 +392,22 @@ def convert_preparation_source(
         engineering_quantity = session.working_overlay.column_engineering_quantities.get(
             (worksheet_index, column_index), UNDEFINED,
         )
+        # Measured Unit enhancement (DEC-080, task section L): the
+        # engineer's own per-column selection, if any, becomes
+        # AnalogChannel.unit directly -- the exact string
+        # app.domain.per_unit._measured_unit_scale()/apply_per_unit_to_
+        # value()/array() already normalize case-insensitively for
+        # Voltage/Current PU conversion (unchanged by this enhancement).
+        # No downstream CSV-specific handling is needed: COMTRADE's own
+        # unit already flows into AnalogChannel.unit the same way (task
+        # section H). Defaults to "" (matches every other column's own
+        # blank-unit default) when no Measured Unit was ever selected.
+        measured_unit = session.working_overlay.column_measured_units.get(
+            (worksheet_index, column_index), "",
+        )
         analog_channels.append(
             AnalogChannel(
-                name=canonical_name, unit="", index=position, description=display_label,
+                name=canonical_name, unit=measured_unit, index=position, description=display_label,
                 parameter_type=engineering_quantity if engineering_quantity != UNDEFINED else None,
             )
         )

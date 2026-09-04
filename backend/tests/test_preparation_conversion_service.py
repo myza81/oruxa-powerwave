@@ -33,6 +33,7 @@ from app.services.time_axis_service import set_time_axis_configuration
 from app.services.working_overlay_service import (
     edit_cell,
     set_column_engineering_quantity,
+    set_column_measured_unit,
     set_column_role,
     set_data_region,
     set_row_excluded,
@@ -499,9 +500,12 @@ class TestEngineeringQuantityConversion:
         assert channel.engineering_quantity == "Undefined"
         assert channel.engineering_type == "Undefined"
 
-    def test_unit_stays_empty_engineering_quantity_is_the_only_signal(self):
-        # Task section H/K: CSV/Excel never fabricates a unit string --
-        # AnalogChannel.unit stays "" regardless of Engineering Quantity.
+    def test_unit_stays_empty_when_no_measured_unit_was_ever_selected(self):
+        # Measured Unit enhancement (DEC-080) update: AnalogChannel.unit
+        # now carries the engineer's own explicit Measured Unit selection
+        # (see TestMeasuredUnitConversion below) -- but stays "" (never
+        # fabricated from Engineering Quantity alone) when no Measured
+        # Unit was ever selected for this column, exactly as before.
         prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
         sid = _add_csv(prep, b"2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n")
         _mark_time_axis(prep, sid, 0)
@@ -532,6 +536,96 @@ class TestEngineeringQuantityConversion:
 
         assert metadata.analog_channels[0].engineering_quantity == "Voltage"
         assert metadata.analog_channels[1].engineering_quantity == "Current"
+
+
+class TestMeasuredUnitConversion:
+    """Measured Unit enhancement (DEC-080), task section L/AM: the
+    engineer's own per-column Measured Unit selection reaches
+    AnalogChannel.unit directly -- no CSV-specific downstream handling,
+    reusing the SAME field every other channel source (COMTRADE) already
+    populates."""
+
+    @pytest.mark.parametrize(
+        "quantity,unit",
+        [
+            ("Voltage", "kV"),
+            ("Current", "A"),
+            ("Active Power", "MW"),
+            ("ROCOF", "Hz/s"),
+            ("Voltage Angle", "deg"),
+        ],
+    )
+    def test_measured_unit_becomes_analog_channel_unit(self, quantity, unit):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=sid, column_index=1, engineering_quantity=quantity, registry=prep,
+        )
+        set_column_measured_unit(
+            workspace_id="ws-1", source_id=sid, column_index=1, measured_unit=unit, registry=prep,
+        )
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+
+        assert metadata.analog_channels[0].unit == unit
+
+    def test_blank_measured_unit_stays_empty(self):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=sid, column_index=1, engineering_quantity="Voltage", registry=prep,
+        )
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+
+        assert metadata.analog_channels[0].unit == ""
+
+    def test_multiple_waveform_columns_each_keep_their_own_unit(self):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,1.0,2.0\n2026-08-31 13:00:01,3.0,4.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1, 2)
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=sid, column_index=1, engineering_quantity="Voltage", registry=prep,
+        )
+        set_column_measured_unit(workspace_id="ws-1", source_id=sid, column_index=1, measured_unit="kV", registry=prep)
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=sid, column_index=2, engineering_quantity="Current", registry=prep,
+        )
+        set_column_measured_unit(workspace_id="ws-1", source_id=sid, column_index=2, measured_unit="A", registry=prep)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+
+        assert metadata.analog_channels[0].unit == "kV"
+        assert metadata.analog_channels[1].unit == "A"
+
+    def test_measured_unit_does_not_change_broad_engineering_type(self):
+        # Section AB/AA: unit does not replace Engineering Quantity for
+        # broad classification -- Tier 1 (parameter_type) already
+        # resolves it, Tier 2 (unit) is never reached for a defined
+        # quantity.
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=sid, column_index=1, engineering_quantity="Voltage Angle", registry=prep,
+        )
+        set_column_measured_unit(workspace_id="ws-1", source_id=sid, column_index=1, measured_unit="deg", registry=prep)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+
+        channel = metadata.analog_channels[0]
+        assert channel.unit == "deg"
+        assert channel.engineering_type == "Voltage"  # broad type unaffected by "deg"
 
 
 class TestNumericIntegrity:

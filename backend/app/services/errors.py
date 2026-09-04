@@ -623,6 +623,18 @@ class InvalidEngineeringQuantityError(ImportServiceError):
     code = "invalid_engineering_quantity"
 
 
+class InvalidMeasuredUnitError(ImportServiceError):
+    """A submitted `measured_unit` is not a valid member of
+    `app.domain.channel_classification.MEASURED_UNIT_OPTIONS` for the
+    column's CURRENT Engineering Quantity (DEC-080) -- a deliberately
+    closed, quantity-dependent set (task section AE/AF: the backend
+    validates the pair itself, never trusting a frontend dropdown
+    alone), never a free-text field. Blank (`""`) is always valid for
+    every quantity and never raises this error."""
+
+    code = "invalid_measured_unit"
+
+
 # ---- CSV/Excel ingestion Slice 7 (DEC-072): Time-Axis interpretation
 # FRAMEWORK (app.domain.time_axis, app.services.time_axis_service). Still
 # no promotion into the Slice 6 severity/PreparationIssue model -- these

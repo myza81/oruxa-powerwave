@@ -50,14 +50,17 @@ from dataclasses import dataclass
 
 from app.domain import working_overlay as overlay_domain
 from app.domain.channel_classification import (
+    ENGINEERING_QUANTITY_UNDEFINED,
     KNOWN_ENGINEERING_QUANTITIES,
-    parse_engineering_quantity_suffix,
+    measured_unit_valid_for_quantity,
+    parse_engineering_quantity_and_unit_suffix,
 )
 from app.domain.preparation_session import PreparationSession
 from app.services.errors import (
     InvalidColumnRoleError,
     InvalidDataRegionError,
     InvalidEngineeringQuantityError,
+    InvalidMeasuredUnitError,
     InvalidWorkingCellValueError,
     InvalidWorkingCoordinateError,
     SourceNotFoundError,
@@ -287,26 +290,35 @@ def set_column_role(
     _check_column_bound(session, worksheet_index, column_index)
     key = overlay_domain.column_key(worksheet_index, column_index)
     overlay_domain.set_column_role(session.working_overlay, key, role)
-    # Engineering Quantity suffix restoration (DEC-077, task section S):
-    # the ONE place this fires. Only when the column is newly being
-    # assigned ROLE_WAVEFORM AND has no EXPLICIT quantity of its own yet
-    # (never overwrites a prior explicit choice, including an explicit
-    # "Undefined") -- parses the column's current WORKING label via the
-    # SAME deterministic suffix grammar the exporter itself writes
-    # (app.domain.channel_classification.parse_engineering_quantity_
-    # suffix()), never a second, looser guess. Recorded as its OWN
-    # separate WorkingOperation (a documented, intentional simplification:
-    # reverting this specific restoration takes one extra Undo click
-    # beyond reverting the role assignment itself -- every OTHER mutation
-    # in this module stays a strict one-action-one-undo-step operation;
-    # only this rare, first-time-only auto-suggestion path does not).
-    # Role=Waveform itself is NEVER auto-assigned by this suffix match --
-    # only the already-user-chosen role's own Engineering Quantity is.
+    # Engineering Quantity + Measured Unit suffix restoration (DEC-077/
+    # DEC-080, task section S): the ONE place this fires. Only when the
+    # column is newly being assigned ROLE_WAVEFORM AND has no EXPLICIT
+    # quantity of its own yet (never overwrites a prior explicit choice,
+    # including an explicit "Undefined") -- parses the column's current
+    # WORKING label via the SAME deterministic suffix grammar the
+    # exporter itself writes (app.domain.channel_classification.
+    # parse_engineering_quantity_and_unit_suffix()), never a second,
+    # looser guess. A quantity-only DEC-077 suffix (no unit bracket)
+    # still restores the quantity alone, exactly as before -- the
+    # combined parser falls back to that grammar automatically. The unit
+    # is only ever auto-suggested ALONGSIDE a freshly-suggested quantity
+    # here, never on its own against an already-explicit quantity, so an
+    # explicit "Undefined" quantity with no unit is never disturbed.
+    # Recorded as its own separate WorkingOperation(s) (a documented,
+    # intentional simplification: reverting this specific restoration
+    # takes extra Undo clicks beyond reverting the role assignment
+    # itself -- every OTHER mutation in this module stays a strict
+    # one-action-one-undo-step operation; only this rare, first-time-only
+    # auto-suggestion path does not). Role=Waveform itself is NEVER
+    # auto-assigned by this suffix match -- only the already-user-chosen
+    # role's own Engineering Quantity/Measured Unit are.
     if role == overlay_domain.ROLE_WAVEFORM and key not in session.working_overlay.column_engineering_quantities:
         label = resolve_single_column_label(session, worksheet_index=worksheet_index, column_index=column_index)
-        _, suggested_quantity = parse_engineering_quantity_suffix(label)
+        _, suggested_quantity, suggested_unit = parse_engineering_quantity_and_unit_suffix(label)
         if suggested_quantity is not None:
             overlay_domain.set_column_engineering_quantity(session.working_overlay, key, suggested_quantity)
+            if suggested_unit is not None:
+                overlay_domain.set_column_measured_unit(session.working_overlay, key, suggested_unit)
     return summarize_working_overlay(session, worksheet_index)
 
 
@@ -349,6 +361,16 @@ def set_column_engineering_quantity(
     _check_column_bound(session, worksheet_index, column_index)
     key = overlay_domain.column_key(worksheet_index, column_index)
     overlay_domain.set_column_engineering_quantity(session.working_overlay, key, engineering_quantity)
+    # Measured Unit enhancement (DEC-080, task section J): a quantity
+    # change invalidates an existing unit that is no longer a member of
+    # the NEW quantity's own controlled list (e.g. Voltage's "kV" is not
+    # valid once the quantity becomes Frequency) -- cleared to blank,
+    # never silently converted (task's own explicit "must not become Hz
+    # automatically" example). A unit that is STILL valid for the new
+    # quantity (including a coincidentally-shared blank) is left alone.
+    existing_unit = session.working_overlay.column_measured_units.get(key)
+    if existing_unit is not None and not measured_unit_valid_for_quantity(engineering_quantity, existing_unit):
+        overlay_domain.reset_column_measured_unit(session.working_overlay, key)
     return summarize_working_overlay(session, worksheet_index)
 
 
@@ -362,6 +384,58 @@ def reset_column_engineering_quantity(
     worksheet_index = _resolve_worksheet_index(session)
     key = overlay_domain.column_key(worksheet_index, column_index)
     overlay_domain.reset_column_engineering_quantity(session.working_overlay, key)
+    # Same policy as the explicit-quantity-change path above: reverting
+    # to Undefined only ever allows a blank unit (task section R) --
+    # `column_measured_units` is sparse (a stored entry is never blank,
+    # see set_column_measured_unit()'s own "" -> pop convention), so any
+    # stored entry at all is, by construction, invalid for Undefined and
+    # gets cleared too.
+    if key in session.working_overlay.column_measured_units:
+        overlay_domain.reset_column_measured_unit(session.working_overlay, key)
+    return summarize_working_overlay(session, worksheet_index)
+
+
+def set_column_measured_unit(
+    *, workspace_id: str, source_id: str, column_index: int, measured_unit: str,
+    registry: PreparationSessionRegistry,
+) -> WorkingOverlaySummary:
+    """Assign one column's Measured Unit (DEC-080). `measured_unit` must
+    be `""` (always valid) or a member of `app.domain.channel_
+    classification.MEASURED_UNIT_OPTIONS` for the column's CURRENT
+    Engineering Quantity (default `Undefined` if none is set) -- never a
+    free-text field, and the backend validates the pair itself (task
+    section AF/AE), never trusting the frontend's own dropdown filtering
+    alone. Meaningful only for a column currently carrying `ROLE_
+    WAVEFORM` (task section D) -- this function does not itself check
+    the column's current role, matching `set_column_engineering_
+    quantity()`'s own "no cross-field validation" precedent; a value
+    stored for a non-Waveform column is simply ignored by every
+    downstream reader until the column becomes Waveform again."""
+    session = _resolve_session(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    worksheet_index = _resolve_worksheet_index(session)
+    _check_column_bound(session, worksheet_index, column_index)
+    key = overlay_domain.column_key(worksheet_index, column_index)
+    current_quantity = session.working_overlay.column_engineering_quantities.get(
+        key, ENGINEERING_QUANTITY_UNDEFINED
+    )
+    if not measured_unit_valid_for_quantity(current_quantity, measured_unit):
+        raise InvalidMeasuredUnitError(
+            f"measured_unit {measured_unit!r} is not valid for engineering_quantity {current_quantity!r}."
+        )
+    overlay_domain.set_column_measured_unit(session.working_overlay, key, measured_unit)
+    return summarize_working_overlay(session, worksheet_index)
+
+
+def reset_column_measured_unit(
+    *, workspace_id: str, source_id: str, column_index: int, registry: PreparationSessionRegistry,
+) -> WorkingOverlaySummary:
+    """Return one column's Measured Unit to blank (a safe no-op if it
+    already had no explicit value) -- the single neutral default state,
+    never any other implicit value."""
+    session = _resolve_session(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    worksheet_index = _resolve_worksheet_index(session)
+    key = overlay_domain.column_key(worksheet_index, column_index)
+    overlay_domain.reset_column_measured_unit(session.working_overlay, key)
     return summarize_working_overlay(session, worksheet_index)
 
 

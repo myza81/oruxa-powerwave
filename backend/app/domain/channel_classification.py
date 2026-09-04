@@ -278,6 +278,48 @@ _NORMALIZED_TO_ENGINEERING_QUANTITY: dict[str, str] = {
     quantity.lower(): quantity for quantity in KNOWN_ENGINEERING_QUANTITIES
 }
 
+# Measured Unit enhancement (DEC-080): a SEPARATE concept from Engineering
+# Quantity above -- Quantity answers "what does this signal represent"
+# (Voltage, Frequency, ...), Unit answers "how is the numeric value
+# expressed" (V vs kV, W vs MW, ...). Quantity never determines scale (a
+# Voltage channel may genuinely be recorded in V or kV), so this is a
+# SEPARATE, quantity-dependent controlled list, never a guess derived from
+# the quantity alone (task section G's own explicit "no silent unit
+# guessing" requirement). Blank is always a valid member -- "the system
+# still cannot safely scale it" (task section F) is a legitimate, common
+# state, never a readiness blocker. Deliberately closed per quantity: only
+# the units actually reachable by existing PU/classifier code
+# (`app.domain.per_unit.VOLTAGE_UNIT_SCALE`/`CURRENT_UNIT_SCALE` for
+# Voltage/Current; the rest are metadata-only today, matching Angle's own
+# "no deg<->rad conversion in this slice" non-goal) -- never a free-text
+# unit system. `ENGINEERING_QUANTITY_UNDEFINED` intentionally allows only
+# blank (task section R): the controlled list is quantity-dependent, so an
+# unclassified column has no quantity to look the list up against.
+MEASURED_UNIT_OPTIONS: dict[str, tuple[str, ...]] = {
+    ENGINEERING_QUANTITY_VOLTAGE: ("", "V", "kV"),
+    ENGINEERING_QUANTITY_VOLTAGE_ANGLE: ("", "deg", "rad"),
+    ENGINEERING_QUANTITY_CURRENT: ("", "A", "kA"),
+    ENGINEERING_QUANTITY_CURRENT_ANGLE: ("", "deg", "rad"),
+    ENGINEERING_QUANTITY_ACTIVE_POWER: ("", "W", "kW", "MW", "GW"),
+    ENGINEERING_QUANTITY_REACTIVE_POWER: ("", "var", "kvar", "Mvar", "Gvar"),
+    ENGINEERING_QUANTITY_FREQUENCY: ("", "Hz"),
+    ENGINEERING_QUANTITY_ROCOF: ("", "Hz/s"),
+    ENGINEERING_QUANTITY_UNDEFINED: ("",),
+}
+
+
+def measured_unit_valid_for_quantity(engineering_quantity: str, measured_unit: str) -> bool:
+    """`True` iff `measured_unit` is `""` (always valid, task section F) or
+    an exact, canonical-cased member of `MEASURED_UNIT_OPTIONS[engineering_
+    quantity]`. An unrecognized `engineering_quantity` falls back to
+    "only blank is valid" (`("",)` default), the same conservative
+    behavior `ENGINEERING_QUANTITY_UNDEFINED` itself uses -- never raises,
+    matching this module's own "never raise, only report" contract; the
+    caller (`app.services.working_overlay_service`) turns a `False` result
+    into an HTTP 400 (task section AF/AE: the backend validates the pair,
+    never trusting a frontend dropdown alone)."""
+    return measured_unit in MEASURED_UNIT_OPTIONS.get(engineering_quantity, ("",))
+
 
 def broad_engineering_type(engineering_quantity: str) -> str:
     """Deterministic Engineering Quantity -> broad `engineering_type`
@@ -367,4 +409,86 @@ def encode_engineering_quantity_suffix(label: str, engineering_quantity: str) ->
     if engineering_quantity not in KNOWN_ENGINEERING_QUANTITIES or engineering_quantity == UNDEFINED:
         return label
     base_label, _ = parse_engineering_quantity_suffix(label)
+    return f"{base_label} ({engineering_quantity})"
+
+
+#: Strict "<base label> (<quantity>) [<unit>]" grammar (Measured Unit
+#: enhancement, DEC-080) -- the SAME anchored, end-of-string discipline as
+#: `_ENGINEERING_QUANTITY_SUFFIX_PATTERN` above, extended with one more
+#: trailing bracketed group. Deliberately a SEPARATE pattern rather than
+#: making the quantity pattern's own trailing group optional-with-a-
+#: bracket: keeping both patterns simple and independently readable was
+#: judged clearer than one regex trying to express both grammars.
+_ENGINEERING_QUANTITY_UNIT_SUFFIX_PATTERN = re.compile(r"^(.*) \(([^()]+)\) \[([^\[\]]+)\]$")
+
+
+def _normalized_measured_unit_for_quantity(engineering_quantity: str, unit_text: str) -> str | None:
+    """Case-insensitive match of `unit_text` against `MEASURED_UNIT_
+    OPTIONS[engineering_quantity]`, returning the canonical-cased option
+    (task section S: "parser may be case-insensitive; stored/exported
+    values use canonical casing") or `None` if it names no valid unit for
+    that quantity -- never guesses, never invents a new unit string."""
+    normalized = unit_text.strip().lower()
+    for option in MEASURED_UNIT_OPTIONS.get(engineering_quantity, ()):
+        if option and option.lower() == normalized:
+            return option
+    return None
+
+
+def parse_engineering_quantity_and_unit_suffix(label: str) -> tuple[str, str | None, str | None]:
+    """Parse the combined `" (<Engineering Quantity>) [<Measured Unit>]"`
+    suffix (task section S), falling back to the quantity-ONLY parser
+    (`parse_engineering_quantity_suffix()`) for backward compatibility
+    with existing DEC-077-only exports that carry no unit suffix at all
+    (task section T) -- `measured_unit` is simply `None` in that case.
+    Returns `(base_label, matched_quantity, matched_unit)`.
+
+    Deliberately conservative when a trailing `[...]` bracket IS present
+    but does not parse as a valid quantity+unit pair (an unrecognized
+    quantity text, or a unit not in that quantity's own controlled list,
+    e.g. task section AQ's `"Line (North) [A]"`): falls through to the
+    quantity-only parser applied to the FULL original string, which
+    cannot match either (it requires the string to end in `")"`, not
+    `"]"`) -- so the result is `(label, None, None)`, exactly as
+    `parse_engineering_quantity_suffix()` alone would already report for
+    that string. Never invents a quantity or a unit from a malformed
+    bracket. `"Voltage [estimated]"` (a bare bracket with no quantity
+    parenthesis at all) never matches either pattern, for the same
+    reason (task section X: no fuzzy label guessing).
+    """
+    match = _ENGINEERING_QUANTITY_UNIT_SUFFIX_PATTERN.match(label)
+    if match:
+        base, suffix_text, unit_text = match.group(1), match.group(2), match.group(3)
+        canonical_quantity = _NORMALIZED_TO_ENGINEERING_QUANTITY.get(suffix_text.strip().lower())
+        if canonical_quantity is not None and canonical_quantity != UNDEFINED:
+            canonical_unit = _normalized_measured_unit_for_quantity(canonical_quantity, unit_text)
+            if canonical_unit is not None:
+                return base, canonical_quantity, canonical_unit
+    base_label, quantity = parse_engineering_quantity_suffix(label)
+    return base_label, quantity, None
+
+
+def encode_engineering_quantity_and_unit_suffix(
+    label: str, engineering_quantity: str, measured_unit: str | None
+) -> str:
+    """The exporter's own inverse of `parse_engineering_quantity_and_unit_
+    suffix()` (task section P): `"<base label> (<Engineering Quantity>)
+    [<Measured Unit>]"` when a valid, non-blank unit is supplied for that
+    quantity; otherwise falls back to `encode_engineering_quantity_suffix()`'s
+    own quantity-only form (task section Q: a blank unit never appends
+    `"[]"`/`"[ ]"`), which itself returns `label` unchanged for
+    `Undefined`/an unrecognized quantity (task section O).
+
+    Round-trip-stable by construction (task sections U/V): ANY existing
+    suffix -- quantity-only OR quantity+unit -- is stripped via
+    `parse_engineering_quantity_and_unit_suffix()` FIRST (the ONE parser
+    this function's own stripping step uses), so re-exporting an
+    already-suffixed label normalizes to exactly one suffix, never a
+    duplicated `"(Voltage) [kV] (Voltage) [kV]"`.
+    """
+    if engineering_quantity not in KNOWN_ENGINEERING_QUANTITIES or engineering_quantity == UNDEFINED:
+        return label
+    base_label, _, _ = parse_engineering_quantity_and_unit_suffix(label)
+    if measured_unit and measured_unit_valid_for_quantity(engineering_quantity, measured_unit):
+        return f"{base_label} ({engineering_quantity}) [{measured_unit}]"
     return f"{base_label} ({engineering_quantity})"

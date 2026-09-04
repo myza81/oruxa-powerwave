@@ -152,7 +152,10 @@ from typing import Any
 
 from openpyxl import Workbook
 
-from app.domain.channel_classification import ENGINEERING_QUANTITY_UNDEFINED, encode_engineering_quantity_suffix
+from app.domain.channel_classification import (
+    ENGINEERING_QUANTITY_UNDEFINED,
+    encode_engineering_quantity_and_unit_suffix,
+)
 from app.domain.preparation_issue import SEVERITY_BLOCKING
 from app.domain.preparation_session import FORMAT_CSV, PreparationSession
 from app.domain.time_axis import (
@@ -488,6 +491,7 @@ def export_preparation_source(
     column_labels = preview.column_labels
     column_roles = preview.column_roles
     column_engineering_quantities = preview.column_engineering_quantities
+    column_measured_units = preview.column_measured_units
     # DEC-073: cleaned export omits every `not_assigned` column (role
     # recorded on each entry so the manifest states WHY). The raw Time
     # Axis source column(s) are NOT one of these entries -- see
@@ -499,21 +503,25 @@ def export_preparation_source(
         for c, role in enumerate(column_roles)
         if role == ROLE_NOT_ASSIGNED
     ]
-    # Engineering Quantity enhancement (DEC-077, task section N/O/P): each
-    # Waveform column's own label gets a strict, self-describing
-    # `" (<Engineering Quantity>)"` suffix BEFORE uniqueness dedup runs
-    # (so two identically-labeled-but-differently-classified columns can
-    # naturally disambiguate via their own suffix first) -- an Undefined
-    # quantity leaves the label unchanged (never a noisy `"(Undefined)"`).
-    # Reuses the SAME encode function the re-upload suffix parser is the
-    # exact inverse of -- never two independently-maintained grammars.
+    # Engineering Quantity + Measured Unit enhancement (DEC-077/DEC-080,
+    # task section N/O/P): each Waveform column's own label gets a
+    # strict, self-describing `" (<Engineering Quantity>) [<Measured
+    # Unit>]"` suffix BEFORE uniqueness dedup runs (so two identically-
+    # labeled-but-differently-classified columns can naturally
+    # disambiguate via their own suffix first) -- an Undefined quantity
+    # leaves the label unchanged (never a noisy `"(Undefined)"`), and a
+    # blank unit omits the bracket entirely (never a noisy `"[]"`, task
+    # section Q). Reuses the SAME encode function the re-upload suffix
+    # parser is the exact inverse of -- never two independently-
+    # maintained grammars.
     suffixed_labels = list(column_labels)
     for c in waveform_column_indices:
         quantity = (
             column_engineering_quantities[c] if c < len(column_engineering_quantities) else ENGINEERING_QUANTITY_UNDEFINED
         )
+        unit = column_measured_units[c] if c < len(column_measured_units) else ""
         label = suffixed_labels[c] if c < len(suffixed_labels) else _spreadsheet_column_label(c)
-        suffixed_labels[c] = encode_engineering_quantity_suffix(label, quantity)
+        suffixed_labels[c] = encode_engineering_quantity_and_unit_suffix(label, quantity, unit)
     export_name_by_column = _unique_export_names(suffixed_labels, waveform_column_indices)
     # DEC-074, task section R: the configured Time column is always
     # FIRST, regardless of its own source column's original position --
@@ -588,6 +596,7 @@ def export_preparation_source(
             issue_summary=issue_summary, time_axis_summary=time_axis_summary,
             omitted_columns=omitted_columns, column_roles=column_roles,
             column_engineering_quantities=column_engineering_quantities,
+            column_measured_units=column_measured_units,
             edited_cell_count=edited_cell_count, cleared_cell_count=cleared_cell_count,
             excluded_row_numbers=excluded_row_numbers, exported_row_count=len(exported_rows),
             artifact_filename=artifact_filename, configured_time=configured_time, column_labels=column_labels,
@@ -686,7 +695,7 @@ def _exported_time_manifest(
 def _build_manifest(
     *, session: PreparationSession, worksheet_index: int | None, captured_revision: int,
     issue_summary, time_axis_summary, omitted_columns: list[dict], column_roles: list[str],
-    column_engineering_quantities: list[str],
+    column_engineering_quantities: list[str], column_measured_units: list[str],
     edited_cell_count: int, cleared_cell_count: int, excluded_row_numbers: list[int],
     exported_row_count: int, artifact_filename: str,
     configured_time: _ConfiguredTimeColumn, column_labels: list[str],
@@ -724,12 +733,14 @@ def _build_manifest(
         "excluded_rows_truncated": truncated,
         "omitted_columns": omitted_columns,
         "column_roles": column_roles,
-        # Engineering Quantity enhancement (DEC-077, task section V): the
-        # optional manifest MAY continue recording this, but re-upload
-        # restoration never depends on it -- the cleaned CSV/XLSX header
-        # itself already carries the same information via its own strict
-        # suffix grammar (see encode_engineering_quantity_suffix()).
+        # Engineering Quantity + Measured Unit enhancement (DEC-077/
+        # DEC-080, task section V/Y): the optional manifest MAY continue
+        # recording these, but re-upload restoration never depends on it
+        # -- the cleaned CSV/XLSX header itself already carries the same
+        # information via its own strict suffix grammar (see
+        # encode_engineering_quantity_and_unit_suffix()).
         "column_engineering_quantities": column_engineering_quantities,
+        "column_measured_units": column_measured_units,
         "edited_cell_count": edited_cell_count,
         "cleared_cell_count": cleared_cell_count,
         "time_family": time_axis_summary.family,

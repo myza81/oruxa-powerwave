@@ -33,6 +33,7 @@ from app.schemas.cursor_values import CursorValuesOut, CursorValuesRequest
 from app.schemas.digital_waveform import DigitalWaveformBatchOut, DigitalWaveformOut
 from app.schemas.peak_value import PeakValueBatchOut, PeakValueBatchRequest, PeakValueResultOut
 from app.schemas.source import ErrorOut, SourceChannelsOut, SourceSummaryOut
+from app.schemas.table import SourceTableOut
 from app.schemas.waveform import WaveformRangeOut
 from app.services.calculated_channel_registry import CalculatedChannelRegistry
 from app.services.calculated_channel_service import remove_calculated_channels_for_source
@@ -45,6 +46,7 @@ from app.services.per_unit_registry import PerUnitRegistry
 from app.services.per_unit_service import delete_source_per_unit_config
 from app.services.synchronization_registry import SynchronizationRegistry
 from app.services.synchronization_service import remove_source_alignment
+from app.services.table_service import TABLE_DEFAULT_LIMIT, TABLE_MAX_LIMIT, fetch_table_rows
 from app.services.voltage_group_config_registry import VoltageGroupConfigRegistry
 from app.services.waveform_service import (
     DEFAULT_POINT_BUDGET,
@@ -213,6 +215,40 @@ def get_source_channels(
     workspace_id = _validate_workspace_id(workspace_id)
     active = _get_or_404(registry, workspace_id, source_id)
     return SourceChannelsOut.from_domain(active.metadata)
+
+
+@router.get("/{source_id}/table", response_model=SourceTableOut)
+def get_source_table(
+    workspace_id: str,
+    source_id: str,
+    offset: int = Query(0, ge=0, description="0-based row offset -- the first returned row is this source's own row `offset`."),
+    limit: int = Query(
+        TABLE_DEFAULT_LIMIT, gt=0, le=TABLE_MAX_LIMIT,
+        description=f"Maximum rows to return, bounded server-side at {TABLE_MAX_LIMIT} regardless of what is requested.",
+    ),
+    registry: WorkspaceRegistry = Depends(get_workspace_registry),
+) -> SourceTableOut:
+    """Canonical Table View (DEC-079): one bounded page of this source's
+    OWN exact canonical rows -- never the `/waveform` endpoint's own
+    point-budget/min-max-envelope reduction (that exists purely for
+    chart display performance, see `extract_waveform_range`'s own
+    docstring; this endpoint always returns exact, unreduced samples).
+    Format-independent -- reads only `ActiveSource.metadata`/`.record`,
+    identical for COMTRADE and converted CSV/Excel sources; there is no
+    branch on `provider_type` anywhere in this endpoint or
+    `app.services.table_service`. Shows this source's own canonical
+    source time (elapsed seconds, or absolute wall-clock when
+    `timing_reference == "absolute"`) -- never a workspace
+    synchronization/alignment-adjusted time. One recording at a time by
+    design: this endpoint never merges rows from more than one source;
+    a multi-recording Table View is a frontend-only source SELECTOR
+    that calls this endpoint again for a different `source_id`, never a
+    combined backend query.
+    """
+    workspace_id = _validate_workspace_id(workspace_id)
+    active = _get_or_404(registry, workspace_id, source_id)
+    result = fetch_table_rows(active, offset=offset, limit=limit)
+    return SourceTableOut.from_result(result)
 
 
 @router.get("/{source_id}/waveform", response_model=WaveformRangeOut)

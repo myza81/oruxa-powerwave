@@ -8,6 +8,225 @@ Last updated: **2026-09-04**
 
 ## What was most recently done
 
+**Enhancement — Measured Unit Metadata + Self-Describing Unit Round-Trip
+(implemented, DEC-080).** Builds directly on DEC-077's Engineering
+Quantity model and closes a real conversion gap that model's own
+investigation had already surfaced: every CSV/Excel-converted
+`AnalogChannel.unit` was hardcoded to `""`, so `app.domain.per_unit.
+_measured_unit_scale()` could never recognize a CSV/Excel Voltage/
+Current channel's own measured unit — Per-Unit conversion silently
+stayed `base_required` even with a base correctly configured. COMTRADE
+was never affected (its `.cfg` always supplies a real unit).
+
+**Core model**: Engineering Quantity and Measured Unit are separate,
+independently-stored concepts — Quantity answers "what does this
+signal represent," Unit answers "how is the numeric value expressed."
+A Waveform column may now carry an explicit Measured Unit from a
+closed, PER-QUANTITY controlled list (Voltage: `V`/`kV`; Current: `A`/
+`kA`; Voltage/Current Angle: `deg`/`rad`; Active Power: `W`/`kW`/`MW`/
+`GW`; Reactive Power: `var`/`kvar`/`Mvar`/`Gvar`; Frequency: `Hz`;
+ROCOF: `Hz/s`; Undefined: blank only) — blank is always valid and never
+a readiness blocker, and a unit is NEVER guessed from quantity alone
+(a Voltage channel may genuinely be V or kV). The backend validates
+the quantity/unit pair itself (`measured_unit_valid_for_quantity()`) —
+an invalid pair returns `400 invalid_measured_unit`, never trusting the
+frontend dropdown's own filtering alone.
+
+**Storage**: new sparse `WorkingOverlay.column_measured_units` dict,
+keyed and lifecycled identically to DEC-077's own `column_engineering_
+quantities` (undo/redo/reset-all/revision-tracking all generalize via
+the same existing machinery; a role change away from Waveform leaves it
+untouched, same policy as Engineering Quantity). Changing a column's
+Quantity now clears an existing Unit that is no longer valid for the
+new Quantity (never silently converts it — a Voltage `kV` value never
+becomes a fabricated `Hz`).
+
+**The actual Per-Unit fix**: `app/services/preparation_conversion_
+service.py` now writes the column's own Measured Unit into
+`AnalogChannel.unit` (replacing the old hardcoded `unit=""`). That is
+the ENTIRE fix — `app.domain.per_unit.apply_per_unit_to_value()`/
+`apply_per_unit_to_array()` already accepted and case-normalized a
+`measured_unit` parameter; once a real unit string reaches `AnalogChannel.
+unit`, a CSV/Excel Voltage or Current channel with a configured base
+becomes `per_unit_status = "configured"` and scales into `pu` with
+**zero changes** to `app/domain/per_unit.py`, `app/services/group_
+aware_per_unit.py`, or DEC-078's Angle guardrail (`_resolve_effective_
+per_unit()`) — confirmed by dedicated regressions, not merely assumed.
+A blank unit still leaves the channel `base_required` (unchanged,
+fail-closed behavior); a valid Angle unit (`deg`/`rad`) never makes an
+Angle channel PU-eligible.
+
+**Export/re-upload**: extends DEC-077's suffix grammar additively —
+`"<label> (<Engineering Quantity>) [<Measured Unit>]"` when a valid,
+non-blank unit exists, else DEC-077's own quantity-only form unchanged
+(blank unit never appends `"[]"`). One new encode/parse function pair
+(`encode_engineering_quantity_and_unit_suffix()`/`parse_engineering_
+quantity_and_unit_suffix()`) is used by both the exporter and the
+re-upload restoration path (the same `set_column_role()` auto-suggest
+seam DEC-077 established), so quantity and unit are always restored
+together, never via two independently-drifting grammars. Falls back to
+DEC-077's own quantity-only parser for full backward compatibility with
+existing quantity-only exports; round-trip-stable by construction
+(export → re-upload → re-export never duplicates a suffix).
+
+**Frontend**: a new "Measured Unit" column in the Data Preparation
+Workspace's column-mapping table (shown only for Waveform-role columns,
+options filtered live by the column's own current Engineering Quantity)
+— `WW_DATA_PREP_MEASURED_UNITS` mirrors the backend's controlled list
+exactly. `AnalogChannelOut.unit`/`TableColumnOut.unit` (DEC-079)
+required no schema change — they already carried a generic `unit`
+string and now simply start receiving real values for CSV/Excel too.
+
+**Validation**: full backend suite — baseline immediately before this
+task: **2905 passed, 0 failed**. After this task: **3039 passed, 0
+failed** (134 new tests across `test_channel_classification.py`,
+`test_working_overlay_domain.py`/`test_working_overlay_service.py`,
+`test_preparation_conversion_service.py`, `test_preparation_export_
+service.py`, `test_preparation_sources_api.py`, plus two new dedicated
+files: `test_measured_unit_per_unit.py` (12 tests — CSV Voltage/Current
+PU becomes configured with correct scaling, blank unit stays base_
+required, Angle guardrail unaffected) and `test_measured_unit_
+measurement_group.py` (3 tests — a CSV-derived three-phase Voltage
+measurement group resolves Per-Unit exactly like a COMTRADE-derived
+one)). The committed browser smoke test (COMTRADE) still passes
+unchanged with zero console/page errors. A throwaway (not committed,
+deleted after use) live-browser Playwright UAT covering all 7 task-
+specified scenarios passed: CSV Voltage with unit `kV` reaches
+`configured`/`pu`; CSV Current with unit `A` resolves `configured`
+under a direct current base; a blank unit leaves the base save
+succeeding but status `base_required`; a Voltage Angle channel with a
+valid `deg` unit stays `not_applicable` with its value/unit unchanged;
+cleaned export produces the exact `VR (Voltage) [kV]` suffix; a
+re-uploaded cleaned file restores both quantity and unit and Per-Unit
+then resolves `configured`; and an existing COMTRADE source's own
+Per-Unit behavior is unaffected — all with zero console/page errors.
+
+**Next step**: no new slice was opened by this task.
+
+**Commit status**: not committed — per this task's own explicit closing
+instruction, all of the above are normal uncommitted working-tree
+changes pending a separate, explicit commit instruction. This task's
+changes sit in the SAME uncommitted working tree as the still-
+uncommitted Canonical Table View v1 (DEC-079, see below) — both were
+built and validated together in this session without conflict (per
+DEC-079's own "AK. Table View concurrency guard" instruction, this
+task's frontend edits stayed scoped to the Data Preparation Workspace's
+Engineering Quantity/Unit controls and never touched Table View
+rendering code; verified by re-running the full backend suite and the
+Table View's own targeted tests, both still green).
+
+## What was done in the prior session — Enhancement: Canonical Table View v1
+
+**Enhancement — Canonical Table View v1 (implemented, DEC-079).**
+Replaces the previously-disabled sidebar "Table" button
+(`title="Table -- coming soon"`) and the existing Waveform|Table|Split
+local shell placeholder with a real, read-only table over one
+recording's exact canonical `DisturbanceRecord` at a time.
+
+**Key rule (owner-approved, non-negotiable)**: Table View shows exactly
+ONE recording at a time. No automatic timestamp union, join,
+interpolation, or synthetic rows across sources — ever. A source
+selector lets the engineer choose which loaded recording is shown;
+switching sources fully replaces the table's columns and rows, never
+merges them. Switching Table's own source selection never touches
+Waveform View's plotted channels, synchronization state, or calculated
+channels — the two views share the same underlying source list but keep
+fully independent "what is currently shown" state.
+
+**Backend**: new `GET /api/v1/workspaces/{workspace_id}/sources/{source_id}/table?offset=&limit=`
+endpoint (`app/api/v1/sources.py`) backed by new `app/services/
+table_service.py` (`TABLE_DEFAULT_LIMIT = 200`, `TABLE_MAX_LIMIT =
+1000`) and `app/schemas/table.py`. A "row" is a direct `iloc` slice of
+the SAME shared `DisturbanceRecord.waveform_data` DataFrame every
+analog/digital channel already lives in — multi-rate COMTRADE and
+irregular CSV/Excel timing are both ALREADY unified into this one array
+at import time, well before Table View exists, so `table_service.py`
+has zero `if CSV`/`if Excel`/`if COMTRADE` branching. The endpoint
+deliberately does NOT reuse `waveform_service`'s point-budget/envelope
+reduction — it returns exact, unreduced canonical rows; slicing never
+deep-copies the dataset. Time columns reuse DEC-074's existing
+`time_axis_normalization.format_absolute_iso()`/`format_relative_seconds()`
+verbatim. Per-Unit display mode is verified (dedicated regression, not
+merely assumed) to never affect table values — the fetch path never
+passes a unit-mode parameter at all.
+
+**Frontend**: the sidebar Table button un-disabled and wired
+(`#mainNavTableBtn`); `#viewTable` rebuilt from a placeholder into a
+source-selector + table + pagination shell reusing the existing
+`.ww-data-prep-pagination` CSS/UX verbatim (First/Previous/direct-page-
+entry/Next/Last, same disabled-state rules); a new `wwTable` module
+handles source-list sync (via the SAME `wwRenderWorkspaceRecordings()`
+choke-point every upload/removal already funnels through — no second
+polling path), lazy fetch-on-first-activation, pagination, and
+rendering. Source-selection priority: (1) last source explicitly chosen
+in Table View this session, (2) the workspace's existing `focusedSourceId`
+("most recently opened source", already tracked for other purposes),
+(3) first available recording, (4) empty state. `shellSetActiveView()`/
+`shellSetCurrentPage()` extended so the sidebar and local Waveform|
+Table|Split selector can never contradict each other (both read/write
+the ONE existing `shell.activeView` state).
+
+**One bug found and fixed during this task's own UAT authoring** (in
+code written earlier in this same task, never previously shipped —
+not a Change-Governance case): `wwTableColumnHeaderText()` initially
+copied `analogChannelNameCellHtml()`'s sidebar convention of suppressing
+`engineering_quantity` when it equals the broad `engineering_type`.
+That suppression is correct in the sidebar only because a group heading
+already shows the broad type there; Table View's columns are flat, with
+no group heading, so the same rule silently collapsed a channel with
+both a blank unit and `engineering_quantity == engineering_type` (e.g.
+a prepared CSV "Voltage" channel with no unit configured) down to a
+bare, uninformative header. Fixed to always show a defined,
+non-"Undefined" quantity in Table View regardless of the type overlap.
+
+**A separate, pre-existing issue was found but deliberately NOT
+fixed** (Change Governance applies — it is already-shipped/committed
+behavior from an earlier task, DEC-077): setting Engineering Quantity
+for multiple Data Preparation columns in quick succession, in the
+BATCHED order "set every column's role, then set every column's
+quantity", can non-deterministically lose one or more of the later
+quantity assignments (reproduced twice, with two different columns
+lost each time — consistent with a response-ordering race in the
+column-mapping re-render, not a fixed single-column bug). Setting each
+column's role immediately followed by its own quantity, one column at
+a time, was NOT observed to lose any assignment across repeated runs
+and is the reliable pattern this task's own UAT tests now use. Not
+investigated further or fixed here — flagging for a separate,
+explicitly-approved task per [Change governance](../../CLAUDE.md#change-governance).
+
+**Validation**: full backend suite -- baseline immediately before this
+task: **2870 passed, 0 failed**. After this task: **2905 passed, 0
+failed** (35 new tests: `test_table_service.py`, 23 unit tests;
+`test_table_api.py`, 12 API-level tests, including one that exports a
+prepared CSV's cleaned data BEFORE conversion and confirms the Table
+API's own rows agree with it exactly on time/values/channel order).
+Targeted regressions (`test_sources_api.py`, `test_waveform_service.py`,
+`test_waveform_api.py`, `test_channel_classification.py`,
+`test_comtrade_provider.py`, `test_comtrade_parity.py`,
+`test_angle_axis_per_unit_guardrail.py`): 179 passed, 0 failed. A
+throwaway (not committed, deleted after use) live-browser Playwright
+UAT covering all 8 task-specified scenarios passed: prepared CSV with
+Voltage/Voltage Angle/Frequency/ROCOF; COMTRADE; multiple sources
+(switching fully replaces the table, proven via the actual per-source
+API response rather than header-text comparison, since the two
+synthetic COMTRADE fixtures happen to share channel names); source-
+switching Waveform-isolation; bounded pagination on a 650-row
+recording; irregular canonical time; unconverted angle values; and the
+empty state — all with zero console/page errors.
+
+**Next step**: no new slice was opened by this task. Split View
+remains unimplemented; `wwTable`'s own module was deliberately kept
+generic enough to be reusable by a future Split View without
+duplicating the table implementation, per this task's own instruction,
+but Split View itself was out of scope here.
+
+**Commit status**: not committed — per this task's own explicit closing
+instruction ("Do not commit or push"), all of the above are normal
+uncommitted working-tree changes pending a separate, explicit commit
+instruction.
+
+## What was done in the prior session — Enhancement: Angle Channels on Secondary Y-Axis + Per-Unit Guardrail
+
 **Enhancement — Angle Channels on Secondary Y-Axis + Per-Unit Guardrail
 (implemented, DEC-078).** Direct follow-on to the prior session's
 investigation-only audit of the chart's own axis architecture, which
@@ -93,10 +312,13 @@ with zero console/page errors.
 (progressive automation) remains the next unauthorized item, per
 [Change governance](../../CLAUDE.md#change-governance).
 
-**Commit status**: not committed — per this task's own explicit closing
-instruction ("Do not commit or push unless explicitly asked"), all of
-the above are normal uncommitted working-tree changes pending a
-separate, explicit commit instruction.
+**Commit status**: committed, as `d05835d feat: add waveform quantities
+and angle axes` (deliberately a separate commit from DEC-077's own
+`e60377c`, not squashed together — both were already independently
+committed by the time a later "don't split into separate commits"
+instruction arrived, and rewriting already-landed history to satisfy an
+ambiguous instruction whose premise no longer matched reality was
+judged the wrong call; flagged transparently rather than done silently).
 
 ## What was done in the prior session — Enhancement: Engineering Quantity Metadata + Self-Describing Export Labels
 

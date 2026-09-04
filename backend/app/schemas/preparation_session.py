@@ -291,6 +291,11 @@ class PreparationSourcePreviewOut(BaseModel):
     # docstring for why every column (not just Waveform-role ones) is
     # reported.
     column_engineering_quantities: list[str] = Field(default_factory=list)
+    # Measured Unit enhancement (DEC-080): additive, sized/aligned exactly
+    # like column_engineering_quantities above -- same "every column, not
+    # just Waveform-role ones; blank string for no explicit unit"
+    # convention.
+    column_measured_units: list[str] = Field(default_factory=list)
     configured_time: ConfiguredTimePreviewOut | None = None
 
     @classmethod
@@ -314,6 +319,7 @@ class PreparationSourcePreviewOut(BaseModel):
             column_labels=result.column_labels,
             column_roles=result.column_roles,
             column_engineering_quantities=result.column_engineering_quantities,
+            column_measured_units=result.column_measured_units,
         )
 
 
@@ -374,3 +380,12 @@ class EngineeringQuantityRequest(BaseModel):
     never a free-text field."""
 
     engineering_quantity: str
+
+
+class MeasuredUnitRequest(BaseModel):
+    """Body of `PUT .../working/columns/{column_index}/measured-unit`
+    (DEC-080). `measured_unit` must be `""` (always valid) or a member of
+    `app.domain.channel_classification.MEASURED_UNIT_OPTIONS` for the
+    column's CURRENT Engineering Quantity -- never a free-text field."""
+
+    measured_unit: str

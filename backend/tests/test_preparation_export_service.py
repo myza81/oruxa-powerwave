@@ -49,6 +49,7 @@ from app.services.time_axis_service import interpret_time_axis, set_time_axis_co
 from app.services.working_overlay_service import (
     edit_cell,
     set_column_engineering_quantity,
+    set_column_measured_unit,
     set_column_role,
     set_data_region,
     set_header_row,
@@ -1213,3 +1214,145 @@ class TestEngineeringQuantityReUploadRoundTrip:
 
         session = prep.get(WS, second_sid)
         assert column_key(None, 0) not in session.working_overlay.column_engineering_quantities
+
+
+class TestMeasuredUnitExportLabels:
+    """Measured Unit enhancement (DEC-080), task section P/Q/AP: cleaned
+    CSV/XLSX waveform column labels encode Measured Unit as an
+    additional strict suffix after Engineering Quantity."""
+
+    def _labeled_source(self, prep, *, quantity: str | None, unit: str | None) -> str:
+        content = b"Time,CBDK_V1 Magnitude\n2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n"
+        sid = _add_csv(prep, content)
+        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=3, registry=prep)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        if quantity is not None:
+            set_column_engineering_quantity(
+                workspace_id=WS, source_id=sid, column_index=1, engineering_quantity=quantity, registry=prep,
+            )
+        if unit is not None:
+            set_column_measured_unit(
+                workspace_id=WS, source_id=sid, column_index=1, measured_unit=unit, registry=prep,
+            )
+        _confirm_absolute(prep, sid, column_index=0)
+        return sid
+
+    @pytest.mark.parametrize(
+        "quantity,unit,expected_suffix",
+        [
+            ("Voltage", "kV", "(Voltage) [kV]"),
+            ("Voltage Angle", "deg", "(Voltage Angle) [deg]"),
+            ("Current", "A", "(Current) [A]"),
+            ("Current Angle", "deg", "(Current Angle) [deg]"),
+            ("Active Power", "MW", "(Active Power) [MW]"),
+            ("Reactive Power", "Mvar", "(Reactive Power) [Mvar]"),
+            ("Frequency", "Hz", "(Frequency) [Hz]"),
+            ("ROCOF", "Hz/s", "(ROCOF) [Hz/s]"),
+        ],
+    )
+    def test_every_known_quantity_and_unit_produces_its_own_exact_suffix(self, quantity, unit, expected_suffix):
+        prep = PreparationSessionRegistry()
+        sid = self._labeled_source(prep, quantity=quantity, unit=unit)
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY)
+
+        rows = list(csv.reader(io.StringIO(result.content.decode("utf-8"))))
+        assert rows[0][1] == f"CBDK_V1 Magnitude {expected_suffix}"
+
+    def test_blank_unit_omits_bracket(self):
+        prep = PreparationSessionRegistry()
+        sid = self._labeled_source(prep, quantity="Voltage", unit=None)
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY)
+
+        rows = list(csv.reader(io.StringIO(result.content.decode("utf-8"))))
+        assert rows[0][1] == "CBDK_V1 Magnitude (Voltage)"
+        assert "[" not in rows[0][1]
+
+    def test_manifest_may_still_record_measured_units(self):
+        prep = PreparationSessionRegistry()
+        sid = self._labeled_source(prep, quantity="Voltage", unit="kV")
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
+
+        manifest = _read_manifest(_unzip(result.content))
+        assert manifest["column_measured_units"][1] == "kV"
+
+    def test_data_only_export_needs_no_manifest_to_carry_the_unit(self):
+        prep = PreparationSessionRegistry()
+        sid = self._labeled_source(prep, quantity="ROCOF", unit="Hz/s")
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY)
+
+        with pytest.raises(zipfile.BadZipFile):
+            _unzip(result.content)
+        rows = list(csv.reader(io.StringIO(result.content.decode("utf-8"))))
+        assert rows[0][1] == "CBDK_V1 Magnitude (ROCOF) [Hz/s]"
+
+
+class TestMeasuredUnitReUploadRoundTrip:
+    """Measured Unit enhancement (DEC-080), task sections S/U/AS: re-
+    uploading a cleaned export restores BOTH Engineering Quantity and
+    Measured Unit deterministically from the header suffix, and
+    exporting again is stable (never a duplicated suffix)."""
+
+    def _first_export_sid(self, prep) -> str:
+        content = b"Time,CBDK_V1 Magnitude\n2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n"
+        sid = _add_csv(prep, content)
+        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=3, registry=prep)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_column_engineering_quantity(
+            workspace_id=WS, source_id=sid, column_index=1, engineering_quantity="Voltage", registry=prep,
+        )
+        set_column_measured_unit(workspace_id=WS, source_id=sid, column_index=1, measured_unit="kV", registry=prep)
+        _confirm_absolute(prep, sid, column_index=0)
+        return sid
+
+    def test_full_round_trip_restores_and_re_exports_identically(self):
+        prep = PreparationSessionRegistry()
+        first_sid = self._first_export_sid(prep)
+        first_result = export_preparation_source(
+            workspace_id=WS, source_id=first_sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY,
+        )
+        assert first_result.content.decode("utf-8").splitlines()[0] == "Time,CBDK_V1 Magnitude (Voltage) [kV]"
+
+        second_sid = _add_csv(prep, first_result.content, filename="re-uploaded.csv")
+        set_header_row(workspace_id=WS, source_id=second_sid, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=second_sid, start_row=2, end_row=3, registry=prep)
+        _mark_time_axis(prep, second_sid, 0)
+        _mark_waveform(prep, second_sid, 1)  # restoration fires here
+        _confirm_absolute(prep, second_sid, column_index=0)
+
+        session = prep.get(WS, second_sid)
+        assert session.working_overlay.column_engineering_quantities[column_key(None, 1)] == "Voltage"
+        assert session.working_overlay.column_measured_units[column_key(None, 1)] == "kV"
+
+        second_result = export_preparation_source(
+            workspace_id=WS, source_id=second_sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY,
+        )
+        second_header = second_result.content.decode("utf-8").splitlines()[0]
+        # Stable, never duplicated -- "... (Voltage) [kV] (Voltage) [kV]" would be a bug.
+        assert second_header == "Time,CBDK_V1 Magnitude (Voltage) [kV]"
+
+    def test_quantity_only_export_remains_backward_compatible_on_reupload(self):
+        """An existing DEC-077-only export (no unit suffix) still
+        restores the quantity alone (task section T)."""
+        prep = PreparationSessionRegistry()
+        content = b"Time,CBDK_V1 Magnitude (Voltage)\n2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n"
+        sid = _add_csv(prep, content, filename="legacy-export.csv")
+        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=3, registry=prep)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)  # restoration fires here
+
+        session = prep.get(WS, sid)
+        assert session.working_overlay.column_engineering_quantities[column_key(None, 1)] == "Voltage"
+        assert column_key(None, 1) not in session.working_overlay.column_measured_units
+
+        _confirm_absolute(prep, sid, column_index=0)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_DATA_ONLY)
+        assert result.content.decode("utf-8").splitlines()[0] == "Time,CBDK_V1 Magnitude (Voltage)"

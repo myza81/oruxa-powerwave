@@ -11069,6 +11069,430 @@ left/right split automatically -- all with zero console/page errors.
 
 ---
 
+## DEC-079 — Canonical Table View v1: a read-only, one-recording-at-a-time table over the exact canonical `DisturbanceRecord`, with a new bounded/paginated `GET /sources/{id}/table` endpoint; no cross-source merging, no source-format branching, no workspace-synchronization time offsets
+
+Date: 2026-09-04
+Status: Approved
+Source: explicit project-owner enhancement request ("Canonical Table
+View v1"), replacing the previously-disabled sidebar "Table" button
+(`title="Table -- coming soon"`) and the existing Waveform|Table|Split
+local shell placeholder with a real implementation of the Table leg
+only; Split View is explicitly out of scope for this task.
+
+Decision:
+
+**Table View shows exactly one recording's canonical data at a time,
+read-only, sourced directly from that recording's own
+`DisturbanceRecord` -- never a reconstruction of the raw source file,
+never a second copy of the Waveform-plotting data, and never a merge
+of more than one recording into a synthetic table.** A source selector
+lets the engineer choose which loaded recording the table currently
+shows; switching sources fully replaces the table's columns and rows,
+never unions or joins them.
+
+```text
+Table View source count -> table contents
+0 sources loaded          -> empty state ("Select or open a recording to view table data."), no table shell
+1 source                  -> that source's full canonical table, paginated
+N sources (N > 1)         -> ONE selected source's canonical table, paginated -- never a merged N-source table
+```
+
+Source-selection priority, evaluated once per workspace, re-evaluated
+whenever the workspace's source list changes (`wwTableSyncSourceOptions()`,
+called from the SAME `wwRenderWorkspaceRecordings()` choke-point every
+upload/removal/reset already funnels through -- no second polling path):
+
+```text
+1. The last source explicitly selected in Table View's own source selector, IF it still exists
+2. Otherwise, the workspace's own existing "focused" source (`focusedSourceId`,
+   the pre-existing "most recently opened source" tracker `selectSource()`
+   already maintained for other purposes) IF it exists in the workspace
+3. Otherwise, the first available recording
+4. Otherwise (zero recordings), the empty state
+```
+
+Switching Table View's own source selection never touches Waveform
+View's plotted channels, synchronization state, calculated channels, or
+workspace membership -- the two views read from the same underlying
+source list but keep entirely independent "what is currently shown"
+state (`wwTable.sourceId` vs. Waveform's own `ww.displayed`).
+
+**Backend**: a new `GET /api/v1/workspaces/{workspace_id}/sources/{source_id}/table?offset=&limit=`
+endpoint (`app/api/v1/sources.py`, alongside the existing `/waveform`
+endpoint; same `_get_or_404()` 404 handling, same `Query(0, ge=0)`/
+`Query(TABLE_DEFAULT_LIMIT, gt=0, le=TABLE_MAX_LIMIT)` bounds-validation
+shape already established there) backed by a new
+`app/services/table_service.py`. A "row" is simply
+`active.record.waveform_data.iloc[offset:offset+limit]` -- the SAME
+single shared DataFrame every analog and digital channel already lives
+in for every source (COMTRADE, CSV, Excel alike; multi-rate COMTRADE
+segments are already unified into this one array at import time by
+`app/providers/comtrade.py`, well before Table View exists), so no
+per-rate/per-segment reconciliation logic was needed anywhere. The
+endpoint returns exact, unreduced canonical values -- it deliberately
+does NOT reuse `waveform_service`'s point-budget/min-max-envelope
+reduction (that reduction exists only to keep a chart's rendered point
+count bounded; a canonical data table has no such concept and must
+show real rows). Slicing is a direct `iloc` bound on the existing
+DataFrame (no full-dataset copy, no deep copy); an out-of-range offset
+returns an empty page (mirroring `preparation_preview_service`'s own
+existing out-of-range convention) rather than an error.
+
+**Columns**: canonical Time first (formatted via the EXISTING
+`app/services/time_axis_normalization.py` functions -- `format_absolute_iso()`/
+`format_relative_seconds()`, DEC-074's own canonical time formatters,
+reused verbatim, never a third competing implementation), then every
+canonical analog channel in canonical order (not just currently-plotted
+ones), then digital channels (the same shared DataFrame carries them
+too, so they are included in v1 rather than omitted as infeasible).
+Each analog column carries the channel's own canonical `unit` and
+`engineering_quantity` (DEC-077) exactly as `AnalogChannelOut` already
+exposes them -- never re-classified, never guessed. The table's first
+displayed Time value is always the recording's own canonical source
+time (`SourceMetadata.timing_reference`/`start_time`, the SAME fields
+`TimebaseOut` already exposes) -- workspace synchronization (manual
+alignment offsets, common t0, event sync) is a Waveform-View-only
+presentation concept and is never applied here; irregular CSV/Excel
+timestamps and multi-rate COMTRADE times are shown exactly as stored,
+never normalized to a fixed interval. A missing/non-finite canonical
+value serializes as JSON `null` (never `0`, never interpolated) and
+renders as "—".
+
+**Per-Unit mode**: verified, not merely assumed -- Table View's own
+fetch path never passes a `unit_mode`/base-configuration parameter to
+`fetch_table_rows()`, so a workspace with Per-Unit display active and
+Voltage/Current Bases configured still returns the same canonical
+engineering-unit values Table View always would; a dedicated regression
+(`TestPerUnitDoesNotAffectTable`) proves this rather than relying on
+the absence of a code path.
+
+**Pagination**: reuses the existing Data Preview pagination UX
+(First/Previous/direct-page-entry/Next/Last, same `.ww-data-prep-
+pagination` CSS classes, same disabled-state rules) verbatim -- no new
+pagination visual convention. First/Last/direct-page-entry compute the
+target offset directly and issue exactly one request for that page;
+none of them ever iterates or fetches intermediate pages. A monotonic
+`wwTable.requestSeq` counter (mirroring the codebase's own existing
+`channelEntry.requestSeq` waveform-fetch race-safety convention) guards
+against a rapid source-switch letting an older response overwrite a
+newer selection's table.
+
+Reason:
+
+The task's own core constraint -- "Table View displays one recording at
+a time... must never automatically merge multiple recordings into one
+synthetic table" -- ruled out the naive alternative of a unioned/joined
+multi-source view outright; per-recording time axes are not even
+guaranteed to share a semantic meaning (absolute vs. elapsed, different
+start times, different rates), so no automatic alignment technique
+(timestamp union, join, interpolation, forward-fill, common resampling)
+could be correct in general. Investigating the actual canonical data
+model first (rather than assuming a source-format-specific
+representation) found that `DisturbanceRecord` already stores multi-
+rate COMTRADE and irregular CSV/Excel timing in exactly the same shape
+-- one shared DataFrame, one shared `"time"` column -- which is what
+makes the entire feature format-independent by construction: a "row" is
+never defined differently per source format, so no `if CSV`/`if Excel`/
+`if COMTRADE` branching was ever needed in `table_service.py` or the new
+endpoint.
+
+Alternatives considered:
+
+A merged/aligned multi-source table (rejected outright -- explicit task
+non-goal, and would require inventing an alignment technique with no
+single correct answer, per above). Reusing `waveform_service`'s
+point-budget/envelope reduction for table rows (rejected -- a table
+row IS the canonical data; reducing it to fit a pixel budget would make
+the table lie about what canonical data actually exists, defeating the
+feature's own purpose). A table-specific numeric/header formatter
+(rejected -- `wwFormatEngineeringValue()` for cells and
+`analogChannelNameCellHtml()`'s own unit+quantity convention for
+headers already existed and were reused directly, avoiding a second,
+competing display convention -- see the one exception below).
+Applying workspace synchronization offsets to the table's Time column
+(rejected -- task's own explicit "canonical source time only, deferred
+aligned-table functionality" requirement; Table View intentionally
+shows the SAME time values the recording's own metadata carries,
+independent of how Waveform View currently has that source
+positioned). A second, Table-specific active-view state (rejected --
+`shell.activeView`/`shellSetActiveView()` already existed precisely for
+this; the previously-disabled sidebar Table button and the local
+Waveform|Table|Split selector were wired to that ONE shared state so
+neither can contradict the other).
+
+One deviation from a directly-copied existing convention: `wwTableColumnHeaderText()`
+does NOT reuse `analogChannelNameCellHtml()`'s "suppress quantity when
+it equals the broad `engineering_type`" clause. That suppression is
+correct in the sidebar only because channels are already grouped under
+a visible `engineering_type` heading there, making a same-as-type
+quantity redundant with context already on screen; Table View's columns
+are flat, with no group heading, so the same rule would silently
+collapse a channel with both a blank unit and `engineering_quantity ==
+engineering_type` (e.g. a prepared CSV "Voltage" channel with no unit
+configured) down to a bare, uninformative column label. Table View
+always shows a defined, non-"Undefined" quantity regardless of whether
+it equals the broad type; found and fixed during this task's own UAT
+authoring (never shipped in the suppressing form), not a change to any
+previously-approved/committed behavior.
+
+Impact:
+
+Backend: new `app/services/table_service.py` (`TABLE_DEFAULT_LIMIT =
+200`, `TABLE_MAX_LIMIT = 1000`, `TableColumn`/`TableRowsResult`
+dataclasses, `build_table_columns()`, `fetch_table_rows()`); new
+`app/schemas/table.py` (`TableColumnOut`, `SourceTableOut`, the latter's
+`from_result()` classmethod mirroring `WaveformRangeOut`'s own existing
+pattern); `app/api/v1/sources.py` gains one new `GET .../table`
+endpoint. No existing backend module changed behavior. Frontend:
+`frontend/index.html` -- the sidebar Table button un-disabled and wired
+(`#mainNavTableBtn`); `#viewTable` rebuilt from a placeholder into a
+real source-selector + table + pagination shell (new `.ww-table-view`/
+`.ww-table-toolbar`/`.ww-table-wrap`/`.ww-table` CSS, reusing the
+existing `.ww-data-prep-pagination` classes for pagination); a new
+`wwTable` module (state object, ~13 functions) handles source-list
+sync, lazy fetch-on-activation, pagination, and rendering;
+`shellSetActiveView()`/`shellSetCurrentPage()` extended to keep the
+sidebar and local shell selector in sync; `wwRenderWorkspaceRecordings()`/
+`wwResetWorkspaceRecordingsPanel()` extended with Table-source-list
+sync calls. Tests: new `backend/tests/test_table_service.py` (23 tests
+-- basic/first/last/partial pages, cross-source independence, irregular
+time, multi-rate COMTRADE, Engineering Quantity/Undefined/Angle
+preservation, digital channels, missing values, pagination bounds) and
+new `backend/tests/test_table_api.py` (12 tests -- COMTRADE, no-format-
+branching, prepared-CSV agreement with its own cleaned export,
+Per-Unit-does-not-affect-table). Full backend suite: 2905 passed, 0
+failed (baseline immediately before this task: 2870 passed -- exact
++35 match). A throwaway (not committed, deleted after use) live-browser
+Playwright UAT covering all 8 task-specified scenarios passed: prepared
+CSV with Voltage/Voltage Angle/Frequency/ROCOF (correct headers,
+irregular canonical times, unconverted angle values); COMTRADE (no
+prep-specific behavior); multiple sources (selector present, switching
+fully replaces the table -- proven via the actual per-source API
+response, not merely header-text comparison, since two synthetic
+COMTRADE fixtures happen to share channel names); source-switching
+Waveform-isolation (Waveform's own plotted-channel set unchanged after
+switching Table's source); bounded pagination on a 650-row recording
+(First/Previous/direct-page-entry/Next/Last each issuing exactly one
+target-page request); and the empty state with zero recordings loaded
+-- all with zero console/page errors.
+
+---
+
+## DEC-080 — CSV/Excel Waveform columns may carry an explicit Measured Unit, quantity-dependent and never guessed from Engineering Quantity; cleaned exports encode it as an additional strict suffix a re-upload restores; `AnalogChannel.unit` now reaches Per-Unit conversion for CSV/Excel, closing the DEC-077 conversion gap
+
+Date: 2026-09-04
+Status: Approved
+Source: explicit project-owner enhancement request ("Measured Unit
+Metadata + Self-Describing Unit Round-Trip"), building directly on
+DEC-077's Engineering Quantity model and closing a conversion gap that
+model's own investigation had already surfaced: every CSV/Excel-
+converted `AnalogChannel.unit` was hardcoded to `""`, so
+`app.domain.per_unit._measured_unit_scale()` could never recognize a
+CSV/Excel Voltage/Current channel's own measured unit -- Per-Unit
+conversion silently stayed `base_required` even with a base correctly
+configured. COMTRADE was never affected (its `.cfg` always supplies a
+real unit).
+
+Decision:
+
+**Engineering Quantity and Measured Unit are separate, independently-
+stored concepts** -- Quantity answers "what does this signal
+represent" (Voltage, Frequency, ...), Unit answers "how is the numeric
+value expressed" (V vs kV, W vs MW, ...). A Waveform column may now
+carry an explicit, user-selected Measured Unit alongside its DEC-077
+Engineering Quantity, from a closed, per-quantity controlled list:
+
+```text
+Voltage         -> "", "V", "kV"
+Voltage Angle   -> "", "deg", "rad"
+Current         -> "", "A", "kA"
+Current Angle   -> "", "deg", "rad"
+Active Power    -> "", "W", "kW", "MW", "GW"
+Reactive Power  -> "", "var", "kvar", "Mvar", "Gvar"
+Frequency       -> "", "Hz"
+ROCOF           -> "", "Hz/s"
+Undefined       -> "" only
+```
+
+Blank (`""`) is always valid and remains the default -- Measured Unit
+is never a readiness blocker, and is never silently guessed from
+Engineering Quantity alone (a Voltage channel may genuinely be recorded
+in V or kV; quantity never determines scale). The backend validates the
+quantity/unit PAIR itself (`app.domain.channel_classification.
+measured_unit_valid_for_quantity()`), never trusting a frontend
+dropdown's own filtering alone -- an invalid pair (e.g. Voltage + MW,
+Reactive Power + MW) returns `400 invalid_measured_unit`.
+
+**Storage**: a new sparse `WorkingOverlay.column_measured_units` dict
+(`app/domain/working_overlay.py`), keyed identically to and following
+the exact same lifecycle conventions as DEC-077's own
+`column_engineering_quantities` -- absence is the default (blank),
+undo/redo/reset-all/revision-tracking all generalize to it via the same
+`_record()`/`_apply_state()` machinery, and a role change AWAY from
+Waveform leaves it untouched (ignored, not cleared), the identical
+policy DEC-077 already established for Engineering Quantity.
+
+**Quantity/unit consistency**: changing a column's Engineering Quantity
+now clears an existing Measured Unit that is no longer valid for the
+new quantity (e.g. Voltage+kV -> Frequency clears the unit to blank) --
+never silently converts it (a Voltage `kV` value never becomes a
+fabricated `Hz`). Resetting Quantity to Undefined clears any stored
+unit the same way, since Undefined's own controlled list is blank-only.
+
+**API**: new `PUT`/`DELETE .../working/columns/{column_index}/measured-unit`
+endpoints (`app/api/v1/preparation_sources.py`), directly parallel to
+DEC-077's own engineering-quantity endpoint pair, reusing the same
+`WorkingOverlaySummaryOut` response shape and the same
+`_working_error()` HTTPException mapping. `PreparationSourcePreviewOut`/
+`PreviewResult` gain an additive `column_measured_units: list[str]`
+field, sized/aligned exactly like `column_engineering_quantities`.
+
+**Canonical conversion**: `app/services/preparation_conversion_service.py`
+now reads the column's own `column_measured_units` entry (default `""`)
+and writes it directly into `AnalogChannel.unit`, replacing the
+previous hardcoded `unit=""`. This is the ENTIRE fix for the Per-Unit
+gap: `app.domain.per_unit.apply_per_unit_to_value()`/
+`apply_per_unit_to_array()` already accepted the channel's own `unit`
+as their `measured_unit` parameter and already normalized case (`.strip().lower()`)
+against `VOLTAGE_UNIT_SCALE`/`CURRENT_UNIT_SCALE` -- once a real,
+recognized unit string reaches `AnalogChannel.unit`, Per-Unit resolution
+for a CSV/Excel Voltage or Current channel with a configured base
+becomes `configured` and its values scale into `pu` with ZERO changes
+to `app/domain/per_unit.py`, `app/services/group_aware_per_unit.py`, or
+either per-unit resolution path (legacy DEC-049 or group-aware
+DEC-050) -- both already funnel through the same two functions. A blank
+unit still leaves Per-Unit `base_required` (fail-closed, unchanged
+behavior). DEC-078's Angle guardrail (`_resolve_effective_per_unit()`)
+is untouched and unaffected: `deg`/`rad` are valid METADATA for an
+Angle channel but `_measured_unit_scale()` only ever recognizes
+Voltage/Current units, so an Angle channel with a valid unit stays
+`not_applicable`, never accidentally PU-eligible.
+
+**Export/re-upload**: extends DEC-077's strict suffix grammar
+additively -- `"<label> (<Engineering Quantity>) [<Measured Unit>]"`
+when a valid, non-blank unit exists, else DEC-077's own quantity-only
+`"<label> (<Engineering Quantity>)"` form unchanged (a blank unit never
+appends `"[]"`). Two new domain functions in `app/domain/channel_
+classification.py` --
+`encode_engineering_quantity_and_unit_suffix()`/`parse_engineering_
+quantity_and_unit_suffix()` -- are the ONE encode/parse pair used by
+both the exporter and the re-upload restoration path (fired from the
+SAME `set_column_role()` ROLE_WAVEFORM auto-suggest seam DEC-077
+already established), so quantity and unit are always restored
+together from one grammar, never two independently-drifting ones. The
+combined parser falls back to DEC-077's own quantity-only parser for
+full backward compatibility with existing quantity-only exports (no
+unit is restored, none was ever encoded); a bracket present but not an
+exact valid unit for the parsed quantity (or no valid quantity at all)
+never matches, exactly as strict as DEC-077's own "never guess"
+parser -- `"Time (s)"`, `"Transformer [HV]"`, `"Line (North) [A]"`, and
+`"Voltage [estimated]"` all remain unmatched. Round-trip-stable by
+construction: the encoder always strips any EXISTING suffix (quantity-
+only or quantity+unit) via the same combined parser before re-encoding,
+so repeated export/re-upload/re-export cycles never duplicate a suffix.
+
+Reason:
+
+Quantity and unit are genuinely independent (task section C's own
+motivating examples: Voltage may be V or kV, Power may be W/kW/MW/GW) --
+conflating them, or guessing a unit from quantity alone, would either
+lose real information or silently fabricate a scale factor. Investigating
+the actual Per-Unit code path FIRST (rather than assuming a fix was
+needed inside `per_unit.py`) found that `apply_per_unit_to_value()`/
+`apply_per_unit_to_array()` already accepted and correctly normalized a
+measured-unit string -- the gap was purely that CSV/Excel conversion
+never supplied one. This kept the fix minimal and confined to the
+conversion-service seam, with zero risk to COMTRADE's existing, working
+per-unit path or to DEC-078's already-shipped Angle guardrail.
+
+Alternatives considered:
+
+Guessing a canonical unit from Engineering Quantity alone (e.g. Voltage
+-> kV) (rejected outright -- explicit task non-goal; a Voltage channel
+may genuinely be recorded in V or kV, and guessing wrong would silently
+corrupt Per-Unit scaling). A single combined "Quantity + Unit" field
+(rejected -- task's own explicit "Quantity and Unit are separate
+concepts" requirement; also would have required a much larger
+combinatorial controlled list and broken DEC-077's own existing
+quantity-only storage/API shape for no benefit). Placing unit
+validation in the domain layer (`app/domain/working_overlay.py`)
+(rejected -- mirrors DEC-077's own precedent of keeping domain mutation
+functions pure/never-raising, with validation living in `app/services/
+working_overlay_service.py` instead). Free-text/arbitrary unit input
+(rejected -- explicit non-goal; a closed, quantity-dependent list keeps
+the field safe to route into Per-Unit conversion without guessing, and
+matches every other controlled-vocabulary field this ingestion pipeline
+already uses). Silently converting an existing unit when Quantity
+changes (e.g. Voltage `kV` -> Frequency `Hz`) (rejected outright --
+task's own explicit "must not become Hz automatically" example; clearing
+to blank is the only safe response to an invalidated pairing).
+
+Impact:
+
+Backend: `app/domain/channel_classification.py` -- new
+`MEASURED_UNIT_OPTIONS`, `measured_unit_valid_for_quantity()`,
+`encode_engineering_quantity_and_unit_suffix()`, `parse_engineering_
+quantity_and_unit_suffix()`. `app/domain/working_overlay.py` -- new
+`column_measured_units` field, `set_column_measured_unit()`/
+`reset_column_measured_unit()`, wired into `reset_all()`/`_apply_state()`.
+`app/services/working_overlay_service.py` -- new `set_column_measured_
+unit()`/`reset_column_measured_unit()`; `set_column_role()`'s auto-
+suggest extended to restore unit alongside quantity;
+`set_column_engineering_quantity()`/`reset_column_engineering_quantity()`
+extended to clear an incompatible unit. `app/services/errors.py` -- new
+`InvalidMeasuredUnitError`. `app/api/v1/preparation_sources.py` -- two
+new endpoints. `app/schemas/preparation_session.py` -- new
+`MeasuredUnitRequest`; `column_measured_units` added to
+`PreparationSourcePreviewOut`. `app/services/preparation_preview_
+service.py` -- new `_build_column_measured_units()`, threaded through
+`PreviewResult`/`_apply_structure_mapping()`. `app/services/
+preparation_conversion_service.py` -- `unit=""` replaced with the
+column's own measured unit. `app/services/preparation_export_service.py`
+-- header-suffix building and the optional manifest both extended to
+include unit. `app/domain/per_unit.py`, `app/services/group_aware_
+per_unit.py`, `app/services/waveform_service.py` (DEC-078's guardrail)
+-- UNCHANGED. Frontend: `frontend/index.html` -- new
+`WW_DATA_PREP_MEASURED_UNITS` map (mirrors the backend's controlled
+list exactly), a new "Measured Unit" column in the Data Preparation
+Workspace's column-mapping table (shown only for Waveform-role columns,
+options filtered by the column's own current quantity), new
+`wwDataPrep.columnMeasuredUnits` state and
+`wwDataPrepSetColumnMeasuredUnit()` setter. `AnalogChannelOut.unit`/
+`TableColumnOut.unit` (DEC-079) required no schema change -- they
+already carried a generic `unit` string and now simply start receiving
+real, non-empty values for CSV/Excel sources too. Tests: 134 new tests
+across `test_channel_classification.py` (parser/encoder/validator),
+`test_working_overlay_domain.py`/`test_working_overlay_service.py`
+(storage, API-level set/reset/invalid-pair/quantity-change-clears-unit/
+role-preservation/suffix-restoration), `test_preparation_conversion_
+service.py` (unit reaches `AnalogChannel.unit`), `test_preparation_
+export_service.py` (suffix encoding, backward-compatible and combined
+round-trips), `test_preparation_sources_api.py` (endpoint-level),
+new `test_measured_unit_per_unit.py` (12 tests -- CSV Voltage/Current
+PU becomes `configured` with correct scaling, blank unit stays
+`base_required`, Angle guardrail unaffected by a valid angle unit), and
+new `test_measured_unit_measurement_group.py` (3 tests -- a CSV-derived
+three-phase Voltage measurement group resolves Per-Unit exactly like a
+COMTRADE-derived one). Full backend suite: 3039 passed, 0 failed
+(baseline immediately before this task: 2905 passed -- exact +134
+match). The committed browser smoke test (COMTRADE) still passes
+unchanged with zero console/page errors. A throwaway (not committed,
+deleted after use) live-browser Playwright UAT covering all 7
+task-specified scenarios passed: CSV Voltage with unit `kV` reaches
+`per_unit_status = "configured"` and `unit = "pu"` once a Voltage Base
+is configured; CSV Current with unit `A` resolves `configured` under a
+direct current base; a blank unit leaves the base save succeeding but
+Per-Unit status `base_required`; a Voltage Angle channel with a valid
+`deg` unit stays `not_applicable` and its own value/unit remain
+unconverted; cleaned export produces the exact `VR (Voltage) [kV]`
+suffix; a re-uploaded cleaned file restores both quantity and unit from
+the header alone and Per-Unit then resolves `configured` after
+conversion and base configuration; and an existing COMTRADE source's
+own Per-Unit behavior is unaffected -- all with zero console/page
+errors.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

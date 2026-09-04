@@ -378,6 +378,61 @@
         .shell-view-placeholder h3 { margin: 0 0 6px; color: var(--text); font-size: 1rem; }
         .shell-view-placeholder p { margin: 0; font-size: 0.85rem; }
 
+        /* Canonical Table View (DEC-079): overrides .shell-view-placeholder's
+           own centered/padded "coming soon" treatment -- this slot now
+           hosts a real, functional data table, not a message. */
+        .ww-table-view {
+            padding: 16px 24px;
+            text-align: left;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .ww-table-toolbar {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .ww-table-source-field { margin-bottom: 0; min-width: 220px; }
+        /* Section 26/27: ONE scroll container handles both horizontal
+           (wide recordings, 50-200+ channels) and vertical (bounded to
+           the current page's own row count, never thousands of hidden
+           rows) scrolling -- same "table-wrap owns all scrolling"
+           convention the Data Preparation Workspace's own preview table
+           already established (.ww-data-prep-table-wrap), a distinct
+           class here since this table's own cells are never editable and
+           never carry role/exclude/undo affordances. */
+        .ww-table-wrap { overflow: auto; max-height: 65vh; border: 1px solid var(--panel-border); border-radius: var(--radius); }
+        .ww-table {
+            border-collapse: collapse;
+            font-family: ui-monospace, "SF Mono", Consolas, monospace;
+            font-size: 0.72rem;
+            white-space: nowrap;
+        }
+        .ww-table th, .ww-table td {
+            border: 1px solid var(--panel-border);
+            padding: 4px 10px;
+            min-width: 88px;
+            max-width: 280px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .ww-table thead th {
+            position: sticky; top: 0; background: var(--panel); z-index: 2;
+            color: var(--text-dim); font-weight: 500; text-align: left;
+        }
+        /* Time column stays visible while scrolling horizontally through
+           a wide recording (section 26) -- "if practical and stable,"
+           never a blocker; a plain top:0 sticky header already covers
+           vertical scroll regardless. */
+        .ww-table thead th:first-child, .ww-table tbody td:first-child {
+            position: sticky; left: 0; background: var(--panel); z-index: 1;
+        }
+        .ww-table thead th:first-child { z-index: 3; }
+        .ww-table td { color: var(--text); }
+
         /* ---- Recordings page (Phase 3B) -- a sibling of Workspace Row,
            same "dominant content area" treatment as Main Workspace, but
            with no contextual sidebar (section 21). Clear/simple/list-
@@ -3897,7 +3952,14 @@
                     <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><polyline points="1,9 4,9 6,3 8,15 10,9 12,4 14,14 17,9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
                     <span class="shell-nav-label">Waveform</span>
                 </button>
-                <button type="button" class="shell-nav-item" disabled title="Table -- coming soon">
+                <!-- Canonical Table View (DEC-079): "coming soon" retired
+                     -- opens the same waveform-page Active View shell,
+                     switched to its own Table slot (task section 3:
+                     "should NOT create a new recording or navigate to a
+                     separate table-list page"), mirroring
+                     mainNavWaveformBtn's own exact click-handler shape
+                     immediately below. -->
+                <button type="button" class="shell-nav-item" id="mainNavTableBtn" title="Table">
                     <span class="shell-nav-icon"><svg viewBox="0 0 18 18"><rect x="2" y="3" width="14" height="12" rx="1"/><line x1="2" y1="8" x2="16" y2="8"/><line x1="7" y1="3" x2="7" y2="15"/></svg></span>
                     <span class="shell-nav-label">Table</span>
                 </button>
@@ -4335,13 +4397,43 @@
                             <div id="wwTimeGroupCanvases"></div>
                         </section>
 
-                        <!-- Structural placeholders only (section 13/14) --
-                             no fake table data, no real Split view this
-                             phase. Proves the Active View shell can host a
-                             future mode without redesigning it later. -->
-                        <section class="shell-view-placeholder" id="viewTable" hidden aria-label="Table view">
-                            <h3>Table view</h3>
-                            <p>Not implemented yet -- this shell slot is reserved for a future Excel-like data table.</p>
+                        <!-- Canonical Table View (DEC-079): a read-only,
+                             one-recording-at-a-time inspection surface over
+                             the SAME canonical DisturbanceRecord Waveform
+                             View reads from -- never PreparationSession/
+                             WorkingOverlay/raw-grid data, never a merge of
+                             more than one source. See wwTable* functions
+                             below for the full implementation; this markup
+                             is deliberately built so Split view (still a
+                             structural placeholder, section 36) can reuse
+                             the same #wwTableEl-building functions later
+                             without duplicating the table implementation. -->
+                        <section class="shell-view-placeholder ww-table-view" id="viewTable" hidden aria-label="Table view">
+                            <div class="ww-table-toolbar">
+                                <div class="field ww-table-source-field">
+                                    <label for="wwTableSourceSelect">Recording</label>
+                                    <select id="wwTableSourceSelect"></select>
+                                </div>
+                            </div>
+                            <p class="empty-state" id="wwTableEmptyState" hidden>Select or open a recording to view table data.</p>
+                            <div class="ww-table-wrap" id="wwTableWrap" hidden>
+                                <table class="ww-table" id="wwTableEl"></table>
+                            </div>
+                            <div class="ww-data-prep-pagination" id="wwTablePagination" hidden>
+                                <span class="hint" id="wwTableRangeLabel"></span>
+                                <div class="ww-data-prep-pager">
+                                    <button type="button" class="secondary" id="wwTableFirstBtn" title="First page">First</button>
+                                    <button type="button" class="secondary" id="wwTablePrevBtn">Previous</button>
+                                    <span class="ww-data-prep-pager-label">
+                                        Page
+                                        <input type="text" inputmode="numeric" class="ww-data-prep-page-input" id="wwTablePageInput" aria-label="Page number">
+                                        of <span id="wwTablePageTotal">1</span>
+                                    </span>
+                                    <button type="button" class="secondary" id="wwTableNextBtn">Next</button>
+                                    <button type="button" class="secondary" id="wwTableLastBtn" title="Last page">Last</button>
+                                </div>
+                            </div>
+                            <div class="upload-status" id="wwTableStatus" role="status" aria-live="polite"></div>
                         </section>
                         <section class="shell-view-placeholder" id="viewSplit" hidden aria-label="Split view">
                             <h3>Split view</h3>
@@ -5904,6 +5996,17 @@
             // ww.viewport, Y range, or the fetch pipeline, and is a cheap,
             // idempotent no-op if nothing actually changed size.
             if (view === "waveform") wwScheduleResizeAllVisiblePlots();
+            // Table View enhancement (DEC-079, task section 35): keep the
+            // Main Sidebar Menu's own Waveform/Table highlighting in sync
+            // with this LOCAL selector -- one coherent active-view state,
+            // never "sidebar says Table, local shell says Waveform."
+            if (shell.currentPage === "waveform") {
+                setShellNavCurrent("mainNavWaveformBtn", view !== "table");
+                setShellNavCurrent("mainNavTableBtn", view === "table");
+            }
+            // Lazy activation (task section 45): fetch only when the user
+            // actually switches to Table View, never eagerly on page load.
+            if (view === "table") wwTableOnActivated();
         }
 
         // Phase 3B-UAT8: sets/clears aria-current="page" (the ARIA APG
@@ -5956,9 +6059,13 @@
             // which page was active. Fixed to set "page" when active and
             // remove the attribute entirely when not (also the APG
             // convention -- not aria-current="false").
-            setShellNavCurrent("mainNavWaveformBtn", page === "waveform");
+            // Table View enhancement (DEC-079): Waveform's own "current"
+            // highlight additionally requires activeView !== "table" --
+            // see shellSetActiveView()'s own matching update.
+            setShellNavCurrent("mainNavWaveformBtn", page === "waveform" && shell.activeView !== "table");
             setShellNavCurrent("mainNavRecordingsBtn", page === "recordings");
             setShellNavCurrent("mainNavCalculatedChannelsBtn", page === "calculated-channels");
+            setShellNavCurrent("mainNavTableBtn", page === "waveform" && shell.activeView === "table");
 
             // The Waveform/Table/Split selector and the (responsive-only)
             // "Sources" drawer toggle are both scoped to the waveform
@@ -6694,9 +6801,20 @@
         // repetition. Renders EVERY real rate `SourceSummaryOut` reports
         // (never assumes exactly one, never collapses/simplifies a
         // genuine multi-rate COMTRADE source down to a single value).
+        const SAMPLING_RATE_INTEGER_TOLERANCE_HZ = 1e-9;
+
+        function formatSamplingRate(rate) {
+            if (typeof rate !== "number" || !Number.isFinite(rate)) return "—";
+            const nearestInteger = Math.round(rate);
+            if (Math.abs(rate - nearestInteger) <= SAMPLING_RATE_INTEGER_TOLERANCE_HZ) {
+                return nearestInteger + " Hz";
+            }
+            return Number(rate.toPrecision(12)).toString() + " Hz";
+        }
+
         function formatSamplingRates(rates) {
             if (!Array.isArray(rates) || rates.length === 0) return "—";
-            return rates.map((r) => r + " Hz").join(", ");
+            return rates.map(formatSamplingRate).join(", ");
         }
 
         // CSV/Excel ingestion Slice 1 (DEC-072): human-readable size for
@@ -7145,6 +7263,9 @@
             // Engineering Quantity enhancement (DEC-077): additive, same
             // shape/lifecycle as columnRoles above.
             columnEngineeringQuantities: [],
+            // Measured Unit enhancement (DEC-080): additive, same
+            // shape/lifecycle as columnEngineeringQuantities above.
+            columnMeasuredUnits: [],
             // Slice 6 (DEC-072): Preparation Readiness Issue state --
             // the full GET .../issues response body, or `null` before
             // it has ever loaded (or when it could not be fetched, e.g.
@@ -7426,14 +7547,37 @@
             "Active Power", "Reactive Power", "Frequency", "ROCOF",
         ];
 
+        // Measured Unit enhancement (DEC-080): a closed, quantity-
+        // dependent set matching app.domain.channel_classification.
+        // MEASURED_UNIT_OPTIONS exactly (same keys, same order, same
+        // exact-cased unit strings) -- Quantity and Unit are separate
+        // concepts (task section C), so this is a SEPARATE map, never
+        // derived from WW_DATA_PREP_ENGINEERING_QUANTITIES. "" (blank)
+        // is always first/valid for every quantity, rendered as the
+        // same "—" placeholder text the quantity cell's own non-
+        // Waveform "—" hint uses elsewhere, but as a REAL, selectable
+        // option here (value=""), never a disabled placeholder.
+        const WW_DATA_PREP_MEASURED_UNITS = {
+            "Undefined": [""],
+            "Voltage": ["", "V", "kV"],
+            "Voltage Angle": ["", "deg", "rad"],
+            "Current": ["", "A", "kA"],
+            "Current Angle": ["", "deg", "rad"],
+            "Active Power": ["", "W", "kW", "MW", "GW"],
+            "Reactive Power": ["", "var", "kvar", "Mvar", "Gvar"],
+            "Frequency": ["", "Hz"],
+            "ROCOF": ["", "Hz/s"],
+        };
+
         function wwDataPrepRenderColumnMapping() {
             const table = document.getElementById("wwDataPrepColumnsTable");
             const columnCount = wwDataPrep.columnCount || 0;
             const labels = wwDataPrep.columnLabels || [];
             const roles = wwDataPrep.columnRoles || [];
             const quantities = wwDataPrep.columnEngineeringQuantities || [];
+            const units = wwDataPrep.columnMeasuredUnits || [];
 
-            let html = "<thead><tr><th>Column</th><th>Label</th><th>Role</th><th>Engineering Quantity</th></tr></thead><tbody>";
+            let html = "<thead><tr><th>Column</th><th>Label</th><th>Role</th><th>Engineering Quantity</th><th>Measured Unit</th></tr></thead><tbody>";
             for (let c = 0; c < columnCount; c++) {
                 const role = roles[c] || "not_assigned";
                 const optionsHtml = WW_DATA_PREP_ROLES.map(([value, label]) =>
@@ -7444,10 +7588,28 @@
                 // column -- Time Axis/Not Assigned rows get a plain "—"
                 // cell instead, never cluttering every row (task's own
                 // "keep compact" requirement).
+                const currentQuantity = quantities[c] || "Undefined";
                 const quantityCell = role === "waveform"
                     ? '<select class="ww-data-prep-engineering-quantity-select" data-col="' + c + '">' +
                         WW_DATA_PREP_ENGINEERING_QUANTITIES.map((q) =>
-                            '<option value="' + q + '"' + (q === (quantities[c] || "Undefined") ? " selected" : "") + '>' + q + '</option>'
+                            '<option value="' + q + '"' + (q === currentQuantity ? " selected" : "") + '>' + q + '</option>'
+                        ).join("") +
+                        '</select>'
+                    : '<span class="hint">—</span>';
+                // Measured Unit enhancement (DEC-080, task section D):
+                // same "Waveform role only" visibility rule as
+                // Engineering Quantity above, ADDITIONALLY filtered by
+                // the column's own CURRENT quantity -- an Undefined
+                // column shows only the single blank option, matching
+                // the backend's own "Undefined accepts only blank" rule
+                // (never lets the user pick a unit with no quantity
+                // context to validate it against).
+                const unitOptions = WW_DATA_PREP_MEASURED_UNITS[currentQuantity] || [""];
+                const currentUnit = units[c] || "";
+                const unitCell = role === "waveform"
+                    ? '<select class="ww-data-prep-measured-unit-select" data-col="' + c + '">' +
+                        unitOptions.map((u) =>
+                            '<option value="' + u + '"' + (u === currentUnit ? " selected" : "") + '>' + (u || "—") + '</option>'
                         ).join("") +
                         '</select>'
                     : '<span class="hint">—</span>';
@@ -7456,6 +7618,7 @@
                     "<td>" + escapeHtml(labels[c] != null ? String(labels[c]) : wwSpreadsheetColumnLabel(c)) + "</td>" +
                     '<td><select class="ww-data-prep-role-select" data-col="' + c + '">' + optionsHtml + "</select></td>" +
                     "<td>" + quantityCell + "</td>" +
+                    "<td>" + unitCell + "</td>" +
                     "</tr>";
             }
             html += "</tbody>";
@@ -7604,6 +7767,7 @@
                 wwDataPrep.columnLabels = preview.column_labels || [];
                 wwDataPrep.columnRoles = preview.column_roles || [];
                 wwDataPrep.columnEngineeringQuantities = preview.column_engineering_quantities || [];
+                wwDataPrep.columnMeasuredUnits = preview.column_measured_units || [];
                 wwDataPrepRenderTable(preview);
                 wwDataPrepRenderPagination(preview);
                 wwDataPrepRenderStructureControls();
@@ -9082,6 +9246,41 @@
             }
         }
 
+        // Measured Unit enhancement (DEC-080): "" (blank, the selector's
+        // own first/default option) always DELETEs (resets to the
+        // sparse default), matching wwDataPrepSetColumnEngineeringQuantity()'s
+        // own "Undefined always DELETEs" convention -- never PUT the
+        // literal empty string as a stored value.
+        async function wwDataPrepSetColumnMeasuredUnit(columnIndex, measuredUnit) {
+            const status = wwDataPrepStructureStatusEl();
+            status.textContent = "";
+            try {
+                const response = measuredUnit === ""
+                    ? await fetch(
+                        wwDataPrepSourceUrl("/working/columns/" + columnIndex + "/measured-unit"),
+                        { method: "DELETE" }
+                    )
+                    : await fetch(
+                        wwDataPrepSourceUrl("/working/columns/" + columnIndex + "/measured-unit"),
+                        {
+                            method: "PUT", headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ measured_unit: measuredUnit }),
+                        }
+                    );
+                if (!response.ok) {
+                    const body = await response.json().catch(() => null);
+                    status.textContent = (body && body.detail && body.detail.message) ||
+                        "Could not set this column's Measured Unit.";
+                    await wwDataPrepFetchPreview(); // re-render the select back to its actual (unchanged) value
+                    return;
+                }
+                wwDataPrepApplyOverlaySummary(await response.json());
+                await wwDataPrepFetchPreview();
+            } catch (error) {
+                status.textContent = "Could not reach the backend.";
+            }
+        }
+
         document.getElementById("wwDataPrepSetHeaderBtn").addEventListener("click", () => {
             const value = parseInt(document.getElementById("wwDataPrepHeaderInput").value, 10);
             if (!Number.isFinite(value)) { wwDataPrepStructureStatusEl().textContent = "Enter a row number first."; return; }
@@ -9142,6 +9341,11 @@
             const quantitySelect = event.target.closest(".ww-data-prep-engineering-quantity-select");
             if (quantitySelect) {
                 wwDataPrepSetColumnEngineeringQuantity(parseInt(quantitySelect.dataset.col, 10), quantitySelect.value);
+                return;
+            }
+            const unitSelect = event.target.closest(".ww-data-prep-measured-unit-select");
+            if (unitSelect) {
+                wwDataPrepSetColumnMeasuredUnit(parseInt(unitSelect.dataset.col, 10), unitSelect.value);
             }
         });
 
@@ -9316,6 +9520,7 @@
             wwDataPrep.timeAxisSummary = null;
             wwDataPrep.columnRoles = [];
             wwDataPrep.columnEngineeringQuantities = [];
+            wwDataPrep.columnMeasuredUnits = [];
             wwDataPrep.columnLabels = [];
             wwDataPrep.headerRowNumber = null;
             wwDataPrep.dataStartRow = null;
@@ -9968,6 +10173,13 @@
 
             if (badge) badge.textContent = "(" + sources.length + ")";
 
+            // Table View enhancement (DEC-079, task sections 32/33): the
+            // ONE place the Table source selector is kept in sync with
+            // the workspace's own current source list -- runs on every
+            // upload/removal/workspace-reset, whether or not Table View
+            // is currently active.
+            wwTableSyncSourceOptions(sources);
+
             if (sources.length === 0) {
                 panel.innerHTML = '<p class="empty-state">No recordings loaded yet. Upload one from Recordings.</p>';
                 return false;
@@ -10009,7 +10221,313 @@
                 '<p class="empty-state">No recordings loaded yet. Upload one from Recordings.</p>';
             const badge = document.getElementById("wwRecordingsCountBadge");
             if (badge) badge.textContent = "(0)";
+            wwTableResetForNewWorkspace();
         }
+
+        // ------------------------------------------------------------------
+        // Canonical Table View (DEC-079): a read-only, one-recording-at-a-
+        // time inspection surface over the SAME canonical
+        // DisturbanceRecord Waveform View reads from (GET .../sources/
+        // {id}/table -- exact rows, never the /waveform endpoint's own
+        // point-budget/min-max-envelope reduction). Deliberately a
+        // SEPARATE state object from `ww` (the waveform-plotting state) --
+        // switching the Table source must never touch ww.displayed/
+        // ww.panels/calculated channels/synchronization (task section 6).
+        //
+        // Source-selection priority (task section 5), reusing EXISTING
+        // application state rather than inventing new duplicate state:
+        //   1. wwTable.sourceId itself, once the user has explicitly
+        //      chosen a Table source this session (persists across an
+        //      unrelated sidebar refresh -- see wwTableSyncSourceOptions()
+        //      below's own "stillExists" check).
+        //   2. `focusedSourceId` (the SAME module-level variable
+        //      selectSource() already maintains for "the most recently
+        //      opened recording" -- never a second, Table-only tracking
+        //      variable).
+        //   3. the first source in the workspace's own current list.
+        // ------------------------------------------------------------------
+        const wwTable = {
+            sourceId: null,
+            availableSources: [], // the exact GET .../sources list, cached for the <select>
+            offset: 0,
+            limit: 200, // matches app.services.table_service.TABLE_DEFAULT_LIMIT
+            totalRowCount: null,
+            currentPage: 1,
+            totalPages: null,
+            columns: [],
+            requestSeq: 0, // race safety (task section 46): only the latest request's response is ever applied
+        };
+
+        function wwTableResetForNewWorkspace() {
+            wwTable.sourceId = null;
+            wwTable.availableSources = [];
+            wwTable.offset = 0;
+            wwTable.totalRowCount = null;
+            wwTable.currentPage = 1;
+            wwTable.totalPages = null;
+            wwTable.columns = [];
+            wwTable.requestSeq += 1; // invalidate any in-flight request
+            document.getElementById("wwTableSourceSelect").innerHTML = "";
+            document.getElementById("wwTableEl").innerHTML = "";
+            document.getElementById("wwTableRangeLabel").textContent = "";
+            document.getElementById("wwTableStatus").textContent = "";
+        }
+
+        // Called on EVERY workspace source-list refresh (upload, removal,
+        // reset -- see wwRenderWorkspaceRecordings()'s own call site),
+        // whether or not Table View is the currently active view (task
+        // section 33: a source added while Table is active must update
+        // the selector without switching away from the user's own
+        // current choice).
+        function wwTableSyncSourceOptions(sources) {
+            wwTable.availableSources = sources || [];
+            const stillExists = wwTable.sourceId && wwTable.availableSources.some((s) => s.source_id === wwTable.sourceId);
+
+            if (!stillExists) {
+                // Task section 32: the previously-selected source is gone
+                // (or none was ever chosen) -- reselect deterministically,
+                // priority 2 then 3, or show the empty state if nothing
+                // remains at all.
+                const fallback = wwTable.availableSources.find((s) => s.source_id === focusedSourceId) || wwTable.availableSources[0] || null;
+                wwTable.sourceId = fallback ? fallback.source_id : null;
+                wwTable.offset = 0;
+                wwTable.columns = [];
+                if (shell.activeView === "table") {
+                    if (wwTable.sourceId) wwTableFetchPage(); else wwTableRenderEmptyState();
+                }
+            }
+            wwTableRenderSourceSelect();
+        }
+
+        function wwTableRenderSourceSelect() {
+            const select = document.getElementById("wwTableSourceSelect");
+            if (wwTable.availableSources.length === 0) {
+                select.innerHTML = "";
+                select.disabled = true;
+                return;
+            }
+            // Task section 30: a single-recording workspace still gets the
+            // same selector element (never a redesigned layout once a
+            // second recording appears later) -- just naturally has one
+            // option, and stays enabled since re-selecting it is a safe
+            // no-op via wwTableSetSource()'s own no-op guard.
+            select.disabled = false;
+            select.innerHTML = wwTable.availableSources.map((s) =>
+                '<option value="' + escapeHtml(s.source_id) + '"' + (s.source_id === wwTable.sourceId ? " selected" : "") + '>' +
+                    escapeHtml(recordingDisplayName(s)) +
+                '</option>'
+            ).join("");
+        }
+
+        // Fired the first time (or every time) the user switches the
+        // local Active View selector to "table" (task section 45: lazy --
+        // never fetched merely because the page loaded). A no-op if this
+        // exact source's own data is already loaded and nothing changed.
+        function wwTableOnActivated() {
+            if (!wwTable.sourceId) {
+                wwTableRenderEmptyState();
+                return;
+            }
+            if (wwTable.columns.length > 0) return; // already loaded, nothing to do
+            wwTableFetchPage();
+        }
+
+        function wwTableSetSource(sourceId) {
+            if (sourceId === wwTable.sourceId) return;
+            wwTable.sourceId = sourceId;
+            wwTable.offset = 0;
+            wwTable.columns = [];
+            wwTableFetchPage();
+        }
+
+        function wwTableRenderEmptyState() {
+            document.getElementById("wwTableEmptyState").hidden = false;
+            document.getElementById("wwTableWrap").hidden = true;
+            document.getElementById("wwTablePagination").hidden = true;
+            document.getElementById("wwTableRangeLabel").textContent = "";
+            document.getElementById("wwTableStatus").textContent = "";
+        }
+
+        // Task section 21/22: reuses analogChannelNameCellHtml()'s own
+        // "unit, then quantity" parenthetical shape -- but NOT its
+        // "suppress quantity when it equals the broad engineering_type"
+        // clause. That suppression is safe in the sidebar only because
+        // channels are grouped under a visible engineering_type heading
+        // there (section comment on analogChannelNameCellHtml() above),
+        // so a same-as-type quantity is redundant with context already
+        // on screen. Table View's columns are flat, with no group
+        // heading -- so for a channel with a blank unit and
+        // quantity == type (e.g. a prepared CSV "Voltage" channel with
+        // no unit configured), the sidebar's rule would collapse the
+        // header to the bare column label with no engineering-meaning
+        // shown at all. Always showing a defined, non-"Undefined"
+        // quantity here keeps that information visible regardless of
+        // unit/type overlap; still never repeats "Undefined".
+        function wwTableColumnHeaderText(col) {
+            if (col.kind !== "analog") return col.label;
+            const parenParts = [];
+            if (col.unit) parenParts.push(col.unit);
+            if (col.engineering_quantity && col.engineering_quantity !== "Undefined") {
+                parenParts.push(col.engineering_quantity);
+            }
+            return parenParts.length ? col.label + " (" + parenParts.join(", ") + ")" : col.label;
+        }
+
+        // Task section 48/49: reuses wwFormatEngineeringValue() (the ONE
+        // existing general-purpose Y-axis-magnitude formatter, already
+        // used by the Cur A/B cursor readout) for analog cells -- display
+        // formatting only, never touching the underlying full-precision
+        // API value. A digital cell is a plain 0/1 integer, never run
+        // through that formatter (which would render "0.0"/"1.0"). A
+        // missing/non-finite canonical value (JSON `null`) is always
+        // "—", never coerced to 0.
+        function wwTableCellText(value, kind) {
+            if (value === null || value === undefined) return "—";
+            if (kind === "digital") return String(value);
+            if (kind === "time") return String(value);
+            return wwFormatEngineeringValue(value);
+        }
+
+        function wwTableRenderTable(body) {
+            const table = document.getElementById("wwTableEl");
+            let html = "<thead><tr>";
+            for (const col of body.columns) {
+                const headerText = wwTableColumnHeaderText(col);
+                html += '<th title="' + escapeHtml(headerText) + '">' + escapeHtml(headerText) + "</th>";
+            }
+            html += "</tr></thead><tbody>";
+            for (const row of body.rows) {
+                html += "<tr>";
+                for (let c = 0; c < body.columns.length; c++) {
+                    html += "<td>" + escapeHtml(wwTableCellText(row[c], body.columns[c].kind)) + "</td>";
+                }
+                html += "</tr>";
+            }
+            html += "</tbody>";
+            table.innerHTML = html;
+        }
+
+        // Same First/Previous/direct-entry/Next/Last UX
+        // wwDataPrepRenderPagination()/wwDataPrepJumpToPage() already
+        // established for the Data Preparation Workspace's own preview
+        // pager (task section 13: "reuse... where practical") -- a
+        // deliberately separate, Table-prefixed implementation rather
+        // than refactoring that already-shipped feature into a shared
+        // helper, so neither surface risks destabilizing the other.
+        function wwTableRenderPagination(body) {
+            const total = wwTable.totalRowCount;
+            const firstShown = body.rows.length > 0 ? wwTable.offset + 1 : 0;
+            const lastShown = wwTable.offset + body.returned_row_count;
+            document.getElementById("wwTableRangeLabel").textContent =
+                "Showing rows " + firstShown + "–" + lastShown + " of " + total;
+
+            const totalPages = Math.max(1, Math.ceil(total / wwTable.limit));
+            const currentPage = Math.floor(wwTable.offset / wwTable.limit) + 1;
+            wwTable.totalPages = totalPages;
+            wwTable.currentPage = currentPage;
+
+            const atFirst = wwTable.offset <= 0;
+            const atLast = (wwTable.offset + wwTable.limit) >= total;
+            document.getElementById("wwTableFirstBtn").disabled = atFirst;
+            document.getElementById("wwTablePrevBtn").disabled = atFirst;
+            document.getElementById("wwTableNextBtn").disabled = atLast;
+            document.getElementById("wwTableLastBtn").disabled = atLast;
+
+            document.getElementById("wwTablePageTotal").textContent = String(totalPages);
+            const pageInput = document.getElementById("wwTablePageInput");
+            if (document.activeElement !== pageInput) pageInput.value = String(currentPage);
+
+            document.getElementById("wwTablePagination").hidden = false;
+        }
+
+        function wwTableJumpToPage(rawValue) {
+            const pageInput = document.getElementById("wwTablePageInput");
+            const totalPages = wwTable.totalPages;
+            const trimmed = (rawValue || "").trim();
+            const parsed = Number(trimmed);
+            const isValid = trimmed !== "" && Number.isInteger(parsed) && parsed >= 1 && (totalPages == null || parsed <= totalPages);
+            if (!isValid) {
+                pageInput.value = String(wwTable.currentPage || 1);
+                return;
+            }
+            if (parsed === wwTable.currentPage) {
+                pageInput.value = String(parsed);
+                return;
+            }
+            wwTable.offset = (parsed - 1) * wwTable.limit;
+            wwTableFetchPage();
+        }
+
+        // Request-generation race safety (task section 46), the same
+        // pattern channelEntry.requestSeq already uses for waveform
+        // fetches -- if the user rapidly switches Recording A -> B -> C,
+        // only C's own response is ever applied, even if A's or B's
+        // response happens to resolve last.
+        async function wwTableFetchPage() {
+            if (!wwTable.sourceId) { wwTableRenderEmptyState(); return; }
+            const seq = ++wwTable.requestSeq;
+            const status = document.getElementById("wwTableStatus");
+            status.textContent = "Loading…";
+            try {
+                const response = await fetch(
+                    apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                        "/sources/" + encodeURIComponent(wwTable.sourceId) + "/table" +
+                        "?offset=" + wwTable.offset + "&limit=" + wwTable.limit
+                );
+                if (seq !== wwTable.requestSeq) return; // superseded by a later request
+                if (!response.ok) {
+                    const errorBody = await response.json().catch(() => null);
+                    status.textContent = (errorBody && errorBody.detail && errorBody.detail.message) || "Could not load table data.";
+                    document.getElementById("wwTableEmptyState").hidden = true;
+                    document.getElementById("wwTableWrap").hidden = true;
+                    document.getElementById("wwTablePagination").hidden = true;
+                    return;
+                }
+                const body = await response.json();
+                if (seq !== wwTable.requestSeq) return;
+                wwTable.columns = body.columns;
+                wwTable.totalRowCount = body.total_row_count;
+                document.getElementById("wwTableEmptyState").hidden = true;
+                document.getElementById("wwTableWrap").hidden = false;
+                wwTableRenderTable(body);
+                wwTableRenderPagination(body);
+                status.textContent = "";
+            } catch (error) {
+                if (seq !== wwTable.requestSeq) return;
+                status.textContent = "Could not reach the backend.";
+            }
+        }
+
+        document.getElementById("wwTableSourceSelect").addEventListener("change", (event) => {
+            wwTableSetSource(event.target.value);
+        });
+        document.getElementById("wwTableFirstBtn").addEventListener("click", () => {
+            wwTable.offset = 0;
+            wwTableFetchPage();
+        });
+        document.getElementById("wwTableLastBtn").addEventListener("click", () => {
+            const total = wwTable.totalRowCount;
+            if (total == null || total <= 0) return;
+            wwTable.offset = Math.max(0, Math.floor((total - 1) / wwTable.limit) * wwTable.limit);
+            wwTableFetchPage();
+        });
+        document.getElementById("wwTablePrevBtn").addEventListener("click", () => {
+            wwTable.offset = Math.max(0, wwTable.offset - wwTable.limit);
+            wwTableFetchPage();
+        });
+        document.getElementById("wwTableNextBtn").addEventListener("click", () => {
+            wwTable.offset += wwTable.limit;
+            wwTableFetchPage();
+        });
+        document.getElementById("wwTablePageInput").addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                wwTableJumpToPage(event.target.value);
+            }
+        });
+        document.getElementById("wwTablePageInput").addEventListener("blur", (event) => {
+            wwTableJumpToPage(event.target.value);
+        });
 
         // Analog Channels: collapsible top-level section (open by default --
         // it's the section owners review first, per UAT), sub-grouped by
@@ -24661,6 +25179,13 @@
         });
         document.getElementById("mainNavRecordingsBtn").addEventListener("click", () => shellSetCurrentPage("recordings"));
         document.getElementById("mainNavCalculatedChannelsBtn").addEventListener("click", () => shellSetCurrentPage("calculated-channels"));
+        // Canonical Table View (DEC-079): same shape as mainNavWaveformBtn
+        // above -- stays on the waveform shell page, only the local
+        // Active View switches (task section 3).
+        document.getElementById("mainNavTableBtn").addEventListener("click", () => {
+            shellSetCurrentPage("waveform");
+            shellSetActiveView("table");
+        });
         // "Settings" is real (flips the existing Light/Dark preference) --
         // the sole theme entry point in this shell (Phase 3A-UAT2: the
         // Global Header's own duplicate #themeToggle was removed).

@@ -28,7 +28,10 @@ from app.domain.channel_classification import (
     broad_engineering_type,
     canonical_engineering_quantity,
     classify_analog_channel,
+    encode_engineering_quantity_and_unit_suffix,
     encode_engineering_quantity_suffix,
+    measured_unit_valid_for_quantity,
+    parse_engineering_quantity_and_unit_suffix,
     parse_engineering_quantity_suffix,
 )
 
@@ -278,3 +281,165 @@ class TestEngineeringQuantitySuffixEncoder:
         re_exported = encode_engineering_quantity_suffix(base, restored_quantity)
         assert exported == re_exported == "df/dt (ROCOF)"
         assert classify_analog_channel(parameter_type="", unit="") == UNDEFINED
+
+
+class TestMeasuredUnitValidation:
+    """Measured Unit enhancement (DEC-080), task section AG: the closed,
+    quantity-dependent controlled unit list."""
+
+    @pytest.mark.parametrize(
+        "quantity,unit",
+        [
+            (ENGINEERING_QUANTITY_VOLTAGE, "V"),
+            (ENGINEERING_QUANTITY_VOLTAGE, "kV"),
+            (ENGINEERING_QUANTITY_CURRENT, "A"),
+            (ENGINEERING_QUANTITY_CURRENT, "kA"),
+            (ENGINEERING_QUANTITY_VOLTAGE_ANGLE, "deg"),
+            (ENGINEERING_QUANTITY_VOLTAGE_ANGLE, "rad"),
+            (ENGINEERING_QUANTITY_CURRENT_ANGLE, "deg"),
+            (ENGINEERING_QUANTITY_CURRENT_ANGLE, "rad"),
+            (ENGINEERING_QUANTITY_ACTIVE_POWER, "W"),
+            (ENGINEERING_QUANTITY_ACTIVE_POWER, "kW"),
+            (ENGINEERING_QUANTITY_ACTIVE_POWER, "MW"),
+            (ENGINEERING_QUANTITY_ACTIVE_POWER, "GW"),
+            (ENGINEERING_QUANTITY_REACTIVE_POWER, "var"),
+            (ENGINEERING_QUANTITY_REACTIVE_POWER, "kvar"),
+            (ENGINEERING_QUANTITY_REACTIVE_POWER, "Mvar"),
+            (ENGINEERING_QUANTITY_REACTIVE_POWER, "Gvar"),
+            (ENGINEERING_QUANTITY_FREQUENCY, "Hz"),
+            (ENGINEERING_QUANTITY_ROCOF, "Hz/s"),
+        ],
+    )
+    def test_valid_quantity_unit_pairs(self, quantity, unit):
+        assert measured_unit_valid_for_quantity(quantity, unit) is True
+
+    @pytest.mark.parametrize(
+        "quantity,unit",
+        [
+            (ENGINEERING_QUANTITY_VOLTAGE, "MW"),
+            (ENGINEERING_QUANTITY_CURRENT, "kV"),
+            (ENGINEERING_QUANTITY_FREQUENCY, "A"),
+            (ENGINEERING_QUANTITY_ROCOF, "Hz"),
+            (ENGINEERING_QUANTITY_VOLTAGE_ANGLE, "kV"),
+            (ENGINEERING_QUANTITY_ACTIVE_POWER, "Mvar"),
+            (ENGINEERING_QUANTITY_REACTIVE_POWER, "MW"),
+        ],
+    )
+    def test_invalid_quantity_unit_pairs(self, quantity, unit):
+        assert measured_unit_valid_for_quantity(quantity, unit) is False
+
+    @pytest.mark.parametrize(
+        "quantity",
+        list(KNOWN_ENGINEERING_QUANTITIES),
+    )
+    def test_blank_is_always_valid(self, quantity):
+        assert measured_unit_valid_for_quantity(quantity, "") is True
+
+    def test_undefined_quantity_only_accepts_blank(self):
+        assert measured_unit_valid_for_quantity(ENGINEERING_QUANTITY_UNDEFINED, "") is True
+        assert measured_unit_valid_for_quantity(ENGINEERING_QUANTITY_UNDEFINED, "V") is False
+
+    def test_unrecognized_quantity_only_accepts_blank(self):
+        assert measured_unit_valid_for_quantity("Impedance", "") is True
+        assert measured_unit_valid_for_quantity("Impedance", "ohm") is False
+
+
+class TestEngineeringQuantityAndUnitSuffixParser:
+    """Measured Unit enhancement (DEC-080), task sections S/T/AQ/AR: the
+    combined quantity+unit grammar, with quantity-only backward
+    compatibility."""
+
+    @pytest.mark.parametrize(
+        "label,expected_base,expected_quantity,expected_unit",
+        [
+            ("CBDK_V1 Magnitude (Voltage) [kV]", "CBDK_V1 Magnitude", ENGINEERING_QUANTITY_VOLTAGE, "kV"),
+            ("CBDK_V1 Angle (Voltage Angle) [deg]", "CBDK_V1 Angle", ENGINEERING_QUANTITY_VOLTAGE_ANGLE, "deg"),
+            ("CBDK_I1 Magnitude (Current) [A]", "CBDK_I1 Magnitude", ENGINEERING_QUANTITY_CURRENT, "A"),
+            ("CBDK_I1 Angle (Current Angle) [deg]", "CBDK_I1 Angle", ENGINEERING_QUANTITY_CURRENT_ANGLE, "deg"),
+            ("P (Active Power) [MW]", "P", ENGINEERING_QUANTITY_ACTIVE_POWER, "MW"),
+            ("Q (Reactive Power) [Mvar]", "Q", ENGINEERING_QUANTITY_REACTIVE_POWER, "Mvar"),
+            ("System Frequency (Frequency) [Hz]", "System Frequency", ENGINEERING_QUANTITY_FREQUENCY, "Hz"),
+            ("df/dt (ROCOF) [Hz/s]", "df/dt", ENGINEERING_QUANTITY_ROCOF, "Hz/s"),
+            # case-insensitive parse, canonical-cased result (task section S)
+            ("VA (voltage) [kv]", "VA", ENGINEERING_QUANTITY_VOLTAGE, "kV"),
+        ],
+    )
+    def test_recognized_quantity_and_unit_suffix_parses(self, label, expected_base, expected_quantity, expected_unit):
+        assert parse_engineering_quantity_and_unit_suffix(label) == (expected_base, expected_quantity, expected_unit)
+
+    def test_backward_compatible_quantity_only_suffix(self):
+        """DEC-077 files with no unit suffix at all (task section T/AR)."""
+        assert parse_engineering_quantity_and_unit_suffix("VA (Voltage)") == ("VA", ENGINEERING_QUANTITY_VOLTAGE, None)
+
+    @pytest.mark.parametrize(
+        "label",
+        [
+            "Time (s)",  # never misinterpreted as a quantity/unit suffix (task section W)
+            "Transformer [HV]",  # bare bracket, no quantity parenthesis at all
+            "Line (North) [A]",  # not a recognized quantity
+            "Voltage [estimated]",  # bare bracket, no quantity parenthesis at all
+            "VA (Voltage) [XX]",  # recognized quantity, but XX is not a valid unit for it
+            "P (Active Power) [kV]",  # recognized quantity, but kV is invalid for Active Power
+        ],
+    )
+    def test_unrecognized_or_invalid_bracket_never_matches(self, label):
+        assert parse_engineering_quantity_and_unit_suffix(label) == (label, None, None)
+
+
+class TestEngineeringQuantityAndUnitSuffixEncoder:
+    """Measured Unit enhancement (DEC-080), task sections P/Q/U/V: the
+    exporter's own inverse operation."""
+
+    @pytest.mark.parametrize(
+        "label,quantity,unit,expected",
+        [
+            ("CBDK_V1 Magnitude", ENGINEERING_QUANTITY_VOLTAGE, "kV", "CBDK_V1 Magnitude (Voltage) [kV]"),
+            ("CBDK_V1 Angle", ENGINEERING_QUANTITY_VOLTAGE_ANGLE, "deg", "CBDK_V1 Angle (Voltage Angle) [deg]"),
+            ("CBDK_I1 Magnitude", ENGINEERING_QUANTITY_CURRENT, "A", "CBDK_I1 Magnitude (Current) [A]"),
+            ("CBDK_I1 Angle", ENGINEERING_QUANTITY_CURRENT_ANGLE, "deg", "CBDK_I1 Angle (Current Angle) [deg]"),
+            ("P", ENGINEERING_QUANTITY_ACTIVE_POWER, "MW", "P (Active Power) [MW]"),
+            ("Q", ENGINEERING_QUANTITY_REACTIVE_POWER, "Mvar", "Q (Reactive Power) [Mvar]"),
+            ("System Frequency", ENGINEERING_QUANTITY_FREQUENCY, "Hz", "System Frequency (Frequency) [Hz]"),
+            ("df/dt", ENGINEERING_QUANTITY_ROCOF, "Hz/s", "df/dt (ROCOF) [Hz/s]"),
+        ],
+    )
+    def test_known_quantity_and_unit_appends_full_suffix(self, label, quantity, unit, expected):
+        assert encode_engineering_quantity_and_unit_suffix(label, quantity, unit) == expected
+
+    def test_blank_unit_omits_bracket_never_appends_empty_brackets(self):
+        assert (
+            encode_engineering_quantity_and_unit_suffix("CBDK_V1 Magnitude", ENGINEERING_QUANTITY_VOLTAGE, "")
+            == "CBDK_V1 Magnitude (Voltage)"
+        )
+        assert (
+            encode_engineering_quantity_and_unit_suffix("CBDK_V1 Magnitude", ENGINEERING_QUANTITY_VOLTAGE, None)
+            == "CBDK_V1 Magnitude (Voltage)"
+        )
+
+    def test_undefined_quantity_and_blank_unit_leaves_label_unchanged(self):
+        assert encode_engineering_quantity_and_unit_suffix("ABC", ENGINEERING_QUANTITY_UNDEFINED, "") == "ABC"
+
+    def test_reexporting_an_already_suffixed_label_does_not_duplicate(self):
+        once = encode_engineering_quantity_and_unit_suffix("CBDK_V1 Magnitude", ENGINEERING_QUANTITY_VOLTAGE, "kV")
+        twice = encode_engineering_quantity_and_unit_suffix(once, ENGINEERING_QUANTITY_VOLTAGE, "kV")
+        assert once == "CBDK_V1 Magnitude (Voltage) [kV]"
+        assert twice == "CBDK_V1 Magnitude (Voltage) [kV]"
+        assert "[kV] [kV]" not in twice
+        assert "(Voltage) (Voltage)" not in twice
+
+    def test_round_trip_stable_export_reupload_reexport(self):
+        exported = encode_engineering_quantity_and_unit_suffix("VA", ENGINEERING_QUANTITY_VOLTAGE, "kV")
+        base, restored_quantity, restored_unit = parse_engineering_quantity_and_unit_suffix(exported)
+        re_exported = encode_engineering_quantity_and_unit_suffix(base, restored_quantity, restored_unit)
+        assert exported == re_exported == "VA (Voltage) [kV]"
+
+    def test_backward_compatible_quantity_only_round_trip_stays_quantity_only(self):
+        """A DEC-077-only export (no unit) with a still-blank unit
+        re-exports identically, never gaining a spurious bracket (task
+        section AR)."""
+        exported = encode_engineering_quantity_and_unit_suffix("VA", ENGINEERING_QUANTITY_VOLTAGE, None)
+        assert exported == "VA (Voltage)"
+        base, restored_quantity, restored_unit = parse_engineering_quantity_and_unit_suffix(exported)
+        assert restored_unit is None
+        re_exported = encode_engineering_quantity_and_unit_suffix(base, restored_quantity, restored_unit)
+        assert re_exported == "VA (Voltage)"

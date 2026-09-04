@@ -245,6 +245,13 @@ class PreviewResult:
     # back (see app.domain.working_overlay.set_column_role's own
     # docstring for why nothing here clears it automatically).
     column_engineering_quantities: list[str] = field(default_factory=list)
+    # Measured Unit enhancement (DEC-080): one Measured Unit per column,
+    # sized/aligned exactly like column_engineering_quantities above,
+    # defaulting to "" (blank) for any column with no explicit
+    # column_measured_units entry -- same "absence is the default"
+    # convention. Reported for every column, same reasoning as
+    # column_engineering_quantities's own docstring.
+    column_measured_units: list[str] = field(default_factory=list)
 
 
 def _sniff_csv_delimiter(sample: str) -> str:
@@ -366,7 +373,7 @@ def _preview_csv(session: PreparationSession, *, offset: int, limit: int) -> Pre
     _apply_working_overlay(session, worksheet_index=None, rows=page)
     (
         header_row_number, data_start_row, data_end_mode, data_end_row,
-        column_labels, column_roles, column_engineering_quantities,
+        column_labels, column_roles, column_engineering_quantities, column_measured_units,
     ) = _apply_structure_mapping(
         session, worksheet_index=None, page=page, column_count=column_count, known_row_total=total_row_count,
     )
@@ -390,6 +397,7 @@ def _preview_csv(session: PreparationSession, *, offset: int, limit: int) -> Pre
         column_labels=column_labels,
         column_roles=column_roles,
         column_engineering_quantities=column_engineering_quantities,
+        column_measured_units=column_measured_units,
     )
 
 
@@ -437,7 +445,7 @@ def _preview_excel(session: PreparationSession, *, offset: int, limit: int) -> P
     column_count = worksheet_info.column_count or 0
     (
         header_row_number, data_start_row, data_end_mode, data_end_row,
-        column_labels, column_roles, column_engineering_quantities,
+        column_labels, column_roles, column_engineering_quantities, column_measured_units,
     ) = _apply_structure_mapping(
         session, worksheet_index=worksheet_index, page=page, column_count=column_count,
         known_row_total=worksheet_info.row_count,
@@ -462,6 +470,7 @@ def _preview_excel(session: PreparationSession, *, offset: int, limit: int) -> P
         column_labels=column_labels,
         column_roles=column_roles,
         column_engineering_quantities=column_engineering_quantities,
+        column_measured_units=column_measured_units,
     )
 
 
@@ -609,6 +618,19 @@ def _build_column_engineering_quantities(
     ]
 
 
+def _build_column_measured_units(
+    overlay: WorkingOverlay, worksheet_index: int | None, column_count: int,
+) -> list[str]:
+    """One Measured Unit per column (DEC-080), defaulting to `""` (blank)
+    for any column with no explicit `column_measured_units` entry --
+    mirrors `_build_column_engineering_quantities()` above exactly, same
+    sparse-dict-to-dense-list shape."""
+    return [
+        overlay.column_measured_units.get((worksheet_index, c), "")
+        for c in range(column_count)
+    ]
+
+
 def _resolve_header_cells(
     session: PreparationSession,
     *,
@@ -650,7 +672,7 @@ def _apply_structure_mapping(
     page: list[PreviewRow],
     column_count: int,
     known_row_total: int | None,
-) -> tuple[int | None, int | None, str | None, int | None, list[str], list[str], list[str]]:
+) -> tuple[int | None, int | None, str | None, int | None, list[str], list[str], list[str], list[str]]:
     """Slice 5's own post-processing step, run after
     `_apply_working_overlay` -- adds `is_header`/`in_active_region` to
     every row of `page` (mutated in place, same convention as that
@@ -698,9 +720,12 @@ def _apply_structure_mapping(
     column_engineering_quantities = (
         _build_column_engineering_quantities(overlay, worksheet_index, column_count) if column_count else []
     )
+    column_measured_units = (
+        _build_column_measured_units(overlay, worksheet_index, column_count) if column_count else []
+    )
     return (
         header_row_number, data_start_row, data_end_mode, data_end_row,
-        column_labels, column_roles, column_engineering_quantities,
+        column_labels, column_roles, column_engineering_quantities, column_measured_units,
     )
 
 

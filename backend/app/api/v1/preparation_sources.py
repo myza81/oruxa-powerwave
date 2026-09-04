@@ -58,6 +58,7 @@ from app.schemas.preparation_session import (
     DataRegionRequest,
     EngineeringQuantityRequest,
     HeaderRowRequest,
+    MeasuredUnitRequest,
     PreparationSessionSummaryOut,
     PreparationSourcePreviewOut,
     RowExclusionRequest,
@@ -106,9 +107,11 @@ from app.services.working_overlay_service import (
     reset_all_working_changes,
     reset_cell,
     reset_column_engineering_quantity,
+    reset_column_measured_unit,
     reset_column_role,
     reset_data_region,
     set_column_engineering_quantity,
+    set_column_measured_unit,
     set_column_role,
     set_data_region,
     set_header_row,
@@ -693,6 +696,59 @@ def delete_working_column_engineering_quantity(
     workspace_id = _validate_workspace_id(workspace_id)
     try:
         summary = reset_column_engineering_quantity(
+            workspace_id=workspace_id, source_id=source_id, column_index=column_index, registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return WorkingOverlaySummaryOut.from_domain(summary)
+
+
+@router.put(
+    "/{source_id}/working/columns/{column_index}/measured-unit", response_model=WorkingOverlaySummaryOut,
+)
+def put_working_column_measured_unit(
+    workspace_id: str,
+    source_id: str,
+    body: MeasuredUnitRequest,
+    column_index: int = Path(ge=0),
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> WorkingOverlaySummaryOut:
+    """Assign one column's Measured Unit (DEC-080) -- `""` (blank,
+    always valid) or one of the exact, canonical-cased strings in
+    `app.domain.channel_classification.MEASURED_UNIT_OPTIONS` for the
+    column's CURRENT Engineering Quantity (e.g. `"V"`/`"kV"` for
+    Voltage, `"MW"`/`"GW"` for Active Power) -- a 400 (`invalid_
+    measured_unit`) if the pair is not valid, never silently accepted
+    (task section AE/AF: the backend validates the pair itself, never
+    trusting the frontend's own dropdown filtering alone). Meaningful
+    only for a column currently carrying the Waveform role; see
+    `app.services.working_overlay_service.set_column_measured_unit`'s
+    own docstring."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        summary = set_column_measured_unit(
+            workspace_id=workspace_id, source_id=source_id,
+            column_index=column_index, measured_unit=body.measured_unit, registry=registry,
+        )
+    except ImportServiceError as exc:
+        raise _working_error(exc) from exc
+    return WorkingOverlaySummaryOut.from_domain(summary)
+
+
+@router.delete(
+    "/{source_id}/working/columns/{column_index}/measured-unit", response_model=WorkingOverlaySummaryOut,
+)
+def delete_working_column_measured_unit(
+    workspace_id: str,
+    source_id: str,
+    column_index: int = Path(ge=0),
+    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
+) -> WorkingOverlaySummaryOut:
+    """Reset one column's Measured Unit to blank -- the single neutral
+    default state."""
+    workspace_id = _validate_workspace_id(workspace_id)
+    try:
+        summary = reset_column_measured_unit(
             workspace_id=workspace_id, source_id=source_id, column_index=column_index, registry=registry,
         )
     except ImportServiceError as exc:

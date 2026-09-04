@@ -37,9 +37,11 @@ from app.domain.working_overlay import (
     reset_column_engineering_quantity,
     reset_column_role,
     reset_data_region,
+    reset_column_measured_unit,
     row_key,
     set_cell_value,
     set_column_engineering_quantity,
+    set_column_measured_unit,
     set_column_role,
     set_data_region,
     set_header_row,
@@ -315,6 +317,114 @@ class TestColumnEngineeringQuantities:
         undo(overlay)
 
         assert overlay.column_engineering_quantities[key] == ENGINEERING_QUANTITY_VOLTAGE
+
+
+class TestColumnMeasuredUnits:
+    """Measured Unit enhancement (DEC-080). Mirrors
+    TestColumnEngineeringQuantities's own structure -- the SAME sparse
+    "absence is the default" convention, the SAME undo/redo/revision
+    participation, and the SAME "not cleared merely because role later
+    moves away from ROLE_WAVEFORM" policy."""
+
+    def test_assign_each_known_non_default_unit(self):
+        overlay = WorkingOverlay()
+        for i, unit in enumerate(["kV", "kA"]):
+            key = column_key(None, i)
+            set_column_measured_unit(overlay, key, unit)
+            assert overlay.column_measured_units[key] == unit
+
+    def test_blank_unit_is_never_stored_explicitly(self):
+        overlay = WorkingOverlay()
+        key = column_key(None, 0)
+        set_column_measured_unit(overlay, key, "kV")
+
+        set_column_measured_unit(overlay, key, "")
+
+        assert key not in overlay.column_measured_units
+
+    def test_reset_removes_the_entry(self):
+        overlay = WorkingOverlay()
+        key = column_key(None, 1)
+        set_column_measured_unit(overlay, key, "A")
+
+        removed = reset_column_measured_unit(overlay, key)
+
+        assert removed is True
+        assert key not in overlay.column_measured_units
+
+    def test_reset_with_no_unit_is_a_safe_no_op(self):
+        overlay = WorkingOverlay()
+        key = column_key(None, 1)
+
+        removed = reset_column_measured_unit(overlay, key)
+
+        assert removed is False
+        assert overlay.revision == 0
+
+    def test_worksheet_index_keeps_units_isolated(self):
+        overlay = WorkingOverlay()
+        set_column_measured_unit(overlay, column_key(0, 0), "kV")
+        set_column_measured_unit(overlay, column_key(1, 0), "kA")
+
+        assert overlay.column_measured_units[column_key(0, 0)] == "kV"
+        assert overlay.column_measured_units[column_key(1, 0)] == "kA"
+
+    def test_revision_increments(self):
+        overlay = WorkingOverlay()
+        set_column_measured_unit(overlay, column_key(None, 0), "kV")
+        assert overlay.revision == 1
+
+    def test_undo_reverts_a_unit_assignment(self):
+        overlay = WorkingOverlay()
+        key = column_key(None, 0)
+        set_column_measured_unit(overlay, key, "kV")
+
+        undone = undo(overlay)
+
+        assert undone is True
+        assert key not in overlay.column_measured_units
+
+    def test_redo_reapplies_a_unit_assignment(self):
+        overlay = WorkingOverlay()
+        key = column_key(None, 0)
+        set_column_measured_unit(overlay, key, "kV")
+        undo(overlay)
+
+        redone = redo(overlay)
+
+        assert redone is True
+        assert overlay.column_measured_units[key] == "kV"
+
+    def test_reset_all_clears_measured_units_too(self):
+        overlay = WorkingOverlay()
+        set_column_measured_unit(overlay, column_key(None, 0), "kV")
+
+        reset_all(overlay)
+
+        assert overlay.column_measured_units == {}
+
+    def test_undo_after_reset_all_restores_measured_units(self):
+        overlay = WorkingOverlay()
+        key = column_key(None, 0)
+        set_column_measured_unit(overlay, key, "kV")
+        reset_all(overlay)
+
+        undo(overlay)
+
+        assert overlay.column_measured_units[key] == "kV"
+
+    def test_role_change_away_from_waveform_does_not_clear_measured_unit(self):
+        """Task section K: same policy as Engineering Quantity -- the
+        unit is ignored, not cleared, so it survives a round trip back
+        to Waveform."""
+        overlay = WorkingOverlay()
+        key = column_key(None, 0)
+        set_column_role(overlay, key, ROLE_WAVEFORM)
+        set_column_measured_unit(overlay, key, "kV")
+
+        set_column_role(overlay, key, ROLE_TIME_AXIS)
+
+        assert overlay.column_measured_units[key] == "kV"
 
 
 class TestHeaderRow:
@@ -761,6 +871,6 @@ class TestUndoRedo:
         op = overlay.history[-1]
         assert set(op.before.keys()) == {
             "cell_overrides", "excluded_rows", "column_roles", "column_engineering_quantities",
-            "header_row", "data_region", "time_axis",
+            "column_measured_units", "header_row", "data_region", "time_axis",
         }
         assert len(op.before["cell_overrides"]) == 5

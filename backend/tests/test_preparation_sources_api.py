@@ -1431,6 +1431,139 @@ class TestEngineeringQuantityEndpoints:
         assert rows["column_roles"][1] == "waveform"
 
 
+class TestMeasuredUnitEndpoints:
+    """Measured Unit enhancement (DEC-080): PUT/DELETE
+    .../working/columns/{column_index}/measured-unit."""
+
+    def test_put_unit_and_preview_reflects_it(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/engineering-quantity",
+            json={"engineering_quantity": "Voltage"},
+        )
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/measured-unit",
+            json={"measured_unit": "kV"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["column_measured_units"] == ["", "kV"]
+
+    def test_delete_unit_resets_to_blank(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/engineering-quantity",
+            json={"engineering_quantity": "Current"},
+        )
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/measured-unit",
+            json={"measured_unit": "A"},
+        )
+
+        resp = client.delete(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/measured-unit"
+        )
+
+        assert resp.status_code == 200, resp.text
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["column_measured_units"] == ["", ""]
+
+    def test_blank_unit_is_accepted_directly_via_put(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/measured-unit",
+            json={"measured_unit": ""},
+        )
+
+        assert resp.status_code == 200, resp.text
+
+    def test_invalid_pair_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/engineering-quantity",
+            json={"engineering_quantity": "Voltage"},
+        )
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/measured-unit",
+            json={"measured_unit": "MW"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_measured_unit"
+
+    def test_unit_without_any_quantity_selected_returns_400(self, client):
+        # Column defaults to Undefined -- only blank is ever valid.
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/measured-unit",
+            json={"measured_unit": "V"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_measured_unit"
+
+    def test_unit_column_beyond_known_bounds_returns_400(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/99/measured-unit",
+            json={"measured_unit": "kV"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "invalid_working_coordinate"
+
+    def test_default_preview_units_are_all_blank(self, client):
+        source_id = _upload_csv(client, content=b"a,b,c\n1,2,3\n")
+
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+
+        assert rows["column_measured_units"] == ["", "", ""]
+
+    def test_changing_quantity_clears_an_incompatible_unit_via_api(self, client):
+        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/engineering-quantity",
+            json={"engineering_quantity": "Voltage"},
+        )
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/measured-unit",
+            json={"measured_unit": "kV"},
+        )
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/engineering-quantity",
+            json={"engineering_quantity": "Frequency"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["column_measured_units"][0] == ""
+
+    def test_assigning_waveform_to_a_self_describing_header_restores_quantity_and_unit(self, client):
+        source_id = _upload_csv(
+            client, content=b"Time,CBDK_V1 Magnitude (Voltage) [kV]\n0.0,1.0\n0.02,2.0\n"
+        )
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/header", json={"row_number": 1})
+
+        resp = client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role",
+            json={"role": "waveform"},
+        )
+
+        assert resp.status_code == 200, resp.text
+        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
+        assert rows["column_engineering_quantities"][1] == "Voltage"
+        assert rows["column_measured_units"][1] == "kV"
+
+
 class TestResetAllIncludesStructureMapping:
     def test_reset_all_clears_header_region_and_roles(self, client):
         source_id = _upload_csv(client, content=b"Time,VR\n0.0,1\n0.001,2\n")

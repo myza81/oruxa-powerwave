@@ -20,6 +20,7 @@ from app.services.errors import (
     InvalidColumnRoleError,
     InvalidDataRegionError,
     InvalidEngineeringQuantityError,
+    InvalidMeasuredUnitError,
     InvalidWorkingCellValueError,
     InvalidWorkingCoordinateError,
     SourceNotFoundError,
@@ -38,9 +39,11 @@ from app.services.working_overlay_service import (
     reset_all_working_changes,
     reset_cell,
     reset_column_engineering_quantity,
+    reset_column_measured_unit,
     reset_column_role,
     reset_data_region,
     set_column_engineering_quantity,
+    set_column_measured_unit,
     set_column_role,
     set_data_region,
     set_header_row,
@@ -774,3 +777,230 @@ class TestEngineeringQuantitySuffixRestoration:
 
         session = registry.get("ws-1", source_id)
         assert column_key(None, 0) not in session.working_overlay.column_engineering_quantities
+
+
+class TestColumnMeasuredUnit:
+    """Measured Unit enhancement (DEC-080): direct PUT/DELETE-equivalent
+    service calls, mirroring TestColumnEngineeringQuantity's own
+    structure."""
+
+    def test_assign_and_read_back(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=source_id, column_index=1,
+            engineering_quantity="Voltage", registry=registry,
+        )
+
+        set_column_measured_unit(
+            workspace_id="ws-1", source_id=source_id, column_index=1, measured_unit="kV", registry=registry,
+        )
+
+        session = registry.get("ws-1", source_id)
+        assert session.working_overlay.column_measured_units[column_key(None, 1)] == "kV"
+
+    def test_blank_is_always_accepted(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        set_column_measured_unit(
+            workspace_id="ws-1", source_id=source_id, column_index=1, measured_unit="", registry=registry,
+        )
+
+        session = registry.get("ws-1", source_id)
+        assert column_key(None, 1) not in session.working_overlay.column_measured_units
+
+    def test_invalid_pair_is_rejected(self):
+        """Task section AE/AF: backend validates the quantity/unit pair
+        itself -- MW is not valid for Voltage."""
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=source_id, column_index=0,
+            engineering_quantity="Voltage", registry=registry,
+        )
+
+        with pytest.raises(InvalidMeasuredUnitError):
+            set_column_measured_unit(
+                workspace_id="ws-1", source_id=source_id, column_index=0, measured_unit="MW", registry=registry,
+            )
+
+    def test_active_power_rejects_reactive_power_unit(self):
+        """Task section AE: backend must not allow a Reactive Power unit
+        for an Active Power quantity, regardless of frontend filtering."""
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=source_id, column_index=0,
+            engineering_quantity="Active Power", registry=registry,
+        )
+
+        with pytest.raises(InvalidMeasuredUnitError):
+            set_column_measured_unit(
+                workspace_id="ws-1", source_id=source_id, column_index=0, measured_unit="Mvar", registry=registry,
+            )
+
+    def test_undefined_quantity_rejects_a_non_blank_unit(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        with pytest.raises(InvalidMeasuredUnitError):
+            set_column_measured_unit(
+                workspace_id="ws-1", source_id=source_id, column_index=0, measured_unit="V", registry=registry,
+            )
+
+    def test_column_beyond_known_bounds_is_rejected(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        with pytest.raises(InvalidWorkingCoordinateError):
+            set_column_measured_unit(
+                workspace_id="ws-1", source_id=source_id, column_index=99, measured_unit="kV", registry=registry,
+            )
+
+    def test_reset_column_measured_unit(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=source_id, column_index=1,
+            engineering_quantity="Current", registry=registry,
+        )
+        set_column_measured_unit(
+            workspace_id="ws-1", source_id=source_id, column_index=1, measured_unit="kA", registry=registry,
+        )
+
+        reset_column_measured_unit(workspace_id="ws-1", source_id=source_id, column_index=1, registry=registry)
+
+        session = registry.get("ws-1", source_id)
+        assert column_key(None, 1) not in session.working_overlay.column_measured_units
+
+    def test_role_changing_away_from_waveform_preserves_stored_unit(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="waveform", registry=registry)
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=source_id, column_index=0,
+            engineering_quantity="Voltage", registry=registry,
+        )
+        set_column_measured_unit(
+            workspace_id="ws-1", source_id=source_id, column_index=0, measured_unit="kV", registry=registry,
+        )
+
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="not_assigned", registry=registry)
+
+        session = registry.get("ws-1", source_id)
+        assert session.working_overlay.column_measured_units[column_key(None, 0)] == "kV"
+
+
+class TestQuantityChangeClearsIncompatibleUnit:
+    """Task section J: changing Engineering Quantity must never silently
+    convert an existing unit -- an incompatible one is cleared to blank."""
+
+    def test_changing_quantity_clears_an_incompatible_unit(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=source_id, column_index=0,
+            engineering_quantity="Voltage", registry=registry,
+        )
+        set_column_measured_unit(
+            workspace_id="ws-1", source_id=source_id, column_index=0, measured_unit="kV", registry=registry,
+        )
+
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=source_id, column_index=0,
+            engineering_quantity="Frequency", registry=registry,
+        )
+
+        session = registry.get("ws-1", source_id)
+        assert column_key(None, 0) not in session.working_overlay.column_measured_units
+
+    def test_changing_quantity_keeps_a_still_compatible_unit(self):
+        """Voltage -> Voltage Angle both share no common unit here, but a
+        genuinely shared value (blank) is left untouched, and switching
+        between the two Voltage-family quantities to an incompatible one
+        clears it -- this test locks in that a compatible transition
+        (Voltage -> Voltage, i.e. no real change) never clears a valid
+        unit."""
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=source_id, column_index=0,
+            engineering_quantity="Voltage", registry=registry,
+        )
+        set_column_measured_unit(
+            workspace_id="ws-1", source_id=source_id, column_index=0, measured_unit="kV", registry=registry,
+        )
+
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=source_id, column_index=0,
+            engineering_quantity="Voltage", registry=registry,
+        )
+
+        session = registry.get("ws-1", source_id)
+        assert session.working_overlay.column_measured_units[column_key(None, 0)] == "kV"
+
+    def test_resetting_quantity_to_undefined_clears_an_existing_unit(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+        set_column_engineering_quantity(
+            workspace_id="ws-1", source_id=source_id, column_index=0,
+            engineering_quantity="Voltage", registry=registry,
+        )
+        set_column_measured_unit(
+            workspace_id="ws-1", source_id=source_id, column_index=0, measured_unit="kV", registry=registry,
+        )
+
+        reset_column_engineering_quantity(workspace_id="ws-1", source_id=source_id, column_index=0, registry=registry)
+
+        session = registry.get("ws-1", source_id)
+        assert column_key(None, 0) not in session.working_overlay.column_measured_units
+
+
+class TestEngineeringQuantityAndUnitSuffixRestoration:
+    """Measured Unit enhancement (DEC-080), task section S: assigning
+    ROLE_WAVEFORM to a column whose current WORKING label carries a
+    recognized quantity+unit suffix restores BOTH automatically."""
+
+    def test_assigning_waveform_restores_quantity_and_unit_from_labeled_header(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"CBDK_V1 Magnitude (Voltage) [kV],Time\n1.0,0.0\n2.0,0.02\n")
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="waveform", registry=registry)
+
+        session = registry.get("ws-1", source_id)
+        assert session.working_overlay.column_engineering_quantities[column_key(None, 0)] == "Voltage"
+        assert session.working_overlay.column_measured_units[column_key(None, 0)] == "kV"
+
+    def test_quantity_only_suffix_still_restores_quantity_alone(self):
+        """Backward compatibility with a DEC-077-only export (task
+        section T/AR) -- no unit is restored because none was ever
+        encoded."""
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"CBDK_V1 Magnitude (Voltage),Time\n1.0,0.0\n")
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="waveform", registry=registry)
+
+        session = registry.get("ws-1", source_id)
+        assert session.working_overlay.column_engineering_quantities[column_key(None, 0)] == "Voltage"
+        assert column_key(None, 0) not in session.working_overlay.column_measured_units
+
+    def test_does_not_overwrite_an_explicit_prior_unit(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"CBDK_V1 Magnitude (Voltage) [kV],Time\n1.0,0.0\n")
+        set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="waveform", registry=registry)
+        set_column_measured_unit(
+            workspace_id="ws-1", source_id=source_id, column_index=0, measured_unit="V", registry=registry,
+        )
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="time_axis", registry=registry)
+
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="waveform", registry=registry)
+
+        session = registry.get("ws-1", source_id)
+        # The quantity was already explicit from the FIRST waveform
+        # assignment, so the auto-suggest block never fires again at all
+        # on this second round trip -- the user's own "V" override survives.
+        assert session.working_overlay.column_measured_units[column_key(None, 0)] == "V"

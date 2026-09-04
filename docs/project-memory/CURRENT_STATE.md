@@ -9,7 +9,47 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-04**. An eighth same-day enhancement
+Last meaningful update: **2026-09-04**. A tenth same-day enhancement
+([DECISIONS.md — DEC-080](DECISIONS.md#dec-080--csvexcel-waveform-columns-may-carry-an-explicit-measured-unit-quantity-dependent-and-never-guessed-from-engineering-quantity-cleaned-exports-encode-it-as-an-additional-strict-suffix-a-re-upload-restores-analogchannelunit-now-reaches-per-unit-conversion-for-csvexcel-closing-the-dec-077-conversion-gap))
+adds an explicit, user-selected **Measured Unit** for CSV/Excel
+Waveform columns — a closed, quantity-dependent list (e.g. Voltage:
+`V`/`kV`; Active Power: `W`/`kW`/`MW`/`GW`), separate from and never
+guessed from Engineering Quantity (DEC-077). This closes a real
+conversion gap DEC-077's own investigation had already surfaced:
+`AnalogChannel.unit` was hardcoded to `""` for every CSV/Excel channel,
+so Per-Unit conversion silently stayed `base_required` even with a base
+correctly configured. `preparation_conversion_service.py` now writes
+the selected Measured Unit into `AnalogChannel.unit` directly — the
+entire fix, since `app.domain.per_unit`'s own conversion functions
+already accepted and normalized a measured-unit string; zero changes
+were needed to `per_unit.py`, `group_aware_per_unit.py`, or DEC-078's
+Angle per-unit guardrail. Cleaned exports encode the unit as an
+additional strict suffix (`"<label> (<Quantity>) [<Unit>]"`), restored
+on re-upload without requiring the manifest; a blank unit remains valid
+and is never a readiness blocker. See
+[Implemented capabilities](#implemented-capabilities). A ninth
+same-day enhancement
+([DECISIONS.md — DEC-079](DECISIONS.md#dec-079--canonical-table-view-v1-a-read-only-one-recording-at-a-time-table-over-the-exact-canonical-disturbancerecord-with-a-new-boundedpaginated-get-sourcesidtable-endpoint-no-cross-source-merging-no-source-format-branching-no-workspace-synchronization-time-offsets))
+implements **Canonical Table View v1**, replacing the previously-
+disabled sidebar "Table" button and the Waveform|Table|Split
+placeholder with a real, read-only table over one recording's exact
+canonical `DisturbanceRecord` at a time — never a merge of multiple
+recordings, never a reconstruction of the raw source file, never a
+second copy of Waveform View's own plotting data. A new
+`GET .../sources/{id}/table?offset=&limit=` endpoint returns exact,
+unreduced canonical rows (deliberately NOT reusing the waveform
+endpoint's point-budget/envelope reduction); a "row" is simply a slice
+of the same shared `DisturbanceRecord.waveform_data` DataFrame every
+analog and digital channel already lives in, so multi-rate COMTRADE and
+irregular CSV/Excel timing both work with zero source-format branching
+anywhere in the new code. Table time is always the recording's own
+canonical source time — workspace synchronization offsets (manual
+alignment, common t0, event sync) are a Waveform-View-only concept and
+are never applied here. Pagination reuses the existing Data Preview
+pagination UX verbatim; Per-Unit display mode is verified (via a
+dedicated regression) to never affect table values. See
+[Implemented capabilities](#implemented-capabilities). An eighth
+same-day enhancement
 ([DECISIONS.md — DEC-078](DECISIONS.md#dec-078--voltage-anglecurrent-angle-channels-plot-on-a-secondary-right-y-axis-sharing-their-magnitude-siblings-panel-the-same-two-quantities-are-never-eligible-for-voltagecurrent-per-unit-conversion))
 plots Voltage Angle/Current Angle channels on a genuine secondary
 (right) Plotly Y-axis while keeping them in the SAME panel as their
@@ -239,6 +279,19 @@ re-confirmed by the TG-FINAL audit):
   `engineering_type`)/Separate (one panel per channel)/Custom (user-defined
   via an Edit Channel Groups dialog) layout modes, all Time-Group-bounded;
   every panel independently resizable (100–600px, presentation-only).
+- **Canonical Table View v1 (DEC-079, 2026-09-04)**: a read-only table
+  showing one recording's exact canonical `DisturbanceRecord` data at a
+  time — canonical Time first, then every analog channel (canonical
+  order, with unit/Engineering Quantity), then digital channels; a
+  source selector switches which recording is shown, always fully
+  replacing the table, never merging. Backed by a new
+  `GET .../sources/{id}/table?offset=&limit=` endpoint returning exact
+  unreduced rows (no plot-style downsampling); paginated with the same
+  First/Previous/direct-page-entry/Next/Last UX as Data Preview. Table
+  time is the recording's own canonical source time, never a
+  workspace-synchronization-adjusted one. Split View is not
+  implemented; the sidebar Table button and the local Waveform|Table|
+  Split selector share the same `shell.activeView` state.
 - **Adaptive resolution**: ≤10,000 original samples per channel per
   requested range returns full resolution; above that, a peak-preserving
   min/max envelope reduction with a pixel-aware point budget
@@ -269,6 +322,19 @@ re-confirmed by the TG-FINAL audit):
   channel with `engineering_quantity = "Undefined"` (every COMTRADE
   channel today, and any CSV/Excel channel the engineer never
   classified) keeps today's exact broad-type-only behavior.
+  **DEC-080 (2026-09-04) closes a real conversion gap**: CSV/Excel
+  Waveform columns may now carry an explicit, quantity-dependent
+  Measured Unit (e.g. Voltage: `V`/`kV`), threaded directly into
+  `AnalogChannel.unit` at conversion time — previously always `""`,
+  which meant `_measured_unit_scale()` could never recognize a CSV/
+  Excel Voltage/Current channel's own unit, leaving Per-Unit `base_
+  required` even with a base configured. A CSV/Excel Voltage or
+  Current channel with a valid Measured Unit and a configured base now
+  resolves `configured` and scales into `pu`, identically to COMTRADE
+  — zero changes to `per_unit.py`/`group_aware_per_unit.py` themselves
+  were needed. A blank unit still leaves the channel `base_required`
+  (fail-closed, unchanged); the DEC-078 Angle guardrail is unaffected
+  (a valid `deg`/`rad` unit never makes an Angle channel PU-eligible).
 - **Calculated channels**: workspace-scoped derived analog channels —
   Reverse Polarity, Absolute Value, Multiply-by-Constant, N-input Addition,
   ordered N-input Subtraction, and trailing one-cycle RMS. Multi-input
