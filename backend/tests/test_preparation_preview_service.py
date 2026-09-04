@@ -33,7 +33,6 @@ from app.services.working_overlay_service import (
     reset_all_working_changes,
     reset_cell,
     reset_data_region,
-    set_column_ignored,
     set_column_role,
     set_data_region,
     set_header_row,
@@ -455,16 +454,16 @@ class TestWorkingOverlayInCsvPreview:
         assert [r.excluded for r in result.rows] == [False, False, True, False]
         assert result.rows[2].cells == ["3", "4"]  # excluded row's own data is unchanged
 
-    def test_ignored_column_is_reported_page_independently(self):
+    def test_not_assigned_column_is_reported_page_independently(self):
         registry = PreparationSessionRegistry()
         source_id = _add_csv(registry, b"a,b,c\n1,2,3\n")  # row 1: a,b,c / row 2: 1,2,3
 
-        set_column_ignored(workspace_id="ws-1", source_id=source_id, column_index=1, ignored=True, registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry)
         result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
 
-        assert result.ignored_columns == [1]
-        # Ignoring a column never removes it from the returned cells --
-        # it is a display/consumption hint, not a structural deletion.
+        assert result.column_roles == ["not_assigned", "waveform", "not_assigned"]
+        # A column's role never removes it from the returned cells --
+        # it is a classification, not a structural deletion.
         assert result.rows[1].cells == ["1", "2", "3"]
 
     def test_working_revision_reflects_the_overlays_own_revision_counter(self):
@@ -484,14 +483,14 @@ class TestWorkingOverlayInCsvPreview:
 
         edit_cell(workspace_id="ws-1", source_id=source_id, row_number=1, column_index=0, value="X", registry=registry)
         set_row_excluded(workspace_id="ws-1", source_id=source_id, row_number=2, excluded=True, registry=registry)
-        set_column_ignored(workspace_id="ws-1", source_id=source_id, column_index=1, ignored=True, registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry)
 
         reset_all_working_changes(workspace_id="ws-1", source_id=source_id, registry=registry)
         result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
 
         assert result.rows[0].cells == ["a", "b"]
         assert [r.excluded for r in result.rows] == [False, False, False]
-        assert result.ignored_columns == []
+        assert result.column_roles == ["not_assigned", "not_assigned"]
 
     def test_no_overlay_activity_skips_overlay_processing_entirely(self):
         # A freshly uploaded/unedited source's preview must look byte-
@@ -505,7 +504,6 @@ class TestWorkingOverlayInCsvPreview:
 
         assert result.rows[0].excluded is False
         assert result.rows[0].modified_cells == []
-        assert result.ignored_columns == []
         assert result.working_revision == 0
 
     def test_raw_bytes_are_never_mutated_by_an_edit(self):
@@ -784,30 +782,25 @@ class TestDataRegionEndModeInPreview:
 
 
 class TestColumnRolesInPreview:
-    def test_default_roles_are_unknown(self):
+    def test_default_roles_are_not_assigned(self):
         registry = PreparationSessionRegistry()
         source_id = _add_csv(registry, b"a,b,c\n1,2,3\n")
 
         result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
 
-        assert result.column_roles == ["unknown", "unknown", "unknown"]
+        assert result.column_roles == ["not_assigned", "not_assigned", "not_assigned"]
 
     def test_assigned_roles_appear_in_preview(self):
         registry = PreparationSessionRegistry()
-        source_id = _add_csv(registry, b"a,b,c,d,e,f\n1,2,3,4,5,6\n")
+        source_id = _add_csv(registry, b"a,b,c,d\n1,2,3,4\n")
         set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="time_axis", registry=registry)
         set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry)
         set_column_role(workspace_id="ws-1", source_id=source_id, column_index=2, role="waveform", registry=registry)
-        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=3, role="metadata", registry=registry)
-        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=4, role="quality_status", registry=registry)
-        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=5, role="ignore", registry=registry)
+        # column_index=3 is left at its default (not_assigned)
 
         result = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
 
-        assert result.column_roles == [
-            "time_axis", "waveform", "waveform", "metadata", "quality_status", "ignore",
-        ]
-        assert result.ignored_columns == [5]
+        assert result.column_roles == ["time_axis", "waveform", "waveform", "not_assigned"]
 
     def test_multiple_time_axis_columns_both_reported(self):
         registry = PreparationSessionRegistry()
@@ -828,8 +821,8 @@ class TestColumnRolesInPreview:
         page1 = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=5, registry=registry)
         page2 = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=10, limit=5, registry=registry)
 
-        assert page1.column_roles == ["unknown", "waveform"]
-        assert page2.column_roles == ["unknown", "waveform"]
+        assert page1.column_roles == ["not_assigned", "waveform"]
+        assert page2.column_roles == ["not_assigned", "waveform"]
 
     def test_header_edit_does_not_change_role(self):
         registry = PreparationSessionRegistry()
@@ -854,7 +847,7 @@ class TestColumnRolesInPreview:
 
         select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=1, registry=registry)
         result_b = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
-        assert result_b.column_roles == ["unknown"]
+        assert result_b.column_roles == ["not_assigned"]
 
         select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=0, registry=registry)
         result_a = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=10, registry=registry)
@@ -877,4 +870,4 @@ class TestResetAllIncludesStructureMapping:
         assert result.column_labels == ["A", "B"]
         assert result.data_start_row is None
         assert all(r.in_active_region for r in result.rows)
-        assert result.column_roles == ["unknown", "unknown"]
+        assert result.column_roles == ["not_assigned", "not_assigned"]

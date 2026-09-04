@@ -29,8 +29,19 @@ neutral-spreadsheet-letter fallback task sections E/F ask for) --
 this module adds only ONE new piece of logic on top: deduplicating
 those labels for the columns actually being exported (task section G),
 via the SAME stable-position `__{SpreadsheetLetter}` suffix strategy
-Slice 10's own `_unique_channel_names()` established, generalized here
-to every non-`ignore` column rather than only Waveform Channel ones.
+Slice 10's own `_unique_channel_names()` established.
+
+**UAT fix (2026-09-04): cleaned export now includes ONLY Time Axis and
+Waveform columns.** Owner-approved simplification of the column-role
+model to exactly three roles (`not_assigned`/`time_axis`/`waveform` --
+see `app.domain.working_overlay`'s own module docstring for the full
+rationale) makes `not_assigned` the single "not used by Powerwave"
+state; this module now omits every `not_assigned` column from the
+cleaned table (previously, the five-role model's `metadata`/`quality_
+status`/`unknown` roles were all KEPT in export, and only the separate
+`ignore` role was omitted -- that distinction no longer exists). The
+manifest's own `omitted_columns` entries record each excluded column's
+`role` so the exact reason is never left implicit.
 
 **Time columns are never touched** (task sections M/N): a Time Axis
 column exports its own CURRENT WORKING value verbatim, exactly like
@@ -82,7 +93,7 @@ from openpyxl import Workbook
 
 from app.domain.preparation_session import FORMAT_CSV, PreparationSession
 from app.domain.time_axis import PROVENANCE_RECONSTRUCTED
-from app.domain.working_overlay import OVERRIDE_KIND_CLEAR, OVERRIDE_KIND_EDIT, ROLE_IGNORE
+from app.domain.working_overlay import OVERRIDE_KIND_CLEAR, OVERRIDE_KIND_EDIT, ROLE_TIME_AXIS, ROLE_WAVEFORM
 from app.services.errors import ExportRevisionChangedError, SourceNotFoundError, WorksheetNotSelectedError
 from app.services.preparation_issue_service import build_issue_summary
 from app.services.preparation_preview_service import (
@@ -186,12 +197,12 @@ def _unique_export_names(column_labels: list[str], included_column_indices: list
     column to use a given label keeps it verbatim; every LATER included
     column sharing that same label gets a stable `__{SpreadsheetLetter}`
     suffix (`Voltage`, `Voltage__C`, `Voltage__D`). Deliberately scoped
-    to only the columns actually being exported -- an omitted `Ignore`
-    column's own label never consumes a disambiguation slot for columns
-    that ARE exported. `column_labels` already carries `preview_
-    preparation_source()`'s own header-row-value / neutral-fallback
-    logic (task sections E/F); this function's only job is uniqueness on
-    top of that, never re-deriving the label itself."""
+    to only the columns actually being exported -- an omitted
+    `not_assigned` column's own label never consumes a disambiguation
+    slot for columns that ARE exported. `column_labels` already carries
+    `preview_preparation_source()`'s own header-row-value / neutral-
+    fallback logic (task sections E/F); this function's only job is
+    uniqueness on top of that, never re-deriving the label itself."""
     seen: dict[str, int] = {}
     result: dict[int, str] = {}
     for column_index in included_column_indices:
@@ -240,12 +251,19 @@ def export_preparation_source(
     preview = preview_preparation_source(workspace_id=workspace_id, source_id=source_id, offset=0, limit=1, registry=registry)
     column_labels = preview.column_labels
     column_roles = preview.column_roles
+    # UAT fix (2026-09-04), task section I: cleaned export now includes
+    # ONLY explicitly-assigned Time Axis/Waveform columns -- every
+    # `not_assigned` column (the default/neutral role; see
+    # `app.domain.working_overlay`'s own module docstring for the
+    # three-role simplification) is omitted, not just the formerly-
+    # separate `ignore` role. `role` is recorded on each omitted entry
+    # so the manifest states WHY a column was excluded (task section O).
+    included_column_indices = [c for c, role in enumerate(column_roles) if role in (ROLE_TIME_AXIS, ROLE_WAVEFORM)]
     omitted_columns = [
-        {"column_index": c, "label": column_labels[c] if c < len(column_labels) else _spreadsheet_column_label(c)}
+        {"column_index": c, "label": column_labels[c] if c < len(column_labels) else _spreadsheet_column_label(c), "role": role}
         for c, role in enumerate(column_roles)
-        if role == ROLE_IGNORE
+        if c not in included_column_indices
     ]
-    included_column_indices = [c for c, role in enumerate(column_roles) if role != ROLE_IGNORE]
     export_name_by_column = _unique_export_names(column_labels, included_column_indices)
     header_names = [export_name_by_column[c] for c in included_column_indices]
 

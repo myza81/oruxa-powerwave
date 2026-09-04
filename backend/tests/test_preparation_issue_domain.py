@@ -6,7 +6,6 @@ Pure data-structure tests -- no registry, no CSV/Excel I/O, no HTTP.
 from __future__ import annotations
 
 from app.domain.preparation_issue import (
-    ISSUE_COLUMN_ROLES_UNASSIGNED,
     ISSUE_DATA_REGION_UNCONFIGURED,
     ISSUE_HEADER_NOT_SELECTED,
     KNOWN_ISSUE_CODES,
@@ -27,8 +26,13 @@ class TestSeverityModel:
     def test_known_issue_codes_are_stable_strings(self):
         assert ISSUE_HEADER_NOT_SELECTED in KNOWN_ISSUE_CODES
         assert ISSUE_DATA_REGION_UNCONFIGURED in KNOWN_ISSUE_CODES
-        assert ISSUE_COLUMN_ROLES_UNASSIGNED in KNOWN_ISSUE_CODES
         assert all(isinstance(code, str) and code for code in KNOWN_ISSUE_CODES)
+
+    def test_column_roles_unassigned_is_retired(self):
+        # UAT fix (2026-09-04): `not_assigned` is now a normal,
+        # intentional final state -- not incomplete configuration -- so
+        # this code no longer exists at all.
+        assert "column_roles_unassigned" not in KNOWN_ISSUE_CODES
 
 
 class TestIssueConstruction:
@@ -88,7 +92,7 @@ class TestIssueConstruction:
 
     def test_details_carries_small_structured_data(self):
         issue = PreparationIssue(
-            severity=SEVERITY_INFO, code=ISSUE_COLUMN_ROLES_UNASSIGNED, message="msg",
+            severity=SEVERITY_INFO, code=ISSUE_HEADER_NOT_SELECTED, message="msg",
             details={"unassigned_count": 4, "total_columns": 6},
         )
 

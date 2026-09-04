@@ -92,8 +92,7 @@ from app.domain.preparation_session import FORMAT_CSV, FORMAT_EXCEL, Preparation
 from app.domain.working_overlay import (
     END_MODE_SPECIFIC,
     OVERRIDE_KIND_CLEAR,
-    ROLE_IGNORE,
-    ROLE_UNKNOWN,
+    ROLE_NOT_ASSIGNED,
     WorkingOverlay,
 )
 from app.services.errors import SourceNotFoundError, WorkbookParseError, WorksheetNotSelectedError
@@ -184,16 +183,20 @@ class PreviewRow:
 class PreviewResult:
     """See this module's own docstring for the CSV/Excel strategies that
     produce this. `selected_worksheet_index` is `None` for CSV (no
-    worksheet concept at all -- never fabricated). `ignored_columns`
-    lists column indices with role `ignore` for the CURRENT worksheet
-    (or for CSV, the source as a whole) -- page-independent, same set on
-    every page; kept as its own field for Slice 4 API backward
-    compatibility even though `column_roles` (Slice 5) now carries the
-    same information (and more) for every column, not just ignored
-    ones. `working_revision` is `WorkingOverlay.revision` at the moment
-    this page was read, for the frontend's own stale-page/refresh
-    bookkeeping (task's own "lightweight revision counter... stale-page
-    detection").
+    worksheet concept at all -- never fabricated). `working_revision` is
+    `WorkingOverlay.revision` at the moment this page was read, for the
+    frontend's own stale-page/refresh bookkeeping (task's own
+    "lightweight revision counter... stale-page detection").
+
+    UAT fix (2026-09-04): the Slice 4-era `ignored_columns` field
+    (column indices with the now-retired `ignore` role) is retired --
+    `column_roles` (Slice 5) already carries the same information for
+    EVERY column, not just the ones a caller would once have called
+    "ignored," and the three-role simplification (`not_assigned`/
+    `time_axis`/`waveform`) collapses "ignored" and "unclassified" into
+    the SAME single state anyway, so a separate field would be purely
+    redundant. A caller wanting "which columns are not analysed by
+    Powerwave" now derives it directly from `column_roles`.
 
     Slice 5: `header_row_number`/`data_start_row`/`data_end_mode`/
     `data_end_row` mirror
@@ -223,7 +226,6 @@ class PreviewResult:
     column_count: int | None
     column_count_basis: str
     rows: list[PreviewRow]
-    ignored_columns: list[int] = field(default_factory=list)
     working_revision: int = 0
     header_row_number: int | None = None
     data_start_row: int | None = None
@@ -365,7 +367,6 @@ def _preview_csv(session: PreparationSession, *, offset: int, limit: int) -> Pre
         column_count=column_count,
         column_count_basis=ROW_BASIS_EXACT,
         rows=page,
-        ignored_columns=_ignored_columns_for_worksheet(session.working_overlay, None),
         working_revision=session.working_overlay.revision,
         header_row_number=header_row_number,
         data_start_row=data_start_row,
@@ -434,7 +435,6 @@ def _preview_excel(session: PreparationSession, *, offset: int, limit: int) -> P
         column_count=worksheet_info.column_count,
         column_count_basis=ROW_BASIS_BEST_EFFORT if worksheet_info.column_count is not None else ROW_BASIS_UNKNOWN,
         rows=page,
-        ignored_columns=_ignored_columns_for_worksheet(session.working_overlay, worksheet_index),
         working_revision=session.working_overlay.revision,
         header_row_number=header_row_number,
         data_start_row=data_start_row,
@@ -463,17 +463,6 @@ def _excluded_rows_for_worksheet(overlay: WorkingOverlay, worksheet_index: int |
     return {row_number for (ws, row_number) in overlay.excluded_rows if ws == worksheet_index}
 
 
-def _ignored_columns_for_worksheet(overlay: WorkingOverlay, worksheet_index: int | None) -> list[int]:
-    """Slice 4 API-compatible view: which columns currently carry
-    `ROLE_IGNORE` (Slice 5's own authoritative representation -- see
-    `app.domain.working_overlay`'s own module docstring for why the
-    old, separate `ignored_columns` set was retired in favor of this
-    single source of truth)."""
-    return sorted(
-        column_index
-        for (ws, column_index), role in overlay.column_roles.items()
-        if ws == worksheet_index and role == ROLE_IGNORE
-    )
 
 
 def _apply_working_overlay(session: PreparationSession, *, worksheet_index: int | None, rows: list[PreviewRow]) -> None:
@@ -551,14 +540,15 @@ def _build_column_labels(header_cells: list[Any] | None, column_count: int) -> l
 
 
 def _build_column_roles(overlay: WorkingOverlay, worksheet_index: int | None, column_count: int) -> list[str]:
-    """One role per column (Slice 5), defaulting to `ROLE_UNKNOWN` for
-    any column with no explicit `column_roles` entry -- the model's own
-    "absence is the default, never automatically classified" guarantee
-    (see `app.domain.working_overlay`'s own module docstring), made
-    visible here as an explicit value per column rather than a sparse
-    dict the frontend would have to fill in itself."""
+    """One role per column (Slice 5), defaulting to `ROLE_NOT_ASSIGNED`
+    for any column with no explicit `column_roles` entry -- the model's
+    own "absence is the default, never automatically classified"
+    guarantee (see `app.domain.working_overlay`'s own module
+    docstring), made visible here as an explicit value per column
+    rather than a sparse dict the frontend would have to fill in
+    itself."""
     return [
-        overlay.column_roles.get((worksheet_index, c), ROLE_UNKNOWN)
+        overlay.column_roles.get((worksheet_index, c), ROLE_NOT_ASSIGNED)
         for c in range(column_count)
     ]
 

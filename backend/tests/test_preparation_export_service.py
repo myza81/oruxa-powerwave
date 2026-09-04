@@ -104,6 +104,7 @@ class TestCsvActiveRegionOnly:
         lines = [f"row{i},{i}.0" for i in range(1, 11)]
         sid = _add_csv(prep, ("\n".join(lines) + "\n").encode())
         set_data_region(workspace_id=WS, source_id=sid, start_row=3, end_row=6, registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_csv_rows(_unzip(result.content))
@@ -118,6 +119,9 @@ class TestCsvHeaderHandling:
         sid = _add_csv(prep, content)
         set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
         set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=3, registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="time_axis", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=2, role="waveform", registry=prep)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_csv_rows(_unzip(result.content))
@@ -128,6 +132,8 @@ class TestCsvHeaderHandling:
     def test_no_header_uses_neutral_spreadsheet_letter_names(self):
         prep = PreparationSessionRegistry()
         sid = _add_csv(prep, b"1.0,2.0\n3.0,4.0\n")
+        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_csv_rows(_unzip(result.content))
@@ -142,6 +148,8 @@ class TestCsvHeaderHandling:
         sid = _add_csv(prep, content)
         set_header_row(workspace_id=WS, source_id=sid, row_number=2, registry=prep)
         set_data_region(workspace_id=WS, source_id=sid, start_row=1, end_row=5, registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="time_axis", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_csv_rows(_unzip(result.content))
@@ -158,6 +166,7 @@ class TestCsvRowExclusion:
         content = b"1,a\n2,b\n3,c\n4,d\n"
         sid = _add_csv(prep, content)
         set_row_excluded(workspace_id=WS, source_id=sid, row_number=2, excluded=True, registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_csv_rows(_unzip(result.content))
@@ -166,14 +175,17 @@ class TestCsvRowExclusion:
         assert [r[0] for r in data_rows] == ["1", "3", "4"]
 
 
-class TestCsvIgnoredColumns:
-    def test_ignored_columns_physically_omitted(self):
+class TestCsvNotAssignedColumns:
+    def test_not_assigned_columns_physically_omitted(self):
         prep = PreparationSessionRegistry()
         content = b"Time,VR,VY,VB\n13:14:01,1.0,2.0,3.0\n"
         sid = _add_csv(prep, content)
         set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
         set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=2, registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=2, role="ignore", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="time_axis", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=3, role="waveform", registry=prep)
+        # column_index=2 ("VY") is left at its default (not_assigned)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         zf = _unzip(result.content)
@@ -181,23 +193,37 @@ class TestCsvIgnoredColumns:
         manifest = _read_manifest(zf)
 
         assert rows[0] == ["Time", "VR", "VB"]
-        assert manifest["omitted_columns"] == [{"column_index": 2, "label": "VY"}]
+        assert manifest["omitted_columns"] == [{"column_index": 2, "label": "VY", "role": "not_assigned"}]
 
-    def test_other_roles_all_remain_in_export(self):
+    def test_only_time_axis_and_waveform_columns_remain_in_export(self):
+        # Task section J/W worked example: Time -> Time Axis,
+        # Voltage -> Waveform, Status/Comment left Not Assigned (the
+        # default) -- cleaned export keeps only Time and Voltage.
         prep = PreparationSessionRegistry()
-        content = b"Time,VR,Meta,Status,Unk\n13:14:01,1.0,x,ok,z\n"
+        content = b"Time,Voltage,Status,Comment\n13:14:01,1.0,ok,note\n"
         sid = _add_csv(prep, content)
         set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
         set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=2, registry=prep)
         set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="time_axis", registry=prep)
         set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=2, role="metadata", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=3, role="quality_status", registry=prep)
+        # column_index=2 ("Status") and column_index=3 ("Comment") are
+        # left at their default (not_assigned)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        rows = _read_csv_rows(_unzip(result.content))
+        zf = _unzip(result.content)
+        rows = _read_csv_rows(zf)
+        manifest = _read_manifest(zf)
 
-        assert rows[0] == ["Time", "VR", "Meta", "Status", "Unk"]
+        assert rows[0] == ["Time", "Voltage"]
+        assert rows[1] == ["13:14:01", "1.0"]
+        assert {c["label"] for c in manifest["omitted_columns"]} == {"Status", "Comment"}
+        assert all(c["role"] == "not_assigned" for c in manifest["omitted_columns"])
+
+        # The raw source itself is never mutated -- Status/Comment stay
+        # fully intact in the immutable original, just excluded from
+        # the derived cleaned export.
+        session = prep.get(WS, sid)
+        assert session.raw_bytes == content
 
 
 class TestCsvWorkingEdits:
@@ -205,6 +231,8 @@ class TestCsvWorkingEdits:
         prep = PreparationSessionRegistry()
         sid = _add_csv(prep, b"1,ERR\n")
         edit_cell(workspace_id=WS, source_id=sid, row_number=1, column_index=1, value="2.5", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_csv_rows(_unzip(result.content))
@@ -215,6 +243,8 @@ class TestCsvWorkingEdits:
         prep = PreparationSessionRegistry()
         sid = _add_csv(prep, b"1,2\n")
         edit_cell(workspace_id=WS, source_id=sid, row_number=1, column_index=1, value=None, registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_csv_rows(_unzip(result.content))
@@ -225,6 +255,8 @@ class TestCsvWorkingEdits:
     def test_untouched_value_exported_as_raw(self):
         prep = PreparationSessionRegistry()
         sid = _add_csv(prep, b"1,9.876\n")
+        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_csv_rows(_unzip(result.content))
@@ -243,13 +275,16 @@ class TestCsvWorkingEdits:
 
 
 class TestCsvColumnOrderAndDuplicateLabels:
-    def test_source_column_order_preserved_after_ignore_removed(self):
+    def test_source_column_order_preserved_with_not_assigned_omitted(self):
         prep = PreparationSessionRegistry()
         content = b"A,B,C,D\n1,2,3,4\n"
         sid = _add_csv(prep, content)
         set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
         set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=2, registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="ignore", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=2, role="waveform", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=3, role="waveform", registry=prep)
+        # column_index=1 ("B") is left at its default (not_assigned)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_csv_rows(_unzip(result.content))
@@ -263,6 +298,9 @@ class TestCsvColumnOrderAndDuplicateLabels:
         sid = _add_csv(prep, content)
         set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
         set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=2, registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=2, role="waveform", registry=prep)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_csv_rows(_unzip(result.content))
@@ -275,6 +313,7 @@ class TestCsvRowOrdering:
         prep = PreparationSessionRegistry()
         content = b"3,c\n1,a\n2,b\n"
         sid = _add_csv(prep, content)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_csv_rows(_unzip(result.content))
@@ -289,6 +328,8 @@ class TestCsvUtf8Content:
         sid = _add_csv(prep, content)
         set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
         set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=2, registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_csv_rows(_unzip(result.content))
@@ -308,6 +349,8 @@ class TestExcelExport:
         select_preparation_worksheet(workspace_id=WS, source_id=sid, worksheet_index=0, registry=prep)
         set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
         set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=2, registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="time_axis", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         assert result.filename.endswith(".zip")
@@ -323,6 +366,7 @@ class TestExcelExport:
         content = _build_xlsx({"Sheet1": [["a"], ["1"], ["2"], ["3"], ["4"]]})
         sid = _add_excel(prep, content)
         set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=3, registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_xlsx_rows(_unzip(result.content))
@@ -334,6 +378,8 @@ class TestExcelExport:
         content = _build_xlsx({"Sheet1": [["1", "ERR"]]})
         sid = _add_excel(prep, content)
         edit_cell(workspace_id=WS, source_id=sid, row_number=1, column_index=1, value="42", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_xlsx_rows(_unzip(result.content))
@@ -347,22 +393,53 @@ class TestExcelExport:
         content = _build_xlsx({"Sheet1": [["1"], ["2"], ["3"]]})
         sid = _add_excel(prep, content)
         set_row_excluded(workspace_id=WS, source_id=sid, row_number=2, excluded=True, registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_xlsx_rows(_unzip(result.content))
 
         assert [r[0] for r in rows[1:]] == ["1", "3"]
 
-    def test_ignored_columns_omitted(self):
+    def test_not_assigned_columns_omitted(self):
         prep = PreparationSessionRegistry()
         content = _build_xlsx({"Sheet1": [["a", "b", "c"]]})
         sid = _add_excel(prep, content)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="ignore", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=2, role="waveform", registry=prep)
+        # column_index=1 is left at its default (not_assigned)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_xlsx_rows(_unzip(result.content))
 
         assert rows[0] == ("A", "C")
+
+    def test_only_time_axis_and_waveform_columns_remain_in_export(self):
+        # Task section J/W worked example, Excel variant: Time -> Time
+        # Axis, Voltage -> Waveform, Status/Comment left Not Assigned
+        # (the default) -- cleaned export keeps only Time and Voltage.
+        prep = PreparationSessionRegistry()
+        content = _build_xlsx({"Sheet1": [["Time", "Voltage", "Status", "Comment"], ["13:14:01", 1.0, "ok", "note"]]})
+        sid = _add_excel(prep, content)
+        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=2, registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="time_axis", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
+        # column_index=2 ("Status") and column_index=3 ("Comment") are
+        # left at their default (not_assigned)
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        zf = _unzip(result.content)
+        rows = _read_xlsx_rows(zf)
+        manifest = _read_manifest(zf)
+
+        assert rows[0] == ("Time", "Voltage")
+        assert rows[1] == ("13:14:01", 1.0)
+        assert {c["label"] for c in manifest["omitted_columns"]} == {"Status", "Comment"}
+        assert all(c["role"] == "not_assigned" for c in manifest["omitted_columns"])
+
+        # The raw source workbook itself is never mutated.
+        session = prep.get(WS, sid)
+        assert session.raw_bytes == content
 
     def test_output_is_a_single_clean_worksheet(self):
         prep = PreparationSessionRegistry()
@@ -435,6 +512,7 @@ class TestTimeColumnPreservation:
         prep = PreparationSessionRegistry()
         sid = _add_csv(prep, b"13:14:01,1.0\n")
         set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="time_axis", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_csv_rows(_unzip(result.content))
@@ -646,6 +724,8 @@ class TestPerformanceLargeCsvExport:
         rows = 20_000
         content = _build_xlsx({"Sheet1": [[str(i), float(i)] for i in range(rows)]})
         sid = _add_excel(prep, content)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
+        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows_out = _read_xlsx_rows(_unzip(result.content))

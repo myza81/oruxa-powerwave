@@ -17,11 +17,8 @@ from app.domain.working_overlay import (
     MAX_OPERATION_HISTORY,
     OVERRIDE_KIND_CLEAR,
     OVERRIDE_KIND_EDIT,
-    ROLE_IGNORE,
-    ROLE_METADATA,
-    ROLE_QUALITY_STATUS,
+    ROLE_NOT_ASSIGNED,
     ROLE_TIME_AXIS,
-    ROLE_UNKNOWN,
     ROLE_WAVEFORM,
     WorkingOverlay,
     cell_key,
@@ -131,35 +128,38 @@ class TestRowExclusion:
 
 
 class TestColumnRoles:
-    """Slice 5 -- supersedes Slice 4's own boolean `set_column_ignored`/
-    `ignored_columns` (retired; see app.domain.working_overlay's own
-    module docstring). `ROLE_IGNORE` is now the sole representation of
-    "ignored," exercised here alongside every other role."""
+    """UAT fix (2026-09-04) -- exactly three roles now exist:
+    `ROLE_NOT_ASSIGNED` (the sparse default, never stored explicitly),
+    `ROLE_TIME_AXIS`, and `ROLE_WAVEFORM`. See
+    app.domain.working_overlay's own module docstring for why the
+    earlier five-role model (and Slice 4's own separate boolean
+    `set_column_ignored`/`ignored_columns`) was retired rather than kept
+    as a compatibility alias."""
 
-    def test_assign_each_known_role(self):
+    def test_assign_each_known_non_default_role(self):
         overlay = WorkingOverlay()
-        for i, role in enumerate([ROLE_WAVEFORM, ROLE_TIME_AXIS, ROLE_METADATA, ROLE_QUALITY_STATUS, ROLE_IGNORE]):
+        for i, role in enumerate([ROLE_WAVEFORM, ROLE_TIME_AXIS]):
             key = column_key(None, i)
             set_column_role(overlay, key, role)
             assert overlay.column_roles[key] == role
 
-    def test_unknown_role_is_never_stored_explicitly(self):
+    def test_not_assigned_role_is_never_stored_explicitly(self):
         # Absence IS the default -- app.domain.working_overlay's own
         # "do NOT automatically classify columns" guardrail, made
-        # concrete: setting ROLE_UNKNOWN removes any entry rather than
-        # writing "unknown" into the dict.
+        # concrete: setting ROLE_NOT_ASSIGNED removes any entry rather
+        # than writing "not_assigned" into the dict.
         overlay = WorkingOverlay()
         key = column_key(None, 0)
         set_column_role(overlay, key, ROLE_WAVEFORM)
 
-        set_column_role(overlay, key, ROLE_UNKNOWN)
+        set_column_role(overlay, key, ROLE_NOT_ASSIGNED)
 
         assert key not in overlay.column_roles
 
     def test_reset_column_role_removes_the_entry(self):
         overlay = WorkingOverlay()
         key = column_key(None, 1)
-        set_column_role(overlay, key, ROLE_METADATA)
+        set_column_role(overlay, key, ROLE_WAVEFORM)
 
         removed = reset_column_role(overlay, key)
 
@@ -175,14 +175,14 @@ class TestColumnRoles:
         assert removed is False
         assert overlay.revision == 0
 
-    def test_reset_from_ignore_returns_to_unknown_not_some_other_state(self):
+    def test_reset_from_a_role_returns_to_not_assigned_not_some_other_state(self):
         overlay = WorkingOverlay()
         key = column_key(None, 2)
-        set_column_role(overlay, key, ROLE_IGNORE)
+        set_column_role(overlay, key, ROLE_TIME_AXIS)
 
         reset_column_role(overlay, key)
 
-        assert key not in overlay.column_roles  # absence == ROLE_UNKNOWN
+        assert key not in overlay.column_roles  # absence == ROLE_NOT_ASSIGNED
 
     def test_multiple_time_axis_columns_are_allowed(self):
         overlay = WorkingOverlay()
@@ -195,10 +195,10 @@ class TestColumnRoles:
     def test_worksheet_index_keeps_roles_isolated(self):
         overlay = WorkingOverlay()
         set_column_role(overlay, column_key(0, 0), ROLE_WAVEFORM)
-        set_column_role(overlay, column_key(1, 0), ROLE_METADATA)
+        set_column_role(overlay, column_key(1, 0), ROLE_TIME_AXIS)
 
         assert overlay.column_roles[column_key(0, 0)] == ROLE_WAVEFORM
-        assert overlay.column_roles[column_key(1, 0)] == ROLE_METADATA
+        assert overlay.column_roles[column_key(1, 0)] == ROLE_TIME_AXIS
 
 
 class TestHeaderRow:
@@ -420,7 +420,7 @@ class TestResetAll:
         overlay = WorkingOverlay()
         set_cell_value(overlay, cell_key(None, 1, 0), "x")
         set_row_excluded(overlay, row_key(None, 2), True)
-        set_column_role(overlay, column_key(None, 1), ROLE_IGNORE)
+        set_column_role(overlay, column_key(None, 1), ROLE_WAVEFORM)
         set_header_row(overlay, None, 3)
         set_data_region(overlay, None, 4, 100)
         set_time_axis_configuration(
@@ -460,7 +460,7 @@ class TestRevisionCounter:
         set_row_excluded(overlay, row_key(None, 1), True)
         assert overlay.revision == 2
 
-        set_column_role(overlay, column_key(None, 0), ROLE_IGNORE)
+        set_column_role(overlay, column_key(None, 0), ROLE_WAVEFORM)
         assert overlay.revision == 3
 
         set_header_row(overlay, None, 1)
@@ -522,7 +522,7 @@ class TestUndoRedo:
     def test_undo_column_role(self):
         overlay = WorkingOverlay()
         key = column_key(None, 2)
-        set_column_role(overlay, key, ROLE_IGNORE)
+        set_column_role(overlay, key, ROLE_WAVEFORM)
 
         undo(overlay)
 
@@ -557,7 +557,7 @@ class TestUndoRedo:
         overlay = WorkingOverlay()
         set_cell_value(overlay, cell_key(None, 1, 0), "x")
         set_row_excluded(overlay, row_key(None, 2), True)
-        set_column_role(overlay, column_key(None, 1), ROLE_IGNORE)
+        set_column_role(overlay, column_key(None, 1), ROLE_WAVEFORM)
         set_header_row(overlay, None, 3)
         set_data_region(overlay, None, 4, 100)
         reset_all(overlay)
@@ -566,7 +566,7 @@ class TestUndoRedo:
 
         assert overlay.cell_overrides[cell_key(None, 1, 0)].value == "x"
         assert row_key(None, 2) in overlay.excluded_rows
-        assert overlay.column_roles[column_key(None, 1)] == ROLE_IGNORE
+        assert overlay.column_roles[column_key(None, 1)] == ROLE_WAVEFORM
         assert overlay.header_row[None] == 3
         assert overlay.data_region[None].start_row == 4
         assert overlay.data_region[None].end_row == 100

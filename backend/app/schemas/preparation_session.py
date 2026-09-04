@@ -19,18 +19,15 @@ paged raw-preview response shape -- see
 the CSV/Excel strategies that produce a `PreviewResult`/`PreviewRow`
 this module only re-shapes for the wire.
 
-Slice 4: `PreparationRowOut` gains `excluded`/`modified_cells`,
-`PreparationSourcePreviewOut` gains `ignored_columns`/`working_revision`
-(the preview now returns the WORKING view by default -- see
-`app.services.preparation_preview_service`'s own module docstring for
-the merge strategy). `WorkingOverlaySummaryOut` is the small counter
-block shared between `PreparationSessionSummaryOut` (so the sources
-list/detail views can show "N cells edited" without a separate request)
-and every working-overlay mutation endpoint's own response. The request
-bodies (`CellWorkingValueRequest`/`RowExclusionRequest`/
-`ColumnIgnoreRequest`) are deliberately tiny and format-agnostic --
-worksheet identity is resolved server-side (Slice 4's own "backend is
-authoritative" requirement), never accepted from the client.
+Slice 4: `PreparationRowOut` gains `excluded`/`modified_cells`.
+`WorkingOverlaySummaryOut` is the small counter block shared between
+`PreparationSessionSummaryOut` (so the sources list/detail views can
+show "N cells edited" without a separate request) and every working-
+overlay mutation endpoint's own response. The request bodies
+(`CellWorkingValueRequest`/`RowExclusionRequest`) are deliberately tiny
+and format-agnostic -- worksheet identity is resolved server-side
+(Slice 4's own "backend is authoritative" requirement), never accepted
+from the client.
 
 Slice 5 extends the same shapes with header/data-region/column-role
 state: `WorkingOverlaySummaryOut` gains `header_row_number`/
@@ -47,6 +44,16 @@ and an `end_mode` field (defaulting to `"specific"`, preserving the
 original request shape) on `DataRegionRequest` -- see
 `app.domain.working_overlay.DataRegion`'s own docstring for the
 `source_end`/`specific` distinction this mirrors.
+
+UAT fix (2026-09-04): `WorkingOverlaySummaryOut.ignored_column_count`
+and `PreparationSourcePreviewOut.ignored_columns` are retired, and
+`ColumnIgnoreRequest`/`PUT .../working/columns/{column_index}` (Slice
+4's own legacy boolean ignore/unignore endpoint) is removed entirely --
+see `app.domain.working_overlay`'s own module docstring for the
+three-role column-model simplification that makes all three redundant
+(`column_roles`, already on the wire, carries the same information for
+every column, not just previously-"ignored" ones; "ignore" is no longer
+a distinct action from simply never assigning a role).
 """
 
 from __future__ import annotations
@@ -98,7 +105,6 @@ class WorkingOverlaySummaryOut(BaseModel):
     working_revision: int = 0
     edited_cell_count: int = 0
     excluded_row_count: int = 0
-    ignored_column_count: int = 0
     can_undo: bool = False
     can_redo: bool = False
     header_row_number: int | None = None
@@ -112,7 +118,6 @@ class WorkingOverlaySummaryOut(BaseModel):
             working_revision=summary.working_revision,
             edited_cell_count=summary.edited_cell_count,
             excluded_row_count=summary.excluded_row_count,
-            ignored_column_count=summary.ignored_column_count,
             can_undo=summary.can_undo,
             can_redo=summary.can_redo,
             header_row_number=summary.header_row_number,
@@ -219,9 +224,9 @@ class PreparationSourcePreviewOut(BaseModel):
     always paired with their own `_basis` field
     (`"exact"`/`"best_effort"`/`"unknown"`) so the frontend never
     presents an approximate total as if it were authoritative.
-    `ignored_columns` and `working_revision` are page-independent (same
-    on every page of the same source) -- `working_revision` lets the
-    frontend detect a page fetched before a since-applied edit."""
+    `working_revision` is page-independent (same on every page of the
+    same source) -- lets the frontend detect a page fetched before a
+    since-applied edit."""
 
     source_id: str
     selected_worksheet_index: int | None = None
@@ -233,7 +238,6 @@ class PreparationSourcePreviewOut(BaseModel):
     column_count: int | None
     column_count_basis: str
     rows: list[PreparationRowOut]
-    ignored_columns: list[int] = Field(default_factory=list)
     working_revision: int = 0
     header_row_number: int | None = None
     data_start_row: int | None = None
@@ -255,7 +259,6 @@ class PreparationSourcePreviewOut(BaseModel):
             column_count=result.column_count,
             column_count_basis=result.column_count_basis,
             rows=[PreparationRowOut.from_domain(r) for r in result.rows],
-            ignored_columns=result.ignored_columns,
             working_revision=result.working_revision,
             header_row_number=result.header_row_number,
             data_start_row=result.data_start_row,
@@ -280,16 +283,6 @@ class RowExclusionRequest(BaseModel):
     """Body of `PUT .../working/rows/{row_number}`."""
 
     excluded: bool
-
-
-class ColumnIgnoreRequest(BaseModel):
-    """Body of `PUT .../working/columns/{column_index}` -- Slice 4's own
-    legacy boolean ignore endpoint, preserved as an alias over Slice 5's
-    `column_roles` model (see
-    `app.services.working_overlay_service.set_column_ignored`'s own
-    docstring)."""
-
-    ignored: bool
 
 
 class HeaderRowRequest(BaseModel):

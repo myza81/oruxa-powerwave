@@ -9,19 +9,26 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-04**. A second same-day UAT fix
-simplifies the Time Axis confirmation UX: the generic "☐ Confirmed"
-checkbox now appears ONLY when Powerwave is asking the engineer to
-accept a derived/reconstructed timing suggestion — never for a plain
-native reading, an ambiguity already resolved by an explicit date-
-order/unit choice, or directly user-entered timing, all of which Save
-alone already persists as usable (the BACKEND readiness policy already
-worked this way; only the frontend unconditionally showed the checkbox
-regardless). See [Implemented capabilities](#implemented-capabilities).
-An earlier same-day fix recognized 2-digit years (`3/6/26`, `03-06-26`,
-etc.) for `dmy`/`mdy` date orders. CSV/Excel ingestion Slice 12
-(cleaned data export, 2026-09-03) remains the current end of the
-implemented slice sequence.
+Last meaningful update: **2026-09-04**. A third same-day UAT fix
+([DECISIONS.md — DEC-073](DECISIONS.md#dec-073--csvexcel-preparation-uses-only-three-column-roles-time-axis-waveform-and-not-assigned-not-assigned-is-the-default-and-is-omitted-from-cleaned-export))
+simplifies the CSV/Excel column-role model to exactly three roles —
+`Not Assigned` (the default), `Time Axis`, `Waveform` — retiring
+`Unknown`/`Metadata`/`Quality-Status`/`Ignore` and Slice 4's own
+separate boolean ignore/unignore toggle, and aligns Slice 12's cleaned
+export to include ONLY Time Axis and Waveform columns (Not Assigned is
+physically omitted, though never deleted from the immutable raw
+source). See [Implemented capabilities](#implemented-capabilities).
+A second same-day UAT fix simplifies the Time Axis confirmation UX: the
+generic "☐ Confirmed" checkbox now appears ONLY when Powerwave is
+asking the engineer to accept a derived/reconstructed timing suggestion
+— never for a plain native reading, an ambiguity already resolved by an
+explicit date-order/unit choice, or directly user-entered timing, all
+of which Save alone already persists as usable (the BACKEND readiness
+policy already worked this way; only the frontend unconditionally
+showed the checkbox regardless). An earlier same-day fix recognized
+2-digit years (`3/6/26`, `03-06-26`, etc.) for `dmy`/`mdy` date orders.
+CSV/Excel ingestion Slice 12 (cleaned data export, 2026-09-03) remains
+the current end of the implemented slice sequence.
 
 ## Current status
 
@@ -246,37 +253,42 @@ re-confirmed by the TG-FINAL audit):
   **Slice 4** adds a non-destructive Working Dataset overlay
   (`app/domain/working_overlay.py` + `app/services/working_overlay_service.py`)
   layered on top of each `PreparationSession`: cell edit/clear/reset, row
-  exclude/include, column ignore/unignore, and a Reset All action, each
-  a sparse dict/set entry proportional to edit COUNT — never a second
-  full copy of the dataset. Undo/redo is supported via a bounded
-  (200-entry) operation history; a `revision` counter increments on
-  every mutation. Seven new endpoints under
+  exclude/include, and a Reset All action, each a sparse dict/set entry
+  proportional to edit COUNT — never a second full copy of the dataset.
+  Undo/redo is supported via a bounded (200-entry) operation history; a
+  `revision` counter increments on every mutation. New endpoints under
   `.../preparation-sources/{id}/working/...`; each and the existing
   `GET .../preparation-sources` (list/detail) responses now carry a
   `working_overlay` summary (`working_revision`, `edited_cell_count`,
-  `excluded_row_count`, `ignored_column_count`, `can_undo`, `can_redo`).
-  The existing `GET .../rows` preview now returns the WORKING view by
-  default (raw merged with the overlay at read time only, never
-  persisted) — each row gains `excluded`/`modified_cells` (sparse,
-  provenance-preserving), and the page-level response gains
-  `ignored_columns`/`working_revision`. Raw bytes are never mutated. The
-  Data Preparation Workspace's table gained click-to-edit cells (a plain
-  `<input>`, no spreadsheet-grid library), a per-cell reset action,
-  row/column toggle buttons, Undo/Redo, and a "Reset All Changes"
-  confirm dialog; the heading switches from "Raw Data Preview" to "Data
-  Preview (Edited)" once any change exists.
+  `excluded_row_count`, `can_undo`, `can_redo`). The existing
+  `GET .../rows` preview now returns the WORKING view by default (raw
+  merged with the overlay at read time only, never persisted) — each row
+  gains `excluded`/`modified_cells` (sparse, provenance-preserving), and
+  the page-level response gains `working_revision`. Raw bytes are never
+  mutated. The Data Preparation Workspace's table gained click-to-edit
+  cells (a plain `<input>`, no spreadsheet-grid library), a per-cell
+  reset action, a row toggle button, Undo/Redo, and a "Reset All
+  Changes" confirm dialog; the heading switches from "Raw Data Preview"
+  to "Data Preview (Edited)" once any change exists. (Slice 4 originally
+  also shipped a separate per-column boolean ignore/unignore toggle,
+  `ignored_column_count`/`ignored_columns` fields, and its own quick-
+  toggle button in the raw preview table — all retired by the
+  2026-09-04 UAT fix described under Slice 5 below, once the
+  three-role column model made a separate "ignored" axis redundant.)
 
   **Slice 5** extends the SAME `WorkingOverlay` (not a second model)
   with header-row selection, data-region narrowing, and column
-  semantic-role assignment (`unknown`/`waveform`/`time_axis`/
-  `metadata`/`quality_status`/`ignore` — multiple `time_axis` columns
-  allowed; a role is a stated intent only, never validated/interpreted).
-  All three participate in the same bounded undo/redo history and
-  revision counter Slice 4 already built. Slice 4's own separate
-  `ignored_columns` set is retired — `column_roles`'s `ignore` value is
-  now the single authoritative representation, with Slice 4's own
-  boolean ignore endpoint kept working unchanged as a thin alias. Six
-  new endpoints (`PUT`/`DELETE .../working/header`,
+  semantic-role assignment. **A 2026-09-04 UAT fix
+  ([DECISIONS.md — DEC-073](DECISIONS.md#dec-073--csvexcel-preparation-uses-only-three-column-roles-time-axis-waveform-and-not-assigned-not-assigned-is-the-default-and-is-omitted-from-cleaned-export))
+  simplified the ORIGINAL six-role model
+  (`unknown`/`waveform`/`time_axis`/`metadata`/`quality_status`/`ignore`)
+  to exactly THREE roles: `not_assigned` (the sparse, implicit default —
+  never written explicitly, exactly like the retired `unknown` did),
+  `time_axis`, and `waveform`.** Multiple `time_axis` columns are still
+  allowed; a role remains a stated intent only, never validated/
+  interpreted. All three (header/region/role) participate in the same
+  bounded undo/redo history and revision counter Slice 4 already built.
+  New endpoints (`PUT`/`DELETE .../working/header`,
   `.../working/data-region`,
   `.../working/columns/{column_index}/role`); the `working_overlay`
   summary gains `header_row_number`/`data_start_row`/`data_end_row`;
@@ -287,11 +299,13 @@ re-confirmed by the TG-FINAL audit):
   values (Slice 4 edits included); a blank header cell falls back to
   `"Column {letter}"`, no header at all falls back to the plain letter,
   and duplicate header text is allowed verbatim (never disambiguated).
-  Reset All now also clears header/region/role state. Frontend: a new
+  Reset All now also clears header/region/role state. Frontend: a
   "Structure" panel (header-row input, data-region start/end inputs, a
-  compact Column/Label/Role mapping table) plus a per-row "Header"
-  quick-select button and new row styling for the header row and rows
-  outside the active region.
+  compact Column/Label/Role mapping table listing exactly Not Assigned/
+  Time Axis/Waveform) plus a per-row "Header" quick-select button and
+  new row styling for the header row and rows outside the active
+  region. The Structure panel's own compact summary line reads e.g.
+  "3 Not Assigned · 1 Time Axis · 2 Waveform."
 
   **Slice 6** adds the preparation-specific Readiness Issue LANGUAGE AND
   TRANSPORT model — explicitly NOT the full Readiness Validator (still
@@ -304,12 +318,18 @@ re-confirmed by the TG-FINAL audit):
   evaluated_revision, current_revision, is_stale, blocking_count,
   warning_count, info_count, issues}`. `ImportServiceError` itself is
   untouched — a `PreparationIssue` is a structured finding, never an
-  exception, and a real runtime failure never becomes one. Only three
+  exception, and a real runtime failure never becomes one. Only two
   issue codes exist today (`header_not_selected`,
-  `data_region_unconfigured`, `column_roles_unassigned`), produced by a
-  short, linear `collect_preparation_issues()` that checks already-known
-  CONFIGURATION facts only — no data interpretation — and every one of
-  them is `info` severity, never implying invalidity. Issues are derived
+  `data_region_unconfigured`), produced by a short, linear
+  `collect_preparation_issues()` that checks already-known CONFIGURATION
+  facts only — no data interpretation — and every one of them is `info`
+  severity, never implying invalidity. (A third code,
+  `column_roles_unassigned`, existed originally but was retired by the
+  2026-09-04 UAT fix — DEC-073 — once the three-role column model made
+  a column left `not_assigned` a normal, intentional final state rather
+  than incomplete configuration; readiness now blocks on the MEANINGFUL
+  `time_axis_unconfigured`/`waveform_channel_missing` issues instead if
+  every column is left unassigned.) Issues are derived
   LIVE on every request (no cache, no database); `evaluated_revision`
   always equals `current_revision` and `is_stale` is always `false`
   today. New `GET .../preparation-sources/{id}/issues` endpoint, scoped
@@ -776,9 +796,14 @@ re-confirmed by the TG-FINAL audit):
   prepared by the engineer"** — not the raw source, not the canonical
   `DisturbanceRecord`, not a silently repaired dataset. New
   `app/services/preparation_export_service.py`
-  (`export_preparation_source()`) exports `active data region -
-  excluded rows - ignored columns + working cell overrides`, preserving
-  remaining source column order, into a cleaned CSV or single-worksheet
+  (`export_preparation_source()`) exports `active data region - excluded
+  rows + working cell overrides`, restricted to Time Axis and Waveform
+  columns only (a 2026-09-04 UAT fix, DEC-073 — originally "everything
+  except the separate `ignore` role"; Not Assigned columns, which now
+  include what was previously `unknown`/`metadata`/`quality_status`, are
+  omitted the same way `ignore` used to be, and the manifest's own
+  `omitted_columns` entries record each excluded column's `role`),
+  preserving remaining source column order, into a cleaned CSV or single-worksheet
   XLSX bundled with a sidecar `<base>_cleaned.manifest.json` inside one
   `<base>_cleaned.zip`. Available regardless of Powerwave readiness
   (never gated on `is_ready`) — a deliberately separate capability from
@@ -913,17 +938,24 @@ through the rows of a CSV or the currently selected Excel worksheet —
 server-paginated (≤1000 rows/request), no header-row assumption, no
 column-role/time-axis interpretation. Slice 4 layers a sparse,
 non-destructive Working Dataset overlay on top (cell edit/clear/reset,
-row exclude/include, column ignore/unignore, Reset All, undo/redo),
-merged into that same preview at read time only — raw bytes are never
-mutated, and the overlay never duplicates the dataset. Slice 5 extends
-that same overlay with manual header-row selection, data-region
-narrowing, and column semantic-role assignment (`unknown`/`waveform`/
-`time_axis`/`metadata`/`quality_status`/`ignore`) — still no time-axis
-FORMAT interpretation, still no automatic classification of anything.
-Slice 6 adds the Readiness Issue LANGUAGE AND TRANSPORT model
-(`blocking`/`warning`/`info` severities, three conservative `info`-only
-issue codes derived live from configuration state) — explicitly NOT the
-full Readiness Validator, no readiness gate, no status transition.
+row exclude/include, Reset All, undo/redo; originally also a separate
+column ignore/unignore toggle, retired by the 2026-09-04 UAT fix
+below), merged into that same preview at read time only — raw bytes are
+never mutated, and the overlay never duplicates the dataset. Slice 5
+extends that same overlay with manual header-row selection, data-region
+narrowing, and column semantic-role assignment — originally six roles
+(`unknown`/`waveform`/`time_axis`/`metadata`/`quality_status`/`ignore`),
+simplified by a 2026-09-04 UAT fix
+([DECISIONS.md — DEC-073](DECISIONS.md#dec-073--csvexcel-preparation-uses-only-three-column-roles-time-axis-waveform-and-not-assigned-not-assigned-is-the-default-and-is-omitted-from-cleaned-export))
+to exactly three: `not_assigned` (the sparse default), `time_axis`,
+`waveform` — still no time-axis FORMAT interpretation, still no
+automatic classification of anything. Slice 6 adds the Readiness Issue
+LANGUAGE AND TRANSPORT model (`blocking`/`warning`/`info` severities,
+two conservative `info`-only issue codes derived live from configuration
+state — originally three, until the same 2026-09-04 fix retired the
+third, `column_roles_unassigned`, once `not_assigned` became a normal,
+intentional final state) — explicitly NOT the full Readiness Validator,
+no readiness gate, no status transition.
 Slice 7 (the extensible time-axis interpretation FRAMEWORK), Slice 8A
 (the first two deterministic time-axis interpreters), Slice 8B (the
 next two -- elapsed numeric time, sample index), Slice 8C (the fifth

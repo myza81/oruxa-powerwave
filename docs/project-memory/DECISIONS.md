@@ -10243,6 +10243,116 @@ questions register for the authoritative list.
 
 ---
 
+## DEC-073 — CSV/Excel preparation uses only three column roles: Time Axis, Waveform, and Not Assigned. Not Assigned is the default and is omitted from cleaned export
+
+Date: 2026-09-04
+Status: Approved
+Source: explicit project-owner UAT feedback ("Simplify Data Structure
+Roles and Align Cleaned Export" fix), delivered as a direct correction
+to the Slice 5 (DEC-072) six-role column model and the Slice 12 cleaned-
+export inclusion policy, both already implemented and shipped.
+
+Decision:
+
+**CSV/Excel preparation uses exactly three column roles: Time Axis,
+Waveform, and Not Assigned.** The earlier five/six-role model
+(`unknown` / `waveform` / `time_axis` / `metadata` / `quality_status` /
+`ignore`) is retired. Powerwave only needs to know which column(s)
+define the X/time axis and which column(s) are waveform/Y-axis
+channels — everything else is Not Assigned, and Not Assigned is not
+used by Powerwave analysis.
+
+**Not Assigned is the sparse, implicit default** for any column with no
+explicit role — never a value a user must set on every unused column,
+and never written explicitly into a `WorkingOverlay.column_roles` entry
+(the same "absence is the default" convention the retired `unknown`
+role already used).
+
+**Not Assigned columns never block or warn readiness**, and no longer
+produce an informational "N columns unassigned" issue — the retired
+`column_roles_unassigned` Slice 6 issue code is removed outright, not
+merely suppressed for this case. Leaving a column Not Assigned is a
+normal, intentional final state, not incomplete configuration; if every
+column is Not Assigned, readiness is already correctly blocked by the
+MEANINGFUL issues (`time_axis_unconfigured`/`waveform_channel_missing`).
+
+**Not Assigned means excluded from the derived cleaned export, not
+deleted from the immutable uploaded source.** Slice 12's cleaned export
+now includes ONLY Time Axis and Waveform columns (previously:
+everything except the separate `ignore` role) — Not Assigned columns
+are physically omitted from both CSV and Excel cleaned export, in
+original source column order among the retained columns, while their
+raw values remain fully intact and untouched in the immutable original
+source and in `WorkingOverlay` itself. The export manifest's own
+`omitted_columns` entries record each excluded column's `role`
+(`"not_assigned"`) so the reason is never left implicit.
+
+Slice 4's own separate boolean ignore/unignore concept
+(`set_column_ignored()`, `PUT .../working/columns/{column_index}`,
+`ignored_columns`/`ignored_column_count`) is retired for the same
+reason: the five/six-role model had TWO distinct "not analysed by
+Powerwave" states (`unknown`, implicit-default-but-KEPT-in-export, vs.
+`ignore`, explicit-and-OMITTED-from-export) that this decision merges
+into ONE state (`not_assigned`, sparse-default AND always omitted) —
+leaving nothing left for a separate ignore toggle to distinguish.
+
+Reason:
+
+The six-role model asked the engineer to make a distinction Powerwave
+never actually used (`metadata` vs. `quality_status` vs. `unknown` were
+all functionally identical — none affected analysis, all were kept in
+export) and required explicitly classifying every column just to keep
+the cleaned export from ballooning with irrelevant source columns
+(Status/Comment/notes fields common in real engineering CSV/Excel
+exports). Collapsing to three roles removes that busywork: an engineer
+now only ever answers two real questions — "which column is the time
+axis?" and "which columns are waveform channels?" — and gets a clean,
+minimal export for free without an extra explicit-ignore step per
+column.
+
+Alternatives considered:
+
+Keeping the six-role model and merely changing the cleaned-export
+inclusion policy to "only Time Axis/Waveform, regardless of the other
+four role values" (rejected — leaves four role values on the UI
+selector that all mean the exact same thing to Powerwave, which is the
+actual source of engineer confusion the owner flagged, not just the
+export policy). Keeping `unknown` as a distinct value from
+`not_assigned` for backward-compat naming (rejected — `PreparationSession`
+is temporary, in-memory, per-session state with no persistence or cross-
+session compatibility concern, so a clean rename was preferred over a
+permanent alias for a distinction that no longer exists). Retaining
+Slice 4's separate ignore toggle alongside the new role selector
+(rejected — with `not_assigned` now both the default AND the thing
+excluded from export, there is nothing left for a second "ignored"
+axis to represent; keeping it would only reintroduce the two-state
+confusion this decision removes).
+
+Impact:
+
+Backend: `app/domain/working_overlay.py` (`ROLE_NOT_ASSIGNED` replaces
+`ROLE_UNKNOWN`/`ROLE_METADATA`/`ROLE_QUALITY_STATUS`/`ROLE_IGNORE`;
+`KNOWN_COLUMN_ROLES` now has exactly three values), the working-overlay
+service (`set_column_ignored()` and its API route removed),
+`app/domain/preparation_issue.py` (`ISSUE_COLUMN_ROLES_UNASSIGNED`
+removed), `app/services/preparation_issue_service.py` (its emission
+logic removed), `app/services/preparation_export_service.py` (export
+inclusion policy changed to Time-Axis-or-Waveform-only, manifest
+`omitted_columns` gained a `role` field), `app/schemas/preparation_session.py`
+(`ignored_column_count`/`ignored_columns`/`ColumnIgnoreRequest` removed),
+`app/api/v1/preparation_sources.py` (legacy ignore endpoint removed).
+Frontend: `frontend/index.html`'s Structure panel role selector now
+lists exactly Not Assigned/Time Axis/Waveform; the raw-preview table's
+per-column Ignore/Unignore quick-toggle button is removed (dimming for
+"not analysed by Powerwave" is now driven directly by `column_roles`).
+Test suites for all affected backend modules were updated to the new
+three-role model (2678 passed, 0 failed at the end of this fix). No
+change to `DisturbanceRecord`/Powerwave conversion logic itself — only
+which columns are ELIGIBLE to become Waveform channels was already
+role-driven and needed zero changes.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

@@ -8,6 +8,119 @@ Last updated: **2026-09-04**
 
 ## What was most recently done
 
+**UAT Fix — Simplify Data Structure Roles and Align Cleaned Export
+(implemented).** Owner UAT feedback: the six-role column model
+(`Unknown`/`Waveform`/`Time Axis`/`Metadata`/`Quality-Status`/`Ignore`)
+asked the engineer to make a distinction Powerwave never actually used.
+Powerwave only needs to know two things: which column(s) define the
+time axis, and which column(s) are waveform channels — everything else
+is simply not used by Powerwave analysis.
+
+**Change**: the column-role model is simplified to exactly THREE roles
+-- `Not Assigned` (the default, replacing `Unknown`), `Time Axis`,
+`Waveform`. `Not Assigned` is the sparse implicit default (never
+written explicitly into `WorkingOverlay.column_roles`, exactly like the
+retired `Unknown` was) and is never used by Powerwave analysis. The
+cleaned export (Slice 12) is realigned to match: it now includes ONLY
+Time Axis and Waveform columns (previously: everything except the
+separate `Ignore` role) -- Not Assigned columns are physically omitted
+from the exported CSV/Excel, in original source column order among the
+retained columns, while their raw values remain fully intact in the
+immutable original source (never deleted, only excluded from the
+DERIVED export). The manifest's own `omitted_columns` entries now
+record each excluded column's `role`.
+
+**Cascading removals (task's own "prefer a clean role-model
+simplification... `PreparationSession` is temporary/in-memory" guidance
+-- not a compatibility-alias approach)**: the six-role model had TWO
+distinct "not analysed by Powerwave" states (`Unknown`, implicit-
+default-but-KEPT-in-export, vs. `Ignore`, explicit-and-OMITTED-from-
+export); collapsing to one (`Not Assigned`, sparse-default AND always
+omitted) makes several previously-separate mechanisms fully redundant,
+so they were removed outright rather than kept as aliases: Slice 4's
+own boolean ignore/unignore toggle (`set_column_ignored()`, its
+`PUT .../working/columns/{column_index}` API route, its
+`ColumnIgnoreRequest` schema, its `ignored_columns`/
+`ignored_column_count` response fields, and its own per-column
+Ignore/Unignore quick-toggle button in the frontend's raw preview
+table); and Slice 6's own `column_roles_unassigned` info issue (a
+column left `Not Assigned` is now a normal, intentional final state,
+not incomplete configuration -- readiness already blocks correctly via
+`time_axis_unconfigured`/`waveform_channel_missing` if every column is
+left unassigned).
+
+**Files changed**: Backend -- `app/domain/working_overlay.py` (role
+constants), `app/services/working_overlay_service.py` (`set_column_
+ignored()` removed, `ignored_column_count` removed), `app/domain/
+preparation_issue.py` (`ISSUE_COLUMN_ROLES_UNASSIGNED` removed),
+`app/services/preparation_issue_service.py` (its emission logic
+removed), `app/services/preparation_export_service.py` (export
+inclusion policy: Time-Axis-or-Waveform-only; manifest `omitted_
+columns` gained a `role` field), `app/schemas/preparation_session.py`
+(`ignored_column_count`/`ignored_columns`/`ColumnIgnoreRequest`
+removed), `app/api/v1/preparation_sources.py` (legacy ignore endpoint
+removed). `app/services/readiness_service.py`,
+`app/services/preparation_conversion_service.py`, and
+`app/services/time_axis_service.py` needed ZERO changes (`ROLE_
+WAVEFORM`/`ROLE_TIME_AXIS` names are unchanged). Frontend --
+`frontend/index.html`: the Structure panel's role `<select>` now lists
+exactly Not Assigned/Time Axis/Waveform (in that order, Not Assigned
+first as the natural default); the raw-preview table's per-column
+Ignore/Unignore quick-toggle button and its own dead-endpoint-calling
+JS function are removed, with "not analysed by Powerwave" dimming now
+derived directly from `columnRoles[c] === "not_assigned"`; the compact
+Structure summary line now reads e.g. "3 Not Assigned · 1 Time Axis ·
+2 Waveform"; a short helper line was added above the role mapping table
+explaining what each of the three roles means.
+
+**New/updated tests**: all 5 originally test-collection-broken files
+(`test_working_overlay_domain.py`, `test_working_overlay_service.py`,
+`test_preparation_issue_domain.py`, `test_preparation_issue_service.py`,
+`test_preparation_preview_service.py`) fixed for the new role
+constants/removed fields, with each test's own original intent
+preserved (not a blind find-replace). `test_preparation_export_service.py`,
+`test_preparation_sources_api.py`, `test_readiness_service.py`, and
+`test_preparation_conversion_service.py` updated for the changed
+export-inclusion policy and retired role values. New tests added:
+legacy-role-rejection (domain, service, and API layers), a cleaned-
+export worked example for both CSV and Excel (`Time | Voltage | Status
+| Comment` -> roles -> exported `Time | Voltage` only, manifest records
+the omission, raw source untouched), a readiness regression (10
+columns: 1 Time Axis + 2 Waveform + 7 Not Assigned -> `is_ready=true`,
+no issue fires merely because 7 remain Not Assigned), and a conversion
+regression (Not Assigned columns never enter `DisturbanceRecord.
+waveform_data`).
+
+**Verified**: full backend suite **2678 passed, 0 failed** (from a
+2685-passed baseline before this fix -- the net change reflects tests
+merged/consolidated where two roles collapsed into one concept, e.g. an
+"ignored column doesn't block readiness" test and a "metadata column
+doesn't block readiness" test are now the exact same scenario). The
+committed browser smoke test (COMTRADE) still passes unchanged with
+zero console/page errors. A throwaway (not committed) live-browser
+Playwright UAT covering all 5 task-specified scenarios passed: (1) the
+role `<select>` lists exactly Not Assigned/Time Axis/Waveform, default
+Not Assigned; (2) assigning Time Axis/Waveform/Not Assigned across 6
+columns and configuring the Time Axis reaches "Ready for Powerwave"
+with no unassigned-columns issue; (3) cleaned CSV export contains only
+the Time Axis + Waveform columns (verified by inflating the real
+downloaded ZIP's own DEFLATE-compressed CSV entry and manifest JSON,
+not just checking the download succeeded); (4) equivalent Excel/
+manifest verification at the service-test level; (5) "Continue to
+Powerwave" produces exactly the 2 Waveform-role channels, none of the 3
+Not Assigned columns appear.
+
+**Next step**: no new slice was opened by this fix — Slice 13
+(progressive automation) remains the next unauthorized item, per
+[Change governance](../../CLAUDE.md#change-governance).
+
+**Commit status**: not committed — per this task's own explicit closing
+instruction ("Do not commit or push unless explicitly asked"), all of
+the above are normal uncommitted working-tree changes pending a
+separate, explicit commit instruction.
+
+## What was done in the prior session — UAT Fix: Simplify Time-Axis Confirmation UX
+
 **UAT Fix — Simplify Time-Axis Confirmation UX (implemented).** Owner
 UAT reported that a generic "☐ Confirmed" checkbox appeared under
 EVERY sample-interpreter result -- including a plain, unambiguous
@@ -90,10 +203,9 @@ four scenarios with zero console/page errors.
 (progressive automation) remains the next unauthorized item, per
 [Change governance](../../CLAUDE.md#change-governance).
 
-**Commit status**: not committed — per this task's own explicit closing
-instruction ("Do not commit or push unless explicitly asked"), all of
-the above are normal uncommitted working-tree changes pending a
-separate, explicit commit instruction.
+**Commit status**: committed as `cdb566c fix: simplify time axis
+confirmation UX` (per a separate, explicit follow-up commit
+instruction after this fix was reported).
 
 ## What was done in the prior session — UAT Fix: Make Time-Axis Parsing Failures Actionable
 

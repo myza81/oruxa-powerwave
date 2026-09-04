@@ -352,12 +352,12 @@ class TestWaveformChannels:
         assert active.record.sample_count() == 3
         assert list(active.record.waveform_data.iloc[:, 1]) == [1.0, 2.0, 3.0]
 
-    def test_ignored_columns_omitted(self):
+    def test_not_assigned_columns_omitted(self):
         prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
         sid = _add_csv(prep, b"2026-08-31 13:00:00,1.0,note\n2026-08-31 13:00:01,2.0,note\n")
         _mark_time_axis(prep, sid, 0)
         _mark_waveform(prep, sid, 1)
-        set_column_role(workspace_id="ws-1", source_id=sid, column_index=2, role="ignore", registry=prep)
+        # column_index=2 is left at its default (not_assigned)
         set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
 
         metadata = _convert(prep, ws, sid)
@@ -407,13 +407,12 @@ class TestWaveformChannels:
 
         assert metadata.analog_channels[0].name == "B"
 
-    def test_metadata_and_quality_columns_never_become_channels(self):
+    def test_not_assigned_columns_never_become_channels(self):
         prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
         sid = _add_csv(prep, b"2026-08-31 13:00:00,1.0,note,ok\n2026-08-31 13:00:01,2.0,note,ok\n")
         _mark_time_axis(prep, sid, 0)
         _mark_waveform(prep, sid, 1)
-        set_column_role(workspace_id="ws-1", source_id=sid, column_index=2, role="metadata", registry=prep)
-        set_column_role(workspace_id="ws-1", source_id=sid, column_index=3, role="quality_status", registry=prep)
+        # column_index=2 and column_index=3 are left at their default (not_assigned)
         set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
 
         metadata = _convert(prep, ws, sid)

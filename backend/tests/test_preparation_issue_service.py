@@ -17,7 +17,6 @@ from openpyxl import Workbook
 from starlette.datastructures import Headers
 
 from app.domain.preparation_issue import (
-    ISSUE_COLUMN_ROLES_UNASSIGNED,
     ISSUE_DATA_REGION_UNCONFIGURED,
     ISSUE_HEADER_NOT_SELECTED,
     SEVERITY_INFO,
@@ -81,7 +80,7 @@ def _add_excel(registry: PreparationSessionRegistry, content: bytes, workspace_i
 
 
 class TestCollectPreparationIssuesCsv:
-    def test_fresh_upload_produces_all_three_info_issues(self):
+    def test_fresh_upload_produces_both_info_issues(self):
         registry = PreparationSessionRegistry()
         source_id = _add_csv(registry, b"a,b,c\n1,2,3\n")
         session = registry.get("ws-1", source_id)
@@ -89,7 +88,7 @@ class TestCollectPreparationIssuesCsv:
         issues = collect_preparation_issues(session, None)
 
         codes = {i.code for i in issues}
-        assert codes == {ISSUE_HEADER_NOT_SELECTED, ISSUE_DATA_REGION_UNCONFIGURED, ISSUE_COLUMN_ROLES_UNASSIGNED}
+        assert codes == {ISSUE_HEADER_NOT_SELECTED, ISSUE_DATA_REGION_UNCONFIGURED}
         assert all(i.severity == SEVERITY_INFO for i in issues)
 
     def test_setting_header_removes_that_issue(self):
@@ -123,18 +122,10 @@ class TestCollectPreparationIssuesCsv:
 
         assert ISSUE_DATA_REGION_UNCONFIGURED not in {i.code for i in issues}
 
-    def test_assigning_all_roles_removes_that_issue(self):
-        registry = PreparationSessionRegistry()
-        source_id = _add_csv(registry, b"a,b\n1,2\n")
-        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="waveform", registry=registry)
-        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="time_axis", registry=registry)
-        session = registry.get("ws-1", source_id)
-
-        issues = collect_preparation_issues(session, None)
-
-        assert ISSUE_COLUMN_ROLES_UNASSIGNED not in {i.code for i in issues}
-
-    def test_partial_role_assignment_reports_exact_unassigned_count(self):
+    def test_columns_left_not_assigned_never_produce_an_info_issue(self):
+        # UAT fix (2026-09-04): `not_assigned` is a normal, intentional
+        # final state -- leaving columns unassigned (whether all of
+        # them, or just some) never produces an info issue at all.
         registry = PreparationSessionRegistry()
         source_id = _add_csv(registry, b"a,b,c\n1,2,3\n")
         set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="waveform", registry=registry)
@@ -142,8 +133,7 @@ class TestCollectPreparationIssuesCsv:
 
         issues = collect_preparation_issues(session, None)
 
-        role_issue = next(i for i in issues if i.code == ISSUE_COLUMN_ROLES_UNASSIGNED)
-        assert role_issue.details == {"unassigned_count": 2, "total_columns": 3}
+        assert "column_roles_unassigned" not in {i.code for i in issues}
 
     def test_no_issues_are_ever_blocking_or_warning_in_slice_6(self):
         registry = PreparationSessionRegistry()
@@ -164,7 +154,6 @@ class TestCollectPreparationIssuesCsv:
         fields_by_code = {i.code: i.location.field for i in issues}
         assert fields_by_code[ISSUE_HEADER_NOT_SELECTED] == "header"
         assert fields_by_code[ISSUE_DATA_REGION_UNCONFIGURED] == "data_region"
-        assert fields_by_code[ISSUE_COLUMN_ROLES_UNASSIGNED] == "column_roles"
 
     def test_every_issue_carries_a_suggested_action(self):
         registry = PreparationSessionRegistry()
@@ -202,19 +191,6 @@ class TestCollectPreparationIssuesExcel:
         assert ISSUE_HEADER_NOT_SELECTED not in {i.code for i in issues_sheet_a}
         assert ISSUE_HEADER_NOT_SELECTED in {i.code for i in issues_sheet_b}
 
-    def test_unknown_column_count_skips_role_issue_without_fabricating(self):
-        registry = PreparationSessionRegistry()
-        content = _build_xlsx({"Only": [["a", "b"]]})
-        source_id = _add_excel(registry, content)
-        session = registry.get("ws-1", source_id)
-        # Force an unknown column_count to verify the role-assignment
-        # issue is skipped rather than guessed.
-        session.summary.worksheets[0].column_count = None
-
-        issues = collect_preparation_issues(session, 0)
-
-        assert ISSUE_COLUMN_ROLES_UNASSIGNED not in {i.code for i in issues}
-
 
 class TestBuildIssueSummary:
     def test_summary_revision_matches_working_revision(self):
@@ -231,14 +207,15 @@ class TestBuildIssueSummary:
     def test_summary_counts_match_issue_list(self):
         # A totally-unconfigured source now also carries Slice 9's own
         # "no Time Axis" / "no Waveform Channel" blocking findings
-        # alongside Slice 6's three original info findings.
+        # alongside Slice 6's two remaining info findings (UAT fix
+        # 2026-09-04 retired the third, `column_roles_unassigned`).
         registry = PreparationSessionRegistry()
         source_id = _add_csv(registry, b"a,b\n1,2\n")
 
         summary = build_issue_summary(workspace_id="ws-1", source_id=source_id, registry=registry)
 
         assert summary.info_count + summary.blocking_count + summary.warning_count == len(summary.issues)
-        assert summary.info_count == 3
+        assert summary.info_count == 2
         assert summary.blocking_count == 2
         assert summary.warning_count == 0
         assert summary.is_ready is False

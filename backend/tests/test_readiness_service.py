@@ -150,7 +150,7 @@ class TestStructureBlocking:
         registry = PreparationSessionRegistry()
         source_id = _ready_source(registry)
 
-        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="metadata", registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="waveform", registry=registry)
 
         summary = _issues(registry, source_id)
         assert ISSUE_TIME_AXIS_UNSUPPORTED in _codes(summary)
@@ -164,6 +164,34 @@ class TestStructureBlocking:
 
         assert summary.blocking_count == 0
         assert summary.is_ready is True
+
+    def test_many_not_assigned_columns_never_block_or_warn(self):
+        # UAT fix (2026-09-04) Section X regression: 10 total columns
+        # (1 Time Axis, 2 Waveform, 7 left at their default Not
+        # Assigned) -- readiness must be True, and none of the 7
+        # unassigned columns may produce a blocking, warning, or info
+        # finding merely for being Not Assigned.
+        registry = PreparationSessionRegistry()
+        lines = [f"2026-08-31 13:00:{i:02d}," + ",".join(str(i + j) for j in range(9)) for i in range(5)]
+        source_id = _add_csv(registry, ("\n".join(lines) + "\n").encode())
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1, 2)
+        # column_index 3-9 (7 columns) are left at their default (not_assigned)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id="absolute_datetime", confirmed=True, registry=registry,
+        )
+
+        summary = _issues(registry, source_id)
+
+        assert summary.is_ready is True
+        assert summary.blocking_count == 0
+        # None of the 7 not_assigned columns (3-9) contribute any finding
+        # at all -- every issue present, if any, locates to the time
+        # axis or one of the two waveform columns only.
+        for issue in summary.issues:
+            assert issue.location is None or issue.location.column_index in (None, 0, 1, 2)
+        assert "column_roles_unassigned" not in _codes(summary)
 
 
 class TestTimeAxisBlocking:
@@ -184,7 +212,7 @@ class TestTimeAxisBlocking:
     def test_unsupported_interpreter_state_is_blocking(self):
         registry = PreparationSessionRegistry()
         source_id = _ready_source(registry)
-        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="unknown", registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="not_assigned", registry=registry)
 
         summary = _issues(registry, source_id)
         assert ISSUE_TIME_AXIS_UNSUPPORTED in _codes(summary)
@@ -518,29 +546,14 @@ class TestWaveformValues:
         summary = _issues(registry, source_id)
         assert ISSUE_WAVEFORM_VALUE_INVALID not in _codes(summary)
 
-    def test_bad_value_in_metadata_column_does_not_block_waveform_readiness(self):
+    def test_bad_value_in_not_assigned_column_does_not_block_waveform_readiness(self):
         registry = PreparationSessionRegistry()
         lines = [f"2026-08-31 13:00:{i:02d},{i}.0,note{i}" for i in range(8)]
         lines[2] = "2026-08-31 13:00:02,3.0,ERR"
         source_id = _add_csv(registry, ("\n".join(lines) + "\n").encode())
         _mark_time_axis(registry, source_id, 0)
         _mark_waveform(registry, source_id, 1)
-        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=2, role="metadata", registry=registry)
-        set_time_axis_configuration(
-            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
-            interpreter_id="absolute_datetime", confirmed=True, registry=registry,
-        )
-
-        summary = _issues(registry, source_id)
-        assert summary.is_ready is True
-
-    def test_bad_value_in_ignored_column_does_not_block(self):
-        registry = PreparationSessionRegistry()
-        lines = [f"2026-08-31 13:00:{i:02d},{i}.0,ERR" for i in range(8)]
-        source_id = _add_csv(registry, ("\n".join(lines) + "\n").encode())
-        _mark_time_axis(registry, source_id, 0)
-        _mark_waveform(registry, source_id, 1)
-        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=2, role="ignore", registry=registry)
+        # column_index=2 is left at its default (not_assigned)
         set_time_axis_configuration(
             workspace_id="ws-1", source_id=source_id, column_indices=(0,),
             interpreter_id="absolute_datetime", confirmed=True, registry=registry,
@@ -595,14 +608,14 @@ class TestRevisionBehavior:
         source_id = _ready_source(registry)
         assert _issues(registry, source_id).is_ready is True
 
-        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="unknown", registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="not_assigned", registry=registry)
 
         assert _issues(registry, source_id).is_ready is False
 
     def test_undo_restores_prior_readiness(self):
         registry = PreparationSessionRegistry()
         source_id = _ready_source(registry)
-        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="unknown", registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="not_assigned", registry=registry)
         assert _issues(registry, source_id).is_ready is False
 
         undo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
@@ -612,7 +625,7 @@ class TestRevisionBehavior:
     def test_redo_reapplies_readiness_change(self):
         registry = PreparationSessionRegistry()
         source_id = _ready_source(registry)
-        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="unknown", registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="not_assigned", registry=registry)
         undo_working_change(workspace_id="ws-1", source_id=source_id, registry=registry)
         assert _issues(registry, source_id).is_ready is True
 

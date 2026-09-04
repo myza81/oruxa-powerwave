@@ -699,7 +699,6 @@ class TestWorkingSummaryOnExistingEndpoints:
             "working_revision": 0,
             "edited_cell_count": 0,
             "excluded_row_count": 0,
-            "ignored_column_count": 0,
             "can_undo": False,
             "can_redo": False,
             "header_row_number": None,
@@ -874,7 +873,12 @@ class TestRowAndColumnWorkingEndpoints:
         assert resp.status_code == 400
         assert resp.json()["detail"]["code"] == "invalid_working_coordinate"
 
-    def test_put_column_ignore_reflects_in_preview(self, client):
+    def test_legacy_boolean_ignore_endpoint_is_removed(self, client):
+        # UAT fix (2026-09-04): `PUT .../working/columns/{column_index}`
+        # (Slice 4's own legacy boolean ignore/unignore route) is
+        # removed entirely -- see `PUT .../working/columns/{column_index}/role`
+        # (TestColumnRoleEndpoints below) for the one remaining
+        # column-classification endpoint.
         source_id = _upload_csv(client)
 
         resp = client.put(
@@ -882,22 +886,7 @@ class TestRowAndColumnWorkingEndpoints:
             json={"ignored": True},
         )
 
-        assert resp.status_code == 200, resp.text
-        assert resp.json()["ignored_column_count"] == 1
-
-        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
-        assert rows["ignored_columns"] == [1]
-
-    def test_put_column_beyond_known_bounds_returns_400(self, client):
-        source_id = _upload_csv(client)
-
-        resp = client.put(
-            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/999",
-            json={"ignored": True},
-        )
-
-        assert resp.status_code == 400
-        assert resp.json()["detail"]["code"] == "invalid_working_coordinate"
+        assert resp.status_code == 404
 
 
 class TestResetAllAndUndoRedoEndpoints:
@@ -1231,7 +1220,7 @@ class TestColumnRoleEndpoints:
 
         assert resp.status_code == 200, resp.text
         rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
-        assert rows["column_roles"] == ["time_axis", "unknown"]
+        assert rows["column_roles"] == ["time_axis", "not_assigned"]
 
     def test_multiple_time_axis_columns_allowed(self, client):
         source_id = _upload_csv(client, content=b"a,b\n1,2\n")
@@ -1246,7 +1235,7 @@ class TestColumnRoleEndpoints:
         rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
         assert rows["column_roles"] == ["time_axis", "time_axis"]
 
-    def test_delete_role_resets_to_unknown(self, client):
+    def test_delete_role_resets_to_not_assigned(self, client):
         source_id = _upload_csv(client, content=b"a,b\n1,2\n")
         client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "waveform"})
 
@@ -1254,16 +1243,21 @@ class TestColumnRoleEndpoints:
 
         assert resp.status_code == 200, resp.text
         rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
-        assert rows["column_roles"][0] == "unknown"
+        assert rows["column_roles"][0] == "not_assigned"
 
-    def test_ignore_role_resets_to_unknown_too(self, client):
+    def test_legacy_role_values_are_rejected(self, client):
+        # UAT fix (2026-09-04): `unknown`/`metadata`/`quality_status`/
+        # `ignore` are retired -- only `not_assigned`/`time_axis`/
+        # `waveform` remain valid.
         source_id = _upload_csv(client, content=b"a,b\n1,2\n")
-        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "ignore"})
 
-        client.delete(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role")
-
-        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
-        assert rows["column_roles"][0] == "unknown"
+        for legacy_role in ("unknown", "metadata", "quality_status", "ignore"):
+            resp = client.put(
+                f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role",
+                json={"role": legacy_role},
+            )
+            assert resp.status_code == 400, legacy_role
+            assert resp.json()["detail"]["code"] == "invalid_column_role"
 
     def test_invalid_role_returns_400(self, client):
         source_id = _upload_csv(client, content=b"a,b\n1,2\n")
@@ -1281,46 +1275,11 @@ class TestColumnRoleEndpoints:
 
         resp = client.put(
             f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/99/role",
-            json={"role": "metadata"},
+            json={"role": "waveform"},
         )
 
         assert resp.status_code == 400
         assert resp.json()["detail"]["code"] == "invalid_working_coordinate"
-
-
-class TestIgnoreMigrationCoherence:
-    """Slice 4's legacy boolean ignore endpoint and Slice 5's role
-    endpoint must always agree -- see
-    app.services.working_overlay_service.set_column_ignored's own
-    docstring for why there is exactly one underlying representation."""
-
-    def test_legacy_ignore_then_role_endpoint_agree(self, client):
-        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
-
-        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1", json={"ignored": True})
-
-        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
-        assert rows["column_roles"][1] == "ignore"
-        assert rows["ignored_columns"] == [1]
-
-    def test_role_ignore_then_legacy_unignore_agree(self, client):
-        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
-
-        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "ignore"})
-        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1", json={"ignored": False})
-
-        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
-        assert rows["column_roles"][1] == "unknown"
-        assert rows["ignored_columns"] == []
-
-    def test_legacy_unignore_never_disturbs_a_different_explicit_role(self, client):
-        source_id = _upload_csv(client, content=b"a,b\n1,2\n")
-        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
-
-        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1", json={"ignored": False})
-
-        rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
-        assert rows["column_roles"][1] == "waveform"
 
 
 class TestResetAllIncludesStructureMapping:
@@ -1342,7 +1301,7 @@ class TestResetAllIncludesStructureMapping:
 
         rows = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
         assert rows["column_labels"] == ["A", "B"]
-        assert rows["column_roles"] == ["unknown", "unknown"]
+        assert rows["column_roles"] == ["not_assigned", "not_assigned"]
         assert all(r["in_active_region"] for r in rows["rows"])
 
 
@@ -1369,11 +1328,11 @@ class TestExcelWorksheetIsolationForStructureMapping:
         rows_b = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/rows").json()
         assert rows_b["header_row_number"] is None
         assert rows_b["data_start_row"] is None
-        assert rows_b["column_roles"] == ["unknown"]
+        assert rows_b["column_roles"] == ["not_assigned"]
 
         # Configure sheet B differently.
         client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/header", json={"row_number": 1})
-        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "metadata"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "waveform"})
 
         # Sheet A's own configuration remains intact.
         client.patch(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}", json={"selected_worksheet_index": 0})
@@ -1381,7 +1340,7 @@ class TestExcelWorksheetIsolationForStructureMapping:
         assert rows_a["header_row_number"] == 1
         assert rows_a["data_start_row"] == 2
         assert rows_a["data_end_row"] == 3
-        assert rows_a["column_roles"] == ["time_axis", "unknown"]
+        assert rows_a["column_roles"] == ["time_axis", "not_assigned"]
 
 
 # ---- CSV/Excel ingestion Slice 6 (DEC-072): Preparation Readiness Issue API ----
@@ -1389,10 +1348,12 @@ class TestExcelWorksheetIsolationForStructureMapping:
 
 class TestPreparationIssuesEndpoint:
     def test_get_issues_returns_schema_and_counts(self, client):
-        # Slice 6's own three info findings are unchanged; Slice 9 (the
-        # full Readiness Validator) additionally reports this totally-
-        # unconfigured source as blocking on two independent grounds --
-        # no Time Axis configured, and no Waveform Channel assigned.
+        # Slice 6's own two remaining info findings are unchanged (UAT
+        # fix 2026-09-04 retired the third, `column_roles_unassigned`);
+        # Slice 9 (the full Readiness Validator) additionally reports
+        # this totally-unconfigured source as blocking on two
+        # independent grounds -- no Time Axis configured, and no
+        # Waveform Channel assigned.
         source_id = _upload_csv(client, content=b"a,b,c\n1,2,3\n")
 
         resp = client.get(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/issues")
@@ -1405,11 +1366,11 @@ class TestPreparationIssuesEndpoint:
         assert body["is_stale"] is False
         assert body["blocking_count"] == 2
         assert body["warning_count"] == 0
-        assert body["info_count"] == 3
+        assert body["info_count"] == 2
         assert body["is_ready"] is False
         codes = {i["code"] for i in body["issues"]}
         assert codes == {
-            "header_not_selected", "data_region_unconfigured", "column_roles_unassigned",
+            "header_not_selected", "data_region_unconfigured",
             "time_axis_unconfigured", "waveform_channel_missing",
         }
 
@@ -1473,7 +1434,7 @@ class TestPreparationIssuesEndpoint:
         assert "severity" not in resp.text
         assert resp.json()["detail"]["code"] == "source_not_found"
 
-    def test_reset_all_restores_all_three_issues(self, client):
+    def test_reset_all_restores_both_info_issues(self, client):
         source_id = _upload_csv(client, content=b"a,b\n1,2\n")
         client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/header", json={"row_number": 1})
         client.put(
@@ -1488,10 +1449,10 @@ class TestPreparationIssuesEndpoint:
 
         # Reset All wipes the waveform-role assignment too, so Slice 9's
         # own "no waveform channel"/"no time axis" blocking issues are
-        # ALSO back, alongside Slice 6's original three info findings.
+        # ALSO back, alongside Slice 6's own two remaining info findings.
         codes = {i["code"] for i in body["issues"]}
         assert codes == {
-            "header_not_selected", "data_region_unconfigured", "column_roles_unassigned",
+            "header_not_selected", "data_region_unconfigured",
             "time_axis_unconfigured", "waveform_channel_missing",
         }
 

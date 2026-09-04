@@ -664,9 +664,13 @@ silently cleaned up on its behalf.
 an oversight: Slice 6's own production issue set
 (`app/services/preparation_issue_service.py`) is currently a short,
 closed, conservative list (`header_not_selected` /
-`data_region_unconfigured` / `column_roles_unassigned`), all `info`
-severity, all derived from CONFIGURATION state, never from data
-content. A time-interpretation diagnostic (e.g. "repeated timestamps
+`data_region_unconfigured`), all `info` severity, all derived from
+CONFIGURATION state, never from data content. (A third code,
+`column_roles_unassigned`, existed at the time this section was
+written but was retired by a 2026-09-04 UAT fix — see
+[DECISIONS.md — DEC-073](DECISIONS.md#dec-073--csvexcel-preparation-uses-only-three-column-roles-time-axis-waveform-and-not-assigned-not-assigned-is-the-default-and-is-omitted-from-cleaned-export) —
+once the three-role column model made "Not Assigned" a normal,
+intentional state rather than incomplete configuration.) A time-interpretation diagnostic (e.g. "repeated timestamps
 detected," "possible missing sample") is derived from DATA CONTENT, a
 qualitatively different and materially riskier thing to surface as a
 severity-carrying finding before real readiness policy exists for it.

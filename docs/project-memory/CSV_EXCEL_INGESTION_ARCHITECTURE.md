@@ -51,6 +51,11 @@ audit task for verbatim wording. Summarized:
 8. Excel sheets remain independent (no automatic merging) initially.
 9. Column roles are broader than waveform/no-waveform (Time Axis /
    Waveform Channel / Metadata / Quality-Status / Ignore / Unknown).
+   **Superseded 2026-09-04**: a UAT fix simplified this to exactly
+   three roles (Time Axis / Waveform / Not Assigned) — see
+   [DECISIONS.md — DEC-073](DECISIONS.md#dec-073--csvexcel-preparation-uses-only-three-column-roles-time-axis-waveform-and-not-assigned-not-assigned-is-the-default-and-is-omitted-from-cleaned-export).
+   This original six-role principle is left unedited below as the
+   historical audit record.
 10. Time-axis formats are treated as an open, extensible set, not a
     closed enumeration.
 

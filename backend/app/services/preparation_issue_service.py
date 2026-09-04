@@ -5,11 +5,19 @@ Owns the ONLY seam that turns current preparation state into
 `app.domain.preparation_issue.PreparationIssue` findings.
 `collect_preparation_issues()` (Slice 6, UNCHANGED by Slice 9) stays a
 short, linear function checking a handful of already-known
-CONFIGURATION facts (is a header selected? is a data region set? are
-all columns classified?) -- never data interpretation. Every issue it
-produces is still `SEVERITY_INFO` -- purely descriptive, never implying
-a source is invalid or blocked (task's own explicit "do NOT silently
-decide that a header is mandatory" guardrail).
+CONFIGURATION facts (is a header selected? is a data region set?) --
+never data interpretation. Every issue it produces is still
+`SEVERITY_INFO` -- purely descriptive, never implying a source is
+invalid or blocked (task's own explicit "do NOT silently decide that a
+header is mandatory" guardrail).
+
+UAT fix (2026-09-04): the third Slice 6 issue, `column_roles_unassigned`
+("N columns have no assigned role"), is retired -- the three-role
+column model (`not_assigned`/`time_axis`/`waveform`) makes
+`not_assigned` a normal, INTENTIONAL final state, not incomplete
+configuration, so a column remaining `not_assigned` is no longer
+informative to flag at all. See `app.domain.preparation_issue`'s own
+module docstring for the full rationale.
 
 `build_issue_summary()` (the ONE entry point `GET .../issues` calls)
 now ALSO calls `app.services.readiness_service.collect_readiness_
@@ -28,22 +36,13 @@ always equals `current_revision` and `is_stale` is always `False`
 (see `app.domain.preparation_issue`'s own module docstring for why
 those fields exist anyway, and `app.services.readiness_service`'s own
 docstring for why a cache was deliberately not introduced there
-either, despite doing meaningfully more work than Slice 6's own three
+either, despite doing meaningfully more work than Slice 6's own two
 dict lookups).
-
-Column-count awareness reuses the exact same helpers
-`app.services.working_overlay_service` already built
-(`ensure_csv_totals_cached` for CSV; the selected worksheet's own
-best-effort `WorksheetInfo.column_count` for Excel) -- never a third,
-possibly-divergent column-counting implementation. When that total is
-genuinely unknown (an Excel worksheet with no cheap dimension hint),
-the column-roles issue is simply skipped rather than fabricated.
 """
 
 from __future__ import annotations
 
 from app.domain.preparation_issue import (
-    ISSUE_COLUMN_ROLES_UNASSIGNED,
     ISSUE_DATA_REGION_UNCONFIGURED,
     ISSUE_HEADER_NOT_SELECTED,
     SEVERITY_INFO,
@@ -53,9 +52,7 @@ from app.domain.preparation_issue import (
     summarize_issues,
 )
 from app.domain.preparation_session import PreparationSession
-from app.domain.working_overlay import ROLE_UNKNOWN
 from app.services.errors import SourceNotFoundError, WorksheetNotSelectedError
-from app.services.preparation_preview_service import ensure_csv_totals_cached
 from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.readiness_service import collect_readiness_issues
 
@@ -76,13 +73,6 @@ def _resolve_worksheet_index(session: PreparationSession) -> int | None:
             "PATCH .../preparation-sources/{source_id} before requesting its readiness issues."
         )
     return session.summary.selected_worksheet_index
-
-
-def _known_column_count(session: PreparationSession, worksheet_index: int | None) -> int | None:
-    if worksheet_index is None:
-        ensure_csv_totals_cached(session)
-        return session.cached_column_count
-    return session.summary.worksheets[worksheet_index].column_count
 
 
 def collect_preparation_issues(session: PreparationSession, worksheet_index: int | None) -> list[PreparationIssue]:
@@ -113,24 +103,6 @@ def collect_preparation_issues(session: PreparationSession, worksheet_index: int
                 suggested_action="Narrow the data region in the Structure panel if only part of the source is relevant.",
             )
         )
-
-    column_count = _known_column_count(session, worksheet_index)
-    if column_count:
-        unassigned_count = sum(
-            1 for c in range(column_count)
-            if overlay.column_roles.get((worksheet_index, c), ROLE_UNKNOWN) == ROLE_UNKNOWN
-        )
-        if unassigned_count > 0:
-            issues.append(
-                PreparationIssue(
-                    severity=SEVERITY_INFO,
-                    code=ISSUE_COLUMN_ROLES_UNASSIGNED,
-                    message=f"{unassigned_count} of {column_count} column(s) have no assigned role.",
-                    location=IssueLocation(worksheet_index=worksheet_index, field="column_roles"),
-                    suggested_action="Assign roles to the remaining columns in the Structure panel.",
-                    details={"unassigned_count": unassigned_count, "total_columns": column_count},
-                )
-            )
 
     return issues
 

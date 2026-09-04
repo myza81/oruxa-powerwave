@@ -828,7 +828,7 @@
         .ww-data-prep-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
         .ww-data-prep-toolbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         .ww-data-prep-change-summary { color: var(--text-dim); font-size: 0.7rem; white-space: nowrap; }
-        .ww-data-prep-row-toggle-btn, .ww-data-prep-col-toggle-btn, .ww-data-prep-cell-reset-btn, .ww-data-prep-cell-clear-btn, .ww-data-prep-row-header-btn {
+        .ww-data-prep-row-toggle-btn, .ww-data-prep-cell-reset-btn, .ww-data-prep-cell-clear-btn, .ww-data-prep-row-header-btn {
             font: inherit;
             font-size: 0.68rem;
             line-height: 1;
@@ -839,7 +839,7 @@
             padding: 0 0 0 6px;
             text-decoration: underline;
         }
-        .ww-data-prep-row-toggle-btn:hover, .ww-data-prep-col-toggle-btn:hover,
+        .ww-data-prep-row-toggle-btn:hover,
         .ww-data-prep-cell-reset-btn:hover, .ww-data-prep-cell-clear-btn:hover,
         .ww-data-prep-row-header-btn:hover { color: var(--accent); }
         .ww-data-prep-cell-clear-btn { margin-left: 6px; text-decoration: none; border: 1px solid var(--panel-border); border-radius: 3px; padding: 1px 6px; }
@@ -4671,6 +4671,7 @@
                                 </div>
                             </div>
                         </div>
+                        <p class="hint">Time Axis = defines the X-axis. Waveform = a Y-axis channel. Not Assigned (default) = not used by Powerwave, kept in the original source, left out of the cleaned export.</p>
                         <div class="ww-data-prep-table-wrap">
                             <table class="ww-data-prep-table ww-data-prep-columns-table" id="wwDataPrepColumnsTable"></table>
                         </div>
@@ -7023,16 +7024,20 @@
             // Slice 4 (DEC-072): Working Dataset overlay state. `overlay`
             // mirrors the backend's own WorkingOverlaySummaryOut verbatim
             // (never computed/guessed locally) -- see
-            // wwDataPrepApplyOverlaySummary(). `ignoredColumns`/
-            // `workingRevision` come from the preview response itself
-            // (page-independent) and are refreshed on every
-            // wwDataPrepFetchPreview() call.
-            ignoredColumns: [],
+            // wwDataPrepApplyOverlaySummary(). `workingRevision` comes
+            // from the preview response itself (page-independent) and is
+            // refreshed on every wwDataPrepFetchPreview() call.
+            //
+            // UAT fix (2026-09-04): `ignoredColumns`/`overlay.
+            // ignoredColumnCount` are retired along with the backend's
+            // own three-role column-model simplification -- a column not
+            // used by Powerwave is now derived directly from
+            // `columnRoles[c] === "not_assigned"`, never a separate
+            // tracked set.
             workingRevision: 0,
             overlay: {
                 editedCellCount: 0,
                 excludedRowCount: 0,
-                ignoredColumnCount: 0,
                 canUndo: false,
                 canRedo: false,
             },
@@ -7134,15 +7139,16 @@
         function wwDataPrepRenderTable(preview) {
             const table = document.getElementById("wwDataPrepTable");
             const columnCount = wwDataPrep.columnCount || 0;
-            const ignoredColumns = new Set(wwDataPrep.ignoredColumns || []);
+            // UAT fix (2026-09-04): a column not used by Powerwave is now
+            // derived directly from its own role -- see the Structure
+            // panel's role selector for how a column is assigned Time
+            // Axis/Waveform/Not Assigned.
+            const isNotAssigned = (c) => (wwDataPrep.columnRoles[c] || "not_assigned") === "not_assigned";
 
             let html = "<thead><tr><th></th>";
             for (let c = 0; c < columnCount; c++) {
-                const ignored = ignoredColumns.has(c);
-                html += '<th class="' + (ignored ? "ww-data-prep-col-ignored" : "") + '">' +
+                html += '<th class="' + (isNotAssigned(c) ? "ww-data-prep-col-ignored" : "") + '">' +
                     wwSpreadsheetColumnLabel(c) +
-                    ' <button type="button" class="ww-data-prep-col-toggle-btn" data-col="' + c +
-                    '" data-ignored="' + ignored + '">' + (ignored ? "Unignore" : "Ignore") + '</button>' +
                     "</th>";
             }
             html += "</tr></thead><tbody>";
@@ -7179,7 +7185,7 @@
                     const isModified = modifiedCols.has(c);
                     const classes = ["ww-data-prep-cell"];
                     if (isModified) classes.push("ww-data-prep-cell-modified");
-                    if (ignoredColumns.has(c)) classes.push("ww-data-prep-col-ignored-cell");
+                    if (isNotAssigned(c)) classes.push("ww-data-prep-col-ignored-cell");
                     const titleAttr = isBlank ? "" : ' title="' + escapeHtml(String(value)) + '"';
                     // `data-value` carries the exact displayed working value
                     // (raw text, not HTML-escaped) so click-to-edit can seed
@@ -7212,7 +7218,6 @@
             wwDataPrep.overlay = {
                 editedCellCount: apiSummary.edited_cell_count,
                 excludedRowCount: apiSummary.excluded_row_count,
-                ignoredColumnCount: apiSummary.ignored_column_count,
                 canUndo: apiSummary.can_undo,
                 canRedo: apiSummary.can_redo,
             };
@@ -7231,7 +7236,6 @@
             const parts = [];
             if (o.editedCellCount) parts.push(o.editedCellCount + (o.editedCellCount === 1 ? " cell edited" : " cells edited"));
             if (o.excludedRowCount) parts.push(o.excludedRowCount + (o.excludedRowCount === 1 ? " row excluded" : " rows excluded"));
-            if (o.ignoredColumnCount) parts.push(o.ignoredColumnCount + (o.ignoredColumnCount === 1 ? " column ignored" : " columns ignored"));
             document.getElementById("wwDataPrepChangeSummary").textContent = parts.length ? parts.join(" · ") : "No changes";
             document.getElementById("wwDataPrepUndoBtn").disabled = !o.canUndo;
             document.getElementById("wwDataPrepRedoBtn").disabled = !o.canRedo;
@@ -7290,13 +7294,18 @@
         // preview response's own column_labels/column_roles, which are
         // already page-independent and O(columns), never duplicated per
         // row.
+        //
+        // UAT fix (2026-09-04): exactly three user-facing roles remain --
+        // Powerwave only needs to know which column(s) define the time
+        // axis and which are waveform channels; everything else is
+        // "Not Assigned" (the default -- a new/untouched column, and
+        // never used by Powerwave analysis or the cleaned export). The
+        // earlier Unknown/Metadata/Quality-Status/Ignore choices never
+        // appear here or anywhere else in the UI.
         const WW_DATA_PREP_ROLES = [
-            ["unknown", "Unknown"],
-            ["waveform", "Waveform Channel"],
+            ["not_assigned", "Not Assigned"],
             ["time_axis", "Time Axis"],
-            ["metadata", "Metadata"],
-            ["quality_status", "Quality / Status"],
-            ["ignore", "Ignore"],
+            ["waveform", "Waveform"],
         ];
 
         function wwDataPrepRenderColumnMapping() {
@@ -7307,7 +7316,7 @@
 
             let html = "<thead><tr><th>Column</th><th>Label</th><th>Role</th></tr></thead><tbody>";
             for (let c = 0; c < columnCount; c++) {
-                const role = roles[c] || "unknown";
+                const role = roles[c] || "not_assigned";
                 const optionsHtml = WW_DATA_PREP_ROLES.map(([value, label]) =>
                     '<option value="' + value + '"' + (value === role ? " selected" : "") + '>' + label + '</option>'
                 ).join("");
@@ -7333,14 +7342,11 @@
         function wwDataPrepSummarizeColumnRoles(roles) {
             if (!roles.length) return "—";
             const counts = {};
-            for (const role of roles) counts[role] = (counts[role] || 0) + 1;
-            const unknownCount = counts.unknown || 0;
-            if (unknownCount === roles.length) {
-                return roles.length + " total · " + unknownCount + " Unknown";
-            }
-            // Only non-zero roles are listed (task's own "may include
-            // only non-zero roles" guidance) -- "Unknown" still appears
-            // when some, but not all, columns remain unclassified.
+            for (const role of roles) counts[role || "not_assigned"] = (counts[role || "not_assigned"] || 0) + 1;
+            // Every column left Not Assigned is a normal, expected state
+            // (never a warning) -- shown plainly, same as any other mix.
+            // Only non-zero roles are listed, in the same Not Assigned /
+            // Time Axis / Waveform order as the role selector itself.
             return WW_DATA_PREP_ROLES
                 .filter(([value]) => counts[value])
                 .map(([value, label]) => counts[value] + " " + label)
@@ -7398,7 +7404,6 @@
                 const preview = await response.json();
                 wwDataPrep.totalRowCount = preview.total_row_count;
                 wwDataPrep.columnCount = preview.column_count;
-                wwDataPrep.ignoredColumns = preview.ignored_columns || [];
                 wwDataPrep.workingRevision = preview.working_revision;
                 wwDataPrep.headerRowNumber = preview.header_row_number;
                 wwDataPrep.dataStartRow = preview.data_start_row;
@@ -8589,20 +8594,6 @@
             }
         }
 
-        async function wwDataPrepToggleColumnIgnored(columnIndex, ignored) {
-            const status = document.getElementById("wwDataPrepStatus");
-            try {
-                const response = await fetch(
-                    wwDataPrepSourceUrl("/working/columns/" + columnIndex),
-                    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ignored: ignored }) }
-                );
-                if (!response.ok) { status.textContent = "Could not update this column."; return; }
-                wwDataPrepApplyOverlaySummary(await response.json());
-                await wwDataPrepFetchPreview();
-            } catch (error) {
-                status.textContent = "Could not reach the backend.";
-            }
-        }
 
         async function wwDataPrepResetAll() {
             const status = document.getElementById("wwDataPrepStatus");
@@ -8864,11 +8855,6 @@
             const rowToggle = event.target.closest(".ww-data-prep-row-toggle-btn");
             if (rowToggle) {
                 wwDataPrepToggleRowExcluded(parseInt(rowToggle.dataset.row, 10), rowToggle.dataset.excluded !== "true");
-                return;
-            }
-            const colToggle = event.target.closest(".ww-data-prep-col-toggle-btn");
-            if (colToggle) {
-                wwDataPrepToggleColumnIgnored(parseInt(colToggle.dataset.col, 10), colToggle.dataset.ignored !== "true");
                 return;
             }
             const headerBtn = event.target.closest(".ww-data-prep-row-header-btn");

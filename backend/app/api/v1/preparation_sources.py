@@ -31,9 +31,16 @@ Slice 5 adds header-row/data-region/column-role endpoints under
 `.../working/header`, `.../working/data-region`, and
 `.../working/columns/{column_index}/role` -- the same "backend is
 authoritative, tiny format-agnostic request bodies" convention Slice 4
-already established for cell/row/column-ignore editing. See
-`app.services.working_overlay_service`'s own module docstring for the
-orchestration/bounds-validation layer these endpoints call into.
+already established for cell/row editing. See `app.services.working_
+overlay_service`'s own module docstring for the orchestration/bounds-
+validation layer these endpoints call into.
+
+UAT fix (2026-09-04): Slice 4's own legacy `PUT .../working/columns/
+{column_index}` boolean ignore/unignore endpoint is removed -- see
+`app.domain.working_overlay`'s own module docstring for the three-role
+column-model simplification (`not_assigned`/`time_axis`/`waveform`)
+that makes it redundant with `PUT .../working/columns/{column_index}/
+role`.
 """
 
 from __future__ import annotations
@@ -46,7 +53,6 @@ from app.config import Settings
 from app.schemas.preparation_issue import PreparationIssueSummaryOut
 from app.schemas.preparation_session import (
     CellWorkingValueRequest,
-    ColumnIgnoreRequest,
     ColumnRoleRequest,
     DataRegionRequest,
     HeaderRowRequest,
@@ -94,7 +100,6 @@ from app.services.working_overlay_service import (
     reset_cell,
     reset_column_role,
     reset_data_region,
-    set_column_ignored,
     set_column_role,
     set_data_region,
     set_header_row,
@@ -435,26 +440,6 @@ def put_working_row(
     return WorkingOverlaySummaryOut.from_domain(summary)
 
 
-@router.put("/{source_id}/working/columns/{column_index}", response_model=WorkingOverlaySummaryOut)
-def put_working_column(
-    workspace_id: str,
-    source_id: str,
-    body: ColumnIgnoreRequest,
-    column_index: int = Path(ge=0),
-    registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
-) -> WorkingOverlaySummaryOut:
-    """Ignore/unignore one column in the working view."""
-    workspace_id = _validate_workspace_id(workspace_id)
-    try:
-        summary = set_column_ignored(
-            workspace_id=workspace_id, source_id=source_id, column_index=column_index,
-            ignored=body.ignored, registry=registry,
-        )
-    except ImportServiceError as exc:
-        raise _working_error(exc) from exc
-    return WorkingOverlaySummaryOut.from_domain(summary)
-
-
 @router.delete("/{source_id}/working", response_model=WorkingOverlaySummaryOut)
 def delete_working_overlay(
     workspace_id: str,
@@ -462,7 +447,7 @@ def delete_working_overlay(
     registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
 ) -> WorkingOverlaySummaryOut:
     """Reset all working changes (cell edits/clears, row exclusions,
-    column ignores) for this source in one step -- still undoable."""
+    column roles) for this source in one step -- still undoable."""
     workspace_id = _validate_workspace_id(workspace_id)
     try:
         summary = reset_all_working_changes(workspace_id=workspace_id, source_id=source_id, registry=registry)
@@ -591,14 +576,12 @@ def put_working_column_role(
     column_index: int = Path(ge=0),
     registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
 ) -> WorkingOverlaySummaryOut:
-    """Assign one column's semantic role (Slice 5, DEC-072) -- one of
-    `unknown`/`waveform`/`time_axis`/`metadata`/`quality_status`/
-    `ignore`. Purely a stated intent, never validated/interpreted (no
-    time-format parsing, no numeric-value checking) -- see
-    `app.services.working_overlay_service.set_column_role`'s own
-    docstring. Distinct from, but reconciled with, the legacy
-    `PUT .../working/columns/{column_index}` boolean ignore endpoint
-    above (both ultimately write the same `column_roles` state)."""
+    """Assign one column's semantic role (Slice 5, DEC-072; simplified
+    to exactly three roles by the 2026-09-04 UAT fix) -- one of
+    `not_assigned`/`time_axis`/`waveform`. Purely a stated intent, never
+    validated/interpreted (no time-format parsing, no numeric-value
+    checking) -- see `app.services.working_overlay_service.
+    set_column_role`'s own docstring."""
     workspace_id = _validate_workspace_id(workspace_id)
     try:
         summary = set_column_role(
@@ -617,9 +600,8 @@ def delete_working_column_role(
     column_index: int = Path(ge=0),
     registry: PreparationSessionRegistry = Depends(get_preparation_session_registry),
 ) -> WorkingOverlaySummaryOut:
-    """Reset one column's role to `unknown` -- including a column
-    previously set to `ignore` (task section: "If role was Ignore,
-    reset should return to Unknown")."""
+    """Reset one column's role to `not_assigned` -- the single neutral
+    default state."""
     workspace_id = _validate_workspace_id(workspace_id)
     try:
         summary = reset_column_role(

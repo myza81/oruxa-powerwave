@@ -94,7 +94,17 @@ KNOWN_SEVERITIES = (SEVERITY_BLOCKING, SEVERITY_WARNING, SEVERITY_INFO)
 #: every future validator finding.
 ISSUE_HEADER_NOT_SELECTED = "header_not_selected"
 ISSUE_DATA_REGION_UNCONFIGURED = "data_region_unconfigured"
-ISSUE_COLUMN_ROLES_UNASSIGNED = "column_roles_unassigned"
+
+#: UAT fix (2026-09-04): `ISSUE_COLUMN_ROLES_UNASSIGNED` (formerly
+#: "column_roles_unassigned") is retired. The three-role simplification
+#: makes `not_assigned` a normal, intentional, final state -- not
+#: incomplete configuration -- so a column remaining `not_assigned` is
+#: no longer worth flagging even at INFO severity (task's own explicit
+#: "owner intent: unassigned columns are normal and intentional...
+#: do not add a redundant 'unassigned columns' issue"). If every column
+#: is `not_assigned`, readiness is already correctly blocked by the
+#: MEANINGFUL issues (`time_axis_unconfigured`/`waveform_channel_
+#: missing`), never by this one.
 
 #: Slice 9 (Full Powerwave Readiness Validator, DEC-072) -- the real
 #: BLOCKING/WARNING findings a stored preparation source may now carry,
@@ -132,7 +142,6 @@ ISSUE_TIMEZONE_UNSPECIFIED = "timezone_unspecified"
 KNOWN_ISSUE_CODES = (
     ISSUE_HEADER_NOT_SELECTED,
     ISSUE_DATA_REGION_UNCONFIGURED,
-    ISSUE_COLUMN_ROLES_UNASSIGNED,
     ISSUE_TIME_AXIS_UNCONFIGURED,
     ISSUE_TIME_AXIS_UNSUPPORTED,
     ISSUE_TIME_AXIS_UNRESOLVED,

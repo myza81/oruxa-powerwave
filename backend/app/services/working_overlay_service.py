@@ -71,9 +71,9 @@ class WorkingOverlaySummary:
     own docstring) -- this summary does not distinguish the two kinds,
     only how many cells currently differ from raw.
 
-    `edited_cell_count`/`excluded_row_count`/`ignored_column_count`/
-    `can_undo`/`can_redo` are GLOBAL across every worksheet of this
-    source (unchanged from Slice 4). `header_row_number`/
+    `edited_cell_count`/`excluded_row_count`/`can_undo`/`can_redo` are
+    GLOBAL across every worksheet of this source (unchanged from Slice
+    4). `header_row_number`/
     `data_start_row`/`data_end_mode`/`data_end_row` are, by contrast,
     scoped to ONE worksheet (Slice 5) -- whichever `worksheet_index` the
     caller resolved for its own operation (`None` for CSV; the selected
@@ -91,12 +91,23 @@ class WorkingOverlaySummary:
     all (distinct from `END_MODE_SOURCE_END` -- see that constant's own
     docstring for why "no region" and "region with a floating end" are
     different states).
+
+    UAT fix (2026-09-04): `ignored_column_count` is retired -- the
+    three-role simplification (`not_assigned`/`time_axis`/`waveform`)
+    makes "not assigned" the sparse DEFAULT (never an explicit
+    `column_roles` entry, per `app.domain.working_overlay`'s own
+    "absence is the default" convention), so it can no longer be
+    counted the way the old, always-explicit `ignore` role could. This
+    was already a purely-informational counter with no readiness/export
+    consequence of its own; a caller wanting "how many columns are not
+    assigned" now derives it from the preview's own `column_roles`
+    array (task section S's own preferred "N Time · N Waveform · N Not
+    Assigned" summary phrasing).
     """
 
     working_revision: int
     edited_cell_count: int
     excluded_row_count: int
-    ignored_column_count: int
     can_undo: bool
     can_redo: bool
     header_row_number: int | None
@@ -123,7 +134,6 @@ def summarize_working_overlay(session: PreparationSession, worksheet_index: int 
         working_revision=overlay.revision,
         edited_cell_count=len(overlay.cell_overrides),
         excluded_row_count=len(overlay.excluded_rows),
-        ignored_column_count=sum(1 for role in overlay.column_roles.values() if role == overlay_domain.ROLE_IGNORE),
         can_undo=bool(overlay.history),
         can_redo=bool(overlay.redo_stack),
         header_row_number=overlay.header_row.get(worksheet_index),
@@ -252,33 +262,6 @@ def set_row_excluded(
     return summarize_working_overlay(session, worksheet_index)
 
 
-def set_column_ignored(
-    *, workspace_id: str, source_id: str, column_index: int, ignored: bool, registry: PreparationSessionRegistry,
-) -> WorkingOverlaySummary:
-    """Slice 4's own boolean ignore/unignore endpoint, preserved as a
-    thin ALIAS over Slice 5's `column_roles` model (task section:
-    "keep old endpoint behavior as an alias" during the ignore
-    migration) -- `ignored=True` is equivalent to
-    `set_column_role(..., role=ROLE_IGNORE)`; `ignored=False` resets
-    the role back to `ROLE_UNKNOWN` ONLY if it is currently `ROLE_IGNORE`
-    (a column already carrying a different explicit role, e.g.
-    `waveform`, is never silently reclassified by this legacy
-    boolean call -- there is nothing for it to "unignore"). This keeps
-    the old and new representations permanently coherent by
-    construction: `ROLE_IGNORE` in `column_roles` is the ONLY place
-    "ignored" is ever stored; there is no second, independent boolean
-    that could drift out of sync with it."""
-    session = _resolve_session(workspace_id=workspace_id, source_id=source_id, registry=registry)
-    worksheet_index = _resolve_worksheet_index(session)
-    _check_column_bound(session, worksheet_index, column_index)
-    key = overlay_domain.column_key(worksheet_index, column_index)
-    if ignored:
-        overlay_domain.set_column_role(session.working_overlay, key, overlay_domain.ROLE_IGNORE)
-    elif session.working_overlay.column_roles.get(key) == overlay_domain.ROLE_IGNORE:
-        overlay_domain.reset_column_role(session.working_overlay, key)
-    return summarize_working_overlay(session, worksheet_index)
-
-
 def set_column_role(
     *, workspace_id: str, source_id: str, column_index: int, role: str, registry: PreparationSessionRegistry,
 ) -> WorkingOverlaySummary:
@@ -305,10 +288,9 @@ def set_column_role(
 def reset_column_role(
     *, workspace_id: str, source_id: str, column_index: int, registry: PreparationSessionRegistry,
 ) -> WorkingOverlaySummary:
-    """Return one column's role to `ROLE_UNKNOWN` (a safe no-op if it
-    already had no explicit role) -- including a column previously set
-    to `ROLE_IGNORE`, per task section "If role was Ignore, reset
-    should return to Unknown", not back to some other implicit state."""
+    """Return one column's role to `ROLE_NOT_ASSIGNED` (a safe no-op if
+    it already had no explicit role) -- the single neutral default
+    state, never any other implicit value."""
     session = _resolve_session(workspace_id=workspace_id, source_id=source_id, registry=registry)
     worksheet_index = _resolve_worksheet_index(session)
     key = overlay_domain.column_key(worksheet_index, column_index)

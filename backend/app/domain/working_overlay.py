@@ -51,17 +51,32 @@ history model" preference:
   module never invents a default range value to store.
 - `column_roles: dict[ColumnKey, str]` -- one of `KNOWN_COLUMN_ROLES`
   per column that has been explicitly classified; an absent entry means
-  `ROLE_UNKNOWN` (task's own explicit "do NOT automatically classify
-  columns" -- absence IS the default, never written).
+  `ROLE_NOT_ASSIGNED` (task's own explicit "do NOT automatically
+  classify columns" -- absence IS the default, never written).
 
-Slice 4's own separate `ignored_columns: set[ColumnKey]` field is
-retired here -- `ROLE_IGNORE` in `column_roles` is now the single
-authoritative representation (task's own "avoid maintaining two
-contradictory independent ignore states" guidance). Slice 4's own
-external ignore/unignore API contract
-(`app.services.working_overlay_service.set_column_ignored`) is
-preserved unchanged as a thin alias translating a boolean onto this
-same `column_roles` model -- see that function's own docstring.
+**UAT fix (2026-09-04, DEC-072): the column-role model is simplified to
+exactly THREE roles.** Owner-approved: Powerwave only ever needs to
+know "which column(s) define the time axis" and "which column(s) are
+waveform channels" -- everything else is `not_assigned`, a single
+neutral default, never classified further. The earlier five-role model
+(`unknown`/`waveform`/`time_axis`/`metadata`/`quality_status`/`ignore`)
+is retired -- `metadata`/`quality_status` asked the engineer to make a
+distinction Powerwave never actually used, and `unknown`/`ignore` were
+already two names for functionally the same "not analysed by
+Powerwave" state (the ONLY difference being whether Slice 12's cleaned
+export kept the column or physically omitted it -- see that module's
+own docstring for why Slice 12 now omits `not_assigned` uniformly).
+Slice 4's own separate `ignored_columns: set[ColumnKey]` field remains
+retired (unchanged from before this fix) -- `not_assigned` (the sparse
+default) is the single authoritative "not analysed, not exported"
+representation; there is no longer a separate explicit "ignore" action
+at all, since it is now indistinguishable from simply never assigning
+a role. `app.services.working_overlay_service.set_column_ignored()`
+and its own `PUT .../working/columns/{column_index}` boolean-ignore API
+route are retired for the same reason (a `PreparationSession` is
+temporary, in-memory, owner-approved-clean-migration state -- see task
+section T -- so no compatibility alias was preserved for a concept that
+no longer exists).
 
 A later owner-UAT refinement (post-Slice-6) adds an END-MODE to
 `DataRegion` (`END_MODE_SOURCE_END`/`END_MODE_SPECIFIC`) so a region's
@@ -128,26 +143,23 @@ ColumnKey = tuple
 # coarsely (one entry per worksheet/source, not per row or column).
 WorksheetScope = object  # documents intent only; always an int | None in practice
 
-#: Slice 5 (DEC-072): column semantic-role model. `ROLE_UNKNOWN` is the
-#: implicit default for any column with no `column_roles` entry --
-#: never written explicitly by this module's own functions (task's own
-#: "do NOT automatically classify columns" guardrail: absence IS
-#: unknown, not a stored value chosen by code). `ROLE_IGNORE` retires
-#: Slice 4's separate `ignored_columns` set -- see this module's own
-#: docstring above.
-ROLE_UNKNOWN = "unknown"
+#: Slice 5 (DEC-072) column semantic-role model, simplified by the
+#: 2026-09-04 UAT fix to exactly three roles -- Powerwave only needs to
+#: know "which column(s) define the time axis" and "which column(s) are
+#: waveform channels"; everything else is `ROLE_NOT_ASSIGNED`.
+#: `ROLE_NOT_ASSIGNED` is the implicit default for any column with no
+#: `column_roles` entry -- never written explicitly by this module's own
+#: functions (task's own "do NOT automatically classify columns"
+#: guardrail: absence IS not-assigned, not a stored value chosen by
+#: code). The earlier `unknown`/`metadata`/`quality_status`/`ignore`
+#: roles are retired (see this module's own docstring above for why).
+ROLE_NOT_ASSIGNED = "not_assigned"
 ROLE_WAVEFORM = "waveform"
 ROLE_TIME_AXIS = "time_axis"
-ROLE_METADATA = "metadata"
-ROLE_QUALITY_STATUS = "quality_status"
-ROLE_IGNORE = "ignore"
 KNOWN_COLUMN_ROLES = (
-    ROLE_UNKNOWN,
-    ROLE_WAVEFORM,
+    ROLE_NOT_ASSIGNED,
     ROLE_TIME_AXIS,
-    ROLE_METADATA,
-    ROLE_QUALITY_STATUS,
-    ROLE_IGNORE,
+    ROLE_WAVEFORM,
 )
 
 #: Data-region end-mode refinement (owner UAT, post-Slice-6): the owner
@@ -325,7 +337,7 @@ def set_row_excluded(overlay: WorkingOverlay, key: RowKey, excluded: bool) -> No
 
 
 def set_column_role(overlay: WorkingOverlay, key: ColumnKey, role: str) -> None:
-    """Set one column's semantic role (Slice 5). `role == ROLE_UNKNOWN`
+    """Set one column's semantic role (Slice 5). `role == ROLE_NOT_ASSIGNED`
     removes any stored entry rather than writing the default explicitly
     -- `column_roles` stays sparse (only classified columns appear),
     matching this module's own "absence is the default" convention
@@ -336,7 +348,7 @@ def set_column_role(overlay: WorkingOverlay, key: ColumnKey, role: str) -> None:
     in this module.
     """
     before = overlay.column_roles.get(key)
-    if role == ROLE_UNKNOWN:
+    if role == ROLE_NOT_ASSIGNED:
         overlay.column_roles.pop(key, None)
         after = None
     else:
@@ -346,8 +358,8 @@ def set_column_role(overlay: WorkingOverlay, key: ColumnKey, role: str) -> None:
 
 
 def reset_column_role(overlay: WorkingOverlay, key: ColumnKey) -> bool:
-    """Equivalent to `set_column_role(overlay, key, ROLE_UNKNOWN)` but
-    matches `reset_cell`'s own "return whether anything actually
+    """Equivalent to `set_column_role(overlay, key, ROLE_NOT_ASSIGNED)`
+    but matches `reset_cell`'s own "return whether anything actually
     changed" signature, and records a no-op-free history entry only
     when there was something to reset."""
     if key not in overlay.column_roles:

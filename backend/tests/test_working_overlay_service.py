@@ -37,7 +37,6 @@ from app.services.working_overlay_service import (
     reset_cell,
     reset_column_role,
     reset_data_region,
-    set_column_ignored,
     set_column_role,
     set_data_region,
     set_header_row,
@@ -249,32 +248,13 @@ class TestRowExclusion:
             set_row_excluded(workspace_id="ws-1", source_id=source_id, row_number=99, excluded=True, registry=registry)
 
 
-class TestColumnIgnore:
-    def test_ignore_and_unignore(self):
-        registry = PreparationSessionRegistry()
-        source_id = _add_csv(registry, b"a,b\n1,2\n")
-
-        summary = set_column_ignored(workspace_id="ws-1", source_id=source_id, column_index=1, ignored=True, registry=registry)
-        assert summary.ignored_column_count == 1
-
-        summary = set_column_ignored(workspace_id="ws-1", source_id=source_id, column_index=1, ignored=False, registry=registry)
-        assert summary.ignored_column_count == 0
-
-    def test_ignore_beyond_known_column_total_is_rejected(self):
-        registry = PreparationSessionRegistry()
-        source_id = _add_csv(registry, b"a,b\n1,2\n")
-
-        with pytest.raises(InvalidWorkingCoordinateError):
-            set_column_ignored(workspace_id="ws-1", source_id=source_id, column_index=99, ignored=True, registry=registry)
-
-
 class TestResetAllAndUndoRedo:
     def test_reset_all_clears_every_kind_of_change(self):
         registry = PreparationSessionRegistry()
         source_id = _add_csv(registry, b"a,b\n1,2\n3,4\n")
         edit_cell(workspace_id="ws-1", source_id=source_id, row_number=1, column_index=0, value="X", registry=registry)
         set_row_excluded(workspace_id="ws-1", source_id=source_id, row_number=2, excluded=True, registry=registry)
-        set_column_ignored(workspace_id="ws-1", source_id=source_id, column_index=1, ignored=True, registry=registry)
+        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry)
         set_header_row(workspace_id="ws-1", source_id=source_id, row_number=1, registry=registry)
         set_data_region(workspace_id="ws-1", source_id=source_id, start_row=2, end_row=3, registry=registry)
 
@@ -282,7 +262,6 @@ class TestResetAllAndUndoRedo:
 
         assert summary.edited_cell_count == 0
         assert summary.excluded_row_count == 0
-        assert summary.ignored_column_count == 0
         assert summary.header_row_number is None
         assert summary.data_start_row is None
         assert summary.data_end_row is None
@@ -354,7 +333,6 @@ class TestWorkingOverlaySummary:
         assert summary.working_revision == 0
         assert summary.edited_cell_count == 0
         assert summary.excluded_row_count == 0
-        assert summary.ignored_column_count == 0
         assert summary.can_undo is False
         assert summary.can_redo is False
         assert summary.header_row_number is None
@@ -559,15 +537,30 @@ class TestDataRegionEndMode:
 
 
 class TestColumnRole:
-    def test_assign_and_read_back_ignored_count(self):
+    def test_assign_and_read_back(self):
         registry = PreparationSessionRegistry()
         source_id = _add_csv(registry, b"a,b\n1,2\n")
 
-        summary = set_column_role(
-            workspace_id="ws-1", source_id=source_id, column_index=1, role="ignore", registry=registry,
+        set_column_role(
+            workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry,
         )
 
-        assert summary.ignored_column_count == 1
+        session = registry.get("ws-1", source_id)
+        from app.domain.working_overlay import column_key
+        assert session.working_overlay.column_roles[column_key(None, 1)] == "waveform"
+
+    def test_legacy_roles_are_rejected(self):
+        # UAT fix (2026-09-04): `unknown`/`metadata`/`quality_status`/
+        # `ignore` are retired -- only `not_assigned`/`time_axis`/
+        # `waveform` remain valid.
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+
+        for legacy_role in ("unknown", "metadata", "quality_status", "ignore"):
+            with pytest.raises(InvalidColumnRoleError):
+                set_column_role(
+                    workspace_id="ws-1", source_id=source_id, column_index=0, role=legacy_role, registry=registry,
+                )
 
     def test_reset_column_role(self):
         registry = PreparationSessionRegistry()
@@ -592,7 +585,7 @@ class TestColumnRole:
         source_id = _add_csv(registry, b"a,b\n1,2\n")
 
         with pytest.raises(InvalidWorkingCoordinateError):
-            set_column_role(workspace_id="ws-1", source_id=source_id, column_index=99, role="metadata", registry=registry)
+            set_column_role(workspace_id="ws-1", source_id=source_id, column_index=99, role="waveform", registry=registry)
 
     def test_multiple_time_axis_columns_allowed(self):
         registry = PreparationSessionRegistry()
@@ -615,36 +608,8 @@ class TestColumnRole:
         set_column_role(workspace_id="ws-1", source_id=source_id, column_index=0, role="waveform", registry=registry)
 
         select_preparation_worksheet(workspace_id="ws-1", source_id=source_id, worksheet_index=1, registry=registry)
-        summary_b = summarize_working_overlay(registry.get("ws-1", source_id), worksheet_index=1)
-        assert summary_b.ignored_column_count == 0
 
         session = registry.get("ws-1", source_id)
         from app.domain.working_overlay import column_key
         assert column_key(1, 0) not in session.working_overlay.column_roles
         assert session.working_overlay.column_roles[column_key(0, 0)] == "waveform"
-
-    def test_legacy_ignore_endpoint_still_works_as_an_alias(self):
-        registry = PreparationSessionRegistry()
-        source_id = _add_csv(registry, b"a,b\n1,2\n")
-
-        set_column_ignored(workspace_id="ws-1", source_id=source_id, column_index=1, ignored=True, registry=registry)
-        session = registry.get("ws-1", source_id)
-        from app.domain.working_overlay import ROLE_IGNORE, column_key
-        assert session.working_overlay.column_roles[column_key(None, 1)] == ROLE_IGNORE
-
-        set_column_ignored(workspace_id="ws-1", source_id=source_id, column_index=1, ignored=False, registry=registry)
-        assert column_key(None, 1) not in session.working_overlay.column_roles
-
-    def test_legacy_unignore_does_not_disturb_a_different_explicit_role(self):
-        registry = PreparationSessionRegistry()
-        source_id = _add_csv(registry, b"a,b\n1,2\n")
-        set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry)
-
-        # Calling the legacy "unignore" on a column that was never
-        # ignored (it has a different explicit role) must not silently
-        # reclassify it.
-        set_column_ignored(workspace_id="ws-1", source_id=source_id, column_index=1, ignored=False, registry=registry)
-
-        session = registry.get("ws-1", source_id)
-        from app.domain.working_overlay import column_key
-        assert session.working_overlay.column_roles[column_key(None, 1)] == "waveform"
