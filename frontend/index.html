@@ -4580,19 +4580,29 @@
                         <p class="ww-data-prep-conversion-status" id="wwDataPrepConversionStatus"></p>
                     </div>
 
-                    <!-- CSV/Excel ingestion Slice 12 (DEC-072): cleaned
-                         Working Dataset export -- deliberately ALWAYS
-                         visible here, regardless of readiness (task
-                         section A: "readiness blocking issues != export
-                         blocked") and styled as a secondary action (a
-                         "secondary" button, never competing visually
-                         with "Continue to Powerwave" above it when both
-                         are shown). Exports the CURRENT working dataset
-                         as prepared -- never implies "Powerwave Ready" /
-                         "Validated" / "Canonical". -->
+                    <!-- CSV/Excel ingestion Slice 12 (DEC-072), styled as
+                         a secondary action (a "secondary" button, never
+                         competing visually with "Continue to Powerwave"
+                         above it when both are shown). Exports the
+                         resolved Time Axis (task's own "one standardized
+                         Time column, re-upload friendly" goal) plus the
+                         CURRENT working Waveform values.
+
+                         UAT enhancement (2026-09-04, DEC-074): unlike the
+                         original Slice 12 policy ("always visible,
+                         regardless of readiness"), a reusable cleaned
+                         export now REQUIRES a resolved Time Axis plus at
+                         least one Waveform column -- the button itself
+                         stays visible, but is disabled with a short,
+                         single-line guidance message
+                         (wwDataPrepRenderExportAction()) until that is
+                         true, mirroring "Continue to Powerwave"'s own
+                         limitation-notice pattern rather than a large new
+                         warning panel. -->
                     <div class="ww-data-prep-export-action">
-                        <button type="button" class="secondary" id="wwDataPrepExportBtn">Export Cleaned Data</button>
-                        <p class="hint">Exports the current working dataset as a cleaned CSV/Excel file. This does not mean the dataset is Powerwave-ready.</p>
+                        <button type="button" class="secondary" id="wwDataPrepExportBtn" disabled>Export Cleaned Data</button>
+                        <p class="hint">Exports the resolved Time Axis and current Waveform values as a cleaned, re-upload-friendly CSV/Excel file.</p>
+                        <p class="hint" id="wwDataPrepExportGuidance" hidden></p>
                         <p class="ww-data-prep-conversion-status" id="wwDataPrepExportStatus"></p>
                     </div>
                 </section>
@@ -7544,6 +7554,7 @@
             }
             groupsEl.innerHTML = html || '<p class="hint">No issues found.</p>';
             wwDataPrepRenderConversionAction();
+            wwDataPrepRenderExportAction();
         }
 
         // CSV/Excel ingestion Slice 10 (DEC-072): decides which of the
@@ -7581,6 +7592,46 @@
             }
             limitationEl.hidden = true;
             actionEl.hidden = false;
+        }
+
+        // UAT enhancement (2026-09-04, DEC-074): export now serializes
+        // the RESOLVED Time Axis, so `manual`/`unsupported` cannot be
+        // exported either -- the SAME constraint /convert already
+        // enforces for the same underlying reason (see
+        // app.services.preparation_export_service._ensure_exportable()).
+        function wwDataPrepIsExportTimeAxisUsable() {
+            const timeAxis = wwDataPrep.timeAxisSummary;
+            if (!timeAxis) return false;
+            return timeAxis.interpreter_id !== "manual" && timeAxis.interpreter_id !== "unsupported";
+        }
+
+        // Decides the Export Cleaned Data button's own enabled/disabled
+        // state and a short, single-line guidance message underneath it
+        // (task section W: "Do not show a large new warning panel") --
+        // reuses the exact same `is_ready`/index-only-without-interval
+        // signals `wwDataPrepRenderConversionAction()` already computes,
+        // plus the one extra `manual`/`unsupported` check above (never a
+        // second, independently-derived readiness policy).
+        function wwDataPrepRenderExportAction() {
+            const btn = document.getElementById("wwDataPrepExportBtn");
+            const guidanceEl = document.getElementById("wwDataPrepExportGuidance");
+            const summary = wwDataPrep.issueSummary;
+            const ready = !!(summary && summary.is_ready);
+
+            if (!ready || !wwDataPrepIsExportTimeAxisUsable()) {
+                btn.disabled = true;
+                guidanceEl.hidden = false;
+                guidanceEl.textContent = "Resolve the Time Axis before exporting a reusable cleaned file.";
+                return;
+            }
+            if (wwDataPrepIsIndexOnlyWithoutInterval()) {
+                btn.disabled = true;
+                guidanceEl.hidden = false;
+                guidanceEl.textContent = "Add a sampling rate or interval before exporting.";
+                return;
+            }
+            btn.disabled = false;
+            guidanceEl.hidden = true;
         }
 
         // Deliberately a SEPARATE small message map from
@@ -7644,20 +7695,29 @@
 
         // CSV/Excel ingestion Slice 12 (DEC-072): a SEPARATE small message
         // map, same rationale as wwDataPrepConversionErrorMessage() above
-        // -- these are Slice 12's own runtime export failures (there is no
-        // "not ready" failure mode here at all, since export is never
-        // gated on readiness; task section A).
+        // -- these are Slice 12's own runtime export failures.
+        //
+        // UAT enhancement (2026-09-04, DEC-074): export now serializes
+        // the RESOLVED Time Axis, so it gained the SAME "not ready yet"
+        // failure modes /convert already has -- export_not_ready/
+        // export_requires_interval/export_unsupported_interpreter.
+        // wwDataPrepRenderExportAction() below normally keeps the button
+        // disabled before any of these could even be attempted, but this
+        // map still exists for the rare race (state changed between the
+        // last render and this click).
         function wwDataPrepExportErrorMessage(code, message) {
             const knownMessages = {
                 export_revision_changed: "The preparation changed while exporting -- please try again.",
+                export_not_ready: "This source is no longer ready for a reusable cleaned export -- check Preparation Status for what changed.",
+                export_requires_interval: "Sample Index still has no real-time interval -- add one in Time Axis before exporting.",
+                export_unsupported_interpreter: "The current Time Axis configuration can't be exported yet -- choose Absolute Datetime, Date + Time, Elapsed, or Sample Index.",
                 source_not_found: "This source is no longer available.",
                 worksheet_not_selected: "Select a worksheet before exporting.",
             };
             return knownMessages[code] || (message || "Export failed.");
         }
 
-        // Export never navigates, never mutates preparation state, and
-        // is available regardless of readiness (task sections A/AG) --
+        // Export never navigates, never mutates preparation state --
         // the response is a binary ZIP, not JSON, so this reads it as a
         // blob and triggers a normal browser download via a throwaway
         // <a download> element, rather than the JSON-response pattern
@@ -7695,7 +7755,12 @@
                 statusEl.dataset.state = "error";
                 statusEl.textContent = "Could not reach the backend. Check your connection and try again.";
             } finally {
-                btn.disabled = false;
+                // UAT enhancement (2026-09-04, DEC-074): re-derive the
+                // button's own enabled/disabled state from current
+                // readiness/time-axis state, rather than unconditionally
+                // re-enabling it -- export is gated now (see
+                // wwDataPrepRenderExportAction()).
+                wwDataPrepRenderExportAction();
             }
         }
 
@@ -7839,6 +7904,7 @@
                     diagnosticCount + (diagnosticCount === 1 ? " finding" : " findings");
             }
             wwDataPrepRenderConversionAction();
+            wwDataPrepRenderExportAction();
         }
 
         // Owner-only unit/interval fields (task's own progressive-
@@ -8975,7 +9041,15 @@
             const conversionStatusEl = document.getElementById("wwDataPrepConversionStatus");
             conversionStatusEl.textContent = "";
             delete conversionStatusEl.dataset.state;
-            document.getElementById("wwDataPrepExportBtn").disabled = false;
+            // UAT enhancement (2026-09-04, DEC-074): unlike Convert
+            // (whose own button sits inside an initially-`hidden`
+            // container), the Export button/guidance are ALWAYS visible
+            // -- reset to disabled here (matching the button's own HTML
+            // default) so it never flashes enabled before the real
+            // issues/time-axis fetch resolves and calls
+            // wwDataPrepRenderExportAction() with the actual state.
+            document.getElementById("wwDataPrepExportBtn").disabled = true;
+            document.getElementById("wwDataPrepExportGuidance").hidden = true;
             const exportStatusEl = document.getElementById("wwDataPrepExportStatus");
             exportStatusEl.textContent = "";
             delete exportStatusEl.dataset.state;

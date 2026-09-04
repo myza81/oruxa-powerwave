@@ -148,6 +148,15 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     # state-conflict semantic (409) Slice 10's own revision-changed
     # error already uses.
     "export_revision_changed": status.HTTP_409_CONFLICT,
+    # UAT enhancement (2026-09-04, DEC-074): export the resolved Time
+    # Axis -- export is now GATED (mirroring Slice 10's own three
+    # `conversion_*` state-conflict codes above exactly, same 409
+    # semantic: "the current preparation state cannot honor this
+    # request yet").
+    "export_not_ready": status.HTTP_409_CONFLICT,
+    "export_requires_interval": status.HTTP_409_CONFLICT,
+    "export_unsupported_interpreter": status.HTTP_409_CONFLICT,
+    "export_time_axis_invalid": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
 
@@ -794,11 +803,16 @@ def post_export_preparation_source(
     docstring for the full "Working Dataset, not raw source, not
     canonical DisturbanceRecord" semantics).
 
-    Deliberately available regardless of Powerwave readiness (task
-    section A) -- never gated on `is_ready`, unlike `/convert` above.
-    Read-only: never mutates the preparation session, the working
-    overlay, or the raw source in any way; a live readiness snapshot is
-    captured into the manifest only, never used as a gate.
+    UAT enhancement (2026-09-04, DEC-074): the exported table now
+    serializes the RESOLVED/CONFIGURED Time Axis (one standardized
+    `Time`/`Time (s)` column) rather than the original source Time Axis
+    columns verbatim -- so, unlike the original Slice 12 policy, this IS
+    now gated on `is_ready` (`export_not_ready`), plus the same two
+    additional capability constraints `/convert` already enforces
+    (`export_unsupported_interpreter` for `manual`/`unsupported`;
+    `export_requires_interval` for `sample_index` with no real
+    interval). Still read-only: never mutates the preparation session,
+    the working overlay, or the raw source in any way.
     """
     workspace_id = _validate_workspace_id(workspace_id)
     try:

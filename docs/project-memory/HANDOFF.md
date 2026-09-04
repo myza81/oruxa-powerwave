@@ -8,6 +8,128 @@ Last updated: **2026-09-04**
 
 ## What was most recently done
 
+**UAT Enhancement — Export the Resolved/Configured Time Axis
+(implemented).** Owner-reported problem: an engineer can spend real
+effort resolving date-order ambiguity, choosing an elapsed unit,
+supplying a sampling interval/rate, or accepting a reconstructed timing
+suggestion -- but the cleaned export (Slice 12) kept the ORIGINAL
+source Time Axis columns unchanged, so re-uploading that cleaned file
+forced the engineer to redo all of that configuration from scratch.
+
+**Change**: cleaned export now serializes the RESOLVED/CONFIGURED Time
+Axis instead. The exported table is now exactly ONE standardized Time
+column -- `Time` (ISO-8601, e.g. `2026-06-03T18:04:00.000`) for a
+resolved absolute reading, `Time (s)` (fixed 3-decimal seconds relative
+to the first active row, e.g. `0.000`/`0.020`/`0.040`) for every other
+resolved family (elapsed, sample-index-with-a-real-interval, partial,
+or an ACCEPTED reconstruction) -- placed FIRST, followed by every
+Waveform column in source order. The original source Time Axis
+column(s) never appear in the cleaned table (their raw values stay
+fully intact in the immutable source and `WorkingOverlay`; the manifest
+records which columns they were). A real timezone offset is preserved
+exactly; none is ever invented for a naive value. No new inference is
+introduced anywhere: every value comes from re-calling the ALREADY-
+CONFIRMED interpreter's own `build_preview_rows()` -- the exact same
+call Slice 10's own canonical `DisturbanceRecord` conversion already
+makes -- through a NEW shared module, `app/services/time_axis_
+normalization.py`, extracted out of `preparation_conversion_service.py`
+(a pure refactor there, zero behavior change) so the two features can
+never silently disagree about what a configured Time Axis means.
+
+**A real, intentional gating change**: a reusable cleaned export now
+REQUIRES a usable, resolved Time Axis plus at least one Waveform
+column -- there is no honest standardized Time column to build from an
+unconfigured/unresolved/`manual`-interpreter Time Axis. This supersedes
+Slice 12's own original "export available regardless of readiness"
+policy. Export reuses `PreparationIssueSummary.is_ready` directly (every
+current `blocking` readiness issue is already exactly a Time-Axis or
+Waveform-Channel finding -- confirmed by inspecting `readiness_
+service.py` before writing any code, per the task's own explicit
+"inspect first" instruction -- so this is not a second, narrower
+readiness policy), plus the SAME two additional capability constraints
+Slice 10's own conversion already enforces (`manual`/`unsupported`
+interpreter; `sample_index` with no real interval). Four new error
+classes (`ExportNotReadyError`/`ExportRequiresIntervalError`/
+`ExportUnsupportedInterpreterError`/`ExportTimeAxisValueError`), mapped
+to `409`/`500` exactly like the existing `conversion_*` codes.
+
+**Manifest**: a new `exported_time` section records `column_name`,
+`source_columns` (raw column index + label the configured Time column
+was consumed from), `family`, `provenance`, `interpreter_id`,
+`date_order`, `interval_seconds`, `export_representation`
+(`iso8601`/`relative_seconds`), `timezone_present`,
+`source_offset_seconds` (the original source's own first-row offset,
+before normalizing to zero), and `reconstructed`. Every prior Slice 12
+manifest field (`preparation_revision`, `header_row`, `data_region`,
+`excluded_row_count`, `edited_cell_count`, `cleared_cell_count`, the
+top-level time provenance fields, the `readiness` snapshot) is retained
+unchanged.
+
+**Frontend**: the "Export Cleaned Data" button is now disabled-by-
+default with a short, single-line guidance message
+(`wwDataPrepRenderExportAction()`) -- "Resolve the Time Axis before
+exporting a reusable cleaned file" when unresolved/unusable, "Add a
+sampling rate or interval before exporting" for index-only Sample
+Index -- mirroring "Continue to Powerwave"'s own limitation-notice
+pattern (never a large new warning panel), re-evaluated after every
+issues/time-axis fetch (the same signals `wwDataPrepRenderConversion
+Action()` already reads, plus one extra `manual`/`unsupported` check
+export alone needs).
+
+**Files changed**: Backend -- new `app/services/time_axis_
+normalization.py`; `app/services/preparation_conversion_service.py`
+(pure refactor -- `_canonical_time_and_anchor()` now delegates to the
+shared module, zero behavior change, all 39 of its own tests pass
+unchanged); `app/services/preparation_export_service.py` (substantially
+rewritten -- new `_ensure_exportable()` gate, new `_build_configured_
+time_column()`/`_ConfiguredTimeColumn`, reworked row/column assembly,
+new `exported_time` manifest section); `app/services/errors.py` (four
+new error classes); `app/api/v1/preparation_sources.py` (new error-code
+-> HTTP-status mappings, updated endpoint docstring). Frontend --
+`frontend/index.html` (`wwDataPrepRenderExportAction()`/
+`wwDataPrepIsExportTimeAxisUsable()`, updated error-message map, export
+button starts `disabled` in markup, a new `#wwDataPrepExportGuidance`
+hint line).
+
+**New/updated tests**: `test_preparation_export_service.py`
+substantially rewritten (46 tests) around the new gated, resolved-
+Time-Axis model -- export gating (unconfigured/manual/sample-index-
+without-interval/unconfirmed-reconstruction all correctly refused),
+absolute date/time resolution (the task's own DMY worked example),
+timezone preservation and absence, millisecond/sub-millisecond
+precision, elapsed time (with the task's own "5.000 -> 0.000" worked
+example), sample index (with and without a real interval), reconstructed
+timing (accepted vs. unconfirmed), partial/time-only timing (no
+fabricated date), waveform/data integrity (working edits, excluded
+rows, Not Assigned omission, one-to-one row alignment, source column
+order, the Time-column-always-first exception, duplicate-label
+uniqueness), manifest `exported_time` contents, Excel export, read-only
+guarantees, filename sanitization, large-export performance, and
+re-upload round-trip recognition (absolute/elapsed/sample-index-derived
+exports all resolve cleanly without repeating the original
+ambiguity/configuration work). `test_preparation_sources_api.py`'s own
+`TestExportApi` class updated for the same gating at the HTTP layer
+(4 tests fixed, one renamed from "available even when not ready" to
+"blocked when not ready" -- its own premise inverted by this change).
+
+**Verified**: baseline confirmed via a fresh `git status` + full run
+rather than assumed (the immediately-prior UAT fix's own commit,
+`ff4e501`, was already on `main` -- checked directly, not presumed):
+**2678 passed, 0 failed** before this enhancement; **2680 passed, 0
+failed** after. The committed browser smoke test (COMTRADE) still
+passes unchanged with zero console/page errors.
+
+**Next step**: no new slice was opened by this enhancement -- Slice 13
+(progressive automation) remains the next unauthorized item, per
+[Change governance](../../CLAUDE.md#change-governance).
+
+**Commit status**: not committed — per this task's own explicit closing
+instruction ("Do not commit or push unless explicitly asked"), all of
+the above are normal uncommitted working-tree changes pending a
+separate, explicit commit instruction.
+
+## What was done in the prior session — UAT Fix: Simplify Data Structure Roles and Align Cleaned Export
+
 **UAT Fix — Simplify Data Structure Roles and Align Cleaned Export
 (implemented).** Owner UAT feedback: the six-role column model
 (`Unknown`/`Waveform`/`Time Axis`/`Metadata`/`Quality-Status`/`Ignore`)
@@ -114,10 +236,9 @@ Not Assigned columns appear.
 (progressive automation) remains the next unauthorized item, per
 [Change governance](../../CLAUDE.md#change-governance).
 
-**Commit status**: not committed — per this task's own explicit closing
-instruction ("Do not commit or push unless explicitly asked"), all of
-the above are normal uncommitted working-tree changes pending a
-separate, explicit commit instruction.
+**Commit status**: committed as `ff4e501 refactor: simplify preparation
+column roles` (per a separate, explicit follow-up commit instruction
+after this fix was reported).
 
 ## What was done in the prior session — UAT Fix: Simplify Time-Axis Confirmation UX
 

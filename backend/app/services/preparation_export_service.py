@@ -7,15 +7,24 @@ silently repaired dataset -- exactly what the engineer's own header/
 data-region/row-exclusion/column-role/cell-edit choices currently
 produce, nothing more, nothing less.
 
-**Available regardless of Powerwave readiness** (task section A) --
-this is a deliberately SEPARATE capability from Slice 10's own
-canonical conversion: an engineer may use Powerwave purely to clean up
-a CSV/Excel file and export the result, with no intention of ever
-converting it into a waveform. `export_preparation_source()` therefore
-never calls `app.services.preparation_issue_service.build_issue_
-summary()` as a GATE -- only to capture a live READINESS SNAPSHOT for
-the manifest (task section V: "recomputed at export time rather than
-trusting stale frontend state").
+**UAT enhancement (2026-09-04, DEC-074): now GATED on readiness.**
+Originally available regardless of Powerwave readiness -- Slice 12's
+own explicit design. Once cleaned export started serializing a
+RESOLVED Time Axis (see below) that original policy stopped making
+sense: there is no honest resolved Time column to build from an
+unconfigured/unresolved/manual Time Axis. `export_preparation_source()`
+now reuses `app.services.preparation_issue_service.build_issue_
+summary()`'s own `is_ready` verdict as a real GATE (never a second,
+narrower readiness policy of its own -- every current `blocking` issue
+is already exactly a Time-Axis or Waveform-Channel finding, see
+`app.services.readiness_service`'s own module docstring), plus the same
+two additional capability constraints Slice 10's own canonical
+conversion already enforces (`manual`/`unsupported` interpreter;
+`sample_index` with no real interval) -- see `_ensure_exportable()`.
+This module still recomputes readiness LIVE at export time rather than
+trusting stale frontend state (task section V), and still records the
+snapshot into the manifest exactly as before -- it is simply ALSO a
+gate now, not merely informational.
 
 **Row/column selection is a REUSE, not a re-derivation** -- the exact
 same `app.services.preparation_preview_service.iterate_active_region_
@@ -31,27 +40,56 @@ those labels for the columns actually being exported (task section G),
 via the SAME stable-position `__{SpreadsheetLetter}` suffix strategy
 Slice 10's own `_unique_channel_names()` established.
 
-**UAT fix (2026-09-04): cleaned export now includes ONLY Time Axis and
-Waveform columns.** Owner-approved simplification of the column-role
-model to exactly three roles (`not_assigned`/`time_axis`/`waveform` --
-see `app.domain.working_overlay`'s own module docstring for the full
+**UAT fix (2026-09-04, DEC-073, column roles): `not_assigned` columns
+are omitted.** Owner-approved simplification of the column-role model
+to exactly three roles (`not_assigned`/`time_axis`/`waveform` -- see
+`app.domain.working_overlay`'s own module docstring for the full
 rationale) makes `not_assigned` the single "not used by Powerwave"
-state; this module now omits every `not_assigned` column from the
-cleaned table (previously, the five-role model's `metadata`/`quality_
-status`/`unknown` roles were all KEPT in export, and only the separate
-`ignore` role was omitted -- that distinction no longer exists). The
-manifest's own `omitted_columns` entries record each excluded column's
-`role` so the exact reason is never left implicit.
+state; this module omits every `not_assigned` column from the cleaned
+table. The manifest's own `omitted_columns` entries record each
+excluded column's `role` (always `not_assigned`) so the exact reason is
+never left implicit -- a raw Time Axis source column is NOT one of
+these entries (see the DEC-074 enhancement immediately below: it is
+CONSUMED into the configured Time column, a different reason than
+"not used by Powerwave," recorded separately under `exported_time.
+source_columns`).
 
-**Time columns are never touched** (task sections M/N): a Time Axis
-column exports its own CURRENT WORKING value verbatim, exactly like
-every other column -- this module never calls into
-`app.services.time_axis_service`'s own interpreter/preview machinery
-to compute an interpreted or reconstructed value, and never adds an
-extra derived-time column. Interpretation/reconstruction STATE (family/
-provenance/interpreter id/unit/interval) is read once, for the
-manifest's own provenance section only -- never applied to the
-exported table itself.
+**UAT enhancement (2026-09-04, DEC-074): cleaned export now serializes
+the RESOLVED/CONFIGURED Time Axis, not the original source Time Axis
+columns.** Supersedes this module's own original Slice 12 policy
+("Time columns are never touched" -- an original source Time Axis
+column's own current working value, exported verbatim). Owner-approved
+direction: re-uploading a cleaned file should require MINIMAL repeated
+preparation, which means the export must carry the engineer's already-
+resolved date-order/unit/interval/reconstruction choice forward, not
+force it to be re-made on every re-upload.
+
+The exported table is now exactly ONE standardized `Time`/`Time (s)`
+column (see `_build_configured_time_column()` below) followed by every
+Waveform-role column in source order -- the original source Time Axis
+column(s) never appear in the cleaned table at all (their values are
+CONSUMED to build the one configured Time column, not omitted the same
+way a `not_assigned` column is; the manifest's own `exported_time.
+source_columns` records which raw columns produced it). This makes a
+usable, resolved Time Axis (plus at least one Waveform column) a
+REQUIRED precondition for export now -- see `_ensure_exportable()`
+below -- a real, intentional behavior change from the earlier "export
+regardless of readiness" policy (task section B's own explicit
+"supersedes the earlier policy" instruction).
+
+**No new inference happens here** (task section L): every per-row Time
+value comes from re-calling the ALREADY-CONFIRMED time-axis
+interpreter's own `build_preview_rows()` -- the EXACT SAME Protocol
+method `app.services.preparation_conversion_service`'s own canonical
+`DisturbanceRecord` construction already calls -- over the FULL active
+region, then reusing `app.services.time_axis_normalization`'s own
+shared parse/canonicalize helpers (never a second, divergent
+implementation; task section Z's own explicit "must agree" requirement).
+This module's own job stays narrowly: format the already-resolved
+native value into the ONE deterministic export representation (ISO-8601
+for `FAMILY_ABSOLUTE`, fixed-precision relative seconds otherwise) --
+never re-running date-order elimination, re-estimating cadence, or
+inventing a timezone/date.
 
 **Read-only, by construction**: this module calls no `app.domain.
 working_overlay` mutation function anywhere, and captures/re-verifies
@@ -91,10 +129,27 @@ from typing import Any
 
 from openpyxl import Workbook
 
+from app.domain.preparation_issue import SEVERITY_BLOCKING
 from app.domain.preparation_session import FORMAT_CSV, PreparationSession
-from app.domain.time_axis import PROVENANCE_RECONSTRUCTED
-from app.domain.working_overlay import OVERRIDE_KIND_CLEAR, OVERRIDE_KIND_EDIT, ROLE_TIME_AXIS, ROLE_WAVEFORM
-from app.services.errors import ExportRevisionChangedError, SourceNotFoundError, WorksheetNotSelectedError
+from app.domain.time_axis import (
+    FAMILY_ABSOLUTE,
+    FAMILY_PARTIAL,
+    FAMILY_SAMPLE_INDEX,
+    INTERPRETER_ID_MANUAL,
+    INTERPRETER_ID_UNSUPPORTED,
+    PROVENANCE_RECONSTRUCTED,
+    TimeAxisSampleRow,
+)
+from app.domain.working_overlay import OVERRIDE_KIND_CLEAR, OVERRIDE_KIND_EDIT, ROLE_NOT_ASSIGNED, ROLE_WAVEFORM
+from app.services.errors import (
+    ExportNotReadyError,
+    ExportRequiresIntervalError,
+    ExportRevisionChangedError,
+    ExportTimeAxisValueError,
+    ExportUnsupportedInterpreterError,
+    SourceNotFoundError,
+    WorksheetNotSelectedError,
+)
 from app.services.preparation_issue_service import build_issue_summary
 from app.services.preparation_preview_service import (
     _spreadsheet_column_label,
@@ -102,7 +157,14 @@ from app.services.preparation_preview_service import (
     preview_preparation_source,
 )
 from app.services.preparation_session_registry import PreparationSessionRegistry
-from app.services.time_axis_service import get_time_axis_summary
+from app.services.time_axis_normalization import (
+    format_absolute_iso,
+    format_relative_seconds,
+    parse_native_time_value,
+    relative_seconds,
+    seconds_from_midnight,
+)
+from app.services.time_axis_service import get_time_axis_summary, resolve_interpreter
 
 #: Task section T's own "avoid creating a huge manifest unnecessarily"
 #: allowance -- listing up to this many excluded row numbers is cheap
@@ -228,46 +290,171 @@ def _cell_export_value(value: Any) -> Any:
     return "" if value is None else value
 
 
+def _ensure_exportable(*, issue_summary, time_axis_summary) -> None:
+    """Task section B: a reusable cleaned export now requires a usable,
+    resolved Time Axis plus at least one Waveform column. Reuses
+    `is_ready` directly as the primary gate (never a second, narrower
+    readiness policy of its own -- see this module's own docstring for
+    why that verdict already covers exactly Time-Axis/Waveform-Channel
+    blocking conditions), plus the SAME two additional capability
+    constraints `app.services.preparation_conversion_service.
+    convert_preparation_source()` already enforces for the identical
+    underlying reason: a standardized Time column can only honestly be
+    built from an already-resolved, sample-based interpretation."""
+    if not issue_summary.is_ready:
+        blocking_messages = [i.message for i in issue_summary.issues if i.severity == SEVERITY_BLOCKING]
+        raise ExportNotReadyError(
+            "This source is not yet ready for a reusable cleaned export: " + " ".join(blocking_messages)
+        )
+    if time_axis_summary.interpreter_id in (INTERPRETER_ID_MANUAL, INTERPRETER_ID_UNSUPPORTED):
+        raise ExportUnsupportedInterpreterError(
+            "The active Time Axis configuration does not parse real per-row values from this source's own "
+            "columns -- assign a real interpreter (Absolute Datetime, Date + Time, Elapsed Time, Sample Index, "
+            "or Repeated Timestamp) before exporting a reusable cleaned file."
+        )
+    if time_axis_summary.family == FAMILY_SAMPLE_INDEX and time_axis_summary.interval_seconds is None:
+        raise ExportRequiresIntervalError(
+            "A sampling interval or sampling rate is required before a reusable cleaned file can be exported. "
+            "Return to Time Axis configuration and provide one."
+        )
+
+
+@dataclass(slots=True)
+class _ConfiguredTimeColumn:
+    """The one standardized Time column this export now produces (task
+    sections C-N), plus everything the manifest's own `exported_time`
+    section needs to describe it (task sections T-V) -- computed
+    together, in the SAME pass, so the manifest can never drift from
+    what was actually written into the exported table."""
+
+    column_name: str
+    values: list[str]
+    export_representation: str
+    timezone_present: bool
+    source_offset_seconds: float | None
+
+
+def _build_configured_time_column(
+    *, interpreter, time_axis_samples: list[TimeAxisSampleRow], time_axis_summary,
+) -> _ConfiguredTimeColumn:
+    """Re-calls the ALREADY-CONFIRMED interpreter's own
+    `build_preview_rows()` over the FULL active region (never a bounded
+    sample, never a second reconstruction -- the exact same call
+    `app.services.preparation_conversion_service` already makes for
+    canonical `DisturbanceRecord` construction), then formats each
+    row's already-resolved native value via `app.services.
+    time_axis_normalization`'s own shared helpers: absolute timestamps
+    stay real per-row ISO-8601 values (never collapsed to relative
+    seconds -- task section D's own explicit "one standardized ISO-
+    8601-style timestamp column" requirement), every other family
+    becomes fixed-precision seconds relative to the first active row
+    (task section F/G/I). One value per `time_axis_samples` entry, in
+    the SAME order (task section M's own one-to-one row-alignment
+    requirement) -- this function never sorts, drops, or inserts a row.
+    """
+    family = time_axis_summary.family
+    preview_rows = interpreter.build_preview_rows(
+        samples=time_axis_samples, resolved_options=time_axis_summary.options,
+        resolved_unit=time_axis_summary.unit, resolved_interval_seconds=time_axis_summary.interval_seconds,
+        limit=len(time_axis_samples),
+    )
+    natives: list[Any] = []
+    for row in preview_rows:
+        if row.interpreted is None:
+            raise ExportTimeAxisValueError(
+                f"Row {row.row_number}'s Time Axis value could not be interpreted under the confirmed configuration."
+            )
+        native = parse_native_time_value(row.interpreted, family=family)
+        if native is None:
+            raise ExportTimeAxisValueError(
+                f"Row {row.row_number}'s Time Axis value '{row.interpreted}' could not be parsed during export."
+            )
+        natives.append(native)
+
+    if family == FAMILY_ABSOLUTE:
+        timezone_present = bool(natives) and natives[0].tzinfo is not None
+        return _ConfiguredTimeColumn(
+            column_name="Time", values=[format_absolute_iso(n) for n in natives],
+            export_representation="iso8601", timezone_present=timezone_present, source_offset_seconds=None,
+        )
+
+    try:
+        rel = relative_seconds(natives, family=family)
+    except TypeError as exc:
+        raise ExportTimeAxisValueError(
+            "A row mixes a timezone-aware timestamp with the first active row's own naive (or vice-versa) "
+            "timestamp -- cannot compute relative time."
+        ) from exc
+    if not natives:
+        source_offset_seconds = None
+    elif family == FAMILY_PARTIAL:
+        source_offset_seconds = seconds_from_midnight(natives[0])
+    else:
+        source_offset_seconds = float(natives[0])
+    return _ConfiguredTimeColumn(
+        column_name="Time (s)", values=[format_relative_seconds(v) for v in rel],
+        export_representation="relative_seconds", timezone_present=False,
+        source_offset_seconds=source_offset_seconds,
+    )
+
+
 def export_preparation_source(
     *, workspace_id: str, source_id: str, registry: PreparationSessionRegistry,
 ) -> ExportResult:
     """Export the CURRENT Working Dataset of one CSV/Excel preparation
     source as a cleaned CSV or single-worksheet XLSX, bundled into one
-    ZIP with a provenance manifest. Available regardless of Powerwave
-    readiness (task section A) -- never gated on `is_ready`. Raises an
-    `ImportServiceError` subclass (never a `PreparationIssue`) for every
-    runtime failure; never mutates the preparation session, the working
-    overlay, or the raw source in any way.
+    ZIP with a provenance manifest. Requires a usable, resolved Time
+    Axis plus at least one Waveform column (see `_ensure_exportable()`
+    -- a 2026-09-04, DEC-074 change from the earlier "available
+    regardless of readiness" policy, once export started serializing a
+    RESOLVED Time Axis rather than the raw source columns verbatim).
+    Raises an `ImportServiceError` subclass (never a `PreparationIssue`)
+    for every runtime failure; never mutates the preparation session,
+    the working overlay, or the raw source in any way.
     """
     session = _resolve_session(workspace_id=workspace_id, source_id=source_id, registry=registry)
     worksheet_index = _resolve_worksheet_index(session)
     captured_revision = session.working_overlay.revision
 
-    # Readiness is captured LIVE for the manifest snapshot only -- never
-    # a gate (task section A/V).
+    # Readiness is captured LIVE, exactly like Slice 10's own conversion
+    # -- never trusting stale frontend state (task section V) -- and is
+    # now ALSO the primary export gate (task section B), not merely a
+    # manifest snapshot.
     issue_summary = build_issue_summary(workspace_id=workspace_id, source_id=source_id, registry=registry)
     time_axis_summary = get_time_axis_summary(workspace_id=workspace_id, source_id=source_id, registry=registry)
+    _ensure_exportable(issue_summary=issue_summary, time_axis_summary=time_axis_summary)
+    interpreter = resolve_interpreter(
+        column_count=len(time_axis_summary.column_indices), requested_interpreter_id=time_axis_summary.interpreter_id,
+    )
 
     preview = preview_preparation_source(workspace_id=workspace_id, source_id=source_id, offset=0, limit=1, registry=registry)
     column_labels = preview.column_labels
     column_roles = preview.column_roles
-    # UAT fix (2026-09-04), task section I: cleaned export now includes
-    # ONLY explicitly-assigned Time Axis/Waveform columns -- every
-    # `not_assigned` column (the default/neutral role; see
-    # `app.domain.working_overlay`'s own module docstring for the
-    # three-role simplification) is omitted, not just the formerly-
-    # separate `ignore` role. `role` is recorded on each omitted entry
-    # so the manifest states WHY a column was excluded (task section O).
-    included_column_indices = [c for c, role in enumerate(column_roles) if role in (ROLE_TIME_AXIS, ROLE_WAVEFORM)]
+    # DEC-073: cleaned export omits every `not_assigned` column (role
+    # recorded on each entry so the manifest states WHY). The raw Time
+    # Axis source column(s) are NOT one of these entries -- see
+    # `exported_time.source_columns` in the manifest below for how they
+    # are accounted for instead (task section G/V).
+    waveform_column_indices = sorted(c for c, role in enumerate(column_roles) if role == ROLE_WAVEFORM)
     omitted_columns = [
         {"column_index": c, "label": column_labels[c] if c < len(column_labels) else _spreadsheet_column_label(c), "role": role}
         for c, role in enumerate(column_roles)
-        if c not in included_column_indices
+        if role == ROLE_NOT_ASSIGNED
     ]
-    export_name_by_column = _unique_export_names(column_labels, included_column_indices)
-    header_names = [export_name_by_column[c] for c in included_column_indices]
+    export_name_by_column = _unique_export_names(column_labels, waveform_column_indices)
+    # DEC-074, task section R: the configured Time column is always
+    # FIRST, regardless of its own source column's original position --
+    # a deliberate, documented exception to "preserve absolute source
+    # column order" (which still governs the WAVEFORM columns among
+    # themselves, immediately after it). Assembled below once the time
+    # column's own name/values are known.
 
-    exported_rows: list[list[Any]] = []
+    # Single streaming pass (task section Y): builds the time-axis
+    # sample list and the waveform cell-value rows TOGETHER, in
+    # lockstep, so they stay row-aligned one-to-one without a second
+    # pass (task section M).
+    time_axis_samples: list[TimeAxisSampleRow] = []
+    waveform_rows: list[list[Any]] = []
     excluded_row_numbers: list[int] = []
     for row in iterate_active_region_rows(session, worksheet_index=worksheet_index):
         if row.excluded:
@@ -277,7 +464,18 @@ def export_preparation_source(
         # it (a deliberate, documented choice for that overlap case).
         if row.is_header or not row.in_active_region or row.excluded:
             continue
-        exported_rows.append([_cell_export_value(row.cells[c] if c < len(row.cells) else None) for c in included_column_indices])
+        values = tuple(row.cells[c] if c < len(row.cells) else None for c in time_axis_summary.column_indices)
+        time_axis_samples.append(TimeAxisSampleRow(row_number=row.row_number, values=values))
+        waveform_rows.append([_cell_export_value(row.cells[c] if c < len(row.cells) else None) for c in waveform_column_indices])
+
+    configured_time = _build_configured_time_column(
+        interpreter=interpreter, time_axis_samples=time_axis_samples, time_axis_summary=time_axis_summary,
+    )
+    if len(configured_time.values) != len(waveform_rows):
+        raise ExportTimeAxisValueError("Configured Time values did not align one-to-one with exported waveform rows.")
+
+    header_names = [configured_time.column_name] + [export_name_by_column[c] for c in waveform_column_indices]
+    exported_rows = [[time_value] + waveform_row for time_value, waveform_row in zip(configured_time.values, waveform_rows)]
 
     # Edit/clear provenance counts (task section U) -- one cheap pass
     # over just this worksheet's own sparse overrides (proportional to
@@ -310,7 +508,7 @@ def export_preparation_source(
         omitted_columns=omitted_columns, column_roles=column_roles,
         edited_cell_count=edited_cell_count, cleared_cell_count=cleared_cell_count,
         excluded_row_numbers=excluded_row_numbers, exported_row_count=len(exported_rows),
-        artifact_filename=artifact_filename,
+        artifact_filename=artifact_filename, configured_time=configured_time, column_labels=column_labels,
     )
     manifest_filename = f"{base_name}_cleaned.manifest.json"
     manifest_bytes = json.dumps(manifest, indent=2, sort_keys=False).encode("utf-8")
@@ -364,11 +562,47 @@ def _build_xlsx_artifact(sheet_name: str, header_names: list[str], rows: list[li
     return buffer.getvalue()
 
 
+def _exported_time_manifest(
+    *, configured_time: _ConfiguredTimeColumn, time_axis_summary, column_labels: list[str],
+) -> dict[str, Any]:
+    """Task sections T-V: the manifest's own dedicated provenance for
+    the ONE standardized Time column this export now writes -- records
+    which raw source column(s) it was CONSUMED from (`source_columns`,
+    by stable index and label -- task section V's own explicit
+    traceability requirement; the raw source itself still holds the
+    actual original values, untouched), plus the same
+    family/provenance/interpreter/date-order/interval facts the rest of
+    this manifest already carries at the top level, gathered into one
+    self-contained section so a reader never has to cross-reference
+    other manifest keys to understand this one column."""
+    source_columns = [
+        {
+            "column_index": c,
+            "label": column_labels[c] if c < len(column_labels) else _spreadsheet_column_label(c),
+        }
+        for c in time_axis_summary.column_indices
+    ]
+    return {
+        "column_name": configured_time.column_name,
+        "source_columns": source_columns,
+        "family": time_axis_summary.family,
+        "provenance": time_axis_summary.provenance,
+        "interpreter_id": time_axis_summary.interpreter_id,
+        "date_order": (time_axis_summary.options or {}).get("date_order"),
+        "interval_seconds": time_axis_summary.interval_seconds,
+        "export_representation": configured_time.export_representation,
+        "timezone_present": configured_time.timezone_present,
+        "source_offset_seconds": configured_time.source_offset_seconds,
+        "reconstructed": time_axis_summary.provenance == PROVENANCE_RECONSTRUCTED,
+    }
+
+
 def _build_manifest(
     *, session: PreparationSession, worksheet_index: int | None, captured_revision: int,
     issue_summary, time_axis_summary, omitted_columns: list[dict], column_roles: list[str],
     edited_cell_count: int, cleared_cell_count: int, excluded_row_numbers: list[int],
     exported_row_count: int, artifact_filename: str,
+    configured_time: _ConfiguredTimeColumn, column_labels: list[str],
 ) -> dict[str, Any]:
     """Task section S: stable, machine-readable manifest keys only --
     never a raw Python object repr, never an attempt to recreate the
@@ -411,6 +645,9 @@ def _build_manifest(
         "time_unit": time_axis_summary.unit,
         "time_interval_seconds": time_axis_summary.interval_seconds,
         "reconstructed_timing": time_axis_summary.provenance == PROVENANCE_RECONSTRUCTED,
+        "exported_time": _exported_time_manifest(
+            configured_time=configured_time, time_axis_summary=time_axis_summary, column_labels=column_labels,
+        ),
         "readiness": {
             "is_ready": issue_summary.is_ready,
             "blocking_count": issue_summary.blocking_count,

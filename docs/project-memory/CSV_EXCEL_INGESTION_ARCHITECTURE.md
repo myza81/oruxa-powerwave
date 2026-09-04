@@ -2046,10 +2046,20 @@ owner go-ahead before implementation begins.
     internals unless needed." No resampling, interpolation, new
     synchronization algorithm, new calculated-channel operation, new
     Time Group policy, or new readiness policy was added anywhere.
-12. **`[DONE, 2026-09-03]` Cleaned-data export.** **Governing principle:
-    "Cleaned export = the current Working Dataset as prepared by the
-    engineer"** -- not the untouched raw source, not the canonical
-    `DisturbanceRecord` (Slice 10), not a silently repaired dataset.
+12. **`[DONE, 2026-09-03]` Cleaned-data export.** **Superseded 2026-09-04
+    (DEC-074)**: the "available regardless of readiness" / "Time columns
+    are never touched" policy described in this whole numbered item is
+    the ORIGINAL Slice 12 design and is left unedited below as the
+    historical implementation record — cleaned export now serializes the
+    RESOLVED/CONFIGURED Time Axis and REQUIRES a usable Time Axis plus at
+    least one Waveform column before proceeding; see
+    [DECISIONS.md — DEC-074](DECISIONS.md#dec-074--cleaned-export-serializes-the-resolvedconfigured-time-axis-a-standardized-timetime-s-column-not-the-original-source-time-axis-columns-a-usable-time-axis-plus-at-least-one-waveform-column-is-now-required-before-a-reusable-cleaned-export-can-be-produced)
+    for the current, authoritative behavior.
+
+    **Governing principle: "Cleaned export = the current Working
+    Dataset as prepared by the engineer"** -- not the untouched raw
+    source, not the canonical `DisturbanceRecord` (Slice 10), not a
+    silently repaired dataset.
 
     **Available regardless of Powerwave readiness** (a deliberately
     SEPARATE capability from Slice 10's own canonical conversion) -- an

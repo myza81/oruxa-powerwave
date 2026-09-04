@@ -2851,13 +2851,13 @@ class TestConversionApi:
 
 class TestExportApi:
     def test_successful_csv_export_returns_zip(self, client):
-        source_id = _upload_csv(client, content=b"Time,VR\n1,2\n3,4\n", filename="event.csv")
+        source_id = _ready_csv_source(client)
 
         response = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/export")
 
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/zip"
-        assert response.headers["content-disposition"] == 'attachment; filename="event_cleaned.zip"'
+        assert response.headers["content-disposition"] == 'attachment; filename="e_cleaned.zip"'
         import io
         import zipfile
         zf = zipfile.ZipFile(io.BytesIO(response.content))
@@ -2866,10 +2866,16 @@ class TestExportApi:
         assert any(n.endswith(".manifest.json") for n in names)
 
     def test_successful_excel_export_returns_zip(self, client):
-        content = _build_xlsx({"Sheet1": [["a", "b"], [1, 2]]})
+        content = _build_xlsx({"Sheet1": [["2026-08-31 13:00:00", 1], ["2026-08-31 13:00:01", 2]]})
         source_id = client.post(
             "/api/v1/workspaces/ws-1/preparation-sources", files=_excel_file(content, "m.xlsx"),
         ).json()["source_id"]
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime", "confirmed": True},
+        )
 
         response = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/export")
 
@@ -2880,20 +2886,18 @@ class TestExportApi:
         assert any(n.endswith(".xlsx") for n in zf.namelist())
         assert any(n.endswith(".manifest.json") for n in zf.namelist())
 
-    def test_export_available_even_when_not_ready(self, client):
+    def test_export_blocked_when_not_ready(self, client):
+        # UAT enhancement (2026-09-04, DEC-074): supersedes the earlier
+        # Slice 12 "export available even when not ready" policy --
+        # cleaned export now serializes a RESOLVED Time Axis, so a
+        # totally-unconfigured source is correctly refused (409), not
+        # silently exported with empty/meaningless time values.
         source_id = _upload_csv(client, content=b"1,2\n3,4\n")  # totally unconfigured
 
         response = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/export")
 
-        assert response.status_code == 200
-        import io
-        import json
-        import zipfile
-        zf = zipfile.ZipFile(io.BytesIO(response.content))
-        manifest_name = next(n for n in zf.namelist() if n.endswith(".manifest.json"))
-        manifest = json.loads(zf.read(manifest_name))
-        assert manifest["readiness"]["is_ready"] is False
-        assert manifest["readiness"]["blocking_count"] > 0
+        assert response.status_code == 409
+        assert response.json()["detail"]["code"] == "export_not_ready"
 
     def test_export_available_when_ready(self, client):
         source_id = _ready_csv_source(client)
@@ -2932,7 +2936,13 @@ class TestExportApi:
         assert before == after
 
     def test_safe_filename_from_unsafe_original(self, client):
-        source_id = _upload_csv(client, content=b"1,2\n", filename="weird name (1).csv")
+        source_id = _upload_csv(client, content=b"2026-08-31 13:00:00,1\n", filename="weird name (1).csv")
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+        client.put(
+            f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "absolute_datetime", "confirmed": True},
+        )
 
         response = client.post(f"/api/v1/workspaces/ws-1/preparation-sources/{source_id}/export")
 

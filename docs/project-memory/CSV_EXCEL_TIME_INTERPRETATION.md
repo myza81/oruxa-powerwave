@@ -817,21 +817,43 @@ timezone. See
 [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 11](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
 for the full defect/fix account.
 
-**`[DONE, 2026-09-03, Slice 12]`** cleaned data export
-(`app.services.preparation_export_service`) deliberately does NOT
+**`[DONE, 2026-09-03, Slice 12; SUPERSEDED 2026-09-04]`** cleaned data
+export (`app.services.preparation_export_service`) originally did NOT
 consume any of this document's own interpreted/reconstructed time
-machinery for the exported table itself — a Time Axis column's
-CURRENT WORKING value (the same raw source text an untouched cell
-would show, or the engineer's own explicit edit) is exported verbatim,
-byte-for-byte identical to what `preview_preparation_source()` already
-shows the user, never Slice 8's own interpreted `HH:MM:SS.ffffff`-style
-value and never Slice 8C's own reconstructed timestamp. This is a
-DELIBERATE simplification for Slice 12's own explicit scope (never add
-an interpreted-time column in this slice) — a converted-CSV's
-`preparation_provenance` (Slice 10) is where interpreted/reconstructed
-timing actually gets consumed; the cleaned export's own manifest merely
-RECORDS which family/provenance/interpreter was active at export time,
-purely for context, never applying it to the table.
+machinery for the exported table itself — a Time Axis column's CURRENT
+WORKING value was exported verbatim, byte-for-byte identical to what
+`preview_preparation_source()` already shows the user, never Slice 8's
+own interpreted value and never Slice 8C's own reconstructed timestamp.
+That was a deliberate Slice 12 scope limitation, not a permanent design
+decision.
+
+**`[DONE, 2026-09-04, DEC-074]`** A UAT enhancement ("Export the
+Resolved/Configured Time Axis") supersedes the paragraph above: cleaned
+export now DOES consume this document's own interpreted/reconstructed
+time machinery directly — it re-calls the ALREADY-CONFIRMED
+interpreter's own `build_preview_rows()` (the exact same Protocol
+method Slice 10's own canonical conversion already calls) over the full
+active region, and serializes exactly ONE standardized Time column from
+the result: an ISO-8601 timestamp per row for `FAMILY_ABSOLUTE`
+(`Time`), or fixed-precision seconds relative to the first active row
+for every other resolved family (`Time (s)`) — including an ACCEPTED
+Slice 8C reconstruction, which now exports its own resolved cadence,
+never the original coarse timestamps. The original source Time Axis
+column(s) no longer appear in the cleaned table at all (their values
+are consumed to build the one configured column, not merely passed
+through); the manifest's own new `exported_time` section records
+`family`/`provenance`/`interpreter_id`/`date_order`/`interval_seconds`/
+`export_representation`/`timezone_present`/`reconstructed` plus which
+raw source column(s) it came from. Because there is now no honest
+resolved Time column to build from an unconfigured/unresolved/`manual`
+Time Axis, export gained the same "usable Time Axis + at least one
+Waveform column" precondition Slice 10's own conversion already
+enforces — see [DECISIONS.md — DEC-074](DECISIONS.md#dec-074--cleaned-export-serializes-the-resolvedconfigured-time-axis-a-standardized-timetime-s-column-not-the-original-source-time-axis-columns-a-usable-time-axis-plus-at-least-one-waveform-column-is-now-required-before-a-reusable-cleaned-export-can-be-produced)
+for the full rationale. No new inference was introduced by this change
+-- see `app.services.time_axis_normalization`'s own module docstring
+for the shared parse/canonicalize helpers both this module and Slice 10
+now use, so the two can never silently disagree about what a configured
+Time Axis means.
 
 ---
 

@@ -739,3 +739,64 @@ class ExportRevisionChangedError(ImportServiceError):
     user simply retries."""
 
     code = "export_revision_changed"
+
+
+# ---- UAT enhancement (2026-09-04, DEC-074): export the resolved/
+# configured Time Axis -- cleaned export now serializes a normalized
+# Time column instead of the original source Time Axis cell text, so a
+# usable, resolved Time Axis is now a REQUIRED precondition (previously
+# export was available regardless of readiness at all). These three
+# mirror Slice 10's own `ConversionNotReadyError`/
+# `ConversionRequiresIntervalError`/`ConversionUnsupportedInterpreterError`
+# almost exactly, for the identical underlying reason: a reusable,
+# standardized Time column can only be built from an already-resolved,
+# sample-based interpretation, never from an unconfigured/unresolved/
+# manual/index-only-without-a-real-interval one.
+
+
+class ExportNotReadyError(ImportServiceError):
+    """Readiness was checked at export time and at least one BLOCKING
+    issue is present -- unlike the earlier Slice 12 policy (export
+    always available regardless of readiness), a reusable cleaned
+    export now REQUIRES a usable Time Axis and at least one Waveform
+    Channel, since every current readiness `blocking` issue is already
+    exactly a Time-Axis or Waveform-Channel finding (see
+    `app.services.readiness_service`'s own module docstring) -- this
+    reuses that verdict directly rather than re-deriving a second,
+    narrower "export readiness" policy."""
+
+    code = "export_not_ready"
+
+
+class ExportRequiresIntervalError(ImportServiceError):
+    """The active Time Axis is `sample_index` with no real interval/rate
+    (`provenance=index_only`) -- legitimately Preparation-Ready (a
+    WARNING, not blocking), but not reusable-export-ready: a
+    standardized `Time (s)` column can only honestly be built from a
+    real interval/rate, never by pretending `sample 5 = 5 seconds`.
+    Mirrors `ConversionRequiresIntervalError` exactly, for the same
+    reason."""
+
+    code = "export_requires_interval"
+
+
+class ExportUnsupportedInterpreterError(ImportServiceError):
+    """The active Time Axis resolved to `manual` (or `unsupported`) --
+    an interpreter that never parses a real per-row value from the
+    source's own columns at all, so there is nothing to standardize
+    into a resolved Time column. Mirrors
+    `ConversionUnsupportedInterpreterError` exactly, for the same
+    reason."""
+
+    code = "export_unsupported_interpreter"
+
+
+class ExportTimeAxisValueError(ImportServiceError):
+    """Resolved Time Axis construction produced a row Slice 9's own
+    readiness pass should already have prevented from reaching here
+    (an unparseable/missing interpreted value, or a mix of timezone-
+    aware and naive absolute timestamps) -- an UNEXPECTED defensive
+    failure, mirroring `ConversionValidationError` exactly. Never
+    silently repaired; the export attempt is discarded."""
+
+    code = "export_time_axis_invalid"

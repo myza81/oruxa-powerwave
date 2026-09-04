@@ -154,6 +154,7 @@ from app.services.preparation_preview_service import (
 )
 from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.time_axis_interpreters import _to_float
+from app.services.time_axis_normalization import parse_native_time_value, relative_seconds
 from app.services.time_axis_service import get_time_axis_summary, resolve_interpreter
 from app.services.workspace_registry import WorkspaceRegistry
 
@@ -200,50 +201,21 @@ def _resolve_worksheet_index(session: PreparationSession) -> int | None:
     return session.summary.selected_worksheet_index
 
 
-def _parse_absolute(interpreted: str) -> dt.datetime | None:
-    try:
-        return dt.datetime.fromisoformat(interpreted)
-    except ValueError:
-        return None
-
-
-def _parse_partial(interpreted: str) -> dt.time | None:
-    try:
-        return dt.datetime.strptime(interpreted, "%H:%M:%S.%f").time()
-    except ValueError:
-        return None
-
-
-def _parse_seconds_suffix(interpreted: str) -> float | None:
-    """Both `build_elapsed_preview` and `build_sample_index_preview`
-    format their own resolved value as `f"{seconds:.6f} s"` -- one
-    shared parser for that one shared shape."""
-    text = interpreted.strip()
-    if text.endswith(" s"):
-        text = text[:-2]
-    try:
-        return float(text)
-    except ValueError:
-        return None
-
-
-def _seconds_from_midnight(value: dt.time) -> float:
-    return value.hour * 3600 + value.minute * 60 + value.second + value.microsecond / 1_000_000
-
-
 def _canonical_time_and_anchor(preview_rows, *, family: str) -> tuple[list[float], dt.datetime | None]:
     """Turns the CONFIRMED interpreter's own already-resolved `interpreted`
     strings into canonical `time` floats, relative to the FIRST active
-    row (task section C's own "preferred direction" for every family --
-    `sample_index`'s own preview builder already produces exactly this
-    shape, so subtracting its own first value again is a harmless
-    identity operation). Returns `(canonical_seconds_per_row, anchor)`
-    where `anchor` is the real first-row `datetime` for `FAMILY_ABSOLUTE`
-    (used by the caller to populate `TimingInformation.start_time`
-    honestly) and `None` otherwise. Raises `ConversionValidationError`
-    defensively for any row Slice 9's own readiness pass should already
-    have prevented from reaching here (task section E) -- never silently
-    skipped or dropped.
+    row -- via `app.services.time_axis_normalization`'s own shared
+    `parse_native_time_value()`/`relative_seconds()` (task section C's
+    own "preferred direction" for every family; also reused verbatim by
+    `app.services.preparation_export_service`'s own resolved-Time-Axis
+    export, so the two features can never silently disagree about what
+    a configured Time Axis means). Returns `(canonical_seconds_per_row,
+    anchor)` where `anchor` is the real first-row `datetime` for
+    `FAMILY_ABSOLUTE` (used by the caller to populate `TimingInformation.
+    start_time` honestly) and `None` otherwise. Raises
+    `ConversionValidationError` defensively for any row Slice 9's own
+    readiness pass should already have prevented from reaching here
+    (task section E) -- never silently skipped or dropped.
     """
     natives: list[tuple[int, Any]] = []
     for row in preview_rows:
@@ -251,12 +223,7 @@ def _canonical_time_and_anchor(preview_rows, *, family: str) -> tuple[list[float
             raise ConversionValidationError(
                 f"Row {row.row_number}'s Time Axis value could not be interpreted under the confirmed configuration."
             )
-        if family == FAMILY_ABSOLUTE:
-            native = _parse_absolute(row.interpreted)
-        elif family == FAMILY_PARTIAL:
-            native = _parse_partial(row.interpreted)
-        else:
-            native = _parse_seconds_suffix(row.interpreted)
+        native = parse_native_time_value(row.interpreted, family=family)
         if native is None:
             raise ConversionValidationError(
                 f"Row {row.row_number}'s Time Axis value '{row.interpreted}' could not be parsed during conversion."
@@ -267,25 +234,13 @@ def _canonical_time_and_anchor(preview_rows, *, family: str) -> tuple[list[float
         raise ConversionValidationError("No active rows with a Time Axis value were found to convert.")
 
     anchor = natives[0][1] if family == FAMILY_ABSOLUTE else None
-    canonical: list[float] = []
-    if family == FAMILY_ABSOLUTE:
-        first = natives[0][1]
-        for row_number, native in natives:
-            try:
-                canonical.append((native - first).total_seconds())
-            except TypeError as exc:
-                raise ConversionValidationError(
-                    f"Row {row_number} mixes a timezone-aware timestamp with the first active row's own "
-                    "naive (or vice-versa) timestamp -- cannot compute relative time."
-                ) from exc
-    elif family == FAMILY_PARTIAL:
-        first_seconds = _seconds_from_midnight(natives[0][1])
-        for _row_number, native in natives:
-            canonical.append(_seconds_from_midnight(native) - first_seconds)
-    else:
-        first_value = float(natives[0][1])
-        for _row_number, native in natives:
-            canonical.append(float(native) - first_value)
+    try:
+        canonical = relative_seconds([native for _row_number, native in natives], family=family)
+    except TypeError as exc:
+        raise ConversionValidationError(
+            "A row mixes a timezone-aware timestamp with the first active row's own naive (or vice-versa) "
+            "timestamp -- cannot compute relative time."
+        ) from exc
 
     return canonical, anchor
 
@@ -488,7 +443,9 @@ def convert_preparation_source(
         "nominal_frequency_assumed": True,
     }
     if time_axis_summary.family != FAMILY_ABSOLUTE and preview_rows[0].interpreted is not None and preview_rows[0].interpreted.endswith(" s"):
-        provenance["source_time_offset_seconds"] = _parse_seconds_suffix(preview_rows[0].interpreted)
+        provenance["source_time_offset_seconds"] = parse_native_time_value(
+            preview_rows[0].interpreted, family=time_axis_summary.family,
+        )
 
     recording_metadata = RecordingMetadata(
         station_name=session.summary.original_filename,

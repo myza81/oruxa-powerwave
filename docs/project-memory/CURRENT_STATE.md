@@ -9,26 +9,31 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-04**. A third same-day UAT fix
+Last meaningful update: **2026-09-04**. A fourth same-day enhancement
+([DECISIONS.md — DEC-074](DECISIONS.md#dec-074--cleaned-export-serializes-the-resolvedconfigured-time-axis-a-standardized-timetime-s-column-not-the-original-source-time-axis-columns-a-usable-time-axis-plus-at-least-one-waveform-column-is-now-required-before-a-reusable-cleaned-export-can-be-produced))
+supersedes Slice 12's own original export-time policy: cleaned export
+now serializes the RESOLVED/CONFIGURED Time Axis (one standardized
+`Time`/`Time (s)` column, re-calling the already-confirmed interpreter
+exactly like Slice 10's own canonical conversion does) instead of the
+original source Time Axis columns verbatim — a reusable cleaned export
+now REQUIRES a usable Time Axis plus at least one Waveform column (a
+real behavior change from "export available regardless of readiness").
+See [Implemented capabilities](#implemented-capabilities). A third
+same-day UAT fix
 ([DECISIONS.md — DEC-073](DECISIONS.md#dec-073--csvexcel-preparation-uses-only-three-column-roles-time-axis-waveform-and-not-assigned-not-assigned-is-the-default-and-is-omitted-from-cleaned-export))
 simplifies the CSV/Excel column-role model to exactly three roles —
 `Not Assigned` (the default), `Time Axis`, `Waveform` — retiring
 `Unknown`/`Metadata`/`Quality-Status`/`Ignore` and Slice 4's own
-separate boolean ignore/unignore toggle, and aligns Slice 12's cleaned
-export to include ONLY Time Axis and Waveform columns (Not Assigned is
-physically omitted, though never deleted from the immutable raw
-source). See [Implemented capabilities](#implemented-capabilities).
-A second same-day UAT fix simplifies the Time Axis confirmation UX: the
-generic "☐ Confirmed" checkbox now appears ONLY when Powerwave is
-asking the engineer to accept a derived/reconstructed timing suggestion
-— never for a plain native reading, an ambiguity already resolved by an
-explicit date-order/unit choice, or directly user-entered timing, all
-of which Save alone already persists as usable (the BACKEND readiness
-policy already worked this way; only the frontend unconditionally
-showed the checkbox regardless). An earlier same-day fix recognized
+separate boolean ignore/unignore toggle. A second same-day UAT fix
+simplifies the Time Axis confirmation UX: the generic "☐ Confirmed"
+checkbox now appears ONLY when Powerwave is asking the engineer to
+accept a derived/reconstructed timing suggestion — never for a plain
+native reading, an ambiguity already resolved by an explicit date-
+order/unit choice, or directly user-entered timing, all of which Save
+alone already persists as usable. An earlier same-day fix recognized
 2-digit years (`3/6/26`, `03-06-26`, etc.) for `dmy`/`mdy` date orders.
-CSV/Excel ingestion Slice 12 (cleaned data export, 2026-09-03) remains
-the current end of the implemented slice sequence.
+CSV/Excel ingestion Slices 1-12 (raw preparation through cleaned data
+export) remain the current end of the implemented slice sequence.
 
 ## Current status
 
@@ -791,57 +796,105 @@ re-confirmed by the TG-FINAL audit):
   [CSV_EXCEL_INGESTION_ARCHITECTURE.md item 11](CSV_EXCEL_INGESTION_ARCHITECTURE.md#14-recommended-implementation-slices--owner-revised-sequence-dec-072-not-yet-authorized-to-begin)
   for the full implementation summary.
 
-  **Slice 12** (2026-09-03) implements Cleaned Data Export. Governing
-  principle: **"Cleaned export = the current Working Dataset as
-  prepared by the engineer"** — not the raw source, not the canonical
-  `DisturbanceRecord`, not a silently repaired dataset. New
+  **Slice 12** (2026-09-03) implements Cleaned Data Export; a
+  2026-09-04 enhancement (DEC-074) then supersedes its own original
+  export-time policy (below). Governing principle, unchanged: **"Cleaned
+  export = the current Working Dataset as prepared by the engineer"** —
+  not the raw source, not a silently repaired dataset. New
   `app/services/preparation_export_service.py`
   (`export_preparation_source()`) exports `active data region - excluded
-  rows + working cell overrides`, restricted to Time Axis and Waveform
-  columns only (a 2026-09-04 UAT fix, DEC-073 — originally "everything
-  except the separate `ignore` role"; Not Assigned columns, which now
-  include what was previously `unknown`/`metadata`/`quality_status`, are
-  omitted the same way `ignore` used to be, and the manifest's own
-  `omitted_columns` entries record each excluded column's `role`),
-  preserving remaining source column order, into a cleaned CSV or single-worksheet
+  rows + working cell overrides`, restricted to Waveform columns plus
+  ONE standardized configured Time column (see below) — Not Assigned
+  columns are omitted (DEC-073; the manifest's own `omitted_columns`
+  entries record each excluded column's `role`), preserving remaining
+  Waveform source column order, into a cleaned CSV or single-worksheet
   XLSX bundled with a sidecar `<base>_cleaned.manifest.json` inside one
-  `<base>_cleaned.zip`. Available regardless of Powerwave readiness
-  (never gated on `is_ready`) — a deliberately separate capability from
-  Slice 10's own canonical conversion, since an engineer may use
-  Powerwave purely to clean up a file with no intention of ever
-  converting it. Row/column selection and column-label fallback logic
-  are pure REUSE of Slice 9's `iterate_active_region_rows()` and
-  `preview_preparation_source()`'s own already-computed labels; the only
-  new logic is deduplicating those labels for exported columns via the
-  same `__{SpreadsheetLetter}` suffix strategy Slice 10 established.
-  Time columns are never touched — a Time Axis column exports its own
-  current WORKING value verbatim; interpretation/reconstruction state
-  is recorded in the manifest only, never injected as an extra column.
-  Manifest fields: `manifest_version`, `exported_at`, `exported_file`,
+  `<base>_cleaned.zip`.
+
+  **DEC-074 (2026-09-04): the exported Time column is now the
+  RESOLVED/CONFIGURED Time Axis, not the original source Time Axis
+  column(s) verbatim.** Originally (Slice 12) a Time Axis column
+  exported its own current WORKING value byte-for-byte unchanged; this
+  was superseded so a cleaned export becomes genuinely re-upload-
+  friendly — an engineer who already resolved date-order ambiguity,
+  supplied a sampling interval/rate, or accepted a reconstructed timing
+  suggestion should not have to repeat that work on re-upload. The
+  exported table is now exactly ONE standardized Time column, ALWAYS
+  FIRST (a deliberate exception to "preserve source column order," which
+  still governs the Waveform columns among themselves), built by
+  re-calling the ALREADY-CONFIRMED interpreter's own `build_preview_
+  rows()` — the exact same call Slice 10's own canonical conversion
+  makes — over the full active region, through a NEW shared module,
+  `app/services/time_axis_normalization.py` (`parse_native_time_value()`/
+  `relative_seconds()`/`format_absolute_iso()`/`format_relative_
+  seconds()`, extracted out of `preparation_conversion_service.py` as a
+  pure refactor so the two features can never disagree about what a
+  configured Time Axis means). A resolved `FAMILY_ABSOLUTE` reading
+  exports one ISO-8601 timestamp per row (header `Time`; millisecond
+  precision by default, widened only when genuine sub-millisecond
+  precision exists; a real timezone offset preserved exactly, never
+  invented). Every other resolved family (elapsed, sample-index-with-a-
+  real-interval, partial, or an ACCEPTED reconstruction) exports fixed
+  3-decimal seconds relative to the first active row (header
+  `Time (s)`) — the same "relative to first" convention Slice 10's own
+  `waveform_data["time"]` already uses. The original source Time Axis
+  column(s) never appear in the cleaned table; their raw values remain
+  fully intact in the immutable source and in `WorkingOverlay` itself,
+  and the manifest's own new `exported_time` section (`column_name`,
+  `source_columns` by index+label, `family`, `provenance`,
+  `interpreter_id`, `date_order`, `interval_seconds`,
+  `export_representation`, `timezone_present`, `source_offset_seconds`,
+  `reconstructed`) records exactly which raw column(s) it was consumed
+  from, for full traceability.
+
+  **A usable, resolved Time Axis plus at least one Waveform column is
+  now REQUIRED for a reusable cleaned export** (DEC-074) — a real
+  behavior change from Slice 12's own original "available regardless of
+  readiness" policy, since there is no honest standardized Time column
+  to build from an unconfigured/unresolved/`manual`-interpreter Time
+  Axis. `export_preparation_source()` now reuses `PreparationIssueSummary.
+  is_ready` directly as its primary gate (every current `blocking`
+  readiness issue is already exactly a Time-Axis or Waveform-Channel
+  finding, so this is not a second, narrower readiness policy of its
+  own), plus the SAME two additional capability constraints Slice 10's
+  own canonical conversion already enforces: `manual`/`unsupported`
+  interpreter (`ExportUnsupportedInterpreterError`) and `sample_index`
+  with no real interval (`ExportRequiresIntervalError`) — both new
+  `app/services/errors.py` classes, alongside `ExportNotReadyError` and
+  the defensive `ExportTimeAxisValueError`, all mapped to `409`/`500`
+  in `app/api/v1/preparation_sources.py` exactly like the existing
+  `conversion_*` codes.
+
+  Row/column selection and column-label fallback logic remain pure REUSE
+  of Slice 9's `iterate_active_region_rows()` and `preview_preparation_
+  source()`'s own already-computed labels; deduplicating Waveform column
+  labels still uses the same `__{SpreadsheetLetter}` suffix strategy
+  Slice 10 established. Manifest fields otherwise unchanged from Slice
+  12: `manifest_version`, `exported_at`, `exported_file`,
   `source_format`, `original_filename`, `worksheet_name`/`worksheet_
   index`, `preparation_revision`, `header_row`, `data_region`,
   `exported_row_count`, `excluded_row_count`/`excluded_rows` (bounded to
   200 listed rows + a truncation flag)/`omitted_columns`/`column_roles`,
   `edited_cell_count`/`cleared_cell_count`, `time_family`/`time_
   provenance`/`interpreter_id`/`time_unit`/`time_interval_seconds`/
-  `reconstructed_timing`, and a live `readiness` snapshot. Excel export
-  writes one clean tabular worksheet via `openpyxl.Workbook(write_
-  only=True)` (streaming, no original styling/formulas/charts/macros
-  preserved, no formula recalculation) into a NEW workbook — never a
-  full original-workbook round-trip; an invalid worksheet name is
-  sanitized (strip `: \ / ? * [ ]`, truncate to 31 chars) with a
-  deterministic `Sheet1` fallback. CSV export uses a normalized comma/
-  UTF-8 dialect, never the original file's own dialect. Read-only by
+  `reconstructed_timing`, `exported_time` (new), and a live `readiness`
+  snapshot. Excel export still writes one clean tabular worksheet via
+  `openpyxl.Workbook(write_only=True)` (streaming, no original styling/
+  formulas/charts/macros preserved) into a NEW workbook; CSV export
+  still uses a normalized comma/UTF-8 dialect. Still read-only by
   construction — no `working_overlay` mutation function is ever called;
-  `WorkingOverlay.revision` is captured and re-verified around the
-  export (`ExportRevisionChangedError` mirrors Slice 10's own revision-
-  race precedent). New API: `POST .../preparation-sources/{source_id}/
-  export`, returning the ZIP bytes directly as the response body.
-  Frontend: an always-visible "Export Cleaned Data" secondary action in
-  the same Preparation Status panel Slice 10's "Continue to Powerwave"
-  lives in, never competing visually when both are shown; triggers a
-  real browser download via a throwaway `<a download>` element; never
-  navigates away or mutates preparation state.
+  `WorkingOverlay.revision` is still captured and re-verified around the
+  export (`ExportRevisionChangedError`). API unchanged: `POST
+  .../preparation-sources/{source_id}/export`, returning the ZIP bytes
+  directly as the response body. Frontend: the "Export Cleaned Data"
+  secondary action (same Preparation Status panel "Continue to
+  Powerwave" lives in) is now disabled-by-default with a short,
+  single-line guidance message (`wwDataPrepRenderExportAction()`) until
+  a resolved, usable Time Axis plus at least one Waveform column exists
+  — mirroring "Continue to Powerwave"'s own limitation-notice pattern,
+  never a large new warning panel; still triggers a real browser
+  download via a throwaway `<a download>` element and never navigates
+  away or mutates preparation state.
 
   **One real defect found and fixed by the browser UAT, invisible to
   every backend-only test**: `Content-Disposition` is not a CORS-

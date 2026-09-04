@@ -10353,6 +10353,142 @@ role-driven and needed zero changes.
 
 ---
 
+## DEC-074 — Cleaned export serializes the resolved/configured Time Axis (a standardized `Time`/`Time (s)` column), not the original source Time Axis columns; a usable Time Axis plus at least one Waveform column is now required before a reusable cleaned export can be produced
+
+Date: 2026-09-04
+Status: Approved
+Source: explicit project-owner UAT feedback ("Export the Resolved/
+Configured Time Axis" enhancement), delivered as a direct owner-approved
+supersession of the Slice 12 cleaned-export policy this same session
+already implemented (`app.services.preparation_export_service`, see
+DEC-073's own Impact section for that policy's most recent shape).
+
+Decision:
+
+**Cleaned export serializes the RESOLVED, CONFIGURED Time Axis, not the
+original source Time Axis columns.** An engineer who has already
+resolved date-order ambiguity, chosen an elapsed unit, supplied a
+sampling interval/rate, or accepted a reconstructed timing suggestion
+should not have to repeat that work merely by re-uploading Powerwave's
+own cleaned output. The exported table is now exactly ONE standardized
+Time column, always placed FIRST, followed by every Waveform-role
+column in original source order — the original source Time Axis
+column(s) never appear in the cleaned table; their values are CONSUMED
+to build the one configured Time column (a different reason for
+omission than a `not_assigned` column's own omission, DEC-073) and
+recorded separately in the manifest's own `exported_time.source_columns`
+for traceability. Column order among the Waveform columns themselves is
+otherwise unchanged (source order preserved) — placing the Time column
+first is the one deliberate, documented exception to that rule.
+
+**Representation**: a resolved `FAMILY_ABSOLUTE` Time Axis exports one
+standardized ISO-8601 timestamp per row (header `Time`) — millisecond
+precision by default, widened to full microsecond precision only when
+the value itself genuinely carries sub-millisecond information; a real
+timezone offset is preserved exactly, and no offset/`Z` is ever
+invented for a naive value. Every other resolved family (elapsed,
+sample-index-with-a-real-interval, partial/time-of-day, and a
+reconstructed timing the engineer has explicitly accepted) exports
+fixed 3-decimal-place seconds relative to the FIRST active exported row
+(header `Time (s)`) — matching the same "preferred direction" Slice
+10's own canonical `DisturbanceRecord.waveform_data["time"]` construction
+already used. No new inference happens anywhere in this: every value
+comes from re-calling the ALREADY-CONFIRMED interpreter's own
+`build_preview_rows()` (the exact same call Slice 10's own conversion
+makes) over the full active region, through a shared parsing/
+canonicalization module (`app.services.time_axis_normalization`,
+extracted out of `preparation_conversion_service` so the two features
+can never silently disagree about what a configured Time Axis means) —
+never a second, independently re-derived date-order/cadence/
+reconstruction algorithm.
+
+**A usable, resolved Time Axis (plus at least one Waveform column) is
+now a REQUIRED precondition for cleaned export**, a real, intentional
+change from the original Slice 12 policy ("available regardless of
+readiness"). There is no honest standardized Time column to build from
+an unconfigured, unresolved, or `manual`-interpreter Time Axis. Export
+reuses `PreparationIssueSummary.is_ready` directly as its primary gate
+(every current `blocking` readiness issue is already exactly a
+Time-Axis or Waveform-Channel finding — see
+`app.services.readiness_service`'s own module docstring — so this is
+not a second, narrower readiness policy), plus the SAME two additional
+capability constraints Slice 10's own canonical conversion already
+enforces for the identical underlying reason: a `manual`/`unsupported`
+interpreter never parses a real per-row value at all, and a
+`sample_index` Time Axis with no real interval/rate cannot honestly
+become a seconds-based column (`sample 5 ≠ 5 seconds`).
+
+Reason:
+
+The owner's own stated problem: an engineer who has already done real
+preparation work (resolving date-order ambiguity, supplying a sampling
+rate, accepting a reconstructed timing suggestion) gets no benefit from
+that work on re-upload, because the previous cleaned export preserved
+only the ORIGINAL, still-ambiguous/still-unresolved source text. A
+cleaned Powerwave-oriented export should instead be a genuinely
+simplified, re-upload-friendly Powerwave input — which requires the
+export to carry the resolved interpretation forward, not merely the
+raw values it was resolved FROM.
+
+Alternatives considered:
+
+Keeping BOTH the original source Time Axis columns AND a new derived
+column in the cleaned output (rejected outright by the task's own
+explicit non-goal — "original + configured time duplicated in cleaned
+output" — this would defeat the "simple, re-upload-friendly" goal and
+reintroduce exactly the ambiguity the enhancement exists to remove).
+Offering multiple exported time representations / a user choice of
+format (rejected — explicit non-goal; one standardized, deterministic
+representation per family is the entire point). Keeping export
+available regardless of readiness and simply omitting the Time column
+when unresolved (rejected — a cleaned "Powerwave-oriented" export with
+no time axis at all is not a coherent, honest artifact; refusing with a
+clear, actionable message is preferred over silently producing a
+degraded file). Re-implementing date-order/cadence/reconstruction logic
+independently inside the export service (rejected outright by the
+task's own explicit "must not duplicate a second competing algorithm"
+instruction — the shared `time_axis_normalization` module exists
+specifically to prevent this). Building a full `DisturbanceRecord`
+merely to obtain its own canonical time column (rejected — export
+stays a Working Dataset output, never coupled to the canonical-record
+construction layer, per the task's own explicit "avoid coupling to
+DisturbanceRecord" guardrail).
+
+Impact:
+
+Backend: new `app/services/time_axis_normalization.py` (the shared
+`parse_native_time_value()`/`relative_seconds()`/`format_absolute_iso()`/
+`format_relative_seconds()` helpers), extracted out of
+`app/services/preparation_conversion_service.py` (a pure refactor there
+— zero behavior change, all 39 of that module's own tests pass
+unchanged) and reused by the substantially rewritten
+`app/services/preparation_export_service.py` (new `_ensure_exportable()`
+gate, new `_build_configured_time_column()`/`_ConfiguredTimeColumn`,
+reworked `export_preparation_source()` row/column assembly, new
+`exported_time` manifest section). Four new error classes in
+`app/services/errors.py` (`ExportNotReadyError`/
+`ExportRequiresIntervalError`/`ExportUnsupportedInterpreterError`/
+`ExportTimeAxisValueError`), wired into `app/api/v1/preparation_sources.py`'s
+own error-code-to-HTTP-status table (mirroring the existing
+`conversion_*` 409 precedent exactly). Frontend: the Export Cleaned Data
+button is now disabled-by-default with a short, single-line guidance
+message (`wwDataPrepRenderExportAction()`) until a resolved, usable
+Time Axis plus at least one Waveform column exists — mirroring
+"Continue to Powerwave"'s own limitation-notice pattern, never a large
+new warning panel. Tests: `test_preparation_export_service.py`
+substantially rewritten around the new gated, resolved-Time-Axis model
+(46 tests, covering every time family, timezone/precision preservation,
+reconstructed timing, waveform/data integrity, manifest provenance, and
+re-upload round-trip recognition); `test_preparation_sources_api.py`'s
+own `TestExportApi` class updated for the same gating at the HTTP
+layer. Full backend suite: 2680 passed, 0 failed at the end of this
+enhancement (baseline immediately prior, after DEC-073: 2678 passed).
+No change to `DisturbanceRecord`/canonical Powerwave conversion itself,
+Time Axis detection/resolution, the confirmation-UX policy (DEC-073's
+own prior UAT fix), or COMTRADE handling.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

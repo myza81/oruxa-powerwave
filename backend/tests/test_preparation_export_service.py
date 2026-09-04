@@ -1,7 +1,8 @@
-"""Tests for cleaned data export (CSV/Excel ingestion Slice 12,
-DEC-072). Pure service-level tests -- no HTTP; API-level coverage
-(response shape, headers, HTTP status codes) lives in
-tests/test_preparation_sources_api.py's own Slice 12 test classes.
+"""Tests for cleaned data export (CSV/Excel ingestion Slice 12, and the
+2026-09-04 "export the resolved Time Axis" enhancement, DEC-074). Pure
+service-level tests -- no HTTP; API-level coverage (response shape,
+headers, HTTP status codes) lives in tests/test_preparation_sources_api.py's
+own Slice 12 test classes.
 """
 
 from __future__ import annotations
@@ -17,7 +18,13 @@ from fastapi import UploadFile
 from openpyxl import Workbook, load_workbook
 from starlette.datastructures import Headers
 
-from app.services.errors import SourceNotFoundError, WorksheetNotSelectedError
+from app.services.errors import (
+    ExportNotReadyError,
+    ExportRequiresIntervalError,
+    ExportUnsupportedInterpreterError,
+    SourceNotFoundError,
+    WorksheetNotSelectedError,
+)
 from app.services.preparation_export_service import export_preparation_source
 from app.services.preparation_import_service import (
     import_csv_preparation_source,
@@ -25,7 +32,7 @@ from app.services.preparation_import_service import (
     select_preparation_worksheet,
 )
 from app.services.preparation_session_registry import PreparationSessionRegistry
-from app.services.time_axis_service import set_time_axis_configuration
+from app.services.time_axis_service import interpret_time_axis, set_time_axis_configuration
 from app.services.working_overlay_service import (
     edit_cell,
     set_column_role,
@@ -98,451 +105,482 @@ def _read_xlsx_rows(zf: zipfile.ZipFile) -> list[tuple]:
     return list(wb.active.iter_rows(values_only=True))
 
 
-class TestCsvActiveRegionOnly:
-    def test_only_active_region_rows_exported(self):
+def _mark_time_axis(registry: PreparationSessionRegistry, source_id: str, *column_indices: int) -> None:
+    for column_index in column_indices:
+        set_column_role(workspace_id=WS, source_id=source_id, column_index=column_index, role="time_axis", registry=registry)
+
+
+def _mark_waveform(registry: PreparationSessionRegistry, source_id: str, *column_indices: int) -> None:
+    for column_index in column_indices:
+        set_column_role(workspace_id=WS, source_id=source_id, column_index=column_index, role="waveform", registry=registry)
+
+
+def _confirm_absolute(registry, source_id, *, column_index=0, date_order=None):
+    options = {"date_order": date_order} if date_order else {}
+    return set_time_axis_configuration(
+        workspace_id=WS, source_id=source_id, column_indices=(column_index,),
+        interpreter_id="absolute_datetime", options=options, confirmed=True, registry=registry,
+    )
+
+
+def _confirm_split_date_time(registry, source_id, *, date_column, time_column, date_order):
+    return set_time_axis_configuration(
+        workspace_id=WS, source_id=source_id, column_indices=(date_column, time_column),
+        interpreter_id="split_date_time", options={"date_order": date_order}, confirmed=True, registry=registry,
+    )
+
+
+def _confirm_elapsed(registry, source_id, *, column_index=0, unit="seconds"):
+    return set_time_axis_configuration(
+        workspace_id=WS, source_id=source_id, column_indices=(column_index,),
+        interpreter_id="elapsed_numeric", unit=unit, confirmed=True, registry=registry,
+    )
+
+
+def _confirm_sample_index(registry, source_id, *, column_index=0, interval_seconds=None, confirmed=True):
+    return set_time_axis_configuration(
+        workspace_id=WS, source_id=source_id, column_indices=(column_index,),
+        interpreter_id="sample_index", interval_seconds=interval_seconds, confirmed=confirmed, registry=registry,
+    )
+
+
+def _ready_absolute_source(registry, content: bytes, *, time_col=0, waveform_cols=(1,)) -> str:
+    """A minimal, immediately-exportable CSV: an unambiguous ISO-style
+    absolute Time Axis column, plus the given Waveform column(s)."""
+    sid = _add_csv(registry, content)
+    _mark_time_axis(registry, sid, time_col)
+    _mark_waveform(registry, sid, *waveform_cols)
+    _confirm_absolute(registry, sid, column_index=time_col)
+    return sid
+
+
+class TestExportGating:
+    def test_unconfigured_time_axis_blocks_export(self):
         prep = PreparationSessionRegistry()
-        lines = [f"row{i},{i}.0" for i in range(1, 11)]
+        sid = _add_csv(prep, b"1,2\n")
+        _mark_waveform(prep, sid, 1)
+
+        with pytest.raises(ExportNotReadyError):
+            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+
+    def test_missing_waveform_column_blocks_export(self):
+        prep = PreparationSessionRegistry()
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,1\n")
+        _mark_time_axis(prep, sid, 0)
+        _confirm_absolute(prep, sid, column_index=0)
+
+        with pytest.raises(ExportNotReadyError):
+            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+
+    def test_manual_interpreter_blocks_export(self):
+        prep = PreparationSessionRegistry()
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,1\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_time_axis_configuration(
+            workspace_id=WS, source_id=sid, column_indices=(0,), interpreter_id="manual",
+            family="absolute", provenance="native", confirmed=True, registry=prep,
+        )
+
+        with pytest.raises(ExportUnsupportedInterpreterError):
+            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+
+    def test_sample_index_without_interval_blocks_export(self):
+        prep = PreparationSessionRegistry()
+        sid = _add_csv(prep, b"100,1.0\n101,2.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_sample_index(prep, sid, interval_seconds=None)
+
+        with pytest.raises(ExportRequiresIntervalError):
+            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+
+    def test_unconfirmed_reconstruction_blocks_export(self):
+        prep = PreparationSessionRegistry()
+        lines = [f"2026-08-31 13:00:{i // 2:02d},{i}.0" for i in range(6)]
         sid = _add_csv(prep, ("\n".join(lines) + "\n").encode())
-        set_data_region(workspace_id=WS, source_id=sid, start_row=3, end_row=6, registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_time_axis_configuration(
+            workspace_id=WS, source_id=sid, column_indices=(0,),
+            interpreter_id="repeated_timestamp_precision_loss", confirmed=False, registry=prep,
+        )
+
+        with pytest.raises(ExportNotReadyError):
+            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+
+    def test_ready_absolute_source_exports_successfully(self):
+        prep = PreparationSessionRegistry()
+        sid = _ready_absolute_source(prep, b"2026-08-31 13:00:00,1.0\n")
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        rows = _read_csv_rows(_unzip(result.content))
 
-        assert [r[0] for r in rows[1:]] == ["row3", "row4", "row5", "row6"]
+        assert result.filename.endswith(".zip")
 
 
-class TestCsvHeaderHandling:
-    def test_configured_header_becomes_column_names_not_a_data_row(self):
+class TestAbsoluteTimeExport:
+    def test_ambiguous_date_order_resolved_exports_iso_timestamps(self):
+        # Task section AC's own worked example.
         prep = PreparationSessionRegistry()
-        content = b"Time,VR,VY\n13:14:01,1.0,2.0\n13:14:02,3.0,4.0\n"
+        content = b"Date,Time,Voltage\n3/6/26,18:04:00.000,132.1\n3/6/26,18:04:00.020,132.2\n3/6/26,18:04:00.040,132.0\n"
         sid = _add_csv(prep, content)
         set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
-        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=3, registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="time_axis", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=2, role="waveform", registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=4, registry=prep)
+        _mark_time_axis(prep, sid, 0, 1)
+        _mark_waveform(prep, sid, 2)
+        _confirm_split_date_time(prep, sid, date_column=0, time_column=1, date_order="dmy")
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_csv_rows(_unzip(result.content))
-
-        assert rows[0] == ["Time", "VR", "VY"]
-        assert len(rows) == 3  # header + 2 data rows, header not duplicated
-
-    def test_no_header_uses_neutral_spreadsheet_letter_names(self):
-        prep = PreparationSessionRegistry()
-        sid = _add_csv(prep, b"1.0,2.0\n3.0,4.0\n")
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
-
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        rows = _read_csv_rows(_unzip(result.content))
-
-        assert rows[0] == ["A", "B"]
-
-    def test_header_overlapping_active_region_excluded_from_data_rows(self):
-        # Header row 2 falls INSIDE data_region 1-5 -- must still never
-        # appear as a data row (task section E's own deterministic rule).
-        prep = PreparationSessionRegistry()
-        content = b"junk,junk\nTime,VR\n13:14:01,1.0\n13:14:02,2.0\n13:14:03,3.0\n"
-        sid = _add_csv(prep, content)
-        set_header_row(workspace_id=WS, source_id=sid, row_number=2, registry=prep)
-        set_data_region(workspace_id=WS, source_id=sid, start_row=1, end_row=5, registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="time_axis", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
-
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        rows = _read_csv_rows(_unzip(result.content))
-
-        assert rows[0] == ["Time", "VR"]
-        data_rows = rows[1:]
-        assert all(r[0] != "Time" for r in data_rows)
-        assert len(data_rows) == 4  # junk row + 3 timestamp rows, header itself excluded
-
-
-class TestCsvRowExclusion:
-    def test_excluded_rows_omitted_not_blanked(self):
-        prep = PreparationSessionRegistry()
-        content = b"1,a\n2,b\n3,c\n4,d\n"
-        sid = _add_csv(prep, content)
-        set_row_excluded(workspace_id=WS, source_id=sid, row_number=2, excluded=True, registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
-
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        rows = _read_csv_rows(_unzip(result.content))
-        data_rows = rows[1:]
-
-        assert [r[0] for r in data_rows] == ["1", "3", "4"]
-
-
-class TestCsvNotAssignedColumns:
-    def test_not_assigned_columns_physically_omitted(self):
-        prep = PreparationSessionRegistry()
-        content = b"Time,VR,VY,VB\n13:14:01,1.0,2.0,3.0\n"
-        sid = _add_csv(prep, content)
-        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
-        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=2, registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="time_axis", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=3, role="waveform", registry=prep)
-        # column_index=2 ("VY") is left at its default (not_assigned)
-
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        zf = _unzip(result.content)
-        rows = _read_csv_rows(zf)
-        manifest = _read_manifest(zf)
-
-        assert rows[0] == ["Time", "VR", "VB"]
-        assert manifest["omitted_columns"] == [{"column_index": 2, "label": "VY", "role": "not_assigned"}]
-
-    def test_only_time_axis_and_waveform_columns_remain_in_export(self):
-        # Task section J/W worked example: Time -> Time Axis,
-        # Voltage -> Waveform, Status/Comment left Not Assigned (the
-        # default) -- cleaned export keeps only Time and Voltage.
-        prep = PreparationSessionRegistry()
-        content = b"Time,Voltage,Status,Comment\n13:14:01,1.0,ok,note\n"
-        sid = _add_csv(prep, content)
-        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
-        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=2, registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="time_axis", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
-        # column_index=2 ("Status") and column_index=3 ("Comment") are
-        # left at their default (not_assigned)
-
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        zf = _unzip(result.content)
-        rows = _read_csv_rows(zf)
-        manifest = _read_manifest(zf)
 
         assert rows[0] == ["Time", "Voltage"]
-        assert rows[1] == ["13:14:01", "1.0"]
-        assert {c["label"] for c in manifest["omitted_columns"]} == {"Status", "Comment"}
-        assert all(c["role"] == "not_assigned" for c in manifest["omitted_columns"])
+        assert [r[0] for r in rows[1:]] == [
+            "2026-06-03T18:04:00.000", "2026-06-03T18:04:00.020", "2026-06-03T18:04:00.040",
+        ]
+        # The original Date/Time source columns never appear.
+        assert "Date" not in rows[0]
 
-        # The raw source itself is never mutated -- Status/Comment stay
-        # fully intact in the immutable original, just excluded from
-        # the derived cleaned export.
+    def test_original_source_never_mutated(self):
+        prep = PreparationSessionRegistry()
+        content = b"2026-08-31 13:00:00,1.0\n"
+        sid = _ready_absolute_source(prep, content)
+
+        export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+
         session = prep.get(WS, sid)
         assert session.raw_bytes == content
 
 
-class TestCsvWorkingEdits:
-    def test_edited_value_exported(self):
+class TestTimezoneExport:
+    def test_real_offset_preserved(self):
         prep = PreparationSessionRegistry()
-        sid = _add_csv(prep, b"1,ERR\n")
+        content = b"2026-06-03T18:04:00.000+08:00,1.0\n2026-06-03T18:04:00.020+08:00,2.0\n"
+        sid = _ready_absolute_source(prep, content)
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        rows = _read_csv_rows(_unzip(result.content))
+        manifest = _read_manifest(_unzip(result.content))
+
+        assert [r[0] for r in rows[1:]] == ["2026-06-03T18:04:00.000+08:00", "2026-06-03T18:04:00.020+08:00"]
+        assert manifest["exported_time"]["timezone_present"] is True
+
+    def test_absent_timezone_never_invented(self):
+        prep = PreparationSessionRegistry()
+        content = b"2026-06-03 18:04:00,1.0\n"
+        sid = _ready_absolute_source(prep, content)
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        rows = _read_csv_rows(_unzip(result.content))
+        manifest = _read_manifest(_unzip(result.content))
+
+        exported_value = rows[1][0]
+        assert exported_value == "2026-06-03T18:04:00.000"
+        assert "Z" not in exported_value
+        assert "+" not in exported_value
+        assert manifest["exported_time"]["timezone_present"] is False
+
+
+class TestPrecisionExport:
+    def test_millisecond_precision_preserved(self):
+        prep = PreparationSessionRegistry()
+        content = b"2026-06-03 18:04:00.020,1.0\n"
+        sid = _ready_absolute_source(prep, content)
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        rows = _read_csv_rows(_unzip(result.content))
+
+        assert rows[1][0] == "2026-06-03T18:04:00.020"
+
+    def test_sub_millisecond_precision_preserved(self):
+        prep = PreparationSessionRegistry()
+        content = b"2026-06-03 18:04:00.123456,1.0\n"
+        sid = _ready_absolute_source(prep, content)
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        rows = _read_csv_rows(_unzip(result.content))
+
+        assert rows[1][0] == "2026-06-03T18:04:00.123456"
+
+
+class TestElapsedTimeExport:
+    def test_relative_to_first_active_row(self):
+        # Task section AE's own worked example.
+        prep = PreparationSessionRegistry()
+        content = b"5.000,1.0\n5.020,2.0\n5.040,3.0\n"
+        sid = _add_csv(prep, content)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_elapsed(prep, sid, unit="seconds")
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        rows = _read_csv_rows(_unzip(result.content))
+        manifest = _read_manifest(_unzip(result.content))
+
+        assert rows[0] == ["Time (s)", "B"]
+        assert [r[0] for r in rows[1:]] == ["0.000", "0.020", "0.040"]
+        assert manifest["exported_time"]["source_offset_seconds"] == 5.0
+        assert manifest["exported_time"]["family"] == "partial" or manifest["exported_time"]["family"] == "elapsed"
+
+    def test_milliseconds_unit_converted_to_seconds(self):
+        prep = PreparationSessionRegistry()
+        content = b"5000,1.0\n5020,2.0\n"
+        sid = _add_csv(prep, content)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_elapsed(prep, sid, unit="milliseconds")
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        rows = _read_csv_rows(_unzip(result.content))
+
+        assert [r[0] for r in rows[1:]] == ["0.000", "0.020"]
+
+
+class TestSampleIndexTimeExport:
+    def test_known_interval_produces_relative_seconds(self):
+        # Task section AF's own worked example.
+        prep = PreparationSessionRegistry()
+        content = b"100,1.0\n101,2.0\n102,3.0\n"
+        sid = _add_csv(prep, content)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_sample_index(prep, sid, interval_seconds=0.02)
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        rows = _read_csv_rows(_unzip(result.content))
+        manifest = _read_manifest(_unzip(result.content))
+
+        assert rows[0] == ["Time (s)", "B"]
+        assert [r[0] for r in rows[1:]] == ["0.000", "0.020", "0.040"]
+        assert manifest["exported_time"]["interval_seconds"] == 0.02
+
+    def test_missing_interval_refuses_export_with_clear_message(self):
+        prep = PreparationSessionRegistry()
+        content = b"100,1.0\n101,2.0\n"
+        sid = _add_csv(prep, content)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_sample_index(prep, sid, interval_seconds=None)
+
+        with pytest.raises(ExportRequiresIntervalError) as excinfo:
+            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        assert "interval" in str(excinfo.value.message).lower()
+
+
+class TestReconstructedTimeExport:
+    def test_accepted_reconstruction_exports_resolved_time(self):
+        # Task section AG's own worked example: a coarse, repeated-
+        # every-other-row timestamp (2 samples per second) reconstructed
+        # to a real sub-second cadence.
+        prep = PreparationSessionRegistry()
+        lines = [f"2026-08-31 13:00:{i // 2:02d},{i}.0" for i in range(6)]
+        content = ("\n".join(lines) + "\n").encode()
+        sid = _add_csv(prep, content)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        preview = interpret_time_axis(
+            workspace_id=WS, source_id=sid, column_indices=(0,),
+            interpreter_id="repeated_timestamp_precision_loss", registry=prep,
+        )
+        assert preview.resolved_interval_seconds is not None
+        set_time_axis_configuration(
+            workspace_id=WS, source_id=sid, column_indices=(0,),
+            interpreter_id="repeated_timestamp_precision_loss", confirmed=True, registry=prep,
+        )
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        rows = _read_csv_rows(_unzip(result.content))
+        manifest = _read_manifest(_unzip(result.content))
+
+        # The original coarse (all-identical) timestamp is NOT what
+        # ends up in the export -- the reconstructed cadence is.
+        exported_times = [r[0] for r in rows[1:]]
+        assert len(set(exported_times)) == len(exported_times)  # no longer all-identical
+        assert manifest["exported_time"]["reconstructed"] is True
+
+
+class TestPartialTimeExport:
+    def test_time_only_column_exports_relative_seconds_no_fabricated_date(self):
+        prep = PreparationSessionRegistry()
+        content = b"18:04:00.000,1.0\n18:04:00.020,2.0\n18:04:00.040,3.0\n"
+        sid = _add_csv(prep, content)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_absolute(prep, sid, column_index=0)  # resolves to FAMILY_PARTIAL
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        rows = _read_csv_rows(_unzip(result.content))
+        manifest = _read_manifest(_unzip(result.content))
+
+        assert rows[0] == ["Time (s)", "B"]
+        assert [r[0] for r in rows[1:]] == ["0.000", "0.020", "0.040"]
+        assert manifest["exported_time"]["family"] == "partial"
+        assert not any("-" in v and "T" in v for v in [r[0] for r in rows[1:]])  # no fabricated ISO date
+
+
+class TestWaveformDataIntegrity:
+    def test_working_edits_reflected(self):
+        prep = PreparationSessionRegistry()
+        sid = _ready_absolute_source(prep, b"2026-08-31 13:00:00,ERR\n")
         edit_cell(workspace_id=WS, source_id=sid, row_number=1, column_index=1, value="2.5", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_csv_rows(_unzip(result.content))
 
-        assert rows[1] == ["1", "2.5"]
+        assert rows[1][1] == "2.5"
 
-    def test_cleared_cell_exported_empty_not_none_text(self):
+    def test_clearing_a_required_waveform_cell_now_blocks_export(self):
+        # Under the new gate (task section AI: "if current readiness
+        # blocks missing waveform values, keep that existing policy"),
+        # a cleared cell in an otherwise-active Waveform column is
+        # exactly the SAME "missing value" readiness already blocks --
+        # never silently exported as an empty field.
         prep = PreparationSessionRegistry()
-        sid = _add_csv(prep, b"1,2\n")
+        sid = _ready_absolute_source(prep, b"2026-08-31 13:00:00,1\n")
         edit_cell(workspace_id=WS, source_id=sid, row_number=1, column_index=1, value=None, registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
+
+        with pytest.raises(ExportNotReadyError):
+            export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+
+    def test_cleared_cell_in_an_excluded_row_never_blocks_export(self):
+        # The one legitimate "cleared and still exportable" case: the
+        # row containing the cleared cell is itself excluded (readiness
+        # never scans excluded rows), so the whole row -- cleared cell
+        # included -- simply never reaches the export table at all.
+        prep = PreparationSessionRegistry()
+        content = b"2026-08-31 13:00:00,1\n2026-08-31 13:00:01,2\n"
+        sid = _ready_absolute_source(prep, content)
+        edit_cell(workspace_id=WS, source_id=sid, row_number=1, column_index=1, value=None, registry=prep)
+        set_row_excluded(workspace_id=WS, source_id=sid, row_number=1, excluded=True, registry=prep)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_csv_rows(_unzip(result.content))
 
-        assert rows[1] == ["1", ""]
-        assert "None" not in rows[1] and "null" not in rows[1] and "NaN" not in rows[1]
+        assert len(rows) == 2  # header + the one remaining (non-cleared) row
+        assert rows[1][1] == "2"
 
-    def test_untouched_value_exported_as_raw(self):
+    def test_excluded_rows_omitted_from_both_time_and_waveform(self):
         prep = PreparationSessionRegistry()
-        sid = _add_csv(prep, b"1,9.876\n")
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
-
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        rows = _read_csv_rows(_unzip(result.content))
-
-        assert rows[1] == ["1", "9.876"]
-
-    def test_raw_source_never_mutated_by_edit_or_export(self):
-        prep = PreparationSessionRegistry()
-        raw_content = b"1,2\n3,4\n"
-        sid = _add_csv(prep, raw_content)
-        edit_cell(workspace_id=WS, source_id=sid, row_number=1, column_index=1, value="999", registry=prep)
-        export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-
-        session = prep.get(WS, sid)
-        assert session.raw_bytes == raw_content
-
-
-class TestCsvColumnOrderAndDuplicateLabels:
-    def test_source_column_order_preserved_with_not_assigned_omitted(self):
-        prep = PreparationSessionRegistry()
-        content = b"A,B,C,D\n1,2,3,4\n"
-        sid = _add_csv(prep, content)
-        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
-        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=2, registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=2, role="waveform", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=3, role="waveform", registry=prep)
-        # column_index=1 ("B") is left at its default (not_assigned)
-
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        rows = _read_csv_rows(_unzip(result.content))
-
-        assert rows[0] == ["A", "C", "D"]
-        assert rows[1] == ["1", "3", "4"]
-
-    def test_duplicate_labels_all_survive_uniquely(self):
-        prep = PreparationSessionRegistry()
-        content = b"Voltage,Voltage,Voltage\n1,2,3\n"
-        sid = _add_csv(prep, content)
-        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
-        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=2, registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=2, role="waveform", registry=prep)
-
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        rows = _read_csv_rows(_unzip(result.content))
-
-        assert rows[0] == ["Voltage", "Voltage__B", "Voltage__C"]
-
-
-class TestCsvRowOrdering:
-    def test_row_order_never_sorted(self):
-        prep = PreparationSessionRegistry()
-        content = b"3,c\n1,a\n2,b\n"
-        sid = _add_csv(prep, content)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
-
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        rows = _read_csv_rows(_unzip(result.content))
-
-        assert [r[0] for r in rows[1:]] == ["3", "1", "2"]
-
-
-class TestCsvUtf8Content:
-    def test_utf8_content_round_trips(self):
-        prep = PreparationSessionRegistry()
-        content = "Voltagé,Åmps\né1,2\n".encode("utf-8")
-        sid = _add_csv(prep, content)
-        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
-        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=2, registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
-
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        rows = _read_csv_rows(_unzip(result.content))
-
-        assert rows[0] == ["Voltagé", "Åmps"]
-        assert rows[1] == ["é1", "2"]
-
-
-class TestExcelExport:
-    def test_only_selected_worksheet_exported(self):
-        prep = PreparationSessionRegistry()
-        content = _build_xlsx({
-            "A": [["Time", "VR"], ["13:14:01", 1.0]],
-            "B": [["Other", "Data"], ["x", 2.0]],
-        })
-        sid = _add_excel(prep, content)
-        select_preparation_worksheet(workspace_id=WS, source_id=sid, worksheet_index=0, registry=prep)
-        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
-        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=2, registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="time_axis", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
-
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        assert result.filename.endswith(".zip")
-        zf = _unzip(result.content)
-        rows = _read_xlsx_rows(zf)
-
-        assert rows[0] == ("Time", "VR")
-        assert rows[1] == ("13:14:01", 1.0)
-        assert not any("Other" in (r or ()) for r in rows)
-
-    def test_active_region_applied(self):
-        prep = PreparationSessionRegistry()
-        content = _build_xlsx({"Sheet1": [["a"], ["1"], ["2"], ["3"], ["4"]]})
-        sid = _add_excel(prep, content)
-        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=3, registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
-
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        rows = _read_xlsx_rows(_unzip(result.content))
-
-        assert [r[0] for r in rows[1:]] == ["1", "2"]
-
-    def test_working_edits_applied(self):
-        prep = PreparationSessionRegistry()
-        content = _build_xlsx({"Sheet1": [["1", "ERR"]]})
-        sid = _add_excel(prep, content)
-        edit_cell(workspace_id=WS, source_id=sid, row_number=1, column_index=1, value="42", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
-
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        rows = _read_xlsx_rows(_unzip(result.content))
-
-        # rows[0] is the neutral A/B header row (no header configured);
-        # the actual working-edited data is rows[1].
-        assert rows[1] == ("1", "42")
-
-    def test_excluded_rows_omitted(self):
-        prep = PreparationSessionRegistry()
-        content = _build_xlsx({"Sheet1": [["1"], ["2"], ["3"]]})
-        sid = _add_excel(prep, content)
+        content = b"2026-08-31 13:00:00,1\n2026-08-31 13:00:01,2\n2026-08-31 13:00:02,3\n"
+        sid = _ready_absolute_source(prep, content)
         set_row_excluded(workspace_id=WS, source_id=sid, row_number=2, excluded=True, registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        rows = _read_xlsx_rows(_unzip(result.content))
+        rows = _read_csv_rows(_unzip(result.content))
 
-        assert [r[0] for r in rows[1:]] == ["1", "3"]
+        assert len(rows) == 3  # header + 2 data rows
+        assert [r[1] for r in rows[1:]] == ["1", "3"]
 
     def test_not_assigned_columns_omitted(self):
         prep = PreparationSessionRegistry()
-        content = _build_xlsx({"Sheet1": [["a", "b", "c"]]})
-        sid = _add_excel(prep, content)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=2, role="waveform", registry=prep)
-        # column_index=1 is left at its default (not_assigned)
-
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        rows = _read_xlsx_rows(_unzip(result.content))
-
-        assert rows[0] == ("A", "C")
-
-    def test_only_time_axis_and_waveform_columns_remain_in_export(self):
-        # Task section J/W worked example, Excel variant: Time -> Time
-        # Axis, Voltage -> Waveform, Status/Comment left Not Assigned
-        # (the default) -- cleaned export keeps only Time and Voltage.
-        prep = PreparationSessionRegistry()
-        content = _build_xlsx({"Sheet1": [["Time", "Voltage", "Status", "Comment"], ["13:14:01", 1.0, "ok", "note"]]})
-        sid = _add_excel(prep, content)
+        content = b"Time,Voltage,Status\n2026-08-31 13:00:00,1.0,ok\n"
+        sid = _add_csv(prep, content)
         set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
         set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=2, registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="time_axis", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
-        # column_index=2 ("Status") and column_index=3 ("Comment") are
-        # left at their default (not_assigned)
-
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        zf = _unzip(result.content)
-        rows = _read_xlsx_rows(zf)
-        manifest = _read_manifest(zf)
-
-        assert rows[0] == ("Time", "Voltage")
-        assert rows[1] == ("13:14:01", 1.0)
-        assert {c["label"] for c in manifest["omitted_columns"]} == {"Status", "Comment"}
-        assert all(c["role"] == "not_assigned" for c in manifest["omitted_columns"])
-
-        # The raw source workbook itself is never mutated.
-        session = prep.get(WS, sid)
-        assert session.raw_bytes == content
-
-    def test_output_is_a_single_clean_worksheet(self):
-        prep = PreparationSessionRegistry()
-        content = _build_xlsx({"Only": [["a", "b"], ["1", "2"]]})
-        sid = _add_excel(prep, content)
-
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        name = next(n for n in _unzip(result.content).namelist() if n.endswith(".xlsx"))
-        wb = load_workbook(io.BytesIO(_unzip(result.content).read(name)))
-
-        assert len(wb.sheetnames) == 1
-
-    def test_original_workbook_bytes_untouched(self):
-        prep = PreparationSessionRegistry()
-        content = _build_xlsx({"Sheet1": [["a"], ["1"]]})
-        sid = _add_excel(prep, content)
-        edit_cell(workspace_id=WS, source_id=sid, row_number=1, column_index=0, value="999", registry=prep)
-        export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-
-        session = prep.get(WS, sid)
-        assert session.raw_bytes == content
-
-    def test_worksheet_name_with_invalid_characters_sanitized(self):
-        # openpyxl's own writer already refuses to CREATE a worksheet
-        # whose name contains `: \\ / ? * [ ]` or exceeds 31 characters
-        # (Excel's own real constraint) -- so a genuinely invalid name
-        # can never round-trip through a real uploaded .xlsx fixture in
-        # the first place. This exercises the sanitizer as the pure
-        # function it is (defense-in-depth against a hand-crafted/
-        # malformed workbook), per task section C's own "document the
-        # rule" instruction.
-        from app.services.preparation_export_service import _sanitize_sheet_name
-
-        assert _sanitize_sheet_name("Bad:Name*Sheet[1]") == "BadNameSheet1"
-        assert _sanitize_sheet_name("") == "Sheet1"
-        assert _sanitize_sheet_name("x" * 50) == "x" * 31
-
-    def test_valid_worksheet_name_preserved(self):
-        prep = PreparationSessionRegistry()
-        content = _build_xlsx({"Event Data": [["a"], ["1"]]})
-        sid = _add_excel(prep, content)
-
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        name = next(n for n in _unzip(result.content).namelist() if n.endswith(".xlsx"))
-        wb = load_workbook(io.BytesIO(_unzip(result.content).read(name)))
-
-        assert wb.sheetnames == ["Event Data"]
-
-
-class TestTimeColumnPreservation:
-    def test_reconstructed_time_source_column_unchanged_in_export(self):
-        prep = PreparationSessionRegistry()
-        content = b"13:14:01,1.0\n13:14:01,2.0\n13:14:02,3.0\n13:14:02,4.0\n"
-        sid = _add_csv(prep, content)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="time_axis", registry=prep)
-        set_time_axis_configuration(
-            workspace_id=WS, source_id=sid, column_indices=(0,),
-            interpreter_id="repeated_timestamp_precision_loss", confirmed=True, registry=prep,
-        )
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        # column_index=2 ("Status") is left at its default (not_assigned)
+        _confirm_absolute(prep, sid, column_index=0)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_csv_rows(_unzip(result.content))
-        data_rows = rows[1:]
+        manifest = _read_manifest(_unzip(result.content))
 
-        # The exported time column stays the ORIGINAL working source
-        # text -- never the interpreted "13:14:01.000000" style value.
-        assert [r[0] for r in data_rows] == ["13:14:01", "13:14:01", "13:14:02", "13:14:02"]
+        assert rows[0] == ["Time", "Voltage"]
+        assert manifest["omitted_columns"] == [{"column_index": 2, "label": "Status", "role": "not_assigned"}]
 
-    def test_no_derived_interpreted_time_column_added(self):
+    def test_one_configured_time_value_per_exported_row(self):
         prep = PreparationSessionRegistry()
-        sid = _add_csv(prep, b"13:14:01,1.0\n")
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="time_axis", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
+        lines = [f"2026-08-31 13:00:{i:02d},{i}.0" for i in range(10)]
+        content = ("\n".join(lines) + "\n").encode()
+        sid = _ready_absolute_source(prep, content)
+        set_row_excluded(workspace_id=WS, source_id=sid, row_number=3, excluded=True, registry=prep)
+        set_row_excluded(workspace_id=WS, source_id=sid, row_number=7, excluded=True, registry=prep)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows = _read_csv_rows(_unzip(result.content))
 
-        assert len(rows[0]) == 2  # exactly the two original columns, no extra column
+        assert len(rows) - 1 == 8  # 10 rows - 2 excluded
 
-    def test_time_provenance_recorded_in_manifest(self):
+    def test_waveform_column_source_order_preserved(self):
         prep = PreparationSessionRegistry()
-        content = b"13:14:01,1.0\n13:14:01,2.0\n13:14:02,3.0\n13:14:02,4.0\n"
+        content = b"2026-08-31 13:00:00,10.0,20.0,30.0\n"
         sid = _add_csv(prep, content)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="time_axis", registry=prep)
-        set_time_axis_configuration(
-            workspace_id=WS, source_id=sid, column_indices=(0,),
-            interpreter_id="repeated_timestamp_precision_loss", confirmed=True, registry=prep,
-        )
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1, 2, 3)
+        _confirm_absolute(prep, sid, column_index=0)
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        rows = _read_csv_rows(_unzip(result.content))
+
+        assert rows[0] == ["Time", "B", "C", "D"]
+        assert rows[1] == ["2026-08-31T13:00:00.000", "10.0", "20.0", "30.0"]
+
+    def test_configured_time_column_always_first_regardless_of_source_position(self):
+        # Task section R's own worked example: Voltage | Date | Current | Time
+        prep = PreparationSessionRegistry()
+        content = b"Voltage,Date,Current,Time\n1.0,2026-08-31,2.0,13:00:00\n"
+        sid = _add_csv(prep, content)
+        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=2, registry=prep)
+        _mark_waveform(prep, sid, 0, 2)
+        _mark_time_axis(prep, sid, 1, 3)
+        _confirm_split_date_time(prep, sid, date_column=1, time_column=3, date_order="ymd")
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        rows = _read_csv_rows(_unzip(result.content))
+
+        assert rows[0] == ["Time", "Voltage", "Current"]
+
+    def test_duplicate_waveform_labels_survive_uniquely(self):
+        prep = PreparationSessionRegistry()
+        content = b"Time,Voltage,Voltage\n2026-08-31 13:00:00,1,2\n"
+        sid = _add_csv(prep, content)
+        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=2, registry=prep)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1, 2)
+        _confirm_absolute(prep, sid, column_index=0)
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        rows = _read_csv_rows(_unzip(result.content))
+
+        assert rows[0] == ["Time", "Voltage", "Voltage__C"]
+
+
+class TestManifestExportedTime:
+    def test_manifest_records_source_columns_and_provenance(self):
+        prep = PreparationSessionRegistry()
+        content = b"Date,Time,Voltage\n3/6/26,18:04:00.000,1.0\n"
+        sid = _add_csv(prep, content)
+        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=2, registry=prep)
+        _mark_time_axis(prep, sid, 0, 1)
+        _mark_waveform(prep, sid, 2)
+        _confirm_split_date_time(prep, sid, date_column=0, time_column=1, date_order="dmy")
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         manifest = _read_manifest(_unzip(result.content))
+        exported_time = manifest["exported_time"]
 
-        assert manifest["interpreter_id"] == "repeated_timestamp_precision_loss"
-        assert manifest["reconstructed_timing"] is True
+        assert exported_time["column_name"] == "Time"
+        assert exported_time["source_columns"] == [
+            {"column_index": 0, "label": "Date"}, {"column_index": 1, "label": "Time"},
+        ]
+        assert exported_time["family"] == "absolute"
+        assert exported_time["interpreter_id"] == "split_date_time"
+        assert exported_time["date_order"] == "dmy"
+        assert exported_time["export_representation"] == "iso8601"
+        assert exported_time["reconstructed"] is False
 
-
-class TestManifestContents:
-    def test_manifest_has_expected_fields(self):
+    def test_existing_slice_12_provenance_fields_retained(self):
         prep = PreparationSessionRegistry()
-        content = b"Time,VR\n1,2\n3,4\n"
+        content = b"Time,Voltage\n2026-08-31 13:00:00,1\n2026-08-31 13:00:01,2\n"
         sid = _add_csv(prep, content)
         set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
         set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=3, registry=prep)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_absolute(prep, sid, column_index=0)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         manifest = _read_manifest(_unzip(result.content))
@@ -553,84 +591,80 @@ class TestManifestContents:
             "exported_row_count", "excluded_row_count", "excluded_rows", "excluded_rows_truncated",
             "omitted_columns", "column_roles", "edited_cell_count", "cleared_cell_count",
             "time_family", "time_provenance", "interpreter_id", "time_unit", "time_interval_seconds",
-            "reconstructed_timing", "readiness",
+            "reconstructed_timing", "exported_time", "readiness",
         ):
             assert key in manifest, key
         assert set(manifest["readiness"].keys()) == {"is_ready", "blocking_count", "warning_count", "info_count"}
-
-    def test_edited_and_cleared_counts_distinct(self):
-        prep = PreparationSessionRegistry()
-        sid = _add_csv(prep, b"1,2,3\n")
-        edit_cell(workspace_id=WS, source_id=sid, row_number=1, column_index=0, value="99", registry=prep)
-        edit_cell(workspace_id=WS, source_id=sid, row_number=1, column_index=1, value=None, registry=prep)
-
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        manifest = _read_manifest(_unzip(result.content))
-
-        assert manifest["edited_cell_count"] == 1
-        assert manifest["cleared_cell_count"] == 1
-
-    def test_excluded_row_numbers_listed_for_small_sets(self):
-        prep = PreparationSessionRegistry()
-        sid = _add_csv(prep, b"1\n2\n3\n4\n")
-        set_row_excluded(workspace_id=WS, source_id=sid, row_number=2, excluded=True, registry=prep)
-        set_row_excluded(workspace_id=WS, source_id=sid, row_number=4, excluded=True, registry=prep)
-
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        manifest = _read_manifest(_unzip(result.content))
-
-        assert manifest["excluded_row_count"] == 2
-        assert manifest["excluded_rows"] == [2, 4]
-        assert manifest["excluded_rows_truncated"] is False
-
-    def test_excluded_row_list_truncated_for_large_sets(self):
-        prep = PreparationSessionRegistry()
-        lines = [str(i) for i in range(1, 301)]
-        sid = _add_csv(prep, ("\n".join(lines) + "\n").encode())
-        for row_number in range(1, 251):
-            set_row_excluded(workspace_id=WS, source_id=sid, row_number=row_number, excluded=True, registry=prep)
-
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        manifest = _read_manifest(_unzip(result.content))
-
-        assert manifest["excluded_row_count"] == 250
-        assert len(manifest["excluded_rows"]) == 200
-        assert manifest["excluded_rows_truncated"] is True
-
-
-class TestReadinessSnapshotAndAvailability:
-    def test_export_succeeds_when_ready(self):
-        prep = PreparationSessionRegistry()
-        content = b"2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n"
-        sid = _add_csv(prep, content)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="time_axis", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
-        set_time_axis_configuration(
-            workspace_id=WS, source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime",
-            confirmed=True, registry=prep,
-        )
-
-        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        manifest = _read_manifest(_unzip(result.content))
-
         assert manifest["readiness"]["is_ready"] is True
-        assert manifest["readiness"]["blocking_count"] == 0
 
-    def test_export_succeeds_with_blocking_issues(self):
+
+class TestExcelExport:
+    def test_configured_time_and_waveform_only(self):
         prep = PreparationSessionRegistry()
-        sid = _add_csv(prep, b"1,2\n")  # totally unconfigured -- blocking readiness issues
+        content = _build_xlsx({
+            "A": [["Time", "VR"], ["2026-08-31 13:00:00", 1.0], ["2026-08-31 13:00:01", 2.0]],
+        })
+        sid = _add_excel(prep, content)
+        select_preparation_worksheet(workspace_id=WS, source_id=sid, worksheet_index=0, registry=prep)
+        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=3, registry=prep)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_absolute(prep, sid, column_index=0)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
-        manifest = _read_manifest(_unzip(result.content))
+        assert result.filename.endswith(".zip")
+        rows = _read_xlsx_rows(_unzip(result.content))
 
-        assert manifest["readiness"]["is_ready"] is False
-        assert manifest["readiness"]["blocking_count"] > 0
+        assert rows[0] == ("Time", "VR")
+        assert rows[1] == ("2026-08-31T13:00:00.000", 1.0)
+
+    def test_output_is_a_single_clean_worksheet(self):
+        prep = PreparationSessionRegistry()
+        content = _build_xlsx({"Only": [["2026-08-31 13:00:00", "1"]]})
+        sid = _add_excel(prep, content)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_absolute(prep, sid, column_index=0)
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        name = next(n for n in _unzip(result.content).namelist() if n.endswith(".xlsx"))
+        wb = load_workbook(io.BytesIO(_unzip(result.content).read(name)))
+
+        assert len(wb.sheetnames) == 1
+
+    def test_original_workbook_bytes_untouched(self):
+        prep = PreparationSessionRegistry()
+        content = _build_xlsx({"Sheet1": [["2026-08-31 13:00:00", "1"]]})
+        sid = _add_excel(prep, content)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_absolute(prep, sid, column_index=0)
+
+        export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+
+        session = prep.get(WS, sid)
+        assert session.raw_bytes == content
+
+    def test_valid_worksheet_name_preserved(self):
+        prep = PreparationSessionRegistry()
+        content = _build_xlsx({"Event Data": [["2026-08-31 13:00:00", "1"]]})
+        sid = _add_excel(prep, content)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_absolute(prep, sid, column_index=0)
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        name = next(n for n in _unzip(result.content).namelist() if n.endswith(".xlsx"))
+        wb = load_workbook(io.BytesIO(_unzip(result.content).read(name)))
+
+        assert wb.sheetnames == ["Event Data"]
 
 
 class TestExportIsReadOnly:
     def test_revision_unchanged_by_export(self):
         prep = PreparationSessionRegistry()
-        sid = _add_csv(prep, b"1,2\n")
+        sid = _ready_absolute_source(prep, b"2026-08-31 13:00:00,1\n")
         session = prep.get(WS, sid)
         before = session.working_overlay.revision
 
@@ -640,7 +674,7 @@ class TestExportIsReadOnly:
 
     def test_preparation_session_still_present_after_export(self):
         prep = PreparationSessionRegistry()
-        sid = _add_csv(prep, b"1,2\n")
+        sid = _ready_absolute_source(prep, b"2026-08-31 13:00:00,1\n")
 
         export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
 
@@ -648,7 +682,7 @@ class TestExportIsReadOnly:
 
     def test_repeated_export_is_idempotent_and_consistent(self):
         prep = PreparationSessionRegistry()
-        sid = _add_csv(prep, b"1,2\n")
+        sid = _ready_absolute_source(prep, b"2026-08-31 13:00:00,1\n")
 
         first = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         second = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
@@ -676,7 +710,10 @@ class TestApiLevelErrors:
 class TestFilenameSanitization:
     def test_csv_filename_pattern(self):
         prep = PreparationSessionRegistry()
-        sid = _add_csv(prep, b"1,2\n", filename="event.csv")
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,1\n", filename="event.csv")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_absolute(prep, sid, column_index=0)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
 
@@ -687,8 +724,11 @@ class TestFilenameSanitization:
 
     def test_excel_filename_pattern(self):
         prep = PreparationSessionRegistry()
-        content = _build_xlsx({"Sheet1": [["a"]]})
+        content = _build_xlsx({"Sheet1": [["2026-08-31 13:00:00", "1"]]})
         sid = _add_excel(prep, content, filename="event.xlsx")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_absolute(prep, sid, column_index=0)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
 
@@ -698,7 +738,10 @@ class TestFilenameSanitization:
 
     def test_unsafe_characters_in_original_filename_stripped(self):
         prep = PreparationSessionRegistry()
-        sid = _add_csv(prep, b"1,2\n", filename="../weird:name*.csv")
+        sid = _add_csv(prep, b"2026-08-31 13:00:00,1\n", filename="../weird:name*.csv")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_absolute(prep, sid, column_index=0)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
 
@@ -707,12 +750,15 @@ class TestFilenameSanitization:
         assert "*" not in result.filename
 
 
-class TestPerformanceLargeCsvExport:
+class TestPerformanceLargeExport:
     def test_large_csv_exports_without_pathological_cost(self):
         prep = PreparationSessionRegistry()
-        rows = 50_000
-        lines = [f"{i},{float(i)}" for i in range(rows)]
+        rows = 20_000
+        lines = [f"2026-08-31 13:00:{i % 60:02d}.{i:06d},{float(i)}" for i in range(rows)]
         sid = _add_csv(prep, ("\n".join(lines) + "\n").encode())
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_absolute(prep, sid, column_index=0)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows_out = _read_csv_rows(_unzip(result.content))
@@ -720,14 +766,100 @@ class TestPerformanceLargeCsvExport:
         assert len(rows_out) == rows + 1  # header + all rows
 
     def test_large_excel_exports_via_write_only_streaming(self):
+        import datetime as _dt
+
         prep = PreparationSessionRegistry()
-        rows = 20_000
-        content = _build_xlsx({"Sheet1": [[str(i), float(i)] for i in range(rows)]})
+        rows = 10_000
+        base = _dt.datetime(2026, 8, 31, 13, 0, 0)
+        content = _build_xlsx({
+            "Sheet1": [[(base + _dt.timedelta(seconds=i)).strftime("%Y-%m-%d %H:%M:%S"), float(i)] for i in range(rows)],
+        })
         sid = _add_excel(prep, content)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=0, role="waveform", registry=prep)
-        set_column_role(workspace_id=WS, source_id=sid, column_index=1, role="waveform", registry=prep)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_absolute(prep, sid, column_index=0)
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
         rows_out = _read_xlsx_rows(_unzip(result.content))
 
         assert len(rows_out) == rows + 1  # header + all rows
+
+
+class TestReUploadRoundTrip:
+    """Task section AK: a cleaned export's own standardized Time column
+    must be recognizable on re-upload without repeating the original
+    ambiguity/configuration work."""
+
+    def test_absolute_export_recognized_unambiguously_on_reupload(self):
+        prep = PreparationSessionRegistry()
+        # Originally ambiguous (DMY vs MDY) -- resolved once, exported.
+        content = b"Date,Time,Voltage\n3/6/26,18:04:00.000,1.0\n3/6/26,18:04:00.020,2.0\n"
+        sid = _add_csv(prep, content)
+        set_header_row(workspace_id=WS, source_id=sid, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid, start_row=2, end_row=3, registry=prep)
+        _mark_time_axis(prep, sid, 0, 1)
+        _mark_waveform(prep, sid, 2)
+        _confirm_split_date_time(prep, sid, date_column=0, time_column=1, date_order="dmy")
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        csv_bytes = _unzip(result.content).read(next(n for n in _unzip(result.content).namelist() if n.endswith(".csv")))
+
+        # Re-upload the cleaned CSV as a brand-new preparation source.
+        sid2 = _add_csv(prep, csv_bytes, filename="reuploaded.csv")
+        set_header_row(workspace_id=WS, source_id=sid2, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid2, start_row=2, end_row=3, registry=prep)
+        _mark_time_axis(prep, sid2, 0)
+        preview = interpret_time_axis(
+            workspace_id=WS, source_id=sid2, column_indices=(0,), interpreter_id="absolute_datetime", registry=prep,
+        )
+
+        # No ambiguity remains -- the standardized ISO column is
+        # self-describing, resolved without needing a date_order choice.
+        assert preview.family == "absolute"
+        assert not any(d.code == "ambiguous_date_order" for d in preview.diagnostics)
+
+    def test_elapsed_export_recognized_on_reupload(self):
+        prep = PreparationSessionRegistry()
+        content = b"5.000,1.0\n5.020,2.0\n5.040,3.0\n"
+        sid = _add_csv(prep, content)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_elapsed(prep, sid, unit="seconds")
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        csv_bytes = _unzip(result.content).read(next(n for n in _unzip(result.content).namelist() if n.endswith(".csv")))
+
+        sid2 = _add_csv(prep, csv_bytes, filename="reuploaded.csv")
+        set_header_row(workspace_id=WS, source_id=sid2, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid2, start_row=2, end_row=4, registry=prep)
+        _mark_time_axis(prep, sid2, 0)
+        preview = interpret_time_axis(
+            workspace_id=WS, source_id=sid2, column_indices=(0,), interpreter_id="elapsed_numeric",
+            unit="seconds", registry=prep,
+        )
+
+        assert preview.family == "elapsed"
+        assert not any(d.ambiguity == "ambiguous" for d in preview.diagnostics)
+
+    def test_sample_index_export_recognized_on_reupload(self):
+        prep = PreparationSessionRegistry()
+        content = b"100,1.0\n101,2.0\n102,3.0\n"
+        sid = _add_csv(prep, content)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_sample_index(prep, sid, interval_seconds=0.02)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep)
+        csv_bytes = _unzip(result.content).read(next(n for n in _unzip(result.content).namelist() if n.endswith(".csv")))
+
+        sid2 = _add_csv(prep, csv_bytes, filename="reuploaded.csv")
+        set_header_row(workspace_id=WS, source_id=sid2, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid2, start_row=2, end_row=4, registry=prep)
+        _mark_time_axis(prep, sid2, 0)
+        preview = interpret_time_axis(
+            workspace_id=WS, source_id=sid2, column_indices=(0,), interpreter_id="elapsed_numeric",
+            unit="seconds", registry=prep,
+        )
+
+        # The re-uploaded "Time (s)" column is itself a plain elapsed-
+        # seconds column -- recognized immediately by elapsed_numeric,
+        # no interval/rate re-entry required (unlike the ORIGINAL
+        # sample-index source, which had none at all).
+        assert preview.family == "elapsed"
