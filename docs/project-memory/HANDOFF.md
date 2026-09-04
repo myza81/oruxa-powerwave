@@ -8,6 +8,76 @@ Last updated: **2026-09-04**
 
 ## What was most recently done
 
+**UAT Enhancement — Improve Data Preview Pagination Controls
+(implemented; no DECISIONS entry — a straightforward navigation
+improvement, not an architectural decision).** Owner-reported UX
+problem: the Data Preview pager only offered Previous/Next, so
+returning to page 1 (or reaching a distant page) of a large dataset
+required repeated clicking with no way to jump directly.
+
+**Change**: `frontend/index.html` only — no backend/API change (the
+existing `GET .../rows?offset=&limit=` already accepts arbitrary
+offsets). The pager gained `First`/`Last` buttons and a direct
+page-number input: `[First] [Previous]  Page [__] of N  [Next]
+[Last]`. `wwDataPrepRenderPagination()` now also computes
+`wwDataPrep.currentPage`/`totalPages` (render-derived from
+`offset`/`limit`/`totalRowCount` on every call, never a second,
+independently-tracked paging source of truth) and drives the new
+controls' disabled state/values from them. `First` sets `offset = 0`;
+`Last` reuses the EXACT SAME final-offset formula
+(`floor((total-1)/limit)*limit`) `wwDataPrepGoToLastRowsBtn` (Data
+Region's own "Go to Last Rows," kept as a separate, still-distinct
+control per the task's own explicit instruction not to remove it)
+already established — both jump directly in one bounded HTTP request,
+never stepping through intermediate pages. `Last`/the page input are
+disabled whenever `total_row_count` itself is unknown (some Excel
+worksheets), matching "Go to Last Rows"'s own existing guard. The page
+input (`wwDataPrepJumpToPage()`) validates `1 <= page <= total_pages`
+on Enter or blur and silently restores the current page value on any
+invalid input (`0`, negative, non-integer, out of range, blank) —
+never a backend request for an invalid value, never a large error
+alert.
+
+**Configured Time (DEC-075) regression-checked, not merely assumed
+unaffected**: since First/Last/direct-jump only ever change
+`wwDataPrep.offset` before calling the SAME `wwDataPrepFetchPreview()`
+Previous/Next already use, and the backend's own `configured_time_for_
+preview_page()` always computes relative values against the dataset's
+TRUE first active row regardless of how that offset was reached, a
+direct jump to page 5 produces byte-identical `configured_time` values
+to reaching page 5 via five `Next` clicks — verified directly in a
+throwaway live-browser UAT (a 0.02s-interval elapsed dataset: page 1
+row 1 reads `0.000`; `Next` to page 2 row 201 reads `4.000`, never
+resetting to `0.000`; `Last` to the final page reads `16.000`; `First`
+back to page 1 reads `0.000` again; a direct jump to page 4 reads
+`12.000`).
+
+**Validation**: no backend files changed, so the full backend suite
+was re-run only to confirm the (unaffected) baseline: **2731 passed,
+0 failed** before and after. The committed browser smoke test
+(COMTRADE) still passes with zero console/page errors. A throwaway
+(not committed, deleted after use) live-browser Playwright UAT covered
+all 5 task-specified scenarios: First/Last jump directly with zero
+intermediate-page requests observed on the wire; disabled states
+across first/middle/last page and a single-page source; direct page
+entry (valid jump, and every invalid-input case in task section G
+handled without a backend request); Configured Time anchoring across
+every navigation path (above); and a 120,000-row/600-page source where
+First, a direct jump to page 300, and Last each issued exactly ONE
+`/rows` request and completed in well under a second, proving no
+page-by-page traversal.
+
+**Next step**: no new slice was opened by this enhancement -- Slice 13
+(progressive automation) remains the next unauthorized item, per
+[Change governance](../../CLAUDE.md#change-governance).
+
+**Commit status**: not committed — per this task's own explicit closing
+instruction ("Do not commit or push unless explicitly asked"), all of
+the above are normal uncommitted working-tree changes pending a
+separate, explicit commit instruction.
+
+## What was done in the prior session — UAT Enhancement: Cleaned Export UX: manifest/provenance is now optional
+
 **UAT Enhancement — Cleaned Export UX: manifest/provenance is now
 optional (implemented, DEC-076).** Owner-reported UX problem: cleaned
 export (Slice 12/DEC-074) always returned a ZIP containing the cleaned
@@ -118,10 +188,11 @@ fallback -- all with zero console/page errors.
 (progressive automation) remains the next unauthorized item, per
 [Change governance](../../CLAUDE.md#change-governance).
 
-**Commit status**: not committed — per this task's own explicit closing
-instruction ("Do not commit or push unless explicitly asked"), all of
-the above are normal uncommitted working-tree changes pending a
-separate, explicit commit instruction.
+**Commit status**: committed as `853707a feat: improve preparation
+preview and export UX` (a single combined commit alongside DEC-075's
+own Configured Time preview work and a small, undocumented-by-DEC
+diagnostics-visibility CSS fix — see the top "What was most recently
+done" section for the enhancement committed on top of this one).
 
 ## What was done in the prior session — UAT Enhancement: Show the Resolved/Configured Time Axis in Data Preview
 
@@ -249,10 +320,10 @@ immediately.
 (progressive automation) remains the next unauthorized item, per
 [Change governance](../../CLAUDE.md#change-governance).
 
-**Commit status**: not committed — per this task's own explicit closing
-instruction ("Do not commit or push unless explicitly asked"), all of
-the above are normal uncommitted working-tree changes pending a
-separate, explicit commit instruction.
+**Commit status**: committed as `853707a feat: improve preparation
+preview and export UX` (a single combined commit alongside DEC-076's
+own optional-manifest export work and a small, undocumented-by-DEC
+diagnostics-visibility CSS fix).
 
 ## What was done in the prior session — UAT Enhancement: Export the Resolved/Configured Time Axis
 

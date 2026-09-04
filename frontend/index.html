@@ -821,6 +821,18 @@
         .ww-data-prep-table thead th:first-child { left: 0; z-index: 3; }
         .ww-data-prep-table td.ww-data-prep-blank-cell { color: var(--text-dim); }
         .ww-data-prep-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        /* UAT enhancement (2026-09-04): First/Last + direct page entry --
+           deliberately compact text-label buttons (no icon-only controls,
+           task's own "simple text labels preferred for clarity"), no new
+           toolbar/panel. */
+        .ww-data-prep-pager { display: flex; align-items: center; gap: 6px; }
+        .ww-data-prep-pager-label { font-size: 0.8rem; color: var(--text-dim); white-space: nowrap; }
+        .ww-data-prep-page-input {
+            width: 3.5em; text-align: center; font: inherit; font-size: 0.8rem;
+            border: 1px solid var(--panel-border); border-radius: 3px; padding: 1px 3px;
+            background: var(--panel); color: var(--text);
+        }
+        .ww-data-prep-page-input:disabled { opacity: 0.6; }
         /* Slice 4 (DEC-072): Working Dataset toolbar/table additions.
            Never a heavy spreadsheet framework -- plain DOM + a click-to-
            edit <input> swapped into a single <td>, matching this table's
@@ -5004,9 +5016,16 @@
                     </div>
                     <div class="ww-data-prep-pagination">
                         <span class="hint" id="wwDataPrepRangeLabel"></span>
-                        <div>
+                        <div class="ww-data-prep-pager">
+                            <button type="button" class="secondary" id="wwDataPrepFirstBtn" title="First page">First</button>
                             <button type="button" class="secondary" id="wwDataPrepPrevBtn">Previous</button>
+                            <span class="ww-data-prep-pager-label">
+                                Page
+                                <input type="text" inputmode="numeric" class="ww-data-prep-page-input" id="wwDataPrepPageInput" aria-label="Page number">
+                                of <span id="wwDataPrepPageTotal">1</span>
+                            </span>
                             <button type="button" class="secondary" id="wwDataPrepNextBtn">Next</button>
+                            <button type="button" class="secondary" id="wwDataPrepLastBtn" title="Last page">Last</button>
                         </div>
                     </div>
                     <div class="upload-status" id="wwDataPrepStatus" role="status" aria-live="polite"></div>
@@ -7079,6 +7098,11 @@
             offset: 0,
             limit: 200,
             totalRowCount: null,
+            // UAT enhancement (2026-09-04): render-derived by
+            // wwDataPrepRenderPagination() on every preview fetch --
+            // never set independently of offset/limit/totalRowCount.
+            currentPage: 1,
+            totalPages: null,
             columnCount: null,
             // Slice 4 (DEC-072): Working Dataset overlay state. `overlay`
             // mirrors the backend's own WorkingOverlaySummaryOut verbatim
@@ -7451,6 +7475,15 @@
                 wwDataPrepSummarizeColumnRoles(wwDataPrep.columnRoles || []);
         }
 
+        // UAT enhancement (2026-09-04): First/Previous/Next/Last + direct
+        // page entry. `wwDataPrep.currentPage`/`totalPages` are RENDER-
+        // DERIVED from offset/limit/totalRowCount on every call here --
+        // never a second, independently-tracked paging source of truth.
+        // `totalPages` (and therefore `Last`/the page input) stays `null`
+        // whenever `total_row_count` itself is `null` (Excel worksheets
+        // whose row count isn't known yet) -- exactly the same "row count
+        // not known yet" condition `wwDataPrepGoToLastRowsBtn` already
+        // guards against, reused here rather than a second policy.
         function wwDataPrepRenderPagination(preview) {
             const total = wwDataPrep.totalRowCount;
             const firstShown = preview.rows.length > 0 ? preview.offset + 1 : 0;
@@ -7460,9 +7493,60 @@
                 : "unknown";
             document.getElementById("wwDataPrepRangeLabel").textContent =
                 "Showing rows " + firstShown + "–" + lastShown + " of " + totalLabel;
-            document.getElementById("wwDataPrepPrevBtn").disabled = wwDataPrep.offset <= 0;
-            document.getElementById("wwDataPrepNextBtn").disabled =
-                total != null ? (wwDataPrep.offset + wwDataPrep.limit) >= total : preview.returned_row_count < wwDataPrep.limit;
+
+            const totalPages = total != null ? Math.max(1, Math.ceil(total / wwDataPrep.limit)) : null;
+            const currentPage = Math.floor(wwDataPrep.offset / wwDataPrep.limit) + 1;
+            wwDataPrep.totalPages = totalPages;
+            wwDataPrep.currentPage = currentPage;
+
+            const atFirst = wwDataPrep.offset <= 0;
+            const atLast = total != null
+                ? (wwDataPrep.offset + wwDataPrep.limit) >= total
+                : preview.returned_row_count < wwDataPrep.limit;
+
+            document.getElementById("wwDataPrepFirstBtn").disabled = atFirst;
+            document.getElementById("wwDataPrepPrevBtn").disabled = atFirst;
+            document.getElementById("wwDataPrepNextBtn").disabled = atLast;
+            // `Last` additionally requires a known total -- unlike `Next`'s
+            // own "fewer rows than limit came back" fallback, jumping
+            // straight to the final page requires actually knowing where
+            // it is.
+            document.getElementById("wwDataPrepLastBtn").disabled = atLast || total == null;
+
+            document.getElementById("wwDataPrepPageTotal").textContent = totalPages != null ? String(totalPages) : "?";
+            const pageInput = document.getElementById("wwDataPrepPageInput");
+            pageInput.disabled = totalPages == null;
+            // Never clobber a value the user is actively typing -- this
+            // render only ever runs right after a fetch settles, so the
+            // field is otherwise idle whenever this executes.
+            if (document.activeElement !== pageInput) {
+                pageInput.value = String(currentPage);
+            }
+        }
+
+        // Shared validate-and-navigate for the direct page-entry field --
+        // called on both Enter and blur (task section H) so leaving the
+        // field without pressing Enter still resolves deterministically.
+        // Never issues a backend request for an invalid value (section G);
+        // an out-of-range/non-integer/blank value simply restores the
+        // current page number instead of a large error alert.
+        function wwDataPrepJumpToPage(rawValue) {
+            const pageInput = document.getElementById("wwDataPrepPageInput");
+            const totalPages = wwDataPrep.totalPages;
+            const trimmed = (rawValue || "").trim();
+            const parsed = Number(trimmed);
+            const isValid = trimmed !== "" && Number.isInteger(parsed) && parsed >= 1 &&
+                (totalPages == null || parsed <= totalPages);
+            if (!isValid) {
+                pageInput.value = String(wwDataPrep.currentPage || 1);
+                return;
+            }
+            if (parsed === wwDataPrep.currentPage) {
+                pageInput.value = String(parsed); // no-op: already on this page
+                return;
+            }
+            wwDataPrep.offset = (parsed - 1) * wwDataPrep.limit;
+            wwDataPrepFetchPreview();
         }
 
         async function wwDataPrepFetchPreview() {
@@ -8703,6 +8787,22 @@
                 wwDataPrep.timeAxisExpanded ? "Hide" : "Configure";
         });
 
+        // UAT enhancement (2026-09-04): First/Last -- jump directly, never
+        // step through intermediate pages (a single offset write + one
+        // wwDataPrepFetchPreview() call, exactly like Previous/Next below,
+        // so exactly one target page is ever requested). `Last` reuses the
+        // SAME final-offset formula wwDataPrepGoToLastRowsBtn already
+        // established, rather than a second "last page" calculation.
+        document.getElementById("wwDataPrepFirstBtn").addEventListener("click", () => {
+            wwDataPrep.offset = 0;
+            wwDataPrepFetchPreview();
+        });
+        document.getElementById("wwDataPrepLastBtn").addEventListener("click", () => {
+            const total = wwDataPrep.totalRowCount;
+            if (total == null || total <= 0) return; // disabled state already guards this
+            wwDataPrep.offset = Math.max(0, Math.floor((total - 1) / wwDataPrep.limit) * wwDataPrep.limit);
+            wwDataPrepFetchPreview();
+        });
         document.getElementById("wwDataPrepPrevBtn").addEventListener("click", () => {
             wwDataPrep.offset = Math.max(0, wwDataPrep.offset - wwDataPrep.limit);
             wwDataPrepFetchPreview();
@@ -8710,6 +8810,21 @@
         document.getElementById("wwDataPrepNextBtn").addEventListener("click", () => {
             wwDataPrep.offset += wwDataPrep.limit;
             wwDataPrepFetchPreview();
+        });
+        // UAT enhancement (2026-09-04): direct page entry. Enter jumps
+        // without forcing a blur (so a fast, harness-driven blur
+        // immediately after Enter can't race the in-flight fetch and
+        // double-submit); leaving the field any other way (tab/click
+        // away) still resolves deterministically via the same blur
+        // handler (task section H).
+        document.getElementById("wwDataPrepPageInput").addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                wwDataPrepJumpToPage(event.target.value);
+            }
+        });
+        document.getElementById("wwDataPrepPageInput").addEventListener("blur", (event) => {
+            wwDataPrepJumpToPage(event.target.value);
         });
 
         // ---- Slice 4 (DEC-072): Working Dataset mutation calls ----

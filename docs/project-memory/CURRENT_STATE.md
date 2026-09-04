@@ -9,7 +9,23 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-04**. A sixth same-day enhancement
+Last meaningful update: **2026-09-04**. A same-day UX refinement (no
+DECISIONS entry — a straightforward navigation improvement, not an
+architectural decision) gives the Data Preparation Workspace's raw
+preview pager First/Last buttons and direct page-number entry
+alongside the existing Previous/Next: `[First] [Previous]  Page
+[__] of N  [Next] [Last]`. First/Last jump straight to the target page
+in one bounded request (reusing the exact same final-offset formula
+"Go to Last Rows" already used, which remains a separate, Data-Region-
+scoped control), never stepping through intermediate pages; the page
+input validates `1 <= page <= total_pages` client-side and rejects
+invalid values without a backend request. Purely frontend/render-
+derived from the existing `offset`/`limit`/`total_row_count` preview
+state — no backend/API change. DEC-075's Configured Time column
+remains correctly anchored to the dataset's true first active row
+across every navigation path (First/Previous/Next/Last/direct jump),
+verified directly (see [Implemented capabilities](#implemented-capabilities)).
+A sixth same-day enhancement
 ([DECISIONS.md — DEC-076](DECISIONS.md#dec-076--cleaned-exports-manifestprovenance-bundle-is-now-optional-the-default-export-cleaned-data-action-returns-the-cleaned-csvxlsx-directly-never-a-zip))
 makes cleaned export's manifest/provenance bundle OPTIONAL: the default
 "Export Cleaned Data" click now downloads the cleaned CSV/XLSX directly
@@ -358,6 +374,31 @@ re-confirmed by the TG-FINAL audit):
   "Derived" badge and tooltip), refreshed immediately after every Time
   Axis Save/Clear (alongside the existing refresh-on-cell-edit
   behavior) so it never shows a stale value.
+
+  **A same-day UX refinement (2026-09-04, no DECISIONS entry) adds
+  First/Last and direct page-number entry to this same preview's
+  pager**, alongside the existing Previous/Next: `[First] [Previous]
+  Page [__] of N [Next] [Last]`. Entirely frontend/render-derived from
+  the existing `wwDataPrep.offset`/`limit`/`totalRowCount` state (no
+  backend/API change) — `currentPage`/`totalPages` are computed fresh
+  on every `wwDataPrepRenderPagination()` call, never a second,
+  independently-tracked paging source of truth. `First` sets `offset =
+  0`; `Last` reuses the EXACT SAME final-offset formula
+  (`floor((total-1)/limit)*limit`) `wwDataPrepGoToLastRowsBtn` (Data
+  Region's own "Go to Last Rows," a distinct, still-separate control)
+  already established, rather than a second "last page" calculation —
+  both jump directly in one bounded request, never stepping through
+  intermediate pages. `Last`/the page input stay disabled whenever
+  `total_row_count` itself is unknown (some Excel worksheets), matching
+  "Go to Last Rows"'s own existing guard. The page-number input
+  validates `1 <= page <= total_pages` client-side on Enter or blur and
+  restores the current page on any invalid value (`0`, negative,
+  non-integer, out of range, blank) without ever issuing a backend
+  request. DEC-075's Configured Time column stays correctly anchored to
+  the dataset's TRUE first active row across every navigation path
+  (First/Previous/Next/Last/direct jump) — confirmed directly (e.g. row
+  201 of a 0.02s-interval dataset reads `4.000` whether reached via
+  repeated `Next` or a direct jump to page 2).
 
   **Slice 6** adds the preparation-specific Readiness Issue LANGUAGE AND
   TRANSPORT model — explicitly NOT the full Readiness Validator (still
