@@ -10907,6 +10907,168 @@ task-specified scenarios passed with zero console/page errors.
 
 ---
 
+## DEC-078 — Voltage Angle/Current Angle channels plot on a secondary (right) Y-axis, sharing their magnitude sibling's panel; the same two quantities are never eligible for Voltage/Current per-unit conversion
+
+Date: 2026-09-04
+Status: Approved
+Source: explicit project-owner enhancement request ("Angle Channels on
+Secondary Y-Axis + Per-Unit Guardrail") -- a direct follow-on to the
+prior session's investigation-only audit of the chart's own axis
+architecture, which found (a) no secondary/right Y-axis mechanism
+existed anywhere in the codebase, (b) `engineering_quantity` (DEC-077)
+never reached the plotting layer at all (dropped one hop after the
+channel-list fetch), and (c) the backend's own per-unit eligibility
+check keyed on broad `engineering_type` alone, meaning a Voltage-Angle-
+quantity channel was structurally eligible for kV-scale/Voltage-Base
+conversion, which is physically meaningless for an angle value.
+
+Decision:
+
+**Voltage Angle and Current Angle channels now plot against a genuine
+Plotly `yaxis2` (`overlaying: "y", side: "right"`), while remaining in
+the SAME panel as their magnitude sibling** -- panel GROUPING itself is
+completely unchanged (`wwPanelGroupKeyFor()` still keys purely on the
+broad `engineering_type`, so a Voltage magnitude and a Voltage Angle
+channel already landed in one panel before this decision); only which
+of that panel's two axes each trace uses is new. The rule is keyed
+exclusively on the canonical `channel.engineeringQuantity`, now threaded
+through the previously-lossy hop chain (`analogChannelRowAttrs()` ->
+`analogMetaFromRow()` -> `wwAddSelectedChannels()` -> `channelEntry`)
+unmodified -- never re-classified, never inferred from a channel's own
+name, never branching on source format:
+
+```text
+engineeringQuantity === "Voltage Angle"  -> secondary/right axis (y2)
+engineeringQuantity === "Current Angle"  -> secondary/right axis (y2)
+everything else (including "Undefined") -> existing single-axis behavior, unchanged
+```
+
+A secondary axis is created LAZILY, only for a panel that genuinely
+mixes an angle channel with a non-angle one (`wwPanelNeedsSecondaryAxis()`).
+A panel of angle channels ALONE (a Separate-mode solo panel, or an
+angle-only Custom group) deliberately keeps its one existing axis
+instead, retitled the literal "Angle" -- an isolated, empty left axis
+paired with the only trace stranded on an isolated right axis was
+judged worse UX than simply reusing the axis the panel already has.
+The right axis's own title is always the safe literal `"Angle"`, never
+a guessed unit (`"deg"`/`"rad"`/`"°"`) -- no angle-unit metadata exists
+anywhere in the system yet, and this decision does not introduce any.
+Dynamic add/remove on an already-rendered panel (`wwAddTraceToPanel()`/
+`wwRemoveChannel()`/`wwRemoveChannelsByKeys()`) reconciles every trace's
+own axis assignment and the panel's axis titles/`yaxis2` presence
+immediately via one shared `wwSyncPanelAngleAxis()` helper, never
+waiting for an unrelated relayout.
+
+**Per-unit guardrail**: `app.services.waveform_service.
+_resolve_effective_per_unit()` -- the ONE dispatch point every per-unit-
+aware endpoint already funneled through (DEC-050 Slice 5) -- now looks
+up the channel's own `engineering_quantity` and short-circuits to
+`PerUnitResolution(status=NOT_APPLICABLE)` for the two angle quantities,
+BEFORE either the group-aware (DEC-050) or legacy (DEC-049) resolution
+path ever runs, regardless of the channel's own broad `engineering_type`
+or whether a base is configured. `resolve_per_unit()` and
+`resolve_group_aware_per_unit()` themselves are completely unchanged --
+every other caller of either (calculated channels, which cannot carry
+`engineering_quantity` at all today) keeps today's exact
+`engineering_type`-only behavior.
+
+```text
+engineering_quantity in {"Voltage Angle", "Current Angle"} -> NOT_APPLICABLE, always
+engineering_quantity = Undefined (COMTRADE, or any unclassified CSV/Excel channel) -> legacy engineering_type-only behavior, unchanged
+```
+
+Reason:
+
+The prior session's investigation found the risk concretely: an Angle
+quantity's broad `engineering_type` is Voltage/Current (by DEC-077's
+own deliberate compatibility mapping, since no first-class "Angle"
+broad category exists), so without this guardrail a Voltage-Angle
+channel would silently be divided by a Voltage Base the moment Per-Unit
+mode was active and a base configured for that source -- a physically
+meaningless operation. Placing the axis-selection rule in the plotting
+layer, keyed purely on `engineering_quantity`, keeps the architecture
+format-independent by construction (COMTRADE and CSV/Excel channels
+already converge on the identical `AnalogChannelOut` shape and the
+identical frontend functions; no new source-format branching was
+introduced or needed).
+
+Alternatives considered:
+
+A brand-new "Angle" broad `engineering_type` category (rejected --
+explicit non-goal, per DEC-077's own established boundary; would force
+every existing broad-type consumer, including per-unit/measurement-
+group eligibility and calculated-channel inheritance, to understand a
+seventh category for no benefit over the additive `engineering_quantity`
+field this decision already uses). A brand-new chart panel to simulate
+the right axis (rejected -- task's own explicit instruction; a genuine
+Plotly `yaxis2` is the standard, additive dual-axis pattern and keeps
+magnitude/angle visually paired in one panel, which a second panel
+would not). Always creating `yaxis2` on every panel regardless of
+membership (rejected -- task's own "only when the panel actually
+contains an angle channel" requirement; an unused axis on every ordinary
+Voltage/Current/Power/Frequency/ROCOF panel would be visual clutter with
+no benefit). Guessing an angle unit (`"deg"`) for the axis title
+(rejected outright -- explicit non-goal; no angle-unit metadata exists
+anywhere in the system, and inventing one was judged a separate, later
+decision, not implicit in this one). Placing the per-unit guardrail
+inside `resolve_per_unit()`/`resolve_group_aware_per_unit()` themselves
+(rejected -- would touch two lower-level DEC-049/DEC-050 functions
+instead of their one shared dispatch point, and every direct caller of
+either would need to newly consider `engineering_quantity`; the single
+dispatch-point seam already has both `active`/`channel_name` in scope
+via its own existing signature, needing zero new call-site changes at
+all). Restyling remaining traces only reactively at the NEXT unrelated
+relayout, never proactively on add/remove (rejected -- would leave a
+panel transiently showing a stray axis or a wrongly-placed trace
+between a channel add/remove and whatever relayout happened to come
+next; `wwSyncPanelAngleAxis()` reconciles immediately instead).
+
+Impact:
+
+Frontend: `frontend/index.html` -- `engineering_quantity` threaded
+through `analogChannelRowAttrs()`/`analogMetaFromRow()`/
+`wwAddSelectedChannels()` onto `channelEntry`; six new helpers
+(`wwChannelUsesAngleQuantity()`, `wwPanelNeedsSecondaryAxis()`,
+`wwPanelYAxisTitle()`, `wwPanelYAxis2Layout()`, `wwSyncPanelAngleAxis()`);
+`wwBuildTrace()` gains a `panel` parameter and assigns `yaxis: "y2"`
+only for a qualifying angle trace; `wwBuildLayout()` adds `yaxis2`
+conditionally; `wwAddTraceToPanel()`/`wwRemoveChannel()`/
+`wwRemoveChannelsByKeys()` call the new reconciliation helper.
+`wwPanelGroupKeyFor()` itself is UNCHANGED. Backend:
+`app/services/waveform_service.py` -- new `_analog_channel_engineering_
+quantity()` lookup helper (mirrors the existing `_analog_channel_
+engineering_type()` exactly) and the guardrail inside
+`_resolve_effective_per_unit()`; `app/domain/per_unit.py`,
+`app/services/group_aware_per_unit.py` UNCHANGED. No new API endpoints,
+no new request/response fields (the guardrail is expressed entirely as
+an existing `PerUnitResolution.status` value, `"not_applicable"`,
+already a defined, handled status). Tests: new `test_frontend_angle_
+axis.py` (structural/source-text checks, matching this suite's own
+established `test_frontend_*.py` convention) and new
+`test_angle_axis_per_unit_guardrail.py` (end-to-end API-level: CSV
+preparation -> Engineering Quantity selection -> canonical conversion
+-> per-unit base configuration -> waveform fetch under
+`unit_mode=per_unit`), plus two pre-existing `test_frontend_*.py`
+signature-string updates (`wwBuildTrace(channel)` ->
+`wwBuildTrace(channel, panel)`, a pure rename with zero behavioral
+assertion changes). Full backend suite: 2870 passed, 0 failed (baseline
+immediately before this enhancement, confirmed fresh: 2846 passed). The
+committed browser smoke test (COMTRADE) still passes unchanged with
+zero console/page errors. A throwaway (not committed, deleted after
+use) live-browser Playwright UAT covering all 6 task-specified
+scenarios passed: Voltage/Voltage-Angle and Current/Current-Angle split
+correctly onto left/right within their own shared panel; COMTRADE
+plotting is provably unaffected (no `yaxis2` anywhere, every trace on
+the default axis); COMTRADE and a prepared angle-carrying CSV coexist
+in one workspace with each panel's own axis state fully independent; a
+Voltage-Angle channel's own values are provably unconverted (byte-
+identical to engineering-mode values) even with Per-Unit mode active
+and a Voltage Base configured for that source; and an exported,
+re-uploaded, reconverted self-describing file reproduces the identical
+left/right split automatically -- all with zero console/page errors.
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

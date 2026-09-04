@@ -26,8 +26,19 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from app.domain.channel_classification import UNDEFINED
-from app.domain.per_unit import PerUnitBaseProfile, PerUnitResolution, apply_per_unit_to_array, apply_per_unit_to_value, resolve_per_unit
+from app.domain.channel_classification import (
+    ENGINEERING_QUANTITY_CURRENT_ANGLE,
+    ENGINEERING_QUANTITY_VOLTAGE_ANGLE,
+    UNDEFINED,
+)
+from app.domain.per_unit import (
+    STATUS_NOT_APPLICABLE,
+    PerUnitBaseProfile,
+    PerUnitResolution,
+    apply_per_unit_to_array,
+    apply_per_unit_to_value,
+    resolve_per_unit,
+)
 from app.domain.source import ActiveSource, DigitalChannelSummary
 from app.domain.waveform_reduction import build_min_max_envelope
 from app.services.current_group_config_registry import CurrentGroupConfigRegistry
@@ -53,6 +64,17 @@ def _analog_channel_engineering_type(active: ActiveSource, channel_name: str) ->
     return matching.engineering_type if matching is not None else UNDEFINED
 
 
+def _analog_channel_engineering_quantity(active: ActiveSource, channel_name: str) -> str:
+    """Angle-axis enhancement (DEC-078): the same lookup pattern as
+    `_analog_channel_engineering_type()` immediately above, for the
+    richer, additive `engineering_quantity` field -- "Undefined" for
+    every COMTRADE/calculated channel today (neither sets it) and for
+    any CSV/Excel channel the engineer never classified, matching that
+    field's own API-level default."""
+    matching = next((ch for ch in active.metadata.analog_channels if ch.name == channel_name), None)
+    return matching.engineering_quantity if matching is not None else UNDEFINED
+
+
 def _resolve_effective_per_unit(
     active: ActiveSource,
     channel_name: str,
@@ -74,7 +96,25 @@ def _resolve_effective_per_unit(
     `resolve_group_aware_per_unit()` returns `None` and this falls
     through to the existing DEC-049 source-wide resolution exactly as
     before. See `app.services.group_aware_per_unit`'s own module
-    docstring for the full precedence rule (DEC-051)."""
+    docstring for the full precedence rule (DEC-051).
+
+    Angle-axis enhancement (DEC-078) per-unit guardrail: this is the ONE
+    seam that check lives in -- `engineering_quantity` is looked up
+    HERE (not threaded through every one of this function's own 4 call
+    sites) and, for the two angle quantities, short-circuits to
+    `NOT_APPLICABLE` before EITHER the group-aware or legacy DEC-049
+    path ever runs, regardless of the channel's own broad
+    `engineering_type` (Voltage/Current) or whether a base is
+    configured. `resolve_per_unit()`/`resolve_group_aware_per_unit()`
+    themselves are UNCHANGED -- every other caller of either (e.g.
+    calculated channels, which cannot carry `engineering_quantity` at
+    all today) keeps today's exact engineering_type-only behavior."""
+    engineering_quantity = _analog_channel_engineering_quantity(active, channel_name)
+    if engineering_quantity in (ENGINEERING_QUANTITY_VOLTAGE_ANGLE, ENGINEERING_QUANTITY_CURRENT_ANGLE):
+        return PerUnitResolution(
+            status=STATUS_NOT_APPLICABLE, profile_id=None, base_amount=None, base_unit=None,
+            reason="engineering_quantity_angle",
+        )
     resolution: PerUnitResolution | None = None
     if (
         workspace_id is not None

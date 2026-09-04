@@ -8,6 +8,98 @@ Last updated: **2026-09-04**
 
 ## What was most recently done
 
+**Enhancement — Angle Channels on Secondary Y-Axis + Per-Unit Guardrail
+(implemented, DEC-078).** Direct follow-on to the prior session's
+investigation-only audit of the chart's own axis architecture, which
+found: no secondary/right Y-axis mechanism existed anywhere in the
+codebase; `engineering_quantity` (DEC-077) never reached the plotting
+layer at all (dropped one hop after the channel-list fetch, in
+`analogChannelRowAttrs()`); and the backend's own per-unit eligibility
+check (`app.domain.per_unit.resolve_per_unit()`) keyed on broad
+`engineering_type` alone, meaning a Voltage-Angle-quantity channel was
+structurally eligible for kV-scale/Voltage-Base conversion -- a
+physically meaningless operation for an angle value.
+
+**Change (frontend, axis)**: `engineering_quantity` is now threaded
+through the previously-lossy hop chain (`analogChannelRowAttrs()` ->
+`analogMetaFromRow()` -> `wwAddSelectedChannels()` -> `channelEntry`)
+unmodified. Six new helpers in `frontend/index.html`:
+`wwChannelUsesAngleQuantity(channel)` (the one rule: `engineeringQuantity
+=== "Voltage Angle" || "Current Angle"`), `wwPanelNeedsSecondaryAxis(panel)`
+(true only when a panel mixes an angle channel with a non-angle one),
+`wwPanelYAxisTitle(panel)` (unchanged "first channel's own unit" rule,
+plus a new "Angle" retitle for an angle-ONLY panel), `wwPanelYAxis2Layout(colors)`
+(the fixed `{title: {text: "Angle"}, overlaying: "y", side: "right", ...}`
+layout -- object-form title, not a bare string, since `Plotly.relayout()`
+does not reliably normalize a plain string title the same way
+`Plotly.newPlot()` does for a DYNAMICALLY created axis -- caught live in
+the browser UAT, not assumed), and `wwSyncPanelAngleAxis(panel)` (the
+one reconciliation point, called after any dynamic add/remove on an
+already-rendered panel). `wwBuildTrace()` gains a `panel` parameter and
+sets `yaxis: "y2"` only for a qualifying angle trace -- every other
+trace (including every existing COMTRADE/calculated channel) keeps
+Plotly's own implicit default. **Panel GROUPING itself
+(`wwPanelGroupKeyFor()`) is completely unchanged** -- a Voltage
+magnitude and a Voltage Angle channel already shared one panel via the
+broad `engineering_type` key; this enhancement only decides which of
+that panel's two axes each trace uses. A secondary axis is created
+LAZILY (only when actually needed) and reconciled immediately on every
+dynamic channel add/remove, never left stale.
+
+**Change (backend, per-unit guardrail)**:
+`app.services.waveform_service._resolve_effective_per_unit()` -- the
+ONE dispatch point every per-unit-aware endpoint already funneled
+through (DEC-050 Slice 5) -- now looks up the channel's own
+`engineering_quantity` (new `_analog_channel_engineering_quantity()`
+helper, mirroring the existing `_analog_channel_engineering_type()`
+exactly) and short-circuits to `PerUnitResolution(status=NOT_APPLICABLE)`
+for `"Voltage Angle"`/`"Current Angle"`, BEFORE either the group-aware
+(DEC-050) or legacy (DEC-049) resolution path ever runs -- regardless
+of the channel's own broad `engineering_type` or whether a base is
+configured. `resolve_per_unit()`/`resolve_group_aware_per_unit()`
+themselves are completely UNCHANGED (zero lines touched in
+`app/domain/per_unit.py` or `app/services/group_aware_per_unit.py`) --
+every channel with `engineering_quantity = "Undefined"` (every COMTRADE
+channel today, and any CSV/Excel channel the engineer never classified)
+keeps today's exact broad-type-only behavior, confirmed by dedicated
+regression tests, not merely assumed.
+
+**Validation**: full backend suite -- baseline immediately before this
+enhancement (confirmed via a fresh full run, not assumed): **2846
+passed, 0 failed**. After this enhancement: **2870 passed, 0 failed**
+(24 new tests: `test_frontend_angle_axis.py`, 19 structural checks
+matching this suite's own established `test_frontend_*.py` convention;
+`test_angle_axis_per_unit_guardrail.py`, 6 end-to-end API-level tests
+covering Voltage/Current Angle under both a configured and an
+unconfigured per-unit base, plus the Undefined-quantity backward-
+compatibility case; two pre-existing `test_frontend_*.py` files needed
+a one-line signature-string update for `wwBuildTrace()`'s new `panel`
+parameter, zero behavioral assertion changes). The committed browser
+smoke test (COMTRADE) still passes unchanged with zero console/page
+errors. A throwaway (not committed, deleted after use) live-browser
+Playwright UAT covering all 6 task-specified scenarios passed:
+Voltage/Voltage-Angle and Current/Current-Angle split correctly onto
+left/right within their own shared panel (right axis titled exactly
+"Angle"); COMTRADE plotting is provably unaffected (zero `yaxis2`
+anywhere); COMTRADE and a prepared angle-carrying CSV coexist in one
+workspace with fully independent per-panel axis state; a Voltage-Angle
+channel's own values are provably byte-identical between engineering
+and per-unit display modes even with a Voltage Base configured for
+that source; and an exported, re-uploaded, reconverted self-describing
+file reproduces the identical left/right split automatically -- all
+with zero console/page errors.
+
+**Next step**: no new slice was opened by this enhancement -- Slice 13
+(progressive automation) remains the next unauthorized item, per
+[Change governance](../../CLAUDE.md#change-governance).
+
+**Commit status**: not committed — per this task's own explicit closing
+instruction ("Do not commit or push unless explicitly asked"), all of
+the above are normal uncommitted working-tree changes pending a
+separate, explicit commit instruction.
+
+## What was done in the prior session — Enhancement: Engineering Quantity Metadata + Self-Describing Export Labels
+
 **Enhancement — Engineering Quantity Metadata + Self-Describing Export
 Labels (implemented, DEC-077).** Direct follow-on to the prior
 session's investigation-only audit of why CSV/Excel-imported channels
@@ -91,10 +183,8 @@ console/page errors.
 (progressive automation) remains the next unauthorized item, per
 [Change governance](../../CLAUDE.md#change-governance).
 
-**Commit status**: not committed — per this task's own explicit closing
-instruction ("Do not commit or push unless explicitly asked"), all of
-the above are normal uncommitted working-tree changes pending a
-separate, explicit commit instruction.
+**Commit status**: committed as `e60377c feat: add waveform engineering
+quantities`.
 
 ## What was done in the prior session — UAT Enhancement: Improve Data Preview Pagination Controls
 

@@ -9,7 +9,27 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-04**. A seventh same-day enhancement
+Last meaningful update: **2026-09-04**. An eighth same-day enhancement
+([DECISIONS.md — DEC-078](DECISIONS.md#dec-078--voltage-anglecurrent-angle-channels-plot-on-a-secondary-right-y-axis-sharing-their-magnitude-siblings-panel-the-same-two-quantities-are-never-eligible-for-voltagecurrent-per-unit-conversion))
+plots Voltage Angle/Current Angle channels on a genuine secondary
+(right) Plotly Y-axis while keeping them in the SAME panel as their
+magnitude sibling — panel grouping itself (by broad `engineering_type`)
+is unchanged; only axis selection within a panel is new, keyed purely
+on the canonical `engineering_quantity` (DEC-077), never source format.
+A secondary axis appears only when a panel genuinely mixes an angle
+channel with a non-angle one; an angle-only panel keeps its one axis,
+retitled "Angle." The SAME enhancement closes a real risk the
+investigation found: `engineering_quantity` never reached the plotting
+layer before this (dropped one hop after the channel list fetch), and
+the backend's own per-unit eligibility check keyed on broad
+`engineering_type` alone — meaning a Voltage-Angle channel was
+previously eligible for kV-scale/Voltage-Base per-unit conversion, a
+physically meaningless operation. Voltage Angle/Current Angle are now
+always `not_applicable` for per-unit conversion, regardless of
+configuration; COMTRADE and calculated channels (whose
+`engineering_quantity` stays "Undefined") are completely unaffected.
+See [Implemented capabilities](#implemented-capabilities). A seventh
+same-day enhancement
 ([DECISIONS.md — DEC-077](DECISIONS.md#dec-077--csvexcel-waveform-columns-may-carry-an-explicit-engineering-quantity-cleaned-exports-encode-it-as-a-strict-deterministic-label-suffix-that-a-re-upload-restores-without-depending-on-the-manifest))
 adds an explicit, user-SELECTED "Engineering Quantity" for CSV/Excel
 Waveform columns (Voltage/Voltage Angle/Current/Current Angle/Active
@@ -144,6 +164,17 @@ waveform workspace:
   reprojection context (every annotation resolves its own owning group
   dynamically from `data.sourceId`, never a cached group id and never a
   "primary group" fallback).
+- **DEC-078 (2026-09-04) gives a waveform panel a genuine secondary
+  (right) Plotly `yaxis2`** — used ONLY by a Voltage Angle/Current Angle
+  trace (`channel.engineeringQuantity`, DEC-077, now threaded all the
+  way to the plotting layer), and ONLY when that panel also contains a
+  non-angle channel (an angle-only panel keeps its one axis, retitled
+  "Angle"). Panel GROUPING is unchanged — a Voltage magnitude and a
+  Voltage Angle channel already shared one panel via the broad
+  `engineering_type` grouping key; this only decides which of that
+  panel's axes each trace uses. COMTRADE and calculated channels
+  (`engineering_quantity` always `"Undefined"`) are structurally
+  unaffected — no `yaxis2` is ever created for them.
 - **Detect Event** remains fully implemented and is internally Time-Group-
   aware (group-filtered source list, group's own visible range, writes only
   its own group's t0), but its normal UI entry point is deliberately hidden
@@ -226,6 +257,18 @@ re-confirmed by the TG-FINAL audit):
   channels outside any detected group — a deliberate coexistence, not a
   bug. See [PER_UNIT_MEASUREMENT_MODEL.md](PER_UNIT_MEASUREMENT_MODEL.md)
   (authoritative) and [DECISIONS.md — DEC-050](DECISIONS.md#dec-050--per-unit-measurement-model-is-clarified-to-be-measurement-group-aware-the-currently-deployed-source-bound-model-dec-049-is-not-the-final-target).
+  **DEC-078 (2026-09-04) adds one additive guardrail on top of both
+  paths**: `app.services.waveform_service._resolve_effective_per_unit()`
+  (the one dispatch point both the group-aware and legacy paths already
+  funneled through) now short-circuits to `not_applicable` whenever a
+  channel's own `engineering_quantity` (DEC-077) is `"Voltage Angle"` or
+  `"Current Angle"`, regardless of its broad `engineering_type` or
+  whether a base is configured — an Angle-quantity channel is never
+  eligible for Voltage/Current per-unit conversion. `resolve_per_unit()`/
+  `resolve_group_aware_per_unit()` themselves are unchanged; every
+  channel with `engineering_quantity = "Undefined"` (every COMTRADE
+  channel today, and any CSV/Excel channel the engineer never
+  classified) keeps today's exact broad-type-only behavior.
 - **Calculated channels**: workspace-scoped derived analog channels —
   Reverse Polarity, Absolute Value, Multiply-by-Constant, N-input Addition,
   ordered N-input Subtraction, and trailing one-cycle RMS. Multi-input

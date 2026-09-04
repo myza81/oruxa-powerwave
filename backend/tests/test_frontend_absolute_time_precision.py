@@ -94,7 +94,7 @@ def test_trace_geometry_uses_elapsed_numeric_x_with_absolute_hover_customdata():
     source = _source()
     body = _function_body(
         source,
-        "function wwBuildTrace(channel)",
+        "function wwBuildTrace(channel, panel)",
         "function wwBuildLayout(panel, colors)",
     )
 

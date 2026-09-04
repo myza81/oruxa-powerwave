@@ -10268,6 +10268,13 @@
                 ' data-channel-name="' + escapeHtml(channel.name) + '"' +
                 ' data-unit="' + escapeHtml(channel.unit || "") + '"' +
                 ' data-engineering-type="' + escapeHtml(channel.engineering_type || "Undefined") + '"' +
+                // Angle-axis enhancement (DEC-078): the canonical, backend-
+                // computed engineering_quantity threaded through unmodified
+                // -- never re-classified, never inferred from the channel's
+                // own name. Undefined for every COMTRADE/calculated channel
+                // today (unaffected), matching engineering_type's own
+                // existing "Undefined" fallback convention above.
+                ' data-engineering-quantity="' + escapeHtml(channel.engineering_quantity || "Undefined") + '"' +
                 ' data-recording-start-time="' + escapeHtml((timebase && timebase.start_time) || "") + '"' +
                 ' data-timing-reference="' + escapeHtml((timebase && timebase.timing_reference) || "") + '"' +
                 ' aria-label="' + escapeHtml(label) + '" title="' + escapeHtml(label) + '"';
@@ -10411,6 +10418,8 @@
                 channelName: row.dataset.channelName,
                 unit: row.dataset.unit,
                 engineeringType: row.dataset.engineeringType || "Undefined",
+                // Angle-axis enhancement (DEC-078): threaded through unmodified.
+                engineeringQuantity: row.dataset.engineeringQuantity || "Undefined",
                 recordingStartTime: row.dataset.recordingStartTime || null,
                 timingReference: row.dataset.timingReference || null,
             };
@@ -13555,7 +13564,11 @@
                     // already uses for the axis title at panel-creation
                     // time -- reused here verbatim, never a second rule.
                     if (ww.layoutMode === "separate") wwRenderLegend(panel);
-                    Plotly.relayout(panel.chartEl, { "yaxis.title": panel.channels.length ? panel.channels[0].unit : "" });
+                    // Angle-axis enhancement (DEC-078): reuses the SAME
+                    // title rule wwBuildLayout() itself uses, never a
+                    // second one -- keeps an angle-only panel's "Angle"
+                    // title correct across a unit-mode switch too.
+                    Plotly.relayout(panel.chartEl, { "yaxis.title": wwPanelYAxisTitle(panel) });
                 }
             }
         }
@@ -13792,15 +13805,105 @@
                 "<extra>" + escapeHtml(wwChannelDisplayName(channel.sourceId, channel.channelName)) + "</extra>";
         }
 
+        // ------------------------------------------------------------------
+        // Angle-axis enhancement (DEC-078): Voltage Angle / Current Angle
+        // channels plot against a genuine secondary (right) Plotly y-axis
+        // instead of sharing the primary axis with magnitude channels of
+        // the same broad engineering_type. The ONE rule, keyed purely on
+        // the canonical `channel.engineeringQuantity` (never source
+        // format, never channel name, never re-classified) -- every other
+        // quantity, including "Undefined" (every COMTRADE/calculated
+        // channel today, and any CSV/Excel channel the engineer never
+        // classified), preserves today's exact single-axis behavior.
+        //
+        // Grouping itself is UNCHANGED (wwPanelGroupKeyFor still keys on
+        // the broad engineeringType) -- a Voltage magnitude channel and a
+        // Voltage Angle channel already land in the same panel today;
+        // this only decides which of that panel's axes each one uses.
+        // ------------------------------------------------------------------
+        function wwChannelUsesAngleQuantity(channel) {
+            return channel.engineeringQuantity === "Voltage Angle" || channel.engineeringQuantity === "Current Angle";
+        }
+
+        // A genuine secondary axis is used ONLY when a panel mixes an
+        // angle channel alongside at least one non-angle channel (task's
+        // own worked "Magnitude -> left, Angle -> right" example). A
+        // panel containing ONLY angle channel(s) -- a Separate-mode solo
+        // panel, or a Custom group built from angle channels alone --
+        // keeps its one existing axis instead, just retitled (see
+        // wwPanelYAxisTitle() below): an isolated, empty left axis paired
+        // with the only trace stranded on an isolated right axis is worse
+        // UX than simply using the axis the panel already has (task
+        // section L's own explicit guidance).
+        function wwPanelNeedsSecondaryAxis(panel) {
+            const angleCount = panel.channels.filter(wwChannelUsesAngleQuantity).length;
+            return angleCount > 0 && angleCount < panel.channels.length;
+        }
+
+        // The primary axis's own title: the first channel's `unit`
+        // string, EXACTLY like before this enhancement (task section J:
+        // "existing left-axis behavior should remain unchanged") -- with
+        // one addition, an angle-ONLY panel (never mixed with a magnitude
+        // channel, so wwPanelNeedsSecondaryAxis() is false but the panel
+        // is not simply a normal non-angle panel either) is retitled the
+        // safe, literal "Angle" rather than a blank unit string (CSV/Excel
+        // AnalogChannel.unit is always "" today -- task section J: never
+        // guess "deg"/"rad", no angle-unit metadata exists yet).
+        function wwPanelYAxisTitle(panel) {
+            if (!wwPanelNeedsSecondaryAxis(panel) && panel.channels.length && panel.channels.every(wwChannelUsesAngleQuantity)) {
+                return "Angle";
+            }
+            return panel.channels.length ? panel.channels[0].unit : "";
+        }
+
+        // The secondary axis's own fixed layout -- title is always the
+        // safe literal "Angle" (task section J), never a unit string
+        // (none exists for this quantity yet). `overlaying: "y", side:
+        // "right"` is the standard Plotly dual-axis pattern (task section
+        // E/Q) -- no gridlines of its own (`showgrid: false`) so it never
+        // visually competes with the primary axis's own grid.
+        function wwPanelYAxis2Layout(colors) {
+            return {
+                // Object form, not a bare string -- Plotly.relayout()
+                // (the path a DYNAMICALLY created yaxis2 always goes
+                // through, see wwAddTraceToPanel()/wwSyncPanelAngleAxis())
+                // does not reliably normalize a plain string `title` the
+                // same way Plotly.newPlot()'s own initial layout
+                // construction does; the explicit `{text: ...}` form
+                // works identically in both.
+                title: { text: "Angle" }, overlaying: "y", side: "right",
+                gridcolor: colors.grid, zeroline: false, showgrid: false,
+            };
+        }
+
+        // Reconciles ONE already-rendered panel's trace-yaxis assignments
+        // and axis layout with its CURRENT channel membership -- called
+        // after any dynamic add/remove so the secondary axis (and any
+        // angle-only retitle) appears/disappears immediately, never
+        // waiting for an unrelated relayout (task section F). Idempotent
+        // -- safe to call even when membership didn't actually change the
+        // outcome.
+        function wwSyncPanelAngleAxis(panel) {
+            if (!panel.plotlyReady || !panel.channels.length) return;
+            const colors = wwThemeColors();
+            const needsSecondary = wwPanelNeedsSecondaryAxis(panel);
+            const yaxisPerTrace = panel.channels.map((ch) => (needsSecondary && wwChannelUsesAngleQuantity(ch)) ? "y2" : "y");
+            Plotly.restyle(panel.chartEl, { yaxis: yaxisPerTrace }, panel.channels.map((_, i) => i));
+            Plotly.relayout(panel.chartEl, {
+                "yaxis.title": wwPanelYAxisTitle(panel),
+                yaxis2: needsSecondary ? wwPanelYAxis2Layout(colors) : null,
+            });
+        }
+
         // Phase 2C-C3, refined by the sub-ms precision fix: x values are
         // always numeric elapsed seconds. A mode switch is presentation-only:
         // hover/customdata and tick labels update, but trace geometry does
         // not. TG-E: this channel's own owning Time Group's t0 (never an
         // unrelated group's) shifts its own trace's X values.
-        function wwBuildTrace(channel) {
+        function wwBuildTrace(channel, panel) {
             const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
             const xValues = (channel.time || []).map((t) => wwElapsedToPlotlyX(groupId, t));
-            return {
+            const trace = {
                 x: xValues,
                 y: channel.values || [],
                 customdata: wwTraceCustomData(channel),
@@ -13823,10 +13926,19 @@
                 // share (DEC-035's own source-isolation requirement).
                 meta: wwChannelKey(channel.sourceId, channel.channelName),
             };
+            // Angle-axis enhancement (DEC-078): every other channel keeps
+            // Plotly's own implicit default ("y", the primary axis) --
+            // never redefined here, per task section D/G's own explicit
+            // "do not redefine primary-axis behavior for every other
+            // channel type."
+            if (panel && wwPanelNeedsSecondaryAxis(panel) && wwChannelUsesAngleQuantity(channel)) {
+                trace.yaxis = "y2";
+            }
+            return trace;
         }
 
         function wwBuildLayout(panel, colors) {
-            const unit = panel.channels.length ? panel.channels[0].unit : "";
+            const unit = wwPanelYAxisTitle(panel);
             // TG-G (DEC-061 fix): wwTimeGroupVisibleRange(groupId) -- the
             // SAME per-group range source the ruler already uses -- now
             // supplies the range this layout is built from, replacing the
@@ -13850,7 +13962,7 @@
             // sample-snapped. Each panel's spikes are independent --
             // cross-panel crosshair sync is explicitly not part of this
             // slice (section 12).
-            return {
+            const layout = {
                 paper_bgcolor: colors.surface,
                 plot_bgcolor: colors.surface,
                 font: { color: colors.text, size: 11 },
@@ -13870,6 +13982,18 @@
                 dragmode: ww.dragMode,
                 showlegend: false,
             };
+            // Angle-axis enhancement (DEC-078, task section E/F): a
+            // genuine second Plotly y-axis, overlaid on the right,
+            // created ONLY when this panel actually mixes an angle
+            // channel with a non-angle one -- every other panel (Voltage-
+            // only, Current-only, Power, Frequency, ROCOF, Undefined,
+            // every existing COMTRADE/calculated channel, and any
+            // angle-ONLY panel -- see wwPanelYAxisTitle()) keeps today's
+            // exact single-axis layout, unchanged.
+            if (wwPanelNeedsSecondaryAxis(panel)) {
+                layout.yaxis2 = wwPanelYAxis2Layout(colors);
+            }
+            return layout;
         }
 
         // First-time render for a brand-new panel -- all of its (already
@@ -13879,7 +14003,7 @@
         // never a native per-panel modebar.
         function wwInitPanelPlot(panel) {
             const colors = wwThemeColors();
-            const traces = panel.channels.map(wwBuildTrace);
+            const traces = panel.channels.map((channel) => wwBuildTrace(channel, panel));
             const layout = wwBuildLayout(panel, colors);
             const config = { responsive: true, displayModeBar: false };
 
@@ -14110,7 +14234,15 @@
         // Plotly.addTraces, no full re-render of the panel's existing
         // traces.
         function wwAddTraceToPanel(panel, channelEntry) {
-            Plotly.addTraces(panel.chartEl, wwBuildTrace(channelEntry));
+            Plotly.addTraces(panel.chartEl, wwBuildTrace(channelEntry, panel));
+            // Angle-axis enhancement (DEC-078): this new channel may
+            // change whether the panel NEEDS a secondary axis at all (a
+            // previously angle-only or previously angle-free panel just
+            // gained the opposite kind) -- reconcile every trace's own
+            // yaxis assignment and the layout's axis titles/yaxis2
+            // definition together, never just the newly-added trace in
+            // isolation.
+            wwSyncPanelAngleAxis(panel);
         }
 
         // Shared X/time viewport (DEC-021, mandatory): every panel's own
@@ -18179,6 +18311,10 @@
                     sourceId: meta.sourceId, sourceName: meta.sourceName,
                     channelName: meta.channelName, unit: meta.unit,
                     engineeringType: meta.engineeringType,
+                    // Angle-axis enhancement (DEC-078): threaded through
+                    // unmodified from the canonical API value -- "Undefined"
+                    // for every COMTRADE/calculated channel today.
+                    engineeringQuantity: meta.engineeringQuantity || "Undefined",
                 });
 
                 const groupKey = wwPanelGroupKeyFor(meta);
@@ -18195,6 +18331,12 @@
                     channelName: meta.channelName,
                     unit: meta.unit,
                     engineeringType: meta.engineeringType, // retained so a later layout-mode switch can regroup without re-fetching metadata
+                    // Angle-axis enhancement (DEC-078): the richer quantity,
+                    // threaded through unmodified -- drives ONLY axis
+                    // selection within a panel (wwBuildTrace/wwBuildLayout),
+                    // never panel grouping itself (wwPanelGroupKeyFor still
+                    // keys on the broad engineeringType above, unchanged).
+                    engineeringQuantity: meta.engineeringQuantity || "Undefined",
                     // Phase 2C-C3: parsed once here (not re-parsed on every
                     // Absolute-mode calculation) via wwParseNaiveTimestamp
                     // -- see that function's own comment for why this is
@@ -18333,6 +18475,13 @@
             if (panel.channels.length === 0) {
                 wwRemovePanelDom(panel);
                 ww.panels = ww.panels.filter((p) => p !== panel);
+            } else {
+                // Angle-axis enhancement (DEC-078): the removed channel
+                // may have been the panel's last angle (or last
+                // magnitude) channel -- reconcile the remaining traces'
+                // yaxis assignment and the layout's secondary axis so
+                // nothing is left stranded on a now-meaningless axis.
+                wwSyncPanelAngleAxis(panel);
             }
             wwUpdateEmptyState();
             wwApplyTimeAxisChrome();
@@ -18430,6 +18579,10 @@
                 if (panel.channels.length === 0) {
                     wwRemovePanelDom(panel);
                     ww.panels = ww.panels.filter((p) => p !== panel);
+                } else {
+                    // Angle-axis enhancement (DEC-078): same reconciliation
+                    // wwRemoveChannel() performs, batched per panel here.
+                    wwSyncPanelAngleAxis(panel);
                 }
             }
             wwUpdateEmptyState();

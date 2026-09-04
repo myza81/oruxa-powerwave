@@ -174,7 +174,7 @@ class TestRulerUsesOnlyItsOwnGroupsT0:
 class TestAnalogTraceUsesOnlyItsOwnChannelsGroup:
     def test_build_trace_derives_group_id_from_the_channels_own_source(self):
         source = _source()
-        fn_idx = source.index("function wwBuildTrace(channel)")
+        fn_idx = source.index("function wwBuildTrace(channel, panel)")
         fn_body = source[fn_idx : source.index("function wwBuildLayout(panel, colors)", fn_idx)]
         assert "const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);" in fn_body
         assert "wwElapsedToPlotlyX(groupId, t)" in fn_body
