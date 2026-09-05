@@ -3889,14 +3889,18 @@
                  longer a permanent column (responsive addendum, section
                  3/6). -->
             <button type="button" class="secondary" id="shellSidebarToggleBtn" aria-label="Toggle sources panel">Sources</button>
-            <!-- Active View selector (section 13) -- Waveform is the real,
-                 current working view; Table/Split are structural
-                 placeholders only (section 14), never fake data. -->
-            <div class="theme-toggle" id="shellViewToggle" role="group" aria-label="Active view">
-                <button type="button" id="shellViewWaveformBtn" aria-pressed="true">Waveform</button>
-                <button type="button" id="shellViewTableBtn" aria-pressed="false">Table</button>
-                <button type="button" id="shellViewSplitBtn" aria-pressed="false">Split</button>
-            </div>
+            <!-- Waveform/Table/Split top-right selector removed (owner-
+                 approved cleanup): the Main Sidebar Menu's own
+                 mainNavWaveformBtn/mainNavTableBtn are now the real,
+                 non-redundant navigation entry points for those two views
+                 (Table View is a genuine main workspace since DEC-079),
+                 and Split View moved to its own toolbar button beside
+                 Custom Layout (see #wwSplitViewBtn) since it is a
+                 Waveform-workspace layout function, not a separate main
+                 workspace. shell.activeView/shellSetActiveView() are
+                 UNCHANGED -- still the one source of truth switching
+                 #viewWaveform/#viewTable/#viewSplit; only this
+                 now-redundant duplicate control surface is gone. -->
             <!-- Phase 3B-UAT2: Import and "Start new workspace" both moved
                  OFF the Global Header entirely (they used to live here,
                  visible regardless of page) and onto the Recordings page
@@ -4309,6 +4313,25 @@
                                 <span class="ww-icon"><svg viewBox="0 0 18 18"><rect x="2.5" y="2.5" width="6" height="6" rx="1"/><rect x="9.5" y="2.5" width="6" height="6" rx="1"/><rect x="2.5" y="9.5" width="13" height="6" rx="1"/><line x1="12.5" y1="12" x2="12.5" y2="13.5" stroke-width="1.1"/></svg></span>
                             </button>
                         </div>
+                        <!-- Owner-approved cleanup: Split View moved here from
+                             the now-removed top-right Waveform/Table/Split
+                             selector -- it is a Waveform-workspace layout/
+                             view function (not a separate main workspace),
+                             so it belongs beside Custom Layout, not inside
+                             that mutually-exclusive layout-mode group
+                             (Split is independently toggleable, never part
+                             of the Grouped/Separate/Custom radio set). A
+                             standalone `.ww-icon-btn`, same toolbar-button
+                             convention as #wwAnnotationListBtn/
+                             #clearWorkspaceBtn below -- never the old page-
+                             tab style. Click wiring/aria-pressed sync live
+                             in shellSetActiveView() (unchanged mechanism,
+                             new trigger only); behavior itself (layout,
+                             synchronization, persistence) is explicitly
+                             out of scope for this cleanup. -->
+                        <button class="ww-icon-btn" type="button" id="wwSplitViewBtn" aria-pressed="false" title="Split View — Show waveform and table side by side" aria-label="Split View — Show waveform and table side by side">
+                            <span class="ww-icon"><svg viewBox="0 0 18 18"><rect x="2.5" y="2.5" width="13" height="13" rx="1.5"/><line x1="9" y1="2.5" x2="9" y2="15.5" stroke-width="1.1"/></svg></span>
+                        </button>
                         <button class="secondary" type="button" id="editChannelGroupsBtn" hidden>Edit Channel Groups</button>
                         <span class="ww-toolbar-sep" aria-hidden="true"></span>
                         <button class="ww-icon-btn" type="button" id="clearWorkspaceBtn" hidden title="Clear displayed waveforms" aria-label="Clear Waveforms">
@@ -4342,8 +4365,9 @@
 
                     <!-- Active View Area (section 11/13): holds whichever
                          of Waveform/Table/Split is currently active --
-                         see shellSetActiveView(). Only Waveform is real
-                         this phase. -->
+                         see shellSetActiveView(). Waveform and Table
+                         (DEC-079) are both real; Split remains a
+                         structural placeholder only. -->
                     <div id="activeViewArea">
                         <section class="workspace-section" id="viewWaveform" aria-label="Waveform view">
                             <!-- Phase 4A-UAT1B: immediate loading feedback (owner
@@ -5988,18 +6012,21 @@
             try { return localStorage.getItem(SHELL_MAIN_SIDEBAR_STORAGE_KEY) === "1"; } catch (error) { return false; }
         }
 
-        // ---- Active View (section 13/14): Waveform is the real, current
-        // working view; Table/Split are structural placeholders only,
-        // never fake data. ----
+        // ---- Active View (section 13/14): Waveform and Table (DEC-079)
+        // are both real; Split remains a structural placeholder only,
+        // never fake data. Owner-approved cleanup: the top-right
+        // Waveform/Table/Split selector this function used to sync is
+        // gone (Waveform/Table now navigate via the Main Sidebar Menu,
+        // Split via #wwSplitViewBtn on the Waveform toolbar) -- this
+        // function's own role as the ONE source of truth for
+        // shell.activeView is otherwise unchanged. ----
         function shellSetActiveView(view) {
             if (view !== "waveform" && view !== "table" && view !== "split") return;
             shell.activeView = view;
             document.getElementById("viewWaveform").hidden = view !== "waveform";
             document.getElementById("viewTable").hidden = view !== "table";
             document.getElementById("viewSplit").hidden = view !== "split";
-            document.getElementById("shellViewWaveformBtn").setAttribute("aria-pressed", String(view === "waveform"));
-            document.getElementById("shellViewTableBtn").setAttribute("aria-pressed", String(view === "table"));
-            document.getElementById("shellViewSplitBtn").setAttribute("aria-pressed", String(view === "split"));
+            document.getElementById("wwSplitViewBtn").setAttribute("aria-pressed", String(view === "split"));
             // Phase 3A-UAT3 (Finding E): while Waveform is hidden (`display:
             // none` via the `hidden` attribute), any parent-width change
             // (Workspace Sidebar drag, Main Sidebar Menu toggle, browser
@@ -6086,19 +6113,19 @@
             setShellNavCurrent("mainNavCalculatedChannelsBtn", page === "calculated-channels");
             setShellNavCurrent("mainNavTableBtn", page === "waveform" && shell.activeView === "table");
 
-            // The Waveform/Table/Split selector and the (responsive-only)
-            // "Sources" drawer toggle are both scoped to the waveform
-            // page specifically -- Table/Split are sub-views of waveform
-            // analysis, and there is no Workspace Sidebar drawer to open
-            // on Recordings. Inline-style toggle (not the `hidden`
-            // attribute) deliberately mirrors Phase 3A-UAT3's Finding F
-            // pattern: #shellSidebarToggleBtn already has higher-
-            // specificity `#id` CSS rules governing its responsive
-            // display, so only an inline style (or !important) can
-            // reliably override them regardless of viewport; clearing it
-            // back to "" on return cleanly hands control back to those
-            // existing rules.
-            document.getElementById("shellViewToggle").style.display = page === "waveform" ? "" : "none";
+            // The (responsive-only) "Sources" drawer toggle is scoped to
+            // the waveform page specifically -- there is no Workspace
+            // Sidebar drawer to open on Recordings. Inline-style toggle
+            // (not the `hidden` attribute) deliberately mirrors Phase
+            // 3A-UAT3's Finding F pattern: #shellSidebarToggleBtn already
+            // has higher-specificity `#id` CSS rules governing its
+            // responsive display, so only an inline style (or
+            // !important) can reliably override them regardless of
+            // viewport; clearing it back to "" on return cleanly hands
+            // control back to those existing rules. (Owner-approved
+            // cleanup: the sibling Waveform/Table/Split selector this
+            // used to toggle alongside is removed -- see
+            // shellSetActiveView()'s own header comment.)
             document.getElementById("shellSidebarToggleBtn").style.display = page === "waveform" ? "" : "none";
 
             if (page === "waveform" && !wasWaveform) {
@@ -25429,9 +25456,16 @@
             window.PowerwaveTheme.setTheme(current === "dark" ? "light" : "dark");
         });
 
-        document.getElementById("shellViewWaveformBtn").addEventListener("click", () => shellSetActiveView("waveform"));
-        document.getElementById("shellViewTableBtn").addEventListener("click", () => shellSetActiveView("table"));
-        document.getElementById("shellViewSplitBtn").addEventListener("click", () => shellSetActiveView("split"));
+        // Owner-approved cleanup: the old top-right Waveform/Table/Split
+        // selector's three click listeners are replaced by this one --
+        // Waveform/Table now navigate via mainNavWaveformBtn/
+        // mainNavTableBtn above (already calling shellSetActiveView()
+        // directly, unaffected by this change); Split is a simple on/off
+        // toggle (back to Waveform if already split), matching this
+        // toolbar's other single-button toggles (e.g. #wwAnnotationListBtn).
+        document.getElementById("wwSplitViewBtn").addEventListener("click", () => {
+            shellSetActiveView(shell.activeView === "split" ? "waveform" : "split");
+        });
 
         document.getElementById("shellSidebarToggleBtn").addEventListener("click", () => {
             const row = document.getElementById("workspaceRow");
