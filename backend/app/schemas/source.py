@@ -132,6 +132,15 @@ class SourceSummaryOut(BaseModel):
     start_time: datetime | None
     trigger_time: datetime | None
     sampling_rates: list[float]
+    # Time of Day (Recording Events metadata display fix): mirrors
+    # `SourceMetadata.time_of_day_reference_seconds` verbatim, same as
+    # `TimebaseOut` above -- `None` for every source except a
+    # `timing_reference == "time_of_day"` one. Added so the Recording
+    # Events list row (which renders from THIS summary shape, not
+    # `TimebaseOut`) can display a Time of Day source's clock-time
+    # origin without a fabricated date, instead of the `start_time`
+    # field alone (deliberately `None` for a non-absolute source).
+    time_of_day_reference_seconds: float | None = None
 
     @classmethod
     def from_domain(cls, source: SourceMetadata) -> "SourceSummaryOut":
@@ -155,6 +164,7 @@ class SourceSummaryOut(BaseModel):
             start_time=source.start_time,
             trigger_time=source.trigger_time,
             sampling_rates=list(source.sampling_rates),
+            time_of_day_reference_seconds=source.time_of_day_reference_seconds,
         )
 
 

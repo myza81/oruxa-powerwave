@@ -307,6 +307,52 @@ class TestReadEndpoints:
         assert row["sampling_rates"] == channels_body["timebase"]["sampling_rates"]
 
 
+class TestListIncludesTimeOfDayReferenceSeconds:
+    """Recording Events metadata display fix: `time_of_day_reference_
+    seconds` already existed on `TimebaseOut` (the single-source
+    `.../channels` response, Time of Day presentation-layer task) but was
+    NOT on `SourceSummaryOut` (the `.../sources` LIST response Recording
+    Events actually renders from) -- so a Time of Day source's known
+    clock-time origin was invisible to that page even though `start_time`
+    is correctly `None` for it (non-absolute family, no fabricated date).
+    Confirms the newly-added field is threaded onto the list endpoint too,
+    matching the `.../channels` endpoint's own value exactly (same
+    underlying `SourceMetadata` field, never a second computation) -- and
+    that a plain elapsed/sample-only source still reports `None`."""
+
+    def test_time_of_day_source_reports_reference_seconds_on_list(self, client):
+        source_id = client.post(
+            "/api/v1/workspaces/ws-tod-list/preparation-sources",
+            files={"csv_file": ("e.csv", io.BytesIO(b"13:14:01,1.0\n13:14:02,2.0\n"), "text/csv")},
+        ).json()["source_id"]
+        client.put(f"/api/v1/workspaces/ws-tod-list/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/ws-tod-list/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+        client.put(
+            f"/api/v1/workspaces/ws-tod-list/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "time_of_day", "confirmed": True},
+        )
+        converted = client.post(f"/api/v1/workspaces/ws-tod-list/preparation-sources/{source_id}/convert").json()
+
+        channels_body = client.get(
+            f"/api/v1/workspaces/ws-tod-list/sources/{converted['source_id']}/channels"
+        ).json()
+        [row] = client.get("/api/v1/workspaces/ws-tod-list/sources").json()
+
+        assert row["timing_reference"] == "time_of_day"
+        assert row["start_time"] is None
+        assert row["time_of_day_reference_seconds"] == pytest.approx(13 * 3600 + 14 * 60 + 1)
+        assert row["time_of_day_reference_seconds"] == channels_body["timebase"]["time_of_day_reference_seconds"]
+
+    def test_absolute_source_reports_none(self, client, comtrade_fixtures_dir):
+        cfg = _read(comtrade_fixtures_dir / "synth_ascii.cfg")
+        dat = _read(comtrade_fixtures_dir / "synth_ascii.dat")
+        client.post("/api/v1/workspaces/ws-tod-none/sources", files=_files(cfg, dat))
+
+        [row] = client.get("/api/v1/workspaces/ws-tod-none/sources").json()
+
+        assert row["time_of_day_reference_seconds"] is None
+
+
 class TestLifecycle:
     def test_delete_releases_ownership_and_prevents_later_access(
         self, client, comtrade_fixtures_dir

@@ -7048,8 +7048,31 @@
         // timezone-naive (see Phase 2C-C3). `start_time` is optional on
         // `SourceSummaryOut` (`datetime | None`) -- not every provider
         // guarantees one.
-        function formatRecordingStartTime(startTime) {
-            return startTime ? startTime.replace("T", " ") : "—";
+        //
+        // Recording Events metadata display fix: this is now
+        // time-domain-AWARE (takes the whole `source`, not just
+        // `start_time`) so a `time_of_day` source's known clock-time
+        // origin (`time_of_day_reference_seconds`) displays instead of
+        // unconditionally reading the `start_time` field, which is
+        // deliberately `None` for that family (no fabricated date --
+        // same rule Time of Day has followed since its own introduction).
+        // Reuses `wwFormatClockTimeFromTotalSeconds()`, the SAME
+        // group-agnostic clock-string builder the waveform/table Time of
+        // Day presentation layer already uses, rather than a second,
+        // divergent HH:MM:SS implementation -- this page has no time
+        // GROUP of its own (no channels/workspace state loaded here), so
+        // the group-aware `wwFormatWorkspaceClockTime()` dispatcher does
+        // not apply; only its lower-level formatter does. Any other
+        // `timing_reference` (elapsed/sample-only, or absent on a
+        // not-yet-converted "Needs Preparation" row) falls through to
+        // "—" -- never a synthetic date, never a guessed time.
+        function formatRecordingStartTime(source) {
+            if (source.timing_reference === "time_of_day") {
+                return Number.isFinite(source.time_of_day_reference_seconds)
+                    ? wwFormatClockTimeFromTotalSeconds(source.time_of_day_reference_seconds, 3, false)
+                    : "—";
+            }
+            return source.start_time ? source.start_time.replace("T", " ") : "—";
         }
 
         // Phase 3B-UAT7 (final owner update): Sampling Rate(s) is
@@ -7058,15 +7081,43 @@
         // repetition. Renders EVERY real rate `SourceSummaryOut` reports
         // (never assumes exactly one, never collapses/simplifies a
         // genuine multi-rate COMTRADE source down to a single value).
-        const SAMPLING_RATE_INTEGER_TOLERANCE_HZ = 1e-9;
+        // Recording Events sampling-rate display-robustness fix: a
+        // genuinely-integer engineering rate (e.g. 50 Hz) can arrive here
+        // as 50.00000008 or 49.99999998 -- accumulated floating-point
+        // noise from averaging many measured sample intervals, not a real
+        // fractional rate. The previous `1e-9` tolerance was tight enough
+        // to treat that noise as "non-integer" and print it in full
+        // (`Number(...).toPrecision(12)`), which is what the UAT report's
+        // "50.00000008 Hz" actually was. `1e-6` comfortably absorbs this
+        // class of noise (observed magnitude ~1e-8) while staying many
+        // orders of magnitude below any genuinely fractional engineering
+        // rate this app displays (e.g. 50.10, 50.25 Hz) -- so a real
+        // fractional rate still renders in full, only float noise is
+        // suppressed.
+        const SAMPLING_RATE_INTEGER_TOLERANCE_HZ = 1e-6;
 
+        // Recording Events sampling-rate presentation fix: a genuine
+        // fractional rate must show at least 2 decimal places (50.10, not
+        // 50.1 -- the approved display convention for a value whose
+        // meaningful precision is exactly 2 decimals) WITHOUT ever hiding
+        // additional meaningful precision a rate actually carries (e.g. a
+        // rate genuinely precise to 6 decimals must still show all 6, not
+        // get truncated to 2). `Number(rate.toPrecision(12))` (unchanged)
+        // is still what strips float noise beyond 12 significant digits
+        // first; only the final stringification step changed, from a
+        // plain `.toString()` (which drops a trailing zero) to `.toFixed()`
+        // with a digit count that is the LARGER of 2 and however many
+        // decimal digits actually remain on the noise-stripped value.
         function formatSamplingRate(rate) {
             if (typeof rate !== "number" || !Number.isFinite(rate)) return "—";
             const nearestInteger = Math.round(rate);
             if (Math.abs(rate - nearestInteger) <= SAMPLING_RATE_INTEGER_TOLERANCE_HZ) {
                 return nearestInteger + " Hz";
             }
-            return Number(rate.toPrecision(12)).toString() + " Hz";
+            const cleaned = Number(rate.toPrecision(12));
+            const decimalPart = cleaned.toString().split(".")[1] || "";
+            const digits = Math.max(2, decimalPart.length);
+            return cleaned.toFixed(digits) + " Hz";
         }
 
         function formatSamplingRates(rates) {
@@ -7270,7 +7321,7 @@
                     '<td>' + escapeHtml(recordingFormatLabel(source)) + '</td>' +
                     '<td>' + formatFileSize(source.file_size_bytes) + '</td>' +
                     '<td>' + escapeHtml(formatRecordingStatus(source.status)) + '</td>' +
-                    '<td class="recording-start-time-cell">' + formatRecordingStartTime(source.start_time) + '</td>' +
+                    '<td class="recording-start-time-cell">' + formatRecordingStartTime(source) + '</td>' +
                     '<td>' + formatRecordingDuration(source.duration_seconds) + '</td>' +
                     '<td class="recording-sampling-rates-cell">' + formatSamplingRates(source.sampling_rates) + '</td>' +
                     '<td><div class="recording-actions">' +
