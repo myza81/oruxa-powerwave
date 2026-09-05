@@ -353,6 +353,33 @@ class TestTimeGroupIntegration:
         assert set(groups[0].source_ids) == {meta_a.source_id, meta_b.source_id}
 
 
+class TestTimeOfDayChannelsApiSchema:
+    """Time of Day presentation completion (additive): the frontend
+    needs `time_of_day_reference_seconds` from the `GET .../channels`
+    response (`TimebaseOut`) to derive its own clock-time display for
+    the waveform axis/cursor/ruler -- this locks in that a real
+    converted Time of Day source's own metadata reaches that schema."""
+
+    def test_timebase_exposes_time_of_day_reference_seconds(self):
+        from app.schemas.source import SourceChannelsOut
+
+        metadata, ws = _convert_csv(content=b"18:04:00,1.0\n18:04:00.020000,2.0\n", interpreter_id="time_of_day")
+
+        out = SourceChannelsOut.from_domain(metadata)
+
+        assert out.timebase.timing_reference == "time_of_day"
+        assert out.timebase.time_of_day_reference_seconds == pytest.approx(18 * 3600 + 4 * 60)
+
+    def test_absolute_source_leaves_it_none(self):
+        from app.schemas.source import SourceChannelsOut
+
+        metadata, ws = _convert_csv(content=b"2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n")
+
+        out = SourceChannelsOut.from_domain(metadata)
+
+        assert out.timebase.time_of_day_reference_seconds is None
+
+
 class TestSynchronizationIntegration:
     def test_converted_absolute_source_alignment_view_has_no_exceptions(self):
         metadata, ws = _convert_csv(content=b"2026-08-31 13:00:00,1.0\n2026-08-31 13:00:01,2.0\n")

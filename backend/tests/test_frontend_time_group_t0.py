@@ -160,7 +160,11 @@ class TestRulerUsesOnlyItsOwnGroupsT0:
         source = _source()
         fn_idx = source.index("function wwSyncTimeGroupRuler(groupId)")
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
-        assert 'if (ww.timeMode === "absolute" && !wwHasT0(groupId)) {' in fn_body
+        # Time of Day (additive, 2026-09-05): the gate now also includes
+        # a Time of Day group (wwGroupUsesClockTimeDisplay(), which is
+        # `ww.timeMode === "absolute" || wwGroupIsTimeOfDay(groupId)`) --
+        # `!wwHasT0(groupId)` still takes precedence exactly as before.
+        assert "if (wwGroupUsesClockTimeDisplay(groupId) && !wwHasT0(groupId)) {" in fn_body
         assert "wwElapsedToPlotlyX(groupId, start)" in fn_body
         assert "wwElapsedToPlotlyX(groupId, end)" in fn_body
         assert '(wwHasT0(groupId) ? "Event " : "")' in fn_body

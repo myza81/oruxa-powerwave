@@ -36,8 +36,9 @@ that pre-conversion-only service.
 Time formatting reuses the EXACT SAME canonical representation
 DEC-074's cleaned export already established
 (`app.services.time_axis_normalization.format_absolute_iso`/
-`format_relative_seconds`) -- never a third, competing time-formatting
-implementation. A source's own `timing_reference`/`start_time`
+`format_relative_seconds`/`format_time_of_day`) -- never a third,
+competing time-formatting implementation. A source's own
+`timing_reference`/`start_time`/`time_of_day_reference_seconds`
 (`ActiveSource.metadata`, already computed once at import time) decide
 which representation applies; workspace-level synchronization/
 alignment offsets (t0, manual offsets, common-time-group alignment --
@@ -57,7 +58,7 @@ import numpy as np
 
 from app.domain.source import ActiveSource
 from app.services.errors import InvalidTimeRangeError
-from app.services.time_axis_normalization import format_absolute_iso, format_relative_seconds
+from app.services.time_axis_normalization import format_absolute_iso, format_relative_seconds, format_time_of_day
 
 #: Matches app.services.preparation_preview_service.PREVIEW_DEFAULT_LIMIT/
 #: PREVIEW_MAX_LIMIT exactly -- a deliberate convention match (task's own
@@ -116,13 +117,16 @@ class TableRowsResult:
 
 
 def _time_column_label(active: ActiveSource) -> str:
-    """Same "absolute vs elapsed" decision `SourceSummaryOut`/`TimebaseOut`
-    already expose (`timing_reference == "absolute"` AND a real
-    `start_time` -- both required, matching `TimingInformation`'s own
-    "start_time is None exactly when genuinely unknown" contract) --
-    never re-derived differently here."""
+    """Same "absolute vs elapsed vs time-of-day" decision
+    `SourceSummaryOut`/`TimebaseOut` already expose (`timing_reference`
+    plus the matching anchor field -- `start_time` for absolute,
+    `time_of_day_reference_seconds` for Time of Day, both required,
+    matching each field's own "None exactly when genuinely unknown"
+    contract) -- never re-derived differently here."""
     if active.metadata.timing_reference == "absolute" and active.metadata.start_time is not None:
         return "Time"
+    if active.metadata.timing_reference == "time_of_day" and active.metadata.time_of_day_reference_seconds is not None:
+        return "Time of Day"
     return "Time (s)"
 
 
@@ -258,6 +262,15 @@ def fetch_table_rows(
 
     columns = build_table_columns(active)
     time_is_absolute = active.metadata.timing_reference == "absolute" and active.metadata.start_time is not None
+    # Time of Day (additive): this source's own date-neutral clock
+    # reference, present only when `timing_reference == "time_of_day"`
+    # (see `TimingInformation.time_of_day_reference_seconds`'s own
+    # docstring) -- `None` otherwise, exactly like `record_start_time`
+    # below is `None` for a non-absolute source.
+    time_of_day_reference = (
+        active.metadata.time_of_day_reference_seconds
+        if active.metadata.timing_reference == "time_of_day" else None
+    )
     # Renamed from the parameter's own `start_time` (this source's
     # absolute wall-clock ORIGIN, unrelated to the caller's optional
     # time-WINDOW filter above) to avoid shadowing it -- purely an
@@ -273,6 +286,14 @@ def fetch_table_rows(
         row_native_times.append(elapsed)
         if time_is_absolute:
             time_cell: object = format_absolute_iso(record_start_time + timedelta(seconds=elapsed))
+        elif time_of_day_reference is not None:
+            # Display-only clock time: reference + canonical elapsed
+            # coordinate, wrapped into [0, 86400) by `format_time_of_day()`
+            # itself -- never a second unwrap/rollover implementation
+            # (the canonical `elapsed` value here is already the correct,
+            # monotonic coordinate `app.services.time_axis_normalization`'s
+            # own midnight-unwrap already produced at conversion time).
+            time_cell = format_time_of_day(time_of_day_reference + elapsed)
         else:
             time_cell = format_relative_seconds(elapsed)
         row: list[object] = [time_cell]

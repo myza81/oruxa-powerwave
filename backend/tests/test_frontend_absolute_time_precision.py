@@ -169,7 +169,12 @@ def test_trace_custom_data_resolves_its_own_channels_time_group_origin():
 
     assert "const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);" in body
     assert "wwVisibleSpanSeconds(groupId)" in body
-    assert "wwFormatAbsoluteElapsedTime(t, { groupId, spanSeconds: span })" in body
+    # Time of Day (additive, 2026-09-05): this call now goes through the
+    # shared wwFormatWorkspaceClockTime() dispatcher (Absolute mode OR a
+    # Time of Day group), not wwFormatAbsoluteElapsedTime() directly --
+    # same groupId/spanSeconds threading this test's own docstring
+    # describes, unchanged.
+    assert "wwFormatWorkspaceClockTime(t, { groupId, spanSeconds: span })" in body
     # No remaining wwFormatAbsoluteElapsedTime() call site anywhere may
     # omit an explicit groupId -- that was the exact shape of this bug.
     assert "wwFormatAbsoluteElapsedTime(t, { spanSeconds: span })" not in source

@@ -12452,6 +12452,14 @@
                 recordingStartTime,
                 recordingStartMs: wwParseNaiveTimestamp(recordingStartTime),
                 timingReference: timebase.timing_reference || null,
+                // Time of Day (additive): the date-neutral seconds-since-
+                // midnight clock reference for a `timing_reference ===
+                // "time_of_day"` source (TimebaseOut.time_of_day_reference_
+                // seconds) -- `null` for every other source, exactly
+                // mirroring `recordingStartMs`'s own "None means genuinely
+                // unknown" contract.
+                timeOfDayReferenceSeconds: Number.isFinite(timebase.time_of_day_reference_seconds)
+                    ? timebase.time_of_day_reference_seconds : null,
             });
         }
 
@@ -12460,6 +12468,7 @@
                 recordingStartTime: null,
                 recordingStartMs: null,
                 timingReference: null,
+                timeOfDayReferenceSeconds: null,
             };
         }
 
@@ -13464,6 +13473,40 @@
         // misleading if read as "this source's own true recording
         // instant" once it carries a non-zero offset. Not fixed here; a
         // correct per-source Absolute-time origin is future work.
+        // Shared low-level "totalSeconds -> HH:MM:SS[.fff] [+ optional
+        // date prefix]" clock-string builder -- extracted from
+        // wwFormatAbsoluteElapsedTime() (below, behavior-preserving: its
+        // own math is unchanged) so wwFormatTimeOfDayElapsedTime() can
+        // reuse the EXACT SAME rounding/padding/Date-field logic instead
+        // of a second, divergent implementation. `totalSeconds` is
+        // whatever coordinate the caller has already resolved (a real
+        // epoch-anchored value for Absolute mode, or an already-wrapped
+        // [0, 86400) seconds-since-midnight value for Time of Day) --
+        // this function itself is date-semantics-agnostic, it only ever
+        // reads UTC clock FIELDS off the `Date` it builds, never the
+        // calendar date those fields happen to fall on unless
+        // `includeDate` is explicitly true.
+        function wwFormatClockTimeFromTotalSeconds(totalSeconds, digits, includeDate) {
+            const scale = Math.pow(10, digits);
+            if (digits > 0) totalSeconds = Math.round(totalSeconds * scale) / scale;
+            else totalSeconds = Math.round(totalSeconds);
+
+            let wholeSeconds = Math.floor(totalSeconds);
+            let fracUnits = digits > 0 ? Math.round((totalSeconds - wholeSeconds) * scale) : 0;
+            if (fracUnits >= scale) {
+                wholeSeconds += 1;
+                fracUnits = 0;
+            }
+
+            const d = new Date(wholeSeconds * 1000);
+            const time = wwPadNumber(d.getUTCHours()) + ":" + wwPadNumber(d.getUTCMinutes()) + ":" +
+                wwPadNumber(d.getUTCSeconds()) + (digits > 0 ? "." + wwPadNumber(fracUnits, digits) : "");
+            if (includeDate) {
+                return d.getUTCFullYear() + "-" + wwPadNumber(d.getUTCMonth() + 1) + "-" + wwPadNumber(d.getUTCDate()) + " " + time;
+            }
+            return time;
+        }
+
         function wwFormatAbsoluteElapsedTime(elapsedSeconds, opts) {
             if (!Number.isFinite(elapsedSeconds)) return "—";
             opts = opts || {};
@@ -13482,25 +13525,67 @@
             const digits = Number.isInteger(opts.fractionDigits)
                 ? Math.max(0, Math.min(6, opts.fractionDigits))
                 : wwAbsoluteFractionDigits(spanSeconds);
-            const scale = Math.pow(10, digits);
-            let totalSeconds = originMs / 1000 + elapsedSeconds;
-            if (digits > 0) totalSeconds = Math.round(totalSeconds * scale) / scale;
-            else totalSeconds = Math.round(totalSeconds);
+            const totalSeconds = originMs / 1000 + elapsedSeconds;
+            return wwFormatClockTimeFromTotalSeconds(totalSeconds, digits, !!(opts.includeDate || spanSeconds >= 3600));
+        }
 
-            let wholeSeconds = Math.floor(totalSeconds);
-            let fracUnits = digits > 0 ? Math.round((totalSeconds - wholeSeconds) * scale) : 0;
-            if (fracUnits >= scale) {
-                wholeSeconds += 1;
-                fracUnits = 0;
-            }
+        // Time of Day (additive): the SAME clock-string math
+        // wwFormatAbsoluteElapsedTime() uses, seeded from the group's own
+        // date-neutral seconds-since-midnight reference
+        // (wwTimeGroupTimeOfDayReferenceSeconds()) instead of a real
+        // epoch-anchored recording start -- never a fabricated date, and
+        // ALWAYS wrapped into a single [0, 86400) clock position for
+        // display (midnight rollover: "wrap for clock presentation only,
+        // never the underlying monotonic coordinate" -- the `elapsedSeconds`
+        // passed in here is exactly that already-correct monotonic
+        // coordinate; only the SUM is wrapped, never the source data).
+        // `includeDate` is deliberately never honored here -- Time of Day
+        // has no date to show, by construction.
+        function wwFormatTimeOfDayElapsedTime(elapsedSeconds, opts) {
+            if (!Number.isFinite(elapsedSeconds)) return "—";
+            opts = opts || {};
+            const referenceSeconds = opts.groupId !== undefined ? wwTimeGroupTimeOfDayReferenceSeconds(opts.groupId) : null;
+            if (referenceSeconds === null) return wwFormatCursorDuration(elapsedSeconds);
 
-            const d = new Date(wholeSeconds * 1000);
-            const time = wwPadNumber(d.getUTCHours()) + ":" + wwPadNumber(d.getUTCMinutes()) + ":" +
-                wwPadNumber(d.getUTCSeconds()) + (digits > 0 ? "." + wwPadNumber(fracUnits, digits) : "");
-            if (opts.includeDate || spanSeconds >= 3600) {
-                return d.getUTCFullYear() + "-" + wwPadNumber(d.getUTCMonth() + 1) + "-" + wwPadNumber(d.getUTCDate()) + " " + time;
+            const spanSeconds = Number.isFinite(opts.spanSeconds) ? opts.spanSeconds : wwVisibleSpanSeconds(opts.groupId);
+            const digits = Number.isInteger(opts.fractionDigits)
+                ? Math.max(0, Math.min(6, opts.fractionDigits))
+                : wwAbsoluteFractionDigits(spanSeconds);
+            const wrapped = ((referenceSeconds + elapsedSeconds) % 86400 + 86400) % 86400;
+            return wwFormatClockTimeFromTotalSeconds(wrapped, digits, false);
+        }
+
+        // ONE shared dispatcher (the preferred architecture): every call
+        // site that used to choose between wwFormatAbsoluteElapsedTime()
+        // and a plain-elapsed fallback based on `ww.timeMode === "absolute"`
+        // now goes through this instead, so a Time of Day group's own
+        // ALWAYS-ON clock-time display (never toggled by ww.timeMode --
+        // see wwGroupIsTimeOfDay()'s own docstring) is available
+        // everywhere uniformly: waveform axis ticks, the per-group ruler,
+        // hover tooltips, annotation labels, and the cursor readout. Never
+        // a contradictory per-trace/per-component model -- one function,
+        // one precedence order (Time of Day, then Absolute, then plain
+        // elapsed), reused identically by all of them.
+        function wwFormatWorkspaceClockTime(elapsedSeconds, opts) {
+            opts = opts || {};
+            if (wwGroupIsTimeOfDay(opts.groupId)) {
+                return wwFormatTimeOfDayElapsedTime(elapsedSeconds, opts);
             }
-            return time;
+            if (ww.timeMode === "absolute") {
+                return wwFormatAbsoluteElapsedTime(elapsedSeconds, opts);
+            }
+            return wwFormatCursorDuration(elapsedSeconds);
+        }
+
+        // Whether THIS group's own display should show clock-time labels
+        // at all right now -- either because it is a Time of Day group
+        // (always clock time), or because the workspace is currently in
+        // Absolute mode (a recorded_absolute group's own display
+        // preference). Used by call sites that need this as a plain
+        // boolean gate (e.g. "show custom tick text vs. Plotly's native
+        // numeric ticks") rather than the formatted string itself.
+        function wwGroupUsesClockTimeDisplay(groupId) {
+            return ww.timeMode === "absolute" || wwGroupIsTimeOfDay(groupId);
         }
 
         // Phase 2C-C3 (section 24): which time modes are valid for ONE
@@ -13604,6 +13689,36 @@
             return timing.recordingStartMs !== null && timing.recordingStartMs !== undefined ? timing.recordingStartMs : null;
         }
 
+        // Time of Day (additive): the exact same "origin source's own
+        // anchor IS the group's own anchor" reasoning as
+        // wwTimeGroupRecordingStartMs() immediately above, in date-
+        // neutral seconds-since-midnight instead of epoch milliseconds --
+        // a Time of Day group's own origin is, by derive_time_groups()'s
+        // own construction (app.domain.time_grouping), always the
+        // earliest-anchor member, so this source's own `time_of_day_
+        // reference_seconds` is directly the group's own ONE shared
+        // clock reference every member displays against (never a
+        // per-trace/per-source reference that could disagree with a
+        // sibling trace in the SAME group). `null` for a non-Time-of-Day
+        // group or an unknown group id -- never a fabricated reference.
+        function wwTimeGroupTimeOfDayReferenceSeconds(groupId) {
+            const group = groupId !== null && groupId !== undefined ? ww.timeGroups.get(groupId) : null;
+            if (!group) return null;
+            const timing = wwSourceTimingAuthority(group.originSourceId);
+            return Number.isFinite(timing.timeOfDayReferenceSeconds) ? timing.timeOfDayReferenceSeconds : null;
+        }
+
+        // Whether `groupId` is a Time of Day group -- a distinct time
+        // domain, not a display preference: unlike Absolute/Elapsed
+        // (toggled workspace-wide via ww.timeMode), Time of Day ALWAYS
+        // displays clock time for its own group, regardless of
+        // ww.timeMode (which a Time of Day channel restricts to
+        // "elapsed" only anyway -- see wwTimeModesForChannel()).
+        function wwGroupIsTimeOfDay(groupId) {
+            const group = groupId !== null && groupId !== undefined ? ww.timeGroups.get(groupId) : null;
+            return !!(group && group.timeReferenceType === "time_of_day");
+        }
+
         // workspace-time elapsed seconds (ww.viewport/channel.time's own
         // authoritative coordinate system, unchanged by Slice 2) -> the
         // value Plotly's own x-axis actually plots. Absolute/Elapsed mode
@@ -13664,13 +13779,18 @@
             return values.length ? values : [Number(((lo + hi) / 2).toFixed(12))];
         }
 
+        // Despite the name (kept for minimal diff against its many
+        // existing callers/comments), this now serves BOTH Absolute-mode
+        // AND Time of Day groups -- wwFormatWorkspaceClockTime() picks
+        // the right one per-group internally, so the tick VALUES/shape
+        // here stay identical either way.
         function wwAbsoluteTickLabelsForRange(start, end, groupId) {
             const span = Math.abs(Number(end) - Number(start));
             const tickvals = wwTickValuesForRange(start, end, 7);
             return {
                 tickmode: "array",
                 tickvals,
-                ticktext: tickvals.map((v) => wwFormatAbsoluteElapsedTime(v, { spanSeconds: span, groupId })),
+                ticktext: tickvals.map((v) => wwFormatWorkspaceClockTime(v, { spanSeconds: span, groupId })),
                 tickformatstops: [],
                 tickformat: "",
                 hoverformat: ".6f",
@@ -13695,7 +13815,7 @@
         // free once t0 has shifted the underlying axis values -- no new
         // formatting logic needed there, only this one added guard.
         function wwTimeAxisTickFormat(startTime, endTime, groupId) {
-            if (ww.timeMode === "absolute" && !wwHasT0(groupId)) {
+            if (wwGroupUsesClockTimeDisplay(groupId) && !wwHasT0(groupId)) {
                 const start = Number.isFinite(startTime) ? startTime : (ww.viewport && ww.viewport.start);
                 const end = Number.isFinite(endTime) ? endTime : (ww.viewport && ww.viewport.end);
                 if (Number.isFinite(start) && Number.isFinite(end)) return wwAbsoluteTickLabelsForRange(start, end, groupId);
@@ -13742,7 +13862,10 @@
         // t0 selected.
         function wwTimeAxisTitle(groupId) {
             if (wwHasT0(groupId)) return "Event Time (s)";
-            return ww.timeMode === "absolute" ? "" : "Time (s)";
+            // Time of Day (additive): its own clock tick labels already
+            // show full context, exactly like Absolute mode -- same empty
+            // title rule.
+            return wwGroupUsesClockTimeDisplay(groupId) ? "" : "Time (s)";
         }
 
         function wwDefaultHeightForCurrentMode() {
@@ -14760,14 +14883,14 @@
         // cursor readout).
         function wwTraceCustomData(channel) {
             const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
-            if (ww.timeMode !== "absolute" || wwHasT0(groupId)) return null;
+            if (!wwGroupUsesClockTimeDisplay(groupId) || wwHasT0(groupId)) return null;
             const span = wwVisibleSpanSeconds(groupId);
-            return (channel.time || []).map((t) => wwFormatAbsoluteElapsedTime(t, { groupId, spanSeconds: span }));
+            return (channel.time || []).map((t) => wwFormatWorkspaceClockTime(t, { groupId, spanSeconds: span }));
         }
 
         function wwTraceHoverTemplate(channel) {
             const groupId = wwTimeGroupIdForDisplaySourceId(channel.sourceId);
-            const xFormat = ww.timeMode === "absolute" && !wwHasT0(groupId) ? "%{customdata}" : "%{x:.6f}s";
+            const xFormat = wwGroupUsesClockTimeDisplay(groupId) && !wwHasT0(groupId) ? "%{customdata}" : "%{x:.6f}s";
             return xFormat + ": %{y}" + (channel.unit ? " " + channel.unit : "") +
                 "<extra>" + escapeHtml(wwChannelDisplayName(channel.sourceId, channel.channelName)) + "</extra>";
         }
@@ -17545,9 +17668,7 @@
             // this display text resolves through the current alias, if any.
             const displayName = data.channelName ? wwChannelDisplayName(data.sourceId, data.channelName) : "—";
             if (annotation.type === "callout") {
-                const time = ww.timeMode === "absolute"
-                    ? wwFormatAbsoluteElapsedTime(data.anchorElapsedSeconds, { groupId: groupId, spanSeconds: wwVisibleSpanSeconds(groupId) })
-                    : wwFormatCursorDuration(data.anchorElapsedSeconds);
+                const time = wwFormatWorkspaceClockTime(data.anchorElapsedSeconds, { groupId: groupId, spanSeconds: wwVisibleSpanSeconds(groupId) });
                 const value = Number.isFinite(data.anchorValue)
                     ? data.anchorValue.toFixed(3) + (data.unit ? " " + data.unit : "")
                     : "—";
@@ -17555,9 +17676,7 @@
             }
             if (wwIsPeakType(annotation.type)) {
                 if (!data.available) return displayName + " · Unavailable for current view";
-                const time = ww.timeMode === "absolute"
-                    ? wwFormatAbsoluteElapsedTime(data.peakElapsedSeconds, { groupId: groupId, spanSeconds: wwVisibleSpanSeconds(groupId) })
-                    : wwFormatCursorDuration(data.peakElapsedSeconds);
+                const time = wwFormatWorkspaceClockTime(data.peakElapsedSeconds, { groupId: groupId, spanSeconds: wwVisibleSpanSeconds(groupId) });
                 return displayName + " · t = " + time;
             }
             return "";
@@ -17572,9 +17691,7 @@
             const line1 = wwPeakValueLineText(annotation);
             if (!data.available) return { line1: line1, line2: "" };
             const groupId = wwTimeGroupIdForDisplaySourceId(data.sourceId);
-            const time = ww.timeMode === "absolute"
-                ? wwFormatAbsoluteElapsedTime(data.peakElapsedSeconds, { groupId: groupId, spanSeconds: wwVisibleSpanSeconds(groupId) })
-                : wwFormatCursorDuration(data.peakElapsedSeconds);
+            const time = wwFormatWorkspaceClockTime(data.peakElapsedSeconds, { groupId: groupId, spanSeconds: wwVisibleSpanSeconds(groupId) });
             return { line1: line1, line2: "t = " + time };
         }
 
@@ -22438,12 +22555,15 @@
             let tickPresentation, title;
             // Slice 2 (task section 21): same event-relative-takes-
             // precedence guard as every other Absolute-mode branch in
-            // this file -- see wwTimeAxisTickFormat()'s own comment.
-            if (ww.timeMode === "absolute" && !wwHasT0(groupId)) {
+            // this file -- see wwTimeAxisTickFormat()'s own comment. Time
+            // of Day (additive) is included in wwGroupUsesClockTimeDisplay()
+            // alongside Absolute mode -- it always shows clock-time ticks
+            // here too, regardless of ww.timeMode.
+            if (wwGroupUsesClockTimeDisplay(groupId) && !wwHasT0(groupId)) {
                 tickPresentation = Number.isFinite(start) && Number.isFinite(end)
                     ? wwAbsoluteTickLabelsForRange(start, end, groupId)
                     : wwTimeAxisTickFormat(start, end, groupId);
-                title = "Record Time";
+                title = wwGroupIsTimeOfDay(groupId) ? "Time of Day" : "Record Time";
             } else {
                 // Span is shift-invariant (end - start is unchanged by a
                 // constant t0 shift applied to both), so this reads the
@@ -23207,10 +23327,7 @@
             if (wwHasT0(groupId)) {
                 return wwFormatSignedCursorDuration(wwWorkspaceTimeToEventTime(elapsedSeconds, groupId));
             }
-            if (ww.timeMode === "absolute") {
-                return wwFormatAbsoluteElapsedTime(elapsedSeconds, { spanSeconds: wwVisibleSpanSeconds(groupId), groupId: groupId });
-            }
-            return wwFormatCursorDuration(elapsedSeconds);
+            return wwFormatWorkspaceClockTime(elapsedSeconds, { spanSeconds: wwVisibleSpanSeconds(groupId), groupId: groupId });
         }
 
         // Builds each cursor's DOM once (lazily) and never again -- every

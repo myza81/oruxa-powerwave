@@ -113,8 +113,10 @@ from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.time_axis_normalization import (
     format_absolute_iso,
     format_relative_seconds,
+    format_time_of_day,
     parse_native_time_value,
     relative_seconds_with_anchor,
+    seconds_from_midnight,
 )
 
 #: Bounded row-sample cap for every SAMPLE interpreter's own `detect()`/
@@ -1009,7 +1011,16 @@ def build_configured_time_values(
         column_count=len(summary.column_indices), requested_interpreter_id=summary.interpreter_id,
     )
     family = summary.family
-    column_name = "Time" if family == time_axis_domain.FAMILY_ABSOLUTE else "Time (s)"
+    # Time of Day (additive): the primary user-facing derived column
+    # presents CLOCK TIME for a Time of Day reading, never plain elapsed
+    # seconds -- the same distinction `table_service._time_column_label()`
+    # already makes, kept independently here since this module has no
+    # dependency on that one.
+    column_name = (
+        "Time" if family == time_axis_domain.FAMILY_ABSOLUTE
+        else "Time of Day" if family == time_axis_domain.FAMILY_PARTIAL
+        else "Time (s)"
+    )
 
     time_axis_samples: list[TimeAxisSampleRow] = []
     for row in iterate_active_region_rows(session, worksheet_index=worksheet_index):
@@ -1082,9 +1093,25 @@ def build_configured_time_values(
                 relative_by_row = {
                     row_number: rel for (row_number, _native), rel in zip(ordered_resolved, relative_values)
                 }
+        # Time of Day (additive): present CLOCK TIME (reference +
+        # elapsed, wrapped for display by `format_time_of_day()` itself),
+        # never plain elapsed seconds -- `anchor` above is already the
+        # exact same first-active-row native value
+        # `preparation_conversion_service`/`preparation_export_service`
+        # use to derive `time_of_day_reference_seconds` at conversion
+        # time, so this preview can never disagree with the eventual
+        # canonical/exported clock reference.
+        time_of_day_reference_seconds = (
+            seconds_from_midnight(anchor) if family == time_axis_domain.FAMILY_PARTIAL and anchor is not None else None
+        )
         for row_number in natives_by_row:
             rel = relative_by_row.get(row_number)
-            values_by_row_number[row_number] = format_relative_seconds(rel) if rel is not None else None
+            if rel is None:
+                values_by_row_number[row_number] = None
+            elif time_of_day_reference_seconds is not None:
+                values_by_row_number[row_number] = format_time_of_day(time_of_day_reference_seconds + rel)
+            else:
+                values_by_row_number[row_number] = format_relative_seconds(rel)
 
     return ConfiguredTimeValues(column_name=column_name, family=family, values_by_row_number=values_by_row_number)
 

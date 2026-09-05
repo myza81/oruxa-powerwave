@@ -72,6 +72,13 @@ class TimebaseOut(BaseModel):
     elapsed_end_seconds: float
     sampling_rates: list[float]
     samples_per_rate: list[int]
+    # Time of Day (additive): mirrors `SourceMetadata.time_of_day_
+    # reference_seconds` verbatim -- `None` for every source except a
+    # `timing_reference == "time_of_day"` one. This is the ONE piece of
+    # metadata the frontend needs to derive its own Time-of-Day clock-
+    # time presentation (waveform axis/cursor/ruler) without recomputing
+    # or guessing it; never combined with a real calendar date.
+    time_of_day_reference_seconds: float | None = None
 
 
 class SourceSummaryOut(BaseModel):
@@ -173,6 +180,7 @@ class SourceChannelsOut(BaseModel):
                 elapsed_end_seconds=source.elapsed_end_seconds,
                 sampling_rates=list(source.sampling_rates),
                 samples_per_rate=list(source.samples_per_rate),
+                time_of_day_reference_seconds=source.time_of_day_reference_seconds,
             ),
             analog_channels=[
                 AnalogChannelOut.model_validate(ch) for ch in source.analog_channels

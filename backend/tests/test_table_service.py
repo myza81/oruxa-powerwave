@@ -39,6 +39,7 @@ def _active_source(
     rate_hz: float = 50.0,
     timing_reference: str = "absolute",
     start_time: datetime | None = None,
+    time_of_day_reference_seconds: float | None = None,
     analog: list[AnalogChannelSummary] | None = None,
     digital: list[DigitalChannelSummary] | None = None,
     extra_columns: dict[str, np.ndarray] | None = None,
@@ -93,6 +94,7 @@ def _active_source(
         elapsed_start_seconds=float(time[0]) if n else 0.0, elapsed_end_seconds=float(time[-1]) if n else 0.0,
         sampling_rates=tuple(rates), samples_per_rate=tuple(counts),
         analog_channels=analog, digital_channels=digital,
+        time_of_day_reference_seconds=time_of_day_reference_seconds,
     )
     return ActiveSource(metadata=metadata, record=record)
 
@@ -330,6 +332,48 @@ class TestTimeColumnLabel:
 
         assert result.rows[0][0] == "2026-03-06T18:04:00.000+00:00"
         assert result.rows[1][0] == "2026-03-06T18:04:00.020+00:00"
+
+    def test_time_of_day_label(self):
+        active = _active_source(n=2, timing_reference="time_of_day", time_of_day_reference_seconds=65040.0)
+        assert build_table_columns(active)[0].label == "Time of Day"
+
+    def test_time_of_day_reference_but_none_falls_back_to_relative(self):
+        active = _active_source(n=2, timing_reference="time_of_day", time_of_day_reference_seconds=None)
+        assert build_table_columns(active)[0].label == "Time (s)"
+
+    def test_time_of_day_format_shows_clock_time(self):
+        # 18:04:00 = 65040s since midnight.
+        time = np.array([0.0, 0.02, 0.04], dtype=np.float64)
+        active = _active_source(
+            time=time, timing_reference="time_of_day", time_of_day_reference_seconds=65040.0,
+        )
+
+        result = fetch_table_rows(active, offset=0, limit=3)
+
+        assert result.rows[0][0] == "18:04:00.000"
+        assert result.rows[1][0] == "18:04:00.020"
+        assert result.rows[2][0] == "18:04:00.040"
+        # The RAW native elapsed value is still exposed verbatim
+        # (row_native_times) -- Time of Day formatting never replaces the
+        # canonical numeric coordinate, only the displayed cell text.
+        assert result.row_native_times == [0.0, 0.02, 0.04]
+
+    def test_time_of_day_midnight_rollover_wraps_for_display_only(self):
+        # 23:59:59.980 = 86399.98s since midnight; the canonical elapsed
+        # coordinate here is ALREADY the correctly-unwrapped, monotonic
+        # sequence conversion produces (0.0, 0.02, 0.04) -- this test
+        # only proves the DISPLAY wrap, not the unwrap itself (see
+        # test_time_axis_normalization.py for that).
+        time = np.array([0.0, 0.02, 0.04], dtype=np.float64)
+        active = _active_source(
+            time=time, timing_reference="time_of_day", time_of_day_reference_seconds=86399.98,
+        )
+
+        result = fetch_table_rows(active, offset=0, limit=3)
+
+        assert result.rows[0][0] == "23:59:59.980"
+        assert result.rows[1][0] == "00:00:00.000"
+        assert result.rows[2][0] == "00:00:00.020"
 
 
 class TestPaginationBounds:

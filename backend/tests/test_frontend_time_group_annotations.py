@@ -225,19 +225,24 @@ class TestReprojectionResolvesEachAnnotationsOwnGroupIndependently:
 
 class TestAnnotationDisplayTextUsesItsOwnGroupsOrigin:
     def test_meta_line_passes_groupid_to_absolute_formatting(self):
+        # Time of Day (additive, 2026-09-05): both calls now go through
+        # the shared wwFormatWorkspaceClockTime() dispatcher (Absolute
+        # mode OR a Time of Day group), not wwFormatAbsoluteElapsedTime()
+        # directly -- same groupId/spanSeconds threading this test's own
+        # docstring describes, unchanged.
         source = _source()
         fn_idx = source.index("function wwAnnotationMetaLine(annotation)")
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
         assert "const groupId = wwTimeGroupIdForDisplaySourceId(data.sourceId);" in fn_body
-        assert "wwFormatAbsoluteElapsedTime(data.anchorElapsedSeconds, { groupId: groupId, spanSeconds: wwVisibleSpanSeconds(groupId) })" in fn_body
-        assert "wwFormatAbsoluteElapsedTime(data.peakElapsedSeconds, { groupId: groupId, spanSeconds: wwVisibleSpanSeconds(groupId) })" in fn_body
+        assert "wwFormatWorkspaceClockTime(data.anchorElapsedSeconds, { groupId: groupId, spanSeconds: wwVisibleSpanSeconds(groupId) })" in fn_body
+        assert "wwFormatWorkspaceClockTime(data.peakElapsedSeconds, { groupId: groupId, spanSeconds: wwVisibleSpanSeconds(groupId) })" in fn_body
 
     def test_peak_label_lines_passes_groupid_to_absolute_formatting(self):
         source = _source()
         fn_idx = source.index("function wwPeakLabelLines(annotation)")
         fn_body = source[fn_idx : source.index("\n        }\n", fn_idx)]
         assert "const groupId = wwTimeGroupIdForDisplaySourceId(data.sourceId);" in fn_body
-        assert "wwFormatAbsoluteElapsedTime(data.peakElapsedSeconds, { groupId: groupId, spanSeconds: wwVisibleSpanSeconds(groupId) })" in fn_body
+        assert "wwFormatWorkspaceClockTime(data.peakElapsedSeconds, { groupId: groupId, spanSeconds: wwVisibleSpanSeconds(groupId) })" in fn_body
 
 
 # ==============================================================================

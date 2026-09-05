@@ -166,3 +166,25 @@ def format_relative_seconds(value: float) -> str:
     (elapsed/sample-index-derived/partial) seconds value -- fixed
     3-decimal-place text."""
     return f"{value:.3f}"
+
+
+def format_time_of_day(total_seconds: float) -> str:
+    """Time of Day (additive) presentation formatter: `total_seconds`
+    (typically `time_of_day_reference_seconds + a canonical elapsed
+    coordinate`, per `app.domain.timing.TimingInformation.time_of_day_
+    reference_seconds`'s own docstring) is wrapped into a single
+    `[0, 86400)` clock position via `% 86400` FOR DISPLAY ONLY -- this
+    never mutates or re-derives the underlying monotonic canonical
+    coordinate a caller computed it from (see `relative_seconds_with_
+    anchor()`'s own FAMILY_PARTIAL midnight-unwrap docstring for that
+    invariant), and never attaches a date. Millisecond precision,
+    matching this module's own `format_relative_seconds()` convention
+    for every other non-absolute family -- the one shared formatter
+    every Time of Day presentation surface (Data Preview, standalone
+    Table, Split View, which reuses the Table endpoint verbatim) reuses,
+    never a second, divergent implementation."""
+    wrapped = total_seconds % 86400.0
+    hours = int(wrapped // 3600)
+    minutes = int((wrapped % 3600) // 60)
+    seconds = wrapped % 60
+    return f"{hours:02d}:{minutes:02d}:{seconds:06.3f}"

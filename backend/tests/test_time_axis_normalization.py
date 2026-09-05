@@ -10,7 +10,12 @@ import datetime as dt
 import pytest
 
 from app.domain.time_axis import FAMILY_ABSOLUTE, FAMILY_PARTIAL
-from app.services.time_axis_normalization import relative_seconds, relative_seconds_with_anchor, seconds_from_midnight
+from app.services.time_axis_normalization import (
+    format_time_of_day,
+    relative_seconds,
+    relative_seconds_with_anchor,
+    seconds_from_midnight,
+)
 
 
 def _t(text: str) -> dt.time:
@@ -64,3 +69,28 @@ class TestPartialFamilyMidnightRollover:
         natives = [base, base + dt.timedelta(seconds=2)]
         result = relative_seconds(natives, family=FAMILY_ABSOLUTE)
         assert result == pytest.approx([0.0, 2.0])
+
+
+class TestFormatTimeOfDay:
+    """Time of Day (additive) presentation formatter -- the ONE shared
+    implementation `table_service.py`/`time_axis_service.py`'s own
+    Configured Time column both reuse."""
+
+    def test_basic_formatting(self):
+        assert format_time_of_day(65040.0) == "18:04:00.000"
+        assert format_time_of_day(65040.02) == "18:04:00.020"
+        assert format_time_of_day(65040.04) == "18:04:00.040"
+
+    def test_wraps_past_86400_for_display_only(self):
+        # 86400.02 is 20ms past midnight -- must wrap to 00:00:00.020,
+        # never a fabricated day-2 indicator.
+        assert format_time_of_day(86400.02) == "00:00:00.020"
+
+    def test_exactly_midnight(self):
+        assert format_time_of_day(86400.0) == "00:00:00.000"
+
+    def test_distinguishable_nearby_millisecond_values(self):
+        # Precision guardrail: distinct samples 20ms apart must remain
+        # visually distinguishable, never rounded into the same string.
+        assert format_time_of_day(65040.0) != format_time_of_day(65040.02)
+        assert format_time_of_day(65040.02) != format_time_of_day(65040.04)

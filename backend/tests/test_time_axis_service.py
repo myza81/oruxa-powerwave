@@ -2070,10 +2070,14 @@ class TestConfiguredTimePartial:
 
         computed = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
 
-        assert computed.column_name == "Time (s)"
+        # Time of Day (additive, 2026-09-05): the primary derived column
+        # now presents CLOCK TIME for a partial/time-of-day reading,
+        # never plain elapsed seconds -- still no fabricated date (no
+        # "T", no calendar component) anywhere in the displayed values.
+        assert computed.column_name == "Time of Day"
         assert computed.family == FAMILY_PARTIAL
-        assert computed.values_by_row_number == {1: "0.000", 2: "0.020", 3: "0.040"}
-        assert all("T" not in v for v in computed.values_by_row_number.values())
+        assert computed.values_by_row_number == {1: "18:04:00.000", 2: "18:04:00.020", 3: "18:04:00.040"}
+        assert all("T" not in v and "-" not in v for v in computed.values_by_row_number.values())
 
 
 class TestConfiguredTimePartialMidnightRollover:
@@ -2102,7 +2106,10 @@ class TestConfiguredTimePartialMidnightRollover:
 
         computed = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
 
-        assert computed.values_by_row_number == {1: "0.000", 2: "0.020", 3: "0.040"}
+        # Time of Day (additive, 2026-09-05): CLOCK TIME, not plain
+        # elapsed seconds -- exactly the task's own Scenario 6 worked
+        # example (23:59:59.980 -> 00:00:00.000 -> 00:00:00.020).
+        assert computed.values_by_row_number == {1: "23:59:59.980", 2: "00:00:00.000", 3: "00:00:00.020"}
 
     def test_a_row_well_past_the_rollover_is_not_a_false_negative_reset(self):
         # The exact regression this fix closes: a row several minutes
@@ -2125,10 +2132,15 @@ class TestConfiguredTimePartialMidnightRollover:
 
         computed = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
 
-        assert float(computed.values_by_row_number[3]) == pytest.approx(300.02, abs=1e-3)
+        # Time of Day (additive, 2026-09-05): CLOCK TIME -- reference
+        # (23:59:59.980) + 300.02s elapsed = 86700.00s, wrapped mod 86400
+        # = 300.00s = 00:05:00.000, never a huge negative value from
+        # comparing this row directly against the pre-midnight anchor.
+        assert computed.values_by_row_number[3] == "00:05:00.000"
 
     def test_preview_agrees_with_canonical_conversion_across_a_rollover(self):
         from app.services.preparation_conversion_service import convert_preparation_source
+        from app.services.time_axis_normalization import format_time_of_day
         from app.services.workspace_registry import WorkspaceRegistry
 
         registry = PreparationSessionRegistry()
@@ -2149,8 +2161,13 @@ class TestConfiguredTimePartialMidnightRollover:
         )
         active = workspace_registry.get("ws-1", metadata.source_id)
 
+        # Time of Day (additive, 2026-09-05): Data Preview's own CLOCK-TIME
+        # string must agree with `time_of_day_reference_seconds +
+        # canonical elapsed`, the exact same formula/formatter the Table
+        # endpoint uses -- never a second, divergent presentation.
         for row_number, canonical in zip((1, 2, 3), active.record.waveform_data["time"]):
-            assert float(preview_values.values_by_row_number[row_number]) == pytest.approx(canonical, abs=1e-6)
+            expected = format_time_of_day(metadata.time_of_day_reference_seconds + canonical)
+            assert preview_values.values_by_row_number[row_number] == expected
         # No negative/backward canonical time anywhere in the sequence.
         assert all(v >= 0 for v in active.record.waveform_data["time"])
 
@@ -2270,17 +2287,17 @@ class TestConfiguredTimePaging:
 
         _, _, values1 = result1
         _, _, values2 = result2
-        # Row 200 (last of page 1, index 199) = 23:59:59.995 -- still
-        # just before midnight.
-        assert float(values1[-1]) == pytest.approx(199 * 0.005, abs=1e-3)
-        # Row 201 (first of page 2, index 200) = 00:00:00.000 -- the
-        # rollover instant itself. Must continue forward (1.000s), never
-        # reset toward 0 or go negative, purely because the crossing
-        # happens to fall on this exact pagination boundary.
-        assert float(values2[0]) == pytest.approx(200 * 0.005, abs=1e-3)
-        assert float(values2[0]) > float(values1[-1])
+        # Time of Day (additive, 2026-09-05): CLOCK TIME, not plain
+        # elapsed seconds. Row 200 (last of page 1, index 199) is still
+        # just before midnight; row 201 (first of page 2, index 200) is
+        # the rollover instant itself and must continue forward to
+        # 00:00:00.000, never reset toward the reference's own clock
+        # value or go backward, purely because the crossing happens to
+        # fall on this exact pagination boundary.
+        assert values1[-1] == "23:59:59.995"
+        assert values2[0] == "00:00:00.000"
         # A few rows further into page 2, still past the rollover.
-        assert float(values2[-1]) == pytest.approx(209 * 0.005, abs=1e-3)
+        assert values2[-1] == "00:00:00.045"
 
 
 class TestConfiguredTimeStateRefresh:
