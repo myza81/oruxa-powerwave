@@ -846,9 +846,14 @@ class TestConfirmationPolicy:
         _mark_time_axis(registry, source_id, 0)
         set_column_role(workspace_id="ws-1", source_id=source_id, column_index=1, role="waveform", registry=registry)
 
+        # Explicit interpreter authority: `time_of_day` is the correct,
+        # non-mismatched interpreter for genuinely bare clock-time data
+        # -- `absolute_datetime` here would now trip the interpreter/
+        # family compatibility guard (a different concern from this
+        # test's own confirmation-policy purpose).
         result = set_time_axis_configuration(
             workspace_id="ws-1", source_id=source_id, column_indices=(0,),
-            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, confirmed=False, registry=registry,
+            interpreter_id=INTERPRETER_ID_TIME_OF_DAY, confirmed=False, registry=registry,
         )
 
         assert result.family == FAMILY_PARTIAL
@@ -2065,7 +2070,7 @@ class TestConfiguredTimePartial:
         _mark_waveform(registry, source_id, 1)
         set_time_axis_configuration(
             workspace_id="ws-1", source_id=source_id, column_indices=(0,),
-            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, confirmed=True, registry=registry,
+            interpreter_id=INTERPRETER_ID_TIME_OF_DAY, confirmed=True, registry=registry,
         )
 
         computed = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)

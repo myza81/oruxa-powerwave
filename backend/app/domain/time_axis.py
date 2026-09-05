@@ -222,6 +222,27 @@ DIAGNOSTIC_MISSING_DATETIME_VALUE = "missing_datetime_value"
 DIAGNOSTIC_TIMEZONE_INCONSISTENT = "timezone_inconsistent"
 DIAGNOSTIC_TIME_ONLY_NOT_ABSOLUTE = "time_only_not_absolute"
 
+#: Explicit-interpreter-authority guard (additive): "auto-detection
+#: assists the user, explicit selection governs the interpretation" --
+#: once an engineer explicitly selects (or a saved configuration
+#: restores) a sample interpreter, that choice is authoritative.
+#: Detection may still evaluate the CURRENTLY selected columns and
+#: report what it actually finds, but if the interpreter's own declared
+#: `allowed_families` (see `app.services.time_axis_service`'s own
+#: interpreter dataclasses) does not include the freshly-detected
+#: `family`, this diagnostic is attached -- centrally, by the ONE
+#: framework call site that already runs `detect()` for every
+#: interpreter (never each interpreter re-implementing its own mismatch
+#: check). `ambiguity=AMBIGUITY_INVALID` (not `AMBIGUOUS`): this is not
+#: a "pick one of several valid readings" choice like `ambiguous_date_
+#: order` -- it is "your selection does not match what is actually
+#: here," which `resolve_status()` routes to `STATUS_NEEDS_ATTENTION`
+#: (never silently overridden, never auto-switched, per the task's own
+#: explicit UX: show the selection, show what was detected, explain
+#: why they differ, suggest a better interpreter, block confirmation/
+#: materialization until the engineer explicitly acts).
+DIAGNOSTIC_INTERPRETER_FAMILY_MISMATCH = "interpreter_family_mismatch"
+
 #: The two Slice 8B interpreter identifiers -- see
 #: `app.services.time_axis_interpreters` for what each actually does.
 INTERPRETER_ID_ELAPSED_NUMERIC = "elapsed_numeric"
@@ -386,6 +407,7 @@ _DIAGNOSTIC_CATEGORY_BY_CODE: dict[str, str] = {
     DIAGNOSTIC_MISSING_DATETIME_VALUE: CATEGORY_FORMAT,
     DIAGNOSTIC_TIMEZONE_INCONSISTENT: CATEGORY_FORMAT,
     DIAGNOSTIC_TIME_ONLY_NOT_ABSOLUTE: CATEGORY_FORMAT,
+    DIAGNOSTIC_INTERPRETER_FAMILY_MISMATCH: CATEGORY_FORMAT,
     DIAGNOSTIC_MISSING_ELAPSED_UNIT: CATEGORY_AMBIGUITY,
     DIAGNOSTIC_NON_NUMERIC_ELAPSED_VALUE: CATEGORY_FORMAT,
     DIAGNOSTIC_MISSING_ELAPSED_VALUE: CATEGORY_FORMAT,

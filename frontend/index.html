@@ -8559,6 +8559,21 @@
             "absolute_datetime", "split_date_time", "time_of_day", "elapsed_numeric", "sample_index",
             "repeated_timestamp_precision_loss",
         ];
+        // Explicit interpreter authority (additive): human-readable
+        // labels purely for the mismatch diagnostic's own "Use X" button
+        // text -- mirrors the backend's own `_INTERPRETER_DISPLAY_LABELS`
+        // (app.services.time_axis_service), never used for any
+        // comparison/lookup (those always use the real interpreter_id
+        // string the backend itself returns in `details.suggested_
+        // interpreter_id`).
+        const WW_DATA_PREP_INTERPRETER_LABELS = {
+            absolute_datetime: "Absolute Datetime",
+            split_date_time: "Date + Time",
+            time_of_day: "Time of Day",
+            elapsed_numeric: "Elapsed Time",
+            sample_index: "Sample Index",
+            repeated_timestamp_precision_loss: "Repeated Timestamp (Precision Loss)",
+        };
 
         // Eligible columns are always exactly the CURRENT `time_axis`-
         // role columns from the Structure panel's own column_roles state
@@ -8864,6 +8879,15 @@
             // the diagnostic's own message text -- purely additive, only
             // rendered when the backend actually provided examples.
             const diagnostics = detection.diagnostics || [];
+            // Explicit interpreter authority (additive): the ONE
+            // diagnostic code this task adds -- "the selected interpreter
+            // does not match the detected time structure" -- gets its own
+            // inline recommendation action (task's own explicit "[ Use X ]"
+            // UX), consistent with the existing progressive-disclosure
+            // style of this same panel rather than a new modal. The
+            // dropdown's own CURRENT value is left completely alone here;
+            // it only ever changes if the engineer explicitly clicks this
+            // button (wwDataPrepUseSuggestedInterpreter() below).
             diagnosticsEl.innerHTML = diagnostics.length
                 ? diagnostics.map((d) => {
                     const examples = (d.details && d.details.examples) || [];
@@ -8872,7 +8896,15 @@
                           examples.map((ex) => "<li>Row " + ex.row_number + ": " + escapeHtml(String(ex.value)) + "</li>").join("") +
                           "</ul>"
                         : "";
-                    return "<li>" + escapeHtml(d.message) + examplesHtml + "</li>";
+                    const suggestedInterpreterId = d.code === "interpreter_family_mismatch" && d.details
+                        ? d.details.suggested_interpreter_id : null;
+                    const suggestedLabel = suggestedInterpreterId
+                        ? (WW_DATA_PREP_INTERPRETER_LABELS[suggestedInterpreterId] || suggestedInterpreterId) : null;
+                    const actionHtml = suggestedInterpreterId
+                        ? ' <button type="button" class="secondary ww-data-prep-time-axis-use-suggested-btn" data-interpreter-id="' +
+                          escapeHtml(suggestedInterpreterId) + '">Use ' + escapeHtml(suggestedLabel) + "</button>"
+                        : (d.suggested_action ? ' <span class="hint">' + escapeHtml(d.suggested_action) + "</span>" : "");
+                    return "<li>" + escapeHtml(d.message) + examplesHtml + actionHtml + "</li>";
                 }).join("")
                 : "";
 
@@ -9268,6 +9300,25 @@
         // requiring a second explicit click.
         document.getElementById("wwDataPrepTimeAxisDateOrderOptions").addEventListener("change", (event) => {
             if (event.target.name === "wwDataPrepTimeAxisDateOrder") wwDataPrepDetectTimeAxis();
+        });
+        // Explicit interpreter authority (additive): clicking "Use X" on
+        // the interpreter/family mismatch diagnostic is the ONE place
+        // this panel ever changes the interpreter <select> other than
+        // the engineer's own direct choice -- and it only does so
+        // because the engineer just explicitly clicked a button that
+        // says exactly what it will do, never automatically/silently.
+        // Event delegation since #wwDataPrepTimeAxisDiagnostics is
+        // re-rendered wholesale on every detect result.
+        document.getElementById("wwDataPrepTimeAxisDiagnostics").addEventListener("click", (event) => {
+            const btn = event.target.closest(".ww-data-prep-time-axis-use-suggested-btn");
+            if (!btn) return;
+            const select = document.getElementById("wwDataPrepTimeAxisInterpreterSelect");
+            select.value = btn.dataset.interpreterId;
+            wwDataPrepRenderTimeAxisInterpreterFields();
+            // Auto re-detect against the newly-selected interpreter --
+            // same "immediate feedback, no second explicit click" precedent
+            // the date-order radio choice above already establishes.
+            wwDataPrepDetectTimeAxis();
         });
         // Checking/unchecking a Time Axis column, or switching to
         // split_date_time, must keep the Date/Time selects in sync --

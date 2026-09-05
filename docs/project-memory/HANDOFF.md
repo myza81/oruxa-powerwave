@@ -8,6 +8,77 @@ Last updated: **2026-09-05**
 
 ## What was most recently done
 
+**Hardening/transparency — Explicit Time Axis interpreter authority
+(implemented, DEC-082).** Closes a real gap the owner identified: an
+engineer who explicitly selected `Absolute Datetime` against genuinely
+bare time-of-day data previously had that mismatch surface only as a
+WARNING (`time_only_not_absolute`, non-blocking) — the configuration
+reached `is_ready=True` and converted successfully as a DIFFERENT
+temporal interpretation (`FAMILY_PARTIAL`) than the one selected,
+without the engineer ever being forced to notice or resolve it.
+
+**Fix, central and additive** (`app/services/time_axis_service.py`):
+every sample interpreter now declares its own `allowed_families` (e.g.
+`absolute_datetime`/`split_date_time` -> `(FAMILY_ABSOLUTE,)`,
+`time_of_day` -> `(FAMILY_PARTIAL,)`, `elapsed_numeric` ->
+`(FAMILY_ELAPSED,)`, `sample_index` -> `(FAMILY_SAMPLE_INDEX,)`,
+`repeated_timestamp_precision_loss` -> BOTH `FAMILY_ABSOLUTE` and
+`FAMILY_PARTIAL` -- the one genuinely multi-family interpreter, matching
+what its own `_analyze_buckets()` already intentionally supports). A
+new `_family_mismatch_diagnostic()` is applied identically at all three
+places `detect()` is ever called for a sample interpreter (save, live
+GET, dry-run preview) -- never relying on any one interpreter to
+remember its own guard. The new diagnostic
+(`DIAGNOSTIC_INTERPRETER_FAMILY_MISMATCH`, `app/domain/time_axis.py`)
+routes to the EXISTING `STATUS_NEEDS_ATTENTION` and was added to
+`readiness_service`'s EXISTING `_BLOCKING_TIME_DIAGNOSTIC_CODES` set --
+the same mechanism `unparseable_datetime` already uses, so readiness/
+conversion/export are all protected for free, zero new gate invented.
+`confirmed=true` is now rejected outright while mismatched (mirrors the
+existing ambiguity-confirm-block precedent); a non-confirmed Save still
+persists the configuration so the engineer's own selection stays
+visible/inspectable as `Needs Attention`, never silently discarded.
+
+**Frontend**: the Time Axis diagnostics list (`#wwDataPrepTimeAxis
+Diagnostics`) gained an inline "Use `<suggested interpreter>`" button
+for this one diagnostic — clicking it is the ONLY thing that ever
+changes the interpreter `<select>`'s own value other than the
+engineer's own direct choice; it then auto re-runs Detect. Every other
+diagnostic's own `suggested_action` text (already computed by the
+backend, never rendered before) is now also shown inline as a
+byproduct.
+
+**No explicit-vs-auto selection state was needed**: investigation
+confirmed `interpreter_id` is ALREADY an explicit parameter at every
+existing call site (`resolve_interpreter()`'s own long-standing "avoid
+a misleading Auto Detect" rule means the frontend dropdown never
+auto-preselects a real interpreter) — "restored saved configuration"
+and "just explicitly selected" already share one code path for free.
+
+**Validation**: full backend suite 3202 -> 3218 (+16 new tests,
+`tests/test_time_axis_interpreter_authority.py`), zero regressions. A
+handful of PRE-EXISTING tests that used `absolute_datetime` as an
+incidental fallback for bare time-of-day data (predating the
+`time_of_day` interpreter's own existence, DEC-082... no, `time_of_day`
+itself is from an earlier same-day task) were updated to the now-
+correct, non-mismatched `time_of_day` interpreter_id — their own actual
+assertions are otherwise unchanged. Two live-browser UAT scenarios
+(Absolute Datetime selected against Time-of-Day-only data; Time of Day
+selected against Absolute Datetime data) confirmed: the dropdown never
+silently changes, mismatch + suggestion render inline, Save persists as
+`Needs Attention`, Continue to Powerwave is unavailable, and "Use Time
+of Day" explicitly switches the interpreter and clears the diagnostic.
+
+**Next step**: no new slice was opened. See DEC-082 for the full record
+including alternatives considered (hard-rejecting Save outright; reusing
+`STATUS_REVIEW_REQUIRED`) and why both were rejected.
+
+**Commit status**: not committed — pending owner review of the
+implementation, per this task's own explicit "do not commit until you
+review the implementation" instruction.
+
+## What was done in the prior session — Add Minute/AM-PM Hour Absolute Time Support + Fixed-Duration Elapsed Units (DEC-081)
+
 **Enhancement — Add Minute/AM-PM Hour Absolute Time Support + Fixed-
 Duration Elapsed Units (implemented, DEC-081).** Follows directly from
 a prior-session investigation ("CSV/Excel Absolute Datetime Format

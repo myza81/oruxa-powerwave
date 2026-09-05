@@ -192,7 +192,7 @@ class TestPartialConversion:
         sid = _add_csv(prep, b"13:14:01,1.0\n13:14:02,2.0\n13:14:03,3.0\n")
         _mark_time_axis(prep, sid, 0)
         _mark_waveform(prep, sid, 1)
-        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="time_of_day", confirmed=True, registry=prep)
 
         metadata = _convert(prep, ws, sid)
         active = ws.get("ws-1", metadata.source_id)
@@ -204,7 +204,7 @@ class TestPartialConversion:
         sid = _add_csv(prep, b"13:14:01,1.0\n13:14:02,2.0\n")
         _mark_time_axis(prep, sid, 0)
         _mark_waveform(prep, sid, 1)
-        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="time_of_day", confirmed=True, registry=prep)
 
         metadata = _convert(prep, ws, sid)
 
@@ -223,7 +223,7 @@ class TestPartialConversion:
         sid = _add_csv(prep, b"13:14:01,1.0\n13:14:02,2.0\n")
         _mark_time_axis(prep, sid, 0)
         _mark_waveform(prep, sid, 1)
-        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="time_of_day", confirmed=True, registry=prep)
 
         metadata = _convert(prep, ws, sid)
 
@@ -755,7 +755,7 @@ class TestSamplingMetadata:
         sid = _add_csv(prep, b"13:14:01,1.0\n13:14:02,2.0\n13:14:04,3.0\n13:14:05,4.0\n13:14:09,5.0\n")
         _mark_time_axis(prep, sid, 0)
         _mark_waveform(prep, sid, 1)
-        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="absolute_datetime", confirmed=True, registry=prep)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="time_of_day", confirmed=True, registry=prep)
 
         metadata = _convert(prep, ws, sid)
         active = ws.get("ws-1", metadata.source_id)

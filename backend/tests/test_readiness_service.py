@@ -292,7 +292,7 @@ class TestTimeAxisBlocking:
         _mark_waveform(registry, source_id, 1)
         set_time_axis_configuration(
             workspace_id="ws-1", source_id=source_id, column_indices=(0,),
-            interpreter_id="absolute_datetime", confirmed=True, registry=registry,
+            interpreter_id="time_of_day", confirmed=True, registry=registry,
         )
 
         summary = _issues(registry, source_id)
@@ -307,7 +307,7 @@ class TestTimeAxisBlocking:
         _mark_waveform(registry, source_id, 1)
         set_time_axis_configuration(
             workspace_id="ws-1", source_id=source_id, column_indices=(0,),
-            interpreter_id="absolute_datetime", confirmed=True, registry=registry,
+            interpreter_id="time_of_day", confirmed=True, registry=registry,
         )
 
         summary = _issues(registry, source_id)
@@ -437,7 +437,7 @@ class TestTimeAxisWarnings:
         _mark_waveform(registry, source_id, 1)
         set_time_axis_configuration(
             workspace_id="ws-1", source_id=source_id, column_indices=(0,),
-            interpreter_id="absolute_datetime", confirmed=True, registry=registry,
+            interpreter_id="time_of_day", confirmed=True, registry=registry,
         )
 
         summary = _issues(registry, source_id)
@@ -451,7 +451,7 @@ class TestTimeAxisWarnings:
         _mark_waveform(registry, source_id, 1)
         set_time_axis_configuration(
             workspace_id="ws-1", source_id=source_id, column_indices=(0,),
-            interpreter_id="absolute_datetime", confirmed=True, registry=registry,
+            interpreter_id="time_of_day", confirmed=True, registry=registry,
         )
 
         summary = _issues(registry, source_id)

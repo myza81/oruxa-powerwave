@@ -165,6 +165,13 @@ _BLOCKING_TIME_DIAGNOSTIC_CODES = frozenset({
     "elapsed_time_goes_backward",
     "sample_index_goes_backward",
     "timestamp_reset_suspected",
+    # Explicit interpreter authority (additive): the selected
+    # interpreter's own declared family contract does not match what
+    # was actually detected (app.services.time_axis_service._family_
+    # mismatch_diagnostic()) -- blocking, never a mere warning, since
+    # proceeding would materialize a DIFFERENT temporal interpretation
+    # than the one the engineer explicitly selected.
+    "interpreter_family_mismatch",
 })
 
 #: (task section G/H/I/AC-AF) degraded-but-usable findings -- reused

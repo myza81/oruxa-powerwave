@@ -133,15 +133,63 @@ _TIME_AXIS_SAMPLE_LIMIT = 50
 #: `_TIME_AXIS_SAMPLE_LIMIT` rows regardless of this cap.
 _TIME_AXIS_PREVIEW_LIMIT = 20
 
+#: Human-readable labels for the mismatch diagnostic's own message text
+#: (§ Explicit interpreter authority) -- purely presentational, never
+#: used for any comparison/lookup (those always use the real
+#: `interpreter_id`/family string constants). Kept as a small, explicit
+#: table here rather than a formatting helper scattered across call
+#: sites, matching this module's own "one central place" convention.
+_INTERPRETER_DISPLAY_LABELS: dict[str, str] = {
+    time_axis_domain.INTERPRETER_ID_ABSOLUTE_DATETIME: "Absolute Datetime",
+    time_axis_domain.INTERPRETER_ID_SPLIT_DATE_TIME: "Date + Time",
+    time_axis_domain.INTERPRETER_ID_TIME_OF_DAY: "Time of Day",
+    time_axis_domain.INTERPRETER_ID_ELAPSED_NUMERIC: "Elapsed Time",
+    time_axis_domain.INTERPRETER_ID_SAMPLE_INDEX: "Sample Index",
+    time_axis_domain.INTERPRETER_ID_REPEATED_TIMESTAMP: "Repeated Timestamp (Precision Loss)",
+}
+_FAMILY_DISPLAY_LABELS: dict[str, str] = {
+    time_axis_domain.FAMILY_ABSOLUTE: "Absolute DateTime",
+    time_axis_domain.FAMILY_ELAPSED: "Elapsed",
+    time_axis_domain.FAMILY_SAMPLE_INDEX: "Sample Index",
+    time_axis_domain.FAMILY_PARTIAL: "Time of Day (no date component)",
+    time_axis_domain.FAMILY_UNKNOWN: "Unknown",
+}
+
 
 class TimeAxisInterpreter(Protocol):
     """The interpreter contract every registry entry satisfies --
     extended in Slice 8A with a second "kind" (see this module's own
     docstring). `accepts()` is always a cheap, purely structural
-    pre-check (column COUNT only, never a cell value)."""
+    pre-check (column COUNT only, never a cell value).
+
+    **Explicit interpreter authority (additive):** `allowed_families` is
+    each sample interpreter's own declared family CONTRACT -- the set
+    of `app.domain.time_axis` family values this interpreter's own
+    `detect()` is intentionally DESIGNED to produce for a genuinely
+    matching column. It is deliberately declared HERE, on the
+    interpreter itself, right next to `interpreter_id`/`needs_sample_
+    data` -- never in a table an unrelated module could forget to
+    update when a new interpreter is added -- so `_family_mismatch_
+    diagnostic()` below can apply ONE central rule
+    (`detection.family not in interpreter.allowed_families` ->
+    `DIAGNOSTIC_INTERPRETER_FAMILY_MISMATCH`) to every sample
+    interpreter uniformly, rather than relying on each interpreter to
+    remember its own mismatch guard. Most interpreters intentionally
+    produce exactly ONE family (`absolute_datetime`/`split_date_time`
+    -> `FAMILY_ABSOLUTE` only; `time_of_day` -> `FAMILY_PARTIAL` only;
+    `elapsed_numeric` -> `FAMILY_ELAPSED` only; `sample_index` ->
+    `FAMILY_SAMPLE_INDEX` only) -- `repeated_timestamp_precision_loss`
+    is the ONE deliberate exception, whose own `_analyze_buckets()`
+    genuinely and correctly classifies EITHER `FAMILY_ABSOLUTE` or
+    `FAMILY_PARTIAL` depending on what the sampled values actually look
+    like, so its own `allowed_families` lists both -- never collapsed
+    to a false one-family contract. Empty for `manual`/`unsupported`
+    (`needs_sample_data = False`, `detect()` never called, no contract
+    to check)."""
 
     interpreter_id: str
     needs_sample_data: bool
+    allowed_families: tuple[str, ...]
 
     def accepts(self, *, column_count: int) -> bool: ...
 
@@ -202,6 +250,7 @@ class _ManualInterpreter:
 
     interpreter_id: str = time_axis_domain.INTERPRETER_ID_MANUAL
     needs_sample_data: bool = False
+    allowed_families: tuple[str, ...] = ()
 
     def accepts(self, *, column_count: int) -> bool:
         return column_count >= 1
@@ -241,6 +290,7 @@ class _UnsupportedInterpreter:
 
     interpreter_id: str = time_axis_domain.INTERPRETER_ID_UNSUPPORTED
     needs_sample_data: bool = False
+    allowed_families: tuple[str, ...] = ()
 
     def accepts(self, *, column_count: int) -> bool:
         return True
@@ -277,6 +327,7 @@ class _AbsoluteDatetimeInterpreter:
 
     interpreter_id: str = time_axis_domain.INTERPRETER_ID_ABSOLUTE_DATETIME
     needs_sample_data: bool = True
+    allowed_families: tuple[str, ...] = (time_axis_domain.FAMILY_ABSOLUTE,)
 
     def accepts(self, *, column_count: int) -> bool:
         return column_count == 1
@@ -310,6 +361,7 @@ class _SplitDateTimeInterpreter:
 
     interpreter_id: str = time_axis_domain.INTERPRETER_ID_SPLIT_DATE_TIME
     needs_sample_data: bool = True
+    allowed_families: tuple[str, ...] = (time_axis_domain.FAMILY_ABSOLUTE,)
 
     def accepts(self, *, column_count: int) -> bool:
         return column_count == 2
@@ -344,6 +396,7 @@ class _TimeOfDayInterpreter:
 
     interpreter_id: str = time_axis_domain.INTERPRETER_ID_TIME_OF_DAY
     needs_sample_data: bool = True
+    allowed_families: tuple[str, ...] = (time_axis_domain.FAMILY_PARTIAL,)
 
     def accepts(self, *, column_count: int) -> bool:
         return column_count == 1
@@ -377,6 +430,7 @@ class _ElapsedNumericInterpreter:
 
     interpreter_id: str = time_axis_domain.INTERPRETER_ID_ELAPSED_NUMERIC
     needs_sample_data: bool = True
+    allowed_families: tuple[str, ...] = (time_axis_domain.FAMILY_ELAPSED,)
 
     def accepts(self, *, column_count: int) -> bool:
         return column_count == 1
@@ -411,6 +465,7 @@ class _SampleIndexInterpreter:
 
     interpreter_id: str = time_axis_domain.INTERPRETER_ID_SAMPLE_INDEX
     needs_sample_data: bool = True
+    allowed_families: tuple[str, ...] = (time_axis_domain.FAMILY_SAMPLE_INDEX,)
 
     def accepts(self, *, column_count: int) -> bool:
         return column_count == 1
@@ -451,6 +506,7 @@ class _RepeatedTimestampInterpreter:
 
     interpreter_id: str = time_axis_domain.INTERPRETER_ID_REPEATED_TIMESTAMP
     needs_sample_data: bool = True
+    allowed_families: tuple[str, ...] = (time_axis_domain.FAMILY_ABSOLUTE, time_axis_domain.FAMILY_PARTIAL)
 
     def accepts(self, *, column_count: int) -> bool:
         return column_count == 1
@@ -543,6 +599,85 @@ def resolve_interpreter(*, column_count: int, requested_interpreter_id: str | No
         if interpreter.accepts(column_count=column_count):
             return interpreter
     return _INTERPRETERS[time_axis_domain.INTERPRETER_ID_UNSUPPORTED]
+
+
+def _suggested_interpreter_id(*, detected_family: str, column_count: int, exclude_interpreter_id: str) -> str | None:
+    """The ONE additional piece of information the mismatch diagnostic
+    offers beyond "this is wrong": which OTHER registered interpreter
+    would actually accept this many columns and is intentionally
+    designed to produce the family that was just detected. Prefers an
+    interpreter with a single-family contract (e.g. `time_of_day` for
+    `FAMILY_PARTIAL`) over a multi-family one (`repeated_timestamp_
+    precision_loss`, whose own `allowed_families` also lists
+    `FAMILY_PARTIAL`) -- a more specific match is always the more useful
+    recommendation. Returns `None` when nothing else fits (never a
+    fabricated suggestion) -- this never changes any stored state on its
+    own; it is purely advisory `details` on a diagnostic."""
+    candidates = [
+        interpreter for interpreter in _INTERPRETERS.values()
+        if interpreter.interpreter_id != exclude_interpreter_id
+        and interpreter.needs_sample_data
+        and interpreter.accepts(column_count=column_count)
+        and detected_family in interpreter.allowed_families
+    ]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda interpreter: len(interpreter.allowed_families))
+    return candidates[0].interpreter_id
+
+
+def _family_mismatch_diagnostic(
+    *, interpreter: TimeAxisInterpreter, family: str | None, column_count: int,
+) -> TimeAxisDiagnostic | None:
+    """The ONE central "explicit interpreter authority" guard (task's
+    own governance rule: "auto-detection assists the user, explicit
+    selection governs the interpretation"). Applied identically at
+    every call site that runs `detect()` for an EXPLICITLY selected
+    (or restored) sample interpreter -- `set_time_axis_configuration()`
+    (save), `get_time_axis_summary()` (every live read, including a
+    restored/stale saved configuration), and `interpret_time_axis()`
+    (the dry-run preview) -- so correctness never depends on any one of
+    them, or any individual interpreter, remembering to check this
+    itself.
+
+    `family is None` (the `unsupported` sentinel's own output, or a
+    sample with nothing to detect from at all) never mismatches --
+    there is nothing to compare yet, and `resolve_status()`'s existing
+    rules already cover those cases on their own terms.
+
+    Never returns a diagnostic for a family the interpreter's own
+    `allowed_families` declares as intentional -- most interpreters
+    (single-family contract) are simply `family not in (that one
+    family,)`; `repeated_timestamp_precision_loss` (multi-family
+    contract) correctly never mismatches for EITHER of its two genuine
+    outputs."""
+    if family is None or not interpreter.allowed_families or family in interpreter.allowed_families:
+        return None
+    family_label = _FAMILY_DISPLAY_LABELS.get(family, family)
+    interpreter_label = _INTERPRETER_DISPLAY_LABELS.get(interpreter.interpreter_id, interpreter.interpreter_id)
+    suggested_interpreter_id = _suggested_interpreter_id(
+        detected_family=family, column_count=column_count, exclude_interpreter_id=interpreter.interpreter_id,
+    )
+    message = (
+        f"The selected interpreter ('{interpreter_label}') does not match the detected time structure "
+        f"('{family_label}')."
+    )
+    suggested_action = None
+    if suggested_interpreter_id is not None:
+        suggested_label = _INTERPRETER_DISPLAY_LABELS.get(suggested_interpreter_id, suggested_interpreter_id)
+        suggested_action = f"Consider switching to '{suggested_label}', or correct the selected columns/data."
+    return TimeAxisDiagnostic(
+        severity_hint=time_axis_domain.SEVERITY_WARNING,
+        code=time_axis_domain.DIAGNOSTIC_INTERPRETER_FAMILY_MISMATCH,
+        message=message,
+        suggested_action=suggested_action,
+        ambiguity=time_axis_domain.AMBIGUITY_INVALID,
+        details={
+            "selected_interpreter_id": interpreter.interpreter_id,
+            "detected_family": family,
+            "suggested_interpreter_id": suggested_interpreter_id,
+        },
+    )
 
 
 def _resolve_session(*, workspace_id: str, source_id: str, registry: PreparationSessionRegistry) -> PreparationSession:
@@ -676,6 +811,17 @@ def get_time_axis_summary(
                 )
                 diagnostics = detection.diagnostics
                 confidence = detection.confidence
+                # Explicit interpreter authority: a RESTORED/already-
+                # SAVED configuration gets the SAME live mismatch check
+                # every other call site applies -- so a stale or
+                # pre-existing mismatched configuration is never quietly
+                # presented as fine just because it was saved before
+                # this guard existed.
+                mismatch = _family_mismatch_diagnostic(
+                    interpreter=interpreter, family=detection.family, column_count=len(configuration.column_indices),
+                )
+                if mismatch is not None:
+                    diagnostics = [*diagnostics, mismatch]
 
     return time_axis_domain.build_interpretation_result(
         configuration, columns_still_time_axis=columns_still_time_axis, diagnostics=diagnostics,
@@ -788,6 +934,27 @@ def set_time_axis_configuration(
             raise InvalidTimeAxisConfigurationError(
                 "Cannot confirm this Time Axis configuration while it is still ambiguous -- "
                 "resolve the ambiguity first (e.g. choose an explicit date order or unit)."
+            )
+        # Explicit interpreter authority (task's own governance rule:
+        # "auto-detection assists the user, explicit selection governs
+        # the interpretation"). The configuration itself is still SAVED
+        # below even when mismatched -- exactly like an unparseable/
+        # mixed-format reading already is today -- so the engineer's
+        # own selection stays visible and inspectable (never silently
+        # replaced, never silently discarded) and `GET`/readiness report
+        # `Needs Attention` with the mismatch explained. What IS refused
+        # outright is `confirmed=true` on a mismatched reading -- exactly
+        # the same "no silent auto-confirm" precedent the ambiguity
+        # check above already establishes, extended to this new class of
+        # finding: confirming a configuration Powerwave already knows
+        # does not match its own selected interpreter would be
+        # confirming something never actually reviewed.
+        mismatch = _family_mismatch_diagnostic(
+            interpreter=interpreter, family=detection.family, column_count=len(column_indices),
+        )
+        if confirmed and mismatch is not None:
+            raise InvalidTimeAxisConfigurationError(
+                mismatch.message + " Switch to a matching interpreter (or correct the data/columns) before confirming."
             )
         configuration = TimeAxisConfiguration(
             column_indices=tuple(column_indices),
@@ -924,13 +1091,23 @@ def interpret_time_axis(
         resolved_unit=detection.resolved_unit, resolved_interval_seconds=detection.resolved_interval_seconds,
         limit=_TIME_AXIS_PREVIEW_LIMIT,
     )
+    # Explicit interpreter authority: this dry-run preview is exactly
+    # where the mismatch/recommendation UI (task's own "Detected: X,
+    # Status: Needs Attention, suggested interpreter" copy) is meant to
+    # surface BEFORE the engineer ever commits to a real Save -- the
+    # SAME central check `set_time_axis_configuration()`/`get_time_axis_
+    # summary()` apply, never a second, divergent one.
+    mismatch = _family_mismatch_diagnostic(
+        interpreter=interpreter, family=detection.family, column_count=len(column_indices),
+    )
+    diagnostics = detection.diagnostics if mismatch is None else [*detection.diagnostics, mismatch]
     return TimeAxisInterpretPreview(
         interpreter_id=interpreter.interpreter_id,
         column_indices=tuple(column_indices),
         family=detection.family,
         provenance=detection.provenance,
         confidence=detection.confidence,
-        diagnostics=detection.diagnostics,
+        diagnostics=diagnostics,
         resolved_options=detection.resolved_options,
         resolved_unit=detection.resolved_unit,
         resolved_interval_seconds=detection.resolved_interval_seconds,

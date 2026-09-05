@@ -287,7 +287,7 @@ class TestTimeGroupIntegration:
         # auto-synchronize with EACH OTHER by clock-time overlap (see
         # TestTimeOfDaySynchronization below), which `elapsed_only`
         # never could.
-        metadata, ws = _convert_csv(content=b"13:14:01,1.0\n13:14:02,2.0\n")
+        metadata, ws = _convert_csv(content=b"13:14:01,1.0\n13:14:02,2.0\n", interpreter_id="time_of_day")
         groups = list_time_groups(workspace_id=WS, source_registry=ws)
         assert len(groups) == 1
         assert groups[0].time_reference_type == "time_of_day"
@@ -562,7 +562,7 @@ class TestCalculatedChannelsCrossSource:
 class TestIrregularTimingDownstream:
     def test_range_fetch_preserves_true_irregular_time_array(self):
         content = b"13:14:01,1.0\n13:14:02,2.0\n13:14:04,3.0\n13:14:05,4.0\n13:14:09,5.0\n"
-        metadata, ws = _convert_csv(content=content)
+        metadata, ws = _convert_csv(content=content, interpreter_id="time_of_day")
         active = ws.get(WS, metadata.source_id)
 
         assert active.record.sampling_info.is_uniform is False
@@ -581,7 +581,7 @@ class TestIrregularTimingDownstream:
         set_column_role(workspace_id=WS, source_id=summary.source_id, column_index=2, role="waveform", registry=prep)
         set_time_axis_configuration(
             workspace_id=WS, source_id=summary.source_id, column_indices=(0,),
-            interpreter_id="absolute_datetime", confirmed=True, registry=prep,
+            interpreter_id="time_of_day", confirmed=True, registry=prep,
         )
         metadata = convert_preparation_source(workspace_id=WS, source_id=summary.source_id, preparation_registry=prep, workspace_registry=ws)
         calc_registry = CalculatedChannelRegistry()

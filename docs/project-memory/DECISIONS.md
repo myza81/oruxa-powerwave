@@ -11645,6 +11645,167 @@ needed. Not committed, not pushed (per explicit instruction).
 
 ---
 
+## DEC-082 — Explicit Time Axis interpreter selection is authoritative: auto-detection may recommend, but a central `allowed_families` compatibility guard blocks confirmation/materialization whenever an explicitly-selected (or restored) sample interpreter's own family contract does not match what was actually detected
+
+Date: 2026-09-05
+Status: Approved
+Source: explicit project-owner hardening/transparency request ("Time
+Axis interpreter selection UX and backend guardrails"), following a
+concrete gap the owner identified: an engineer who explicitly selects
+`Absolute Datetime` against a column that is genuinely bare time-of-day
+(no date) previously had that configuration reach `is_ready=True` and
+convert successfully as `FAMILY_PARTIAL` (functionally a Time of Day
+result) purely because `app.domain.time_axis`'s own `time_only_not_
+absolute` diagnostic was WARNING-severity (non-blocking) — the engineer
+never had their own selected interpreter's mismatch surfaced as
+something that actually needed resolving, and the outcome silently
+diverged from what they thought they had configured.
+
+**Governing rule** (recorded per the owner's own explicit wording):
+
+> Auto-detection assists the user. Explicit selection governs the
+> interpretation. Once a user explicitly selects or saves a time
+> interpreter, Powerwave must never silently substitute another
+> temporal interpretation. Detection may identify and recommend a more
+> appropriate interpreter, but incompatible data must remain `Needs
+> Attention` and must not proceed to materialization until the user
+> explicitly changes the interpreter or corrects the configuration.
+
+Investigation confirmed the owner's own assumption: some mismatch
+protection already existed (e.g. `elapsed_numeric`'s own `non_numeric_
+elapsed_value`/`sample_index`'s own `non_numeric_sample_index`, both
+already `_BLOCKING_TIME_DIAGNOSTIC_CODES`), but it was never a single,
+interpreter-contract-based guarantee — `absolute_datetime`'s own
+"every value is time-of-day, not absolute" finding was the one
+confirmed real gap (`time_only_not_absolute` stayed `_WARNING_TIME_
+DIAGNOSTIC_CODES`, unblocking). There was no explicit-vs-auto-selection
+STATE to add: every existing call site (`set_time_axis_configuration`,
+the dry-run `interpret_time_axis`) already requires `interpreter_id` as
+an explicit parameter end to end — the frontend's own interpreter
+`<select>` never auto-preselects a real interpreter (`resolve_
+interpreter()`'s own long-established "avoid a misleading Auto Detect"
+rule, unchanged) — so "restored saved configuration" and "explicitly
+selected just now" already share one code path with no separate state
+needed.
+
+Decision:
+
+**Central compatibility contract** (`app/services/time_axis_service.py`):
+every sample interpreter dataclass now declares its own `allowed_
+families: tuple[str, ...]` right next to `interpreter_id`/`needs_
+sample_data` (added to the `TimeAxisInterpreter` Protocol too) —
+
+    absolute_datetime                    -> (FAMILY_ABSOLUTE,)
+    split_date_time                      -> (FAMILY_ABSOLUTE,)
+    time_of_day                          -> (FAMILY_PARTIAL,)
+    elapsed_numeric                      -> (FAMILY_ELAPSED,)
+    sample_index                         -> (FAMILY_SAMPLE_INDEX,)
+    repeated_timestamp_precision_loss    -> (FAMILY_ABSOLUTE, FAMILY_PARTIAL)
+    manual / unsupported                 -> ()  (no sample detect() call, no contract)
+
+`repeated_timestamp_precision_loss` is the ONE genuinely multi-family
+interpreter (its own `_analyze_buckets()` correctly classifies EITHER
+family depending on the sampled values) — deliberately never collapsed
+to a false one-family contract, matching the task's own explicit
+warning against that.
+
+A new `_family_mismatch_diagnostic()` (one function, `time_axis_
+service.py`) is applied identically at the THREE call sites that ever
+run `detect()` for a sample interpreter — `set_time_axis_configuration()`
+(save), `get_time_axis_summary()` (every live read, including a stale/
+restored configuration), `interpret_time_axis()` (the dry-run preview)
+— so correctness never depends on any one of them, or any individual
+interpreter, remembering its own guard. It produces a new diagnostic,
+`DIAGNOSTIC_INTERPRETER_FAMILY_MISMATCH` (`app/domain/time_axis.py`,
+`ambiguity=AMBIGUITY_INVALID`, routing to the EXISTING `STATUS_NEEDS_
+ATTENTION` via `resolve_status()`'s own unchanged rule 6 — never
+`STATUS_REVIEW_REQUIRED`, which is reserved for "choose between valid
+readings," not "your selection doesn't match the data"), added to
+`readiness_service._BLOCKING_TIME_DIAGNOSTIC_CODES` — the SAME existing
+blocking-code mechanism `unparseable_datetime`/`mixed_datetime_format`
+already use, so `build_issue_summary().is_ready` (and therefore
+`convert_preparation_source()`/cleaned export, both already gated on
+`is_ready`) block for free, with zero new gate invented.
+
+**Save is not hard-rejected on a mismatch** — the configuration still
+persists (exactly like an unparseable/mixed-format reading already
+does today) so the engineer's own selection stays visible/inspectable
+as `Needs Attention` rather than silently discarded. What IS rejected
+outright is `confirmed=true` while mismatched (`set_time_axis_
+configuration()` raises `InvalidTimeAxisConfigurationError`) — the same
+"no silent auto-confirm" precedent the existing ambiguity-confirm-block
+already establishes, extended to this new finding class.
+
+**Suggestion, never auto-switch**: `_suggested_interpreter_id()` looks
+up, from the SAME registry, any OTHER interpreter that both `accepts()`
+the current column count and lists the detected family among its own
+`allowed_families` — preferring a single-family match (e.g. `time_of_
+day` for `FAMILY_PARTIAL`) over `repeated_timestamp_precision_loss`'s
+own multi-family listing. Surfaced only as `details.suggested_
+interpreter_id` on the diagnostic — the stored/selected `interpreter_id`
+is NEVER changed by the backend on its own.
+
+**Frontend** (`frontend/index.html`, `#wwDataPrepTimeAxisDiagnostics`):
+the mismatch diagnostic renders inline (existing progressive-disclosure
+list, no new modal) with a "Use `<suggested label>`" button
+(`.ww-data-prep-time-axis-use-suggested-btn`) that — ONLY when
+explicitly clicked — sets the interpreter `<select>`'s own value and
+auto re-runs Detect (mirroring the existing date-order-radio "auto
+re-run for immediate feedback" precedent). The dropdown is never
+changed by anything else; every other diagnostic's own `suggested_
+action` text (previously computed but never rendered) is now also
+shown inline as a byproduct of this same change.
+
+Reason:
+
+The gap was narrow (one WARNING-classified diagnostic letting a
+mismatched interpreter's selection reach conversion) but the CORRECT
+fix needed to be a durable, central guarantee — not a one-line severity
+flip — since a future interpreter could reintroduce the same class of
+gap. Declaring `allowed_families` directly on each interpreter (next to
+its own `interpreter_id`) makes the contract impossible to forget when
+a new interpreter is added, and reusing the EXISTING blocking-diagnostic-
+code mechanism (rather than inventing a second gate) kept the change
+additive and low-risk.
+
+Alternatives considered:
+
+- Hard-rejecting the PUT itself on a mismatch (never persisting) --
+  rejected: it would discard the engineer's own in-progress selection
+  entirely rather than showing it as `Needs Attention` for review,
+  contradicting the "restored saved configuration is an intentional
+  interpretation" principle, and has no precedent anywhere else in this
+  framework (every other blocking diagnostic today still saves).
+- A new `STATUS_REVIEW_REQUIRED`-based route -- rejected: that status
+  is reserved for "the user must pick between 2+ valid readings"
+  (ambiguous date order, missing elapsed unit); a selection/data
+  mismatch is a different kind of finding ("Needs Attention" is the
+  owner's own specified wording) and reusing `REVIEW_REQUIRED` would
+  also block `confirmed=true` unconditionally rather than only when
+  actually mismatched.
+
+Impact:
+
+Zero change to Time of Day/Absolute DateTime/Date + Time semantics,
+date-order ambiguity policy, elapsed/sample-index interpretation,
+synchronization compatibility, or waveform grouping -- confirmed by the
+full regression suite passing unchanged (3202 -> 3218, +16 new tests) and
+by two live-browser UAT scenarios (Absolute Datetime selected against
+Time-of-Day-only data; Time of Day selected against Absolute Datetime
+data) showing the dropdown never silently changes, the mismatch/
+suggestion renders inline, Save persists the selection as `Needs
+Attention`, Continue to Powerwave is unavailable, and clicking "Use
+Time of Day" explicitly switches the interpreter and clears the
+diagnostic. A handful of PRE-EXISTING tests that used `absolute_
+datetime` as an incidental fallback for bare time-of-day data (predating
+the `time_of_day` interpreter's own existence) were updated to use the
+now-correct, non-mismatched `time_of_day` interpreter_id instead --
+their own actual assertions (partial family, no fabricated date,
+warning-level timing diagnostics, etc.) are otherwise unchanged. Not
+committed, not pushed (pending owner review).
+
+---
+
 ## How to add a decision
 
 1. Confirm it is actually approved — by the project owner directly, or

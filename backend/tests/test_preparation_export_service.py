@@ -471,7 +471,16 @@ class TestPartialTimeExport:
         sid = _add_csv(prep, content)
         _mark_time_axis(prep, sid, 0)
         _mark_waveform(prep, sid, 1)
-        _confirm_absolute(prep, sid, column_index=0)  # resolves to FAMILY_PARTIAL
+        # Explicit interpreter authority: this is genuinely time-of-day
+        # data, so the correct (non-mismatched) explicit interpreter is
+        # `time_of_day` -- selecting `absolute_datetime` for a bare
+        # clock-time column is now the exact scenario the interpreter/
+        # family compatibility guard flags, not a valid way to reach
+        # FAMILY_PARTIAL.
+        set_time_axis_configuration(
+            workspace_id=WS, source_id=sid, column_indices=(0,),
+            interpreter_id="time_of_day", confirmed=True, registry=prep,
+        )
 
         result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
         rows = _read_csv_rows(_unzip(result.content))

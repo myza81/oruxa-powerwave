@@ -9,7 +9,31 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-05**. An enhancement
+Last meaningful update: **2026-09-05**. A hardening/transparency
+enhancement ([DECISIONS.md — DEC-082](DECISIONS.md#dec-082--explicit-time-axis-interpreter-selection-is-authoritative-auto-detection-may-recommend-but-a-central-allowed_families-compatibility-guard-blocks-confirmationmaterialization-whenever-an-explicitly-selected-or-restored-sample-interpreters-own-family-contract-does-not-match-what-was-actually-detected))
+closes a real gap: an explicitly-selected sample interpreter (e.g.
+`absolute_datetime`) whose own detected family did not actually match
+its declared contract (e.g. genuinely bare time-of-day data) previously
+reached `is_ready=True` and converted successfully as if nothing were
+wrong -- the mismatch was never centrally guaranteed to block. Every
+sample interpreter now declares its own `allowed_families` (`app/
+services/time_axis_service.py`, right next to `interpreter_id`); a new
+`DIAGNOSTIC_INTERPRETER_FAMILY_MISMATCH` (routing to the existing
+`STATUS_NEEDS_ATTENTION`, added to `readiness_service`'s existing
+blocking-code set) is applied centrally at all three `detect()` call
+sites (save, live GET, dry-run preview) -- so `is_ready`/conversion/
+export are all protected for free via the SAME pre-existing mechanism
+`unparseable_datetime` already uses, never a new gate. The selected
+interpreter is never silently changed: the Data Preparation Time Axis
+panel now shows an inline "Use `<suggested interpreter>`" action on a
+mismatch (existing progressive-disclosure diagnostics list, no new
+modal) that only switches the dropdown when explicitly clicked.
+`repeated_timestamp_precision_loss` is the one interpreter whose own
+`allowed_families` genuinely lists two families
+(`FAMILY_ABSOLUTE`/`FAMILY_PARTIAL`), matching what `_analyze_buckets()`
+already intentionally supports. See
+[Implemented capabilities](#implemented-capabilities). A prior same-day
+enhancement
 ([DECISIONS.md — DEC-081](DECISIONS.md#dec-081--csvexcel-absolute-time-support-extended-to-minute-resolution-24-hour-time-of-day-and-explicit-ampm-hour-only-time-plus-fixed-duration-elapsed-units-minuteshoursdaysweeks-bare-hour-only-date-onlyweek-onlymonth-onlyyear-only-absolute-time-elapsed-monthsyears-and-the-existing-iso-reduced-precision-fast-path-gap-all-remain-explicitly-out-of-scope))
 closes a real reported gap: `_TIME_PATTERNS` (the shared pattern table
 `absolute_datetime`/`split_date_time` both use) had no 24-hour
