@@ -186,6 +186,142 @@ class TestSingleColumnSlashDashOrders:
         assert result.provenance == PROVENANCE_NATIVE
 
 
+class TestSingleColumnOptionalFractionalSeconds:
+    """UAT fix (2026-09-05): a single combined date+time column may mix
+    rows with and without fractional seconds -- `31/08/2026 18:04:00`
+    alongside `31/08/2026 18:04:00.020000` -- and every row must be
+    accepted, since the fraction is genuinely optional per-row, not a
+    fixed textual format the whole column must share. The prior
+    implementation required ONE fixed combined `strptime` pattern (date
+    pattern + a specific `_TIME_PATTERNS` entry) to match every sampled
+    row, so a mostly-fractional column reported its fraction-less rows
+    as unparseable/mixed -- the exact same structural weakness the
+    `detect_split_date_time()` fix already closed for Date + Time (2
+    columns); this closes it for the single-column combined case.
+
+    Uses a non-ISO (slash-separated DMY) date throughout: an ISO-shaped
+    value like `2026-06-03 18:04:00` already tolerates mixed fractional
+    precision natively via Python's own `datetime.fromisoformat()` fast
+    path (verified directly -- this bug was never reachable for that
+    specific shape), so these tests deliberately exercise the
+    `_best_match_for_order()` path the bug actually lived in."""
+
+    def test_case1_mixed_fractional_precision_all_valid(self):
+        result = detect_absolute_datetime(
+            _rows(["31/08/2026 18:04:00", "31/08/2026 18:04:00.020000", "31/08/2026 18:04:00.040000"]),
+            requested_options={},
+        )
+
+        assert result.family == FAMILY_ABSOLUTE
+        assert result.diagnostics == []
+        assert result.resolved_options["date_order"] == "dmy"
+
+    def test_case2_explicit_zero_fraction_equivalent_to_bare_seconds(self):
+        result = detect_absolute_datetime(
+            _rows(["31/08/2026 18:04:00", "31/08/2026 18:04:00.000000"]), requested_options={},
+        )
+
+        assert result.diagnostics == []
+        preview = build_absolute_datetime_preview(
+            [(1, ("31/08/2026 18:04:00",)), (2, ("31/08/2026 18:04:00.000000",))],
+            resolved_options=result.resolved_options, limit=10,
+        )
+        assert preview[0][2] == preview[1][2] == "2026-08-31T18:04:00"
+
+    def test_case3_shorter_fractions_are_valid(self):
+        # Chronologically ascending -- see TestSingleColumnSlashDashOrders'
+        # own comment for why order matters now that Slice 8D checks it.
+        result = detect_absolute_datetime(
+            _rows(["31/08/2026 18:04:00.001", "31/08/2026 18:04:00.01", "31/08/2026 18:04:00.1"]),
+            requested_options={},
+        )
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_UNPARSEABLE_DATETIME not in codes
+        assert DIAGNOSTIC_MIXED_DATETIME_FORMAT not in codes
+        assert result.family == FAMILY_ABSOLUTE
+
+    def test_case4_invalid_clock_values_still_rejected(self):
+        result = detect_absolute_datetime(
+            _rows(["31/08/2026 25:04:00", "31/08/2026 18:61:00", "31/08/2026 18:04:70"]),
+            requested_options={},
+        )
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_UNPARSEABLE_DATETIME in codes
+        diag = next(d for d in result.diagnostics if d.code == DIAGNOSTIC_UNPARSEABLE_DATETIME)
+        assert diag.details["matched"] == 0
+
+    def test_case5_invalid_date_still_rejected(self):
+        result = detect_absolute_datetime(
+            _rows(["31/13/2026 18:04:00", "30/02/2026 18:04:00"]), requested_options={},
+        )
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_UNPARSEABLE_DATETIME in codes
+
+    def test_case6_time_only_still_stays_partial_not_absolute(self):
+        # No silent downgrade in either direction: bare time-of-day
+        # (no date at all) must still land in FAMILY_PARTIAL, completely
+        # unaffected by this fix (Time of Day's own dedicated interpreter
+        # covers this case explicitly; this path is the pre-existing
+        # incidental fallback and must keep behaving exactly as before).
+        result = detect_absolute_datetime(
+            _rows(["18:04:00", "18:04:00.020000", "18:04:00.040000"]), requested_options={},
+        )
+
+        assert result.family == FAMILY_PARTIAL
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_TIME_ONLY_NOT_ABSOLUTE in codes
+
+    def test_case7_ambiguous_date_order_unaffected_by_fractional_tolerance(self):
+        # "3/6/2026" is ambiguous (dmy vs mdy) regardless of fractional
+        # precision -- the tolerance must never accidentally resolve or
+        # bypass that ambiguity.
+        result = detect_absolute_datetime(
+            _rows(["3/6/2026 17:25:00", "3/6/2026 17:25:00.500000"]), requested_options={},
+        )
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_AMBIGUOUS_DATE_ORDER in codes
+        assert result.resolved_options["date_order"] == "auto"
+
+    def test_case7_ambiguity_still_resolved_by_explicit_date_order(self):
+        result = detect_absolute_datetime(
+            _rows(["3/6/2026 17:25:00", "3/6/2026 17:25:00.500000"]), requested_options={"date_order": "dmy"},
+        )
+
+        assert result.provenance == PROVENANCE_USER_SPECIFIED
+        assert result.resolved_options["date_order"] == "dmy"
+        assert all(d.code != DIAGNOSTIC_AMBIGUOUS_DATE_ORDER for d in result.diagnostics)
+
+    def test_case_genuinely_different_formats_still_reported_as_mixed(self):
+        # Guardrail: the tolerance is about fractional-second PRECISION
+        # only, never a broadened, permissive parser -- a column mixing
+        # genuinely different date formats must still be flagged.
+        result = detect_absolute_datetime(
+            _rows(["31/08/2026 18:04:00", "garbage-value", "31/08/2026 18:04:00.020000"]),
+            requested_options={},
+        )
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_MIXED_DATETIME_FORMAT in codes or DIAGNOSTIC_UNPARSEABLE_DATETIME in codes
+
+    def test_case8_detection_consistent_with_materialization(self):
+        # Detection must not disagree with what build_absolute_datetime_
+        # preview() (the real materialization path) actually accepts.
+        values = ["31/08/2026 18:04:00", "31/08/2026 18:04:00.020000", "31/08/2026 18:04:00.040000"]
+
+        result = detect_absolute_datetime(_rows(values), requested_options={})
+        assert not any("could not be" in d.message or "do not match" in d.message for d in result.diagnostics)
+
+        samples = [(i, (v,)) for i, v in enumerate(values, start=1)]
+        preview = build_absolute_datetime_preview(samples, resolved_options=result.resolved_options, limit=10)
+        assert [row[2] for row in preview] == [
+            "2026-08-31T18:04:00", "2026-08-31T18:04:00.020000", "2026-08-31T18:04:00.040000",
+        ]
+
+
 class TestSingleColumnMinuteResolution24Hour:
     """Enhancement (minute/AM-PM-hour absolute time support): the
     reported gap -- 24-hour HH:MM with no seconds -- across every

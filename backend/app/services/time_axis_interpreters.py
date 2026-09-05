@@ -626,6 +626,50 @@ def _candidate_patterns_for_order(order: str, *, with_time: bool) -> list[str]:
     return [f"{d} {t}" for d in date_patterns for t in _TIME_PATTERNS]
 
 
+def _best_combined_match_for_order(values: list[str], order: str) -> _FormatMatch | None:
+    """2026-09-05 fix: a TOLERANT full-match check for `order`, tried
+    only after `_best_match_for_order()`'s own exhaustive single-fixed-
+    pattern scan (below) fails to find one combined `strptime` pattern
+    that explains the WHOLE sample. That scan requires one literal
+    pattern like `"%d/%m/%Y %H:%M:%S.%f"` to match every row, so a
+    column mixing "31/08/2026 18:04:00" (no fraction) with
+    "31/08/2026 18:04:00.020000" (fraction) has NO single combined
+    pattern that matches both -- the exact same structural weakness the
+    2026-09-05 `detect_split_date_time()` fix already closed for the
+    Date + Time (2 columns) interpreter, now closed here too for the
+    single-column combined case.
+
+    Splits each value on its FIRST space into `(date_part, time_part)`
+    -- every `_DATE_PATTERNS_BY_ORDER` entry is a single space-free
+    token, and every `_TIME_PATTERNS` entry (including the AM/PM
+    variants, which contain their OWN internal space before `%p`) is
+    always the LAST token block, so splitting on the first space alone
+    always cleanly separates the two regardless of which time pattern
+    a row happens to use. The DATE portion must match ONE CONSISTENT
+    date pattern for `order` across the WHOLE sample (preserving the
+    exact same separator-consistency guarantee date-order elimination
+    already relies on -- this never lets two different date spellings
+    coexist and still call it unambiguous); the TIME portion is checked
+    per row via the SAME `_is_time_only()` tolerance (any pattern in
+    `_TIME_PATTERNS`, independently per row) the split Date + Time fix
+    and the Time of Day interpreter already use -- never a second,
+    parallel time parser. Returns `None` (never a partial match) when
+    no date pattern explains every row's date portion, or when any
+    row has no space at all (a bare date-only value, already covered by
+    `_best_match_for_order()`'s own separate date-only candidate set)."""
+    if not values or not all(" " in v for v in values):
+        return None
+    parts = [v.partition(" ") for v in values]
+    for date_pattern in _DATE_PATTERNS_BY_ORDER[order]:
+        if all(
+            _parse_with_pattern(date_part, date_pattern) is not None and _is_time_only(time_part)
+            for date_part, _sep, time_part in parts
+        ):
+            display_pattern = f"{date_pattern} %H:%M:%S.%f"
+            return _FormatMatch(pattern=display_pattern, match_count=len(values), total_count=len(values))
+    return None
+
+
 def _best_match_for_order(values: list[str], order: str) -> _FormatMatch:
     """The single best-explaining pattern for this order across every
     combined date+time candidate AND the bare date-only candidates
@@ -640,6 +684,15 @@ def _best_match_for_order(values: list[str], order: str) -> _FormatMatch:
     full = [m for m in scored if m.is_full_match]
     if full:
         return full[0]
+    # 2026-09-05 fix: no single FIXED pattern explains the whole sample,
+    # but the sample may still be a fully valid, consistently-ordered
+    # column whose fractional-second precision simply varies row to
+    # row -- try the tolerant per-row combined match (see
+    # `_best_combined_match_for_order()`'s own docstring) before falling
+    # back to reporting a partial/mixed/unparseable finding.
+    tolerant = _best_combined_match_for_order(values, order)
+    if tolerant is not None:
+        return tolerant
     return max(scored, key=lambda m: m.match_count)
 
 
