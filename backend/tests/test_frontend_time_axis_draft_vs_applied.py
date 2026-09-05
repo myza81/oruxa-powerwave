@@ -99,6 +99,75 @@ class TestConfirmedFieldExcludedWhenNotMeaningful:
         assert "applied.confirmed = null;" in body
 
 
+class TestDateOrderExcludedWhenNotAmbiguous:
+    """UAT finding (Time Setup redesign): an UNAMBIGUOUS absolute_datetime/
+    split_date_time detection still resolves a real `date_order`
+    server-side (e.g. "ymd" for a clean ISO-8601 source) and echoes it
+    back on the applied summary, even though the date-order radio group
+    was never shown/checked in the draft -- comparing it unconditionally
+    produced a PERMANENT false-positive "unsaved changes" for every
+    plain, non-ambiguous absolute/split-date-time save (discovered via
+    live browser UAT: Save, then the headline never left "Unsaved Time
+    Axis changes"). Only compared when the date-order field is the
+    user's own live decision to make (genuinely ambiguous)."""
+
+    def test_date_order_comparability_helper_exists(self):
+        source = _source()
+        assert "function wwDataPrepTimeAxisDateOrderIsComparable()" in source
+        body = _function_body(
+            source,
+            "function wwDataPrepTimeAxisDateOrderIsComparable()",
+            "function wwDataPrepTimeAxisDraftIsDirty()",
+        )
+        assert 'document.getElementById("wwDataPrepTimeAxisDateOrderField").hidden' in body
+
+    def test_dirty_check_normalizes_date_order_when_not_comparable(self):
+        source = _source()
+        body = _function_body(
+            source,
+            "function wwDataPrepTimeAxisDraftIsDirty()",
+            "function wwDataPrepEffectiveIssueSummary()",
+        )
+        assert "wwDataPrepTimeAxisDateOrderIsComparable()" in body
+        assert "delete draft.options.date_order;" in body
+        assert "delete applied.options.date_order;" in body
+
+    def test_detected_format_is_always_excluded_unconditionally(self):
+        # UAT finding: `detected_format` (e.g. "ISO-8601") is a purely
+        # backend-computed diagnostic annotation on `resolved_options` --
+        # the user never sets it anywhere in the form, so it can NEVER
+        # match an equivalent draft value and must be excluded
+        # unconditionally (unlike date_order/confirmed, which are only
+        # conditionally excluded). Its absence caused every successful
+        # Absolute Datetime/Date + Time save to show a permanent false
+        # "Unsaved Time Axis changes" (discovered via live browser UAT).
+        source = _source()
+        body = _function_body(
+            source,
+            "function wwDataPrepTimeAxisDraftIsDirty()",
+            "function wwDataPrepEffectiveIssueSummary()",
+        )
+        assert "delete draft.options.detected_format;" in body
+        assert "delete applied.options.detected_format;" in body
+
+    def test_dirty_check_deep_clones_before_deleting_fields(self):
+        # UAT finding: wwDataPrepTimeAxisConfigBody()'s own `options`
+        # field is a DIRECT reference to the source object it was built
+        # from (wwDataPrep.timeAxisSummary.options on the applied side)
+        # -- deleting a key in place silently corrupted the real stored
+        # summary (Advanced details' own "Detected format" row went
+        # permanently blank the moment any dirty check ran). Both sides
+        # must be deep-cloned before any `delete` below.
+        source = _source()
+        body = _function_body(
+            source,
+            "function wwDataPrepTimeAxisDraftIsDirty()",
+            "function wwDataPrepEffectiveIssueSummary()",
+        )
+        assert "JSON.parse(JSON.stringify(appliedSource))" in body
+        assert "JSON.parse(JSON.stringify(wwDataPrepCurrentTimeAxisDraftBody()))" in body
+
+
 class TestFetchOrderingKeepsDirtyCheckAccurate:
     """UAT finding: wwDataPrepFetchPreview() calls wwDataPrepFetchIssues()
     (whose own trailing render computes the draft-vs-applied dirty
@@ -140,7 +209,7 @@ class TestDraftIsDirtyIsClientSideOnly:
             "function wwDataPrepTimeAxisDraftIsDirty()",
             "function wwDataPrepEffectiveIssueSummary()",
         )
-        assert "if (!applied) return false;" in body
+        assert "if (!appliedSource) return false;" in body
 
 
 class TestEffectiveIssueSummaryIsTheSingleSourceOfTruth:
@@ -187,12 +256,111 @@ class TestEffectiveIssueSummaryIsTheSingleSourceOfTruth:
 
 class TestLiveDirtyDetectionWiring:
     def test_time_axis_details_has_a_delegated_input_and_change_listener(self):
+        # Time Setup redesign: the delegated listener now calls a small
+        # wrapper (wwDataPrepRefreshTimeAxisLiveState) that refreshes
+        # BOTH wwDataPrepRenderIssues() (the global Preparation Status
+        # consumers) AND the local Time Setup validity line, rather than
+        # wwDataPrepRenderIssues() directly.
         source = _source()
         assert (
-            'document.getElementById("wwDataPrepTimeAxisDetails").addEventListener("input", wwDataPrepRenderIssues);'
+            'document.getElementById("wwDataPrepTimeAxisDetails").addEventListener("input", wwDataPrepRefreshTimeAxisLiveState);'
             in source
         )
         assert (
-            'document.getElementById("wwDataPrepTimeAxisDetails").addEventListener("change", wwDataPrepRenderIssues);'
+            'document.getElementById("wwDataPrepTimeAxisDetails").addEventListener("change", wwDataPrepRefreshTimeAxisLiveState);'
             in source
         )
+        body = _function_body(
+            source, "function wwDataPrepRefreshTimeAxisLiveState()", "document.getElementById(\"wwDataPrepTimeAxisDetails\").addEventListener",
+        )
+        assert "wwDataPrepRenderIssues();" in body
+        assert "wwDataPrepRenderTimeAxisValidity();" in body
+
+
+class TestManualMultiColumnCapabilityPreserved:
+    """UAT follow-up: the previous UI allowed Manual to select 2+
+    Time-Axis-role columns, and the backend's `_ManualInterpreter.
+    accepts()` still intentionally permits any non-empty column count
+    (it never parses per-row values, so it imposes no fixed cardinality
+    the way every real interpreter does). The Time Setup redesign's
+    first pass silently limited Manual to a single-select, removing a
+    previously-reachable capability -- restored here as a compact
+    checkbox list, scoped to Manual alone, and only once there is a
+    genuine multi-column choice to make (2+ eligible columns); one
+    eligible column still falls through to the SAME shared resolved-
+    value field every other interpreter uses (no checkbox for a choice
+    that doesn't exist)."""
+
+    def test_manual_columns_field_exists_and_is_scoped_to_manual(self):
+        source = _source()
+        assert 'id="wwDataPrepTimeAxisManualColumnsField"' in source
+        assert 'id="wwDataPrepTimeAxisManualColumnChecks"' in source
+        # Lives inside the Manual fields block, never inside the shared
+        # Detect-flow fields real interpreters use.
+        body = _function_body(
+            source, 'id="wwDataPrepTimeAxisManualFields"', "<!-- Absolute Datetime",
+        )
+        assert "wwDataPrepTimeAxisManualColumnsField" in body
+
+    def test_manual_checked_columns_helper_exists(self):
+        source = _source()
+        assert "function wwDataPrepTimeAxisManualCheckedColumns()" in source
+        body = _function_body(
+            source,
+            "function wwDataPrepTimeAxisManualCheckedColumns()",
+            "function wwDataPrepTimeAxisColumnIndicesForSubmit()",
+        )
+        assert ".ww-data-prep-time-axis-manual-col-check:checked" in body
+
+    def test_column_indices_for_submit_uses_manual_checkboxes_only_when_multiple_eligible(self):
+        source = _source()
+        body = _function_body(
+            source,
+            "function wwDataPrepTimeAxisColumnIndicesForSubmit()",
+            "function wwDataPrepRenderTimeAxisSummary()",
+        )
+        assert 'interpreterId === "manual" && wwDataPrepTimeAxisEligibleColumns().length > 1' in body
+        assert "wwDataPrepTimeAxisManualCheckedColumns()" in body
+        # The single resolved-value/select path remains the fallback for
+        # Manual with exactly one eligible column -- never both compete.
+        assert "wwDataPrepTimeAxisSimpleSelectedColumn()" in body
+
+    def test_eligible_columns_render_routes_manual_multi_column_to_the_checkbox_list(self):
+        source = _source()
+        body = _function_body(
+            source,
+            "function wwDataPrepRenderTimeAxisEligibleColumns()",
+            "function wwDataPrepRenderTimeAxisManualColumnChecks(",
+        )
+        assert 'interpreterId === "manual" && eligible.length > 1' in body
+        assert "wwDataPrepRenderTimeAxisManualColumnChecks(eligible);" in body
+        # The shared single-column field is explicitly hidden in that
+        # branch, and the checkbox field is hidden in every OTHER branch
+        # -- never both visible, never neither for a real choice.
+        assert "manualColumnsFieldEl.hidden = true;" in body
+        assert "manualColumnsFieldEl.hidden = false;" in body
+
+    def test_manual_column_checks_reuses_the_shared_display_label_helper(self):
+        # Never a second, divergent "letter + header text" implementation.
+        source = _source()
+        body = _function_body(
+            source,
+            "function wwDataPrepRenderTimeAxisManualColumnChecks(",
+            "// Renders a detection-shaped object",
+        )
+        assert "wwDataPrepTimeAxisColumnDisplayLabel(c)" in body
+
+    def test_column_indices_for_submit_is_still_the_one_function_the_draft_builder_calls(self):
+        # DEC-083's own draft-vs-applied comparison must automatically
+        # cover Manual's multi-column selection too -- verified here by
+        # confirming wwDataPrepCurrentTimeAxisDraftBody() still calls
+        # THIS one function for its column_indices, unchanged, rather
+        # than a second, parallel column-reading path only some callers
+        # know about.
+        source = _source()
+        body = _function_body(
+            source,
+            "function wwDataPrepCurrentTimeAxisDraftBody()",
+            "function wwDataPrepAppliedTimeAxisDraftBody()",
+        )
+        assert "wwDataPrepTimeAxisColumnIndicesForSubmit()" in body
