@@ -101,17 +101,20 @@ class TestNewSplitViewToolbarButton:
 
 class TestSharedActiveViewMechanismUnchanged:
     """shellSetActiveView() must remain the ONE place shell.activeView
-    and #viewWaveform/#viewTable/#viewSplit visibility are set -- only
-    its own reference to the removed buttons changes."""
+    and the Waveform/Table/Split-pane visibility are set -- only its own
+    reference to the removed buttons changes. NOTE: this class's own
+    assertions about a placeholder #viewSplit were updated by the
+    Split View UX V1 enhancement (owner-approved) -- see
+    TestSplitViewCapabilityRetained below for that follow-on task's own
+    coverage of the real implementation that replaced the placeholder."""
 
-    def test_still_the_one_place_toggling_the_three_view_sections(self):
+    def test_still_the_one_place_toggling_the_view_sections(self):
         source = _source()
         body = _function_body(
             source, "function shellSetActiveView(view)", "function setShellNavCurrent"
         )
-        assert 'document.getElementById("viewWaveform").hidden = view !== "waveform"' in body
+        assert 'document.getElementById("viewWaveform").hidden = view === "table"' in body
         assert 'document.getElementById("viewTable").hidden = view !== "table"' in body
-        assert 'document.getElementById("viewSplit").hidden = view !== "split"' in body
         assert 'wwSplitViewBtn").setAttribute("aria-pressed"' in body
         assert "shellViewWaveformBtn" not in body
         assert "shellViewTableBtn" not in body
@@ -127,11 +130,16 @@ class TestSharedActiveViewMechanismUnchanged:
 
 
 class TestSplitViewCapabilityRetained:
-    def test_view_split_section_still_exists(self):
-        source = _source()
-        assert 'id="viewSplit"' in source
+    """Split View UX V1 (owner-approved follow-on task) replaced the
+    placeholder #viewSplit section with a real table pane -- see
+    test_split_view_ux.py for that feature's own full coverage. This
+    class only confirms the capability itself (not merely the toolbar
+    button) still exists in some real form."""
 
-    def test_split_placeholder_content_unchanged(self):
+    def test_split_table_pane_exists(self):
         source = _source()
-        body = _function_body(source, 'id="viewSplit"', "</section>")
-        assert "Not implemented yet" in body
+        assert 'id="wwSplitTablePane"' in source
+
+    def test_old_placeholder_element_is_gone(self):
+        source = _source()
+        assert 'id="viewSplit"' not in source

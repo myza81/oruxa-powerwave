@@ -115,6 +115,119 @@ class TestComtradeTable:
         assert resp.status_code == 404
 
 
+class TestTimeRangeFilterApi:
+    """Split View enhancement: optional start_time/end_time query params
+    (elapsed seconds, this source's own native time axis -- same
+    convention GET .../waveform already uses). A converted CSV source
+    with known elapsed values gives exact, unambiguous boundaries."""
+
+    def _five_row_source(self, client) -> str:
+        # A dedicated helper (not _upload_csv_and_convert, which hardcodes
+        # a 3-data-row region and a second Voltage Angle column matching
+        # ITS OWN fixture shape) -- this test needs exactly 5 known,
+        # unambiguous elapsed-time rows.
+        content = b"Time,V1\n0.00,10.0\n0.02,20.0\n0.04,30.0\n0.06,40.0\n0.08,50.0\n"
+        files = {"csv_file": ("e.csv", content, "text/csv")}
+        resp = client.post(f"/api/v1/workspaces/{WS}/preparation-sources", files=files)
+        assert resp.status_code == 201, resp.text
+        prep_source_id = resp.json()["source_id"]
+
+        client.put(f"/api/v1/workspaces/{WS}/preparation-sources/{prep_source_id}/working/header", json={"row_number": 1})
+        client.put(
+            f"/api/v1/workspaces/{WS}/preparation-sources/{prep_source_id}/working/data-region",
+            json={"start_row": 2, "end_row": 6},
+        )
+        client.put(f"/api/v1/workspaces/{WS}/preparation-sources/{prep_source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/{WS}/preparation-sources/{prep_source_id}/working/columns/1/role", json={"role": "waveform"})
+        client.put(
+            f"/api/v1/workspaces/{WS}/preparation-sources/{prep_source_id}/working/columns/1/engineering-quantity",
+            json={"engineering_quantity": "Voltage"},
+        )
+        client.put(
+            f"/api/v1/workspaces/{WS}/preparation-sources/{prep_source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "elapsed_numeric", "unit": "seconds", "confirmed": True},
+        )
+        converted = client.post(f"/api/v1/workspaces/{WS}/preparation-sources/{prep_source_id}/convert").json()
+        return converted["source_id"]
+
+    def test_omitted_start_time_end_time_matches_pre_existing_whole_source_behavior(self, client):
+        source_id = self._five_row_source(client)
+
+        resp = client.get(f"/api/v1/workspaces/{WS}/sources/{source_id}/table")
+
+        assert resp.status_code == 200
+        assert resp.json()["total_row_count"] == 5
+
+    def test_narrows_to_the_matching_time_window(self, client):
+        source_id = self._five_row_source(client)
+
+        resp = client.get(
+            f"/api/v1/workspaces/{WS}/sources/{source_id}/table",
+            params={"start_time": 0.02, "end_time": 0.06},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["total_row_count"] == 3  # rows at 0.02, 0.04, 0.06 (inclusive both ends)
+        v1_index = [c["key"] for c in body["columns"]].index("V1")
+        assert [row[v1_index] for row in body["rows"]] == [20.0, 30.0, 40.0]
+
+    def test_start_greater_than_end_returns_400(self, client):
+        source_id = self._five_row_source(client)
+
+        resp = client.get(
+            f"/api/v1/workspaces/{WS}/sources/{source_id}/table",
+            params={"start_time": 0.06, "end_time": 0.02},
+        )
+
+        assert resp.status_code == 400
+        assert "start_time" in resp.json()["detail"]["message"]
+
+    def test_standalone_table_view_unaffected_when_params_omitted(self, client, comtrade_fixtures_dir):
+        # No format branching, no behavior change, for the real
+        # standalone Canonical Table View (COMTRADE) that never sends
+        # these two new parameters.
+        source_id = _upload_comtrade(client, comtrade_fixtures_dir)
+
+        resp = client.get(f"/api/v1/workspaces/{WS}/sources/{source_id}/table", params={"offset": 0, "limit": 5})
+
+        assert resp.status_code == 200
+        assert resp.json()["total_row_count"] == 40
+
+
+class TestCenterTimeApi:
+    """Split View cursor-correctness enhancement: center_time repositions
+    the returned page around a specific sample (the waveform cursor's
+    own resolved native time), end to end through the real endpoint."""
+
+    def test_center_time_positions_the_page_around_the_given_sample(self, client):
+        content = b"Time,V1\n0.00,10.0\n0.02,20.0\n0.04,30.0\n0.06,40.0\n0.08,50.0\n"
+        files = {"csv_file": ("e.csv", content, "text/csv")}
+        resp = client.post(f"/api/v1/workspaces/{WS}/preparation-sources", files=files)
+        prep_source_id = resp.json()["source_id"]
+        client.put(f"/api/v1/workspaces/{WS}/preparation-sources/{prep_source_id}/working/header", json={"row_number": 1})
+        client.put(
+            f"/api/v1/workspaces/{WS}/preparation-sources/{prep_source_id}/working/data-region",
+            json={"start_row": 2, "end_row": 6},
+        )
+        client.put(f"/api/v1/workspaces/{WS}/preparation-sources/{prep_source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/{WS}/preparation-sources/{prep_source_id}/working/columns/1/role", json={"role": "waveform"})
+        client.put(
+            f"/api/v1/workspaces/{WS}/preparation-sources/{prep_source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "elapsed_numeric", "unit": "seconds", "confirmed": True},
+        )
+        source_id = client.post(f"/api/v1/workspaces/{WS}/preparation-sources/{prep_source_id}/convert").json()["source_id"]
+
+        resp = client.get(
+            f"/api/v1/workspaces/{WS}/sources/{source_id}/table",
+            params={"limit": 2, "center_time": 0.041},
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert 0.04 in body["row_native_times"]  # the nearest real sample is included
+
+
 class TestNoFormatBranching:
     def test_comtrade_and_converted_csv_return_the_same_response_shape(self, client, comtrade_fixtures_dir):
         comtrade_id = _upload_comtrade(client, comtrade_fixtures_dir)

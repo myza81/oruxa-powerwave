@@ -221,10 +221,26 @@ def get_source_channels(
 def get_source_table(
     workspace_id: str,
     source_id: str,
-    offset: int = Query(0, ge=0, description="0-based row offset -- the first returned row is this source's own row `offset`."),
+    offset: int = Query(0, ge=0, description="0-based row offset -- the first returned row is this source's own row `offset` (or, when start_time/end_time are given, the time-window's own row `offset`)."),
     limit: int = Query(
         TABLE_DEFAULT_LIMIT, gt=0, le=TABLE_MAX_LIMIT,
         description=f"Maximum rows to return, bounded server-side at {TABLE_MAX_LIMIT} regardless of what is requested.",
+    ),
+    start_time: float | None = Query(
+        None, description="Split View enhancement: elapsed seconds on the source's OWN native time axis (same convention as GET .../waveform), inclusive lower bound. Omit for the record start.",
+    ),
+    end_time: float | None = Query(
+        None, description="Split View enhancement: elapsed seconds on the source's OWN native time axis (same convention as GET .../waveform), inclusive upper bound. Omit for the record end.",
+    ),
+    center_time: float | None = Query(
+        None,
+        description=(
+            "Split View cursor-correctness enhancement: elapsed seconds on the source's OWN native "
+            "time axis. When given, REPLACES `offset` with whatever offset positions the row nearest "
+            "this time closest to the middle of the returned page (clamped to the start_time/end_time "
+            "window's own edges) -- lets a bounded page always contain a specific sample (typically the "
+            "waveform cursor's own resolved position) without fetching/rendering the entire window."
+        ),
     ),
     registry: WorkspaceRegistry = Depends(get_workspace_registry),
 ) -> SourceTableOut:
@@ -244,10 +260,39 @@ def get_source_table(
     a multi-recording Table View is a frontend-only source SELECTOR
     that calls this endpoint again for a different `source_id`, never a
     combined backend query.
+
+    Split View enhancement (owner-approved): `start_time`/`end_time` are
+    an OPTIONAL additive time-window filter (see
+    `app.services.table_service.fetch_table_rows`'s own docstring) --
+    the frontend's Split View table pane uses this to show only the
+    rows within the currently visible waveform time range, converted to
+    this source's own native time first (the SAME
+    `wwWorkspaceTimeToSourceTime()` conversion the existing cursor-
+    values fetch already applies); the standalone Canonical Table View
+    never passes these two parameters, so its own existing behavior is
+    completely unaffected.
+
+    Split View cursor-correctness enhancement (owner-approved):
+    `center_time` solves a real gap the initial Split View implementation
+    had -- when a visible time window contains more samples than the
+    frontend's own bounded row cap, the FIRST page of that window does
+    not necessarily contain whichever sample the waveform cursor points
+    to, so naively "highlighting the nearest row among whatever is
+    currently rendered" could highlight an unrelated boundary row
+    instead of the true nearest sample. Passing the cursor's own
+    resolved native time as `center_time` repositions the SAME bounded
+    page around it instead -- see `fetch_table_rows`'s own docstring for
+    the exact offset math. The standalone Canonical Table View never
+    passes this parameter either, so it is equally unaffected.
     """
     workspace_id = _validate_workspace_id(workspace_id)
     active = _get_or_404(registry, workspace_id, source_id)
-    result = fetch_table_rows(active, offset=offset, limit=limit)
+    try:
+        result = fetch_table_rows(
+            active, offset=offset, limit=limit, start_time=start_time, end_time=end_time, center_time=center_time,
+        )
+    except ImportServiceError as exc:
+        raise _http_error(exc) from exc
     return SourceTableOut.from_result(result)
 
 

@@ -294,8 +294,27 @@
             min-width: 0;
             min-height: 0;
         }
+        /* Split View UX V1: #mainWorkspaceBody is a permanent flex-row
+           wrapper around #activeViewArea -- always present, but with
+           zero visual/layout effect outside Split View (its other two
+           children, the divider and #wwSplitTablePane, stay `hidden`,
+           and #activeViewArea's own `flex: 1 1 auto` below fills 100%
+           of the row exactly as it filled 100% of #mainWorkspace's own
+           column before). #activeViewArea itself keeps its EXACT prior
+           CSS untouched (still the same scroll container, same
+           position:relative context for the annotation/cursor overlays
+           nested inside it) -- only its immediate parent changed from
+           #mainWorkspace to this new wrapper. */
+        #mainWorkspaceBody {
+            flex: 1 1 auto;
+            display: flex;
+            flex-direction: row;
+            min-height: 0;
+            min-width: 0;
+        }
         #activeViewArea {
             flex: 1 1 auto;
+            min-width: 0;
             min-height: 0;
             overflow-y: auto;
             padding: 0;
@@ -307,6 +326,91 @@
                ancestor" resolution for anything anchored to it stops
                there first, unaffected by this). */
             position: relative;
+        }
+        /* Split View UX V1: the compact per-event numerical reference
+           pane -- ONE vertical scrollbar for the whole pane (task's own
+           explicit requirement), a fixed pixel width set by
+           shellCreateHorizontalSplit() (mirrors #workspaceSidebar's own
+           JS-driven width exactly), never a CSS percentage (the
+           reusable resize helper is width-in-pixels by design, see its
+           own comment). */
+        .ww-split-table-pane {
+            flex: 0 0 auto;
+            width: 420px;
+            min-width: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 12px 16px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        .ww-split-table-pane[hidden] { display: none; }
+        .ww-split-event-section {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+        }
+        .ww-split-event-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+        .ww-split-event-header-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .ww-split-event-note {
+            font-size: 0.68rem;
+            color: var(--text-dim);
+            font-weight: 400;
+            white-space: nowrap;
+        }
+        /* Horizontal scroll ONLY -- task's own explicit "avoid nested
+           vertical scrolling for every event table" requirement; the
+           outer .ww-split-table-pane above owns the one vertical
+           scrollbar for the whole pane. */
+        .ww-split-event-table-scroll {
+            overflow-x: auto;
+            overflow-y: hidden;
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+        }
+        /* Reuses .ww-table's own font/border/cell styling verbatim
+           (Canonical Table View, DEC-079) -- never a second, competing
+           table style. Sticky headers are turned back off here: with
+           several event tables stacked in ONE shared vertical scroll
+           (unlike the standalone Table View's own single always-one-
+           table-visible layout), multiple simultaneously-sticky headers
+           would visually fight each other -- simplicity over a marginal
+           convenience, per this task's own "avoid unnecessary
+           complexity" guidance. */
+        .ww-split-event-table-scroll .ww-table thead th,
+        .ww-split-event-table-scroll .ww-table thead th:first-child {
+            position: static;
+        }
+        .ww-split-event-table-scroll .ww-table tbody td:first-child {
+            position: static;
+        }
+        /* Cursor-synchronized row highlight (task's own explicit
+           requirement) -- reuses the existing --accent-wash-soft token
+           already used elsewhere for a soft, non-alarming highlight
+           (e.g. the annotation guidance ribbon). */
+        .ww-split-event-table-scroll .ww-table tbody tr.ww-split-cursor-row td {
+            background: var(--accent-wash-soft);
+        }
+        .ww-split-event-table-scroll .ww-table tbody tr.ww-split-row-clickable {
+            cursor: pointer;
+        }
+        .ww-split-event-table-scroll .ww-table tbody tr.ww-split-row-clickable:hover td {
+            background: var(--hover-tint);
         }
         /* Phase 4G-UAT (DEC-046 addendum): persistent annotation-
            placement guidance ribbon -- a compact, normal-flow row
@@ -4363,11 +4467,28 @@
                         <span class="ww-annotation-guidance-esc" aria-hidden="true">Esc</span>
                     </div>
 
-                    <!-- Active View Area (section 11/13): holds whichever
-                         of Waveform/Table/Split is currently active --
-                         see shellSetActiveView(). Waveform and Table
-                         (DEC-079) are both real; Split remains a
-                         structural placeholder only. -->
+                    <!-- Split View UX V1 (owner-approved): #activeViewArea
+                         gained ONE new permanent wrapper, #mainWorkspaceBody
+                         -- a flex row whose FIRST child is #activeViewArea
+                         itself (completely unchanged: same id, same
+                         children, same scroll/position:relative CSS, so
+                         every existing annotation-overlay/cursor-overlay
+                         pixel-math that anchors to #activeViewArea's own
+                         scroll/bounding-rect keeps working unmodified even
+                         while split) and whose SECOND/THIRD children are
+                         the new resize handle + Split table pane, both
+                         `hidden` outside Split View. This deliberately
+                         does NOT reuse the old placeholder #viewSplit
+                         element (removed) nested INSIDE #activeViewArea --
+                         nesting the table pane there would have forced
+                         #activeViewArea to become the horizontal flex
+                         container instead of the vertical scroll
+                         container it already is, breaking exactly the
+                         scroll-anchored overlay math above. See
+                         shellSetActiveView() for the toggle logic and
+                         wwSplit* functions below for the table pane's own
+                         implementation. -->
+                    <div id="mainWorkspaceBody">
                     <div id="activeViewArea">
                         <section class="workspace-section" id="viewWaveform" aria-label="Waveform view">
                             <!-- Phase 4A-UAT1B: immediate loading feedback (owner
@@ -4469,10 +4590,6 @@
                             </div>
                             <div class="upload-status" id="wwTableStatus" role="status" aria-live="polite"></div>
                         </section>
-                        <section class="shell-view-placeholder" id="viewSplit" hidden aria-label="Split view">
-                            <h3>Split view</h3>
-                            <p>Not implemented yet -- this shell slot is reserved for a future Waveform &harr; Table split.</p>
-                        </section>
 
                         <!-- Phase 4E-UAT (scroll-anchoring fix): main-
                              workspace-owned annotation notes. A DOM child
@@ -4509,6 +4626,30 @@
                              wwUpdateCalloutConnectorGeometry(). -->
                         <svg id="wwCalloutConnectorLayer" class="ww-callout-connector-layer" aria-hidden="true"></svg>
                         <div id="wwAnnotationOverlayMain" class="ww-annotation-overlay" aria-hidden="true"></div>
+                    </div>
+                    <!-- Split View UX V1: reuses the SAME reusable resize
+                         helper (shellCreateHorizontalSplit()) the
+                         Workspace Sidebar's own #workspaceSplitHandle
+                         already uses -- this codebase's own architecture
+                         already anticipated this exact reuse (see that
+                         function's own comment: "a future Waveform <->
+                         Table split is expected to call this SAME
+                         function again"). No width persistence
+                         (storageKey omitted) -- split ratio persistence
+                         is an explicit non-goal for V1; every session
+                         starts at the same ~70/30 default. -->
+                    <div class="shell-split-handle" id="wwSplitDivider" role="separator" aria-orientation="vertical" aria-label="Resize Split View panes" tabindex="-1" hidden></div>
+                    <!-- The compact numerical reference pane -- ONE
+                         independent <section> per file event currently
+                         displayed in Waveform (never merged across
+                         events, see wwSplitRenderTablePane()). Its own
+                         vertical scrollbar is the ONE scrollbar for the
+                         whole pane (task's own explicit "avoid nested
+                         vertical scrolling" requirement); each event's
+                         own <table> gets only horizontal overflow. -->
+                    <section class="ww-split-table-pane" id="wwSplitTablePane" hidden aria-label="Split view table pane">
+                        <p class="empty-state" id="wwSplitEmptyState">No channels are currently displayed in Waveform.</p>
+                    </section>
                     </div>
                 </main>
             </div>
@@ -5855,6 +5996,19 @@
         const SHELL_WORKSPACE_SIDEBAR_MIN_WIDTH = 240;
         const SHELL_WORKSPACE_SIDEBAR_MAX_WIDTH = 520;
 
+        // Split View UX V1: the table pane's own width, driven by the
+        // SAME shellCreateHorizontalSplit() helper. ~30% of a typical
+        // workspace width, per the task's own "initial width around
+        // Waveform 70% / Table pane 30%" guidance -- necessarily a fixed
+        // pixel default (the helper is pixel-based, matching the
+        // Workspace Sidebar's own convention), adjustable by drag.
+        // Deliberately NO storageKey: split ratio persistence is an
+        // explicit non-goal for V1 (task's own listed non-decision) --
+        // every session starts at this same default.
+        const SHELL_SPLIT_TABLE_PANE_DEFAULT_WIDTH = 420;
+        const SHELL_SPLIT_TABLE_PANE_MIN_WIDTH = 280;
+        const SHELL_SPLIT_TABLE_PANE_MAX_WIDTH = 900;
+
         const shell = {
             // Phase 3B (section 19): application PAGE state, separate from
             // shell.activeView below (which stays scoped to WITHIN the
@@ -5932,11 +6086,26 @@
 
             applyWidth(width); // initial layout -- harmless no-op if nothing is displayed yet
 
+            // Split View UX V1 addition: `invert` (default false, so the
+            // Workspace Sidebar's own existing call above is byte-for-
+            // byte unaffected) -- this helper's original sign convention
+            // assumes `panelEl` sits BEFORE `handleEl` (dragging the
+            // handle rightward grows the panel to its own left, exactly
+            // the Workspace Sidebar's own layout). Split View's own
+            // divider sits BEFORE its resized panel instead
+            // (`[Waveform][divider][Table pane]`, since Waveform must
+            // stay on the left per the approved mockup) -- a mirror-
+            // image arrangement where growing the panel means dragging
+            // the handle LEFT, so the raw pointer delta must be negated
+            // for that case. Verified directly: without this, dragging
+            // the Split divider left (the natural "make the right-hand
+            // pane bigger" gesture) SHRANK it instead.
+            const dragSign = options.invert ? -1 : 1;
             let dragStartX = 0;
             let dragStartWidth = 0;
 
             function onPointerMove(event) {
-                applyWidthImmediate(dragStartWidth + (event.clientX - dragStartX));
+                applyWidthImmediate(dragStartWidth + dragSign * (event.clientX - dragStartX));
                 scheduleOnResize();
             }
 
@@ -6013,39 +6182,57 @@
         }
 
         // ---- Active View (section 13/14): Waveform and Table (DEC-079)
-        // are both real; Split remains a structural placeholder only,
-        // never fake data. Owner-approved cleanup: the top-right
-        // Waveform/Table/Split selector this function used to sync is
-        // gone (Waveform/Table now navigate via the Main Sidebar Menu,
-        // Split via #wwSplitViewBtn on the Waveform toolbar) -- this
-        // function's own role as the ONE source of truth for
-        // shell.activeView is otherwise unchanged. ----
+        // are both real; Split View UX V1 (owner-approved) is now ALSO
+        // real -- a compact numerical reference pane shown SIDE BY SIDE
+        // with the live Waveform view (never replacing it), never its
+        // own separate placeholder section. Owner-approved cleanup: the
+        // top-right Waveform/Table/Split selector this function used to
+        // sync is gone (Waveform/Table now navigate via the Main
+        // Sidebar Menu, Split via #wwSplitViewBtn on the Waveform
+        // toolbar) -- this function's own role as the ONE source of
+        // truth for shell.activeView is otherwise unchanged. ----
         function shellSetActiveView(view) {
             if (view !== "waveform" && view !== "table" && view !== "split") return;
             shell.activeView = view;
-            document.getElementById("viewWaveform").hidden = view !== "waveform";
+            // Split View UX V1: Waveform stays visible (and interactive,
+            // fully live -- same DOM, same Plotly instances, never torn
+            // down/rebuilt) for BOTH "waveform" and "split"; only Table
+            // hides it. The Split table pane + resize handle show ONLY
+            // for "split", as siblings of #activeViewArea (never nested
+            // inside it -- see #mainWorkspaceBody's own HTML comment for
+            // why), so #activeViewArea's own scroll/overlay math for the
+            // Waveform content is completely unaffected by either state.
+            document.getElementById("viewWaveform").hidden = view === "table";
             document.getElementById("viewTable").hidden = view !== "table";
-            document.getElementById("viewSplit").hidden = view !== "split";
+            document.getElementById("wwSplitDivider").hidden = view !== "split";
+            document.getElementById("wwSplitTablePane").hidden = view !== "split";
             document.getElementById("wwSplitViewBtn").setAttribute("aria-pressed", String(view === "split"));
             // Phase 3A-UAT3 (Finding E): while Waveform is hidden (`display:
             // none` via the `hidden` attribute), any parent-width change
             // (Workspace Sidebar drag, Main Sidebar Menu toggle, browser
-            // resize -- all still reachable from the Table/Split
-            // placeholders) can't actually resize Plotly's hidden charts,
-            // so they'd keep whatever dimensions they last had when
-            // visible. Scheduling a resize pass here -- via the same
-            // rAF-coalesced helper Phase 3A-UAT1 already established --
-            // catches up once the browser has laid out the now-visible
-            // section (a single rAF is enough; removing `hidden` is an
-            // immediate style change, not an animated one, so there's no
-            // transition to wait out). Presentation-only: never touches
-            // ww.viewport, Y range, or the fetch pipeline, and is a cheap,
-            // idempotent no-op if nothing actually changed size.
-            if (view === "waveform") wwScheduleResizeAllVisiblePlots();
+            // resize -- all still reachable from the Table placeholder)
+            // can't actually resize Plotly's hidden charts, so they'd
+            // keep whatever dimensions they last had when visible.
+            // Scheduling a resize pass here -- via the same rAF-coalesced
+            // helper Phase 3A-UAT1 already established -- catches up once
+            // the browser has laid out the now-visible/now-resized
+            // section (a single rAF is enough; removing `hidden` or
+            // changing the flex row's own child widths is an immediate
+            // style change, not an animated one, so there's no transition
+            // to wait out). Presentation-only: never touches ww.viewport,
+            // the Y range, or the fetch pipeline, and is a cheap,
+            // idempotent no-op if nothing actually changed size. Split
+            // View's own entry ALSO needs this (Waveform's own available
+            // width just shrank to make room for the table pane), unlike
+            // plain Waveform re-entry from Table.
+            if (view === "waveform" || view === "split") wwScheduleResizeAllVisiblePlots();
             // Table View enhancement (DEC-079, task section 35): keep the
             // Main Sidebar Menu's own Waveform/Table highlighting in sync
             // with this LOCAL selector -- one coherent active-view state,
             // never "sidebar says Table, local shell says Waveform."
+            // Split View UX V1: counts as "Waveform" for this purpose --
+            // it never has its own Main Sidebar Menu entry (task's own
+            // explicit "no new persistent navigation page" guardrail).
             if (shell.currentPage === "waveform") {
                 setShellNavCurrent("mainNavWaveformBtn", view !== "table");
                 setShellNavCurrent("mainNavTableBtn", view === "table");
@@ -6053,6 +6240,12 @@
             // Lazy activation (task section 45): fetch only when the user
             // actually switches to Table View, never eagerly on page load.
             if (view === "table") wwTableOnActivated();
+            // Split View UX V1: same lazy-activation policy -- (re)build
+            // the per-event table pane only when the user actually
+            // switches into Split, never eagerly. wwSplitOnActivated()
+            // is a no-op (keeps existing state fresh) on repeat entries.
+            if (view === "split") wwSplitOnActivated();
+            else wwSplitOnDeactivated();
         }
 
         // Phase 3B-UAT8: sets/clears aria-current="page" (the ARIA APG
@@ -15138,6 +15331,15 @@
             if (canvasEl) wwSyncTimeGroupSliderForCanvas(groupId, canvasEl);
             wwSyncTimeGroupZoomControls(groupId);
             await wwRefetchChannelsForGroup(groupId, startTime, endTime);
+            // Split View UX V1: this is the ONE place every viewport
+            // change (slider drag, Plotly zoom/pan, Zoom In/Out, Reset
+            // Time View, Autoscale-triggered range changes) already
+            // converges to, per group, already debounced upstream
+            // (wwDebounceApplyGroupViewport). Reused here rather than
+            // hooking each individual zoom/pan/reset call site -- a
+            // cheap no-op while Split isn't active or this group has no
+            // currently-displayed events (checked inside the function).
+            wwSplitRefreshEventsForGroup(groupId);
         }
 
         // Backward-compatible entry point -- every pre-existing caller
@@ -22769,6 +22971,14 @@
                 // resynced" contract stays self-documenting.
                 wwUpdateCursorOverlayForGroup(groupId);
             });
+            // Split View UX V1: this is the ONE central "displayed-
+            // channel set changed" resync point every add/remove/
+            // display-toggle call site already funnels through -- reused
+            // here (rather than touching each individual call site) to
+            // keep the Split table pane's own event/column list current
+            // whenever it's open. A cheap no-op while Split isn't active
+            // (checked inside wwSplitRenderTablePane() itself).
+            wwSplitRenderTablePane();
         }
 
         // ==================================================================
@@ -23575,6 +23785,13 @@
                 // cell for THIS group's own channels shows "—" and no
                 // further requests are outstanding for them.
                 wwCursorValuesHandleModeDisabledForGroup(groupId);
+                // Split View cursor-correctness fix: this group's own
+                // Split table row highlights must clear too -- the
+                // authoritative cursor-time source
+                // (wwSplitNativeCursorTimeForSource()) now correctly
+                // reads `cursors.enabled` directly, so this call simply
+                // finds nothing to highlight.
+                wwSplitRefreshCursorSyncForGroup(groupId);
                 return;
             }
             cursors.enabled = true;
@@ -23590,6 +23807,13 @@
             // analog channels belonging to THIS group, immediate/
             // unthrottled since this is a discrete action, not a drag.
             wwFetchAllCursorValuesForGroup(groupId);
+            // Split View cursor-correctness fix: independent of the
+            // analog-only value fetch above -- covers a digital-only
+            // event too, and (via wwSplitFetchEvent()'s own center_time
+            // logic) repositions each event's bounded page around the
+            // newly-placed cursor immediately, not only on the next
+            // viewport change.
+            wwSplitRefreshCursorSyncForGroup(groupId);
         }
 
         // Section 22: an individual cursor's own x -- hides ONLY that
@@ -23734,7 +23958,443 @@
                 if (aCell) aCell.textContent = wwCurValueText(sourceId, name, "a");
                 if (bCell) bCell.textContent = wwCurValueText(sourceId, name, "b");
             }
+            // Split View cursor-correctness fix: this function is keyed
+            // by ANALOG channel name and is never even called for a
+            // digital-only event, so Split's own row-highlight refresh
+            // no longer hooks in here -- it now hooks directly into the
+            // authoritative per-GROUP cursor-state change points instead
+            // (wwToggleMeasurementCursors()/wwScheduleCursorValuesRefreshForGroup(),
+            // see wwSplitRefreshCursorSyncForGroup()'s own comment),
+            // which fire identically regardless of channel kind.
         }
+
+        // ==================================================================
+        // Split View UX V1 (owner-approved)
+        //
+        // Architecture summary (see the task's own final-report
+        // requirement): displayed EVENTS are the distinct real source_ids
+        // (never a calculated-channel pseudo-source) already tracked by
+        // ww.displayed/ww.digitalDisplayed -- the SAME two Maps the
+        // waveform panels themselves are built from, reused verbatim via
+        // the pre-existing wwDisplayedAnalogSourceIds()/
+        // wwDisplayedDigitalSourceIds() helpers, never a second
+        // "what's currently shown" bookkeeping structure. Each event's
+        // OWN visible time range is resolved via
+        // wwTimeGroupVisibleRange(wwTimeGroupIdForDisplaySourceId(sourceId))
+        // -- the exact same per-Time-Group workspace-time window the
+        // waveform charts themselves are drawn against -- then converted
+        // to that source's own native elapsed-seconds axis via
+        // wwWorkspaceTimeToSourceTime(), the SAME conversion pair the
+        // existing cursor-values fetch already uses. Table rows come from
+        // GET .../sources/{id}/table with the new (owner-approved)
+        // start_time/end_time/center_time query parameters -- the EXACT
+        // SAME Canonical Table View endpoint (DEC-079), never a second
+        // table-data architecture, bounded per event at WW_SPLIT_ROW_CAP
+        // rows (never an unbounded fetch/render). Cursor synchronization
+        // reads ww.timeGroupCursorState -- the ONE authoritative cursor-
+        // time state the overlay/drag/readout already treat as ground
+        // truth -- via wwSplitNativeCursorTimeForSource(), never
+        // ww.cursorValues (a derived, analog-channel-keyed VALUE cache
+        // that does not exist at all for a digital-only event); matches
+        // each event's OWN nearest row by comparing native elapsed-
+        // seconds values (row_native_times below), never by row number,
+        // never assuming equal sample counts/intervals between events.
+        // When the visible range has more real samples than
+        // WW_SPLIT_ROW_CAP, the cursor may fall outside whatever page is
+        // currently rendered -- rather than ever highlighting an
+        // unrelated boundary row, `center_time` asks the backend to
+        // reposition that SAME bounded page around the cursor instead
+        // (see wwSplitRefreshCursorHighlightForSource()'s own comment).
+        //
+        // Event isolation (task's own explicit "never merge different
+        // file events into one giant table" policy): one independent
+        // fetch, one independent <section>/<table>, one independent
+        // horizontal scroll per source_id -- there is no code path
+        // anywhere in this module that joins/concatenates rows from two
+        // different source_ids into one table or one request.
+        // ==================================================================
+
+        // Bounded per event, regardless of how many samples the visible
+        // time window actually contains -- task's own explicit
+        // performance requirement ("do not render an unbounded number of
+        // DOM table rows"). A window containing more real samples than
+        // this shows a short inline note (see wwSplitRenderEventTable())
+        // rather than a second pagination UI -- task's own "avoid
+        // nested/unnecessary complexity" guidance; the engineer's own
+        // existing remedy is to zoom the waveform in further, exactly
+        // like the point-budget reduction on the chart itself already
+        // encourages.
+        const WW_SPLIT_ROW_CAP = 500;
+
+        const wwSplit = {
+            requestSeq: new Map(), // sourceId -> integer, stale-response guard (mirrors wwTable.requestSeq)
+            // sourceId -> {rowNativeTimes, totalRowCount, returnedRowCount} --
+            // the LAST successfully rendered page's own bounds, kept
+            // purely so wwSplitRefreshCursorHighlightForSource() can tell
+            // WITHOUT re-reading the DOM whether the current cursor time
+            // actually falls inside what is currently rendered, or
+            // whether a re-centered refetch is required (cursor-
+            // correctness fix, see that function's own comment).
+            lastPage: new Map(),
+        };
+
+        // Cursor-correctness fix: the ONE authoritative cursor-time
+        // source -- ww.timeGroupCursorState, the SAME state the cursor
+        // overlay/drag/readout already treat as ground truth -- never
+        // ww.cursorValues (a derived, per-ANALOG-channel VALUE cache
+        // that happens to echo a resolved sample time as a side effect,
+        // and is simply never populated at all for a digital-only
+        // event). Resolving cursor time this way works identically
+        // regardless of whether the event has any displayed analog
+        // channel, fixing the digital-only-event gap without a second
+        // cursor-time model: this IS the existing model, just read from
+        // its own real source instead of a channel-keyed by-product of
+        // it. Returns this SOURCE's own native elapsed-seconds time (or
+        // `null` if no cursor is currently placed/enabled for this
+        // source's owning group) -- prefers cursor A, falls back to B.
+        function wwSplitNativeCursorTimeForSource(sourceId) {
+            const groupId = wwTimeGroupIdForDisplaySourceId(sourceId);
+            if (groupId === null) return null;
+            const cursors = wwTimeGroupCursorState(groupId);
+            if (!cursors.enabled) return null;
+            const workspaceTime = (cursors.a.visible && Number.isFinite(cursors.a.time)) ? cursors.a.time
+                : ((cursors.b.visible && Number.isFinite(cursors.b.time)) ? cursors.b.time : null);
+            if (workspaceTime === null) return null;
+            return wwWorkspaceTimeToSourceTime(sourceId, workspaceTime);
+        }
+
+        // Real file events only -- a calculated channel has no file of
+        // its own and no per-source canonical table endpoint to query,
+        // so it is deliberately excluded here (never silently merged
+        // into whichever real source grounds its timing).
+        function wwSplitDisplayedEventSourceIds() {
+            const ids = new Set();
+            for (const id of wwDisplayedAnalogSourceIds()) { if (!wwIsCalculatedSourceId(id)) ids.add(id); }
+            for (const id of wwDisplayedDigitalSourceIds()) { if (!wwIsCalculatedSourceId(id)) ids.add(id); }
+            return Array.from(ids);
+        }
+
+        // Reuses the EXACT display name already shown for this source
+        // elsewhere (the channel picker's own "<sourceName> — <channel>"
+        // convention) -- never a second "what is this file called" fetch/
+        // lookup; falls back to the raw source_id only in the
+        // (practically unreachable, since a source with zero displayed
+        // channels would never appear in wwSplitDisplayedEventSourceIds()
+        // in the first place) case neither Map has an entry for it yet.
+        function wwSplitEventDisplayName(sourceId) {
+            for (const entry of ww.displayed.values()) {
+                if (entry.channel.sourceId === sourceId) return entry.channel.sourceName || sourceId;
+            }
+            for (const entry of ww.digitalDisplayed.values()) {
+                if (entry.sourceId === sourceId) return entry.sourceName || sourceId;
+            }
+            return sourceId;
+        }
+
+        function wwSplitEventSectionEl(sourceId) {
+            return document.querySelector('.ww-split-event-section[data-source-id="' + CSS.escape(sourceId) + '"]');
+        }
+
+        function wwSplitBuildEventSectionSkeleton(sourceId, ordinal) {
+            const section = document.createElement("section");
+            section.className = "ww-split-event-section";
+            section.dataset.sourceId = sourceId;
+            const name = wwSplitEventDisplayName(sourceId);
+
+            const header = document.createElement("div");
+            header.className = "ww-split-event-header";
+            const nameEl = document.createElement("span");
+            nameEl.className = "ww-split-event-header-name";
+            nameEl.textContent = "Event " + ordinal + " — " + name;
+            nameEl.title = name;
+            const noteEl = document.createElement("span");
+            noteEl.className = "ww-split-event-note";
+            header.appendChild(nameEl);
+            header.appendChild(noteEl);
+
+            const scroll = document.createElement("div");
+            scroll.className = "ww-split-event-table-scroll";
+            const table = document.createElement("table");
+            table.className = "ww-table";
+            scroll.appendChild(table);
+
+            section.appendChild(header);
+            section.appendChild(scroll);
+            return section;
+        }
+
+        // Task section 45/lazy-activation policy (mirrors wwTableOnActivated()):
+        // (re)builds the pane's own event/column skeleton and fetches
+        // fresh data for every currently displayed event. Called on
+        // Split View entry and whenever the displayed-channel SET itself
+        // changes (via wwSyncTimeGroupCanvases()'s own hook) -- a full
+        // rebuild in both cases is the deliberately simple choice (task's
+        // own "avoid unnecessary complexity"): these are discrete,
+        // infrequent actions, never a per-frame concern (that's
+        // wwSplitRefreshEventsForGroup() below, which updates one
+        // event's own rows in place without touching this skeleton).
+        function wwSplitRenderTablePane() {
+            if (shell.activeView !== "split") return;
+            const pane = document.getElementById("wwSplitTablePane");
+            const emptyEl = document.getElementById("wwSplitEmptyState");
+            if (!pane || !emptyEl) return;
+            const sourceIds = wwSplitDisplayedEventSourceIds().sort();
+            pane.querySelectorAll(".ww-split-event-section").forEach((el) => el.remove());
+            emptyEl.hidden = sourceIds.length > 0;
+            sourceIds.forEach((sourceId, index) => {
+                pane.appendChild(wwSplitBuildEventSectionSkeleton(sourceId, index + 1));
+                wwSplitFetchEvent(sourceId);
+            });
+        }
+
+        function wwSplitOnActivated() {
+            wwSplitRenderTablePane();
+        }
+
+        // Named counterpart to wwSplitOnActivated() for readability --
+        // no teardown is actually required: cached DOM sections are
+        // cheap to leave in place (hidden via #wwSplitTablePane[hidden]
+        // itself), and the next activation's own wwSplitRenderTablePane()
+        // rebuilds everything from current state regardless, so nothing
+        // here can go stale in a visible way.
+        function wwSplitOnDeactivated() {}
+
+        // One independent GET per event -- see this module's own header
+        // comment for why this can never become a cross-event merge.
+        // start_time/end_time convert THIS group's own current visible
+        // range into this SOURCE's own native elapsed-seconds axis
+        // first (wwWorkspaceTimeToSourceTime()), exactly like the
+        // existing cursor-values fetch already does -- the backend then
+        // returns only the matching bounded page (see
+        // app.services.table_service.fetch_table_rows's own docstring).
+        //
+        // Cursor-correctness fix: whenever a cursor is currently placed
+        // for this event (wwSplitNativeCursorTimeForSource() returns
+        // non-null), the request ALSO carries `center_time` -- the
+        // backend then returns the bounded page CONTAINING that sample
+        // (see fetch_table_rows's own docstring for the exact offset
+        // math) instead of always the window's own first
+        // WW_SPLIT_ROW_CAP rows. This is what makes cursor
+        // synchronization correct across the FULL visible range even
+        // though rendering itself stays bounded: the page requested is
+        // never "whatever happens to be first," it is "whatever
+        // actually contains the cursor" -- never fetching/rendering the
+        // entire range to get there.
+        function wwSplitFetchEvent(sourceId) {
+            const section = wwSplitEventSectionEl(sourceId);
+            if (!section) return;
+            const groupId = wwTimeGroupIdForDisplaySourceId(sourceId);
+            const range = groupId !== null ? wwTimeGroupVisibleRange(groupId) : null;
+            if (!range) return;
+            const nativeStart = wwWorkspaceTimeToSourceTime(sourceId, range.start);
+            const nativeEnd = wwWorkspaceTimeToSourceTime(sourceId, range.end);
+            const nativeCursorTime = wwSplitNativeCursorTimeForSource(sourceId);
+
+            const seq = (wwSplit.requestSeq.get(sourceId) || 0) + 1;
+            wwSplit.requestSeq.set(sourceId, seq);
+            let url = apiBaseUrl() + "/api/v1/workspaces/" + encodeURIComponent(currentWorkspaceId()) +
+                "/sources/" + encodeURIComponent(sourceId) + "/table" +
+                "?offset=0&limit=" + WW_SPLIT_ROW_CAP +
+                "&start_time=" + encodeURIComponent(nativeStart) + "&end_time=" + encodeURIComponent(nativeEnd);
+            if (nativeCursorTime !== null) url += "&center_time=" + encodeURIComponent(nativeCursorTime);
+            fetch(url)
+                .then((response) => {
+                    if (wwSplit.requestSeq.get(sourceId) !== seq) return null; // superseded
+                    return response.ok ? response.json() : null;
+                })
+                .then((body) => {
+                    if (!body || wwSplit.requestSeq.get(sourceId) !== seq) return;
+                    wwSplitRenderEventTable(sourceId, body);
+                })
+                .catch(() => { /* best-effort, matches wwFetchCursorValuesForSource's own tolerant network-error handling -- leaves whatever was last rendered rather than clearing it */ });
+        }
+
+        // Refreshes only the events belonging to ONE Time Group, in
+        // place (never rebuilding the whole pane's own skeleton) --
+        // called from wwApplyAndFetchGroupViewport() on every viewport
+        // change (already debounced upstream), so a fast zoom/pan drag
+        // in one group never touches, or loses the scroll position of,
+        // an unrelated event's own section.
+        function wwSplitRefreshEventsForGroup(groupId) {
+            if (shell.activeView !== "split") return;
+            for (const sourceId of wwSplitDisplayedEventSourceIds()) {
+                if (wwTimeGroupIdForDisplaySourceId(sourceId) === groupId) wwSplitFetchEvent(sourceId);
+            }
+        }
+
+        // Split View UX V1: only currently-DISPLAYED channels become
+        // columns (task's own explicit "do NOT show unused/non-displayed
+        // channels" requirement) -- a deliberate, narrower filter than
+        // the standalone Canonical Table View's own build_table_columns()
+        // (which shows every canonical channel regardless of display
+        // state); the two surfaces intentionally answer different
+        // questions (task's own "compact numerical reference for
+        // channels currently displayed" vs. "full table-oriented
+        // workspace" distinction).
+        function wwSplitRenderEventTable(sourceId, body) {
+            const section = wwSplitEventSectionEl(sourceId);
+            if (!section) return;
+            const displayedAnalog = new Set(wwDisplayedAnalogChannelNamesForSource(sourceId));
+            const displayedDigital = new Set(wwDisplayedDigitalChannelNamesForSource(sourceId));
+            const colIndices = [];
+            body.columns.forEach((col, i) => {
+                if (col.kind === "time") colIndices.push(i);
+                else if (col.kind === "analog" && displayedAnalog.has(col.key)) colIndices.push(i);
+                else if (col.kind === "digital" && displayedDigital.has(col.key)) colIndices.push(i);
+            });
+
+            const table = section.querySelector("table");
+            let html = "<thead><tr>";
+            for (const i of colIndices) {
+                const headerText = wwTableColumnHeaderText(body.columns[i]);
+                html += '<th title="' + escapeHtml(headerText) + '">' + escapeHtml(headerText) + "</th>";
+            }
+            html += "</tr></thead><tbody>";
+            body.rows.forEach((row, r) => {
+                const nativeTime = body.row_native_times[r];
+                html += '<tr class="ww-split-row-clickable" data-native-time="' + nativeTime + '">';
+                for (const i of colIndices) {
+                    html += "<td>" + escapeHtml(wwTableCellText(row[i], body.columns[i].kind)) + "</td>";
+                }
+                html += "</tr>";
+            });
+            html += "</tbody>";
+            table.innerHTML = html;
+
+            const noteEl = section.querySelector(".ww-split-event-note");
+            if (noteEl) {
+                // Bounded-rendering disclosure (task's own explicit
+                // performance requirement) -- shown ONLY when the visible
+                // time window genuinely contains more real samples than
+                // this pane will ever render, never a generic/always-on
+                // caption.
+                noteEl.textContent = body.total_row_count > body.returned_row_count
+                    ? "Showing " + body.returned_row_count + " of " + body.total_row_count + " samples in range — zoom in for full detail"
+                    : "";
+            }
+            // Cursor-correctness fix: cache this page's own bounds so
+            // wwSplitRefreshCursorHighlightForSource() can tell WITHOUT
+            // re-reading the DOM whether a given cursor time actually
+            // falls within what is currently rendered.
+            wwSplit.lastPage.set(sourceId, {
+                rowNativeTimes: body.row_native_times,
+                totalRowCount: body.total_row_count,
+                returnedRowCount: body.returned_row_count,
+            });
+            wwSplitRefreshCursorHighlightForSource(sourceId);
+        }
+
+        // Cursor synchronization (task's own explicit requirement):
+        // matches by ALIGNED ANALYSIS TIME, never by row number/index --
+        // required precisely because different events may have different
+        // sampling rates/timestamps/sample counts. Reads the ONE
+        // authoritative cursor-time source
+        // (wwSplitNativeCursorTimeForSource(), backed by
+        // ww.timeGroupCursorState -- never ww.cursorValues, which is
+        // analog-channel-keyed and simply does not exist for a
+        // digital-only event) -- works identically for an event with
+        // only digital channels displayed.
+        //
+        // Cursor-correctness fix (>WW_SPLIT_ROW_CAP ranges): a cursor
+        // time is only ever matched against rows THIS event's own last
+        // fetch actually returned. If the cursor now falls OUTSIDE that
+        // cached page's own [first, last] native-time bounds -- the
+        // visible range has more real samples than the render cap and
+        // the cursor has moved (or just been placed) somewhere the
+        // current page does not cover -- this NEVER falls back to
+        // highlighting an unrelated boundary row; it instead re-fetches
+        // this one event via wwSplitFetchEvent(), which (now that a
+        // cursor is active) requests the page CENTERED on it. The
+        // re-fetch's own completion re-enters this same function, which
+        // then finds the correct row within the new, now-correctly-
+        // positioned page.
+        function wwSplitRefreshCursorHighlightForSource(sourceId) {
+            if (shell.activeView !== "split") return;
+            const section = wwSplitEventSectionEl(sourceId);
+            if (!section) return;
+            const rows = Array.from(section.querySelectorAll("tbody tr"));
+            rows.forEach((tr) => tr.classList.remove("ww-split-cursor-row"));
+
+            const nativeCursorTime = wwSplitNativeCursorTimeForSource(sourceId);
+            if (nativeCursorTime === null || rows.length === 0) return;
+
+            const page = wwSplit.lastPage.get(sourceId);
+            const firstTime = page ? page.rowNativeTimes[0] : parseFloat(rows[0].dataset.nativeTime);
+            const lastTime = page ? page.rowNativeTimes[page.rowNativeTimes.length - 1] : parseFloat(rows[rows.length - 1].dataset.nativeTime);
+            const withinRenderedPage = Number.isFinite(firstTime) && Number.isFinite(lastTime)
+                && nativeCursorTime >= firstTime && nativeCursorTime <= lastTime;
+
+            if (!withinRenderedPage && page && page.totalRowCount > page.returnedRowCount) {
+                // The visible range is capped AND the cursor is outside
+                // what this page covers -- reposition via a fresh,
+                // cursor-centered fetch rather than guessing.
+                wwSplitFetchEvent(sourceId);
+                return;
+            }
+
+            let bestRow = null;
+            let bestDelta = Infinity;
+            for (const tr of rows) {
+                const t = parseFloat(tr.dataset.nativeTime);
+                if (!Number.isFinite(t)) continue;
+                const delta = Math.abs(t - nativeCursorTime);
+                if (delta < bestDelta) { bestDelta = delta; bestRow = tr; }
+            }
+            if (bestRow) bestRow.classList.add("ww-split-cursor-row");
+        }
+
+        // Split View cursor-correctness fix: the shared entry point every
+        // authoritative cursor-state change (mode toggle on/off,
+        // throttled live-drag tick) calls for a whole Time Group --
+        // refreshes every one of that group's own currently-displayed
+        // Split events, analog or digital-only alike, never keyed off a
+        // specific channel.
+        function wwSplitRefreshCursorSyncForGroup(groupId) {
+            if (shell.activeView !== "split") return;
+            for (const sourceId of wwSplitDisplayedEventSourceIds()) {
+                if (wwTimeGroupIdForDisplaySourceId(sourceId) === groupId) wwSplitRefreshCursorHighlightForSource(sourceId);
+            }
+        }
+
+        // Row click -> move the waveform cursor (task's own "if practical
+        // within the existing architecture" requirement) -- reuses the
+        // EXACT existing per-Time-Group cursor state/overlay/fetch
+        // functions a drag or the mode-toggle button already use, never
+        // a second cursor-placement mechanism. Deliberately turns cursor
+        // mode ON for this event's own group if it was off (a click on a
+        // specific row is an unambiguous request to see that instant's
+        // values -- silently doing nothing would make the click feel
+        // broken); never pans/zooms the waveform itself (task's own
+        // explicit "no continuous bidirectional scroll/view
+        // synchronization" guardrail -- this is a single discrete
+        // placement, not a following/tracking behavior).
+        function wwSplitHandleRowClick(sourceId, nativeTime) {
+            const groupId = wwTimeGroupIdForDisplaySourceId(sourceId);
+            if (groupId === null) return;
+            const workspaceTime = wwSourceTimeToWorkspaceTime(sourceId, nativeTime);
+            if (!wwTimeGroupCursorState(groupId).enabled) wwToggleMeasurementCursors(groupId);
+            const entry = wwEnsureTimeGroupCursorStateEntry(groupId);
+            entry.a.time = workspaceTime;
+            entry.a.visible = true;
+            wwUpdateCursorOverlayForGroup(groupId);
+            wwFetchAllCursorValuesForGroup(groupId);
+            // Must run AFTER entry.a.time is set to the clicked row's own
+            // time -- wwToggleMeasurementCursors() above (when it just
+            // turned cursor mode on) already ran this same sync once
+            // against its own default 1/3-span init position, which
+            // entry.a.time immediately overwrote.
+            wwSplitRefreshCursorSyncForGroup(groupId);
+        }
+
+        document.getElementById("wwSplitTablePane").addEventListener("click", (event) => {
+            const row = event.target.closest("tr[data-native-time]");
+            if (!row) return;
+            const section = event.target.closest(".ww-split-event-section");
+            if (!section) return;
+            const nativeTime = parseFloat(row.dataset.nativeTime);
+            if (!Number.isFinite(nativeTime)) return;
+            wwSplitHandleRowClick(section.dataset.sourceId, nativeTime);
+        });
 
         // The whole-sidebar sweep -- used only for the infrequent,
         // workspace-wide transitions (cursor mode OFF, an individual
@@ -24123,6 +24783,13 @@
                 return;
             }
             wwFetchAllCursorValuesForGroup(groupId);
+            // Split View cursor-correctness fix: reuses this SAME
+            // ~50ms leading+trailing throttle (never a second one) so a
+            // fast cursor drag can never flood the Split table pane's
+            // own fetches any more than it already floods the analog
+            // cursor-value fetch above. Independent of channel kind --
+            // covers a digital-only event exactly like an analog one.
+            wwSplitRefreshCursorSyncForGroup(groupId);
             wwCursorValuesThrottleTimers.set(groupId, setTimeout(() => {
                 wwCursorValuesThrottleTimers.delete(groupId);
                 if (wwCursorValuesThrottlePending.get(groupId)) {
@@ -25485,6 +26152,30 @@
             max: SHELL_WORKSPACE_SIDEBAR_MAX_WIDTH,
             defaultWidth: SHELL_WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
             storageKey: SHELL_WORKSPACE_SIDEBAR_WIDTH_STORAGE_KEY,
+            onResize: wwResizeAllVisiblePlots,
+        });
+
+        // Split View UX V1: this codebase's own architecture already
+        // anticipated this exact second call (see
+        // shellCreateHorizontalSplit()'s own comment above) -- the
+        // table pane is the resized panel (mirroring how
+        // #workspaceSidebar itself is the resized panel above, with
+        // Main Workspace filling the remainder); Waveform fills
+        // whatever space remains via its own `flex: 1 1 auto`,
+        // unchanged. No storageKey (see SHELL_SPLIT_TABLE_PANE_DEFAULT_
+        // WIDTH's own comment for why). `invert: true` because the
+        // divider sits BEFORE its own resized panel here
+        // (`[Waveform][divider][Table pane]`), the mirror image of the
+        // Workspace Sidebar's `[Sidebar][divider][Main Workspace]` --
+        // see that option's own comment on shellCreateHorizontalSplit()
+        // for the empirically-verified reasoning.
+        shellCreateHorizontalSplit({
+            handleEl: document.getElementById("wwSplitDivider"),
+            panelEl: document.getElementById("wwSplitTablePane"),
+            min: SHELL_SPLIT_TABLE_PANE_MIN_WIDTH,
+            max: SHELL_SPLIT_TABLE_PANE_MAX_WIDTH,
+            defaultWidth: SHELL_SPLIT_TABLE_PANE_DEFAULT_WIDTH,
+            invert: true,
             onResize: wwResizeAllVisiblePlots,
         });
 

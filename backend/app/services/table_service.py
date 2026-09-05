@@ -53,7 +53,10 @@ import math
 from dataclasses import dataclass, field
 from datetime import timedelta
 
+import numpy as np
+
 from app.domain.source import ActiveSource
+from app.services.errors import InvalidTimeRangeError
 from app.services.time_axis_normalization import format_absolute_iso, format_relative_seconds
 
 #: Matches app.services.preparation_preview_service.PREVIEW_DEFAULT_LIMIT/
@@ -95,6 +98,21 @@ class TableRowsResult:
     # canonical value is `None` (JSON `null`) -- never `0`, never a
     # fabricated/interpolated value.
     rows: list[list[object]] = field(default_factory=list)
+    # Split View enhancement (owner-approved): the SAME raw elapsed-
+    # seconds value (this source's own native time axis) already
+    # computed to build each row's own formatted `time` cell above,
+    # additionally exposed here verbatim -- never re-derived, never a
+    # second computation. Aligned 1:1 with `rows`. Purely additive: the
+    # Canonical Table View's own existing frontend consumer ignores this
+    # extra field entirely. Exists because the formatted `time` cell
+    # (a fixed-precision relative string, or a locale-formatted absolute
+    # ISO string) cannot be reliably parsed back into an exact native
+    # elapsed-seconds value -- Split View needs that exact value, both
+    # to match a row against the existing waveform cursor's own
+    # resolved sample time (`extract_cursor_values`'s own nearest-
+    # sample native time) and to convert a clicked row back into a
+    # workspace-time cursor position.
+    row_native_times: list[float] = field(default_factory=list)
 
 
 def _time_column_label(active: ActiveSource) -> str:
@@ -142,7 +160,11 @@ def _safe_int(value: object) -> int | None:
     return None if math.isnan(fval) or math.isinf(fval) else int(fval)
 
 
-def fetch_table_rows(active: ActiveSource, *, offset: int, limit: int) -> TableRowsResult:
+def fetch_table_rows(
+    active: ActiveSource, *, offset: int, limit: int,
+    start_time: float | None = None, end_time: float | None = None,
+    center_time: float | None = None,
+) -> TableRowsResult:
     """Slice EXACTLY `waveform_data.iloc[offset:offset+limit]` -- never
     the plotting endpoint's own point-budget/min-max-envelope reduction
     (task section 11), never a full-record copy (task section 42):
@@ -162,22 +184,95 @@ def fetch_table_rows(active: ActiveSource, *, offset: int, limit: int) -> TableR
     seconds relative to the record's own native origin), optionally
     recombined with the source's own `start_time` for absolute display,
     never a t0-shifted or otherwise workspace-adjusted value.
+
+    Split View enhancement (owner-approved): `start_time`/`end_time` are
+    an OPTIONAL, additive time-window filter over this SAME source-
+    native elapsed-seconds axis -- the identical convention
+    `app.services.waveform_service.extract_waveform_range`/
+    `extract_cursor_values` already use for their own `start_time`/
+    `end_time` parameters, never a third, competing time convention.
+    When given, `offset`/`limit` apply WITHIN the time-filtered window
+    (offset 0 is the window's own first matching row, never the
+    source's row 0), so ordinary pagination math still works unchanged
+    for a narrowed window; `total_row_count` becomes the window's own
+    row count. Omitting both leaves this function's own pre-existing
+    whole-source-offset behavior byte-for-byte unchanged (Canonical
+    Table View, DEC-079, never touches these parameters). Raises
+    `InvalidTimeRangeError` for `start_time > end_time`, mirroring
+    `extract_waveform_range`'s own validation exactly.
+
+    Split View cursor-correctness fix (owner-approved): `center_time`
+    is a SECOND, independent, OPTIONAL way to choose `offset` -- when
+    given, the caller's own `offset` argument is ignored and REPLACED
+    with the offset that puts the row nearest `center_time` (by exact
+    elapsed-seconds distance, never row-number/index guessing) as close
+    to the middle of the returned page as the window's own edges allow.
+    Exists so a bounded page can always be repositioned to genuinely
+    CONTAIN whichever sample the waveform cursor currently points to,
+    without ever fetching/rendering the entire (possibly huge) visible
+    range just to answer "where is the cursor" -- see
+    `app.api.v1.sources.get_source_table`'s own docstring for the full
+    Split View rationale. Still fully backward compatible: omitted by
+    every existing caller (Canonical Table View, and Split View's own
+    non-cursor fetches), and has zero effect when `total == 0`.
     """
+    if start_time is not None and end_time is not None and start_time > end_time:
+        raise InvalidTimeRangeError(
+            f"start_time ({start_time}) must not be greater than end_time ({end_time})."
+        )
+
     df = active.record.waveform_data
-    total = len(df)
-    page = df.iloc[offset : offset + limit] if offset < total else df.iloc[0:0]
+    window_start_row = 0
+    window_end_row = len(df)
+    time_array = None
+    if start_time is not None or end_time is not None or center_time is not None:
+        time_array = df["time"].to_numpy()
+    if start_time is not None or end_time is not None:
+        if start_time is not None:
+            window_start_row = int(np.searchsorted(time_array, start_time, side="left"))
+        if end_time is not None:
+            window_end_row = int(np.searchsorted(time_array, end_time, side="right"))
+        window_end_row = max(window_start_row, window_end_row)
+
+    total = window_end_row - window_start_row
+
+    if center_time is not None and total > 0:
+        # Nearest-by-VALUE, never nearest-by-index: searchsorted only
+        # gives an insertion point (the first row >= center_time), which
+        # is frequently NOT the closer of its two neighbors, especially
+        # under irregular sampling (task's own explicit "different
+        # sample intervals" scenario) -- both neighbors are compared by
+        # actual elapsed-seconds distance and the closer one wins.
+        windowed = time_array[window_start_row:window_end_row]
+        insertion = int(np.searchsorted(windowed, center_time, side="left"))
+        candidates = [i for i in (insertion - 1, insertion) if 0 <= i < len(windowed)]
+        nearest_local = min(candidates, key=lambda i: abs(float(windowed[i]) - center_time))
+        # Center the returned PAGE on the nearest row, clamped so the
+        # page never runs past either edge of the window -- the same
+        # "never fetch outside the intended visible range" guarantee
+        # start_time/end_time already provide.
+        offset = max(0, min(nearest_local - limit // 2, max(0, total - limit)))
+    page_start = window_start_row + offset
+    page_stop = min(page_start + limit, window_end_row)
+    page = df.iloc[page_start:page_stop] if offset < total else df.iloc[0:0]
 
     columns = build_table_columns(active)
     time_is_absolute = active.metadata.timing_reference == "absolute" and active.metadata.start_time is not None
-    start_time = active.metadata.start_time
+    # Renamed from the parameter's own `start_time` (this source's
+    # absolute wall-clock ORIGIN, unrelated to the caller's optional
+    # time-WINDOW filter above) to avoid shadowing it -- purely an
+    # internal disambiguation, never part of this function's signature.
+    record_start_time = active.metadata.start_time
 
     column_arrays = {col.key: page[col.key].to_numpy() for col in columns}
     row_count = len(page)
     rows: list[list[object]] = []
+    row_native_times: list[float] = []
     for i in range(row_count):
         elapsed = float(column_arrays["time"][i])
+        row_native_times.append(elapsed)
         if time_is_absolute:
-            time_cell: object = format_absolute_iso(start_time + timedelta(seconds=elapsed))
+            time_cell: object = format_absolute_iso(record_start_time + timedelta(seconds=elapsed))
         else:
             time_cell = format_relative_seconds(elapsed)
         row: list[object] = [time_cell]
@@ -194,4 +289,5 @@ def fetch_table_rows(active: ActiveSource, *, offset: int, limit: int) -> TableR
         total_row_count=total,
         columns=columns,
         rows=rows,
+        row_native_times=row_native_times,
     )

@@ -42,6 +42,14 @@ class SourceTableOut(BaseModel):
     total_row_count: int
     columns: list[TableColumnOut]
     rows: list[list[float | int | str | None]]
+    # Split View enhancement (owner-approved): the exact native elapsed-
+    # seconds value each row's own formatted `time` cell was derived
+    # from, aligned 1:1 with `rows` -- see
+    # `app.services.table_service.TableRowsResult.row_native_times`'s
+    # own docstring for why this exists (the formatted cell alone cannot
+    # be reliably parsed back). Purely additive; ignored by the existing
+    # Canonical Table View frontend consumer.
+    row_native_times: list[float]
 
     @classmethod
     def from_result(cls, result: TableRowsResult) -> "SourceTableOut":
@@ -59,4 +67,5 @@ class SourceTableOut(BaseModel):
                 for col in result.columns
             ],
             rows=result.rows,
+            row_native_times=result.row_native_times,
         )
