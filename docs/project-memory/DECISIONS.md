@@ -11491,6 +11491,158 @@ conversion and base configuration; and an existing COMTRADE source's
 own Per-Unit behavior is unaffected -- all with zero console/page
 errors.
 
+## DEC-081 — CSV/Excel absolute-time support extended to minute-resolution 24-hour time-of-day and explicit AM/PM hour-only time, plus fixed-duration elapsed units (minutes/hours/days/weeks); bare hour-only, date-only/week-only/month-only/year-only absolute time, elapsed months/years, and the existing ISO reduced-precision fast-path gap all remain explicitly out of scope
+
+Date: 2026-09-05
+Status: Approved
+Source: explicit project-owner enhancement request ("Add Minute/AM-PM
+Hour Absolute Time Support + Fixed-Duration Elapsed Units"), following
+directly from the prior investigation task ("CSV/Excel Absolute
+Datetime Format Coverage") that found `_TIME_PATTERNS` in
+`app/services/time_axis_interpreters.py` had no minute-resolution
+24-hour pattern (`%H:%M`) -- an asymmetry, since the 12-hour
+minute-only form (`%I:%M %p`) already worked -- and that
+`KNOWN_ELAPSED_UNITS` supported only seconds/milliseconds/microseconds/
+nanoseconds, with no fixed-duration minutes/hours/days/weeks despite
+the conversion mechanism trivially supporting them.
+
+Decision:
+
+**Implemented** (owner-approved, this task):
+
+- Absolute time-of-day pattern `%H:%M` (24-hour, minute resolution --
+  the exact reported bug: `"3/6/2026 17:25"` was previously
+  unparseable).
+- Absolute time-of-day patterns `%I %p` / `%I%p` (explicit AM/PM
+  hour-only, e.g. `1pm`, `2am`, `1 PM`, `2 AM` -- case-insensitive,
+  with or without a space, per Python's own `%p` matching).
+- Elapsed numeric units `minutes` (60 s), `hours` (3600 s), `days`
+  (86400 s), `weeks` (604800 s) -- fixed, deterministic multipliers,
+  added to `KNOWN_ELAPSED_UNITS` (`app/domain/time_axis.py`) and
+  `_ELAPSED_UNIT_SECONDS_FACTOR` (`app/services/time_axis_
+  interpreters.py`).
+- Frontend elapsed-unit selector
+  (`#wwDataPrepTimeAxisElapsedUnitSelect`) gains the four new options.
+
+**Explicitly NOT implemented** (deferred or rejected, separate policy
+discussion required before any future work in these areas):
+
+- Bare 24-hour hour-only absolute time (e.g. `"2026-06-03 17"` with no
+  minutes) -- deliberately excluded from `_TIME_PATTERNS`: a lone `%H`
+  pattern would be too permissive (risks silently matching a truncated
+  or malformed value) and was never part of the reported bug.
+- Absolute date-only, day-only, week-only, month-only, or year-only
+  time axes -- no pattern added for any of these; a bounded sample with
+  no time-of-day component at all stays outside this deterministic
+  interpreter's scope.
+- Elapsed `months`/`years` -- structurally excluded, not merely
+  deferred: unlike minutes/hours/days/weeks, a calendar month or year
+  has no single fixed-seconds factor (28-31 days; 365-366 days), and
+  `elapsed_numeric`'s own "never invent an anchor date" contract means
+  it has no calendar reference a variable-length unit could be resolved
+  against.
+- Any redesign of the precision-provenance model, or of the existing
+  ISO-8601 reduced-precision gap (Python 3.13's `datetime.fromisoformat()`
+  silently accepting date-only/week-only/hour-only ISO strings via the
+  `_parse_iso()` fast-path with `confidence: high` and zero diagnostics)
+  -- confirmed still present and UNCHANGED by this task; only the DMY/
+  MDY/YMD `_TIME_PATTERNS`/`_DATE_PATTERNS_BY_ORDER` tables were
+  touched, never the separate ISO fast-path, so this enhancement could
+  not have narrowed or widened that pre-existing, separately-tracked
+  gap either way.
+
+**Safety proof for the new patterns**: `datetime.strptime`'s
+full-string-match strictness (verified directly:
+`strptime("17:25:30", "%H:%M")` and `strptime("1:00 pm", "%I%p")` both
+raise `ValueError`, "unconverted data remains") means a new, less-
+specific pattern can never accidentally shadow a string that should
+match a more-specific existing pattern -- full-second and fractional-
+second values, and minute-resolution 12-hour-with-AM/PM values, are
+provably unaffected.
+
+**Shared pattern table, zero duplication**: `_TIME_PATTERNS` is the
+ONE table consumed by both the single-column `absolute_datetime`
+interpreter and the split-column `detect_split_date_time()`'s own Time-
+column check -- both extended identically by construction, never a
+second parser.
+
+**Date-order ambiguity policy is completely unchanged**: "ambiguity by
+elimination, not by guessing" still applies verbatim -- a minute-
+resolution `"3/6/2026 17:25"` still requires an explicit `date_order`
+choice to resolve DMY-vs-MDY ambiguity; this enhancement only extended
+which TIME patterns can match, an orthogonal axis confirmed empirically
+unaffected.
+
+Reason:
+
+The reported bug (a genuine, real-world minute-resolution CSV export
+failing to parse) was a narrow, well-understood gap with a provably
+safe fix (an additional bounded, deterministic `strptime` pattern with
+no ambiguity risk against existing patterns). The owner scoped the
+enhancement narrowly to this fix plus the closely-related, equally safe
+AM/PM-hour-only and fixed-duration-elapsed-unit additions, while
+explicitly declining to fold in the separate, larger, and structurally
+different bare-hour-only/date-only/calendar-unit/ISO-reduced-precision
+questions the investigation had also surfaced -- each of those needs
+its own dedicated policy discussion (e.g. how permissive an hour-only
+match should be, whether/how a calendar-variable unit could ever be
+represented without an anchor) rather than being decided implicitly as
+a side effect of fixing the reported bug.
+
+Alternatives considered:
+
+Also adding bare 24-hour hour-only support (rejected for this task --
+a lone `%H` pattern was judged too permissive without further design
+discussion on how to bound it safely; not part of the reported bug).
+Also adding absolute date-only/week-only/month-only/year-only support
+(rejected -- a materially larger design question about what a
+dateless or timeless "absolute" reading even means, deferred to a
+separate policy discussion). Approximating elapsed months/years with an
+average-seconds constant, e.g. 30.44 days/month (rejected outright --
+would silently misrepresent real calendar timing, violating this
+interpreter's own "never invent precision that is not there" contract;
+a calendar-variable unit needs an anchor date to be meaningful at all,
+which `elapsed_numeric` deliberately never has). Redesigning the ISO
+reduced-precision fast-path in the same task (rejected -- out of scope
+per the owner's own explicit boundary; remains a separately-tracked,
+already-known gap, to be addressed on its own via Change Governance).
+
+Impact:
+
+Backend: `app/domain/time_axis.py` -- new `UNIT_MINUTES`, `UNIT_HOURS`,
+`UNIT_DAYS`, `UNIT_WEEKS`; `KNOWN_ELAPSED_UNITS` extended from 4 to 8
+members. `app/services/time_axis_interpreters.py` -- `_TIME_PATTERNS`
+extended from 5 to 8 entries (`%H:%M`, `%I %p`, `%I%p`);
+`_ELAPSED_UNIT_SECONDS_FACTOR` extended with the four new fixed
+multipliers (60/3600/86400/604800); stale diagnostic message in
+`detect_elapsed_numeric()` updated to list all 8 units. Frontend:
+`frontend/index.html` -- four new `<option>`s in
+`#wwDataPrepTimeAxisElapsedUnitSelect` (Minutes/Hours/Days/Weeks),
+appended after the existing options, excluding months/years. Tests: 55
+new tests across `test_time_axis_interpreters.py` (single-column
+minute-resolution 24-hour, bare-hour-only-still-unsupported, explicit
+AM/PM hour-only, split Date+Time minute-resolution and AM/PM-hour,
+elapsed-unit acceptance and preview conversion), `test_time_axis_
+service.py` (end-to-end configured-time for the reported bug and
+AM/PM-hour, fixed-duration-unit acceptance, calendar-unit rejection),
+`test_readiness_service.py` (minute-resolution and AM/PM-hour
+readiness, including the exact reported ambiguous case still correctly
+blocking until an explicit `date_order`), and `test_preparation_
+export_service.py` (minute-resolution and AM/PM-hour export, fixed-
+duration-unit export, and export/re-upload round trips for all three).
+Full backend suite: 3094 passed, 0 failed (baseline immediately before
+this task: 3039 passed -- exact +55 match). The committed browser
+smoke test (COMTRADE) still passes unchanged. A throwaway (not
+committed, deleted after use) live-browser Playwright UAT covering the
+5 task-specified scenarios passed: the exact reported minute-resolution
+file surfaces DMY-vs-MDY ambiguity and reaches "Ready for Powerwave"
+once `dmy` is explicitly chosen; explicit AM/PM hour-only (`1pm`/`2pm`)
+resolves unambiguously with no date-order prompt; elapsed minutes
+(0/1/2/3 -> 0/60/120/180 s) and elapsed hours/days/weeks each reach
+Ready; and an exported minute-resolution source, re-uploaded as a new
+source, is recognized unambiguously with no repeated date-order choice
+needed. Not committed, not pushed (per explicit instruction).
+
 ---
 
 ## How to add a decision

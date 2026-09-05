@@ -265,6 +265,35 @@ class TestAbsoluteTimeExport:
         session = prep.get(WS, sid)
         assert session.raw_bytes == content
 
+    def test_reported_minute_resolution_exports_zero_seconds(self):
+        # Enhancement (minute/AM-PM-hour absolute time support): the
+        # exact owner-reported example -- task section V's own worked
+        # example.
+        prep = PreparationSessionRegistry()
+        content = b"3/6/2026 17:25,1.0\n3/6/2026 17:26,2.0\n3/6/2026 17:27,3.0\n"
+        sid = _add_csv(prep, content)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_absolute(prep, sid, column_index=0, date_order="dmy")
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
+        rows = _read_csv_rows(_unzip(result.content))
+
+        assert [r[0] for r in rows[1:]] == [
+            "2026-06-03T17:25:00.000", "2026-06-03T17:26:00.000", "2026-06-03T17:27:00.000",
+        ]
+
+    def test_explicit_am_pm_hour_only_exports_canonical_24h(self):
+        # Task section W's own worked example.
+        prep = PreparationSessionRegistry()
+        content = b"2026-06-03 1pm,1.0\n2026-06-03 2pm,2.0\n"
+        sid = _ready_absolute_source(prep, content)
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
+        rows = _read_csv_rows(_unzip(result.content))
+
+        assert [r[0] for r in rows[1:]] == ["2026-06-03T13:00:00.000", "2026-06-03T14:00:00.000"]
+
 
 class TestTimezoneExport:
     def test_real_offset_preserved(self):
@@ -348,6 +377,28 @@ class TestElapsedTimeExport:
         rows = _read_csv_rows(_unzip(result.content))
 
         assert [r[0] for r in rows[1:]] == ["0.000", "0.020"]
+
+    @pytest.mark.parametrize(
+        "unit, values, expected",
+        [
+            ("minutes", ["0", "1", "2"], ["0.000", "60.000", "120.000"]),
+            ("hours", ["0", "1", "2"], ["0.000", "3600.000", "7200.000"]),
+            ("days", ["0", "1"], ["0.000", "86400.000"]),
+            ("weeks", ["0", "0.5"], ["0.000", "302400.000"]),
+        ],
+    )
+    def test_fixed_duration_units_normalized_to_seconds(self, unit, values, expected):
+        prep = PreparationSessionRegistry()
+        content = "".join(f"{v},{i}.0\n" for i, v in enumerate(values)).encode()
+        sid = _add_csv(prep, content)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_elapsed(prep, sid, unit=unit)
+
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
+        rows = _read_csv_rows(_unzip(result.content))
+
+        assert [r[0] for r in rows[1:]] == expected
 
 
 class TestSampleIndexTimeExport:
@@ -878,6 +929,85 @@ class TestReUploadRoundTrip:
         # no interval/rate re-entry required (unlike the ORIGINAL
         # sample-index source, which had none at all).
         assert preview.family == "elapsed"
+
+    def test_minute_resolution_export_recognized_unambiguously_on_reupload(self):
+        # Enhancement (minute/AM-PM-hour absolute time support), task
+        # section AG: the exact owner-reported minute-resolution example,
+        # once resolved and exported, must be self-describing on re-upload.
+        prep = PreparationSessionRegistry()
+        content = b"3/6/2026 17:25,1.0\n3/6/2026 17:26,2.0\n3/6/2026 17:27,3.0\n"
+        sid = _add_csv(prep, content)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_absolute(prep, sid, column_index=0, date_order="dmy")
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
+        csv_bytes = _read_csv_rows(_unzip(result.content))
+        assert [r[0] for r in csv_bytes[1:]] == [
+            "2026-06-03T17:25:00.000", "2026-06-03T17:26:00.000", "2026-06-03T17:27:00.000",
+        ]
+        raw_csv_bytes = _unzip(result.content).read(next(n for n in _unzip(result.content).namelist() if n.endswith(".csv")))
+
+        sid2 = _add_csv(prep, raw_csv_bytes, filename="reuploaded.csv")
+        set_header_row(workspace_id=WS, source_id=sid2, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid2, start_row=2, end_row=4, registry=prep)
+        _mark_time_axis(prep, sid2, 0)
+        preview = interpret_time_axis(
+            workspace_id=WS, source_id=sid2, column_indices=(0,), interpreter_id="absolute_datetime", registry=prep,
+        )
+
+        assert preview.family == "absolute"
+        assert not any(d.code == "ambiguous_date_order" for d in preview.diagnostics)
+
+    def test_am_pm_hour_only_export_recognized_on_reupload(self):
+        prep = PreparationSessionRegistry()
+        content = b"2026-06-03 1pm,1.0\n2026-06-03 2pm,2.0\n"
+        sid = _ready_absolute_source(prep, content)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
+        rows = _read_csv_rows(_unzip(result.content))
+        assert [r[0] for r in rows[1:]] == ["2026-06-03T13:00:00.000", "2026-06-03T14:00:00.000"]
+        raw_csv_bytes = _unzip(result.content).read(next(n for n in _unzip(result.content).namelist() if n.endswith(".csv")))
+
+        sid2 = _add_csv(prep, raw_csv_bytes, filename="reuploaded.csv")
+        set_header_row(workspace_id=WS, source_id=sid2, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid2, start_row=2, end_row=3, registry=prep)
+        _mark_time_axis(prep, sid2, 0)
+        preview = interpret_time_axis(
+            workspace_id=WS, source_id=sid2, column_indices=(0,), interpreter_id="absolute_datetime", registry=prep,
+        )
+
+        assert preview.family == "absolute"
+        assert not any(d.code == "ambiguous_date_order" for d in preview.diagnostics)
+
+    @pytest.mark.parametrize("unit, values", [
+        ("minutes", ["0", "1", "2"]),
+        ("hours", ["0", "1", "2"]),
+        ("days", ["0", "1"]),
+        ("weeks", ["0", "0.5"]),
+    ])
+    def test_fixed_duration_elapsed_units_export_recognized_on_reupload(self, unit, values):
+        prep = PreparationSessionRegistry()
+        content = "".join(f"{v},{i}.0\n" for i, v in enumerate(values)).encode()
+        sid = _add_csv(prep, content)
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        _confirm_elapsed(prep, sid, unit=unit)
+        result = export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
+        raw_csv_bytes = _unzip(result.content).read(next(n for n in _unzip(result.content).namelist() if n.endswith(".csv")))
+
+        sid2 = _add_csv(prep, raw_csv_bytes, filename="reuploaded.csv")
+        set_header_row(workspace_id=WS, source_id=sid2, row_number=1, registry=prep)
+        set_data_region(workspace_id=WS, source_id=sid2, start_row=2, end_row=1 + len(values), registry=prep)
+        _mark_time_axis(prep, sid2, 0)
+        preview = interpret_time_axis(
+            workspace_id=WS, source_id=sid2, column_indices=(0,), interpreter_id="elapsed_numeric",
+            unit="seconds", registry=prep,
+        )
+
+        # The re-exported "Time (s)" column is already normalized to
+        # plain elapsed seconds -- the original unit choice need not be
+        # remembered or re-entered on re-upload.
+        assert preview.family == "elapsed"
+        assert not any(d.ambiguity == "ambiguous" for d in preview.diagnostics)
 
 
 # ---- 2026-09-04 UAT enhancement: manifest/provenance is optional ----

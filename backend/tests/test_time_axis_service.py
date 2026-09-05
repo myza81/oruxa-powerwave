@@ -1097,6 +1097,41 @@ class TestElapsedNumericSetAndGet:
                 interpreter_id=INTERPRETER_ID_ELAPSED_NUMERIC, registry=registry,
             )
 
+    # Enhancement (fixed-duration elapsed units): minutes/hours/days/weeks
+    # are now valid, end to end through the real service-layer validation
+    # (not just the pure interpreter function -- see
+    # test_time_axis_interpreters.py's own TestElapsedNumericUnits for
+    # that level).
+    @pytest.mark.parametrize("unit", ["minutes", "hours", "days", "weeks"])
+    def test_new_fixed_duration_units_accepted(self, unit):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"0\n1\n2\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        result = set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,), unit=unit,
+            interpreter_id=INTERPRETER_ID_ELAPSED_NUMERIC, confirmed=True, registry=registry,
+        )
+
+        assert result.status == STATUS_CONFIRMED
+        assert result.unit == unit
+
+    # Enhancement scope boundary (task section R): months/years must
+    # stay rejected -- no fixed-seconds factor exists for either, and
+    # this task deliberately does not invent an approximation (e.g.
+    # "30 days") for them.
+    @pytest.mark.parametrize("unit", ["months", "years"])
+    def test_calendar_units_remain_rejected(self, unit):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"0\n1\n2\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        with pytest.raises(InvalidTimeAxisConfigurationError):
+            set_time_axis_configuration(
+                workspace_id="ws-1", source_id=source_id, column_indices=(0,), unit=unit,
+                interpreter_id=INTERPRETER_ID_ELAPSED_NUMERIC, registry=registry,
+            )
+
     def test_manual_interpreter_unit_field_stays_open_ended(self):
         # The elapsed_numeric-specific unit-set validation must never
         # leak into `manual`'s own deliberately open-ended `unit` field.
@@ -1873,6 +1908,48 @@ class TestConfiguredTimeAbsolute:
         assert preview.rows[0].cells[0] == "2026-08-31 13:00:00"
 
 
+class TestConfiguredTimeMinuteResolutionAndAmPmHour:
+    """Enhancement (minute/AM-PM-hour absolute time support): the exact
+    owner-reported bug, verified end to end through configuration ->
+    Configured Time preview, not just the pure interpreter function."""
+
+    def test_reported_24h_minute_resolution_after_explicit_date_order(self):
+        registry = PreparationSessionRegistry()
+        content = b"3/6/2026 17:25,1.0\n3/6/2026 17:26,2.0\n3/6/2026 17:27,3.0\n"
+        source_id = _add_csv(registry, content)
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, options={"date_order": "dmy"}, confirmed=True,
+            registry=registry,
+        )
+
+        computed = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert computed.family == FAMILY_ABSOLUTE
+        assert computed.values_by_row_number == {
+            1: "2026-06-03T17:25:00.000", 2: "2026-06-03T17:26:00.000", 3: "2026-06-03T17:27:00.000",
+        }
+
+    def test_explicit_am_pm_hour_only(self):
+        registry = PreparationSessionRegistry()
+        content = b"2026-06-03 1pm,1.0\n2026-06-03 2pm,2.0\n2026-06-03 3pm,3.0\n"
+        source_id = _add_csv(registry, content)
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_ABSOLUTE_DATETIME, confirmed=True, registry=registry,
+        )
+
+        computed = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert computed.values_by_row_number == {
+            1: "2026-06-03T13:00:00.000", 2: "2026-06-03T14:00:00.000", 3: "2026-06-03T15:00:00.000",
+        }
+
+
 class TestConfiguredTimeElapsed:
     def test_relative_to_first_active_row(self):
         # Task section W's own worked example.
@@ -1890,6 +1967,24 @@ class TestConfiguredTimeElapsed:
 
         assert computed.column_name == "Time (s)"
         assert computed.values_by_row_number == {1: "0.000", 2: "0.020", 3: "0.040"}
+
+    def test_minutes_unit_normalizes_to_canonical_seconds(self):
+        # Enhancement (fixed-duration elapsed units), task section U/X:
+        # 1 elapsed minute apart -> exactly 60.000 canonical seconds
+        # apart -- never approximated, never coupled to any calendar.
+        registry = PreparationSessionRegistry()
+        content = b"0,1.0\n1,2.0\n2,3.0\n"
+        source_id = _add_csv(registry, content)
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_ELAPSED_NUMERIC, unit="minutes", confirmed=True, registry=registry,
+        )
+
+        computed = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert computed.values_by_row_number == {1: "0.000", 2: "60.000", 3: "120.000"}
 
 
 class TestConfiguredTimeSampleIndex:

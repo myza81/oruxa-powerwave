@@ -229,7 +229,26 @@ UNIT_SECONDS = "seconds"
 UNIT_MILLISECONDS = "milliseconds"
 UNIT_MICROSECONDS = "microseconds"
 UNIT_NANOSECONDS = "nanoseconds"
-KNOWN_ELAPSED_UNITS = (UNIT_SECONDS, UNIT_MILLISECONDS, UNIT_MICROSECONDS, UNIT_NANOSECONDS)
+#: Enhancement (fixed-duration elapsed units, owner-approved scope):
+#: minutes/hours/days/weeks are all FIXED-duration units (60/3600/
+#: 86400/604800 seconds respectively -- see
+#: `app.services.time_axis_interpreters._ELAPSED_UNIT_SECONDS_FACTOR`
+#: for the actual conversion factors) needing no calendar anchor,
+#: unlike a month or year (variable length -- 28-31 days, 365-366 days
+#: -- with no single fixed-seconds factor). Months/years are
+#: deliberately NOT added here and never will be under this same
+#: fixed-multiplier model; a calendar-aware elapsed unit would need a
+#: genuine anchor DATE this interpreter never has (`elapsed_numeric`'s
+#: own "no invented absolute time" contract), so it is a structurally
+#: different, separate feature, not an extension of this tuple.
+UNIT_MINUTES = "minutes"
+UNIT_HOURS = "hours"
+UNIT_DAYS = "days"
+UNIT_WEEKS = "weeks"
+KNOWN_ELAPSED_UNITS = (
+    UNIT_SECONDS, UNIT_MILLISECONDS, UNIT_MICROSECONDS, UNIT_NANOSECONDS,
+    UNIT_MINUTES, UNIT_HOURS, UNIT_DAYS, UNIT_WEEKS,
+)
 
 #: Diagnostic codes the Slice 8B deterministic interpreters may produce
 #: (§C/§J). `DIAGNOSTIC_MISSING_ELAPSED_UNIT` is the ONE Slice 8B

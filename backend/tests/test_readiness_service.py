@@ -315,6 +315,72 @@ class TestTimeAxisBlocking:
         assert _by_code(summary, "timestamp_reset_suspected").severity == SEVERITY_BLOCKING
 
 
+class TestMinuteResolutionReadiness:
+    """Enhancement (minute/AM-PM-hour absolute time support), task
+    section T/AF: a valid, strictly-increasing minute-resolution
+    absolute timeline is Ready like any other resolved absolute
+    timeline -- no special warning solely because seconds were
+    omitted, and readiness policy for an unresolved date order is
+    unchanged."""
+
+    def test_unambiguous_minute_resolution_timeline_is_ready(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"31/08/2026 17:25,1.0\n31/08/2026 17:26,2.0\n31/08/2026 17:27,3.0\n")
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id="absolute_datetime", confirmed=True, registry=registry,
+        )
+
+        summary = _issues(registry, source_id)
+        assert summary.is_ready is True
+        assert summary.blocking_count == 0
+
+    def test_ambiguous_minute_resolution_date_order_still_blocks(self):
+        # The exact owner-reported example -- minute resolution parsing
+        # now succeeds, but ambiguous DMY/MDY must still block readiness
+        # until the user explicitly resolves it (unchanged policy).
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"3/6/2026 17:25,1.0\n3/6/2026 17:26,2.0\n3/6/2026 17:27,3.0\n")
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id="absolute_datetime", registry=registry,
+        )
+
+        summary = _issues(registry, source_id)
+        assert ISSUE_TIME_AXIS_UNRESOLVED in _codes(summary)
+        assert summary.is_ready is False
+
+    def test_ambiguous_minute_resolution_resolved_by_explicit_date_order_is_ready(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"3/6/2026 17:25,1.0\n3/6/2026 17:26,2.0\n3/6/2026 17:27,3.0\n")
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id="absolute_datetime", options={"date_order": "dmy"}, confirmed=True, registry=registry,
+        )
+
+        summary = _issues(registry, source_id)
+        assert summary.is_ready is True
+
+    def test_explicit_am_pm_hour_only_timeline_is_ready(self):
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"2026-06-03 1pm,1.0\n2026-06-03 2pm,2.0\n2026-06-03 3pm,3.0\n")
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id="absolute_datetime", confirmed=True, registry=registry,
+        )
+
+        summary = _issues(registry, source_id)
+        assert summary.is_ready is True
+
+
 class TestTimeAxisWarnings:
     def test_reconstructed_accepted_is_warning_and_ready(self):
         registry = PreparationSessionRegistry()

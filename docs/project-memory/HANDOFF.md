@@ -4,9 +4,90 @@ Short, current-state continuation note for the next agent/session. This
 document is replaced/updated in place, not appended to indefinitely — Git
 history already provides the detailed historical trail.
 
-Last updated: **2026-09-04**
+Last updated: **2026-09-05**
 
 ## What was most recently done
+
+**Enhancement — Add Minute/AM-PM Hour Absolute Time Support + Fixed-
+Duration Elapsed Units (implemented, DEC-081).** Follows directly from
+a prior-session investigation ("CSV/Excel Absolute Datetime Format
+Coverage") that found two real gaps in `app/services/time_axis_
+interpreters.py`: `_TIME_PATTERNS` (the ONE shared pattern table both
+`absolute_datetime` and split-column `detect_split_date_time()` use)
+had no 24-hour minute-resolution pattern at all -- the exact reported
+bug, `"3/6/2026 17:25"` was unparseable, even though the 12-hour
+minute-only form (`%I:%M %p`) already worked -- and `KNOWN_ELAPSED_
+UNITS` (`app/domain/time_axis.py`) supported only seconds/milliseconds/
+microseconds/nanoseconds, with no fixed-duration minutes/hours/days/
+weeks despite `_ELAPSED_UNIT_SECONDS_FACTOR` trivially supporting them.
+
+**Owner-approved scope, implemented**: `%H:%M` (24-hour minute
+resolution) and explicit AM/PM hour-only (`%I %p`/`%I%p`, e.g. `1pm`,
+`2am`, case-insensitive, with or without a space) added to
+`_TIME_PATTERNS`; elapsed `minutes`(60s)/`hours`(3600s)/`days`(86400s)/
+`weeks`(604800s) added to `KNOWN_ELAPSED_UNITS` and
+`_ELAPSED_UNIT_SECONDS_FACTOR` with fixed, deterministic multipliers;
+frontend `#wwDataPrepTimeAxisElapsedUnitSelect` gained the four new
+options.
+
+**Explicitly NOT implemented** (separate policy discussion required,
+see DEC-081 for the full boundary): bare 24-hour hour-only (a lone
+`%H` pattern, judged too permissive without further design), absolute
+date-only/day-only/week-only/month-only/year-only support, and elapsed
+`months`/`years` (structurally excluded -- no fixed-seconds factor
+exists for a calendar-variable unit, and `elapsed_numeric`'s own
+"never invent an anchor date" contract means it has no calendar
+reference such a unit could ever be resolved against). The pre-
+existing ISO-8601 reduced-precision fast-path gap
+(`datetime.fromisoformat()` silently accepting date-only/week-only ISO
+strings with `confidence: high` and zero diagnostics) was confirmed
+still present and UNCHANGED -- only the DMY/MDY/YMD pattern tables
+were touched, never that separate ISO fast-path.
+
+**Safety proof**: `strptime`'s full-string-match strictness (verified
+directly -- `strptime("17:25:30", "%H:%M")` and `strptime("1:00 pm",
+"%I%p")` both raise `ValueError`) means the new, less-specific
+patterns can never shadow a string that should match a more-specific
+existing pattern -- every existing supported format (seconds,
+fractional seconds, 12-hour-with-seconds, ISO variants, 2-digit year,
+DMY/MDY/YMD, `/`/`-` separators) is provably unaffected, confirmed by
+the full regression suite passing unchanged. Date-order ambiguity
+policy (elimination first, explicit `date_order` choice second) is
+completely unchanged -- a minute-resolution `"3/6/2026 17:25"` still
+requires an explicit `date_order` choice exactly as a full-second value
+would, confirmed both by a dedicated regression test and by live
+browser UAT.
+
+**Validation**: full backend suite **3094 passed, 0 failed** (baseline
+immediately before this task: 3039 passed -- exact +55 new-test match,
+across `test_time_axis_interpreters.py`, `test_time_axis_service.py`,
+`test_readiness_service.py`, and `test_preparation_export_service.py`).
+The committed browser smoke test (COMTRADE) still passes unchanged. A
+throwaway (not committed, deleted after use) live-browser Playwright
+UAT covering all 5 task-specified scenarios passed: the exact reported
+minute-resolution file surfaces DMY-vs-MDY ambiguity and reaches
+"Ready for Powerwave" once `dmy` is explicitly chosen; explicit AM/PM
+hour-only (`1pm`/`2pm`) resolves unambiguously with no date-order
+prompt; elapsed minutes (0/1/2/3 -> 0/60/120/180 s) and elapsed
+hours/days/weeks each reach Ready; and an exported minute-resolution
+source, re-uploaded as a new source, is recognized unambiguously with
+no repeated date-order choice needed.
+
+**Next step**: no new slice was opened by this enhancement. The
+explicitly-deferred items above (bare hour-only, date-only/week-only/
+month-only/year-only absolute time, elapsed months/years, the ISO
+reduced-precision fast-path) each remain open for a future, separately-
+scoped owner decision.
+
+**Commit status**: not committed — per this task's own explicit closing
+instruction ("Do not commit or push"), the changed files
+(`backend/app/domain/time_axis.py`,
+`backend/app/services/time_axis_interpreters.py`, four backend test
+files, `frontend/index.html`, and this documentation) are normal
+uncommitted working-tree changes pending a separate, explicit commit
+instruction.
+
+## What was done in the prior session — Fix: Data Preparation Metadata Concurrency / Stale Preview Race
 
 **Fix — Data Preparation Metadata Concurrency / Stale Preview Race
 (implemented, no DEC).** A confirmed frontend-only correctness bug fix,

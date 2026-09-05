@@ -230,10 +230,14 @@ from app.domain.time_axis import (
     PROVENANCE_NATIVE,
     PROVENANCE_RECONSTRUCTED,
     PROVENANCE_USER_SPECIFIED,
+    UNIT_DAYS,
+    UNIT_HOURS,
     UNIT_MICROSECONDS,
     UNIT_MILLISECONDS,
+    UNIT_MINUTES,
     UNIT_NANOSECONDS,
     UNIT_SECONDS,
+    UNIT_WEEKS,
     TimeAxisDetectionResult,
     TimeAxisDiagnostic,
 )
@@ -242,12 +246,36 @@ from app.domain.time_axis import (
 #: order (most-specific first) for both the single-column combined
 #: date+time case and the split Date/Time interpreter's own Time
 #: column. Never extended dynamically.
+#:
+#: Enhancement (minute/AM-PM-hour absolute time support, owner-approved
+#: scope): `%H:%M` (24-hour minute resolution, e.g. "17:25") and
+#: `%I %p`/`%I%p` (explicit-AM/PM hour-only, e.g. "1 PM"/"1pm") are
+#: added. Neither can ever shadow a MORE precise existing pattern --
+#: `strptime` requires a full-string match with no leftover characters
+#: (verified directly: `strptime("17:25:30", "%H:%M")` raises
+#: `ValueError: unconverted data remains: :30`; `strptime("1:00 pm",
+#: "%I%p")` raises `ValueError` for the same reason), so a string that
+#: also matches a seconds- or minute-bearing pattern elsewhere in this
+#: table can never ALSO match one of these two new, strictly shorter
+#: patterns. `%p` is matched case-insensitively by Python's own
+#: `_strptime` implementation (verified: "1PM"/"1pm"/"1 PM"/"1 pm" all
+#: parse identically) -- consistent with this table's existing `%p`
+#: entries, not a new case-sensitivity policy. Deliberately NOT added:
+#: a bare 24-hour hour-only pattern (`%H` alone) -- explicit task scope
+#: boundary; a numeric-only hour with no AM/PM marker and no minutes is
+#: judged too easily confused with an unrelated short numeric column
+#: (e.g. `sample_index`-like data) to add without a separate policy
+#: decision, unlike `%I%p`/`%I %p`, which require a literal "am"/"pm"
+#: text marker no numeric-only column could ever produce.
 _TIME_PATTERNS: tuple[str, ...] = (
     "%H:%M:%S.%f",
     "%H:%M:%S",
+    "%H:%M",
     "%I:%M:%S.%f %p",
     "%I:%M:%S %p",
     "%I:%M %p",
+    "%I %p",
+    "%I%p",
 )
 
 #: Bounded, explicit date-only pattern table per candidate order. Both
@@ -1018,11 +1046,22 @@ def build_split_date_time_preview(
 #: place a unit-to-seconds ratio is defined; `interval_seconds`/derived
 #: preview values are always computed through this table, never a second
 #: ad-hoc conversion elsewhere.
+#: Enhancement (fixed-duration elapsed units): minutes/hours/days/weeks
+#: are exact, fixed-duration multipliers -- no calendar involved (a
+#: "day" here is always exactly 86400 seconds, never a calendar day
+#: that might contain a DST transition; this interpreter has no
+#: absolute anchor date to make DST meaningful in the first place, see
+#: `app.domain.time_axis.UNIT_MINUTES`'s own docstring for why months/
+#: years are deliberately excluded from this same table).
 _ELAPSED_UNIT_SECONDS_FACTOR: dict[str, float] = {
     UNIT_SECONDS: 1.0,
     UNIT_MILLISECONDS: 1e-3,
     UNIT_MICROSECONDS: 1e-6,
     UNIT_NANOSECONDS: 1e-9,
+    UNIT_MINUTES: 60.0,
+    UNIT_HOURS: 3600.0,
+    UNIT_DAYS: 86400.0,
+    UNIT_WEEKS: 604800.0,
 }
 
 
@@ -1083,7 +1122,7 @@ def detect_elapsed_numeric(
             TimeAxisDiagnostic(
                 severity_hint=SEVERITY_WARNING,
                 code=DIAGNOSTIC_MISSING_ELAPSED_UNIT,
-                message="This column's values could mean seconds, milliseconds, microseconds, or nanoseconds -- a unit is required.",
+                message="This column's values could mean nanoseconds, microseconds, milliseconds, seconds, minutes, hours, days, or weeks -- a unit is required.",
                 suggested_action="Choose the unit this column's numbers are expressed in.",
                 ambiguity=AMBIGUITY_AMBIGUOUS,
             )

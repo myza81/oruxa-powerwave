@@ -1564,6 +1564,52 @@ section's own scope (none widen it):
   sample rows for detection, 20 formatted rows in the dry-run preview
   response.
 
+**`[DONE, 2026-09-05, DEC-081]` Enhancement — minute-resolution
+24-hour time, explicit AM/PM hour-only time, and fixed-duration
+elapsed units**: an investigation task ("CSV/Excel Absolute Datetime
+Format Coverage") found `_TIME_PATTERNS` had no `%H:%M` (24-hour,
+minute-resolution) candidate at all -- an asymmetry, since the 12-hour
+minute-only form (`%I:%M %p`) already worked -- reproducing a real
+reported bug (`"3/6/2026 17:25"` unparseable). The same investigation
+found `KNOWN_ELAPSED_UNITS` supported only seconds/milliseconds/
+microseconds/nanoseconds, with no fixed-duration minutes/hours/days/
+weeks, despite the conversion mechanism (`_ELAPSED_UNIT_SECONDS_
+FACTOR`, a flat unit->seconds multiplier dict) trivially supporting
+them.
+
+**Owner-approved scope** (see DEC-081 for the full boundary): added
+`%H:%M` and explicit AM/PM hour-only (`%I %p`/`%I%p`) to the SAME
+shared `_TIME_PATTERNS` table this section's own "one table, two
+interpreters" design already established (§10's split Date+Time reuses
+it unchanged); added `minutes`/`hours`/`days`/`weeks` to
+`KNOWN_ELAPSED_UNITS` and their fixed multipliers (60/3600/86400/
+604800) to `_ELAPSED_UNIT_SECONDS_FACTOR`. Explicitly NOT added: bare
+24-hour hour-only (a lone `%H` pattern, judged too permissive without
+further design), absolute date-only/day-only/week-only/month-only/
+year-only support, and elapsed `months`/`years` (structurally excluded
+-- no fixed-seconds factor exists for a calendar-variable unit, and
+this interpreter's own "never invent an anchor date" contract means it
+has no calendar reference such a unit could be resolved against
+anyway). The existing ISO-8601 reduced-precision fast-path gap (§6's
+own `_parse_iso()` accepting date-only/week-only/hour-only ISO strings
+via Python 3.13's `datetime.fromisoformat()` with no diagnostic) was
+confirmed still present and UNCHANGED -- only the DMY/MDY/YMD pattern
+tables were touched, never that separate ISO fast-path.
+
+**Safety proof**: `strptime`'s full-string-match strictness (verified
+directly -- `strptime("17:25:30", "%H:%M")` and `strptime("1:00 pm",
+"%I%p")` both raise `ValueError`) means the new, less-specific patterns
+can never shadow a string that should match a more-specific existing
+pattern; full-second, fractional-second, and 12-hour-with-minutes
+values are provably unaffected. §6's own ambiguity-by-elimination
+`date_order` policy is completely unchanged -- confirmed empirically
+that which TIME pattern matches is orthogonal to date-order resolution
+(a minute-resolution `"3/6/2026 17:25"` still requires an explicit
+`date_order` choice exactly as a full-second value would).
+
+55 new tests added (backend: 3039 -> 3094 passed). See DEC-081 for the
+full files-changed/validation summary.
+
 ---
 
 ## 20. Explicit non-goals

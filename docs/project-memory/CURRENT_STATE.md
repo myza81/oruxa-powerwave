@@ -9,7 +9,28 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-04**. A same-day correctness fix
+Last meaningful update: **2026-09-05**. An enhancement
+([DECISIONS.md — DEC-081](DECISIONS.md#dec-081--csvexcel-absolute-time-support-extended-to-minute-resolution-24-hour-time-of-day-and-explicit-ampm-hour-only-time-plus-fixed-duration-elapsed-units-minuteshoursdaysweeks-bare-hour-only-date-onlyweek-onlymonth-onlyyear-only-absolute-time-elapsed-monthsyears-and-the-existing-iso-reduced-precision-fast-path-gap-all-remain-explicitly-out-of-scope))
+closes a real reported gap: `_TIME_PATTERNS` (the shared pattern table
+`absolute_datetime`/`split_date_time` both use) had no 24-hour
+minute-resolution pattern at all (`"3/6/2026 17:25"` was unparseable,
+even though the 12-hour minute-only form already worked), and
+`KNOWN_ELAPSED_UNITS` had no fixed-duration minutes/hours/days/weeks
+despite the conversion mechanism trivially supporting them. Added:
+`%H:%M` (24-hour minute resolution), explicit AM/PM hour-only
+(`1pm`/`2am`, case-insensitive, with or without a space), and elapsed
+`minutes`(60s)/`hours`(3600s)/`days`(86400s)/`weeks`(604800s) with
+fixed, deterministic multipliers. Deliberately NOT added (see DEC-081
+for the full boundary): bare 24-hour hour-only, absolute date-only/
+week-only/month-only/year-only, and elapsed months/years (no fixed-
+seconds factor exists for a calendar-variable unit, and this
+interpreter never has an anchor date such a unit could be resolved
+against). The pre-existing ISO-8601 reduced-precision fast-path gap
+(`datetime.fromisoformat()` silently accepting date-only/week-only ISO
+strings) remains unchanged and separately tracked. 55 new tests
+(3039 -> 3094 passed). See [Implemented capabilities](#implemented-capabilities).
+
+A prior-day (2026-09-04) correctness fix
 (no DEC — a bug fix implementing already-expected behavior, not a new
 owner-level product decision) closes a confirmed Data Preparation
 Workspace concurrency race: rapid metadata edits (column role/
@@ -779,7 +800,9 @@ re-confirmed by the TG-FINAL audit):
   `TimeAxisConfiguration.unit`/`.interval_seconds` already existed
   since Slice 7 anticipating exactly this. `elapsed_numeric` requires
   an explicit unit (`seconds`/`milliseconds`/`microseconds`/
-  `nanoseconds`) — an absent unit produces a `missing_elapsed_unit`
+  `nanoseconds`, plus `minutes`/`hours`/`days`/`weeks` since DEC-081 —
+  fixed, deterministic multipliers only; calendar-variable `months`/
+  `years` remain unsupported, deliberately) — an absent unit produces a `missing_elapsed_unit`
   diagnostic reusing Slice 8A's own ambiguity→`review_required`
   mechanism verbatim; `confirmed=true` is rejected while it remains.
   `sample_index` treats an absent `interval_seconds` as
@@ -1267,6 +1290,17 @@ correctness defects:
 - Advanced Per-Unit group move/split/merge UI, CT/VT scaling as a PU base,
   and DEC-049's eventual retirement — each needs its own separate,
   explicit owner-approved implementation prompt; none is authorized yet.
+- CSV/Excel absolute time-of-day parsing (DEC-081): bare 24-hour
+  hour-only (e.g. `"2026-06-03 17"`), and absolute date-only/day-only/
+  week-only/month-only/year-only readings — each remains explicitly
+  unsupported, needing its own future design/policy decision, not a
+  correctness gap in the minute-resolution/AM-PM-hour support DEC-081
+  added. Elapsed `months`/`years` are structurally excluded (no
+  fixed-seconds factor exists for a calendar-variable unit without an
+  anchor date), not merely deferred. The pre-existing ISO-8601
+  reduced-precision fast-path gap (`datetime.fromisoformat()` silently
+  accepting date-only/week-only ISO strings with no diagnostic) also
+  remains open, unaffected by DEC-081.
 
 Genuinely open engineering/operational items (not yet resolved either
 way):

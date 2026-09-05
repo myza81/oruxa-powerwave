@@ -184,6 +184,146 @@ class TestSingleColumnSlashDashOrders:
         assert result.provenance == PROVENANCE_NATIVE
 
 
+class TestSingleColumnMinuteResolution24Hour:
+    """Enhancement (minute/AM-PM-hour absolute time support): the
+    reported gap -- 24-hour HH:MM with no seconds -- across every
+    date order, plus the owner's own confirmed reproduction case."""
+
+    def test_reported_bug_dmy_mdy_ambiguous_stays_review_required(self):
+        # The exact reported example -- must stay ambiguous, never
+        # silently resolved just because minute-resolution now parses.
+        result = detect_absolute_datetime(
+            _rows(["3/6/2026 17:25", "3/6/2026 17:26", "3/6/2026 17:27"]), requested_options={},
+        )
+
+        assert result.family == FAMILY_ABSOLUTE
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_AMBIGUOUS_DATE_ORDER in codes
+        assert result.resolved_options["date_order"] == "auto"
+
+    def test_reported_bug_resolved_by_explicit_date_order(self):
+        result = detect_absolute_datetime(
+            _rows(["3/6/2026 17:25", "3/6/2026 17:26"]), requested_options={"date_order": "dmy"},
+        )
+
+        assert result.confidence == CONFIDENCE_HIGH
+        assert all(d.code != DIAGNOSTIC_AMBIGUOUS_DATE_ORDER for d in result.diagnostics)
+        assert result.resolved_options["date_order"] == "dmy"
+
+    def test_dmy_unambiguous_by_elimination(self):
+        result = detect_absolute_datetime(
+            _rows(["31/08/2026 17:25", "31/08/2026 17:26"]), requested_options={},
+        )
+
+        assert result.family == FAMILY_ABSOLUTE
+        assert result.confidence == CONFIDENCE_HIGH
+        assert result.diagnostics == []
+        assert result.resolved_options["date_order"] == "dmy"
+
+    def test_mdy_explicit(self):
+        result = detect_absolute_datetime(
+            _rows(["08/31/2026 17:25", "08/31/2026 17:26"]), requested_options={},
+        )
+
+        assert result.resolved_options["date_order"] == "mdy"
+        assert result.diagnostics == []
+
+    def test_ymd_iso_style(self):
+        result = detect_absolute_datetime(
+            _rows(["2026-08-31 17:25", "2026-08-31 17:26"]), requested_options={},
+        )
+
+        assert result.resolved_options["date_order"] == "ymd"
+        assert result.resolved_options["detected_format"] == "ISO-8601"
+        assert result.diagnostics == []
+
+    def test_full_seconds_precision_unaffected(self):
+        # Regression: the new %H:%M pattern must never shadow the
+        # existing, more specific %H:%M:%S pattern.
+        result = detect_absolute_datetime(
+            _rows(["31/08/2026 17:25:30", "31/08/2026 17:26:31"]), requested_options={},
+        )
+
+        assert result.resolved_options["detected_format"] == "DD/MM/YYYY HH:mm:ss"
+        assert result.diagnostics == []
+
+    def test_fractional_seconds_unaffected(self):
+        result = detect_absolute_datetime(_rows(["2026-08-31 17:25:30.123456"]), requested_options={})
+
+        assert result.resolved_options["detected_format"] == "ISO-8601"
+        assert result.diagnostics == []
+
+
+class TestSingleColumnBareHourOnlyRemainsUnsupported:
+    """Enhancement scope boundary (task section H): a bare 24-hour
+    hour-only value must NOT be newly accepted by this enhancement."""
+
+    def test_bare_hour_only_still_unparseable(self):
+        result = detect_absolute_datetime(_rows(["3/6/2026 17", "3/6/2026 18"]), requested_options={})
+
+        assert result.confidence == CONFIDENCE_UNKNOWN
+        assert DIAGNOSTIC_UNPARSEABLE_DATETIME in [d.code for d in result.diagnostics]
+
+
+class TestSingleColumnHourOnlyExplicitAmPm:
+    """Enhancement (minute/AM-PM-hour absolute time support): explicit
+    AM/PM hour-only forms ("1pm", "1 PM", "2am") -- approved because
+    the AM/PM marker makes the time-of-day unambiguous, unlike a bare
+    24-hour hour-only value."""
+
+    def test_no_space_lowercase(self):
+        result = detect_absolute_datetime(
+            _rows(["2026-06-03 1pm", "2026-06-03 2pm", "2026-06-03 3pm"]), requested_options={},
+        )
+
+        assert result.family == FAMILY_ABSOLUTE
+        assert result.confidence == CONFIDENCE_HIGH
+        assert result.diagnostics == []
+
+    def test_space_and_uppercase(self):
+        result = detect_absolute_datetime(
+            _rows(["2026-06-03 1 PM", "2026-06-03 2 PM"]), requested_options={},
+        )
+
+        assert result.confidence == CONFIDENCE_HIGH
+        assert result.diagnostics == []
+
+    def test_case_insensitive_mixed(self):
+        result = detect_absolute_datetime(_rows(["2026-06-03 2Am"]), requested_options={})
+
+        assert result.confidence == CONFIDENCE_HIGH
+        assert result.diagnostics == []
+
+    @pytest.mark.parametrize(
+        "text,expected_hour,expected_minute",
+        [
+            ("2026-06-03 1pm", 13, 0),
+            ("2026-06-03 2am", 2, 0),
+            ("2026-06-03 12am", 0, 0),
+            ("2026-06-03 12pm", 12, 0),
+        ],
+    )
+    def test_exact_hour_resolved(self, text, expected_hour, expected_minute):
+        from app.services.time_axis_interpreters import parse_absolute_datetime
+
+        parsed = parse_absolute_datetime(text, date_order="ymd")
+
+        assert parsed is not None
+        assert parsed.hour == expected_hour
+        assert parsed.minute == expected_minute
+        assert parsed.second == 0
+
+    def test_does_not_shadow_more_specific_time_with_minutes_or_seconds(self):
+        # Regression: "%I%p"/"%I %p" must never match a longer, more
+        # specific string like "1:00 pm" or "1:00:30 pm".
+        result = detect_absolute_datetime(
+            _rows(["2026-06-03 1:00 PM", "2026-06-03 2:00 PM"]), requested_options={},
+        )
+
+        assert result.resolved_options["detected_format"] == "YYYY-MM-DD hh:mm A"
+        assert result.diagnostics == []
+
+
 class TestSingleColumnInvalidAndMixed:
     def test_clearly_invalid_value_is_unparseable(self):
         result = detect_absolute_datetime(_rows(["not-a-date-at-all"]), requested_options={})
@@ -454,6 +594,62 @@ class TestSplitDateTime:
         assert result.diagnostics == []
 
 
+class TestSplitDateTimeMinuteResolutionAndAmPmHour:
+    """Enhancement (minute/AM-PM-hour absolute time support), task
+    section E: split Date + Time must stay behaviorally aligned with
+    the single-column interpreter -- both share the SAME _TIME_PATTERNS
+    table, verified here directly (not just by code inspection)."""
+
+    def test_dmy_unambiguous_minute_resolution_time_column(self):
+        dates = _rows(["31/08/2026", "31/08/2026"])
+        times = _rows(["17:25", "17:26"])
+
+        result = detect_split_date_time(dates, times, requested_options={})
+
+        assert result.family == FAMILY_ABSOLUTE
+        assert result.confidence == CONFIDENCE_HIGH
+        assert result.diagnostics == []
+        assert result.resolved_options["date_order"] == "dmy"
+
+    def test_ambiguous_date_plus_minute_resolution_time_stays_review_required(self):
+        # The reported bug's own split-column equivalent.
+        dates = _rows(["3/6/2026", "3/6/2026"])
+        times = _rows(["17:25", "17:26"])
+
+        result = detect_split_date_time(dates, times, requested_options={})
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_AMBIGUOUS_DATE_ORDER in codes
+        assert result.resolved_options["date_order"] == "auto"
+
+    def test_ambiguous_resolved_by_explicit_date_order(self):
+        dates = _rows(["3/6/2026", "3/6/2026"])
+        times = _rows(["17:25", "17:26"])
+
+        result = detect_split_date_time(dates, times, requested_options={"date_order": "dmy"})
+
+        assert result.confidence == CONFIDENCE_HIGH
+        assert result.resolved_options["date_order"] == "dmy"
+
+    def test_explicit_am_pm_hour_only_time_column(self):
+        dates = _rows(["2026-06-03", "2026-06-03"])
+        times = _rows(["1pm", "2pm"])
+
+        result = detect_split_date_time(dates, times, requested_options={})
+
+        assert result.family == FAMILY_ABSOLUTE
+        assert result.diagnostics == []
+
+    def test_bare_hour_only_time_column_still_unparseable(self):
+        dates = _rows(["2026-06-03"])
+        times = _rows(["17"])
+
+        result = detect_split_date_time(dates, times, requested_options={})
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_UNPARSEABLE_DATETIME in codes
+
+
 class TestTwoDigitYear:
     """UAT fix: `3/6/26 + 18:04:00.000` (a real owner-reported source
     shape) previously fell all the way to `unparseable_datetime` --
@@ -713,6 +909,37 @@ class TestElapsedNumericUnits:
         assert result.diagnostics == []
         assert result.family == FAMILY_ELAPSED
 
+    # Enhancement (fixed-duration elapsed units): minutes/hours/days/weeks.
+    def test_minutes(self):
+        result = detect_elapsed_numeric(_rows(["0", "1", "2", "3"]), requested_unit="minutes")
+
+        assert result.resolved_unit == "minutes"
+        assert result.diagnostics == []
+
+    def test_hours(self):
+        result = detect_elapsed_numeric(_rows(["0", "1", "2"]), requested_unit="hours")
+
+        assert result.resolved_unit == "hours"
+        assert result.diagnostics == []
+
+    def test_days(self):
+        result = detect_elapsed_numeric(_rows(["0", "1", "2"]), requested_unit="days")
+
+        assert result.resolved_unit == "days"
+        assert result.diagnostics == []
+
+    def test_weeks(self):
+        result = detect_elapsed_numeric(_rows(["0", "1", "2"]), requested_unit="weeks")
+
+        assert result.resolved_unit == "weeks"
+        assert result.diagnostics == []
+
+    def test_fractional_minutes_hours_days_weeks_accepted(self):
+        for unit in ("minutes", "hours", "days", "weeks"):
+            result = detect_elapsed_numeric(_rows(["0", "0.5", "1.0"]), requested_unit=unit)
+            assert result.diagnostics == []
+            assert result.resolved_unit == unit
+
 
 class TestElapsedNumericDataQuality:
     def test_missing_value_retained_as_diagnostic(self):
@@ -792,6 +1019,41 @@ class TestElapsedPreview:
 
         assert len(preview) == 3
         assert preview[1] == (2, ("garbage",), None)
+
+    # Enhancement (fixed-duration elapsed units), task section M: exact
+    # deterministic seconds factors -- worked examples straight from the
+    # task's own spec.
+    def test_minutes_conversion(self):
+        samples = [(1, ("0",)), (2, ("1",)), (3, ("2",)), (4, ("3",))]
+
+        preview = build_elapsed_preview(samples, resolved_unit="minutes", limit=10)
+
+        assert [p[2] for p in preview] == ["0.000000 s", "60.000000 s", "120.000000 s", "180.000000 s"]
+
+    def test_hours_conversion_with_fraction(self):
+        samples = [(1, ("5.0",)), (2, ("5.5",)), (3, ("6.0",))]
+
+        preview = build_elapsed_preview(samples, resolved_unit="hours", limit=10)
+
+        # Normalized to canonical seconds -- anchor semantics (relative
+        # to the first active row) are applied elsewhere, not by this
+        # preview builder itself, which reports each row's own absolute
+        # seconds-from-zero conversion.
+        assert [p[2] for p in preview] == ["18000.000000 s", "19800.000000 s", "21600.000000 s"]
+
+    def test_days_conversion(self):
+        samples = [(1, ("0",)), (2, ("2",))]
+
+        preview = build_elapsed_preview(samples, resolved_unit="days", limit=10)
+
+        assert preview[1] == (2, ("2",), "172800.000000 s")
+
+    def test_weeks_conversion_with_fraction(self):
+        samples = [(1, ("0",)), (2, ("0.5",))]
+
+        preview = build_elapsed_preview(samples, resolved_unit="weeks", limit=10)
+
+        assert preview[1] == (2, ("0.5",), "302400.000000 s")
 
 
 class TestSampleIndexStartingValues:

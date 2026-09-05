@@ -4979,6 +4979,15 @@
                                             <option value="milliseconds">Milliseconds</option>
                                             <option value="microseconds">Microseconds</option>
                                             <option value="nanoseconds">Nanoseconds</option>
+                                            <!-- Enhancement (fixed-duration elapsed units, owner-approved
+                                                 scope): minutes/hours/days/weeks are exact, fixed-duration
+                                                 units (see app.domain.time_axis.KNOWN_ELAPSED_UNITS's own
+                                                 docstring) -- deliberately NOT months/years, which have no
+                                                 single fixed-seconds factor. -->
+                                            <option value="minutes">Minutes</option>
+                                            <option value="hours">Hours</option>
+                                            <option value="days">Days</option>
+                                            <option value="weeks">Weeks</option>
                                         </select>
                                     </div>
                                 </div>
