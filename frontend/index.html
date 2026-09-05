@@ -6776,11 +6776,28 @@
             return recordingCfgFilename(source) || "Untitled recording";
         }
 
-        // provider_type is backend-computed (never re-derived/guessed
-        // client-side, matching the existing engineering_type convention)
-        // -- currently always "COMTRADE".
+        // Recording Events File Format display-consistency fix: the raw
+        // format value is backend-computed (never re-derived/guessed
+        // client-side) but its CASING differs by which code path produced
+        // it -- COMTRADE ingestion sets `provider_type = "COMTRADE"`
+        // (app/providers/comtrade.py), a "Needs Preparation" CSV/Excel row
+        // uses `PreparationSessionSummaryOut.file_format` verbatim ("CSV"/
+        // "Excel"), and a source already converted to Ready lowercases it
+        // (`preparation_conversion_service.py`'s
+        // `provider_type=session.summary.source_format.lower()`) -- so the
+        // SAME file type could previously read "csv" in one row and "CSV"
+        // in another depending on status/origin. `formatFileFormatLabel()`
+        // is the ONE shared presentation-layer normalizer for this value
+        // (uppercase, display only -- the underlying stored value and
+        // every `=== "Excel"`/`.lower()` comparison elsewhere are
+        // untouched), reused everywhere this value reaches the UI rather
+        // than fixed per call site.
+        function formatFileFormatLabel(rawFormat) {
+            return rawFormat ? String(rawFormat).toUpperCase() : null;
+        }
+
         function recordingFormatLabel(source) {
-            return source.provider_type || "Unknown format";
+            return formatFileFormatLabel(source.provider_type) || "Unknown format";
         }
 
         function formatRecordingDuration(seconds) {
@@ -7354,7 +7371,11 @@
 
         function wwDataPrepRenderMeta() {
             document.getElementById("wwDataPrepFilename").textContent = wwDataPrep.filename || "";
-            document.getElementById("wwDataPrepFormat").textContent = wwDataPrep.format || "—";
+            // Display only -- formatFileFormatLabel() never touches
+            // wwDataPrep.format itself, so the `=== "Excel"` branches
+            // elsewhere in this workspace (worksheet handling, region
+            // wording) are unaffected.
+            document.getElementById("wwDataPrepFormat").textContent = formatFileFormatLabel(wwDataPrep.format) || "—";
             document.getElementById("wwDataPrepSize").textContent = formatFileSize(wwDataPrep.fileSizeBytes);
             // Task's own explicit requirement: this workspace must never
             // show "Ready" or imply readiness -- formatRecordingStatus()
