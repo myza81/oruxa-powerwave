@@ -109,6 +109,7 @@ from app.domain.preparation_issue import (
     ISSUE_PARTIAL_TIME_REFERENCE,
     ISSUE_RECONSTRUCTED_TIME,
     ISSUE_SAMPLE_INDEX_FALLBACK,
+    ISSUE_TIME_AXIS_MANUAL_UNRESOLVED,
     ISSUE_TIME_AXIS_UNCONFIGURED,
     ISSUE_TIME_AXIS_UNRESOLVED,
     ISSUE_TIME_AXIS_UNSUPPORTED,
@@ -131,6 +132,7 @@ from app.domain.time_axis import (
     FAMILY_ELAPSED,
     FAMILY_PARTIAL,
     FAMILY_SAMPLE_INDEX,
+    INTERPRETER_ID_MANUAL,
     INTERPRETER_ID_SPLIT_DATE_TIME,
     PROVENANCE_RECONSTRUCTED,
     PROVENANCE_USER_SPECIFIED,
@@ -244,6 +246,32 @@ def _time_axis_readiness_issues(
             message="The Time Axis configuration is not yet resolved -- an ambiguity or a suggested reconstruction still needs an explicit choice.",
             location=IssueLocation(worksheet_index=worksheet_index, field="time_axis"),
             suggested_action="Open Time Axis review and resolve the pending ambiguity, or accept/adjust the suggested timing.",
+        ))
+        return issues, summary, False
+
+    # Preparation Status integrity guardrail: `manual` is an engineer
+    # ASSERTION, never a real per-row reading -- `is_time_axis_resolved()`
+    # (app.domain.time_axis) and `convert_preparation_source()`
+    # (app.services.preparation_conversion_service) already both
+    # unconditionally exclude it, confirmed or not, because it can never
+    # actually reach Powerwave. This must be checked BEFORE the resolved-
+    # reading branch below (never folded into its diagnostic-driven
+    # blocking/warning loop) since `manual` never runs `detect()` and so
+    # never carries a diagnostic of its own to key off -- without this
+    # explicit check, a `manual` configuration whose asserted family
+    # happens to describe the raw data closely enough passes the full-
+    # region cell scan below with zero findings and would otherwise reach
+    # `is_ready=true`, exactly the "Ready for Powerwave" UAT report this
+    # guardrail exists to close. `confirmed` makes no difference here --
+    # matching `convert_preparation_source()`'s own unconditional
+    # rejection, this is not a confirmation-wording gap to relax, it is a
+    # real readiness/conversion inconsistency to close (see DECISIONS.md).
+    if summary.interpreter_id == INTERPRETER_ID_MANUAL:
+        issues.append(PreparationIssue(
+            severity=SEVERITY_BLOCKING, code=ISSUE_TIME_AXIS_MANUAL_UNRESOLVED,
+            message="A Manual Time Axis configuration cannot be converted to Powerwave -- it is an engineer assertion, not a real per-row reading.",
+            location=IssueLocation(worksheet_index=worksheet_index, field="time_axis"),
+            suggested_action="Choose a real interpreter (Absolute Datetime, Date + Time, Time of Day, Elapsed, or Sample Index) and save a valid configuration.",
         ))
         return issues, summary, False
 

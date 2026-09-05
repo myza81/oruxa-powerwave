@@ -8,6 +8,68 @@ Last updated: **2026-09-05**
 
 ## What was most recently done
 
+**Fix — Preparation Status integrity guardrail (implemented, DEC-083).**
+UAT report: the Data Preparation "Preparation Status" panel showed
+`Ready for Powerwave` / `0 Blocking` for a source whose visible Time
+Axis form read `Interpreter: Manual, Confirmed: unchecked` and had not
+been saved as intended.
+
+**Root cause was narrower than "Confirmed: unchecked" suggested**:
+`is_time_axis_resolved()`/`convert_preparation_source()` already both
+unconditionally exclude `manual`, confirmed or not -- but `readiness_
+service._time_axis_readiness_issues()` never encoded that same
+exclusion, so a `manual` config whose asserted family happened to
+describe the raw data closely enough passed the full-region cell scan
+and reached `is_ready=True`. Gating on `confirmed` alone would have
+been wrong too: confirming never actually makes `manual` convertible.
+
+**Fix**: `readiness_service` now unconditionally blocks any `manual`
+interpreter (new `ISSUE_TIME_AXIS_MANUAL_UNRESOLVED`), matching what
+export/conversion already enforce -- zero new gate invented, just
+closing a divergence between them.
+
+**Separately**: the Time Axis form had no "unsaved draft" concept at
+all -- changing the interpreter/family/provenance/confirmed/columns
+without clicking Save left Preparation Status silently describing the
+OLD, still-applied configuration. `frontend/index.html` now compares
+the form's live fields against the last-saved configuration purely
+client-side (`wwDataPrepTimeAxisDraftIsDirty()`, `JSON.stringify`, zero
+fetch) and layers a synthetic blocking "Unsaved Time Axis changes"
+issue that the headline/counts, View Issues, Continue-to-Powerwave, and
+Export Cleaned Data ALL now read through one shared function
+(`wwDataPrepEffectiveIssueSummary()`) rather than the raw backend
+summary directly, so the four can never disagree. Two UAT-discovered
+follow-up fixes were needed: the Confirmed checkbox is excluded from
+the comparison when it is not currently a meaningful control (it is
+forced back to `false` on render for anything but Manual/an offered
+reconstruction, regardless of the applied value), and `wwDataPrepFetch
+TimeAxis()` now re-renders issues after repopulating the form (fixes a
+fetch-ordering race that could freeze the dirty check on stale state).
+
+**Validation**: full backend suite 3230 -> 3247 (+17 new tests: 3
+readiness, 14 frontend structural). Two pre-existing tests
+(`test_manual_interpreter_refused`, `test_manual_interpreter_blocks_
+export`) were updated to expect the now-earlier, correct rejection
+(`ConversionNotReadyError`/`ExportNotReadyError` instead of the
+narrower, now-unreachable `*UnsupportedInterpreterError`) -- their own
+original intent (manual must never convert/export) is unchanged.
+Two live-browser UAT scenarios confirmed: the exact reported repro now
+shows `Needs Attention` with the Manual-exclusion issue and no Continue
+action; a valid applied Time of Day config switched to Manual in the
+form WITHOUT saving immediately shows `Needs Attention`/"Unsaved Time
+Axis changes", and reverting the dropdown immediately restores `Ready
+for Powerwave` -- zero console/page errors.
+
+**Next step**: no new slice was opened. See DEC-083 for the full record
+including alternatives considered (gating manual on confirmed alone;
+a backend-tracked draft state) and why both were rejected.
+
+**Commit status**: not committed — pending owner review of the
+implementation, per this task's own explicit "do not commit until you
+review the implementation" instruction.
+
+## What was done in the prior session — Explicit Time Axis interpreter authority (DEC-082)
+
 **Hardening/transparency — Explicit Time Axis interpreter authority
 (implemented, DEC-082).** Closes a real gap the owner identified: an
 engineer who explicitly selected `Absolute Datetime` against genuinely
@@ -73,9 +135,8 @@ of Day" explicitly switches the interpreter and clears the diagnostic.
 including alternatives considered (hard-rejecting Save outright; reusing
 `STATUS_REVIEW_REQUIRED`) and why both were rejected.
 
-**Commit status**: not committed — pending owner review of the
-implementation, per this task's own explicit "do not commit until you
-review the implementation" instruction.
+**Commit status**: committed (`feat: enforce explicit time interpreter
+authority`) after owner review and approval.
 
 ## What was done in the prior session — Add Minute/AM-PM Hour Absolute Time Support + Fixed-Duration Elapsed Units (DEC-081)
 

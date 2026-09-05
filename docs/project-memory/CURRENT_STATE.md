@@ -9,8 +9,28 @@
 > Do not let this file accumulate into a diary — when updating it, replace
 > superseded claims, don't append to them.
 
-Last meaningful update: **2026-09-05**. A hardening/transparency
-enhancement ([DECISIONS.md — DEC-082](DECISIONS.md#dec-082--explicit-time-axis-interpreter-selection-is-authoritative-auto-detection-may-recommend-but-a-central-allowed_families-compatibility-guard-blocks-confirmationmaterialization-whenever-an-explicitly-selected-or-restored-sample-interpreters-own-family-contract-does-not-match-what-was-actually-detected))
+Last meaningful update: **2026-09-05**. A Preparation Status integrity
+fix ([DECISIONS.md — DEC-083](DECISIONS.md#dec-083--preparation-status-must-reflect-the-effective-current-configuration-visible-to-the-user-a-manual-time-axis-is-unconditionally-blocking-never-ready-confirmed-or-not-and-a-time-axis-draft-that-differs-from-the-last-savedapplied-configuration-produces-its-own-blocking-unsaved-changes-issue-computed-live-client-side-with-zero-network-round-trip))
+closes a real gap: the `manual` Time Axis interpreter (an engineer
+assertion, never a real per-row reading) could previously reach
+`is_ready=True`/"Ready for Powerwave" -- `readiness_service` never
+encoded the SAME unconditional exclusion `is_time_axis_resolved()`/
+`convert_preparation_source()` already both enforce, regardless of
+`confirmed`. `readiness_service._time_axis_readiness_issues()` now
+blocks any `manual` configuration outright (`ISSUE_TIME_AXIS_MANUAL_
+UNRESOLVED`). Separately, the Data Preparation Time Axis form had no
+"unsaved draft" concept at all -- a user could change the interpreter/
+family/provenance/confirmed/columns without clicking Save while
+Preparation Status kept describing the OLD, still-applied
+configuration. `frontend/index.html` now compares the form's live
+fields against the last-saved configuration client-side
+(`wwDataPrepTimeAxisDraftIsDirty()`, zero network round trip) and
+layers a synthetic blocking "Unsaved Time Axis changes" issue
+(`wwDataPrepEffectiveIssueSummary()`) that the Preparation Status
+headline/counts, View Issues, Continue-to-Powerwave, and Export Cleaned
+Data ALL now read through, so they can never disagree. See
+[Implemented capabilities](#implemented-capabilities). A prior same-day
+hardening/transparency enhancement ([DECISIONS.md — DEC-082](DECISIONS.md#dec-082--explicit-time-axis-interpreter-selection-is-authoritative-auto-detection-may-recommend-but-a-central-allowed_families-compatibility-guard-blocks-confirmationmaterialization-whenever-an-explicitly-selected-or-restored-sample-interpreters-own-family-contract-does-not-match-what-was-actually-detected))
 closes a real gap: an explicitly-selected sample interpreter (e.g.
 `absolute_datetime`) whose own detected family did not actually match
 its declared contract (e.g. genuinely bare time-of-day data) previously

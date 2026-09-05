@@ -11804,6 +11804,196 @@ their own actual assertions (partial family, no fabricated date,
 warning-level timing diagnostics, etc.) are otherwise unchanged. Not
 committed, not pushed (pending owner review).
 
+## DEC-083 — Preparation Status must reflect the effective current configuration visible to the user: a `manual` Time Axis is unconditionally blocking (never "Ready", confirmed or not), and a Time Axis draft that differs from the last-saved/applied configuration produces its own blocking "unsaved changes" issue, computed live client-side with zero network round trip
+
+Date: 2026-09-05
+Status: Approved
+Source: explicit project-owner UAT report — the Data Preparation
+"Preparation Status" panel showed `Ready for
+Powerwave` / `0 Blocking · 0 Warnings · 0 Info` for a source whose
+visible Time Axis form read `Interpreter: Manual, Family: Absolute,
+Provenance: Native, Confirmed: unchecked` and had not been saved as the
+engineer intended — headline, counts, View Issues, and Continue-to-
+Powerwave all silently agreed with a configuration that was not
+actually resolved.
+
+Investigation found the root cause was narrower, and different from
+what "Confirmed: unchecked" suggested: `app.domain.time_axis.is_time_
+axis_resolved()` and `app.services.preparation_conversion_service.
+convert_preparation_source()` already both unconditionally exclude the
+`manual` interpreter from ever being usable/convertible — REGARDLESS of
+`confirmed` — but `app.services.readiness_service._time_axis_readiness_
+issues()` never encoded that same exclusion; it only early-returned
+`usable=False` for `STATUS_UNCONFIGURED`/`STATUS_UNSUPPORTED`/`STATUS_
+REVIEW_REQUIRED`, none of which `manual` (confirmed or not) actually
+reaches (`resolve_status()` puts it at `STATUS_DETECTED`/`STATUS_
+CONFIRMED`, both "usable" under the old readiness check). A `manual`
+configuration whose asserted family happened to describe the raw data
+closely enough to pass the full-active-region cell scan therefore
+reached `is_ready=True` -- a genuine READINESS/CONVERSION inconsistency,
+not a confirmation-wording gap: confirming the checkbox never actually
+made a `manual` configuration convertible (still hard-rejected by
+`convert_preparation_source()` unconditionally), so gating readiness on
+`confirmed` alone would have left readiness promising something
+conversion could never deliver.
+
+Separately, investigation confirmed the frontend had NO concept of an
+unsaved "draft" at all: the Time Axis form is fully repopulated FROM the
+last-fetched applied configuration on every unrelated background
+refresh (any cell edit, column-role change, etc.), and nothing compared
+the form's current, in-progress field values against that applied
+configuration in between. A user who changed the interpreter dropdown
+(or any other field) without clicking Save would see their own edit
+sitting in the form while Preparation Status kept describing the OLD,
+still-applied configuration underneath it — exactly the "silently
+disagree" state the owner's own product rule forbids.
+
+**Governing rule** (recorded per the owner's own wording):
+
+> Detection is not configuration. A draft is not an applied Time Axis.
+> The Preparation Status headline, issue counts, View Issues list, and
+> Continue-to-Powerwave gating must all describe the same effective
+> preparation state. An unresolved or unsaved Time Axis must produce a
+> blocking issue and must not be presented as Ready for Powerwave.
+
+Decision:
+
+**Manual is unconditionally blocking in readiness** (`app.services.
+readiness_service._time_axis_readiness_issues()`): a new early-return
+check — `if summary.interpreter_id == INTERPRETER_ID_MANUAL` — appends
+a new blocking issue (`ISSUE_TIME_AXIS_MANUAL_UNRESOLVED = "time_axis_
+manual_unresolved"`, `app.domain.preparation_issue`) and skips the
+full-region cell scan (`usable=False`, matching the treatment `STATUS_
+UNCONFIGURED`/`UNSUPPORTED`/`REVIEW_REQUIRED` already get), regardless
+of `confirmed`. This closes the readiness/conversion inconsistency
+directly, reusing the exact fact `is_time_axis_resolved()`/`convert_
+preparation_source()` already independently encode rather than
+inventing a new "is manual OK" rule. `ConversionUnsupportedInterpreter
+Error`/`ExportUnsupportedInterpreterError` (the two functions' own
+prior, narrower manual-specific checks) are retained unchanged as
+harmless defense-in-depth, though now unreachable for `manual`/
+`unsupported` specifically -- `is_ready` (checked first in both
+functions) rejects them earlier with the generic `ConversionNotReady
+Error`/`ExportNotReadyError` instead. Two pre-existing tests asserting
+the now-unreachable specific exception were updated to expect the
+earlier, correct one (`test_preparation_conversion_service.py::
+TestUnsupportedInterpreter::test_manual_interpreter_refused`, `test_
+preparation_export_service.py::TestExportGating::test_manual_
+interpreter_blocks_export`).
+
+**Draft-vs-applied dirty tracking is entirely frontend-side** (the
+backend has no concept of a draft — nothing is sent until Save, so
+there is nothing new for it to track): `wwDataPrepTimeAxisConfigBody()`
+(`frontend/index.html`) is the ONE canonical shape both the real Save
+PUT body and the new draft/applied comparison build from, so the two
+can never silently drift apart. `wwDataPrepCurrentTimeAxisDraftBody()`
+reads the form's current fields into that shape; `wwDataPrepApplied
+TimeAxisDraftBody()` projects the last-fetched `wwDataPrep.timeAxis
+Summary` into the same shape (`null` when nothing has ever been
+applied — that state is already its own separate `ISSUE_TIME_AXIS_
+UNCONFIGURED` blocker, deliberately not also flagged as "unsaved
+changes"). `wwDataPrepTimeAxisDraftIsDirty()` compares the two via
+`JSON.stringify` — purely client-side, no fetch, so the reaction is
+immediate on every keystroke/selection change, never waiting for a
+failed conversion to reveal the problem. The Confirmed checkbox is
+excluded from this comparison whenever `#wwDataPrepTimeAxisConfirmedField`
+is not currently a meaningful control (`wwDataPrepRenderTimeAxis
+DetectResult()`'s own pre-existing rule: the generic confirmation
+checkbox is forced back to `false` on every render for anything other
+than Manual or an offered reconstruction) — comparing it unconditionally
+produced a false "unsaved changes" positive on a perfectly clean,
+just-loaded Ready source whose applied `confirmed` happened to be
+`true` (reachable via direct API or a restored session) even though the
+checkbox the form shows is never wired to reflect that value for that
+interpreter.
+
+**One effective-state function, four consumers**: `wwDataPrepEffective
+IssueSummary()` layers a synthetic `time_axis_unsaved_changes` blocking
+issue on top of the real, backend-computed `wwDataPrep.issueSummary`
+whenever the draft is dirty, otherwise passes it through unchanged.
+`wwDataPrepRenderIssues()` (headline + counts + View Issues),
+`wwDataPrepRenderConversionAction()` (Continue to Powerwave), and
+`wwDataPrepRenderExportAction()` (Export Cleaned Data) all now read
+through this ONE function instead of `wwDataPrep.issueSummary` directly
+— they can no longer disagree by construction. A single delegated
+`input`/`change` listener on `#wwDataPrepTimeAxisDetails` re-renders
+issues live on every field edit (interpreter, columns, family,
+provenance, confirmed, unit/interval, date order, elapsed unit,
+sample-index/repeated-timestamp timing, split date/time columns) with
+no per-field listener needed, and never fires on this same panel's own
+programmatic re-renders (`.value`/`.checked` assignment does not
+dispatch DOM events) -- so it triggers only on genuine user edits,
+including a manual revert back to the applied configuration, which
+clears the synthetic blocker on the very next input event.
+
+A related fetch-ordering fix was needed for the dirty check to be
+reliably accurate: `wwDataPrepFetchPreview()` calls `wwDataPrepFetch
+Issues()` (whose own trailing render computes the dirty check) BEFORE
+`wwDataPrepFetchTimeAxis()` repopulates the form to match the newly
+fetched applied configuration for the CURRENT source — without a
+second render, the dirty check could freeze on a stale verdict computed
+against the previous source's form state. `wwDataPrepFetchTimeAxis()`
+now also calls `wwDataPrepRenderIssues()` after repopulating the form
+(a pure re-render, reusing the already-fetched issue summary, no new
+fetch).
+
+Reason:
+
+The reported bug's own literal framing ("Confirmed: unchecked") turned
+out not to be the actual mechanism — `manual` was never gated on
+confirmation at all, in either direction, so the correct fix is an
+unconditional exclusion consistent with what export/conversion already
+enforce, not a new confirmation rule that would have implied `manual`
+becomes convertible once confirmed (it does not, and this decision does
+not change that). The draft-vs-applied gap was real and independent of
+the `manual` bug: closing it needed no new backend state (the backend
+already has nothing to compare against — there is no "draft" concept
+server-side), so the fix stays entirely within the existing frontend
+render/effective-state pattern already used for other derived UI state,
+reusing the exact shape Save itself sends rather than a second,
+independently-maintained comparison.
+
+Alternatives considered:
+
+- Gating `manual` readiness on `confirmed` alone (matching the reported
+  bug's own literal framing) — rejected: `convert_preparation_source()`
+  unconditionally rejects `manual` regardless of `confirmed`, so a
+  confirmed-gated readiness rule would still promise a "Ready" state
+  conversion can never honor, recreating the exact class of bug this
+  decision closes.
+- A backend-tracked "draft" concept (e.g. persisting in-progress form
+  edits server-side before Save) — rejected: no other part of this
+  framework persists an uncommitted edit, Save already validates and
+  applies atomically, and the reported problem is fully solvable
+  client-side by comparing the form's own current fields against the
+  last-fetched applied configuration.
+- Comparing `confirmed` unconditionally in the draft/applied check —
+  rejected once discovered via browser UAT: produces a false "unsaved
+  changes" positive for a freshly loaded, genuinely Ready source when
+  the Confirmed checkbox is not currently a meaningful control for that
+  interpreter/provenance combination.
+
+Impact:
+
+Zero change to Time of Day/Absolute DateTime/Date + Time semantics,
+interpreter-family compatibility (DEC-082, fully preserved), time
+synchronization, canonical elapsed coordinates, or waveform/table
+rendering -- confirmed by the full regression suite passing unchanged
+(3230 -> 3247, +17 new tests: 3 backend readiness, 14 frontend
+structural) and by two live-browser UAT scenarios: the exact reported
+repro (Manual/Absolute/Native/unconfirmed) now shows `Needs Attention`,
+`1 issue must be fixed`, a View Issues entry naming the Manual
+exclusion, and no Continue action rendered; and a genuinely valid,
+applied Time of Day configuration switched to Manual in the form
+WITHOUT saving immediately shows `Needs Attention` with an "Unsaved
+Time Axis changes" blocker and no Continue action, reverting the
+dropdown back to Time of Day immediately restores `Ready for Powerwave`
+and the Continue action -- with zero console/page errors throughout.
+Two pre-existing tests were updated (see Decision above) to expect the
+now-earlier, correct rejection; their own original intent (a `manual`
+configuration must never convert/export) is unchanged. Not committed,
+not pushed (pending owner review).
+
 ---
 
 ## How to add a decision

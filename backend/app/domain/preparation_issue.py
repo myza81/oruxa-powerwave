@@ -127,6 +127,21 @@ ISSUE_DATA_REGION_UNCONFIGURED = "data_region_unconfigured"
 ISSUE_TIME_AXIS_UNCONFIGURED = "time_axis_unconfigured"
 ISSUE_TIME_AXIS_UNSUPPORTED = "time_axis_unsupported"
 ISSUE_TIME_AXIS_UNRESOLVED = "time_axis_unresolved"
+#: Preparation Status integrity guardrail: a `manual` Time Axis
+#: configuration is an engineer ASSERTION, never a real per-row reading
+#: -- `app.domain.time_axis.is_time_axis_resolved()` and
+#: `app.services.preparation_conversion_service.convert_preparation_
+#: source()` already independently, unconditionally treat it as
+#: never-eligible (confirmed or not; see those functions' own
+#: docstrings) precisely because it can never actually reach Powerwave.
+#: Before this fix, `readiness_service` never encoded that same
+#: exclusion -- a saved `manual` configuration whose asserted family
+#: happened to match the raw data closely enough to pass the full-region
+#: cell scan could reach `is_ready=true`/"Ready for Powerwave" despite
+#: being permanently un-convertible, a real inconsistency with export/
+#: conversion's own established policy, not merely a confirmation-
+#: wording gap.
+ISSUE_TIME_AXIS_MANUAL_UNRESOLVED = "time_axis_manual_unresolved"
 ISSUE_TIME_VALUE_MISSING = "time_value_missing"
 ISSUE_TIME_VALUE_INVALID = "time_value_invalid"
 ISSUE_WAVEFORM_CHANNEL_MISSING = "waveform_channel_missing"

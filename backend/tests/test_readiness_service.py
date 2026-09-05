@@ -17,6 +17,7 @@ from app.domain.preparation_issue import (
     ISSUE_PARTIAL_TIME_REFERENCE,
     ISSUE_RECONSTRUCTED_TIME,
     ISSUE_SAMPLE_INDEX_FALLBACK,
+    ISSUE_TIME_AXIS_MANUAL_UNRESOLVED,
     ISSUE_TIME_AXIS_UNCONFIGURED,
     ISSUE_TIME_AXIS_UNRESOLVED,
     ISSUE_TIME_AXIS_UNSUPPORTED,
@@ -379,6 +380,74 @@ class TestMinuteResolutionReadiness:
 
         summary = _issues(registry, source_id)
         assert summary.is_ready is True
+
+
+class TestManualTimeAxisIsAlwaysBlocking:
+    """Preparation Status integrity guardrail: a `manual` Time Axis
+    configuration is an engineer ASSERTION, never a real per-row
+    reading -- it must never reach `is_ready=True` regardless of
+    `confirmed`, matching `is_time_axis_resolved()` and
+    `convert_preparation_source()`'s own pre-existing, unconditional
+    exclusion of it (see readiness_service's own new comment). Before
+    this fix, a `manual` config whose asserted family happened to
+    describe the raw data closely enough passed the full-region cell
+    scan with zero findings and reached `is_ready=True` -- exactly the
+    reported UAT ("Ready for Powerwave / 0 Blocking" with Interpreter:
+    Manual, Confirmed: unchecked)."""
+
+    def test_manual_unconfirmed_is_blocking(self):
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry)
+        # Overwrite the ready baseline's own absolute_datetime config
+        # with a Manual assertion over data that WOULD otherwise parse
+        # cleanly as absolute -- proves the block is about the
+        # interpreter itself, not a data-quality problem.
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            family="absolute", provenance="native", confirmed=False, registry=registry,
+        )
+
+        summary = _issues(registry, source_id)
+        assert ISSUE_TIME_AXIS_MANUAL_UNRESOLVED in _codes(summary)
+        assert _by_code(summary, ISSUE_TIME_AXIS_MANUAL_UNRESOLVED).severity == SEVERITY_BLOCKING
+        assert summary.is_ready is False
+        assert summary.blocking_count >= 1
+
+    def test_manual_confirmed_is_still_blocking(self):
+        # The reported bug's own exact reproduction, but with Confirmed
+        # checked -- confirmation does not change Manual's eligibility
+        # (it never has for export/conversion; readiness must not
+        # pretend otherwise).
+        registry = PreparationSessionRegistry()
+        source_id = _ready_source(registry)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            family="absolute", provenance="native", confirmed=True, registry=registry,
+        )
+
+        summary = _issues(registry, source_id)
+        assert ISSUE_TIME_AXIS_MANUAL_UNRESOLVED in _codes(summary)
+        assert summary.is_ready is False
+
+    def test_manual_does_not_run_the_full_region_cell_scan(self):
+        # A Manual config asserting a family the raw data does NOT
+        # actually match must not ALSO produce a confusing pile of
+        # unrelated cell-validation findings on top of the one real
+        # "manual is unresolved" blocker -- matches the early-return
+        # `usable=False` treatment UNCONFIGURED/UNSUPPORTED/REVIEW_
+        # REQUIRED already get.
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"not-a-real-date,1.0\nalso-not-a-date,2.0\n")
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            family="absolute", provenance="native", confirmed=True, registry=registry,
+        )
+
+        summary = _issues(registry, source_id)
+        blocking_codes = {i.code for i in summary.issues if i.severity == SEVERITY_BLOCKING}
+        assert blocking_codes == {ISSUE_TIME_AXIS_MANUAL_UNRESOLVED}
 
 
 class TestTimeAxisWarnings:

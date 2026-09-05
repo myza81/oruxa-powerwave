@@ -18,7 +18,6 @@ from app.services.errors import (
     ConversionNotReadyError,
     ConversionRequiresIntervalError,
     ConversionRevisionChangedError,
-    ConversionUnsupportedInterpreterError,
     ConversionValidationError,
     SourceNotFoundError,
 )
@@ -862,6 +861,17 @@ class TestReadinessAndRevisionProtection:
 
 
 class TestUnsupportedInterpreter:
+    # Preparation Status integrity guardrail: readiness now blocks a
+    # `manual` configuration unconditionally (ISSUE_TIME_AXIS_MANUAL_
+    # UNRESOLVED, app.services.readiness_service) -- the SAME fact this
+    # test always intended to verify, just caught earlier now. `is_ready`
+    # is checked before the interpreter_id check inside
+    # convert_preparation_source() (see that function's own ordering), so
+    # a `manual` configuration now raises the generic ConversionNotReadyError
+    # here rather than reaching the specific ConversionUnsupportedInterpreterError
+    # branch -- that branch is retained as harmless defense-in-depth (see
+    # DECISIONS.md) but is no longer reachable for `manual`/`unsupported`
+    # specifically, since readiness now excludes both before this point.
     def test_manual_interpreter_refused(self):
         prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
         sid = _add_csv(prep, b"1,1.0\n2,2.0\n")
@@ -872,7 +882,7 @@ class TestUnsupportedInterpreter:
         try:
             _convert(prep, ws, sid)
             assert False, "should have raised"
-        except ConversionUnsupportedInterpreterError:
+        except ConversionNotReadyError:
             pass
         assert prep.get("ws-1", sid) is not None
 

@@ -8232,7 +8232,12 @@
             const countsEl = document.getElementById("wwDataPrepIssueCounts");
             const groupsEl = document.getElementById("wwDataPrepIssueGroups");
             const toggleBtn = document.getElementById("wwDataPrepIssuesToggleBtn");
-            const summary = wwDataPrep.issueSummary;
+            // Preparation Status integrity guardrail: the effective
+            // summary layers a synthetic "unsaved Time Axis changes"
+            // blocker on top of the real backend summary whenever the
+            // visible draft differs from the applied configuration --
+            // see wwDataPrepEffectiveIssueSummary()'s own docstring.
+            const summary = wwDataPrepEffectiveIssueSummary();
             if (!summary) {
                 headlineEl.textContent = "";
                 delete headlineEl.dataset.ready;
@@ -8330,7 +8335,7 @@
         function wwDataPrepRenderConversionAction() {
             const limitationEl = document.getElementById("wwDataPrepConversionLimitation");
             const actionEl = document.getElementById("wwDataPrepConversionAction");
-            const summary = wwDataPrep.issueSummary;
+            const summary = wwDataPrepEffectiveIssueSummary();
             if (!summary || !summary.is_ready) {
                 limitationEl.hidden = true;
                 actionEl.hidden = true;
@@ -8372,7 +8377,7 @@
             const btn = document.getElementById("wwDataPrepExportBtn");
             const provenanceBtn = document.getElementById("wwDataPrepExportWithProvenanceBtn");
             const guidanceEl = document.getElementById("wwDataPrepExportGuidance");
-            const summary = wwDataPrep.issueSummary;
+            const summary = wwDataPrepEffectiveIssueSummary();
             const ready = !!(summary && summary.is_ready);
 
             if (!ready || !wwDataPrepIsExportTimeAxisUsable()) {
@@ -9127,6 +9132,18 @@
             wwDataPrepRenderTimeAxisSummary();
             wwDataPrepRenderTimeAxisEligibleColumns();
             wwDataPrepRenderTimeAxisForm();
+            // Preparation Status integrity guardrail: wwDataPrepFetchPreview()
+            // calls wwDataPrepFetchIssues() (whose own trailing
+            // wwDataPrepRenderIssues() computes the draft-vs-applied dirty
+            // check) BEFORE this function -- at that point the form still
+            // reflects the PREVIOUS source/summary, which could otherwise
+            // freeze in a stale dirty/clean verdict once this function
+            // repopulates the form to match the newly-fetched applied
+            // config, since nothing else re-triggers that check afterward.
+            // Re-render here too (no new fetch -- reuses the issue summary
+            // already fetched) so the dirty check always runs against a
+            // form that is actually in sync with wwDataPrep.timeAxisSummary.
+            wwDataPrepRenderIssues();
         }
 
         // Slice 8A dry-run: POST .../working/time-axis/interpret --
@@ -9234,6 +9251,159 @@
             return document.getElementById("wwDataPrepTimeAxisStatus");
         }
 
+        // Preparation Status integrity guardrail: the ONE canonical shape
+        // both the real Save PUT body AND the draft-vs-applied dirty
+        // check below build their comparable objects from -- guarantees
+        // the two can never silently drift apart (a change to what Save
+        // sends automatically changes what "dirty" compares). `null`
+        // `columnIndices` is never passed here; callers decide their own
+        // "nothing selected yet" handling before reaching this.
+        function wwDataPrepTimeAxisConfigBody(interpreterId, { columnIndices, unit, intervalSeconds, options, confirmed, family, provenance }) {
+            if (WW_DATA_PREP_SAMPLE_INTERPRETERS.includes(interpreterId)) {
+                // family/provenance are computed by the interpreter's own
+                // detect() from the actual sampled data -- never sent
+                // from this form (see TimeAxisConfigurationRequest's own
+                // docstring for why they are optional here).
+                return {
+                    column_indices: columnIndices, interpreter_id: interpreterId,
+                    unit: unit, interval_seconds: intervalSeconds, options: options || {}, confirmed: !!confirmed,
+                };
+            }
+            return {
+                column_indices: columnIndices,
+                // Explicit `"manual"` is an accepted value for the wire
+                // PUT body too (TimeAxisConfigurationRequest's own
+                // docstring: optional, defaults to "manual" when
+                // omitted) -- included explicitly here so this ONE shape
+                // also works unchanged for the draft/applied comparison
+                // below, where an interpreter-dropdown switch (e.g.
+                // Manual -> Time of Day) must register as a real
+                // difference even before any network round trip.
+                interpreter_id: "manual",
+                family: family,
+                provenance: provenance,
+                unit: unit,
+                interval_seconds: intervalSeconds,
+                confirmed: !!confirmed,
+            };
+        }
+
+        // Reads the Time Axis form's CURRENT fields (whatever the user
+        // has selected/typed right now, whether or not it has been
+        // Saved) into the same canonical shape wwDataPrepTimeAxisConfigBody()
+        // produces -- the "draft" half of the draft-vs-applied comparison.
+        function wwDataPrepCurrentTimeAxisDraftBody() {
+            const interpreterId = document.getElementById("wwDataPrepTimeAxisInterpreterSelect").value;
+            const columnIndices = wwDataPrepTimeAxisColumnIndicesForSubmit();
+            const confirmed = document.getElementById("wwDataPrepTimeAxisConfirmedCheckbox").checked;
+            if (WW_DATA_PREP_SAMPLE_INTERPRETERS.includes(interpreterId)) {
+                const checkedDateOrder = document.querySelector('input[name="wwDataPrepTimeAxisDateOrder"]:checked');
+                const options = wwDataPrepTimeAxisOptionsWithAnchorOffset(
+                    interpreterId, checkedDateOrder ? { date_order: checkedDateOrder.value } : {},
+                );
+                const { unit, interval_seconds } = wwDataPrepTimeAxisUnitAndIntervalFromForm(interpreterId);
+                return wwDataPrepTimeAxisConfigBody(interpreterId, {
+                    columnIndices, unit, intervalSeconds: interval_seconds, options, confirmed,
+                });
+            }
+            const family = document.getElementById("wwDataPrepTimeAxisFamilySelect").value;
+            const provenance = document.getElementById("wwDataPrepTimeAxisProvenanceSelect").value;
+            const unitInput = document.getElementById("wwDataPrepTimeAxisUnitInput").value.trim();
+            const intervalInput = document.getElementById("wwDataPrepTimeAxisIntervalInput").value;
+            return wwDataPrepTimeAxisConfigBody("manual", {
+                columnIndices,
+                unit: family === "elapsed" && unitInput ? unitInput : null,
+                intervalSeconds: family === "sample_index" && intervalInput !== "" ? parseFloat(intervalInput) : null,
+                confirmed, family, provenance,
+            });
+        }
+
+        // Projects the last-fetched APPLIED configuration
+        // (wwDataPrep.timeAxisSummary, the plain GET .../time-axis echo)
+        // into the SAME canonical shape -- `null` when nothing has ever
+        // been saved/applied (that case is already its own, separate
+        // blocking issue, ISSUE_TIME_AXIS_UNCONFIGURED, not an "unsaved
+        // changes" one -- see wwDataPrepTimeAxisDraftIsDirty()).
+        function wwDataPrepAppliedTimeAxisDraftBody() {
+            const summary = wwDataPrep.timeAxisSummary;
+            if (!summary || !summary.interpreter_id) return null;
+            return wwDataPrepTimeAxisConfigBody(summary.interpreter_id, {
+                columnIndices: summary.column_indices || [],
+                unit: summary.unit != null ? summary.unit : null,
+                intervalSeconds: summary.interval_seconds != null ? summary.interval_seconds : null,
+                options: summary.options || {},
+                confirmed: !!summary.confirmed,
+                family: summary.family,
+                provenance: summary.provenance,
+            });
+        }
+
+        // `confirmed` is excluded from the dirty comparison whenever the
+        // Confirmed checkbox is not currently a meaningful control --
+        // `wwDataPrepRenderTimeAxisDetectResult()` FORCES it back to
+        // `false` on every render for anything other than Manual or an
+        // offered reconstruction (`wwDataPrepTimeAxisRequiresExplicitConfirmation()`'s
+        // own "generic confirmation only for a reconstructed suggestion"
+        // rule), regardless of what the applied configuration's own
+        // `confirmed` actually is -- e.g. a Time of Day config saved
+        // with `confirmed=true` (reachable via direct API/a restored
+        // session, Scenario 10) would otherwise compare as a false
+        // positive "unsaved change" the instant the panel renders, since
+        // the checkbox the form shows is never wired to reflect that
+        // value for this interpreter. Comparing it only when the field
+        // is actually visible keeps this consistent with the ONE place
+        // that already decides whether Confirmed carries real meaning
+        // right now, rather than a second, independent rule.
+        function wwDataPrepTimeAxisConfirmedFieldIsComparable() {
+            return !document.getElementById("wwDataPrepTimeAxisConfirmedField").hidden;
+        }
+
+        // Product rule: "Detection is not configuration. A draft is not
+        // an applied Time Axis." -- `true` the instant the form's CURRENT
+        // fields would produce a DIFFERENT saved configuration than the
+        // one actually applied, computed purely client-side (no network
+        // round trip, no waiting for a failed conversion to reveal the
+        // problem). `false` whenever nothing is applied yet (that state
+        // is already its own separate blocker) or the draft has been
+        // manually reverted back to equal the applied configuration.
+        function wwDataPrepTimeAxisDraftIsDirty() {
+            const applied = wwDataPrepAppliedTimeAxisDraftBody();
+            if (!applied) return false;
+            const draft = wwDataPrepCurrentTimeAxisDraftBody();
+            if (!wwDataPrepTimeAxisConfirmedFieldIsComparable()) {
+                draft.confirmed = null;
+                applied.confirmed = null;
+            }
+            return JSON.stringify(draft) !== JSON.stringify(applied);
+        }
+
+        // Preparation Status integrity guardrail: the ONE effective-state
+        // function the headline, the Blocking/Warning/Info counts, the
+        // View Issues list, Continue-to-Powerwave, and Export Cleaned
+        // Data all read through (wwDataPrepRenderIssues()/
+        // wwDataPrepRenderConversionAction()/wwDataPrepRenderExportAction()
+        // below) -- so they can never silently disagree. Layers a
+        // synthetic, frontend-only blocking issue on top of the real,
+        // backend-computed `wwDataPrep.issueSummary` whenever the visible
+        // draft differs from the applied configuration; otherwise passes
+        // the real summary through unchanged.
+        function wwDataPrepEffectiveIssueSummary() {
+            const base = wwDataPrep.issueSummary;
+            if (!base || !wwDataPrepTimeAxisDraftIsDirty()) return base;
+            const syntheticIssue = {
+                severity: "blocking",
+                code: "time_axis_unsaved_changes",
+                message: "Unsaved Time Axis changes -- the visible Time Axis form no longer matches the saved configuration.",
+                suggested_action: "Save the current Time Axis form, or restore its fields to match the saved configuration.",
+                location: { worksheet_index: null, row_number: null, field: "time_axis" },
+            };
+            return Object.assign({}, base, {
+                is_ready: false,
+                blocking_count: base.blocking_count + 1,
+                issues: [syntheticIssue].concat(base.issues),
+            });
+        }
+
         async function wwDataPrepSetTimeAxis() {
             const status = wwDataPrepTimeAxisStatusEl();
             status.textContent = "";
@@ -9245,40 +9415,15 @@
                     : "Select at least one Time Axis column first.";
                 return;
             }
-            const confirmed = document.getElementById("wwDataPrepTimeAxisConfirmedCheckbox").checked;
 
-            let body;
-            if (WW_DATA_PREP_SAMPLE_INTERPRETERS.includes(interpreterId)) {
-                // family/provenance are computed by the interpreter's own
-                // detect() from the actual sampled data -- never sent
-                // from this form (see TimeAxisConfigurationRequest's own
-                // docstring for why they are optional here). unit
-                // (elapsed_numeric)/interval_seconds (sample_index) ARE
-                // sent -- they are the one real piece of configuration
-                // these two interpreters need from the user.
-                const checkedDateOrder = document.querySelector('input[name="wwDataPrepTimeAxisDateOrder"]:checked');
-                const options = wwDataPrepTimeAxisOptionsWithAnchorOffset(
-                    interpreterId, checkedDateOrder ? { date_order: checkedDateOrder.value } : {},
-                );
-                const { unit, interval_seconds } = wwDataPrepTimeAxisUnitAndIntervalFromForm(interpreterId);
-                body = {
-                    column_indices: columnIndices, interpreter_id: interpreterId,
-                    unit: unit, interval_seconds: interval_seconds, options: options, confirmed: confirmed,
-                };
-            } else {
-                const family = document.getElementById("wwDataPrepTimeAxisFamilySelect").value;
-                const provenance = document.getElementById("wwDataPrepTimeAxisProvenanceSelect").value;
-                const unitInput = document.getElementById("wwDataPrepTimeAxisUnitInput").value.trim();
-                const intervalInput = document.getElementById("wwDataPrepTimeAxisIntervalInput").value;
-                body = {
-                    column_indices: columnIndices,
-                    family: family,
-                    provenance: provenance,
-                    unit: family === "elapsed" && unitInput ? unitInput : null,
-                    interval_seconds: family === "sample_index" && intervalInput !== "" ? parseFloat(intervalInput) : null,
-                    confirmed: confirmed,
-                };
-            }
+            // `interpreter_id: "manual"` is an explicitly accepted value
+            // for the Manual branch too (TimeAxisConfigurationRequest's
+            // own docstring: optional, defaults to "manual" when
+            // omitted) -- sending it explicitly here is equivalent, and
+            // keeps this ONE body identical to the draft/applied
+            // comparison shape above rather than needing a second,
+            // slightly different wire shape.
+            const body = wwDataPrepCurrentTimeAxisDraftBody();
             try {
                 const response = await fetch(
                     wwDataPrepSourceUrl("/working/time-axis"),
@@ -9336,6 +9481,21 @@
 
         document.getElementById("wwDataPrepTimeAxisSaveBtn").addEventListener("click", wwDataPrepSetTimeAxis);
         document.getElementById("wwDataPrepTimeAxisClearBtn").addEventListener("click", wwDataPrepClearTimeAxis);
+
+        // Preparation Status integrity guardrail: ONE delegated listener
+        // over the whole Time Axis Details container -- covers every
+        // user-editable field this panel has (interpreter/family/
+        // provenance/confirmed, column checkboxes, date-order radios,
+        // elapsed unit, sample-index/repeated-timestamp timing radios
+        // and inputs, split date/time column selects) without needing a
+        // dedicated listener per field, and without ever firing on this
+        // same panel's OWN programmatic re-renders (wwDataPrepRenderTimeAxisForm()
+        // etc. assign `.value`/`.checked` directly, which never dispatches
+        // "input"/"change" -- only genuine user interaction does). A
+        // plain re-render, no re-fetch: the real backend state has not
+        // changed, only whether the visible draft still matches it.
+        document.getElementById("wwDataPrepTimeAxisDetails").addEventListener("input", wwDataPrepRenderIssues);
+        document.getElementById("wwDataPrepTimeAxisDetails").addEventListener("change", wwDataPrepRenderIssues);
         document.getElementById("wwDataPrepTimeAxisFamilySelect").addEventListener("change", wwDataPrepRenderTimeAxisFieldVisibility);
 
         // Slice 8A: switching interpreter re-renders which fields show,

@@ -29,7 +29,6 @@ from starlette.datastructures import Headers
 from app.services.errors import (
     ExportNotReadyError,
     ExportRequiresIntervalError,
-    ExportUnsupportedInterpreterError,
     SourceNotFoundError,
     WorksheetNotSelectedError,
 )
@@ -187,6 +186,14 @@ class TestExportGating:
         with pytest.raises(ExportNotReadyError):
             export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
 
+    # Preparation Status integrity guardrail: readiness now blocks a
+    # `manual` configuration unconditionally (ISSUE_TIME_AXIS_MANUAL_
+    # UNRESOLVED, app.services.readiness_service), so `_ensure_exportable()`'s
+    # own `is_ready` check (checked first) now raises the generic
+    # ExportNotReadyError before ever reaching the specific
+    # ExportUnsupportedInterpreterError branch below it -- that branch is
+    # retained as harmless defense-in-depth (see DECISIONS.md) but is no
+    # longer reachable for `manual`/`unsupported` specifically.
     def test_manual_interpreter_blocks_export(self):
         prep = PreparationSessionRegistry()
         sid = _add_csv(prep, b"2026-08-31 13:00:00,1\n")
@@ -197,7 +204,7 @@ class TestExportGating:
             family="absolute", provenance="native", confirmed=True, registry=prep,
         )
 
-        with pytest.raises(ExportUnsupportedInterpreterError):
+        with pytest.raises(ExportNotReadyError):
             export_preparation_source(workspace_id=WS, source_id=sid, registry=prep, mode=EXPORT_MODE_WITH_PROVENANCE)
 
     def test_sample_index_without_interval_blocks_export(self):
