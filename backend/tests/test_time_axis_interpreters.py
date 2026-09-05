@@ -594,6 +594,105 @@ class TestSplitDateTime:
         assert result.diagnostics == []
 
 
+class TestSplitDateTimeOptionalFractionalSeconds:
+    """UAT fix (2026-09-05): a Time column may mix rows with and without
+    fractional seconds -- `18:04:00` alongside `18:04:00.020000` -- and
+    every row must be accepted, since the fraction is genuinely optional
+    per-value, not a fixed textual format the whole column must share.
+    The prior implementation picked a single best-explaining
+    `_TIME_PATTERNS` entry for the WHOLE sample, so a mostly-fractional
+    column reported its fraction-less rows as unparseable (the exact
+    reported UAT bug: "1 of 50 sampled Time column value(s) could not be
+    parsed as a time-of-day" for a valid `18:04:00`)."""
+
+    def test_case1_mixed_fractional_precision_all_valid(self):
+        dates = _rows(["2026-06-03", "2026-06-03", "2026-06-03"])
+        times = _rows(["18:04:00", "18:04:00.020000", "18:04:00.040000"])
+
+        result = detect_split_date_time(dates, times, requested_options={})
+
+        assert result.diagnostics == []
+
+    def test_case2_explicit_zero_fraction_equivalent_to_bare_seconds(self):
+        dates = _rows(["2026-06-03", "2026-06-03"])
+        times = _rows(["18:04:00", "18:04:00.000000"])
+
+        result = detect_split_date_time(dates, times, requested_options={})
+
+        assert result.diagnostics == []
+        preview = build_split_date_time_preview(
+            [(1, ("2026-06-03", "18:04:00")), (2, ("2026-06-03", "18:04:00.000000"))],
+            resolved_options=result.resolved_options, limit=10,
+        )
+        assert preview[0][2] == preview[1][2] == "2026-06-03T18:04:00"
+
+    def test_case3_shorter_fractions_are_valid(self):
+        # Chronologically ascending -- see TestSingleColumnSlashDashOrders'
+        # own comment for why order matters now that Slice 8D checks it.
+        # Deltas between these three values are genuinely uneven (0.009s,
+        # then 0.09s), which is a separate, correct Slice 8D "large gap"
+        # timing-quality diagnostic -- not a parseability failure, which is
+        # all this test cares about.
+        dates = _rows(["2026-06-03", "2026-06-03", "2026-06-03"])
+        times = _rows(["18:04:00.001", "18:04:00.01", "18:04:00.1"])
+
+        result = detect_split_date_time(dates, times, requested_options={})
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_UNPARSEABLE_DATETIME not in codes
+        assert DIAGNOSTIC_MIXED_DATETIME_FORMAT not in codes
+
+    def test_case4_invalid_time_values_still_rejected(self):
+        dates = _rows(["2026-06-03", "2026-06-03", "2026-06-03"])
+        times = _rows(["25:04:00", "18:61:00", "18:04:70"])
+
+        result = detect_split_date_time(dates, times, requested_options={})
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_UNPARSEABLE_DATETIME in codes
+        diag = next(d for d in result.diagnostics if d.code == DIAGNOSTIC_UNPARSEABLE_DATETIME)
+        assert diag.details["matched"] == 0
+        assert diag.details["sample_size"] == 3
+
+    def test_case4_one_invalid_value_among_valid_ones_reports_mixed(self):
+        dates = _rows(["2026-06-03", "2026-06-03"])
+        times = _rows(["18:04:00", "25:04:00"])
+
+        result = detect_split_date_time(dates, times, requested_options={})
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_MIXED_DATETIME_FORMAT in codes
+        diag = next(d for d in result.diagnostics if d.code == DIAGNOSTIC_MIXED_DATETIME_FORMAT)
+        assert diag.details["matched"] == 1
+        assert diag.details["examples"] == [{"row_number": 2, "value": "25:04:00"}]
+
+    def test_case5_date_plus_time_combination_materializes_correctly(self):
+        samples = [
+            (1, ("2026-06-03", "18:04:00")),
+            (2, ("2026-06-03", "18:04:00.020000")),
+        ]
+
+        preview = build_split_date_time_preview(samples, resolved_options={"date_order": "dmy"}, limit=10)
+
+        assert preview[0][2] == "2026-06-03T18:04:00"
+        assert preview[1][2] == "2026-06-03T18:04:00.020000"
+
+    def test_case6_detection_consistent_with_parsing_for_mixed_sample(self):
+        # Detection must not disagree with what `build_split_date_time_preview()`
+        # (the real materialization path) actually accepts.
+        dates = _rows(["2026-06-03"] * 3)
+        times = _rows(["18:04:00", "18:04:00.020000", "18:04:00.040000"])
+
+        result = detect_split_date_time(dates, times, requested_options={})
+        assert not any(
+            "could not be parsed as a time-of-day" in d.message for d in result.diagnostics
+        )
+
+        samples = [(row, (date, time)) for (row, date), (_, time) in zip(dates, times)]
+        preview = build_split_date_time_preview(samples, resolved_options=result.resolved_options, limit=10)
+        assert all(interpreted is not None for _, _, interpreted in preview)
+
+
 class TestSplitDateTimeMinuteResolutionAndAmPmHour:
     """Enhancement (minute/AM-PM-hour absolute time support), task
     section E: split Date + Time must stay behaviorally aligned with

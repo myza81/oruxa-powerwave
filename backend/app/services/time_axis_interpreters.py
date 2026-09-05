@@ -887,25 +887,39 @@ def detect_split_date_time(
         )
     time_values = [v for _, v in non_empty_times]
     if time_values:
-        time_match = max(
-            (_score_pattern(time_values, pattern, parser=_parse_with_pattern) for pattern in _TIME_PATTERNS),
-            key=lambda m: m.match_count,
-        )
-        if not time_match.is_full_match:
-            unmatched = time_match.total_count - time_match.match_count
-            code = DIAGNOSTIC_MIXED_DATETIME_FORMAT if time_match.match_count > 0 else DIAGNOSTIC_UNPARSEABLE_DATETIME
+        # UAT fix (2026-09-05): a Time column is a single semantic
+        # time-of-day value with OPTIONAL, VARIABLE-precision fractional
+        # seconds -- not one fixed textual format every sampled row must
+        # share. The previous check picked the single `_TIME_PATTERNS`
+        # entry with the highest whole-sample match count (`_score_pattern`
+        # over ALL rows) and only accepted it as a full match; a column
+        # mixing "18:04:00" (no fraction) with "18:04:00.020000" (fraction)
+        # has NO single pattern that matches every row, so the best
+        # candidate (`%H:%M:%S.%f`) reported the fraction-less rows as
+        # unparseable even though `_is_time_only()` -- the SAME per-value,
+        # any-pattern-in-the-table check `detect_absolute_datetime()`
+        # already uses to recognize a bare time-of-day column -- happily
+        # accepts every one of them. Checking each value independently
+        # against the whole table (rather than requiring one pattern to
+        # explain the whole sample) also matches how `_combine_date_and_time()`
+        # already parses each row for real (tries every pattern per value,
+        # first match wins) -- detection and parsing must not disagree.
+        failing_times = [(row_number, value) for row_number, value in non_empty_times if not _is_time_only(value)]
+        if failing_times:
+            matched = len(time_values) - len(failing_times)
+            code = DIAGNOSTIC_MIXED_DATETIME_FORMAT if matched > 0 else DIAGNOSTIC_UNPARSEABLE_DATETIME
             # UAT fix (2026-09-04), task D.3: concrete failing examples,
             # not only a count -- same treatment as the DATE column's
             # own unparseable/mixed branch above.
-            time_examples = _failing_examples(non_empty_times, pattern=time_match.pattern)
+            time_examples = [{"row_number": row_number, "value": value} for row_number, value in failing_times[:_MAX_DIAGNOSTIC_EXAMPLES]]
             diagnostics.append(
                 TimeAxisDiagnostic(
                     severity_hint=SEVERITY_WARNING,
                     code=code,
-                    message=f"{unmatched} of {time_match.total_count} sampled Time column value(s) could not be parsed as a time-of-day.",
+                    message=f"{len(failing_times)} of {len(time_values)} sampled Time column value(s) could not be parsed as a time-of-day.",
                     suggested_action="Review the examples below -- the Time column may mix formats or contain invalid entries.",
                     ambiguity=AMBIGUITY_INVALID,
-                    details={"matched": time_match.match_count, "sample_size": time_match.total_count, "examples": time_examples},
+                    details={"matched": matched, "sample_size": len(time_values), "examples": time_examples},
                 )
             )
 
