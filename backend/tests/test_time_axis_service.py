@@ -35,6 +35,7 @@ from app.domain.time_axis import (
     INTERPRETER_ID_REPEATED_TIMESTAMP,
     INTERPRETER_ID_SAMPLE_INDEX,
     INTERPRETER_ID_SPLIT_DATE_TIME,
+    INTERPRETER_ID_TIME_OF_DAY,
     INTERPRETER_ID_UNSUPPORTED,
     PROVENANCE_INDEX_ONLY,
     PROVENANCE_NATIVE,
@@ -416,6 +417,7 @@ class TestRegistryResolution:
         monkeypatch.delitem(_INTERPRETERS, INTERPRETER_ID_MANUAL)
         monkeypatch.delitem(_INTERPRETERS, INTERPRETER_ID_ABSOLUTE_DATETIME)
         monkeypatch.delitem(_INTERPRETERS, INTERPRETER_ID_SPLIT_DATE_TIME)
+        monkeypatch.delitem(_INTERPRETERS, INTERPRETER_ID_TIME_OF_DAY)
         monkeypatch.delitem(_INTERPRETERS, INTERPRETER_ID_ELAPSED_NUMERIC)
         monkeypatch.delitem(_INTERPRETERS, INTERPRETER_ID_SAMPLE_INDEX)
         monkeypatch.delitem(_INTERPRETERS, INTERPRETER_ID_REPEATED_TIMESTAMP)
@@ -2074,6 +2076,85 @@ class TestConfiguredTimePartial:
         assert all("T" not in v for v in computed.values_by_row_number.values())
 
 
+class TestConfiguredTimePartialMidnightRollover:
+    """2026-09-05 fix: the Data Preview's own Configured Time column
+    previously computed each row's relative value INDEPENDENTLY (a
+    one-row-at-a-time call into `relative_seconds_with_anchor()`), so
+    the shared midnight-unwrap logic never actually saw the intervening
+    rows between a source's own anchor and a later row -- it only
+    happened to look correct for a row immediately adjacent to a
+    rollover, and silently produced a large, wrong NEGATIVE value for
+    anything further past a genuine crossing. This class locks in the
+    fix: the SAME full-sequence unwrap `preparation_conversion_service`/
+    `preparation_export_service` already use for the real canonical/
+    exported values, called once over the whole active region."""
+
+    def test_rollover_produces_continuous_monotonic_preview(self):
+        registry = PreparationSessionRegistry()
+        content = b"23:59:59.980000,1.0\n00:00:00.000000,2.0\n00:00:00.020000,3.0\n"
+        source_id = _add_csv(registry, content)
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_TIME_OF_DAY, confirmed=True, registry=registry,
+        )
+
+        computed = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert computed.values_by_row_number == {1: "0.000", 2: "0.020", 3: "0.040"}
+
+    def test_a_row_well_past_the_rollover_is_not_a_false_negative_reset(self):
+        # The exact regression this fix closes: a row several minutes
+        # past a genuine midnight crossing must still compute a large
+        # POSITIVE relative value, never a huge negative one from
+        # comparing it directly against the (pre-midnight) anchor alone.
+        registry = PreparationSessionRegistry()
+        content = (
+            b"23:59:59.980000,1.0\n"
+            b"00:00:00.000000,2.0\n"
+            b"00:05:00.000000,3.0\n"
+        )
+        source_id = _add_csv(registry, content)
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_TIME_OF_DAY, confirmed=True, registry=registry,
+        )
+
+        computed = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert float(computed.values_by_row_number[3]) == pytest.approx(300.02, abs=1e-3)
+
+    def test_preview_agrees_with_canonical_conversion_across_a_rollover(self):
+        from app.services.preparation_conversion_service import convert_preparation_source
+        from app.services.workspace_registry import WorkspaceRegistry
+
+        registry = PreparationSessionRegistry()
+        content = b"23:59:59.980000,1.0\n00:00:00.000000,2.0\n00:00:00.020000,3.0\n"
+        source_id = _add_csv(registry, content)
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_TIME_OF_DAY, confirmed=True, registry=registry,
+        )
+
+        preview_values = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        workspace_registry = WorkspaceRegistry()
+        metadata = convert_preparation_source(
+            workspace_id="ws-1", source_id=source_id, preparation_registry=registry, workspace_registry=workspace_registry,
+        )
+        active = workspace_registry.get("ws-1", metadata.source_id)
+
+        for row_number, canonical in zip((1, 2, 3), active.record.waveform_data["time"]):
+            assert float(preview_values.values_by_row_number[row_number]) == pytest.approx(canonical, abs=1e-6)
+        # No negative/backward canonical time anywhere in the sequence.
+        assert all(v >= 0 for v in active.record.waveform_data["time"])
+
+
 class TestConfiguredTimeUnresolvedStates:
     def test_unconfigured_time_axis_has_no_derived_column(self):
         registry = PreparationSessionRegistry()
@@ -2156,6 +2237,50 @@ class TestConfiguredTimePaging:
         # Row 4's own value is unchanged by row 3's exclusion -- never
         # silently re-indexed/compressed (task section N).
         assert after.values_by_row_number[4] == before.values_by_row_number[4]
+
+    def test_midnight_rollover_exactly_across_a_pagination_boundary(self):
+        # Constructs enough rows (well past PREVIEW_DEFAULT_LIMIT=200)
+        # that a genuine midnight crossing lands EXACTLY at the seam
+        # between preview page 1 (rows 1-200) and page 2 (rows 201+) --
+        # the scenario this fix was specifically reported against. Every
+        # row is 5ms apart, uniform throughout; only the STRING wraps at
+        # midnight (row 201 is the literal "00:00:00.000000" instant).
+        import datetime as _dt
+
+        registry = PreparationSessionRegistry()
+        base = _dt.datetime(2000, 1, 1, 23, 59, 59, 0)
+        step = _dt.timedelta(milliseconds=5)
+        total_rows = 210
+        lines = [
+            f"{(base + i * step).strftime('%H:%M:%S.%f')},{float(i)}"
+            for i in range(total_rows)
+        ]
+        source_id = _add_csv(registry, ("\n".join(lines) + "\n").encode())
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_TIME_OF_DAY, confirmed=True, registry=registry,
+        )
+
+        page1 = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=0, limit=200, registry=registry)
+        result1 = configured_time_for_preview_page(workspace_id="ws-1", source_id=source_id, page_rows=page1.rows, registry=registry)
+        page2 = preview_preparation_source(workspace_id="ws-1", source_id=source_id, offset=200, limit=10, registry=registry)
+        result2 = configured_time_for_preview_page(workspace_id="ws-1", source_id=source_id, page_rows=page2.rows, registry=registry)
+
+        _, _, values1 = result1
+        _, _, values2 = result2
+        # Row 200 (last of page 1, index 199) = 23:59:59.995 -- still
+        # just before midnight.
+        assert float(values1[-1]) == pytest.approx(199 * 0.005, abs=1e-3)
+        # Row 201 (first of page 2, index 200) = 00:00:00.000 -- the
+        # rollover instant itself. Must continue forward (1.000s), never
+        # reset toward 0 or go negative, purely because the crossing
+        # happens to fall on this exact pagination boundary.
+        assert float(values2[0]) == pytest.approx(200 * 0.005, abs=1e-3)
+        assert float(values2[0]) > float(values1[-1])
+        # A few rows further into page 2, still past the rollover.
+        assert float(values2[-1]) == pytest.approx(209 * 0.005, abs=1e-3)
 
 
 class TestConfiguredTimeStateRefresh:

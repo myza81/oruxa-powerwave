@@ -150,6 +150,27 @@ def normalize_absolute_datetime(value: datetime) -> datetime:
 
 TIME_REFERENCE_RECORDED_ABSOLUTE = "recorded_absolute"
 TIME_REFERENCE_ELAPSED_ONLY = "elapsed_only"
+#: Time of Day (CSV/Excel ingestion, additive) -- a source whose own
+#: time axis is genuine clock time with NO date component
+#: (`app.domain.timing.TimingInformation.timing_reference ==
+#: "time_of_day"`, set only for a converted `FAMILY_PARTIAL` source).
+#: Kept as a THIRD, fully separate bucket from both
+#: `TIME_REFERENCE_RECORDED_ABSOLUTE` and `TIME_REFERENCE_ELAPSED_ONLY`
+#: -- never merged with either in `derive_time_groups()` below.
+#: **The governing rule this bucket exists to enforce: Absolute DateTime
+#: and Time of Day must never be automatically synchronized merely
+#: because their clock portions look similar** -- a source recorded at
+#: `2026-06-03 18:04:00` (recorded_absolute) and one recorded at
+#: `18:04:00` with no date (time_of_day) share no defensible time
+#: relationship this app is entitled to assume, so they are never even
+#: compared for overlap against each other. Two `time_of_day` sources,
+#: however, MAY share a group with EACH OTHER by ordinary clock-time
+#: interval overlap (see `_TimeOfDaySource`/`_time_of_day_interval()`
+#: below) -- exactly the same "intervals overlap -> one group" rule
+#: `recorded_absolute` already uses, just in date-neutral
+#: seconds-since-midnight coordinates instead of real calendar
+#: `datetime`s, and never combined with one.
+TIME_REFERENCE_TIME_OF_DAY = "time_of_day"
 
 #: Task section 11's own suggested neutral wording -- never an
 #: alarmist/definitive "different event" claim (the gap may be a wrong
@@ -179,11 +200,17 @@ def time_reference_type_for_source(timing_reference: str) -> str:
     """Task section 7's own minimum-required distinction: "source has a
     usable absolute recording start" vs. "source has only elapsed/native
     time." Reuses `SourceMetadata.timing_reference` verbatim (see this
-    module's own docstring) -- anything other than the provider's own
-    `"absolute"` literal is treated as elapsed-only, never guessed at
-    more finely than that (task section 6: "do not introduce generic
-    timestamp guessing into synchronization code")."""
-    return TIME_REFERENCE_RECORDED_ABSOLUTE if timing_reference == "absolute" else TIME_REFERENCE_ELAPSED_ONLY
+    module's own docstring) -- the provider's own `"absolute"` literal
+    maps to `recorded_absolute`, `"time_of_day"` (Time of Day, additive)
+    maps to its own separate bucket, and anything else is treated as
+    elapsed-only, never guessed at more finely than that (task section
+    6: "do not introduce generic timestamp guessing into synchronization
+    code")."""
+    if timing_reference == "absolute":
+        return TIME_REFERENCE_RECORDED_ABSOLUTE
+    if timing_reference == "time_of_day":
+        return TIME_REFERENCE_TIME_OF_DAY
+    return TIME_REFERENCE_ELAPSED_ONLY
 
 
 @dataclass(slots=True)
@@ -217,8 +244,35 @@ def _intervals_overlap(a: _AbsoluteSource, b: _AbsoluteSource) -> bool:
     endpoint are treated as overlapping (the conservative direction:
     task section 13 asks for non-overlap to be the DEFAULT for a genuine
     gap, not for two recordings that are contiguous down to the same
-    instant to be split apart on a coin-flip boundary rule)."""
+    instant to be split apart on a coin-flip boundary rule).
+
+    Works unchanged for `_TimeOfDaySource` too (duck-typed on
+    `.interval_start`/`.interval_end`) -- one shared overlap rule for
+    both buckets, never a second copy."""
     return a.interval_start <= b.interval_end and b.interval_start <= a.interval_end
+
+
+@dataclass(slots=True)
+class _TimeOfDaySource:
+    """Time of Day (additive) counterpart of `_AbsoluteSource` -- an
+    interval in date-neutral seconds-since-midnight coordinates instead
+    of real `datetime`s. `anchor_seconds` (always in `[0, 86400)`) is the
+    source's own clock position at its elapsed=0 origin
+    (`SourceMetadata.time_of_day_reference_seconds`); `interval_start`/
+    `interval_end` add that source's own `elapsed_start_seconds`/
+    `elapsed_end_seconds` on top -- exactly `_absolute_interval()`'s same
+    `start_time + elapsed` composition, just in seconds rather than
+    `timedelta`. `interval_end` may exceed `86400` when THIS source's
+    own canonical time axis legitimately unwrapped a midnight rollover
+    (see `app.services.time_axis_normalization`'s own unwrap logic) --
+    that is what lets two sources which both genuinely cross the SAME
+    midnight still compare correctly via plain numeric overlap below,
+    with no cross-source day-shifting ever attempted."""
+
+    source_id: str
+    anchor_seconds: float
+    interval_start: float
+    interval_end: float
 
 
 def _connected_components(nodes: list[str], edges: set[tuple[str, str]]) -> list[list[str]]:
@@ -249,6 +303,8 @@ def _connected_components(nodes: list[str], edges: set[tuple[str, str]]) -> list
 
 def derive_time_groups(
     sources: list[tuple[str, str, datetime | None, float, float]],
+    *,
+    time_of_day_reference_seconds: dict[str, float] | None = None,
 ) -> list[TimeGroup]:
     """Derive every current Time Group from the workspace's current
     source set, recomputed fresh on every call (never cached/persisted --
@@ -265,11 +321,25 @@ def derive_time_groups(
     validate) -- such a source is demoted to its own `elapsed_only`-style
     singleton group rather than crashing.
 
+    `time_of_day_reference_seconds` (Time of Day, additive) is an
+    OPTIONAL `source_id -> seconds_since_midnight` lookup, needed only
+    for sources whose own `timing_reference == "time_of_day"` (mirrors
+    `SourceMetadata.time_of_day_reference_seconds`, kept as a SEPARATE
+    parameter rather than widening the `sources` tuple itself, so every
+    existing caller/test that already builds a plain 5-tuple keeps
+    working completely unchanged). A `time_of_day`-typed source with no
+    entry here (the same defensive "corrupt/missing field" edge case
+    `start_time is None` already gets for `recorded_absolute`) is
+    likewise demoted to its own `elapsed_only`-style singleton rather
+    than crashing.
+
     Returns one `TimeGroup` per group, `source_ids` ordered
     origin-first. Order of the returned list itself is deterministic
     (sorted by `group_id`) but otherwise not meaningful.
     """
+    time_of_day_reference_seconds = time_of_day_reference_seconds or {}
     absolute: list[_AbsoluteSource] = []
+    time_of_day: list[_TimeOfDaySource] = []
     elapsed_only_ids: list[str] = []
 
     for source_id, timing_reference, start_time, elapsed_start_seconds, elapsed_end_seconds in sources:
@@ -282,6 +352,16 @@ def derive_time_groups(
                 start_time=start_time, elapsed_start_seconds=elapsed_start_seconds, elapsed_end_seconds=elapsed_end_seconds
             )
             absolute.append(_AbsoluteSource(source_id=source_id, start_time=start_time, interval_start=interval_start, interval_end=interval_end))
+        elif reference_type == TIME_REFERENCE_TIME_OF_DAY and time_of_day_reference_seconds.get(source_id) is not None:
+            anchor_seconds = time_of_day_reference_seconds[source_id]
+            time_of_day.append(
+                _TimeOfDaySource(
+                    source_id=source_id,
+                    anchor_seconds=anchor_seconds,
+                    interval_start=anchor_seconds + elapsed_start_seconds,
+                    interval_end=anchor_seconds + elapsed_end_seconds,
+                )
+            )
         else:
             elapsed_only_ids.append(source_id)
 
@@ -308,6 +388,40 @@ def derive_time_groups(
                 TimeGroup(
                     group_id=origin.source_id,
                     time_reference_type=TIME_REFERENCE_RECORDED_ABSOLUTE,
+                    origin_source_id=origin.source_id,
+                    source_ids=ordered_ids,
+                    note=note,
+                )
+            )
+
+    # Time of Day (additive): the SAME overlap/connected-components rule
+    # as `recorded_absolute` above, in its own SEPARATE pass -- never
+    # merged with the `absolute` list, so a Time of Day source and a
+    # Recorded Absolute source can never end up sharing a group merely
+    # because their clock portions happen to look similar (the
+    # governing rule this whole bucket exists to enforce -- see
+    # `TIME_REFERENCE_TIME_OF_DAY`'s own docstring).
+    if time_of_day:
+        tod_by_id = {t.source_id: t for t in time_of_day}
+        tod_node_ids = [t.source_id for t in time_of_day]
+        tod_edges = {
+            (a.source_id, b.source_id)
+            for i, a in enumerate(time_of_day)
+            for b in time_of_day[i + 1 :]
+            if _intervals_overlap(a, b)
+        }
+        tod_components = _connected_components(tod_node_ids, tod_edges)
+        multiple_tod_groups = len(tod_components) > 1
+
+        for member_ids in tod_components:
+            members = sorted((tod_by_id[sid] for sid in member_ids), key=lambda t: (t.anchor_seconds, t.source_id))
+            origin = members[0]
+            ordered_ids = [origin.source_id] + sorted(m.source_id for m in members[1:])
+            note = NON_OVERLAPPING_NOTE if (len(members) == 1 and multiple_tod_groups) else None
+            groups.append(
+                TimeGroup(
+                    group_id=origin.source_id,
+                    time_reference_type=TIME_REFERENCE_TIME_OF_DAY,
                     origin_source_id=origin.source_id,
                     source_ids=ordered_ids,
                     note=note,
@@ -352,3 +466,14 @@ def timestamp_placement_offset_s(*, source_start_time: datetime | None, origin_s
     source_start_time = normalize_absolute_datetime(source_start_time)
     origin_start_time = normalize_absolute_datetime(origin_start_time)
     return (source_start_time - origin_start_time).total_seconds()
+
+
+def time_of_day_placement_offset_s(*, source_reference_seconds: float | None, origin_reference_seconds: float | None) -> float:
+    """Time of Day (additive) counterpart of `timestamp_placement_offset_s()`
+    above -- the SAME composition (`placement = source_anchor -
+    origin_anchor`), in date-neutral seconds-since-midnight coordinates
+    instead of `datetime` subtraction. `0.0` whenever either anchor is
+    unavailable, mirroring that function's own same defensive default."""
+    if source_reference_seconds is None or origin_reference_seconds is None:
+        return 0.0
+    return source_reference_seconds - origin_reference_seconds

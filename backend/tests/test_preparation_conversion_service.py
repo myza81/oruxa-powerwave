@@ -209,7 +209,14 @@ class TestPartialConversion:
         metadata = _convert(prep, ws, sid)
 
         assert metadata.preparation_provenance["time_family"] == "partial"
-        assert metadata.timing_reference == "relative_elapsed"
+        # Time of Day (additive): a FAMILY_PARTIAL conversion gets its OWN
+        # `timing_reference` literal, distinct from plain elapsed timing --
+        # see app.domain.time_grouping's own docstring for why (Absolute
+        # DateTime and Time of Day must never auto-synchronize just
+        # because their clock portions look similar, and two Time of Day
+        # sources should still be able to auto-synchronize with EACH OTHER
+        # by clock-time overlap, which a plain elapsed-only source never can).
+        assert metadata.timing_reference == "time_of_day"
 
     def test_no_date_fabricated(self):
         prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
@@ -220,6 +227,77 @@ class TestPartialConversion:
 
         metadata = _convert(prep, ws, sid)
 
+        assert metadata.start_time is None
+
+
+class TestTimeOfDayConversion:
+    """Explicit `time_of_day` interpreter selection (new) -- an
+    engineer who KNOWS their column is clock-time-only can say so
+    directly, rather than reaching FAMILY_PARTIAL only as an incidental
+    Absolute Datetime byproduct (TestPartialConversion above, unchanged)."""
+
+    def test_basic_time_of_day_elapsed_coordinate(self):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"18:04:00,1.0\n18:04:00.020000,2.0\n18:04:00.040000,3.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="time_of_day", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+        active = ws.get("ws-1", metadata.source_id)
+
+        assert list(active.record.waveform_data["time"]) == pytest.approx([0.0, 0.02, 0.04])
+        assert metadata.preparation_provenance["time_family"] == "partial"
+        assert metadata.timing_reference == "time_of_day"
+
+    def test_mixed_fractional_precision_converts_correctly(self):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"18:04:00,1.0\n18:04:00.02,2.0\n18:04:00.040000,3.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="time_of_day", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+        active = ws.get("ws-1", metadata.source_id)
+
+        assert list(active.record.waveform_data["time"]) == pytest.approx([0.0, 0.02, 0.04])
+
+    def test_no_date_synthesized_or_persisted(self):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"18:04:00,1.0\n18:04:00.020000,2.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="time_of_day", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+
+        assert metadata.start_time is None
+        assert metadata.trigger_time is None
+        active = ws.get("ws-1", metadata.source_id)
+        assert active.record.timing_info.start_time is None
+
+    def test_time_of_day_reference_seconds_captured_for_grouping(self):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"18:04:00,1.0\n18:04:00.020000,2.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="time_of_day", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+
+        assert metadata.time_of_day_reference_seconds == pytest.approx(18 * 3600 + 4 * 60)
+
+    def test_midnight_rollover_stays_continuous_no_date_invented(self):
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"23:59:59.980000,1.0\n00:00:00.000000,2.0\n00:00:00.020000,3.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="time_of_day", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+        active = ws.get("ws-1", metadata.source_id)
+
+        assert list(active.record.waveform_data["time"]) == pytest.approx([0.0, 0.02, 0.04])
         assert metadata.start_time is None
 
 

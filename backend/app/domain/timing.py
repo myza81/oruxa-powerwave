@@ -91,6 +91,16 @@ class TimingInformation:
     timezone: str | None = None
     timing_reference: str = "absolute"
     time_axis_unit: str | None = None
+    #: Time of Day (CSV/Excel ingestion, additive): seconds-since-
+    #: midnight clock position corresponding to this recording's own
+    #: elapsed=0 origin, for a `timing_reference="time_of_day"` source
+    #: ONLY -- the date-neutral counterpart of `start_time`, used solely
+    #: for Time-of-Day-vs-Time-of-Day overlap/placement in
+    #: `app.domain.time_grouping`. Never combined with a real calendar
+    #: date, never promoted to `start_time`, and always `None` for every
+    #: other `timing_reference` value (including every existing COMTRADE
+    #: recording, which is completely unaffected by this field).
+    time_of_day_reference_seconds: float | None = None
 
 
 @dataclass(slots=True)

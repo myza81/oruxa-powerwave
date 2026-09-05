@@ -154,7 +154,7 @@ from app.services.preparation_preview_service import (
 )
 from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.time_axis_interpreters import _to_float
-from app.services.time_axis_normalization import parse_native_time_value, relative_seconds
+from app.services.time_axis_normalization import parse_native_time_value, relative_seconds, seconds_from_midnight
 from app.services.time_axis_service import get_time_axis_summary, resolve_interpreter
 from app.services.workspace_registry import WorkspaceRegistry
 
@@ -307,8 +307,8 @@ def convert_preparation_source(
     if time_axis_summary.interpreter_id in (INTERPRETER_ID_MANUAL, INTERPRETER_ID_UNSUPPORTED):
         raise ConversionUnsupportedInterpreterError(
             "The active Time Axis configuration does not parse real per-row values from this source's own "
-            "columns -- assign a real interpreter (Absolute Datetime, Date + Time, Elapsed Time, Sample Index, "
-            "or Repeated Timestamp) before converting to Powerwave."
+            "columns -- assign a real interpreter (Absolute Datetime, Date + Time, Time of Day, Elapsed Time, "
+            "Sample Index, or Repeated Timestamp) before converting to Powerwave."
         )
 
     if time_axis_summary.family == FAMILY_SAMPLE_INDEX and time_axis_summary.interval_seconds is None:
@@ -434,9 +434,28 @@ def convert_preparation_source(
     )
 
     # 6. Timing metadata -- no fake dates, no fake trigger (task
-    # sections F/G).
-    timing_reference = "absolute" if time_axis_summary.family == FAMILY_ABSOLUTE else "relative_elapsed"
+    # sections F/G). Time of Day (FAMILY_PARTIAL) gets its OWN
+    # `timing_reference` literal, distinct from plain elapsed/sample-
+    # index timing -- see `app.domain.time_grouping`'s own docstring for
+    # why this THIRD bucket must never be conflated with either
+    # `"absolute"` or the generic `"relative_elapsed"` (Absolute DateTime
+    # and Time of Day must never auto-synchronize just because their
+    # clock portions look similar, and Time of Day sources should still
+    # be able to auto-synchronize with EACH OTHER by clock-time overlap,
+    # which a plain elapsed-only source never can). `start_time` stays
+    # `None` here exactly as it always has for a non-absolute family --
+    # no date is ever invented for a Time of Day source.
+    timing_reference = (
+        "absolute" if time_axis_summary.family == FAMILY_ABSOLUTE
+        else "time_of_day" if time_axis_summary.family == FAMILY_PARTIAL
+        else "relative_elapsed"
+    )
     start_time = absolute_anchor if time_axis_summary.family == FAMILY_ABSOLUTE else None
+    time_of_day_reference_seconds: float | None = None
+    if time_axis_summary.family == FAMILY_PARTIAL:
+        first_native = parse_native_time_value(preview_rows[0].interpreted, family=FAMILY_PARTIAL)
+        if first_native is not None:
+            time_of_day_reference_seconds = seconds_from_midnight(first_native)
     timezone_label: str | None = None
     if start_time is not None and start_time.tzinfo is not None:
         offset_text = start_time.strftime("%z")
@@ -444,6 +463,7 @@ def convert_preparation_source(
     timing_info = TimingInformation(
         start_time=start_time, trigger_time=None,
         timezone=timezone_label, timing_reference=timing_reference, time_axis_unit=time_axis_summary.unit,
+        time_of_day_reference_seconds=time_of_day_reference_seconds,
     )
 
     # 7. Provenance/source metadata (task section O).
@@ -516,6 +536,7 @@ def convert_preparation_source(
         timing_reference=timing_info.timing_reference,
         start_time=timing_info.start_time,
         trigger_time=timing_info.trigger_time,
+        time_of_day_reference_seconds=timing_info.time_of_day_reference_seconds,
         sample_count=record.sample_count(),
         duration_seconds=record.duration_seconds(),
         elapsed_start_seconds=record.elapsed_start_seconds(),

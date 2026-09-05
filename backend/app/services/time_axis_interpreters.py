@@ -22,6 +22,11 @@ anticipated:
                             confidence supports it, SUGGESTS (never
                             silently applies) an even sub-interval
                             reconstruction (8C)
+    `time_of_day`        -- one Time Axis column, clock time with
+                            genuinely NO date component -- a DISTINCT,
+                            explicitly-selected interpreter (never an
+                            automatic fallback); always resolves to
+                            `FAMILY_PARTIAL`, never invents a date
 
 Both are deterministic, bounded, non-fuzzy parsers -- a small, explicit
 table of `datetime.strptime` patterns (plus `datetime.fromisoformat`'s
@@ -1051,6 +1056,110 @@ def build_split_date_time_preview(
             continue
         combined = _combine_date_and_time(str(date_value), str(time_value), date_order=date_order)
         rows.append((row_number, values, combined.isoformat() if combined else None))
+    return rows
+
+
+# ---- Time of Day: explicit clock-time-only interpreter ----------------
+
+
+def detect_time_of_day(
+    raw_values_by_row: list[tuple[int, Any]],
+    *,
+    requested_options: dict[str, Any],
+) -> TimeAxisDetectionResult:
+    """Time of Day -- single-column detection for a value that carries
+    clock time but genuinely NO date component (`18:04:00`, optionally
+    with variable-precision fractional seconds). This is a DISTINCT,
+    explicitly-selected interpreter, never an automatic fallback:
+    `detect_absolute_datetime()`'s own pre-existing "every sampled value
+    is a time-of-day" branch already reports `FAMILY_PARTIAL` when an
+    Absolute Datetime reading happens to see only clock values -- that
+    existing behavior is completely UNCHANGED by this interpreter's
+    existence (an engineer who explicitly picks Absolute Datetime and
+    supplies only clock values still lands there, still incomplete,
+    exactly as before). This interpreter exists so an engineer who KNOWS
+    their data has no date can say so directly, rather than reaching the
+    same family only as an incidental byproduct of a different
+    interpreter's own diagnostic.
+
+    Reuses the EXACT SAME per-value, any-pattern-in-`_TIME_PATTERNS`
+    tolerance `_is_time_only()`/`_parse_time_only()` already provide --
+    mixed fractional-second precision within one column is valid, per
+    the same policy the 2026-09-05 `detect_split_date_time()` fix
+    established (never a second, parallel time-of-day parser).
+
+    `family` is always `FAMILY_PARTIAL`, never promoted to
+    `FAMILY_ABSOLUTE` regardless of confidence -- no date is ever
+    invented, no sentinel date is ever attached. Row-to-row timing-
+    quality diagnostics (backward/gap/midnight-rollover) reuse the SAME
+    `_sequence_diagnostics_for_datetime_column()` Slice 8D already built
+    for the single-column `absolute_datetime` interpreter's own bare-
+    time-of-day branch -- one shared implementation, not a second one."""
+    diagnostics: list[TimeAxisDiagnostic] = []
+    total = len(raw_values_by_row)
+    non_empty = [(row_number, str(value)) for row_number, value in raw_values_by_row if value not in (None, "")]
+    missing_count = total - len(non_empty)
+    if missing_count:
+        diagnostics.append(
+            TimeAxisDiagnostic(
+                severity_hint=SEVERITY_WARNING,
+                code=DIAGNOSTIC_MISSING_DATETIME_VALUE,
+                message=f"{missing_count} of {total} sampled row(s) have no value in this Time Axis column.",
+                ambiguity=AMBIGUITY_UNAMBIGUOUS,
+                details={"missing_count": missing_count, "sample_size": total},
+            )
+        )
+    if not non_empty:
+        return TimeAxisDetectionResult(
+            family=FAMILY_PARTIAL, provenance=PROVENANCE_NATIVE, confidence=CONFIDENCE_UNKNOWN,
+            diagnostics=diagnostics, resolved_options={},
+        )
+
+    failing = [(row_number, value) for row_number, value in non_empty if not _is_time_only(value)]
+    if failing:
+        matched = len(non_empty) - len(failing)
+        code = DIAGNOSTIC_MIXED_DATETIME_FORMAT if matched > 0 else DIAGNOSTIC_UNPARSEABLE_DATETIME
+        examples = [{"row_number": row_number, "value": value} for row_number, value in failing[:_MAX_DIAGNOSTIC_EXAMPLES]]
+        diagnostics.append(
+            TimeAxisDiagnostic(
+                severity_hint=SEVERITY_WARNING,
+                code=code,
+                message=f"{len(failing)} of {len(non_empty)} sampled Time of Day value(s) could not be parsed as a time-of-day.",
+                suggested_action="Review the examples below -- the column may mix formats or contain invalid entries.",
+                ambiguity=AMBIGUITY_INVALID,
+                details={"matched": matched, "sample_size": len(non_empty), "examples": examples},
+            )
+        )
+        confidence = _confidence_for_partial(_FormatMatch(pattern="time_of_day", match_count=matched, total_count=len(non_empty)))
+    else:
+        diagnostics.extend(_sequence_diagnostics_for_datetime_column(non_empty, family=FAMILY_PARTIAL, date_order=None))
+        confidence = CONFIDENCE_HIGH
+
+    return TimeAxisDetectionResult(
+        family=FAMILY_PARTIAL, provenance=PROVENANCE_NATIVE, confidence=confidence,
+        diagnostics=diagnostics, resolved_options={},
+    )
+
+
+def build_time_of_day_preview(
+    samples: list[tuple[int, tuple[Any, ...]]], *, resolved_options: dict[str, Any], limit: int,
+) -> list[tuple[int, tuple[Any, ...], str | None]]:
+    """Time of Day counterpart of `build_absolute_datetime_preview` --
+    `values[0]` is the single time-only cell. Formats a successfully-
+    parsed value as `"%H:%M:%S.%f"`, matching `app.services.
+    time_axis_normalization.parse_native_time_value()`'s own expected
+    `FAMILY_PARTIAL` re-parse format -- the same `interpreted` string
+    convention every other family's own preview builder already follows,
+    never a second, divergent shape."""
+    rows = []
+    for row_number, values in samples[:limit]:
+        value = values[0] if values else None
+        if value in (None, ""):
+            rows.append((row_number, values, None))
+            continue
+        parsed = _parse_time_only(str(value))
+        interpreted = parsed.strftime("%H:%M:%S.%f") if parsed is not None else None
+        rows.append((row_number, values, interpreted))
     return rows
 
 

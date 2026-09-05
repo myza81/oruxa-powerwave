@@ -160,6 +160,17 @@ INTERPRETER_ID_MANUAL = "manual"
 INTERPRETER_ID_UNSUPPORTED = "unsupported"
 INTERPRETER_ID_ABSOLUTE_DATETIME = "absolute_datetime"
 INTERPRETER_ID_SPLIT_DATE_TIME = "split_date_time"
+#: Time of Day (clock time, genuinely no date component) -- a DISTINCT,
+#: explicitly-selected interpreter, never an automatic fallback. Always
+#: resolves to `FAMILY_PARTIAL` (the family this domain model already
+#: uses for "time-of-day, no date" -- see `detect_absolute_datetime()`'s
+#: own pre-existing "every sampled value is a time-of-day" branch, which
+#: this interpreter's existence does not change at all: an engineer who
+#: explicitly picks Absolute Datetime and supplies only clock values
+#: still lands there, still incomplete, exactly as before). See
+#: `app.services.time_axis_interpreters.detect_time_of_day`'s own
+#: docstring for the full rationale.
+INTERPRETER_ID_TIME_OF_DAY = "time_of_day"
 
 #: Borrowed vocabulary ONLY (see this module's own docstring) -- never
 #: wired into `PreparationIssueSummary`'s own counts.

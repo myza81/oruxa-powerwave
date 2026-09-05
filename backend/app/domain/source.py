@@ -127,6 +127,17 @@ class SourceMetadata:
     # default" precedent above.
     preparation_provenance: dict[str, Any] | None = None
 
+    # Time of Day (CSV/Excel ingestion, additive): mirrors
+    # `TimingInformation.time_of_day_reference_seconds` verbatim -- the
+    # date-neutral, seconds-since-midnight clock position corresponding
+    # to this source's own elapsed=0 origin, set ONLY when
+    # `timing_reference == "time_of_day"`. `None` for every other source
+    # (every COMTRADE recording, and every other CSV/Excel time family)
+    # -- used exclusively by `app.domain.time_grouping.derive_time_groups()`
+    # for Time-of-Day-vs-Time-of-Day overlap; never combined with a real
+    # calendar date.
+    time_of_day_reference_seconds: float | None = None
+
 
 @dataclass(slots=True)
 class ActiveSource:

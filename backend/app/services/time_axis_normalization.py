@@ -70,6 +70,25 @@ def seconds_from_midnight(value: dt.time) -> float:
     return value.hour * 3600 + value.minute * 60 + value.second + value.microsecond / 1_000_000
 
 
+#: Mirrors `app.services.time_axis_interpreters._MIDNIGHT_ROLLOVER_WINDOW_
+#: SECONDS`'s own conservative "how close to the day boundary" threshold
+#: (kept as an independent constant here, not a cross-module import --
+#: that module is the DIAGNOSTIC/detection layer, this one is the
+#: CANONICAL-value layer, and they are deliberately kept decoupled in
+#: code even though they must never disagree in effect: a transition
+#: this module unwraps as a legitimate midnight rollover is exactly the
+#: same transition that module already reports via
+#: `DIAGNOSTIC_PARTIAL_MIDNIGHT_ROLLOVER_SUSPECTED`). A `FAMILY_PARTIAL`
+#: (Time of Day) backward transition is only ever unwrapped into a
+#: continuous `+86400s` crossing when it lands within this many seconds
+#: of the actual day boundary on BOTH sides -- exactly the same
+#: "plausible midnight rollover, not an ordinary backward jump" test.
+#: Any OTHER backward transition is left exactly as it always was (a
+#: plain, non-unwrapped, possibly-negative delta) -- never treated as a
+#: rollover on a broad heuristic.
+_MIDNIGHT_ROLLOVER_WINDOW_SECONDS = 2.0
+
+
 def relative_seconds_with_anchor(natives: list[Any], anchor: Any, *, family: str) -> list[float]:
     """Canonical elapsed seconds for each already-parsed native value,
     relative to an EXTERNALLY supplied `anchor` (rather than assuming
@@ -94,7 +113,20 @@ def relative_seconds_with_anchor(natives: list[Any], anchor: Any, *, family: str
         return [(n - anchor).total_seconds() for n in natives]
     if family == FAMILY_PARTIAL:
         anchor_seconds = seconds_from_midnight(anchor)
-        return [seconds_from_midnight(n) - anchor_seconds for n in natives]
+        result: list[float] = []
+        previous_raw_seconds = anchor_seconds
+        cumulative_offset = 0.0
+        for n in natives:
+            raw_seconds = seconds_from_midnight(n)
+            if (
+                raw_seconds < previous_raw_seconds
+                and previous_raw_seconds >= 86400.0 - _MIDNIGHT_ROLLOVER_WINDOW_SECONDS
+                and raw_seconds <= _MIDNIGHT_ROLLOVER_WINDOW_SECONDS
+            ):
+                cumulative_offset += 86400.0
+            result.append(raw_seconds + cumulative_offset - anchor_seconds)
+            previous_raw_seconds = raw_seconds
+        return result
     anchor_value = float(anchor)
     return [float(n) - anchor_value for n in natives]
 

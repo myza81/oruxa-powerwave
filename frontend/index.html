@@ -5069,6 +5069,7 @@
                                         <option value="manual">Manual</option>
                                         <option value="absolute_datetime">Absolute Datetime (1 column)</option>
                                         <option value="split_date_time">Date + Time (2 columns)</option>
+                                        <option value="time_of_day">Time of Day (1 column)</option>
                                         <option value="elapsed_numeric">Elapsed Time (1 column)</option>
                                         <option value="sample_index">Sample Index (1 column)</option>
                                         <option value="repeated_timestamp_precision_loss">Repeated Timestamp (Precision Loss) (1 column)</option>
@@ -8352,7 +8353,7 @@
             const knownMessages = {
                 conversion_not_ready: "This source is no longer ready to convert -- check Preparation Status for what changed.",
                 conversion_requires_interval: "Sample Index still has no real-time interval -- add one in Time Axis before continuing.",
-                conversion_unsupported_interpreter: "The current Time Axis configuration can't be converted yet -- choose Absolute Datetime, Date + Time, Elapsed, or Sample Index.",
+                conversion_unsupported_interpreter: "The current Time Axis configuration can't be converted yet -- choose Absolute Datetime, Date + Time, Time of Day, Elapsed, or Sample Index.",
                 conversion_revision_changed: "The preparation changed while converting -- please try again.",
                 conversion_validation_failed: "Something went wrong building the Powerwave record. " + (message || ""),
                 source_not_found: "This source is no longer available.",
@@ -8418,7 +8419,7 @@
                 export_revision_changed: "The preparation changed while exporting -- please try again.",
                 export_not_ready: "This source is no longer ready for a reusable cleaned export -- check Preparation Status for what changed.",
                 export_requires_interval: "Sample Index still has no real-time interval -- add one in Time Axis before exporting.",
-                export_unsupported_interpreter: "The current Time Axis configuration can't be exported yet -- choose Absolute Datetime, Date + Time, Elapsed, or Sample Index.",
+                export_unsupported_interpreter: "The current Time Axis configuration can't be exported yet -- choose Absolute Datetime, Date + Time, Time of Day, Elapsed, or Sample Index.",
                 source_not_found: "This source is no longer available.",
                 worksheet_not_selected: "Select a worksheet before exporting.",
             };
@@ -8555,7 +8556,7 @@
             dmy: "DD/MM/YYYY", mdy: "MM/DD/YYYY", ymd: "YYYY/MM/DD",
         };
         const WW_DATA_PREP_SAMPLE_INTERPRETERS = [
-            "absolute_datetime", "split_date_time", "elapsed_numeric", "sample_index",
+            "absolute_datetime", "split_date_time", "time_of_day", "elapsed_numeric", "sample_index",
             "repeated_timestamp_precision_loss",
         ];
 
@@ -13221,6 +13222,14 @@
                 const absStartMs = originMs + bounds.start * 1000;
                 const absEndMs = originMs + bounds.end * 1000;
                 meta = wwFormatHeaderDate(absStartMs) + " · " + wwFormatHeaderTime(absStartMs) + "–" + wwFormatHeaderTime(absEndMs) + " · " + sourceCount + " " + sourceWord;
+            } else if (bounds && group && group.timeReferenceType === "time_of_day") {
+                // Time of Day (additive): a real, clock-time-synchronized
+                // group -- never mislabeled as "Elapsed / unaligned" (that
+                // wording specifically means "no defensible time
+                // relationship", which is false here; these sources ARE
+                // grouped by genuine clock-time overlap, just without a
+                // known calendar date to show).
+                meta = "Time of Day · " + wwFormatCursorDuration(bounds.end - bounds.start) + " · " + sourceCount + " " + sourceWord;
             } else if (bounds) {
                 meta = "Elapsed / unaligned · " + wwFormatCursorDuration(bounds.end - bounds.start) + " · " + sourceCount + " " + sourceWord;
             } else {
@@ -14185,6 +14194,7 @@
             const group = groupId !== null ? ww.timeGroups.get(groupId) : null;
             if (!group) return "";
             if (group.timeReferenceType === "elapsed_only") return " — Elapsed / unaligned";
+            if (group.timeReferenceType === "time_of_day") return " — Time of Day";
             const sortedGroupIds = Array.from(ww.timeGroups.keys()).sort();
             return " — Time Group " + (sortedGroupIds.indexOf(groupId) + 1);
         }
@@ -22628,6 +22638,7 @@
             const group = ww.timeGroups.get(groupId);
             if (!group) return "";
             if (group.timeReferenceType === "elapsed_only") return "Elapsed / unaligned";
+            if (group.timeReferenceType === "time_of_day") return "Time of Day";
             const sortedGroupIds = Array.from(ww.timeGroups.keys()).sort();
             return "Time Group " + (sortedGroupIds.indexOf(groupId) + 1);
         }

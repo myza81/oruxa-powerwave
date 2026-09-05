@@ -64,7 +64,13 @@ import numpy as np
 from app.domain.event_detection import VALID_SENSITIVITIES, EventDetectionResult, detect_event_onset
 from app.domain.source import SourceMetadata
 from app.domain.synchronization import alignment_offset_valid, source_time_to_workspace_time
-from app.domain.time_grouping import TimeGroup, derive_time_groups, timestamp_placement_offset_s
+from app.domain.time_grouping import (
+    TIME_REFERENCE_TIME_OF_DAY,
+    TimeGroup,
+    derive_time_groups,
+    time_of_day_placement_offset_s,
+    timestamp_placement_offset_s,
+)
 from app.services.errors import (
     ChannelNotAnalogError,
     ChannelNotFoundError,
@@ -84,24 +90,40 @@ def list_time_groups(*, workspace_id: str, source_registry: WorkspaceRegistry) -
     `app.domain.time_grouping.derive_time_groups()`'s own docstring for
     the full derivation rule. A workspace with no sources yet returns an
     empty list."""
-    sources = [_metadata_tuple(active.metadata) for active in source_registry.list_for_workspace(workspace_id)]
-    return derive_time_groups(sources)
+    actives = source_registry.list_for_workspace(workspace_id)
+    sources = [_metadata_tuple(active.metadata) for active in actives]
+    time_of_day_reference_seconds = _time_of_day_reference_seconds(active.metadata for active in actives)
+    return derive_time_groups(sources, time_of_day_reference_seconds=time_of_day_reference_seconds)
 
 
 def _metadata_tuple(metadata: SourceMetadata) -> tuple[str, str, object, float, float]:
     return (metadata.source_id, metadata.timing_reference, metadata.start_time, metadata.elapsed_start_seconds, metadata.elapsed_end_seconds)
 
 
+def _time_of_day_reference_seconds(metadata_iter) -> dict[str, float]:
+    """Time of Day (additive): the `source_id -> seconds_since_midnight`
+    lookup `derive_time_groups()` needs for its own separate Time-of-Day
+    overlap pass -- built straight from `SourceMetadata.time_of_day_
+    reference_seconds`, `None` entries omitted (a source with no real
+    Time of Day anchor is not eligible for that pass at all, exactly
+    like a `recorded_absolute` source with `start_time is None`)."""
+    return {m.source_id: m.time_of_day_reference_seconds for m in metadata_iter if m.time_of_day_reference_seconds is not None}
+
+
 def _group_lookup(*, workspace_id: str, source_registry: WorkspaceRegistry) -> tuple[dict[str, TimeGroup], dict[str, SourceMetadata]]:
     """The ONE place this module derives Time Groups and builds the two
     lookups every group-aware function below needs: `source_id ->
     TimeGroup` (its own current group) and `source_id -> SourceMetadata`
-    (for `start_time` access when computing `timestamp_placement_offset_s`).
-    Computed once per call site, never per-source, so a multi-source
-    workspace stays O(n) rather than O(n^2)."""
+    (for `start_time`/`time_of_day_reference_seconds` access when
+    computing `timestamp_placement_offset_s`/`time_of_day_placement_
+    offset_s`). Computed once per call site, never per-source, so a
+    multi-source workspace stays O(n) rather than O(n^2)."""
     actives = source_registry.list_for_workspace(workspace_id)
     metadata_by_id = {active.metadata.source_id: active.metadata for active in actives}
-    groups = derive_time_groups([_metadata_tuple(m) for m in metadata_by_id.values()])
+    groups = derive_time_groups(
+        [_metadata_tuple(m) for m in metadata_by_id.values()],
+        time_of_day_reference_seconds=_time_of_day_reference_seconds(metadata_by_id.values()),
+    )
     group_by_source_id = {source_id: group for group in groups for source_id in group.source_ids}
     return group_by_source_id, metadata_by_id
 
@@ -133,7 +155,18 @@ def _view_for_source(
     group = group_by_source_id[source_id]
     origin_metadata = metadata_by_id[group.origin_source_id]
     own_metadata = metadata_by_id[source_id]
-    placement = timestamp_placement_offset_s(source_start_time=own_metadata.start_time, origin_start_time=origin_metadata.start_time)
+    if group.time_reference_type == TIME_REFERENCE_TIME_OF_DAY:
+        # Time of Day (additive): the SAME placement composition, in
+        # date-neutral seconds-since-midnight coordinates -- never the
+        # `datetime`-based `timestamp_placement_offset_s()` below, which
+        # would be meaningless here (`start_time` is always `None` for a
+        # Time of Day source -- no date is ever invented).
+        placement = time_of_day_placement_offset_s(
+            source_reference_seconds=own_metadata.time_of_day_reference_seconds,
+            origin_reference_seconds=origin_metadata.time_of_day_reference_seconds,
+        )
+    else:
+        placement = timestamp_placement_offset_s(source_start_time=own_metadata.start_time, origin_start_time=origin_metadata.start_time)
     manual = registry.get_offset(workspace_id, source_id)
     return SourceAlignmentView(
         source_id=source_id,

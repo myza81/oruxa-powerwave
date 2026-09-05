@@ -15,7 +15,9 @@ from app.domain.time_grouping import (
     NON_OVERLAPPING_NOTE,
     TIME_REFERENCE_ELAPSED_ONLY,
     TIME_REFERENCE_RECORDED_ABSOLUTE,
+    TIME_REFERENCE_TIME_OF_DAY,
     derive_time_groups,
+    time_of_day_placement_offset_s,
     time_reference_type_for_source,
     timestamp_placement_offset_s,
 )
@@ -29,6 +31,10 @@ def _abs_source(source_id: str, *, start: datetime, elapsed_start: float = 0.0, 
 
 def _elapsed_source(source_id: str, *, elapsed_start: float = 0.0, elapsed_end: float = 2.0):
     return (source_id, "relative_elapsed", None, elapsed_start, elapsed_end)
+
+
+def _tod_source(source_id: str, *, elapsed_start: float = 0.0, elapsed_end: float = 2.0):
+    return (source_id, "time_of_day", None, elapsed_start, elapsed_end)
 
 
 class TestTimeReferenceType:
@@ -356,4 +362,170 @@ class TestMixedTimezoneAwarenessIntegration:
         naive_origin = T0
         aware_source = T0.replace(tzinfo=timezone.utc) + timedelta(seconds=5)
         offset = timestamp_placement_offset_s(source_start_time=aware_source, origin_start_time=naive_origin)
+        assert offset == pytest.approx(5.0)
+
+
+# ---- Time of Day (additive): a THIRD, fully separate time-reference
+# bucket -- clock time with genuinely no date component. ---------------
+
+_ANCHOR_18_04_00 = 18 * 3600 + 4 * 60  # seconds since midnight, 65040.0
+_ANCHOR_18_04_05 = _ANCHOR_18_04_00 + 5
+_ANCHOR_19_00_00 = 19 * 3600
+
+
+class TestTimeReferenceTypeIncludesTimeOfDay:
+    def test_time_of_day_literal_maps_to_its_own_bucket(self):
+        assert time_reference_type_for_source("time_of_day") == TIME_REFERENCE_TIME_OF_DAY
+        # Every other non-"absolute" literal is still plain elapsed-only
+        # -- this new literal must not widen what elapsed_only means.
+        assert time_reference_type_for_source("relative_elapsed") == TIME_REFERENCE_ELAPSED_ONLY
+
+
+class TestTimeOfDayOverlap:
+    """Task's own Case 6: A=18:04:00->18:04:10, B=18:04:05->18:04:15 --
+    same Time of Day domain, overlapping clock-time intervals -> one
+    group, synchronized via clock-time relationship, no date involved."""
+
+    def test_overlapping_time_of_day_sources_share_one_group(self):
+        groups = derive_time_groups(
+            [_tod_source("A", elapsed_end=10.0), _tod_source("B", elapsed_end=10.0)],
+            time_of_day_reference_seconds={"A": _ANCHOR_18_04_00, "B": _ANCHOR_18_04_05},
+        )
+        assert len(groups) == 1
+        group = groups[0]
+        assert group.time_reference_type == TIME_REFERENCE_TIME_OF_DAY
+        assert set(group.source_ids) == {"A", "B"}
+        assert group.note is None
+        # Earliest anchor (A, 18:04:00) is the origin -- same "earliest
+        # start wins" rule the absolute bucket already uses.
+        assert group.origin_source_id == "A"
+        placement = time_of_day_placement_offset_s(
+            source_reference_seconds=_ANCHOR_18_04_05, origin_reference_seconds=_ANCHOR_18_04_00,
+        )
+        assert placement == pytest.approx(5.0)
+
+
+class TestTimeOfDayNoOverlap:
+    """Task's own Case 7: A=18:04:00->18:04:10, B=19:00:00->19:00:10 --
+    same Time of Day domain, but the clock-time intervals do not
+    overlap -> two separate groups, each flagged with the same neutral
+    non-overlap note the absolute bucket already uses."""
+
+    def test_non_overlapping_time_of_day_sources_stay_separate(self):
+        groups = derive_time_groups(
+            [_tod_source("A", elapsed_end=10.0), _tod_source("B", elapsed_end=10.0)],
+            time_of_day_reference_seconds={"A": _ANCHOR_18_04_00, "B": _ANCHOR_19_00_00},
+        )
+        assert len(groups) == 2
+        group_ids = {g.group_id for g in groups}
+        assert group_ids == {"A", "B"}
+        for g in groups:
+            assert g.time_reference_type == TIME_REFERENCE_TIME_OF_DAY
+            assert g.note == NON_OVERLAPPING_NOTE
+
+
+class TestAbsoluteNeverAutoSynchronizesWithTimeOfDay:
+    """Task's own Case 5 / governing rule: Absolute DateTime and Time of
+    Day must NEVER be automatically synchronized merely because their
+    clock portions look similar -- `2026-06-03 18:04:00` (absolute) and
+    `18:04:00` (time_of_day) share no defensible relationship this app
+    is entitled to assume, so they must never even be compared for
+    overlap against each other, regardless of how closely their clock
+    values match."""
+
+    def test_absolute_and_time_of_day_never_share_a_group(self):
+        absolute_start = datetime(2026, 6, 3, 18, 4, 0)
+        groups = derive_time_groups(
+            [
+                _abs_source("event_a", start=absolute_start, elapsed_start=0.0, elapsed_end=10.0),
+                _tod_source("event_b", elapsed_end=10.0),
+            ],
+            time_of_day_reference_seconds={"event_b": _ANCHOR_18_04_00},
+        )
+        assert len(groups) == 2
+        by_id = {g.group_id: g for g in groups}
+        assert by_id["event_a"].time_reference_type == TIME_REFERENCE_RECORDED_ABSOLUTE
+        assert by_id["event_a"].source_ids == ["event_a"]
+        assert by_id["event_b"].time_reference_type == TIME_REFERENCE_TIME_OF_DAY
+        assert by_id["event_b"].source_ids == ["event_b"]
+        # No date was ever inferred for event_b from event_a's calendar date.
+
+
+class TestTimeOfDayMidnightRolloverOverlap:
+    """Task's own Case 9: two Time of Day recordings that both
+    legitimately cross the SAME midnight boundary must still be
+    recognized as overlapping -- each source's own `interval_end` may
+    exceed 86400s (an internally-unwrapped rollover, never a
+    cross-source day-shift), and plain numeric overlap on those two
+    already-unwrapped intervals naturally agrees when both genuinely
+    span the same real-world midnight."""
+
+    def test_two_sources_crossing_the_same_midnight_still_overlap(self):
+        # A: 23:59:58 -> 00:00:04 (unwrapped end = 86404). B: 23:59:59 ->
+        # 00:00:02 (unwrapped end = 86402). Both anchors sit right at the
+        # day boundary, consistent with each other.
+        groups = derive_time_groups(
+            [_tod_source("A", elapsed_end=6.0), _tod_source("B", elapsed_end=3.0)],
+            time_of_day_reference_seconds={"A": 86398.0, "B": 86399.0},
+        )
+        assert len(groups) == 1
+        assert set(groups[0].source_ids) == {"A", "B"}
+
+    def test_a_midnight_spanning_source_does_not_overlap_an_unrelated_daytime_one(self):
+        # A genuinely crosses midnight; C is an ordinary daytime
+        # recording nowhere near the boundary -- must NOT be merged.
+        groups = derive_time_groups(
+            [_tod_source("A", elapsed_end=6.0), _tod_source("C", elapsed_end=10.0)],
+            time_of_day_reference_seconds={"A": 86398.0, "C": _ANCHOR_18_04_00},
+        )
+        assert len(groups) == 2
+        assert {g.group_id for g in groups} == {"A", "C"}
+
+
+class TestTimeOfDayMissingAnchorDefensiveFallback:
+    """Mirrors `TestMissingStartTimeDefensiveFallback` above -- a
+    `time_of_day`-typed source with no entry in the
+    `time_of_day_reference_seconds` lookup (a corrupt/missing-field edge
+    case this module did not itself validate) is demoted to its own
+    solo group rather than crashing."""
+
+    def test_time_of_day_source_with_no_reference_seconds_becomes_its_own_group(self):
+        groups = derive_time_groups(
+            [_tod_source("A"), _tod_source("B")],
+            time_of_day_reference_seconds={"A": _ANCHOR_18_04_00},
+        )
+        assert len(groups) == 2
+        by_id = {g.group_id: g for g in groups}
+        assert by_id["A"].time_reference_type == TIME_REFERENCE_TIME_OF_DAY
+        assert by_id["B"].source_ids == ["B"]
+
+    def test_omitting_the_lookup_entirely_never_crashes(self):
+        groups = derive_time_groups([_tod_source("A")])
+        assert len(groups) == 1
+        assert groups[0].source_ids == ["A"]
+
+
+class TestTwoTimeOfDaySourcesNeverConflatedWithElapsedOnly:
+    """A `time_of_day` source and a plain `elapsed_only` source must
+    stay in separate groups -- the new bucket must not accidentally
+    widen what `elapsed_only` matches, and vice versa."""
+
+    def test_time_of_day_and_elapsed_only_stay_separate(self):
+        groups = derive_time_groups(
+            [_tod_source("A"), _elapsed_source("C")],
+            time_of_day_reference_seconds={"A": _ANCHOR_18_04_00},
+        )
+        assert len(groups) == 2
+        by_id = {g.group_id: g for g in groups}
+        assert by_id["A"].time_reference_type == TIME_REFERENCE_TIME_OF_DAY
+        assert by_id["C"].time_reference_type == TIME_REFERENCE_ELAPSED_ONLY
+
+
+class TestTimeOfDayPlacementOffset:
+    def test_zero_when_either_anchor_missing(self):
+        assert time_of_day_placement_offset_s(source_reference_seconds=None, origin_reference_seconds=100.0) == 0.0
+        assert time_of_day_placement_offset_s(source_reference_seconds=100.0, origin_reference_seconds=None) == 0.0
+
+    def test_placement_is_plain_seconds_subtraction(self):
+        offset = time_of_day_placement_offset_s(source_reference_seconds=_ANCHOR_18_04_05, origin_reference_seconds=_ANCHOR_18_04_00)
         assert offset == pytest.approx(5.0)

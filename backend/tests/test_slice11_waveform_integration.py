@@ -73,6 +73,26 @@ def _convert_csv(*, content: bytes, interpreter_id: str = "absolute_datetime", i
     return metadata, ws
 
 
+def _convert_second_csv_into(ws: WorkspaceRegistry, *, content: bytes, interpreter_id: str = "absolute_datetime",
+                              filename: str = "b.csv") -> SourceMetadata:
+    """Converts a SECOND CSV source into an ALREADY-EXISTING workspace
+    registry (mirrors `test_two_elapsed_sources_each_get_their_own_
+    singleton`'s own established pattern above) -- `_convert_csv()`
+    itself always creates a brand-new `WorkspaceRegistry`, so a
+    multi-source Time Group/synchronization test needs this instead."""
+    prep2 = PreparationSessionRegistry()
+    summary = asyncio.run(import_csv_preparation_source(
+        workspace_id=WS, csv_upload=_upload(content, filename), max_total_bytes=10_000_000, registry=prep2,
+    ))
+    set_column_role(workspace_id=WS, source_id=summary.source_id, column_index=0, role="time_axis", registry=prep2)
+    set_column_role(workspace_id=WS, source_id=summary.source_id, column_index=1, role="waveform", registry=prep2)
+    set_time_axis_configuration(
+        workspace_id=WS, source_id=summary.source_id, column_indices=(0,),
+        interpreter_id=interpreter_id, confirmed=True, registry=prep2,
+    )
+    return convert_preparation_source(workspace_id=WS, source_id=summary.source_id, preparation_registry=prep2, workspace_registry=ws)
+
+
 def _comtrade_like_source(*, source_id: str, start_time: dt.datetime, time: np.ndarray, values: np.ndarray,
                            trigger_time: dt.datetime | None = None) -> ActiveSource:
     """A synthetic, COMTRADE-shaped `ActiveSource` -- mirrors
@@ -260,11 +280,77 @@ class TestTimeGroupIntegration:
         assert all(g.time_reference_type == "elapsed_only" for g in groups)
         assert all(len(g.source_ids) == 1 for g in groups)
 
-    def test_partial_family_source_is_elapsed_only(self):
+    def test_partial_family_source_gets_its_own_time_of_day_group(self):
+        # Time of Day (additive): a FAMILY_PARTIAL source is now its own
+        # distinct `time_reference_type`, never lumped into
+        # `elapsed_only` -- this is what lets two such sources
+        # auto-synchronize with EACH OTHER by clock-time overlap (see
+        # TestTimeOfDaySynchronization below), which `elapsed_only`
+        # never could.
         metadata, ws = _convert_csv(content=b"13:14:01,1.0\n13:14:02,2.0\n")
         groups = list_time_groups(workspace_id=WS, source_registry=ws)
         assert len(groups) == 1
-        assert groups[0].time_reference_type == "elapsed_only"
+        assert groups[0].time_reference_type == "time_of_day"
+        assert metadata.timing_reference == "time_of_day"
+
+    def test_two_overlapping_time_of_day_sources_share_a_group(self):
+        # Task's own Case 6, exercised end to end through real CSV
+        # upload -> Time Axis configuration -> canonical conversion ->
+        # Time Group derivation. A=18:04:00->18:04:10s, B starts 5s
+        # later and overlaps.
+        meta_a, ws = _convert_csv(content=b"18:04:00,1.0\n18:04:10,2.0\n", interpreter_id="time_of_day")
+        meta_b = _convert_second_csv_into(ws, content=b"18:04:05,10.0\n18:04:15,20.0\n", interpreter_id="time_of_day")
+
+        groups = list_time_groups(workspace_id=WS, source_registry=ws)
+
+        assert len(groups) == 1
+        assert groups[0].time_reference_type == "time_of_day"
+        assert set(groups[0].source_ids) == {meta_a.source_id, meta_b.source_id}
+
+    def test_two_non_overlapping_time_of_day_sources_stay_separate(self):
+        # Task's own Case 7: A=18:04:00->18:04:10, B=19:00:00->19:00:10.
+        meta_a, ws = _convert_csv(content=b"18:04:00,1.0\n18:04:10,2.0\n", interpreter_id="time_of_day")
+        meta_b = _convert_second_csv_into(ws, content=b"19:00:00,10.0\n19:00:10,20.0\n", interpreter_id="time_of_day")
+
+        groups = list_time_groups(workspace_id=WS, source_registry=ws)
+
+        assert len(groups) == 2
+        group_ids = {g.group_id for g in groups}
+        assert group_ids == {meta_a.source_id, meta_b.source_id}
+        assert all(g.time_reference_type == "time_of_day" for g in groups)
+
+    def test_absolute_and_time_of_day_never_share_a_group_end_to_end(self):
+        # Task's own Case 5 / governing rule, exercised end to end:
+        # Event A is a real Absolute DateTime recording at
+        # 2026-06-03 18:04:00; Event B is a Time of Day recording at the
+        # SAME clock time with no date. They must never be synchronized
+        # merely because their clock portions look similar.
+        meta_a, ws = _convert_csv(content=b"2026-06-03 18:04:00,1.0\n2026-06-03 18:04:10,2.0\n")
+        meta_b = _convert_second_csv_into(ws, content=b"18:04:00,10.0\n18:04:10,20.0\n", interpreter_id="time_of_day")
+
+        groups = list_time_groups(workspace_id=WS, source_registry=ws)
+
+        assert len(groups) == 2
+        by_id = {g.group_id: g for g in groups}
+        assert by_id[meta_a.source_id].time_reference_type == "recorded_absolute"
+        assert by_id[meta_a.source_id].source_ids == [meta_a.source_id]
+        assert by_id[meta_b.source_id].time_reference_type == "time_of_day"
+        assert by_id[meta_b.source_id].source_ids == [meta_b.source_id]
+
+    def test_two_time_of_day_sources_crossing_the_same_midnight_still_overlap(self):
+        # Task's own Case 9. A: 23:59:58 -> 00:00:04 (crosses midnight).
+        # B: 23:59:59 -> 00:00:02 (also crosses the SAME midnight).
+        meta_a, ws = _convert_csv(
+            content=b"23:59:58,1.0\n23:59:59,2.0\n00:00:00,3.0\n00:00:04,4.0\n", interpreter_id="time_of_day",
+        )
+        meta_b = _convert_second_csv_into(
+            ws, content=b"23:59:59,10.0\n00:00:00,20.0\n00:00:02,30.0\n", interpreter_id="time_of_day",
+        )
+
+        groups = list_time_groups(workspace_id=WS, source_registry=ws)
+
+        assert len(groups) == 1
+        assert set(groups[0].source_ids) == {meta_a.source_id, meta_b.source_id}
 
 
 class TestSynchronizationIntegration:
@@ -299,6 +385,47 @@ class TestSynchronizationIntegration:
         # trigger_time on the converted source -- must not raise.
         view = get_source_alignment(workspace_id=WS, source_id=metadata.source_id, registry=sync_registry, source_registry=ws)
         assert view.source_id == metadata.source_id
+
+
+class TestTimeOfDaySynchronization:
+    """Full synchronization-service integration for the new Time of Day
+    bucket -- `get_source_alignment()`'s own `timestamp_placement_offset_s`
+    composition, computed via the date-neutral
+    `time_of_day_placement_offset_s()` path (never the `datetime`-based
+    one, which would be meaningless here since `start_time` is always
+    `None` for a Time of Day source)."""
+
+    def test_origin_source_has_zero_placement(self):
+        meta_a, ws = _convert_csv(content=b"18:04:00,1.0\n18:04:10,2.0\n", interpreter_id="time_of_day")
+        sync_registry = SynchronizationRegistry()
+        view = get_source_alignment(workspace_id=WS, source_id=meta_a.source_id, registry=sync_registry, source_registry=ws)
+        assert view.is_reference is True
+        assert view.timestamp_placement_offset_s == pytest.approx(0.0)
+
+    def test_later_source_gets_correct_clock_time_placement(self):
+        # A starts at 18:04:00, B starts 5s later at 18:04:05 -- B's own
+        # placement must be +5s, computed purely from clock time, never
+        # from an invented calendar date.
+        meta_a, ws = _convert_csv(content=b"18:04:00,1.0\n18:04:10,2.0\n", interpreter_id="time_of_day")
+        meta_b = _convert_second_csv_into(ws, content=b"18:04:05,10.0\n18:04:15,20.0\n", interpreter_id="time_of_day")
+        sync_registry = SynchronizationRegistry()
+
+        view_a = get_source_alignment(workspace_id=WS, source_id=meta_a.source_id, registry=sync_registry, source_registry=ws)
+        view_b = get_source_alignment(workspace_id=WS, source_id=meta_b.source_id, registry=sync_registry, source_registry=ws)
+
+        assert view_a.is_reference is True
+        assert view_b.is_reference is False
+        assert view_b.timestamp_placement_offset_s == pytest.approx(5.0)
+
+    def test_reference_source_manual_offset_rejected(self):
+        meta_a, ws = _convert_csv(content=b"18:04:00,1.0\n18:04:10,2.0\n", interpreter_id="time_of_day")
+        _convert_second_csv_into(ws, content=b"18:04:05,10.0\n18:04:15,20.0\n", interpreter_id="time_of_day")
+        sync_registry = SynchronizationRegistry()
+        with pytest.raises(ReferenceSourceAlignmentError):
+            set_source_alignment_offset(
+                workspace_id=WS, source_id=meta_a.source_id, alignment_offset_s=1.5,
+                registry=sync_registry, source_registry=ws,
+            )
 
 
 class TestCalculatedChannelsSameSourceConvertedCsv:

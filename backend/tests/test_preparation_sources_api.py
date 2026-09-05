@@ -1920,8 +1920,8 @@ class TestTimeAxisInterpretersEndpoint:
         assert resp.status_code == 200, resp.text
         ids = {row["interpreter_id"] for row in resp.json()}
         assert ids == {
-            "manual", "unsupported", "absolute_datetime", "split_date_time", "elapsed_numeric", "sample_index",
-            "repeated_timestamp_precision_loss",
+            "manual", "unsupported", "absolute_datetime", "split_date_time", "time_of_day", "elapsed_numeric",
+            "sample_index", "repeated_timestamp_precision_loss",
         }
 
 

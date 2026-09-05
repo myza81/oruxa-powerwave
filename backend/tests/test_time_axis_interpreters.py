@@ -62,11 +62,13 @@ from app.services.time_axis_interpreters import (
     build_repeated_timestamp_preview,
     build_sample_index_preview,
     build_split_date_time_preview,
+    build_time_of_day_preview,
     detect_absolute_datetime,
     detect_elapsed_numeric,
     detect_repeated_timestamp_precision_loss,
     detect_sample_index,
     detect_split_date_time,
+    detect_time_of_day,
 )
 
 
@@ -691,6 +693,80 @@ class TestSplitDateTimeOptionalFractionalSeconds:
         samples = [(row, (date, time)) for (row, date), (_, time) in zip(dates, times)]
         preview = build_split_date_time_preview(samples, resolved_options=result.resolved_options, limit=10)
         assert all(interpreted is not None for _, _, interpreted in preview)
+
+
+class TestTimeOfDay:
+    """New Time of Day interpreter -- a DISTINCT, explicitly-selected
+    single-column interpreter for clock time with genuinely no date
+    component. Always resolves to FAMILY_PARTIAL; never invents a date."""
+
+    def test_case1_basic_time_of_day_is_valid_and_partial(self):
+        values = _rows(["18:04:00", "18:04:00.020000", "18:04:00.040000"])
+
+        result = detect_time_of_day(values, requested_options={})
+
+        assert result.family == FAMILY_PARTIAL
+        assert result.provenance == PROVENANCE_NATIVE
+        assert result.diagnostics == []
+
+    def test_case1_elapsed_plotting_coordinate(self):
+        # build_time_of_day_preview() produces the canonical "%H:%M:%S.%f"
+        # interpreted string per row (like every other family's own
+        # preview builder) -- the actual elapsed-seconds PLOTTING
+        # coordinate is derived from that via the SAME shared
+        # time_axis_normalization helpers every family's conversion path
+        # already uses (app.services.time_axis_normalization.
+        # parse_native_time_value/relative_seconds), verified here
+        # end-to-end so detection, preview, and the real conversion
+        # coordinate can never silently disagree.
+        from app.services.time_axis_normalization import parse_native_time_value, relative_seconds
+
+        samples = [(1, ("18:04:00",)), (2, ("18:04:00.020000",)), (3, ("18:04:00.040000",))]
+        preview = build_time_of_day_preview(samples, resolved_options={}, limit=10)
+        natives = [parse_native_time_value(interpreted, family=FAMILY_PARTIAL) for _rn, _orig, interpreted in preview]
+        elapsed = relative_seconds(natives, family=FAMILY_PARTIAL)
+
+        assert elapsed == pytest.approx([0.0, 0.02, 0.04])
+
+    def test_case2_mixed_fractional_precision_is_valid(self):
+        values = _rows(["18:04:00", "18:04:00.02", "18:04:00.040000"])
+
+        result = detect_time_of_day(values, requested_options={})
+
+        assert result.diagnostics == []
+
+    def test_case3_invalid_clock_values_are_rejected(self):
+        values = _rows(["25:04:00", "18:61:00", "18:04:70"])
+
+        result = detect_time_of_day(values, requested_options={})
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_UNPARSEABLE_DATETIME in codes
+        diag = next(d for d in result.diagnostics if d.code == DIAGNOSTIC_UNPARSEABLE_DATETIME)
+        assert diag.details["matched"] == 0
+
+    def test_missing_values_reported(self):
+        values = _rows(["18:04:00", None])
+
+        result = detect_time_of_day(values, requested_options={})
+
+        codes = [d.code for d in result.diagnostics]
+        assert DIAGNOSTIC_MISSING_DATETIME_VALUE in codes
+
+    def test_never_promoted_to_absolute_regardless_of_confidence(self):
+        result = detect_time_of_day(_rows(["18:04:00"]), requested_options={})
+        assert result.family == FAMILY_PARTIAL
+        result_invalid = detect_time_of_day(_rows(["not-a-time"]), requested_options={})
+        assert result_invalid.family == FAMILY_PARTIAL
+
+    def test_build_preview_row_shape_matches_other_single_column_interpreters(self):
+        samples = [(1, ("18:04:00.305",)), (2, (None,)), (3, ("garbage",))]
+
+        preview = build_time_of_day_preview(samples, resolved_options={}, limit=10)
+
+        assert preview[0] == (1, ("18:04:00.305",), "18:04:00.305000")
+        assert preview[1] == (2, (None,), None)
+        assert preview[2][2] is None
 
 
 class TestSplitDateTimeMinuteResolutionAndAmPmHour:

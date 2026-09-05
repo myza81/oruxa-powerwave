@@ -331,6 +331,39 @@ class _SplitDateTimeInterpreter:
 
 
 @dataclass(slots=True, frozen=True)
+class _TimeOfDayInterpreter:
+    """Time of Day (task: clock time with no date component) -- accepts
+    exactly one column. A DISTINCT, explicitly-selected interpreter,
+    never an automatic fallback (see `app.services.time_axis_
+    interpreters.detect_time_of_day`'s own docstring) --
+    `detect_absolute_datetime()`'s own pre-existing "every sampled value
+    is a time-of-day" -> `FAMILY_PARTIAL` diagnostic is completely
+    unaffected by this interpreter's existence."""
+
+    interpreter_id: str = time_axis_domain.INTERPRETER_ID_TIME_OF_DAY
+    needs_sample_data: bool = True
+
+    def accepts(self, *, column_count: int) -> bool:
+        return column_count == 1
+
+    def detect(
+        self, *, samples: list[TimeAxisSampleRow], requested_family: str | None,
+        requested_provenance: str | None, requested_unit: str | None,
+        requested_interval_seconds: float | None, requested_options: dict[str, Any],
+    ) -> TimeAxisDetectionResult:
+        raw = [(s.row_number, s.values[0] if s.values else None) for s in samples]
+        return time_axis_interpreters.detect_time_of_day(raw, requested_options=requested_options)
+
+    def build_preview_rows(
+        self, *, samples: list[TimeAxisSampleRow], resolved_options: dict[str, Any],
+        resolved_unit: str | None, resolved_interval_seconds: float | None, limit: int,
+    ) -> list[TimeAxisPreviewRow]:
+        raw = [(s.row_number, s.values) for s in samples]
+        built = time_axis_interpreters.build_time_of_day_preview(raw, resolved_options=resolved_options, limit=limit)
+        return [TimeAxisPreviewRow(row_number=rn, original=original, interpreted=interpreted) for rn, original, interpreted in built]
+
+
+@dataclass(slots=True, frozen=True)
 class _ElapsedNumericInterpreter:
     """Single-column elapsed/relative numeric time (task §A) -- accepts
     exactly one column. `unit` (already an existing top-level
@@ -454,6 +487,7 @@ _INTERPRETERS: dict[str, TimeAxisInterpreter] = {
     time_axis_domain.INTERPRETER_ID_UNSUPPORTED: _UnsupportedInterpreter(),
     time_axis_domain.INTERPRETER_ID_ABSOLUTE_DATETIME: _AbsoluteDatetimeInterpreter(),
     time_axis_domain.INTERPRETER_ID_SPLIT_DATE_TIME: _SplitDateTimeInterpreter(),
+    time_axis_domain.INTERPRETER_ID_TIME_OF_DAY: _TimeOfDayInterpreter(),
     time_axis_domain.INTERPRETER_ID_ELAPSED_NUMERIC: _ElapsedNumericInterpreter(),
     time_axis_domain.INTERPRETER_ID_SAMPLE_INDEX: _SampleIndexInterpreter(),
     time_axis_domain.INTERPRETER_ID_REPEATED_TIMESTAMP: _RepeatedTimestampInterpreter(),
@@ -1009,16 +1043,48 @@ def build_configured_time_values(
         # skip to a later anchor" is honored by still deriving relative
         # values for every OTHER row once a real anchor is found).
         anchor = next((natives_by_row[pr.row_number] for pr in preview_rows if natives_by_row[pr.row_number] is not None), None)
-        for row_number, native in natives_by_row.items():
-            if native is None or anchor is None:
-                values_by_row_number[row_number] = None
-                continue
+        # 2026-09-05 fix: `relative_seconds_with_anchor()` must be called
+        # ONCE with the FULL row-ordered sequence of successfully-parsed
+        # natives, never once PER ROW with a one-element list. This
+        # matters for FAMILY_PARTIAL (Time of Day) specifically: its
+        # midnight-rollover unwrap (the SAME shared logic
+        # `preparation_conversion_service`/`preparation_export_service`
+        # already rely on for their own canonical/exported values) walks
+        # the sequence step by step from one row to the NEXT, so it can
+        # only ever unwrap a genuine rollover if it actually SEES every
+        # intervening row -- calling it with a single-row list collapses
+        # every step between the anchor and that one row into one lone
+        # comparison, which only happens to look right for a row
+        # immediately adjacent to the anchor and silently produces a
+        # huge, wrong negative value for anything further past a real
+        # rollover (verified directly: a row 5 minutes after a genuine
+        # midnight crossing previously computed roughly -86100s instead
+        # of the correct +300s). Batching once here is not a new
+        # algorithm -- it is the SAME call `_canonical_time_and_anchor()`
+        # already makes for the whole active region, so Data Preview and
+        # canonical conversion can never disagree about a Time of Day
+        # value again, including exactly at a pagination boundary (this
+        # function already computes the FULL active region in one pass,
+        # regardless of which page later narrows it down -- see this
+        # function's own "Critical guardrail" paragraph above).
+        ordered_resolved = [
+            (pr.row_number, natives_by_row[pr.row_number]) for pr in preview_rows if natives_by_row[pr.row_number] is not None
+        ]
+        relative_by_row: dict[int, float] = {}
+        if anchor is not None and ordered_resolved:
             try:
-                rel = relative_seconds_with_anchor([native], anchor, family=family)[0]
+                relative_values = relative_seconds_with_anchor(
+                    [native for _row_number, native in ordered_resolved], anchor, family=family,
+                )
             except TypeError:
-                values_by_row_number[row_number] = None
-                continue
-            values_by_row_number[row_number] = format_relative_seconds(rel)
+                relative_values = None
+            if relative_values is not None:
+                relative_by_row = {
+                    row_number: rel for (row_number, _native), rel in zip(ordered_resolved, relative_values)
+                }
+        for row_number in natives_by_row:
+            rel = relative_by_row.get(row_number)
+            values_by_row_number[row_number] = format_relative_seconds(rel) if rel is not None else None
 
     return ConfiguredTimeValues(column_name=column_name, family=family, values_by_row_number=values_by_row_number)
 
