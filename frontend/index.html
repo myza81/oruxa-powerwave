@@ -1058,15 +1058,41 @@
         .ww-data-prep-structure-field { margin-bottom: 0; }
         .ww-data-prep-structure-controls { display: flex; align-items: center; gap: 6px; }
         .ww-data-prep-structure-controls input[type="number"] { width: 80px; font-size: 0.75rem; }
-        /* Owner-UAT refinement: End-mode radio group (To end of file/
-           sheet vs. Specific row) -- new selectors only, deliberately
-           matching the owner's own 0.75rem number-input sizing above for
-           visual consistency, never altering that existing rule. */
-        .ww-data-prep-region-field { min-width: 260px; }
-        .ww-data-prep-region-end-options { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
+        /* .ww-data-prep-radio-option is still used by Time Axis Setup's
+           own radio groups (Row 3C, out of scope for the Row 3A
+           redesign below) -- kept exactly as-is, including its disabled-
+           input opacity rule. The old End-mode radio group and its own
+           now-dead .ww-data-prep-region-field/-region-end-options
+           selectors were removed along with the markup that used them
+           (see Row 3A's new .ww-data-prep-region-row below). */
         .ww-data-prep-radio-option { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; }
-        .ww-data-prep-region-end-options input[type="number"] { width: 80px; font-size: 0.75rem; margin-left: 4px; }
         .ww-data-prep-radio-option input[type="number"]:disabled { opacity: 0.5; }
+
+        /* Row 3A REPLACEMENT: Header & Data Region compact controls.
+           Every number input here shares the EXACT SAME box model as
+           `select` above (padding/border/radius/font-size) -- the
+           previous 80px-wide, browser-default-styled number inputs were
+           visibly smaller/lighter-weight than the surrounding buttons/
+           selects; this is the "same design system" fix (task's own
+           explicit requirement), scoped to these three inputs only via
+           `#wwDataPrepStructureDetails input[type="number"]` rather than
+           editing the shared .ww-data-prep-structure-controls rule Row
+           3C's own Time Axis fields still depend on. */
+        #wwDataPrepStructureDetails input[type="number"] {
+            width: 100%; box-sizing: border-box;
+            padding: 8px 10px; font-size: 0.75rem; color: var(--text);
+            background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);
+        }
+        #wwDataPrepStructureDetails input[type="number"]:focus { outline: none; border-color: var(--accent-dim); }
+        #wwDataPrepStructureDetails .field { margin-bottom: 0; }
+        #wwDataPrepStructureDetails label { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
+        .ww-data-prep-input-with-action { display: flex; align-items: center; gap: 8px; }
+        .ww-data-prep-input-with-action input[type="number"] { flex: 1 1 auto; }
+        .ww-data-prep-input-with-action button { flex: 0 0 auto; }
+        .ww-data-prep-region-row { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 14px; }
+        .ww-data-prep-region-row .ww-data-prep-compact-field { flex: 1 1 160px; min-width: 140px; }
+        .ww-data-prep-region-row .hint { margin: 6px 0 0; font-style: normal; }
+        .ww-data-prep-region-actions { margin-top: 14px; }
         .ww-data-prep-columns-table { width: 100%; }
         .ww-data-prep-columns-table th, .ww-data-prep-columns-table td { white-space: normal; }
         .ww-data-prep-columns-table select { font: inherit; background: var(--panel); color: var(--text); border: 1px solid var(--panel-border); border-radius: 3px; padding: 2px 4px; }
@@ -5491,64 +5517,78 @@
                      than removed, so no click-handler/render function
                      changed, only its own visibility (.ww-data-prep-
                      visually-removed). No header/region/role state, API,
-                     or undo/redo behavior changed -- presentation only. -->
+                     or undo/redo behavior changed -- presentation only.
+
+                     Row 3A REPLACEMENT (2026-09-06, supersedes the
+                     previous "refine" pass): the long "Manual only --
+                     Powerwave never guesses..." explanatory copy is
+                     removed outright (no id, nothing else reads it --
+                     its content lives on in the two info-tips below
+                     instead, reusing the SAME shared
+                     .ww-info-tip-trigger/wwInfoTipShow()/wwInfoTipHide()
+                     mechanism the RMS parameter form already
+                     established, never a second tooltip system). The
+                     Header/Data range/Columns summary `<dl>` is kept in
+                     the DOM (still populated by
+                     wwDataPrepRenderStructureSummary(), which ALSO
+                     triggers wwDataPrepRenderWorkflowStrip() on every
+                     call -- deleting it would silently break Row 2's own
+                     refresh) but visually retired via the SAME
+                     .ww-data-prep-visually-removed class already used
+                     for the "Configure" toggle above, never shown. The
+                     old [row #][Set as Header][Clear Header] /
+                     radio-heavy end-of-region layout is replaced with a
+                     single full-width Header row input (applies on
+                     Enter/blur via wwDataPrepApplyHeaderInputIfChanged(),
+                     only when the value actually changed, plus one
+                     "Clear" action) and a plain Data start/end row pair
+                     (a blank Data end row means "to end of file/sheet",
+                     a filled one means "specific" -- the EXACT SAME
+                     wwDataPrepSetRegion(startRow, endMode, endRow) call
+                     and backend data_end_mode/data_end_row contract as
+                     before; only how endMode/endRow are DERIVED from the
+                     form changed, from radio state to blank-vs-filled). -->
                 <section class="panel ww-cc-panel ww-data-prep-card">
                     <div class="ww-data-prep-panel-header">
                         <h3>Header &amp; Data Region</h3>
                         <button type="button" class="secondary ww-data-prep-visually-removed" id="wwDataPrepStructureToggleBtn">Configure</button>
                     </div>
-                    <p class="ww-data-prep-card-subtitle">Manual only -- Powerwave never guesses a header row, data range, or column meaning.</p>
-                    <dl class="ww-data-prep-structure-summary" id="wwDataPrepStructureSummary">
+                    <dl class="ww-data-prep-structure-summary ww-data-prep-visually-removed" id="wwDataPrepStructureSummary">
                         <div><dt>Header</dt><dd id="wwDataPrepSummaryHeader">Not set</dd></div>
                         <div><dt>Data range</dt><dd id="wwDataPrepSummaryRegion">All rows</dd></div>
                         <div><dt>Columns</dt><dd id="wwDataPrepSummaryColumns">—</dd></div>
                     </dl>
                     <div id="wwDataPrepStructureDetails">
-                        <div class="ww-data-prep-structure-row">
-                            <div class="field ww-data-prep-structure-field">
-                                <label for="wwDataPrepHeaderInput">Header row</label>
-                                <div class="ww-data-prep-structure-controls">
-                                    <input type="number" id="wwDataPrepHeaderInput" min="1" placeholder="row #">
-                                    <button type="button" class="secondary" id="wwDataPrepSetHeaderBtn">Set as Header</button>
-                                    <button type="button" class="secondary" id="wwDataPrepClearHeaderBtn">Clear Header</button>
-                                </div>
+                        <div class="field ww-data-prep-compact-field">
+                            <label for="wwDataPrepHeaderInput">
+                                Header row
+                                <span class="ww-info-tip"><button type="button" class="ww-info-tip-trigger" aria-label="About Header row" aria-describedby="wwInfoTipPortal" data-tooltip-text="The row number containing column headers. Powerwave never guesses this -- set it explicitly if your source has one."><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7.2" x2="8" y2="11.3"/><circle cx="8" cy="4.7" r="0.9" fill="currentColor" stroke="none"/></svg></button></span>
+                            </label>
+                            <div class="ww-data-prep-input-with-action">
+                                <input type="number" id="wwDataPrepHeaderInput" min="1" placeholder="Row number">
+                                <button type="button" class="secondary" id="wwDataPrepClearHeaderBtn">Clear</button>
                             </div>
-                            <!-- Owner-UAT refinement: manually finding the true
-                                 last row of a large source was "unnecessarily
-                                 burdensome" -- End now defaults to "To end of
-                                 file/sheet" (a floating boundary, never a
-                                 guessed numeric row) with an optional
-                                 "Specific row" override. Row 3A refinement
-                                 (2026-09-06): the "Go to Last Rows"
-                                 navigation-only shortcut that used to live
-                                 here was removed -- Data Preview's own
-                                 First/Previous/Next/Last pager (below, in
-                                 Row 4) already provides the exact same
-                                 last-rows navigation, making this a
-                                 redundant second control for the same
-                                 action. -->
-                            <div class="field ww-data-prep-structure-field ww-data-prep-region-field">
-                                <label>Data rows</label>
-                                <div class="ww-data-prep-structure-controls">
-                                    <span class="hint">Start</span>
-                                    <input type="number" id="wwDataPrepRegionStartInput" min="1" placeholder="start">
-                                </div>
-                                <div class="ww-data-prep-region-end-options">
-                                    <label class="ww-data-prep-radio-option">
-                                        <input type="radio" name="wwDataPrepEndMode" value="source_end" id="wwDataPrepEndModeSourceEnd" checked>
-                                        <span id="wwDataPrepEndModeSourceEndLabel">To end of file</span>
-                                    </label>
-                                    <label class="ww-data-prep-radio-option">
-                                        <input type="radio" name="wwDataPrepEndMode" value="specific" id="wwDataPrepEndModeSpecific">
-                                        <span>Specific row</span>
-                                        <input type="number" id="wwDataPrepRegionEndInput" min="1" placeholder="end row" disabled>
-                                    </label>
-                                </div>
-                                <div class="ww-data-prep-structure-controls">
-                                    <button type="button" class="secondary" id="wwDataPrepSetRegionBtn">Set Region</button>
-                                    <button type="button" class="secondary" id="wwDataPrepResetRegionBtn">Reset Region</button>
-                                </div>
+                        </div>
+                        <div class="ww-data-prep-region-row">
+                            <div class="field ww-data-prep-compact-field">
+                                <label for="wwDataPrepRegionStartInput">
+                                    Data start row
+                                    <span class="ww-info-tip"><button type="button" class="ww-info-tip-trigger" aria-label="About Data start row" aria-describedby="wwInfoTipPortal" data-tooltip-text="The first row of actual data, after any header row."><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7.2" x2="8" y2="11.3"/><circle cx="8" cy="4.7" r="0.9" fill="currentColor" stroke="none"/></svg></button></span>
+                                </label>
+                                <input type="number" id="wwDataPrepRegionStartInput" min="1" placeholder="Row number">
                             </div>
+                            <div class="field ww-data-prep-compact-field">
+                                <label for="wwDataPrepRegionEndInput">
+                                    Data end row
+                                    <span class="ww-info-tip"><button type="button" class="ww-info-tip-trigger" aria-label="About Data end row" aria-describedby="wwInfoTipPortal" data-tooltip-text="The last row of actual data. Leave empty to use the end of the file/sheet."><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7.2" x2="8" y2="11.3"/><circle cx="8" cy="4.7" r="0.9" fill="currentColor" stroke="none"/></svg></button></span>
+                                </label>
+                                <input type="number" id="wwDataPrepRegionEndInput" min="1" placeholder="(auto)">
+                                <p class="hint">Leave empty for last row</p>
+                            </div>
+                        </div>
+                        <div class="ww-data-prep-structure-controls ww-data-prep-region-actions">
+                            <button type="button" id="wwDataPrepSetRegionBtn">Set Region</button>
+                            <button type="button" class="secondary" id="wwDataPrepResetRegionBtn">Reset Region</button>
                         </div>
                     </div>
                 </section>
@@ -8756,29 +8796,18 @@
         // GET) so the inputs never drift from backend truth. Never reads
         // from the inputs themselves here (that only happens when the
         // user clicks Set/Reset).
+        // Row 3A REPLACEMENT (2026-09-06): the radio-driven end-mode
+        // group is gone -- a blank Data end row now IS the "to end of
+        // file/sheet" state, a filled one IS "specific". Absence of a
+        // region at all (dataEndMode === null) renders as a blank end-
+        // row input, the same "default data-region end = end of source/
+        // sheet" behavior as before, never fabricating a stored region
+        // that doesn't exist yet.
         function wwDataPrepRenderStructureControls() {
             document.getElementById("wwDataPrepHeaderInput").value = wwDataPrep.headerRowNumber ?? "";
             document.getElementById("wwDataPrepRegionStartInput").value = wwDataPrep.dataStartRow ?? "";
-
-            // Owner-UAT refinement: reflect the CURRENT end-mode into the
-            // radio group + end-row input. Absence of a region at all
-            // (dataEndMode === null) is shown as the "To end of..."
-            // default -- matching the task's own "default data-region
-            // end = end of source/sheet" behavior for an unconfigured
-            // source, without fabricating a stored region that doesn't
-            // exist yet.
             const isSpecific = wwDataPrep.dataEndMode === "specific";
-            document.getElementById("wwDataPrepEndModeSourceEnd").checked = !isSpecific;
-            document.getElementById("wwDataPrepEndModeSpecific").checked = isSpecific;
-            const endInput = document.getElementById("wwDataPrepRegionEndInput");
-            endInput.disabled = !isSpecific;
-            endInput.value = isSpecific ? (wwDataPrep.dataEndRow ?? "") : "";
-
-            // CSV wording says "To end of file"; Excel says "To end of
-            // sheet" -- task's own explicit "do not use misleading
-            // wording" requirement.
-            document.getElementById("wwDataPrepEndModeSourceEndLabel").textContent =
-                wwDataPrep.format === "Excel" ? "To end of sheet" : "To end of file";
+            document.getElementById("wwDataPrepRegionEndInput").value = isSpecific ? (wwDataPrep.dataEndRow ?? "") : "";
         }
 
         // Slice 5 (DEC-072): the compact Column | Label | Role mapping
@@ -11401,40 +11430,60 @@
             }
         }
 
-        document.getElementById("wwDataPrepSetHeaderBtn").addEventListener("click", () => {
-            const value = parseInt(document.getElementById("wwDataPrepHeaderInput").value, 10);
-            if (!Number.isFinite(value)) { wwDataPrepStructureStatusEl().textContent = "Enter a row number first."; return; }
+        // Row 3A REPLACEMENT (2026-09-06): the header row now applies
+        // via the SAME wwDataPrepSetHeader() call, triggered by Enter or
+        // by leaving the field (blur) instead of a separate "Set as
+        // Header" button -- only when the typed value actually differs
+        // from the currently-applied wwDataPrep.headerRowNumber, so a
+        // plain tab-away/blur with no edit never issues a redundant
+        // backend call. A blank field is left alone here (not treated
+        // as "clear") -- "Clear" stays its own explicit, always-
+        // available action below, unchanged.
+        function wwDataPrepApplyHeaderInputIfChanged() {
+            const input = document.getElementById("wwDataPrepHeaderInput");
+            const raw = input.value.trim();
+            if (raw === "") return;
+            const value = parseInt(raw, 10);
+            if (!Number.isFinite(value)) {
+                wwDataPrepStructureStatusEl().textContent = "Enter a valid row number.";
+                return;
+            }
+            if (value === wwDataPrep.headerRowNumber) return;
             wwDataPrepSetHeader(value);
+        }
+        document.getElementById("wwDataPrepHeaderInput").addEventListener("keydown", (event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            wwDataPrepApplyHeaderInputIfChanged();
+            event.target.blur();
         });
+        document.getElementById("wwDataPrepHeaderInput").addEventListener("blur", wwDataPrepApplyHeaderInputIfChanged);
         document.getElementById("wwDataPrepClearHeaderBtn").addEventListener("click", wwDataPrepClearHeader);
+        // A blank Data end row means "to end of file/sheet"
+        // (end_mode="source_end", end_row=null); a filled one means
+        // "specific" -- the EXACT SAME wwDataPrepSetRegion(startRow,
+        // endMode, endRow) call and backend contract as the old radio-
+        // driven version, just derived from the input's own blank-vs-
+        // filled state instead of a separate radio group.
         document.getElementById("wwDataPrepSetRegionBtn").addEventListener("click", () => {
             const start = parseInt(document.getElementById("wwDataPrepRegionStartInput").value, 10);
             if (!Number.isFinite(start)) {
                 wwDataPrepStructureStatusEl().textContent = "Enter a start row first.";
                 return;
             }
-            const useSpecificEnd = document.getElementById("wwDataPrepEndModeSpecific").checked;
-            if (!useSpecificEnd) {
+            const endRaw = document.getElementById("wwDataPrepRegionEndInput").value.trim();
+            if (endRaw === "") {
                 wwDataPrepSetRegion(start, "source_end", null);
                 return;
             }
-            const end = parseInt(document.getElementById("wwDataPrepRegionEndInput").value, 10);
+            const end = parseInt(endRaw, 10);
             if (!Number.isFinite(end)) {
-                wwDataPrepStructureStatusEl().textContent = "Enter an end row, or choose “To end of file/sheet” instead.";
+                wwDataPrepStructureStatusEl().textContent = "Enter a valid end row, or leave it empty for the last row.";
                 return;
             }
             wwDataPrepSetRegion(start, "specific", end);
         });
         document.getElementById("wwDataPrepResetRegionBtn").addEventListener("click", wwDataPrepResetRegion);
-        // Radio toggle only enables/disables the end-row input locally --
-        // no backend call happens until "Set Region" is actually clicked.
-        document.getElementById("wwDataPrepEndModeSourceEnd").addEventListener("change", () => {
-            document.getElementById("wwDataPrepRegionEndInput").disabled = true;
-        });
-        document.getElementById("wwDataPrepEndModeSpecific").addEventListener("change", () => {
-            document.getElementById("wwDataPrepRegionEndInput").disabled = false;
-            document.getElementById("wwDataPrepRegionEndInput").focus();
-        });
         // Row 3A refinement (2026-09-06): the "Go to Last Rows" button
         // and its own click handler (a navigation-only shortcut that
         // jumped the raw preview to its final page) were removed --
