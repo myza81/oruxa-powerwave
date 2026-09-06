@@ -1206,19 +1206,27 @@
         .ww-data-prep-table tr.ww-data-prep-row-is-header td, .ww-data-prep-table tr.ww-data-prep-row-is-header th { background: var(--accent-wash-soft); font-weight: 600; }
         .ww-data-prep-table tr.ww-data-prep-row-inactive td, .ww-data-prep-table tr.ww-data-prep-row-inactive th { opacity: 0.55; }
         /* Slice 6 (DEC-072) established this panel's own plain grouped
-           lists; Slice 9 adds the real "Needs Attention"/"Ready for
-           Powerwave" headline -- [data-ready] only ever colors that ONE
-           line, never the detailed grouped list below it. */
+           lists. Row 4 refinement (2026-09-06): the Issues/Readiness
+           headline's own true/false coloring moved to the new
+           .ww-data-prep-issue-status[data-state] wrapper below (mirrors
+           Time Axis Setup's own status card) -- the base rule here
+           stays since .ww-data-prep-issue-headline is ALSO reused
+           as-is by the Final Actions card's own "Ready with
+           limitations" notice ([data-ready="limited"], kept unchanged,
+           out of this task's scope). */
         .ww-data-prep-issue-headline { margin: 0 0 2px; font-size: 0.9rem; font-weight: 600; }
-        .ww-data-prep-issue-headline[data-ready="true"] { color: var(--ok); }
-        .ww-data-prep-issue-headline[data-ready="false"] { color: var(--error); }
-        .ww-data-prep-issue-counts { font-size: 0.7rem; color: var(--text-dim); margin-bottom: 10px; }
         .ww-data-prep-issue-group { margin-bottom: 12px; }
         .ww-data-prep-issue-group-title { margin: 0 0 4px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
-        .ww-data-prep-issue-group ul { margin: 0; padding-left: 18px; }
-        .ww-data-prep-issue-item { font-size: 0.85rem; margin-bottom: 4px; }
+        .ww-data-prep-issue-group ul { margin: 0; padding-left: 18px; list-style: none; }
+        .ww-data-prep-issue-item {
+            display: flex; align-items: baseline; gap: 6px; font-size: 0.85rem; margin-bottom: 6px;
+        }
+        .ww-data-prep-issue-item-icon { flex: 0 0 auto; }
         .ww-data-prep-issue-item[data-severity="blocking"] { color: var(--error); }
+        .ww-data-prep-issue-item[data-severity="blocking"] .ww-data-prep-issue-item-icon { color: var(--error); }
         .ww-data-prep-issue-item[data-severity="warning"] { color: var(--warn); }
+        .ww-data-prep-issue-item[data-severity="warning"] .ww-data-prep-issue-item-icon { color: var(--warn); }
+        .ww-data-prep-issue-item[data-severity="info"] .ww-data-prep-issue-item-icon { color: var(--text-dim); }
         .ww-data-prep-issue-goto-btn { font: inherit; font-size: 0.72rem; border: none; background: none; color: var(--accent); cursor: pointer; text-decoration: underline; padding: 0 0 0 6px; }
         /* CSV/Excel ingestion Slice 10 (DEC-072): the conversion action
            itself -- deliberately styled distinctly from the headline
@@ -1812,23 +1820,33 @@
 
         /* Issues card: compact rows with a small severity icon, reusing
            the existing .ww-data-prep-issue-item/-group elements/classes
-           and severity semantics unchanged -- presentation only. */
-        #pageDataPreparation #wwDataPrepIssuesCard .ww-data-prep-issue-headline { font-size: 0.8rem; }
-        #pageDataPreparation #wwDataPrepIssuesCard .ww-data-prep-issue-counts {
-            display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;
-        }
-        .ww-data-prep-count-badge {
-            display: inline-flex; align-items: center; gap: 4px; font-size: 0.65rem; font-weight: 600;
-            padding: 2px 8px; border-radius: 999px; background: var(--surface-tint); color: var(--text-dim);
-        }
-        .ww-data-prep-count-badge[data-severity="blocking"] { background: var(--error-wash); color: var(--error); }
-        .ww-data-prep-count-badge[data-severity="warning"] { background: var(--accent-wash); color: var(--warn); }
-        .ww-data-prep-count-badge[data-severity="info"] { background: var(--surface-tint); color: var(--text-dim); }
-        .ww-data-prep-count-badge[data-severity="ok"] { background: var(--ok-wash); color: var(--ok); }
+           and severity semantics unchanged -- presentation only. The
+           headline's own font-size/weight now comes from
+           .ww-data-prep-issue-status-line (below, inherited by the
+           plain <span> it wraps) instead of its own scoped override --
+           0.85rem, deliberately matching Time Axis Setup's own status
+           line exactly rather than the old, slightly smaller 0.8rem. */
         #pageDataPreparation #wwDataPrepIssuesCard .ww-data-prep-issue-group { margin-bottom: 8px; }
-        #pageDataPreparation #wwDataPrepIssuesCard .ww-data-prep-issue-item {
-            display: flex; align-items: baseline; gap: 4px; font-size: 0.75rem; margin-bottom: 6px;
-        }
+        #pageDataPreparation #wwDataPrepIssuesCard .ww-data-prep-issue-item { font-size: 0.75rem; }
+        /* Row 4 refinement (2026-09-06): Issues/Readiness's own unified
+           status card -- the SAME icon + headline + one compact detail
+           line pattern, and the SAME subtle background-wash technique
+           (var(--ok-wash) / color-mix(in srgb, var(--warn) 12%,
+           transparent)), Time Axis Setup's own
+           .ww-data-prep-time-axis-validity card already established
+           just to its left in this same Row 4 -- deliberately identical
+           box model (padding/border-radius/margin) so the two cards
+           read as one consistent family rather than two different
+           designs. */
+        .ww-data-prep-issue-status { padding: 8px 10px; border-radius: var(--radius); margin: 0 0 10px; }
+        .ww-data-prep-issue-status-line { display: flex; align-items: baseline; gap: 8px; font-size: 0.85rem; font-weight: 600; }
+        .ww-data-prep-issue-status[data-state="valid"] { background: var(--ok-wash); }
+        .ww-data-prep-issue-status[data-state="valid"] .ww-data-prep-issue-status-line { color: var(--ok); }
+        .ww-data-prep-issue-status[data-state="attention"] { background: color-mix(in srgb, var(--warn) 12%, transparent); }
+        .ww-data-prep-issue-status[data-state="attention"] .ww-data-prep-issue-status-line { color: var(--warn); }
+        .ww-data-prep-issue-status[data-state="unconfigured"] { background: none; }
+        .ww-data-prep-issue-status-detail { font-size: 0.72rem; color: var(--text-dim); margin: 4px 0 0; }
+        .ww-data-prep-issue-status-detail:empty { display: none; }
 
         /* .ww-data-prep-row-cols's own responsive collapse -- not
            currently used by any row after the 6-row rearrangement (Row
@@ -6393,12 +6411,30 @@
                      this new Row 4 instead -- no id/function changed. -->
                 <section class="panel ww-cc-panel ww-data-prep-card" id="wwDataPrepIssuesCard">
                     <div class="ww-data-prep-panel-header">
-                        <h3>Issues</h3>
+                        <h3>Issues &amp; Readiness</h3>
                         <button type="button" class="secondary ww-data-prep-visually-removed" id="wwDataPrepIssuesToggleBtn">View Issues</button>
                     </div>
-                    <p class="ww-data-prep-card-subtitle">Reports whether the current preparation is ready to convert into Powerwave.</p>
-                    <p class="ww-data-prep-issue-headline" id="wwDataPrepIssueHeadline"></p>
-                    <div class="ww-data-prep-issue-counts" id="wwDataPrepIssueCounts"></div>
+                    <!-- Row 4 refinement (2026-09-06): one unified status
+                         card (icon + strong headline + a compact "N
+                         blocking · N warnings" detail line) replaces the
+                         old subtitle + separate headline paragraph + pill-
+                         badge row -- the SAME visual language (background
+                         wash keyed by data-state, reusing --ok-wash/
+                         color-mix(var(--warn)...)) Time Axis Setup's own
+                         status card already established just above this
+                         one in Row 4, so the two cards read as one
+                         consistent family. #wwDataPrepIssueHeadline/
+                         #wwDataPrepIssueCounts keep their EXACT ids --
+                         wwDataPrepRenderIssues() still targets the same
+                         elements, only their wrapper/content format
+                         changed (pill badges -> one joined text line). -->
+                    <div class="ww-data-prep-issue-status" id="wwDataPrepIssueStatus" data-state="unconfigured">
+                        <div class="ww-data-prep-issue-status-line">
+                            <span id="wwDataPrepIssueStatusIcon" aria-hidden="true"></span>
+                            <span id="wwDataPrepIssueHeadline"></span>
+                        </div>
+                        <p class="ww-data-prep-issue-status-detail" id="wwDataPrepIssueCounts"></p>
+                    </div>
                     <div id="wwDataPrepIssueGroups"></div>
                 </section>
                 </div>
@@ -9541,6 +9577,8 @@
         // purely by re-rendering with the same already-fetched
         // wwDataPrep.issueSummary -- no re-fetch needed to expand/collapse.
         function wwDataPrepRenderIssues() {
+            const statusEl = document.getElementById("wwDataPrepIssueStatus");
+            const iconEl = document.getElementById("wwDataPrepIssueStatusIcon");
             const headlineEl = document.getElementById("wwDataPrepIssueHeadline");
             const countsEl = document.getElementById("wwDataPrepIssueCounts");
             const groupsEl = document.getElementById("wwDataPrepIssueGroups");
@@ -9552,8 +9590,9 @@
             // see wwDataPrepEffectiveIssueSummary()'s own docstring.
             const summary = wwDataPrepEffectiveIssueSummary();
             if (!summary) {
+                statusEl.dataset.state = "unconfigured";
+                iconEl.textContent = "";
                 headlineEl.textContent = "";
-                delete headlineEl.dataset.ready;
                 countsEl.textContent = "";
                 groupsEl.innerHTML = "";
                 groupsEl.hidden = true;
@@ -9565,38 +9604,49 @@
             toggleBtn.textContent = wwDataPrep.issuesExpanded ? "Hide Issues" : "View Issues";
             groupsEl.hidden = !wwDataPrep.issuesExpanded;
 
-            // Slice 9: a real two-state headline, driven entirely by
-            // `is_ready` (== blocking_count == 0) the backend already
-            // computed -- "Needs Attention" gets its own short "N
-            // issue(s) must be fixed" line (task section X's own
-            // wording), "Ready for Powerwave" keeps the full Blocking/
-            // Warnings/Info breakdown, matching each state's own mockup.
-            headlineEl.dataset.ready = summary.is_ready ? "true" : "false";
-            // Visual redesign: the SAME counts, presented as small pill
-            // badges (task section 8: "title + issue count badges")
-            // instead of a single sentence -- text/semantics unchanged.
-            const countBadge = (severity, count, label) =>
-                count > 0
-                    ? '<span class="ww-data-prep-count-badge" data-severity="' + severity + '">' + count + " " + label + "</span>"
-                    : "";
-            countsEl.innerHTML =
-                countBadge("blocking", summary.blocking_count, summary.blocking_count === 1 ? "issue" : "issues") +
-                countBadge("warning", summary.warning_count, summary.warning_count === 1 ? "warning" : "warnings") +
-                countBadge("info", summary.info_count, summary.info_count === 1 ? "info" : "info");
-            if (!summary.blocking_count && !summary.warning_count && !summary.info_count) {
-                countsEl.innerHTML = '<span class="ww-data-prep-count-badge" data-severity="ok">0 issues</span>';
-            }
-            if (summary.is_ready) {
-                headlineEl.textContent = "Ready for Powerwave";
-            } else {
-                headlineEl.textContent = "Needs Attention";
-            }
+            // Row 4 refinement (2026-09-06): one unified status card --
+            // the SAME two-state readiness `is_ready` (== blocking_count
+            // == 0) the backend already computed, only now presented as
+            // an icon + headline + one compact detail line (matching
+            // Time Axis Setup's own status card immediately to its
+            // left) instead of a separate headline paragraph + pill-
+            // badge row. Coloring now comes from `statusEl`'s own
+            // data-state (mirroring Time Axis Setup's status card
+            // exactly) -- the old `headlineEl.dataset.ready` this
+            // replaces had no other reader (confirmed: only its own now-
+            // removed CSS color rules ever queried it), so it is dropped
+            // rather than kept alongside a second, now-redundant state
+            // flag.
+            statusEl.dataset.state = summary.is_ready ? "valid" : "attention";
+            iconEl.textContent = summary.is_ready ? "✓" : "⚠";
+            headlineEl.textContent = summary.is_ready ? "Ready to convert" : "Needs attention";
+
+            // Compact "N blocking · N warnings · N info" detail line --
+            // the SAME counts the old pill badges showed, just one
+            // joined text line matching Time Axis Setup's own detail-
+            // line style. "No blocking issues remain." only when every
+            // count is genuinely zero -- never shown while a warning/
+            // info item still exists (task's own explicit "do not say
+            // 'no issues' if warnings/info remain" rule).
+            const countParts = [];
+            if (summary.blocking_count) countParts.push(summary.blocking_count + (summary.blocking_count === 1 ? " blocking issue" : " blocking issues"));
+            if (summary.warning_count) countParts.push(summary.warning_count + (summary.warning_count === 1 ? " warning" : " warnings"));
+            if (summary.info_count) countParts.push(summary.info_count + " info");
+            countsEl.textContent = countParts.length ? countParts.join(" · ") : "No blocking issues remain.";
 
             const bySeverity = { blocking: [], warning: [], info: [] };
             for (const issue of summary.issues) {
                 (bySeverity[issue.severity] || bySeverity.info).push(issue);
             }
 
+            // Row 4 refinement: a small severity icon per row (task
+            // section 10) -- reuses the SAME plain-text-icon convention
+            // (aria-hidden, no new icon system) Time Axis Setup's own
+            // status/detect cards already established. The issue's own
+            // message/suggested_action text is completely unchanged --
+            // this app has no separate "issue title" field to split out,
+            // so none is invented.
+            const severityIcon = { blocking: "⚠", warning: "⚠", info: "ℹ" };
             let html = "";
             for (const severity of ["blocking", "warning", "info"]) {
                 const items = bySeverity[severity];
@@ -9614,6 +9664,7 @@
                     const hasRowNav = issue.location && issue.location.row_number !== null &&
                         issue.location.row_number !== undefined;
                     html += '<li class="ww-data-prep-issue-item" data-severity="' + severity + '">' +
+                        '<span class="ww-data-prep-issue-item-icon" aria-hidden="true">' + severityIcon[severity] + '</span>' +
                         '<span>' + escapeHtml(issue.message) + '</span>' +
                         (issue.suggested_action ? '<span class="hint"> — ' + escapeHtml(issue.suggested_action) + '</span>' : '') +
                         (hasWorksheetNav
@@ -9628,7 +9679,12 @@
                 }
                 html += "</ul></div>";
             }
-            groupsEl.innerHTML = html || '<p class="hint">No issues found.</p>';
+            // No fallback "No issues found" paragraph here any more --
+            // the status card above already says "Ready to convert / No
+            // blocking issues remain." when there is truly nothing to
+            // list, so an empty groupsEl is the correct, non-duplicated
+            // state (task's own "avoid repeated metadata" rule).
+            groupsEl.innerHTML = html;
             wwDataPrepRenderConversionAction();
             wwDataPrepRenderExportAction();
             wwDataPrepRenderWorkflowStrip();

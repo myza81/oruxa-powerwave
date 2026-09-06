@@ -122,6 +122,82 @@ class TestRowFourTimeAxisAndIssues:
         assert 'id="wwDataPrepIssueCounts"' in issues_card_body
         assert 'id="wwDataPrepIssueGroups"' in issues_card_body
 
+
+class TestRowFourIssuesReadinessRedesign:
+    """Row 4 refinement (2026-09-06): Issues/Readiness gets the SAME
+    unified status card (icon + strong headline + one compact detail
+    line, subtle background wash) Time Axis Setup's own status card
+    already established immediately to its left -- presentation only,
+    the exact same wwDataPrepEffectiveIssueSummary()/is_ready/counts the
+    old pill-badge layout already read, never a second readiness
+    computation."""
+
+    def _issues_card_body(self, source: str) -> str:
+        start = source.index('id="wwDataPrepIssuesCard"')
+        end = source.index("</section>", start)
+        return source[start:end]
+
+    def test_card_title_is_issues_and_readiness(self):
+        source = _source()
+        body = self._issues_card_body(source)
+        assert "<h3>Issues &amp; Readiness</h3>" in body
+
+    def test_old_subtitle_paragraph_is_gone(self):
+        source = _source()
+        body = self._issues_card_body(source)
+        assert "Reports whether the current preparation is ready to convert" not in body
+
+    def test_status_card_wraps_headline_and_counts_with_an_icon(self):
+        source = _source()
+        body = self._issues_card_body(source)
+        status_start = body.index('id="wwDataPrepIssueStatus"')
+        status_end = body.index("</div>", body.index('id="wwDataPrepIssueCounts"'))
+        status_body = body[status_start:status_end]
+        assert 'id="wwDataPrepIssueStatusIcon"' in status_body
+        assert 'id="wwDataPrepIssueHeadline"' in status_body
+        assert 'id="wwDataPrepIssueCounts"' in status_body
+
+    def test_status_card_reuses_the_same_wash_technique_as_time_axis_setup(self):
+        source = _source()
+        assert '.ww-data-prep-issue-status[data-state="valid"] { background: var(--ok-wash); }' in source
+        assert (
+            '.ww-data-prep-issue-status[data-state="attention"] { background: color-mix(in srgb, var(--warn) 12%, transparent); }'
+            in source
+        )
+
+    def test_pill_badge_system_is_removed(self):
+        source = _source()
+        assert "ww-data-prep-count-badge" not in source
+
+    def test_headline_wording_matches_the_approved_copy(self):
+        source = _source()
+        assert 'headlineEl.textContent = summary.is_ready ? "Ready to convert" : "Needs attention";' in source
+
+    def test_counts_are_one_joined_compact_line_not_a_second_no_issues_text(self):
+        source = _source()
+        body = _function_body(source, "function wwDataPrepRenderIssues() {", "function wwDataPrepIsIndexOnlyWithoutInterval")
+        assert 'countsEl.textContent = countParts.length ? countParts.join(" · ") : "No blocking issues remain.";' in body
+        # The old generic "No issues found." fallback paragraph in the
+        # groups list is gone -- the status card above already says so.
+        assert "No issues found." not in body
+
+    def test_issue_rows_carry_a_severity_icon(self):
+        source = _source()
+        body = _function_body(source, "function wwDataPrepRenderIssues() {", "function wwDataPrepIsIndexOnlyWithoutInterval")
+        assert "ww-data-prep-issue-item-icon" in body
+
+    def test_view_issues_toggle_and_groups_expand_state_are_unchanged(self):
+        # Only Time Axis Setup's own main Hide/Configure toggle was
+        # removed this round -- Issues' own already-retired "View
+        # Issues" toggle (visually-removed, kept in the DOM) is
+        # untouched, out of this task's scope.
+        source = _source()
+        assert (
+            'class="secondary ww-data-prep-visually-removed" id="wwDataPrepIssuesToggleBtn"'
+            in source
+        )
+        assert "wwDataPrep.issuesExpanded ? \"Hide Issues\" : \"View Issues\"" in source
+
     def test_old_full_width_action_bar_class_is_retired(self):
         source = _source()
         assert 'class="ww-data-prep-action-bar"' not in source
