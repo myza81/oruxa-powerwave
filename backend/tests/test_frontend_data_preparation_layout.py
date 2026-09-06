@@ -535,13 +535,13 @@ class TestPageHeaderAndFileCard:
 
 
 class TestWorkflowStrip:
-    """Row 3 redesign (2026-09-06): a connected 4-step line-and-circle
-    progress strip with title+helper text and checkmark-on-completed
-    circles. Legacy chevrons stay in the DOM but are hidden presentation
-    nodes; state remains derived from existing workspace state, never a
-    second readiness/status engine. State priority: exactly one step is
-    ever active/attention; every later step is forced "pending" regardless
-    of its own individual signal."""
+    """Row 3 redesign (2026-09-06): a connected 4-step segmented
+    progress strip with title+helper text, checkmark-on-completed
+    circles, and visible chevron separators. State remains derived from
+    existing workspace state, never a second readiness/status engine.
+    State priority: exactly one step is ever active/attention; every
+    later step is forced "pending" regardless of its own individual
+    signal."""
 
     def test_four_steps_exist_with_stable_ids(self):
         source = _source()
@@ -602,38 +602,46 @@ class TestWorkflowStrip:
         strip_body = source[strip_start:row4_start]
         assert strip_body.count('class="ww-data-prep-workflow-chevron" aria-hidden="true"') == 3
 
-    def test_chevrons_remain_nonsemantic_and_hidden_in_the_mock_like_strip(self):
+    def test_chevrons_remain_nonsemantic_and_visible_as_separators(self):
         source = _source()
         body = _function_body(source, ".ww-data-prep-workflow-chevron {", "}")
-        assert "display: none" in body
+        assert "display: flex" in body
+        assert 'aria-hidden="true"' in source
+        assert "border-left: 1px solid rgba(148, 163, 184, 0.16)" in body
 
-    def test_outer_container_is_a_mock_like_line_and_circle_grid(self):
+    def test_outer_container_is_a_connected_segmented_grid(self):
         source = _source()
         body = _function_body(source, ".ww-data-prep-workflow-strip {", "}")
         assert "display: grid" in body
-        assert "repeat(4, minmax(0, 1fr))" in body
-        assert "background: transparent" in body
-        assert "overflow: visible" in body
+        assert "minmax(0, 1fr) 22px minmax(0, 1fr) 22px minmax(0, 1fr) 22px minmax(0, 1fr)" in body
+        assert "background: var(--panel)" in body
+        assert "border: 1px solid var(--panel-border)" in body
+        assert "overflow: hidden" in body
         connector = _function_body(source, ".ww-data-prep-workflow-strip::before {", "}")
-        assert 'content: ""' in connector
-        assert "height: 2px" in connector
-        assert "background: var(--panel-border)" in connector
+        assert "content: none" in connector
 
-    def test_active_and_done_states_style_the_circles_not_the_whole_cell(self):
+    def test_active_and_done_states_style_the_whole_segment_and_circles(self):
         source = _source()
-        assert '.ww-data-prep-workflow-step[data-state="active"] { background: transparent; }' in source
-        assert '.ww-data-prep-workflow-step[data-state="done"] { background: transparent; }' in source
+        assert '.ww-data-prep-workflow-step[data-state="active"] { background: var(--accent-wash-soft); }' in source
+        assert (
+            '.ww-data-prep-workflow-step[data-state="done"] { background: color-mix(in srgb, var(--ok) 7%, var(--panel)); }'
+            in source
+        )
         assert (
             '.ww-data-prep-workflow-step[data-state="active"] .ww-data-prep-workflow-step-num { background: var(--accent); border-color: var(--accent); color: #fff; }'
             in source
         )
         assert (
-            '.ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-num { background: var(--accent); border-color: var(--accent); color: #fff; }'
+            '.ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-num { background: var(--ok); border-color: var(--ok); color: #fff; }'
             in source
         )
 
-    def test_attention_uses_the_existing_warning_token_on_the_circle(self):
+    def test_attention_uses_the_existing_warning_token_on_the_segment_and_circle(self):
         source = _source()
+        assert (
+            '.ww-data-prep-workflow-step[data-state="attention"] { background: color-mix(in srgb, var(--warn) 10%, var(--panel)); }'
+            in source
+        )
         assert (
             '.ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-num { background: var(--warn); border-color: var(--warn); color: #fff; }'
             in source
@@ -685,15 +693,18 @@ class TestWorkflowStrip:
         assert 'el.setAttribute("aria-current", "step");' in body
         assert 'el.removeAttribute("aria-current");' in body
 
-    def test_small_screen_hides_helper_text_but_keeps_titles(self):
+    def test_very_small_screen_hides_helper_text_but_keeps_titles(self):
         # Owner-explicit preference: retain step TITLES for as long as
         # reasonably possible on small screens -- numbers alone provide
         # weak workflow context. Only the helper description is hidden.
         source = _source()
-        media_820 = _function_body(source, "@media (max-width: 820px) {", "@media (max-width: 640px) {")
-        assert ".ww-data-prep-workflow-step-helper { display: none; }" in media_820
-        assert ".ww-data-prep-workflow-step-title { display: none; }" not in media_820
-        assert "wwDataPrepWorkflowStepStructure" not in media_820
+        media_820 = _function_body(source, "@media (max-width: 820px) {", "/* Very small screen")
+        assert ".ww-data-prep-workflow-step-helper { display: none; }" not in media_820
+        workflow_small_screen = source[source.index("/* Very small screen (~390px and below):"):]
+        media_480 = _function_body(workflow_small_screen, "@media (max-width: 480px) {", "/* ---- Data Preview:")
+        assert ".ww-data-prep-workflow-step-helper { display: none; }" in media_480
+        assert ".ww-data-prep-workflow-step-title { display: none; }" not in media_480
+        assert "wwDataPrepWorkflowStepStructure" not in media_480
 
 
 class TestDataPreviewHeaderBadges:

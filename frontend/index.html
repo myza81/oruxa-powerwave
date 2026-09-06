@@ -1714,42 +1714,39 @@
         }
 
         /* ---- Row 3 redesign: connected workflow/progress strip ----
-           Mock-fidelity pass: a line-and-circle progress strip with
-           centered labels. Legacy chevron nodes remain in the DOM for
-           contract stability, but are presentation-hidden. */
+           Presentation-only strip: four equal segments in one rounded
+           container. State is still set exclusively by
+           wwDataPrepRenderWorkflowStrip(); these rules only translate
+           active/done/attention/pending into the approved visual style. */
         .ww-data-prep-workflow-strip {
             position: relative;
-            display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
-            align-items: start;
-            padding: 8px 8px 10px;
-            background: transparent; border: none; border-radius: 0;
-            overflow: visible;
+            display: grid; grid-template-columns: minmax(0, 1fr) 22px minmax(0, 1fr) 22px minmax(0, 1fr) 22px minmax(0, 1fr);
+            align-items: stretch;
+            padding: 0;
+            background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);
+            overflow: hidden;
             flex-shrink: 0;
+            box-shadow: 0 8px 22px rgba(15, 23, 42, 0.035);
         }
         .ww-data-prep-workflow-strip::before {
-            content: "";
-            position: absolute;
-            top: 25px;
-            left: calc(12.5% + 21px);
-            right: calc(12.5% + 21px);
-            height: 2px;
-            background: var(--panel-border);
-            z-index: 0;
+            content: none;
         }
         .ww-data-prep-workflow-step {
-            position: relative; z-index: 1;
-            display: flex; flex-direction: column; align-items: center; gap: 8px;
-            padding: 0 8px; min-width: 0; text-align: center;
+            position: relative; z-index: 0;
+            display: flex; flex-direction: row; align-items: center; gap: 12px;
+            padding: 12px 16px; min-width: 0; text-align: left;
+            background: var(--panel);
+            transition: background-color 0.16s ease, color 0.16s ease;
         }
         .ww-data-prep-workflow-step-num {
             position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
-            width: 32px; height: 32px; border-radius: 50%;
+            width: 28px; height: 28px; border-radius: 50%;
             font-size: 0.8rem; font-weight: 700; color: var(--text-dim);
             border: 1.5px solid var(--panel-border); background: var(--surface-tint);
         }
         .ww-data-prep-workflow-step-num-check { display: none; width: 16px; height: 16px; }
         .ww-data-prep-workflow-step-num-check svg { width: 100%; height: 100%; stroke: currentColor; fill: none; }
-        .ww-data-prep-workflow-step-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; align-items: center; }
+        .ww-data-prep-workflow-step-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
         /* Reference fidelity pass: pending/default titles render in the
            SAME strong dark --text color as completed titles (only the
            circle/background carry the pending-vs-done distinction) --
@@ -1758,30 +1755,47 @@
            helper line only. */
         .ww-data-prep-workflow-step-title { font-size: 0.82rem; font-weight: 700; line-height: 1.25; color: var(--text); overflow-wrap: anywhere; }
         .ww-data-prep-workflow-step-helper { font-size: 0.68rem; line-height: 1.3; color: var(--text-dim); overflow-wrap: anywhere; }
-        .ww-data-prep-workflow-chevron { display: none; }
-        .ww-data-prep-workflow-chevron svg { width: 14px; height: 14px; stroke: currentColor; fill: none; }
+        .ww-data-prep-workflow-chevron {
+            position: relative; z-index: 1;
+            display: flex; align-items: center; justify-content: center;
+            color: var(--border); background: var(--panel);
+            border-left: 1px solid rgba(148, 163, 184, 0.16);
+            border-right: 1px solid rgba(148, 163, 184, 0.16);
+        }
+        .ww-data-prep-workflow-chevron svg { width: 18px; height: 42px; stroke: currentColor; fill: none; }
 
         /* Active: strong blue, per the reference's own active treatment. */
-        .ww-data-prep-workflow-step[data-state="active"] { background: transparent; }
+        .ww-data-prep-workflow-step[data-state="active"] { background: var(--accent-wash-soft); }
         .ww-data-prep-workflow-step[data-state="active"] .ww-data-prep-workflow-step-num { background: var(--accent); border-color: var(--accent); color: #fff; }
         .ww-data-prep-workflow-step[data-state="active"] .ww-data-prep-workflow-step-title { color: var(--accent); }
         .ww-data-prep-workflow-step[data-state="active"] .ww-data-prep-workflow-step-helper { color: var(--text-dim); }
+        .ww-data-prep-workflow-step[data-state="active"] + .ww-data-prep-workflow-chevron {
+            background: linear-gradient(90deg, var(--accent-wash-soft) 0%, var(--panel) 100%);
+            color: color-mix(in srgb, var(--accent) 28%, var(--border));
+        }
 
-        /* Completed: blue circle + checkmark, readable title. */
-        .ww-data-prep-workflow-step[data-state="done"] { background: transparent; }
-        .ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-num { background: var(--accent); border-color: var(--accent); color: #fff; }
+        /* Completed: successful checkmark, still intentionally quiet. */
+        .ww-data-prep-workflow-step[data-state="done"] { background: color-mix(in srgb, var(--ok) 7%, var(--panel)); }
+        .ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-num { background: var(--ok); border-color: var(--ok); color: #fff; }
         .ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-num-digit { display: none; }
         .ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-num-check { display: inline-flex; }
         .ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-title { color: var(--text); }
         .ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-helper { color: var(--text-dim); }
+        .ww-data-prep-workflow-step[data-state="done"] + .ww-data-prep-workflow-chevron {
+            background: linear-gradient(90deg, color-mix(in srgb, var(--ok) 7%, var(--panel)) 0%, var(--panel) 100%);
+        }
 
         /* Attention: amber, a subtle warm wash derived from the SAME
            --warn token every other blocking-adjacent indicator in this
            app already uses (color-mix(), not a new global theme token). */
-        .ww-data-prep-workflow-step[data-state="attention"] { background: transparent; }
+        .ww-data-prep-workflow-step[data-state="attention"] { background: color-mix(in srgb, var(--warn) 10%, var(--panel)); }
         .ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-num { background: var(--warn); border-color: var(--warn); color: #fff; }
         .ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-title { color: var(--warn); }
         .ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-helper { color: var(--text-dim); }
+        .ww-data-prep-workflow-step[data-state="attention"] + .ww-data-prep-workflow-chevron {
+            background: linear-gradient(90deg, color-mix(in srgb, var(--warn) 10%, var(--panel)) 0%, var(--panel) 100%);
+            color: color-mix(in srgb, var(--warn) 28%, var(--border));
+        }
 
         /* Pending: neutral gray, no background -- future step not yet reachable. */
         /* Pending/no-state titles already inherit the base rule's dark
@@ -1948,12 +1962,11 @@
                     "time";
             }
             .ww-data-prep-file-card { width: 100%; box-sizing: border-box; }
-            /* Small screen (owner-explicit preference): keep step
-               TITLES for as long as reasonably possible -- numbers
-               alone provide weak workflow context. Helper descriptions
-               go first; circles/padding/gaps shrink modestly so all
-               four titles keep fitting without page-level overflow. */
-            .ww-data-prep-workflow-step-helper { display: none; }
+            /* Medium/small screen: keep all four connected segments in
+               one row and retain helper text while trimming spacing. */
+            .ww-data-prep-workflow-strip {
+                grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr) 16px minmax(0, 1fr) 16px minmax(0, 1fr);
+            }
             .ww-data-prep-workflow-step { padding: 10px 8px; gap: 8px; }
             .ww-data-prep-workflow-step-num { width: 24px; height: 24px; font-size: 0.7rem; }
             .ww-data-prep-workflow-step-num-check { width: 13px; height: 13px; }
@@ -1968,21 +1981,13 @@
             .ww-data-prep-row-1 { grid-template-columns: 1fr; }
             .ww-data-prep-row-1 > .ww-data-prep-file-card { grid-column: auto; }
         }
-        /* Very small screen (~390px and below): 4 equal step columns are
-           too narrow to hold a two-word title (e.g. "Configure
-           Structure") beside a circle without wrapping character-by-
-           character (confirmed via live UAT). Stack circle above title
-           within each step instead of side-by-side, drop the chevrons
-           (a "clean compact solution matters more than the full desktop
-           composition" here, per explicit product direction) and let the
-           grid become exactly 4 equal columns (a `display: none`
-           chevron already leaves the grid, so this just states it
-           explicitly rather than relying on that side effect). Titles
-           still render as real, readable words -- never truncated to
-           numbers-only. */
+        /* Very small screen (~390px and below): retain a single
+           horizontal four-step strip and readable titles. Helper text
+           and separator chevrons yield first to prevent page overflow. */
         @media (max-width: 480px) {
             .ww-data-prep-workflow-strip { grid-template-columns: repeat(4, 1fr); }
             .ww-data-prep-workflow-chevron { display: none; }
+            .ww-data-prep-workflow-step-helper { display: none; }
             .ww-data-prep-workflow-step { flex-direction: column; align-items: center; text-align: center; gap: 4px; padding: 10px 4px; }
             .ww-data-prep-workflow-step-text { align-items: center; }
             .ww-data-prep-workflow-step-title { font-size: 0.6rem; line-height: 1.15; }
@@ -5767,8 +5772,8 @@
                 </div>
 
                 <!-- Row 3: full-width workflow/status strip. Row 3
-                     redesign (2026-09-06): a connected 4-step line-and-
-                     circle progress strip -- presentation only, state is
+                     redesign (2026-09-06): a connected 4-step segmented
+                     progress strip -- presentation only, state is
                      derived live from already-computed
                      wwDataPrep state by wwDataPrepRenderWorkflowStrip(),
                      never a second readiness engine. `role="list"`/
