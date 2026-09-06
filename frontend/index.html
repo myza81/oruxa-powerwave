@@ -1093,9 +1093,42 @@
         .ww-data-prep-region-row .ww-data-prep-compact-field { flex: 1 1 160px; min-width: 140px; }
         .ww-data-prep-region-row .hint { margin: 6px 0 0; font-style: normal; }
         .ww-data-prep-region-actions { margin-top: 14px; }
-        .ww-data-prep-columns-table { width: 100%; }
+        /* Row 3B redesign: a compact CONFIGURATION table, not a
+           spreadsheet-style grid -- the shared .ww-data-prep-table base
+           class sets a monospace font + nowrap for the raw/Time-Axis
+           preview tables (where column alignment matters); this table
+           is the only consumer of .ww-data-prep-columns-table, so it's
+           safe to override both here without affecting those. Column-
+           width priority (Column narrow, Source Header/Role medium,
+           Engineering Quantity wider, Measured Unit medium) uses
+           proportional percentages, not fixed pixels -- table-layout
+           stays the default `auto`, so these are flexible hints a
+           genuinely long value can still grow past, not a hard clamp. */
+        .ww-data-prep-columns-table { width: 100%; font-family: inherit; }
         .ww-data-prep-columns-table th, .ww-data-prep-columns-table td { white-space: normal; }
-        .ww-data-prep-columns-table select { font: inherit; background: var(--panel); color: var(--text); border: 1px solid var(--panel-border); border-radius: 3px; padding: 2px 4px; }
+        .ww-data-prep-columns-table th:nth-child(1), .ww-data-prep-columns-table td:nth-child(1) { width: 8%; }
+        .ww-data-prep-columns-table th:nth-child(2), .ww-data-prep-columns-table td:nth-child(2) { width: 22%; }
+        .ww-data-prep-columns-table th:nth-child(3), .ww-data-prep-columns-table td:nth-child(3) { width: 20%; }
+        .ww-data-prep-columns-table th:nth-child(4), .ww-data-prep-columns-table td:nth-child(4) { width: 30%; }
+        .ww-data-prep-columns-table th:nth-child(5), .ww-data-prep-columns-table td:nth-child(5) { width: 20%; }
+        .ww-data-prep-columns-table select {
+            font: inherit; font-size: 0.72rem; background: var(--panel); color: var(--text);
+            border: 1px solid var(--panel-border); border-radius: var(--radius);
+            padding: 6px 8px; width: 100%; box-sizing: border-box;
+        }
+        /* Longest real option per select ("Not Assigned" / "Reactive
+           Power") gets a readable floor so the percentages above stay
+           flexible hints, never a clamp that clips text down to a bare
+           arrow -- when the surrounding grid squeezes narrower than
+           these floors (the 2-column mid-width layout in particular),
+           the table grows past its wrap and the pre-existing
+           .ww-data-prep-table-wrap { overflow: auto } already scrolls
+           it locally, per this task's own responsive requirement. */
+        .ww-data-prep-role-select { min-width: 128px; }
+        .ww-data-prep-engineering-quantity-select { min-width: 140px; }
+        .ww-data-prep-measured-unit-select { min-width: 64px; }
+        .ww-data-prep-columns-table select:focus { outline: none; border-color: var(--accent-dim); }
+        .ww-data-prep-columns-table .hint { color: var(--text-dim); }
         /* Header row: a distinct highlight from both excluded (strike-
            through) and outside-region (dimmed) rows -- all three flags
            are independent and must stay visually distinguishable. */
@@ -1426,8 +1459,8 @@
         }
         .ww-data-prep-file-card-icon svg { width: 26px; height: 26px; }
         .ww-data-prep-file-card-main { min-width: 0; flex: 1 1 auto; }
-        .ww-data-prep-file-card-name { margin: 0; font-size: 0.84rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
-        .ww-data-prep-file-card-meta { margin: 3px 0 0; font-size: 0.7rem; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+        .ww-data-prep-file-card-name { margin: 0; font-size: 0.75rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+        .ww-data-prep-file-card-meta { margin: 3px 0 0; font-size: 0.65rem; color: var(--text-dim); font-variant-numeric: tabular-nums; }
         .ww-data-prep-file-card-details {
             flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px;
             padding-left: 14px; border-left: 1px solid var(--panel-border);
@@ -1559,7 +1592,7 @@
         .ww-data-prep-config-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
         #pageDataPreparation .ww-data-prep-card { padding: 12px 14px; }
         #pageDataPreparation .ww-data-prep-card h3 {
-            margin: 0; font-size: 0.72rem; text-transform: none; letter-spacing: normal;
+            margin: 0; font-size: 0.8rem; text-transform: none; letter-spacing: normal;
             font-weight: 700; color: var(--text);
         }
         .ww-data-prep-card-subtitle { margin: 3px 0 8px; font-size: 0.68rem; color: var(--text-dim); font-style: normal; display: block; }
@@ -1586,8 +1619,8 @@
            never per data row), reusing the same .ww-data-prep-table base. */
         .ww-data-prep-column-roles-wrap { max-height: none; }
         #pageDataPreparation .ww-data-prep-columns-table { font-size: 0.72rem; width: 100%; }
-        #pageDataPreparation .ww-data-prep-columns-table th,
-        #pageDataPreparation .ww-data-prep-columns-table td { padding: 5px 8px; }
+        #pageDataPreparation .ww-data-prep-columns-table th { padding: 8px 10px; }
+        #pageDataPreparation .ww-data-prep-columns-table td { padding: 6px 10px; vertical-align: middle; }
 
         /* Issues card: compact rows with a small severity icon, reusing
            the existing .ww-data-prep-issue-item/-group elements/classes
@@ -1604,7 +1637,6 @@
         .ww-data-prep-count-badge[data-severity="warning"] { background: var(--accent-wash); color: var(--warn); }
         .ww-data-prep-count-badge[data-severity="info"] { background: var(--surface-tint); color: var(--text-dim); }
         .ww-data-prep-count-badge[data-severity="ok"] { background: var(--ok-wash); color: var(--ok); }
-        #pageDataPreparation .ww-data-prep-column-preview-cell { color: var(--text-dim); font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.68rem; }
         #pageDataPreparation #wwDataPrepIssuesCard .ww-data-prep-issue-group { margin-bottom: 8px; }
         #pageDataPreparation #wwDataPrepIssuesCard .ww-data-prep-issue-item {
             display: flex; align-items: baseline; gap: 4px; font-size: 0.75rem; margin-bottom: 6px;
@@ -5594,9 +5626,22 @@
                 </section>
                 </div>
                 <div class="ww-data-prep-config-col ww-data-prep-config-col-wide">
+                <!-- Row 3B REPLACEMENT (2026-09-06): the long inline
+                     "Time Axis = defines the X-axis..." explanation is
+                     removed from permanent view -- its guidance now
+                     lives in an info-tip tooltip beside the title,
+                     reusing the SAME shared .ww-info-tip-trigger/
+                     wwInfoTipShow()/wwInfoTipHide() mechanism Row 3A's
+                     Header/Data-row tooltips already established, never
+                     a second tooltip system. The tooltip renders as
+                     plain text only (wwInfoTipShow() sets
+                     portal.textContent, no HTML/line breaks) -- written
+                     as one concise, colon-separated sentence per role
+                     rather than the three-line list a richer tooltip
+                     could show, an accepted constraint of reusing the
+                     existing system as-is. -->
                 <section class="panel ww-cc-panel ww-data-prep-card">
-                    <h3>Column Roles</h3>
-                    <p class="ww-data-prep-card-subtitle">Time Axis = defines the X-axis. Waveform = a Y-axis channel. Not Assigned (default) = not used by Powerwave, kept in the original source, left out of the cleaned export.</p>
+                    <h3>Column Roles <span class="ww-info-tip"><button type="button" class="ww-info-tip-trigger" aria-label="About column roles" aria-describedby="wwInfoTipPortal" data-tooltip-text="Time Axis: defines the X-axis. Waveform: creates a Y-axis channel. Not Assigned (default): not used by Powerwave, kept in the original source, and excluded from the cleaned export."><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7.2" x2="8" y2="11.3"/><circle cx="8" cy="4.7" r="0.9" fill="currentColor" stroke="none"/></svg></button></span></h3>
                     <div class="ww-data-prep-table-wrap ww-data-prep-column-roles-wrap">
                         <table class="ww-data-prep-table ww-data-prep-columns-table" id="wwDataPrepColumnsTable"></table>
                     </div>
@@ -8863,29 +8908,23 @@
             "ROCOF": ["", "Hz/s"],
         };
 
-        // `preview` (visual redesign, optional): the SAME already-fetched
-        // preview response wwDataPrepRenderTable() itself renders --
-        // reused ONLY to show a short, read-only sample of each column's
-        // own actual values (matching the mock's own "Preview" column),
-        // never a second data fetch and never itself editable/counted
-        // toward columnCount.
-        function wwDataPrepRenderColumnMapping(preview) {
+        // Row 3B redesign (2026-09-06): the "Preview" column (a short
+        // read-only sample of each column's own actual values) is
+        // removed -- Row 4's Data Preview already shows the real data,
+        // making this a duplicated, horizontal-space-consuming second
+        // copy. Its own `preview` parameter (the already-fetched preview
+        // response, passed in solely to build that sample) is removed
+        // too, confirmed unused for anything else in this function --
+        // the call site below no longer passes an argument.
+        function wwDataPrepRenderColumnMapping() {
             const table = document.getElementById("wwDataPrepColumnsTable");
             const columnCount = wwDataPrep.columnCount || 0;
             const labels = wwDataPrep.columnLabels || [];
             const roles = wwDataPrep.columnRoles || [];
             const quantities = wwDataPrep.columnEngineeringQuantities || [];
             const units = wwDataPrep.columnMeasuredUnits || [];
-            const sampleRows = (preview && preview.rows) || [];
-            const previewSample = (c) => {
-                const values = sampleRows.slice(0, 3)
-                    .map((row) => row.cells[c])
-                    .filter((v) => v !== null && v !== undefined && v !== "");
-                const text = values.join(", ");
-                return text.length > 36 ? text.slice(0, 36) + "…" : text;
-            };
 
-            let html = "<thead><tr><th>Column</th><th>Label</th><th>Role</th><th>Engineering Quantity</th><th>Measured Unit</th><th>Preview</th></tr></thead><tbody>";
+            let html = "<thead><tr><th>Column</th><th>Label</th><th>Role</th><th>Engineering Quantity</th><th>Measured Unit</th></tr></thead><tbody>";
             for (let c = 0; c < columnCount; c++) {
                 const role = roles[c] || "not_assigned";
                 const optionsHtml = WW_DATA_PREP_ROLES.map(([value, label]) =>
@@ -8927,7 +8966,6 @@
                     '<td><select class="ww-data-prep-role-select" data-col="' + c + '">' + optionsHtml + "</select></td>" +
                     "<td>" + quantityCell + "</td>" +
                     "<td>" + unitCell + "</td>" +
-                    '<td class="ww-data-prep-column-preview-cell">' + escapeHtml(previewSample(c)) + "</td>" +
                     "</tr>";
             }
             html += "</tbody>";
@@ -9128,7 +9166,7 @@
                 wwDataPrepRenderTable(preview);
                 wwDataPrepRenderPagination(preview);
                 wwDataPrepRenderStructureControls();
-                wwDataPrepRenderColumnMapping(preview);
+                wwDataPrepRenderColumnMapping();
                 wwDataPrepRenderStructureSummary();
                 wwDataPrepRenderToolbar();
                 // Slice 6: re-fetched alongside every preview load --

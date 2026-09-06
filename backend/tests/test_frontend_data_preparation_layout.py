@@ -68,7 +68,7 @@ class TestRowThreeIsConfigurationOnly:
         source = _source()
         wide_col_start = source.index('class="ww-data-prep-config-col ww-data-prep-config-col-wide"')
         time_axis_pos = source.index('id="wwDataPrepTimeAxisPanel"')
-        assert wide_col_start < source.index("<h3>Column Roles</h3>") < time_axis_pos
+        assert wide_col_start < source.index("<h3>Column Roles ") < time_axis_pos
         assert 'id="wwDataPrepColumnsTable"' in source[wide_col_start:time_axis_pos]
 
     def test_time_axis_setup_is_the_third_row_3_column_not_a_fourth_row(self):
@@ -77,7 +77,7 @@ class TestRowThreeIsConfigurationOnly:
         row4_start = source.index("ww-data-prep-row-4")
         row3_body = source[row3_start:row4_start]
         assert 'id="wwDataPrepTimeAxisPanel"' in row3_body
-        column_roles_pos = row3_body.index("<h3>Column Roles</h3>")
+        column_roles_pos = row3_body.index("<h3>Column Roles ")
         time_axis_pos = row3_body.index('id="wwDataPrepTimeAxisPanel"')
         assert column_roles_pos < time_axis_pos
 
@@ -537,23 +537,92 @@ class TestDataPreviewHeaderBadges:
         assert "WW_DATA_PREP_INTERPRETER_LABELS[wwDataPrep.timeAxisSummary" in body
 
 
-class TestColumnRolesPreviewColumn:
-    """The Column Roles table has a read-only "Preview" column of a
-    column's own actual sample values, reusing the SAME already-fetched
-    preview response wwDataPrepRenderTable() renders from -- never a
-    second fetch, never itself editable."""
+class TestColumnRolesRow3BRedesign:
+    """Row 3B redesign (2026-09-06): the old read-only "Preview" column
+    (a duplicate sample of each column's own values, already shown for
+    real in Row 4's Data Preview) is removed entirely, and the old
+    permanent explanatory paragraph is replaced by an info-tip tooltip
+    beside the title, reusing the SAME shared .ww-info-tip-trigger/
+    wwInfoTipShow()/wwInfoTipHide() mechanism Row 3A already
+    established -- never a second tooltip system. Table structure is
+    now exactly: Column / Label / Role / Engineering Quantity /
+    Measured Unit."""
 
-    def test_preview_column_header_exists(self):
+    def test_preview_column_is_gone(self):
         source = _source()
         body = _function_body(
-            source, "function wwDataPrepRenderColumnMapping(preview)", "function wwDataPrepRenderStructureSummary()",
+            source, "function wwDataPrepRenderColumnMapping()", "function wwDataPrepRenderStructureSummary()",
         )
-        assert "<th>Preview</th>" in body
+        assert "<th>Preview</th>" not in body
+        assert "ww-data-prep-column-preview-cell" not in body
         assert "fetch(" not in body
 
-    def test_call_site_passes_the_already_fetched_preview(self):
+    def test_render_function_no_longer_takes_a_preview_argument(self):
         source = _source()
-        assert "wwDataPrepRenderColumnMapping(preview);" in source
+        assert "function wwDataPrepRenderColumnMapping()" in source
+        assert "function wwDataPrepRenderColumnMapping(preview)" not in source
+
+    def test_call_site_passes_no_argument(self):
+        source = _source()
+        assert "wwDataPrepRenderColumnMapping();" in source
+        assert "wwDataPrepRenderColumnMapping(preview);" not in source
+
+    def test_table_header_is_five_columns_in_the_new_order(self):
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepRenderColumnMapping()", "function wwDataPrepRenderStructureSummary()",
+        )
+        header_start = body.index("<thead>")
+        header_end = body.index("</thead>")
+        header = body[header_start:header_end]
+        assert header.index("<th>Column</th>") < header.index("<th>Label</th>") < header.index(
+            "<th>Role</th>"
+        ) < header.index("<th>Engineering Quantity</th>") < header.index("<th>Measured Unit</th>")
+
+    def test_dead_preview_cell_css_rule_is_removed(self):
+        source = _source()
+        assert "ww-data-prep-column-preview-cell" not in source
+
+    def test_old_permanent_helper_paragraph_is_gone_from_the_card(self):
+        source = _source()
+        card_start = source.index("<h3>Column Roles ")
+        h3_end = source.index("</h3>", card_start)
+        card_end = source.index('id="wwDataPrepColumnsTable"', card_start)
+        card_body = source[h3_end:card_end]
+        # The guidance text now lives ONLY inside the tooltip's
+        # data-tooltip-text attribute (checked up to the closing
+        # </h3>) -- nothing after the title, before the table, should
+        # be a permanent visible paragraph repeating it.
+        assert "defines the X-axis" not in card_body
+        assert "ww-data-prep-card-subtitle" not in card_body
+
+    def test_title_carries_the_shared_info_tip_trigger(self):
+        source = _source()
+        card_start = source.index("<h3>Column Roles ")
+        card_end = source.index('id="wwDataPrepColumnsTable"', card_start)
+        card_head = source[card_start:card_end]
+        assert "ww-info-tip-trigger" in card_head
+        assert "data-tooltip-text=" in card_head
+
+    def test_tooltip_text_covers_all_three_roles(self):
+        source = _source()
+        card_start = source.index("<h3>Column Roles ")
+        card_end = source.index('id="wwDataPrepColumnsTable"', card_start)
+        card_head = source[card_start:card_end]
+        tooltip_start = card_head.index('data-tooltip-text="') + len('data-tooltip-text="')
+        tooltip_end = card_head.index('"', tooltip_start)
+        tooltip_text = card_head[tooltip_start:tooltip_end]
+        assert "Time Axis" in tooltip_text and "X-axis" in tooltip_text
+        assert "Waveform" in tooltip_text and "Y-axis" in tooltip_text
+        assert "Not Assigned" in tooltip_text and "excluded from the cleaned export" in tooltip_text
+
+    def test_no_second_tooltip_implementation_is_introduced(self):
+        source = _source()
+        # Reuses the exact same portal/show/hide functions Row 3A's
+        # tooltip already relies on -- exactly one of each must exist.
+        assert source.count("function wwInfoTipShow(") == 1
+        assert source.count("function wwInfoTipHide(") == 1
+        assert source.count('id="wwInfoTipPortal"') == 1
 
 
 class TestFiveRowLayoutFoundation:
