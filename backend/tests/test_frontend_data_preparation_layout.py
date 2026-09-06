@@ -226,39 +226,74 @@ class TestAlwaysVisibleStructureAndIssuesCards:
 
 
 class TestPageHeaderAndFileCard:
-    """Approved 5-row layout, Row 1: back navigation, title block
-    (visual center/focus), file details (right-aligned, including
-    status) -- only ALREADY-available metadata, no fabricated "last
-    edited" timestamp exists anywhere in this workspace's state."""
+    """Row 1 visual redesign (2026-09-06): the approved order is now
+    title block (visual anchor, primary width) -> back navigation
+    (compact) -> file details (a card with a prominent icon, filename/
+    format-size-rows on the left, a stacked Uploaded/Status metadata
+    list on the right) -- only ALREADY-available metadata, no
+    fabricated "last edited" or "start time" field exists anywhere in
+    this workspace's state (Start time was investigated and found not
+    to exist for an unconverted preparation source -- see the task's
+    own final report)."""
 
-    def test_row_1_has_three_slots_back_title_file(self):
+    def test_row_1_has_three_slots_title_back_file_in_that_order(self):
         source = _source()
-        row1_start = source.index('class="ww-data-prep-row ww-data-prep-row-1 ww-data-prep-row-cols"')
+        row1_start = source.index('class="ww-data-prep-row ww-data-prep-row-1"')
         row2_start = source.index("ww-data-prep-row-2")
         row1_body = source[row1_start:row2_start]
-        assert 'class="ww-data-prep-page-header-back"' in row1_body
         assert 'class="ww-data-prep-page-header-titles"' in row1_body
+        assert 'class="ww-data-prep-page-header-back"' in row1_body
         assert 'class="ww-data-prep-file-card"' in row1_body
-        back_pos = row1_body.index('class="ww-data-prep-page-header-back"')
         titles_pos = row1_body.index('class="ww-data-prep-page-header-titles"')
+        back_pos = row1_body.index('class="ww-data-prep-page-header-back"')
         file_pos = row1_body.index('class="ww-data-prep-file-card"')
-        assert back_pos < titles_pos < file_pos
+        assert titles_pos < back_pos < file_pos
 
     def test_back_button_is_its_own_slot_separate_from_title(self):
         source = _source()
-        back_slot_start = source.index('class="ww-data-prep-page-header-back"')
         titles_start = source.index('class="ww-data-prep-page-header-titles"')
-        back_slot_body = source[back_slot_start:titles_start]
+        back_slot_start = source.index('class="ww-data-prep-page-header-back"')
+        titles_slot_body = source[titles_start:back_slot_start]
+        assert 'id="wwDataPrepBackBtn"' not in titles_slot_body
+        back_slot_end = source.index('class="ww-data-prep-file-card"')
+        back_slot_body = source[back_slot_start:back_slot_end]
         assert 'id="wwDataPrepBackBtn"' in back_slot_body
-        assert "<h2>Data Preparation</h2>" not in back_slot_body
 
-    def test_status_badge_lives_inside_the_file_details_slot(self):
+    def test_row_1_uses_its_own_dedicated_grid_not_the_shared_equal_columns_one(self):
+        source = _source()
+        assert 'class="ww-data-prep-row ww-data-prep-row-1"' in source
+        assert 'class="ww-data-prep-row ww-data-prep-row-1 ww-data-prep-row-cols"' not in source
+        body = _function_body(source, ".ww-data-prep-row-1 {", "}")
+        assert "display: grid" in body
+        assert "minmax(0, 1.6fr) auto minmax(260px, 1fr)" in body
+
+    def test_status_badge_and_dot_live_inside_the_file_details_slot(self):
         source = _source()
         file_card_start = source.index('class="ww-data-prep-file-card"')
         row1_end = source.index("ww-data-prep-row-2")
         file_card_body = source[file_card_start:row1_end]
         assert 'id="wwDataPrepStatusBadge"' in file_card_body
+        assert 'id="wwDataPrepStatusDot"' in file_card_body
         assert 'class="ww-data-prep-status-slot"' not in source
+
+    def test_status_dot_reuses_the_existing_dot_ok_convention(self):
+        source = _source()
+        assert 'class="dot" id="wwDataPrepStatusDot"' in source
+        body = _function_body(
+            source, "function wwDataPrepRenderMeta()", "function wwDataPrepRenderFileCardRowCount()",
+        )
+        assert 'wwDataPrep.status === "ready"' in body
+        assert '"dot" + (' in body
+
+    def test_uploaded_row_hides_as_a_whole_unit_not_just_the_value(self):
+        source = _source()
+        assert 'id="wwDataPrepUploadedRow" hidden' in source
+        body = _function_body(
+            source, "function wwDataPrepRenderMeta()", "function wwDataPrepRenderFileCardRowCount()",
+        )
+        assert 'document.getElementById("wwDataPrepUploadedRow")' in body
+        assert "uploadedRow.hidden = false;" in body
+        assert "uploadedRow.hidden = true;" in body
 
     def test_file_card_shows_filename_format_size_and_row_count(self):
         source = _source()
@@ -269,9 +304,20 @@ class TestPageHeaderAndFileCard:
         assert 'id="wwDataPrepRowCount"' in source
         assert 'id="wwDataPrepStatusBadge"' in source
 
-    def test_no_last_edited_field_is_fabricated(self):
+    def test_no_last_edited_or_start_time_field_is_fabricated(self):
         source = _source()
         assert "Last edited" not in source
+        # No rendered "Start time" label anywhere in Row 1's own markup
+        # (an explanatory HTML comment may still mention the words while
+        # documenting why it's absent -- checked as actual tag content,
+        # not a bare substring, so that comment doesn't false-positive
+        # this check) -- only investigated/reported as unavailable, per
+        # the task's own explicit "do not fabricate" instruction.
+        row1_start = source.index('class="ww-data-prep-row ww-data-prep-row-1"')
+        row2_start = source.index("ww-data-prep-row-2")
+        row1_body = source[row1_start:row2_start]
+        assert ">Start time<" not in row1_body
+        assert ">Start Time<" not in row1_body
 
     def test_uploaded_date_reuses_created_at_and_the_existing_formatter(self):
         source = _source()
@@ -292,6 +338,21 @@ class TestPageHeaderAndFileCard:
         source = _source()
         assert 'id="wwDataPrepBackBtn"' in source
         assert source.count('id="wwDataPrepBackBtn"') == 1
+
+    def test_file_card_icon_is_larger_than_the_old_inline_size(self):
+        source = _source()
+        body = _function_body(source, ".ww-data-prep-file-card-icon {", "}")
+        assert "width: 34px" in body
+        assert "height: 34px" in body
+
+    def test_row_1_has_its_own_responsive_collapse_reusing_shared_breakpoints(self):
+        source = _source()
+        assert ".ww-data-prep-row-1 { grid-template-columns: 1fr auto; }" in source
+        assert ".ww-data-prep-row-1 { grid-template-columns: 1fr; }" in source
+        # Both declared inside the pre-existing shared breakpoint blocks
+        # (1180px/820px), never a brand-new media query value.
+        media_1180 = _function_body(source, "@media (max-width: 1180px) {", "@media (max-width: 820px) {")
+        assert ".ww-data-prep-row-1 { grid-template-columns: 1fr auto; }" in media_1180
 
 
 class TestWorkflowStrip:
@@ -388,7 +449,7 @@ class TestFiveRowLayoutFoundation:
         # via each row's own distinctive class-attribute string rather
         # than a bare substring count (which would also match e.g. the
         # "/ww-data-prep-row-5 -->" closing comment).
-        assert source.count('class="ww-data-prep-row ww-data-prep-row-1 ww-data-prep-row-cols"') == 1
+        assert source.count('class="ww-data-prep-row ww-data-prep-row-1"') == 1
         assert (
             source.count(
                 'class="ww-data-prep-row ww-data-prep-row-2 ww-data-prep-workflow-strip" id="wwDataPrepWorkflowStrip"'

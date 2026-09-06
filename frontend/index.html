@@ -1364,32 +1364,71 @@
            820px -- confirmed via live browser UAT after this was first
            gotten wrong (Row 3 silently stayed 3 columns at 820px). */
 
-        /* ---- Row 1: page identity (back nav / title block / file details) ---- */
-        .ww-data-prep-page-header-back { display: flex; align-items: flex-start; }
-        .ww-data-prep-page-header-titles h2 { margin: 6px 0 2px; font-size: 1.1rem; color: var(--text); }
+        /* ---- Row 1 visual redesign: page identity ----
+           Title first (primary width share, the strongest visual
+           anchor), back navigation second (compact, sized to its own
+           content via `auto`), file details third (a card with a
+           comfortable, slightly-flexible minimum width). A dedicated
+           grid -- NOT the shared .ww-data-prep-row-cols equal-thirds
+           grid Row 3 uses -- since these three sections deliberately
+           carry different visual weight, unlike Row 3's genuinely equal
+           configuration panels. */
+        .ww-data-prep-row-1 {
+            display: grid; grid-template-columns: minmax(0, 1.6fr) auto minmax(260px, 1fr);
+            gap: 16px; align-items: center;
+        }
+        .ww-data-prep-row-1 > * { min-width: 0; }
+        .ww-data-prep-page-header-titles h2 { margin: 0 0 3px; font-size: 1.2rem; font-weight: 700; color: var(--text); line-height: 1.2; }
+        .ww-data-prep-page-header-titles .ww-cc-subtitle { margin: 0; font-size: 0.78rem; line-height: 1.35; }
         .ww-data-prep-back-btn {
             display: inline-flex; align-items: center; gap: 6px;
-            padding: 5px 10px 5px 8px; font-size: 0.72rem;
+            padding: 7px 14px 7px 10px; font-size: 0.74rem; border-radius: var(--radius);
+            white-space: nowrap;
         }
+
+        /* File details card: icon + name/meta on the left, a small
+           stacked Uploaded/Status metadata list on the right. */
         .ww-data-prep-file-card {
-            display: flex; align-items: flex-start; gap: 10px;
+            display: flex; align-items: center; gap: 14px;
             background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);
-            padding: 10px 14px; min-width: 0;
+            padding: 12px 16px; min-width: 0;
         }
-        .ww-data-prep-file-card-icon { flex: 0 0 auto; color: var(--text-dim); margin-top: 1px; }
-        .ww-data-prep-file-card-icon svg { width: 18px; height: 18px; }
-        .ww-data-prep-file-card-body { min-width: 0; }
-        .ww-data-prep-file-card-name { margin: 0; font-size: 0.8rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
-        .ww-data-prep-file-card-meta { margin: 2px 0 0; font-size: 0.7rem; color: var(--text-dim); font-variant-numeric: tabular-nums; }
-        .ww-data-prep-file-card-uploaded { margin: 2px 0 0; font-size: 0.65rem; color: var(--text-dim); }
-        /* Status badge is back inside the file-details slot (task's own
-           "3 distinct layout slots" rule for Row 1) -- pushed to the
-           card's own right edge via margin-left: auto, same as its
-           original pre-4-row-layout placement. */
-        .ww-data-prep-status-badge {
-            font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim);
-            border: 1px solid var(--panel-border); border-radius: 999px; padding: 3px 10px;
-            align-self: flex-start; white-space: nowrap; margin-left: auto;
+        .ww-data-prep-file-card-icon {
+            flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+            width: 34px; height: 34px; border-radius: calc(var(--radius) - 2px);
+            background: var(--surface-tint); color: var(--accent);
+        }
+        .ww-data-prep-file-card-icon svg { width: 20px; height: 20px; }
+        .ww-data-prep-file-card-main { min-width: 0; flex: 1 1 auto; }
+        .ww-data-prep-file-card-name { margin: 0; font-size: 0.84rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+        .ww-data-prep-file-card-meta { margin: 3px 0 0; font-size: 0.7rem; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+        .ww-data-prep-file-card-details {
+            flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px;
+            padding-left: 14px; border-left: 1px solid var(--panel-border);
+        }
+        .ww-data-prep-file-card-detail-row { display: flex; align-items: baseline; gap: 8px; font-size: 0.68rem; white-space: nowrap; }
+        .ww-data-prep-file-card-detail-label { color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.02em; font-size: 0.6rem; }
+        .ww-data-prep-file-card-detail-value { color: var(--text); font-variant-numeric: tabular-nums; }
+        .ww-data-prep-status-value { display: inline-flex; align-items: center; }
+        /* Status is now plain dot+text (the SAME .dot/.dot.ok convention
+           the Backend-connected indicator already uses, see #apiDot) --
+           no more separate uppercase pill. */
+        #wwDataPrepStatusBadge { font-size: 0.68rem; color: var(--text); font-weight: 500; }
+        /* Narrow phones: icon+filename and the metadata list no longer
+           fit comfortably side by side inside the card (details' own
+           `flex: 0 0 auto` never shrinks, which was squeezing the name
+           column down to near-zero width and wrapping it one character
+           per line -- confirmed via live browser UAT at 390px). The
+           metadata list drops to its own full-width line below icon+
+           name instead, gaining a top border in place of its left one. */
+        @media (max-width: 640px) {
+            .ww-data-prep-file-card { flex-wrap: wrap; }
+            .ww-data-prep-file-card-main { flex: 1 1 160px; }
+            .ww-data-prep-file-card-details {
+                flex: 1 1 100%; flex-direction: row; flex-wrap: wrap; gap: 4px 16px;
+                padding-left: 0; border-left: none;
+                margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--panel-border);
+            }
         }
 
         /* ---- Compact workflow/status strip ---- */
@@ -1466,11 +1505,19 @@
         /* .ww-data-prep-row-cols's own responsive collapse -- declared
            HERE (after .ww-data-prep-config-grid's desktop column-ratio
            override just above) so it actually wins the cascade at these
-           widths; shared by Row 1 and Row 3 alike, never duplicated per
-           row. */
+           widths; shared by Row 3 (and Row 5 via -cols-2) alike, never
+           duplicated per row. Row 1's own dedicated grid is a different
+           shape (title/back/file, not equal panels) so it gets its own
+           two rules right alongside these, reusing the SAME 1180px/
+           820px breakpoint VALUES rather than inventing new ones. */
         @media (max-width: 1180px) {
             .ww-data-prep-row-cols { grid-template-columns: 1fr 1fr; }
             .ww-data-prep-row-cols > *:nth-child(3) { grid-column: 1 / -1; }
+            /* Row 1, medium width: title + back stay side by side; file
+               details wraps onto its own full-width row below rather
+               than squeezing three unequal columns into less space. */
+            .ww-data-prep-row-1 { grid-template-columns: 1fr auto; }
+            .ww-data-prep-row-1 > .ww-data-prep-file-card { grid-column: 1 / -1; }
         }
         @media (max-width: 820px) {
             .ww-data-prep-row-cols { grid-template-columns: 1fr; }
@@ -1479,6 +1526,13 @@
             .ww-data-prep-file-card { width: 100%; box-sizing: border-box; }
             .ww-data-prep-workflow-step-label { display: none; }
             .ww-data-prep-workflow-connector { margin: 0 6px; }
+            /* Row 1, small screen: a clean single-column stack in the
+               approved order -- title, back button, file details
+               (already the DOM order, so a plain 1-column collapse is
+               enough, no explicit per-child grid-column override
+               needed). */
+            .ww-data-prep-row-1 { grid-template-columns: 1fr; }
+            .ww-data-prep-row-1 > .ww-data-prep-file-card { grid-column: auto; }
         }
 
         /* ---- Data Preview: dense header badges + toolbar tightening ---- */
@@ -5160,39 +5214,60 @@
                      styling of each row's own content is intentionally
                      deferred to later, section-by-section tasks. -->
 
-                <!-- Row 1: page identity, 3 slots on a wide desktop --
-                     back navigation, title+subtitle (visual center/
-                     focus), file details (name/format/size/rows/
-                     uploaded/status, right-aligned). The back button is
-                     now its own slot (previously grouped with the
-                     title); the status badge is back inside the file-
-                     details slot (previously split into a 4th slot under
-                     the earlier 4-row pass, now reconciled with this
-                     task's explicit "3 distinct layout slots" rule) --
-                     plain re-parenting only, no id/function changed
-                     (wwDataPrepRenderMeta() still targets the exact same
-                     elements). -->
-                <div class="ww-data-prep-row ww-data-prep-row-1 ww-data-prep-row-cols">
+                <!-- Row 1 visual redesign (2026-09-06): page identity, 3
+                     slots on a wide desktop, in the approved order --
+                     title+subtitle (the strongest visual anchor, primary
+                     width share), back navigation (compact, vertically
+                     centered), file details (a card on the right: a
+                     prominent document icon + filename/format-size-rows
+                     on the left half, a small stacked Uploaded/Status
+                     metadata list on the right half). Plain re-
+                     parenting/restyling only -- every id is unchanged,
+                     wwDataPrepRenderMeta() still targets the exact same
+                     elements; the one addition is #wwDataPrepUploadedRow
+                     (a wrapper needed to hide the WHOLE "Uploaded" row,
+                     label included, when no created_at is known yet) and
+                     #wwDataPrepStatusDot (a static reusable `.dot`
+                     element, the SAME dot/ok/error convention the
+                     Backend-connected indicator already uses -- colored
+                     by wwDataPrepRenderMeta() itself, next to it).
+                     "Start time" was investigated and is NOT shown: no
+                     such field exists anywhere in this workspace's data
+                     model (see this task's own final report, section F)
+                     -- a preparation source has no resolved Time Axis
+                     yet, so there is no authoritative recording start
+                     time to display honestly at this stage. -->
+                <div class="ww-data-prep-row ww-data-prep-row-1">
+                    <div class="ww-data-prep-page-header-titles">
+                        <h2>Data Preparation</h2>
+                        <p class="ww-cc-subtitle">Configure the structure of your file, review any issues, and verify the data before converting.</p>
+                    </div>
                     <div class="ww-data-prep-page-header-back">
                         <button type="button" id="wwDataPrepBackBtn" class="secondary ww-data-prep-back-btn">
                             <span class="ww-data-prep-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M11 3.5 5 9l6 5.5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
                             Recording Events
                         </button>
                     </div>
-                    <div class="ww-data-prep-page-header-titles">
-                        <h2>Data Preparation</h2>
-                        <p class="ww-cc-subtitle">Configure the structure of your file, review any issues, and verify the data before converting.</p>
-                    </div>
                     <div class="ww-data-prep-file-card">
-                        <span class="ww-data-prep-icon ww-data-prep-file-card-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M4.5 2h6l3 3v10.5a.5.5 0 0 1-.5.5h-8.5a.5.5 0 0 1-.5-.5V2.5a.5.5 0 0 1 .5-.5Z" stroke-width="1.4" stroke-linejoin="round"/><path d="M10.5 2v3h3" stroke-width="1.4" stroke-linejoin="round"/></svg></span>
-                        <div class="ww-data-prep-file-card-body">
+                        <span class="ww-data-prep-icon ww-data-prep-file-card-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M4.5 2h6l3 3v10.5a.5.5 0 0 1-.5.5h-8.5a.5.5 0 0 1-.5-.5V2.5a.5.5 0 0 1 .5-.5Z" stroke-width="1.2" stroke-linejoin="round"/><path d="M10.5 2v3h3" stroke-width="1.2" stroke-linejoin="round"/></svg></span>
+                        <div class="ww-data-prep-file-card-main">
                             <p class="ww-data-prep-file-card-name" id="wwDataPrepFilename"></p>
                             <p class="ww-data-prep-file-card-meta">
                                 <span id="wwDataPrepFormat"></span><span> · </span><span id="wwDataPrepSize"></span><span id="wwDataPrepRowCountWrap"><span> · </span><span id="wwDataPrepRowCount"></span></span>
                             </p>
-                            <p class="ww-data-prep-file-card-uploaded" id="wwDataPrepUploaded" hidden></p>
                         </div>
-                        <span class="ww-data-prep-status-badge" id="wwDataPrepStatusBadge"></span>
+                        <div class="ww-data-prep-file-card-details">
+                            <div class="ww-data-prep-file-card-detail-row" id="wwDataPrepUploadedRow" hidden>
+                                <span class="ww-data-prep-file-card-detail-label">Uploaded</span>
+                                <span class="ww-data-prep-file-card-detail-value" id="wwDataPrepUploaded"></span>
+                            </div>
+                            <div class="ww-data-prep-file-card-detail-row">
+                                <span class="ww-data-prep-file-card-detail-label">Status</span>
+                                <span class="ww-data-prep-file-card-detail-value ww-data-prep-status-value">
+                                    <span class="dot" id="wwDataPrepStatusDot"></span><span id="wwDataPrepStatusBadge"></span>
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -8286,6 +8361,16 @@
             // "needs_preparation" in practice; nothing here invents a
             // "Ready" path.
             document.getElementById("wwDataPrepStatusBadge").textContent = formatRecordingStatus(wwDataPrep.status);
+            // Row 1 visual redesign: the SAME dot/ok/error convention the
+            // Backend-connected indicator already uses (see
+            // checkApiHealth()) -- "ready" is the only status this dot
+            // ever shows green for, matching formatRecordingStatus()'s
+            // own mapping; wwDataPrep.status is only ever
+            // "needs_preparation" in practice on this page, so the dot
+            // stays neutral here today, but the mapping itself is honest
+            // for whatever status value actually arrives.
+            document.getElementById("wwDataPrepStatusDot").className =
+                "dot" + (wwDataPrep.status === "ready" ? " ok" : "");
             // Visual redesign (file summary card): only ALREADY-available
             // metadata -- `created_at` already exists on the preparation
             // source summary (same field Recording Events' own "Uploaded"
@@ -8296,12 +8381,16 @@
             // never fabricates a row count before the first preview page
             // has loaded. No "last edited" timestamp is shown -- no such
             // field exists anywhere in this workspace's backend state.
+            // The row (label + value together) hides as one unit so a
+            // bare "Uploaded" label is never shown next to an empty
+            // value.
             const uploadedEl = document.getElementById("wwDataPrepUploaded");
+            const uploadedRow = document.getElementById("wwDataPrepUploadedRow");
             if (wwDataPrep.createdAt) {
-                uploadedEl.textContent = "Uploaded " + formatImportedAt(wwDataPrep.createdAt);
-                uploadedEl.hidden = false;
+                uploadedEl.textContent = formatImportedAt(wwDataPrep.createdAt);
+                uploadedRow.hidden = false;
             } else {
-                uploadedEl.hidden = true;
+                uploadedRow.hidden = true;
             }
             wwDataPrepRenderFileCardRowCount();
         }
