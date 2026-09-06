@@ -990,6 +990,19 @@
         .ww-data-prep-table thead th:first-child { left: 0; z-index: 3; }
         .ww-data-prep-table td.ww-data-prep-blank-cell { color: var(--text-dim); }
         .ww-data-prep-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        /* Table View empty-state bug fix (2026-09-06): the SAME author-
+           CSS-beats-UA-[hidden] bug already fixed elsewhere in this file
+           (e.g. #wwDataPrepTimeAxisDetectCard[hidden]/.ww-data-prep-
+           conversion-action[hidden]) -- `.ww-data-prep-pagination`'s own
+           `display: flex` above wins over the `hidden` ATTRIBUTE by
+           origin regardless of specificity, so wwTableRenderEmptyState()/
+           wwTableFetchPage() setting `wwTablePagination.hidden = true`
+           had no visible effect at all: First/Previous/Page/Next/Last
+           stayed rendered even with zero recordings loaded. Scoped to
+           this one id (not the shared class) since Data Preparation's
+           own pagination row never toggles `hidden` on itself and must
+           not be touched by this fix. */
+        #wwTablePagination[hidden] { display: none; }
         /* UAT enhancement (2026-09-04): First/Last + direct page entry --
            deliberately compact text-label buttons (no icon-only controls,
            task's own "simple text labels preferred for clarity"), no new
@@ -13044,7 +13057,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwTableFetchPage();
         }
 
+        // Table View empty-state bug fix (2026-09-06): a fresh
+        // zero-recordings workspace and an ordinary "nothing selected
+        // yet" state looked identical (same message, and the selector/
+        // pagination bug below made it look broken rather than merely
+        // empty) -- this now reads the SAME `wwTable.availableSources`
+        // wwTableRenderSourceSelect() already keys its own disabled
+        // state off, never a second source-count check.
         function wwTableRenderEmptyState() {
+            document.getElementById("wwTableEmptyState").textContent = wwTable.availableSources.length === 0
+                ? "No recordings available. Upload or open a recording from Recordings to view table data."
+                : "Select or open a recording to view table data.";
             document.getElementById("wwTableEmptyState").hidden = false;
             document.getElementById("wwTableWrap").hidden = true;
             document.getElementById("wwTablePagination").hidden = true;
@@ -13191,6 +13214,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 if (seq !== wwTable.requestSeq) return;
                 wwTable.columns = body.columns;
                 wwTable.totalRowCount = body.total_row_count;
+                // Table View empty-state bug fix (2026-09-06): a
+                // selected recording with zero table rows used to fall
+                // through to wwTableRenderTable()/wwTableRenderPagination()
+                // unconditionally, rendering an empty table WITH a live
+                // pager (First/Previous/Page 1 of 1/Next/Last) -- the
+                // exact same "looks broken" symptom this task exists to
+                // fix, just for a different trigger than zero recordings.
+                if (body.total_row_count === 0) {
+                    document.getElementById("wwTableEmptyState").textContent = "This recording has no table rows.";
+                    document.getElementById("wwTableEmptyState").hidden = false;
+                    document.getElementById("wwTableWrap").hidden = true;
+                    document.getElementById("wwTablePagination").hidden = true;
+                    status.textContent = "";
+                    return;
+                }
                 document.getElementById("wwTableEmptyState").hidden = true;
                 document.getElementById("wwTableWrap").hidden = false;
                 wwTableRenderTable(body);
