@@ -1978,8 +1978,14 @@ class TestConfiguredTimeMinuteResolutionAndAmPmHour:
 
 
 class TestConfiguredTimeElapsed:
-    def test_relative_to_first_active_row(self):
-        # Task section W's own worked example.
+    def test_native_positive_non_zero_origin_is_preserved_not_rebased(self):
+        # Native-coordinate preservation fix: a source-provided elapsed
+        # value is ALREADY the true elapsed second -- it is never
+        # rebased against the first active row the way a plain ordinal
+        # index/clock-time family legitimately is. `5.000/5.020/5.040`
+        # must stay `5.000/5.020/5.040`, never silently re-zeroed to
+        # `0.000/0.020/0.040` as if Powerwave itself had chosen the
+        # origin (UAT scenario B).
         registry = PreparationSessionRegistry()
         content = b"5.000,1.0\n5.020,2.0\n5.040,3.0\n"
         source_id = _add_csv(registry, content)
@@ -1993,7 +1999,25 @@ class TestConfiguredTimeElapsed:
         computed = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
 
         assert computed.column_name == "Time (s)"
-        assert computed.values_by_row_number == {1: "0.000", 2: "0.020", 3: "0.040"}
+        assert computed.values_by_row_number == {1: "5.000", 2: "5.020", 3: "5.040"}
+
+    def test_native_negative_origin_is_preserved_not_rebased(self):
+        # Exact UAT case from the native-coordinate preservation task:
+        # a pre-trigger sample explicitly recorded as a negative elapsed
+        # second must not become "0.000".
+        registry = PreparationSessionRegistry()
+        content = b"-0.002,1.0\n0.008,2.0\n0.018,3.0\n0.028,4.0\n"
+        source_id = _add_csv(registry, content)
+        _mark_time_axis(registry, source_id, 0)
+        _mark_waveform(registry, source_id, 1)
+        set_time_axis_configuration(
+            workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+            interpreter_id=INTERPRETER_ID_ELAPSED_NUMERIC, unit="seconds", confirmed=True, registry=registry,
+        )
+
+        computed = build_configured_time_values(workspace_id="ws-1", source_id=source_id, registry=registry)
+
+        assert computed.values_by_row_number == {1: "-0.002", 2: "0.008", 3: "0.018", 4: "0.028"}
 
     def test_minutes_unit_normalizes_to_canonical_seconds(self):
         # Enhancement (fixed-duration elapsed units), task section U/X:

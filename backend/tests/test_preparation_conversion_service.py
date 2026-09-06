@@ -149,7 +149,12 @@ class TestAbsoluteConversion:
 
 
 class TestElapsedConversion:
-    def test_canonical_seconds_zero_relative(self):
+    def test_native_positive_non_zero_origin_is_preserved_not_rebased(self):
+        # Native-coordinate preservation fix (UAT scenario B): a
+        # source-provided elapsed value is ALREADY the true elapsed
+        # second, never rebased against the first active row -- the
+        # actual `waveform_data["time"]` coordinate stays 5.000/5.020/
+        # 5.040, never silently re-zeroed to 0.000/0.020/0.040.
         prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
         sid = _add_csv(prep, b"5.000,1.0\n5.020,2.0\n5.040,3.0\n")
         _mark_time_axis(prep, sid, 0)
@@ -159,7 +164,42 @@ class TestElapsedConversion:
         metadata = _convert(prep, ws, sid)
         active = ws.get("ws-1", metadata.source_id)
 
-        assert list(active.record.waveform_data["time"]) == pytest.approx([0.0, 0.02, 0.04])
+        assert list(active.record.waveform_data["time"]) == pytest.approx([5.0, 5.02, 5.04])
+        assert metadata.elapsed_start_seconds == pytest.approx(5.0)
+        assert metadata.elapsed_end_seconds == pytest.approx(5.04)
+
+    def test_native_negative_origin_is_preserved_not_rebased(self):
+        # Exact UAT case from the native-coordinate preservation task
+        # (pre-trigger samples explicitly recorded as negative elapsed
+        # seconds) -- must reach the waveform coordinate exactly as
+        # recorded, never silently re-zeroed.
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"-0.002,1.0\n0.008,2.0\n0.018,3.0\n0.028,4.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="elapsed_numeric", unit="seconds", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+        active = ws.get("ws-1", metadata.source_id)
+
+        assert list(active.record.waveform_data["time"]) == pytest.approx([-0.002, 0.008, 0.018, 0.028])
+        assert metadata.elapsed_start_seconds == pytest.approx(-0.002)
+        assert metadata.elapsed_end_seconds == pytest.approx(0.028)
+
+    def test_native_irregular_spacing_is_preserved_not_regularized(self):
+        # UAT scenario C: irregular native intervals must reach the
+        # canonical coordinate exactly as recorded -- never smoothed
+        # into a synthetic fixed interval.
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"0.000,1.0\n0.010,2.0\n0.021,3.0\n0.031,4.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="elapsed_numeric", unit="seconds", confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+        active = ws.get("ws-1", metadata.source_id)
+
+        assert list(active.record.waveform_data["time"]) == pytest.approx([0.0, 0.01, 0.021, 0.031])
 
     def test_non_zero_source_offset_preserved_in_provenance(self):
         prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
@@ -324,6 +364,22 @@ class TestSampleIndexConversion:
         active = ws.get("ws-1", metadata.source_id)
 
         assert list(active.record.waveform_data["time"]) == [0.0, 0.02]
+
+    def test_native_index_gap_is_preserved_not_renumbered(self):
+        # UAT scenario E: a gap in the source's own sample index (1001,
+        # 1002, 1004 -- skipping 1003) must be preserved as an actual
+        # 2x-interval spacing in the derived coordinate, never silently
+        # renumbered to a sequential 1001/1002/1003.
+        prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()
+        sid = _add_csv(prep, b"1001,1.0\n1002,2.0\n1004,3.0\n")
+        _mark_time_axis(prep, sid, 0)
+        _mark_waveform(prep, sid, 1)
+        set_time_axis_configuration(workspace_id="ws-1", source_id=sid, column_indices=(0,), interpreter_id="sample_index", interval_seconds=0.02, confirmed=True, registry=prep)
+
+        metadata = _convert(prep, ws, sid)
+        active = ws.get("ws-1", metadata.source_id)
+
+        assert list(active.record.waveform_data["time"]) == pytest.approx([0.0, 0.02, 0.06])
 
     def test_unknown_interval_conversion_refused(self):
         prep, ws = PreparationSessionRegistry(), WorkspaceRegistry()

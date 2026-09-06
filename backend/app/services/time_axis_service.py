@@ -1231,6 +1231,27 @@ def build_configured_time_values(
         # skip to a later anchor" is honored by still deriving relative
         # values for every OTHER row once a real anchor is found).
         anchor = next((natives_by_row[pr.row_number] for pr in preview_rows if natives_by_row[pr.row_number] is not None), None)
+        # Native-coordinate preservation fix (Elapsed Time only): unlike
+        # every other non-absolute family, `elapsed_numeric`'s own native
+        # value (parsed back from its `build_preview_rows()` output) is
+        # ALREADY the true, unit-converted source-provided elapsed second
+        # -- it is not an ordinal/clock quantity that requires anchoring
+        # against the first active row to become meaningful. Anchoring it
+        # anyway silently discarded a genuine non-zero/negative source
+        # origin (e.g. a pre-trigger sample explicitly recorded as
+        # "-0.002"), rebasing it to 0.000 as if Powerwave itself had
+        # chosen that origin. `elapsed_start_seconds`/`elapsed_end_seconds`
+        # already support an arbitrary (including negative) origin
+        # end-to-end -- COMTRADE pre-trigger sources already exercise this
+        # same path (`wwSourceBoundsFromTimebase()`, frontend/index.html).
+        # `FAMILY_SAMPLE_INDEX` is deliberately NOT included here: a plain
+        # ordinal index is not itself a duration, so anchoring it against
+        # the dataset's own first active row to derive a real elapsed
+        # second via the configured interval remains the correct,
+        # necessary existing derivation (see this module's `build_
+        # configured_time_values` docstring / the native-coordinate task's
+        # own investigation report for why this is not the same bug).
+        effective_anchor = 0.0 if family == time_axis_domain.FAMILY_ELAPSED else anchor
         # 2026-09-05 fix: `relative_seconds_with_anchor()` must be called
         # ONCE with the FULL row-ordered sequence of successfully-parsed
         # natives, never once PER ROW with a one-element list. This
@@ -1259,10 +1280,10 @@ def build_configured_time_values(
             (pr.row_number, natives_by_row[pr.row_number]) for pr in preview_rows if natives_by_row[pr.row_number] is not None
         ]
         relative_by_row: dict[int, float] = {}
-        if anchor is not None and ordered_resolved:
+        if effective_anchor is not None and ordered_resolved:
             try:
                 relative_values = relative_seconds_with_anchor(
-                    [native for _row_number, native in ordered_resolved], anchor, family=family,
+                    [native for _row_number, native in ordered_resolved], effective_anchor, family=family,
                 )
             except TypeError:
                 relative_values = None

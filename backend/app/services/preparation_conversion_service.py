@@ -128,6 +128,7 @@ from app.domain.preparation_session import PreparationSession
 from app.domain.source import ActiveSource, AnalogChannelSummary, SourceMetadata, utc_now
 from app.domain.time_axis import (
     FAMILY_ABSOLUTE,
+    FAMILY_ELAPSED,
     FAMILY_PARTIAL,
     FAMILY_SAMPLE_INDEX,
     INTERPRETER_ID_MANUAL,
@@ -154,7 +155,12 @@ from app.services.preparation_preview_service import (
 )
 from app.services.preparation_session_registry import PreparationSessionRegistry
 from app.services.time_axis_interpreters import _to_float
-from app.services.time_axis_normalization import parse_native_time_value, relative_seconds, seconds_from_midnight
+from app.services.time_axis_normalization import (
+    parse_native_time_value,
+    relative_seconds,
+    relative_seconds_with_anchor,
+    seconds_from_midnight,
+)
 from app.services.time_axis_service import get_time_axis_summary, resolve_interpreter
 from app.services.workspace_registry import WorkspaceRegistry
 
@@ -203,16 +209,22 @@ def _resolve_worksheet_index(session: PreparationSession) -> int | None:
 
 def _canonical_time_and_anchor(preview_rows, *, family: str) -> tuple[list[float], dt.datetime | None]:
     """Turns the CONFIRMED interpreter's own already-resolved `interpreted`
-    strings into canonical `time` floats, relative to the FIRST active
-    row -- via `app.services.time_axis_normalization`'s own shared
-    `parse_native_time_value()`/`relative_seconds()` (task section C's
-    own "preferred direction" for every family; also reused verbatim by
-    `app.services.preparation_export_service`'s own resolved-Time-Axis
-    export, so the two features can never silently disagree about what
-    a configured Time Axis means). Returns `(canonical_seconds_per_row,
-    anchor)` where `anchor` is the real first-row `datetime` for
-    `FAMILY_ABSOLUTE` (used by the caller to populate `TimingInformation.
-    start_time` honestly) and `None` otherwise. Raises
+    strings into canonical `time` floats -- via `app.services.time_axis_
+    normalization`'s own shared `parse_native_time_value()`/
+    `relative_seconds()`/`relative_seconds_with_anchor()` (task section
+    C's own "preferred direction" for every family). For every family
+    except `FAMILY_ELAPSED`, this stays relative to the FIRST active row
+    (also reused verbatim by `app.services.preparation_export_service`'s
+    own resolved-Time-Axis export, so the two features can never
+    silently disagree about what a configured Time Axis means).
+    `FAMILY_ELAPSED` is the one exception (native-coordinate preservation
+    fix): its own native value is already the true, unit-converted
+    source-provided elapsed second, so it is anchored at `0.0` (a no-op)
+    instead, preserving a genuine non-zero/negative source origin.
+    Returns `(canonical_seconds_per_row, anchor)` where `anchor` is the
+    real first-row `datetime` for `FAMILY_ABSOLUTE` (used by the caller
+    to populate `TimingInformation.start_time` honestly) and `None`
+    otherwise. Raises
     `ConversionValidationError` defensively for any row Slice 9's own
     readiness pass should already have prevented from reaching here
     (task section E) -- never silently skipped or dropped.
@@ -234,8 +246,29 @@ def _canonical_time_and_anchor(preview_rows, *, family: str) -> tuple[list[float
         raise ConversionValidationError("No active rows with a Time Axis value were found to convert.")
 
     anchor = natives[0][1] if family == FAMILY_ABSOLUTE else None
+    values_only = [native for _row_number, native in natives]
     try:
-        canonical = relative_seconds([native for _row_number, native in natives], family=family)
+        if family == FAMILY_ELAPSED:
+            # Native-coordinate preservation fix: `elapsed_numeric`'s own
+            # native value is ALREADY the true, unit-converted
+            # source-provided elapsed second -- unlike every other
+            # non-absolute family, it is not an ordinal/clock quantity
+            # that needs anchoring against the first active row to become
+            # meaningful. Anchoring at 0.0 (a no-op relative_seconds_with_
+            # anchor() call) instead of `natives[0]` preserves a genuine
+            # non-zero/negative source origin (e.g. a pre-trigger sample
+            # explicitly recorded as "-0.002") into the canonical `time`
+            # column this DisturbanceRecord will actually plot/cursor/
+            # synchronize on -- COMTRADE pre-trigger sources already
+            # exercise this same negative-origin path end-to-end.
+            # `FAMILY_SAMPLE_INDEX` deliberately keeps the existing
+            # `relative_seconds()` (anchor-to-first-active-row) behavior:
+            # a plain ordinal index is not itself a duration, so this
+            # anchoring remains the correct, necessary way to derive a
+            # real elapsed second from it via the configured interval.
+            canonical = relative_seconds_with_anchor(values_only, 0.0, family=family)
+        else:
+            canonical = relative_seconds(values_only, family=family)
     except TypeError as exc:
         raise ConversionValidationError(
             "A row mixes a timezone-aware timestamp with the first active row's own naive (or vice-versa) "
