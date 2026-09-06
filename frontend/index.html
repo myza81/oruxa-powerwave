@@ -1099,18 +1099,52 @@
            preview tables (where column alignment matters); this table
            is the only consumer of .ww-data-prep-columns-table, so it's
            safe to override both here without affecting those. Column-
-           width priority (Column narrow, Source Header/Role medium,
-           Engineering Quantity wider, Measured Unit medium) uses
-           proportional percentages, not fixed pixels -- table-layout
-           stays the default `auto`, so these are flexible hints a
-           genuinely long value can still grow past, not a hard clamp. */
+           width priority uses proportional percentages, not fixed
+           pixels -- table-layout stays the default `auto`, so these
+           are flexible hints a genuinely long value can still grow
+           past, not a hard clamp.
+           Label/Source Header carries the HIGHEST priority (owner
+           correction, 2026-09-06): it is real engineering data that
+           must stay fully readable, never truncated to an unreadable
+           ellipsis, so it gets the largest share and the other columns
+           give up width to protect it -- Role/Engineering-Quantity/
+           Measured-Unit stay legible via their own min-width floors
+           below, not via a percentage share this large. */
         .ww-data-prep-columns-table { width: 100%; font-family: inherit; }
         .ww-data-prep-columns-table th, .ww-data-prep-columns-table td { white-space: normal; }
-        .ww-data-prep-columns-table th:nth-child(1), .ww-data-prep-columns-table td:nth-child(1) { width: 8%; }
-        .ww-data-prep-columns-table th:nth-child(2), .ww-data-prep-columns-table td:nth-child(2) { width: 22%; }
-        .ww-data-prep-columns-table th:nth-child(3), .ww-data-prep-columns-table td:nth-child(3) { width: 20%; }
-        .ww-data-prep-columns-table th:nth-child(4), .ww-data-prep-columns-table td:nth-child(4) { width: 30%; }
-        .ww-data-prep-columns-table th:nth-child(5), .ww-data-prep-columns-table td:nth-child(5) { width: 20%; }
+        /* "Col." (owner correction, 2026-09-06) only ever shows a
+           spreadsheet letter -- very narrow, freeing width for Label. */
+        .ww-data-prep-columns-table th:nth-child(1), .ww-data-prep-columns-table td:nth-child(1) { width: 5%; }
+        .ww-data-prep-columns-table th:nth-child(2), .ww-data-prep-columns-table td:nth-child(2) { width: 38%; }
+        .ww-data-prep-columns-table th:nth-child(3), .ww-data-prep-columns-table td:nth-child(3) { width: 18%; }
+        .ww-data-prep-columns-table th:nth-child(4), .ww-data-prep-columns-table td:nth-child(4) { width: 23%; }
+        .ww-data-prep-columns-table th:nth-child(5), .ww-data-prep-columns-table td:nth-child(5) { width: 16%; }
+        /* Full value always renders -- `overflow-wrap: anywhere` so an
+           unbroken long header (no spaces/hyphens) still wraps across
+           lines instead of forcing the table wider or being clipped;
+           the `title` attribute set in wwDataPrepRenderColumnMapping()
+           is the native-tooltip fallback for the rare label still too
+           long to fully read at a glance even after wrapping.
+           The shared .ww-data-prep-table base class (used by Row 4's
+           Data Preview and Time Axis's own preview table too) applies
+           `max-width: 240px; overflow: hidden; text-overflow: ellipsis;`
+           to every th/td for THOSE tables' own single-line truncation
+           needs -- harmless here in practice once white-space is back
+           to `normal` (ellipsis only bites on a clipped single line),
+           but explicitly countered anyway so this cell can never be
+           read as truncating the label, and so its width isn't capped
+           below its now much larger percentage share on wide screens. */
+        td.ww-data-prep-label-cell {
+            overflow-wrap: anywhere; overflow: visible; text-overflow: clip; max-width: none;
+            /* A floor wide enough that a long identifier wraps at a
+               sensible number of characters per line rather than one
+               character per line -- below this, the pre-existing
+               .ww-data-prep-table-wrap { overflow: auto } scrolls the
+               table locally (never the page) instead of crushing the
+               label further, matching this task's own "local scroll
+               acceptable on narrow screens" requirement. */
+            min-width: 140px;
+        }
         .ww-data-prep-columns-table select {
             font: inherit; font-size: 0.72rem; background: var(--panel); color: var(--text);
             border: 1px solid var(--panel-border); border-radius: var(--radius);
@@ -8924,7 +8958,12 @@
             const quantities = wwDataPrep.columnEngineeringQuantities || [];
             const units = wwDataPrep.columnMeasuredUnits || [];
 
-            let html = "<thead><tr><th>Column</th><th>Label</th><th>Role</th><th>Engineering Quantity</th><th>Measured Unit</th></tr></thead><tbody>";
+            // "Col." (owner correction, 2026-09-06): each row is one
+            // source column, showing only a spreadsheet letter (A, B,
+            // C...) -- the abbreviation reads clearly at a glance and
+            // lets this column stay very narrow, handing its saved
+            // width to Label/Source Header.
+            let html = "<thead><tr><th>Col.</th><th>Label</th><th>Role</th><th>Engineering Quantity</th><th>Measured Unit</th></tr></thead><tbody>";
             for (let c = 0; c < columnCount; c++) {
                 const role = roles[c] || "not_assigned";
                 const optionsHtml = WW_DATA_PREP_ROLES.map(([value, label]) =>
@@ -8960,9 +8999,17 @@
                         ).join("") +
                         '</select>'
                     : '<span class="hint">—</span>';
+                // Owner-flagged usability fix (2026-09-06): the source
+                // label/header is real engineering data (never a nice-
+                // to-have) -- it always renders in full (no clamp/
+                // ellipsis), with a native `title` attribute as a hover
+                // affordance for the rare case a very long label still
+                // needs more room than its now-larger column gives it.
+                const labelText = labels[c] != null ? String(labels[c]) : wwSpreadsheetColumnLabel(c);
+                const labelEscaped = escapeHtml(labelText);
                 html += "<tr>" +
                     "<td>" + wwSpreadsheetColumnLabel(c) + "</td>" +
-                    "<td>" + escapeHtml(labels[c] != null ? String(labels[c]) : wwSpreadsheetColumnLabel(c)) + "</td>" +
+                    '<td class="ww-data-prep-label-cell" title="' + labelEscaped + '">' + labelEscaped + "</td>" +
                     '<td><select class="ww-data-prep-role-select" data-col="' + c + '">' + optionsHtml + "</select></td>" +
                     "<td>" + quantityCell + "</td>" +
                     "<td>" + unitCell + "</td>" +

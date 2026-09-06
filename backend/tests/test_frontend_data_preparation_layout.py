@@ -575,7 +575,7 @@ class TestColumnRolesRow3BRedesign:
         header_start = body.index("<thead>")
         header_end = body.index("</thead>")
         header = body[header_start:header_end]
-        assert header.index("<th>Column</th>") < header.index("<th>Label</th>") < header.index(
+        assert header.index("<th>Col.</th>") < header.index("<th>Label</th>") < header.index(
             "<th>Role</th>"
         ) < header.index("<th>Engineering Quantity</th>") < header.index("<th>Measured Unit</th>")
 
@@ -623,6 +623,80 @@ class TestColumnRolesRow3BRedesign:
         assert source.count("function wwInfoTipShow(") == 1
         assert source.count("function wwInfoTipHide(") == 1
         assert source.count('id="wwInfoTipPortal"') == 1
+
+
+class TestColumnRolesLabelColumnStaysReadable:
+    """Owner correction (2026-09-06): the Label/Source Header column is
+    real engineering data and must never be silently truncated. It
+    renders in full, wraps rather than clips, carries a native `title`
+    tooltip as a fallback, and gets the largest width share of the five
+    columns so the other (select-driven) columns have to stay
+    compact, not the other way around."""
+
+    def _render_body(self, source: str) -> str:
+        return _function_body(
+            source, "function wwDataPrepRenderColumnMapping()", "function wwDataPrepRenderStructureSummary()",
+        )
+
+    def test_label_cell_renders_the_full_escaped_value_with_a_title_attribute(self):
+        source = _source()
+        body = self._render_body(source)
+        assert 'class="ww-data-prep-label-cell"' in body
+        assert "title=\"" in body
+        # The exact same escaped value backs both the visible text and
+        # the title attribute -- never a shortened/summarized copy.
+        assert "labelEscaped" in body
+        assert body.count("labelEscaped") >= 2
+
+    def test_label_cell_has_no_ellipsis_or_line_clamp_truncation(self):
+        source = _source()
+        body = self._render_body(source)
+        assert "text-overflow" not in body
+        rule_start = source.index(".ww-data-prep-label-cell {")
+        rule_end = source.index("}", rule_start)
+        rule = source[rule_start:rule_end]
+        assert "-webkit-line-clamp" not in rule
+        assert "overflow-wrap: anywhere" in rule
+
+    def test_label_column_has_the_largest_percentage_width(self):
+        source = _source()
+        import re
+
+        widths = {}
+        for n in range(1, 6):
+            m = re.search(
+                r'\.ww-data-prep-columns-table th:nth-child\(' + str(n) + r'\),'
+                r' \.ww-data-prep-columns-table td:nth-child\(' + str(n) + r'\) \{ width: (\d+)%',
+                source,
+            )
+            assert m, f"expected an nth-child({n}) width rule"
+            widths[n] = int(m.group(1))
+        # Label is column 2 -- it must be the single widest column.
+        assert widths[2] == max(widths.values())
+        assert sum(widths.values()) == 100
+
+    def test_role_engineering_quantity_measured_unit_selects_still_have_min_width_floors(self):
+        source = _source()
+        assert ".ww-data-prep-role-select { min-width:" in source
+        assert ".ww-data-prep-engineering-quantity-select { min-width:" in source
+        assert ".ww-data-prep-measured-unit-select { min-width:" in source
+
+    def test_label_cell_has_its_own_min_width_floor_to_avoid_character_by_character_wrap(self):
+        source = _source()
+        rule_start = source.index("td.ww-data-prep-label-cell {")
+        rule_end = source.index("min-width:", rule_start)
+        # A comment may sit between the selector and the declarations
+        # (and may itself contain a brace-punctuated example) -- assert
+        # the declaration is reasonably close to the selector rather
+        # than naively matching the first "}", which could belong to
+        # an example inside such a comment.
+        assert rule_end - rule_start < 700
+
+    def test_first_column_header_is_the_compact_col_abbreviation(self):
+        source = _source()
+        body = self._render_body(source)
+        assert "<th>Col.</th>" in body
+        assert "<th>Column</th>" not in body
 
 
 class TestFiveRowLayoutFoundation:
