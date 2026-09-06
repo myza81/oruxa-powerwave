@@ -298,6 +298,26 @@ class TestSetTimeAxisConfiguration:
                 interpreter_id="does_not_exist", registry=registry,
             )
 
+    def test_empty_string_interpreter_id_is_rejected(self):
+        # Advanced-options UAT fix: the frontend's own neutral "Select
+        # time format..." placeholder uses `interpreter_id=""` as its
+        # sentinel value -- a frontend guard already stops it from ever
+        # being submitted, but the backend must independently reject it
+        # too (defense in depth, matching this framework's own "never
+        # rely only on frontend disabled buttons" rule) rather than
+        # silently treating it as "omitted" (which resolves to `manual`)
+        # or as some other valid interpreter.
+        registry = PreparationSessionRegistry()
+        source_id = _add_csv(registry, b"a,b\n1,2\n")
+        _mark_time_axis(registry, source_id, 0)
+
+        with pytest.raises(UnknownTimeAxisInterpreterError):
+            set_time_axis_configuration(
+                workspace_id="ws-1", source_id=source_id, column_indices=(0,),
+                family=FAMILY_ABSOLUTE, provenance=PROVENANCE_NATIVE,
+                interpreter_id="", registry=registry,
+            )
+
 
 class TestColumnRoleStaleness:
     def test_role_change_away_from_time_axis_makes_configuration_unsupported(self):

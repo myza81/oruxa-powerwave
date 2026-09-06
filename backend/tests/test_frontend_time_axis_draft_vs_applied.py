@@ -168,6 +168,43 @@ class TestDateOrderExcludedWhenNotAmbiguous:
         assert "JSON.parse(JSON.stringify(wwDataPrepCurrentTimeAxisDraftBody()))" in body
 
 
+class TestReconstructedTimeIntervalExcludedUnderSuggestedMode:
+    """UAT finding (Advanced options follow-up): the SAME class of bug as
+    date_order/detected_format above, discovered while verifying DEC-083
+    still works for Reconstructed Time (repeated_timestamp_precision_loss).
+    Under "Suggested interval" (the default, most common mode), the form
+    explicitly sends no `interval_seconds` -- the interpreter's own
+    bucket analysis resolves and stores a real value server-side anyway
+    (e.g. 0.2 s/sample for a 50 Hz source), which the applied summary
+    then echoes back. Comparing that resolved value against an
+    always-null draft produced a PERMANENT false "Unsaved Time Axis
+    changes" for every repeated-timestamp config saved under Suggested
+    mode -- the common case, not an edge case. Only compared when the
+    user has genuinely typed a Manual interval/rate override."""
+
+    def test_comparability_helper_exists_and_checks_the_timing_radio(self):
+        source = _source()
+        assert "function wwDataPrepTimeAxisRepeatedTimestampIntervalIsComparable()" in source
+        body = _function_body(
+            source,
+            "function wwDataPrepTimeAxisRepeatedTimestampIntervalIsComparable()",
+            "function wwDataPrepTimeAxisDraftIsDirty()",
+        )
+        assert 'wwDataPrepTimeAxisRepeatedTimestampTiming"]:checked' in body
+        assert 'checked.value !== "suggested"' in body
+
+    def test_dirty_check_normalizes_interval_when_not_comparable(self):
+        source = _source()
+        body = _function_body(
+            source,
+            "function wwDataPrepTimeAxisDraftIsDirty()",
+            "function wwDataPrepEffectiveIssueSummary()",
+        )
+        assert "wwDataPrepTimeAxisRepeatedTimestampIntervalIsComparable()" in body
+        assert "draft.interval_seconds = null;" in body
+        assert "applied.interval_seconds = null;" in body
+
+
 class TestFetchOrderingKeepsDirtyCheckAccurate:
     """UAT finding: wwDataPrepFetchPreview() calls wwDataPrepFetchIssues()
     (whose own trailing render computes the draft-vs-applied dirty

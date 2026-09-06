@@ -1267,6 +1267,41 @@
             .ww-data-prep-time-axis-advanced-body dt { margin-top: 6px; }
         }
 
+        /* Advanced OPTIONS: a deliberately DISTINCT concept from Advanced
+           details above -- alternative expert/recovery WORKFLOWS
+           (Reconstructed Time, Manual Interpretation), never technical
+           metadata about the currently-selected format. Same <details>/
+           .chevron convention, its own summary/body classes so the two
+           sections can never be confused for one another in markup
+           either. Cards always stack one-per-row (never a side-by-side
+           layout to preserve on narrow widths) -- each already carries a
+           title, two lines of prose, and a button, so a single column
+           reads cleanly at every width without a dedicated breakpoint of
+           its own. */
+        .ww-data-prep-time-axis-advanced-options summary {
+            display: flex; align-items: center; gap: 6px; cursor: pointer;
+            font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.03em; color: var(--text-dim); user-select: none;
+            margin-top: 10px;
+        }
+        .ww-data-prep-time-axis-advanced-options-body {
+            margin-top: 10px; display: flex; flex-direction: column; gap: 12px;
+        }
+        .ww-data-prep-time-axis-advanced-option-card {
+            border: 1px solid var(--panel-border); border-radius: var(--radius);
+            padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;
+        }
+        .ww-data-prep-time-axis-advanced-option-card h4 { margin: 0; font-size: 0.8rem; font-weight: 600; }
+        .ww-data-prep-time-axis-advanced-option-card .hint { margin: 0; }
+        .ww-data-prep-time-axis-advanced-option-card button { align-self: flex-start; }
+        @media (max-width: 640px) {
+            /* Small screens: a full-width action is easier to tap
+               reliably than a compact self-sized button (same "action
+               buttons remain accessible/tappable" rule the rest of this
+               panel's own responsive pass already follows). */
+            .ww-data-prep-time-axis-advanced-option-card button { align-self: stretch; }
+        }
+
         .ww-cc-subtitle { margin: 3px 0 0; color: var(--text-dim); font-size: 0.85rem; }
         .ww-cc-panel { padding: 16px; }
         .ww-cc-panel h3 { margin: 0 0 12px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
@@ -5137,8 +5172,8 @@
                 <section class="panel ww-cc-panel" id="wwDataPrepTimeAxisPanel">
                     <div class="ww-data-prep-panel-header">
                         <div>
-                            <h3>Time Setup</h3>
-                            <p class="hint">Powerwave never guesses a date order or invents a timezone -- ambiguous cases always require your explicit choice.</p>
+                            <h3>Time Axis Setup</h3>
+                            <p class="hint">Configure how Powerwave should interpret the recording timeline. Powerwave never guesses a date order or invents a timezone -- ambiguous cases always require your explicit choice.</p>
                         </div>
                         <button type="button" class="secondary" id="wwDataPrepTimeAxisToggleBtn">Configure</button>
                     </div>
@@ -5169,19 +5204,55 @@
                     <div id="wwDataPrepTimeAxisDetails" hidden>
                         <p class="hint" id="wwDataPrepTimeAxisNoColumnsHint" hidden>No Time Axis columns selected -- assign the "Time Axis" role to one or more columns in Structure first.</p>
                         <div id="wwDataPrepTimeAxisForm">
+                            <!-- Normal dropdown: the five common,
+                                 immediately-understandable formats only.
+                                 `manual`/`repeated_timestamp_precision_loss`
+                                 are deliberately NOT static options here
+                                 (moved to Advanced options below) --
+                                 wwDataPrepEnsureInterpreterOptionPresent()
+                                 injects either one dynamically, ONLY when
+                                 it is genuinely the current interpreter
+                                 (applied-state restore, a DEC-082
+                                 suggestion, or Advanced options' own
+                                 explicit action), so the select can still
+                                 correctly display/represent that state --
+                                 never removed as a real, selectable value,
+                                 only as a normally-offered choice. -->
+                            <!-- UAT fix: a brand-new, never-configured
+                                 source must not visually default to a
+                                 REAL interpretation (the previous
+                                 "absolute_datetime" fallback implied
+                                 Powerwave had already established an
+                                 absolute datetime axis, which it had
+                                 not) -- a genuinely neutral placeholder
+                                 instead. NOT `disabled`: a disabled
+                                 <option> cannot actually be selected by
+                                 assigning `select.value = ""` in every
+                                 browser (confirmed directly -- it left
+                                 `selectedIndex` at -1, defeating the
+                                 whole point of restoring/displaying this
+                                 state); a plain, always-present option is
+                                 what actually works, and re-selecting it
+                                 by hand is harmless regardless (Save
+                                 refuses to submit it -- see
+                                 wwDataPrepSetTimeAxis()'s own guard --
+                                 and the backend independently rejects an
+                                 unknown/empty interpreter_id too,
+                                 defense in depth, unrelated code,
+                                 verified unchanged). -->
                             <div class="field ww-data-prep-structure-field">
                                 <label for="wwDataPrepTimeAxisInterpreterSelect">Time format</label>
                                 <div class="ww-data-prep-structure-controls ww-data-prep-time-axis-controls">
                                     <select id="wwDataPrepTimeAxisInterpreterSelect">
-                                        <option value="manual">Manual Interpretation</option>
+                                        <option value="">Select time format…</option>
                                         <option value="absolute_datetime">Date &amp; Time</option>
                                         <option value="split_date_time">Date + Time (2 columns)</option>
                                         <option value="time_of_day">Time of Day</option>
                                         <option value="elapsed_numeric">Elapsed Time</option>
                                         <option value="sample_index">Sample Number / Index</option>
-                                        <option value="repeated_timestamp_precision_loss">Reconstructed Time</option>
                                     </select>
                                 </div>
+                                <p class="hint" id="wwDataPrepTimeAxisNoFormatHint" hidden>Select a time format above, or use one of the Advanced options below, to configure this source.</p>
                             </div>
 
                             <!-- Time Setup redesign: "only show a control
@@ -5447,6 +5518,50 @@
                                 <button type="button" class="secondary" id="wwDataPrepTimeAxisSaveBtn">Save Time Axis</button>
                                 <button type="button" class="secondary" id="wwDataPrepTimeAxisClearBtn">Clear</button>
                             </div>
+
+                            <!-- Advanced options: a SEPARATE, distinct
+                                 concept from "Advanced details" below --
+                                 this one holds alternative expert/recovery
+                                 WORKFLOWS (Reconstructed Time, Manual
+                                 Interpretation), not technical metadata
+                                 about the currently-selected format. Both
+                                 remain fully supported, real interpreters
+                                 (`repeated_timestamp_precision_loss`/
+                                 `manual`, unchanged backend IDs) -- only
+                                 REMOVED from the normal "Time format"
+                                 dropdown's own visible option list, since
+                                 neither is a normal file-format choice
+                                 (one is a precision-recovery workflow, the
+                                 other an expert fallback). Collapsed by
+                                 default; force-opened whenever the CURRENT
+                                 interpreter is one of these two (applied-
+                                 state restoration, a DEC-082 suggestion,
+                                 or this section's own explicit action) --
+                                 see wwDataPrepRenderTimeAxisInterpreterFields()'s
+                                 own trailing call. Each card's own
+                                 "Use <label>" button is the ONLY thing
+                                 that ever selects it -- same "explicit
+                                 action, never silent" rule DEC-082's
+                                 existing suggestion button already
+                                 follows. See
+                                 wwDataPrepSelectAdvancedInterpreter(). -->
+                            <details class="ww-data-prep-time-axis-advanced-options" id="wwDataPrepTimeAxisAdvancedOptions">
+                                <summary><span class="chevron">&#9656;</span> Advanced options</summary>
+                                <div class="ww-data-prep-time-axis-advanced-options-body">
+                                    <div class="ww-data-prep-time-axis-advanced-option-card">
+                                        <h4>Reconstructed Time</h4>
+                                        <p class="hint">Use when timestamp precision is insufficient or repeated timestamps need to be reconstructed using the recording interval.</p>
+                                        <p class="hint">Example: a 50&nbsp;Hz recording contains many repeated timestamps such as 18:04:00, 18:04:00, 18:04:00, even though samples were actually recorded every 20&nbsp;ms.</p>
+                                        <button type="button" class="secondary" id="wwDataPrepTimeAxisUseReconstructedBtn">Use Reconstructed Time</button>
+                                    </div>
+                                    <div class="ww-data-prep-time-axis-advanced-option-card">
+                                        <h4>Manual Interpretation</h4>
+                                        <p class="hint">Use when the recording time cannot be represented by the standard time formats and needs an engineer-defined interpretation.</p>
+                                        <p class="hint">Example: a vendor exports a custom timestamp format that Powerwave cannot detect automatically, so the engineer must explicitly define how the time information should be interpreted.</p>
+                                        <button type="button" class="secondary" id="wwDataPrepTimeAxisUseManualBtn">Use Manual Interpretation</button>
+                                    </div>
+                                </div>
+                            </details>
 
                             <!-- Advanced details: the SAME native
                                  <details>/<summary> + .chevron
@@ -8828,6 +8943,56 @@
             "absolute_datetime", "split_date_time", "time_of_day", "elapsed_numeric", "sample_index",
             "repeated_timestamp_precision_loss",
         ];
+        // Advanced options (Time Axis Setup follow-up): the two
+        // interpreters removed from the normal "Time format" dropdown's
+        // own static option list -- `repeated_timestamp_precision_loss`
+        // (a precision-recovery workflow) and `manual` (an expert
+        // fallback), neither a normal file format. Backend interpreter
+        // IDs, `WW_DATA_PREP_SAMPLE_INTERPRETERS` membership, and every
+        // other semantic are UNCHANGED -- this list only drives which
+        // <option> wwDataPrepEnsureInterpreterOptionPresent() injects/
+        // removes and when Advanced options force-opens.
+        const WW_DATA_PREP_ADVANCED_INTERPRETERS = ["repeated_timestamp_precision_loss", "manual"];
+
+        // Keeps the interpreter <select> able to correctly DISPLAY an
+        // advanced interpreter as its current value (applied-state
+        // restore, a DEC-082 suggestion, or Advanced options' own
+        // explicit action) even though neither is a normal, always-
+        // offered dropdown choice: injects a real <option> for
+        // `interpreterId` if it is advanced and not already present,
+        // and removes any PREVIOUSLY injected advanced <option> that is
+        // no longer the current value (so re-opening the dropdown after
+        // moving away from an advanced mode shows only the five normal
+        // formats again). Call this BEFORE ever assigning `select.value`
+        // to an advanced interpreter -- assigning a value with no
+        // matching <option> silently fails to select anything.
+        function wwDataPrepEnsureInterpreterOptionPresent(interpreterId) {
+            const select = document.getElementById("wwDataPrepTimeAxisInterpreterSelect");
+            WW_DATA_PREP_ADVANCED_INTERPRETERS.forEach((id) => {
+                if (id === interpreterId) return;
+                const stale = select.querySelector('option[value="' + id + '"]');
+                if (stale) stale.remove();
+            });
+            if (!WW_DATA_PREP_ADVANCED_INTERPRETERS.includes(interpreterId)) return;
+            if (select.querySelector('option[value="' + interpreterId + '"]')) return;
+            const opt = document.createElement("option");
+            opt.value = interpreterId;
+            opt.textContent = WW_DATA_PREP_INTERPRETER_LABELS[interpreterId] || interpreterId;
+            select.appendChild(opt);
+        }
+
+        // The ONE place Advanced options' own explicit "Use <label>"
+        // buttons select an interpreter -- ensures the option exists,
+        // sets it, then reuses the EXACT SAME field-visibility/detect-
+        // result-reset logic the plain dropdown "change" listener
+        // already runs (never a second, divergent selection path).
+        function wwDataPrepSelectAdvancedInterpreter(interpreterId) {
+            wwDataPrepEnsureInterpreterOptionPresent(interpreterId);
+            document.getElementById("wwDataPrepTimeAxisInterpreterSelect").value = interpreterId;
+            wwDataPrepRenderTimeAxisInterpreterFields();
+            wwDataPrepRenderTimeAxisDetectResult(null, null);
+            wwDataPrepRefreshTimeAxisLiveState();
+        }
         // Time Setup redesign: THE one shared map from a backend
         // interpreter_id to its plain-language, user-facing label --
         // reused for the "Time format" <select>'s own option text (kept
@@ -8914,6 +9079,10 @@
         // requires exactly one).
         function wwDataPrepTimeAxisColumnIndicesForSubmit() {
             const interpreterId = document.getElementById("wwDataPrepTimeAxisInterpreterSelect").value;
+            // UAT fix: the neutral placeholder never resolves to a real
+            // column selection -- there is no "the" column to offer
+            // until a format is actually chosen.
+            if (interpreterId === "") return [];
             if (interpreterId === "split_date_time") {
                 const dateCol = document.getElementById("wwDataPrepTimeAxisDateColumnSelect").value;
                 const timeCol = document.getElementById("wwDataPrepTimeAxisTimeColumnSelect").value;
@@ -9074,9 +9243,16 @@
         // never a backend call by itself.
         function wwDataPrepRenderTimeAxisInterpreterFields() {
             const interpreterId = document.getElementById("wwDataPrepTimeAxisInterpreterSelect").value;
+            // UAT fix: the neutral placeholder (`""`, "Select time
+            // format...") means NO format has been chosen yet -- shows
+            // neither Manual's fields nor the Detect flow (which of the
+            // two would apply is exactly the undecided question), only a
+            // plain hint pointing at the dropdown/Advanced options.
+            const isPlaceholder = interpreterId === "";
             const isSample = WW_DATA_PREP_SAMPLE_INTERPRETERS.includes(interpreterId);
-            document.getElementById("wwDataPrepTimeAxisManualFields").hidden = isSample;
-            document.getElementById("wwDataPrepTimeAxisDetectFields").hidden = !isSample;
+            document.getElementById("wwDataPrepTimeAxisNoFormatHint").hidden = !isPlaceholder;
+            document.getElementById("wwDataPrepTimeAxisManualFields").hidden = isPlaceholder || isSample;
+            document.getElementById("wwDataPrepTimeAxisDetectFields").hidden = isPlaceholder || !isSample;
             document.getElementById("wwDataPrepTimeAxisSplitColumnsRow").hidden = interpreterId !== "split_date_time";
             document.getElementById("wwDataPrepTimeAxisElapsedUnitField").hidden = interpreterId !== "elapsed_numeric";
             document.getElementById("wwDataPrepTimeAxisIndexTimingField").hidden = interpreterId !== "sample_index";
@@ -9086,6 +9262,20 @@
             // field applies (every interpreter except Date + Time) or
             // the two dedicated Date/Time selects do.
             wwDataPrepRenderTimeAxisEligibleColumns();
+            // Advanced options: force-REVEALED (never force-closed, so a
+            // user who deliberately reopened/left it open is never
+            // surprised) whenever the CURRENT interpreter is one of the
+            // two advanced ones -- applied-state restoration, a DEC-082
+            // suggestion, and this section's own explicit action all
+            // funnel through this same function, so all three are
+            // covered by one rule. The interpreter <select> itself
+            // (already showing the correct value via
+            // wwDataPrepEnsureInterpreterOptionPresent()) remains the
+            // primary "what's currently active" signal; this only keeps
+            // the explanatory card visible alongside it.
+            if (WW_DATA_PREP_ADVANCED_INTERPRETERS.includes(interpreterId)) {
+                document.getElementById("wwDataPrepTimeAxisAdvancedOptions").open = true;
+            }
         }
 
         // Slice 8B: converts whichever Timing input the user has chosen
@@ -9202,6 +9392,19 @@
             const interpreterId = document.getElementById("wwDataPrepTimeAxisInterpreterSelect").value;
             const fieldEl = document.getElementById("wwDataPrepTimeAxisColumnField");
             const manualColumnsFieldEl = document.getElementById("wwDataPrepTimeAxisManualColumnsField");
+            const splitColumnsRowEl = document.getElementById("wwDataPrepTimeAxisSplitColumnsRow");
+            // UAT fix: no format chosen yet -- there is no "the" Time
+            // column to resolve/offer a choice for until the user picks
+            // a format (which of the two column-selection shapes, single
+            // or Date+Time's own pair, would even apply is itself part
+            // of the undecided question).
+            if (interpreterId === "") {
+                fieldEl.hidden = true;
+                manualColumnsFieldEl.hidden = true;
+                document.getElementById("wwDataPrepTimeAxisManualColumnChecks").innerHTML = "";
+                splitColumnsRowEl.hidden = true;
+                return;
+            }
             if (interpreterId === "split_date_time") {
                 fieldEl.hidden = true;
                 manualColumnsFieldEl.hidden = true;
@@ -9585,8 +9788,28 @@
             document.getElementById("wwDataPrepTimeAxisConfirmedCheckbox").checked = !!(summary && summary.confirmed);
             wwDataPrepRenderTimeAxisFieldVisibility();
 
-            const interpreterId = (summary && WW_DATA_PREP_SAMPLE_INTERPRETERS.includes(summary.interpreter_id))
-                ? summary.interpreter_id : "manual";
+            // Applied-state restoration guardrail: a genuinely-applied
+            // `manual` (or `repeated_timestamp_precision_loss`) config
+            // must still restore correctly, even though neither is a
+            // normal dropdown default anymore -- distinct from the
+            // "nothing saved yet" case (`summary` itself is null/has no
+            // interpreter_id at all), which now starts on the neutral
+            // placeholder (`""`) rather than silently defaulting to a
+            // REAL interpretation -- "Date & Time" would otherwise imply
+            // Powerwave had already established an absolute datetime
+            // axis for a source that has no Time Axis configuration at
+            // all yet (UAT finding; the earlier "default to the first
+            // normal format" fix was itself still wrong, just less so
+            // than defaulting to Manual).
+            let interpreterId;
+            if (summary && WW_DATA_PREP_SAMPLE_INTERPRETERS.includes(summary.interpreter_id)) {
+                interpreterId = summary.interpreter_id;
+            } else if (summary && summary.interpreter_id === "manual") {
+                interpreterId = "manual";
+            } else {
+                interpreterId = "";
+            }
+            wwDataPrepEnsureInterpreterOptionPresent(interpreterId);
             document.getElementById("wwDataPrepTimeAxisInterpreterSelect").value = interpreterId;
             wwDataPrepRenderTimeAxisInterpreterFields();
             wwDataPrepRenderTimeAxisElapsedAndIndexFields(summary);
@@ -9874,6 +10097,24 @@
             return !document.getElementById("wwDataPrepTimeAxisDateOrderField").hidden;
         }
 
+        // UAT finding (Advanced options follow-up): the SAME class of bug
+        // as date_order/detected_format above, discovered while verifying
+        // DEC-083 still works for Reconstructed Time. Under "Suggested
+        // interval" (the default, most common mode), the form explicitly
+        // sends NO `interval_seconds` -- the interpreter's own bucket
+        // analysis resolves and stores a real value server-side anyway
+        // (e.g. 0.2 s/sample), which the applied summary then echoes
+        // back. Comparing that resolved value against an always-null
+        // draft produced a PERMANENT false "unsaved changes" for every
+        // repeated-timestamp config saved under Suggested mode -- the
+        // common case, not an edge case. Only compared when the user has
+        // genuinely typed a Manual interval/rate override.
+        function wwDataPrepTimeAxisRepeatedTimestampIntervalIsComparable() {
+            if (document.getElementById("wwDataPrepTimeAxisInterpreterSelect").value !== "repeated_timestamp_precision_loss") return true;
+            const checked = document.querySelector('input[name="wwDataPrepTimeAxisRepeatedTimestampTiming"]:checked');
+            return !!checked && checked.value !== "suggested";
+        }
+
         // Product rule: "Detection is not configuration. A draft is not
         // an applied Time Axis." -- `true` the instant the form's CURRENT
         // fields would produce a DIFFERENT saved configuration than the
@@ -9904,6 +10145,10 @@
             if (!wwDataPrepTimeAxisDateOrderIsComparable()) {
                 if (draft.options) delete draft.options.date_order;
                 if (applied.options) delete applied.options.date_order;
+            }
+            if (!wwDataPrepTimeAxisRepeatedTimestampIntervalIsComparable()) {
+                draft.interval_seconds = null;
+                applied.interval_seconds = null;
             }
             // UAT finding (Time Setup redesign): `detected_format` is a
             // purely backend-computed diagnostic annotation on
@@ -9949,6 +10194,16 @@
             const status = wwDataPrepTimeAxisStatusEl();
             status.textContent = "";
             const interpreterId = document.getElementById("wwDataPrepTimeAxisInterpreterSelect").value;
+            // UAT fix: the neutral placeholder ("Select time format...")
+            // must never itself be submitted as a Time Axis configuration
+            // -- same "explain, then stop" pattern as the column guard
+            // right below. The backend independently rejects an unknown/
+            // empty interpreter_id too (resolve_interpreter(), unchanged),
+            // but this stops the request before it is even sent.
+            if (!interpreterId) {
+                status.textContent = "Select a time format first.";
+                return;
+            }
             const columnIndices = wwDataPrepTimeAxisColumnIndicesForSubmit();
             if (!columnIndices.length) {
                 status.textContent = interpreterId === "split_date_time"
@@ -10023,6 +10278,24 @@
         document.getElementById("wwDataPrepTimeAxisSaveBtn").addEventListener("click", wwDataPrepSetTimeAxis);
         document.getElementById("wwDataPrepTimeAxisClearBtn").addEventListener("click", wwDataPrepClearTimeAxis);
 
+        // Advanced options (Time Axis Setup follow-up): the ONLY two
+        // places this panel ever selects an advanced interpreter by
+        // itself, other than a DEC-082 suggestion or applied-state
+        // restoration -- explicit action, never silent (same rule the
+        // existing "Use X" mismatch-suggestion button already follows).
+        // Reconstructed Time re-runs Detect immediately for the same
+        // "immediate feedback, no second click" reason the mismatch
+        // suggestion button does; Manual has no detect() concept at all
+        // (matches the plain interpreter-dropdown "change" listener's
+        // own behavior for it).
+        document.getElementById("wwDataPrepTimeAxisUseReconstructedBtn").addEventListener("click", () => {
+            wwDataPrepSelectAdvancedInterpreter("repeated_timestamp_precision_loss");
+            wwDataPrepDetectTimeAxis();
+        });
+        document.getElementById("wwDataPrepTimeAxisUseManualBtn").addEventListener("click", () => {
+            wwDataPrepSelectAdvancedInterpreter("manual");
+        });
+
         // Preparation Status integrity guardrail: ONE delegated listener
         // over the whole Time Axis Details container -- covers every
         // user-editable field this panel has (interpreter/family/
@@ -10073,6 +10346,12 @@
         document.getElementById("wwDataPrepTimeAxisDiagnostics").addEventListener("click", (event) => {
             const btn = event.target.closest(".ww-data-prep-time-axis-use-suggested-btn");
             if (!btn) return;
+            // Advanced options (Time Axis Setup follow-up): a suggestion
+            // CAN legitimately be `repeated_timestamp_precision_loss`
+            // (its own allowed_families is non-empty, unlike `manual`'s)
+            // -- no longer a static dropdown option, so it must be
+            // injected before it can be selected here too.
+            wwDataPrepEnsureInterpreterOptionPresent(btn.dataset.interpreterId);
             const select = document.getElementById("wwDataPrepTimeAxisInterpreterSelect");
             select.value = btn.dataset.interpreterId;
             wwDataPrepRenderTimeAxisInterpreterFields();
