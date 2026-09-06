@@ -342,8 +342,8 @@ class TestPageHeaderAndFileCard:
     def test_file_card_icon_is_larger_than_the_old_inline_size(self):
         source = _source()
         body = _function_body(source, ".ww-data-prep-file-card-icon {", "}")
-        assert "width: 34px" in body
-        assert "height: 34px" in body
+        assert "width: 44px" in body
+        assert "height: 44px" in body
 
     def test_row_1_has_its_own_responsive_collapse_reusing_shared_breakpoints(self):
         source = _source()

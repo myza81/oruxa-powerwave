@@ -1395,10 +1395,10 @@
         }
         .ww-data-prep-file-card-icon {
             flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
-            width: 34px; height: 34px; border-radius: calc(var(--radius) - 2px);
+            width: 44px; height: 44px; border-radius: calc(var(--radius) - 2px);
             background: var(--surface-tint); color: var(--accent);
         }
-        .ww-data-prep-file-card-icon svg { width: 20px; height: 20px; }
+        .ww-data-prep-file-card-icon svg { width: 26px; height: 26px; }
         .ww-data-prep-file-card-main { min-width: 0; flex: 1 1 auto; }
         .ww-data-prep-file-card-name { margin: 0; font-size: 0.84rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
         .ww-data-prep-file-card-meta { margin: 3px 0 0; font-size: 0.7rem; color: var(--text-dim); font-variant-numeric: tabular-nums; }
@@ -1406,7 +1406,14 @@
             flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px;
             padding-left: 14px; border-left: 1px solid var(--panel-border);
         }
-        .ww-data-prep-file-card-detail-row { display: flex; align-items: baseline; gap: 8px; font-size: 0.68rem; white-space: nowrap; }
+        /* `center`, not `baseline`: the Status row's value is an
+           inline-flex (dot + text, see .ww-data-prep-status-value)
+           whose synthesized baseline doesn't line up with the Uploaded
+           row's own plain-text baseline, visibly offsetting the two
+           rows from each other -- `center` aligns label/value
+           consistently across every row regardless of the value's own
+           content shape. */
+        .ww-data-prep-file-card-detail-row { display: flex; align-items: center; gap: 8px; font-size: 0.68rem; white-space: nowrap; }
         .ww-data-prep-file-card-detail-label { color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.02em; font-size: 0.6rem; }
         .ww-data-prep-file-card-detail-value { color: var(--text); font-variant-numeric: tabular-nums; }
         .ww-data-prep-status-value { display: inline-flex; align-items: center; }
