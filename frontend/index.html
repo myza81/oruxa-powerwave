@@ -1200,6 +1200,11 @@
         .ww-data-prep-measured-unit-select { min-width: 64px; }
         .ww-data-prep-columns-table select:focus { outline: none; border-color: var(--accent-dim); }
         .ww-data-prep-columns-table .hint { color: var(--text-dim); }
+        @media (max-width: 480px) {
+            td.ww-data-prep-label-cell { min-width: 112px; }
+            .ww-data-prep-role-select { min-width: 104px; }
+            .ww-data-prep-engineering-quantity-select { min-width: 120px; }
+        }
         /* Header row: a distinct highlight from both excluded (strike-
            through) and outside-region (dimmed) rows -- all three flags
            are independent and must stay visually distinguishable. */
@@ -1564,52 +1569,48 @@
         #pageDataPreparation .ww-data-prep-icon svg { width: 14px; height: 14px; stroke: currentColor; fill: none; vertical-align: -2px; }
 
         /* ================================================================
-           6-row layout-experiment rearrangement (2026-09-06, supersedes
-           the previous 5-row pass): Row 3 (Structure | Column Roles),
-           Row 4 (Time Axis Setup | Issues/Readiness), Row 5 (Data
-           Preview, full width), Row 6 (Final Actions alone). Row-
-           specific classes (.ww-data-prep-row-1..6) exist for semantic/
-           selector clarity and per-row spacing; each row's own grid
-           ratio is a DEDICATED class (.ww-data-prep-row-3-grid/-4-grid)
-           rather than the previous shared equal-thirds
-           .ww-data-prep-row-cols (now unused by any row -- kept only as
-           the shared base its own 1180px/820px comment further down
-           still documents, never fully deleted mid-experiment) since
-           Row 3 and Row 4 each need a DIFFERENT, deliberately asymmetric
-           ratio (35/65 and ~58/42 respectively), not the old equal-
-           thirds/fixed-2fr-1fr shapes. `min-width: 0` on every direct
-           child prevents long unbroken content (a filename, a table)
-           from forcing a column -- and by extension the page -- wider
-           than its own grid track. */
+           7-row Data Preparation layout (2026-09-06): Row 1 page
+           identity, Row 2 collapsible Issues/Readiness, Row 3 workflow
+           strip, Row 4 worksheet selection, Row 5 main configuration
+           (Header & Data Region | Column Roles | Time Axis Setup at
+           1:3:1), Row 6 Raw Data Preview, Row 7 final actions. Pure
+           layout/placement only: existing #wwDataPrep* ids, render
+           functions, event listeners, and backend semantics stay intact.
+           `min-width: 0` on grid children prevents tables/selects from
+           forcing page-level horizontal overflow. */
+        .ww-data-prep-row { flex-shrink: 0; }
         .ww-data-prep-row-cols {
             display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 12px; align-items: start;
         }
         .ww-data-prep-row-cols > * { min-width: 0; }
-        /* Row 3: Structure (~35%) | Column Roles (~65%) -- Column Roles
-           needs real room for its own 5 sub-columns (Col./Label/Role/
-           Engineering Quantity/Measured Unit); Structure's own fields
-           (Header row/Data start-end row) already work comfortably at
-           much narrower widths (verified down to 390px as a full-width
-           card in an earlier task), so it can afford to give up the
-           majority share here. */
-        .ww-data-prep-row-3-grid {
-            display: grid; grid-template-columns: minmax(0, 35fr) minmax(0, 65fr);
+        /* Row 5: Header & Data Region | Column Roles | Time Axis Setup
+           at the approved 1:3:1 ratio. Column Roles gets the largest
+           share because it carries the table with five working
+           columns; the side panels stay compact but readable. */
+        .ww-data-prep-row-5-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 3fr) minmax(0, 1fr);
+            grid-template-areas: "region roles time";
             gap: 12px; align-items: start;
         }
-        .ww-data-prep-row-3-grid > * { min-width: 0; }
-        /* Row 4: Time Axis Setup (~58%) | Issues/Readiness (~42%) --
-           Time Axis Setup needs enough room for its own Time format/
-           Time column side-by-side pair (each with its own min-width
-           floor, see Row 3C's own CSS) plus Unit/interval/Detect/Save/
-           Clear/Advanced sections; Issues is a plain text list that
-           stays legible at a narrower share. */
-        .ww-data-prep-row-4-grid {
-            display: grid; grid-template-columns: minmax(0, 58fr) minmax(0, 42fr);
-            gap: 12px; align-items: start;
+        .ww-data-prep-row-5-grid > * { min-width: 0; }
+        .ww-data-prep-config-col-region { grid-area: region; }
+        .ww-data-prep-config-col-wide { grid-area: roles; }
+        .ww-data-prep-config-col-time { grid-area: time; }
+        .ww-data-prep-row-5-grid .ww-data-prep-card { overflow-x: auto; }
+        @container (max-width: 180px) {
+            .ww-data-prep-config-col-region .ww-data-prep-input-with-action,
+            .ww-data-prep-config-col-region .ww-data-prep-region-actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .ww-data-prep-config-col-region .ww-data-prep-input-with-action button,
+            .ww-data-prep-config-col-region .ww-data-prep-region-actions button {
+                width: 100%;
+            }
         }
-        .ww-data-prep-row-4-grid > * { min-width: 0; }
-        /* Not currently used by any row after the 6-row rearrangement
+        /* Not currently used by any row after the 7-row rearrangement
            above (Row 6/Final Actions no longer pairs with Issues, so it
            needs no grid at all) -- kept rather than deleted since this
            is a genuinely reusable "wider-left 2-column split" utility
@@ -1621,13 +1622,9 @@
             gap: 12px; align-items: start;
         }
         .ww-data-prep-row-cols-2 > * { min-width: 0; }
-        /* Both new rows' own 820px collapse is folded into the ONE
-           pre-existing shared 820px block further down this stylesheet
-           (alongside Row 1/the workflow strip's own overrides) rather
-           than a separate @media block here -- avoids a second/third
-           `@media (max-width: 820px)` block, which broke a structural
-           test that greps between consecutive `@media` signatures
-           (confirmed directly). */
+        /* Row 5's small-screen stack lives in the ONE pre-existing
+           shared 820px block further down this stylesheet, with no
+           intermediate two-column arrangement. */
 
         /* ---- Row 1 visual redesign: page identity ----
            Title first (primary width share, the strongest visual
@@ -1703,43 +1700,43 @@
             }
         }
 
-        /* ---- Row 2 redesign: connected workflow/progress strip ----
-           One outer rounded container (overflow: hidden so each step's
-           own full-height state background respects the container's
-           corners at the first/last step, never four independent
-           floating cards); a 7-column grid (4 equal step tracks + 3
-           auto-sized chevron gaps) so the active/completed background
-           fills its ENTIRE step cell edge-to-edge, "flowing" visually
-           into its neighboring chevron via the plain CSS sibling
-           selectors below (no JS needed to color the chevrons). */
+        /* ---- Row 3 redesign: connected workflow/progress strip ----
+           Mock-fidelity pass: a line-and-circle progress strip with
+           centered labels. Legacy chevron nodes remain in the DOM for
+           contract stability, but are presentation-hidden. */
         .ww-data-prep-workflow-strip {
-            display: grid; grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
-            align-items: stretch;
-            background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);
-            overflow: hidden;
-            /* `overflow: hidden` (needed to clip step backgrounds to the
-               container's own rounded corners) changes this element's
-               CSS "automatic minimum size" to 0 -- since it is also a
-               flex ITEM of #pageDataPreparation's own column flexbox,
-               that made it eligible to shrink toward 0 height instead
-               of its real ~74px content height (confirmed via live
-               UAT: computed height collapsed to 2px, border-only).
-               flex-shrink: 0 opts it back out of that shrink entirely. */
+            position: relative;
+            display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+            align-items: start;
+            padding: 8px 8px 10px;
+            background: transparent; border: none; border-radius: 0;
+            overflow: visible;
             flex-shrink: 0;
         }
+        .ww-data-prep-workflow-strip::before {
+            content: "";
+            position: absolute;
+            top: 25px;
+            left: calc(12.5% + 21px);
+            right: calc(12.5% + 21px);
+            height: 2px;
+            background: var(--panel-border);
+            z-index: 0;
+        }
         .ww-data-prep-workflow-step {
-            display: flex; align-items: center; gap: 12px;
-            padding: 14px 18px; min-width: 0;
+            position: relative; z-index: 1;
+            display: flex; flex-direction: column; align-items: center; gap: 8px;
+            padding: 0 8px; min-width: 0; text-align: center;
         }
         .ww-data-prep-workflow-step-num {
             position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
-            width: 30px; height: 30px; border-radius: 50%;
+            width: 32px; height: 32px; border-radius: 50%;
             font-size: 0.8rem; font-weight: 700; color: var(--text-dim);
             border: 1.5px solid var(--panel-border); background: var(--surface-tint);
         }
         .ww-data-prep-workflow-step-num-check { display: none; width: 16px; height: 16px; }
         .ww-data-prep-workflow-step-num-check svg { width: 100%; height: 100%; stroke: currentColor; fill: none; }
-        .ww-data-prep-workflow-step-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+        .ww-data-prep-workflow-step-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; align-items: center; }
         /* Reference fidelity pass: pending/default titles render in the
            SAME strong dark --text color as completed titles (only the
            circle/background carry the pending-vs-done distinction) --
@@ -1748,36 +1745,30 @@
            helper line only. */
         .ww-data-prep-workflow-step-title { font-size: 0.82rem; font-weight: 700; line-height: 1.25; color: var(--text); overflow-wrap: anywhere; }
         .ww-data-prep-workflow-step-helper { font-size: 0.68rem; line-height: 1.3; color: var(--text-dim); overflow-wrap: anywhere; }
-        .ww-data-prep-workflow-chevron {
-            display: flex; align-items: center; justify-content: center; padding: 0 2px; color: var(--panel-border);
-        }
+        .ww-data-prep-workflow-chevron { display: none; }
         .ww-data-prep-workflow-chevron svg { width: 14px; height: 14px; stroke: currentColor; fill: none; }
 
         /* Active: strong blue, per the reference's own active treatment. */
-        .ww-data-prep-workflow-step[data-state="active"] { background: var(--accent-wash); }
+        .ww-data-prep-workflow-step[data-state="active"] { background: transparent; }
         .ww-data-prep-workflow-step[data-state="active"] .ww-data-prep-workflow-step-num { background: var(--accent); border-color: var(--accent); color: #fff; }
         .ww-data-prep-workflow-step[data-state="active"] .ww-data-prep-workflow-step-title { color: var(--accent); }
         .ww-data-prep-workflow-step[data-state="active"] .ww-data-prep-workflow-step-helper { color: var(--text-dim); }
-        .ww-data-prep-workflow-step[data-state="active"] + .ww-data-prep-workflow-chevron { color: var(--accent); }
 
-        /* Completed: green circle + checkmark, subtle wash, readable title. */
-        .ww-data-prep-workflow-step[data-state="done"] { background: var(--ok-wash); }
-        .ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-num { background: var(--ok); border-color: var(--ok); color: #fff; }
+        /* Completed: blue circle + checkmark, readable title. */
+        .ww-data-prep-workflow-step[data-state="done"] { background: transparent; }
+        .ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-num { background: var(--accent); border-color: var(--accent); color: #fff; }
         .ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-num-digit { display: none; }
         .ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-num-check { display: inline-flex; }
         .ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-title { color: var(--text); }
         .ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-helper { color: var(--text-dim); }
-        .ww-data-prep-workflow-step[data-state="done"] + .ww-data-prep-workflow-chevron { color: var(--ok); }
 
         /* Attention: amber, a subtle warm wash derived from the SAME
            --warn token every other blocking-adjacent indicator in this
-           app already uses (color-mix(), not a new global theme token --
-           Row 2 scoped only). */
-        .ww-data-prep-workflow-step[data-state="attention"] { background: color-mix(in srgb, var(--warn) 12%, transparent); }
+           app already uses (color-mix(), not a new global theme token). */
+        .ww-data-prep-workflow-step[data-state="attention"] { background: transparent; }
         .ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-num { background: var(--warn); border-color: var(--warn); color: #fff; }
         .ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-title { color: var(--warn); }
         .ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-helper { color: var(--text-dim); }
-        .ww-data-prep-workflow-step[data-state="attention"] + .ww-data-prep-workflow-chevron { color: var(--warn); }
 
         /* Pending: neutral gray, no background -- future step not yet reachable. */
         /* Pending/no-state titles already inherit the base rule's dark
@@ -1788,19 +1779,25 @@
         .ww-data-prep-workflow-step[data-state="pending"] .ww-data-prep-workflow-step-title,
         .ww-data-prep-workflow-step:not([data-state]) .ww-data-prep-workflow-step-title { color: var(--text); }
 
-        /* ---- Row 3/4 shared column-wrapper ----
+        /* ---- Row 5 shared column-wrapper ----
            .ww-data-prep-config-col is the flex-column cell wrapper
-           every Row 3/Row 4 card sits inside, reused as-is under the
-           new dedicated .ww-data-prep-row-3-grid/-4-grid ratios above
+           every Row 5 card sits inside, reused as-is under the
+           dedicated .ww-data-prep-row-5-grid ratio above
            (CSS Grid track sizing is positional, so the same wrapper
            class works under any parent grid-template-columns value --
            no per-ratio child class ever needed). The old fixed 1:1.5:1
            .ww-data-prep-config-grid override this used to pair with
            (Worksheet+Header&Region | Column Roles | Time Axis Setup, a
-           single 3-column Row 3) is gone along with that shape --
-           superseded entirely by .ww-data-prep-row-3-grid/-4-grid. */
-        .ww-data-prep-config-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-        #pageDataPreparation .ww-data-prep-card { padding: 12px 14px; }
+           single 3-column row) is gone along with that shape --
+           superseded entirely by .ww-data-prep-row-5-grid. */
+        .ww-data-prep-config-col {
+            container-type: inline-size;
+            display: flex; flex-direction: column; gap: 12px; min-width: 0;
+        }
+        #pageDataPreparation .ww-data-prep-card {
+            padding: 12px 14px;
+            box-shadow: 0 8px 22px rgba(15, 23, 42, 0.035);
+        }
         #pageDataPreparation .ww-data-prep-card h3 {
             margin: 0; font-size: 0.8rem; text-transform: none; letter-spacing: normal;
             font-weight: 700; color: var(--text);
@@ -1811,18 +1808,41 @@
         #wwDataPrepWorksheetCsvHint { display: none; }
         #wwDataPrepWorksheetCard[data-applicable="true"] #wwDataPrepWorksheetCsvHint { display: none; }
         #wwDataPrepWorksheetCard[data-applicable="false"] #wwDataPrepWorksheetCsvHint { display: block; margin: 0; }
-        /* Row 3A refinement: "Worksheet" label left, selector (or the
-           CSV "Not applicable" hint) right, one compact row when there
-           is room -- wraps to a natural stack on narrow widths via
-           flex-wrap alone, no dedicated breakpoint needed. The "(for
-           Excel files)" annotation stays on the SAME line as the title
-           (inline, not the block-level subtitle spacing every other
-           card's own subtitle uses) so it costs no extra height. */
-        .ww-data-prep-worksheet-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-        .ww-data-prep-worksheet-row h3 { flex: 0 0 auto; }
+        /* Row 4: worksheet selection gets its own light full-width row,
+           so the main configuration row is not visually burdened by a
+           file-type-specific control. */
+        .ww-data-prep-row-4 .ww-data-prep-worksheet-card { padding: 0; overflow: hidden; }
+        .ww-data-prep-worksheet-row { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; min-height: 50px; }
+        .ww-data-prep-worksheet-row h3 { display: none; }
         .ww-data-prep-worksheet-subtitle { display: inline; margin: 0 0 0 4px; font-weight: 400; }
-        .ww-data-prep-worksheet-row .field { flex: 1 1 160px; min-width: 120px; margin: 0; }
-        .ww-data-prep-worksheet-csv-hint { flex: 1 1 160px; margin: 0; }
+        .ww-data-prep-worksheet-row .field { position: relative; flex: 1 1 auto; min-width: 0; margin: 0; }
+        #wwDataPrepWorksheetSelect {
+            position: absolute; inline-size: 1px; block-size: 1px;
+            overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+        }
+        .ww-data-prep-worksheet-tabs { display: flex; align-items: stretch; gap: 0; min-width: 0; overflow-x: auto; }
+        .ww-data-prep-worksheet-tab {
+            flex: 0 0 auto;
+            min-width: 128px;
+            padding: 14px 26px 12px;
+            border: 0;
+            border-right: 1px solid var(--panel-border);
+            border-bottom: 3px solid transparent;
+            border-radius: 0;
+            background: transparent;
+            color: var(--text);
+            font: inherit;
+            font-size: 0.78rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .ww-data-prep-worksheet-tab:hover { background: var(--surface-tint); }
+        .ww-data-prep-worksheet-tab[aria-selected="true"] {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+            background: var(--accent-wash-soft);
+        }
+        .ww-data-prep-worksheet-csv-hint { flex: 1 1 auto; margin: 0; padding: 15px 18px; }
 
         /* Column Roles: a denser table than the raw Data Preview table
            below (short, bounded row count -- one row per source column,
@@ -1831,6 +1851,22 @@
         #pageDataPreparation .ww-data-prep-columns-table { font-size: 0.75rem; width: 100%; }
         #pageDataPreparation .ww-data-prep-columns-table th { padding: 8px 10px; }
         #pageDataPreparation .ww-data-prep-columns-table td { padding: 6px 10px; vertical-align: middle; }
+
+        /* Row 2 Issues card: collapsed by default, showing only a
+           compact readiness summary until the user opens it. Detailed
+           issue grouping remains the same #wwDataPrepIssueGroups
+           container wwDataPrepRenderIssues() already owns. */
+        .ww-data-prep-row-2 #wwDataPrepIssuesCard { padding: 0; overflow: hidden; }
+        #wwDataPrepIssuesToggleBtn {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 36px; height: 36px; padding: 0; margin-left: auto;
+            border: none; background: transparent; color: var(--text-dim);
+            font-size: 0; line-height: 1; white-space: nowrap;
+        }
+        #wwDataPrepIssuesToggleBtn::before { content: "\2304"; font-size: 1.35rem; line-height: 1; transform: translateY(-3px); }
+        #wwDataPrepIssuesToggleBtn[aria-expanded="true"]::before { content: "\2303"; transform: translateY(2px); }
+        #wwDataPrepIssuesToggleBtn:hover { color: var(--accent); background: var(--accent-wash-soft); border-radius: var(--radius); }
+        #wwDataPrepIssuesToggleBtn[hidden] { display: none; }
 
         /* Issues card: compact rows with a small severity icon, reusing
            the existing .ww-data-prep-issue-item/-group elements/classes
@@ -1841,6 +1877,7 @@
            0.85rem, deliberately matching Time Axis Setup's own status
            line exactly rather than the old, slightly smaller 0.8rem. */
         #pageDataPreparation #wwDataPrepIssuesCard .ww-data-prep-issue-group { margin-bottom: 8px; }
+        #wwDataPrepIssueGroups { padding: 0 18px 16px; }
         #pageDataPreparation #wwDataPrepIssuesCard .ww-data-prep-issue-item { font-size: 0.75rem; }
         /* Row 4 refinement (2026-09-06): Issues/Readiness's own unified
            status card -- the SAME icon + headline + one compact detail
@@ -1848,30 +1885,35 @@
            (var(--ok-wash) / color-mix(in srgb, var(--warn) 12%,
            transparent)), Time Axis Setup's own
            .ww-data-prep-time-axis-validity card already established
-           just to its left in this same Row 4 -- deliberately identical
+           in the same visual system -- deliberately identical
            box model (padding/border-radius/margin) so the two cards
            read as one consistent family rather than two different
            designs. */
-        .ww-data-prep-issue-status { padding: 8px 10px; border-radius: var(--radius); margin: 0 0 10px; }
-        .ww-data-prep-issue-status-line { display: flex; align-items: baseline; gap: 8px; font-size: 0.85rem; font-weight: 600; }
-        .ww-data-prep-issue-status[data-state="valid"] { background: var(--ok-wash); }
+        .ww-data-prep-issue-status {
+            display: flex; align-items: center; gap: 14px;
+            padding: 15px 18px; border-radius: 0; margin: 0;
+            background: linear-gradient(90deg, var(--surface-tint), var(--panel));
+        }
+        .ww-data-prep-issue-status-copy { min-width: 0; }
+        .ww-data-prep-issue-status-copy h3 { margin: 0 0 2px; }
+        .ww-data-prep-issue-status-mark {
+            flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+            width: 28px; height: 28px; border-radius: 50%; font-size: 1rem; font-weight: 700;
+        }
+        .ww-data-prep-issue-status-line { display: flex; align-items: baseline; gap: 8px; font-size: 0.8rem; font-weight: 600; }
+        .ww-data-prep-issue-status[data-state="valid"] .ww-data-prep-issue-status-mark { background: var(--ok-wash); color: var(--ok); }
         .ww-data-prep-issue-status[data-state="valid"] .ww-data-prep-issue-status-line { color: var(--ok); }
-        .ww-data-prep-issue-status[data-state="attention"] { background: color-mix(in srgb, var(--warn) 12%, transparent); }
+        .ww-data-prep-issue-status[data-state="attention"] .ww-data-prep-issue-status-mark { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
         .ww-data-prep-issue-status[data-state="attention"] .ww-data-prep-issue-status-line { color: var(--warn); }
         .ww-data-prep-issue-status[data-state="unconfigured"] { background: none; }
-        .ww-data-prep-issue-status-detail { font-size: 0.72rem; color: var(--text-dim); margin: 4px 0 0; }
+        .ww-data-prep-issue-status-detail { font-size: 0.78rem; color: var(--text-dim); margin: 0; }
         .ww-data-prep-issue-status-detail:empty { display: none; }
 
-        /* .ww-data-prep-row-cols's own responsive collapse -- not
-           currently used by any row after the 6-row rearrangement (Row
-           3/Row 4 each now use their own dedicated -grid class above,
-           see that comment), kept as a reusable "3 equal columns"
-           utility rather than deleted, same rationale as
-           .ww-data-prep-row-cols-2 above. Row 1's own dedicated grid is
-           a different shape (title/back/file, not equal panels) so it
-           gets its own rule right alongside this, reusing the SAME
-           1180px/820px breakpoint VALUES rather than inventing new
-           ones. */
+        /* .ww-data-prep-row-cols's own responsive collapse remains a
+           reusable "3 equal columns" utility. Row 5 deliberately keeps
+           its exact 1:3:1 desktop/tablet ratio through these shared
+           breakpoints and only stacks at the dedicated mobile breakpoint
+           below. */
         @media (max-width: 1180px) {
             .ww-data-prep-row-cols { grid-template-columns: 1fr 1fr; }
             .ww-data-prep-row-cols > *:nth-child(3) { grid-column: 1 / -1; }
@@ -1885,11 +1927,13 @@
             .ww-data-prep-row-cols { grid-template-columns: 1fr; }
             .ww-data-prep-row-cols > *:nth-child(3) { grid-column: auto; }
             .ww-data-prep-row-cols-2 { grid-template-columns: 1fr; }
-            /* 6-row rearrangement (2026-09-06): Row 3 (Structure|Column
-               Roles) and Row 4 (Time Axis Setup|Issues) each stack to a
-               single column here too, matching every other row's own
-               820px collapse. */
-            .ww-data-prep-row-3-grid, .ww-data-prep-row-4-grid { grid-template-columns: 1fr; }
+            .ww-data-prep-row-5-grid {
+                grid-template-columns: 1fr;
+                grid-template-areas:
+                    "region"
+                    "roles"
+                    "time";
+            }
             .ww-data-prep-file-card { width: 100%; box-sizing: border-box; }
             /* Small screen (owner-explicit preference): keep step
                TITLES for as long as reasonably possible -- numbers
@@ -1944,22 +1988,26 @@
         .ww-data-prep-col-role-badge[data-role="waveform"] { background: var(--ok-wash); color: var(--ok); }
         .ww-data-prep-derived-badge { background: var(--accent-wash); color: var(--accent); }
 
-        /* ---- Row 6: Final Actions (alone on its own row) ----
-           Export and Convert stack vertically -- the SAME elements/ids
-           as when this card shared a grid slot with Issues (Export and
-           Convert never sat side by side with EACH OTHER either way).
-           `max-width` (layout-experiment rearrangement, 2026-09-06) is
-           new: `.ww-data-prep-action-bar-primary` below already sets
-           `align-items: stretch`, which was harmless in a narrow ~1fr
-           grid slot but would stretch "Continue to Powerwave" across
-           the ENTIRE page now that this card is alone on a full-width
-           row -- capped to a comfortable content width instead, per
-           this row's own explicit "compact feel, no unnecessary full-
-           width visual weight" requirement. */
-        .ww-data-prep-final-actions { display: flex; flex-direction: column; gap: 12px; max-width: 420px; }
+        /* ---- Row 7: Final Actions ---- */
+        .ww-data-prep-row-7 { display: flex; justify-content: flex-end; }
+        .ww-data-prep-final-actions {
+            display: flex; flex-direction: row; align-items: flex-start; justify-content: flex-end;
+            gap: 14px; max-width: none; width: auto;
+        }
+        .ww-data-prep-export-action { display: flex; flex-direction: column; align-items: stretch; gap: 4px; max-width: 330px; }
         .ww-data-prep-action-bar-primary { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+        .ww-data-prep-final-actions #wwDataPrepExportBtn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            min-width: 210px; padding: 12px 20px; font-size: 0.82rem;
+        }
         .ww-data-prep-final-actions #wwDataPrepConvertBtn {
-            display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 18px; font-size: 0.82rem;
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            min-width: 220px; padding: 12px 22px; font-size: 0.82rem;
+        }
+        @media (max-width: 640px) {
+            .ww-data-prep-row-7 { justify-content: stretch; }
+            .ww-data-prep-final-actions { flex-direction: column; width: 100%; }
+            .ww-data-prep-export-action, .ww-data-prep-action-bar-primary { max-width: none; width: 100%; }
         }
         .ww-data-prep-btn-icon svg { width: 14px; height: 14px; stroke: #fff; }
 
@@ -5614,28 +5662,16 @@
                  Powerwave" state lives entirely inside the Preparation
                  Status panel below (Slices 6/9/10), never on this badge. -->
             <section id="pageDataPreparation" aria-label="Data Preparation" hidden>
-                <!-- 6-row layout-experiment rearrangement (2026-09-06,
-                     supersedes the previous approved 5-row pass): the
-                     page is organized into 6 semantic horizontal rows
-                     (.ww-data-prep-row-1..6) --
-                     Row 1 page identity, Row 2 workflow progress, Row 3
-                     Structure|Column Roles (~35/65), Row 4 Time Axis
-                     Setup|Issues (~58/42), Row 5 Data Preview (full
-                     width), Row 6 Final Actions (alone, capped width).
-                     Row 3/4 each use their own dedicated
-                     .ww-data-prep-row-3-grid/-4-grid ratio (see their
-                     own CSS comments) rather than the previous shared
-                     .ww-data-prep-row-cols/-cols-2 classes, which are
-                     kept as still-reusable but currently-unused
-                     utilities. This task is layout/grid-structure only
-                     -- no wording, control, or internal card behavior
-                     changed beyond the row rearrangement itself; every
-                     element below is the SAME #wwDataPrep* id/function
-                     this workspace already used, only re-parented into
-                     the new row/slot structure. This is an explicit
-                     layout EXPERIMENT (owner's own framing) -- further
-                     section-by-section refinement is expected to
-                     follow. -->
+                <!-- 7-row Data Preparation layout (2026-09-06): Row 1
+                     page identity, Row 2 collapsible Issues/Readiness,
+                     Row 3 workflow progress, Row 4 worksheet selection,
+                     Row 5 main configuration (Header & Data Region |
+                     Column Roles | Time Axis Setup at 1:3:1), Row 6
+                     Raw Data Preview, Row 7 Final Actions. This task is
+                     layout/grid-structure only; every element below is
+                     the SAME #wwDataPrep* id/function this workspace
+                     already used, only re-parented into the new row/slot
+                     structure where needed. -->
 
                 <!-- Row 1 visual redesign (2026-09-06): page identity, 3
                      slots on a wide desktop, in the approved order --
@@ -5694,17 +5730,40 @@
                     </div>
                 </div>
 
-                <!-- Row 2: full-width strip (currently the compact
-                     workflow/status strip). Row 2 redesign (2026-09-06):
-                     a connected 4-step workflow strip -- presentation
-                     only, state is derived live from already-computed
+                <!-- Row 2: Issues & Readiness, collapsed by default.
+                     The summary/status card remains visible at all times;
+                     the existing #wwDataPrepIssueGroups list is revealed
+                     only when the existing #wwDataPrepIssuesToggleBtn is
+                     opened. Readiness semantics/counts stay owned by
+                     wwDataPrepRenderIssues(). -->
+                <div class="ww-data-prep-row ww-data-prep-row-2">
+                <section class="panel ww-cc-panel ww-data-prep-card" id="wwDataPrepIssuesCard">
+                    <div class="ww-data-prep-issue-status" id="wwDataPrepIssueStatus" data-state="unconfigured">
+                        <span class="ww-data-prep-issue-status-mark" id="wwDataPrepIssueStatusIcon" aria-hidden="true"></span>
+                        <div class="ww-data-prep-issue-status-copy">
+                            <h3>Issues &amp; Readiness</h3>
+                        <div class="ww-data-prep-issue-status-line">
+                            <span id="wwDataPrepIssueHeadline"></span>
+                        </div>
+                        <p class="ww-data-prep-issue-status-detail" id="wwDataPrepIssueCounts"></p>
+                        </div>
+                        <button type="button" class="secondary ww-data-prep-issues-chevron-btn" id="wwDataPrepIssuesToggleBtn" aria-label="View Issues" aria-expanded="false">View Issues</button>
+                    </div>
+                    <div id="wwDataPrepIssueGroups" hidden></div>
+                </section>
+                </div>
+
+                <!-- Row 3: full-width workflow/status strip. Row 3
+                     redesign (2026-09-06): a connected 4-step line-and-
+                     circle progress strip -- presentation only, state is
+                     derived live from already-computed
                      wwDataPrep state by wwDataPrepRenderWorkflowStrip(),
                      never a second readiness engine. `role="list"`/
                      `role="listitem"`/`aria-current="step"` describe the
-                     SAME visual state the circle/background already
+                     SAME visual state the circle/status already
                      show -- this remains a non-interactive progress
                      indicator, never a clickable stepper. -->
-                <div class="ww-data-prep-row ww-data-prep-row-2 ww-data-prep-workflow-strip" id="wwDataPrepWorkflowStrip" role="list">
+                <div class="ww-data-prep-row ww-data-prep-row-3 ww-data-prep-workflow-strip" id="wwDataPrepWorkflowStrip" role="list">
                     <div class="ww-data-prep-workflow-step" data-step="structure" id="wwDataPrepWorkflowStepStructure" role="listitem">
                         <span class="ww-data-prep-workflow-step-num">
                             <span class="ww-data-prep-workflow-step-num-digit">1</span>
@@ -5750,26 +5809,8 @@
                     </div>
                 </div>
 
-                <!-- Row 3 (layout-experiment rearrangement, 2026-09-06):
-                     Worksheet + Header/Data Region | Column Roles, side
-                     by side at ~35/65 on a wide desktop (see
-                     .ww-data-prep-row-3-grid's own responsive rules for
-                     the small-screen collapse). Time Axis Setup moved
-                     out to Row 4 (see that row's own comment). Every
-                     element below is the SAME element/id/function this
-                     workspace already used -- only relocated, none
-                     renamed, none removed. -->
-                <!-- Row 3: main preparation/configuration working area,
-                     3 slots on a wide desktop (left: Worksheet/Header &
-                     Data Region/Time Axis Setup, middle: Column Roles,
-                     right: Issues). Already used exactly this responsive
-                     3-column grid before this task (.ww-data-prep-config-
-                     grid); now also tagged with the shared row/row-cols
-                     classes for consistency with Rows 1/2/4, reusing the
-                     SAME 1180px/820px breakpoints rather than a second,
-                     duplicated set. -->
-                <div class="ww-data-prep-row ww-data-prep-row-3 ww-data-prep-row-3-grid">
-                <div class="ww-data-prep-config-col">
+                <!-- Row 4: worksheet selection only. -->
+                <div class="ww-data-prep-row ww-data-prep-row-4">
                 <!-- Excel only -- hides cleanly for CSV via
                      wwDataPrepRenderWorksheetSelector()'s own additive
                      CSV-hint branch (task section 5: "do not leave an
@@ -5781,10 +5822,21 @@
                         <h3>Worksheet <span class="ww-data-prep-card-subtitle ww-data-prep-worksheet-subtitle">(for Excel files)</span></h3>
                         <div class="field" id="wwDataPrepWorksheetField" hidden>
                             <select id="wwDataPrepWorksheetSelect"></select>
+                            <div class="ww-data-prep-worksheet-tabs" id="wwDataPrepWorksheetTabs" role="tablist" aria-label="Worksheets"></div>
                         </div>
                         <p class="hint ww-data-prep-worksheet-csv-hint" id="wwDataPrepWorksheetCsvHint">Not applicable -- this is a CSV file.</p>
                     </div>
                 </section>
+                </div>
+
+                <!-- Row 5: main preparation/configuration working area,
+                     3 slots on a wide desktop at the approved 1:3:1
+                     ratio: Header & Data Region | Column Roles | Time
+                     Axis Setup. Every element below is the SAME
+                     #wwDataPrep* element/function this workspace already
+                     used, only re-parented. -->
+                <div class="ww-data-prep-row ww-data-prep-row-5 ww-data-prep-row-5-grid">
+                <div class="ww-data-prep-config-col ww-data-prep-config-col-region">
 
                 <!-- Slice 5 (DEC-072): Header/Data Region. Manual-first:
                      nothing here is ever guessed -- every field reflects
@@ -5905,27 +5957,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     <div class="upload-status" id="wwDataPrepStructureStatus" role="status" aria-live="polite"></div>
                 </section>
                 </div>
-                </div>
-                <!-- /ww-data-prep-row-3-grid (Row 3) -->
-
-                <!-- Row 4 (layout-experiment rearrangement, 2026-09-06):
-                     Time Axis Setup + Pending Issues/Readiness, newly
-                     paired per the approved new composition. Time Axis
-                     Setup is re-parented from Row 3's old third slot;
-                     Issues is re-parented from the old Row 5 (which used
-                     to also host Final Actions, now its own Row 6). No
-                     id/function/behavior changed on either card, only
-                     their row placement -- wwDataPrepRenderTimeAxis*()/
-                     wwDataPrepRenderIssues() still target the exact same
-                     elements. -->
-                <div class="ww-data-prep-row ww-data-prep-row-4 ww-data-prep-row-4-grid">
-                <div class="ww-data-prep-config-col">
-                <!-- Approved 5-row layout: Time Axis Setup now lives in
-                     Row 3's right slot (previously stacked into the left
-                     slot under the earlier, superseded 4-row layout) --
-                     re-parented only, no internal behavior/wording/id
-                     changed; keeps its own existing compact/collapsed
-                     "Configure" toggle unchanged. -->
+                <div class="ww-data-prep-config-col ww-data-prep-config-col-time">
+                <!-- Row 5C: Time Axis Setup, compact right-side panel.
+                     The Hide/Configure toggle was already removed before
+                     this task; all interpreter, DEC-082, DEC-083,
+                     advanced-option and save/clear behavior is unchanged. -->
                 <section class="panel ww-cc-panel ww-data-prep-card ww-data-prep-time-axis-card" id="wwDataPrepTimeAxisPanel">
                     <!-- Row 3C redesign (2026-09-06): the permanent helper
                          paragraph below the title cost vertical space in
@@ -6415,64 +6451,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     </div>
                 </section>
                 </div>
-                <div class="ww-data-prep-config-col">
-                <!-- Slice 6 (DEC-072): Preparation Readiness Issue panel.
-                     Plumbing only -- backend-derived, informational-only
-                     findings about the CURRENT preparation state, never a
-                     readiness gate the frontend itself computes. The
-                     header badge stays "Needs Preparation" regardless of
-                     what is shown here. Every issue/count here comes
-                     straight from GET .../issues -- the frontend never
-                     invents or classifies a finding itself.
-
-                     Visual redesign: the previous "View Issues"
-                     progressive-disclosure toggle is retired in favor of
-                     the mock's own always-visible compact issue list --
-                     #wwDataPrepIssuesToggleBtn is kept in the DOM
-                     (wwDataPrep.issuesExpanded now defaults/resets to
-                     `true`) rather than removed, so wwDataPrepRenderIssues()
-                     itself is unchanged; only the toggle's own visibility
-                     changed (.ww-data-prep-visually-removed).
-
-                     Layout-experiment rearrangement (2026-09-06):
-                     re-parented here from the old Row 5 (paired with
-                     Final Actions there) to pair with Time Axis Setup in
-                     this new Row 4 instead -- no id/function changed. -->
-                <section class="panel ww-cc-panel ww-data-prep-card" id="wwDataPrepIssuesCard">
-                    <div class="ww-data-prep-panel-header">
-                        <h3>Issues &amp; Readiness</h3>
-                        <button type="button" class="secondary ww-data-prep-visually-removed" id="wwDataPrepIssuesToggleBtn">View Issues</button>
-                    </div>
-                    <!-- Row 4 refinement (2026-09-06): one unified status
-                         card (icon + strong headline + a compact "N
-                         blocking · N warnings" detail line) replaces the
-                         old subtitle + separate headline paragraph + pill-
-                         badge row -- the SAME visual language (background
-                         wash keyed by data-state, reusing --ok-wash/
-                         color-mix(var(--warn)...)) Time Axis Setup's own
-                         status card already established just above this
-                         one in Row 4, so the two cards read as one
-                         consistent family. #wwDataPrepIssueHeadline/
-                         #wwDataPrepIssueCounts keep their EXACT ids --
-                         wwDataPrepRenderIssues() still targets the same
-                         elements, only their wrapper/content format
-                         changed (pill badges -> one joined text line). -->
-                    <div class="ww-data-prep-issue-status" id="wwDataPrepIssueStatus" data-state="unconfigured">
-                        <div class="ww-data-prep-issue-status-line">
-                            <span id="wwDataPrepIssueStatusIcon" aria-hidden="true"></span>
-                            <span id="wwDataPrepIssueHeadline"></span>
-                        </div>
-                        <p class="ww-data-prep-issue-status-detail" id="wwDataPrepIssueCounts"></p>
-                    </div>
-                    <div id="wwDataPrepIssueGroups"></div>
-                </section>
                 </div>
-                </div>
-                <!-- /ww-data-prep-row-4-grid (Row 4) -->
+                <!-- /ww-data-prep-row-5-grid (Row 5) -->
 
-                <!-- Row 5: full-width Data Preview, the final major
+                <!-- Row 6: full-width Data Preview, the final major
                      content row. -->
-                <section class="panel ww-cc-panel ww-data-prep-card ww-data-prep-preview-card ww-data-prep-row ww-data-prep-row-5">
+                <section class="panel ww-cc-panel ww-data-prep-card ww-data-prep-preview-card ww-data-prep-row ww-data-prep-row-6">
                     <div class="ww-data-prep-toolbar">
                         <div>
                             <h3 id="wwDataPrepPreviewHeading">Raw Data Preview</h3>
@@ -6513,15 +6497,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     <div class="upload-status" id="wwDataPrepStatus" role="status" aria-live="polite"></div>
                 </section>
 
-                <!-- Row 6: Final Actions alone, on its own compact row
-                     (layout-experiment rearrangement, 2026-09-06) --
-                     Issues moved up to pair with Time Axis Setup in Row
-                     4 instead (see that row's own comment). The SAME
-                     "Continue to Powerwave"/Export elements, re-parented
-                     only -- no id/function changed
+                <!-- Row 7: Final Actions alone, on its own clean bottom
+                     row. Issues moved up to its own collapsible Row 2
+                     instead. The SAME Export/Proceed elements, re-
+                     parented only -- no id/function changed
                      (wwDataPrepRenderConversionAction()/
                      wwDataPrepRenderExportAction() still target these
-                     exact elements). "Reset All Changes" stays in Row 5
+                     exact elements). "Reset All Changes" stays in Row 6
                      (Data Preview) per the original task's own explicit
                      rule -- not duplicated here.
 
@@ -6530,15 +6512,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                      bar-primary` already sets `align-items: stretch` (a
                      deliberate choice when this card shared a narrow
                      ~1fr grid slot with Issues) -- unconstrained on a
-                     full-width row, "Continue to Powerwave" would
+                     full-width row, "Proceed to Powerwave" would
                      stretch across the entire page, exactly this row's
                      own explicit "no unnecessary full-width visual
                      weight" requirement. -->
-                <div class="ww-data-prep-row ww-data-prep-row-6">
+                <div class="ww-data-prep-row ww-data-prep-row-7">
                 <div class="ww-data-prep-config-col ww-data-prep-final-actions">
                     <div class="ww-data-prep-export-action">
-                        <button type="button" class="secondary" id="wwDataPrepExportBtn" disabled>Export Cleaned Data</button>
-                        <p class="hint">Downloads the resolved Time Axis and current Waveform values as a cleaned, re-upload-friendly CSV/Excel file.</p>
+                        <button type="button" class="secondary" id="wwDataPrepExportBtn" disabled>
+                            <span class="ww-data-prep-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M9 3v9M5.5 8.5 9 12l3.5-3.5M4 15h10" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                            Export Cleaned Data
+                        </button>
                         <p class="hint" id="wwDataPrepExportGuidance" hidden></p>
                         <button
                             type="button"
@@ -6558,14 +6542,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         <div id="wwDataPrepConversionAction" class="ww-data-prep-conversion-action" hidden>
                             <p class="ww-data-prep-conversion-status" id="wwDataPrepConversionStatus"></p>
                             <button type="button" id="wwDataPrepConvertBtn">
-                                Continue to Powerwave
+                                Proceed to Powerwave
                                 <span class="ww-data-prep-icon ww-data-prep-btn-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M3 9h11M10 4.5 14.5 9 10 13.5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
                             </button>
                         </div>
                     </div>
                 </div>
                 </div>
-                <!-- /ww-data-prep-row-6 -->
+                <!-- /ww-data-prep-row-7 -->
             </section>
 
             <!-- Slice 4 (DEC-072): Reset All Changes confirmation --
@@ -8874,19 +8858,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             issueSummary: null,
             // UX refinement (post-Slice-6 UAT): purely local, per-session
             // progressive-disclosure state -- never sent to or read from
-            // the backend. Visual redesign (2026-09-06): Structure/Issues
-            // now render as always-visible compact cards in the mock's
-            // own layout (their "Configure"/"View Issues" toggle buttons
-            // still exist in the DOM but are permanently hidden via CSS,
-            // .ww-data-prep-visually-removed) -- both default/reset to
-            // `true` rather than `false`. Time Axis Setup's own
+            // the backend. Current 7-row layout: Issues & Readiness is
+            // collapsed by default with its compact summary still
+            // visible; Header & Data Region stays always visible as an
+            // approved compact working card. Time Axis Setup's own
             // equivalent flag (`timeAxisExpanded`) and its "Hide"/
             // "Configure" toggle button were both removed outright in a
             // follow-up UAT fix (2026-09-06) -- the panel is now
-            // permanently visible too, with no leftover flag at all
-            // (unlike Issues/Structure's own toggle buttons, which stay
-            // in the DOM harmlessly unused).
-            issuesExpanded: true,
+            // permanently visible too, with no leftover flag at all.
+            issuesExpanded: false,
             structureExpanded: true,
             // Slice 7 (DEC-072): Time-Axis interpretation FRAMEWORK
             // state -- `timeAxisSummary` is the full
@@ -9009,9 +8989,11 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         function wwDataPrepRenderWorksheetSelector() {
             const field = document.getElementById("wwDataPrepWorksheetField");
             const card = document.getElementById("wwDataPrepWorksheetCard");
+            const tabs = document.getElementById("wwDataPrepWorksheetTabs");
             if (wwDataPrep.format !== "Excel") {
                 field.hidden = true;
                 if (card) card.dataset.applicable = "false";
+                if (tabs) tabs.innerHTML = "";
                 return;
             }
             field.hidden = false;
@@ -9023,6 +9005,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 escapeHtml(sheet.name) + (sheet.visible ? "" : " (hidden)") +
                 '</option>'
             ).join("");
+            if (tabs) {
+                tabs.innerHTML = wwDataPrep.worksheets.map((sheet) =>
+                    '<button type="button" class="ww-data-prep-worksheet-tab" role="tab" data-worksheet-index="' +
+                    sheet.index + '" aria-selected="' + (sheet.index === wwDataPrep.selectedWorksheetIndex ? "true" : "false") +
+                    '">' + escapeHtml(sheet.name) + (sheet.visible ? "" : " (hidden)") + '</button>'
+                ).join("");
+            }
         }
 
         function wwDataPrepRenderTable(preview) {
@@ -9568,7 +9557,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // Slice 6 (DEC-072) established this panel's own plumbing;
         // Slice 9 (the full Powerwave Readiness Validator) made
         // `blocking_count`/`is_ready` real; Slice 10 adds the actual
-        // "Continue to Powerwave" conversion action gated on that same
+        // "Proceed to Powerwave" conversion action gated on that same
         // `is_ready` flag (see wwDataPrepRenderConversionAction() below)
         // -- this frontend still never classifies or decides readiness
         // itself, it only ever renders whatever GET .../issues already
@@ -9626,11 +9615,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 groupsEl.innerHTML = "";
                 groupsEl.hidden = true;
                 toggleBtn.hidden = true;
+                toggleBtn.setAttribute("aria-expanded", "false");
+                toggleBtn.setAttribute("aria-label", "View Issues");
                 wwDataPrepRenderWorkflowStrip();
                 return;
             }
             toggleBtn.hidden = false;
             toggleBtn.textContent = wwDataPrep.issuesExpanded ? "Hide Issues" : "View Issues";
+            toggleBtn.setAttribute("aria-label", wwDataPrep.issuesExpanded ? "Hide Issues" : "View Issues");
+            toggleBtn.setAttribute("aria-expanded", wwDataPrep.issuesExpanded ? "true" : "false");
             groupsEl.hidden = !wwDataPrep.issuesExpanded;
 
             // Row 4 refinement (2026-09-06): one unified status card --
@@ -12057,10 +12050,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 // interpretation step.
                 wwDataPrep.selectedWorksheetIndex = newIndex;
                 wwDataPrep.offset = 0;
+                wwDataPrepRenderWorksheetSelector();
                 await wwDataPrepFetchPreview();
             } catch (error) {
                 status.textContent = "Could not reach the backend.";
             }
+        });
+        document.getElementById("wwDataPrepWorksheetTabs").addEventListener("click", (event) => {
+            const tab = event.target.closest(".ww-data-prep-worksheet-tab");
+            if (!tab) return;
+            const select = document.getElementById("wwDataPrepWorksheetSelect");
+            if (select.value === tab.dataset.worksheetIndex) return;
+            select.value = tab.dataset.worksheetIndex;
+            select.dispatchEvent(new Event("change", { bubbles: true }));
         });
 
         document.getElementById("wwDataPrepBackBtn").addEventListener("click", () => {
@@ -12093,17 +12095,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwDataPrepRenderFileCardRowCount();
             document.getElementById("wwDataPrepRangeLabel").textContent = "";
             wwDataPrep.issueSummary = null;
-            // Visual redesign (2026-09-06): Structure/Issues/Time Axis
-            // Setup all stay permanently "expanded" (always-visible
-            // compact cards, see their own state-flag comment above --
-            // Time Axis Setup's own `timeAxisExpanded` flag and its
-            // "Hide"/"Configure" toggle were removed outright in a
-            // follow-up UAT fix, unlike Issues/Structure's own toggles,
-            // which stay in the DOM harmlessly unused). Column
-            // roles/labels are also cleared here so the compact summary
-            // never briefly shows a stale count from whichever source was
-            // open before this one.
-            wwDataPrep.issuesExpanded = true;
+            // Current 7-row layout: Issues & Readiness resets to the
+            // collapsed summary state every time the workspace opens,
+            // while Header & Data Region and Time Axis Setup remain
+            // visible working cards. Column roles/labels are also
+            // cleared here so the compact summary never briefly shows a
+            // stale count from whichever source was open before this one.
+            wwDataPrep.issuesExpanded = false;
             wwDataPrep.structureExpanded = true;
             wwDataPrep.timeAxisSummary = null;
             wwDataPrep.columnRoles = [];
