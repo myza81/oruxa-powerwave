@@ -1322,11 +1322,50 @@
         #pageDataPreparation { gap: 12px; }
         #pageDataPreparation .ww-data-prep-icon svg { width: 14px; height: 14px; stroke: currentColor; fill: none; vertical-align: -2px; }
 
-        /* ---- Page header: title block + file summary card ---- */
-        .ww-data-prep-page-header {
-            display: flex; align-items: flex-start; justify-content: space-between;
-            gap: 16px; flex-wrap: wrap;
+        /* ================================================================
+           5-row responsive layout foundation (approved layout, revises
+           the previous 4-row pass, 2026-09-06). ONE shared, reusable
+           3-column grid class used by Row 1 (page header) and Row 3
+           (configuration) -- never a second, duplicated responsive rule
+           set per row -- plus a second, 2-column variant for Row 5
+           (Issues/Readiness + Final Actions). Row-specific classes
+           (.ww-data-prep-row-1/-2/-3/-4/-5) exist for semantic/selector
+           clarity and future per-row spacing only; the actual grid
+           mechanics live on .ww-data-prep-row-cols/-cols-2 alone.
+           `min-width: 0` on every direct child prevents long unbroken
+           content (a filename, a table) from forcing a column -- and by
+           extension the page -- wider than its own grid track. */
+        .ww-data-prep-row-cols {
+            display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px; align-items: start;
         }
+        .ww-data-prep-row-cols > * { min-width: 0; }
+        /* Row 5: a wider left Issues/Readiness slot (~2fr, roughly 65-70%)
+           and a narrower right Final Actions slot (~1fr, roughly 30-35%)
+           -- sensible grid proportions, never brittle hard-coded pixels.
+           Stacks to one column at the SAME 820px breakpoint every other
+           row already uses (see its own override further down this
+           stylesheet, for the same cascade-ordering reason noted above). */
+        .ww-data-prep-row-cols-2 {
+            display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+            gap: 12px; align-items: start;
+        }
+        .ww-data-prep-row-cols-2 > * { min-width: 0; }
+        /* The two breakpoint overrides below are declared further down
+           this stylesheet (immediately after .ww-data-prep-config-grid's
+           own desktop column-ratio override), NOT here -- CSS cascade
+           resolves same-specificity rules by source order regardless of
+           which one sits inside a @media block, so a responsive override
+           declared BEFORE .ww-data-prep-config-grid's plain (non-media)
+           rule would lose to it even while the media condition is
+           active. Keeping every override for this class strictly after
+           the last non-responsive rule that touches the same property
+           is what actually makes the collapse take effect at 1180px/
+           820px -- confirmed via live browser UAT after this was first
+           gotten wrong (Row 3 silently stayed 3 columns at 820px). */
+
+        /* ---- Row 1: page identity (back nav / title block / file details) ---- */
+        .ww-data-prep-page-header-back { display: flex; align-items: flex-start; }
         .ww-data-prep-page-header-titles h2 { margin: 6px 0 2px; font-size: 1.1rem; color: var(--text); }
         .ww-data-prep-back-btn {
             display: inline-flex; align-items: center; gap: 6px;
@@ -1335,7 +1374,7 @@
         .ww-data-prep-file-card {
             display: flex; align-items: flex-start; gap: 10px;
             background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);
-            padding: 10px 14px; min-width: 240px;
+            padding: 10px 14px; min-width: 0;
         }
         .ww-data-prep-file-card-icon { flex: 0 0 auto; color: var(--text-dim); margin-top: 1px; }
         .ww-data-prep-file-card-icon svg { width: 18px; height: 18px; }
@@ -1343,6 +1382,10 @@
         .ww-data-prep-file-card-name { margin: 0; font-size: 0.8rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
         .ww-data-prep-file-card-meta { margin: 2px 0 0; font-size: 0.7rem; color: var(--text-dim); font-variant-numeric: tabular-nums; }
         .ww-data-prep-file-card-uploaded { margin: 2px 0 0; font-size: 0.65rem; color: var(--text-dim); }
+        /* Status badge is back inside the file-details slot (task's own
+           "3 distinct layout slots" rule for Row 1) -- pushed to the
+           card's own right edge via margin-left: auto, same as its
+           original pre-4-row-layout placement. */
         .ww-data-prep-status-badge {
             font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim);
             border: 1px solid var(--panel-border); border-radius: 999px; padding: 3px 10px;
@@ -1371,11 +1414,13 @@
         .ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-num { background: var(--warn); border-color: var(--warn); color: #fff; }
         .ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-label { color: var(--warn); }
 
-        /* ---- One-page configuration grid ---- */
-        .ww-data-prep-config-grid {
-            display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 1fr);
-            gap: 12px; align-items: start;
-        }
+        /* ---- Row 3: main configuration grid ----
+           Shares .ww-data-prep-row-cols's own grid/gap/breakpoints
+           (added above) -- only the desktop column-width RATIO differs
+           here (Column Roles' middle slot gets extra room), so this
+           rule overrides just that one property rather than
+           re-declaring the whole grid. */
+        .ww-data-prep-config-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 1fr); }
         .ww-data-prep-config-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
         #pageDataPreparation .ww-data-prep-card { padding: 12px 14px; }
         #pageDataPreparation .ww-data-prep-card h3 {
@@ -1418,14 +1463,19 @@
             display: flex; align-items: baseline; gap: 4px; font-size: 0.75rem; margin-bottom: 6px;
         }
 
+        /* .ww-data-prep-row-cols's own responsive collapse -- declared
+           HERE (after .ww-data-prep-config-grid's desktop column-ratio
+           override just above) so it actually wins the cascade at these
+           widths; shared by Row 1 and Row 3 alike, never duplicated per
+           row. */
         @media (max-width: 1180px) {
-            .ww-data-prep-config-grid { grid-template-columns: 1fr 1fr; }
-            .ww-data-prep-config-col:nth-child(3) { grid-column: 1 / -1; }
+            .ww-data-prep-row-cols { grid-template-columns: 1fr 1fr; }
+            .ww-data-prep-row-cols > *:nth-child(3) { grid-column: 1 / -1; }
         }
         @media (max-width: 820px) {
-            .ww-data-prep-config-grid { grid-template-columns: 1fr; }
-            .ww-data-prep-config-col:nth-child(3) { grid-column: auto; }
-            .ww-data-prep-page-header { flex-direction: column; }
+            .ww-data-prep-row-cols { grid-template-columns: 1fr; }
+            .ww-data-prep-row-cols > *:nth-child(3) { grid-column: auto; }
+            .ww-data-prep-row-cols-2 { grid-template-columns: 1fr; }
             .ww-data-prep-file-card { width: 100%; box-sizing: border-box; }
             .ww-data-prep-workflow-step-label { display: none; }
             .ww-data-prep-workflow-connector { margin: 0 6px; }
@@ -1444,21 +1494,17 @@
         .ww-data-prep-col-role-badge[data-role="waveform"] { background: var(--ok-wash); color: var(--ok); }
         .ww-data-prep-derived-badge { background: var(--accent-wash); color: var(--accent); }
 
-        /* ---- Final action bar ---- */
-        .ww-data-prep-action-bar {
-            display: flex; align-items: flex-end; justify-content: space-between;
-            gap: 16px; flex-wrap: wrap; padding: 2px 2px 0;
-        }
-        .ww-data-prep-action-bar-primary { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
-        .ww-data-prep-action-bar #wwDataPrepConvertBtn {
-            display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; font-size: 0.82rem;
+        /* ---- Row 5: Final Actions (right slot) ----
+           Export and Convert now stack vertically in a narrower column
+           (previously side-by-side in a full-width bar) -- the SAME
+           elements/ids, just a simpler container since they no longer
+           share a row with each other. */
+        .ww-data-prep-final-actions { display: flex; flex-direction: column; gap: 12px; }
+        .ww-data-prep-action-bar-primary { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+        .ww-data-prep-final-actions #wwDataPrepConvertBtn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 18px; font-size: 0.82rem;
         }
         .ww-data-prep-btn-icon svg { width: 14px; height: 14px; stroke: #fff; }
-        @media (max-width: 640px) {
-            .ww-data-prep-action-bar { flex-direction: column; align-items: stretch; }
-            .ww-data-prep-action-bar-primary { align-items: stretch; }
-            .ww-data-prep-action-bar #wwDataPrepConvertBtn { justify-content: center; }
-        }
 
         .ww-cc-subtitle { margin: 3px 0 0; color: var(--text-dim); font-size: 0.85rem; }
         .ww-cc-panel { padding: 16px; }
@@ -5098,19 +5144,42 @@
                  Powerwave" state lives entirely inside the Preparation
                  Status panel below (Slices 6/9/10), never on this badge. -->
             <section id="pageDataPreparation" aria-label="Data Preparation" hidden>
-                <!-- Visual redesign (owner-approved mock target,
-                     2026-09-06): a compact page header pairing the
-                     existing title/back-navigation block with a new
-                     file-summary card -- reuses the SAME #wwDataPrep*
-                     elements/functions (wwDataPrepRenderMeta()) just
-                     relocated into a new layout; no new state, no
-                     renamed ids. -->
-                <div class="ww-data-prep-page-header">
-                    <div class="ww-data-prep-page-header-titles">
+                <!-- Approved 5-row layout (2026-09-06, supersedes the
+                     previous 4-row pass): the page is organized into
+                     exactly 5 semantic horizontal rows
+                     (.ww-data-prep-row-1..5), sharing TWO reusable
+                     responsive grid classes -- .ww-data-prep-row-cols (3
+                     equal columns: Rows 1 and 3) and .ww-data-prep-row-
+                     cols-2 (a wider-left 2-column split: Row 5), see
+                     their own CSS rules for the shared 1180px/820px
+                     collapse. This task is layout framework only -- no
+                     wording, control, or behavior changed; every element
+                     below is the SAME #wwDataPrep* id/function this
+                     workspace already used, only re-parented into the
+                     new row/slot structure. Detailed visual/typography
+                     styling of each row's own content is intentionally
+                     deferred to later, section-by-section tasks. -->
+
+                <!-- Row 1: page identity, 3 slots on a wide desktop --
+                     back navigation, title+subtitle (visual center/
+                     focus), file details (name/format/size/rows/
+                     uploaded/status, right-aligned). The back button is
+                     now its own slot (previously grouped with the
+                     title); the status badge is back inside the file-
+                     details slot (previously split into a 4th slot under
+                     the earlier 4-row pass, now reconciled with this
+                     task's explicit "3 distinct layout slots" rule) --
+                     plain re-parenting only, no id/function changed
+                     (wwDataPrepRenderMeta() still targets the exact same
+                     elements). -->
+                <div class="ww-data-prep-row ww-data-prep-row-1 ww-data-prep-row-cols">
+                    <div class="ww-data-prep-page-header-back">
                         <button type="button" id="wwDataPrepBackBtn" class="secondary ww-data-prep-back-btn">
                             <span class="ww-data-prep-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M11 3.5 5 9l6 5.5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
                             Recording Events
                         </button>
+                    </div>
+                    <div class="ww-data-prep-page-header-titles">
                         <h2>Data Preparation</h2>
                         <p class="ww-cc-subtitle">Configure the structure of your file, review any issues, and verify the data before converting.</p>
                     </div>
@@ -5127,13 +5196,15 @@
                     </div>
                 </div>
 
-                <!-- Compact workflow/status strip -- a presentation-only
-                     progress indicator over the SAME one-page workflow
-                     below (never separate pages/tabs); state is derived
-                     live from already-computed wwDataPrep state by
+                <!-- Row 2: full-width strip (currently the compact
+                     workflow/status strip). Compact workflow/status
+                     strip -- a presentation-only progress indicator over
+                     the SAME one-page workflow below (never separate
+                     pages/tabs); state is derived live from
+                     already-computed wwDataPrep state by
                      wwDataPrepRenderWorkflowStrip(), never a second
                      readiness engine. -->
-                <div class="ww-data-prep-workflow-strip" id="wwDataPrepWorkflowStrip">
+                <div class="ww-data-prep-row ww-data-prep-row-2 ww-data-prep-workflow-strip" id="wwDataPrepWorkflowStrip">
                     <div class="ww-data-prep-workflow-step" data-step="structure" id="wwDataPrepWorkflowStepStructure">
                         <span class="ww-data-prep-workflow-step-num">1</span>
                         <span class="ww-data-prep-workflow-step-label">Configure Structure</span>
@@ -5163,7 +5234,16 @@
                      id/function this workspace already used -- only
                      relocated into this grid, none renamed, none
                      removed. -->
-                <div class="ww-data-prep-config-grid">
+                <!-- Row 3: main preparation/configuration working area,
+                     3 slots on a wide desktop (left: Worksheet/Header &
+                     Data Region/Time Axis Setup, middle: Column Roles,
+                     right: Issues). Already used exactly this responsive
+                     3-column grid before this task (.ww-data-prep-config-
+                     grid); now also tagged with the shared row/row-cols
+                     classes for consistency with Rows 1/2/4, reusing the
+                     SAME 1180px/820px breakpoints rather than a second,
+                     duplicated set. -->
+                <div class="ww-data-prep-row ww-data-prep-row-3 ww-data-prep-row-cols ww-data-prep-config-grid">
                 <div class="ww-data-prep-config-col">
                 <!-- Excel only -- hides cleanly for CSV via
                      wwDataPrepRenderWorksheetSelector()'s own additive
@@ -5265,62 +5345,12 @@
                 </section>
                 </div>
                 <div class="ww-data-prep-config-col">
-                <!-- Slice 6 (DEC-072): Preparation Readiness Issue panel.
-                     Plumbing only -- backend-derived, informational-only
-                     findings about the CURRENT preparation state, never a
-                     readiness gate the frontend itself computes. The
-                     header badge stays "Needs Preparation" regardless of
-                     what is shown here. Every issue/count here comes
-                     straight from GET .../issues -- the frontend never
-                     invents or classifies a finding itself.
-
-                     Visual redesign: the previous "View Issues"
-                     progressive-disclosure toggle is retired in favor of
-                     the mock's own always-visible compact issue list --
-                     #wwDataPrepIssuesToggleBtn is kept in the DOM
-                     (wwDataPrep.issuesExpanded now defaults/resets to
-                     `true`) rather than removed, so wwDataPrepRenderIssues()
-                     itself is unchanged; only the toggle's own visibility
-                     changed (.ww-data-prep-visually-removed). The actual
-                     "Continue to Powerwave"/"Export Cleaned Data" actions
-                     moved out of this card entirely, into the page's own
-                     bottom action bar (task section 11/8: this card is
-                     now issue presentation only, matching the mock's own
-                     "Issues" card, which carries no conversion action). -->
-                <section class="panel ww-cc-panel ww-data-prep-card" id="wwDataPrepIssuesCard">
-                    <div class="ww-data-prep-panel-header">
-                        <h3>Issues</h3>
-                        <button type="button" class="secondary ww-data-prep-visually-removed" id="wwDataPrepIssuesToggleBtn">View Issues</button>
-                    </div>
-                    <p class="ww-data-prep-card-subtitle">Reports whether the current preparation is ready to convert into Powerwave.</p>
-                    <p class="ww-data-prep-issue-headline" id="wwDataPrepIssueHeadline"></p>
-                    <div class="ww-data-prep-issue-counts" id="wwDataPrepIssueCounts"></div>
-                    <div id="wwDataPrepIssueGroups"></div>
-                </section>
-                </div>
-                </div>
-                <!-- /ww-data-prep-config-grid -->
-
-                <!-- Slice 7 (DEC-072): Time-Axis interpretation FRAMEWORK
-                     panel. Consumes -- never duplicates -- the Structure
-                     panel's own column_roles state above: eligible
-                     columns here are always exactly the current
-                     `time_axis`-role columns, computed from
-                     wwDataPrep.columnRoles. Same progressive-disclosure
-                     shell as Preparation Status/Structure: a compact,
-                     always-visible summary; a "Configure" toggle
-                     (wwDataPrep.timeAxisExpanded, frontend-only, reset
-                     every openDataPreparationWorkspace() run) revealing
-                     the actual configuration form. Slice 8A adds two
-                     real, deterministic interpreters (Absolute Datetime,
-                     Date + Time) alongside Slice 7's own Manual entry --
-                     an "Interpreter" selector switches the form between
-                     Manual's plain family/provenance fields and the two
-                     real interpreters' own Detect -> review ambiguity ->
-                     preview -> Confirm flow (task §P/§Q). Nothing here
-                     ever guesses a date order silently -- an ambiguous
-                     detection always requires an explicit user choice
-                     before "Confirmed" is offered. -->
+                <!-- Approved 5-row layout: Time Axis Setup now lives in
+                     Row 3's right slot (previously stacked into the left
+                     slot under the earlier, superseded 4-row layout) --
+                     re-parented only, no internal behavior/wording/id
+                     changed; keeps its own existing compact/collapsed
+                     "Configure" toggle unchanged. -->
                 <section class="panel ww-cc-panel ww-data-prep-card ww-data-prep-time-axis-card" id="wwDataPrepTimeAxisPanel">
                     <div class="ww-data-prep-panel-header">
                         <div>
@@ -5746,8 +5776,13 @@
                         <div class="upload-status" id="wwDataPrepTimeAxisStatus" role="status" aria-live="polite"></div>
                     </div>
                 </section>
+                </div>
+                </div>
+                <!-- /ww-data-prep-config-grid (Row 3) -->
 
-                <section class="panel ww-cc-panel ww-data-prep-card ww-data-prep-preview-card">
+                <!-- Row 4: full-width Data Preview, the final major
+                     content row. -->
+                <section class="panel ww-cc-panel ww-data-prep-card ww-data-prep-preview-card ww-data-prep-row ww-data-prep-row-4">
                     <div class="ww-data-prep-toolbar">
                         <div>
                             <h3 id="wwDataPrepPreviewHeading">Raw Data Preview</h3>
@@ -5788,22 +5823,52 @@
                     <div class="upload-status" id="wwDataPrepStatus" role="status" aria-live="polite"></div>
                 </section>
 
-                <!-- Final action bar (visual redesign): the SAME
-                     "Continue to Powerwave"/Export elements Preparation
-                     Status used to host, relocated here to match the
-                     mock's own persistent bottom action-bar pattern --
-                     no id renamed, no gating logic touched
-                     (wwDataPrepRenderConversionAction()/wwDataPrepRender
-                     ExportAction() still target these exact elements).
-                     Export is the visually secondary action (task
-                     section 11's own "[Reset Changes] [Convert]" pattern
-                     -- "Reset All Changes" itself stays in the Data
-                     Preview toolbar above, where it is contextually tied
-                     to the table it clears, rather than duplicated here;
-                     see this task's final report for the full mapping
-                     rationale); "Continue to Powerwave" keeps its
-                     approved wording as the strong primary action. -->
-                <div class="ww-data-prep-action-bar">
+                <!-- Row 5: Review & Final Actions (approved 5-row
+                     layout, supersedes the previous full-width action
+                     bar). Left slot (~2fr): Issues/Readiness -- the SAME
+                     #wwDataPrepIssuesCard section Row 3 used to host
+                     (task's own "Issues must no longer live in Row 3"
+                     rule), re-parented only -- no id/function changed,
+                     wwDataPrepRenderIssues() still targets the exact
+                     same elements. Right slot (~1fr): Final Actions --
+                     the SAME "Continue to Powerwave"/Export elements,
+                     also re-parented only
+                     (wwDataPrepRenderConversionAction()/
+                     wwDataPrepRenderExportAction() still target these
+                     exact elements). "Reset All Changes" stays in Row 4
+                     (Data Preview) per the task's own explicit rule --
+                     not duplicated here. -->
+                <div class="ww-data-prep-row ww-data-prep-row-5 ww-data-prep-row-cols-2">
+                <div class="ww-data-prep-config-col">
+                <!-- Slice 6 (DEC-072): Preparation Readiness Issue panel.
+                     Plumbing only -- backend-derived, informational-only
+                     findings about the CURRENT preparation state, never a
+                     readiness gate the frontend itself computes. The
+                     header badge stays "Needs Preparation" regardless of
+                     what is shown here. Every issue/count here comes
+                     straight from GET .../issues -- the frontend never
+                     invents or classifies a finding itself.
+
+                     Visual redesign: the previous "View Issues"
+                     progressive-disclosure toggle is retired in favor of
+                     the mock's own always-visible compact issue list --
+                     #wwDataPrepIssuesToggleBtn is kept in the DOM
+                     (wwDataPrep.issuesExpanded now defaults/resets to
+                     `true`) rather than removed, so wwDataPrepRenderIssues()
+                     itself is unchanged; only the toggle's own visibility
+                     changed (.ww-data-prep-visually-removed). -->
+                <section class="panel ww-cc-panel ww-data-prep-card" id="wwDataPrepIssuesCard">
+                    <div class="ww-data-prep-panel-header">
+                        <h3>Issues</h3>
+                        <button type="button" class="secondary ww-data-prep-visually-removed" id="wwDataPrepIssuesToggleBtn">View Issues</button>
+                    </div>
+                    <p class="ww-data-prep-card-subtitle">Reports whether the current preparation is ready to convert into Powerwave.</p>
+                    <p class="ww-data-prep-issue-headline" id="wwDataPrepIssueHeadline"></p>
+                    <div class="ww-data-prep-issue-counts" id="wwDataPrepIssueCounts"></div>
+                    <div id="wwDataPrepIssueGroups"></div>
+                </section>
+                </div>
+                <div class="ww-data-prep-config-col ww-data-prep-final-actions">
                     <div class="ww-data-prep-export-action">
                         <button type="button" class="secondary" id="wwDataPrepExportBtn" disabled>Export Cleaned Data</button>
                         <p class="hint">Downloads the resolved Time Axis and current Waveform values as a cleaned, re-upload-friendly CSV/Excel file.</p>
@@ -5832,6 +5897,8 @@
                         </div>
                     </div>
                 </div>
+                </div>
+                <!-- /ww-data-prep-row-5 -->
             </section>
 
             <!-- Slice 4 (DEC-072): Reset All Changes confirmation --

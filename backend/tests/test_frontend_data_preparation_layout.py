@@ -1,12 +1,14 @@
 """Structural checks for the Data Preparation page visual/layout
-redesign (owner-approved mock target, 2026-09-06).
+redesign (owner-approved mock target, 2026-09-06) and its subsequent
+layout-architecture revisions (4-row pass, then the approved 5-row
+pass, both 2026-09-06).
 
 Purely presentational: every element/function this workspace already
 used is asserted to still exist (same id, same JS function), just
-relocated into the new one-page grid layout -- no preparation
+relocated into the current row/grid layout -- no preparation
 semantics, readiness rules, Time Axis behavior, or API shape is
-expected to have changed by this redesign, and this module does not
-re-test any of that (see test_frontend_time_axis_draft_vs_applied.py/
+expected to have changed by any of these layout tasks, and this module
+does not re-test any of that (see test_frontend_time_axis_draft_vs_applied.py/
 test_frontend_time_axis_advanced_options.py/
 test_frontend_recording_time_identity.py for that coverage, unaffected
 by this task).
@@ -33,19 +35,27 @@ def _function_body(source: str, signature: str, next_signature: str) -> str:
     return source[start:end]
 
 
-class TestOnePageConfigGrid:
-    """Task section 4: Worksheet/Header&Region, Column Roles, and Issues
-    must all remain visible on the SAME page, arranged as a 3-column
-    grid on a wide desktop -- never split into separate pages/tabs."""
+class TestRowThreeIsConfigurationOnly:
+    """Approved 5-row layout, Row 3: Worksheet+Header&Region | Column
+    Roles | Time Axis Setup -- configuration only. Issues must no
+    longer live here (task's own explicit "Issues must no longer live
+    in Row 3" rule)."""
 
     def test_config_grid_exists_with_three_columns(self):
         source = _source()
-        assert source.count('class="ww-data-prep-config-grid"') == 1
-        # Worksheet+Header/Region column and the Issues column both use
-        # the plain class; the middle Column Roles column additionally
-        # carries -wide -- three columns total.
-        assert source.count('class="ww-data-prep-config-col">') == 2
-        assert 'class="ww-data-prep-config-col ww-data-prep-config-col-wide"' in source
+        row3_start = source.index(
+            'class="ww-data-prep-row ww-data-prep-row-3 ww-data-prep-row-cols ww-data-prep-config-grid"'
+        )
+        row4_start = source.index("ww-data-prep-row-4")
+        row3_body = source[row3_start:row4_start]
+        # Worksheet+Header/Region column and Time Axis Setup's column
+        # both use the plain class; the middle Column Roles column
+        # additionally carries -wide -- three columns total, scoped to
+        # Row 3 only (Row 5 also reuses the plain .ww-data-prep-config-col
+        # class for its own Issues slot, so an unscoped count would
+        # over-match).
+        assert row3_body.count('class="ww-data-prep-config-col">') == 2
+        assert 'class="ww-data-prep-config-col ww-data-prep-config-col-wide"' in row3_body
 
     def test_worksheet_and_header_region_share_the_first_column(self):
         source = _source()
@@ -54,19 +64,62 @@ class TestOnePageConfigGrid:
         col_boundary = source.index('class="ww-data-prep-config-col ww-data-prep-config-col-wide"')
         assert worksheet_pos < header_region_pos < col_boundary
 
-    def test_column_roles_card_exists_in_the_wide_column(self):
+    def test_column_roles_card_exists_in_the_wide_middle_column(self):
         source = _source()
         wide_col_start = source.index('class="ww-data-prep-config-col ww-data-prep-config-col-wide"')
-        issues_col_start = source.index('id="wwDataPrepIssuesCard"')
-        assert wide_col_start < source.index("<h3>Column Roles</h3>") < issues_col_start
-        assert 'id="wwDataPrepColumnsTable"' in source[wide_col_start:issues_col_start]
+        time_axis_pos = source.index('id="wwDataPrepTimeAxisPanel"')
+        assert wide_col_start < source.index("<h3>Column Roles</h3>") < time_axis_pos
+        assert 'id="wwDataPrepColumnsTable"' in source[wide_col_start:time_axis_pos]
 
-    def test_issues_card_exists_and_no_longer_hosts_the_conversion_action(self):
+    def test_time_axis_setup_is_the_third_row_3_column_not_a_fourth_row(self):
+        source = _source()
+        row3_start = source.index('class="ww-data-prep-row ww-data-prep-row-3 ww-data-prep-row-cols ww-data-prep-config-grid"')
+        row4_start = source.index("ww-data-prep-row-4")
+        row3_body = source[row3_start:row4_start]
+        assert 'id="wwDataPrepTimeAxisPanel"' in row3_body
+        column_roles_pos = row3_body.index("<h3>Column Roles</h3>")
+        time_axis_pos = row3_body.index('id="wwDataPrepTimeAxisPanel"')
+        assert column_roles_pos < time_axis_pos
+
+    def test_issues_card_is_not_inside_row_3(self):
+        source = _source()
+        row3_start = source.index('class="ww-data-prep-row ww-data-prep-row-3 ww-data-prep-row-cols ww-data-prep-config-grid"')
+        row4_start = source.index("ww-data-prep-row-4")
+        row3_body = source[row3_start:row4_start]
+        assert 'id="wwDataPrepIssuesCard"' not in row3_body
+
+    def test_responsive_breakpoints_collapse_the_grid(self):
+        source = _source()
+        assert "@media (max-width: 1180px)" in source
+        assert "@media (max-width: 820px)" in source
+
+
+class TestRowFiveReviewAndFinalActions:
+    """Approved 5-row layout, Row 5: a wider left Issues/Readiness slot
+    plus a narrower right Final Actions slot (Export Cleaned Data +
+    Continue to Powerwave) -- the SAME pre-existing elements/ids, just
+    relocated out of Row 3 (Issues) and out of the old full-width
+    action bar (Export/Convert)."""
+
+    def test_row_5_exists_as_a_two_column_row(self):
+        source = _source()
+        assert (
+            'class="ww-data-prep-row ww-data-prep-row-5 ww-data-prep-row-cols-2"'
+            in source
+        )
+
+    def test_issues_card_lives_in_row_5_left_slot(self):
+        source = _source()
+        row5_start = source.index('class="ww-data-prep-row ww-data-prep-row-5 ww-data-prep-row-cols-2"')
+        row5_end = source.index("<!-- /ww-data-prep-row-5 -->", row5_start)
+        row5_body = source[row5_start:row5_end]
+        issues_pos = row5_body.index('id="wwDataPrepIssuesCard"')
+        final_actions_pos = row5_body.index('class="ww-data-prep-config-col ww-data-prep-final-actions"')
+        assert issues_pos < final_actions_pos
+
+    def test_issues_card_no_longer_hosts_the_conversion_action(self):
         source = _source()
         issues_card_start = source.index('id="wwDataPrepIssuesCard"')
-        # The Issues card ends at its own closing </section> -- the
-        # conversion/export actions must not be inside it any more (task
-        # section 8: "Issues" carries no conversion action in the mock).
         issues_card_end = source.index("</section>", issues_card_start)
         issues_card_body = source[issues_card_start:issues_card_end]
         assert 'id="wwDataPrepConvertBtn"' not in issues_card_body
@@ -75,35 +128,60 @@ class TestOnePageConfigGrid:
         assert 'id="wwDataPrepIssueCounts"' in issues_card_body
         assert 'id="wwDataPrepIssueGroups"' in issues_card_body
 
-    def test_responsive_breakpoints_collapse_the_grid(self):
+    def test_final_actions_slot_holds_export_and_convert(self):
         source = _source()
-        assert "@media (max-width: 1180px)" in source
-        assert "@media (max-width: 820px)" in source
-
-
-class TestFinalActionBarRelocation:
-    """Task section 11: a persistent bottom action bar pairs a
-    secondary action with the strong primary "Continue to Powerwave"
-    action -- both are the SAME pre-existing elements/ids, just moved
-    out of the Issues card."""
-
-    def test_action_bar_exists_after_data_preview_and_holds_both_actions(self):
-        source = _source()
-        bar_start = source.index('class="ww-data-prep-action-bar"')
-        bar_end = source.index("</section>", source.index("</div>\n            </section>", bar_start))
-        bar_body = source[bar_start:bar_end]
-        assert 'id="wwDataPrepConvertBtn"' in bar_body
-        assert 'id="wwDataPrepExportBtn"' in bar_body
-        assert 'id="wwDataPrepConversionLimitation"' in bar_body
-        # Reset All Changes deliberately stays in the Data Preview
-        # toolbar (contextually tied to the table it clears), not
-        # duplicated here -- see this task's own final report mapping.
-        assert 'id="wwDataPrepResetAllBtn"' not in bar_body
+        final_actions_start = source.index('class="ww-data-prep-config-col ww-data-prep-final-actions"')
+        final_actions_end = source.index("<!-- /ww-data-prep-row-5 -->", final_actions_start)
+        final_actions_body = source[final_actions_start:final_actions_end]
+        assert 'id="wwDataPrepExportBtn"' in final_actions_body
+        assert 'id="wwDataPrepConvertBtn"' in final_actions_body
+        assert "Continue to Powerwave" in final_actions_body
 
     def test_only_one_convert_button_and_one_export_button_exist(self):
         source = _source()
         assert source.count('id="wwDataPrepConvertBtn"') == 1
         assert source.count('id="wwDataPrepExportBtn"') == 1
+
+    def test_reset_all_changes_is_not_in_row_5(self):
+        source = _source()
+        row5_start = source.index('class="ww-data-prep-row ww-data-prep-row-5 ww-data-prep-row-cols-2"')
+        row5_end = source.index("<!-- /ww-data-prep-row-5 -->", row5_start)
+        assert 'id="wwDataPrepResetAllBtn"' not in source[row5_start:row5_end]
+
+    def test_wider_left_narrower_right_grid_ratio(self):
+        source = _source()
+        body = _function_body(source, ".ww-data-prep-row-cols-2 {", "}")
+        assert "display: grid" in body
+        assert "minmax(0, 2fr) minmax(0, 1fr)" in body
+
+    def test_row_5_stacks_at_820px(self):
+        source = _source()
+        assert ".ww-data-prep-row-cols-2 { grid-template-columns: 1fr; }" in source
+
+    def test_old_full_width_action_bar_class_is_retired(self):
+        source = _source()
+        assert 'class="ww-data-prep-action-bar"' not in source
+
+
+class TestRowFourDataPreviewKeepsResetAllChanges:
+    """Row 4 (Data Preview) is unchanged by this task -- Reset All
+    Changes explicitly stays here, per the task's own explicit rule,
+    contextually tied to the table/toolbar it clears."""
+
+    def test_reset_all_changes_is_inside_row_4(self):
+        source = _source()
+        row4_start = source.index(
+            'class="panel ww-cc-panel ww-data-prep-card ww-data-prep-preview-card ww-data-prep-row ww-data-prep-row-4"'
+        )
+        row5_start = source.index('class="ww-data-prep-row ww-data-prep-row-5 ww-data-prep-row-cols-2"')
+        row4_body = source[row4_start:row5_start]
+        assert 'id="wwDataPrepResetAllBtn"' in row4_body
+        assert 'id="wwDataPrepUndoBtn"' in row4_body
+        assert 'id="wwDataPrepRedoBtn"' in row4_body
+
+    def test_only_one_reset_all_button_exists(self):
+        source = _source()
+        assert source.count('id="wwDataPrepResetAllBtn"') == 1
 
 
 class TestAlwaysVisibleStructureAndIssuesCards:
@@ -138,7 +216,7 @@ class TestAlwaysVisibleStructureAndIssuesCards:
         assert "wwDataPrep.issuesExpanded = true;" in source
         assert "wwDataPrep.structureExpanded = true;" in source
         # Time Axis Setup keeps its own genuine collapse-by-default --
-        # unaffected by this task (task section 9).
+        # unaffected by this task.
         assert "timeAxisExpanded: false," in source
         assert "wwDataPrep.timeAxisExpanded = false;" in source
 
@@ -148,9 +226,39 @@ class TestAlwaysVisibleStructureAndIssuesCards:
 
 
 class TestPageHeaderAndFileCard:
-    """Task section 2: a file-summary card in the page header, showing
-    only ALREADY-available metadata -- no fabricated "last edited"
-    timestamp exists anywhere in this workspace's state."""
+    """Approved 5-row layout, Row 1: back navigation, title block
+    (visual center/focus), file details (right-aligned, including
+    status) -- only ALREADY-available metadata, no fabricated "last
+    edited" timestamp exists anywhere in this workspace's state."""
+
+    def test_row_1_has_three_slots_back_title_file(self):
+        source = _source()
+        row1_start = source.index('class="ww-data-prep-row ww-data-prep-row-1 ww-data-prep-row-cols"')
+        row2_start = source.index("ww-data-prep-row-2")
+        row1_body = source[row1_start:row2_start]
+        assert 'class="ww-data-prep-page-header-back"' in row1_body
+        assert 'class="ww-data-prep-page-header-titles"' in row1_body
+        assert 'class="ww-data-prep-file-card"' in row1_body
+        back_pos = row1_body.index('class="ww-data-prep-page-header-back"')
+        titles_pos = row1_body.index('class="ww-data-prep-page-header-titles"')
+        file_pos = row1_body.index('class="ww-data-prep-file-card"')
+        assert back_pos < titles_pos < file_pos
+
+    def test_back_button_is_its_own_slot_separate_from_title(self):
+        source = _source()
+        back_slot_start = source.index('class="ww-data-prep-page-header-back"')
+        titles_start = source.index('class="ww-data-prep-page-header-titles"')
+        back_slot_body = source[back_slot_start:titles_start]
+        assert 'id="wwDataPrepBackBtn"' in back_slot_body
+        assert "<h2>Data Preparation</h2>" not in back_slot_body
+
+    def test_status_badge_lives_inside_the_file_details_slot(self):
+        source = _source()
+        file_card_start = source.index('class="ww-data-prep-file-card"')
+        row1_end = source.index("ww-data-prep-row-2")
+        file_card_body = source[file_card_start:row1_end]
+        assert 'id="wwDataPrepStatusBadge"' in file_card_body
+        assert 'class="ww-data-prep-status-slot"' not in source
 
     def test_file_card_shows_filename_format_size_and_row_count(self):
         source = _source()
@@ -187,9 +295,9 @@ class TestPageHeaderAndFileCard:
 
 
 class TestWorkflowStrip:
-    """Task section 3: a compact 4-step progress strip -- presentation
-    only, derived from state this workspace already computed, never a
-    second readiness/status engine."""
+    """Row 2: a compact 4-step progress strip -- presentation only,
+    derived from state this workspace already computed, never a second
+    readiness/status engine."""
 
     def test_four_steps_exist_with_stable_ids(self):
         source = _source()
@@ -200,6 +308,13 @@ class TestWorkflowStrip:
             "wwDataPrepWorkflowStepConvert",
         ):
             assert 'id="' + step_id + '"' in source
+
+    def test_row_2_is_the_workflow_strip(self):
+        source = _source()
+        assert (
+            'class="ww-data-prep-row ww-data-prep-row-2 ww-data-prep-workflow-strip" id="wwDataPrepWorkflowStrip"'
+            in source
+        )
 
     def test_render_function_derives_from_existing_state_only(self):
         source = _source()
@@ -220,10 +335,10 @@ class TestWorkflowStrip:
 
 
 class TestDataPreviewHeaderBadges:
-    """Task section 10: column-role/type badges in Data Preview table
-    headers -- reuses the SAME wwDataPrep.columnRoles/columnLabels
-    state the Column Roles card already renders from, never a second
-    "interpreted vs raw" data mode."""
+    """Column-role/type badges in Data Preview table headers -- reuses
+    the SAME wwDataPrep.columnRoles/columnLabels state the Column Roles
+    card already renders from, never a second "interpreted vs raw" data
+    mode."""
 
     def test_role_badge_helper_exists_and_covers_time_axis_and_waveform(self):
         source = _source()
@@ -242,11 +357,10 @@ class TestDataPreviewHeaderBadges:
 
 
 class TestColumnRolesPreviewColumn:
-    """Task section 7 / mock fidelity: the Column Roles table gains a
-    read-only "Preview" column of a column's own actual sample values,
-    reusing the SAME already-fetched preview response
-    wwDataPrepRenderTable() renders from -- never a second fetch, never
-    itself editable."""
+    """The Column Roles table has a read-only "Preview" column of a
+    column's own actual sample values, reusing the SAME already-fetched
+    preview response wwDataPrepRenderTable() renders from -- never a
+    second fetch, never itself editable."""
 
     def test_preview_column_header_exists(self):
         source = _source()
@@ -259,3 +373,77 @@ class TestColumnRolesPreviewColumn:
     def test_call_site_passes_the_already_fetched_preview(self):
         source = _source()
         assert "wwDataPrepRenderColumnMapping(preview);" in source
+
+
+class TestFiveRowLayoutFoundation:
+    """Approved 5-row layout (2026-09-06), superseding the earlier
+    4-row pass: the page is organized into exactly 5 semantic
+    horizontal rows sharing TWO reusable responsive grid classes -- no
+    wording/control/behavior change, only re-parenting. See this task's
+    own final report."""
+
+    def test_exactly_five_rows_exist(self):
+        source = _source()
+        # Each row's class is applied to exactly one element -- checked
+        # via each row's own distinctive class-attribute string rather
+        # than a bare substring count (which would also match e.g. the
+        # "/ww-data-prep-row-5 -->" closing comment).
+        assert source.count('class="ww-data-prep-row ww-data-prep-row-1 ww-data-prep-row-cols"') == 1
+        assert (
+            source.count(
+                'class="ww-data-prep-row ww-data-prep-row-2 ww-data-prep-workflow-strip" id="wwDataPrepWorkflowStrip"'
+            )
+            == 1
+        )
+        assert (
+            source.count('class="ww-data-prep-row ww-data-prep-row-3 ww-data-prep-row-cols ww-data-prep-config-grid"')
+            == 1
+        )
+        assert (
+            source.count(
+                'class="panel ww-cc-panel ww-data-prep-card ww-data-prep-preview-card ww-data-prep-row ww-data-prep-row-4"'
+            )
+            == 1
+        )
+        assert source.count('class="ww-data-prep-row ww-data-prep-row-5 ww-data-prep-row-cols-2"') == 1
+
+    def test_shared_row_cols_class_defines_the_grid_once(self):
+        source = _source()
+        # The base rule (grid mechanics) plus its own two breakpoint
+        # overrides (1180px/820px) -- three occurrences total, never a
+        # second independent base definition.
+        assert source.count(".ww-data-prep-row-cols {") == 3
+        body = _function_body(source, ".ww-data-prep-row-cols {", "}")
+        assert "display: grid" in body
+        assert "repeat(3, minmax(0, 1fr))" in body
+
+    def test_row_cols_2_class_defines_the_grid_once(self):
+        source = _source()
+        # Base rule + its own single 820px stacking override.
+        assert source.count(".ww-data-prep-row-cols-2 {") == 2
+
+    def test_responsive_breakpoints_are_not_duplicated_per_row(self):
+        source = _source()
+        assert source.count(".ww-data-prep-row-cols { grid-template-columns: 1fr 1fr; }") == 1
+        assert source.count(".ww-data-prep-row-cols { grid-template-columns: 1fr; }") == 1
+        assert ".ww-data-prep-config-grid { grid-template-columns: 1fr 1fr; }" not in source
+        assert ".ww-data-prep-config-col:nth-child(3) { grid-column: 1 / -1; }" not in source
+
+    def test_grid_children_get_min_width_zero(self):
+        source = _source()
+        body = _function_body(source, ".ww-data-prep-row-cols {", ".ww-data-prep-row-cols-2 {")
+        assert ".ww-data-prep-row-cols > * { min-width: 0; }" in body
+        body2 = _function_body(source, ".ww-data-prep-row-cols-2 {", "}")
+        # First occurrence is the base rule itself; check the dedicated
+        # child selector exists too.
+        assert ".ww-data-prep-row-cols-2 > * { min-width: 0; }" in source
+
+    def test_no_orphaned_time_axis_comment_before_data_preview(self):
+        # A stale comment describing the Time-Axis-interpretation panel
+        # used to sit directly before Data Preview after the section
+        # itself was relocated during an earlier layout pass -- must not
+        # reappear.
+        source = _source()
+        row4_start = source.index("ww-data-prep-row-4")
+        preceding = source[max(0, row4_start - 800):row4_start]
+        assert "Time-Axis interpretation FRAMEWORK" not in preceding
