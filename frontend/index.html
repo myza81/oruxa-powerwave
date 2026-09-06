@@ -1183,7 +1183,7 @@
             min-width: 140px;
         }
         .ww-data-prep-columns-table select {
-            font: inherit; font-size: 0.65rem; background: var(--panel); color: var(--text);
+            font: inherit; font-size: 0.75rem; background: var(--panel); color: var(--text);
             border: 1px solid var(--panel-border); border-radius: var(--radius);
             padding: 6px 8px; width: 100%; box-sizing: border-box;
         }
@@ -1397,11 +1397,27 @@
            readiness color scheme), but stays a presentation-only echo of
            the same backend-computed state (task's own "do not duplicate
            Preparation Status" rule) -- see wwDataPrepRenderTimeAxisSummary(). */
-        .ww-data-prep-time-axis-validity { display: flex; align-items: baseline; gap: 8px; font-size: 0.85rem; font-weight: 600; margin: 0 0 2px; }
-        .ww-data-prep-time-axis-validity[data-state="valid"] { color: var(--ok); }
-        .ww-data-prep-time-axis-validity[data-state="attention"] { color: var(--warn); }
-        .ww-data-prep-time-axis-validity[data-state="unconfigured"] { color: var(--text-dim); }
-        .ww-data-prep-time-axis-validity-detail { font-size: 0.72rem; color: var(--text-dim); margin: 0 0 10px; }
+        /* UAT fix (2026-09-06): one compact status CARD (icon+headline
+           line, plus an adaptive detail line) instead of a bare colored
+           text line with a disconnected sibling paragraph below it --
+           same subtle background-wash treatment the Detect-result card
+           further down already established (var(--ok-wash) / a warn
+           color-mix(), never a new global token), compact padding, no
+           oversized alert box. The detail paragraph is now a CHILD of
+           this card (previously a sibling), so one background covers
+           both lines as a single visual unit. */
+        .ww-data-prep-time-axis-validity {
+            padding: 8px 10px; border-radius: var(--radius); margin: 0 0 10px;
+        }
+        .ww-data-prep-time-axis-validity-line { display: flex; align-items: baseline; gap: 8px; font-size: 0.85rem; font-weight: 600; }
+        .ww-data-prep-time-axis-validity[data-state="valid"] { background: var(--ok-wash); }
+        .ww-data-prep-time-axis-validity[data-state="valid"] .ww-data-prep-time-axis-validity-line { color: var(--ok); }
+        .ww-data-prep-time-axis-validity[data-state="attention"] { background: color-mix(in srgb, var(--warn) 12%, transparent); }
+        .ww-data-prep-time-axis-validity[data-state="attention"] .ww-data-prep-time-axis-validity-line { color: var(--warn); }
+        .ww-data-prep-time-axis-validity[data-state="unconfigured"] { background: color-mix(in srgb, var(--warn) 12%, transparent); }
+        .ww-data-prep-time-axis-validity[data-state="unconfigured"] .ww-data-prep-time-axis-validity-line { color: var(--warn); }
+        .ww-data-prep-time-axis-validity-detail { font-size: 0.72rem; color: var(--text-dim); margin: 4px 0 0; }
+        .ww-data-prep-time-axis-validity-detail:empty { display: none; }
 
         /* Detection assistance card (DEC-082: recommend, never silently
            switch) -- an icon + short message replacing the previous plain
@@ -1436,6 +1452,15 @@
            single-button row) so the two buttons wrap onto their own
            lines rather than overflowing on a very narrow screen. */
         .ww-data-prep-time-axis-save-row { flex-wrap: wrap; margin-top: 4px; }
+        /* UAT fix (2026-09-06): Detect previously sat flush against
+           whichever conditional field (Unit/Index timing/Repeated
+           Timestamp) happened to be visible directly above it -- none
+           of those fields carry their own bottom margin. A clear,
+           deliberate gap so Detect reads as its own separate action,
+           scoped to this one button row only (never the shared
+           `.ww-data-prep-structure-controls` base, which Save/Clear and
+           other rows in this panel also rely on). */
+        .ww-data-prep-time-axis-detect-row { margin-top: 14px; }
 
         /* Advanced details: the SAME native <details>/<summary> +
            .chevron progressive-disclosure convention already established
@@ -1517,46 +1542,70 @@
         #pageDataPreparation .ww-data-prep-icon svg { width: 14px; height: 14px; stroke: currentColor; fill: none; vertical-align: -2px; }
 
         /* ================================================================
-           5-row responsive layout foundation (approved layout, revises
-           the previous 4-row pass, 2026-09-06). ONE shared, reusable
-           3-column grid class used by Row 1 (page header) and Row 3
-           (configuration) -- never a second, duplicated responsive rule
-           set per row -- plus a second, 2-column variant for Row 5
-           (Issues/Readiness + Final Actions). Row-specific classes
-           (.ww-data-prep-row-1/-2/-3/-4/-5) exist for semantic/selector
-           clarity and future per-row spacing only; the actual grid
-           mechanics live on .ww-data-prep-row-cols/-cols-2 alone.
-           `min-width: 0` on every direct child prevents long unbroken
-           content (a filename, a table) from forcing a column -- and by
-           extension the page -- wider than its own grid track. */
+           6-row layout-experiment rearrangement (2026-09-06, supersedes
+           the previous 5-row pass): Row 3 (Structure | Column Roles),
+           Row 4 (Time Axis Setup | Issues/Readiness), Row 5 (Data
+           Preview, full width), Row 6 (Final Actions alone). Row-
+           specific classes (.ww-data-prep-row-1..6) exist for semantic/
+           selector clarity and per-row spacing; each row's own grid
+           ratio is a DEDICATED class (.ww-data-prep-row-3-grid/-4-grid)
+           rather than the previous shared equal-thirds
+           .ww-data-prep-row-cols (now unused by any row -- kept only as
+           the shared base its own 1180px/820px comment further down
+           still documents, never fully deleted mid-experiment) since
+           Row 3 and Row 4 each need a DIFFERENT, deliberately asymmetric
+           ratio (35/65 and ~58/42 respectively), not the old equal-
+           thirds/fixed-2fr-1fr shapes. `min-width: 0` on every direct
+           child prevents long unbroken content (a filename, a table)
+           from forcing a column -- and by extension the page -- wider
+           than its own grid track. */
         .ww-data-prep-row-cols {
             display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 12px; align-items: start;
         }
         .ww-data-prep-row-cols > * { min-width: 0; }
-        /* Row 5: a wider left Issues/Readiness slot (~2fr, roughly 65-70%)
-           and a narrower right Final Actions slot (~1fr, roughly 30-35%)
-           -- sensible grid proportions, never brittle hard-coded pixels.
-           Stacks to one column at the SAME 820px breakpoint every other
-           row already uses (see its own override further down this
-           stylesheet, for the same cascade-ordering reason noted above). */
+        /* Row 3: Structure (~35%) | Column Roles (~65%) -- Column Roles
+           needs real room for its own 5 sub-columns (Col./Label/Role/
+           Engineering Quantity/Measured Unit); Structure's own fields
+           (Header row/Data start-end row) already work comfortably at
+           much narrower widths (verified down to 390px as a full-width
+           card in an earlier task), so it can afford to give up the
+           majority share here. */
+        .ww-data-prep-row-3-grid {
+            display: grid; grid-template-columns: minmax(0, 35fr) minmax(0, 65fr);
+            gap: 12px; align-items: start;
+        }
+        .ww-data-prep-row-3-grid > * { min-width: 0; }
+        /* Row 4: Time Axis Setup (~58%) | Issues/Readiness (~42%) --
+           Time Axis Setup needs enough room for its own Time format/
+           Time column side-by-side pair (each with its own min-width
+           floor, see Row 3C's own CSS) plus Unit/interval/Detect/Save/
+           Clear/Advanced sections; Issues is a plain text list that
+           stays legible at a narrower share. */
+        .ww-data-prep-row-4-grid {
+            display: grid; grid-template-columns: minmax(0, 58fr) minmax(0, 42fr);
+            gap: 12px; align-items: start;
+        }
+        .ww-data-prep-row-4-grid > * { min-width: 0; }
+        /* Not currently used by any row after the 6-row rearrangement
+           above (Row 6/Final Actions no longer pairs with Issues, so it
+           needs no grid at all) -- kept rather than deleted since this
+           is a genuinely reusable "wider-left 2-column split" utility
+           and this whole rearrangement is an explicit layout
+           EXPERIMENT, still subject to further section-by-section
+           review. */
         .ww-data-prep-row-cols-2 {
             display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
             gap: 12px; align-items: start;
         }
         .ww-data-prep-row-cols-2 > * { min-width: 0; }
-        /* The two breakpoint overrides below are declared further down
-           this stylesheet (immediately after .ww-data-prep-config-grid's
-           own desktop column-ratio override), NOT here -- CSS cascade
-           resolves same-specificity rules by source order regardless of
-           which one sits inside a @media block, so a responsive override
-           declared BEFORE .ww-data-prep-config-grid's plain (non-media)
-           rule would lose to it even while the media condition is
-           active. Keeping every override for this class strictly after
-           the last non-responsive rule that touches the same property
-           is what actually makes the collapse take effect at 1180px/
-           820px -- confirmed via live browser UAT after this was first
-           gotten wrong (Row 3 silently stayed 3 columns at 820px). */
+        /* Both new rows' own 820px collapse is folded into the ONE
+           pre-existing shared 820px block further down this stylesheet
+           (alongside Row 1/the workflow strip's own overrides) rather
+           than a separate @media block here -- avoids a second/third
+           `@media (max-width: 820px)` block, which broke a structural
+           test that greps between consecutive `@media` signatures
+           (confirmed directly). */
 
         /* ---- Row 1 visual redesign: page identity ----
            Title first (primary width share, the strongest visual
@@ -1717,13 +1766,17 @@
         .ww-data-prep-workflow-step[data-state="pending"] .ww-data-prep-workflow-step-title,
         .ww-data-prep-workflow-step:not([data-state]) .ww-data-prep-workflow-step-title { color: var(--text); }
 
-        /* ---- Row 3: main configuration grid ----
-           Shares .ww-data-prep-row-cols's own grid/gap/breakpoints
-           (added above) -- only the desktop column-width RATIO differs
-           here (Column Roles' middle slot gets extra room), so this
-           rule overrides just that one property rather than
-           re-declaring the whole grid. */
-        .ww-data-prep-config-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 1fr); }
+        /* ---- Row 3/4 shared column-wrapper ----
+           .ww-data-prep-config-col is the flex-column cell wrapper
+           every Row 3/Row 4 card sits inside, reused as-is under the
+           new dedicated .ww-data-prep-row-3-grid/-4-grid ratios above
+           (CSS Grid track sizing is positional, so the same wrapper
+           class works under any parent grid-template-columns value --
+           no per-ratio child class ever needed). The old fixed 1:1.5:1
+           .ww-data-prep-config-grid override this used to pair with
+           (Worksheet+Header&Region | Column Roles | Time Axis Setup, a
+           single 3-column Row 3) is gone along with that shape --
+           superseded entirely by .ww-data-prep-row-3-grid/-4-grid. */
         .ww-data-prep-config-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
         #pageDataPreparation .ww-data-prep-card { padding: 12px 14px; }
         #pageDataPreparation .ww-data-prep-card h3 {
@@ -1753,7 +1806,7 @@
            below (short, bounded row count -- one row per source column,
            never per data row), reusing the same .ww-data-prep-table base. */
         .ww-data-prep-column-roles-wrap { max-height: none; }
-        #pageDataPreparation .ww-data-prep-columns-table { font-size: 0.65rem; width: 100%; }
+        #pageDataPreparation .ww-data-prep-columns-table { font-size: 0.75rem; width: 100%; }
         #pageDataPreparation .ww-data-prep-columns-table th { padding: 8px 10px; }
         #pageDataPreparation .ww-data-prep-columns-table td { padding: 6px 10px; vertical-align: middle; }
 
@@ -1777,14 +1830,16 @@
             display: flex; align-items: baseline; gap: 4px; font-size: 0.75rem; margin-bottom: 6px;
         }
 
-        /* .ww-data-prep-row-cols's own responsive collapse -- declared
-           HERE (after .ww-data-prep-config-grid's desktop column-ratio
-           override just above) so it actually wins the cascade at these
-           widths; shared by Row 3 (and Row 5 via -cols-2) alike, never
-           duplicated per row. Row 1's own dedicated grid is a different
-           shape (title/back/file, not equal panels) so it gets its own
-           two rules right alongside these, reusing the SAME 1180px/
-           820px breakpoint VALUES rather than inventing new ones. */
+        /* .ww-data-prep-row-cols's own responsive collapse -- not
+           currently used by any row after the 6-row rearrangement (Row
+           3/Row 4 each now use their own dedicated -grid class above,
+           see that comment), kept as a reusable "3 equal columns"
+           utility rather than deleted, same rationale as
+           .ww-data-prep-row-cols-2 above. Row 1's own dedicated grid is
+           a different shape (title/back/file, not equal panels) so it
+           gets its own rule right alongside this, reusing the SAME
+           1180px/820px breakpoint VALUES rather than inventing new
+           ones. */
         @media (max-width: 1180px) {
             .ww-data-prep-row-cols { grid-template-columns: 1fr 1fr; }
             .ww-data-prep-row-cols > *:nth-child(3) { grid-column: 1 / -1; }
@@ -1798,6 +1853,11 @@
             .ww-data-prep-row-cols { grid-template-columns: 1fr; }
             .ww-data-prep-row-cols > *:nth-child(3) { grid-column: auto; }
             .ww-data-prep-row-cols-2 { grid-template-columns: 1fr; }
+            /* 6-row rearrangement (2026-09-06): Row 3 (Structure|Column
+               Roles) and Row 4 (Time Axis Setup|Issues) each stack to a
+               single column here too, matching every other row's own
+               820px collapse. */
+            .ww-data-prep-row-3-grid, .ww-data-prep-row-4-grid { grid-template-columns: 1fr; }
             .ww-data-prep-file-card { width: 100%; box-sizing: border-box; }
             /* Small screen (owner-explicit preference): keep step
                TITLES for as long as reasonably possible -- numbers
@@ -1852,12 +1912,19 @@
         .ww-data-prep-col-role-badge[data-role="waveform"] { background: var(--ok-wash); color: var(--ok); }
         .ww-data-prep-derived-badge { background: var(--accent-wash); color: var(--accent); }
 
-        /* ---- Row 5: Final Actions (right slot) ----
-           Export and Convert now stack vertically in a narrower column
-           (previously side-by-side in a full-width bar) -- the SAME
-           elements/ids, just a simpler container since they no longer
-           share a row with each other. */
-        .ww-data-prep-final-actions { display: flex; flex-direction: column; gap: 12px; }
+        /* ---- Row 6: Final Actions (alone on its own row) ----
+           Export and Convert stack vertically -- the SAME elements/ids
+           as when this card shared a grid slot with Issues (Export and
+           Convert never sat side by side with EACH OTHER either way).
+           `max-width` (layout-experiment rearrangement, 2026-09-06) is
+           new: `.ww-data-prep-action-bar-primary` below already sets
+           `align-items: stretch`, which was harmless in a narrow ~1fr
+           grid slot but would stretch "Continue to Powerwave" across
+           the ENTIRE page now that this card is alone on a full-width
+           row -- capped to a comfortable content width instead, per
+           this row's own explicit "compact feel, no unnecessary full-
+           width visual weight" requirement. */
+        .ww-data-prep-final-actions { display: flex; flex-direction: column; gap: 12px; max-width: 420px; }
         .ww-data-prep-action-bar-primary { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
         .ww-data-prep-final-actions #wwDataPrepConvertBtn {
             display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 18px; font-size: 0.82rem;
@@ -5502,21 +5569,28 @@
                  Powerwave" state lives entirely inside the Preparation
                  Status panel below (Slices 6/9/10), never on this badge. -->
             <section id="pageDataPreparation" aria-label="Data Preparation" hidden>
-                <!-- Approved 5-row layout (2026-09-06, supersedes the
-                     previous 4-row pass): the page is organized into
-                     exactly 5 semantic horizontal rows
-                     (.ww-data-prep-row-1..5), sharing TWO reusable
-                     responsive grid classes -- .ww-data-prep-row-cols (3
-                     equal columns: Rows 1 and 3) and .ww-data-prep-row-
-                     cols-2 (a wider-left 2-column split: Row 5), see
-                     their own CSS rules for the shared 1180px/820px
-                     collapse. This task is layout framework only -- no
-                     wording, control, or behavior changed; every element
-                     below is the SAME #wwDataPrep* id/function this
-                     workspace already used, only re-parented into the
-                     new row/slot structure. Detailed visual/typography
-                     styling of each row's own content is intentionally
-                     deferred to later, section-by-section tasks. -->
+                <!-- 6-row layout-experiment rearrangement (2026-09-06,
+                     supersedes the previous approved 5-row pass): the
+                     page is organized into 6 semantic horizontal rows
+                     (.ww-data-prep-row-1..6) --
+                     Row 1 page identity, Row 2 workflow progress, Row 3
+                     Structure|Column Roles (~35/65), Row 4 Time Axis
+                     Setup|Issues (~58/42), Row 5 Data Preview (full
+                     width), Row 6 Final Actions (alone, capped width).
+                     Row 3/4 each use their own dedicated
+                     .ww-data-prep-row-3-grid/-4-grid ratio (see their
+                     own CSS comments) rather than the previous shared
+                     .ww-data-prep-row-cols/-cols-2 classes, which are
+                     kept as still-reusable but currently-unused
+                     utilities. This task is layout/grid-structure only
+                     -- no wording, control, or internal card behavior
+                     changed beyond the row rearrangement itself; every
+                     element below is the SAME #wwDataPrep* id/function
+                     this workspace already used, only re-parented into
+                     the new row/slot structure. This is an explicit
+                     layout EXPERIMENT (owner's own framing) -- further
+                     section-by-section refinement is expected to
+                     follow. -->
 
                 <!-- Row 1 visual redesign (2026-09-06): page identity, 3
                      slots on a wide desktop, in the approved order --
@@ -5631,14 +5705,15 @@
                     </div>
                 </div>
 
-                <!-- One-page configuration area: Worksheet + Header/Data
-                     Region | Column Roles | Issues, side by side on a
-                     wide desktop (see .ww-data-prep-config-grid's own
-                     responsive rules for the tablet/small-screen
-                     collapse). Every element below is the SAME element/
-                     id/function this workspace already used -- only
-                     relocated into this grid, none renamed, none
-                     removed. -->
+                <!-- Row 3 (layout-experiment rearrangement, 2026-09-06):
+                     Worksheet + Header/Data Region | Column Roles, side
+                     by side at ~35/65 on a wide desktop (see
+                     .ww-data-prep-row-3-grid's own responsive rules for
+                     the small-screen collapse). Time Axis Setup moved
+                     out to Row 4 (see that row's own comment). Every
+                     element below is the SAME element/id/function this
+                     workspace already used -- only relocated, none
+                     renamed, none removed. -->
                 <!-- Row 3: main preparation/configuration working area,
                      3 slots on a wide desktop (left: Worksheet/Header &
                      Data Region/Time Axis Setup, middle: Column Roles,
@@ -5648,7 +5723,7 @@
                      classes for consistency with Rows 1/2/4, reusing the
                      SAME 1180px/820px breakpoints rather than a second,
                      duplicated set. -->
-                <div class="ww-data-prep-row ww-data-prep-row-3 ww-data-prep-row-cols ww-data-prep-config-grid">
+                <div class="ww-data-prep-row ww-data-prep-row-3 ww-data-prep-row-3-grid">
                 <div class="ww-data-prep-config-col">
                 <!-- Excel only -- hides cleanly for CSV via
                      wwDataPrepRenderWorksheetSelector()'s own additive
@@ -5783,6 +5858,20 @@
                     <div class="upload-status" id="wwDataPrepStructureStatus" role="status" aria-live="polite"></div>
                 </section>
                 </div>
+                </div>
+                <!-- /ww-data-prep-row-3-grid (Row 3) -->
+
+                <!-- Row 4 (layout-experiment rearrangement, 2026-09-06):
+                     Time Axis Setup + Pending Issues/Readiness, newly
+                     paired per the approved new composition. Time Axis
+                     Setup is re-parented from Row 3's old third slot;
+                     Issues is re-parented from the old Row 5 (which used
+                     to also host Final Actions, now its own Row 6). No
+                     id/function/behavior changed on either card, only
+                     their row placement -- wwDataPrepRenderTimeAxis*()/
+                     wwDataPrepRenderIssues() still target the exact same
+                     elements. -->
+                <div class="ww-data-prep-row ww-data-prep-row-4 ww-data-prep-row-4-grid">
                 <div class="ww-data-prep-config-col">
                 <!-- Approved 5-row layout: Time Axis Setup now lives in
                      Row 3's right slot (previously stacked into the left
@@ -5800,37 +5889,58 @@
                          .ww-info-tip-trigger/wwInfoTipShow()/
                          wwInfoTipHide() mechanism Row 3A/3B's own titles
                          already use -- never a second tooltip system. -->
+                    <!-- UAT fix (2026-09-06): the separate "Hide"/
+                         "Configure" collapse interaction is retired --
+                         the panel now stays permanently visible, same
+                         "always-visible compact card" treatment Row 3A's
+                         own Header & Data Region already uses (only
+                         Advanced options/Advanced details, below, keep
+                         their own independent collapse). No id/behavior
+                         change to anything else in this header. -->
                     <div class="ww-data-prep-panel-header">
                         <div>
                             <h3>Time Axis Setup <span class="ww-info-tip"><button type="button" class="ww-info-tip-trigger" aria-label="About Time Axis Setup" aria-describedby="wwInfoTipPortal" data-tooltip-text="Configure how Powerwave should interpret the recording timeline. Powerwave never guesses a date order or invents a timezone -- ambiguous cases always require your explicit choice."><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7.2" x2="8" y2="11.3"/><circle cx="8" cy="4.7" r="0.9" fill="currentColor" stroke="none"/></svg></button></span></h3>
                         </div>
-                        <button type="button" class="secondary" id="wwDataPrepTimeAxisToggleBtn">Configure</button>
                     </div>
-                    <!-- Time Setup redesign: the always-visible compact
-                         summary now names the TWO user-facing questions
-                         directly answered (what kind of time, which
-                         column) rather than raw Family(Provenance) --
-                         "Status"/diagnostics-count moved to the local
-                         validity line below (icon + short message) and
-                         Advanced details (technical enum values), never
-                         shown here as bare backend vocabulary. -->
-                    <dl class="ww-data-prep-structure-summary" id="wwDataPrepTimeAxisSummary">
+                    <!-- UAT fix (2026-09-06): the previous permanent "Time
+                         format"/"Time column" `<dl>` read as raw metadata,
+                         disconnected from the actual status line below it
+                         -- kept in the DOM (still populated by
+                         wwDataPrepRenderTimeAxisSummary(), which several
+                         OTHER things key off unchanged) but visually
+                         retired via the SAME .ww-data-prep-visually-
+                         removed convention Row 3A/Issues already use for
+                         their own retired elements, never deleted (no
+                         null-ref risk). Its computed text is now reused,
+                         not duplicated, as the SECOND line of the one
+                         unified status message below (see
+                         wwDataPrepRenderTimeAxisValidity()). -->
+                    <dl class="ww-data-prep-structure-summary ww-data-prep-visually-removed" id="wwDataPrepTimeAxisSummary">
                         <div><dt>Time format</dt><dd id="wwDataPrepTimeAxisSummaryInterpretation">Not set</dd></div>
                         <div><dt>Time column</dt><dd id="wwDataPrepTimeAxisSummaryColumns">None selected</dd></div>
                     </dl>
-                    <!-- Local validity: a compact echo of the SAME backend/
-                         diagnostic state Preparation Status itself reads
-                         (wwDataPrepRenderTimeAxisValidity(), never a second
-                         readiness engine -- task's own "do not duplicate
-                         Preparation Status" rule) -- reuses the exact
-                         --ok/--warn coloring the global headline already
-                         uses via `data-ready`. -->
+                    <!-- One compact, user-oriented status block (UAT fix,
+                         2026-09-06): icon + headline + one adaptive detail
+                         line, replacing the old bare metadata summary
+                         above. Still the SAME backend/diagnostic state
+                         Preparation Status itself reads
+                         (wwDataPrepRenderTimeAxisValidity(), never a
+                         second readiness engine -- task's own "do not
+                         duplicate Preparation Status" rule), just
+                         restructured so the detail line lives INSIDE this
+                         one card (subtle success/warning background,
+                         reusing the same color-mix()/--ok-wash technique
+                         the Detect-result card below already
+                         established) instead of as a disconnected
+                         sibling paragraph. -->
                     <div class="ww-data-prep-time-axis-validity" id="wwDataPrepTimeAxisValidity" data-state="unconfigured">
-                        <span id="wwDataPrepTimeAxisValidityIcon" aria-hidden="true"></span>
-                        <span id="wwDataPrepTimeAxisValidityText">Time axis not yet configured</span>
+                        <div class="ww-data-prep-time-axis-validity-line">
+                            <span id="wwDataPrepTimeAxisValidityIcon" aria-hidden="true"></span>
+                            <span id="wwDataPrepTimeAxisValidityText">Time axis not configured</span>
+                        </div>
+                        <p class="ww-data-prep-time-axis-validity-detail" id="wwDataPrepTimeAxisValidityDetail"></p>
                     </div>
-                    <p class="ww-data-prep-time-axis-validity-detail" id="wwDataPrepTimeAxisValidityDetail" hidden></p>
-                    <div id="wwDataPrepTimeAxisDetails" hidden>
+                    <div id="wwDataPrepTimeAxisDetails">
                         <p class="hint" id="wwDataPrepTimeAxisNoColumnsHint" hidden>No Time Axis columns selected -- assign the "Time Axis" role to one or more columns in Structure first.</p>
                         <div id="wwDataPrepTimeAxisForm">
                             <!-- Normal dropdown: the five common,
@@ -6103,7 +6213,17 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="ww-data-prep-structure-controls">
+                                <!-- UAT fix (2026-09-06): Detect previously sat flush
+                                     against whichever conditional field happened to be
+                                     visible above it (Unit/Index timing/Repeated
+                                     Timestamp, all with zero bottom margin of their
+                                     own) -- a dedicated modifier class for clear
+                                     vertical separation, scoped here rather than on
+                                     the shared `.ww-data-prep-structure-controls`
+                                     base (also used for Save/Clear and other button
+                                     rows in this same panel, out of this fix's
+                                     scope). -->
+                                <div class="ww-data-prep-structure-controls ww-data-prep-time-axis-detect-row">
                                     <button type="button" class="secondary" id="wwDataPrepTimeAxisDetectBtn">Detect</button>
                                 </div>
                                 <!-- Detection assistance card (DEC-082:
@@ -6248,12 +6368,46 @@
                     </div>
                 </section>
                 </div>
-                </div>
-                <!-- /ww-data-prep-config-grid (Row 3) -->
+                <div class="ww-data-prep-config-col">
+                <!-- Slice 6 (DEC-072): Preparation Readiness Issue panel.
+                     Plumbing only -- backend-derived, informational-only
+                     findings about the CURRENT preparation state, never a
+                     readiness gate the frontend itself computes. The
+                     header badge stays "Needs Preparation" regardless of
+                     what is shown here. Every issue/count here comes
+                     straight from GET .../issues -- the frontend never
+                     invents or classifies a finding itself.
 
-                <!-- Row 4: full-width Data Preview, the final major
+                     Visual redesign: the previous "View Issues"
+                     progressive-disclosure toggle is retired in favor of
+                     the mock's own always-visible compact issue list --
+                     #wwDataPrepIssuesToggleBtn is kept in the DOM
+                     (wwDataPrep.issuesExpanded now defaults/resets to
+                     `true`) rather than removed, so wwDataPrepRenderIssues()
+                     itself is unchanged; only the toggle's own visibility
+                     changed (.ww-data-prep-visually-removed).
+
+                     Layout-experiment rearrangement (2026-09-06):
+                     re-parented here from the old Row 5 (paired with
+                     Final Actions there) to pair with Time Axis Setup in
+                     this new Row 4 instead -- no id/function changed. -->
+                <section class="panel ww-cc-panel ww-data-prep-card" id="wwDataPrepIssuesCard">
+                    <div class="ww-data-prep-panel-header">
+                        <h3>Issues</h3>
+                        <button type="button" class="secondary ww-data-prep-visually-removed" id="wwDataPrepIssuesToggleBtn">View Issues</button>
+                    </div>
+                    <p class="ww-data-prep-card-subtitle">Reports whether the current preparation is ready to convert into Powerwave.</p>
+                    <p class="ww-data-prep-issue-headline" id="wwDataPrepIssueHeadline"></p>
+                    <div class="ww-data-prep-issue-counts" id="wwDataPrepIssueCounts"></div>
+                    <div id="wwDataPrepIssueGroups"></div>
+                </section>
+                </div>
+                </div>
+                <!-- /ww-data-prep-row-4-grid (Row 4) -->
+
+                <!-- Row 5: full-width Data Preview, the final major
                      content row. -->
-                <section class="panel ww-cc-panel ww-data-prep-card ww-data-prep-preview-card ww-data-prep-row ww-data-prep-row-4">
+                <section class="panel ww-cc-panel ww-data-prep-card ww-data-prep-preview-card ww-data-prep-row ww-data-prep-row-5">
                     <div class="ww-data-prep-toolbar">
                         <div>
                             <h3 id="wwDataPrepPreviewHeading">Raw Data Preview</h3>
@@ -6294,51 +6448,28 @@
                     <div class="upload-status" id="wwDataPrepStatus" role="status" aria-live="polite"></div>
                 </section>
 
-                <!-- Row 5: Review & Final Actions (approved 5-row
-                     layout, supersedes the previous full-width action
-                     bar). Left slot (~2fr): Issues/Readiness -- the SAME
-                     #wwDataPrepIssuesCard section Row 3 used to host
-                     (task's own "Issues must no longer live in Row 3"
-                     rule), re-parented only -- no id/function changed,
-                     wwDataPrepRenderIssues() still targets the exact
-                     same elements. Right slot (~1fr): Final Actions --
-                     the SAME "Continue to Powerwave"/Export elements,
-                     also re-parented only
+                <!-- Row 6: Final Actions alone, on its own compact row
+                     (layout-experiment rearrangement, 2026-09-06) --
+                     Issues moved up to pair with Time Axis Setup in Row
+                     4 instead (see that row's own comment). The SAME
+                     "Continue to Powerwave"/Export elements, re-parented
+                     only -- no id/function changed
                      (wwDataPrepRenderConversionAction()/
                      wwDataPrepRenderExportAction() still target these
-                     exact elements). "Reset All Changes" stays in Row 4
-                     (Data Preview) per the task's own explicit rule --
-                     not duplicated here. -->
-                <div class="ww-data-prep-row ww-data-prep-row-5 ww-data-prep-row-cols-2">
-                <div class="ww-data-prep-config-col">
-                <!-- Slice 6 (DEC-072): Preparation Readiness Issue panel.
-                     Plumbing only -- backend-derived, informational-only
-                     findings about the CURRENT preparation state, never a
-                     readiness gate the frontend itself computes. The
-                     header badge stays "Needs Preparation" regardless of
-                     what is shown here. Every issue/count here comes
-                     straight from GET .../issues -- the frontend never
-                     invents or classifies a finding itself.
+                     exact elements). "Reset All Changes" stays in Row 5
+                     (Data Preview) per the original task's own explicit
+                     rule -- not duplicated here.
 
-                     Visual redesign: the previous "View Issues"
-                     progressive-disclosure toggle is retired in favor of
-                     the mock's own always-visible compact issue list --
-                     #wwDataPrepIssuesToggleBtn is kept in the DOM
-                     (wwDataPrep.issuesExpanded now defaults/resets to
-                     `true`) rather than removed, so wwDataPrepRenderIssues()
-                     itself is unchanged; only the toggle's own visibility
-                     changed (.ww-data-prep-visually-removed). -->
-                <section class="panel ww-cc-panel ww-data-prep-card" id="wwDataPrepIssuesCard">
-                    <div class="ww-data-prep-panel-header">
-                        <h3>Issues</h3>
-                        <button type="button" class="secondary ww-data-prep-visually-removed" id="wwDataPrepIssuesToggleBtn">View Issues</button>
-                    </div>
-                    <p class="ww-data-prep-card-subtitle">Reports whether the current preparation is ready to convert into Powerwave.</p>
-                    <p class="ww-data-prep-issue-headline" id="wwDataPrepIssueHeadline"></p>
-                    <div class="ww-data-prep-issue-counts" id="wwDataPrepIssueCounts"></div>
-                    <div id="wwDataPrepIssueGroups"></div>
-                </section>
-                </div>
+                     Capped to a comfortable content max-width rather
+                     than stretched full-bleed: `.ww-data-prep-action-
+                     bar-primary` already sets `align-items: stretch` (a
+                     deliberate choice when this card shared a narrow
+                     ~1fr grid slot with Issues) -- unconstrained on a
+                     full-width row, "Continue to Powerwave" would
+                     stretch across the entire page, exactly this row's
+                     own explicit "no unnecessary full-width visual
+                     weight" requirement. -->
+                <div class="ww-data-prep-row ww-data-prep-row-6">
                 <div class="ww-data-prep-config-col ww-data-prep-final-actions">
                     <div class="ww-data-prep-export-action">
                         <button type="button" class="secondary" id="wwDataPrepExportBtn" disabled>Export Cleaned Data</button>
@@ -6369,7 +6500,7 @@
                     </div>
                 </div>
                 </div>
-                <!-- /ww-data-prep-row-5 -->
+                <!-- /ww-data-prep-row-6 -->
             </section>
 
             <!-- Slice 4 (DEC-072): Reset All Changes confirmation --
@@ -8683,9 +8814,13 @@
             // own layout (their "Configure"/"View Issues" toggle buttons
             // still exist in the DOM but are permanently hidden via CSS,
             // .ww-data-prep-visually-removed) -- both default/reset to
-            // `true` rather than `false`. Time Axis Setup is unchanged
-            // (still a genuine progressive-disclosure card, see
-            // timeAxisExpanded below).
+            // `true` rather than `false`. Time Axis Setup's own
+            // equivalent flag (`timeAxisExpanded`) and its "Hide"/
+            // "Configure" toggle button were both removed outright in a
+            // follow-up UAT fix (2026-09-06) -- the panel is now
+            // permanently visible too, with no leftover flag at all
+            // (unlike Issues/Structure's own toggle buttons, which stay
+            // in the DOM harmlessly unused).
             issuesExpanded: true,
             structureExpanded: true,
             // Slice 7 (DEC-072): Time-Axis interpretation FRAMEWORK
@@ -8693,12 +8828,8 @@
             // GET .../time-axis response body (a
             // TimeAxisInterpretationResultOut), or `null` before it has
             // ever loaded. Never computed locally -- the frontend only
-            // ever displays what the backend derived. `timeAxisExpanded`
-            // is purely local progressive-disclosure state, reset every
-            // openDataPreparationWorkspace() run, exactly like
-            // issuesExpanded/structureExpanded above.
+            // ever displays what the backend derived.
             timeAxisSummary: null,
-            timeAxisExpanded: false,
             // Concurrency/stale-response race fix: monotonic request-
             // generation counters, the SAME pattern wwTable.requestSeq/
             // channelEntry.requestSeq already use elsewhere -- only the
@@ -9641,10 +9772,13 @@
             }
         }
 
+        // UAT fix (2026-09-06): the panel is now permanently visible (its
+        // own "Hide"/"Configure" toggle was removed), so this "Configure
+        // Time Axis" call-to-action (Row 5's Sample-Index-without-
+        // interval limitation notice) now only needs to scroll the panel
+        // into view -- the expand-and-relabel lines this function used to
+        // also do are gone along with the toggle itself.
         function wwDataPrepConfigureTimeAxis() {
-            wwDataPrep.timeAxisExpanded = true;
-            document.getElementById("wwDataPrepTimeAxisDetails").hidden = false;
-            document.getElementById("wwDataPrepTimeAxisToggleBtn").textContent = "Hide";
             document.getElementById("wwDataPrepTimeAxisPanel").scrollIntoView({ behavior: "smooth", block: "start" });
         }
 
@@ -10024,14 +10158,18 @@
                 iconEl.textContent = "⚠";
                 textEl.textContent = "Unsaved Time Axis changes";
                 detailEl.textContent = "Save or revert the current Time Axis configuration before continuing.";
-                detailEl.hidden = false;
                 return;
             }
+            // UAT fix (2026-09-06): a compact, user-oriented status
+            // message replaces the old bare "TIME FORMAT"/"TIME COLUMN"
+            // metadata pair -- for the unconfigured case, a plain next
+            // step ("Select a time format and time column to continue.")
+            // rather than no detail line at all.
             if (status === "unconfigured") {
                 el.dataset.state = "unconfigured";
-                iconEl.textContent = "";
-                textEl.textContent = "Time axis not yet configured";
-                detailEl.hidden = true;
+                iconEl.textContent = "⚠";
+                textEl.textContent = "Time axis not configured";
+                detailEl.textContent = "Select a time format and time column to continue.";
                 return;
             }
 
@@ -10040,18 +10178,21 @@
             const attention = !!blocking;
             el.dataset.state = attention ? "attention" : "valid";
             iconEl.textContent = attention ? "⚠" : "✓";
-            textEl.textContent = attention ? "Time axis needs attention" : "Time axis is valid";
+            textEl.textContent = attention ? "Time axis needs attention" : "Time axis configured";
 
             if (attention) {
                 detailEl.textContent = blocking.message;
-                detailEl.hidden = false;
                 return;
             }
-            const parts = [];
-            if (wwDataPrep.totalRowCount != null) parts.push(Number(wwDataPrep.totalRowCount).toLocaleString() + " rows");
-            if (summary && summary.interval_seconds) parts.push("approximately " + Math.round(1 / summary.interval_seconds) + " Hz");
-            detailEl.hidden = !parts.length;
-            if (parts.length) detailEl.textContent = parts.join(" · ");
+            // UAT fix (2026-09-06): the configured/valid detail line now
+            // names WHAT is configured (interpreter · column) instead of
+            // row-count/interval trivia -- reuses the SAME text the
+            // (now visually-retired) Time format/Time column summary
+            // above already computes, never a second, duplicated
+            // computation of the same values.
+            const interpretationText = document.getElementById("wwDataPrepTimeAxisSummaryInterpretation").textContent;
+            const columnsText = document.getElementById("wwDataPrepTimeAxisSummaryColumns").textContent;
+            detailEl.textContent = interpretationText + " · " + columnsText;
         }
 
         // Advanced details: technical values only, collapsed by default,
@@ -11294,16 +11435,6 @@
             document.getElementById("wwDataPrepTimeAxisRepeatedTimestampRateInput").focus();
         });
 
-        // Progressive disclosure -- identical toggle behavior to the
-        // Structure panel's own "Configure"/"Hide" button above: purely
-        // a visibility flip, no fetch or mutation.
-        document.getElementById("wwDataPrepTimeAxisToggleBtn").addEventListener("click", () => {
-            wwDataPrep.timeAxisExpanded = !wwDataPrep.timeAxisExpanded;
-            document.getElementById("wwDataPrepTimeAxisDetails").hidden = !wwDataPrep.timeAxisExpanded;
-            document.getElementById("wwDataPrepTimeAxisToggleBtn").textContent =
-                wwDataPrep.timeAxisExpanded ? "Hide" : "Configure";
-        });
-
         // UAT enhancement (2026-09-04): First/Last -- jump directly, never
         // step through intermediate pages (a single offset write + one
         // wwDataPrepFetchPreview() call, exactly like Previous/Next below,
@@ -11903,16 +12034,18 @@
             wwDataPrepRenderFileCardRowCount();
             document.getElementById("wwDataPrepRangeLabel").textContent = "";
             wwDataPrep.issueSummary = null;
-            // Visual redesign (2026-09-06): Structure/Issues stay
-            // permanently "expanded" (always-visible compact cards, see
-            // their own state-flag comment above) -- only Time Axis Setup
-            // still resets to collapsed on every fresh open. Column
+            // Visual redesign (2026-09-06): Structure/Issues/Time Axis
+            // Setup all stay permanently "expanded" (always-visible
+            // compact cards, see their own state-flag comment above --
+            // Time Axis Setup's own `timeAxisExpanded` flag and its
+            // "Hide"/"Configure" toggle were removed outright in a
+            // follow-up UAT fix, unlike Issues/Structure's own toggles,
+            // which stay in the DOM harmlessly unused). Column
             // roles/labels are also cleared here so the compact summary
             // never briefly shows a stale count from whichever source was
             // open before this one.
             wwDataPrep.issuesExpanded = true;
             wwDataPrep.structureExpanded = true;
-            wwDataPrep.timeAxisExpanded = false;
             wwDataPrep.timeAxisSummary = null;
             wwDataPrep.columnRoles = [];
             wwDataPrep.columnEngineeringQuantities = [];
@@ -11939,8 +12072,6 @@
             wwDataPrep.columnWriteChains = new Map();
             document.getElementById("wwDataPrepStructureDetails").hidden = false;
             document.getElementById("wwDataPrepStructureToggleBtn").textContent = "Configure";
-            document.getElementById("wwDataPrepTimeAxisDetails").hidden = true;
-            document.getElementById("wwDataPrepTimeAxisToggleBtn").textContent = "Configure";
             document.getElementById("wwDataPrepTimeAxisInterpreterSelect").value = "manual";
             document.getElementById("wwDataPrepTimeAxisDateColumnSelect").innerHTML = "";
             document.getElementById("wwDataPrepTimeAxisTimeColumnSelect").innerHTML = "";
