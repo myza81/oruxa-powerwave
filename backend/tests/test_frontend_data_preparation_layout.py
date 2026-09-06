@@ -203,6 +203,56 @@ class TestRowFourIssuesReadinessRedesign:
         assert 'class="ww-data-prep-action-bar"' not in source
 
 
+class TestIssueListSimplification:
+    """Issue-list simplification (2026-09-06): each issue row is now
+    exactly icon + issue statement + muted suggested action -- the old
+    "Go to worksheet"/"Go to row" links (and their now-dead navigation
+    helpers/click listener) are removed outright, with no replacement
+    navigation control. Grouping (BLOCKING/WARNING/INFO), which issues
+    fall into which group, and every count/readiness computation are
+    completely unchanged -- presentation only."""
+
+    def test_goto_links_and_their_dead_code_are_fully_removed(self):
+        source = _source()
+        assert ">Go to worksheet<" not in source
+        assert ">Go to row<" not in source
+        assert "ww-data-prep-issue-goto-btn" not in source
+        assert "function wwDataPrepGoToIssueWorksheet(" not in source
+        assert "function wwDataPrepGoToIssueRow(" not in source
+
+    def test_issue_row_is_icon_plus_message_plus_action(self):
+        source = _source()
+        body = _function_body(source, "function wwDataPrepRenderIssues() {", "function wwDataPrepIsIndexOnlyWithoutInterval")
+        assert "ww-data-prep-issue-item-icon" in body
+        assert "ww-data-prep-issue-item-message" in body
+        assert "ww-data-prep-issue-item-action" in body
+        # The suggested action is still the SAME field, just a
+        # dedicated element instead of a trailing ` — text` span.
+        assert "issue.suggested_action" in body
+
+    def test_message_is_visually_stronger_than_the_muted_action(self):
+        source = _source()
+        message_rule = _function_body(source, ".ww-data-prep-issue-item-message {", "}")
+        action_rule = _function_body(source, ".ww-data-prep-issue-item-action {", "}")
+        assert "font-weight: 600" in message_rule
+        assert "color: var(--text-dim)" in action_rule
+        # Explicitly not italic -- the shared .hint class this used to
+        # reuse is italic by default; task's own "avoid excessive
+        # italics" rule.
+        assert "font-style: normal" in action_rule
+
+    def test_severity_grouping_and_labels_are_unchanged(self):
+        source = _source()
+        assert 'WW_DATA_PREP_SEVERITY_LABELS = { blocking: "Blocking", warning: "Warnings", info: "Info" };' in source
+        body = _function_body(source, "function wwDataPrepRenderIssues() {", "function wwDataPrepIsIndexOnlyWithoutInterval")
+        assert 'for (const severity of ["blocking", "warning", "info"])' in body
+
+    def test_icon_column_has_a_consistent_fixed_width(self):
+        source = _source()
+        rule = _function_body(source, ".ww-data-prep-issue-item-icon {", "}")
+        assert "flex: 0 0 16px" in rule
+
+
 class TestRowSixFinalActions:
     """Layout-experiment rearrangement (2026-09-06): Final Actions now
     lives alone on its own Row 6 (previously paired with Issues on the

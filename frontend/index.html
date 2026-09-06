@@ -1217,17 +1217,31 @@
         .ww-data-prep-issue-headline { margin: 0 0 2px; font-size: 0.9rem; font-weight: 600; }
         .ww-data-prep-issue-group { margin-bottom: 12px; }
         .ww-data-prep-issue-group-title { margin: 0 0 4px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
-        .ww-data-prep-issue-group ul { margin: 0; padding-left: 18px; list-style: none; }
+        .ww-data-prep-issue-group ul { margin: 0; padding-left: 0; list-style: none; }
+        /* Issue-list simplification (2026-09-06): icon + a two-line text
+           stack (issue statement, then its muted suggested action right
+           below) -- no more trailing "Go to worksheet"/"Go to row"
+           links, so there is no right-side gap to leave empty. A fixed-
+           width icon column (rather than `flex: 0 0 auto`, which let
+           "⚠" and "ℹ" sit at slightly different horizontal positions
+           depending on each glyph's own natural width) keeps every
+           row's text starting at the exact same x position. */
         .ww-data-prep-issue-item {
-            display: flex; align-items: baseline; gap: 6px; font-size: 0.85rem; margin-bottom: 6px;
+            display: flex; align-items: flex-start; gap: 6px; font-size: 0.85rem; margin-bottom: 8px;
         }
-        .ww-data-prep-issue-item-icon { flex: 0 0 auto; }
-        .ww-data-prep-issue-item[data-severity="blocking"] { color: var(--error); }
+        .ww-data-prep-issue-item-icon { flex: 0 0 16px; text-align: center; }
+        .ww-data-prep-issue-item-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .ww-data-prep-issue-item-message { font-weight: 600; }
+        /* Muted secondary text, deliberately NOT italic (the shared
+           .hint class this used to reuse is italic by default) --
+           visually subordinate to the statement above via color/weight
+           alone. */
+        .ww-data-prep-issue-item-action { font-size: 0.78rem; font-weight: 400; font-style: normal; color: var(--text-dim); }
+        .ww-data-prep-issue-item[data-severity="blocking"] .ww-data-prep-issue-item-message { color: var(--error); }
         .ww-data-prep-issue-item[data-severity="blocking"] .ww-data-prep-issue-item-icon { color: var(--error); }
-        .ww-data-prep-issue-item[data-severity="warning"] { color: var(--warn); }
+        .ww-data-prep-issue-item[data-severity="warning"] .ww-data-prep-issue-item-message { color: var(--warn); }
         .ww-data-prep-issue-item[data-severity="warning"] .ww-data-prep-issue-item-icon { color: var(--warn); }
         .ww-data-prep-issue-item[data-severity="info"] .ww-data-prep-issue-item-icon { color: var(--text-dim); }
-        .ww-data-prep-issue-goto-btn { font: inherit; font-size: 0.72rem; border: none; background: none; color: var(--accent); cursor: pointer; text-decoration: underline; padding: 0 0 0 6px; }
         /* CSV/Excel ingestion Slice 10 (DEC-072): the conversion action
            itself -- deliberately styled distinctly from the headline
            above it (a colored status line) rather than as another list
@@ -2350,6 +2364,19 @@
             color: var(--text); font-size: 0.68rem; line-height: 1.4;
             padding: 8px 10px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
             pointer-events: none;
+            /* Column Roles refinement (2026-09-06): `wwInfoTipShow()`
+               only ever sets `portal.textContent` (plain text, never
+               innerHTML -- see its own comment), so a multi-line
+               tooltip like Column Roles' own "one role per line" text
+               needs the portal itself to actually RENDER the `\n`
+               characters already present in that text node as line
+               breaks -- `white-space: normal` (the default) collapses
+               them to a single space. `pre-line` does that while still
+               collapsing repeated spaces/wrapping normally otherwise,
+               so every OTHER single-line tooltip in the app (Header
+               row, Data start/end row, Time Axis Setup, etc.) renders
+               byte-for-byte identically to before. */
+            white-space: pre-line;
             /* One step above this app's own previous highest fixed-layer
                z-index (.ww-annotation-drawer's 40) -- a considered,
                documented value on the SAME established scale, never an
@@ -5869,7 +5896,9 @@
                      could show, an accepted constraint of reusing the
                      existing system as-is. -->
                 <section class="panel ww-cc-panel ww-data-prep-card">
-                    <h3>Column Roles <span class="ww-info-tip"><button type="button" class="ww-info-tip-trigger" aria-label="About column roles" aria-describedby="wwInfoTipPortal" data-tooltip-text="Time Axis: defines the X-axis. Waveform: creates a Y-axis channel. Not Assigned (default): not used by Powerwave, kept in the original source, and excluded from the cleaned export."><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7.2" x2="8" y2="11.3"/><circle cx="8" cy="4.7" r="0.9" fill="currentColor" stroke="none"/></svg></button></span></h3>
+                    <h3>Column Roles <span class="ww-info-tip"><button type="button" class="ww-info-tip-trigger" aria-label="About column roles" aria-describedby="wwInfoTipPortal" data-tooltip-text="Time Axis — Defines the X-axis.
+Waveform — Creates a Y-axis channel.
+Not Assigned — Not used by Powerwave; kept in the original source and excluded from the cleaned export."><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7.2" x2="8" y2="11.3"/><circle cx="8" cy="4.7" r="0.9" fill="currentColor" stroke="none"/></svg></button></span></h3>
                     <div class="ww-data-prep-table-wrap ww-data-prep-column-roles-wrap">
                         <table class="ww-data-prep-table ww-data-prep-columns-table" id="wwDataPrepColumnsTable"></table>
                     </div>
@@ -9639,13 +9668,19 @@
                 (bySeverity[issue.severity] || bySeverity.info).push(issue);
             }
 
-            // Row 4 refinement: a small severity icon per row (task
-            // section 10) -- reuses the SAME plain-text-icon convention
-            // (aria-hidden, no new icon system) Time Axis Setup's own
-            // status/detect cards already established. The issue's own
-            // message/suggested_action text is completely unchanged --
-            // this app has no separate "issue title" field to split out,
-            // so none is invented.
+            // Row 4 refinement: a small severity icon per row -- reuses
+            // the SAME plain-text-icon convention (aria-hidden, no new
+            // icon system) Time Axis Setup's own status/detect cards
+            // already established. Issue-list simplification (2026-09-06):
+            // each row is now exactly icon + issue statement + suggested
+            // action (a two-line stack, action visually muted/secondary
+            // beneath the stronger statement) -- the "Go to worksheet"/
+            // "Go to row" links are gone (the user is already on this
+            // page; a click-away navigation control was unnecessary
+            // clutter here), with no replacement navigation control.
+            // Issue text/severity content is completely unchanged --
+            // this app has no separate "issue title" field to split
+            // out, so none is invented.
             const severityIcon = { blocking: "⚠", warning: "⚠", info: "ℹ" };
             let html = "";
             for (const severity of ["blocking", "warning", "info"]) {
@@ -9654,28 +9689,14 @@
                 html += '<div class="ww-data-prep-issue-group"><h4 class="ww-data-prep-issue-group-title">' +
                     WW_DATA_PREP_SEVERITY_LABELS[severity] + '</h4><ul>';
                 for (const issue of items) {
-                    const hasWorksheetNav = issue.location && issue.location.worksheet_index !== null &&
-                        issue.location.worksheet_index !== undefined;
-                    // Slice 9: a location with a row_number (most
-                    // time-axis/waveform findings) gets its own "Go to
-                    // row" jump -- reuses the SAME paged preview offset
-                    // mechanism "Go to Last Rows" already established,
-                    // never a second navigation framework.
-                    const hasRowNav = issue.location && issue.location.row_number !== null &&
-                        issue.location.row_number !== undefined;
                     html += '<li class="ww-data-prep-issue-item" data-severity="' + severity + '">' +
                         '<span class="ww-data-prep-issue-item-icon" aria-hidden="true">' + severityIcon[severity] + '</span>' +
-                        '<span>' + escapeHtml(issue.message) + '</span>' +
-                        (issue.suggested_action ? '<span class="hint"> — ' + escapeHtml(issue.suggested_action) + '</span>' : '') +
-                        (hasWorksheetNav
-                            ? ' <button type="button" class="ww-data-prep-issue-goto-btn" data-worksheet="' +
-                              issue.location.worksheet_index + '">Go to worksheet</button>'
+                        '<span class="ww-data-prep-issue-item-text">' +
+                        '<span class="ww-data-prep-issue-item-message">' + escapeHtml(issue.message) + '</span>' +
+                        (issue.suggested_action
+                            ? '<span class="ww-data-prep-issue-item-action">' + escapeHtml(issue.suggested_action) + '</span>'
                             : '') +
-                        (hasRowNav
-                            ? ' <button type="button" class="ww-data-prep-issue-goto-btn" data-row="' +
-                              issue.location.row_number + '">Go to row</button>'
-                            : '') +
-                        '</li>';
+                        '</span></li>';
                 }
                 html += "</ul></div>";
             }
@@ -9924,31 +9945,13 @@
             }
         }
 
-        // Reuses the existing worksheet <select>'s own change handler
-        // (PATCH selection -> re-fetch preview+issues) rather than a
-        // second, separate worksheet-switch implementation.
-        function wwDataPrepGoToIssueWorksheet(worksheetIndex) {
-            const select = document.getElementById("wwDataPrepWorksheetSelect");
-            if (parseInt(select.value, 10) === worksheetIndex) return;
-            select.value = String(worksheetIndex);
-            select.dispatchEvent(new Event("change"));
-        }
-
-        // Slice 9: jumps the EXISTING paged preview to whichever page
-        // contains this row number, reusing the same offset/limit state
-        // "Go to Last Rows" already established -- never a second,
-        // bespoke navigation mechanism.
-        function wwDataPrepGoToIssueRow(rowNumber) {
-            wwDataPrep.offset = Math.max(0, Math.floor((rowNumber - 1) / wwDataPrep.limit) * wwDataPrep.limit);
-            wwDataPrepFetchPreview();
-        }
-
-        document.getElementById("wwDataPrepIssueGroups").addEventListener("click", (event) => {
-            const btn = event.target.closest(".ww-data-prep-issue-goto-btn");
-            if (!btn) return;
-            if (btn.dataset.worksheet !== undefined) wwDataPrepGoToIssueWorksheet(parseInt(btn.dataset.worksheet, 10));
-            if (btn.dataset.row !== undefined) wwDataPrepGoToIssueRow(parseInt(btn.dataset.row, 10));
-        });
+        // Issue-list simplification (2026-09-06): the "Go to worksheet"/
+        // "Go to row" per-issue links (and the two navigation helpers/
+        // delegated click listener that only ever existed to serve
+        // them) are removed outright -- confirmed neither
+        // wwDataPrepGoToIssueWorksheet()/wwDataPrepGoToIssueRow() nor
+        // the #wwDataPrepIssueGroups click listener had any other
+        // caller, so nothing is left dangling.
 
         document.getElementById("wwDataPrepIssuesToggleBtn").addEventListener("click", () => {
             wwDataPrep.issuesExpanded = !wwDataPrep.issuesExpanded;
