@@ -92,17 +92,32 @@ class TestFractionalSamplingRatePresentation:
 
 
 class TestStartTimeIsTimeDomainAware:
+    """`formatRecordingStartTime()` is now a thin wrapper over the SHARED
+    `wwFormatRecordingTimeIdentity()` policy (time-identity consistency
+    fix) -- these tests check the shared function's own body, which is
+    where the real branch logic now lives, plus that the Recordings
+    table's own call site still passes the whole `source` unchanged."""
+
     def test_formatter_takes_the_whole_source_not_just_start_time(self):
         source = _source()
         assert "function formatRecordingStartTime(source)" in source
         assert "function formatRecordingStartTime(startTime)" not in source
 
-    def test_time_of_day_branch_uses_reference_seconds_not_start_time(self):
+    def test_start_time_formatter_delegates_to_the_shared_helper(self):
         source = _source()
         body = _function_body(
             source,
             "function formatRecordingStartTime(source)",
             "function formatSamplingRate(rate)",
+        )
+        assert "return wwFormatRecordingTimeIdentity(source);" in body
+
+    def test_time_of_day_branch_uses_reference_seconds_not_start_time(self):
+        source = _source()
+        body = _function_body(
+            source,
+            "function wwFormatRecordingTimeIdentity(source, opts)",
+            "function formatRecordingStartTime(source)",
         )
         assert 'source.timing_reference === "time_of_day"' in body
         assert "source.time_of_day_reference_seconds" in body
@@ -116,10 +131,24 @@ class TestStartTimeIsTimeDomainAware:
         source = _source()
         body = _function_body(
             source,
+            "function wwFormatRecordingTimeIdentity(source, opts)",
             "function formatRecordingStartTime(source)",
-            "function formatSamplingRate(rate)",
         )
-        assert 'source.start_time ? source.start_time.replace("T", " ") : "—"' in body
+        assert "source.start_time.replace(\"T\", \" \")" in body
+
+    def test_non_absolute_non_time_of_day_falls_back_to_a_named_label_not_a_dash(self):
+        # Time-identity consistency fix: the old unconditional "—"
+        # fallback is gone -- a genuinely non-positional Time Axis
+        # (Elapsed/Sample Index/Reconstructed-without-origin/Manual)
+        # names itself instead, reusing the SAME label map the Data
+        # Preparation Time Format dropdown already uses.
+        source = _source()
+        body = _function_body(
+            source,
+            "function wwFormatRecordingTimeIdentity(source, opts)",
+            "function formatRecordingStartTime(source)",
+        )
+        assert "WW_DATA_PREP_INTERPRETER_LABELS[source.preparation_interpreter_id] || \"—\"" in body
 
     def test_call_site_passes_the_whole_source_not_just_start_time(self):
         source = _source()
@@ -130,7 +159,7 @@ class TestStartTimeIsTimeDomainAware:
         source = _source()
         body = _function_body(
             source,
-            "function formatRecordingStartTime(source)",
+            "function wwFormatRecordingTimeIdentity(source, opts)",
             "function formatSamplingRate(rate)",
         )
         assert "1970-01-01" not in body

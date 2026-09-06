@@ -141,6 +141,22 @@ class SourceSummaryOut(BaseModel):
     # origin without a fabricated date, instead of the `start_time`
     # field alone (deliberately `None` for a non-absolute source).
     time_of_day_reference_seconds: float | None = None
+    # Time-identity presentation fix: `timing_reference` alone collapses
+    # `elapsed_numeric`/`sample_index`/`repeated_timestamp_precision_loss`
+    # (reconstructed-but-not-absolute)/`manual` into one generic
+    # "relative_elapsed" bucket -- there is no way for a display-layer
+    # consumer to tell these apart, or to know a CSV/Excel source even
+    # HAD a named interpreter, from `timing_reference` alone. Mirrors
+    # `SourceMetadata.preparation_provenance["interpreter_id"]` verbatim
+    # (already computed at conversion time, never re-derived) -- `None`
+    # for every COMTRADE source (native import, no CSV/Excel interpreter
+    # concept exists). Populated for every CSV/Excel source regardless of
+    # family; a display-layer consumer only ever consults it once
+    # `start_time`/`time_of_day_reference_seconds` are both already
+    # absent, so it is simply unused (harmless) for `absolute`/
+    # `time_of_day` sources, which are already fully disambiguated by
+    # those two fields.
+    preparation_interpreter_id: str | None = None
 
     @classmethod
     def from_domain(cls, source: SourceMetadata) -> "SourceSummaryOut":
@@ -165,6 +181,10 @@ class SourceSummaryOut(BaseModel):
             trigger_time=source.trigger_time,
             sampling_rates=list(source.sampling_rates),
             time_of_day_reference_seconds=source.time_of_day_reference_seconds,
+            preparation_interpreter_id=(
+                source.preparation_provenance.get("interpreter_id")
+                if source.preparation_provenance else None
+            ),
         )
 
 

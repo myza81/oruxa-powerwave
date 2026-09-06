@@ -2093,6 +2093,18 @@
         .source-recording-header-text { min-width: 0; flex: 1 1 auto; }
         .source-recording-name { display: block; max-width: 100%; font-size: 0.7rem; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
         .source-recording-meta { display: block; font-size: 0.65rem; color: var(--text-dim); margin-top: 2px; font-variant-numeric: tabular-nums; }
+        /* Time-identity consistency fix: its own line, separate from the
+           channel/rate/duration stats above -- matches the same visual
+           weight/style as .source-recording-meta (same font-size/color/
+           spacing convention), just a distinct line so a recording's
+           time identity (a real timestamp, a clock time, or a named
+           label like "Elapsed Time") is always visible on its own,
+           never silently folded into -- or dropped from -- the stats
+           line. overflow-wrap: anywhere matches .source-recording-name's
+           own small-screen wrapping rule (task's own "readable at
+           ~390px, no horizontal overflow" requirement) -- a label is
+           short enough to never need it in practice, kept for safety. */
+        .source-recording-time-identity { display: block; font-size: 0.65rem; color: var(--text-dim); margin-top: 2px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
         /* Slice 1 (waveform time synchronization) integration, optional
            per that task's own section 15 -- a subtle badge only, never a
            redesign of the Synchronize Sources modal itself. */
@@ -7366,41 +7378,74 @@
             });
         }
 
-        // Phase 3B-UAT7 (final owner update): Start Time is promoted to
-        // the main Recordings table as primary recognition data. Same
-        // plain-string `.replace("T", " ")` technique used everywhere
-        // else in this app for COMTRADE-sourced timestamps -- NOT
-        // `new Date(...)`, which would (a) silently round microsecond
-        // precision to JS Date's millisecond precision and (b) apply
-        // the browser's local timezone to a value that is deliberately
-        // timezone-naive (see Phase 2C-C3). `start_time` is optional on
-        // `SourceSummaryOut` (`datetime | None`) -- not every provider
-        // guarantees one.
+        // Shared recording/event time-identity presentation (time-
+        // identity consistency fix): the ONE function every screen that
+        // shows a recording/event's start time or time identity reads
+        // through (Recording Events table, Recording sidebar) -- never a
+        // second, independently-maintained copy of this policy per
+        // screen. Decides, in order:
+        //   1. Time of Day -> the known clock-time origin
+        //      (`time_of_day_reference_seconds`), reusing
+        //      `wwFormatClockTimeFromTotalSeconds()` (the SAME group-
+        //      agnostic clock-string builder the waveform/table Time of
+        //      Day presentation layer already uses) -- NEVER a
+        //      fabricated date.
+        //   2. A real `start_time` -> the actual absolute DateTime (same
+        //      plain-string `.replace("T", " ")` technique used
+        //      everywhere else in this app for a timezone-naive
+        //      timestamp -- NOT `new Date(...)`, which would round
+        //      microsecond precision and apply a local timezone that was
+        //      never really there).
+        //   3. Neither -> the source is on a genuinely non-positional
+        //      Time Axis (Elapsed Time / Sample Number-Index /
+        //      Reconstructed Time with no safely-established origin /
+        //      Manual Interpretation) -- `preparation_interpreter_id`
+        //      (new, additive `SourceSummaryOut` field; `None` for a
+        //      native COMTRADE import, which always has a real
+        //      `start_time`) names WHICH one, via the SAME friendly
+        //      label map the Data Preparation Time Format dropdown
+        //      already uses (`WW_DATA_PREP_INTERPRETER_LABELS`) -- never
+        //      a second, divergent label set. A Reconstructed Time
+        //      source that DID establish a real DateTime/Time-of-Day
+        //      origin never reaches this branch at all: steps 1/2 above
+        //      already show it, exactly like any other interpreter that
+        //      resolved to that family (the reconstruction rule is
+        //      satisfied for free, by construction, not a special case
+        //      here). `"—"` is reserved for a genuinely unavailable/
+        //      unknown identity (no interpreter_id to name it either) --
+        //      never used merely because a timeline is non-absolute.
         //
-        // Recording Events metadata display fix: this is now
-        // time-domain-AWARE (takes the whole `source`, not just
-        // `start_time`) so a `time_of_day` source's known clock-time
-        // origin (`time_of_day_reference_seconds`) displays instead of
-        // unconditionally reading the `start_time` field, which is
-        // deliberately `None` for that family (no fabricated date --
-        // same rule Time of Day has followed since its own introduction).
-        // Reuses `wwFormatClockTimeFromTotalSeconds()`, the SAME
-        // group-agnostic clock-string builder the waveform/table Time of
-        // Day presentation layer already uses, rather than a second,
-        // divergent HH:MM:SS implementation -- this page has no time
-        // GROUP of its own (no channels/workspace state loaded here), so
-        // the group-aware `wwFormatWorkspaceClockTime()` dispatcher does
-        // not apply; only its lower-level formatter does. Any other
-        // `timing_reference` (elapsed/sample-only, or absent on a
-        // not-yet-converted "Needs Preparation" row) falls through to
-        // "—" -- never a synthetic date, never a guessed time.
-        function formatRecordingStartTime(source) {
+        // `opts.compact`: truncates an absolute timestamp to 4 fractional
+        // digits (the Recording sidebar's own established one-line-
+        // summary precision, Phase 3B-UAT7) instead of the full
+        // precision Recording Events itself shows -- the ONLY thing
+        // `compact` changes; the type decision and fallback labels are
+        // identical either way.
+        function wwFormatRecordingTimeIdentity(source, opts) {
+            opts = opts || {};
             if (source.timing_reference === "time_of_day") {
                 return Number.isFinite(source.time_of_day_reference_seconds)
                     ? wwFormatClockTimeFromTotalSeconds(source.time_of_day_reference_seconds, 3, false)
                     : "—";
             }
-            return source.start_time ? source.start_time.replace("T", " ") : "—";
+            if (source.start_time) {
+                const spaced = source.start_time.replace("T", " ");
+                if (!opts.compact) return spaced;
+                const dotIndex = spaced.indexOf(".");
+                return dotIndex === -1 ? spaced : spaced.slice(0, dotIndex + 5);
+            }
+            return WW_DATA_PREP_INTERPRETER_LABELS[source.preparation_interpreter_id] || "—";
+        }
+
+        // Phase 3B-UAT7 (final owner update): Start Time is promoted to
+        // the main Recordings table as primary recognition data.
+        // `start_time` is optional on `SourceSummaryOut` (`datetime |
+        // None`) -- not every provider/family guarantees one. A thin
+        // wrapper over the shared policy above (full precision, no
+        // `compact`) -- kept as its own named function since it is
+        // already this table's own established call-site name.
+        function formatRecordingStartTime(source) {
+            return wwFormatRecordingTimeIdentity(source);
         }
 
         // Phase 3B-UAT7 (final owner update): Sampling Rate(s) is
@@ -11524,34 +11569,39 @@
             return seconds.toPrecision(3) + " s";
         }
 
-        // RECORDINGS sidebar timestamp enhancement: `source.start_time` is
-        // the SAME raw `SourceSummaryOut.start_time` field already used by
-        // formatRecordingStartTime() (the Recordings table's Start Time
-        // column) -- the canonical recording-start datetime from
-        // TimingInformation.start_time, never trigger_time and never any
-        // Time-Group-derived alignment/offset (see DEC-057). Same
-        // `.replace("T", " ")` technique, deliberately not `new Date(...)`,
-        // for the same timezone-naive/microsecond-precision reasons
-        // documented on formatRecordingStartTime() above. Unlike that
-        // formatter, this one truncates (never rounds up, never pads) to 4
-        // fractional digits -- a canonical compact precision for this
-        // specific one-line sidebar summary, not a change to the
-        // Recordings table's own full-precision display. Elapsed-only
-        // sources have `start_time === null`; returns "" so the caller can
-        // omit the segment entirely rather than fabricate a timestamp.
-        function wwFormatSourceStartTimestamp(startTime) {
-            if (!startTime) return "";
-            const spaced = startTime.replace("T", " ");
-            const dotIndex = spaced.indexOf(".");
-            return dotIndex === -1 ? spaced : spaced.slice(0, dotIndex + 5);
+        // Time-identity consistency fix: the sidebar's own compact
+        // recording-start display now goes through the SAME shared
+        // `wwFormatRecordingTimeIdentity()` policy `formatRecordingStartTime()`
+        // (the Recordings table's Start Time column) already uses --
+        // `{ compact: true }` is the ONLY thing that differs here
+        // (truncated to 4 fractional digits for an absolute timestamp,
+        // this one-line summary's own established precision, Phase
+        // 3B-UAT7) -- never a second, divergent type-decision/fallback-
+        // label implementation. Previously this returned `""` whenever
+        // `start_time` was `null` (Elapsed/Time of Day/Sample Index/
+        // Reconstructed/Manual alike), silently OMITTING the whole
+        // segment -- the reported bug (a Time of Day recording showed no
+        // start-time line at all, reading as "Powerwave failed to
+        // capture the time"). Now always returns a real, meaningful
+        // value (a clock time, or a named label like "Elapsed Time") --
+        // never blank for a valid non-absolute timeline.
+        function wwFormatSourceTimeIdentity(source) {
+            return wwFormatRecordingTimeIdentity(source, { compact: true });
         }
 
+        // Task's own "no start-time line" bug: previously this appended
+        // the timestamp segment to the SAME line as the channel/rate/
+        // duration stats, and OMITTED it entirely when empty -- both
+        // effects hid a Time of Day (or Elapsed/Sample Index/etc.)
+        // recording's own time identity. Now returns the stats line
+        // alone; the time-identity value is always rendered as its OWN
+        // separate line by the caller (wwRenderSourceRecordingHtml()),
+        // matching the Recording Events table's own three-part layout
+        // (name / stats / time identity).
         function wwFormatSourceSummaryLine(source) {
-            const base = source.analog_channel_count + " analog &middot; " + source.digital_channel_count + " digital &middot; " +
+            return source.analog_channel_count + " analog &middot; " + source.digital_channel_count + " digital &middot; " +
                 escapeHtml(wwFormatCompactSamplingRate(source.sampling_rates)) + " &middot; " +
                 escapeHtml(wwFormatCompactDuration(source.duration_seconds));
-            const startTimestamp = wwFormatSourceStartTimestamp(source.start_time);
-            return startTimestamp ? base + " &middot; " + escapeHtml(startTimestamp) : base;
         }
 
         // Slice 1 of waveform time synchronization integration (that
@@ -11629,6 +11679,7 @@
                     '<span class="source-recording-header-text">' +
                         '<span class="source-recording-name">' + escapeHtml(recordingDisplayName(sourceSummary)) + '</span>' +
                         '<span class="source-recording-meta">' + wwFormatSourceSummaryLine(sourceSummary) + '</span>' +
+                        '<span class="source-recording-time-identity">' + escapeHtml(wwFormatSourceTimeIdentity(sourceSummary)) + '</span>' +
                     '</span>' +
                     wwSourceSyncBadgeHtml(sourceId) +
                 '</summary>' +

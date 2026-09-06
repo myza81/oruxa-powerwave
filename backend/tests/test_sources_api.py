@@ -353,6 +353,53 @@ class TestListIncludesTimeOfDayReferenceSeconds:
         assert row["time_of_day_reference_seconds"] is None
 
 
+class TestListIncludesPreparationInterpreterId:
+    """Time-identity presentation fix: `timing_reference` alone collapses
+    `elapsed_numeric`/`sample_index`/`manual` into one generic
+    "relative_elapsed" bucket -- there was no way for a display-layer
+    consumer to tell these apart, or even to know a CSV/Excel source had
+    a named interpreter at all. Confirms `preparation_interpreter_id`
+    (mirroring `SourceMetadata.preparation_provenance["interpreter_id"]`)
+    is threaded onto the list endpoint, and is `None` for a native
+    COMTRADE import (no CSV/Excel interpreter concept exists for it)."""
+
+    def test_elapsed_source_reports_its_own_interpreter_id(self, client):
+        source_id = client.post(
+            "/api/v1/workspaces/ws-prep-id-1/preparation-sources",
+            files={"csv_file": ("e.csv", io.BytesIO(b"0,1.0\n0.02,2.0\n"), "text/csv")},
+        ).json()["source_id"]
+        client.put(f"/api/v1/workspaces/ws-prep-id-1/preparation-sources/{source_id}/working/columns/0/role", json={"role": "time_axis"})
+        client.put(f"/api/v1/workspaces/ws-prep-id-1/preparation-sources/{source_id}/working/columns/1/role", json={"role": "waveform"})
+        client.put(
+            f"/api/v1/workspaces/ws-prep-id-1/preparation-sources/{source_id}/working/time-axis",
+            json={"column_indices": [0], "interpreter_id": "elapsed_numeric", "unit": "seconds", "confirmed": True},
+        )
+        client.post(f"/api/v1/workspaces/ws-prep-id-1/preparation-sources/{source_id}/convert")
+
+        [row] = client.get("/api/v1/workspaces/ws-prep-id-1/sources").json()
+
+        assert row["timing_reference"] == "relative_elapsed"
+        assert row["preparation_interpreter_id"] == "elapsed_numeric"
+
+    # Note: `manual` is deliberately NOT exercised here the same way --
+    # `convert_preparation_source()` unconditionally rejects the `manual`
+    # interpreter (DEC-083), so a Manual-interpreted source can never
+    # actually reach the converted `GET .../sources` list at all. The
+    # `manual` fallback label is kept in the shared frontend map for
+    # completeness/future-proofing (matching the task's own required
+    # policy table) rather than because it is reachable today -- see
+    # this task's own final report.
+
+    def test_comtrade_source_reports_none(self, client, comtrade_fixtures_dir):
+        cfg = _read(comtrade_fixtures_dir / "synth_ascii.cfg")
+        dat = _read(comtrade_fixtures_dir / "synth_ascii.dat")
+        client.post("/api/v1/workspaces/ws-prep-id-3/sources", files=_files(cfg, dat))
+
+        [row] = client.get("/api/v1/workspaces/ws-prep-id-3/sources").json()
+
+        assert row["preparation_interpreter_id"] is None
+
+
 class TestLifecycle:
     def test_delete_releases_ownership_and_prevents_later_access(
         self, client, comtrade_fixtures_dir
