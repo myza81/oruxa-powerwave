@@ -1542,6 +1542,18 @@
         #wwDataPrepWorksheetCsvHint { display: none; }
         #wwDataPrepWorksheetCard[data-applicable="true"] #wwDataPrepWorksheetCsvHint { display: none; }
         #wwDataPrepWorksheetCard[data-applicable="false"] #wwDataPrepWorksheetCsvHint { display: block; margin: 0; }
+        /* Row 3A refinement: "Worksheet" label left, selector (or the
+           CSV "Not applicable" hint) right, one compact row when there
+           is room -- wraps to a natural stack on narrow widths via
+           flex-wrap alone, no dedicated breakpoint needed. The "(for
+           Excel files)" annotation stays on the SAME line as the title
+           (inline, not the block-level subtitle spacing every other
+           card's own subtitle uses) so it costs no extra height. */
+        .ww-data-prep-worksheet-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .ww-data-prep-worksheet-row h3 { flex: 0 0 auto; }
+        .ww-data-prep-worksheet-subtitle { display: inline; margin: 0 0 0 4px; font-weight: 400; }
+        .ww-data-prep-worksheet-row .field { flex: 1 1 160px; min-width: 120px; margin: 0; }
+        .ww-data-prep-worksheet-csv-hint { flex: 1 1 160px; margin: 0; }
 
         /* Column Roles: a denser table than the raw Data Preview table
            below (short, bounded row count -- one row per source column,
@@ -5451,12 +5463,14 @@
                      empty oversized card for CSV"); no worksheet concept
                      exists for CSV, so nothing here is ever a fabricated
                      single-sheet selector. -->
-                <section class="panel ww-cc-panel ww-data-prep-card" id="wwDataPrepWorksheetCard">
-                    <h3>Worksheet <span class="ww-data-prep-card-subtitle">(for Excel files)</span></h3>
-                    <div class="field" id="wwDataPrepWorksheetField" hidden>
-                        <select id="wwDataPrepWorksheetSelect"></select>
+                <section class="panel ww-cc-panel ww-data-prep-card ww-data-prep-worksheet-card" id="wwDataPrepWorksheetCard">
+                    <div class="ww-data-prep-worksheet-row">
+                        <h3>Worksheet <span class="ww-data-prep-card-subtitle ww-data-prep-worksheet-subtitle">(for Excel files)</span></h3>
+                        <div class="field" id="wwDataPrepWorksheetField" hidden>
+                            <select id="wwDataPrepWorksheetSelect"></select>
+                        </div>
+                        <p class="hint ww-data-prep-worksheet-csv-hint" id="wwDataPrepWorksheetCsvHint">Not applicable -- this is a CSV file.</p>
                     </div>
-                    <p class="hint" id="wwDataPrepWorksheetCsvHint">Not applicable -- this is a CSV file.</p>
                 </section>
 
                 <!-- Slice 5 (DEC-072): Header/Data Region. Manual-first:
@@ -5504,9 +5518,15 @@
                                  burdensome" -- End now defaults to "To end of
                                  file/sheet" (a floating boundary, never a
                                  guessed numeric row) with an optional
-                                 "Specific row" override, plus a "Go to Last
-                                 Rows" navigation-only shortcut for inspecting
-                                 the tail before deciding to trim. -->
+                                 "Specific row" override. Row 3A refinement
+                                 (2026-09-06): the "Go to Last Rows"
+                                 navigation-only shortcut that used to live
+                                 here was removed -- Data Preview's own
+                                 First/Previous/Next/Last pager (below, in
+                                 Row 4) already provides the exact same
+                                 last-rows navigation, making this a
+                                 redundant second control for the same
+                                 action. -->
                             <div class="field ww-data-prep-structure-field ww-data-prep-region-field">
                                 <label>Data rows</label>
                                 <div class="ww-data-prep-structure-controls">
@@ -5525,7 +5545,6 @@
                                     </label>
                                 </div>
                                 <div class="ww-data-prep-structure-controls">
-                                    <button type="button" class="secondary" id="wwDataPrepGoToLastRowsBtn">Go to Last Rows</button>
                                     <button type="button" class="secondary" id="wwDataPrepSetRegionBtn">Set Region</button>
                                     <button type="button" class="secondary" id="wwDataPrepResetRegionBtn">Reset Region</button>
                                 </div>
@@ -8934,9 +8953,8 @@
         // never a second, independently-tracked paging source of truth.
         // `totalPages` (and therefore `Last`/the page input) stays `null`
         // whenever `total_row_count` itself is `null` (Excel worksheets
-        // whose row count isn't known yet) -- exactly the same "row count
-        // not known yet" condition `wwDataPrepGoToLastRowsBtn` already
-        // guards against, reused here rather than a second policy.
+        // whose row count isn't known yet) -- the same "row count not
+        // known yet" guard this pager has always used on its own.
         function wwDataPrepRenderPagination(preview) {
             wwDataPrepRenderFileCardRowCount();
             const total = wwDataPrep.totalRowCount;
@@ -11030,9 +11048,7 @@
         // UAT enhancement (2026-09-04): First/Last -- jump directly, never
         // step through intermediate pages (a single offset write + one
         // wwDataPrepFetchPreview() call, exactly like Previous/Next below,
-        // so exactly one target page is ever requested). `Last` reuses the
-        // SAME final-offset formula wwDataPrepGoToLastRowsBtn already
-        // established, rather than a second "last page" calculation.
+        // so exactly one target page is ever requested).
         document.getElementById("wwDataPrepFirstBtn").addEventListener("click", () => {
             wwDataPrep.offset = 0;
             wwDataPrepFetchPreview();
@@ -11419,23 +11435,17 @@
             document.getElementById("wwDataPrepRegionEndInput").disabled = false;
             document.getElementById("wwDataPrepRegionEndInput").focus();
         });
-        // "Go to Last Rows" (owner-UAT refinement): NAVIGATION ONLY -- it
-        // never touches the data region, the working overlay, or the
-        // revision counter (task's own explicit requirement). Reuses the
-        // existing paged-preview state/fetch function verbatim rather
-        // than a second, duplicate paging implementation; total_row_count
-        // already comes from the existing GET .../rows response (exact
-        // for CSV, best-effort -- possibly unknown -- for Excel).
-        document.getElementById("wwDataPrepGoToLastRowsBtn").addEventListener("click", () => {
-            const total = wwDataPrep.totalRowCount;
-            if (total == null || total <= 0) {
-                wwDataPrepStructureStatusEl().textContent =
-                    "The row count for this " + (wwDataPrep.format === "Excel" ? "sheet" : "file") + " is not known yet.";
-                return;
-            }
-            wwDataPrep.offset = Math.max(0, Math.floor((total - 1) / wwDataPrep.limit) * wwDataPrep.limit);
-            wwDataPrepFetchPreview();
-        });
+        // Row 3A refinement (2026-09-06): the "Go to Last Rows" button
+        // and its own click handler (a navigation-only shortcut that
+        // jumped the raw preview to its final page) were removed --
+        // Data Preview's own First/Previous/Next/Last pager already
+        // provides the exact same last-rows navigation, making this a
+        // redundant second control for the same action. Confirmed
+        // unused elsewhere before removal (grep found only this
+        // handler, the now-removed button, and two unrelated comments
+        // citing its final-offset FORMULA as precedent for
+        // wwDataPrepLastBtn's own, completely separate handler below --
+        // that pager's own behavior is untouched).
         document.getElementById("wwDataPrepColumnsTable").addEventListener("change", (event) => {
             const roleSelect = event.target.closest(".ww-data-prep-role-select");
             if (roleSelect) {
