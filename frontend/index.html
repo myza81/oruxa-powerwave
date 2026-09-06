@@ -1438,27 +1438,90 @@
             }
         }
 
-        /* ---- Compact workflow/status strip ---- */
+        /* ---- Row 2 redesign: connected workflow/progress strip ----
+           One outer rounded container (overflow: hidden so each step's
+           own full-height state background respects the container's
+           corners at the first/last step, never four independent
+           floating cards); a 7-column grid (4 equal step tracks + 3
+           auto-sized chevron gaps) so the active/completed background
+           fills its ENTIRE step cell edge-to-edge, "flowing" visually
+           into its neighboring chevron via the plain CSS sibling
+           selectors below (no JS needed to color the chevrons). */
         .ww-data-prep-workflow-strip {
-            display: flex; align-items: center; gap: 0;
+            display: grid; grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
+            align-items: stretch;
             background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);
-            padding: 8px 14px; overflow-x: auto;
+            overflow: hidden;
+            /* `overflow: hidden` (needed to clip step backgrounds to the
+               container's own rounded corners) changes this element's
+               CSS "automatic minimum size" to 0 -- since it is also a
+               flex ITEM of #pageDataPreparation's own column flexbox,
+               that made it eligible to shrink toward 0 height instead
+               of its real ~74px content height (confirmed via live
+               UAT: computed height collapsed to 2px, border-only).
+               flex-shrink: 0 opts it back out of that shrink entirely. */
+            flex-shrink: 0;
         }
-        .ww-data-prep-workflow-step { display: flex; align-items: center; gap: 7px; white-space: nowrap; flex: 0 0 auto; }
+        .ww-data-prep-workflow-step {
+            display: flex; align-items: center; gap: 12px;
+            padding: 14px 18px; min-width: 0;
+        }
         .ww-data-prep-workflow-step-num {
-            display: inline-flex; align-items: center; justify-content: center;
-            width: 18px; height: 18px; border-radius: 50%;
-            font-size: 0.65rem; font-weight: 700; color: var(--text-dim);
+            position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+            width: 30px; height: 30px; border-radius: 50%;
+            font-size: 0.8rem; font-weight: 700; color: var(--text-dim);
             border: 1.5px solid var(--panel-border); background: var(--surface-tint);
         }
-        .ww-data-prep-workflow-step-label { font-size: 0.72rem; font-weight: 600; color: var(--text-dim); }
-        .ww-data-prep-workflow-connector { flex: 1 1 24px; min-width: 12px; height: 1px; background: var(--panel-border); margin: 0 10px; }
+        .ww-data-prep-workflow-step-num-check { display: none; width: 16px; height: 16px; }
+        .ww-data-prep-workflow-step-num-check svg { width: 100%; height: 100%; stroke: currentColor; fill: none; }
+        .ww-data-prep-workflow-step-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+        /* Reference fidelity pass: pending/default titles render in the
+           SAME strong dark --text color as completed titles (only the
+           circle/background carry the pending-vs-done distinction) --
+           the reference shows every non-active title as dark, bold
+           text, never muted gray; muted gray is reserved for the
+           helper line only. */
+        .ww-data-prep-workflow-step-title { font-size: 0.82rem; font-weight: 700; line-height: 1.25; color: var(--text); overflow-wrap: anywhere; }
+        .ww-data-prep-workflow-step-helper { font-size: 0.68rem; line-height: 1.3; color: var(--text-dim); overflow-wrap: anywhere; }
+        .ww-data-prep-workflow-chevron {
+            display: flex; align-items: center; justify-content: center; padding: 0 2px; color: var(--panel-border);
+        }
+        .ww-data-prep-workflow-chevron svg { width: 14px; height: 14px; stroke: currentColor; fill: none; }
+
+        /* Active: strong blue, per the reference's own active treatment. */
+        .ww-data-prep-workflow-step[data-state="active"] { background: var(--accent-wash); }
         .ww-data-prep-workflow-step[data-state="active"] .ww-data-prep-workflow-step-num { background: var(--accent); border-color: var(--accent); color: #fff; }
-        .ww-data-prep-workflow-step[data-state="active"] .ww-data-prep-workflow-step-label { color: var(--accent); }
+        .ww-data-prep-workflow-step[data-state="active"] .ww-data-prep-workflow-step-title { color: var(--accent); }
+        .ww-data-prep-workflow-step[data-state="active"] .ww-data-prep-workflow-step-helper { color: var(--text-dim); }
+        .ww-data-prep-workflow-step[data-state="active"] + .ww-data-prep-workflow-chevron { color: var(--accent); }
+
+        /* Completed: green circle + checkmark, subtle wash, readable title. */
+        .ww-data-prep-workflow-step[data-state="done"] { background: var(--ok-wash); }
         .ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-num { background: var(--ok); border-color: var(--ok); color: #fff; }
-        .ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-label { color: var(--text); }
+        .ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-num-digit { display: none; }
+        .ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-num-check { display: inline-flex; }
+        .ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-title { color: var(--text); }
+        .ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-helper { color: var(--text-dim); }
+        .ww-data-prep-workflow-step[data-state="done"] + .ww-data-prep-workflow-chevron { color: var(--ok); }
+
+        /* Attention: amber, a subtle warm wash derived from the SAME
+           --warn token every other blocking-adjacent indicator in this
+           app already uses (color-mix(), not a new global theme token --
+           Row 2 scoped only). */
+        .ww-data-prep-workflow-step[data-state="attention"] { background: color-mix(in srgb, var(--warn) 12%, transparent); }
         .ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-num { background: var(--warn); border-color: var(--warn); color: #fff; }
-        .ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-label { color: var(--warn); }
+        .ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-title { color: var(--warn); }
+        .ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-helper { color: var(--text-dim); }
+        .ww-data-prep-workflow-step[data-state="attention"] + .ww-data-prep-workflow-chevron { color: var(--warn); }
+
+        /* Pending: neutral gray, no background -- future step not yet reachable. */
+        /* Pending/no-state titles already inherit the base rule's dark
+           --text color above (matching the reference) -- this selector
+           now only documents that pending is a deliberate no-op rather
+           than an oversight, so a future edit doesn't reintroduce a
+           muted title here. */
+        .ww-data-prep-workflow-step[data-state="pending"] .ww-data-prep-workflow-step-title,
+        .ww-data-prep-workflow-step:not([data-state]) .ww-data-prep-workflow-step-title { color: var(--text); }
 
         /* ---- Row 3: main configuration grid ----
            Shares .ww-data-prep-row-cols's own grid/gap/breakpoints
@@ -1531,8 +1594,18 @@
             .ww-data-prep-row-cols > *:nth-child(3) { grid-column: auto; }
             .ww-data-prep-row-cols-2 { grid-template-columns: 1fr; }
             .ww-data-prep-file-card { width: 100%; box-sizing: border-box; }
-            .ww-data-prep-workflow-step-label { display: none; }
-            .ww-data-prep-workflow-connector { margin: 0 6px; }
+            /* Small screen (owner-explicit preference): keep step
+               TITLES for as long as reasonably possible -- numbers
+               alone provide weak workflow context. Helper descriptions
+               go first; circles/padding/gaps shrink modestly so all
+               four titles keep fitting without page-level overflow. */
+            .ww-data-prep-workflow-step-helper { display: none; }
+            .ww-data-prep-workflow-step { padding: 10px 8px; gap: 8px; }
+            .ww-data-prep-workflow-step-num { width: 24px; height: 24px; font-size: 0.7rem; }
+            .ww-data-prep-workflow-step-num-check { width: 13px; height: 13px; }
+            .ww-data-prep-workflow-step-title { font-size: 0.7rem; white-space: normal; }
+            .ww-data-prep-workflow-chevron { padding: 0; }
+            .ww-data-prep-workflow-chevron svg { width: 11px; height: 11px; }
             /* Row 1, small screen: a clean single-column stack in the
                approved order -- title, back button, file details
                (already the DOM order, so a plain 1-column collapse is
@@ -1540,6 +1613,25 @@
                needed). */
             .ww-data-prep-row-1 { grid-template-columns: 1fr; }
             .ww-data-prep-row-1 > .ww-data-prep-file-card { grid-column: auto; }
+        }
+        /* Very small screen (~390px and below): 4 equal step columns are
+           too narrow to hold a two-word title (e.g. "Configure
+           Structure") beside a circle without wrapping character-by-
+           character (confirmed via live UAT). Stack circle above title
+           within each step instead of side-by-side, drop the chevrons
+           (a "clean compact solution matters more than the full desktop
+           composition" here, per explicit product direction) and let the
+           grid become exactly 4 equal columns (a `display: none`
+           chevron already leaves the grid, so this just states it
+           explicitly rather than relying on that side effect). Titles
+           still render as real, readable words -- never truncated to
+           numbers-only. */
+        @media (max-width: 480px) {
+            .ww-data-prep-workflow-strip { grid-template-columns: repeat(4, 1fr); }
+            .ww-data-prep-workflow-chevron { display: none; }
+            .ww-data-prep-workflow-step { flex-direction: column; align-items: center; text-align: center; gap: 4px; padding: 10px 4px; }
+            .ww-data-prep-workflow-step-text { align-items: center; }
+            .ww-data-prep-workflow-step-title { font-size: 0.6rem; line-height: 1.15; }
         }
 
         /* ---- Data Preview: dense header badges + toolbar tightening ---- */
@@ -5279,32 +5371,58 @@
                 </div>
 
                 <!-- Row 2: full-width strip (currently the compact
-                     workflow/status strip). Compact workflow/status
-                     strip -- a presentation-only progress indicator over
-                     the SAME one-page workflow below (never separate
-                     pages/tabs); state is derived live from
-                     already-computed wwDataPrep state by
-                     wwDataPrepRenderWorkflowStrip(), never a second
-                     readiness engine. -->
-                <div class="ww-data-prep-row ww-data-prep-row-2 ww-data-prep-workflow-strip" id="wwDataPrepWorkflowStrip">
-                    <div class="ww-data-prep-workflow-step" data-step="structure" id="wwDataPrepWorkflowStepStructure">
-                        <span class="ww-data-prep-workflow-step-num">1</span>
-                        <span class="ww-data-prep-workflow-step-label">Configure Structure</span>
+                     workflow/status strip). Row 2 redesign (2026-09-06):
+                     a connected 4-step workflow strip -- presentation
+                     only, state is derived live from already-computed
+                     wwDataPrep state by wwDataPrepRenderWorkflowStrip(),
+                     never a second readiness engine. `role="list"`/
+                     `role="listitem"`/`aria-current="step"` describe the
+                     SAME visual state the circle/background already
+                     show -- this remains a non-interactive progress
+                     indicator, never a clickable stepper. -->
+                <div class="ww-data-prep-row ww-data-prep-row-2 ww-data-prep-workflow-strip" id="wwDataPrepWorkflowStrip" role="list">
+                    <div class="ww-data-prep-workflow-step" data-step="structure" id="wwDataPrepWorkflowStepStructure" role="listitem">
+                        <span class="ww-data-prep-workflow-step-num">
+                            <span class="ww-data-prep-workflow-step-num-digit">1</span>
+                            <span class="ww-data-prep-workflow-step-num-check" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M4 9.5 7.5 13 14 5.5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                        </span>
+                        <span class="ww-data-prep-workflow-step-text">
+                            <span class="ww-data-prep-workflow-step-title">Configure Structure</span>
+                            <span class="ww-data-prep-workflow-step-helper">Define header, data region and column roles</span>
+                        </span>
                     </div>
-                    <div class="ww-data-prep-workflow-connector"></div>
-                    <div class="ww-data-prep-workflow-step" data-step="issues" id="wwDataPrepWorkflowStepIssues">
-                        <span class="ww-data-prep-workflow-step-num">2</span>
-                        <span class="ww-data-prep-workflow-step-label">Review Issues</span>
+                    <span class="ww-data-prep-workflow-chevron" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M6.5 3.5 12 9l-5.5 5.5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                    <div class="ww-data-prep-workflow-step" data-step="issues" id="wwDataPrepWorkflowStepIssues" role="listitem">
+                        <span class="ww-data-prep-workflow-step-num">
+                            <span class="ww-data-prep-workflow-step-num-digit">2</span>
+                            <span class="ww-data-prep-workflow-step-num-check" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M4 9.5 7.5 13 14 5.5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                        </span>
+                        <span class="ww-data-prep-workflow-step-text">
+                            <span class="ww-data-prep-workflow-step-title">Review Issues</span>
+                            <span class="ww-data-prep-workflow-step-helper">Check and resolve any detected issues</span>
+                        </span>
                     </div>
-                    <div class="ww-data-prep-workflow-connector"></div>
-                    <div class="ww-data-prep-workflow-step" data-step="preview" id="wwDataPrepWorkflowStepPreview">
-                        <span class="ww-data-prep-workflow-step-num">3</span>
-                        <span class="ww-data-prep-workflow-step-label">Preview Data</span>
+                    <span class="ww-data-prep-workflow-chevron" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M6.5 3.5 12 9l-5.5 5.5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                    <div class="ww-data-prep-workflow-step" data-step="preview" id="wwDataPrepWorkflowStepPreview" role="listitem">
+                        <span class="ww-data-prep-workflow-step-num">
+                            <span class="ww-data-prep-workflow-step-num-digit">3</span>
+                            <span class="ww-data-prep-workflow-step-num-check" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M4 9.5 7.5 13 14 5.5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                        </span>
+                        <span class="ww-data-prep-workflow-step-text">
+                            <span class="ww-data-prep-workflow-step-title">Preview Data</span>
+                            <span class="ww-data-prep-workflow-step-helper">Verify the data looks correct</span>
+                        </span>
                     </div>
-                    <div class="ww-data-prep-workflow-connector"></div>
-                    <div class="ww-data-prep-workflow-step" data-step="convert" id="wwDataPrepWorkflowStepConvert">
-                        <span class="ww-data-prep-workflow-step-num">4</span>
-                        <span class="ww-data-prep-workflow-step-label">Convert</span>
+                    <span class="ww-data-prep-workflow-chevron" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M6.5 3.5 12 9l-5.5 5.5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                    <div class="ww-data-prep-workflow-step" data-step="convert" id="wwDataPrepWorkflowStepConvert" role="listitem">
+                        <span class="ww-data-prep-workflow-step-num">
+                            <span class="ww-data-prep-workflow-step-num-digit">4</span>
+                            <span class="ww-data-prep-workflow-step-num-check" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M4 9.5 7.5 13 14 5.5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                        </span>
+                        <span class="ww-data-prep-workflow-step-text">
+                            <span class="ww-data-prep-workflow-step-title">Convert</span>
+                            <span class="ww-data-prep-workflow-step-helper">Save and add to Recording Events</span>
+                        </span>
                     </div>
                 </div>
 
@@ -11598,44 +11716,102 @@
             }
         }
 
-        // Visual redesign: a compact, presentation-only progress
+        // Row 2 redesign: a connected, presentation-only progress
         // indicator over the SAME one-page workflow -- derives its four
         // step states entirely from state this workspace already
-        // computed (column roles/header/summary, wwDataPrepEffective
-        // IssueSummary(), totalRowCount, the conversion action's own
-        // visibility) rather than a second readiness engine. Called from
-        // every render path that could change one of these signals
-        // (wwDataPrepRenderIssues(), wwDataPrepRenderStructureSummary(),
-        // wwDataPrepRenderPagination(), and the initial open) so the
-        // strip can never show a stale step.
+        // computed (column roles/header, wwDataPrepEffectiveIssueSummary(),
+        // the Continue-to-Powerwave action's own visibility) rather than
+        // a second readiness engine. Called from every render path that
+        // could change one of these signals (wwDataPrepRenderIssues(),
+        // wwDataPrepRenderStructureSummary(), wwDataPrepRenderPagination(),
+        // and the initial open) so the strip can never show a stale step.
+        //
+        // Earliest-unresolved-step priority (owner-approved): exactly ONE
+        // step is ever "active"/"attention" at a time -- every step AFTER
+        // it is forced to "pending" regardless of that later step's own
+        // individual signal, so an incomplete Step 1 never lets Step 2
+        // show a misleading "attention" merely because the SAME missing
+        // configuration also happens to produce a blocking issue (a real
+        // gap in the previous implementation, confirmed via UAT scenario
+        // A: a fresh unconfigured file previously showed Step 2 as
+        // "attention" instead of "pending"). Every earlier step that has
+        // already been passed stays "done".
+        //
+        // Step 3 (Preview Data) has no dedicated "user confirmed the
+        // preview" flag anywhere in this architecture (deliberately not
+        // invented for this task -- see its own final report). The best
+        // existing signal is the SAME one that gates Step 4's own
+        // availability: once Steps 1-2 are clear, Step 3 is "active"
+        // until the Continue-to-Powerwave action itself becomes visible
+        // (including the "Ready with limitations" -- e.g. Sample Index
+        // without a real interval -- edge case, which is not yet
+        // convertible), at which point Step 3 is "done" and Step 4 takes
+        // over as "active". Step 4 itself never reaches "done" -- this
+        // workspace navigates away entirely once conversion succeeds, so
+        // there is no in-page "converted" state to represent.
+        //
+        // Step 2 completion deliberately keys on `summary.is_ready`
+        // (blocking_count === 0) alone, matching the EXACT signal
+        // Row 5's own Convert-visibility already treats as authoritative
+        // -- a lingering non-blocking WARNING (e.g. "Timing was supplied
+        // manually" for an explicit elapsed-time unit choice) does not
+        // hold this step back, confirmed via live UAT: a source the app
+        // itself already shows Continue-to-Powerwave for previously got
+        // stuck showing Step 2 as merely "active" here, an invented,
+        // stricter bar than the app's own readiness model actually uses.
         function wwDataPrepRenderWorkflowStrip() {
             const setStep = (id, state) => {
                 const el = document.getElementById(id);
-                if (el) el.dataset.state = state;
+                if (!el) return;
+                el.dataset.state = state;
+                if (state === "active") {
+                    el.setAttribute("aria-current", "step");
+                } else {
+                    el.removeAttribute("aria-current");
+                }
             };
+
             const hasHeader = wwDataPrep.headerRowNumber != null;
             const hasTimeAxisRole = (wwDataPrep.columnRoles || []).includes("time_axis");
             const hasWaveformRole = (wwDataPrep.columnRoles || []).includes("waveform");
-            setStep("wwDataPrepWorkflowStepStructure", (hasHeader && hasTimeAxisRole && hasWaveformRole) ? "done" : "active");
+            const structureDone = hasHeader && hasTimeAxisRole && hasWaveformRole;
 
             const summary = wwDataPrepEffectiveIssueSummary();
-            if (!summary) {
-                setStep("wwDataPrepWorkflowStepIssues", "active");
-            } else if (summary.blocking_count > 0) {
-                setStep("wwDataPrepWorkflowStepIssues", "attention");
-            } else if (summary.warning_count > 0) {
-                setStep("wwDataPrepWorkflowStepIssues", "active");
-            } else {
-                setStep("wwDataPrepWorkflowStepIssues", "done");
-            }
-
-            setStep("wwDataPrepWorkflowStepPreview", wwDataPrep.totalRowCount != null ? "done" : "active");
+            const issuesBlocking = !!(summary && summary.blocking_count > 0);
+            const issuesReady = !!(summary && summary.is_ready);
 
             const convertVisible = !document.getElementById("wwDataPrepConversionAction").hidden;
-            // "active" (not "done") once ready -- the step is available
-            // to take, not yet completed (this workspace navigates away
-            // entirely once conversion actually succeeds).
-            setStep("wwDataPrepWorkflowStepConvert", convertVisible ? "active" : "");
+
+            let structureState, issuesState, previewState, convertState;
+            if (!structureDone) {
+                structureState = "active";
+                issuesState = previewState = convertState = "pending";
+            } else if (issuesBlocking) {
+                structureState = "done";
+                issuesState = "attention";
+                previewState = convertState = "pending";
+            } else if (!issuesReady) {
+                // Issues not fetched yet (!summary) -- the only
+                // remaining "not ready" case once blocking is ruled out.
+                structureState = "done";
+                issuesState = "active";
+                previewState = convertState = "pending";
+            } else if (!convertVisible) {
+                structureState = "done";
+                issuesState = "done";
+                previewState = "active";
+                convertState = "pending";
+            } else {
+                structureState = "done";
+                issuesState = "done";
+                previewState = "done";
+                convertState = "active";
+            }
+
+            setStep("wwDataPrepWorkflowStepStructure", structureState);
+            setStep("wwDataPrepWorkflowStepIssues", issuesState);
+            setStep("wwDataPrepWorkflowStepPreview", previewState);
+            setStep("wwDataPrepWorkflowStepConvert", convertState);
         }
 
         // Section 22: simple client-side substring filter across the

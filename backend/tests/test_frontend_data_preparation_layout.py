@@ -356,9 +356,14 @@ class TestPageHeaderAndFileCard:
 
 
 class TestWorkflowStrip:
-    """Row 2: a compact 4-step progress strip -- presentation only,
-    derived from state this workspace already computed, never a second
-    readiness/status engine."""
+    """Row 2 redesign (2026-09-06): a connected 4-step progress strip
+    with title+helper text, checkmark-on-completed circles, and
+    chevron separators -- presentation only, derived from state this
+    workspace already computed, never a second readiness/status
+    engine. State priority: exactly one step is ever active/attention;
+    every LATER step is forced "pending" regardless of its own
+    individual signal (the previous implementation's real gap -- see
+    this task's own final report)."""
 
     def test_four_steps_exist_with_stable_ids(self):
         source = _source()
@@ -377,6 +382,82 @@ class TestWorkflowStrip:
             in source
         )
 
+    def test_strip_uses_list_semantics_not_a_clickable_stepper(self):
+        source = _source()
+        strip_start = source.index('id="wwDataPrepWorkflowStrip"')
+        row3_start = source.index('class="ww-data-prep-row ww-data-prep-row-3')
+        strip_body = source[strip_start:row3_start]
+        assert 'id="wwDataPrepWorkflowStrip" role="list"' in source
+        assert strip_body.count('role="listitem"') == 4
+        assert "addEventListener" not in strip_body
+        assert "<button" not in strip_body
+
+    def test_each_step_has_a_title_and_a_helper_line_with_approved_wording(self):
+        source = _source()
+        expected = [
+            ("Configure Structure", "Define header, data region and column roles"),
+            ("Review Issues", "Check and resolve any detected issues"),
+            ("Preview Data", "Verify the data looks correct"),
+            ("Convert", "Save and add to Recording Events"),
+        ]
+        for title, helper in expected:
+            assert '<span class="ww-data-prep-workflow-step-title">' + title + "</span>" in source
+            assert '<span class="ww-data-prep-workflow-step-helper">' + helper + "</span>" in source
+
+    def test_each_step_has_a_digit_and_a_hidden_checkmark_for_completed(self):
+        source = _source()
+        assert source.count('class="ww-data-prep-workflow-step-num-digit"') == 4
+        assert source.count('class="ww-data-prep-workflow-step-num-check" aria-hidden="true"') == 4
+        body = _function_body(source, ".ww-data-prep-workflow-step-num-check {", "}")
+        assert "display: none" in body
+        done_body = _function_body(
+            source,
+            '.ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-num-digit',
+            "}",
+        )
+        assert "display: none" in done_body
+
+    def test_three_chevron_separators_exist_between_the_four_steps(self):
+        source = _source()
+        strip_start = source.index('id="wwDataPrepWorkflowStrip"')
+        row3_start = source.index('class="ww-data-prep-row ww-data-prep-row-3')
+        strip_body = source[strip_start:row3_start]
+        assert strip_body.count('class="ww-data-prep-workflow-chevron" aria-hidden="true"') == 3
+
+    def test_chevron_color_flows_from_the_preceding_steps_own_state(self):
+        source = _source()
+        assert (
+            '.ww-data-prep-workflow-step[data-state="active"] + .ww-data-prep-workflow-chevron { color: var(--accent); }'
+            in source
+        )
+        assert (
+            '.ww-data-prep-workflow-step[data-state="done"] + .ww-data-prep-workflow-chevron { color: var(--ok); }'
+            in source
+        )
+        assert (
+            '.ww-data-prep-workflow-step[data-state="attention"] + .ww-data-prep-workflow-chevron { color: var(--warn); }'
+            in source
+        )
+
+    def test_outer_container_is_one_rounded_clipped_grid_not_four_cards(self):
+        source = _source()
+        body = _function_body(source, ".ww-data-prep-workflow-strip {", "}")
+        assert "display: grid" in body
+        assert "overflow: hidden" in body
+        assert "border-radius: var(--radius)" in body
+
+    def test_active_step_background_fills_the_whole_step_cell(self):
+        source = _source()
+        assert '.ww-data-prep-workflow-step[data-state="active"] { background: var(--accent-wash); }' in source
+        assert '.ww-data-prep-workflow-step[data-state="done"] { background: var(--ok-wash); }' in source
+
+    def test_attention_uses_a_warn_derived_wash_not_a_new_global_token(self):
+        source = _source()
+        assert (
+            '.ww-data-prep-workflow-step[data-state="attention"] { background: color-mix(in srgb, var(--warn) 12%, transparent); }'
+            in source
+        )
+
     def test_render_function_derives_from_existing_state_only(self):
         source = _source()
         body = _function_body(
@@ -384,7 +465,9 @@ class TestWorkflowStrip:
         )
         assert "fetch(" not in body
         assert "wwDataPrepEffectiveIssueSummary()" in body
-        assert "wwDataPrep.totalRowCount" in body
+        # Step 3/4 both key off the SAME existing Continue-to-Powerwave
+        # visibility signal -- no invented "user confirmed preview" flag.
+        assert 'document.getElementById("wwDataPrepConversionAction").hidden' in body
 
     def test_render_function_is_called_after_issues_structure_and_pagination_render(self):
         source = _source()
@@ -393,6 +476,43 @@ class TestWorkflowStrip:
         ):
             body = _function_body(source, anchor, "function wwDataPrepIsIndexOnlyWithoutInterval()")
             assert "wwDataPrepRenderWorkflowStrip();" in body
+
+    def test_earlier_incomplete_step_forces_every_later_step_to_pending(self):
+        # The core state-model fix: an incomplete Step 1 must not let
+        # Step 2 independently compute "attention" merely because the
+        # SAME missing configuration also produces a blocking issue.
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepRenderWorkflowStrip()", "\n\n        // Section 22:",
+        )
+        assert "if (!structureDone) {" in body
+        assert 'issuesState = previewState = convertState = "pending";' in body
+        assert 'previewState = convertState = "pending";' in body
+
+    def test_convert_step_never_reaches_a_done_state(self):
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepRenderWorkflowStrip()", "\n\n        // Section 22:",
+        )
+        assert 'convertState = "done"' not in body
+
+    def test_active_step_gets_aria_current(self):
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepRenderWorkflowStrip()", "\n\n        // Section 22:",
+        )
+        assert 'el.setAttribute("aria-current", "step");' in body
+        assert 'el.removeAttribute("aria-current");' in body
+
+    def test_small_screen_hides_helper_text_but_keeps_titles(self):
+        # Owner-explicit preference: retain step TITLES for as long as
+        # reasonably possible on small screens -- numbers alone provide
+        # weak workflow context. Only the helper description is hidden.
+        source = _source()
+        media_820 = _function_body(source, "@media (max-width: 820px) {", "@media (max-width: 640px) {")
+        assert ".ww-data-prep-workflow-step-helper { display: none; }" in media_820
+        assert ".ww-data-prep-workflow-step-title { display: none; }" not in media_820
+        assert "wwDataPrepWorkflowStepStructure" not in media_820
 
 
 class TestDataPreviewHeaderBadges:
