@@ -699,6 +699,89 @@ class TestColumnRolesLabelColumnStaysReadable:
         assert "<th>Column</th>" not in body
 
 
+class TestTimeAxisSetupRow3CRedesign:
+    """Row 3C redesign (2026-09-06): visual/layout only -- the existing
+    collapse-by-default "Configure" toggle, every id, every render
+    function, and every DEC-082/DEC-083 behavior are unchanged. Only
+    checks: the permanent helper paragraph moved into the SAME shared
+    info-tip tooltip system Row 3A/3B already use, Time format/Time
+    column now share a responsive side-by-side row, and Save is now
+    the visually primary action (Clear stays secondary)."""
+
+    def _panel_body(self, source: str) -> str:
+        start = source.index('id="wwDataPrepTimeAxisPanel"')
+        end = source.index("<!-- /ww-data-prep-config-grid")
+        return source[start:end]
+
+    def test_permanent_helper_paragraph_is_gone_replaced_by_a_tooltip(self):
+        source = _source()
+        panel = self._panel_body(source)
+        header_end = panel.index("</h3>")
+        # Nothing between the title and the toggle button repeats the
+        # old permanent paragraph -- its guidance now lives ONLY in the
+        # tooltip's own data-tooltip-text attribute (checked up to and
+        # including the closing </h3>, where that attribute lives).
+        assert "Powerwave never guesses a date order" not in panel[header_end:panel.index("wwDataPrepTimeAxisToggleBtn")]
+        assert 'data-tooltip-text="Configure how Powerwave should interpret' in panel[:header_end]
+
+    def test_title_carries_the_shared_info_tip_trigger(self):
+        source = _source()
+        panel = self._panel_body(source)
+        header = panel[: panel.index("</h3>")]
+        assert "ww-info-tip-trigger" in header
+
+    def test_time_format_and_time_column_share_a_responsive_row(self):
+        source = _source()
+        panel = self._panel_body(source)
+        row_start = panel.index('class="ww-data-prep-structure-row ww-data-prep-time-axis-format-row"')
+        interpreter_pos = panel.index('id="wwDataPrepTimeAxisInterpreterSelect"')
+        column_field_pos = panel.index('id="wwDataPrepTimeAxisColumnField"')
+        assert row_start < interpreter_pos < column_field_pos
+
+    def test_save_is_primary_and_clear_stays_secondary(self):
+        source = _source()
+        panel = self._panel_body(source)
+        save_start = panel.index('id="wwDataPrepTimeAxisSaveBtn"')
+        save_tag_start = panel.rindex("<button", 0, save_start)
+        save_tag = panel[save_tag_start:save_start]
+        assert 'class="secondary"' not in save_tag
+        clear_start = panel.index('id="wwDataPrepTimeAxisClearBtn"')
+        clear_tag_start = panel.rindex("<button", 0, clear_start)
+        clear_tag = panel[clear_tag_start:clear_start]
+        assert 'class="secondary"' in clear_tag
+
+    def test_advanced_options_and_advanced_details_stay_distinct(self):
+        source = _source()
+        panel = self._panel_body(source)
+        assert 'id="wwDataPrepTimeAxisAdvancedOptions"' in panel
+        assert 'id="wwDataPrepTimeAxisAdvanced"' in panel
+        assert panel.index('id="wwDataPrepTimeAxisAdvancedOptions"') != panel.index('id="wwDataPrepTimeAxisAdvanced"')
+
+    def test_configure_toggle_and_collapse_behavior_are_unchanged(self):
+        source = _source()
+        assert 'id="wwDataPrepTimeAxisToggleBtn">Configure</button>' in source
+        assert 'document.getElementById("wwDataPrepTimeAxisDetails").hidden = !wwDataPrep.timeAxisExpanded;' in source
+
+    def test_time_format_field_has_a_readable_min_width_floor(self):
+        # UAT fix (2026-09-06): the two longest interpreter labels
+        # ("Sample Number / Index", "Date + Time (2 columns)") must
+        # stay fully readable rather than ellipsis-truncated -- the
+        # field's own min-width (not just the select's) is what the
+        # row's flex-wrap decision actually sizes against.
+        source = _source()
+        assert 'class="field ww-data-prep-structure-field ww-data-prep-time-axis-format-field"' in source
+        rule_start = source.index(
+            ".ww-data-prep-time-axis-format-row > .ww-data-prep-structure-field.ww-data-prep-time-axis-format-field {"
+        )
+        rule_end = source.index("}", rule_start)
+        rule = source[rule_start:rule_end]
+        assert "min-width: 200px" in rule
+
+    def test_interpreter_select_title_is_kept_in_sync_with_its_selected_label(self):
+        source = _source()
+        assert 'interpreterSelect.title = selectedOption ? selectedOption.textContent : "";' in source
+
+
 class TestFiveRowLayoutFoundation:
     """Approved 5-row layout (2026-09-06), superseding the earlier
     4-row pass: the page is organized into exactly 5 semantic

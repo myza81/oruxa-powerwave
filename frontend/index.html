@@ -1053,11 +1053,36 @@
         }
         /* Slice 5 (DEC-072): Structure panel (header/data-region/column
            roles). Manual-only controls -- plain number inputs and a
-           small mapping table, no new framework. */
-        .ww-data-prep-structure-row { display: flex; flex-wrap: wrap; gap: 24px; margin-bottom: 12px; }
+           small mapping table, no new framework.
+           Row 3C redesign (2026-09-06): `.ww-data-prep-structure-row/
+           -field/-controls` are now Time-Axis-exclusive (Row 3A/3B each
+           moved to their own dedicated classes in their own redesigns)
+           -- safe to retune gap/margin here for Time Axis's own density
+           goal without any Row 3A/3B side effect. */
+        .ww-data-prep-structure-row { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 10px; }
         .ww-data-prep-structure-field { margin-bottom: 0; }
         .ww-data-prep-structure-controls { display: flex; align-items: center; gap: 6px; }
-        .ww-data-prep-structure-controls input[type="number"] { width: 80px; font-size: 0.75rem; }
+        /* Same polished box model as Row 3A/3B's own inputs/selects
+           (border/radius var(--radius), 8px/10px padding) -- previously
+           only a bare `width: 80px` (Interval field, the only number
+           input this selector actually matched) with no border/radius/
+           padding at all, rendering as a raw unstyled native widget
+           next to Row 3A/3B's fully custom controls. `flex: 1 1 auto`
+           (not a fixed width) so it fills its own field's flex track
+           evenly with any sibling unit hint (e.g. "ms") in the same
+           row, matching Row 3A's own `.ww-data-prep-input-with-action
+           input[type="number"] { flex: 1 1 auto; }` precedent. Also
+           covers the Unit text field (`input[type="text"]`), which
+           previously had zero styling of any kind. */
+        .ww-data-prep-structure-controls input[type="number"],
+        .ww-data-prep-structure-controls input[type="text"] {
+            flex: 1 1 auto; min-width: 0; box-sizing: border-box;
+            font: inherit; font-size: 0.75rem; color: var(--text);
+            background: var(--panel); border: 1px solid var(--panel-border);
+            border-radius: var(--radius); padding: 8px 10px;
+        }
+        .ww-data-prep-structure-controls input[type="number"]:focus,
+        .ww-data-prep-structure-controls input[type="text"]:focus { outline: none; border-color: var(--accent-dim); }
         /* .ww-data-prep-radio-option is still used by Time Axis Setup's
            own radio groups (Row 3C, out of scope for the Row 3A
            redesign below) -- kept exactly as-is, including its disabled-
@@ -1066,6 +1091,18 @@
            selectors were removed along with the markup that used them
            (see Row 3A's new .ww-data-prep-region-row below). */
         .ww-data-prep-radio-option { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; }
+        /* Row 3C redesign: these inline Hz/ms/anchor number inputs sat
+           beside a radio + label on one line with ZERO box-model
+           styling at all (a raw native spinner) -- same polish as
+           above, just a compact fixed width instead of `flex: 1 1
+           auto` since they share their row with a radio button and
+           label text, not a lone field. */
+        .ww-data-prep-radio-option input[type="number"] {
+            width: 84px; box-sizing: border-box; font: inherit; font-size: 0.75rem;
+            color: var(--text); background: var(--panel); border: 1px solid var(--panel-border);
+            border-radius: var(--radius); padding: 6px 8px;
+        }
+        .ww-data-prep-radio-option input[type="number"]:focus { outline: none; border-color: var(--accent-dim); }
         .ww-data-prep-radio-option input[type="number"]:disabled { opacity: 0.5; }
 
         /* Row 3A REPLACEMENT: Header & Data Region compact controls.
@@ -1146,7 +1183,7 @@
             min-width: 140px;
         }
         .ww-data-prep-columns-table select {
-            font: inherit; font-size: 0.72rem; background: var(--panel); color: var(--text);
+            font: inherit; font-size: 0.65rem; background: var(--panel); color: var(--text);
             border: 1px solid var(--panel-border); border-radius: var(--radius);
             padding: 6px 8px; width: 100%; box-sizing: border-box;
         }
@@ -1243,7 +1280,44 @@
            panel are added here, matching the Structure panel's own
            already-committed values exactly rather than diverging. */
         #wwDataPrepTimeAxisDetails { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--panel-border); }
-        .ww-data-prep-time-axis-controls select { font: inherit; font-size: 0.75rem; background: var(--panel); color: var(--text); border: 1px solid var(--panel-border); border-radius: 3px; padding: 2px 4px; }
+        /* Row 3C redesign: this was the single biggest "tiny dropdown"
+           offender in the panel -- `border-radius: 3px; padding: 2px
+           4px` (visibly smaller/lighter than every Row 3A/3B select or
+           this same panel's own already-polished `.ww-data-prep-time-
+           axis-resolved-value` box). Matches that box model exactly
+           (var(--radius), 8px/10px padding) plus `width: 100%` since
+           each of these selects is always the lone child of its own
+           `.ww-data-prep-structure-controls` row (no sibling to share
+           space with, unlike the number inputs above). */
+        .ww-data-prep-time-axis-controls select {
+            font: inherit; font-size: 0.75rem; background: var(--panel); color: var(--text);
+            border: 1px solid var(--panel-border); border-radius: var(--radius);
+            padding: 8px 10px; width: 100%; box-sizing: border-box;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .ww-data-prep-time-axis-controls select:focus { outline: none; border-color: var(--accent-dim); }
+        /* UAT fix (2026-09-06): the previous 130px/170px floor still let
+           Time format's two longest real options ("Sample Number /
+           Index", "Date + Time (2 columns)", measured at ~178px/~186px
+           of actual text -- padding/border/native-arrow included) fall
+           back to the ellipsis above. Semantic values, never meant to
+           be cosmetically shortened by truncation -- 200px comfortably
+           fits both (confirmed via canvas text measurement against this
+           select's own computed font). `min-width: 200px` lives on the
+           FIELD (the flex item the row's wrap decision actually sizes
+           against), not only on the select -- a min-width on the select
+           alone doesn't influence its own flex-item ancestor's sizing,
+           so the row would keep both fields side by side and let the
+           select overflow/truncate regardless. With the field's own
+           min-width raised to match, the row's existing `flex-wrap:
+           wrap` (already relied on elsewhere in this same panel) takes
+           over automatically the moment both fields no longer fit
+           comfortably -- Time column simply drops to its own line below,
+           never a new dedicated breakpoint. */
+        .ww-data-prep-time-axis-format-row > .ww-data-prep-structure-field.ww-data-prep-time-axis-format-field {
+            flex: 1 1 200px; min-width: 200px;
+        }
+        #wwDataPrepTimeAxisInterpreterSelect { min-width: 200px; }
         /* Manual multi-column capability (preserved -- see
            #wwDataPrepTimeAxisManualColumnsField's own comment): the ONE
            remaining checkbox-list layout in this panel, scoped to
@@ -1307,6 +1381,15 @@
            dedicated Time-Axis-only media query; `min-width: 0` stops a
            long column label from forcing the row itself to overflow. */
         .ww-data-prep-structure-row > .ww-data-prep-structure-field { flex: 1 1 200px; min-width: 0; }
+        /* Time format/Time column pair: Time Axis Setup lives in the
+           narrowest of Row 3's three grid columns (roughly a third of
+           the page even at 1440px), so the shared 200px basis above
+           (sized for the 4-field Family/Provenance/Unit/Interval row,
+           which already wraps most of the time regardless) left too
+           little room for these two to ever sit side by side as this
+           task's own mock requires -- a smaller, dedicated basis for
+           just this one row. */
+        .ww-data-prep-time-axis-format-row > .ww-data-prep-structure-field { flex: 1 1 130px; }
 
         /* Compact local validity status -- reuses the SAME --ok/--warn
            coloring convention as the Preparation Status headline's own
@@ -1329,12 +1412,30 @@
             border: 1px solid var(--panel-border); border-radius: var(--radius);
             margin: 0 0 10px; font-size: 0.8rem;
         }
-        .ww-data-prep-time-axis-detect-card[data-state="match"] { border-color: var(--ok); }
-        .ww-data-prep-time-axis-detect-card[data-state="attention"] { border-color: var(--warn); }
+        /* Row 3C redesign: a subtle background tint (not just a colored
+           border) so match/attention reads at a glance without an
+           oversized alert-box look -- `--ok-wash` is an existing theme
+           token; `--warn` has no `-wash` counterpart, so this reuses
+           the SAME color-mix() technique Row 2's own workflow-strip
+           "attention" state already established (never a new global
+           token, this app's own established pattern for a one-off
+           warm tint). */
+        .ww-data-prep-time-axis-detect-card[data-state="match"] { border-color: var(--ok); background: var(--ok-wash); }
+        .ww-data-prep-time-axis-detect-card[data-state="attention"] { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
         .ww-data-prep-time-axis-detect-card-icon { flex: 0 0 auto; font-weight: 700; }
         .ww-data-prep-time-axis-detect-card[data-state="match"] .ww-data-prep-time-axis-detect-card-icon { color: var(--ok); }
         .ww-data-prep-time-axis-detect-card[data-state="attention"] .ww-data-prep-time-axis-detect-card-icon { color: var(--warn); }
         .ww-data-prep-time-axis-detect-card-body { min-width: 0; }
+
+        /* Save/Clear action row: Save is the primary (default button
+           style, accent-filled) and Clear stays secondary -- matching
+           Row 3A's own "Set Region" (primary) / "Reset Region"
+           (secondary) pairing exactly. `flex-wrap: wrap` (new here,
+           the shared `.ww-data-prep-structure-controls` base rule
+           itself stays untouched since it's also used for Detect's own
+           single-button row) so the two buttons wrap onto their own
+           lines rather than overflowing on a very narrow screen. */
+        .ww-data-prep-time-axis-save-row { flex-wrap: wrap; margin-top: 4px; }
 
         /* Advanced details: the SAME native <details>/<summary> +
            .chevron progressive-disclosure convention already established
@@ -1652,7 +1753,7 @@
            below (short, bounded row count -- one row per source column,
            never per data row), reusing the same .ww-data-prep-table base. */
         .ww-data-prep-column-roles-wrap { max-height: none; }
-        #pageDataPreparation .ww-data-prep-columns-table { font-size: 0.72rem; width: 100%; }
+        #pageDataPreparation .ww-data-prep-columns-table { font-size: 0.65rem; width: 100%; }
         #pageDataPreparation .ww-data-prep-columns-table th { padding: 8px 10px; }
         #pageDataPreparation .ww-data-prep-columns-table td { padding: 6px 10px; vertical-align: middle; }
 
@@ -2458,7 +2559,7 @@
             appearance: none;
             border: none;
             border-radius: var(--radius);
-            padding: 10px 16px;
+            padding: 7px 16px;
             font-size: var(--button-font-size-compact);
             font-weight: 600;
             cursor: pointer;
@@ -5690,10 +5791,18 @@
                      changed; keeps its own existing compact/collapsed
                      "Configure" toggle unchanged. -->
                 <section class="panel ww-cc-panel ww-data-prep-card ww-data-prep-time-axis-card" id="wwDataPrepTimeAxisPanel">
+                    <!-- Row 3C redesign (2026-09-06): the permanent helper
+                         paragraph below the title cost vertical space in
+                         BOTH the collapsed and expanded states (it lived
+                         outside #wwDataPrepTimeAxisDetails); its exact
+                         same wording now lives in an info-tip tooltip
+                         beside the title instead, reusing the SAME shared
+                         .ww-info-tip-trigger/wwInfoTipShow()/
+                         wwInfoTipHide() mechanism Row 3A/3B's own titles
+                         already use -- never a second tooltip system. -->
                     <div class="ww-data-prep-panel-header">
                         <div>
-                            <h3>Time Axis Setup</h3>
-                            <p class="hint">Configure how Powerwave should interpret the recording timeline. Powerwave never guesses a date order or invents a timezone -- ambiguous cases always require your explicit choice.</p>
+                            <h3>Time Axis Setup <span class="ww-info-tip"><button type="button" class="ww-info-tip-trigger" aria-label="About Time Axis Setup" aria-describedby="wwInfoTipPortal" data-tooltip-text="Configure how Powerwave should interpret the recording timeline. Powerwave never guesses a date order or invents a timezone -- ambiguous cases always require your explicit choice."><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7.2" x2="8" y2="11.3"/><circle cx="8" cy="4.7" r="0.9" fill="currentColor" stroke="none"/></svg></button></span></h3>
                         </div>
                         <button type="button" class="secondary" id="wwDataPrepTimeAxisToggleBtn">Configure</button>
                     </div>
@@ -5760,7 +5869,19 @@
                                  unknown/empty interpreter_id too,
                                  defense in depth, unrelated code,
                                  verified unchanged). -->
-                            <div class="field ww-data-prep-structure-field">
+                            <!-- Row 3C redesign: Time format and Time
+                                 column were two independently full-width
+                                 stacked .field blocks (never actually
+                                 side by side) -- wrapped in the SAME
+                                 .ww-data-prep-structure-row this panel's
+                                 own Family/Provenance/Unit/Interval row
+                                 already uses, so they sit side by side on
+                                 wide screens and stack on narrow ones via
+                                 its existing responsive flex-wrap, no new
+                                 breakpoint needed. Purely a wrapping div --
+                                 no id/function/behavior changed. -->
+                            <div class="ww-data-prep-structure-row ww-data-prep-time-axis-format-row">
+                            <div class="field ww-data-prep-structure-field ww-data-prep-time-axis-format-field">
                                 <label for="wwDataPrepTimeAxisInterpreterSelect">Time format</label>
                                 <div class="ww-data-prep-structure-controls ww-data-prep-time-axis-controls">
                                     <select id="wwDataPrepTimeAxisInterpreterSelect">
@@ -5796,6 +5917,7 @@
                                 <div class="ww-data-prep-structure-controls ww-data-prep-time-axis-controls" id="wwDataPrepTimeAxisColumnSelectRow" hidden>
                                     <select id="wwDataPrepTimeAxisColumnSelect"></select>
                                 </div>
+                            </div>
                             </div>
 
                             <!-- Manual Interpretation: an exceptional/
@@ -6034,8 +6156,19 @@
                                 <input type="checkbox" id="wwDataPrepTimeAxisConfirmedCheckbox">
                                 <span id="wwDataPrepTimeAxisConfirmedLabel">I confirm this reconstructed timing</span>
                             </label>
-                            <div class="ww-data-prep-structure-controls">
-                                <button type="button" class="secondary" id="wwDataPrepTimeAxisSaveBtn">Save Time Axis</button>
+                            <!-- Row 3C redesign: Save is now the primary
+                                 action (plain button = accent-filled,
+                                 matching Row 3A's own "Set Region"), Clear
+                                 stays secondary -- previously both were
+                                 `.secondary`, giving Save no more visual
+                                 weight than Clear despite being the
+                                 actual persisting action. DEC-083 dirty-
+                                 state behavior (wwDataPrepSetTimeAxis()/
+                                 wwDataPrepClearTimeAxis(), their own
+                                 listeners below) is completely unchanged --
+                                 class/wrapper-only. -->
+                            <div class="ww-data-prep-structure-controls ww-data-prep-time-axis-save-row">
+                                <button type="button" id="wwDataPrepTimeAxisSaveBtn">Save Time Axis</button>
                                 <button type="button" class="secondary" id="wwDataPrepTimeAxisClearBtn">Clear</button>
                             </div>
 
@@ -9972,7 +10105,19 @@
         // purely a visibility flip driven by the Interpreter <select>,
         // never a backend call by itself.
         function wwDataPrepRenderTimeAxisInterpreterFields() {
-            const interpreterId = document.getElementById("wwDataPrepTimeAxisInterpreterSelect").value;
+            const interpreterSelect = document.getElementById("wwDataPrepTimeAxisInterpreterSelect");
+            const interpreterId = interpreterSelect.value;
+            // Row 3C redesign follow-up (2026-09-06): a native `title`
+            // fallback carrying the full selected label -- discoverable
+            // on hover/long-press even if the closed select's own text
+            // is ever visually clipped again (a narrower column, a
+            // future longer label). Called from every single place this
+            // select's value ever changes (the plain `change` listener,
+            // Advanced options' "Use <label>" buttons, and applied-
+            // state restoration all funnel through this one function),
+            // so it can never fall out of sync with the actual value.
+            const selectedOption = interpreterSelect.options[interpreterSelect.selectedIndex];
+            interpreterSelect.title = selectedOption ? selectedOption.textContent : "";
             // UAT fix: the neutral placeholder (`""`, "Select time
             // format...") means NO format has been chosen yet -- shows
             // neither Manual's fields nor the Detect flow (which of the
