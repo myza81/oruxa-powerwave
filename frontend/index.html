@@ -1582,35 +1582,41 @@
         #pageDataPreparation .ww-data-prep-icon svg { width: 14px; height: 14px; stroke: currentColor; fill: none; vertical-align: -2px; }
 
         /* ================================================================
-           7-row Data Preparation layout (2026-09-06): Row 1 page
-           identity, Row 2 collapsible Issues/Readiness, Row 3 workflow
-           strip, Row 4 worksheet selection, Row 5 main configuration
-           (Header & Data Region | Column Roles | Time Axis Setup at
-           1:3:1), Row 6 Raw Data Preview, Row 7 final actions. Pure
-           layout/placement only: existing #wwDataPrep* ids, render
-           functions, event listeners, and backend semantics stay intact.
-           `min-width: 0` on grid children prevents tables/selects from
-           forcing page-level horizontal overflow. */
+           Data Preparation layout (2026-09-06, revised 2026-09-07): Row 1
+           page identity, Row 2 collapsible Issues/Readiness, Row 3
+           workflow strip, Row 4 worksheet selection, Row 5 structure
+           configuration (Header & Data Region | Column Roles at 1:3),
+           Row 5-time-axis Time Axis Setup (now its own full-width row,
+           with its own internal controls/preview split), Row 6 Raw Data
+           Preview, Row 7 final actions. Pure layout/placement only:
+           existing #wwDataPrep* ids, render functions, event listeners,
+           and backend semantics stay intact. `min-width: 0` on grid
+           children prevents tables/selects from forcing page-level
+           horizontal overflow. */
         .ww-data-prep-row { flex-shrink: 0; }
         .ww-data-prep-row-cols {
             display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 12px; align-items: start;
         }
         .ww-data-prep-row-cols > * { min-width: 0; }
-        /* Row 5: Header & Data Region | Column Roles | Time Axis Setup
-           at the approved 1:3:1 ratio. Column Roles gets the largest
-           share because it carries the table with five working
-           columns; the side panels stay compact but readable. */
+        /* Row 5 (2026-09-07 revision): Header & Data Region | Column
+           Roles at a 1:3 ratio. Time Axis Setup no longer competes for
+           width here -- it moved to its own full-width row directly
+           below (.ww-data-prep-row-5-time-axis) so its interpreter
+           preview table can sit beside its own controls instead of
+           stacking in a cramped third column. Column Roles still gets
+           the largest share of what remains: it carries the table with
+           five working columns; the region panel stays compact but
+           readable. */
         .ww-data-prep-row-5-grid {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 3fr) minmax(0, 1fr);
-            grid-template-areas: "region roles time";
+            grid-template-columns: minmax(0, 1fr) minmax(0, 3fr);
+            grid-template-areas: "region roles";
             gap: 12px; align-items: start;
         }
         .ww-data-prep-row-5-grid > * { min-width: 0; }
         .ww-data-prep-config-col-region { grid-area: region; }
         .ww-data-prep-config-col-wide { grid-area: roles; }
-        .ww-data-prep-config-col-time { grid-area: time; }
         .ww-data-prep-row-5-grid .ww-data-prep-card { overflow-x: auto; }
         @container (max-width: 180px) {
             .ww-data-prep-config-col-region .ww-data-prep-input-with-action,
@@ -1638,6 +1644,22 @@
         /* Row 5's small-screen stack lives in the ONE pre-existing
            shared 820px block further down this stylesheet, with no
            intermediate two-column arrangement. */
+
+        /* Row 5-time-axis (2026-09-07): Time Axis Setup's own internal
+           split -- input/configuration controls on the left, the
+           interpreter preview table on the right, so the panel's own
+           new full-page width is actually used instead of stacking a
+           table underneath controls that no longer need to compete
+           with a third column for space. Stays 2 columns through the
+           same shared breakpoints Row 5's own grid keeps its ratio
+           through, only stacking at the dedicated 820px mobile
+           breakpoint below -- same convention, not a new one. */
+        .ww-data-prep-time-axis-body {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+            gap: 16px; align-items: start;
+        }
+        .ww-data-prep-time-axis-body > * { min-width: 0; }
 
         /* ---- Row 1 visual redesign: page identity ----
            Title first (primary width share, the strongest visual
@@ -1958,9 +1980,9 @@
                 grid-template-columns: 1fr;
                 grid-template-areas:
                     "region"
-                    "roles"
-                    "time";
+                    "roles";
             }
+            .ww-data-prep-time-axis-body { grid-template-columns: 1fr; }
             .ww-data-prep-file-card { width: 100%; box-sizing: border-box; }
             /* Medium/small screen: keep all four connected segments in
                one row and retain helper text while trimming spacing. */
@@ -5680,12 +5702,14 @@
                  Powerwave" state lives entirely inside the Preparation
                  Status panel below (Slices 6/9/10), never on this badge. -->
             <section id="pageDataPreparation" aria-label="Data Preparation" hidden>
-                <!-- 7-row Data Preparation layout (2026-09-06): Row 1
-                     page identity, Row 2 collapsible Issues/Readiness,
-                     Row 3 workflow progress, Row 4 worksheet selection,
-                     Row 5 main configuration (Header & Data Region |
-                     Column Roles | Time Axis Setup at 1:3:1), Row 6
-                     Raw Data Preview, Row 7 Final Actions. This task is
+                <!-- Data Preparation layout (2026-09-06, revised
+                     2026-09-07): Row 1 page identity, Row 2 collapsible
+                     Issues/Readiness, Row 3 workflow progress, Row 4
+                     worksheet selection, Row 5 structure configuration
+                     (Header & Data Region | Column Roles at 1:3), Row
+                     5-time-axis Time Axis Setup (its own full-width row,
+                     controls/preview split internally), Row 6 Raw Data
+                     Preview, Row 7 Final Actions. This task is
                      layout/grid-structure only; every element below is
                      the SAME #wwDataPrep* id/function this workspace
                      already used, only re-parented into the new row/slot
@@ -5847,12 +5871,13 @@
                 </section>
                 </div>
 
-                <!-- Row 5: main preparation/configuration working area,
-                     3 slots on a wide desktop at the approved 1:3:1
-                     ratio: Header & Data Region | Column Roles | Time
-                     Axis Setup. Every element below is the SAME
-                     #wwDataPrep* element/function this workspace already
-                     used, only re-parented. -->
+                <!-- Row 5 (2026-09-07 revision): Header & Data Region |
+                     Column Roles at a 1:3 ratio. Time Axis Setup moved
+                     out to its own full-width row directly below (see
+                     .ww-data-prep-row-5-time-axis) -- every element
+                     below is still the SAME #wwDataPrep* element/
+                     function this workspace already used, only
+                     re-parented. -->
                 <div class="ww-data-prep-row ww-data-prep-row-5 ww-data-prep-row-5-grid">
                 <div class="ww-data-prep-config-col ww-data-prep-config-col-region">
 
@@ -5975,12 +6000,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     <div class="upload-status" id="wwDataPrepStructureStatus" role="status" aria-live="polite"></div>
                 </section>
                 </div>
-                <div class="ww-data-prep-config-col ww-data-prep-config-col-time">
-                <!-- Row 5C: Time Axis Setup, compact right-side panel.
-                     The Hide/Configure toggle was already removed before
+                </div>
+                <!-- /ww-data-prep-row-5-grid (Row 5) -->
+
+                <!-- Row 5-time-axis (2026-09-07): Time Axis Setup gets
+                     its own full-width row so its interpreter preview
+                     table can sit beside its own controls on wide
+                     screens (.ww-data-prep-time-axis-body) instead of
+                     stacking underneath in a cramped third column. The
+                     Hide/Configure toggle was already removed before
                      this task; all interpreter, DEC-082, DEC-083,
-                     advanced-option and save/clear behavior is unchanged. -->
-                <section class="panel ww-cc-panel ww-data-prep-card ww-data-prep-time-axis-card" id="wwDataPrepTimeAxisPanel">
+                     advanced-option and save/clear behavior is
+                     unchanged -- this is a DOM move + restyle only. -->
+                <section class="panel ww-cc-panel ww-data-prep-card ww-data-prep-time-axis-card ww-data-prep-row ww-data-prep-row-5-time-axis" id="wwDataPrepTimeAxisPanel">
                     <!-- Row 3C redesign (2026-09-06): the permanent helper
                          paragraph below the title cost vertical space in
                          BOTH the collapsed and expanded states (it lived
@@ -6043,6 +6075,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     </div>
                     <div id="wwDataPrepTimeAxisDetails">
                         <p class="hint" id="wwDataPrepTimeAxisNoColumnsHint" hidden>No Time Axis columns selected -- assign the "Time Axis" role to one or more columns in Structure first.</p>
+                        <!-- Row 5-time-axis (2026-09-07): controls on the
+                             left, interpreter preview table on the right
+                             on wide screens -- #wwDataPrepTimeAxisForm
+                             and #wwDataPrepTimeAxisPreviewCol are the
+                             SAME two areas, only wrapped for the split;
+                             no id/function/behavior inside either one
+                             changed. -->
+                        <div class="ww-data-prep-time-axis-body">
                         <div id="wwDataPrepTimeAxisForm">
                             <!-- Normal dropdown: the five common,
                                  immediately-understandable formats only.
@@ -6347,9 +6387,6 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                                     <div id="wwDataPrepTimeAxisDateOrderOptions"></div>
                                 </div>
                                 <ul id="wwDataPrepTimeAxisDiagnostics" class="ww-data-prep-time-axis-diagnostics"></ul>
-                                <div class="ww-data-prep-table-wrap">
-                                    <table class="ww-data-prep-table" id="wwDataPrepTimeAxisPreviewTable"></table>
-                                </div>
                             </div>
 
                             <!-- UAT fix (2026-09-04): shown ONLY when the
@@ -6465,12 +6502,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                                 </div>
                             </details>
                         </div>
+                        <div class="ww-data-prep-time-axis-preview-col" id="wwDataPrepTimeAxisPreviewCol" hidden>
+                            <div class="ww-data-prep-table-wrap">
+                                <table class="ww-data-prep-table" id="wwDataPrepTimeAxisPreviewTable"></table>
+                            </div>
+                        </div>
+                        </div>
                         <div class="upload-status" id="wwDataPrepTimeAxisStatus" role="status" aria-live="polite"></div>
                     </div>
                 </section>
-                </div>
-                </div>
-                <!-- /ww-data-prep-row-5-grid (Row 5) -->
+                <!-- /ww-data-prep-row-5-time-axis (Time Axis Setup) -->
 
                 <!-- Row 6: full-width Data Preview, the final major
                      content row. -->
@@ -10339,6 +10380,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             document.getElementById("wwDataPrepTimeAxisNoFormatHint").hidden = !isPlaceholder;
             document.getElementById("wwDataPrepTimeAxisManualFields").hidden = isPlaceholder || isSample;
             document.getElementById("wwDataPrepTimeAxisDetectFields").hidden = isPlaceholder || !isSample;
+            // Row 5-time-axis (2026-09-07): the preview table now lives
+            // in its own sibling column (moved out of #wwDataPrep
+            // TimeAxisDetectFields for the controls/preview split) --
+            // mirror the SAME visibility condition so it only ever shows
+            // exactly when Detect Fields itself would, never a second,
+            // independent visibility rule.
+            document.getElementById("wwDataPrepTimeAxisPreviewCol").hidden = isPlaceholder || !isSample;
             document.getElementById("wwDataPrepTimeAxisSplitColumnsRow").hidden = interpreterId !== "split_date_time";
             document.getElementById("wwDataPrepTimeAxisElapsedUnitField").hidden = interpreterId !== "elapsed_numeric";
             document.getElementById("wwDataPrepTimeAxisIndexTimingField").hidden = interpreterId !== "sample_index";
@@ -12078,7 +12126,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const tab = event.target.closest(".ww-data-prep-worksheet-tab");
             if (!tab) return;
             const select = document.getElementById("wwDataPrepWorksheetSelect");
-            if (select.value === tab.dataset.worksheetIndex) return;
+            // The no-op guard reads application state, never select.value:
+            // on a fresh Excel source nothing is selected yet
+            // (selectedWorksheetIndex === null) while the native select
+            // still defaults to its first option ("0"), which made
+            // clicking the first worksheet tab a silent no-op.
+            const selectedIndex = wwDataPrep.selectedWorksheetIndex;
+            if (selectedIndex != null && String(selectedIndex) === tab.dataset.worksheetIndex) return;
             select.value = tab.dataset.worksheetIndex;
             select.dispatchEvent(new Event("change", { bubbles: true }));
         });

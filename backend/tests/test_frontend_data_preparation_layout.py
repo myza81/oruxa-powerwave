@@ -36,26 +36,31 @@ def _function_body(source: str, signature: str, next_signature: str) -> str:
 
 
 class TestRowFiveMainConfiguration:
-    """Approved 7-row layout (2026-09-06): Row 5 is now the main
-    configuration workspace at the owner-requested 1:3:1 ratio:
-    Header & Data Region | Column Roles | Time Axis Setup. Worksheet
-    selection and Issues/Readiness both have their own rows."""
+    """Row 5 revision (2026-09-07): Row 5 is now Header & Data Region |
+    Column Roles ONLY, at a 1:3 ratio -- Time Axis Setup moved out to
+    its own full-width row directly below (see
+    TestRowFiveTimeAxisOwnRow) so its interpreter preview table could
+    get a controls/preview split instead of a cramped third column.
+    Worksheet selection and Issues/Readiness both still have their own
+    rows, unaffected by this revision."""
 
     def test_row_5_is_the_main_configuration_grid(self):
         source = _source()
         assert 'class="ww-data-prep-row ww-data-prep-row-5 ww-data-prep-row-5-grid"' in source
 
-    def test_row_5_contains_header_roles_and_time_axis_only(self):
+    def test_row_5_contains_header_and_roles_only_not_time_axis(self):
         source = _source()
         row5_start = source.index('class="ww-data-prep-row ww-data-prep-row-5 ww-data-prep-row-5-grid"')
         row5_end = source.index("<!-- /ww-data-prep-row-5-grid (Row 5) -->")
         row5_body = source[row5_start:row5_end]
         assert 'class="ww-data-prep-config-col ww-data-prep-config-col-region"' in row5_body
         assert 'class="ww-data-prep-config-col ww-data-prep-config-col-wide"' in row5_body
-        assert 'class="ww-data-prep-config-col ww-data-prep-config-col-time"' in row5_body
         assert "Header &amp; Data Region" in row5_body
         assert 'id="wwDataPrepColumnsTable"' in row5_body
-        assert 'id="wwDataPrepTimeAxisPanel"' in row5_body
+        # Time Axis Setup no longer lives in Row 5 -- it is now its own
+        # full-width row (see TestRowFiveTimeAxisOwnRow below).
+        assert 'class="ww-data-prep-config-col ww-data-prep-config-col-time"' not in row5_body
+        assert 'id="wwDataPrepTimeAxisPanel"' not in row5_body
         assert 'id="wwDataPrepWorksheetCard"' not in row5_body
         assert 'id="wwDataPrepIssuesCard"' not in row5_body
 
@@ -86,21 +91,54 @@ class TestRowFiveMainConfiguration:
         assert "select.value = tab.dataset.worksheetIndex;" in click_body
         assert 'select.dispatchEvent(new Event("change", { bubbles: true }));' in click_body
 
-    def test_column_roles_card_exists_in_the_wide_middle_column(self):
+    def test_worksheet_tab_no_op_guard_reads_app_state_not_the_native_select(self):
+        """P1 regression (2026-09-07): on a fresh Excel source the app has
+        no worksheet selected (wwDataPrep.selectedWorksheetIndex === null)
+        while the native <select> still reports its default first option
+        ("0"). Guarding on select.value therefore treated a click on the
+        FIRST worksheet tab as a no-op, so no change event was dispatched,
+        no PATCH fired, and the preview never rendered. The guard must read
+        application state, and must still no-op when that state already
+        holds the clicked worksheet."""
+        source = _source()
+        click_body = _function_body(
+            source,
+            'document.getElementById("wwDataPrepWorksheetTabs").addEventListener("click"',
+            'document.getElementById("wwDataPrepBackBtn").addEventListener("click"',
+        )
+
+        # The regressing guard must be gone -- select.value is never the
+        # source of truth for what is currently selected.
+        assert "if (select.value === tab.dataset.worksheetIndex) return;" not in click_body
+        assert "select.value ===" not in click_body
+
+        # The guard reads the single existing worksheet state (no second
+        # worksheet state is introduced) and compares it as a string.
+        assert "const selectedIndex = wwDataPrep.selectedWorksheetIndex;" in click_body
+        assert "selectedIndex != null" in click_body
+        assert 'String(selectedIndex) === tab.dataset.worksheetIndex' in click_body
+
+        # A fresh source (null state) must fall through to the dispatch path.
+        guard_end = click_body.index("selectedIndex != null")
+        assert click_body.index("select.value = tab.dataset.worksheetIndex;") > guard_end
+        assert click_body.index('select.dispatchEvent(new Event("change", { bubbles: true }));') > guard_end
+
+    def test_column_roles_card_exists_in_the_wide_column(self):
         source = _source()
         wide_col_start = source.index('class="ww-data-prep-config-col ww-data-prep-config-col-wide"')
         row5_end = source.index("<!-- /ww-data-prep-row-5-grid (Row 5) -->")
         assert wide_col_start < source.index("<h3>Column Roles ") < row5_end
         assert 'id="wwDataPrepColumnsTable"' in source[wide_col_start:row5_end]
 
-    def test_row_5_grid_ratio_is_1_3_1(self):
+    def test_row_5_grid_ratio_is_1_3(self):
         source = _source()
         body = _function_body(source, ".ww-data-prep-row-5-grid {", "}")
         assert "display: grid" in body
-        assert "minmax(0, 1fr) minmax(0, 3fr) minmax(0, 1fr)" in body
-        assert 'grid-template-areas: "region roles time";' in body
+        assert "minmax(0, 1fr) minmax(0, 3fr)" in body
+        assert "minmax(0, 1fr) minmax(0, 3fr) minmax(0, 1fr)" not in body
+        assert 'grid-template-areas: "region roles";' in body
 
-    def test_row_5_keeps_1_3_1_until_mobile_stack(self):
+    def test_row_5_keeps_1_3_until_mobile_stack(self):
         source = _source()
         media_1180 = _function_body(source, "@media (max-width: 1180px) {", "@media (max-width: 820px) {")
         assert ".ww-data-prep-row-5-grid" not in media_1180
@@ -110,7 +148,9 @@ class TestRowFiveMainConfiguration:
         assert 'grid-template-areas:' in media_820
         assert '"region"' in media_820
         assert '"roles"' in media_820
-        assert '"time"' in media_820
+        # Time Axis Setup is no longer part of Row 5's grid at all (own
+        # full-width row now) -- its old stacked area must not reappear.
+        assert '"time"' not in media_820
         assert '"region time"' not in source
         assert '"roles roles"' not in source
 
@@ -902,7 +942,10 @@ class TestTimeAxisSetupRow3CRedesign:
 
     def _panel_body(self, source: str) -> str:
         start = source.index('id="wwDataPrepTimeAxisPanel"')
-        end = source.index("<!-- /ww-data-prep-row-5-grid (Row 5) -->")
+        # Row 5-time-axis (2026-09-07): the panel is now its own
+        # full-width row, closed by its own dedicated comment rather
+        # than Row 5's (which now ends right after Column Roles).
+        end = source.index("<!-- /ww-data-prep-row-5-time-axis (Time Axis Setup) -->")
         return source[start:end]
 
     def test_permanent_helper_paragraph_is_gone_replaced_by_a_tooltip(self):
@@ -986,7 +1029,10 @@ class TestTimeAxisSetupHideButtonRemoval:
 
     def _panel_body(self, source: str) -> str:
         start = source.index('id="wwDataPrepTimeAxisPanel"')
-        end = source.index("<!-- /ww-data-prep-row-5-grid (Row 5) -->")
+        # Row 5-time-axis (2026-09-07): the panel is now its own
+        # full-width row, closed by its own dedicated comment rather
+        # than Row 5's (which now ends right after Column Roles).
+        end = source.index("<!-- /ww-data-prep-row-5-time-axis (Time Axis Setup) -->")
         return source[start:end]
 
     def test_hide_configure_toggle_button_is_gone(self):
@@ -1036,7 +1082,10 @@ class TestTimeAxisSetupStatusCardAndDetectSpacing:
 
     def _panel_body(self, source: str) -> str:
         start = source.index('id="wwDataPrepTimeAxisPanel"')
-        end = source.index("<!-- /ww-data-prep-row-5-grid (Row 5) -->")
+        # Row 5-time-axis (2026-09-07): the panel is now its own
+        # full-width row, closed by its own dedicated comment rather
+        # than Row 5's (which now ends right after Column Roles).
+        end = source.index("<!-- /ww-data-prep-row-5-time-axis (Time Axis Setup) -->")
         return source[start:end]
 
     def test_old_summary_dl_is_visually_removed_but_still_populated(self):
@@ -1087,12 +1136,111 @@ class TestTimeAxisSetupStatusCardAndDetectSpacing:
         assert "margin-top: 14px" in source[rule_start:rule_end]
 
 
-class TestSevenRowLayoutFoundation:
-    """Approved 7-row layout (2026-09-06): the page is organized into
-    exactly seven semantic horizontal rows. Row 5 owns the only active
-    configuration grid and uses a responsive 1:3:1 wide-desktop layout."""
+class TestRowFiveTimeAxisOwnRow:
+    """Time Axis Setup layout refinement (2026-09-07): Time Axis Setup
+    moves out of Row 5's 1:3:1 grid into its own full-width row directly
+    below Row 5, and its own internals split into a controls column
+    (left) and an interpreter preview-table column (right) on wide
+    screens, stacking to one column at the same 820px breakpoint Row 5
+    itself stacks at. Every existing #wwDataPrep* id/function/behavior
+    (DEC-082, DEC-083, Detect/Save/Clear, Advanced options/details) is
+    unchanged -- this is a DOM move + restyle only."""
 
-    def test_exactly_seven_rows_exist(self):
+    def _panel_section_tag(self, source: str) -> str:
+        panel_id_pos = source.index('id="wwDataPrepTimeAxisPanel"')
+        tag_start = source.rindex("<section", 0, panel_id_pos)
+        return source[tag_start:panel_id_pos]
+
+    def _panel_body(self, source: str) -> str:
+        start = source.index('id="wwDataPrepTimeAxisPanel"')
+        end = source.index("<!-- /ww-data-prep-row-5-time-axis (Time Axis Setup) -->")
+        return source[start:end]
+
+    def test_panel_is_its_own_full_width_row_not_a_row_5_grid_child(self):
+        source = _source()
+        tag = self._panel_section_tag(source)
+        assert "ww-data-prep-row" in tag
+        assert "ww-data-prep-row-5-time-axis" in tag
+        assert "ww-data-prep-config-col" not in tag
+        assert "ww-data-prep-row-5-grid" not in tag
+
+    def test_panel_sits_after_row_5_grid_and_before_row_6(self):
+        source = _source()
+        row5_grid_end = source.index("<!-- /ww-data-prep-row-5-grid (Row 5) -->")
+        panel_pos = source.index('id="wwDataPrepTimeAxisPanel"')
+        row6_pos = source.index(
+            'class="panel ww-cc-panel ww-data-prep-card ww-data-prep-preview-card ww-data-prep-row ww-data-prep-row-6"'
+        )
+        assert row5_grid_end < panel_pos < row6_pos
+
+    def test_form_and_preview_column_are_wrapped_in_the_split_body(self):
+        source = _source()
+        panel = self._panel_body(source)
+        body_start = panel.index('class="ww-data-prep-time-axis-body"')
+        form_pos = panel.index('id="wwDataPrepTimeAxisForm"')
+        preview_col_pos = panel.index('id="wwDataPrepTimeAxisPreviewCol"')
+        assert body_start < form_pos < preview_col_pos
+
+    def test_preview_table_moved_out_of_detect_fields_into_its_own_column(self):
+        source = _source()
+        panel = self._panel_body(source)
+        detect_fields_start = panel.index('id="wwDataPrepTimeAxisDetectFields"')
+        detect_fields_end = panel.index('id="wwDataPrepTimeAxisConfirmedField"')
+        detect_fields_body = panel[detect_fields_start:detect_fields_end]
+        assert 'id="wwDataPrepTimeAxisPreviewTable"' not in detect_fields_body
+
+        preview_col_start = panel.index('id="wwDataPrepTimeAxisPreviewCol"')
+        preview_col_tag_end = panel.index(">", preview_col_start)
+        preview_col_tag = panel[preview_col_start:preview_col_tag_end]
+        assert "hidden" in preview_col_tag
+        preview_col_end = panel.index("</table>", preview_col_start)
+        assert 'id="wwDataPrepTimeAxisPreviewTable"' in panel[preview_col_start:preview_col_end]
+
+    def test_split_body_is_a_two_column_grid_on_wide_screens(self):
+        source = _source()
+        rule = _function_body(source, ".ww-data-prep-time-axis-body {", "}")
+        assert "display: grid" in rule
+        assert "grid-template-columns:" in rule
+
+    def test_split_stacks_to_one_column_at_the_shared_820px_breakpoint(self):
+        source = _source()
+        media_1180 = _function_body(source, "@media (max-width: 1180px) {", "@media (max-width: 820px) {")
+        assert ".ww-data-prep-time-axis-body" not in media_1180
+        media_820 = _function_body(source, "@media (max-width: 820px) {", "/* Very small screen")
+        assert '.ww-data-prep-time-axis-body { grid-template-columns: 1fr; }' in media_820
+
+    def test_preview_column_visibility_mirrors_detect_fields_in_the_same_function(self):
+        # Moving the table out of #wwDataPrepTimeAxisDetectFields means
+        # its own `.hidden` toggle no longer covers the table -- the
+        # SAME function must set an identical condition on the new
+        # preview column, never a second/independent visibility rule.
+        source = _source()
+        body = _function_body(
+            source,
+            "function wwDataPrepRenderTimeAxisInterpreterFields() {",
+            "document.getElementById(\"wwDataPrepTimeAxisSplitColumnsRow\")",
+        )
+        detect_line = 'document.getElementById("wwDataPrepTimeAxisDetectFields").hidden = isPlaceholder || !isSample;'
+        preview_line = 'document.getElementById("wwDataPrepTimeAxisPreviewCol").hidden = isPlaceholder || !isSample;'
+        assert detect_line in body
+        assert preview_line in body
+        assert body.index(detect_line) < body.index(preview_line)
+
+    def test_preview_column_starts_hidden_matching_detect_fields_initial_state(self):
+        source = _source()
+        panel = self._panel_body(source)
+        assert '<div id="wwDataPrepTimeAxisDetectFields" hidden>' in panel
+        assert '<div class="ww-data-prep-time-axis-preview-col" id="wwDataPrepTimeAxisPreviewCol" hidden>' in panel
+
+
+class TestSevenRowLayoutFoundation:
+    """Approved layout (2026-09-06, revised 2026-09-07): the page is
+    organized into eight semantic horizontal rows now that Time Axis
+    Setup has its own full-width row (ww-data-prep-row-5-time-axis)
+    between Row 5 (now a 1:3 Header & Data Region | Column Roles grid,
+    down from 1:3:1) and Row 6 (Raw Data Preview, unaffected)."""
+
+    def test_exactly_eight_rows_exist(self):
         source = _source()
         # Each row's class is applied to exactly one element -- checked
         # via each row's own distinctive class-attribute string rather
@@ -1108,6 +1256,12 @@ class TestSevenRowLayoutFoundation:
         )
         assert source.count('class="ww-data-prep-row ww-data-prep-row-4"') == 1
         assert source.count('class="ww-data-prep-row ww-data-prep-row-5 ww-data-prep-row-5-grid"') == 1
+        assert (
+            source.count(
+                'class="panel ww-cc-panel ww-data-prep-card ww-data-prep-time-axis-card ww-data-prep-row ww-data-prep-row-5-time-axis" id="wwDataPrepTimeAxisPanel"'
+            )
+            == 1
+        )
         assert (
             source.count(
                 'class="panel ww-cc-panel ww-data-prep-card ww-data-prep-preview-card ww-data-prep-row ww-data-prep-row-6"'
