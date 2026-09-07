@@ -64,15 +64,22 @@ class TestNormalDropdownExcludesAdvancedInterpreters:
 
 
 class TestAdvancedOptionsSection:
-    def test_advanced_options_is_a_distinct_details_element_from_advanced_details(self):
+    def test_advanced_options_is_distinct_from_time_details(self):
+        # Row 7 redesign (2026-09-07): the separate "Advanced details"
+        # accordion (#wwDataPrepTimeAxisAdvanced) is retired -- its
+        # useful fields consolidated into the new, always-visible Time
+        # Details column instead. Advanced Options (still a collapsed
+        # <details>, moved into the panel's header-right actions) and
+        # Time Details (read-only technical facts) must never be merged
+        # into one concept.
         source = _source()
         assert 'id="wwDataPrepTimeAxisAdvancedOptions"' in source
-        assert 'id="wwDataPrepTimeAxisAdvanced"' in source
-        assert "Advanced options" in source
-        assert "Advanced details" in source
+        assert 'id="wwDataPrepTimeAxisAdvanced"' not in source
+        assert "Advanced Options" in source
+        assert 'id="wwDataPrepTimeAxisDetailsCol"' in source
         # Distinct CSS classes -- never merged into one concept.
         assert 'class="ww-data-prep-time-axis-advanced-options"' in source
-        assert 'class="ww-data-prep-time-axis-advanced"' in source
+        assert 'class="ww-data-prep-time-axis-advanced"' not in source
 
     def test_both_cards_have_title_description_example_and_action(self):
         source = _source()

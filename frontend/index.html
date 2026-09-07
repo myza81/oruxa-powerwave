@@ -1143,6 +1143,28 @@
         .ww-data-prep-region-row .ww-data-prep-compact-field { flex: 1 1 160px; min-width: 140px; }
         .ww-data-prep-region-row .hint { margin: 6px 0 0; font-style: normal; }
         .ww-data-prep-region-actions { margin-top: 14px; }
+        /* Row 5A redesign (2026-09-07): numbered step badge + title +
+           description, matching the approved mock -- panel-scoped
+           wrapper classes (Column Roles keeps its own, separate ones),
+           but the SAME reusable .ww-data-prep-panel-step-badge. */
+        .ww-data-prep-region-header { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+        .ww-data-prep-region-header-text { min-width: 0; }
+        .ww-data-prep-region-desc { margin: 3px 0 0; }
+        /* Row 5A redesign: a light-blue instructional note -- reuses
+           --accent-wash-soft (the SAME soft blue tint token already
+           used elsewhere in this page, e.g. the selected worksheet
+           tab's own background), not a new color, and the SAME
+           info-tip SVG glyph already used by every tooltip trigger in
+           this panel, just sized up for a standalone icon rather than
+           an inline trigger. */
+        .ww-data-prep-region-info-box {
+            display: flex; align-items: flex-start; gap: 8px;
+            background: var(--accent-wash-soft); border-radius: var(--radius);
+            padding: 8px 10px; margin: 10px 0 14px;
+        }
+        .ww-data-prep-region-info-icon { flex: 0 0 auto; color: var(--accent); margin-top: 2px; }
+        .ww-data-prep-region-info-icon svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.3; }
+        .ww-data-prep-region-info-text { margin: 0; font-size: 0.75rem; line-height: 1.4; color: var(--text); }
         /* Row 3B redesign: a compact CONFIGURATION table, not a
            spreadsheet-style grid -- the shared .ww-data-prep-table base
            class sets a monospace font + nowrap for the raw/Time-Axis
@@ -1466,7 +1488,7 @@
         .ww-data-prep-time-axis-detect-card {
             display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px;
             border: 1px solid var(--panel-border); border-radius: var(--radius);
-            margin: 0 0 10px; font-size: 0.8rem;
+            margin: 10px 0; font-size: 0.8rem;
         }
         /* Row 3C redesign: a subtle background tint (not just a colored
            border) so match/attention reads at a glance without an
@@ -1500,51 +1522,59 @@
            scoped to this one button row only (never the shared
            `.ww-data-prep-structure-controls` base, which Save/Clear and
            other rows in this panel also rely on). */
-        .ww-data-prep-time-axis-detect-row { margin-top: 14px; }
+        .ww-data-prep-time-axis-detect-row { margin-top: 5px; }
 
-        /* Advanced details: the SAME native <details>/<summary> +
-           .chevron progressive-disclosure convention already established
-           for Per-Unit's own "Advanced options" (.ww-pu-advanced) and the
-           Channel Sidebar's collapsible groups -- collapsed by default,
-           opening it never mutates configuration state (a plain <details>
-           has no such side effect by construction). A 2-column label/
-           value grid on desktop; collapses to one column at the SAME
-           900px breakpoint the rest of the app's own responsive shell
-           already uses (section 23), never a new arbitrary width. */
-        .ww-data-prep-time-axis-advanced summary {
-            display: flex; align-items: center; gap: 6px; cursor: pointer;
-            font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
-            letter-spacing: 0.03em; color: var(--text-dim); user-select: none;
-            margin-top: 10px;
-        }
-        .ww-data-prep-time-axis-advanced-body { margin-top: 10px; }
-        .ww-data-prep-time-axis-advanced-body dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; }
-        .ww-data-prep-time-axis-advanced-body dt { font-size: 0.7rem; color: var(--text-dim); white-space: nowrap; }
-        .ww-data-prep-time-axis-advanced-body dd { margin: 0; font-size: 0.75rem; overflow-wrap: anywhere; }
-        @media (max-width: 900px) {
-            .ww-data-prep-time-axis-advanced-body dl { grid-template-columns: 1fr; }
-            .ww-data-prep-time-axis-advanced-body dt { margin-top: 6px; }
-        }
+        /* Advanced details (the former separate accordion) is retired as
+           of the Row 7 redesign (2026-09-07) -- its own summary/body/dl
+           CSS is removed here since verified unused (no
+           .ww-data-prep-time-axis-advanced element remains in the DOM);
+           its useful fields live in the new Time Details column instead
+           (.ww-data-prep-time-axis-details-list below). The retired
+           accordion's own #wwDataPrepTimeAxisAdvanced id/wwDataPrep
+           RenderTimeAxisAdvancedDetails() function name are both gone
+           too (see wwDataPrepRenderTimeAxisDetails(), its renamed
+           replacement) -- every dd id it used to populate is unchanged,
+           only re-parented.
 
-        /* Advanced OPTIONS: a deliberately DISTINCT concept from Advanced
-           details above -- alternative expert/recovery WORKFLOWS
-           (Reconstructed Time, Manual Interpretation), never technical
-           metadata about the currently-selected format. Same <details>/
-           .chevron convention, its own summary/body classes so the two
-           sections can never be confused for one another in markup
-           either. Cards always stack one-per-row (never a side-by-side
-           layout to preserve on narrow widths) -- each already carries a
-           title, two lines of prose, and a button, so a single column
-           reads cleanly at every width without a dedicated breakpoint of
-           its own. */
+           Advanced OPTIONS below is a deliberately DISTINCT concept --
+           alternative expert/recovery WORKFLOWS (Reconstructed Time,
+           Manual Interpretation), never technical metadata about the
+           currently-selected format -- now relocated into the panel's
+           header-right actions area as a compact dropdown (see
+           .ww-data-prep-time-axis-header-actions below) rather than a
+           full-width in-form accordion. Same <details>/.chevron
+           convention, same id, same force-open call
+           (wwDataPrepRenderTimeAxisInterpreterFields()) -- only its
+           OWN summary/body styling changed to suit its new compact
+           header context. Cards always stack one-per-row (never a
+           side-by-side layout to preserve on narrow widths) -- each
+           already carries a title, two lines of prose, and a button,
+           so a single column reads cleanly at every width without a
+           dedicated breakpoint of its own. */
+        .ww-data-prep-time-axis-advanced-options { position: relative; }
         .ww-data-prep-time-axis-advanced-options summary {
             display: flex; align-items: center; gap: 6px; cursor: pointer;
-            font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
-            letter-spacing: 0.03em; color: var(--text-dim); user-select: none;
-            margin-top: 10px;
+            list-style: none;
+            font-size: 0.72rem; font-weight: 600; color: var(--text-dim);
+            user-select: none; white-space: nowrap;
+            border: 1px solid var(--panel-border); border-radius: var(--radius);
+            padding: 6px 10px; background: var(--panel);
         }
+        .ww-data-prep-time-axis-advanced-options summary::-webkit-details-marker { display: none; }
+        .ww-data-prep-time-axis-advanced-options summary:hover { background: var(--hover-tint); }
+        .ww-data-prep-time-axis-advanced-options-icon { font-size: 0.85rem; line-height: 1; }
+        /* A floating dropdown anchored below the summary button -- the
+           header strip is too narrow/short for the cards to expand
+           in-flow the way they used to inside the wide form column. No
+           JS change: native <details> open/close already IS the toggle,
+           this only repositions where the open body PAINTS. */
         .ww-data-prep-time-axis-advanced-options-body {
-            margin-top: 10px; display: flex; flex-direction: column; gap: 12px;
+            position: absolute; top: calc(100% + 6px); right: 0; z-index: 20;
+            width: max-content; max-width: min(340px, calc(100vw - 32px));
+            display: flex; flex-direction: column; gap: 12px;
+            background: var(--panel); border: 1px solid var(--panel-border);
+            border-radius: var(--radius); padding: 12px;
+            box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
         }
         .ww-data-prep-time-axis-advanced-option-card {
             border: 1px solid var(--panel-border); border-radius: var(--radius);
@@ -1581,6 +1611,37 @@
         #pageDataPreparation { gap: 12px; }
         #pageDataPreparation .ww-data-prep-icon svg { width: 14px; height: 14px; stroke: currentColor; fill: none; vertical-align: -2px; }
 
+        /* Row 7 redesign (2026-09-07): Time Axis Setup's own header --
+           badge+title/description on the left (content block), status
+           pill/selected-column chip/Advanced Options on the right
+           (actions block) -- both children of the SAME shared
+           .ww-data-prep-panel-header flex/space-between row Header &
+           Data Region's own header already uses. */
+        .ww-data-prep-time-axis-header-main { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+        .ww-data-prep-time-axis-header-text { min-width: 0; }
+        .ww-data-prep-time-axis-header-desc { margin: 3px 0 0; }
+        .ww-data-prep-time-axis-header-actions {
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+            flex: 0 0 auto;
+        }
+        /* Status pill: the SAME color-wash convention (--ok-wash /
+           color-mix warn) the Issues & Readiness status card and the
+           full validity card below already use -- never a new color
+           scheme for the same 3 states. */
+        .ww-data-prep-time-axis-header-status {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 5px 10px; border-radius: 999px;
+            font-size: 0.72rem; font-weight: 600; white-space: nowrap;
+        }
+        .ww-data-prep-time-axis-header-status[data-state="valid"] { background: var(--ok-wash); color: var(--ok); }
+        .ww-data-prep-time-axis-header-status[data-state="attention"] { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+        .ww-data-prep-time-axis-header-status[data-state="unconfigured"] { background: color-mix(in srgb, var(--warn) 12%, transparent); color: var(--warn); }
+        /* .ww-data-prep-time-axis-header-column (the selected-column
+           chip) is retired as of a 2026-09-07 UAT fix -- redundant with
+           the status badge above and the Time Format section's own
+           resolved-column field. Verified unused before removal (no
+           consumer left in the DOM). */
+
         /* ================================================================
            Data Preparation layout (2026-09-06, revised 2026-09-07): Row 1
            page identity, Row 2 collapsible Issues/Readiness, Row 3
@@ -1607,17 +1668,34 @@
            stacking in a cramped third column. Column Roles still gets
            the largest share of what remains: it carries the table with
            five working columns; the region panel stays compact but
-           readable. */
+           readable.
+
+           Height AUTHORITY (2026-09-07, corrected in a second follow-up
+           UAT fix): Header & Data Region is the height authority for
+           this row -- `align-items: stretch` (was `start`) plus `flex:
+           1 1 auto` on each card below makes both cards fill the SAME
+           row height, and Column Roles' own card (see
+           .ww-data-prep-column-roles-card) uses `contain: size` so its
+           OWN content never contributes to sizing this row in the
+           first place, at any column count -- no guessed max-height
+           number involved. Within that card, the table area itself
+           (not just the card) fills whatever height Header & Data
+           Region's own natural size gives this row -- see
+           .ww-data-prep-column-roles-card/-wrap's own flex-column split
+           below, so a short column list's remaining space reads as
+           empty scroll area directly below the last row, and a long
+           list scrolls internally rather than growing the row (and
+           therefore Header & Data Region) ever taller. */
         .ww-data-prep-row-5-grid {
             display: grid;
             grid-template-columns: minmax(0, 1fr) minmax(0, 3fr);
             grid-template-areas: "region roles";
-            gap: 12px; align-items: start;
+            gap: 12px; align-items: stretch;
         }
         .ww-data-prep-row-5-grid > * { min-width: 0; }
         .ww-data-prep-config-col-region { grid-area: region; }
         .ww-data-prep-config-col-wide { grid-area: roles; }
-        .ww-data-prep-row-5-grid .ww-data-prep-card { overflow-x: auto; }
+        .ww-data-prep-row-5-grid .ww-data-prep-card { overflow-x: auto; flex: 1 1 auto; }
         @container (max-width: 180px) {
             .ww-data-prep-config-col-region .ww-data-prep-input-with-action,
             .ww-data-prep-config-col-region .ww-data-prep-region-actions {
@@ -1645,21 +1723,52 @@
            shared 820px block further down this stylesheet, with no
            intermediate two-column arrangement. */
 
-        /* Row 5-time-axis (2026-09-07): Time Axis Setup's own internal
-           split -- input/configuration controls on the left, the
-           interpreter preview table on the right, so the panel's own
-           new full-page width is actually used instead of stacking a
-           table underneath controls that no longer need to compete
-           with a third column for space. Stays 2 columns through the
-           same shared breakpoints Row 5's own grid keeps its ratio
-           through, only stacking at the dedicated 820px mobile
-           breakpoint below -- same convention, not a new one. */
+        /* Row 5-time-axis (2026-09-07, revised in the Row 7 redesign the
+           same day): Time Axis Setup's own internal split -- Time
+           Format | Sample Preview | Time Details, so the panel's own
+           full-page width is actually used instead of stacking a table
+           and read-only facts underneath controls that no longer need
+           to compete with other columns for space. 1fr : 1.2fr : 0.9fr
+           -- Sample Preview gets the largest share (it carries a table),
+           Time Details the smallest (short label/value pairs). Stays 3
+           columns through the same shared breakpoints Row 5's own grid
+           keeps its ratio through, only stacking at the dedicated 820px
+           mobile breakpoint below -- same convention, not a new one.
+           `align-items: stretch` (each column below is its own flex
+           column, min-height: 0) lets the shorter columns' own scroll
+           areas fill up to whatever height the tallest column (usually
+           Time Format) naturally needs, rather than leaving blank space
+           under a short table/fact list. */
         .ww-data-prep-time-axis-body {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
-            gap: 16px; align-items: start;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 0.9fr);
+            gap: 16px; align-items: stretch;
         }
-        .ww-data-prep-time-axis-body > * { min-width: 0; }
+        .ww-data-prep-time-axis-body > * { min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+        .ww-data-prep-time-axis-section-title { margin: 0 0 10px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-dim); }
+        .ww-data-prep-time-axis-section-title .hint { text-transform: none; letter-spacing: normal; font-weight: 400; margin-left: 2px; }
+        /* Sample Preview (section 12): fills whatever height the row
+           (usually driven by Time Format, the naturally tallest column)
+           provides, scrolling its own rows internally rather than
+           forcing the row taller -- same flex-fill/scroll principle
+           Column Roles' own redesign already established, applied here
+           since the preview is always a small, render-capped (10-row)
+           table rather than needing a hard cap of its own. `width: 100%`
+           (follow-up UAT fix, 2026-09-07) makes explicit what flex
+           stretch already provides by default here -- the wrap fills
+           the FULL width of its column, so only the <table> itself
+           (see .ww-data-prep-time-axis-preview-table below) needed an
+           explicit width to actually use it. */
+        .ww-data-prep-time-axis-preview-col .ww-data-prep-table-wrap {
+            width: 100%; flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: auto;
+        }
+        /* Time Details: a compact label/value list, always-visible
+           status card at the bottom -- shorter by nature, so it simply
+           renders at its own natural height rather than needing a
+           scroll region of its own. */
+        .ww-data-prep-time-axis-details-list { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0 0 12px; }
+        .ww-data-prep-time-axis-details-list dt { font-size: 0.7rem; color: var(--text-dim); white-space: nowrap; }
+        .ww-data-prep-time-axis-details-list dd { margin: 0; font-size: 0.75rem; overflow-wrap: anywhere; }
 
         /* ---- Row 1 visual redesign: page identity ----
            Title first (primary width share, the strongest visual
@@ -1671,7 +1780,7 @@
            carry different visual weight, unlike Row 3's genuinely equal
            configuration panels. */
         .ww-data-prep-row-1 {
-            display: grid; grid-template-columns: minmax(0, 1.6fr) auto minmax(260px, 1fr);
+            display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(260px, 1fr);
             gap: 16px; align-items: center;
         }
         .ww-data-prep-row-1 > * { min-width: 0; }
@@ -1857,49 +1966,243 @@
         #wwDataPrepWorksheetCsvHint { display: none; }
         #wwDataPrepWorksheetCard[data-applicable="true"] #wwDataPrepWorksheetCsvHint { display: none; }
         #wwDataPrepWorksheetCard[data-applicable="false"] #wwDataPrepWorksheetCsvHint { display: block; margin: 0; }
-        /* Row 4: worksheet selection gets its own light full-width row,
-           so the main configuration row is not visually burdened by a
-           file-type-specific control. */
-        .ww-data-prep-row-4 .ww-data-prep-worksheet-card { padding: 0; overflow: hidden; }
-        .ww-data-prep-worksheet-row { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; min-height: 50px; }
-        .ww-data-prep-worksheet-row h3 { display: none; }
-        .ww-data-prep-worksheet-subtitle { display: inline; margin: 0 0 0 4px; font-weight: 400; }
-        .ww-data-prep-worksheet-row .field { position: relative; flex: 1 1 auto; min-width: 0; margin: 0; }
+        /* Row 4 (worksheet selector) redesign, 2026-09-07 UAT: matches
+           an approved mock -- Excel identity block + divider + rounded
+           worksheet-tab buttons + a "More sheets" overflow control --
+           kept deliberately compact (small icon, tight padding, short
+           buttons) per explicit owner direction so this stays ONE
+           compact horizontal strip, never a tall hero card. Reuses the
+           SAME #wwDataPrepWorksheetSelect + dispatchEvent("change")
+           mechanism and the SAME delegated click listener on
+           #wwDataPrepWorksheetTabs (.closest(".ww-data-prep-worksheet-
+           tab") + data-worksheet-index) -- nothing here changes WHICH
+           worksheet gets selected or how, only how the control looks.
+           The "More sheets" overflow (see
+           wwDataPrepRenderWorksheetSelector()) is a native <details>
+           whose body sits INSIDE #wwDataPrepWorksheetTabs, so its own
+           overflow buttons are plain .ww-data-prep-worksheet-tab
+           elements the SAME delegated listener already catches --
+           no second selection path. */
+        .ww-data-prep-row-4 .ww-data-prep-worksheet-card { padding: 0; overflow: visible; }
+        .ww-data-prep-worksheet-row { display: flex; align-items: center; gap: 0; flex-wrap: wrap; min-height: 50px; padding: 8px 14px; }
+        .ww-data-prep-worksheet-row .field { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 auto; margin: 0; }
         #wwDataPrepWorksheetSelect {
             position: absolute; inline-size: 1px; block-size: 1px;
             overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
         }
-        .ww-data-prep-worksheet-tabs { display: flex; align-items: stretch; gap: 0; min-width: 0; overflow-x: auto; }
-        .ww-data-prep-worksheet-tab {
+        .ww-data-prep-worksheet-identity { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+        .ww-data-prep-worksheet-identity-icon {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 26px; height: 26px; border-radius: calc(var(--radius) - 2px);
+            background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok);
             flex: 0 0 auto;
-            min-width: 128px;
-            padding: 14px 26px 12px;
-            border: 0;
-            border-right: 1px solid var(--panel-border);
-            border-bottom: 3px solid transparent;
-            border-radius: 0;
-            background: transparent;
-            color: var(--text);
+        }
+        .ww-data-prep-worksheet-identity-icon svg { width: 14px; height: 14px; stroke: currentColor; fill: none; }
+        .ww-data-prep-worksheet-identity-text { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+        .ww-data-prep-worksheet-identity-title { font-size: 0.76rem; font-weight: 700; color: var(--text); white-space: nowrap; }
+        .ww-data-prep-worksheet-identity-subtitle { font-size: 0.65rem; color: var(--text-dim); white-space: nowrap; }
+        .ww-data-prep-worksheet-divider { flex: 0 0 auto; align-self: stretch; width: 1px; background: var(--panel-border); margin: 2px 12px; }
+        .ww-data-prep-worksheet-tabs { display: flex; align-items: center; gap: 6px; min-width: 0; overflow-x: auto; flex: 1 1 auto; }
+        .ww-data-prep-worksheet-tab {
+            display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto;
+            max-width: 160px;
+            padding: 6px 12px;
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius);
+            background: var(--panel);
+            color: var(--text-dim);
             font: inherit;
-            font-size: 0.78rem;
+            font-size: 0.74rem;
             font-weight: 600;
             cursor: pointer;
+            list-style: none;
         }
-        .ww-data-prep-worksheet-tab:hover { background: var(--surface-tint); }
+        .ww-data-prep-worksheet-tab::-webkit-details-marker { display: none; }
+        .ww-data-prep-worksheet-tab-icon { flex: 0 0 auto; width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1.3; }
+        .ww-data-prep-worksheet-tab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ww-data-prep-worksheet-tab:hover { background: var(--hover-tint); }
+        .ww-data-prep-worksheet-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
         .ww-data-prep-worksheet-tab[aria-selected="true"] {
             color: var(--accent);
-            border-bottom-color: var(--accent);
+            border-color: var(--accent);
             background: var(--accent-wash-soft);
+            font-weight: 700;
         }
+        .ww-data-prep-worksheet-tab-more { border-style: dashed; color: var(--text-dim); background: transparent; }
+        .ww-data-prep-worksheet-more { position: relative; flex: 0 0 auto; }
+        .ww-data-prep-worksheet-more-body {
+            position: absolute; top: calc(100% + 6px); left: 0; z-index: 20;
+            display: flex; flex-direction: column; gap: 4px;
+            min-width: 180px; max-width: min(280px, calc(100vw - 32px));
+            background: var(--panel); border: 1px solid var(--panel-border);
+            border-radius: var(--radius); padding: 8px;
+            box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
+        }
+        .ww-data-prep-worksheet-more-body .ww-data-prep-worksheet-tab { width: 100%; max-width: none; justify-content: flex-start; }
         .ww-data-prep-worksheet-csv-hint { flex: 1 1 auto; margin: 0; padding: 15px 18px; }
 
         /* Column Roles: a denser table than the raw Data Preview table
            below (short, bounded row count -- one row per source column,
-           never per data row), reusing the same .ww-data-prep-table base. */
-        .ww-data-prep-column-roles-wrap { max-height: none; }
+           never per data row), reusing the same .ww-data-prep-table base.
+
+           Height AUTHORITY correction (2026-09-07, second follow-up UAT
+           fix): Header & Data Region is the height authority for this
+           row -- Column Roles must never contribute its own table
+           content height to sizing the shared grid row, at any row
+           count. Two earlier attempts (a fixed wrap max-height, then a
+           fixed card max-height) both guessed a pixel number meant to
+           approximate Header & Data Region's height, which is exactly
+           the brittleness this correction removes. `contain: size`
+           does the real job with no guessed number at all: it makes
+           this card's OWN content invisible to the grid's row-sizing
+           calculation (its content contribution is treated as zero,
+           regardless of column count), so the shared row's height is
+           computed from Header & Data Region's natural content alone.
+           `align-items: stretch` (see .ww-data-prep-row-5-grid above)
+           then sizes this card to exactly that row height -- containment
+           only affects what this card reports to its OWN ancestor, not
+           how its own children (title, table wrap) are laid out inside
+           whatever height it receives. `overflow-y: hidden` is the
+           companion the containment spec itself calls for (clips
+           anything that doesn't fit `contain: size`'s zero-based sizing
+           before stretch resolves it); it does not do the actual
+           scrolling -- that is still the wrap's own `overflow-y: auto`
+           below. Scoped to this one card (its only consumer is this
+           table, per the comment above), so no other card/table in the
+           app is affected. Reset back off in the stacked/mobile
+           breakpoint below, where there is no sibling row to borrow a
+           height from and this card needs its own real, content-based
+           (capped) height instead. */
+        .ww-data-prep-column-roles-card {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            contain: size;
+            overflow-y: hidden;
+        }
+        .ww-data-prep-column-roles-wrap {
+            flex: 1 1 0;
+            min-height: 0;
+            overflow-y: auto;
+            overflow-x: auto;
+        }
         #pageDataPreparation .ww-data-prep-columns-table { font-size: 0.75rem; width: 100%; }
-        #pageDataPreparation .ww-data-prep-columns-table th { padding: 8px 10px; }
-        #pageDataPreparation .ww-data-prep-columns-table td { padding: 6px 10px; vertical-align: middle; }
+        /* Sticky header (mandatory UX requirement, 2026-09-07): Col. /
+           Label / Role / Engineering Quantity / Measured Unit must stay
+           pinned while data rows scroll beneath them. No new rule is
+           needed for this -- .ww-data-prep-table thead th (this table's
+           own base class already sets `position: sticky; top: 0;
+           background: var(--panel); z-index: 2;`, an opaque surface
+           that keeps rows from bleeding through underneath) already
+           covers every table built on that shared base, Column Roles
+           included. It simply had no visible effect here before, since
+           position: sticky only does anything inside an actual
+           scrolling container -- which .ww-data-prep-column-roles-wrap
+           now is, once given a real, bounded height (via the containment
+           + stretch combination above, was `max-height: none`).
+           Scoping is automatic: only THIS table's own <th> live inside
+           that now-scrolling wrap, so no other table in the app is
+           affected by this change. */
+        #pageDataPreparation .ww-data-prep-columns-table th { padding: 10px 12px; }
+        #pageDataPreparation .ww-data-prep-columns-table td { padding: 8px 12px; vertical-align: middle; }
+        /* Row 5B redesign (2026-09-07, refined the same day): striped
+           rows + lighter, row-only horizontal borders -- scoped to
+           .ww-data-prep-columns-table specifically (this table's only
+           consumer, per the comment above), so the Data Preview and
+           Time Axis preview tables' own full grid-line borders are
+           unaffected. --surface-tint is the SAME neutral (non-accent)
+           wash token already used elsewhere in this page for a subtle
+           background, not a new color. A light vertical separator
+           (--panel-border, the SAME subtle divider token every border
+           in this file already uses -- no new "border" token exists)
+           was reintroduced between columns via `:not(:last-child)`
+           below, deliberately stopping short of a full boxed/grid look
+           -- never on the last column, which would otherwise double up
+           against the table's own outer edge. */
+        .ww-data-prep-columns-table th,
+        .ww-data-prep-columns-table td {
+            border: none;
+            border-bottom: 1px solid var(--panel-border);
+        }
+        .ww-data-prep-columns-table th:not(:last-child),
+        .ww-data-prep-columns-table td:not(:last-child) {
+            border-right: 1px solid var(--panel-border);
+        }
+        .ww-data-prep-columns-table tbody tr:nth-child(even) td { background: var(--surface-tint); }
+
+        /* Row 7 redesign (2026-09-07): Sample Preview's own table gets
+           the SAME striped-rows/lighter-row-only-borders/light-vertical-
+           separator treatment Column Roles' own redesign established
+           above -- scoped to .ww-data-prep-time-axis-preview-table
+           specifically (this table's only consumer), so Data Preview's
+           own full grid-line borders are unaffected. Sticky header needs
+           no new rule either, for the exact same reason as Column
+           Roles: the shared .ww-data-prep-table thead th rule already
+           covers it, and only now has an actual scrolling container to
+           stick within (.ww-data-prep-time-axis-preview-col
+           .ww-data-prep-table-wrap, given a real flex-filled height
+           above).
+
+           Sample Preview follow-up UAT fix (2026-09-07): the base
+           .ww-data-prep-table class sets no `width` at all, so a plain
+           <table> only ever shrinks to its own content -- the actual
+           cause of the table using only part of the section's width.
+           `width: 100%` (same technique Column Roles' own table
+           already uses) lets it fill whatever width the wrap gives it;
+           no per-column width is set here, so the browser's own default
+           table-layout still distributes that width across Row/Source
+           value/Interpreted time naturally, same as before. */
+        .ww-data-prep-time-axis-preview-table { width: 100%; }
+        .ww-data-prep-time-axis-preview-table th,
+        .ww-data-prep-time-axis-preview-table td {
+            border: none;
+            border-bottom: 1px solid var(--panel-border);
+        }
+        .ww-data-prep-time-axis-preview-table th:not(:last-child),
+        .ww-data-prep-time-axis-preview-table td:not(:last-child) {
+            border-right: 1px solid var(--panel-border);
+        }
+        .ww-data-prep-time-axis-preview-table tbody tr:nth-child(even) td { background: var(--surface-tint); }
+
+        /* Row 5B redesign: numbered step badge + title + description,
+           matching the approved mock. A NEW, permanently accent-colored
+           class -- see the HTML comment beside its markup for why this
+           is not the workflow strip's own stateful step-number class. */
+        .ww-data-prep-column-roles-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; flex: 0 0 auto; }
+        .ww-data-prep-panel-step-badge {
+            flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+            width: 28px; height: 28px; border-radius: 50%;
+            background: var(--accent); color: #fff;
+            font-size: 0.8rem; font-weight: 700; line-height: 1;
+        }
+        .ww-data-prep-column-roles-header-text { min-width: 0; }
+        .ww-data-prep-column-roles-desc { margin: 3px 0 0; }
+
+        /* Row 5B redesign: UI-only footer -- "N columns" (left) and the
+           rows-per-page/range/prev-next pager (right), matching the
+           approved mock. flex: 0 0 auto (the initial value already, no
+           override needed) keeps this a fixed-height row below the
+           table area, same convention as the header above -- only
+           .ww-data-prep-column-roles-wrap itself (flex: 1 1 0) grows to
+           fill the card. */
+        .ww-data-prep-columns-footer {
+            display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+            margin-top: 10px; font-size: 0.72rem; color: var(--text-dim);
+        }
+        .ww-data-prep-columns-footer-count { white-space: nowrap; }
+        .ww-data-prep-columns-pager { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+        .ww-data-prep-columns-page-size-label { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+        .ww-data-prep-columns-page-size-label select {
+            font: inherit; font-size: 0.72rem; background: var(--panel); color: var(--text);
+            border: 1px solid var(--panel-border); border-radius: var(--radius); padding: 3px 6px;
+        }
+        .ww-data-prep-columns-range { white-space: nowrap; }
+        .ww-data-prep-columns-pager-btn {
+            width: 26px; height: 26px; padding: 0;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 0.9rem; line-height: 1;
+        }
+        .ww-data-prep-columns-pager-btn:disabled { opacity: 0.4; cursor: default; }
 
         /* Row 2 Issues card: collapsed by default, showing only a
            compact readiness summary until the user opens it. Detailed
@@ -1982,7 +2285,40 @@
                     "region"
                     "roles";
             }
+            /* Stacked/mobile (2026-09-07, revised in a third follow-up
+               UAT fix): Header & Data Region and Column Roles are now
+               two independent grid ROWS (not two columns of the same
+               row), so `align-items: stretch` above no longer ties
+               their heights together -- each already renders at its
+               own natural height with no extra rule needed. There is
+               no sibling row left to borrow a height from here, so
+               `contain: size` (desktop-only trick, see the rule above)
+               is reset off -- without it, a fixed `height` (not just a
+               max-height) gives this card a real, usable, independent
+               height instead of matching a neighboring card. The
+               earlier `max-height: 50vh` version could still render an
+               unusably short card on a short/landscape viewport, since
+               vh tracks viewport HEIGHT, not the width this breakpoint
+               is actually keyed on -- a fixed 340px is a starting point
+               (a handful of visible rows plus room to scroll), not
+               derived from anything; re-tune this one value during UAT
+               if it reads too short/tall. The wrap's own flex/overflow
+               rules are unconditional already (never scoped to the
+               desktop-only mechanism) -- restated here only so the
+               full small-screen behavior reads in one place. */
+            .ww-data-prep-column-roles-card { contain: none; height: 340px; max-height: none; }
+            .ww-data-prep-column-roles-wrap { flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: auto; }
             .ww-data-prep-time-axis-body { grid-template-columns: 1fr; }
+            /* Row 7 redesign (2026-09-07): Time Format/Sample Preview/
+               Time Details are now three independent stacked rows, not
+               three columns of one shared row -- Sample Preview no
+               longer has a sibling to fill/match, so it gets its own
+               fixed, controlled height with internal scrolling instead
+               (same reasoning as Column Roles' own stacked-breakpoint
+               fix above: a fixed height, not vh, since vh tracks
+               viewport height rather than the width this breakpoint is
+               keyed on). */
+            .ww-data-prep-time-axis-preview-col .ww-data-prep-table-wrap { flex: 0 0 auto; height: 260px; }
             .ww-data-prep-file-card { width: 100%; box-sizing: border-box; }
             /* Medium/small screen: keep all four connected segments in
                one row and retain helper text while trimming spacing. */
@@ -5860,9 +6196,35 @@
                      exists for CSV, so nothing here is ever a fabricated
                      single-sheet selector. -->
                 <section class="panel ww-cc-panel ww-data-prep-card ww-data-prep-worksheet-card" id="wwDataPrepWorksheetCard">
+                    <!-- Worksheet row redesign (2026-09-07 UAT): an Excel
+                         identity block (icon + "Worksheet"/"Excel file",
+                         reusing the SAME document-icon SVG the Row 1
+                         file card already uses, only re-colored) + a
+                         divider + rounded worksheet-tab buttons, kept
+                         deliberately compact (small icon, tight padding)
+                         per explicit owner direction so this stays one
+                         compact strip, not a hero card. The identity
+                         block lives INSIDE #wwDataPrepWorksheetField (an
+                         Excel-only unit, same hidden/shown toggle as the
+                         tabs already had) since it names an Excel file
+                         specifically -- CSV sources still show only the
+                         existing plain hint below, unchanged. The old
+                         permanently-hidden <h3> this block replaces
+                         carried no id/JS reference (verified unused) and
+                         is removed outright. #wwDataPrepWorksheetSelect/
+                         #wwDataPrepWorksheetTabs keep their exact ids and
+                         the SAME delegated click listener/change-event
+                         mechanism below -- no selection logic changed. -->
                     <div class="ww-data-prep-worksheet-row">
-                        <h3>Worksheet <span class="ww-data-prep-card-subtitle ww-data-prep-worksheet-subtitle">(for Excel files)</span></h3>
                         <div class="field" id="wwDataPrepWorksheetField" hidden>
+                            <div class="ww-data-prep-worksheet-identity">
+                                <span class="ww-data-prep-worksheet-identity-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M4.5 2h6l3 3v10.5a.5.5 0 0 1-.5.5h-8.5a.5.5 0 0 1-.5-.5V2.5a.5.5 0 0 1 .5-.5Z" stroke-width="1.2" stroke-linejoin="round"/><path d="M10.5 2v3h3" stroke-width="1.2" stroke-linejoin="round"/></svg></span>
+                                <div class="ww-data-prep-worksheet-identity-text">
+                                    <span class="ww-data-prep-worksheet-identity-title">Worksheet</span>
+                                    <span class="ww-data-prep-worksheet-identity-subtitle">Excel file</span>
+                                </div>
+                            </div>
+                            <span class="ww-data-prep-worksheet-divider" aria-hidden="true"></span>
                             <select id="wwDataPrepWorksheetSelect"></select>
                             <div class="ww-data-prep-worksheet-tabs" id="wwDataPrepWorksheetTabs" role="tablist" aria-label="Worksheets"></div>
                         </div>
@@ -5931,9 +6293,44 @@
                      before; only how endMode/endRow are DERIVED from the
                      form changed, from radio state to blank-vs-filled). -->
                 <section class="panel ww-cc-panel ww-data-prep-card">
+                    <!-- Row 5A redesign (2026-09-07): numbered step badge
+                         + title + short description, matching the
+                         approved mock -- same idea as Column Roles' own
+                         Row 5B redesign, reusing the SAME generic
+                         .ww-data-prep-panel-step-badge class (never a
+                         second badge style) but its own panel-scoped
+                         wrapper/text classes, so this task never touches
+                         Column Roles' own markup/CSS. The existing
+                         .ww-data-prep-panel-header wrapper (shared with
+                         Time Axis Setup's own header) is UNCHANGED --
+                         still exactly two children (a content block,
+                         then the visually-removed Configure button), so
+                         its own flex/space-between rule needs no edit;
+                         only what used to be a bare <h3> is now a badge
+                         + title/description group. -->
                     <div class="ww-data-prep-panel-header">
-                        <h3>Header &amp; Data Region</h3>
+                        <div class="ww-data-prep-region-header">
+                            <span class="ww-data-prep-panel-step-badge" aria-hidden="true">1</span>
+                            <div class="ww-data-prep-region-header-text">
+                                <h3>Header &amp; Data Region</h3>
+                                <p class="hint ww-data-prep-region-desc">Specify where the header row is and which rows contain the data.</p>
+                            </div>
+                        </div>
                         <button type="button" class="secondary ww-data-prep-visually-removed" id="wwDataPrepStructureToggleBtn">Configure</button>
+                    </div>
+                    <!-- Row 5A redesign: a persistent instructional note,
+                         reusing the SAME info-tip SVG glyph already used
+                         throughout this panel's own tooltips (never a
+                         second icon) and the SAME --accent-wash-soft
+                         token Column Roles' step badge family already
+                         reuses for its blue -- a light tint, not a new
+                         color. Placed outside #wwDataPrepStructureDetails
+                         since it is context, not an editable field --
+                         always visible regardless of that block's own
+                         (currently dormant) expand/collapse state. -->
+                    <div class="ww-data-prep-region-info-box">
+                        <span class="ww-data-prep-region-info-icon" aria-hidden="true"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7.2" x2="8" y2="11.3"/><circle cx="8" cy="4.7" r="0.9" fill="currentColor" stroke="none"/></svg></span>
+                        <p class="ww-data-prep-region-info-text">Preview and column detection will use the selected header and data region.</p>
                     </div>
                     <dl class="ww-data-prep-structure-summary ww-data-prep-visually-removed" id="wwDataPrepStructureSummary">
                         <div><dt>Header</dt><dd id="wwDataPrepSummaryHeader">Not set</dd></div>
@@ -5990,12 +6387,55 @@
                      rather than the three-line list a richer tooltip
                      could show, an accepted constraint of reusing the
                      existing system as-is. -->
-                <section class="panel ww-cc-panel ww-data-prep-card">
-                    <h3>Column Roles <span class="ww-info-tip"><button type="button" class="ww-info-tip-trigger" aria-label="About column roles" aria-describedby="wwInfoTipPortal" data-tooltip-text="Time Axis — Defines the X-axis.
+                <section class="panel ww-cc-panel ww-data-prep-card ww-data-prep-column-roles-card">
+                    <!-- Row 5B redesign (2026-09-07): numbered step badge
+                         + title + short description, matching the
+                         approved mock -- a NEW, permanently accent-
+                         colored badge (.ww-data-prep-panel-step-badge),
+                         not the workflow strip's own stateful
+                         .ww-data-prep-workflow-step-num (that one is
+                         neutral-gray by default and only turns accent-
+                         colored via a data-state="active" a workflow
+                         STEP sets on itself -- this is a static section
+                         identifier, never a workflow-progress state, so
+                         reusing that class directly would render a dull
+                         gray circle here, not the mock's blue one). The
+                         SAME info-tip trigger/tooltip text is kept,
+                         unchanged, beside the title. -->
+                    <div class="ww-data-prep-column-roles-header">
+                        <span class="ww-data-prep-panel-step-badge" aria-hidden="true">2</span>
+                        <div class="ww-data-prep-column-roles-header-text">
+                            <h3>Column Roles <span class="ww-info-tip"><button type="button" class="ww-info-tip-trigger" aria-label="About column roles" aria-describedby="wwInfoTipPortal" data-tooltip-text="Time Axis — Defines the X-axis.
 Waveform — Creates a Y-axis channel.
 Not Assigned — Not used by Powerwave; kept in the original source and excluded from the cleaned export."><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7.2" x2="8" y2="11.3"/><circle cx="8" cy="4.7" r="0.9" fill="currentColor" stroke="none"/></svg></button></span></h3>
+                            <p class="hint ww-data-prep-column-roles-desc">Assign a role for each column and set engineering quantity and unit where applicable.</p>
+                        </div>
+                    </div>
                     <div class="ww-data-prep-table-wrap ww-data-prep-column-roles-wrap">
                         <table class="ww-data-prep-table ww-data-prep-columns-table" id="wwDataPrepColumnsTable"></table>
+                    </div>
+                    <!-- Row 5B redesign: UI-only pagination over already-
+                         loaded columns (see wwDataPrepRenderColumnMapping()/
+                         wwDataPrepClampColumnsPage()) -- column_count is
+                         always small and already fully present in the
+                         same preview response Column Roles already reads,
+                         so there is no backend column-page endpoint and
+                         nothing here ever calls one. -->
+                    <div class="ww-data-prep-columns-footer">
+                        <span class="ww-data-prep-columns-footer-count" id="wwDataPrepColumnsCount"></span>
+                        <div class="ww-data-prep-columns-pager">
+                            <label class="ww-data-prep-columns-page-size-label">
+                                Rows per page:
+                                <select id="wwDataPrepColumnsPageSizeSelect">
+                                    <option value="10">10</option>
+                                    <option value="25">25</option>
+                                    <option value="50">50</option>
+                                </select>
+                            </label>
+                            <span class="ww-data-prep-columns-range" id="wwDataPrepColumnsRangeLabel"></span>
+                            <button type="button" class="secondary ww-data-prep-columns-pager-btn" id="wwDataPrepColumnsPrevBtn" aria-label="Previous page">‹</button>
+                            <button type="button" class="secondary ww-data-prep-columns-pager-btn" id="wwDataPrepColumnsNextBtn" aria-label="Next page">›</button>
+                        </div>
                     </div>
                     <div class="upload-status" id="wwDataPrepStructureStatus" role="status" aria-live="polite"></div>
                 </section>
@@ -6030,9 +6470,74 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                          Advanced options/Advanced details, below, keep
                          their own independent collapse). No id/behavior
                          change to anything else in this header. -->
+                    <!-- Row 7 redesign (2026-09-07): numbered step badge +
+                         title + description (reusing the SAME generic
+                         .ww-data-prep-panel-step-badge Header & Data
+                         Region/Column Roles already use, never a second
+                         badge style) plus right-aligned status/selected-
+                         column/Advanced-Options actions, matching the
+                         approved mock. The existing .ww-data-prep-panel-
+                         header wrapper (shared with Header & Data
+                         Region's own header) is UNCHANGED -- still
+                         exactly two children (a content block, now
+                         wrapping the badge+title+description group
+                         instead of a bare <h3>, then a NEW actions
+                         block instead of the old hidden Configure
+                         button spot), so its own flex/space-between
+                         rule needs no edit. -->
                     <div class="ww-data-prep-panel-header">
-                        <div>
-                            <h3>Time Axis Setup <span class="ww-info-tip"><button type="button" class="ww-info-tip-trigger" aria-label="About Time Axis Setup" aria-describedby="wwInfoTipPortal" data-tooltip-text="Configure how Powerwave should interpret the recording timeline. Powerwave never guesses a date order or invents a timezone -- ambiguous cases always require your explicit choice."><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7.2" x2="8" y2="11.3"/><circle cx="8" cy="4.7" r="0.9" fill="currentColor" stroke="none"/></svg></button></span></h3>
+                        <div class="ww-data-prep-time-axis-header-main">
+                            <span class="ww-data-prep-panel-step-badge" aria-hidden="true">3</span>
+                            <div class="ww-data-prep-time-axis-header-text">
+                                <h3>Time Axis Setup <span class="ww-info-tip"><button type="button" class="ww-info-tip-trigger" aria-label="About Time Axis Setup" aria-describedby="wwInfoTipPortal" data-tooltip-text="Configure how Powerwave should interpret the recording timeline. Powerwave never guesses a date order or invents a timezone -- ambiguous cases always require your explicit choice."><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7.2" x2="8" y2="11.3"/><circle cx="8" cy="4.7" r="0.9" fill="currentColor" stroke="none"/></svg></button></span></h3>
+                                <p class="hint ww-data-prep-time-axis-header-desc">Configure how time is interpreted from the selected column.</p>
+                            </div>
+                        </div>
+                        <!-- Status reuses the SAME computed state
+                             wwDataPrepRenderTimeAxisValidity() already
+                             produces -- a NEW element that function
+                             ALSO writes to (a compact presentation of
+                             the same value), never a second
+                             computation. Advanced Options below is the
+                             SAME #wwDataPrepTimeAxisAdvancedOptions
+                             <details> moved from its old spot further
+                             down in the form -- same id, same children,
+                             same open/close behavior, no JS changed.
+
+                             UAT fix (2026-09-07): the selected-column
+                             chip that used to sit here is removed --
+                             redundant with the status badge (already
+                             shows configured/unconfigured) and the
+                             Time Format section's own resolved-column
+                             field, which already displays the selected
+                             column. wwDataPrepRenderTimeAxisSummary()'s
+                             own columnsEl/columnIndices computation is
+                             UNCHANGED (still feeds the validity detail
+                             line and Time Details) -- only the extra
+                             write to this now-removed chip element was
+                             taken out. -->
+                        <div class="ww-data-prep-time-axis-header-actions">
+                            <span class="ww-data-prep-time-axis-header-status" id="wwDataPrepTimeAxisHeaderStatus" data-state="unconfigured">
+                                <span id="wwDataPrepTimeAxisHeaderStatusIcon" aria-hidden="true"></span>
+                                <span id="wwDataPrepTimeAxisHeaderStatusText"></span>
+                            </span>
+                            <details class="ww-data-prep-time-axis-advanced-options" id="wwDataPrepTimeAxisAdvancedOptions">
+                                <summary><span class="ww-data-prep-time-axis-advanced-options-icon" aria-hidden="true">&#9881;</span> Advanced Options <span class="chevron">&#9656;</span></summary>
+                                <div class="ww-data-prep-time-axis-advanced-options-body">
+                                    <div class="ww-data-prep-time-axis-advanced-option-card">
+                                        <h4>Reconstructed Time</h4>
+                                        <p class="hint">Use when timestamp precision is insufficient or repeated timestamps need to be reconstructed using the recording interval.</p>
+                                        <p class="hint">Example: a 50&nbsp;Hz recording contains many repeated timestamps such as 18:04:00, 18:04:00, 18:04:00, even though samples were actually recorded every 20&nbsp;ms.</p>
+                                        <button type="button" class="secondary" id="wwDataPrepTimeAxisUseReconstructedBtn">Use Reconstructed Time</button>
+                                    </div>
+                                    <div class="ww-data-prep-time-axis-advanced-option-card">
+                                        <h4>Manual Interpretation</h4>
+                                        <p class="hint">Use when the recording time cannot be represented by the standard time formats and needs an engineer-defined interpretation.</p>
+                                        <p class="hint">Example: a vendor exports a custom timestamp format that Powerwave cannot detect automatically, so the engineer must explicitly define how the time information should be interpreted.</p>
+                                        <button type="button" class="secondary" id="wwDataPrepTimeAxisUseManualBtn">Use Manual Interpretation</button>
+                                    </div>
+                                </div>
+                            </details>
                         </div>
                     </div>
                     <!-- UAT fix (2026-09-06): the previous permanent "Time
@@ -6052,27 +6557,18 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         <div><dt>Time format</dt><dd id="wwDataPrepTimeAxisSummaryInterpretation">Not set</dd></div>
                         <div><dt>Time column</dt><dd id="wwDataPrepTimeAxisSummaryColumns">None selected</dd></div>
                     </dl>
-                    <!-- One compact, user-oriented status block (UAT fix,
-                         2026-09-06): icon + headline + one adaptive detail
-                         line, replacing the old bare metadata summary
-                         above. Still the SAME backend/diagnostic state
-                         Preparation Status itself reads
-                         (wwDataPrepRenderTimeAxisValidity(), never a
-                         second readiness engine -- task's own "do not
-                         duplicate Preparation Status" rule), just
-                         restructured so the detail line lives INSIDE this
-                         one card (subtle success/warning background,
-                         reusing the same color-mix()/--ok-wash technique
-                         the Detect-result card below already
-                         established) instead of as a disconnected
-                         sibling paragraph. -->
-                    <div class="ww-data-prep-time-axis-validity" id="wwDataPrepTimeAxisValidity" data-state="unconfigured">
-                        <div class="ww-data-prep-time-axis-validity-line">
-                            <span id="wwDataPrepTimeAxisValidityIcon" aria-hidden="true"></span>
-                            <span id="wwDataPrepTimeAxisValidityText">Time axis not configured</span>
-                        </div>
-                        <p class="ww-data-prep-time-axis-validity-detail" id="wwDataPrepTimeAxisValidityDetail"></p>
-                    </div>
+                    <!-- Row 7 redesign (2026-09-07): the compact status
+                         block (icon + headline + adaptive detail line)
+                         moved to the bottom of the new Time Details
+                         column below -- same #wwDataPrepTimeAxisValidity
+                         id/element/function
+                         (wwDataPrepRenderTimeAxisValidity(), still the
+                         SAME backend/diagnostic state Preparation Status
+                         itself reads, never a second readiness engine),
+                         only relocated in the DOM. A NEW, separate compact
+                         header pill (#wwDataPrepTimeAxisHeaderStatus,
+                         above) shows the short "Ready"/"Needs Attention"
+                         word derived from this SAME computed state. -->
                     <div id="wwDataPrepTimeAxisDetails">
                         <p class="hint" id="wwDataPrepTimeAxisNoColumnsHint" hidden>No Time Axis columns selected -- assign the "Time Axis" role to one or more columns in Structure first.</p>
                         <!-- Row 5-time-axis (2026-09-07): controls on the
@@ -6084,6 +6580,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                              changed. -->
                         <div class="ww-data-prep-time-axis-body">
                         <div id="wwDataPrepTimeAxisForm">
+                            <h4 class="ww-data-prep-time-axis-section-title">Time Format</h4>
                             <!-- Normal dropdown: the five common,
                                  immediately-understandable formats only.
                                  `manual`/`repeated_timestamp_precision_loss`
@@ -6430,81 +6927,65 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                                 <button type="button" class="secondary" id="wwDataPrepTimeAxisClearBtn">Clear</button>
                             </div>
 
-                            <!-- Advanced options: a SEPARATE, distinct
-                                 concept from "Advanced details" below --
-                                 this one holds alternative expert/recovery
-                                 WORKFLOWS (Reconstructed Time, Manual
-                                 Interpretation), not technical metadata
-                                 about the currently-selected format. Both
-                                 remain fully supported, real interpreters
-                                 (`repeated_timestamp_precision_loss`/
-                                 `manual`, unchanged backend IDs) -- only
-                                 REMOVED from the normal "Time format"
-                                 dropdown's own visible option list, since
-                                 neither is a normal file-format choice
-                                 (one is a precision-recovery workflow, the
-                                 other an expert fallback). Collapsed by
-                                 default; force-opened whenever the CURRENT
-                                 interpreter is one of these two (applied-
-                                 state restoration, a DEC-082 suggestion,
-                                 or this section's own explicit action) --
-                                 see wwDataPrepRenderTimeAxisInterpreterFields()'s
-                                 own trailing call. Each card's own
-                                 "Use <label>" button is the ONLY thing
-                                 that ever selects it -- same "explicit
-                                 action, never silent" rule DEC-082's
-                                 existing suggestion button already
-                                 follows. See
-                                 wwDataPrepSelectAdvancedInterpreter(). -->
-                            <details class="ww-data-prep-time-axis-advanced-options" id="wwDataPrepTimeAxisAdvancedOptions">
-                                <summary><span class="chevron">&#9656;</span> Advanced options</summary>
-                                <div class="ww-data-prep-time-axis-advanced-options-body">
-                                    <div class="ww-data-prep-time-axis-advanced-option-card">
-                                        <h4>Reconstructed Time</h4>
-                                        <p class="hint">Use when timestamp precision is insufficient or repeated timestamps need to be reconstructed using the recording interval.</p>
-                                        <p class="hint">Example: a 50&nbsp;Hz recording contains many repeated timestamps such as 18:04:00, 18:04:00, 18:04:00, even though samples were actually recorded every 20&nbsp;ms.</p>
-                                        <button type="button" class="secondary" id="wwDataPrepTimeAxisUseReconstructedBtn">Use Reconstructed Time</button>
-                                    </div>
-                                    <div class="ww-data-prep-time-axis-advanced-option-card">
-                                        <h4>Manual Interpretation</h4>
-                                        <p class="hint">Use when the recording time cannot be represented by the standard time formats and needs an engineer-defined interpretation.</p>
-                                        <p class="hint">Example: a vendor exports a custom timestamp format that Powerwave cannot detect automatically, so the engineer must explicitly define how the time information should be interpreted.</p>
-                                        <button type="button" class="secondary" id="wwDataPrepTimeAxisUseManualBtn">Use Manual Interpretation</button>
-                                    </div>
-                                </div>
-                            </details>
-
-                            <!-- Advanced details: the SAME native
-                                 <details>/<summary> + .chevron
-                                 progressive-disclosure convention already
-                                 established elsewhere in this app (Per-
-                                 Unit's own "Advanced options", the Channel
-                                 Sidebar's collapsible groups) -- collapsed
-                                 by default, opening it never mutates
-                                 configuration state. Technical values only
-                                 (family/provenance/detected format/
-                                 confidence/raw status/diagnostic count) --
-                                 useful for advanced engineers, debugging,
-                                 and traceability, never required for the
-                                 normal Time Setup workflow. See
-                                 wwDataPrepRenderTimeAxisAdvancedDetails(). -->
-                            <details class="ww-data-prep-time-axis-advanced" id="wwDataPrepTimeAxisAdvanced">
-                                <summary><span class="chevron">&#9656;</span> Advanced details</summary>
-                                <div class="ww-data-prep-time-axis-advanced-body">
-                                    <dl>
-                                        <div><dt>Internal time family</dt><dd id="wwDataPrepTimeAxisAdvFamily">—</dd></div>
-                                        <div><dt>Timing provenance</dt><dd id="wwDataPrepTimeAxisAdvProvenance">—</dd></div>
-                                        <div><dt>Detected format</dt><dd id="wwDataPrepTimeAxisAdvFormat">—</dd></div>
-                                        <div><dt>Confidence</dt><dd id="wwDataPrepTimeAxisAdvConfidence">—</dd></div>
-                                        <div><dt>Status</dt><dd id="wwDataPrepTimeAxisAdvStatus">—</dd></div>
-                                        <div><dt>Diagnostics</dt><dd id="wwDataPrepTimeAxisAdvDiagnostics">—</dd></div>
-                                    </dl>
-                                </div>
-                            </details>
                         </div>
+                        <!-- Row 7 redesign: Sample Preview -- SAME
+                             #wwDataPrepTimeAxisPreviewCol/-PreviewTable,
+                             its own hidden-toggle in
+                             wwDataPrepRenderTimeAxisInterpreterFields()
+                             unchanged. Only a heading was added; the
+                             table's own render path
+                             (wwDataPrepRenderTimeAxisDetectResult()) is
+                             untouched (styling only, see its own CSS). -->
                         <div class="ww-data-prep-time-axis-preview-col" id="wwDataPrepTimeAxisPreviewCol" hidden>
+                            <h4 class="ww-data-prep-time-axis-section-title">Sample Preview <span class="hint">(first 10 rows)</span></h4>
                             <div class="ww-data-prep-table-wrap">
-                                <table class="ww-data-prep-table" id="wwDataPrepTimeAxisPreviewTable"></table>
+                                <table class="ww-data-prep-table ww-data-prep-time-axis-preview-table" id="wwDataPrepTimeAxisPreviewTable"></table>
+                            </div>
+                        </div>
+                        <!-- Row 7 redesign: Time Details -- consolidates
+                             the former separate "Advanced details"
+                             accordion (removed above) into one always-
+                             visible, read-only panel. Every dd id below
+                             (wwDataPrepTimeAxisAdvFamily/-Provenance/
+                             -Format/-Confidence/-Status/-Diagnostics) is
+                             the SAME id/element the retired accordion
+                             used, only re-parented -- still populated by
+                             the SAME wwDataPrepRenderTimeAxisDetails()
+                             (renamed from wwDataPrepRenderTimeAxisAdvancedDetails(),
+                             same 3 call sites). Two new facts (Interpreter,
+                             Sampling rate/Sample spacing) reuse data
+                             already fetched elsewhere in this panel
+                             (WW_DATA_PREP_INTERPRETER_LABELS, interval_
+                             seconds) -- never a new backend field. Each
+                             row has its own wrapper id so a field that
+                             does not apply to the current interpreter is
+                             OMITTED (hidden), never shown as a
+                             meaningless "-" placeholder. The validity
+                             card at the bottom is the SAME
+                             #wwDataPrepTimeAxisValidity block (icon +
+                             headline + detail), moved here unchanged --
+                             this panel's own honest "is this actually
+                             consistent" status, never a second readiness
+                             engine. -->
+                        <div class="ww-data-prep-time-axis-details-col" id="wwDataPrepTimeAxisDetailsCol">
+                            <h4 class="ww-data-prep-time-axis-section-title">Time Details</h4>
+                            <dl class="ww-data-prep-time-axis-details-list">
+                                <div id="wwDataPrepTimeAxisDetailsInterpreterRow" hidden><dt>Interpreter</dt><dd id="wwDataPrepTimeAxisAdvInterpreter"></dd></div>
+                                <div id="wwDataPrepTimeAxisDetailsFamilyRow" hidden><dt>Time family</dt><dd id="wwDataPrepTimeAxisAdvFamily"></dd></div>
+                                <div id="wwDataPrepTimeAxisDetailsProvenanceRow" hidden><dt>Timing provenance</dt><dd id="wwDataPrepTimeAxisAdvProvenance"></dd></div>
+                                <div id="wwDataPrepTimeAxisDetailsFormatRow" hidden><dt>Detected format</dt><dd id="wwDataPrepTimeAxisAdvFormat"></dd></div>
+                                <div id="wwDataPrepTimeAxisDetailsRateRow" hidden><dt>Sampling rate</dt><dd id="wwDataPrepTimeAxisAdvRate"></dd></div>
+                                <div id="wwDataPrepTimeAxisDetailsSpacingRow" hidden><dt>Sample spacing</dt><dd id="wwDataPrepTimeAxisAdvSpacing"></dd></div>
+                                <div id="wwDataPrepTimeAxisDetailsConfidenceRow" hidden><dt>Confidence</dt><dd id="wwDataPrepTimeAxisAdvConfidence"></dd></div>
+                                <div id="wwDataPrepTimeAxisDetailsStatusRow" hidden><dt>Status</dt><dd id="wwDataPrepTimeAxisAdvStatus"></dd></div>
+                                <div id="wwDataPrepTimeAxisDetailsDiagnosticsRow" hidden><dt>Diagnostics</dt><dd id="wwDataPrepTimeAxisAdvDiagnostics"></dd></div>
+                            </dl>
+                            <div class="ww-data-prep-time-axis-validity" id="wwDataPrepTimeAxisValidity" data-state="unconfigured">
+                                <div class="ww-data-prep-time-axis-validity-line">
+                                    <span id="wwDataPrepTimeAxisValidityIcon" aria-hidden="true"></span>
+                                    <span id="wwDataPrepTimeAxisValidityText">Time axis not configured</span>
+                                </div>
+                                <p class="ww-data-prep-time-axis-validity-detail" id="wwDataPrepTimeAxisValidityDetail"></p>
                             </div>
                         </div>
                         </div>
@@ -8865,6 +9346,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             currentPage: 1,
             totalPages: null,
             columnCount: null,
+            // Column Roles footer redesign (2026-09-07): a UI-only
+            // pagination over already-loaded columns -- there is no
+            // backend column-page endpoint (column_count is always
+            // small and fully present in the SAME preview response
+            // that already carries columnLabels/columnRoles/etc.), so
+            // this never fetches anything of its own; it only slices
+            // which already-loaded columns wwDataPrepRenderColumnMapping()
+            // renders into <tbody>. columnsPage is clamped back into
+            // range (never blindly reset to 1) whenever columnCount or
+            // columnsPageSize next make it invalid -- see that
+            // function's own clamping logic -- so paging through columns
+            // then editing a role/EQ/MU on the current page never jumps
+            // the user back to page 1.
+            columnsPage: 1,
+            columnsPageSize: 10,
             // Slice 4 (DEC-072): Working Dataset overlay state. `overlay`
             // mirrors the backend's own WorkingOverlaySummaryOut verbatim
             // (never computed/guessed locally) -- see
@@ -8879,6 +9375,17 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // `columnRoles[c] === "not_assigned"`, never a separate
             // tracked set.
             workingRevision: 0,
+            // Sample Preview auto-render fix (2026-09-07): true for
+            // exactly one render of an already-applied sample-
+            // interpreter Time Axis per opened source -- lets
+            // wwDataPrepRenderTimeAxisForm() show real preview rows on
+            // first open/reload without requiring the user to press
+            // Detect again, WITHOUT re-fetching a fresh dry-run preview
+            // on every one of this page's own many unrelated mutations
+            // (every one of them re-renders this form via
+            // wwDataPrepFetchTimeAxis()). Reset to true only when a
+            // source is freshly opened -- see openDataPreparationWorkspace().
+            timeAxisPreviewNeedsInitialFetch: true,
             overlay: {
                 editedCellCount: 0,
                 excludedRowCount: 0,
@@ -9064,13 +9571,68 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 escapeHtml(sheet.name) + (sheet.visible ? "" : " (hidden)") +
                 '</option>'
             ).join("");
-            if (tabs) {
-                tabs.innerHTML = wwDataPrep.worksheets.map((sheet) =>
-                    '<button type="button" class="ww-data-prep-worksheet-tab" role="tab" data-worksheet-index="' +
-                    sheet.index + '" aria-selected="' + (sheet.index === wwDataPrep.selectedWorksheetIndex ? "true" : "false") +
-                    '">' + escapeHtml(sheet.name) + (sheet.visible ? "" : " (hidden)") + '</button>'
-                ).join("");
+            if (tabs) tabs.innerHTML = wwDataPrepWorksheetTabsHtml(wwDataPrep.worksheets, wwDataPrep.selectedWorksheetIndex);
+        }
+
+        // Worksheet row redesign (2026-09-07 UAT): a presentation-only
+        // overflow -- WHICH worksheets exist and which is selected is
+        // entirely unchanged; this only decides which sheets render as
+        // inline tab buttons vs. inside the "More sheets" dropdown.
+        // The currently selected sheet is always kept inline (never
+        // hidden behind an unopened dropdown, per this task's own
+        // "obvious at a glance" requirement) even if it falls outside
+        // the first WW_DATA_PREP_WORKSHEET_MAX_INLINE sheets by
+        // position -- reopening a source with a deep-in-the-list
+        // worksheet already selected must show it immediately.
+        const WW_DATA_PREP_WORKSHEET_MAX_INLINE = 4;
+        function wwDataPrepWorksheetTabsHtml(worksheets, selectedIndex) {
+            let inlineSheets = worksheets;
+            let overflowSheets = [];
+            if (worksheets.length > WW_DATA_PREP_WORKSHEET_MAX_INLINE) {
+                const selectedPos = worksheets.findIndex((s) => s.index === selectedIndex);
+                const inlinePositions = [];
+                for (let i = 0; i < WW_DATA_PREP_WORKSHEET_MAX_INLINE; i++) inlinePositions.push(i);
+                if (selectedPos >= WW_DATA_PREP_WORKSHEET_MAX_INLINE) {
+                    inlinePositions[inlinePositions.length - 1] = selectedPos;
+                }
+                const inlineSet = new Set(inlinePositions);
+                inlineSheets = worksheets.filter((_, i) => inlineSet.has(i));
+                overflowSheets = worksheets.filter((_, i) => !inlineSet.has(i));
             }
+            let html = inlineSheets.map((sheet) => wwDataPrepWorksheetTabHtml(sheet, selectedIndex)).join("");
+            if (overflowSheets.length) {
+                html +=
+                    '<details class="ww-data-prep-worksheet-more">' +
+                        '<summary class="ww-data-prep-worksheet-tab ww-data-prep-worksheet-tab-more">' +
+                            '<svg class="ww-data-prep-worksheet-tab-icon" viewBox="0 0 16 16" aria-hidden="true"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>' +
+                            '<span class="ww-data-prep-worksheet-tab-label">More sheets</span>' +
+                        '</summary>' +
+                        '<div class="ww-data-prep-worksheet-more-body">' +
+                            overflowSheets.map((sheet) => wwDataPrepWorksheetTabHtml(sheet, selectedIndex)).join("") +
+                        '</div>' +
+                    '</details>';
+            }
+            return html;
+        }
+
+        // The SAME button markup regardless of whether it renders
+        // inline or inside the "More sheets" dropdown -- both are
+        // caught by the ONE delegated click listener on
+        // #wwDataPrepWorksheetTabs (.closest(".ww-data-prep-worksheet-
+        // tab") + data-worksheet-index), so no second selection path
+        // exists for overflowed sheets. The small grid icon (matching
+        // the approved mock) marks the active sheet only; `title`
+        // gives a native tooltip for a name the tab's own max-width
+        // truncates.
+        function wwDataPrepWorksheetTabHtml(sheet, selectedIndex) {
+            const isActive = sheet.index === selectedIndex;
+            const label = escapeHtml(sheet.name) + (sheet.visible ? "" : " (hidden)");
+            const icon = isActive
+                ? '<svg class="ww-data-prep-worksheet-tab-icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="1.5" width="13" height="13" rx="2"/><line x1="1.5" y1="6.17" x2="14.5" y2="6.17"/><line x1="1.5" y1="9.83" x2="14.5" y2="9.83"/><line x1="6.17" y1="1.5" x2="6.17" y2="14.5"/><line x1="9.83" y1="1.5" x2="9.83" y2="14.5"/></svg>'
+                : '';
+            return '<button type="button" class="ww-data-prep-worksheet-tab" role="tab" data-worksheet-index="' +
+                sheet.index + '" aria-selected="' + (isActive ? "true" : "false") + '" title="' + escapeHtml(sheet.name) + '">' +
+                icon + '<span class="ww-data-prep-worksheet-tab-label">' + label + '</span></button>';
         }
 
         function wwDataPrepRenderTable(preview) {
@@ -9327,6 +9889,47 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // response, passed in solely to build that sample) is removed
         // too, confirmed unused for anything else in this function --
         // the call site below no longer passes an argument.
+        // Column Roles footer redesign (2026-09-07): page-clamping lives
+        // in its own function so both the render path and the pager's
+        // event listeners (Prev/Next/page-size change, below) can call
+        // it before re-rendering -- never two independently-computed
+        // "what page am I on" answers. columnCount/pageSize are read
+        // fresh each call (never cached), so this always reflects
+        // whatever the LATEST preview/role-edit response set them to.
+        function wwDataPrepClampColumnsPage() {
+            const columnCount = wwDataPrep.columnCount || 0;
+            const pageSize = wwDataPrep.columnsPageSize || 10;
+            const totalPages = Math.max(1, Math.ceil(columnCount / pageSize));
+            if (wwDataPrep.columnsPage > totalPages) wwDataPrep.columnsPage = totalPages;
+            if (wwDataPrep.columnsPage < 1) wwDataPrep.columnsPage = 1;
+            return totalPages;
+        }
+
+        // Column Roles footer redesign (2026-09-07): "N columns" (left)
+        // and the range/pager (right) both read the SAME columnCount/
+        // page/pageSize this render pass just used -- never a second,
+        // independently-tracked count. Purely a UI-level slice over
+        // already-loaded columns (column_count is always small and
+        // already fully present in the preview response Column Roles
+        // itself reads) -- there is no backend column-page endpoint,
+        // and this never calls one.
+        function wwDataPrepRenderColumnsFooter(columnCount, startIndex, endIndex, totalPages) {
+            const countEl = document.getElementById("wwDataPrepColumnsCount");
+            if (countEl) countEl.textContent = columnCount === 1 ? "1 column" : columnCount + " columns";
+            const rangeEl = document.getElementById("wwDataPrepColumnsRangeLabel");
+            if (rangeEl) {
+                rangeEl.textContent = columnCount
+                    ? (startIndex + 1) + "–" + endIndex + " of " + columnCount
+                    : "0 of 0";
+            }
+            const pageSizeSelect = document.getElementById("wwDataPrepColumnsPageSizeSelect");
+            if (pageSizeSelect) pageSizeSelect.value = String(wwDataPrep.columnsPageSize);
+            const prevBtn = document.getElementById("wwDataPrepColumnsPrevBtn");
+            if (prevBtn) prevBtn.disabled = wwDataPrep.columnsPage <= 1;
+            const nextBtn = document.getElementById("wwDataPrepColumnsNextBtn");
+            if (nextBtn) nextBtn.disabled = wwDataPrep.columnsPage >= totalPages;
+        }
+
         function wwDataPrepRenderColumnMapping() {
             const table = document.getElementById("wwDataPrepColumnsTable");
             const columnCount = wwDataPrep.columnCount || 0;
@@ -9335,13 +9938,24 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const quantities = wwDataPrep.columnEngineeringQuantities || [];
             const units = wwDataPrep.columnMeasuredUnits || [];
 
+            const totalPages = wwDataPrepClampColumnsPage();
+            const pageSize = wwDataPrep.columnsPageSize || 10;
+            const startIndex = (wwDataPrep.columnsPage - 1) * pageSize;
+            const endIndex = Math.min(columnCount, startIndex + pageSize);
+            wwDataPrepRenderColumnsFooter(columnCount, startIndex, endIndex, totalPages);
+
             // "Col." (owner correction, 2026-09-06): each row is one
             // source column, showing only a spreadsheet letter (A, B,
             // C...) -- the abbreviation reads clearly at a glance and
             // lets this column stay very narrow, handing its saved
             // width to Label/Source Header.
             let html = "<thead><tr><th>Col.</th><th>Label</th><th>Role</th><th>Engineering Quantity</th><th>Measured Unit</th></tr></thead><tbody>";
-            for (let c = 0; c < columnCount; c++) {
+            // Pagination is a display slice ONLY -- `c` is still the
+            // TRUE absolute column index (never a page-relative one),
+            // so every data-col="c" below still targets the real column
+            // regardless of which page is currently shown; role/EQ/MU
+            // change handlers need no adaptation at all.
+            for (let c = startIndex; c < endIndex; c++) {
                 const role = roles[c] || "not_assigned";
                 const optionsHtml = WW_DATA_PREP_ROLES.map(([value, label]) =>
                     '<option value="' + value + '"' + (value === role ? " selected" : "") + '>' + label + '</option>'
@@ -10208,7 +10822,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // "Time column") using the SAME friendly interpreter label map
         // the primary dropdown itself uses -- never the raw
         // Family(Provenance) pairing this line used to show (moved to
-        // Advanced details instead, see wwDataPrepRenderTimeAxisAdvancedDetails()).
+        // Time Details instead, see wwDataPrepRenderTimeAxisDetails()).
         function wwDataPrepRenderTimeAxisSummary() {
             const summary = wwDataPrep.timeAxisSummary;
             const columnsEl = document.getElementById("wwDataPrepTimeAxisSummaryColumns");
@@ -10224,7 +10838,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 : "Not set";
 
             wwDataPrepRenderTimeAxisValidity();
-            wwDataPrepRenderTimeAxisAdvancedDetails(summary);
+            wwDataPrepRenderTimeAxisDetails(summary);
             wwDataPrepRenderConversionAction();
             wwDataPrepRenderExportAction();
             wwDataPrepRenderWorkflowStrip();
@@ -10256,6 +10870,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // live form edit (see the delegated input/change listener on
         // #wwDataPrepTimeAxisDetails), so it never lags behind the
         // global Preparation Status headline it mirrors.
+        // Row 7 redesign (2026-09-07): the header's compact status pill
+        // is a SHORT presentation of the exact SAME el.dataset.state
+        // wwDataPrepRenderTimeAxisValidity() already computed (its icon
+        // char is reused verbatim) -- never a second readiness
+        // computation, only a terser label for the same 3 states.
+        const WW_DATA_PREP_TIME_AXIS_HEADER_STATUS_LABELS = {
+            valid: "Ready", attention: "Needs Attention", unconfigured: "Not Configured",
+        };
+        function wwDataPrepSyncTimeAxisHeaderStatus(state, icon) {
+            const pillEl = document.getElementById("wwDataPrepTimeAxisHeaderStatus");
+            const iconEl = document.getElementById("wwDataPrepTimeAxisHeaderStatusIcon");
+            const textEl = document.getElementById("wwDataPrepTimeAxisHeaderStatusText");
+            pillEl.dataset.state = state;
+            iconEl.textContent = icon;
+            textEl.textContent = WW_DATA_PREP_TIME_AXIS_HEADER_STATUS_LABELS[state] || state;
+        }
+
         function wwDataPrepRenderTimeAxisValidity() {
             const el = document.getElementById("wwDataPrepTimeAxisValidity");
             const iconEl = document.getElementById("wwDataPrepTimeAxisValidityIcon");
@@ -10269,6 +10900,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 iconEl.textContent = "⚠";
                 textEl.textContent = "Unsaved Time Axis changes";
                 detailEl.textContent = "Save or revert the current Time Axis configuration before continuing.";
+                wwDataPrepSyncTimeAxisHeaderStatus("attention", "⚠");
                 return;
             }
             // UAT fix (2026-09-06): a compact, user-oriented status
@@ -10281,6 +10913,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 iconEl.textContent = "⚠";
                 textEl.textContent = "Time axis not configured";
                 detailEl.textContent = "Select a time format and time column to continue.";
+                wwDataPrepSyncTimeAxisHeaderStatus("unconfigured", "⚠");
                 return;
             }
 
@@ -10290,6 +10923,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             el.dataset.state = attention ? "attention" : "valid";
             iconEl.textContent = attention ? "⚠" : "✓";
             textEl.textContent = attention ? "Time axis needs attention" : "Time axis configured";
+            wwDataPrepSyncTimeAxisHeaderStatus(attention ? "attention" : "valid", attention ? "⚠" : "✓");
 
             if (attention) {
                 detailEl.textContent = blocking.message;
@@ -10306,10 +10940,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             detailEl.textContent = interpretationText + " · " + columnsText;
         }
 
-        // Advanced details: technical values only, collapsed by default,
-        // never required for the normal Time Setup workflow (task's own
-        // progressive-disclosure requirement). Accepts either the plain
-        // GET summary (the applied configuration) or a fresh dry-run
+        // Time Details (Row 7 redesign, renamed from
+        // wwDataPrepRenderTimeAxisAdvancedDetails() -- same 3 call
+        // sites, same accepted shape): read-only technical facts about
+        // the CURRENT interpretation, replacing the former separate
+        // "Advanced details" accordion. Accepts either the plain GET
+        // summary (the applied configuration) or a fresh dry-run
         // preview response (TimeAxisInterpretPreviewOut) -- the SAME
         // dual shape wwDataPrepRenderTimeAxisDetectResult() already
         // handles, so this always reflects whatever the panel is
@@ -10318,27 +10954,71 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         // own) -- falls back to the last-applied summary's own status so
         // this row never goes blank merely because the user clicked
         // Detect.
-        function wwDataPrepRenderTimeAxisAdvancedDetails(detection) {
-            const familyEl = document.getElementById("wwDataPrepTimeAxisAdvFamily");
-            const provenanceEl = document.getElementById("wwDataPrepTimeAxisAdvProvenance");
-            const formatEl = document.getElementById("wwDataPrepTimeAxisAdvFormat");
-            const confidenceEl = document.getElementById("wwDataPrepTimeAxisAdvConfidence");
-            const statusEl = document.getElementById("wwDataPrepTimeAxisAdvStatus");
-            const diagnosticsEl = document.getElementById("wwDataPrepTimeAxisAdvDiagnostics");
-
-            familyEl.textContent = (detection && detection.family)
-                ? (WW_DATA_PREP_TIME_AXIS_FAMILY_LABELS[detection.family] || detection.family) : "—";
-            provenanceEl.textContent = (detection && detection.provenance)
-                ? (WW_DATA_PREP_TIME_AXIS_PROVENANCE_LABELS[detection.provenance] || detection.provenance) : "—";
+        //
+        // Each fact's own ROW (not just its text) is hidden when the
+        // fact does not apply -- e.g. Sampling rate/Sample spacing only
+        // ever apply to Sample Number/Index or Reconstructed Time (the
+        // only two interpreters that carry a real interval_seconds), so
+        // every other interpreter simply omits them, never showing a
+        // placeholder "-" merely to look populated.
+        function wwDataPrepRenderTimeAxisDetailsRow(rowId, ddId, text) {
+            const row = document.getElementById(rowId);
+            const dd = document.getElementById(ddId);
+            row.hidden = !text;
+            dd.textContent = text || "";
+        }
+        function wwDataPrepRenderTimeAxisDetails(detection) {
+            const interpreterId = detection && detection.interpreter_id;
+            wwDataPrepRenderTimeAxisDetailsRow(
+                "wwDataPrepTimeAxisDetailsInterpreterRow", "wwDataPrepTimeAxisAdvInterpreter",
+                interpreterId ? (WW_DATA_PREP_INTERPRETER_LABELS[interpreterId] || interpreterId) : ""
+            );
+            wwDataPrepRenderTimeAxisDetailsRow(
+                "wwDataPrepTimeAxisDetailsFamilyRow", "wwDataPrepTimeAxisAdvFamily",
+                (detection && detection.family) ? (WW_DATA_PREP_TIME_AXIS_FAMILY_LABELS[detection.family] || detection.family) : ""
+            );
+            wwDataPrepRenderTimeAxisDetailsRow(
+                "wwDataPrepTimeAxisDetailsProvenanceRow", "wwDataPrepTimeAxisAdvProvenance",
+                (detection && detection.provenance) ? (WW_DATA_PREP_TIME_AXIS_PROVENANCE_LABELS[detection.provenance] || detection.provenance) : ""
+            );
             const resolvedOptions = (detection && (detection.resolved_options || detection.options)) || {};
-            formatEl.textContent = resolvedOptions.detected_format || "—";
-            confidenceEl.textContent = detection
-                ? (WW_DATA_PREP_TIME_AXIS_CONFIDENCE_LABELS[detection.confidence] || detection.confidence) : "—";
+            wwDataPrepRenderTimeAxisDetailsRow(
+                "wwDataPrepTimeAxisDetailsFormatRow", "wwDataPrepTimeAxisAdvFormat", resolvedOptions.detected_format || ""
+            );
+            // Sampling rate/Sample spacing: the SAME interval_seconds
+            // (with the SAME resolved_interval_seconds dry-run fallback)
+            // wwDataPrepRenderTimeAxisDetectResult()'s own summary line
+            // already reads -- never a second computation -- and only
+            // for the two interpreters that carry a real one.
+            const intervalSeconds = detection
+                ? (detection.resolved_interval_seconds != null ? detection.resolved_interval_seconds : detection.interval_seconds)
+                : null;
+            const intervalApplies = detection
+                && (detection.family === "sample_index" || detection.interpreter_id === "repeated_timestamp_precision_loss");
+            const hasInterval = intervalApplies && intervalSeconds != null && intervalSeconds > 0;
+            wwDataPrepRenderTimeAxisDetailsRow(
+                "wwDataPrepTimeAxisDetailsRateRow", "wwDataPrepTimeAxisAdvRate",
+                hasInterval ? (1 / intervalSeconds).toFixed(3) + " Hz" : ""
+            );
+            wwDataPrepRenderTimeAxisDetailsRow(
+                "wwDataPrepTimeAxisDetailsSpacingRow", "wwDataPrepTimeAxisAdvSpacing",
+                hasInterval ? (intervalSeconds * 1000).toFixed(3) + " ms" : ""
+            );
+            wwDataPrepRenderTimeAxisDetailsRow(
+                "wwDataPrepTimeAxisDetailsConfidenceRow", "wwDataPrepTimeAxisAdvConfidence",
+                detection ? (WW_DATA_PREP_TIME_AXIS_CONFIDENCE_LABELS[detection.confidence] || detection.confidence) : ""
+            );
             const statusSource = (detection && detection.status) ? detection : wwDataPrep.timeAxisSummary;
             const status = statusSource ? statusSource.status : null;
-            statusEl.textContent = status ? (WW_DATA_PREP_TIME_AXIS_STATUS_LABELS[status] || status) : "—";
+            wwDataPrepRenderTimeAxisDetailsRow(
+                "wwDataPrepTimeAxisDetailsStatusRow", "wwDataPrepTimeAxisAdvStatus",
+                status ? (WW_DATA_PREP_TIME_AXIS_STATUS_LABELS[status] || status) : ""
+            );
             const diagnosticCount = (detection && detection.diagnostics && detection.diagnostics.length) || 0;
-            diagnosticsEl.textContent = diagnosticCount ? (diagnosticCount + (diagnosticCount === 1 ? " finding" : " findings")) : "None";
+            wwDataPrepRenderTimeAxisDetailsRow(
+                "wwDataPrepTimeAxisDetailsDiagnosticsRow", "wwDataPrepTimeAxisAdvDiagnostics",
+                detection ? (diagnosticCount ? (diagnosticCount + (diagnosticCount === 1 ? " finding" : " findings")) : "None") : ""
+            );
         }
 
         // Owner-only unit/interval fields (task's own progressive-
@@ -10668,7 +11348,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 diagnosticsEl.innerHTML = "";
                 dateOrderField.hidden = true;
                 previewTable.innerHTML = "";
-                wwDataPrepRenderTimeAxisAdvancedDetails(null);
+                wwDataPrepRenderTimeAxisDetails(null);
                 // UAT fix (2026-09-04): the Manual interpreter has no
                 // automatic detection at all -- its own `provenance`
                 // comes directly from the Provenance <select> below, and
@@ -10730,7 +11410,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                     : " · Suggested interval: none (confidence too low) · Anchor: " + anchorText;
             }
             summaryEl.textContent = "Detected: " + familyLabel + " · Confidence: " + confidenceLabel + formatText + timingText + precisionLossText;
-            wwDataPrepRenderTimeAxisAdvancedDetails(detection);
+            wwDataPrepRenderTimeAxisDetails(detection);
 
             // Detection assistance card (DEC-082: recommend, never
             // silently switch) -- an icon + border color communicating
@@ -10816,7 +11496,23 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
 
             if (!previewRows) {
-                previewTable.innerHTML = "";
+                // Sample Preview disappearing-after-Save fix (2026-09-07):
+                // `detection` is ALREADY guaranteed truthy here (the
+                // `if (!detection)` branch far above returns before
+                // reaching this point) -- previewRows is only ever null
+                // in that case when wwDataPrepRenderTimeAxisForm() calls
+                // this with an APPLIED summary but no fresh dry-run
+                // result (Save just succeeded, or the form is
+                // re-rendering from an already-saved config on an
+                // unrelated page mutation). Detect Fields/Sample
+                // Preview visibility, the status card, Time Details, and
+                // the diagnostics/detect-card ABOVE this point already
+                // rendered correctly from `detection` regardless -- only
+                // the TABLE'S OWN ROWS were being wiped here, which is
+                // exactly what made Save look like it broke the preview.
+                // Leaving the table untouched preserves whatever was
+                // already shown (the last real Detect result for this
+                // same config) instead of blanking it for no reason.
                 return;
             }
             // Task section 7: prove how Powerwave will interpret the
@@ -10827,18 +11523,40 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // keeps the plain Source/Interpreted pair. Reuses the SAME
             // preview rows/parser output already fetched -- no second
             // interpretation engine.
+            //
+            // Row 7 redesign (2026-09-07): a leading "Row" column using
+            // `row.row_number` -- real data the backend's own
+            // TimeAxisPreviewRowOut ALREADY returns on every row, simply
+            // never rendered before now (confirmed directly against
+            // backend/app/schemas/time_axis.py). Not a new/invented
+            // column. "Source"/"Interpreted" become "Source value"/
+            // "Interpreted time" (Date + Time's own two source columns
+            // are left as-is) -- a label-only refinement, same data.
+            //
+            // Sample Preview follow-up UAT fix (2026-09-07): the heading
+            // said "first 5 rows" while the backend's own
+            // _TIME_AXIS_PREVIEW_LIMIT (time_axis_service.py) actually
+            // returns up to 20 -- a RENDER-time cap of 10, never a
+            // second/different backend fetch or a new detection/
+            // interpretation, so the heading's own claim is finally
+            // true regardless of how many rows the backend happens to
+            // send back. Never paginated -- rows beyond this cap are
+            // simply not shown, exactly the same "small confirmation
+            // sample" the preview has always been.
+            const cappedPreviewRows = previewRows.slice(0, 10);
             const isSplit = detection.interpreter_id === "split_date_time";
             let html = isSplit
-                ? "<thead><tr><th>Date source</th><th>Time source</th><th>Interpreted</th></tr></thead><tbody>"
-                : "<thead><tr><th>Source</th><th>Interpreted</th></tr></thead><tbody>";
-            for (const row of previewRows) {
+                ? "<thead><tr><th>Row</th><th>Date source</th><th>Time source</th><th>Interpreted time</th></tr></thead><tbody>"
+                : "<thead><tr><th>Row</th><th>Source value</th><th>Interpreted time</th></tr></thead><tbody>";
+            for (const row of cappedPreviewRows) {
                 const cell = (v) => escapeHtml(v === null || v === undefined ? "" : String(v));
+                const rowNumberCell = "<td>" + cell(row.row_number) + "</td>";
                 if (isSplit) {
-                    html += "<tr><td>" + cell(row.original[0]) + "</td><td>" + cell(row.original[1]) + "</td><td>" +
+                    html += "<tr>" + rowNumberCell + "<td>" + cell(row.original[0]) + "</td><td>" + cell(row.original[1]) + "</td><td>" +
                         escapeHtml(row.interpreted || "—") + "</td></tr>";
                 } else {
                     const original = row.original.map((v) => (v === null || v === undefined ? "" : String(v))).join(" ");
-                    html += "<tr><td>" + escapeHtml(original) + "</td><td>" + escapeHtml(row.interpreted || "—") + "</td></tr>";
+                    html += "<tr>" + rowNumberCell + "<td>" + escapeHtml(original) + "</td><td>" + escapeHtml(row.interpreted || "—") + "</td></tr>";
                 }
             }
             html += "</tbody>";
@@ -10914,6 +11632,15 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
         function wwDataPrepRenderTimeAxisForm() {
             const summary = wwDataPrep.timeAxisSummary;
+            // Sample Preview auto-render fix (2026-09-07): consumed
+            // exactly once per opened source, on THIS function's very
+            // first call regardless of what summary/interpreter turns
+            // out to be -- so a later save (which also re-enters this
+            // function) never redundantly re-triggers it after the
+            // flag was already used up by an earlier, unconfigured
+            // render of the same source.
+            const shouldAutoFetchPreview = wwDataPrep.timeAxisPreviewNeedsInitialFetch;
+            wwDataPrep.timeAxisPreviewNeedsInitialFetch = false;
             document.getElementById("wwDataPrepTimeAxisFamilySelect").value = (summary && summary.family) || "absolute";
             document.getElementById("wwDataPrepTimeAxisProvenanceSelect").value = (summary && summary.provenance) || "native";
             document.getElementById("wwDataPrepTimeAxisUnitInput").value = (summary && summary.unit) || "";
@@ -10951,11 +11678,28 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
 
             // A stored sample-interpreter configuration already carries
             // its own diagnostics/confidence/options on the plain GET
-            // response -- shown immediately, with no preview rows (the
-            // preview itself is only ever fetched on an explicit Detect
-            // click, never automatically on load).
+            // response -- shown immediately, with no preview rows yet.
             if (summary && WW_DATA_PREP_SAMPLE_INTERPRETERS.includes(summary.interpreter_id)) {
                 wwDataPrepRenderTimeAxisDetectResult(summary, null);
+                // Sample Preview auto-render fix (2026-09-07): a reload/
+                // reopen of a source with an already-applied sample-
+                // interpreter Time Axis should show real preview rows
+                // without requiring the user to press Detect again --
+                // reuses the SAME wwDataPrepDetectTimeAxis() a manual
+                // click already calls (never a second preview engine),
+                // now that every field it reads (interpreter/column
+                // selects, family/provenance/unit/interval) has already
+                // been restored above. Gated to fire at most once per
+                // opened source (see shouldAutoFetchPreview above) so
+                // this never re-fires on this page's own many other,
+                // unrelated mutations that also re-render this form
+                // (e.g. right after Save, which already has real rows
+                // on screen from the user's own prior explicit Detect --
+                // see wwDataPrepRenderTimeAxisDetectResult()'s own fix
+                // for why Save no longer clears those).
+                if (shouldAutoFetchPreview) {
+                    wwDataPrepDetectTimeAxis();
+                }
             } else {
                 wwDataPrepRenderTimeAxisDetectResult(null, null);
             }
@@ -11991,6 +12735,26 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             }
         });
 
+        // Row 5B redesign (2026-09-07): Column Roles' own UI-only pager
+        // -- purely a display slice over already-loaded columns, never
+        // a fetch (see wwDataPrepRenderColumnMapping()/
+        // wwDataPrepClampColumnsPage()). Changing the page size restarts
+        // at page 1 (a mid-list page number would otherwise land on an
+        // arbitrary, unrelated slice of columns under the new size).
+        document.getElementById("wwDataPrepColumnsPageSizeSelect").addEventListener("change", (event) => {
+            wwDataPrep.columnsPageSize = parseInt(event.target.value, 10) || 10;
+            wwDataPrep.columnsPage = 1;
+            wwDataPrepRenderColumnMapping();
+        });
+        document.getElementById("wwDataPrepColumnsPrevBtn").addEventListener("click", () => {
+            wwDataPrep.columnsPage -= 1;
+            wwDataPrepRenderColumnMapping();
+        });
+        document.getElementById("wwDataPrepColumnsNextBtn").addEventListener("click", () => {
+            wwDataPrep.columnsPage += 1;
+            wwDataPrepRenderColumnMapping();
+        });
+
         // UX refinement (post-Slice-6 UAT): progressive disclosure -- the
         // detailed header/data-region/column-role controls stay
         // collapsed behind "Configure" until the user actually wants to
@@ -12124,7 +12888,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
         });
         document.getElementById("wwDataPrepWorksheetTabs").addEventListener("click", (event) => {
             const tab = event.target.closest(".ww-data-prep-worksheet-tab");
-            if (!tab) return;
+            // Worksheet row redesign (2026-09-07 UAT): the "More sheets"
+            // trigger shares this same class for consistent sizing, but
+            // it is a disclosure control, not a selectable tab -- it
+            // carries no data-worksheet-index, so this guard (tightened,
+            // not rewritten) now also correctly ignores clicks on it
+            // rather than dispatching a bogus "change" with an
+            // undefined value. Every real tab (inline or inside the
+            // overflow dropdown) already has this attribute, so this
+            // adds no new condition for them.
+            if (!tab || tab.dataset.worksheetIndex === undefined) return;
             const select = document.getElementById("wwDataPrepWorksheetSelect");
             // The no-op guard reads application state, never select.value:
             // on a fresh Excel source nothing is selected yet
@@ -12132,9 +12905,19 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             // still defaults to its first option ("0"), which made
             // clicking the first worksheet tab a silent no-op.
             const selectedIndex = wwDataPrep.selectedWorksheetIndex;
-            if (selectedIndex != null && String(selectedIndex) === tab.dataset.worksheetIndex) return;
+            if (selectedIndex != null && String(selectedIndex) === tab.dataset.worksheetIndex) {
+                // Falls through with no state change, but still closes an
+                // open "More sheets" dropdown the tab happened to be in --
+                // matches picking the already-selected sheet from a
+                // native <select>, which also just closes the popup.
+                const openDetails = tab.closest(".ww-data-prep-worksheet-more");
+                if (openDetails) openDetails.open = false;
+                return;
+            }
             select.value = tab.dataset.worksheetIndex;
             select.dispatchEvent(new Event("change", { bubbles: true }));
+            const openDetails = tab.closest(".ww-data-prep-worksheet-more");
+            if (openDetails) openDetails.open = false;
         });
 
         document.getElementById("wwDataPrepBackBtn").addEventListener("click", () => {
@@ -12160,6 +12943,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             status.textContent = "";
             document.getElementById("wwDataPrepTable").innerHTML = "";
             document.getElementById("wwDataPrepColumnsTable").innerHTML = "";
+            document.getElementById("wwDataPrepColumnsCount").textContent = "";
+            document.getElementById("wwDataPrepColumnsRangeLabel").textContent = "";
             document.getElementById("wwDataPrepStructureStatus").textContent = "";
             document.getElementById("wwDataPrepFilename").textContent = "";
             wwDataPrep.createdAt = null;
@@ -12180,6 +12965,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             wwDataPrep.columnEngineeringQuantities = [];
             wwDataPrep.columnMeasuredUnits = [];
             wwDataPrep.columnLabels = [];
+            // A new source's own column list starts back on page 1 --
+            // columnsPageSize (the user's own "rows per page" choice) is
+            // deliberately NOT reset here, same as any other persisted
+            // display preference.
+            wwDataPrep.columnsPage = 1;
+            // Sample Preview auto-render fix: a freshly opened source
+            // gets exactly one automatic preview render if it already
+            // has an applied sample-interpreter Time Axis -- see
+            // wwDataPrepRenderTimeAxisForm().
+            wwDataPrep.timeAxisPreviewNeedsInitialFetch = true;
             wwDataPrep.headerRowNumber = null;
             wwDataPrep.dataStartRow = null;
             wwDataPrep.dataEndMode = null;

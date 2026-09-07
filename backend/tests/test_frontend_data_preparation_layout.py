@@ -123,6 +123,158 @@ class TestRowFiveMainConfiguration:
         assert click_body.index("select.value = tab.dataset.worksheetIndex;") > guard_end
         assert click_body.index('select.dispatchEvent(new Event("change", { bubbles: true }));') > guard_end
 
+
+class TestWorksheetRowRedesign:
+    """Worksheet row redesign (2026-09-07 UAT): an Excel identity block
+    (icon + "Worksheet"/"Excel file") + divider + rounded worksheet-tab
+    buttons + a "More sheets" overflow, kept deliberately compact per
+    explicit owner direction. Presentational only -- the SAME
+    #wwDataPrepWorksheetSelect + dispatchEvent("change") mechanism and
+    the SAME delegated click listener on #wwDataPrepWorksheetTabs
+    (data-worksheet-index + .closest()) select worksheets exactly as
+    before; only what renders/how it looks changed."""
+
+    def _click_body(self, source: str) -> str:
+        return _function_body(
+            source,
+            'document.getElementById("wwDataPrepWorksheetTabs").addEventListener("click"',
+            'document.getElementById("wwDataPrepBackBtn").addEventListener("click"',
+        )
+
+    def test_identity_block_and_divider_exist_inside_the_excel_only_field(self):
+        source = _source()
+        field_start = source.index('id="wwDataPrepWorksheetField"')
+        field_end = source.index("</div>\n                        <p", field_start)
+        field_body = source[field_start:field_end]
+        assert 'class="ww-data-prep-worksheet-identity"' in field_body
+        assert 'class="ww-data-prep-worksheet-identity-icon"' in field_body
+        assert ">Worksheet<" in field_body
+        assert ">Excel file<" in field_body
+        assert 'class="ww-data-prep-worksheet-divider"' in field_body
+        # The identity block/divider come before the select/tabs, and
+        # all of it is still inside the SAME hidden/shown Excel-only unit.
+        select_pos = field_body.index('id="wwDataPrepWorksheetSelect"')
+        assert field_body.index('class="ww-data-prep-worksheet-identity"') < select_pos
+
+    def test_old_permanently_hidden_heading_was_removed(self):
+        # Verified unused before removal -- no id, no JS reference, only
+        # ever `display: none`. Replaced by the identity block above.
+        source = _source()
+        assert "<h3>Worksheet <span" not in source
+        assert "ww-data-prep-worksheet-subtitle" not in source
+        assert ".ww-data-prep-worksheet-row h3 { display: none; }" not in source
+
+    def test_tabs_are_rounded_pill_buttons_not_the_old_flat_underline_style(self):
+        source = _source()
+        rule = _function_body(source, ".ww-data-prep-worksheet-tab {", "}")
+        assert "border-radius: var(--radius);" in rule
+        assert "border: 1px solid var(--panel-border);" in rule
+        assert "border-bottom: 3px solid transparent;" not in rule
+        assert "border-radius: 0;" not in rule
+
+    def test_active_tab_gets_accent_styling_distinct_from_inactive(self):
+        source = _source()
+        rule = _function_body(source, '.ww-data-prep-worksheet-tab[aria-selected="true"] {', "}")
+        assert "color: var(--accent);" in rule
+        assert "border-color: var(--accent);" in rule
+        assert "background: var(--accent-wash-soft);" in rule
+
+    def test_tab_has_focus_visible_state(self):
+        source = _source()
+        assert ".ww-data-prep-worksheet-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }" in source
+
+    def test_long_names_truncate_with_a_native_tooltip(self):
+        source = _source()
+        assert "max-width: 160px;" in _function_body(source, ".ww-data-prep-worksheet-tab {", "}")
+        label_rule = _function_body(source, ".ww-data-prep-worksheet-tab-label {", "}")
+        assert "overflow: hidden;" in label_rule
+        assert "text-overflow: ellipsis;" in label_rule
+        assert "white-space: nowrap;" in label_rule
+        tab_html_fn = _function_body(
+            source, "function wwDataPrepWorksheetTabHtml(sheet, selectedIndex) {", "}"
+        )
+        assert "title=" in tab_html_fn
+
+    def test_native_select_stays_visually_hidden_and_still_the_source_of_truth(self):
+        # Unchanged mechanism -- the native select is still what tab
+        # clicks route through via .value + dispatchEvent("change").
+        source = _source()
+        rule = _function_body(source, "#wwDataPrepWorksheetSelect {", "}")
+        assert "position: absolute;" in rule
+        assert "clip: rect(0 0 0 0);" in rule
+        click_body = self._click_body(source)
+        assert 'const select = document.getElementById("wwDataPrepWorksheetSelect");' in click_body
+        assert "select.value = tab.dataset.worksheetIndex;" in click_body
+
+    def test_active_sheet_gets_a_grid_icon_inactive_sheets_do_not(self):
+        source = _source()
+        body = _function_body(
+            source,
+            "function wwDataPrepWorksheetTabHtml(sheet, selectedIndex) {",
+            "function wwDataPrepRenderTable(preview) {",
+        )
+        assert "const isActive = sheet.index === selectedIndex;" in body
+        assert "isActive\n                ? " in body or "isActive ?" in body
+
+    def test_overflow_keeps_the_selected_sheet_inline_never_hidden(self):
+        # "Obvious at a glance" -- reopening a source whose selected
+        # worksheet falls outside the first N by position must not hide
+        # it inside an unopened "More sheets" dropdown.
+        source = _source()
+        assert "const WW_DATA_PREP_WORKSHEET_MAX_INLINE = 4;" in source
+        body = _function_body(
+            source,
+            "function wwDataPrepWorksheetTabsHtml(worksheets, selectedIndex) {",
+            "function wwDataPrepWorksheetTabHtml(sheet, selectedIndex) {",
+        )
+        assert "worksheets.length > WW_DATA_PREP_WORKSHEET_MAX_INLINE" in body
+        assert "const selectedPos = worksheets.findIndex((s) => s.index === selectedIndex);" in body
+        assert "if (selectedPos >= WW_DATA_PREP_WORKSHEET_MAX_INLINE) {" in body
+
+    def test_more_sheets_only_renders_when_overflow_exists(self):
+        source = _source()
+        body = _function_body(
+            source,
+            "function wwDataPrepWorksheetTabsHtml(worksheets, selectedIndex) {",
+            "function wwDataPrepWorksheetTabHtml(sheet, selectedIndex) {",
+        )
+        assert "if (overflowSheets.length) {" in body
+        assert 'class="ww-data-prep-worksheet-more"' in body
+        assert ">More sheets<" in body
+
+    def test_overflow_buttons_reuse_the_exact_same_tab_markup_and_selection_path(self):
+        # No second selection path for overflowed sheets -- they are
+        # plain .ww-data-prep-worksheet-tab elements with the same
+        # data-worksheet-index attribute the ONE delegated click
+        # listener already reads, just nested inside the dropdown body.
+        source = _source()
+        body = _function_body(
+            source,
+            "function wwDataPrepWorksheetTabsHtml(worksheets, selectedIndex) {",
+            "function wwDataPrepWorksheetTabHtml(sheet, selectedIndex) {",
+        )
+        assert "overflowSheets.map((sheet) => wwDataPrepWorksheetTabHtml(sheet, selectedIndex))" in body
+        assert 'class="ww-data-prep-worksheet-more-body"' in body
+
+    def test_more_sheets_trigger_is_excluded_from_the_selection_click_handler(self):
+        # Regression guard: the "More sheets" <summary> shares
+        # .ww-data-prep-worksheet-tab for consistent sizing but carries
+        # no data-worksheet-index -- without this guard, clicking it
+        # would dispatch a bogus "change" with an undefined value.
+        source = _source()
+        click_body = self._click_body(source)
+        assert "if (!tab || tab.dataset.worksheetIndex === undefined) return;" in click_body
+        assert 'class="ww-data-prep-worksheet-tab ww-data-prep-worksheet-tab-more"' in source
+        # The trigger's own markup never sets data-worksheet-index.
+        more_summary = _function_body(source, '<summary class="ww-data-prep-worksheet-tab ww-data-prep-worksheet-tab-more">', "</summary>")
+        assert "data-worksheet-index" not in more_summary
+
+    def test_selecting_from_the_overflow_dropdown_closes_it(self):
+        source = _source()
+        click_body = self._click_body(source)
+        assert 'tab.closest(".ww-data-prep-worksheet-more")' in click_body
+        assert "openDetails.open = false;" in click_body
+
     def test_column_roles_card_exists_in_the_wide_column(self):
         source = _source()
         wide_col_start = source.index('class="ww-data-prep-config-col ww-data-prep-config-col-wide"')
@@ -160,6 +312,436 @@ class TestRowFiveMainConfiguration:
         assert "td.ww-data-prep-label-cell { min-width: 112px; }" in media_480
         assert ".ww-data-prep-role-select { min-width: 104px; }" in media_480
         assert ".ww-data-prep-engineering-quantity-select { min-width: 120px; }" in media_480
+
+
+class TestRowFiveAHeaderDataRegionRedesign:
+    """Row 5A redesign (2026-09-07): Header & Data Region gets the SAME
+    numbered-step-badge + title + description header Column Roles' own
+    Row 5B redesign already established (reusing the SAME generic
+    .ww-data-prep-panel-step-badge class, never a second badge style),
+    plus a new light-blue instructional info box. Presentational only --
+    every existing #wwDataPrep* id, event handler, and backend contract
+    for Header row / Data start-end row / Set Region / Reset Region is
+    unchanged; Column Roles' own markup/CSS is untouched by this task."""
+
+    def _card_body(self, source: str) -> str:
+        start = source.index('<h3>Header &amp; Data Region</h3>')
+        start = source.rindex("<section", 0, start)
+        end = source.index("</section>", start)
+        return source[start:end]
+
+    def test_numbered_step_badge_reads_1_and_reuses_the_shared_badge_class(self):
+        source = _source()
+        card = self._card_body(source)
+        assert 'class="ww-data-prep-panel-step-badge"' in card
+        badge_start = card.index('class="ww-data-prep-panel-step-badge"')
+        badge_end = card.index("</span>", badge_start)
+        assert card[badge_start:badge_end].endswith(">1")
+        # No second badge style introduced -- same class Column Roles
+        # already uses, defined exactly once in the whole stylesheet.
+        assert source.count(".ww-data-prep-panel-step-badge {") == 1
+
+    def test_title_and_description_match_the_approved_copy(self):
+        source = _source()
+        card = self._card_body(source)
+        assert "<h3>Header &amp; Data Region</h3>" in card
+        assert (
+            'class="hint ww-data-prep-region-desc">Specify where the header row '
+            "is and which rows contain the data.</p>" in card
+        )
+
+    def test_info_box_shows_the_exact_required_message_with_an_icon(self):
+        source = _source()
+        card = self._card_body(source)
+        assert 'class="ww-data-prep-region-info-box"' in card
+        assert 'class="ww-data-prep-region-info-icon"' in card
+        assert "<svg" in card[card.index('class="ww-data-prep-region-info-icon"'):]
+        assert (
+            'class="ww-data-prep-region-info-text">Preview and column detection '
+            "will use the selected header and data region.</p>" in card
+        )
+
+    def test_info_box_uses_existing_accent_wash_token_not_a_new_color(self):
+        source = _source()
+        rule = _function_body(source, ".ww-data-prep-region-info-box {", "}")
+        assert "background: var(--accent-wash-soft);" in rule
+        assert "border-radius: var(--radius);" in rule
+
+    def test_panel_header_wrapper_still_has_exactly_two_top_level_children(self):
+        # .ww-data-prep-panel-header is SHARED with Time Axis Setup's own
+        # header -- its own flex/space-between rule must not need
+        # changing, so this redesign nests the badge+title+description
+        # group as ONE new wrapper (content block) alongside the
+        # existing (visually-removed) Configure button, never a third
+        # top-level flex child.
+        source = _source()
+        card = self._card_body(source)
+        header_start = card.index('class="ww-data-prep-panel-header"')
+        header_end = card.index("</div>", card.index('id="wwDataPrepStructureToggleBtn"'))
+        header_body = card[header_start:header_end]
+        assert 'class="ww-data-prep-region-header"' in header_body
+        assert 'id="wwDataPrepStructureToggleBtn"' in header_body
+
+    def test_existing_ids_and_fields_are_all_preserved(self):
+        source = _source()
+        card = self._card_body(source)
+        for element_id in (
+            "wwDataPrepStructureToggleBtn",
+            "wwDataPrepStructureSummary",
+            "wwDataPrepStructureDetails",
+            "wwDataPrepHeaderInput",
+            "wwDataPrepClearHeaderBtn",
+            "wwDataPrepRegionStartInput",
+            "wwDataPrepRegionEndInput",
+            "wwDataPrepSetRegionBtn",
+            "wwDataPrepResetRegionBtn",
+        ):
+            assert 'id="' + element_id + '"' in card
+
+    def test_data_end_row_helper_text_is_preserved(self):
+        source = _source()
+        card = self._card_body(source)
+        assert "Leave empty for last row" in card
+
+    def test_existing_tooltips_are_preserved_unchanged(self):
+        source = _source()
+        card = self._card_body(source)
+        assert 'data-tooltip-text="The row number containing column headers.' in card
+        assert 'data-tooltip-text="The first row of actual data' in card
+        assert 'data-tooltip-text="The last row of actual data' in card
+
+    def test_no_javascript_or_backend_contract_functions_were_touched(self):
+        # This task is presentational only -- the region-mutation
+        # functions/listeners must still exist, unchanged in name/shape.
+        source = _source()
+        assert "function wwDataPrepApplyHeaderInputIfChanged(" in source
+        assert 'document.getElementById("wwDataPrepSetRegionBtn").addEventListener("click"' in source
+        assert 'document.getElementById("wwDataPrepClearHeaderBtn")' in source
+        assert 'document.getElementById("wwDataPrepResetRegionBtn")' in source
+
+
+class TestRowFiveHeightAlignmentAndScroll:
+    """Height AUTHORITY correction (2026-09-07, second follow-up UAT
+    fix): Header & Data Region is the height authority for this row --
+    Column Roles must never contribute its own table content height to
+    sizing the shared grid row, at any column count. Two earlier
+    attempts (a fixed wrap max-height, then a fixed card max-height)
+    both guessed a pixel number meant to approximate Header & Data
+    Region's height; this correction removes that guesswork entirely.
+
+    `contain: size` on .ww-data-prep-column-roles-card makes this
+    card's own content invisible to the grid's row-sizing calculation
+    (its content contribution is treated as zero, at any row count), so
+    align-items: stretch + flex: 1 1 auto (shared with Header & Data
+    Region's own card) size this card to EXACTLY the row height Header
+    & Data Region's natural content determines -- no guessed number
+    anywhere on desktop/tablet.
+
+    Third follow-up UAT fix (same day): once the SAME 820px breakpoint
+    that already stacks row-5-grid into two independent rows fires,
+    Header & Data Region and Column Roles no longer share a row for
+    `contain: size` to borrow a height from, so containment is reset
+    off and the card instead gets a fixed, independent `height: 340px`
+    (not a viewport-relative max-height -- that earlier attempt could
+    still read as unusably short on a short/landscape viewport, since
+    vh tracks viewport height, not the width this breakpoint keys on).
+    340px is the ONE deliberate, explicitly-acknowledged fixed pixel
+    value in this whole mechanism, used only below this one breakpoint
+    where there is no sibling row height left to borrow instead."""
+
+    def test_row_5_grid_stretches_its_two_cards_to_equal_height(self):
+        source = _source()
+        rule = _function_body(source, ".ww-data-prep-row-5-grid {", "}")
+        assert "align-items: stretch;" in rule
+        assert "align-items: start;" not in rule
+
+    def test_cards_inside_row_5_grid_grow_to_fill_the_stretched_row(self):
+        source = _source()
+        assert ".ww-data-prep-row-5-grid .ww-data-prep-card { overflow-x: auto; flex: 1 1 auto; }" in source
+
+    def test_column_roles_card_carries_its_own_scoping_class(self):
+        source = _source()
+        assert 'class="panel ww-cc-panel ww-data-prep-card ww-data-prep-column-roles-card"' in source
+        assert "<h3>Column Roles " in source
+        card_pos = source.index('class="panel ww-cc-panel ww-data-prep-card ww-data-prep-column-roles-card"')
+        card_end = source.index("</section>", card_pos)
+        assert card_pos < source.index("<h3>Column Roles ") < card_end
+
+    def test_column_roles_card_uses_size_containment_not_a_guessed_max_height(self):
+        # The critical behavior: Column Roles' own content must not
+        # control the parent row height -- achieved via `contain: size`
+        # (zeroes this card's content contribution to the grid's
+        # row-sizing calculation), never a hard-coded pixel guess.
+        source = _source()
+        rule = _function_body(source, ".ww-data-prep-column-roles-card {", "}")
+        assert "display: flex;" in rule
+        assert "flex-direction: column;" in rule
+        assert "contain: size;" in rule
+        assert "max-height:" not in rule
+        assert "px" not in rule
+
+    def test_column_roles_wrap_fills_whatever_height_the_card_receives(self):
+        source = _source()
+        rule = _function_body(source, ".ww-data-prep-column-roles-wrap {", "}")
+        assert "max-height:" not in rule
+        assert "px" not in rule
+        assert "flex: 1 1 0;" in rule
+        assert "min-height: 0;" in rule
+        assert "overflow-y: auto;" in rule
+        assert "overflow-x: auto;" in rule
+
+    def test_column_roles_card_resets_containment_and_gets_a_fixed_height_when_stacked(self):
+        # No sibling row to borrow a height from once stacked -- this is
+        # the ONE place a fixed pixel height is deliberately used, and
+        # containment must be turned back off so the card can use it
+        # instead of being zeroed with nothing to stretch it against.
+        # Reuses the EXISTING shared 820px breakpoint (the same one
+        # row-5-grid itself stacks at) rather than a new/separate one.
+        source = _source()
+        media_820 = _function_body(source, "@media (max-width: 820px) {", "/* Very small screen")
+        assert ".ww-data-prep-column-roles-card { contain: none; height: 340px; max-height: none; }" in media_820
+
+    def test_column_roles_wrap_behavior_is_restated_inside_the_820px_block(self):
+        # Not a NEW rule (the unconditional desktop rule already covers
+        # this unchanged) -- just restated in the same 820px block as
+        # the card override above so the full small-screen behavior
+        # reads in one place, per this task's own request.
+        source = _source()
+        media_820 = _function_body(source, "@media (max-width: 820px) {", "/* Very small screen")
+        assert (
+            ".ww-data-prep-column-roles-wrap { flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: auto; }"
+            in media_820
+        )
+
+    def test_desktop_mechanism_uses_no_guessed_pixel_height(self):
+        # The desktop/tablet mechanism (contain: size + stretch) uses no
+        # guessed number at all -- regression guard against
+        # reintroducing one there (two prior attempts each did). 340px
+        # at the stacked breakpoint (previous test) is the one
+        # deliberate, explicitly-acknowledged exception, not a silent
+        # regression back to guessing.
+        source = _source()
+        card_rule = _function_body(source, ".ww-data-prep-column-roles-card {", "}")
+        wrap_rule = _function_body(source, ".ww-data-prep-column-roles-wrap {", "}")
+        assert "px" not in card_rule
+        assert "px" not in wrap_rule
+
+    def test_column_roles_table_header_is_sticky_via_the_shared_base_class(self):
+        # No NEW sticky rule is added for Column Roles -- its <table>
+        # already carries the shared .ww-data-prep-table base class,
+        # whose own `thead th` rule already sets position: sticky/top:0/
+        # an opaque background. That rule simply had no visible effect
+        # here before, since sticky only does anything inside an actual
+        # scrolling container.
+        source = _source()
+        assert 'class="ww-data-prep-table ww-data-prep-columns-table" id="wwDataPrepColumnsTable"' in source
+        rule = _function_body(source, ".ww-data-prep-table thead th {", "}")
+        assert "position: sticky;" in rule
+        assert "top: 0;" in rule
+        assert "z-index:" in rule
+        assert "background: var(--panel);" in rule
+
+    def test_no_duplicate_sticky_rule_was_added_for_columns_table_th(self):
+        # The fix is making the EXISTING sticky rule take effect (via
+        # the new max-height/overflow above), not adding a second,
+        # redundant position: sticky declaration scoped to
+        # .ww-data-prep-columns-table specifically.
+        source = _source()
+        rule = _function_body(source, "#pageDataPreparation .ww-data-prep-columns-table th {", "}")
+        assert "position: sticky" not in rule
+
+
+class TestRowFiveBColumnRolesRedesign:
+    """Row 5B redesign (2026-09-07): Column Roles' own visual redesign
+    (numbered step badge + title + description header, striped/
+    lighter-bordered table, and a UI-only footer with column count +
+    rows-per-page pager) matching an approved mock. Presentational plus
+    a purely client-side display-slice pagination over already-loaded
+    columns -- no role/EQ/MU semantics, tooltip, or backend contract
+    changed. Scoped to Column Roles only; no other row/card in this
+    task."""
+
+    def _card_body(self, source: str) -> str:
+        start = source.index('class="panel ww-cc-panel ww-data-prep-card ww-data-prep-column-roles-card"')
+        end = source.index("</section>", start)
+        return source[start:end]
+
+    def test_numbered_step_badge_reads_2_and_is_not_the_workflow_steps_stateful_class(self):
+        source = _source()
+        card = self._card_body(source)
+        assert 'class="ww-data-prep-panel-step-badge"' in card
+        badge_start = card.index('class="ww-data-prep-panel-step-badge"')
+        badge_end = card.index("</span>", badge_start)
+        assert card[badge_start:badge_end].endswith(">2")
+        # NOT the workflow strip's own stateful step-number class -- that
+        # one is neutral-gray by default and only turns accent-colored
+        # via a data-state="active" a workflow step sets on itself; this
+        # is a static section badge, always accent-colored. (Checked as
+        # an actual class="..." usage, not a bare substring -- this
+        # test's own explanatory HTML comment above the badge legitimately
+        # names that other class in prose.)
+        assert 'class="ww-data-prep-workflow-step-num"' not in card
+
+    def test_step_badge_is_permanently_accent_colored_not_state_dependent(self):
+        source = _source()
+        rule = _function_body(source, ".ww-data-prep-panel-step-badge {", "}")
+        assert "background: var(--accent);" in rule
+        assert "color: #fff;" in rule
+        assert "data-state" not in rule
+
+    def test_title_and_description_match_the_approved_copy(self):
+        source = _source()
+        card = self._card_body(source)
+        assert "<h3>Column Roles " in card
+        assert (
+            'class="hint ww-data-prep-column-roles-desc">Assign a role for each column '
+            "and set engineering quantity and unit where applicable.</p>" in card
+        )
+
+    def test_existing_tooltip_is_preserved_unchanged(self):
+        source = _source()
+        card = self._card_body(source)
+        assert 'data-tooltip-text="Time Axis — Defines the X-axis.' in card
+        assert "Waveform — Creates a Y-axis channel." in card
+        assert "ww-info-tip-trigger" in card
+
+    def test_no_search_box_is_present(self):
+        source = _source()
+        card = self._card_body(source)
+        assert "Search columns" not in card
+        assert "wwDataPrepColumnSearch" not in card
+        assert "<input" not in card
+
+    def test_table_rows_are_striped_with_horizontal_and_light_vertical_borders(self):
+        # Scoped to .ww-data-prep-columns-table specifically (its only
+        # consumer is this table) -- the shared .ww-data-prep-table base
+        # class (Data Preview, Time Axis preview) keeps its own full
+        # grid-line borders, unaffected.
+        source = _source()
+        border_rule = _function_body(
+            source,
+            ".ww-data-prep-columns-table th,\n        .ww-data-prep-columns-table td {",
+            "}",
+        )
+        assert "border: none;" in border_rule
+        assert "border-bottom: 1px solid var(--panel-border);" in border_rule
+        assert ".ww-data-prep-columns-table tbody tr:nth-child(even) td { background: var(--surface-tint); }" in source
+        base_table_rule = _function_body(source, ".ww-data-prep-table th, .ww-data-prep-table td {", "}")
+        assert "border: 1px solid var(--panel-border);" in base_table_rule
+
+    def test_light_vertical_separator_between_columns_skips_the_last_column(self):
+        # Refinement (2026-09-07, same day): a subtle vertical divider
+        # between columns, reintroduced WITHOUT reverting the row-only
+        # horizontal-border rule above (a second, additive rule rather
+        # than a duplicated/rewritten border block) -- and never on the
+        # last column, which would otherwise double up against the
+        # table's own outer edge.
+        source = _source()
+        rule = _function_body(
+            source,
+            ".ww-data-prep-columns-table th:not(:last-child),\n        .ww-data-prep-columns-table td:not(:last-child) {",
+            "}",
+        )
+        assert "border-right: 1px solid var(--panel-border);" in rule
+        # Scoped to Column Roles only -- the shared .ww-data-prep-table
+        # base class (Data Preview, Time Axis preview) must not gain a
+        # vertical divider from this change.
+        base_table_rule = _function_body(source, ".ww-data-prep-table th, .ww-data-prep-table td {", "}")
+        assert "border-right" not in base_table_rule
+
+    def test_footer_shows_column_count_and_pager_matching_the_mock(self):
+        source = _source()
+        card = self._card_body(source)
+        assert 'class="ww-data-prep-columns-footer"' in card
+        assert 'id="wwDataPrepColumnsCount"' in card
+        assert 'id="wwDataPrepColumnsPageSizeSelect"' in card
+        assert 'id="wwDataPrepColumnsRangeLabel"' in card
+        assert 'id="wwDataPrepColumnsPrevBtn"' in card
+        assert 'id="wwDataPrepColumnsNextBtn"' in card
+        footer_start = card.index('class="ww-data-prep-columns-footer"')
+        table_wrap_end = card.index("</div>", card.index('class="ww-data-prep-table-wrap ww-data-prep-column-roles-wrap"'))
+        assert footer_start > table_wrap_end
+
+    def test_pagination_is_a_ui_only_slice_never_a_second_fetch(self):
+        # No backend column-page endpoint exists or is called -- this is
+        # purely a display slice over columnCount/columnLabels/
+        # columnRoles/etc., which are already fully loaded by the SAME
+        # preview fetch Column Roles already reads.
+        source = _source()
+        clamp_body = _function_body(source, "function wwDataPrepClampColumnsPage() {", "}")
+        assert "fetch(" not in clamp_body
+        footer_body = _function_body(source, "function wwDataPrepRenderColumnsFooter(", "}\n\n        function wwDataPrepRenderColumnMapping")
+        assert "fetch(" not in footer_body
+        mapping_body = _function_body(source, "function wwDataPrepRenderColumnMapping() {", "function wwDataPrepSummarizeColumnRoles(")
+        assert "fetch(" not in mapping_body
+
+    def test_page_clamps_into_valid_range_both_directions(self):
+        source = _source()
+        body = _function_body(source, "function wwDataPrepClampColumnsPage() {", "}")
+        assert "const totalPages = Math.max(1, Math.ceil(columnCount / pageSize));" in body
+        assert "if (wwDataPrep.columnsPage > totalPages) wwDataPrep.columnsPage = totalPages;" in body
+        assert "if (wwDataPrep.columnsPage < 1) wwDataPrep.columnsPage = 1;" in body
+
+    def test_data_col_attribute_still_uses_the_true_absolute_column_index(self):
+        # Pagination must be a display slice ONLY -- role/EQ/MU change
+        # handlers read data-col directly, so it must never become a
+        # page-relative index, only ever the real column position.
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepRenderColumnMapping() {", "function wwDataPrepSummarizeColumnRoles("
+        )
+        assert "for (let c = startIndex; c < endIndex; c++) {" in body
+        assert 'data-col="\' + c + \'"' in body
+        assert "for (let c = 0; c < columnCount; c++) {" not in body
+
+    def test_page_size_change_resets_to_page_one(self):
+        source = _source()
+        body = _function_body(
+            source,
+            'document.getElementById("wwDataPrepColumnsPageSizeSelect").addEventListener("change"',
+            "});",
+        )
+        assert "wwDataPrep.columnsPage = 1;" in body
+        assert "wwDataPrepRenderColumnMapping();" in body
+
+    def test_prev_and_next_buttons_move_the_page_and_rerender(self):
+        source = _source()
+        prev_body = _function_body(
+            source, 'document.getElementById("wwDataPrepColumnsPrevBtn").addEventListener("click"', "});"
+        )
+        assert "wwDataPrep.columnsPage -= 1;" in prev_body
+        assert "wwDataPrepRenderColumnMapping();" in prev_body
+        next_body = _function_body(
+            source, 'document.getElementById("wwDataPrepColumnsNextBtn").addEventListener("click"', "});"
+        )
+        assert "wwDataPrep.columnsPage += 1;" in next_body
+        assert "wwDataPrepRenderColumnMapping();" in next_body
+
+    def test_opening_a_new_source_resets_columns_page_but_not_page_size(self):
+        source = _source()
+        body = _function_body(
+            source,
+            "async function openDataPreparationWorkspace(sourceId) {",
+            "function wwDataPrepRenderWorkflowStrip() {",
+        )
+        assert "wwDataPrep.columnsPage = 1;" in body
+        assert "wwDataPrep.columnsPageSize = " not in body
+
+    def test_role_eq_mu_change_handler_is_unchanged(self):
+        # This redesign must not touch the existing role/EQ/MU logic --
+        # same delegated "change" listener, same three handler calls.
+        source = _source()
+        body = _function_body(
+            source,
+            'document.getElementById("wwDataPrepColumnsTable").addEventListener("change"',
+            "});",
+        )
+        assert "wwDataPrepSetColumnRole(parseInt(roleSelect.dataset.col, 10), roleSelect.value);" in body
+        assert (
+            "wwDataPrepSetColumnEngineeringQuantity(parseInt(quantitySelect.dataset.col, 10), quantitySelect.value);"
+            in body
+        )
+        assert "wwDataPrepSetColumnMeasuredUnit(parseInt(unitSelect.dataset.col, 10), unitSelect.value);" in body
 
 
 class TestRowTwoIssuesReadiness:
@@ -484,7 +1066,7 @@ class TestPageHeaderAndFileCard:
         assert 'class="ww-data-prep-row ww-data-prep-row-1 ww-data-prep-row-cols"' not in source
         body = _function_body(source, ".ww-data-prep-row-1 {", "}")
         assert "display: grid" in body
-        assert "minmax(0, 1.6fr) auto minmax(260px, 1fr)" in body
+        assert "minmax(0, 1fr) auto minmax(260px, 1fr)" in body
 
     def test_status_badge_and_dot_live_inside_the_file_details_slot(self):
         source = _source()
@@ -985,12 +1567,22 @@ class TestTimeAxisSetupRow3CRedesign:
         clear_tag = panel[clear_tag_start:clear_start]
         assert 'class="secondary"' in clear_tag
 
-    def test_advanced_options_and_advanced_details_stay_distinct(self):
+    def test_advanced_options_and_time_details_stay_distinct(self):
+        # Superseded by the Row 7 redesign (2026-09-07): the separate
+        # "Advanced details" accordion (#wwDataPrepTimeAxisAdvanced) is
+        # retired -- its useful fields consolidated into the new,
+        # always-visible Time Details column instead (see
+        # TestRowSevenTimeAxisRedesign below). Advanced Options
+        # (configuration WORKFLOWS) and Time Details (read-only
+        # technical facts) must still never be merged into one concept
+        # -- kept as a negative check so a regression re-adding the old
+        # accordion, or collapsing the two concepts together, is caught.
         source = _source()
         panel = self._panel_body(source)
         assert 'id="wwDataPrepTimeAxisAdvancedOptions"' in panel
-        assert 'id="wwDataPrepTimeAxisAdvanced"' in panel
-        assert panel.index('id="wwDataPrepTimeAxisAdvancedOptions"') != panel.index('id="wwDataPrepTimeAxisAdvanced"')
+        assert 'id="wwDataPrepTimeAxisAdvanced"' not in panel
+        assert 'id="wwDataPrepTimeAxisDetailsCol"' in panel
+        assert panel.index('id="wwDataPrepTimeAxisAdvancedOptions"') != panel.index('id="wwDataPrepTimeAxisDetailsCol"')
 
     def test_configure_toggle_and_collapse_behavior_are_unchanged(self):
         # Superseded by TestTimeAxisSetupHideButtonRemoval below (a
@@ -1065,11 +1657,16 @@ class TestTimeAxisSetupHideButtonRemoval:
         assert 'getElementById("wwDataPrepTimeAxisPanel").scrollIntoView(' in body
         assert "timeAxisExpanded" not in body
 
-    def test_advanced_options_and_advanced_details_keep_their_own_collapse(self):
+    def test_advanced_options_keeps_its_own_collapse(self):
+        # Superseded by the Row 7 redesign (2026-09-07): Advanced
+        # details' own separate <details> collapse is retired along
+        # with the accordion itself (see
+        # test_advanced_options_and_time_details_stay_distinct above);
+        # Advanced Options keeps its own, unchanged.
         source = _source()
         panel = self._panel_body(source)
         assert '<details class="ww-data-prep-time-axis-advanced-options" id="wwDataPrepTimeAxisAdvancedOptions">' in panel
-        assert '<details class="ww-data-prep-time-axis-advanced" id="wwDataPrepTimeAxisAdvanced">' in panel
+        assert '<details class="ww-data-prep-time-axis-advanced" id="wwDataPrepTimeAxisAdvanced">' not in panel
 
 
 class TestTimeAxisSetupStatusCardAndDetectSpacing:
@@ -1121,19 +1718,390 @@ class TestTimeAxisSetupStatusCardAndDetectSpacing:
 
     def test_configured_detail_line_reuses_the_summary_text_not_row_count(self):
         source = _source()
-        body = _function_body(source, "function wwDataPrepRenderTimeAxisValidity() {", "function wwDataPrepRenderTimeAxisAdvancedDetails(")
+        body = _function_body(source, "function wwDataPrepRenderTimeAxisValidity() {", "function wwDataPrepRenderTimeAxisDetailsRow(")
         assert 'getElementById("wwDataPrepTimeAxisSummaryInterpretation")' in body
         assert 'getElementById("wwDataPrepTimeAxisSummaryColumns")' in body
         assert '" rows"' not in body
         assert "approximately " not in body
 
     def test_detect_button_row_has_its_own_top_margin(self):
+        # Owner-authored spacing tweak (2026-09-07): tightened from the
+        # original 14px to 5px -- still its own deliberate, non-zero gap
+        # from whichever conditional field sits above it, just denser.
         source = _source()
         panel = self._panel_body(source)
         assert 'class="ww-data-prep-structure-controls ww-data-prep-time-axis-detect-row"' in panel
         rule_start = source.index(".ww-data-prep-time-axis-detect-row {")
         rule_end = source.index("}", rule_start)
-        assert "margin-top: 14px" in source[rule_start:rule_end]
+        assert "margin-top: 5px" in source[rule_start:rule_end]
+
+
+class TestRowSevenTimeAxisRedesign:
+    """Row 7 redesign (2026-09-07): Time Axis Setup gets a numbered step
+    badge + title + description header (reusing the shared
+    .ww-data-prep-panel-step-badge), a right-aligned status pill/
+    selected-column chip/Advanced Options, and a 3-section body (Time
+    Format | Sample Preview | Time Details) replacing the old 2-section
+    split. The former separate "Advanced details" accordion is retired;
+    its useful fields are consolidated into the new, always-visible Time
+    Details column, omitting any field that does not apply to the
+    current interpreter rather than showing a "-" placeholder.
+    Presentational/information-architecture only -- every existing
+    #wwDataPrep* id, event handler, and backend contract is preserved or
+    explicitly re-parented (never duplicated)."""
+
+    def _panel_body(self, source: str) -> str:
+        start = source.index('id="wwDataPrepTimeAxisPanel"')
+        end = source.index("<!-- /ww-data-prep-row-5-time-axis (Time Axis Setup) -->")
+        return source[start:end]
+
+    def test_numbered_step_badge_reads_3_and_reuses_the_shared_badge_class(self):
+        source = _source()
+        panel = self._panel_body(source)
+        assert 'class="ww-data-prep-panel-step-badge"' in panel
+        badge_start = panel.index('class="ww-data-prep-panel-step-badge"')
+        badge_end = panel.index("</span>", badge_start)
+        assert panel[badge_start:badge_end].endswith(">3")
+        # No second badge style -- same class Header & Data Region/
+        # Column Roles already use, defined exactly once in the sheet.
+        assert source.count(".ww-data-prep-panel-step-badge {") == 1
+
+    def test_header_description_matches_the_approved_copy(self):
+        source = _source()
+        panel = self._panel_body(source)
+        assert (
+            'class="hint ww-data-prep-time-axis-header-desc">Configure how time '
+            "is interpreted from the selected column.</p>" in panel
+        )
+
+    def test_header_status_pill_is_synced_from_the_same_readiness_state(self):
+        # Never a second readiness computation -- the header status
+        # element is written by the SAME function that already computes
+        # wwDataPrepRenderTimeAxisValidity()'s state.
+        source = _source()
+        panel = self._panel_body(source)
+        assert 'id="wwDataPrepTimeAxisHeaderStatus"' in panel
+        assert 'id="wwDataPrepTimeAxisHeaderStatusIcon"' in panel
+        assert 'id="wwDataPrepTimeAxisHeaderStatusText"' in panel
+        sync_body = _function_body(source, "function wwDataPrepSyncTimeAxisHeaderStatus(state, icon) {", "}")
+        assert 'getElementById("wwDataPrepTimeAxisHeaderStatus")' in sync_body
+
+    def test_selected_column_chip_was_removed_from_the_header(self):
+        # UAT fix (2026-09-07): the header's selected-column pill is
+        # retired -- redundant with the status badge (already shows
+        # configured/unconfigured) and the Time Format section's own
+        # resolved-column field. wwDataPrepRenderTimeAxisSummary()'s own
+        # columnsEl/columnIndices computation (still feeding the
+        # validity detail line and Time Details) is UNCHANGED -- only
+        # the extra write to this now-removed chip is gone.
+        source = _source()
+        panel = self._panel_body(source)
+        assert 'id="wwDataPrepTimeAxisHeaderColumn"' not in panel
+        assert "ww-data-prep-time-axis-header-column {" not in source
+        summary_body = _function_body(source, "function wwDataPrepRenderTimeAxisSummary() {", "}")
+        assert "headerColumnEl" not in summary_body
+        assert "columnsEl.textContent" in summary_body
+        assert "None selected" in summary_body
+
+    def test_advanced_options_moved_into_header_actions_unchanged_ids(self):
+        source = _source()
+        panel = self._panel_body(source)
+        header_start = panel.index('class="ww-data-prep-panel-header"')
+        header_end = panel.index("</div>\n                    <!--", header_start) if "</div>\n                    <!--" in panel[header_start:] else panel.index("wwDataPrepTimeAxisSummary")
+        header_body = panel[header_start:header_end]
+        assert 'class="ww-data-prep-time-axis-header-actions"' in header_body
+        assert 'id="wwDataPrepTimeAxisAdvancedOptions"' in header_body
+        assert 'id="wwDataPrepTimeAxisUseReconstructedBtn"' in header_body
+        assert 'id="wwDataPrepTimeAxisUseManualBtn"' in header_body
+        # Still exactly one instance of each -- moved, not duplicated.
+        assert panel.count('id="wwDataPrepTimeAxisAdvancedOptions"') == 1
+        assert panel.count('id="wwDataPrepTimeAxisUseReconstructedBtn"') == 1
+
+    def test_advanced_options_force_open_and_use_buttons_are_unchanged(self):
+        # No JS change to Advanced Options' own behavior from the move --
+        # same force-open call, same explicit-action buttons.
+        source = _source()
+        assert 'document.getElementById("wwDataPrepTimeAxisAdvancedOptions").open = true;' in source
+        assert 'wwDataPrepSelectAdvancedInterpreter("repeated_timestamp_precision_loss");' in source
+        assert 'wwDataPrepSelectAdvancedInterpreter("manual");' in source
+
+    def test_body_has_three_sections_at_the_approved_ratio(self):
+        source = _source()
+        rule = _function_body(source, ".ww-data-prep-time-axis-body {", "}")
+        assert "display: grid" in rule
+        assert "minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 0.9fr)" in rule
+        assert "align-items: stretch;" in rule
+
+    def test_form_preview_and_details_are_the_three_direct_children_in_order(self):
+        source = _source()
+        panel = self._panel_body(source)
+        body_start = panel.index('class="ww-data-prep-time-axis-body"')
+        form_pos = panel.index('id="wwDataPrepTimeAxisForm"', body_start)
+        preview_pos = panel.index('id="wwDataPrepTimeAxisPreviewCol"', body_start)
+        details_pos = panel.index('id="wwDataPrepTimeAxisDetailsCol"', body_start)
+        assert body_start < form_pos < preview_pos < details_pos
+
+    def test_section_titles_match_time_format_sample_preview_time_details(self):
+        source = _source()
+        panel = self._panel_body(source)
+        form_start = panel.index('id="wwDataPrepTimeAxisForm"')
+        preview_start = panel.index('id="wwDataPrepTimeAxisPreviewCol"')
+        details_start = panel.index('id="wwDataPrepTimeAxisDetailsCol"')
+        assert "Time Format" in panel[form_start:preview_start]
+        assert "Sample Preview" in panel[preview_start:details_start]
+        assert "(first 10 rows)" in panel[preview_start:details_start]
+        assert "Time Details" in panel[details_start:]
+
+    def test_preview_table_and_form_delegated_listener_still_share_the_details_ancestor(self):
+        # #wwDataPrepTimeAxisDetails's own delegated input/change listener
+        # depends on #wwDataPrepTimeAxisForm's fields staying its
+        # descendants -- confirm the 3-column body (and therefore the
+        # form) is still nested inside #wwDataPrepTimeAxisDetails.
+        source = _source()
+        details_start = source.index('<div id="wwDataPrepTimeAxisDetails">')
+        panel = self._panel_body(source)
+        panel_end_pos = source.index("<!-- /ww-data-prep-row-5-time-axis (Time Axis Setup) -->")
+        details_body = source[details_start:panel_end_pos]
+        assert 'id="wwDataPrepTimeAxisForm"' in details_body
+        assert 'document.getElementById("wwDataPrepTimeAxisDetails").addEventListener("input"' in source
+        assert 'document.getElementById("wwDataPrepTimeAxisDetails").addEventListener("change"' in source
+
+    def test_preview_table_has_a_row_number_column_from_real_backend_data(self):
+        # row_number is real data TimeAxisPreviewRowOut already returns
+        # (backend/app/schemas/time_axis.py) -- not an invented column.
+        source = _source()
+        body = _function_body(
+            source,
+            "function wwDataPrepRenderTimeAxisDetectResult(detection, previewRows) {",
+            "function wwDataPrepRenderTimeAxisElapsedAndIndexFields(summary) {",
+        )
+        assert '"<thead><tr><th>Row</th><th>Source value</th><th>Interpreted time</th></tr></thead><tbody>"' in body
+        assert "cell(row.row_number)" in body
+        assert '<th>Row</th><th>Date source</th><th>Time source</th><th>Interpreted time</th>' in body
+
+    def test_heading_reflects_the_actual_10_row_render_cap(self):
+        # Follow-up UAT fix (2026-09-07): the heading previously said
+        # "first 5 rows" while the backend's own _TIME_AXIS_PREVIEW_LIMIT
+        # (time_axis_service.py) actually returns up to 20 -- the render
+        # cap below is what makes the heading's own claim true, not the
+        # backend fetch itself.
+        source = _source()
+        panel = self._panel_body(source)
+        preview_start = panel.index('id="wwDataPrepTimeAxisPreviewCol"')
+        assert "(first 10 rows)" in panel[preview_start:]
+        assert "(first 5 rows)" not in panel
+
+    def test_preview_rows_are_capped_at_10_before_rendering_never_paginated(self):
+        # A frontend-only render slice -- never a second/different
+        # backend fetch, never pagination (this preview stays a single,
+        # small confirmation sample, same as before).
+        source = _source()
+        body = _function_body(
+            source,
+            "function wwDataPrepRenderTimeAxisDetectResult(detection, previewRows) {",
+            "function wwDataPrepRenderTimeAxisElapsedAndIndexFields(summary) {",
+        )
+        assert "const cappedPreviewRows = previewRows.slice(0, 10);" in body
+        assert "for (const row of cappedPreviewRows) {" in body
+        assert "for (const row of previewRows) {" not in body
+        assert "wwDataPrepColumnsPageSizeSelect" not in body
+        assert "wwDataPrepColumnsPrevBtn" not in body
+
+    def test_preview_table_and_wrap_use_full_available_width(self):
+        # The base .ww-data-prep-table class sets no width at all -- a
+        # plain <table> only ever shrinks to its own content, which was
+        # the actual cause of the table using only part of the section's
+        # width. No per-column width is set here, so the browser's own
+        # default table-layout still distributes the full width across
+        # Row/Source value/Interpreted time naturally.
+        source = _source()
+        assert ".ww-data-prep-time-axis-preview-table { width: 100%; }" in source
+        wrap_rule = _function_body(source, ".ww-data-prep-time-axis-preview-col .ww-data-prep-table-wrap {", "}")
+        assert "width: 100%;" in wrap_rule
+        # No fixed pixel width anywhere in either rule that would stop
+        # the table/wrap from expanding to fill the section.
+        assert "width: 100%; flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: auto;" in source
+
+    def test_saving_a_sample_time_axis_never_clears_the_preview_table(self):
+        # Regression guard (2026-09-07): the disappearing-after-Save bug.
+        # wwDataPrepRenderTimeAxisDetectResult()'s own `if (!previewRows)`
+        # branch used to unconditionally wipe #wwDataPrepTimeAxisPreviewTable
+        # even when `detection` (guaranteed truthy at that point -- the
+        # `if (!detection)` branch above it already returned otherwise)
+        # represented a real, just-saved config -- Save calls
+        # wwDataPrepRenderTimeAxisForm(), which calls this with
+        # (summary, null), and the table's own rows from the user's
+        # prior explicit Detect must survive that call untouched.
+        source = _source()
+        body = _function_body(
+            source,
+            "function wwDataPrepRenderTimeAxisDetectResult(detection, previewRows) {",
+            "function wwDataPrepRenderTimeAxisElapsedAndIndexFields(summary) {",
+        )
+        no_preview_rows_branch = body[body.index("if (!previewRows) {"):body.index("// Task section 7:")]
+        assert 'previewTable.innerHTML = "";' not in no_preview_rows_branch
+        # The truly-unconfigured case (detection itself falsy) still
+        # correctly clears everything, including the table -- untouched
+        # by this fix, checked separately from the branch above.
+        unconfigured_branch = body[body.index("if (!detection) {"):body.index("if (!previewRows) {")]
+        assert 'previewTable.innerHTML = "";' in unconfigured_branch
+
+    def test_form_render_auto_fetches_preview_once_per_opened_source(self):
+        # An already-applied sample-interpreter Time Axis gets a real
+        # preview on reload without requiring a manual Detect click --
+        # reuses the SAME wwDataPrepDetectTimeAxis() a manual click
+        # already calls (never a second preview/detection engine), and
+        # is consumed (never fires again) after the first render so it
+        # does not redundantly re-fetch on every one of this page's
+        # other, unrelated mutations that also re-render this form.
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepRenderTimeAxisForm() {", "async function wwDataPrepFetchTimeAxis() {"
+        )
+        assert "const shouldAutoFetchPreview = wwDataPrep.timeAxisPreviewNeedsInitialFetch;" in body
+        assert "wwDataPrep.timeAxisPreviewNeedsInitialFetch = false;" in body
+        assert "if (shouldAutoFetchPreview) {" in body
+        assert "wwDataPrepDetectTimeAxis();" in body
+        # The flag is consumed unconditionally near the top of the
+        # function -- before the sample-interpreter branch that reads
+        # it -- so an unconfigured first render still uses it up rather
+        # than leaving it to fire later, after an intervening Save.
+        assert body.index("wwDataPrep.timeAxisPreviewNeedsInitialFetch = false;") < body.index(
+            "if (shouldAutoFetchPreview) {"
+        )
+
+    def test_preview_needs_initial_fetch_flag_resets_when_a_source_is_opened(self):
+        source = _source()
+        assert "timeAxisPreviewNeedsInitialFetch: true," in source
+        body = _function_body(
+            source,
+            "async function openDataPreparationWorkspace(sourceId) {",
+            "function wwDataPrepRenderWorkflowStrip() {",
+        )
+        assert "wwDataPrep.timeAxisPreviewNeedsInitialFetch = true;" in body
+
+    def test_preview_table_is_striped_with_light_vertical_and_horizontal_borders(self):
+        # Same treatment as Column Roles' own redesign, scoped to this
+        # table's own class only -- Data Preview keeps its full grid.
+        source = _source()
+        assert 'class="ww-data-prep-table ww-data-prep-time-axis-preview-table" id="wwDataPrepTimeAxisPreviewTable"' in source
+        border_rule = _function_body(
+            source,
+            ".ww-data-prep-time-axis-preview-table th,\n        .ww-data-prep-time-axis-preview-table td {",
+            "}",
+        )
+        assert "border-bottom: 1px solid var(--panel-border);" in border_rule
+        assert (
+            ".ww-data-prep-time-axis-preview-table tbody tr:nth-child(even) td { background: var(--surface-tint); }"
+            in source
+        )
+        base_table_rule = _function_body(source, ".ww-data-prep-table th, .ww-data-prep-table td {", "}")
+        assert "border-right" not in base_table_rule
+
+    def test_preview_table_fills_available_height_and_scrolls_internally(self):
+        source = _source()
+        rule = _function_body(source, ".ww-data-prep-time-axis-preview-col .ww-data-prep-table-wrap {", "}")
+        assert "flex: 1 1 auto;" in rule
+        assert "min-height: 0;" in rule
+        assert "overflow-y: auto;" in rule
+
+    def test_preview_table_gets_a_fixed_height_when_stacked(self):
+        source = _source()
+        media_820 = _function_body(source, "@media (max-width: 820px) {", "/* Very small screen")
+        assert ".ww-data-prep-time-axis-preview-col .ww-data-prep-table-wrap { flex: 0 0 auto; height: 260px; }" in media_820
+
+    def test_time_details_column_exists_with_every_row_hidden_by_default(self):
+        source = _source()
+        panel = self._panel_body(source)
+        details_start = panel.index('id="wwDataPrepTimeAxisDetailsCol"')
+        details_section_end = panel.index('id="wwDataPrepTimeAxisStatus"', details_start)
+        details_body = panel[details_start:details_section_end]
+        for row_id, dd_id in (
+            ("wwDataPrepTimeAxisDetailsInterpreterRow", "wwDataPrepTimeAxisAdvInterpreter"),
+            ("wwDataPrepTimeAxisDetailsFamilyRow", "wwDataPrepTimeAxisAdvFamily"),
+            ("wwDataPrepTimeAxisDetailsProvenanceRow", "wwDataPrepTimeAxisAdvProvenance"),
+            ("wwDataPrepTimeAxisDetailsFormatRow", "wwDataPrepTimeAxisAdvFormat"),
+            ("wwDataPrepTimeAxisDetailsRateRow", "wwDataPrepTimeAxisAdvRate"),
+            ("wwDataPrepTimeAxisDetailsSpacingRow", "wwDataPrepTimeAxisAdvSpacing"),
+            ("wwDataPrepTimeAxisDetailsConfidenceRow", "wwDataPrepTimeAxisAdvConfidence"),
+            ("wwDataPrepTimeAxisDetailsStatusRow", "wwDataPrepTimeAxisAdvStatus"),
+            ("wwDataPrepTimeAxisDetailsDiagnosticsRow", "wwDataPrepTimeAxisAdvDiagnostics"),
+        ):
+            assert ('<div id="' + row_id + '" hidden>') in details_body
+            assert ('id="' + dd_id + '"') in details_body
+        # No static "-" placeholder text baked into the markup -- every
+        # dd starts empty, populated (or left hidden) only by JS.
+        assert "—</dd>" not in details_body
+
+    def test_validity_status_card_relocated_unchanged_to_the_bottom_of_time_details(self):
+        source = _source()
+        panel = self._panel_body(source)
+        # Exactly one instance -- moved, not duplicated.
+        assert panel.count('id="wwDataPrepTimeAxisValidity"') == 1
+        details_start = panel.index('id="wwDataPrepTimeAxisDetailsCol"')
+        validity_pos = panel.index('id="wwDataPrepTimeAxisValidity"')
+        assert validity_pos > details_start
+
+    def test_time_details_row_helper_hides_rows_with_no_value_never_shows_a_dash(self):
+        source = _source()
+        body = _function_body(
+            source,
+            "function wwDataPrepRenderTimeAxisDetailsRow(rowId, ddId, text) {",
+            "}",
+        )
+        assert "row.hidden = !text;" in body
+        assert '"—"' not in body
+        assert "'—'" not in body
+
+    def test_interpreter_row_reuses_the_shared_interpreter_label_map(self):
+        source = _source()
+        body = _function_body(
+            source,
+            "function wwDataPrepRenderTimeAxisDetails(detection) {",
+            "function wwDataPrepRenderTimeAxisFieldVisibility() {",
+        )
+        assert "WW_DATA_PREP_INTERPRETER_LABELS[interpreterId]" in body
+
+    def test_sampling_rate_and_spacing_only_apply_to_sample_index_and_reconstructed_time(self):
+        # Reuses the SAME interval_seconds/resolved_interval_seconds
+        # fallback wwDataPrepRenderTimeAxisDetectResult()'s own summary
+        # line already reads -- never a second, independently-fetched
+        # interval value. Every other interpreter (Date & Time, Date +
+        # Time, Time of Day, Elapsed Time, Manual) has no real interval,
+        # so both rows stay hidden for them.
+        source = _source()
+        body = _function_body(
+            source,
+            "function wwDataPrepRenderTimeAxisDetails(detection) {",
+            "function wwDataPrepRenderTimeAxisFieldVisibility() {",
+        )
+        assert 'detection.family === "sample_index" || detection.interpreter_id === "repeated_timestamp_precision_loss"' in body
+        assert "resolved_interval_seconds != null ? detection.resolved_interval_seconds : detection.interval_seconds" in body
+        assert "(1 / intervalSeconds).toFixed(3) + \" Hz\"" in body
+        assert "(intervalSeconds * 1000).toFixed(3) + \" ms\"" in body
+
+    def test_renamed_function_updated_at_all_three_call_sites(self):
+        # wwDataPrepRenderTimeAxisAdvancedDetails() renamed to
+        # wwDataPrepRenderTimeAxisDetails() -- same 3 call sites, no
+        # stale CALL to the old name left (a few explanatory comments
+        # legitimately still name it for historical context, so this
+        # checks actual call syntax, not a bare substring).
+        source = _source()
+        assert "function wwDataPrepRenderTimeAxisDetails(detection) {" in source
+        assert source.count("wwDataPrepRenderTimeAxisDetails(") >= 3
+        assert "wwDataPrepRenderTimeAxisAdvancedDetails(null);" not in source
+        assert "wwDataPrepRenderTimeAxisAdvancedDetails(detection);" not in source
+        assert "wwDataPrepRenderTimeAxisAdvancedDetails(summary);" not in source
+
+    def test_dead_advanced_details_accordion_css_was_removed(self):
+        # Verified unused before removal (no consumer left in the DOM) --
+        # regression guard against the retired accordion's own CSS
+        # silently reappearing detached from any markup.
+        source = _source()
+        assert ".ww-data-prep-time-axis-advanced-body {" not in source
+        assert ".ww-data-prep-time-axis-advanced summary {" not in source
+        # The still-used Advanced Options card style is untouched.
+        assert ".ww-data-prep-time-axis-advanced-option-card {" in source
 
 
 class TestRowFiveTimeAxisOwnRow:
