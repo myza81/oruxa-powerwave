@@ -1109,7 +1109,7 @@ class TestRawDataPreviewPolish:
         assert ".ww-data-prep-final-actions #wwDataPrepBackBtn" in final_css
         assert ".ww-data-prep-final-actions #wwDataPrepConvertBtn" in final_css
         assert ".ww-data-prep-final-separator" in final_css
-        assert "min-height: 42px;" in final_css
+        assert "min-height: 35px;" in final_css
         assert "font-weight: 700;" in final_css
         assert 'document.getElementById("wwDataPrepExportBtn").addEventListener("click", () => { wwDataPrepExport(false); });' in source
         assert 'document.getElementById("wwDataPrepBackBtn").addEventListener("click", () => {' in source
