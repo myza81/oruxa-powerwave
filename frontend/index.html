@@ -1130,7 +1130,7 @@
            3C's own Time Axis fields still depend on. */
         #wwDataPrepStructureDetails input[type="number"] {
             width: 100%; box-sizing: border-box;
-            padding: 8px 10px; font-size: 0.75rem; color: var(--text);
+            padding: 8px 10px; font-size: 0.65rem; color: var(--text);
             background: var(--panel); border: 1px solid var(--panel-border); border-radius: var(--radius);
         }
         #wwDataPrepStructureDetails input[type="number"]:focus { outline: none; border-color: var(--accent-dim); }
@@ -1218,7 +1218,7 @@
             min-width: 140px;
         }
         .ww-data-prep-columns-table select {
-            font: inherit; font-size: 0.75rem; background: var(--panel); color: var(--text);
+            font: inherit; font-size: 0.65rem; background: var(--panel); color: var(--text);
             border: 1px solid var(--panel-border); border-radius: var(--radius);
             padding: 6px 8px; width: 100%; box-sizing: border-box;
         }
@@ -1276,7 +1276,7 @@
            .hint class this used to reuse is italic by default) --
            visually subordinate to the statement above via color/weight
            alone. */
-        .ww-data-prep-issue-item-action { font-size: 0.78rem; font-weight: 400; font-style: normal; color: var(--text-dim); }
+        .ww-data-prep-issue-item-action { font-size: 0.65rem; font-weight: 400; font-style: normal; color: var(--text-dim); }
         .ww-data-prep-issue-item[data-severity="blocking"] .ww-data-prep-issue-item-message { color: var(--error); }
         .ww-data-prep-issue-item[data-severity="blocking"] .ww-data-prep-issue-item-icon { color: var(--error); }
         .ww-data-prep-issue-item[data-severity="warning"] .ww-data-prep-issue-item-message { color: var(--warn); }
@@ -1471,14 +1471,14 @@
         .ww-data-prep-time-axis-validity {
             padding: 8px 10px; border-radius: var(--radius); margin: 0 0 10px;
         }
-        .ww-data-prep-time-axis-validity-line { display: flex; align-items: baseline; gap: 8px; font-size: 0.85rem; font-weight: 600; }
+        .ww-data-prep-time-axis-validity-line { display: flex; align-items: baseline; gap: 8px; font-size: 0.75rem; font-weight: 600; }
         .ww-data-prep-time-axis-validity[data-state="valid"] { background: var(--ok-wash); }
         .ww-data-prep-time-axis-validity[data-state="valid"] .ww-data-prep-time-axis-validity-line { color: var(--ok); }
         .ww-data-prep-time-axis-validity[data-state="attention"] { background: color-mix(in srgb, var(--warn) 12%, transparent); }
         .ww-data-prep-time-axis-validity[data-state="attention"] .ww-data-prep-time-axis-validity-line { color: var(--warn); }
         .ww-data-prep-time-axis-validity[data-state="unconfigured"] { background: color-mix(in srgb, var(--warn) 12%, transparent); }
         .ww-data-prep-time-axis-validity[data-state="unconfigured"] .ww-data-prep-time-axis-validity-line { color: var(--warn); }
-        .ww-data-prep-time-axis-validity-detail { font-size: 0.72rem; color: var(--text-dim); margin: 4px 0 0; }
+        .ww-data-prep-time-axis-validity-detail { font-size: 0.6rem; color: var(--text-dim); margin: 4px 0 0; font-style: italic; }
         .ww-data-prep-time-axis-validity-detail:empty { display: none; }
 
         /* Detection assistance card (DEC-082: recommend, never silently
@@ -1785,7 +1785,7 @@
         }
         .ww-data-prep-row-1 > * { min-width: 0; }
         .ww-data-prep-page-header-titles h2 { margin: 0 0 3px; font-size: 1.2rem; font-weight: 700; color: var(--text); line-height: 1.2; }
-        .ww-data-prep-page-header-titles .ww-cc-subtitle { margin: 0; font-size: 0.78rem; line-height: 1.35; }
+        .ww-data-prep-page-header-titles .ww-cc-subtitle { margin: 0; font-size: 0.7rem; line-height: 1.35; }
         .ww-data-prep-back-btn {
             display: inline-flex; align-items: center; gap: 6px;
             padding: 7px 14px 7px 10px; font-size: 0.74rem; border-radius: var(--radius);
@@ -1865,7 +1865,7 @@
         .ww-data-prep-workflow-step {
             position: relative; z-index: 0;
             display: flex; flex-direction: row; align-items: center; gap: 12px;
-            padding: 12px 16px; min-width: 0; text-align: left;
+            padding: 5px 10px; min-width: 0; text-align: left;
             background: var(--panel);
             transition: background-color 0.16s ease, color 0.16s ease;
         }
@@ -1884,7 +1884,7 @@
            the reference shows every non-active title as dark, bold
            text, never muted gray; muted gray is reserved for the
            helper line only. */
-        .ww-data-prep-workflow-step-title { font-size: 0.82rem; font-weight: 700; line-height: 1.25; color: var(--text); overflow-wrap: anywhere; }
+        .ww-data-prep-workflow-step-title { font-size: 0.7rem; font-weight: 700; line-height: 1.25; color: var(--text); overflow-wrap: anywhere; }
         .ww-data-prep-workflow-step-helper { font-size: 0.68rem; line-height: 1.3; color: var(--text-dim); overflow-wrap: anywhere; }
         .ww-data-prep-workflow-chevron {
             position: relative; z-index: 1;
@@ -2071,7 +2071,7 @@
             overflow-y: auto;
             overflow-x: auto;
         }
-        #pageDataPreparation .ww-data-prep-columns-table { font-size: 0.75rem; width: 100%; }
+        #pageDataPreparation .ww-data-prep-columns-table { font-size: 0.7rem; width: 100%; }
         /* Sticky header (mandatory UX requirement, 2026-09-07): Col. /
            Label / Role / Engineering Quantity / Measured Unit must stay
            pinned while data rows scroll beneath them. No new rule is
@@ -2088,8 +2088,8 @@
            Scoping is automatic: only THIS table's own <th> live inside
            that now-scrolling wrap, so no other table in the app is
            affected by this change. */
-        #pageDataPreparation .ww-data-prep-columns-table th { padding: 10px 12px; }
-        #pageDataPreparation .ww-data-prep-columns-table td { padding: 8px 12px; vertical-align: middle; }
+        #pageDataPreparation .ww-data-prep-columns-table th { padding: 5px 10px; }
+        #pageDataPreparation .ww-data-prep-columns-table td { padding: 5px 10px; vertical-align: middle; }
         /* Row 5B redesign (2026-09-07, refined the same day): striped
            rows + lighter, row-only horizontal borders -- scoped to
            .ww-data-prep-columns-table specifically (this table's only
@@ -2215,7 +2215,7 @@
            line exactly rather than the old, slightly smaller 0.8rem. */
         #pageDataPreparation #wwDataPrepIssuesCard .ww-data-prep-issue-group { margin-bottom: 8px; }
         #wwDataPrepIssueGroups { padding: 0 18px 16px; }
-        #pageDataPreparation #wwDataPrepIssuesCard .ww-data-prep-issue-item { font-size: 0.75rem; }
+        #pageDataPreparation #wwDataPrepIssuesCard .ww-data-prep-issue-item { font-size: 0.7rem; }
         /* Row 4 refinement (2026-09-06): Issues/Readiness's own unified
            status card -- the SAME icon + headline + one compact detail
            line pattern, and the SAME subtle background-wash technique
@@ -2243,7 +2243,7 @@
         .ww-data-prep-issue-status[data-state="attention"] .ww-data-prep-issue-status-mark { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
         .ww-data-prep-issue-status[data-state="attention"] .ww-data-prep-issue-status-line { color: var(--warn); }
         .ww-data-prep-issue-status[data-state="unconfigured"] { background: none; }
-        .ww-data-prep-issue-status-detail { font-size: 0.78rem; color: var(--text-dim); margin: 0; }
+        .ww-data-prep-issue-status-detail { font-size: 0.65rem; color: var(--text-dim); margin: 0; }
         .ww-data-prep-issue-status-detail:empty { display: none; }
 
         /* .ww-data-prep-row-cols's own responsive collapse remains a
@@ -2347,7 +2347,7 @@
             border-bottom: 1px solid var(--panel-border);
         }
         #pageDataPreparation .ww-data-prep-preview-card h3 {
-            font-size: 0.9rem;
+            font-size: 0.8rem;
             line-height: 1.2;
         }
         #wwDataPrepPreviewHint {
@@ -2426,7 +2426,7 @@
             border-top: 1px solid color-mix(in srgb, var(--panel-border) 75%, transparent);
         }
         #pageDataPreparation .ww-data-prep-preview-card #wwDataPrepRangeLabel {
-            font-size: 0.74rem;
+            font-size: 0.7rem;
             font-style: normal;
         }
         #pageDataPreparation .ww-data-prep-preview-card .ww-data-prep-pager {
