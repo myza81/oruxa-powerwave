@@ -939,9 +939,9 @@ class TestIssueListSimplification:
 
 class TestRowSevenFinalActions:
     """Approved 7-row layout (2026-09-06): Final Actions now lives
-    alone on Row 7 -- the SAME Export/Powerwave elements, re-parented
-    only, capped to a compact content width rather than stretched
-    full-bleed."""
+    alone on Row 7. The existing export, cancel/back, and conversion
+    actions are arranged as a full-width final action row without
+    changing their handlers or backend behavior."""
 
     def test_row_7_exists_and_holds_only_final_actions(self):
         source = _source()
@@ -952,19 +952,25 @@ class TestRowSevenFinalActions:
         assert 'class="ww-data-prep-config-col ww-data-prep-final-actions"' in row7_body
         assert 'id="wwDataPrepIssuesCard"' not in row7_body
 
-    def test_final_actions_slot_holds_export_and_convert(self):
+    def test_final_actions_slot_holds_export_cancel_and_convert(self):
         source = _source()
         final_actions_start = source.index('class="ww-data-prep-config-col ww-data-prep-final-actions"')
         final_actions_end = source.index("<!-- /ww-data-prep-row-7 -->", final_actions_start)
         final_actions_body = source[final_actions_start:final_actions_end]
         assert 'id="wwDataPrepExportBtn"' in final_actions_body
+        assert 'id="wwDataPrepBackBtn"' in final_actions_body
         assert 'id="wwDataPrepConvertBtn"' in final_actions_body
+        assert "Export the configured and cleaned dataset." in final_actions_body
+        assert "Cancel" in final_actions_body
         assert "Go to Powerwave" in final_actions_body
+        assert "Convert and open in Powerwave format" in final_actions_body
+        assert 'class="ww-data-prep-final-separator" aria-hidden="true"' in final_actions_body
 
-    def test_only_one_convert_button_and_one_export_button_exist(self):
+    def test_only_one_convert_export_and_cancel_button_exist(self):
         source = _source()
         assert source.count('id="wwDataPrepConvertBtn"') == 1
         assert source.count('id="wwDataPrepExportBtn"') == 1
+        assert source.count('id="wwDataPrepBackBtn"') == 1
 
     def test_reset_all_changes_is_not_in_row_7(self):
         source = _source()
@@ -972,14 +978,15 @@ class TestRowSevenFinalActions:
         row7_end = source.index("<!-- /ww-data-prep-row-7 -->", row7_start)
         assert 'id="wwDataPrepResetAllBtn"' not in source[row7_start:row7_end]
 
-    def test_final_actions_has_a_compact_max_width_not_full_bleed(self):
-        # `.ww-data-prep-action-bar-primary`'s own `align-items: stretch`
-        # would otherwise stretch "Go to Powerwave" across the
-        # entire page now that this card is alone on a full-width row.
+    def test_final_actions_use_full_row_with_left_export_and_right_primary_group(self):
         source = _source()
+        row_body = _function_body(source, ".ww-data-prep-row-7 {", "}")
+        assert "justify-content: stretch" in row_body
         body = _function_body(source, ".ww-data-prep-final-actions {", "}")
-        assert "justify-content: flex-end" in body
-        assert "width: auto" in body
+        assert "justify-content: space-between" in body
+        assert "width: 100%" in body
+        assert ".ww-data-prep-export-control-row" in source
+        assert ".ww-data-prep-final-right-actions" in source
 
     def test_old_full_width_action_bar_class_is_retired(self):
         source = _source()
@@ -1096,12 +1103,16 @@ class TestRawDataPreviewPolish:
             source.index(".ww-cc-subtitle", final_start)
         ]
         assert 'id="wwDataPrepExportBtn"' in source
+        assert 'id="wwDataPrepBackBtn"' in source
         assert 'id="wwDataPrepConvertBtn"' in source
         assert ".ww-data-prep-final-actions #wwDataPrepExportBtn" in final_css
+        assert ".ww-data-prep-final-actions #wwDataPrepBackBtn" in final_css
         assert ".ww-data-prep-final-actions #wwDataPrepConvertBtn" in final_css
+        assert ".ww-data-prep-final-separator" in final_css
         assert "min-height: 42px;" in final_css
         assert "font-weight: 700;" in final_css
         assert 'document.getElementById("wwDataPrepExportBtn").addEventListener("click", () => { wwDataPrepExport(false); });' in source
+        assert 'document.getElementById("wwDataPrepBackBtn").addEventListener("click", () => {' in source
         assert 'document.getElementById("wwDataPrepConvertBtn").addEventListener("click", () => { wwDataPrepConvert(); });' in source
 
 
@@ -1150,37 +1161,31 @@ class TestStructureOpenAndIssuesCollapsible:
 
 class TestPageHeaderAndFileCard:
     """Row 1 visual redesign (2026-09-06): the approved order is now
-    title block (visual anchor, primary width) -> back navigation
-    (compact) -> file details (a card with a prominent icon, filename/
-    format-size-rows on the left, a stacked Uploaded/Status metadata
-    list on the right) -- only ALREADY-available metadata, no
-    fabricated "last edited" or "start time" field exists anywhere in
-    this workspace's state (Start time was investigated and found not
-    to exist for an unconverted preparation source -- see the task's
-    own final report)."""
+    title block (visual anchor, primary width) -> file details (a card
+    with a prominent icon, filename/format-size-rows on the left, a
+    stacked Uploaded/Status metadata list on the right). The existing
+    back/cancel action now lives in Row 7's final action group."""
 
-    def test_row_1_has_three_slots_title_back_file_in_that_order(self):
+    def test_row_1_has_title_and_file_in_that_order(self):
         source = _source()
         row1_start = source.index('class="ww-data-prep-row ww-data-prep-row-1"')
         row2_start = source.index('class="ww-data-prep-row ww-data-prep-row-2"', row1_start)
         row1_body = source[row1_start:row2_start]
         assert 'class="ww-data-prep-page-header-titles"' in row1_body
-        assert 'class="ww-data-prep-page-header-back"' in row1_body
         assert 'class="ww-data-prep-file-card"' in row1_body
         titles_pos = row1_body.index('class="ww-data-prep-page-header-titles"')
-        back_pos = row1_body.index('class="ww-data-prep-page-header-back"')
         file_pos = row1_body.index('class="ww-data-prep-file-card"')
-        assert titles_pos < back_pos < file_pos
+        assert titles_pos < file_pos
 
-    def test_back_button_is_its_own_slot_separate_from_title(self):
+    def test_cancel_button_is_reparented_to_final_actions_not_header_title(self):
         source = _source()
         titles_start = source.index('class="ww-data-prep-page-header-titles"')
-        back_slot_start = source.index('class="ww-data-prep-page-header-back"')
-        titles_slot_body = source[titles_start:back_slot_start]
+        file_card_start = source.index('class="ww-data-prep-file-card"')
+        titles_slot_body = source[titles_start:file_card_start]
         assert 'id="wwDataPrepBackBtn"' not in titles_slot_body
-        back_slot_end = source.index('class="ww-data-prep-file-card"')
-        back_slot_body = source[back_slot_start:back_slot_end]
-        assert 'id="wwDataPrepBackBtn"' in back_slot_body
+        row7_start = source.index('class="ww-data-prep-row ww-data-prep-row-7"')
+        row7_end = source.index("<!-- /ww-data-prep-row-7 -->", row7_start)
+        assert 'id="wwDataPrepBackBtn"' in source[row7_start:row7_end]
 
     def test_row_1_uses_its_own_dedicated_grid_not_the_shared_equal_columns_one(self):
         source = _source()
@@ -1188,7 +1193,7 @@ class TestPageHeaderAndFileCard:
         assert 'class="ww-data-prep-row ww-data-prep-row-1 ww-data-prep-row-cols"' not in source
         body = _function_body(source, ".ww-data-prep-row-1 {", "}")
         assert "display: grid" in body
-        assert "minmax(0, 1fr) auto minmax(260px, 1fr)" in body
+        assert "minmax(0, 1fr) minmax(260px, 1fr)" in body
 
     def test_status_badge_and_dot_live_inside_the_file_details_slot(self):
         source = _source()
@@ -1270,12 +1275,12 @@ class TestPageHeaderAndFileCard:
 
     def test_row_1_has_its_own_responsive_collapse_reusing_shared_breakpoints(self):
         source = _source()
-        assert ".ww-data-prep-row-1 { grid-template-columns: 1fr auto; }" in source
+        assert ".ww-data-prep-row-1 { grid-template-columns: 1fr minmax(260px, 1fr); }" in source
         assert ".ww-data-prep-row-1 { grid-template-columns: 1fr; }" in source
         # Both declared inside the pre-existing shared breakpoint blocks
         # (1180px/820px), never a brand-new media query value.
         media_1180 = _function_body(source, "@media (max-width: 1180px) {", "@media (max-width: 820px) {")
-        assert ".ww-data-prep-row-1 { grid-template-columns: 1fr auto; }" in media_1180
+        assert ".ww-data-prep-row-1 { grid-template-columns: 1fr minmax(260px, 1fr); }" in media_1180
 
 
 class TestWorkflowStrip:

@@ -1302,7 +1302,7 @@
            override is needed here. A plain "secondary" button plus a
            short hint, never visually competing with "Continue to
            Powerwave" when both are shown together. */
-        .ww-data-prep-export-action { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+        .ww-data-prep-export-action { margin-top: 0; padding-top: 0; }
         .ww-data-prep-export-action .hint { margin: 4px 0 0; }
         .ww-data-prep-export-action .ww-data-prep-conversion-status { margin-top: 4px; }
         /* UAT enhancement (2026-09-04, DEC-076): "Download with manifest"
@@ -1772,15 +1772,12 @@
 
         /* ---- Row 1 visual redesign: page identity ----
            Title first (primary width share, the strongest visual
-           anchor), back navigation second (compact, sized to its own
-           content via `auto`), file details third (a card with a
-           comfortable, slightly-flexible minimum width). A dedicated
-           grid -- NOT the shared .ww-data-prep-row-cols equal-thirds
-           grid Row 3 uses -- since these three sections deliberately
-           carry different visual weight, unlike Row 3's genuinely equal
-           configuration panels. */
+           anchor), file details second (a card with a comfortable,
+           slightly-flexible minimum width). The back/cancel action now
+           lives in Row 7's final action group, preserving its existing
+           button id and behavior where the completion choice is made. */
         .ww-data-prep-row-1 {
-            display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(260px, 1fr);
+            display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 1fr);
             gap: 16px; align-items: center;
         }
         .ww-data-prep-row-1 > * { min-width: 0; }
@@ -2254,11 +2251,7 @@
         @media (max-width: 1180px) {
             .ww-data-prep-row-cols { grid-template-columns: 1fr 1fr; }
             .ww-data-prep-row-cols > *:nth-child(3) { grid-column: 1 / -1; }
-            /* Row 1, medium width: title + back stay side by side; file
-               details wraps onto its own full-width row below rather
-               than squeezing three unequal columns into less space. */
-            .ww-data-prep-row-1 { grid-template-columns: 1fr auto; }
-            .ww-data-prep-row-1 > .ww-data-prep-file-card { grid-column: 1 / -1; }
+            .ww-data-prep-row-1 { grid-template-columns: 1fr minmax(260px, 1fr); }
         }
         @media (max-width: 820px) {
             .ww-data-prep-row-cols { grid-template-columns: 1fr; }
@@ -2462,37 +2455,68 @@
         .ww-data-prep-derived-badge { background: var(--accent-wash); color: var(--accent); }
 
         /* ---- Row 7: Final Actions ---- */
-        .ww-data-prep-row-7 { display: flex; justify-content: flex-end; }
+        .ww-data-prep-row-7 { display: flex; justify-content: stretch; }
         .ww-data-prep-final-actions {
-            display: flex; flex-direction: row; align-items: flex-start; justify-content: flex-end;
-            gap: 14px; max-width: none; width: auto;
+            display: flex; flex-direction: row; align-items: flex-start; justify-content: space-between;
+            gap: 18px; max-width: none; width: 100%;
         }
-        .ww-data-prep-export-action { display: flex; flex-direction: column; align-items: stretch; gap: 5px; max-width: 340px; }
-        .ww-data-prep-action-bar-primary { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+        .ww-data-prep-export-action { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; max-width: 520px; }
+        .ww-data-prep-export-control-row { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+        .ww-data-prep-final-helper { margin: 0; font-size: 0.65rem; line-height: 1.35; color: var(--text-dim); font-style: italic; }
+        .ww-data-prep-final-right-actions { display: flex; align-items: flex-start; justify-content: flex-end; gap: 12px; margin-left: auto; }
+        .ww-data-prep-action-bar-primary { display: flex; flex-direction: column; align-items: stretch; gap: 5px; }
+        .ww-data-prep-powerwave-action { display: flex; flex-direction: column; align-items: stretch; gap: 5px; }
+        .ww-data-prep-final-separator { width: 1px; height: 34px; align-self: flex-start; margin-top: 4px; background: var(--panel-border); }
+        .ww-data-prep-final-actions .ww-data-prep-icon svg { width: 14px; height: 14px; stroke: currentColor; fill: none; }
         .ww-data-prep-final-actions #wwDataPrepExportBtn {
             display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-            min-width: 210px; min-height: 42px; padding: 11px 18px; font-size: 0.82rem;
-            border-radius: var(--radius);
-            color: var(--text);
-            background: var(--panel);
+            min-width: 210px; min-height: 35px; padding: 5px 10px; font-size: 0.75rem;
+            border-radius: var(--radius); border-color: var(--accent);
+            color: var(--accent); background: var(--panel); font-weight: 700;
+        }
+        .ww-data-prep-final-actions #wwDataPrepBackBtn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            min-width: 112px; min-height: 35px; padding: 5px 10px; font-size: 0.75rem;
+            border-radius: var(--radius); color: var(--text); background: var(--panel);
         }
         .ww-data-prep-final-actions #wwDataPrepConvertBtn {
             display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-            min-width: 220px; min-height: 42px; padding: 11px 22px; font-size: 0.84rem; font-weight: 700;
+            min-width: 230px; min-height: 35px; padding: 5px 10px; font-size: 0.75rem; font-weight: 700;
             border-radius: var(--radius);
         }
         .ww-data-prep-final-actions #wwDataPrepExportBtn:hover:not(:disabled) {
+            background: var(--accent-wash-soft);
+            border-color: var(--accent);
+        }
+        .ww-data-prep-final-actions #wwDataPrepBackBtn:hover:not(:disabled) {
             background: var(--hover-tint);
             border-color: var(--border);
+        }
+        .ww-data-prep-final-actions #wwDataPrepExportBtn:focus-visible,
+        .ww-data-prep-final-actions #wwDataPrepBackBtn:focus-visible,
+        .ww-data-prep-final-actions #wwDataPrepConvertBtn:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
         }
         .ww-data-prep-final-actions #wwDataPrepExportBtn:disabled,
         .ww-data-prep-final-actions #wwDataPrepConvertBtn:disabled {
             opacity: 0.62;
         }
+        .ww-data-prep-final-actions .ww-data-prep-conversion-action { margin: 0; padding: 0; border-top: none; flex-direction: column-reverse; align-items: stretch; gap: 5px; }
+        .ww-data-prep-final-actions .ww-data-prep-conversion-action .ww-data-prep-conversion-status {
+            font-size: 0.74rem; line-height: 1.35; text-align: left;
+        }
         @media (max-width: 640px) {
             .ww-data-prep-row-7 { justify-content: stretch; }
             .ww-data-prep-final-actions { flex-direction: column; width: 100%; }
+            .ww-data-prep-export-control-row,
+            .ww-data-prep-final-right-actions { width: 100%; justify-content: stretch; }
+            .ww-data-prep-final-right-actions { flex-wrap: wrap; margin-left: 0; }
+            .ww-data-prep-final-separator { display: none; }
             .ww-data-prep-export-action, .ww-data-prep-action-bar-primary { max-width: none; width: 100%; }
+            .ww-data-prep-final-actions #wwDataPrepExportBtn,
+            .ww-data-prep-final-actions #wwDataPrepBackBtn,
+            .ww-data-prep-final-actions #wwDataPrepConvertBtn { flex: 1 1 180px; }
         }
         .ww-data-prep-btn-icon svg { width: 14px; height: 14px; stroke: #fff; }
 
@@ -6188,12 +6212,6 @@
                         <h2>Data Preparation</h2>
                         <p class="ww-cc-subtitle">Configure the structure of your file, review any issues, and verify the data before converting.</p>
                     </div>
-                    <div class="ww-data-prep-page-header-back">
-                        <button type="button" id="wwDataPrepBackBtn" class="secondary ww-data-prep-back-btn">
-                            <span class="ww-data-prep-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M11 3.5 5 9l6 5.5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-                            Recording Events
-                        </button>
-                    </div>
                     <div class="ww-data-prep-file-card">
                         <span class="ww-data-prep-icon ww-data-prep-file-card-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M4.5 2h6l3 3v10.5a.5.5 0 0 1-.5.5h-8.5a.5.5 0 0 1-.5-.5V2.5a.5.5 0 0 1 .5-.5Z" stroke-width="1.2" stroke-linejoin="round"/><path d="M10.5 2v3h3" stroke-width="1.2" stroke-linejoin="round"/></svg></span>
                         <div class="ww-data-prep-file-card-main">
@@ -7162,10 +7180,13 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 <div class="ww-data-prep-row ww-data-prep-row-7">
                 <div class="ww-data-prep-config-col ww-data-prep-final-actions">
                     <div class="ww-data-prep-export-action">
+                        <div class="ww-data-prep-export-control-row">
                         <button type="button" class="secondary" id="wwDataPrepExportBtn" disabled>
                             <span class="ww-data-prep-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M9 3v9M5.5 8.5 9 12l3.5-3.5M4 15h10" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
                             Export Cleaned Data
                         </button>
+                        <p class="ww-data-prep-final-helper">Export the configured and cleaned dataset.</p>
+                        </div>
                         <p class="hint" id="wwDataPrepExportGuidance" hidden></p>
                         <button
                             type="button"
@@ -7176,6 +7197,12 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         >Download with manifest (cleaned file + provenance)</button>
                         <p class="ww-data-prep-conversion-status" id="wwDataPrepExportStatus"></p>
                     </div>
+                    <div class="ww-data-prep-final-right-actions">
+                        <button type="button" id="wwDataPrepBackBtn" class="secondary ww-data-prep-back-btn">
+                            <span class="ww-data-prep-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M5 5l8 8M13 5l-8 8" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+                            Cancel
+                        </button>
+                        <span class="ww-data-prep-final-separator" aria-hidden="true"></span>
                     <div class="ww-data-prep-action-bar-primary">
                         <div id="wwDataPrepConversionLimitation" class="ww-data-prep-conversion-limitation" hidden>
                             <p class="ww-data-prep-issue-headline" data-ready="limited">Ready with limitations</p>
@@ -7184,11 +7211,16 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         </div>
                         <div id="wwDataPrepConversionAction" class="ww-data-prep-conversion-action" hidden>
                             <p class="ww-data-prep-conversion-status" id="wwDataPrepConversionStatus"></p>
+                            <div class="ww-data-prep-powerwave-action">
                             <button type="button" id="wwDataPrepConvertBtn">
+                                <span class="ww-data-prep-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M3 10.5h2.2l1.5-5 3 9 1.8-6H15" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
                                 Go to Powerwave
                                 <span class="ww-data-prep-icon ww-data-prep-btn-icon" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M3 9h11M10 4.5 14.5 9 10 13.5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
                             </button>
+                            <p class="ww-data-prep-final-helper">Convert and open in Powerwave format</p>
+                            </div>
                         </div>
+                    </div>
                     </div>
                 </div>
                 </div>
