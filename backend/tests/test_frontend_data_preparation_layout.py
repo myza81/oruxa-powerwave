@@ -939,7 +939,7 @@ class TestIssueListSimplification:
 
 class TestRowSevenFinalActions:
     """Approved 7-row layout (2026-09-06): Final Actions now lives
-    alone on Row 7 -- the SAME Export/Proceed elements, re-parented
+    alone on Row 7 -- the SAME Export/Powerwave elements, re-parented
     only, capped to a compact content width rather than stretched
     full-bleed."""
 
@@ -959,7 +959,7 @@ class TestRowSevenFinalActions:
         final_actions_body = source[final_actions_start:final_actions_end]
         assert 'id="wwDataPrepExportBtn"' in final_actions_body
         assert 'id="wwDataPrepConvertBtn"' in final_actions_body
-        assert "Proceed to Powerwave" in final_actions_body
+        assert "Go to Powerwave" in final_actions_body
 
     def test_only_one_convert_button_and_one_export_button_exist(self):
         source = _source()
@@ -974,7 +974,7 @@ class TestRowSevenFinalActions:
 
     def test_final_actions_has_a_compact_max_width_not_full_bleed(self):
         # `.ww-data-prep-action-bar-primary`'s own `align-items: stretch`
-        # would otherwise stretch "Proceed to Powerwave" across the
+        # would otherwise stretch "Go to Powerwave" across the
         # entire page now that this card is alone on a full-width row.
         source = _source()
         body = _function_body(source, ".ww-data-prep-final-actions {", "}")
@@ -987,9 +987,8 @@ class TestRowSevenFinalActions:
 
 
 class TestRowSixDataPreviewKeepsResetAllChanges:
-    """Row 6 Data Preview is unchanged by this task -- Reset All Changes
-    explicitly stays here, per the original task's own explicit rule,
-    contextually tied to the table/toolbar it clears."""
+    """Row 6 Data Preview polish keeps Reset All Changes contextually tied
+    to the table/toolbar it clears."""
 
     def test_data_preview_is_full_width_row_6(self):
         source = _source()
@@ -1012,6 +1011,98 @@ class TestRowSixDataPreviewKeepsResetAllChanges:
     def test_only_one_reset_all_button_exists(self):
         source = _source()
         assert source.count('id="wwDataPrepResetAllBtn"') == 1
+
+
+class TestRawDataPreviewPolish:
+    """Raw Data Preview visual polish (2026-09-08): scoped CSS only, with
+    no preview data, edit, scrolling, role-badge, or pagination behavior
+    changes."""
+
+    def _preview_css(self, source: str) -> str:
+        return source[
+            source.index("/* ---- Data Preview: compact polished engineering table ----"):
+            source.index("/* ---- Row 7: Final Actions ----")
+        ]
+
+    def test_preview_card_gets_scoped_spacing_and_title_hierarchy(self):
+        source = _source()
+        css = self._preview_css(source)
+        assert "#pageDataPreparation .ww-data-prep-preview-card {" in css
+        assert "padding: 15px 16px 14px;" in css
+        assert "#pageDataPreparation .ww-data-prep-preview-card h3" in css
+        assert "font-size: 0.9rem;" in css
+        assert "#wwDataPrepPreviewHint" in css
+        assert "font-size: 0.72rem;" in css
+        assert "font-style: normal;" in css
+
+    def test_toolbar_buttons_are_scoped_and_keep_existing_ids(self):
+        source = _source()
+        css = self._preview_css(source)
+        assert 'id="wwDataPrepUndoBtn"' in source
+        assert 'id="wwDataPrepRedoBtn"' in source
+        assert 'id="wwDataPrepResetAllBtn"' in source
+        assert ".ww-data-prep-preview-card .ww-data-prep-toolbar-actions .secondary" in css
+        assert "min-height: 30px;" in css
+        assert "padding: 7px 12px;" in css
+        assert ":disabled" in css
+
+    def test_preview_table_uses_soft_borders_readable_padding_and_stripes(self):
+        source = _source()
+        css = self._preview_css(source)
+        assert ".ww-data-prep-preview-card .ww-data-prep-table-wrap" in css
+        assert "overflow: auto" not in css
+        assert "max-height: 58vh;" in css
+        assert "font-size: 0.74rem;" in css
+        assert "line-height: 1.35;" in css
+        assert "padding: 5px 10px;" in css
+        assert "color-mix(in srgb, var(--panel-border)" in css
+        assert "tbody tr:nth-child(even):not(.ww-data-prep-row-is-header):not(.ww-data-prep-row-excluded)" in css
+        assert "td:not(.ww-data-prep-cell-modified):not(.ww-data-prep-configured-time-cell)" in css
+        assert ".ww-data-prep-preview-card .ww-data-prep-table td.ww-data-prep-cell:hover" in css
+
+    def test_pagination_keeps_existing_controls_with_compact_scoped_styling(self):
+        source = _source()
+        css = self._preview_css(source)
+        for control_id in (
+            "wwDataPrepFirstBtn",
+            "wwDataPrepPrevBtn",
+            "wwDataPrepPageInput",
+            "wwDataPrepNextBtn",
+            "wwDataPrepLastBtn",
+        ):
+            assert 'id="' + control_id + '"' in source
+        assert ".ww-data-prep-preview-card .ww-data-prep-pagination" in css
+        assert "margin-top: 11px;" in css
+        assert ".ww-data-prep-preview-card .ww-data-prep-pager" in css
+        assert "flex-wrap: wrap;" in css
+        assert ".ww-data-prep-preview-card .ww-data-prep-page-input" in css
+
+    def test_column_header_label_format_is_preserved_pending_owner_decision(self):
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepRenderTable(preview) {", "function wwDataPrepApplyOverlaySummary",
+        )
+        assert "wwSpreadsheetColumnLabel(c)" in body
+        assert 'const label = wwDataPrep.columnLabels && wwDataPrep.columnLabels[c];' in body
+        assert "label ?" in body
+        assert "escapeHtml(label)" in body
+        assert "roleBadge(role)" in body
+
+    def test_final_action_buttons_are_polished_without_changing_handlers_or_ids(self):
+        source = _source()
+        final_start = source.index("/* ---- Row 7: Final Actions ----")
+        final_css = source[
+            final_start:
+            source.index(".ww-cc-subtitle", final_start)
+        ]
+        assert 'id="wwDataPrepExportBtn"' in source
+        assert 'id="wwDataPrepConvertBtn"' in source
+        assert ".ww-data-prep-final-actions #wwDataPrepExportBtn" in final_css
+        assert ".ww-data-prep-final-actions #wwDataPrepConvertBtn" in final_css
+        assert "min-height: 42px;" in final_css
+        assert "font-weight: 700;" in final_css
+        assert 'document.getElementById("wwDataPrepExportBtn").addEventListener("click", () => { wwDataPrepExport(false); });' in source
+        assert 'document.getElementById("wwDataPrepConvertBtn").addEventListener("click", () => { wwDataPrepConvert(); });' in source
 
 
 class TestStructureOpenAndIssuesCollapsible:
