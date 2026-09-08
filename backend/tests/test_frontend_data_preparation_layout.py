@@ -1233,16 +1233,12 @@ class TestWorkflowStrip:
             assert '<span class="ww-data-prep-workflow-step-title">' + title + "</span>" in source
             assert '<span class="ww-data-prep-workflow-step-helper">' + helper + "</span>" in source
 
-    def test_each_segment_has_digit_checkmark_and_warning_markers(self):
+    def test_each_segment_has_digit_and_checkmark_markers_only(self):
         source = _source()
         assert source.count('class="ww-data-prep-workflow-step-num-digit"') == 4
         assert source.count('class="ww-data-prep-workflow-step-num-check" aria-hidden="true"') == 4
-        assert source.count('class="ww-data-prep-workflow-step-num-warning" aria-hidden="true"') == 4
-        body = _function_body(
-            source,
-            ".ww-data-prep-workflow-step-num-check,\n        .ww-data-prep-workflow-step-num-warning",
-            "}",
-        )
+        assert "ww-data-prep-workflow-step-num-warning" not in source
+        body = _function_body(source, ".ww-data-prep-workflow-step-num-check", "}")
         assert "display: none" in body
         complete_body = _function_body(
             source,
@@ -1250,12 +1246,6 @@ class TestWorkflowStrip:
             "}",
         )
         assert "display: none" in complete_body
-        attention_body = _function_body(
-            source,
-            '.ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-num-warning',
-            "}",
-        )
-        assert "display: inline-flex" in attention_body
 
     def test_three_chevron_separators_exist_between_the_four_steps(self):
         source = _source()
@@ -1298,19 +1288,18 @@ class TestWorkflowStrip:
             in source
         )
 
-    def test_attention_uses_the_existing_warning_token_on_the_segment_and_circle(self):
+    def test_row_3_uses_only_blue_green_and_neutral_state_colors(self):
         source = _source()
+        row3_css = source[
+            source.index("/* ---- Row 3 redesign: connected configuration-status strip ----"):
+            source.index("/* ---- Row 5 shared column-wrapper ----")
+        ]
+        assert 'data-state="attention"' not in row3_css
+        assert "var(--warn)" not in row3_css
+        assert '.ww-data-prep-workflow-step[data-state="incomplete"] { background: var(--accent-wash-soft); }' in row3_css
         assert (
-            '.ww-data-prep-workflow-step[data-state="attention"] { background: color-mix(in srgb, var(--warn) 10%, var(--panel)); }'
-            in source
-        )
-        assert (
-            '.ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-num { background: var(--warn); border-color: var(--warn); color: #fff; }'
-            in source
-        )
-        assert (
-            '.ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-title { color: var(--text); }'
-            in source
+            '.ww-data-prep-workflow-step[data-state="complete"] { background: color-mix(in srgb, var(--ok) 7%, var(--panel)); }'
+            in row3_css
         )
 
     def test_status_derivation_reads_existing_state_only(self):
@@ -1327,14 +1316,16 @@ class TestWorkflowStrip:
         assert "summary && summary.is_ready" in body
         assert 'document.getElementById("wwDataPrepConversionAction").hidden' not in body
 
-    def test_structure_status_does_not_require_a_header_when_current_validation_allows_no_header(self):
+    def test_structure_status_uses_applied_overlay_structure_not_data_region_warning(self):
         source = _source()
         body = _function_body(
             source, "function wwDataPrepStatusSegmentStates()", "function wwDataPrepRenderWorkflowStrip()",
         )
-        assert "headerRowNumber" not in body
+        assert "const hasAppliedStructure = wwDataPrep.headerRowNumber != null || wwDataPrep.dataStartRow != null;" in body
+        assert "const structureConfigured = hasAppliedStructure;" in body
+        assert "wwDataPrep.headerRowNumber != null &&" not in body
         assert "wwDataPrep.dataStartRow != null" in body
-        assert 'codes.has("data_region_unconfigured")' in body
+        assert 'codes.has("data_region_unconfigured")' not in body
 
     def test_roles_segment_reflects_time_axis_and_waveform_role_state(self):
         source = _source()
@@ -1342,19 +1333,22 @@ class TestWorkflowStrip:
             source, "function wwDataPrepStatusSegmentStates()", "function wwDataPrepRenderWorkflowStrip()",
         )
         assert 'rolesSegment = { state: "complete", helper: "Roles assigned" };' in body
-        assert 'rolesSegment = { state: "attention", helper: "Waveform role required" };' in body
+        assert 'rolesSegment = { state: "incomplete", helper: "Waveform role required" };' in body
         assert 'rolesSegment = { state: "incomplete", helper: "Assign required roles" };' in body
 
-    def test_time_axis_segment_preserves_dec_083_dirty_and_manual_attention_states(self):
+    def test_time_axis_segment_preserves_dec_083_dirty_and_manual_states_as_blue_incomplete(self):
         source = _source()
         body = _function_body(
             source, "function wwDataPrepStatusSegmentStates()", "function wwDataPrepRenderWorkflowStrip()",
         )
         assert 'codes.has("time_axis_unsaved_changes")' in body
+        assert 'timeAxis = { state: "incomplete", helper: "Unsaved changes" };' in body
         assert 'helper: "Unsaved changes"' in body
         assert 'codes.has("time_axis_manual_unresolved")' in body
         assert 'timeAxisStatus === "review_required"' in body
         assert 'timeAxisStatus === "needs_attention"' in body
+        assert 'timeAxis = { state: "incomplete", helper: timeAxisStatus === "review_required" ? "Review required" : "Resolve time axis" };' in body
+        assert 'state: "attention"' not in body
 
     def test_warning_but_ready_state_uses_summary_is_ready_for_ready_segment(self):
         source = _source()

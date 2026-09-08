@@ -1848,8 +1848,7 @@
            Presentation-only strip: four equal segments in one rounded
            container. State is still set exclusively by
            wwDataPrepRenderWorkflowStrip(); these rules only translate
-           complete/attention/incomplete/blocked into the approved visual
-           style. */
+           complete/incomplete/blocked into the approved visual style. */
         .ww-data-prep-workflow-strip {
             position: relative;
             display: grid; grid-template-columns: minmax(0, 1fr) 22px minmax(0, 1fr) 22px minmax(0, 1fr) 22px minmax(0, 1fr);
@@ -1876,8 +1875,7 @@
             font-size: 0.8rem; font-weight: 700; color: var(--text-dim);
             border: 1.5px solid var(--panel-border); background: var(--surface-tint);
         }
-        .ww-data-prep-workflow-step-num-check,
-        .ww-data-prep-workflow-step-num-warning { display: none; width: 16px; height: 16px; }
+        .ww-data-prep-workflow-step-num-check { display: none; width: 16px; height: 16px; }
         .ww-data-prep-workflow-step-num-check svg { width: 100%; height: 100%; stroke: currentColor; fill: none; }
         .ww-data-prep-workflow-step-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
         /* Reference fidelity pass: pending/default titles render in the
@@ -1916,20 +1914,6 @@
         .ww-data-prep-workflow-step[data-state="complete"] .ww-data-prep-workflow-step-helper { color: var(--text-dim); }
         .ww-data-prep-workflow-step[data-state="complete"] + .ww-data-prep-workflow-chevron {
             background: linear-gradient(90deg, color-mix(in srgb, var(--ok) 7%, var(--panel)) 0%, var(--panel) 100%);
-        }
-
-        /* Attention: amber, a subtle warm wash derived from the SAME
-           --warn token every other blocking-adjacent indicator in this
-           app already uses (color-mix(), not a new global theme token). */
-        .ww-data-prep-workflow-step[data-state="attention"] { background: color-mix(in srgb, var(--warn) 10%, var(--panel)); }
-        .ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-num { background: var(--warn); border-color: var(--warn); color: #fff; }
-        .ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-num-digit { display: none; }
-        .ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-num-warning { display: inline-flex; }
-        .ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-title { color: var(--text); }
-        .ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-helper { color: var(--text-dim); }
-        .ww-data-prep-workflow-step[data-state="attention"] + .ww-data-prep-workflow-chevron {
-            background: linear-gradient(90deg, color-mix(in srgb, var(--warn) 10%, var(--panel)) 0%, var(--panel) 100%);
-            color: color-mix(in srgb, var(--warn) 28%, var(--border));
         }
 
         /* Blocked/no-state: neutral gray, no wash -- pending work that is
@@ -6144,7 +6128,6 @@
                         <span class="ww-data-prep-workflow-step-num">
                             <span class="ww-data-prep-workflow-step-num-digit">1</span>
                             <span class="ww-data-prep-workflow-step-num-check" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M4 9.5 7.5 13 14 5.5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-                            <span class="ww-data-prep-workflow-step-num-warning" aria-hidden="true">!</span>
                         </span>
                         <span class="ww-data-prep-workflow-step-text">
                             <span class="ww-data-prep-workflow-step-title">Header &amp; Data Region</span>
@@ -6156,7 +6139,6 @@
                         <span class="ww-data-prep-workflow-step-num">
                             <span class="ww-data-prep-workflow-step-num-digit">2</span>
                             <span class="ww-data-prep-workflow-step-num-check" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M4 9.5 7.5 13 14 5.5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-                            <span class="ww-data-prep-workflow-step-num-warning" aria-hidden="true">!</span>
                         </span>
                         <span class="ww-data-prep-workflow-step-text">
                             <span class="ww-data-prep-workflow-step-title">Column Roles</span>
@@ -6168,7 +6150,6 @@
                         <span class="ww-data-prep-workflow-step-num">
                             <span class="ww-data-prep-workflow-step-num-digit">3</span>
                             <span class="ww-data-prep-workflow-step-num-check" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M4 9.5 7.5 13 14 5.5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-                            <span class="ww-data-prep-workflow-step-num-warning" aria-hidden="true">!</span>
                         </span>
                         <span class="ww-data-prep-workflow-step-text">
                             <span class="ww-data-prep-workflow-step-title">Time Axis Setup</span>
@@ -6180,7 +6161,6 @@
                         <span class="ww-data-prep-workflow-step-num">
                             <span class="ww-data-prep-workflow-step-num-digit">4</span>
                             <span class="ww-data-prep-workflow-step-num-check" aria-hidden="true"><svg viewBox="0 0 18 18"><path d="M4 9.5 7.5 13 14 5.5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
-                            <span class="ww-data-prep-workflow-step-num-warning" aria-hidden="true">!</span>
                         </span>
                         <span class="ww-data-prep-workflow-step-text">
                             <span class="ww-data-prep-workflow-step-title">Ready to Convert</span>
@@ -13077,7 +13057,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             const roles = wwDataPrep.columnRoles || [];
             const hasTimeAxisRole = roles.includes("time_axis");
             const hasWaveformRole = roles.includes("waveform");
-            const structureConfigured = wwDataPrep.dataStartRow != null && !codes.has("data_region_unconfigured");
+            const hasAppliedStructure = wwDataPrep.headerRowNumber != null || wwDataPrep.dataStartRow != null;
+            const structureConfigured = hasAppliedStructure;
             const timeAxisStatus = wwDataPrep.timeAxisSummary && wwDataPrep.timeAxisSummary.status;
 
             const structure = structureConfigured
@@ -13088,14 +13069,14 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (hasTimeAxisRole && hasWaveformRole) {
                 rolesSegment = { state: "complete", helper: "Roles assigned" };
             } else if (hasTimeAxisRole && !hasWaveformRole) {
-                rolesSegment = { state: "attention", helper: "Waveform role required" };
+                rolesSegment = { state: "incomplete", helper: "Waveform role required" };
             } else {
                 rolesSegment = { state: "incomplete", helper: "Assign required roles" };
             }
 
             let timeAxis;
             if (codes.has("time_axis_unsaved_changes")) {
-                timeAxis = { state: "attention", helper: "Unsaved changes" };
+                timeAxis = { state: "incomplete", helper: "Unsaved changes" };
             } else if (codes.has("time_axis_unconfigured") || !timeAxisStatus || timeAxisStatus === "unconfigured") {
                 timeAxis = { state: "incomplete", helper: "Configure time axis" };
             } else if (
@@ -13106,7 +13087,7 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 timeAxisStatus === "review_required" ||
                 timeAxisStatus === "needs_attention"
             ) {
-                timeAxis = { state: "attention", helper: timeAxisStatus === "review_required" ? "Review required" : "Resolve time axis" };
+                timeAxis = { state: "incomplete", helper: timeAxisStatus === "review_required" ? "Review required" : "Resolve time axis" };
             } else {
                 timeAxis = { state: "complete", helper: "Configured" };
             }
