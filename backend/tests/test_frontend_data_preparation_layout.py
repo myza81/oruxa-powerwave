@@ -66,13 +66,44 @@ class TestRowFiveMainConfiguration:
 
     def test_worksheet_has_its_own_row_4_before_main_configuration(self):
         source = _source()
-        row4_start = source.index('class="ww-data-prep-row ww-data-prep-row-4"')
+        row4_start = source.index('class="ww-data-prep-row ww-data-prep-row-4" id="wwDataPrepWorksheetRow"')
         row5_start = source.index('class="ww-data-prep-row ww-data-prep-row-5 ww-data-prep-row-5-grid"')
         row4_body = source[row4_start:row5_start]
         assert 'id="wwDataPrepWorksheetCard"' in row4_body
         assert 'id="wwDataPrepWorksheetSelect"' in row4_body
         assert 'id="wwDataPrepWorksheetTabs"' in row4_body
         assert "Header &amp; Data Region" not in row4_body
+
+    def test_csv_hides_the_entire_worksheet_row_not_inner_text(self):
+        source = _source()
+        render_body = _function_body(source, "function wwDataPrepRenderWorksheetSelector()", "function wwDataPrepRenderTable")
+
+        assert 'id="wwDataPrepWorksheetCsvHint"' not in source
+        assert "Not applicable -- this is a CSV file." not in source
+        assert "#wwDataPrepWorksheetRow[hidden] { display: none; }" in source
+
+        # The existing source/file-format state remains the only branch:
+        # non-Excel hides the row itself, clears stale tabs, and returns
+        # before the Excel select/tab rendering path.
+        assert 'const row = document.getElementById("wwDataPrepWorksheetRow");' in render_body
+        non_excel_branch = render_body[render_body.index('if (wwDataPrep.format !== "Excel") {'):render_body.index("return;", render_body.index('if (wwDataPrep.format !== "Excel") {'))]
+        assert "if (row) row.hidden = true;" in non_excel_branch
+        assert "field.hidden = true;" in non_excel_branch
+        assert 'if (tabs) tabs.innerHTML = "";' in non_excel_branch
+        assert "source_format" not in render_body
+        assert "file_format" not in render_body
+
+    def test_excel_shows_the_same_outer_row_before_rendering_tabs(self):
+        source = _source()
+        render_body = _function_body(source, "function wwDataPrepRenderWorksheetSelector()", "function wwDataPrepRenderTable")
+
+        assert "if (row) row.hidden = false;" in render_body
+        assert "field.hidden = false;" in render_body
+        assert "select.innerHTML = wwDataPrep.worksheets.map((sheet) =>" in render_body
+        assert "wwDataPrepWorksheetTabsHtml(wwDataPrep.worksheets, wwDataPrep.selectedWorksheetIndex)" in render_body
+        assert render_body.index("if (row) row.hidden = false;") < render_body.index(
+            "select.innerHTML = wwDataPrep.worksheets.map((sheet) =>"
+        )
 
     def test_worksheet_tabs_are_a_presentation_layer_over_the_existing_selector(self):
         source = _source()
@@ -144,7 +175,7 @@ class TestWorksheetRowRedesign:
     def test_identity_block_and_divider_exist_inside_the_excel_only_field(self):
         source = _source()
         field_start = source.index('id="wwDataPrepWorksheetField"')
-        field_end = source.index("</div>\n                        <p", field_start)
+        field_end = source.index("</div>\n                    </div>", field_start)
         field_body = source[field_start:field_end]
         assert 'class="ww-data-prep-worksheet-identity"' in field_body
         assert 'class="ww-data-prep-worksheet-identity-icon"' in field_body
@@ -1157,32 +1188,29 @@ class TestPageHeaderAndFileCard:
 
 
 class TestWorkflowStrip:
-    """Row 3 redesign (2026-09-06): a connected 4-step segmented
-    progress strip with title+helper text, checkmark-on-completed
+    """Row 3 status redesign (2026-09-08): a connected 4-segment
+    configuration-status strip with title+helper text, status-aware
     circles, and visible chevron separators. State remains derived from
-    existing workspace state, never a second readiness/status engine.
-    State priority: exactly one step is ever active/attention; every
-    later step is forced "pending" regardless of its own individual
-    signal."""
+    existing workspace state, never a second readiness/status engine."""
 
-    def test_four_steps_exist_with_stable_ids(self):
+    def test_four_status_segments_exist_with_stable_ids(self):
         source = _source()
-        for step_id in (
-            "wwDataPrepWorkflowStepStructure",
-            "wwDataPrepWorkflowStepIssues",
-            "wwDataPrepWorkflowStepPreview",
-            "wwDataPrepWorkflowStepConvert",
+        for segment_id in (
+            "wwDataPrepWorkflowSegmentStructure",
+            "wwDataPrepWorkflowSegmentRoles",
+            "wwDataPrepWorkflowSegmentTimeAxis",
+            "wwDataPrepWorkflowSegmentReady",
         ):
-            assert 'id="' + step_id + '"' in source
+            assert 'id="' + segment_id + '"' in source
 
-    def test_row_3_is_the_workflow_strip(self):
+    def test_row_3_keeps_the_connected_status_strip_container(self):
         source = _source()
         assert (
             'class="ww-data-prep-row ww-data-prep-row-3 ww-data-prep-workflow-strip" id="wwDataPrepWorkflowStrip"'
             in source
         )
 
-    def test_strip_uses_list_semantics_not_a_clickable_stepper(self):
+    def test_strip_uses_list_semantics_not_a_clickable_stepper_or_wizard_current_step(self):
         source = _source()
         strip_start = source.index('id="wwDataPrepWorkflowStrip"')
         row4_start = source.index('class="ww-data-prep-row ww-data-prep-row-4"', strip_start)
@@ -1191,31 +1219,43 @@ class TestWorkflowStrip:
         assert strip_body.count('role="listitem"') == 4
         assert "addEventListener" not in strip_body
         assert "<button" not in strip_body
+        assert 'aria-current="step"' not in strip_body
 
     def test_each_step_has_a_title_and_a_helper_line_with_approved_wording(self):
         source = _source()
         expected = [
-            ("Configure Structure", "Define header, data region and column roles"),
-            ("Review Issues", "Check and resolve any detected issues"),
-            ("Preview Data", "Verify the data looks correct"),
-            ("Convert", "Save and add to Recording Events"),
+            ("Header &amp; Data Region", "Configure structure"),
+            ("Column Roles", "Assign required roles"),
+            ("Time Axis Setup", "Configure time axis"),
+            ("Ready to Convert", "Resolve blocking issues"),
         ]
         for title, helper in expected:
             assert '<span class="ww-data-prep-workflow-step-title">' + title + "</span>" in source
             assert '<span class="ww-data-prep-workflow-step-helper">' + helper + "</span>" in source
 
-    def test_each_step_has_a_digit_and_a_hidden_checkmark_for_completed(self):
+    def test_each_segment_has_digit_checkmark_and_warning_markers(self):
         source = _source()
         assert source.count('class="ww-data-prep-workflow-step-num-digit"') == 4
         assert source.count('class="ww-data-prep-workflow-step-num-check" aria-hidden="true"') == 4
-        body = _function_body(source, ".ww-data-prep-workflow-step-num-check {", "}")
-        assert "display: none" in body
-        done_body = _function_body(
+        assert source.count('class="ww-data-prep-workflow-step-num-warning" aria-hidden="true"') == 4
+        body = _function_body(
             source,
-            '.ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-num-digit',
+            ".ww-data-prep-workflow-step-num-check,\n        .ww-data-prep-workflow-step-num-warning",
             "}",
         )
-        assert "display: none" in done_body
+        assert "display: none" in body
+        complete_body = _function_body(
+            source,
+            '.ww-data-prep-workflow-step[data-state="complete"] .ww-data-prep-workflow-step-num-digit',
+            "}",
+        )
+        assert "display: none" in complete_body
+        attention_body = _function_body(
+            source,
+            '.ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-num-warning',
+            "}",
+        )
+        assert "display: inline-flex" in attention_body
 
     def test_three_chevron_separators_exist_between_the_four_steps(self):
         source = _source()
@@ -1242,19 +1282,19 @@ class TestWorkflowStrip:
         connector = _function_body(source, ".ww-data-prep-workflow-strip::before {", "}")
         assert "content: none" in connector
 
-    def test_active_and_done_states_style_the_whole_segment_and_circles(self):
+    def test_incomplete_and_complete_states_style_the_whole_segment_and_circles(self):
         source = _source()
-        assert '.ww-data-prep-workflow-step[data-state="active"] { background: var(--accent-wash-soft); }' in source
+        assert '.ww-data-prep-workflow-step[data-state="incomplete"] { background: var(--accent-wash-soft); }' in source
         assert (
-            '.ww-data-prep-workflow-step[data-state="done"] { background: color-mix(in srgb, var(--ok) 7%, var(--panel)); }'
+            '.ww-data-prep-workflow-step[data-state="complete"] { background: color-mix(in srgb, var(--ok) 7%, var(--panel)); }'
             in source
         )
         assert (
-            '.ww-data-prep-workflow-step[data-state="active"] .ww-data-prep-workflow-step-num { background: var(--accent); border-color: var(--accent); color: #fff; }'
+            '.ww-data-prep-workflow-step[data-state="incomplete"] .ww-data-prep-workflow-step-num { background: var(--accent); border-color: var(--accent); color: #fff; }'
             in source
         )
         assert (
-            '.ww-data-prep-workflow-step[data-state="done"] .ww-data-prep-workflow-step-num { background: var(--ok); border-color: var(--ok); color: #fff; }'
+            '.ww-data-prep-workflow-step[data-state="complete"] .ww-data-prep-workflow-step-num { background: var(--ok); border-color: var(--ok); color: #fff; }'
             in source
         )
 
@@ -1268,17 +1308,63 @@ class TestWorkflowStrip:
             '.ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-num { background: var(--warn); border-color: var(--warn); color: #fff; }'
             in source
         )
+        assert (
+            '.ww-data-prep-workflow-step[data-state="attention"] .ww-data-prep-workflow-step-title { color: var(--text); }'
+            in source
+        )
 
-    def test_render_function_derives_from_existing_state_only(self):
+    def test_status_derivation_reads_existing_state_only(self):
         source = _source()
         body = _function_body(
-            source, "function wwDataPrepRenderWorkflowStrip()", "// Section 22:",
+            source, "function wwDataPrepStatusSegmentStates()", "function wwDataPrepRenderWorkflowStrip()",
         )
         assert "fetch(" not in body
         assert "wwDataPrepEffectiveIssueSummary()" in body
-        # Step 3/4 both key off the SAME existing Continue-to-Powerwave
-        # visibility signal -- no invented "user confirmed preview" flag.
-        assert 'document.getElementById("wwDataPrepConversionAction").hidden' in body
+        assert "wwDataPrepIssueCodeSet(summary)" in body
+        assert 'roles.includes("time_axis")' in body
+        assert 'roles.includes("waveform")' in body
+        assert "wwDataPrep.timeAxisSummary && wwDataPrep.timeAxisSummary.status" in body
+        assert "summary && summary.is_ready" in body
+        assert 'document.getElementById("wwDataPrepConversionAction").hidden' not in body
+
+    def test_structure_status_does_not_require_a_header_when_current_validation_allows_no_header(self):
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepStatusSegmentStates()", "function wwDataPrepRenderWorkflowStrip()",
+        )
+        assert "headerRowNumber" not in body
+        assert "wwDataPrep.dataStartRow != null" in body
+        assert 'codes.has("data_region_unconfigured")' in body
+
+    def test_roles_segment_reflects_time_axis_and_waveform_role_state(self):
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepStatusSegmentStates()", "function wwDataPrepRenderWorkflowStrip()",
+        )
+        assert 'rolesSegment = { state: "complete", helper: "Roles assigned" };' in body
+        assert 'rolesSegment = { state: "attention", helper: "Waveform role required" };' in body
+        assert 'rolesSegment = { state: "incomplete", helper: "Assign required roles" };' in body
+
+    def test_time_axis_segment_preserves_dec_083_dirty_and_manual_attention_states(self):
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepStatusSegmentStates()", "function wwDataPrepRenderWorkflowStrip()",
+        )
+        assert 'codes.has("time_axis_unsaved_changes")' in body
+        assert 'helper: "Unsaved changes"' in body
+        assert 'codes.has("time_axis_manual_unresolved")' in body
+        assert 'timeAxisStatus === "review_required"' in body
+        assert 'timeAxisStatus === "needs_attention"' in body
+
+    def test_warning_but_ready_state_uses_summary_is_ready_for_ready_segment(self):
+        source = _source()
+        body = _function_body(
+            source, "function wwDataPrepStatusSegmentStates()", "function wwDataPrepRenderWorkflowStrip()",
+        )
+        assert 'const ready = summary && summary.is_ready' in body
+        assert '{ state: "complete", helper: "Ready" }' in body
+        assert "warning_count" not in body
+        assert "info_count" not in body
 
     def test_render_function_is_called_after_issues_structure_and_pagination_render(self):
         source = _source()
@@ -1288,32 +1374,15 @@ class TestWorkflowStrip:
             body = _function_body(source, anchor, "function wwDataPrepIsIndexOnlyWithoutInterval()")
             assert "wwDataPrepRenderWorkflowStrip();" in body
 
-    def test_earlier_incomplete_step_forces_every_later_step_to_pending(self):
-        # The core state-model fix: an incomplete Step 1 must not let
-        # Step 2 independently compute "attention" merely because the
-        # SAME missing configuration also produces a blocking issue.
+    def test_render_function_applies_accessible_status_text_to_each_segment(self):
         source = _source()
         body = _function_body(
             source, "function wwDataPrepRenderWorkflowStrip()", "\n\n        // Section 22:",
         )
-        assert "if (!structureDone) {" in body
-        assert 'issuesState = previewState = convertState = "pending";' in body
-        assert 'previewState = convertState = "pending";' in body
-
-    def test_convert_step_never_reaches_a_done_state(self):
-        source = _source()
-        body = _function_body(
-            source, "function wwDataPrepRenderWorkflowStrip()", "\n\n        // Section 22:",
-        )
-        assert 'convertState = "done"' not in body
-
-    def test_active_step_gets_aria_current(self):
-        source = _source()
-        body = _function_body(
-            source, "function wwDataPrepRenderWorkflowStrip()", "\n\n        // Section 22:",
-        )
-        assert 'el.setAttribute("aria-current", "step");' in body
         assert 'el.removeAttribute("aria-current");' in body
+        assert "helperEl.textContent = helper;" in body
+        assert 'el.setAttribute("aria-label", title + ": " + helper);' in body
+        assert "wwDataPrepWorkflowSegmentReady" in body
 
     def test_very_small_screen_hides_helper_text_but_keeps_titles(self):
         # Owner-explicit preference: retain step TITLES for as long as
@@ -1326,7 +1395,7 @@ class TestWorkflowStrip:
         media_480 = _function_body(workflow_small_screen, "@media (max-width: 480px) {", "/* ---- Data Preview:")
         assert ".ww-data-prep-workflow-step-helper { display: none; }" in media_480
         assert ".ww-data-prep-workflow-step-title { display: none; }" not in media_480
-        assert "wwDataPrepWorkflowStepStructure" not in media_480
+        assert "wwDataPrepWorkflowSegmentStructure" not in media_480
 
 
 class TestDataPreviewHeaderBadges:
