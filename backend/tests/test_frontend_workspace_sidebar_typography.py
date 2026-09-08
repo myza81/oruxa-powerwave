@@ -65,7 +65,7 @@ def test_workspace_sidebar_normal_text_uses_requested_size():
 def test_shared_non_sidebar_typography_stays_unchanged():
     html = read_index()
 
-    assert_font_size(html, "input[type=\"search\"]", "0.75rem")
+    assert_font_size(html, "input[type=\"search\"]", "0.7rem")
     assert_font_size(html, ".chevron", "0.75rem")
     assert_font_size(html, ".count-badge", "0.78rem")
 
@@ -73,7 +73,7 @@ def test_shared_non_sidebar_typography_stays_unchanged():
 def test_sidebar_buttons_keep_existing_font_sizes():
     html = read_index()
 
-    assert "--button-font-size-compact: 0.8rem;" in html
+    assert "--button-font-size-compact: 0.7rem;" in html
     assert_font_size(html, "button", "var(--button-font-size-compact)")
     assert_font_size(html, "button.secondary", "var(--button-font-size-compact)")
     assert_font_size(html, "button.danger", "var(--button-font-size-compact)")

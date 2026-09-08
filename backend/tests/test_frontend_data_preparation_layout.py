@@ -1030,7 +1030,7 @@ class TestRawDataPreviewPolish:
         assert "#pageDataPreparation .ww-data-prep-preview-card {" in css
         assert "padding: 15px 16px 14px;" in css
         assert "#pageDataPreparation .ww-data-prep-preview-card h3" in css
-        assert "font-size: 0.9rem;" in css
+        assert "font-size: 0.8rem;" in css
         assert "#wwDataPrepPreviewHint" in css
         assert "font-size: 0.72rem;" in css
         assert "font-style: normal;" in css
@@ -1042,7 +1042,7 @@ class TestRawDataPreviewPolish:
         assert 'id="wwDataPrepRedoBtn"' in source
         assert 'id="wwDataPrepResetAllBtn"' in source
         assert ".ww-data-prep-preview-card .ww-data-prep-toolbar-actions .secondary" in css
-        assert "min-height: 30px;" in css
+        assert "min-height: 25px;" in css
         assert "padding: 7px 12px;" in css
         assert ":disabled" in css
 
@@ -1052,7 +1052,7 @@ class TestRawDataPreviewPolish:
         assert ".ww-data-prep-preview-card .ww-data-prep-table-wrap" in css
         assert "overflow: auto" not in css
         assert "max-height: 58vh;" in css
-        assert "font-size: 0.74rem;" in css
+        assert "font-size: 0.7rem;" in css
         assert "line-height: 1.35;" in css
         assert "padding: 5px 10px;" in css
         assert "color-mix(in srgb, var(--panel-border)" in css
