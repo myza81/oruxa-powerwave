@@ -68,6 +68,50 @@ TIME_ALIGNMENT_TOLERANCE_SECONDS = 1e-9
 #: just guards against a pathological/accidental paste.
 MAX_NAME_LENGTH = 120
 
+# ---- DEC-084 Calc Slice 1: calculated-channel null-handling policy ----
+#
+# Each calculated channel explicitly declares its OWN null-handling
+# policy (DEC-084 point 7) -- never inherited/mutated from a source, and
+# never silently chosen by the engine. This module owns the policy
+# identifiers and the pure, calculation-local value-substitution/
+# validation helpers; app.services.calculated_channel_service owns
+# where in the create-channel flow each policy is applied/enforced
+# (resolve inputs -> validate alignment -> apply null policy -> evaluate,
+# DEC-084/DEC-047 point 12).
+
+#: Any null input -> null output; the safe default (DEC-084 point 7.1).
+#: For simple pointwise operations this is already NumPy's natural
+#: NaN-propagation behavior -- this policy is still applied explicitly
+#: (see apply_null_policy_to_values() below) so correctness never
+#: depends on that being an accident of the evaluator.
+NULL_POLICY_PROPAGATE = "propagate_null"
+#: Each null input sample is substituted with 0.0 in a calculation-local
+#: temporary array before the operation runs -- the source/parent
+#: calculated-channel arrays are never mutated (DEC-084 point 7.2/9).
+NULL_POLICY_ZERO = "treat_null_as_zero"
+#: Interpolation/estimation (DEC-084 point 7.3/8). Recognized as a valid
+#: policy VALUE for forward compatibility only -- Calc Slice 1
+#: deliberately does not implement an estimation engine; selecting it
+#: must be rejected outright at creation time, never silently
+#: downgraded to another policy (see UNIMPLEMENTED_NULL_POLICIES below).
+NULL_POLICY_ESTIMATE = "estimate_missing_data"
+#: Any null/NaN anywhere in any required (already-aligned) input array
+#: blocks creation outright (DEC-084 point 7.4/9/10) -- the engine never
+#: creates an unresolved/half-created calculated channel.
+NULL_POLICY_REQUIRE_MANUAL = "require_manual_value"
+
+ALL_NULL_POLICIES = frozenset(
+    {NULL_POLICY_PROPAGATE, NULL_POLICY_ZERO, NULL_POLICY_ESTIMATE, NULL_POLICY_REQUIRE_MANUAL}
+)
+#: Backward-compatibility default (DEC-084 point 4 / this task's section
+#: 4): an existing request that omits `null_policy` entirely gets this --
+#: it matches current NumPy behavior for every pre-DEC-084 calculated
+#: channel, so no existing API/frontend caller's output changes.
+DEFAULT_NULL_POLICY = NULL_POLICY_PROPAGATE
+#: Policy values that are recognized (pass schema/domain enum validation)
+#: but have no working engine yet in this slice.
+UNIMPLEMENTED_NULL_POLICIES = frozenset({NULL_POLICY_ESTIMATE})
+
 
 @dataclass(slots=True, frozen=True)
 class ChannelRef:
@@ -147,6 +191,12 @@ class CalculatedChannel:
     # TRUSTED metadata a later RMS-eligibility check reads first, before
     # ever running the algorithmic detector (owner section 11/14).
     waveform_form: str = WAVEFORM_FORM_UNKNOWN
+    # DEC-084 Calc Slice 1: this channel's own declared null-handling
+    # policy (one of ALL_NULL_POLICIES above) -- a property of THIS
+    # calculated channel's definition, never of its source/inputs. Two
+    # calculated channels reading the same source may each retain a
+    # different policy here simultaneously (DEC-084 point 7).
+    null_policy: str = NULL_POLICY_PROPAGATE
 
 
 def evaluate_reverse_polarity(values: np.ndarray) -> np.ndarray:
@@ -370,6 +420,38 @@ def units_compatible(units: list[str | None]) -> bool:
     if not known:
         return True
     return len(known) == len(units) and len(set(known)) == 1
+
+
+def apply_null_policy_to_values(values: np.ndarray, null_policy: str) -> np.ndarray:
+    """Return the CALCULATION-LOCAL effective array for one already-
+    resolved input, per `null_policy` (DEC-084 point 7/9) -- never
+    mutates `values`, never writes back anywhere; the caller's own
+    (source or calculated-channel) retained array is always used
+    unchanged for every OTHER purpose (display, another calculated
+    channel's own evaluation, etc).
+
+    - `NULL_POLICY_ZERO`: every non-finite sample becomes `0.0` in a new
+      array (`np.where` -- never a per-sample Python loop, section 27).
+    - Every other recognized policy (`NULL_POLICY_PROPAGATE`,
+      `NULL_POLICY_REQUIRE_MANUAL`) is an identity pass-through: Propagate
+      relies on NumPy's own NaN-propagation for pointwise ops and this
+      module's existing windowed-NaN handling for RMS (both already
+      correct without transformation); Require Manual has already been
+      proven all-finite by the caller before this is ever reached, so
+      there is nothing to substitute. Returning `values` itself (no copy)
+      keeps Propagate Null's common case allocation-free (section 27).
+    """
+    if null_policy == NULL_POLICY_ZERO:
+        return np.where(np.isfinite(values), values, 0.0)
+    return values
+
+
+def values_all_finite(values: np.ndarray) -> bool:
+    """True only if every sample in `values` is finite (DEC-084 point 9:
+    `Require Manual Value` creation-time gate) -- a single vectorized
+    `np.isfinite(...).all()`, never a per-sample Python loop (section
+    27)."""
+    return bool(np.isfinite(values).all())
 
 
 def derive_engineering_type(input_types: list[str]) -> str:

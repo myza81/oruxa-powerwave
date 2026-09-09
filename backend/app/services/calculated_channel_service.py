@@ -24,9 +24,12 @@ from uuid import uuid4
 import numpy as np
 
 from app.domain.calculated_channel import (
+    ALL_NULL_POLICIES,
     ALL_OPERATIONS,
+    DEFAULT_NULL_POLICY,
     MAX_NAME_LENGTH,
     MULTI_OPERATIONS,
+    NULL_POLICY_REQUIRE_MANUAL,
     OP_ABSOLUTE_VALUE,
     OP_ADDITION,
     OP_MULTIPLY_CONSTANT,
@@ -34,8 +37,10 @@ from app.domain.calculated_channel import (
     OP_RMS,
     OP_SUBTRACTION,
     UNARY_OPERATIONS,
+    UNIMPLEMENTED_NULL_POLICIES,
     CalculatedChannel,
     ChannelRef,
+    apply_null_policy_to_values,
     derive_engineering_type,
     evaluate_absolute_value,
     evaluate_addition,
@@ -48,6 +53,7 @@ from app.domain.calculated_channel import (
     rms_sampling_dense_enough,
     timebases_aligned,
     units_compatible,
+    values_all_finite,
     would_create_cycle,
 )
 from app.domain.channel_classification import (
@@ -86,7 +92,10 @@ from app.services.errors import (
     InvalidCalculatedOperationError,
     InvalidConstantError,
     InvalidNominalFrequencyError,
+    InvalidNullPolicyError,
     InvalidOperationArityError,
+    NullPolicyNotImplementedError,
+    RequireManualValueNullError,
     RmsOverrideRequiredError,
     RmsRecordingTooShortError,
     RmsSamplingTooSparseError,
@@ -335,26 +344,39 @@ def create_calculated_channel(
     calc_registry: CalculatedChannelRegistry,
     override: bool = False,
     per_unit_registry: PerUnitRegistry | None = None,
+    null_policy: str = DEFAULT_NULL_POLICY,
 ) -> CalculatedChannel:
     """Validate, evaluate, and store one new calculated channel.
 
     Order of validation (each an independent, clearly-attributable
     rejection reason -- section 44): operation known -> arity -> name ->
-    input resolution (existence) -> timebase alignment -> unit
-    compatibility -> constant validity (Multiply only) / nominal-frequency
-    validity + RMS eligibility + recording-duration/sampling-density
-    (RMS only, Phase 5B) -> cycle guard (defensive, see
-    would_create_cycle's own docstring) -> evaluate -> store. Atomic
-    (section 107): nothing is written to `calc_registry` until every check
-    has passed and the array has been computed -- a failed validation
-    never partially registers a channel, and never touches any other
-    source/calculated-channel state.
+    null policy known/implemented -> input resolution (existence) ->
+    timebase alignment -> unit compatibility -> constant validity
+    (Multiply only) / nominal-frequency validity + RMS eligibility +
+    recording-duration/sampling-density (RMS only, Phase 5B) -> Require
+    Manual Value null check (DEC-084 point 9/10, if selected) -> cycle
+    guard (defensive, see would_create_cycle's own docstring) -> apply
+    null policy to calculation-local input arrays -> evaluate -> store
+    (DEC-084 point 12/DEC-047: resolve inputs -> validate alignment ->
+    apply null policy -> evaluate). Atomic (section 107): nothing is
+    written to `calc_registry` until every check has passed and the array
+    has been computed -- a failed validation never partially registers a
+    channel, and never touches any other source/calculated-channel state.
 
     `override` (Phase 5B, DEC-048) only ever matters for RMS: it is the
     engineer's explicit "Calculate anyway" acknowledgement, checked here
     against eligibility RE-DERIVED by this same function (never a
     client-supplied eligibility result) -- see check_rms_eligibility()'s
     own docstring for the anti-bypass rationale.
+
+    `null_policy` (DEC-084 Calc Slice 1) is this channel's own declared
+    missing-data policy -- defaults to `NULL_POLICY_PROPAGATE`
+    (`DEFAULT_NULL_POLICY`) purely for BACKWARD COMPATIBILITY with a
+    pre-DEC-084 caller that omits it (this task's section 4): that default
+    matches current NumPy NaN-propagation behavior exactly, so no
+    existing API/frontend caller's output changes. It never mutates any
+    source or parent calculated-channel array -- see
+    `apply_null_policy_to_values()`'s own docstring.
     """
     if operation not in ALL_OPERATIONS:
         raise InvalidCalculatedOperationError(f"Unsupported operation: {operation!r}.")
@@ -365,6 +387,14 @@ def create_calculated_channel(
     else:
         if len(inputs) < 2:
             raise InvalidOperationArityError(f"{operation} requires at least 2 input channels.")
+
+    if null_policy not in ALL_NULL_POLICIES:
+        raise InvalidNullPolicyError(f"Unsupported null-handling policy: {null_policy!r}.")
+    if null_policy in UNIMPLEMENTED_NULL_POLICIES:
+        raise NullPolicyNotImplementedError(
+            "Estimate Missing Data is not implemented yet. Choose Propagate Null, "
+            "Treat Null as Zero, or Require Manual Value."
+        )
 
     clean_name = (name or "").strip()
     if not clean_name:
@@ -447,24 +477,49 @@ def create_calculated_channel(
                 "Sample rate is too low relative to the RMS window to produce a meaningful result."
             )
 
+    if null_policy == NULL_POLICY_REQUIRE_MANUAL:
+        # DEC-084 point 9/10: any null/NaN ANYWHERE in any required
+        # input's own resolved array -- source or calculated, applied
+        # identically -- blocks creation outright, never an unresolved/
+        # half-created channel. Checked against the RAW resolved values
+        # (never a zero-substituted or otherwise transformed array).
+        for ref, r in zip(inputs, resolved):
+            if not values_all_finite(r.values):
+                bad_input = (
+                    f"source '{ref.source_id}' channel '{ref.channel_name}'" if ref.kind == "source"
+                    else f"calculated channel '{ref.calculated_channel_id}'"
+                )
+                raise RequireManualValueNullError(
+                    f"Cannot create this calculated channel with Require Manual Value: {bad_input} "
+                    "contains missing/invalid (null) values that must be resolved first."
+                )
+
     dependency_ids = [ref.calculated_channel_id for ref in inputs if ref.kind == "calculated"]
     calc_id = "calc-" + uuid4().hex
     dependency_map = {c.id: c.dependency_ids for c in calc_registry.list_for_workspace(workspace_id)}
     if would_create_cycle(dependency_map, calc_id, dependency_ids):
         raise CyclicDependencyError("This calculation would create a circular dependency.")
 
+    # DEC-084 point 12: null policy is applied to CALCULATION-LOCAL
+    # effective arrays only, after alignment is proven, right before
+    # evaluation -- never to `resolved[*].values` themselves (those stay
+    # the untouched source/parent arrays for every other purpose, e.g. a
+    # different calculated channel reading the same input under a
+    # different policy, DEC-084 point 7/9).
+    effective_values = [apply_null_policy_to_values(r.values, null_policy) for r in resolved]
+
     if operation == OP_REVERSE_POLARITY:
-        values = evaluate_reverse_polarity(resolved[0].values)
+        values = evaluate_reverse_polarity(effective_values[0])
     elif operation == OP_ABSOLUTE_VALUE:
-        values = evaluate_absolute_value(resolved[0].values)
+        values = evaluate_absolute_value(effective_values[0])
     elif operation == OP_MULTIPLY_CONSTANT:
-        values = evaluate_multiply_constant(resolved[0].values, constant)
+        values = evaluate_multiply_constant(effective_values[0], constant)
     elif operation == OP_RMS:
-        values = evaluate_rms(resolved[0].time, resolved[0].values, nominal_frequency_hz)
+        values = evaluate_rms(resolved[0].time, effective_values[0], nominal_frequency_hz)
     elif operation == OP_ADDITION:
-        values = evaluate_addition([r.values for r in resolved])
+        values = evaluate_addition(effective_values)
     else:
-        values = evaluate_subtraction([r.values for r in resolved])
+        values = evaluate_subtraction(effective_values)
 
     if operation == OP_MULTIPLY_CONSTANT:
         output_parameters = {"constant": constant}
@@ -496,6 +551,7 @@ def create_calculated_channel(
         created_at=_utc_now(),
         engineering_type=output_engineering_type,
         waveform_form=output_waveform_form,
+        null_policy=null_policy,
     )
     calc_registry.add(channel)
 

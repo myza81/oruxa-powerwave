@@ -207,6 +207,37 @@ class RmsOverrideRequiredError(ImportServiceError):
     code = "rms_override_required"
 
 
+# ---- DEC-084 Calc Slice 1: Calculated-Channel Null-Handling Policy ----
+
+
+class InvalidNullPolicyError(ImportServiceError):
+    """`null_policy` is not one of the recognized calculated-channel
+    null-handling policy values (DEC-084 point 7) -- the engine must
+    never silently choose a policy on the caller's behalf."""
+
+    code = "invalid_null_policy"
+
+
+class NullPolicyNotImplementedError(ImportServiceError):
+    """`null_policy = Estimate Missing Data` is a recognized policy VALUE,
+    kept for forward compatibility (DEC-084 point 8), but this slice ships
+    no interpolation/estimation engine yet -- creation is rejected
+    outright, never silently downgraded to another policy."""
+
+    code = "null_policy_not_implemented"
+
+
+class RequireManualValueNullError(ImportServiceError):
+    """`null_policy = Require Manual Value` and at least one required
+    input's own resolved array (a source channel or another calculated
+    channel -- DEC-084 point 9/10 apply identically to both) still
+    contains a null/NaN value. Creation is rejected outright rather than
+    creating an unresolved/half-created calculated channel; the source/
+    parent array is never mutated or auto-filled."""
+
+    code = "require_manual_value_null"
+
+
 # ---- Phase 5C: Global Per-Unit Measurement Mode (DEC-049; source-bound
 # redesign following owner UAT -- PerUnitProfileNotFoundError/
 # ChannelAlreadyAssignedError/InvalidChannelAssignmentError were retired

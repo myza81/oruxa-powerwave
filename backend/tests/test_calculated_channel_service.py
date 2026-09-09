@@ -12,6 +12,10 @@ import pandas as pd
 import pytest
 
 from app.domain.calculated_channel import (
+    NULL_POLICY_ESTIMATE,
+    NULL_POLICY_PROPAGATE,
+    NULL_POLICY_REQUIRE_MANUAL,
+    NULL_POLICY_ZERO,
     OP_ABSOLUTE_VALUE,
     OP_ADDITION,
     OP_MULTIPLY_CONSTANT,
@@ -50,7 +54,10 @@ from app.services.errors import (
     InvalidCalculatedChannelNameError,
     InvalidConstantError,
     InvalidNominalFrequencyError,
+    InvalidNullPolicyError,
     InvalidOperationArityError,
+    NullPolicyNotImplementedError,
+    RequireManualValueNullError,
     RmsOverrideRequiredError,
     RmsRecordingTooShortError,
     RmsSamplingTooSparseError,
@@ -880,6 +887,27 @@ def _sinusoid_source(source_registry, *, source_id="src1", channel_name="VA", fs
     return time, values
 
 
+def _sinusoid_source_with_nulls(source_registry, *, source_id="src1", channel_name="VA", fs=5000.0, f0=50.0,
+                                 duration=0.5, unit="kV", null_indices=(), engineering_type="Voltage"):
+    """DEC-084 Calc Slice 1: same synthetic 50Hz sinusoid as
+    `_sinusoid_source`, with explicit NaN samples injected at
+    `null_indices` -- explicit `waveform_form=instantaneous` so RMS
+    eligibility is granted from trusted metadata (section 14), never
+    coupling these null-policy tests to the algorithmic detector's own
+    tolerance for NaN input."""
+    n = int(round(fs * duration))
+    time = np.arange(n, dtype=np.float64) / fs
+    values = np.sin(2 * np.pi * f0 * time)
+    for idx in null_indices:
+        values[idx] = np.nan
+    _add_source(source_registry, _active_source(
+        source_id=source_id, time=time, channels={channel_name: values},
+        units={channel_name: unit}, waveform_forms={channel_name: WAVEFORM_FORM_INSTANTANEOUS},
+        engineering_types={channel_name: engineering_type},
+    ))
+    return time, values
+
+
 class TestNoEngineeringTypeHardFilter:
     """Permanent regression test (owner section 63): RMS eligibility must
     NEVER be gated by engineering_type -- only by waveform_form metadata
@@ -1141,3 +1169,421 @@ class TestRmsEligibility:
         )
         assert eligibility.status == RMS_STATUS_SUITABLE
         assert eligibility.override_required is False
+
+
+# ---- DEC-084 Calc Slice 1: Calculated-Channel Null-Handling Policy ----
+
+
+class TestNullPolicyDefaultAndValidation:
+    """Sections 4/20/24/25: backward-compatible default, invalid policy
+    rejection, and Estimate Missing Data's deferred-but-recognized status."""
+
+    def test_default_policy_is_propagate_when_omitted(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={"VA": np.array([1.0, -2.0, 3.0])}, units={"VA": "kV"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert channel.null_policy == NULL_POLICY_PROPAGATE
+
+    def test_explicit_policy_is_stored(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={"VA": np.array([1.0, -2.0, 3.0])}, units={"VA": "kV"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_ZERO,
+        )
+        assert channel.null_policy == NULL_POLICY_ZERO
+
+    def test_invalid_null_policy_rejected(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={"VA": np.array([1.0, -2.0, 3.0])}, units={"VA": "kV"},
+        ))
+        with pytest.raises(InvalidNullPolicyError):
+            create_calculated_channel(
+                workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+                inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+                null_policy="not_a_real_policy",
+            )
+        assert calc_registry.list_for_workspace(WS) == []
+
+    def test_estimate_missing_data_rejected_even_when_all_inputs_finite(self, registries):
+        # Section 24: no silent fallback -- rejected outright regardless
+        # of whether any input actually contains a null.
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={"VA": np.array([1.0, -2.0, 3.0])}, units={"VA": "kV"},
+        ))
+        with pytest.raises(NullPolicyNotImplementedError):
+            create_calculated_channel(
+                workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+                inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+                null_policy=NULL_POLICY_ESTIMATE,
+            )
+        assert calc_registry.list_for_workspace(WS) == []
+
+
+class TestNullPolicyPropagate:
+    """DEC-084 Calc Slice 1, section 21."""
+
+    def test_unary_operation_propagates_nan(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={"VA": np.array([1.0, np.nan, 3.0])}, units={"VA": "kV"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_PROPAGATE,
+        )
+        assert channel.values[0] == -1.0
+        assert np.isnan(channel.values[1])
+        assert channel.values[2] == -3.0
+
+    def test_multiply_constant_propagates_nan(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={"VA": np.array([1.0, np.nan, 3.0])}, units={"VA": "kV"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="2xVA", operation=OP_MULTIPLY_CONSTANT,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={"constant": 2.0}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_PROPAGATE,
+        )
+        assert channel.values[0] == 2.0
+        assert np.isnan(channel.values[1])
+        assert channel.values[2] == 6.0
+
+    def test_addition_mixed_nans(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={"A": np.array([1.0, np.nan, 3.0]), "B": np.array([10.0, 20.0, np.nan])},
+            units={"A": "kV", "B": "kV"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="A+B", operation=OP_ADDITION,
+            inputs=[
+                ChannelRef(kind="source", source_id="src1", channel_name="A"),
+                ChannelRef(kind="source", source_id="src1", channel_name="B"),
+            ],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_PROPAGATE,
+        )
+        assert channel.values[0] == 11.0
+        assert np.isnan(channel.values[1])
+        assert np.isnan(channel.values[2])
+
+    def test_subtraction_mixed_nans(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={"A": np.array([10.0, np.nan, 30.0]), "B": np.array([1.0, 2.0, np.nan])},
+            units={"A": "kV", "B": "kV"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="A-B", operation=OP_SUBTRACTION,
+            inputs=[
+                ChannelRef(kind="source", source_id="src1", channel_name="A"),
+                ChannelRef(kind="source", source_id="src1", channel_name="B"),
+            ],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_PROPAGATE,
+        )
+        assert channel.values[0] == 9.0
+        assert np.isnan(channel.values[1])
+        assert np.isnan(channel.values[2])
+
+    def test_multiple_input_addition_any_nan_poisons_result(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={
+                "A": np.array([1.0, 2.0, 3.0]),
+                "B": np.array([10.0, np.nan, 30.0]),
+                "C": np.array([100.0, 200.0, 300.0]),
+            },
+            units={"A": "kV", "B": "kV", "C": "kV"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="A+B+C", operation=OP_ADDITION,
+            inputs=[
+                ChannelRef(kind="source", source_id="src1", channel_name="A"),
+                ChannelRef(kind="source", source_id="src1", channel_name="B"),
+                ChannelRef(kind="source", source_id="src1", channel_name="C"),
+            ],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_PROPAGATE,
+        )
+        assert channel.values[0] == 111.0
+        assert np.isnan(channel.values[1])
+        assert channel.values[2] == 333.0
+
+    def test_rms_window_containing_nan_is_window_scoped_not_merely_same_sample(self, registries):
+        source_registry, calc_registry = registries
+        _sinusoid_source_with_nulls(source_registry, null_indices=[500])
+        channel = create_calculated_channel(
+            workspace_id=WS, name="RMS(VA)", operation=OP_RMS,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={"nominal_frequency_hz": 50.0},
+            source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_PROPAGATE,
+        )
+        # fs=5000Hz, 50Hz window -> a 100-sample trailing window. A NaN at
+        # sample 500 must poison every window that CONTAINS it -- samples
+        # 500..599 -- not merely sample 500 itself (window-scoped, per
+        # section 6/DEC-084 point 7 note).
+        assert np.all(np.isnan(channel.values[500:600]))
+        assert not np.isnan(channel.values[499])
+        assert not np.isnan(channel.values[600])
+
+    def test_source_arrays_unchanged(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={"VA": np.array([1.0, np.nan, 3.0])}, units={"VA": "kV"},
+        ))
+        create_calculated_channel(
+            workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_PROPAGATE,
+        )
+        active = source_registry.get(WS, "src1")
+        assert np.isnan(active.record.waveform_data["VA"].to_numpy()[1])
+
+
+class TestNullPolicyTreatAsZero:
+    """DEC-084 Calc Slice 1, section 22."""
+
+    def test_unary_operation_substitutes_zero(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={"VA": np.array([1.0, np.nan, 3.0])}, units={"VA": "kV"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_ZERO,
+        )
+        assert np.all(np.isfinite(channel.values))
+        assert channel.values.tolist() == [-1.0, -0.0, -3.0]
+
+    def test_multiply_constant_substitutes_zero(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={"VA": np.array([1.0, np.nan, 3.0])}, units={"VA": "kV"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="2xVA", operation=OP_MULTIPLY_CONSTANT,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={"constant": 3.0}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_ZERO,
+        )
+        assert channel.values.tolist() == [3.0, 0.0, 9.0]
+
+    def test_addition_substitutes_zero(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={"A": np.array([1.0, np.nan, 3.0]), "B": np.array([10.0, 20.0, np.nan])},
+            units={"A": "kV", "B": "kV"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="A+B", operation=OP_ADDITION,
+            inputs=[
+                ChannelRef(kind="source", source_id="src1", channel_name="A"),
+                ChannelRef(kind="source", source_id="src1", channel_name="B"),
+            ],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_ZERO,
+        )
+        # Example from section 7: [3, null, 4] -> [3, 0, 4] before summing.
+        assert channel.values.tolist() == [11.0, 20.0, 3.0]
+
+    def test_subtraction_substitutes_zero(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={"A": np.array([10.0, np.nan, 30.0]), "B": np.array([1.0, 2.0, np.nan])},
+            units={"A": "kV", "B": "kV"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="A-B", operation=OP_SUBTRACTION,
+            inputs=[
+                ChannelRef(kind="source", source_id="src1", channel_name="A"),
+                ChannelRef(kind="source", source_id="src1", channel_name="B"),
+            ],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_ZERO,
+        )
+        assert channel.values.tolist() == [9.0, -2.0, 30.0]
+
+    def test_multiple_inputs_different_nan_positions(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={
+                "A": np.array([1.0, np.nan, 3.0]),
+                "B": np.array([10.0, 20.0, np.nan]),
+                "C": np.array([100.0, 200.0, 300.0]),
+            },
+            units={"A": "kV", "B": "kV", "C": "kV"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="A+B+C", operation=OP_ADDITION,
+            inputs=[
+                ChannelRef(kind="source", source_id="src1", channel_name="A"),
+                ChannelRef(kind="source", source_id="src1", channel_name="B"),
+                ChannelRef(kind="source", source_id="src1", channel_name="C"),
+            ],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_ZERO,
+        )
+        assert channel.values.tolist() == [111.0, 220.0, 303.0]
+        assert np.all(np.isfinite(channel.values))
+
+    def test_rms_zero_substitution_produces_finite_result(self, registries):
+        source_registry, calc_registry = registries
+        _sinusoid_source_with_nulls(source_registry, null_indices=[500])
+        channel = create_calculated_channel(
+            workspace_id=WS, name="RMS(VA)", operation=OP_RMS,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={"nominal_frequency_hz": 50.0},
+            source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_ZERO,
+        )
+        # Every window past warm-up (first 100 samples, 0..0.0198s at
+        # 5kHz/50Hz) is finite -- zero substitution removed the one NaN
+        # sample before RMS's own windowed calculation ran.
+        assert np.all(np.isfinite(channel.values[100:]))
+
+    def test_source_arrays_unchanged(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={"VA": np.array([1.0, np.nan, 3.0])}, units={"VA": "kV"},
+        ))
+        create_calculated_channel(
+            workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_ZERO,
+        )
+        active = source_registry.get(WS, "src1")
+        assert np.isnan(active.record.waveform_data["VA"].to_numpy()[1])
+
+
+class TestNullPolicyRequireManual:
+    """DEC-084 Calc Slice 1, section 23."""
+
+    def test_source_input_with_null_rejects_creation(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={"VA": np.array([1.0, np.nan, 3.0])}, units={"VA": "kV"},
+        ))
+        with pytest.raises(RequireManualValueNullError):
+            create_calculated_channel(
+                workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+                inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+                null_policy=NULL_POLICY_REQUIRE_MANUAL,
+            )
+        # Section 9: no unresolved/half-created channel is ever registered.
+        assert calc_registry.list_for_workspace(WS) == []
+
+    def test_multiple_inputs_one_with_null_rejects(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={"A": np.array([1.0, 2.0, 3.0]), "B": np.array([10.0, np.nan, 30.0])},
+            units={"A": "kV", "B": "kV"},
+        ))
+        with pytest.raises(RequireManualValueNullError):
+            create_calculated_channel(
+                workspace_id=WS, name="A+B", operation=OP_ADDITION,
+                inputs=[
+                    ChannelRef(kind="source", source_id="src1", channel_name="A"),
+                    ChannelRef(kind="source", source_id="src1", channel_name="B"),
+                ],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+                null_policy=NULL_POLICY_REQUIRE_MANUAL,
+            )
+
+    def test_calculated_channel_dependency_with_null_rejects(self, registries):
+        # Section 10: Calc A (Propagate Null) -> contains NaN. Calc B
+        # (Require Manual Value) reading Calc A must also be rejected.
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={"VA": np.array([1.0, np.nan, 3.0])}, units={"VA": "kV"},
+        ))
+        calc_a = create_calculated_channel(
+            workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert np.isnan(calc_a.values[1])
+        with pytest.raises(RequireManualValueNullError):
+            create_calculated_channel(
+                workspace_id=WS, name="Abs(-VA)", operation=OP_ABSOLUTE_VALUE,
+                inputs=[ChannelRef(kind="calculated", calculated_channel_id=calc_a.id)],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+                null_policy=NULL_POLICY_REQUIRE_MANUAL,
+            )
+        # Calc A itself is untouched by Calc B's rejected attempt.
+        assert np.isnan(calc_a.values[1])
+
+    def test_all_finite_inputs_succeed(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={"VA": np.array([1.0, -2.0, 3.0])}, units={"VA": "kV"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_REQUIRE_MANUAL,
+        )
+        assert channel.null_policy == NULL_POLICY_REQUIRE_MANUAL
+        assert channel.values.tolist() == [-1.0, 2.0, -3.0]
+
+    def test_source_arrays_unchanged_after_rejection(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={"VA": np.array([1.0, np.nan, 3.0])}, units={"VA": "kV"},
+        ))
+        with pytest.raises(RequireManualValueNullError):
+            create_calculated_channel(
+                workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+                inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+                null_policy=NULL_POLICY_REQUIRE_MANUAL,
+            )
+        active = source_registry.get(WS, "src1")
+        assert np.isnan(active.record.waveform_data["VA"].to_numpy()[1])

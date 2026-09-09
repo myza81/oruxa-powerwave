@@ -78,6 +78,9 @@ _STATUS_BY_ERROR_CODE: dict[str, int] = {
     "rms_recording_too_short": status.HTTP_400_BAD_REQUEST,
     "rms_sampling_too_sparse": status.HTTP_400_BAD_REQUEST,
     "rms_override_required": status.HTTP_400_BAD_REQUEST,
+    "invalid_null_policy": status.HTTP_400_BAD_REQUEST,
+    "null_policy_not_implemented": status.HTTP_400_BAD_REQUEST,
+    "require_manual_value_null": status.HTTP_400_BAD_REQUEST,
     "internal_error": status.HTTP_500_INTERNAL_SERVER_ERROR,
 }
 
@@ -182,6 +185,7 @@ def create_channel(
             calc_registry=calc_registry,
             override=body.override,
             per_unit_registry=per_unit_registry,
+            null_policy=body.null_policy,
         )
     except ImportServiceError as exc:
         logger.info("Calculated channel creation rejected (%s) for workspace %s: %s", exc.code, workspace_id, exc.message)

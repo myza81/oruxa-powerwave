@@ -9,7 +9,15 @@ import numpy as np
 import pytest
 
 from app.domain.calculated_channel import (
+    ALL_NULL_POLICIES,
+    DEFAULT_NULL_POLICY,
     MIN_SAMPLES_PER_CYCLE,
+    NULL_POLICY_ESTIMATE,
+    NULL_POLICY_PROPAGATE,
+    NULL_POLICY_REQUIRE_MANUAL,
+    NULL_POLICY_ZERO,
+    UNIMPLEMENTED_NULL_POLICIES,
+    apply_null_policy_to_values,
     derive_engineering_type,
     evaluate_absolute_value,
     evaluate_addition,
@@ -22,6 +30,7 @@ from app.domain.calculated_channel import (
     rms_sampling_dense_enough,
     timebases_aligned,
     units_compatible,
+    values_all_finite,
     would_create_cycle,
 )
 from app.domain.channel_classification import (
@@ -430,3 +439,66 @@ class TestDeriveWaveformForm:
         assert derive_waveform_form("rms", [WAVEFORM_FORM_INSTANTANEOUS]) == WAVEFORM_FORM_RMS
         assert derive_waveform_form("rms", [WAVEFORM_FORM_UNKNOWN]) == WAVEFORM_FORM_RMS
         assert derive_waveform_form("rms", [WAVEFORM_FORM_RMS]) == WAVEFORM_FORM_RMS
+
+
+class TestNullPolicyConstants:
+    """DEC-084 Calc Slice 1, section 20: valid null-policy constants,
+    the backward-compatible default, and the deliberately-unimplemented
+    subset."""
+
+    def test_all_four_policies_present(self):
+        assert ALL_NULL_POLICIES == {
+            NULL_POLICY_PROPAGATE, NULL_POLICY_ZERO, NULL_POLICY_ESTIMATE, NULL_POLICY_REQUIRE_MANUAL,
+        }
+
+    def test_default_policy_is_propagate_null(self):
+        # Section 4: backward-compatibility default for a pre-DEC-084 caller.
+        assert DEFAULT_NULL_POLICY == NULL_POLICY_PROPAGATE
+
+    def test_only_estimate_is_unimplemented(self):
+        assert UNIMPLEMENTED_NULL_POLICIES == {NULL_POLICY_ESTIMATE}
+        assert NULL_POLICY_PROPAGATE not in UNIMPLEMENTED_NULL_POLICIES
+        assert NULL_POLICY_ZERO not in UNIMPLEMENTED_NULL_POLICIES
+        assert NULL_POLICY_REQUIRE_MANUAL not in UNIMPLEMENTED_NULL_POLICIES
+
+
+class TestApplyNullPolicyToValues:
+    def test_propagate_is_identity_no_copy(self):
+        # Section 27: Propagate Null must not allocate a new array.
+        values = np.array([1.0, np.nan, 3.0])
+        result = apply_null_policy_to_values(values, NULL_POLICY_PROPAGATE)
+        assert result is values
+
+    def test_require_manual_is_also_identity(self):
+        values = np.array([1.0, 2.0, 3.0])
+        result = apply_null_policy_to_values(values, NULL_POLICY_REQUIRE_MANUAL)
+        assert result is values
+
+    def test_zero_substitutes_non_finite_samples(self):
+        values = np.array([1.0, np.nan, 3.0, np.inf, -np.inf])
+        result = apply_null_policy_to_values(values, NULL_POLICY_ZERO)
+        assert result.tolist() == [1.0, 0.0, 3.0, 0.0, 0.0]
+
+    def test_zero_never_mutates_source_array(self):
+        values = np.array([1.0, np.nan, 3.0])
+        apply_null_policy_to_values(values, NULL_POLICY_ZERO)
+        assert np.isnan(values[1])
+
+    def test_zero_with_no_nulls_is_unchanged(self):
+        values = np.array([1.0, 2.0, 3.0])
+        result = apply_null_policy_to_values(values, NULL_POLICY_ZERO)
+        assert result.tolist() == [1.0, 2.0, 3.0]
+
+
+class TestValuesAllFinite:
+    def test_true_when_every_sample_finite(self):
+        assert values_all_finite(np.array([1.0, -2.0, 3.5])) is True
+
+    def test_false_when_any_nan(self):
+        assert values_all_finite(np.array([1.0, np.nan, 3.0])) is False
+
+    def test_false_when_any_inf(self):
+        assert values_all_finite(np.array([1.0, np.inf, 3.0])) is False
+
+    def test_true_for_empty_array(self):
+        assert values_all_finite(np.array([])) is True

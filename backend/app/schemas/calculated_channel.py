@@ -85,6 +85,17 @@ class CalculatedChannelCreateRequest(BaseModel):
     cross-cutting safety flag the backend must independently validate,
     never a math parameter. Ignored (never trusted as an eligibility
     result itself) for every other operation.
+
+    `null_policy` (DEC-084 Calc Slice 1) is this channel's own declared
+    missing-data policy -- a strongly-typed top-level field (like
+    `override` above), never buried inside `parameters`. Omitted by a
+    pre-DEC-084 caller, it defaults to `"propagate_null"` (matches
+    current NumPy NaN-propagation behavior exactly, so no existing
+    API/frontend caller's output changes). `"estimate_missing_data"` is
+    accepted here as a recognized wire value for forward compatibility
+    only -- the backend rejects it outright at creation time (no
+    estimation engine exists in this slice), never silently falling back
+    to another policy.
     """
 
     name: str
@@ -92,6 +103,9 @@ class CalculatedChannelCreateRequest(BaseModel):
     inputs: list[ChannelRefIn]
     parameters: dict = {}
     override: bool = False
+    null_policy: Literal[
+        "propagate_null", "treat_null_as_zero", "estimate_missing_data", "require_manual_value"
+    ] = "propagate_null"
 
 
 class RmsEligibilityRequest(BaseModel):
@@ -145,6 +159,12 @@ class CalculatedChannelOut(BaseModel):
     # section 10: "the waveform form should be identifiable as RMS").
     # Every pre-existing field/consumer is unchanged.
     waveform_form: str
+    # DEC-084 Calc Slice 1: additive field -- this channel's own declared
+    # null-handling policy (app.domain.calculated_channel.
+    # ALL_NULL_POLICIES). Round-trips through create/list so a caller can
+    # always see which policy a channel was created with (DEC-084 point
+    # 10 traceability). Every pre-existing field/consumer is unchanged.
+    null_policy: str
 
     @classmethod
     def from_domain(cls, channel: CalculatedChannel) -> "CalculatedChannelOut":
@@ -162,6 +182,7 @@ class CalculatedChannelOut(BaseModel):
             created_at=channel.created_at,
             engineering_type=channel.engineering_type,
             waveform_form=channel.waveform_form,
+            null_policy=channel.null_policy,
         )
 
 

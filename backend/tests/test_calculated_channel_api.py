@@ -88,6 +88,52 @@ def _upload_sinusoid(client, workspace_id, **kwargs):
     return resp.json()["source_id"]
 
 
+def _synthetic_two_channel_ascii_comtrade(*, a_values, b_values, fs=1000.0):
+    """DEC-084 Calc Slice 1: a minimal two-analog-channel ASCII COMTRADE
+    pair whose sample values are given explicitly (never generated) --
+    `float("nan")` entries are written as the literal text `nan`, which
+    NumPy's own ASCII DAT parser (`np.loadtxt(..., dtype=np.float64)`,
+    app.providers.comtrade._parse_ascii_dat) already accepts, so this is
+    a real, provider-level null-input fixture -- never a domain/service
+    fixture standing in for one."""
+    assert len(a_values) == len(b_values)
+    n = len(a_values)
+    cfg_lines = [
+        "SYNTH_STATION,SYNTH_DEV,1999",
+        "2,2A,0D",
+        "1,A,,,V,1.0,0.0,0,-999999,999999,110.0,1.0,P",
+        "2,B,,,V,1.0,0.0,0,-999999,999999,110.0,1.0,P",
+        "50",
+        "1",
+        f"{fs},{n}",
+        "06/03/2026,10:00:00.000000",
+        "06/03/2026,10:00:00.000000",
+        "ASCII",
+        "1.0",
+    ]
+    cfg_bytes = ("\r\n".join(cfg_lines) + "\r\n").encode("ascii")
+
+    def _cell(v: float) -> str:
+        return "nan" if math.isnan(v) else f"{v:.6f}"
+
+    dat_lines = []
+    for i in range(n):
+        timestamp_us = round(i * (1_000_000.0 / fs))
+        dat_lines.append(f"{i + 1},{timestamp_us},{_cell(a_values[i])},{_cell(b_values[i])}")
+    dat_bytes = ("\r\n".join(dat_lines) + "\r\n").encode("ascii")
+    return cfg_bytes, dat_bytes
+
+
+def _upload_two_channel(client, workspace_id, *, a_values, b_values, **kwargs):
+    cfg_bytes, dat_bytes = _synthetic_two_channel_ascii_comtrade(a_values=a_values, b_values=b_values, **kwargs)
+    resp = client.post(
+        f"/api/v1/workspaces/{workspace_id}/sources",
+        files=_files(cfg_bytes, dat_bytes, cfg_name="null.cfg", dat_name="null.dat"),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["source_id"]
+
+
 class TestCreateBasicOperations:
     def test_reverse_polarity(self, client, comtrade_fixtures_dir):
         source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
@@ -438,3 +484,89 @@ class TestLifecycle:
             inputs=[{"kind": "source", "source_id": source_id, "channel_name": "VA"}],
         ).json()
         return source_id, channel
+
+
+class TestNullPolicyApi:
+    """DEC-084 Calc Slice 1, section 25: API-level round-trip and
+    error-code coverage for the calculated-channel null-handling policy."""
+
+    def test_omitted_policy_defaults_to_propagate_null(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        resp = _create(
+            client, "ws-1", name="-VA", operation="reverse_polarity",
+            inputs=[{"kind": "source", "source_id": source_id, "channel_name": "VA"}],
+        )
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["null_policy"] == "propagate_null"
+
+    def test_create_with_propagate_null(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        resp = _create(
+            client, "ws-1", name="-VA", operation="reverse_polarity",
+            inputs=[{"kind": "source", "source_id": source_id, "channel_name": "VA"}],
+            null_policy="propagate_null",
+        )
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["null_policy"] == "propagate_null"
+
+    def test_create_with_treat_null_as_zero(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        resp = _create(
+            client, "ws-1", name="-VA", operation="reverse_polarity",
+            inputs=[{"kind": "source", "source_id": source_id, "channel_name": "VA"}],
+            null_policy="treat_null_as_zero",
+        )
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["null_policy"] == "treat_null_as_zero"
+
+    def test_create_with_require_manual_value_all_finite_succeeds(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        resp = _create(
+            client, "ws-1", name="-VA", operation="reverse_polarity",
+            inputs=[{"kind": "source", "source_id": source_id, "channel_name": "VA"}],
+            null_policy="require_manual_value",
+        )
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["null_policy"] == "require_manual_value"
+
+    def test_create_with_require_manual_value_and_null_input_rejected(self, client):
+        source_id = _upload_two_channel(
+            client, "ws-1", a_values=[1.0, float("nan"), 3.0], b_values=[10.0, 20.0, 30.0],
+        )
+        resp = _create(
+            client, "ws-1", name="-A", operation="reverse_polarity",
+            inputs=[{"kind": "source", "source_id": source_id, "channel_name": "A"}],
+            null_policy="require_manual_value",
+        )
+        assert resp.status_code == 400, resp.text
+        assert resp.json()["detail"]["code"] == "require_manual_value_null"
+
+    def test_invalid_null_policy_rejected_by_schema(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        resp = _create(
+            client, "ws-1", name="-VA", operation="reverse_polarity",
+            inputs=[{"kind": "source", "source_id": source_id, "channel_name": "VA"}],
+            null_policy="not_a_real_policy",
+        )
+        assert resp.status_code == 422  # pydantic Literal rejects an unrecognized policy outright
+
+    def test_estimate_missing_data_rejected_not_implemented(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        resp = _create(
+            client, "ws-1", name="-VA", operation="reverse_polarity",
+            inputs=[{"kind": "source", "source_id": source_id, "channel_name": "VA"}],
+            null_policy="estimate_missing_data",
+        )
+        assert resp.status_code == 400, resp.text
+        assert resp.json()["detail"]["code"] == "null_policy_not_implemented"
+
+    def test_list_response_returns_null_policy(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        _create(
+            client, "ws-1", name="-VA", operation="reverse_polarity",
+            inputs=[{"kind": "source", "source_id": source_id, "channel_name": "VA"}],
+            null_policy="treat_null_as_zero",
+        )
+        listing = client.get("/api/v1/workspaces/ws-1/calculated-channels").json()
+        assert len(listing) == 1
+        assert listing[0]["null_policy"] == "treat_null_as_zero"
