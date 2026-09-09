@@ -1,10 +1,12 @@
 """Static regression checks for the calculated-channel Null Handling UI
-(DEC-084 Calc Slice 3). Same source-text substring-assertion pattern as
-test_frontend_rms_calculated_channel.py -- this repo has no browser/DOM
-test runner for the single-file frontend (see browser-tests/
+(DEC-084 Calc Slice 3) and its channel-level traceability (Calc Slice 4:
+the preview info strip's own Missing Data Handling/Method/Maximum Gap/
+Local Mean Radius detail rows). Same source-text substring-assertion
+pattern as test_frontend_rms_calculated_channel.py -- this repo has no
+browser/DOM test runner for the single-file frontend (see browser-tests/
 calculated-channel-null-handling.spec.js for the real-browser
 counterpart, which exercises the actual live validation/create/manager-
-display behavior end to end).
+display/preview-detail behavior end to end).
 """
 
 from __future__ import annotations
@@ -240,3 +242,100 @@ def test_render_null_policy_field_syncs_select_and_hint():
     assert 'getElementById("wwCcNullPolicySelect")' in body
     assert 'getElementById("wwCcNullPolicyHint")' in body
     assert "wwCcRenderEstimationFields();" in body
+
+
+# ---- DEC-084 Calc Slice 4: channel-level traceability (preview info strip) ----
+
+
+def test_missing_data_info_rows_formatter_covers_full_metadata():
+    # Section 8: complete metadata for Estimate Missing Data -- method,
+    # max gap (unit folded into the value text, "N samples"), and (Local
+    # Mean only) radius.
+    source = _source()
+    body = _function_body(source, "function wwCcMissingDataInfoRowsHtml(calc)", "function wwCcRenderPreviewStatusAndInfo(calc)")
+    assert "Missing Data Handling" in body
+    assert '"Method"' in body or ">Method<" in body
+    assert "Maximum Gap" in body
+    assert "Local Mean Radius" in body
+    assert '" samples"' in body
+    assert '" samples each side"' in body
+
+
+def test_missing_data_info_rows_formatter_omits_estimation_fields_for_other_policies():
+    # Section 9: a non-estimation policy must return early -- never a
+    # blank Method/Maximum Gap placeholder.
+    source = _source()
+    body = _function_body(source, "function wwCcMissingDataInfoRowsHtml(calc)", "function wwCcRenderPreviewStatusAndInfo(calc)")
+    assert 'if (policy !== "estimate_missing_data") return html;' in body
+
+
+def test_missing_data_info_rows_formatter_shows_radius_only_for_local_mean():
+    # Section 8/9: Local Mean Radius is gated on the METHOD, not merely
+    # on the policy -- Hold Last/Nearest/Linear under Estimate Missing
+    # Data must never show it.
+    source = _source()
+    body = _function_body(source, "function wwCcMissingDataInfoRowsHtml(calc)", "function wwCcRenderPreviewStatusAndInfo(calc)")
+    assert 'calc.estimation_method === "local_mean" && calc.local_mean_radius != null' in body
+
+
+def test_missing_data_info_rows_formatter_reads_from_api_object_not_builder():
+    # Section 24: metadata MUST come from the returned/API-listed
+    # calculated-channel object (the `calc` parameter), never from
+    # wwCcBuilder -- otherwise a stale builder value from an abandoned
+    # creation attempt could leak into an already-created channel's own
+    # displayed metadata.
+    source = _source()
+    body = _function_body(source, "function wwCcMissingDataInfoRowsHtml(calc)", "function wwCcRenderPreviewStatusAndInfo(calc)")
+    assert "wwCcBuilder" not in body
+    assert "calc.null_policy" in body
+    assert "calc.estimation_method" in body
+    assert "calc.max_gap_value" in body
+    assert "calc.local_mean_radius" in body
+
+
+def test_missing_data_info_rows_formatter_has_no_pchip_reference():
+    # Section 13: PCHIP must never appear in details/metadata text.
+    source = _source()
+    body = _function_body(source, "function wwCcMissingDataInfoRowsHtml(calc)", "function wwCcRenderPreviewStatusAndInfo(calc)")
+    assert "pchip" not in body.lower()
+
+
+def test_preview_info_strip_appends_missing_data_rows_from_the_api_backed_calc():
+    # Section 6/24: the strip is populated inside wwCcRenderPreviewStatusAndInfo(calc)
+    # -- `calc` is the SAME parameter threaded through from
+    # ww.calculatedChannels (see wwCcPreviewVisibleChannels()/
+    # wwCcRenderWaveformPreview() upstream), never a second, independent
+    # metadata state object.
+    source = _source()
+    body = _function_body(source, "function wwCcRenderPreviewStatusAndInfo(calc)", "async function wwCcFetchPreviewWaveform(calc)")
+    assert "wwCcMissingDataInfoRowsHtml(calc)" in body
+
+
+def test_missing_data_info_rows_use_approved_slice3_terminology():
+    # Section 7: the same visible labels already approved in Slice 3 --
+    # never raw wire values shown to the user.
+    source = _source()
+    body = _function_body(source, "function wwCcMissingDataInfoRowsHtml(calc)", "function wwCcRenderPreviewStatusAndInfo(calc)")
+    assert "WW_CC_NULL_POLICIES[policy]" in body
+    assert "WW_CC_ESTIMATION_METHODS[calc.estimation_method]" in body
+
+
+def test_missing_data_info_rows_reuse_slice3_hint_copy_for_source_immutability_wording():
+    # Section 10: the "source data is unchanged" reassurance is
+    # surfaced via the SAME already-approved WW_CC_NULL_POLICIES hint
+    # text (an accessible info-tip, never hover-only) -- not duplicated
+    # as new prose in this function.
+    source = _source()
+    body = _function_body(source, "function wwCcMissingDataInfoRowsHtml(calc)", "function wwCcRenderPreviewStatusAndInfo(calc)")
+    assert "policyHint" in body
+    assert "wwInfoTipHtml(" in body
+
+
+def test_create_channel_still_has_no_export_related_code():
+    # Section 14: no calculated-channel export was introduced by this
+    # slice -- the create/list/manager/preview code path carries no
+    # "export"/"download" reference anywhere.
+    source = _source()
+    body = _function_body(source, "async function wwCcCreateChannel()", "async function wwCcDeleteChannel(calculatedChannelId)")
+    assert "export" not in body.lower()
+    assert "download" not in body.lower()

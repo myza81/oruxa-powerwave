@@ -26016,12 +26016,69 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             return calc ? [calc] : [];
         }
 
+        // DEC-084 Calc Slice 4 (section 6/26): the durable, complete
+        // null-handling/estimation-configuration detail for the
+        // SELECTED calculated channel -- audited first, per this task's
+        // own instruction, against every existing calculated-channel
+        // metadata surface (manager row, sidebar, waveform legend,
+        // table, cursor, peak, annotation, this preview info strip).
+        // This strip is the one already-established "selected-channel
+        // details" surface (never truncated like the manager row's own
+        // compact ellipsis summary, section 26) -- reused here rather
+        // than inventing a new disclosure control, popover, or a second
+        // per-row expand affordance. Every value is read directly off
+        // `calc` (the API-backed app.schemas.calculated_channel.
+        // CalculatedChannelOut object already retained in
+        // ww.calculatedChannels, section 24/25) -- NEVER off wwCcBuilder,
+        // so a stale builder value from a previous/abandoned creation
+        // attempt can never leak into an already-created channel's own
+        // displayed metadata.
+        //
+        // Section 9: semantically clean -- a non-estimation policy shows
+        // ONLY the "Missing Data Handling" cell, never blank Method/
+        // Maximum Gap placeholders. Section 8: Estimate Missing Data
+        // always shows Method + Maximum Gap (unit folded directly into
+        // the value text, "N samples" -- this slice's only supported
+        // unit, never implying ms/sec); Local Mean additionally shows
+        // its own radius. Section 10: the "source data is unchanged"
+        // reassurance is surfaced exactly ONCE, as this cell's own
+        // existing accessible info-tip (wwInfoTipHtml(), already
+        // keyboard-focus-disclosable -- never a hover-only mechanism),
+        // reusing WW_CC_NULL_POLICIES' own already-approved hint copy
+        // verbatim rather than duplicating new wording here.
+        function wwCcMissingDataInfoRowsHtml(calc) {
+            const policy = calc.null_policy || "propagate_null";
+            const policyMeta = WW_CC_NULL_POLICIES[policy];
+            const policyLabel = policyMeta ? policyMeta.label : policy;
+            const policyHint = policyMeta ? policyMeta.hint : "";
+            let html = '<div><span class="ww-cc-preview-info-label">Missing Data Handling' +
+                (policyHint ? wwInfoTipHtml("About Missing Data Handling", policyHint) : "") +
+                '</span><span class="ww-cc-preview-info-value">' + escapeHtml(policyLabel) + '</span></div>';
+            if (policy !== "estimate_missing_data") return html;
+
+            const methodMeta = WW_CC_ESTIMATION_METHODS[calc.estimation_method];
+            const methodLabel = methodMeta ? methodMeta.label : (calc.estimation_method || "—");
+            html += '<div><span class="ww-cc-preview-info-label">Method</span><span class="ww-cc-preview-info-value">' + escapeHtml(methodLabel) + '</span></div>';
+
+            const maxGapText = calc.max_gap_value != null ? (calc.max_gap_value + " samples") : "—";
+            html += '<div><span class="ww-cc-preview-info-label">Maximum Gap</span><span class="ww-cc-preview-info-value">' + escapeHtml(maxGapText) + '</span></div>';
+
+            // Section 9 applies here too: never shown for Hold Last/
+            // Nearest/Linear, only when the backend-returned channel
+            // itself actually carries a radius (Local Mean).
+            if (calc.estimation_method === "local_mean" && calc.local_mean_radius != null) {
+                html += '<div><span class="ww-cc-preview-info-label">Local Mean Radius</span><span class="ww-cc-preview-info-value">' +
+                    escapeHtml(calc.local_mean_radius + " samples each side") + '</span></div>';
+            }
+            return html;
+        }
+
         // Preview header ("Selected: <name> • Visible/Hidden") + the
         // compact info strip under the chart (Expression/Classification/
-        // Unit/Source) -- both built purely from the selected channel's
-        // own already-known static fields, never from the fetched
-        // waveform body, so they render correctly even before/without a
-        // successful fetch.
+        // Unit/Source/Missing Data Handling...) -- all built purely from
+        // the selected channel's own already-known static fields, never
+        // from the fetched waveform body, so they render correctly even
+        // before/without a successful fetch.
         function wwCcRenderPreviewStatusAndInfo(calc) {
             const statusEl = document.getElementById("wwCcPreviewStatus");
             const stripEl = document.getElementById("wwCcPreviewInfoStrip");
@@ -26046,7 +26103,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                         '<div><span class="ww-cc-preview-info-label">Expression</span><span class="ww-cc-preview-info-value">' + escapeHtml(wwCcExpressionTextFor(calc)) + '</span></div>' +
                         '<div><span class="ww-cc-preview-info-label">Classification</span><span class="ww-cc-preview-info-value">' + escapeHtml(calc.engineering_type || "Undefined") + '</span></div>' +
                         '<div><span class="ww-cc-preview-info-label">Unit</span><span class="ww-cc-preview-info-value">' + escapeHtml(calc.unit || "—") + '</span></div>' +
-                        '<div><span class="ww-cc-preview-info-label">Source</span><span class="ww-cc-preview-info-value">' + escapeHtml((meta ? meta.label : calc.operation) + " · " + inputNames) + '</span></div>';
+                        '<div><span class="ww-cc-preview-info-label">Source</span><span class="ww-cc-preview-info-value">' + escapeHtml((meta ? meta.label : calc.operation) + " · " + inputNames) + '</span></div>' +
+                        wwCcMissingDataInfoRowsHtml(calc);
                     stripEl.hidden = false;
                 }
             }
@@ -26335,7 +26393,21 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
                 );
             } catch (error) {
                 if (errorEl) { errorEl.textContent = "Could not reach the backend."; errorEl.hidden = false; }
-                wwCcSyncCreateButtonState();
+                // DEC-084 Calc Slice 4 UAT fix: NOT wwCcSyncCreateButtonState()
+                // -- that function unconditionally re-hides #wwCcError
+                // whenever CLIENT-side validation currently passes
+                // (`if (valid && errorEl) errorEl.hidden = true;`), which it
+                // always does here (this is a BACKEND-only rejection --
+                // e.g. require_manual_value_null, a concurrent duplicate
+                // name -- client validation never inspects sample values or
+                // races, so it still reports "valid"). Calling it here
+                // re-hid the message the very same tick it was shown,
+                // discovered via this slice's own real-browser Require
+                // Manual Value UAT (section 21). Only the button's own
+                // disabled state is recomputed; the error just set stays
+                // visible until the user's next edit legitimately clears it
+                // via wwCcSyncCreateButtonState() elsewhere.
+                if (createBtn) createBtn.disabled = !wwCcValidateBuilder().valid || wwCcRmsBlocksCreate();
                 return;
             }
             let body = null;
@@ -26343,7 +26415,8 @@ Not Assigned — Not used by Powerwave; kept in the original source and excluded
             if (!response.ok || !body) {
                 const message = (body && body.detail && body.detail.message) || "Could not create this calculated channel.";
                 if (errorEl) { errorEl.textContent = message; errorEl.hidden = false; }
-                wwCcSyncCreateButtonState();
+                // Same fix as the network-error catch above.
+                if (createBtn) createBtn.disabled = !wwCcValidateBuilder().valid || wwCcRmsBlocksCreate();
                 return;
             }
 
