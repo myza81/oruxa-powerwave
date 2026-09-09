@@ -238,6 +238,59 @@ class RequireManualValueNullError(ImportServiceError):
     code = "require_manual_value_null"
 
 
+# ---- DEC-084 Calc Slice 2: Missing-Data Estimation Configuration ----
+
+
+class InvalidEstimationMethodError(ImportServiceError):
+    """`estimation_method` is missing or is not one of the recognized
+    method names (`app.domain.calculated_channel.ALL_ESTIMATION_METHODS`)
+    while `null_policy = Estimate Missing Data` -- this task's section 2/20."""
+
+    code = "invalid_estimation_method"
+
+
+class EstimationMethodNotImplementedError(ImportServiceError):
+    """`estimation_method` is recognized (e.g. `"pchip"`) but this slice
+    ships no engine for it yet (`app.domain.calculated_channel.
+    UNIMPLEMENTED_ESTIMATION_METHODS`) -- rejected outright, never
+    silently downgraded to another method (this task's section 19)."""
+
+    code = "estimation_method_not_implemented"
+
+
+class InvalidMaxGapValueError(ImportServiceError):
+    """`max_gap_value` is missing, non-integer, or not strictly positive
+    while `null_policy = Estimate Missing Data` -- this task's section 2/20."""
+
+    code = "invalid_max_gap_value"
+
+
+class InvalidMaxGapUnitError(ImportServiceError):
+    """`max_gap_unit` is missing or is not `"samples"` (this slice's only
+    supported unit -- this task's section 1/2/20)."""
+
+    code = "invalid_max_gap_unit"
+
+
+class InvalidLocalMeanRadiusError(ImportServiceError):
+    """`estimation_method = "local_mean"` but `local_mean_radius` is
+    missing, non-integer, or not strictly positive -- this task's section
+    2/20."""
+
+    code = "invalid_local_mean_radius"
+
+
+class EstimationFieldsNotApplicableError(ImportServiceError):
+    """One or more estimation-configuration fields (`estimation_method`/
+    `max_gap_value`/`max_gap_unit`/`local_mean_radius`) were supplied
+    while `null_policy` is something other than Estimate Missing Data --
+    rejected outright rather than silently ignored (this task's section
+    2: "Prefer strict validation rather than silently accepting
+    meaningless configuration")."""
+
+    code = "estimation_fields_not_applicable"
+
+
 # ---- Phase 5C: Global Per-Unit Measurement Mode (DEC-049; source-bound
 # redesign following owner UAT -- PerUnitProfileNotFoundError/
 # ChannelAlreadyAssignedError/InvalidChannelAssignmentError were retired

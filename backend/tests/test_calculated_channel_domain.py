@@ -9,22 +9,35 @@ import numpy as np
 import pytest
 
 from app.domain.calculated_channel import (
+    ALL_ESTIMATION_METHODS,
+    ALL_MAX_GAP_UNITS,
     ALL_NULL_POLICIES,
     DEFAULT_NULL_POLICY,
+    ESTIMATION_METHOD_HOLD_LAST,
+    ESTIMATION_METHOD_LINEAR,
+    ESTIMATION_METHOD_LOCAL_MEAN,
+    ESTIMATION_METHOD_NEAREST,
+    ESTIMATION_METHOD_PCHIP,
+    MAX_GAP_UNIT_SAMPLES,
     MIN_SAMPLES_PER_CYCLE,
     NULL_POLICY_ESTIMATE,
     NULL_POLICY_PROPAGATE,
     NULL_POLICY_REQUIRE_MANUAL,
     NULL_POLICY_ZERO,
+    UNIMPLEMENTED_ESTIMATION_METHODS,
     UNIMPLEMENTED_NULL_POLICIES,
     apply_null_policy_to_values,
     derive_engineering_type,
+    estimation_method_valid,
     evaluate_absolute_value,
     evaluate_addition,
     evaluate_multiply_constant,
     evaluate_reverse_polarity,
     evaluate_rms,
     evaluate_subtraction,
+    local_mean_radius_valid,
+    max_gap_unit_valid,
+    max_gap_value_valid,
     nominal_frequency_valid,
     rms_recording_long_enough,
     rms_sampling_dense_enough,
@@ -455,11 +468,16 @@ class TestNullPolicyConstants:
         # Section 4: backward-compatibility default for a pre-DEC-084 caller.
         assert DEFAULT_NULL_POLICY == NULL_POLICY_PROPAGATE
 
-    def test_only_estimate_is_unimplemented(self):
-        assert UNIMPLEMENTED_NULL_POLICIES == {NULL_POLICY_ESTIMATE}
+    def test_no_null_policy_is_unimplemented_as_of_calc_slice_2(self):
+        # DEC-084 Calc Slice 2: every top-level null_policy value now has
+        # a real engine -- the one remaining "not implemented yet" case
+        # (PCHIP) is a finer-grained ESTIMATION METHOD, not a null policy
+        # (see TestEstimationMethodConstants below).
+        assert UNIMPLEMENTED_NULL_POLICIES == frozenset()
         assert NULL_POLICY_PROPAGATE not in UNIMPLEMENTED_NULL_POLICIES
         assert NULL_POLICY_ZERO not in UNIMPLEMENTED_NULL_POLICIES
         assert NULL_POLICY_REQUIRE_MANUAL not in UNIMPLEMENTED_NULL_POLICIES
+        assert NULL_POLICY_ESTIMATE not in UNIMPLEMENTED_NULL_POLICIES
 
 
 class TestApplyNullPolicyToValues:
@@ -502,3 +520,91 @@ class TestValuesAllFinite:
 
     def test_true_for_empty_array(self):
         assert values_all_finite(np.array([])) is True
+
+
+class TestEstimationMethodConstants:
+    """DEC-084 Calc Slice 2, this task's section 20."""
+
+    def test_all_five_methods_present(self):
+        assert ALL_ESTIMATION_METHODS == {
+            ESTIMATION_METHOD_HOLD_LAST, ESTIMATION_METHOD_NEAREST,
+            ESTIMATION_METHOD_LINEAR, ESTIMATION_METHOD_LOCAL_MEAN, ESTIMATION_METHOD_PCHIP,
+        }
+
+    def test_only_pchip_is_unimplemented(self):
+        assert UNIMPLEMENTED_ESTIMATION_METHODS == {ESTIMATION_METHOD_PCHIP}
+        assert ESTIMATION_METHOD_HOLD_LAST not in UNIMPLEMENTED_ESTIMATION_METHODS
+        assert ESTIMATION_METHOD_NEAREST not in UNIMPLEMENTED_ESTIMATION_METHODS
+        assert ESTIMATION_METHOD_LINEAR not in UNIMPLEMENTED_ESTIMATION_METHODS
+        assert ESTIMATION_METHOD_LOCAL_MEAN not in UNIMPLEMENTED_ESTIMATION_METHODS
+
+    def test_only_samples_is_a_supported_max_gap_unit(self):
+        assert ALL_MAX_GAP_UNITS == {MAX_GAP_UNIT_SAMPLES}
+
+
+class TestEstimationMethodValid:
+    def test_each_recognized_method_valid(self):
+        for method in (
+            ESTIMATION_METHOD_HOLD_LAST, ESTIMATION_METHOD_NEAREST,
+            ESTIMATION_METHOD_LINEAR, ESTIMATION_METHOD_LOCAL_MEAN, ESTIMATION_METHOD_PCHIP,
+        ):
+            assert estimation_method_valid(method) is True
+
+    def test_unknown_method_invalid(self):
+        assert estimation_method_valid("sinusoidal_fit") is False
+
+    def test_missing_method_invalid(self):
+        assert estimation_method_valid(None) is False
+
+
+class TestMaxGapValueValid:
+    def test_positive_int_valid(self):
+        assert max_gap_value_valid(3) is True
+
+    def test_missing_invalid(self):
+        assert max_gap_value_valid(None) is False
+
+    def test_zero_invalid(self):
+        assert max_gap_value_valid(0) is False
+
+    def test_negative_invalid(self):
+        assert max_gap_value_valid(-1) is False
+
+    def test_bool_invalid(self):
+        # bool is an int subtype in Python -- explicitly rejected anyway
+        # (mirrors nominal_frequency_valid's own documented reasoning).
+        assert max_gap_value_valid(True) is False
+
+    def test_float_invalid(self):
+        assert max_gap_value_valid(3.0) is False
+
+
+class TestMaxGapUnitValid:
+    def test_samples_valid(self):
+        assert max_gap_unit_valid("samples") is True
+
+    def test_milliseconds_invalid_this_slice(self):
+        assert max_gap_unit_valid("milliseconds") is False
+
+    def test_seconds_invalid_this_slice(self):
+        assert max_gap_unit_valid("seconds") is False
+
+    def test_missing_invalid(self):
+        assert max_gap_unit_valid(None) is False
+
+
+class TestLocalMeanRadiusValid:
+    def test_positive_int_valid(self):
+        assert local_mean_radius_valid(2) is True
+
+    def test_missing_invalid(self):
+        assert local_mean_radius_valid(None) is False
+
+    def test_zero_invalid(self):
+        assert local_mean_radius_valid(0) is False
+
+    def test_negative_invalid(self):
+        assert local_mean_radius_valid(-1) is False
+
+    def test_bool_invalid(self):
+        assert local_mean_radius_valid(True) is False

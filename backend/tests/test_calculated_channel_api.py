@@ -550,7 +550,11 @@ class TestNullPolicyApi:
         )
         assert resp.status_code == 422  # pydantic Literal rejects an unrecognized policy outright
 
-    def test_estimate_missing_data_rejected_not_implemented(self, client, comtrade_fixtures_dir):
+    def test_estimate_missing_data_without_estimation_method_rejected(self, client, comtrade_fixtures_dir):
+        # DEC-084 Calc Slice 2: the policy itself is now implemented, but
+        # still requires an explicit estimation_method -- see
+        # TestEstimationApi::test_pchip_rejected_not_implemented below for
+        # the still-deferred method-level rejection.
         source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
         resp = _create(
             client, "ws-1", name="-VA", operation="reverse_polarity",
@@ -558,7 +562,7 @@ class TestNullPolicyApi:
             null_policy="estimate_missing_data",
         )
         assert resp.status_code == 400, resp.text
-        assert resp.json()["detail"]["code"] == "null_policy_not_implemented"
+        assert resp.json()["detail"]["code"] == "invalid_estimation_method"
 
     def test_list_response_returns_null_policy(self, client, comtrade_fixtures_dir):
         source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
@@ -570,3 +574,166 @@ class TestNullPolicyApi:
         listing = client.get("/api/v1/workspaces/ws-1/calculated-channels").json()
         assert len(listing) == 1
         assert listing[0]["null_policy"] == "treat_null_as_zero"
+
+
+class TestEstimationApi:
+    """DEC-084 Calc Slice 2, this task's section 30."""
+
+    def test_estimate_hold_last(self, client):
+        source_id = _upload_two_channel(
+            client, "ws-1", a_values=[10.0, 11.0, float("nan"), float("nan"), 14.0], b_values=[1.0, 2.0, 3.0, 4.0, 5.0],
+        )
+        resp = _create(
+            client, "ws-1", name="-A", operation="reverse_polarity",
+            inputs=[{"kind": "source", "source_id": source_id, "channel_name": "A"}],
+            null_policy="estimate_missing_data", estimation_method="hold_last",
+            max_gap_value=3, max_gap_unit="samples",
+        )
+        assert resp.status_code == 201, resp.text
+        body = resp.json()
+        assert body["null_policy"] == "estimate_missing_data"
+        assert body["estimation_method"] == "hold_last"
+        assert body["max_gap_value"] == 3
+        assert body["max_gap_unit"] == "samples"
+        assert body["local_mean_radius"] is None
+
+    def test_estimate_nearest(self, client):
+        source_id = _upload_two_channel(
+            client, "ws-1", a_values=[10.0, float("nan"), float("nan"), 40.0], b_values=[1.0, 2.0, 3.0, 4.0],
+        )
+        resp = _create(
+            client, "ws-1", name="AbsA", operation="absolute_value",
+            inputs=[{"kind": "source", "source_id": source_id, "channel_name": "A"}],
+            null_policy="estimate_missing_data", estimation_method="nearest",
+            max_gap_value=2, max_gap_unit="samples",
+        )
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["estimation_method"] == "nearest"
+
+    def test_estimate_linear(self, client):
+        source_id = _upload_two_channel(
+            client, "ws-1", a_values=[10.0, float("nan"), 40.0], b_values=[1.0, 2.0, 3.0], fs=1.0,
+        )
+        resp = _create(
+            client, "ws-1", name="2xA", operation="multiply_constant",
+            inputs=[{"kind": "source", "source_id": source_id, "channel_name": "A"}],
+            parameters={"constant": 1.0},
+            null_policy="estimate_missing_data", estimation_method="linear",
+            max_gap_value=1, max_gap_unit="samples",
+        )
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["estimation_method"] == "linear"
+
+    def test_estimate_local_mean(self, client):
+        source_id = _upload_two_channel(
+            client, "ws-1",
+            a_values=[10.0, 12.0, float("nan"), float("nan"), 20.0, 22.0],
+            b_values=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        )
+        resp = _create(
+            client, "ws-1", name="AbsA", operation="absolute_value",
+            inputs=[{"kind": "source", "source_id": source_id, "channel_name": "A"}],
+            null_policy="estimate_missing_data", estimation_method="local_mean",
+            max_gap_value=2, max_gap_unit="samples", local_mean_radius=2,
+        )
+        assert resp.status_code == 201, resp.text
+        body = resp.json()
+        assert body["estimation_method"] == "local_mean"
+        assert body["local_mean_radius"] == 2
+
+    def test_create_response_round_trips_configuration(self, client):
+        source_id = _upload_two_channel(
+            client, "ws-1", a_values=[10.0, float("nan"), 30.0], b_values=[1.0, 2.0, 3.0],
+        )
+        resp = _create(
+            client, "ws-1", name="-A", operation="reverse_polarity",
+            inputs=[{"kind": "source", "source_id": source_id, "channel_name": "A"}],
+            null_policy="estimate_missing_data", estimation_method="hold_last",
+            max_gap_value=5, max_gap_unit="samples",
+        )
+        body = resp.json()
+        assert body["null_policy"] == "estimate_missing_data"
+        assert body["estimation_method"] == "hold_last"
+        assert body["max_gap_value"] == 5
+        assert body["max_gap_unit"] == "samples"
+
+    def test_list_response_round_trips_configuration(self, client):
+        source_id = _upload_two_channel(
+            client, "ws-1", a_values=[10.0, float("nan"), 30.0], b_values=[1.0, 2.0, 3.0],
+        )
+        _create(
+            client, "ws-1", name="-A", operation="reverse_polarity",
+            inputs=[{"kind": "source", "source_id": source_id, "channel_name": "A"}],
+            null_policy="estimate_missing_data", estimation_method="nearest",
+            max_gap_value=2, max_gap_unit="samples",
+        )
+        listing = client.get("/api/v1/workspaces/ws-1/calculated-channels").json()
+        assert len(listing) == 1
+        assert listing[0]["null_policy"] == "estimate_missing_data"
+        assert listing[0]["estimation_method"] == "nearest"
+        assert listing[0]["max_gap_value"] == 2
+        assert listing[0]["max_gap_unit"] == "samples"
+
+    def test_missing_estimation_method_rejected(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        resp = _create(
+            client, "ws-1", name="-VA", operation="reverse_polarity",
+            inputs=[{"kind": "source", "source_id": source_id, "channel_name": "VA"}],
+            null_policy="estimate_missing_data", max_gap_value=1, max_gap_unit="samples",
+        )
+        assert resp.status_code == 400, resp.text
+        assert resp.json()["detail"]["code"] == "invalid_estimation_method"
+
+    def test_invalid_max_gap_rejected(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        resp = _create(
+            client, "ws-1", name="-VA", operation="reverse_polarity",
+            inputs=[{"kind": "source", "source_id": source_id, "channel_name": "VA"}],
+            null_policy="estimate_missing_data", estimation_method="hold_last",
+            max_gap_value=0, max_gap_unit="samples",
+        )
+        assert resp.status_code == 400, resp.text
+        assert resp.json()["detail"]["code"] == "invalid_max_gap_value"
+
+    def test_unsupported_max_gap_unit_rejected(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        resp = _create(
+            client, "ws-1", name="-VA", operation="reverse_polarity",
+            inputs=[{"kind": "source", "source_id": source_id, "channel_name": "VA"}],
+            null_policy="estimate_missing_data", estimation_method="hold_last",
+            max_gap_value=1, max_gap_unit="milliseconds",
+        )
+        assert resp.status_code == 422  # pydantic Literal rejects a non-"samples" unit outright
+
+    def test_local_mean_missing_radius_rejected(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        resp = _create(
+            client, "ws-1", name="-VA", operation="reverse_polarity",
+            inputs=[{"kind": "source", "source_id": source_id, "channel_name": "VA"}],
+            null_policy="estimate_missing_data", estimation_method="local_mean",
+            max_gap_value=1, max_gap_unit="samples",
+        )
+        assert resp.status_code == 400, resp.text
+        assert resp.json()["detail"]["code"] == "invalid_local_mean_radius"
+
+    def test_pchip_rejected_not_implemented(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        resp = _create(
+            client, "ws-1", name="-VA", operation="reverse_polarity",
+            inputs=[{"kind": "source", "source_id": source_id, "channel_name": "VA"}],
+            null_policy="estimate_missing_data", estimation_method="pchip",
+            max_gap_value=1, max_gap_unit="samples",
+        )
+        assert resp.status_code == 400, resp.text
+        assert resp.json()["detail"]["code"] == "estimation_method_not_implemented"
+
+    def test_estimation_fields_rejected_for_incompatible_policy(self, client, comtrade_fixtures_dir):
+        source_id = _upload(client, "ws-1", comtrade_fixtures_dir)
+        resp = _create(
+            client, "ws-1", name="-VA", operation="reverse_polarity",
+            inputs=[{"kind": "source", "source_id": source_id, "channel_name": "VA"}],
+            null_policy="propagate_null", estimation_method="hold_last",
+            max_gap_value=1, max_gap_unit="samples",
+        )
+        assert resp.status_code == 400, resp.text
+        assert resp.json()["detail"]["code"] == "estimation_fields_not_applicable"

@@ -109,8 +109,107 @@ ALL_NULL_POLICIES = frozenset(
 #: channel, so no existing API/frontend caller's output changes.
 DEFAULT_NULL_POLICY = NULL_POLICY_PROPAGATE
 #: Policy values that are recognized (pass schema/domain enum validation)
-#: but have no working engine yet in this slice.
-UNIMPLEMENTED_NULL_POLICIES = frozenset({NULL_POLICY_ESTIMATE})
+#: but have no working engine yet in this slice. Empty as of DEC-084 Calc
+#: Slice 2: `NULL_POLICY_ESTIMATE` now has a real engine (see
+#: app.domain.missing_data_estimation) -- the still-unimplemented PCHIP
+#: method is rejected one level down, via `UNIMPLEMENTED_ESTIMATION_
+#: METHODS` below, never by blocking the policy itself.
+UNIMPLEMENTED_NULL_POLICIES: frozenset[str] = frozenset()
+
+# ---- DEC-084 Calc Slice 2: missing-data estimation configuration ----
+#
+# Only meaningful when `null_policy == NULL_POLICY_ESTIMATE`. These
+# constants/predicates own the CONFIGURATION shape (what a valid
+# estimation request looks like); the actual array-filling engine lives
+# in the separate app.domain.missing_data_estimation module (section 3
+# of this task: a dedicated, reusable, independently-testable module),
+# which imports the method-name constants below rather than
+# redefining them.
+
+#: valid, valid, gap, valid -> fill with the previous finite sample.
+ESTIMATION_METHOD_HOLD_LAST = "hold_last"
+#: Fill with the closest finite bracketing sample (sample-index
+#: distance); equidistant ties break to the PREVIOUS sample.
+ESTIMATION_METHOD_NEAREST = "nearest"
+#: Linear interpolation using actual aligned `time` coordinates (never
+#: sample index); no extrapolation -- a gap touching either end of the
+#: array is never filled.
+ESTIMATION_METHOD_LINEAR = "linear"
+#: Fill the whole eligible gap with the mean of up to `local_mean_radius`
+#: finite samples immediately before and up to `local_mean_radius` finite
+#: samples immediately after it.
+ESTIMATION_METHOD_LOCAL_MEAN = "local_mean"
+#: Shape-preserving cubic interpolation -- recognized as a configuration
+#: VALUE for forward compatibility only (this task's section 19): no
+#: SciPy dependency exists in this codebase and none is added by this
+#: slice, so selecting it must be rejected outright, never silently
+#: downgraded to Linear.
+ESTIMATION_METHOD_PCHIP = "pchip"
+
+ALL_ESTIMATION_METHODS = frozenset(
+    {
+        ESTIMATION_METHOD_HOLD_LAST, ESTIMATION_METHOD_NEAREST,
+        ESTIMATION_METHOD_LINEAR, ESTIMATION_METHOD_LOCAL_MEAN, ESTIMATION_METHOD_PCHIP,
+    }
+)
+#: Recognized methods with no working engine yet -- mirrors
+#: `UNIMPLEMENTED_NULL_POLICIES`'s own contract one level down.
+UNIMPLEMENTED_ESTIMATION_METHODS = frozenset({ESTIMATION_METHOD_PCHIP})
+
+#: This slice's only supported `max_gap_unit` (this task's section 1:
+#: "For this slice: max_gap_unit = 'samples' only. Do not support
+#: milliseconds/seconds yet."). A single-member set, not a bare string
+#: constant, so a future slice adding a second unit only ever needs to
+#: grow this set -- every `in ALL_MAX_GAP_UNITS` check keeps working
+#: unchanged.
+MAX_GAP_UNIT_SAMPLES = "samples"
+ALL_MAX_GAP_UNITS = frozenset({MAX_GAP_UNIT_SAMPLES})
+
+
+def estimation_method_valid(estimation_method) -> bool:
+    """True only for one of the five recognized method names (this
+    covers BOTH a missing/`None` method and a genuinely unknown string --
+    `None not in ALL_ESTIMATION_METHODS` is already `False`, so no
+    separate `is None` branch is needed). Whether a recognized method is
+    actually IMPLEMENTED yet is a separate question -- see
+    `UNIMPLEMENTED_ESTIMATION_METHODS` -- deliberately kept apart so a
+    caller can distinguish "not a real method" from "a real method this
+    slice doesn't implement yet" with two different, clearer errors."""
+    return estimation_method in ALL_ESTIMATION_METHODS
+
+
+def max_gap_value_valid(max_gap_value) -> bool:
+    """`max_gap_value` must be a positive whole number of samples (this
+    slice's only supported `max_gap_unit`) -- section 1/2. `bool` is
+    explicitly rejected even though Python treats it as an `int` subtype
+    (mirrors `nominal_frequency_valid`'s own documented reasoning), and a
+    missing (`None`) value is already `False` via the `isinstance` check,
+    so "missing" and "invalid" share one predicate."""
+    return bool(
+        isinstance(max_gap_value, int)
+        and not isinstance(max_gap_value, bool)
+        and max_gap_value > 0
+    )
+
+
+def max_gap_unit_valid(max_gap_unit) -> bool:
+    """True only for `"samples"` (`ALL_MAX_GAP_UNITS`) -- section 1: this
+    slice deliberately does not support milliseconds/seconds yet."""
+    return max_gap_unit in ALL_MAX_GAP_UNITS
+
+
+def local_mean_radius_valid(local_mean_radius) -> bool:
+    """`local_mean_radius` must be a positive whole number of samples
+    (section 1: "N finite candidate samples before + N ... after") --
+    same `bool`-exclusion/missing-value handling as `max_gap_value_valid`
+    above, deliberately mirrored rather than sharing one generic
+    "positive int" helper, since the two are independently-named
+    configuration concepts that happen to share a validation shape today."""
+    return bool(
+        isinstance(local_mean_radius, int)
+        and not isinstance(local_mean_radius, bool)
+        and local_mean_radius > 0
+    )
 
 
 @dataclass(slots=True, frozen=True)
@@ -197,6 +296,18 @@ class CalculatedChannel:
     # calculated channels reading the same source may each retain a
     # different policy here simultaneously (DEC-084 point 7).
     null_policy: str = NULL_POLICY_PROPAGATE
+    # DEC-084 Calc Slice 2: only meaningful when
+    # null_policy == NULL_POLICY_ESTIMATE -- `None` for every other
+    # policy (section 18: "clean representation... preferably null/None
+    # for irrelevant estimation fields"), enforced by
+    # app.services.calculated_channel_service before a channel is ever
+    # constructed. `local_mean_radius` is additionally `None` whenever
+    # `estimation_method != ESTIMATION_METHOD_LOCAL_MEAN`, even under
+    # NULL_POLICY_ESTIMATE.
+    estimation_method: str | None = None
+    max_gap_value: int | None = None
+    max_gap_unit: str | None = None
+    local_mean_radius: int | None = None
 
 
 def evaluate_reverse_polarity(values: np.ndarray) -> np.ndarray:

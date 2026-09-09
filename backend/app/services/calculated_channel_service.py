@@ -27,8 +27,10 @@ from app.domain.calculated_channel import (
     ALL_NULL_POLICIES,
     ALL_OPERATIONS,
     DEFAULT_NULL_POLICY,
+    ESTIMATION_METHOD_LOCAL_MEAN,
     MAX_NAME_LENGTH,
     MULTI_OPERATIONS,
+    NULL_POLICY_ESTIMATE,
     NULL_POLICY_REQUIRE_MANUAL,
     OP_ABSOLUTE_VALUE,
     OP_ADDITION,
@@ -37,17 +39,22 @@ from app.domain.calculated_channel import (
     OP_RMS,
     OP_SUBTRACTION,
     UNARY_OPERATIONS,
+    UNIMPLEMENTED_ESTIMATION_METHODS,
     UNIMPLEMENTED_NULL_POLICIES,
     CalculatedChannel,
     ChannelRef,
     apply_null_policy_to_values,
     derive_engineering_type,
+    estimation_method_valid,
     evaluate_absolute_value,
     evaluate_addition,
     evaluate_multiply_constant,
     evaluate_reverse_polarity,
     evaluate_rms,
     evaluate_subtraction,
+    local_mean_radius_valid,
+    max_gap_unit_valid,
+    max_gap_value_valid,
     nominal_frequency_valid,
     rms_recording_long_enough,
     rms_sampling_dense_enough,
@@ -56,6 +63,7 @@ from app.domain.calculated_channel import (
     values_all_finite,
     would_create_cycle,
 )
+from app.domain.missing_data_estimation import apply_estimation
 from app.domain.channel_classification import (
     UNDEFINED,
     WAVEFORM_FORM_INSTANTANEOUS,
@@ -86,11 +94,17 @@ from app.services.errors import (
     CalculatedChannelNotFoundError,
     CyclicDependencyError,
     DuplicateCalculatedChannelNameError,
+    EstimationFieldsNotApplicableError,
+    EstimationMethodNotImplementedError,
     IncompatibleTimeBaseError,
     IncompatibleUnitError,
     InvalidCalculatedChannelNameError,
     InvalidCalculatedOperationError,
     InvalidConstantError,
+    InvalidEstimationMethodError,
+    InvalidLocalMeanRadiusError,
+    InvalidMaxGapUnitError,
+    InvalidMaxGapValueError,
     InvalidNominalFrequencyError,
     InvalidNullPolicyError,
     InvalidOperationArityError,
@@ -345,23 +359,30 @@ def create_calculated_channel(
     override: bool = False,
     per_unit_registry: PerUnitRegistry | None = None,
     null_policy: str = DEFAULT_NULL_POLICY,
+    estimation_method: str | None = None,
+    max_gap_value: int | None = None,
+    max_gap_unit: str | None = None,
+    local_mean_radius: int | None = None,
 ) -> CalculatedChannel:
     """Validate, evaluate, and store one new calculated channel.
 
     Order of validation (each an independent, clearly-attributable
     rejection reason -- section 44): operation known -> arity -> name ->
-    null policy known/implemented -> input resolution (existence) ->
-    timebase alignment -> unit compatibility -> constant validity
-    (Multiply only) / nominal-frequency validity + RMS eligibility +
-    recording-duration/sampling-density (RMS only, Phase 5B) -> Require
-    Manual Value null check (DEC-084 point 9/10, if selected) -> cycle
-    guard (defensive, see would_create_cycle's own docstring) -> apply
-    null policy to calculation-local input arrays -> evaluate -> store
-    (DEC-084 point 12/DEC-047: resolve inputs -> validate alignment ->
-    apply null policy -> evaluate). Atomic (section 107): nothing is
-    written to `calc_registry` until every check has passed and the array
-    has been computed -- a failed validation never partially registers a
-    channel, and never touches any other source/calculated-channel state.
+    null policy known/implemented -> estimation configuration valid (DEC-084
+    Calc Slice 2, only when `null_policy == NULL_POLICY_ESTIMATE`; every
+    other policy instead requires estimation fields to be ABSENT) -> input
+    resolution (existence) -> timebase alignment -> unit compatibility ->
+    constant validity (Multiply only) / nominal-frequency validity + RMS
+    eligibility + recording-duration/sampling-density (RMS only, Phase 5B)
+    -> Require Manual Value null check (DEC-084 point 9/10, if selected)
+    -> cycle guard (defensive, see would_create_cycle's own docstring) ->
+    apply null policy/estimation to calculation-local input arrays ->
+    evaluate -> store (DEC-084 point 12/DEC-047: resolve inputs -> validate
+    alignment -> apply null policy/estimation -> evaluate). Atomic (section
+    107): nothing is written to `calc_registry` until every check has
+    passed and the array has been computed -- a failed validation never
+    partially registers a channel, and never touches any other
+    source/calculated-channel state.
 
     `override` (Phase 5B, DEC-048) only ever matters for RMS: it is the
     engineer's explicit "Calculate anyway" acknowledgement, checked here
@@ -377,6 +398,12 @@ def create_calculated_channel(
     existing API/frontend caller's output changes. It never mutates any
     source or parent calculated-channel array -- see
     `apply_null_policy_to_values()`'s own docstring.
+
+    `estimation_method`/`max_gap_value`/`max_gap_unit`/`local_mean_radius`
+    (DEC-084 Calc Slice 2) are only meaningful, and only required, when
+    `null_policy == NULL_POLICY_ESTIMATE` -- see `apply_estimation()`'s
+    own docstring (app.domain.missing_data_estimation) for the estimation
+    engine itself.
     """
     if operation not in ALL_OPERATIONS:
         raise InvalidCalculatedOperationError(f"Unsupported operation: {operation!r}.")
@@ -394,6 +421,50 @@ def create_calculated_channel(
         raise NullPolicyNotImplementedError(
             "Estimate Missing Data is not implemented yet. Choose Propagate Null, "
             "Treat Null as Zero, or Require Manual Value."
+        )
+
+    # DEC-084 Calc Slice 2 (this task's section 2/20): estimation
+    # configuration is validated here -- pure config shape, no registry
+    # access needed yet, so this fails fast exactly like the null_policy
+    # checks just above. `local_mean_radius_out` stays `None` for every
+    # OTHER estimation method even when a value was supplied (section 18:
+    # "clean representation... preferably null/None for irrelevant
+    # estimation fields").
+    estimation_method_out: str | None = None
+    max_gap_value_out: int | None = None
+    max_gap_unit_out: str | None = None
+    local_mean_radius_out: int | None = None
+    if null_policy == NULL_POLICY_ESTIMATE:
+        if not estimation_method_valid(estimation_method):
+            raise InvalidEstimationMethodError(
+                f"estimation_method must be one of the recognized estimation methods, got {estimation_method!r}."
+            )
+        if estimation_method in UNIMPLEMENTED_ESTIMATION_METHODS:
+            raise EstimationMethodNotImplementedError(
+                f"Estimation method {estimation_method!r} is not implemented yet. Choose hold_last, "
+                "nearest, linear, or local_mean."
+            )
+        if not max_gap_value_valid(max_gap_value):
+            raise InvalidMaxGapValueError("max_gap_value must be a positive whole number of samples.")
+        if not max_gap_unit_valid(max_gap_unit):
+            raise InvalidMaxGapUnitError('max_gap_unit must be "samples" (the only unit supported in this slice).')
+        if estimation_method == ESTIMATION_METHOD_LOCAL_MEAN and not local_mean_radius_valid(local_mean_radius):
+            raise InvalidLocalMeanRadiusError(
+                "local_mean_radius must be a positive whole number of samples when estimation_method is local_mean."
+            )
+        estimation_method_out = estimation_method
+        max_gap_value_out = max_gap_value
+        max_gap_unit_out = max_gap_unit
+        local_mean_radius_out = local_mean_radius if estimation_method == ESTIMATION_METHOD_LOCAL_MEAN else None
+    elif (
+        estimation_method is not None
+        or max_gap_value is not None
+        or max_gap_unit is not None
+        or local_mean_radius is not None
+    ):
+        raise EstimationFieldsNotApplicableError(
+            "estimation_method/max_gap_value/max_gap_unit/local_mean_radius only apply when "
+            "null_policy is estimate_missing_data."
         )
 
     clean_name = (name or "").strip()
@@ -500,13 +571,30 @@ def create_calculated_channel(
     if would_create_cycle(dependency_map, calc_id, dependency_ids):
         raise CyclicDependencyError("This calculation would create a circular dependency.")
 
-    # DEC-084 point 12: null policy is applied to CALCULATION-LOCAL
-    # effective arrays only, after alignment is proven, right before
-    # evaluation -- never to `resolved[*].values` themselves (those stay
-    # the untouched source/parent arrays for every other purpose, e.g. a
-    # different calculated channel reading the same input under a
-    # different policy, DEC-084 point 7/9).
-    effective_values = [apply_null_policy_to_values(r.values, null_policy) for r in resolved]
+    # DEC-084 point 12: null policy/estimation is applied to
+    # CALCULATION-LOCAL effective arrays only, after alignment is proven,
+    # right before evaluation -- never to `resolved[*].values` themselves
+    # (those stay the untouched source/parent arrays for every other
+    # purpose, e.g. a different calculated channel reading the same input
+    # under a different policy, DEC-084 point 7/9). DEC-084 Calc Slice 2
+    # section 10: for `NULL_POLICY_ESTIMATE`, each input is estimated
+    # INDEPENDENTLY, using that SAME input's own `r.time` (never `first.
+    # time`) -- self-consistent even when two aligned inputs' own elapsed
+    # arrays share no common origin (DEC-047's absolute-instant proof for
+    # a different `reference_source_id`, see timebases_aligned()'s own
+    # docstring). RMS reads `effective_values[0]` too (below), so an
+    # estimated sample can make a downstream RMS window finite for free --
+    # no RMS-specific estimation code exists anywhere (section 15).
+    if null_policy == NULL_POLICY_ESTIMATE:
+        effective_values = [
+            apply_estimation(
+                time=r.time, values=r.values, estimation_method=estimation_method_out,
+                max_gap_value=max_gap_value_out, local_mean_radius=local_mean_radius_out,
+            )
+            for r in resolved
+        ]
+    else:
+        effective_values = [apply_null_policy_to_values(r.values, null_policy) for r in resolved]
 
     if operation == OP_REVERSE_POLARITY:
         values = evaluate_reverse_polarity(effective_values[0])
@@ -552,6 +640,10 @@ def create_calculated_channel(
         engineering_type=output_engineering_type,
         waveform_form=output_waveform_form,
         null_policy=null_policy,
+        estimation_method=estimation_method_out,
+        max_gap_value=max_gap_value_out,
+        max_gap_unit=max_gap_unit_out,
+        local_mean_radius=local_mean_radius_out,
     )
     calc_registry.add(channel)
 

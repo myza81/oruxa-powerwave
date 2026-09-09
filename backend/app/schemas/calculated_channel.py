@@ -91,11 +91,18 @@ class CalculatedChannelCreateRequest(BaseModel):
     `override` above), never buried inside `parameters`. Omitted by a
     pre-DEC-084 caller, it defaults to `"propagate_null"` (matches
     current NumPy NaN-propagation behavior exactly, so no existing
-    API/frontend caller's output changes). `"estimate_missing_data"` is
-    accepted here as a recognized wire value for forward compatibility
-    only -- the backend rejects it outright at creation time (no
-    estimation engine exists in this slice), never silently falling back
-    to another policy.
+    API/frontend caller's output changes).
+
+    `estimation_method`/`max_gap_value`/`max_gap_unit`/`local_mean_radius`
+    (DEC-084 Calc Slice 2) only apply when `null_policy ==
+    "estimate_missing_data"` -- a request that sets `null_policy` to
+    anything else but supplies any of these four fields is rejected
+    outright (`estimation_fields_not_applicable`, never silently
+    ignored). `"pchip"` is accepted here as a recognized `estimation_
+    method` wire value for forward compatibility only -- the backend
+    rejects it outright at creation time (no SciPy dependency exists in
+    this codebase), never silently downgrading to `"linear"`.
+    `max_gap_unit` supports only `"samples"` in this slice.
     """
 
     name: str
@@ -106,6 +113,10 @@ class CalculatedChannelCreateRequest(BaseModel):
     null_policy: Literal[
         "propagate_null", "treat_null_as_zero", "estimate_missing_data", "require_manual_value"
     ] = "propagate_null"
+    estimation_method: Literal["hold_last", "nearest", "linear", "local_mean", "pchip"] | None = None
+    max_gap_value: int | None = None
+    max_gap_unit: Literal["samples"] | None = None
+    local_mean_radius: int | None = None
 
 
 class RmsEligibilityRequest(BaseModel):
@@ -165,6 +176,15 @@ class CalculatedChannelOut(BaseModel):
     # always see which policy a channel was created with (DEC-084 point
     # 10 traceability). Every pre-existing field/consumer is unchanged.
     null_policy: str
+    # DEC-084 Calc Slice 2: additive fields -- only meaningful (non-null)
+    # when null_policy == "estimate_missing_data"; local_mean_radius is
+    # additionally null whenever estimation_method != "local_mean" (see
+    # CalculatedChannel's own docstring). Every pre-existing field/consumer
+    # is unchanged.
+    estimation_method: str | None = None
+    max_gap_value: int | None = None
+    max_gap_unit: str | None = None
+    local_mean_radius: int | None = None
 
     @classmethod
     def from_domain(cls, channel: CalculatedChannel) -> "CalculatedChannelOut":
@@ -183,6 +203,10 @@ class CalculatedChannelOut(BaseModel):
             engineering_type=channel.engineering_type,
             waveform_form=channel.waveform_form,
             null_policy=channel.null_policy,
+            estimation_method=channel.estimation_method,
+            max_gap_value=channel.max_gap_value,
+            max_gap_unit=channel.max_gap_unit,
+            local_mean_radius=channel.local_mean_radius,
         )
 
 

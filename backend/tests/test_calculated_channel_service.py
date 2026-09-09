@@ -12,6 +12,11 @@ import pandas as pd
 import pytest
 
 from app.domain.calculated_channel import (
+    ESTIMATION_METHOD_HOLD_LAST,
+    ESTIMATION_METHOD_LINEAR,
+    ESTIMATION_METHOD_LOCAL_MEAN,
+    ESTIMATION_METHOD_NEAREST,
+    ESTIMATION_METHOD_PCHIP,
     NULL_POLICY_ESTIMATE,
     NULL_POLICY_PROPAGATE,
     NULL_POLICY_REQUIRE_MANUAL,
@@ -49,10 +54,16 @@ from app.services.calculated_channel_service import (
 from app.services.errors import (
     CalculatedChannelHasDependentsError,
     DuplicateCalculatedChannelNameError,
+    EstimationFieldsNotApplicableError,
+    EstimationMethodNotImplementedError,
     IncompatibleTimeBaseError,
     IncompatibleUnitError,
     InvalidCalculatedChannelNameError,
     InvalidConstantError,
+    InvalidEstimationMethodError,
+    InvalidLocalMeanRadiusError,
+    InvalidMaxGapUnitError,
+    InvalidMaxGapValueError,
     InvalidNominalFrequencyError,
     InvalidNullPolicyError,
     InvalidOperationArityError,
@@ -1220,15 +1231,18 @@ class TestNullPolicyDefaultAndValidation:
             )
         assert calc_registry.list_for_workspace(WS) == []
 
-    def test_estimate_missing_data_rejected_even_when_all_inputs_finite(self, registries):
-        # Section 24: no silent fallback -- rejected outright regardless
-        # of whether any input actually contains a null.
+    def test_estimate_missing_data_without_estimation_method_rejected(self, registries):
+        # DEC-084 Calc Slice 2: `null_policy = estimate_missing_data`
+        # itself is now implemented, but still requires an explicit
+        # `estimation_method` -- omitting it is a config error, not a
+        # "policy not implemented" error (that boundary moved down to
+        # the PCHIP-specific case -- see TestEstimationConfigValidation).
         source_registry, calc_registry = registries
         _add_source(source_registry, _active_source(
             source_id="src1", time=np.array([0.0, 0.1, 0.2]),
             channels={"VA": np.array([1.0, -2.0, 3.0])}, units={"VA": "kV"},
         ))
-        with pytest.raises(NullPolicyNotImplementedError):
+        with pytest.raises(InvalidEstimationMethodError):
             create_calculated_channel(
                 workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
                 inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
@@ -1585,5 +1599,353 @@ class TestNullPolicyRequireManual:
                 parameters={}, source_registry=source_registry, calc_registry=calc_registry,
                 null_policy=NULL_POLICY_REQUIRE_MANUAL,
             )
+        active = source_registry.get(WS, "src1")
+        assert np.isnan(active.record.waveform_data["VA"].to_numpy()[1])
+
+
+# ---- DEC-084 Calc Slice 2: Missing-Data Estimation ----
+
+
+def _finite_source(source_registry, *, source_id="src1", channel_name="VA"):
+    _add_source(source_registry, _active_source(
+        source_id=source_id, time=np.array([0.0, 0.1, 0.2]),
+        channels={channel_name: np.array([1.0, -2.0, 3.0])}, units={channel_name: "kV"},
+    ))
+
+
+class TestEstimationConfigValidation:
+    """DEC-084 Calc Slice 2, this task's section 2/20."""
+
+    def test_missing_estimation_method_rejected(self, registries):
+        source_registry, calc_registry = registries
+        _finite_source(source_registry)
+        with pytest.raises(InvalidEstimationMethodError):
+            create_calculated_channel(
+                workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+                inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+                null_policy=NULL_POLICY_ESTIMATE, max_gap_value=1, max_gap_unit="samples",
+            )
+        assert calc_registry.list_for_workspace(WS) == []
+
+    def test_unknown_estimation_method_rejected(self, registries):
+        source_registry, calc_registry = registries
+        _finite_source(source_registry)
+        with pytest.raises(InvalidEstimationMethodError):
+            create_calculated_channel(
+                workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+                inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+                null_policy=NULL_POLICY_ESTIMATE, estimation_method="sinusoidal_fit",
+                max_gap_value=1, max_gap_unit="samples",
+            )
+
+    def test_pchip_rejected_not_implemented(self, registries):
+        source_registry, calc_registry = registries
+        _finite_source(source_registry)
+        with pytest.raises(EstimationMethodNotImplementedError):
+            create_calculated_channel(
+                workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+                inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+                null_policy=NULL_POLICY_ESTIMATE, estimation_method=ESTIMATION_METHOD_PCHIP,
+                max_gap_value=1, max_gap_unit="samples",
+            )
+        assert calc_registry.list_for_workspace(WS) == []
+
+    def test_max_gap_value_zero_rejected(self, registries):
+        source_registry, calc_registry = registries
+        _finite_source(source_registry)
+        with pytest.raises(InvalidMaxGapValueError):
+            create_calculated_channel(
+                workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+                inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+                null_policy=NULL_POLICY_ESTIMATE, estimation_method=ESTIMATION_METHOD_HOLD_LAST,
+                max_gap_value=0, max_gap_unit="samples",
+            )
+
+    def test_max_gap_value_missing_rejected(self, registries):
+        source_registry, calc_registry = registries
+        _finite_source(source_registry)
+        with pytest.raises(InvalidMaxGapValueError):
+            create_calculated_channel(
+                workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+                inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+                null_policy=NULL_POLICY_ESTIMATE, estimation_method=ESTIMATION_METHOD_HOLD_LAST,
+                max_gap_unit="samples",
+            )
+
+    def test_max_gap_unit_not_samples_rejected(self, registries):
+        source_registry, calc_registry = registries
+        _finite_source(source_registry)
+        with pytest.raises(InvalidMaxGapUnitError):
+            create_calculated_channel(
+                workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+                inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+                null_policy=NULL_POLICY_ESTIMATE, estimation_method=ESTIMATION_METHOD_HOLD_LAST,
+                max_gap_value=1, max_gap_unit="milliseconds",
+            )
+
+    def test_local_mean_missing_radius_rejected(self, registries):
+        source_registry, calc_registry = registries
+        _finite_source(source_registry)
+        with pytest.raises(InvalidLocalMeanRadiusError):
+            create_calculated_channel(
+                workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+                inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+                null_policy=NULL_POLICY_ESTIMATE, estimation_method=ESTIMATION_METHOD_LOCAL_MEAN,
+                max_gap_value=1, max_gap_unit="samples",
+            )
+
+    def test_local_mean_radius_zero_rejected(self, registries):
+        source_registry, calc_registry = registries
+        _finite_source(source_registry)
+        with pytest.raises(InvalidLocalMeanRadiusError):
+            create_calculated_channel(
+                workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+                inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+                null_policy=NULL_POLICY_ESTIMATE, estimation_method=ESTIMATION_METHOD_LOCAL_MEAN,
+                max_gap_value=1, max_gap_unit="samples", local_mean_radius=0,
+            )
+
+    def test_estimation_fields_rejected_for_propagate_policy(self, registries):
+        source_registry, calc_registry = registries
+        _finite_source(source_registry)
+        with pytest.raises(EstimationFieldsNotApplicableError):
+            create_calculated_channel(
+                workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+                inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+                null_policy=NULL_POLICY_PROPAGATE, estimation_method=ESTIMATION_METHOD_HOLD_LAST,
+                max_gap_value=1, max_gap_unit="samples",
+            )
+
+    def test_estimation_fields_rejected_for_omitted_default_policy(self, registries):
+        # Omitted null_policy defaults to Propagate -- estimation fields
+        # are still rejected as inapplicable, never silently ignored.
+        source_registry, calc_registry = registries
+        _finite_source(source_registry)
+        with pytest.raises(EstimationFieldsNotApplicableError):
+            create_calculated_channel(
+                workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+                inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+                parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+                max_gap_value=1, max_gap_unit="samples",
+            )
+
+    def test_valid_configuration_round_trips_on_channel(self, registries):
+        source_registry, calc_registry = registries
+        _finite_source(source_registry)
+        channel = create_calculated_channel(
+            workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_ESTIMATE, estimation_method=ESTIMATION_METHOD_HOLD_LAST,
+            max_gap_value=2, max_gap_unit="samples",
+        )
+        assert channel.null_policy == NULL_POLICY_ESTIMATE
+        assert channel.estimation_method == ESTIMATION_METHOD_HOLD_LAST
+        assert channel.max_gap_value == 2
+        assert channel.max_gap_unit == "samples"
+        assert channel.local_mean_radius is None
+
+    def test_local_mean_radius_normalized_to_none_for_non_local_mean_method(self, registries):
+        # Section 18: "clean representation" -- irrelevant to hold_last,
+        # so it is stored as None even though one was supplied.
+        source_registry, calc_registry = registries
+        _finite_source(source_registry)
+        channel = create_calculated_channel(
+            workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_ESTIMATE, estimation_method=ESTIMATION_METHOD_HOLD_LAST,
+            max_gap_value=2, max_gap_unit="samples", local_mean_radius=3,
+        )
+        assert channel.local_mean_radius is None
+
+    def test_non_estimation_channel_has_null_estimation_fields(self, registries):
+        source_registry, calc_registry = registries
+        _finite_source(source_registry)
+        channel = create_calculated_channel(
+            workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert channel.estimation_method is None
+        assert channel.max_gap_value is None
+        assert channel.max_gap_unit is None
+        assert channel.local_mean_radius is None
+
+
+class TestNullPolicyEstimate:
+    """DEC-084 Calc Slice 2, this task's section 29."""
+
+    def test_unary_operation_hold_last(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2, 0.3, 0.4]),
+            channels={"VA": np.array([10.0, 11.0, np.nan, np.nan, 14.0])}, units={"VA": "kV"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_ESTIMATE, estimation_method=ESTIMATION_METHOD_HOLD_LAST,
+            max_gap_value=3, max_gap_unit="samples",
+        )
+        # effective input after hold-last: [10, 11, 11, 11, 14] -> negated.
+        assert channel.values.tolist() == [-10.0, -11.0, -11.0, -11.0, -14.0]
+
+    def test_unary_operation_nearest(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2, 0.3]),
+            channels={"VA": np.array([10.0, np.nan, np.nan, 40.0])}, units={"VA": "kV"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="AbsVA", operation=OP_ABSOLUTE_VALUE,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_ESTIMATE, estimation_method=ESTIMATION_METHOD_NEAREST,
+            max_gap_value=2, max_gap_unit="samples",
+        )
+        # effective input after nearest: [10, 10, 40, 40].
+        assert channel.values.tolist() == [10.0, 10.0, 40.0, 40.0]
+
+    def test_unary_operation_linear_uses_actual_time(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 1.0, 2.0, 3.0]),
+            channels={"VA": np.array([10.0, np.nan, np.nan, 40.0])}, units={"VA": "kV"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="2xVA", operation=OP_MULTIPLY_CONSTANT,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={"constant": 1.0}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_ESTIMATE, estimation_method=ESTIMATION_METHOD_LINEAR,
+            max_gap_value=2, max_gap_unit="samples",
+        )
+        assert channel.values.tolist() == pytest.approx([10.0, 20.0, 30.0, 40.0])
+
+    def test_unary_operation_local_mean(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2, 0.3, 0.4, 0.5]),
+            channels={"VA": np.array([10.0, 12.0, np.nan, np.nan, 20.0, 22.0])}, units={"VA": "kV"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="AbsVA", operation=OP_ABSOLUTE_VALUE,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_ESTIMATE, estimation_method=ESTIMATION_METHOD_LOCAL_MEAN,
+            max_gap_value=2, max_gap_unit="samples", local_mean_radius=2,
+        )
+        assert channel.values.tolist() == [10.0, 12.0, 16.0, 16.0, 20.0, 22.0]
+
+    def test_multi_input_addition_independent_per_input_estimation(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2, 0.3]),
+            channels={
+                "A": np.array([1.0, np.nan, 3.0, 4.0]),
+                "B": np.array([10.0, 20.0, np.nan, 40.0]),
+            },
+            units={"A": "kV", "B": "kV"},
+        ))
+        channel = create_calculated_channel(
+            workspace_id=WS, name="A+B", operation=OP_ADDITION,
+            inputs=[
+                ChannelRef(kind="source", source_id="src1", channel_name="A"),
+                ChannelRef(kind="source", source_id="src1", channel_name="B"),
+            ],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_ESTIMATE, estimation_method=ESTIMATION_METHOD_HOLD_LAST,
+            max_gap_value=1, max_gap_unit="samples",
+        )
+        # A hold-last: [1, 1, 3, 4]; B hold-last: [10, 20, 20, 40].
+        # Neither input's own gap is ever filled using the OTHER input.
+        assert channel.values.tolist() == [11.0, 21.0, 23.0, 44.0]
+
+    def test_rms_estimation_before_window_calculation_makes_window_finite(self, registries):
+        source_registry, calc_registry = registries
+        _sinusoid_source_with_nulls(source_registry, null_indices=[500])
+        channel = create_calculated_channel(
+            workspace_id=WS, name="RMS(VA)", operation=OP_RMS,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={"nominal_frequency_hz": 50.0},
+            source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_ESTIMATE, estimation_method=ESTIMATION_METHOD_HOLD_LAST,
+            max_gap_value=1, max_gap_unit="samples",
+        )
+        # A single-sample gap (length 1 <= max_gap 1) is filled BEFORE RMS
+        # ever runs -- every post-warm-up window is finite (section 15).
+        assert np.all(np.isfinite(channel.values[100:]))
+
+    def test_rms_oversized_gap_remains_nan_and_retains_window_propagation(self, registries):
+        source_registry, calc_registry = registries
+        # A 3-sample gap, max_gap=1 -> ineligible -> stays NaN -> the
+        # existing (Slice 1) RMS window-propagation behavior still
+        # applies to whatever remains NaN after estimation.
+        _sinusoid_source_with_nulls(source_registry, null_indices=[500, 501, 502])
+        channel = create_calculated_channel(
+            workspace_id=WS, name="RMS(VA)", operation=OP_RMS,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={"nominal_frequency_hz": 50.0},
+            source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_ESTIMATE, estimation_method=ESTIMATION_METHOD_HOLD_LAST,
+            max_gap_value=1, max_gap_unit="samples",
+        )
+        # fs=5000Hz/50Hz -> 100-sample window. Every window containing any
+        # of samples 500-502 (i.e. i in [500, 502+99]) is NaN.
+        assert np.all(np.isnan(channel.values[500:602]))
+        assert not np.isnan(channel.values[499])
+        assert not np.isnan(channel.values[602])
+
+    def test_dependency_chain_estimates_calc_a_final_values_calc_a_itself_unchanged(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2, 0.3, 0.4]),
+            channels={"VA": np.array([1.0, np.nan, 3.0, 4.0, 5.0])}, units={"VA": "kV"},
+        ))
+        # Calc A: default Propagate Null -- inherits the source's own gap.
+        calc_a = create_calculated_channel(
+            workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+        )
+        assert np.isnan(calc_a.values[1])
+
+        # Calc B: Estimate Missing Data, reading Calc A as its own input.
+        calc_b = create_calculated_channel(
+            workspace_id=WS, name="Abs(-VA)", operation=OP_ABSOLUTE_VALUE,
+            inputs=[ChannelRef(kind="calculated", calculated_channel_id=calc_a.id)],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_ESTIMATE, estimation_method=ESTIMATION_METHOD_HOLD_LAST,
+            max_gap_value=1, max_gap_unit="samples",
+        )
+        # Calc A's own values: [-1, NaN, -3, -4, -5]; hold-last fill at
+        # index 1 -> -1; abs -> [1, 1, 3, 4, 5].
+        assert calc_b.values.tolist() == [1.0, 1.0, 3.0, 4.0, 5.0]
+        # Calc A itself is completely untouched by Calc B's estimation.
+        assert np.isnan(calc_a.values[1])
+
+    def test_source_array_unchanged(self, registries):
+        source_registry, calc_registry = registries
+        _add_source(source_registry, _active_source(
+            source_id="src1", time=np.array([0.0, 0.1, 0.2]),
+            channels={"VA": np.array([1.0, np.nan, 3.0])}, units={"VA": "kV"},
+        ))
+        create_calculated_channel(
+            workspace_id=WS, name="-VA", operation=OP_REVERSE_POLARITY,
+            inputs=[ChannelRef(kind="source", source_id="src1", channel_name="VA")],
+            parameters={}, source_registry=source_registry, calc_registry=calc_registry,
+            null_policy=NULL_POLICY_ESTIMATE, estimation_method=ESTIMATION_METHOD_HOLD_LAST,
+            max_gap_value=1, max_gap_unit="samples",
+        )
         active = source_registry.get(WS, "src1")
         assert np.isnan(active.record.waveform_data["VA"].to_numpy()[1])
